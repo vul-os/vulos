@@ -1,10 +1,11 @@
 # Vula OS — Dev Environment
 # Usage:
-#   docker compose up        → backend on :8080, frontend on :5173
+#   docker compose up        → backend on :8080, frontend on :5173, landing on :3000
 #   docker compose up --build → rebuild everything
 #
 # Open http://localhost:5173 for dev (hot reload)
 # Open http://localhost:8080 for production build
+# Open http://localhost:3000 for landing page
 
 services:
   backend:
@@ -13,11 +14,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+      - "3000:3000"
     shm_size: '1g'
     volumes:
       - vulos-data:/root/.vulos
     environment:
       - PORT=8080
+      - LANDING_PORT=3000
       - AI_PROVIDER=ollama
       - AI_ENDPOINT=http://host.docker.internal:11434
       - VULOS_DEV=true

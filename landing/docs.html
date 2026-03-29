@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — Vula OS</title>
+  <meta name="description" content="Vula OS documentation — setup, usage, keyboard shortcuts, and more.">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #050507; --surface: #0e0e12; --border: #1a1a22;
+      --text: #e5e5e5; --muted: #888; --dim: #555;
+      --blue: #3b82f6; --code-bg: #0a0a0f;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Layout */
+    .layout { display: flex; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar { width: 240px; position: fixed; top: 0; bottom: 0; left: 0; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0; overflow-y: auto; z-index: 40; }
+    .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 20px 20px; font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .sidebar-brand img { width: 24px; height: 24px; }
+    .sidebar-section { padding: 0 12px; margin-bottom: 16px; }
+    .sidebar-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); padding: 0 8px; margin-bottom: 6px; }
+    .sidebar-link { display: block; padding: 6px 12px; border-radius: 8px; font-size: 13px; color: var(--muted); transition: all 0.12s; text-decoration: none; }
+    .sidebar-link:hover { color: var(--text); background: rgba(255,255,255,0.04); text-decoration: none; }
+    .sidebar-link.active { color: var(--blue); background: rgba(59,130,246,0.08); }
+    .sidebar-back { display: flex; align-items: center; gap: 6px; padding: 8px 20px; font-size: 12px; color: var(--dim); text-decoration: none; margin-bottom: 8px; }
+    .sidebar-back:hover { color: var(--muted); text-decoration: none; }
+
+    /* Content */
+    .content { margin-left: 240px; flex: 1; padding: 48px 48px 80px; max-width: 800px; }
+    .content h1 { font-size: 32px; font-weight: 300; margin-bottom: 8px; }
+    .content h2 { font-size: 22px; font-weight: 400; margin-top: 48px; margin-bottom: 16px; padding-top: 24px; border-top: 1px solid var(--border); }
+    .content h2:first-of-type { margin-top: 32px; border-top: none; padding-top: 0; }
+    .content h3 { font-size: 16px; font-weight: 500; margin-top: 28px; margin-bottom: 10px; }
+    .content p { color: var(--muted); margin-bottom: 14px; font-size: 15px; }
+    .content ul, .content ol { color: var(--muted); margin-bottom: 14px; padding-left: 24px; font-size: 14px; }
+    .content li { margin-bottom: 6px; }
+    .content code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; color: #a5b4fc; border: 1px solid var(--border); }
+    .content pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; overflow-x: auto; margin-bottom: 16px; }
+    .content pre code { background: none; border: none; padding: 0; font-size: 13px; line-height: 1.7; }
+    .content .note { background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.15); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; font-size: 13px; color: var(--muted); }
+    .content .note strong { color: var(--blue); }
+    .content .warn { background: rgba(234,179,8,0.06); border: 1px solid rgba(234,179,8,0.15); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; font-size: 13px; color: var(--muted); }
+    .content .warn strong { color: #eab308; }
+
+    .kbd { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); font-size: 12px; font-family: 'SF Mono', monospace; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+    .shortcut-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .shortcut-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+    .shortcut-table td:first-child { width: 180px; }
+
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .content { margin-left: 0; padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <nav class="sidebar">
+    <a href="/" class="sidebar-back">&larr; Back to home</a>
+    <a href="/docs" class="sidebar-brand">
+      <img src="/icon-32.png" alt="">
+      Docs
+    </a>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Getting Started</div>
+      <a href="#installation" class="sidebar-link active">Installation</a>
+      <a href="#first-boot" class="sidebar-link">First Boot Setup</a>
+      <a href="#login" class="sidebar-link">Login</a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Using Vula OS</div>
+      <a href="#desktop" class="sidebar-link">Desktop</a>
+      <a href="#terminal" class="sidebar-link">Terminal</a>
+      <a href="#browser" class="sidebar-link">Chromium Browser</a>
+      <a href="#files" class="sidebar-link">File Manager</a>
+      <a href="#ai" class="sidebar-link">AI Assistant</a>
+      <a href="#apps" class="sidebar-link">Apps & App Hub</a>
+      <a href="#settings" class="sidebar-link">Settings</a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Reference</div>
+      <a href="#shortcuts" class="sidebar-link">Keyboard Shortcuts</a>
+      <a href="#fullscreen" class="sidebar-link">Fullscreen Mode</a>
+      <a href="#docker" class="sidebar-link">Docker Reference</a>
+      <a href="#troubleshooting" class="sidebar-link">Troubleshooting</a>
+    </div>
+  </nav>
+
+  <main class="content">
+    <h1>Vula OS Documentation</h1>
+    <p>Everything you need to know to get started with Vula OS.</p>
+
+    <h2 id="installation">Installation</h2>
+    <p>Vula OS runs as a Docker container. You need <a href="https://docs.docker.com/get-docker/" target="_blank">Docker</a> installed on your system.</p>
+    <h3>Quick Start</h3>
+    <pre><code>docker run -p 8080:8080 --shm-size=1g \
+  -v vulos-data:/root/.vulos \
+  ghcr.io/vul-os/vulos:latest</code></pre>
+    <p>Then open <a href="http://localhost:8080">http://localhost:8080</a> in your browser.</p>
+
+    <div class="note"><strong>Note:</strong> The <code>--shm-size=1g</code> flag is required for the Chromium browser to work properly. The <code>-v</code> flag persists your data across container restarts.</div>
+
+    <h3>Docker Compose</h3>
+    <pre><code>services:
+  vulos:
+    image: ghcr.io/vul-os/vulos:latest
+    ports:
+      - "8080:8080"
+    shm_size: "1g"
+    volumes:
+      - vulos-data:/root/.vulos
+
+volumes:
+  vulos-data:</code></pre>
+
+    <h3>Platform Notes</h3>
+    <ul>
+      <li><strong>macOS:</strong> Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank">Docker Desktop</a>. Works on both Intel and Apple Silicon.</li>
+      <li><strong>Linux:</strong> Native Docker or Podman. Supports amd64 and arm64.</li>
+      <li><strong>Windows:</strong> Use WSL2 with Docker Desktop.</li>
+    </ul>
+
+    <h2 id="first-boot">First Boot Setup</h2>
+    <p>On first launch, Vula OS guides you through a setup wizard:</p>
+    <ol>
+      <li><strong>Language</strong> — Select your preferred language.</li>
+      <li><strong>Timezone</strong> — Pick your timezone from the interactive map.</li>
+      <li><strong>Network</strong> — Connect to WiFi (optional in Docker).</li>
+      <li><strong>Account</strong> — Create your admin username and password.</li>
+      <li><strong>Appearance</strong> — Choose dark, light, auto, or scheduled theme.</li>
+    </ol>
+    <div class="note"><strong>Important:</strong> Your login password is also used for <code>sudo</code> in the terminal. Choose a password you'll remember.</div>
+
+    <h2 id="login">Login</h2>
+    <p>After setup, you'll see the login screen. Sign in with your username and password. Your session persists via a cookie, so you'll stay logged in.</p>
+    <p>Multiple user accounts can be created in Settings &gt; Users &amp; Profiles.</p>
+
+    <h2 id="desktop">Desktop</h2>
+    <p>The Vula desktop works like a traditional OS with windows, a dock, and a top menu bar.</p>
+    <h3>Window Management</h3>
+    <ul>
+      <li><strong>Drag</strong> the title bar to move windows.</li>
+      <li><strong>Drag corners</strong> to resize.</li>
+      <li><strong>Snap</strong> to edges: drag to the left/right edge for half-screen, or to the top to maximize.</li>
+      <li><strong>Traffic lights</strong> (red/yellow/green) to close, minimize, maximize.</li>
+    </ul>
+    <h3>Multi-Desktop</h3>
+    <ul>
+      <li><span class="kbd">Ctrl</span>+<span class="kbd">1</span> to <span class="kbd">9</span> — Switch desktops</li>
+      <li><span class="kbd">Ctrl</span>+<span class="kbd">N</span> — Add new desktop</li>
+      <li>The desktop indicator in the menu bar shows which desktop you're on.</li>
+    </ul>
+    <h3>Dock</h3>
+    <p>The dock at the bottom shows open windows, the launchpad button, and the chat button. Click the grid icon to open the Launchpad.</p>
+    <h3>Wallpaper</h3>
+    <p>Change your desktop wallpaper in Settings &gt; Appearance &gt; Wallpaper. Upload any image or use the default.</p>
+
+    <h2 id="terminal">Terminal</h2>
+    <p>Open Terminal from the Launchpad to get a full bash shell.</p>
+    <h3>Session Persistence</h3>
+    <p>Terminal sessions survive window closes and browser refreshes. When you reopen the terminal:</p>
+    <ul>
+      <li>If detached sessions exist, you'll see a picker to <strong>reattach</strong> or create a <strong>new session</strong>.</li>
+      <li>If no sessions exist, a new one starts automatically.</li>
+      <li>Running processes continue in the background when you close the window.</li>
+    </ul>
+    <h3>Sudo</h3>
+    <p>Your terminal user has sudo access. The sudo password is the same as your login password.</p>
+    <pre><code>sudo apk add htop    # Install packages
+sudo reboot          # Reboot the system</code></pre>
+
+    <h2 id="browser">Chromium Browser</h2>
+    <p>The built-in browser is a real Chromium instance running inside Vula OS, streamed to your screen via WebRTC.</p>
+    <ul>
+      <li>Window controls are in the <strong>top-right corner</strong> of the browser (no title bar).</li>
+      <li>New tabs/popups open within the same browser window.</li>
+      <li>Drag the thin strip at the top to move the window.</li>
+    </ul>
+
+    <h2 id="files">File Manager</h2>
+    <p>Browse and manage files on the system. You can:</p>
+    <ul>
+      <li>Navigate directories by clicking folders.</li>
+      <li>Upload files via the upload button.</li>
+      <li>Download, rename, or delete files.</li>
+      <li>Create new directories.</li>
+    </ul>
+
+    <h2 id="ai">AI Assistant</h2>
+    <p>Vula OS includes a built-in AI chat assistant. Configure it in Settings &gt; AI Assistant.</p>
+    <h3>Supported Providers</h3>
+    <ul>
+      <li><strong>Ollama</strong> — Local AI models. Default: connects to <code>http://host.docker.internal:11434</code></li>
+      <li><strong>OpenAI</strong> — GPT models via API key.</li>
+      <li><strong>Anthropic</strong> — Claude models via API key.</li>
+      <li><strong>Custom</strong> — Any OpenAI-compatible endpoint.</li>
+    </ul>
+    <p>The AI can generate and run Python code in a sandboxed environment.</p>
+
+    <h2 id="apps">Apps & App Hub</h2>
+    <p>Install additional apps from the App Hub. Apps run as isolated services and appear in the Launchpad.</p>
+    <p>Built-in apps: Terminal, File Manager, Chromium, Activity Monitor, Disk Usage, Drivers, Packages.</p>
+
+    <h2 id="settings">Settings</h2>
+    <p>Access Settings from the Launchpad (gear icon). Available sections:</p>
+    <ul>
+      <li><strong>AI Assistant</strong> — Provider, model, API keys</li>
+      <li><strong>Appearance</strong> — Theme, night shift, wallpaper</li>
+      <li><strong>WiFi / Bluetooth / Sound / Display</strong> — Hardware settings</li>
+      <li><strong>Battery & Energy</strong> — Power modes</li>
+      <li><strong>Users & Profiles</strong> — Account management</li>
+      <li><strong>Remote Access</strong> — Tunnel for external access</li>
+      <li><strong>About</strong> — System info, hardware specs</li>
+    </ul>
+
+    <h2 id="shortcuts">Keyboard Shortcuts</h2>
+    <table class="shortcut-table">
+      <tr><td><span class="kbd">Ctrl</span>+<span class="kbd">1-9</span></td><td>Switch between desktops</td></tr>
+      <tr><td><span class="kbd">Ctrl</span>+<span class="kbd">N</span></td><td>New desktop</td></tr>
+      <tr><td><span class="kbd">Ctrl</span>+<span class="kbd">L</span></td><td>Lock screen</td></tr>
+      <tr><td><span class="kbd">F11</span></td><td>Toggle fullscreen</td></tr>
+      <tr><td><span class="kbd">Esc</span></td><td>Close Launchpad / exit current context</td></tr>
+    </table>
+
+    <h2 id="fullscreen">Fullscreen Mode</h2>
+    <p>For the best experience, use Vula OS in fullscreen mode.</p>
+    <ul>
+      <li>Press <span class="kbd">F11</span> or click the fullscreen button on the login screen.</li>
+      <li>On macOS: <span class="kbd">Ctrl</span>+<span class="kbd">Cmd</span>+<span class="kbd">F</span></li>
+    </ul>
+
+    <h3>Firefox: Prevent Esc from Exiting Fullscreen</h3>
+    <div class="warn"><strong>Firefox users:</strong> By default, pressing Esc exits fullscreen immediately. To prevent this:</div>
+    <ol>
+      <li>Type <code>about:config</code> in the Firefox address bar and press Enter.</li>
+      <li>Click "Accept the Risk and Continue".</li>
+      <li>Search for: <code>browser.fullscreen.exit_on_escape</code></li>
+      <li>Double-click the preference to set it to <strong>false</strong>.</li>
+    </ol>
+    <p>With this setting, use <span class="kbd">F11</span> or the browser menu to exit fullscreen instead of Esc.</p>
+
+    <h2 id="docker">Docker Reference</h2>
+    <h3>Environment Variables</h3>
+    <table class="shortcut-table">
+      <tr><td><code>PORT</code></td><td>Server port (default: 8080)</td></tr>
+      <tr><td><code>AI_PROVIDER</code></td><td>AI backend: ollama, openai, anthropic</td></tr>
+      <tr><td><code>AI_ENDPOINT</code></td><td>AI API endpoint URL</td></tr>
+      <tr><td><code>LANDING_PORT</code></td><td>Port for landing page (e.g. "3000"). Empty = disabled.</td></tr>
+    </table>
+    <h3>Data Persistence</h3>
+    <p>Mount <code>/root/.vulos</code> to persist user data, settings, and databases across container restarts:</p>
+    <pre><code>docker run -v vulos-data:/root/.vulos ...</code></pre>
+
+    <h3>Multi-Architecture</h3>
+    <p>Docker images are built for both <code>linux/amd64</code> and <code>linux/arm64</code> architectures.</p>
+
+    <h2 id="troubleshooting">Troubleshooting</h2>
+    <h3>Browser shows black screen</h3>
+    <p>Make sure you're running Docker with <code>--shm-size=1g</code>. Chromium needs shared memory to function properly.</p>
+
+    <h3>Terminal shows container hostname</h3>
+    <p>Log out and log back in. On login, the system syncs your Linux user account and creates a proper shell profile.</p>
+
+    <h3>Cannot connect to AI</h3>
+    <p>If using Ollama locally, ensure it's running and accessible at <code>http://host.docker.internal:11434</code> from inside Docker. On Linux, you may need <code>--add-host=host.docker.internal:host-gateway</code>.</p>
+
+    <h3>Forgot password</h3>
+    <p>You can reset by deleting the auth database: <code>docker exec vulos rm /root/.vulos/db/auth.json</code> then restart the container.</p>
+  </main>
+</div>
+
+<script>
+// Highlight active sidebar link on scroll
+const links = document.querySelectorAll('.sidebar-link')
+const sections = [...links].map(l => document.querySelector(l.getAttribute('href')))
+
+window.addEventListener('scroll', () => {
+  const scrollPos = window.scrollY + 100
+  let active = 0
+  sections.forEach((s, i) => { if (s && s.offsetTop <= scrollPos) active = i })
+  links.forEach((l, i) => l.classList.toggle('active', i === active))
+})
+</script>
+
+</body>
+</html>

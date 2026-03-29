@@ -97,29 +97,29 @@ docker compose up --build
 
 Data is persisted in Docker volumes (`vulos-data`, `node_modules`).
 
-### Local Development (no Docker)
+### Development
+
+All development workflows use `dev.sh`:
 
 ```bash
 git clone https://github.com/vul-os/vulos.git
 cd vulos
+
+# Local dev — Go backend + Vite HMR (no Docker)
 ./dev.sh
+
+# Full Docker build + deploy
+./dev.sh deploy
+
+# Quick rebuild — recompile backend + frontend into running container
+./dev.sh deploy quick
 ```
 
-This starts the Go backend on `:8080` and the Vite dev server on `:5173` with hot reload.
-
-Open **http://localhost:5173**.
-
-Or run each piece individually:
-
-```bash
-# Terminal 1 — backend
-cd backend
-go run ./cmd/server -env=local
-
-# Terminal 2 — frontend
-npm install
-npm run dev
-```
+| Command | What it does | URL |
+|---------|-------------|-----|
+| `./dev.sh` | Runs Go backend + Vite dev server locally | http://localhost:5173 |
+| `./dev.sh deploy` | Full Docker image build + container start | http://localhost:8080 |
+| `./dev.sh deploy quick` | Rebuilds backend + frontend, copies into running container, restarts | http://localhost:8080 |
 
 The Vite config proxies `/api` and `/app` requests to the backend on `:8080`.
 

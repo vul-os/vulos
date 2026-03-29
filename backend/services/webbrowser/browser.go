@@ -168,6 +168,8 @@ func (s *Service) startChromium() error {
 		"--disable-client-side-phishing-detection",
 		"--noerrdialogs",
 		"--hide-crash-restore-bubble",
+		"--disable-popup-blocking",
+		"--new-window",
 		fmt.Sprintf("--window-size=%d,%d", width, height),
 		"--window-position=0,0",
 		"--start-maximized",

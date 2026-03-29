@@ -101,9 +101,26 @@ export default function RemoteBrowser() {
     const video = videoRef.current
     if (!video) return { x: 0, y: 0 }
     const rect = video.getBoundingClientRect()
+    // Account for letterboxing from object-fit: contain
+    const videoAspect = 1280 / 720
+    const elemAspect = rect.width / rect.height
+    let renderW, renderH, offsetX, offsetY
+    if (elemAspect > videoAspect) {
+      // Letterboxed on sides
+      renderH = rect.height
+      renderW = rect.height * videoAspect
+      offsetX = (rect.width - renderW) / 2
+      offsetY = 0
+    } else {
+      // Letterboxed top/bottom
+      renderW = rect.width
+      renderH = rect.width / videoAspect
+      offsetX = 0
+      offsetY = (rect.height - renderH) / 2
+    }
     return {
-      x: Math.round((e.clientX - rect.left) * (1280 / rect.width)),
-      y: Math.round((e.clientY - rect.top) * (720 / rect.height))
+      x: Math.round(((e.clientX - rect.left - offsetX) / renderW) * 1280),
+      y: Math.round(((e.clientY - rect.top - offsetY) / renderH) * 720)
     }
   }, [])
 
@@ -194,7 +211,7 @@ export default function RemoteBrowser() {
         disablePictureInPicture
         controlsList="noplaybackrate nodownload"
         className="w-full h-full"
-        style={{ cursor: 'none', objectFit: 'fill' }}
+        style={{ cursor: 'none', objectFit: 'contain', background: '#000' }}
       />
     </div>
   )

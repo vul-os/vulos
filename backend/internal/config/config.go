@@ -13,7 +13,8 @@ var (
 )
 
 type Config struct {
-	Port string
+	Port        string
+	LandingPort string // separate port for landing page (empty = disabled)
 }
 
 func Load(env string) *Config {
@@ -55,6 +56,7 @@ func Load(env string) *Config {
 	}
 
 	return &Config{
-		Port: get("PORT", "8080"),
+		Port:        get("PORT", "8080"),
+		LandingPort: get("LANDING_PORT", ""),
 	}
 }
