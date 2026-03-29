@@ -1415,6 +1415,41 @@ func main() {
 		writeJSON(w, map[string]string{"status": "upgraded", "output": output})
 	})
 
+	// Landing page — separate server on LANDING_PORT (default off)
+	if cfg.LandingPort != "" {
+		landingDir := ""
+		for _, dir := range []string{"/opt/vulos/landing", "./landing", "../landing"} {
+			if _, err := os.Stat(filepath.Join(dir, "index.html")); err == nil {
+				landingDir = dir
+				break
+			}
+		}
+		if landingDir != "" {
+			landingMux := http.NewServeMux()
+			landingFS := http.FileServer(http.Dir(landingDir))
+			landingMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				// Serve file if exists, otherwise index.html
+				filePath := filepath.Join(landingDir, filepath.Clean(r.URL.Path))
+				if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+					landingFS.ServeHTTP(w, r)
+					return
+				}
+				if r.URL.Path == "/docs" || r.URL.Path == "/docs/" {
+					http.ServeFile(w, r, filepath.Join(landingDir, "docs.html"))
+					return
+				}
+				http.ServeFile(w, r, filepath.Join(landingDir, "index.html"))
+			})
+			landingAddr := ":" + cfg.LandingPort
+			go func() {
+				log.Printf("serving landing page from %s on %s", landingDir, landingAddr)
+				if err := http.ListenAndServe(landingAddr, landingMux); err != nil {
+					log.Printf("[landing] server error: %v", err)
+				}
+			}()
+		}
+	}
+
 	// Serve frontend static files (production build)
 	webrootDir := ""
 	for _, dir := range []string{"/opt/vulos/webroot", "./dist", "../dist", "../../dist"} {
@@ -1426,7 +1461,6 @@ func main() {
 	if webrootDir != "" {
 		fs := http.FileServer(http.Dir(webrootDir))
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			// Serve static file if it exists, otherwise index.html (SPA fallback)
 			filePath := filepath.Join(webrootDir, filepath.Clean(r.URL.Path))
 			if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
 				fs.ServeHTTP(w, r)

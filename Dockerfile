@@ -42,6 +42,7 @@ RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
 COPY --from=backend /vulos-server /usr/local/bin/vulos-server
 COPY --from=frontend /app/dist /opt/vulos/webroot
 COPY apps/ /opt/vulos/apps/
+COPY landing/ /opt/vulos/landing/
 COPY registry.json /opt/vulos/registry.json
 
 RUN touch /var/lib/vulos/.setup-complete
@@ -58,6 +59,6 @@ ENV SHELL=/bin/bash
 ENV DISPLAY=:99
 ENV HOSTNAME=vula
 
-EXPOSE 8080
+EXPOSE 8080 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/usr/local/bin/vulos-server", "-env", "local"]
