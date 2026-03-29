@@ -1,12 +1,115 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════
+   Theme: Semantic CSS variables
+   Used by inline-styled components
+   ═══════════════════════════════════════ */
+:root {
+  --bg-base: #0c0c0c;
+  --bg-surface: #111111;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: #1e1e1e;
+  --bg-selected: #1a1a2e;
+  --bg-selected-border: #1e1e3a;
+  --border-subtle: #111111;
+  --border-default: #1a1a1a;
+  --border-strong: #222222;
+  --border-emphasis: #333333;
+  --text-primary: #e5e5e5;
+  --text-secondary: #cccccc;
+  --text-tertiary: #999999;
+  --text-muted: #888888;
+  --text-faint: #666666;
+  --text-ghost: #555555;
+  --text-dim: #444444;
+  --text-invisible: #333333;
+  --graph-grid: #1a1a1a;
+}
+
+/* ═══════════════════════════════════════
+   Light theme overrides
+   ═══════════════════════════════════════ */
+[data-theme="light"] {
+  /* Remap Tailwind's neutral scale (swap dark ↔ light) */
+  --color-neutral-950: #fafafa;
+  --color-neutral-900: #f5f5f5;
+  --color-neutral-800: #e5e5e5;
+  --color-neutral-700: #d4d4d4;
+  --color-neutral-600: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-400: #525252;
+  --color-neutral-300: #404040;
+  --color-neutral-200: #262626;
+  --color-neutral-100: #171717;
+  --color-neutral-50: #0a0a0a;
+
+  /* Semantic variables */
+  --bg-base: #ffffff;
+  --bg-surface: #f7f7f7;
+  --bg-elevated: #eeeeee;
+  --bg-hover: #e4e4e4;
+  --bg-selected: #dde5f5;
+  --bg-selected-border: #b8ccf0;
+  --border-subtle: #eeeeee;
+  --border-default: #e0e0e0;
+  --border-strong: #cccccc;
+  --border-emphasis: #bbbbbb;
+  --text-primary: #1a1a1a;
+  --text-secondary: #333333;
+  --text-tertiary: #555555;
+  --text-muted: #666666;
+  --text-faint: #888888;
+  --text-ghost: #aaaaaa;
+  --text-dim: #cccccc;
+  --text-invisible: #dddddd;
+  --graph-grid: #e5e5e5;
+}
+
+/* Fix shadow intensity in light mode */
+[data-theme="light"] .shadow-2xl,
+[data-theme="light"] .shadow-lg {
+  --tw-shadow-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Scrollbar adapts to theme */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* ═══════════════════════════════════════
+   Night Shift (warm filter overlay)
+   Intensity controlled by --nightshift-warmth (0-100)
+   ═══════════════════════════════════════ */
+[data-nightshift] {
+  --ns-w: var(--nightshift-warmth, 40);
+  --ns-sepia: calc(var(--ns-w) * 0.6 / 100);
+  --ns-saturate: calc(1 + var(--ns-w) * 0.4 / 100);
+  --ns-hue: calc(var(--ns-w) * -0.08 * 1deg);
+  --ns-brightness: calc(1 - var(--ns-w) * 0.04 / 100);
+}
+
+[data-nightshift] #root {
+  filter:
+    sepia(var(--ns-sepia))
+    saturate(var(--ns-saturate))
+    hue-rotate(var(--ns-hue))
+    brightness(var(--ns-brightness));
+  transition: filter 1s ease;
+}
+
+/* ═══════════════════════════════════════
+   Base styles
+   ═══════════════════════════════════════ */
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #0a0a0a;
-  color: #e5e5e5;
+  background: var(--bg-base);
+  color: var(--text-primary);
   font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -38,30 +141,33 @@ html, body, #root {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ═══════════════════════════════════════
+   Component classes (theme-aware)
+   ═══════════════════════════════════════ */
 .input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-emphasis);
   border-radius: 0.5rem;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 0.875rem;
   outline: none;
 }
 .input:focus {
-  border-color: #555;
+  border-color: var(--text-ghost);
 }
 
 .btn {
   padding: 0.375rem 0.75rem;
-  background: #333;
+  background: var(--border-emphasis);
   border: none;
   border-radius: 0.5rem;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 0.8125rem;
   cursor: pointer;
 }
-.btn:hover { background: #444; }
+.btn:hover { background: var(--text-dim); }
 .btn:disabled { opacity: 0.4; cursor: default; }
 
 .btn-ghost {
@@ -69,11 +175,11 @@ html, body, #root {
   background: none;
   border: none;
   border-radius: 0.5rem;
-  color: #999;
+  color: var(--text-tertiary);
   font-size: 0.8125rem;
   cursor: pointer;
 }
-.btn-ghost:hover { color: #ccc; }
+.btn-ghost:hover { color: var(--text-secondary); }
 
 .btn-primary {
   padding: 0.5rem 1.25rem;

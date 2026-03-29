@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import FullscreenHint from './FullscreenHint'
+import ThemeToggle from '../core/ThemeToggle'
 
 export default function LoginScreen() {
   const [authStatus, setAuthStatus] = useState(null)
@@ -63,8 +65,9 @@ export default function LoginScreen() {
       </div>
 
       {/* Logo */}
-      <div className="relative mb-8 text-center">
-        <h1 className="text-5xl font-light text-neutral-200 tracking-wider">vula</h1>
+      <div className="relative mb-8 flex flex-col items-center">
+        <img src="/icon-96.png" alt="Vula OS" className="w-16 h-16 mb-3" />
+        <h1 className="text-3xl font-light text-neutral-200 tracking-wider">vula</h1>
         <p className="text-sm text-neutral-600 mt-1">open</p>
       </div>
 
@@ -133,7 +136,12 @@ export default function LoginScreen() {
         )}
       </form>
 
-      <div className="absolute bottom-8 text-center">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+
+      <div className="absolute bottom-8 text-center space-y-2">
+        <FullscreenHint />
         <p className="text-[10px] text-neutral-800">Vula OS</p>
       </div>
     </div>

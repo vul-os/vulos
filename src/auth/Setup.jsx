@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import FullscreenHint from './FullscreenHint'
+import ThemeToggle from '../core/ThemeToggle'
+import { useTheme } from '../core/ThemeProvider'
 
-const STEPS = ['welcome', 'language', 'timezone', 'network', 'account', 'ready']
+const STEPS = ['welcome', 'language', 'timezone', 'network', 'account', 'appearance', 'ready']
 
 // Timezone data with approximate map positions (% from top-left)
 const TIMEZONES = [
@@ -98,6 +101,14 @@ export default function Setup({ onComplete }) {
       </div>
 
       <div className="relative h-full flex flex-col items-center justify-center px-6">
+        {/* Theme toggle + fullscreen hint */}
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
+        <div className="absolute bottom-4">
+          <FullscreenHint />
+        </div>
+
         {/* Progress dots */}
         <div className="absolute top-8 flex gap-2">
           {STEPS.map((_, i) => (
@@ -117,6 +128,7 @@ export default function Setup({ onComplete }) {
           {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'account' && <AccountStep config={config} update={update} onNext={next} onPrev={prev} />}
+          {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
           {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
         </div>
       </div>
@@ -130,8 +142,9 @@ export default function Setup({ onComplete }) {
 function WelcomeStep({ onNext }) {
   return (
     <div className="text-center">
-      <div className="mb-6">
-        <div className="text-7xl font-extralight text-neutral-100 tracking-[0.2em] mb-3">vula</div>
+      <div className="mb-6 flex flex-col items-center">
+        <img src="/icon-128.png" alt="Vula OS" className="w-20 h-20 mb-4" />
+        <div className="text-5xl font-extralight text-neutral-100 tracking-[0.2em] mb-3">vula</div>
         <div className="h-px w-16 mx-auto bg-gradient-to-r from-transparent via-blue-500 to-transparent mb-3" />
         <p className="text-neutral-500 text-lg font-light">an open operating system</p>
         <p className="text-neutral-700 text-sm mt-1 italic">"vula" — isiZulu for "open"</p>
@@ -410,6 +423,76 @@ function AccountStep({ config, update, onNext, onPrev }) {
 }
 
 // ═══════════════════════════════════
+// Appearance
+// ═══════════════════════════════════
+function AppearanceStep({ onNext, onPrev }) {
+  const { theme, setTheme, nightShiftMode, setNightShiftMode } = useTheme()
+
+  const themes = [
+    { value: 'dark', label: 'Dark', desc: 'Easy on the eyes', preview: '#0c0c0c',
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 01-4.4 2.26 5.4 5.4 0 01-3.14-9.8A9.06 9.06 0 0012 3z" fill="currentColor"/></svg> },
+    { value: 'light', label: 'Light', desc: 'Clean and bright', preview: '#ffffff',
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
+    { value: 'auto', label: 'Auto', desc: 'Follows your system', preview: 'linear-gradient(135deg, #0c0c0c 50%, #ffffff 50%)',
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 3a9 9 0 010 18V3z" fill="currentColor"/></svg> },
+    { value: 'schedule', label: 'Schedule', desc: 'Dark at night, light by day', preview: 'linear-gradient(180deg, #1a1a2e 0%, #f5a623 100%)',
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
+  ]
+
+  return (
+    <div>
+      <StepHeader title="Choose your look" subtitle="Pick a theme — you can always change it later" />
+
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {themes.map(t => (
+          <button
+            key={t.value}
+            onClick={() => setTheme(t.value)}
+            className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all
+              ${theme === t.value
+                ? 'bg-blue-600/15 border-2 border-blue-500/60 text-white shadow-lg shadow-blue-500/10'
+                : 'bg-neutral-900/50 border-2 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+          >
+            {/* Preview swatch */}
+            <div className="w-12 h-12 rounded-xl border border-neutral-700/50 flex items-center justify-center overflow-hidden"
+              style={{ background: t.preview }}>
+              <span className={theme === t.value ? 'text-blue-400' : 'text-neutral-400'}>{t.icon}</span>
+            </div>
+            <div>
+              <div className="text-sm font-medium">{t.label}</div>
+              <div className="text-[11px] text-neutral-500 mt-0.5">{t.desc}</div>
+            </div>
+            {theme === t.value && (
+              <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                <svg viewBox="0 0 16 16" className="w-3 h-3 text-white"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Night Shift quick toggle */}
+      <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-neutral-300">Night Shift</div>
+            <div className="text-[11px] text-neutral-600">Warm screen colours in the evening</div>
+          </div>
+          <button
+            onClick={() => setNightShiftMode(nightShiftMode === 'off' ? 'auto' : 'off')}
+            className={`w-10 h-5 rounded-full transition-colors relative ${nightShiftMode !== 'off' ? 'bg-amber-600' : 'bg-neutral-700'}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${nightShiftMode !== 'off' ? 'left-5' : 'left-0.5'}`} />
+          </button>
+        </div>
+      </div>
+
+      <NavBar onPrev={onPrev} onNext={onNext} />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
 // Ready
 // ═══════════════════════════════════
 function ReadyStep({ config, onFinish, onPrev }) {
@@ -450,6 +533,8 @@ function ReadyStep({ config, onFinish, onPrev }) {
 
   const selectedTz = TIMEZONES.find(t => t.id === config.timezone)
   const selectedLang = LANGUAGES.find(l => l.code === config.locale)
+  const { theme } = useTheme()
+  const themeLabels = { dark: 'Dark', light: 'Light', auto: 'Auto', schedule: 'Scheduled' }
 
   return (
     <div className="text-center">
@@ -461,6 +546,7 @@ function ReadyStep({ config, onFinish, onPrev }) {
         <SummaryCard icon="🕐" label="Timezone" value={selectedTz?.label || config.timezone || 'Auto'} />
         <SummaryCard icon="📶" label="WiFi" value={config.wifiSSID || 'Not configured'} />
         <SummaryCard icon="👤" label="Account" value={config.username || 'Not set'} />
+        <SummaryCard icon="🎨" label="Theme" value={themeLabels[theme] || theme} />
       </div>
 
       {error && <p className="text-sm text-red-400 mb-4">{error}</p>}

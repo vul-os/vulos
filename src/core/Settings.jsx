@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth/AuthProvider'
+import { useTheme } from './ThemeProvider'
+import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 
 const sections = [
   { id: 'ai', label: 'AI Assistant' },
   { id: 'aiapps', label: 'AI Apps' },
+  { id: 'appearance', label: 'Appearance' },
   { id: 'wifi', label: 'WiFi' },
   { id: 'bluetooth', label: 'Bluetooth' },
   { id: 'audio', label: 'Sound' },
@@ -42,6 +45,7 @@ export default function Settings() {
       <div className="flex-1 overflow-y-auto p-6 max-w-2xl">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'aiapps' && <AIAppsSettings />}
+        {active === 'appearance' && <AppearanceSettings />}
         {active === 'wifi' && <WiFiSettings />}
         {active === 'bluetooth' && <BluetoothSettings />}
         {active === 'audio' && <AudioSettings />}
@@ -94,6 +98,179 @@ function AISettings({ profile, updateProfile }) {
       )}
       <button onClick={save} className="btn mt-4">Save</button>
     </Section>
+  )
+}
+
+// --- Appearance ---
+function AppearanceSettings() {
+  const {
+    theme, setTheme, isDark, resolved,
+    scheduleDark, scheduleLight, setScheduleDark, setScheduleLight,
+    nightShiftMode, nightShiftActive, nightShiftWarmth,
+    nightShiftFrom, nightShiftTo,
+    setNightShiftMode, setNightShiftFrom, setNightShiftTo, setNightShiftWarmth,
+  } = useTheme()
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  return (
+    <Section title="Appearance">
+      <Field label="Theme">
+        <div className="flex gap-2">
+          {[
+            { value: 'dark', label: 'Dark', icon: '\u{263E}' },
+            { value: 'light', label: 'Light', icon: '\u{2600}' },
+            { value: 'auto', label: 'Auto', icon: '\u{25D1}' },
+            { value: 'schedule', label: 'Schedule', icon: '\u{23F0}' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setTheme(opt.value)}
+              className={`flex-1 py-3 rounded-xl text-sm transition-all border
+                ${theme === opt.value
+                  ? 'bg-blue-600/20 border-blue-500/50 text-blue-400'
+                  : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+            >
+              <div className="text-center">
+                <div className="text-lg mb-1">{opt.icon}</div>
+                {opt.label}
+              </div>
+            </button>
+          ))}
+        </div>
+      </Field>
+      <p className="text-xs text-neutral-600 mt-2">
+        {theme === 'auto' && `Follows system preference. Currently ${isDark ? 'dark' : 'light'}.`}
+        {theme === 'schedule' && `Switches by time (${tz}). Currently ${resolved}.`}
+        {theme === 'dark' && 'Always dark.'}
+        {theme === 'light' && 'Always light.'}
+      </p>
+
+      {theme === 'schedule' && (
+        <div className="mt-3 p-3 rounded-lg bg-neutral-900/50 border border-neutral-800/50 space-y-3">
+          <div className="flex gap-4">
+            <Field label="Dark mode from">
+              <input type="time" value={scheduleDark} onChange={e => setScheduleDark(e.target.value)} className="input" />
+            </Field>
+            <Field label="Light mode from">
+              <input type="time" value={scheduleLight} onChange={e => setScheduleLight(e.target.value)} className="input" />
+            </Field>
+          </div>
+          <p className="text-[11px] text-neutral-600">Timezone: {tz}</p>
+        </div>
+      )}
+
+      {/* Night Shift */}
+      <div className="mt-6 pt-4 border-t border-neutral-800/50">
+        <h3 className="text-sm font-medium mb-3">Night Shift</h3>
+        <p className="text-xs text-neutral-600 mb-3">Warms screen colors to reduce blue light during evening hours.</p>
+        <Field label="Mode">
+          <div className="flex gap-2">
+            {[
+              { value: 'off', label: 'Off' },
+              { value: 'auto', label: 'Sunset to Sunrise' },
+              { value: 'custom', label: 'Custom' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setNightShiftMode(opt.value)}
+                className={`flex-1 py-2 rounded-lg text-sm transition-all border
+                  ${nightShiftMode === opt.value
+                    ? 'bg-amber-600/20 border-amber-500/50 text-amber-400'
+                    : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        {nightShiftMode === 'auto' && (
+          <p className="text-xs text-neutral-600 mt-2">
+            Based on approximate sunrise/sunset for your timezone ({tz}).
+            {nightShiftActive ? ' Currently active.' : ' Currently off.'}
+          </p>
+        )}
+
+        {nightShiftMode === 'custom' && (
+          <div className="mt-3 p-3 rounded-lg bg-neutral-900/50 border border-neutral-800/50 space-y-3">
+            <div className="flex gap-4">
+              <Field label="From">
+                <input type="time" value={nightShiftFrom} onChange={e => setNightShiftFrom(e.target.value)} className="input" />
+              </Field>
+              <Field label="To">
+                <input type="time" value={nightShiftTo} onChange={e => setNightShiftTo(e.target.value)} className="input" />
+              </Field>
+            </div>
+            <p className="text-[11px] text-neutral-600">
+              {nightShiftActive ? 'Currently active.' : 'Currently off.'} Timezone: {tz}
+            </p>
+          </div>
+        )}
+
+        {nightShiftMode !== 'off' && (
+          <Field label={`Warmth (${nightShiftWarmth}%)`}>
+            <input
+              type="range" min="10" max="100" value={nightShiftWarmth}
+              onChange={e => setNightShiftWarmth(parseInt(e.target.value))}
+              className="w-full h-1 appearance-none bg-neutral-800 rounded-full
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-400"
+            />
+            <div className="flex justify-between text-[10px] text-neutral-600 mt-1">
+              <span>Less warm</span>
+              <span>More warm</span>
+            </div>
+          </Field>
+        )}
+      </div>
+
+      {/* Wallpaper */}
+      <div className="mt-6 pt-4 border-t border-neutral-800/50">
+        <h3 className="text-sm font-medium mb-3">Wallpaper</h3>
+        <WallpaperPicker />
+      </div>
+    </Section>
+  )
+}
+
+function WallpaperPicker() {
+  const { wallpaper, setWallpaper } = useWallpaper()
+  const fileRef = useRef(null)
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setWallpaper(reader.result)
+    reader.readAsDataURL(file)
+  }
+
+  const previewSrc = wallpaper || DEFAULT_WALLPAPER
+
+  return (
+    <div>
+      <div className="rounded-lg overflow-hidden border border-neutral-800 mb-3" style={{ maxWidth: 320 }}>
+        <img src={previewSrc} alt="Current wallpaper" className="w-full aspect-video object-cover" />
+      </div>
+      <div className="flex gap-3">
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="text-xs px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
+        >
+          Choose Image...
+        </button>
+        {wallpaper && (
+          <button
+            onClick={() => setWallpaper(null)}
+            className="text-xs px-3 py-1.5 rounded-lg text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            Reset to Default
+          </button>
+        )}
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+    </div>
   )
 }
 
@@ -344,22 +521,14 @@ function TunnelSettings() {
 // --- Account ---
 function AccountSettings({ profile, updateProfile, logout }) {
   const [name, setName] = useState(profile?.display_name || '')
-  const [theme, setTheme] = useState(profile?.theme || 'dark')
   const [locale, setLocale] = useState(profile?.locale || 'en')
   const [tz, setTz] = useState(profile?.timezone || '')
 
-  const save = () => updateProfile({ display_name: name, theme, locale, timezone: tz })
+  const save = () => updateProfile({ display_name: name, locale, timezone: tz })
 
   return (
     <Section title="Account">
       <Field label="Display Name"><input value={name} onChange={e => setName(e.target.value)} className="input" /></Field>
-      <Field label="Theme">
-        <select value={theme} onChange={e => setTheme(e.target.value)} className="input">
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          <option value="auto">Auto</option>
-        </select>
-      </Field>
       <Field label="Language"><input value={locale} onChange={e => setLocale(e.target.value)} placeholder="en" className="input" /></Field>
       <Field label="Timezone"><input value={tz} onChange={e => setTz(e.target.value)} placeholder="Africa/Johannesburg" className="input" /></Field>
       <button onClick={save} className="btn mt-3">Save</button>
@@ -541,19 +710,89 @@ function UsersSettings({ profile }) {
 // --- About ---
 function AboutSettings() {
   const [health, setHealth] = useState(null)
+  const [sys, setSys] = useState(null)
+
   useEffect(() => {
     fetch('/health').then(r => r.json()).then(setHealth).catch(() => {})
+    fetch('/api/system/info').then(r => r.json()).then(setSys).catch(() => {})
   }, [])
+
+  const fmtMB = (mb) => {
+    if (!mb) return '—'
+    return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'
+  }
+
   return (
-    <Section title="About Vula OS">
-      <p className="text-sm text-neutral-400">An open, AI-first operating system.</p>
-      <p className="text-xs text-neutral-600 mt-1">"Vula" — Zulu for "open"</p>
-      <div className="mt-4 text-xs text-neutral-600 space-y-1">
-        <p>Server: {health?.status === 'ok' ? 'Running' : 'Unreachable'}</p>
-        <p>Shell: React 19 + Tailwind 4 + Vite 8</p>
-        <p>Backend: Go + Alpine Linux</p>
+    <div>
+      {/* Branding header */}
+      <div className="flex flex-col items-center text-center mb-8 pt-2">
+        <img src="/vulos.png" alt="Vula OS" className="w-20 h-20 mb-4 opacity-90" />
+        <h1 className="text-2xl font-semibold tracking-tight">Vula OS</h1>
+        <p className="text-sm text-neutral-500 mt-1">Open OS</p>
+        <p className="text-xs text-neutral-600 mt-0.5">"vula" — Zulu for "open"</p>
       </div>
-    </Section>
+
+      {/* System info */}
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
+        <InfoRow label="Device" value={sys?.device_model || sys?.hostname || '—'} />
+        <InfoRow label="Hostname" value={sys?.hostname} />
+        <InfoRow label="OS" value={sys?.alpine_version ? `Alpine Linux ${sys.alpine_version}` : 'Alpine Linux'} />
+        <InfoRow label="Kernel" value={sys?.kernel} />
+        <InfoRow label="Architecture" value={sys?.arch} />
+      </div>
+
+      {/* Hardware */}
+      <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">Hardware</h3>
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
+        <InfoRow label="Processor" value={sys?.cpu_model || `${sys?.cpu_cores || '—'} cores`} />
+        <InfoRow label="CPU Cores" value={sys?.cpu_cores} />
+        <InfoRow label="Memory" value={sys ? `${fmtMB(sys.mem_used_mb)} used of ${fmtMB(sys.mem_total_mb)}` : '—'} />
+        {sys?.mem_percent > 0 && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">RAM Usage</span>
+            <div className="flex items-center gap-2">
+              <div className="w-32 h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${sys.mem_percent > 80 ? 'bg-red-500' : sys.mem_percent > 60 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                  style={{ width: `${Math.min(sys.mem_percent, 100)}%` }}
+                />
+              </div>
+              <span className="text-xs text-neutral-400 w-10 text-right">{Math.round(sys.mem_percent)}%</span>
+            </div>
+          </div>
+        )}
+        <InfoRow label="Storage" value={sys?.storage_total_mb ? `${fmtMB(sys.storage_used_mb)} used of ${fmtMB(sys.storage_total_mb)}` : '—'} />
+        {sys?.battery >= 0 && (
+          <InfoRow label="Battery" value={`${sys.battery}%${sys.charging ? ' (Charging)' : ''}`} />
+        )}
+      </div>
+
+      {/* Runtime */}
+      <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">Runtime</h3>
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
+        <InfoRow label="Uptime" value={sys?.uptime} />
+        <InfoRow label="Server" value={health?.status === 'ok' ? 'Running' : 'Unreachable'} ok={health?.status === 'ok'} />
+        <InfoRow label="Shell" value="React 19 + Tailwind 4 + Vite" />
+        <InfoRow label="Backend" value="Go + Alpine Linux" />
+      </div>
+
+      {/* Powered by */}
+      <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-neutral-800/30">
+        <span className="text-[11px] text-neutral-600">Powered by</span>
+        <span className="text-xs text-neutral-400 font-medium">Alpine Linux</span>
+      </div>
+    </div>
+  )
+}
+
+function InfoRow({ label, value, ok }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+      <span className="text-xs text-neutral-500">{label}</span>
+      <span className={`text-sm ${ok != null ? (ok ? 'text-green-400' : 'text-red-400') : 'text-neutral-300'}`}>
+        {value || '—'}
+      </span>
+    </div>
   )
 }
 

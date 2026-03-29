@@ -6,8 +6,8 @@
 # Open:  http://localhost:5173
 #
 # Prerequisites:
-#   - Go 1.21+
-#   - Node 18+
+#   - Go 1.25+
+#   - Node 22+
 #   - Optional: Ollama running on :11434 for AI features
 
 set -e

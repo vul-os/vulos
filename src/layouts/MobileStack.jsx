@@ -12,8 +12,11 @@ export default function MobileStack() {
   return (
     <div className="fixed inset-0 bg-neutral-950 flex flex-col overflow-hidden">
       {/* Status bar */}
-      <div className="shrink-0 px-4 py-2 flex items-center justify-between bg-neutral-900/50 backdrop-blur-md border-b border-neutral-800/30">
-        <span className="text-xs font-semibold text-neutral-400">vula</span>
+      <div className="shrink-0 px-3 h-8 flex items-center justify-between bg-neutral-900/60 backdrop-blur-xl border-b border-neutral-800/30">
+        <div className="flex items-center gap-2">
+          <img src="/vulos.png" alt="" className="w-3.5 h-3.5 opacity-70" />
+          <span className="text-xs font-semibold text-neutral-300">vula</span>
+        </div>
         <LifePulse compact />
       </div>
 

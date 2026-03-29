@@ -23,7 +23,7 @@ func Exec(ctx context.Context, command string) ExecResult {
 	defer cancel()
 
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "bash", "-c", command)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

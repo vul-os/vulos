@@ -1,0 +1,570 @@
+{
+  "apps": {
+    "adminer": {
+      "name": "Adminer",
+      "vetted": true,
+      "type": "web",
+      "description": "Web-based database management for PostgreSQL, MySQL, SQLite, and more — single PHP file, fast and lightweight",
+      "category": "database",
+      "author": "Jakub Vrána",
+      "homepage": "https://www.adminer.org",
+      "icon": "⛁",
+      "keywords": ["database", "sql", "admin", "postgres", "mysql", "sqlite", "management"],
+      "license": "Apache-2.0",
+      "versions": {
+        "4": {
+          "install": "apk add --no-cache php83 php83-pdo php83-pdo_sqlite php83-pdo_pgsql php83-pdo_mysql php83-session && mkdir -p static && wget -q -O static/index.php https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
+          "command": "php83 -S 0.0.0.0:${PORT} -t static/",
+          "port": 8080,
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "sqlite-web": {
+      "name": "SQLite Browser",
+      "vetted": true,
+      "type": "web",
+      "description": "Web-based SQLite database browser and query editor with syntax highlighting",
+      "category": "database",
+      "author": "Charles Leifer",
+      "homepage": "https://github.com/coleifer/sqlite-web",
+      "icon": "▦",
+      "keywords": ["sqlite", "database", "browser", "editor", "sql", "query"],
+      "license": "MIT",
+      "versions": {
+        "0.6": {
+          "install": "pip3 install --break-system-packages sqlite-web",
+          "command": "sqlite_web --port ${PORT} --host 0.0.0.0 --no-browser data/default.db",
+          "port": 8080,
+          "deps": ["python3", "py3-pip"],
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "redis-commander": {
+      "name": "Redis Commander",
+      "vetted": true,
+      "type": "web",
+      "description": "Web-based Redis management tool — browse keys, run commands, monitor in real-time",
+      "category": "database",
+      "author": "Joe Fleming",
+      "homepage": "https://github.com/joeferner/redis-commander",
+      "icon": "◆",
+      "keywords": ["redis", "cache", "key-value", "management", "browser", "web"],
+      "license": "MIT",
+      "versions": {
+        "0.8": {
+          "install": "apk add --no-cache nodejs npm && npm install -g redis-commander",
+          "command": "redis-commander --port ${PORT} --address 0.0.0.0",
+          "port": 8081,
+          "deps": ["redis"],
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "minio": {
+      "name": "MinIO",
+      "vetted": true,
+      "type": "web",
+      "description": "S3-compatible object storage with web console — store blobs, backups, and static assets",
+      "category": "database",
+      "author": "MinIO Inc",
+      "homepage": "https://min.io",
+      "icon": "⬡",
+      "keywords": ["s3", "storage", "object", "blob", "backup", "minio", "web"],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "apk add --no-cache minio minio-client",
+          "command": "minio server data/minio --address :${PORT} --console-address :${CONSOLE_PORT}",
+          "port": 9000,
+          "env": {
+            "MINIO_ROOT_USER": "minioadmin",
+            "MINIO_ROOT_PASSWORD": "minioadmin",
+            "CONSOLE_PORT": "9001"
+          },
+          "post_install": "mkdir -p data/minio",
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "code-server": {
+      "name": "Code Server",
+      "vetted": true,
+      "type": "web",
+      "description": "VS Code running in the browser — full IDE with extensions, Git integration, and terminal",
+      "category": "developer",
+      "author": "Coder",
+      "homepage": "https://coder.com",
+      "icon": "⌨",
+      "keywords": ["code", "editor", "vscode", "ide", "development", "programming"],
+      "license": "MIT",
+      "versions": {
+        "4": {
+          "install": "apk add --no-cache code-server",
+          "command": "code-server --bind-addr 0.0.0.0:${PORT} --auth none --user-data-dir data/",
+          "port": 8443,
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "gitea": {
+      "name": "Gitea",
+      "vetted": true,
+      "type": "web",
+      "description": "Lightweight self-hosted Git forge with issues, pull requests, CI/CD, and package registry",
+      "category": "developer",
+      "author": "Gitea",
+      "homepage": "https://gitea.io",
+      "icon": "⑂",
+      "keywords": ["git", "repository", "code", "version-control", "forge", "ci"],
+      "license": "MIT",
+      "versions": {
+        "1": {
+          "install": "apk add --no-cache gitea",
+          "command": "gitea web --config data/app.ini",
+          "port": 3000,
+          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "grafana": {
+      "name": "Grafana",
+      "vetted": true,
+      "type": "web",
+      "description": "Monitoring dashboards — visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
+      "category": "developer",
+      "author": "Grafana Labs",
+      "homepage": "https://grafana.com",
+      "icon": "◉",
+      "keywords": ["monitoring", "dashboard", "metrics", "grafana", "visualization", "observability"],
+      "license": "AGPL-3.0",
+      "versions": {
+        "11": {
+          "install": "apk add --no-cache grafana",
+          "command": "grafana server --homepath /usr/share/grafana --config data/grafana.ini",
+          "port": 3000,
+          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/grafana.ini",
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "prometheus": {
+      "name": "Prometheus",
+      "vetted": true,
+      "type": "web",
+      "description": "Time-series monitoring and alerting with built-in web UI, PromQL query language, and scrape targets",
+      "category": "developer",
+      "author": "Cloud Native Computing Foundation",
+      "homepage": "https://prometheus.io",
+      "icon": "⊕",
+      "keywords": ["monitoring", "metrics", "prometheus", "alerting", "time-series"],
+      "license": "Apache-2.0",
+      "versions": {
+        "2": {
+          "install": "apk add --no-cache prometheus",
+          "command": "prometheus --config.file=data/prometheus.yml --storage.tsdb.path=data/tsdb --web.listen-address=0.0.0.0:${PORT}",
+          "port": 9090,
+          "post_install": "mkdir -p data/tsdb && printf 'global:\\n  scrape_interval: 15s\\nscrape_configs:\\n  - job_name: vulos\\n    static_configs:\\n      - targets: [\"localhost:8080\"]\\n' > data/prometheus.yml",
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "ttyd": {
+      "name": "ttyd",
+      "vetted": true,
+      "type": "web",
+      "description": "Share your terminal over the web — full terminal emulation via WebSocket in the browser",
+      "category": "developer",
+      "author": "Shuanglei Tao",
+      "homepage": "https://tsl0922.github.io/ttyd",
+      "icon": ">_",
+      "keywords": ["terminal", "web", "shell", "remote", "console"],
+      "license": "MIT",
+      "versions": {
+        "1": {
+          "install": "apk add --no-cache ttyd",
+          "command": "ttyd --port ${PORT} --writable /bin/sh",
+          "port": 7681,
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "httpbin": {
+      "name": "httpbin",
+      "vetted": true,
+      "type": "web",
+      "description": "HTTP request/response testing service — inspect headers, methods, status codes, and more",
+      "category": "developer",
+      "author": "Kenneth Reitz",
+      "homepage": "https://httpbin.org",
+      "icon": "⊶",
+      "keywords": ["http", "api", "testing", "debug", "request", "response"],
+      "license": "ISC",
+      "versions": {
+        "0.9": {
+          "install": "pip3 install --break-system-packages httpbin gunicorn",
+          "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
+          "port": 8080,
+          "deps": ["python3", "py3-pip"],
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "jupyter": {
+      "name": "Jupyter Lab",
+      "vetted": true,
+      "type": "web",
+      "description": "Interactive notebooks for Python, data science, and computation — web-based IDE with rich output",
+      "category": "developer",
+      "author": "Project Jupyter",
+      "homepage": "https://jupyter.org",
+      "icon": "◈",
+      "keywords": ["notebook", "python", "data", "science", "jupyter", "computation"],
+      "license": "BSD-3-Clause",
+      "versions": {
+        "4": {
+          "install": "pip3 install --break-system-packages jupyterlab",
+          "command": "jupyter lab --ip=0.0.0.0 --port=${PORT} --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=data/",
+          "port": 8888,
+          "deps": ["python3", "py3-pip"],
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "nginx": {
+      "name": "Nginx",
+      "vetted": true,
+      "type": "web",
+      "description": "High-performance HTTP server and reverse proxy — serve static sites, proxy other services",
+      "category": "network",
+      "author": "F5 / Igor Sysoev",
+      "homepage": "https://nginx.org",
+      "icon": "▣",
+      "keywords": ["web", "server", "proxy", "reverse-proxy", "http", "nginx"],
+      "license": "BSD-2-Clause",
+      "versions": {
+        "1": {
+          "install": "apk add --no-cache nginx",
+          "command": "nginx -c data/nginx.conf -g 'daemon off;'",
+          "port": 8080,
+          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "caddy": {
+      "name": "Caddy",
+      "vetted": true,
+      "type": "web",
+      "description": "Modern web server with automatic HTTPS, HTTP/3, and dead-simple config",
+      "category": "network",
+      "author": "Matthew Holt",
+      "homepage": "https://caddyserver.com",
+      "icon": "▥",
+      "keywords": ["web", "server", "proxy", "https", "caddy", "http3"],
+      "license": "Apache-2.0",
+      "versions": {
+        "2": {
+          "install": "apk add --no-cache caddy",
+          "command": "caddy run --config data/Caddyfile --adapter caddyfile",
+          "port": 8080,
+          "post_install": "printf ':%s\\nroot * %s/static\\nfile_server\\n' \"${PORT}\" \"$APP_DIR\" > data/Caddyfile && mkdir -p static && echo '<h1>Caddy is running</h1>' > static/index.html",
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "gotify": {
+      "name": "Gotify",
+      "vetted": true,
+      "type": "web",
+      "description": "Self-hosted push notification server with web UI, REST API, and WebSocket support",
+      "category": "network",
+      "author": "Gotify",
+      "homepage": "https://gotify.net",
+      "icon": "⚡",
+      "keywords": ["notifications", "push", "alerts", "webhook", "messaging", "web"],
+      "license": "MIT",
+      "versions": {
+        "2": {
+          "install": "apk add --no-cache gotify-server",
+          "command": "gotify-server",
+          "port": 8080,
+          "env": {
+            "GOTIFY_SERVER_PORT": "${PORT}",
+            "GOTIFY_DATABASE_DIALECT": "sqlite3",
+            "GOTIFY_DATABASE_CONNECTION": "data/gotify.db"
+          },
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "uptime-kuma": {
+      "name": "Uptime Kuma",
+      "vetted": true,
+      "type": "web",
+      "description": "Self-hosted uptime monitoring with status pages, notifications, and multi-protocol health checks",
+      "category": "network",
+      "author": "Louis Lam",
+      "homepage": "https://uptime.kuma.pet",
+      "icon": "▲",
+      "keywords": ["uptime", "monitoring", "status", "ping", "health", "alerts", "web"],
+      "license": "MIT",
+      "versions": {
+        "1": {
+          "install": "apk add --no-cache nodejs npm && npm install -g uptime-kuma",
+          "command": "uptime-kuma --port ${PORT} --data-dir data/",
+          "port": 3001,
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "headscale-ui": {
+      "name": "Headscale UI",
+      "vetted": true,
+      "type": "web",
+      "description": "Web management interface for Headscale — manage nodes, users, and routes for your mesh VPN",
+      "category": "network",
+      "author": "Gurucomputing",
+      "homepage": "https://github.com/gurucomputing/headscale-ui",
+      "icon": "⊗",
+      "keywords": ["vpn", "tailscale", "mesh", "network", "management", "web"],
+      "license": "BSD-3-Clause",
+      "versions": {
+        "latest": {
+          "install": "apk add --no-cache headscale && apk add --no-cache nodejs npm && npm install -g headscale-ui",
+          "command": "headscale-ui --port ${PORT}",
+          "port": 8080,
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "syncthing": {
+      "name": "Syncthing",
+      "vetted": true,
+      "type": "web",
+      "description": "Peer-to-peer file synchronization with web UI — sync folders across devices without a cloud",
+      "category": "productivity",
+      "author": "Syncthing Foundation",
+      "homepage": "https://syncthing.net",
+      "icon": "⇄",
+      "keywords": ["sync", "files", "p2p", "backup", "share", "folders", "web"],
+      "license": "MPL-2.0",
+      "versions": {
+        "1": {
+          "install": "apk add --no-cache syncthing",
+          "command": "syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
+          "port": 8384,
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "filebrowser": {
+      "name": "File Browser",
+      "vetted": true,
+      "type": "web",
+      "description": "Web-based file manager with upload, download, sharing, and user management",
+      "category": "productivity",
+      "author": "File Browser Contributors",
+      "homepage": "https://filebrowser.org",
+      "icon": "⊞",
+      "keywords": ["files", "browser", "upload", "download", "share", "manager", "web"],
+      "license": "Apache-2.0",
+      "versions": {
+        "2": {
+          "install": "apk add --no-cache filebrowser",
+          "command": "filebrowser --address 0.0.0.0 --port ${PORT} --root /root --database data/filebrowser.db --noauth",
+          "port": 8080,
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "miniflux": {
+      "name": "Miniflux",
+      "vetted": true,
+      "type": "web",
+      "description": "Minimalist RSS/Atom feed reader — clean web UI, keyboard shortcuts, full-text search",
+      "category": "productivity",
+      "author": "Frédéric Guillot",
+      "homepage": "https://miniflux.app",
+      "icon": "☰",
+      "keywords": ["rss", "feed", "reader", "news", "articles", "atom", "web"],
+      "license": "Apache-2.0",
+      "versions": {
+        "2": {
+          "install": "apk add --no-cache miniflux",
+          "command": "miniflux",
+          "port": 8080,
+          "env": {
+            "DATABASE_URL": "user=vulos dbname=miniflux sslmode=disable",
+            "RUN_MIGRATIONS": "1",
+            "CREATE_ADMIN": "1",
+            "ADMIN_USERNAME": "admin",
+            "ADMIN_PASSWORD": "changeme"
+          },
+          "deps": ["postgresql16"],
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "excalidraw": {
+      "name": "Excalidraw",
+      "vetted": true,
+      "type": "web",
+      "description": "Collaborative whiteboard and diagramming tool — hand-drawn feel, real-time sharing",
+      "category": "productivity",
+      "author": "Excalidraw",
+      "homepage": "https://excalidraw.com",
+      "icon": "✎",
+      "keywords": ["whiteboard", "diagram", "draw", "sketch", "collaborate", "web"],
+      "license": "MIT",
+      "versions": {
+        "latest": {
+          "install": "apk add --no-cache nodejs npm && npm install -g @excalidraw/excalidraw",
+          "command": "npx excalidraw --port ${PORT}",
+          "port": 3000,
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
+    "wikijs": {
+      "name": "Wiki.js",
+      "vetted": true,
+      "type": "web",
+      "description": "Modern wiki engine with markdown, visual editor, Git sync, and full-text search",
+      "category": "productivity",
+      "author": "Requarks",
+      "homepage": "https://js.wiki",
+      "icon": "≡",
+      "keywords": ["wiki", "documentation", "knowledge", "markdown", "web"],
+      "license": "AGPL-3.0",
+      "versions": {
+        "2": {
+          "install": "apk add --no-cache nodejs npm && npm install -g wiki.js",
+          "command": "node server",
+          "port": 3000,
+          "env": {
+            "DB_TYPE": "sqlite",
+            "DB_FILEPATH": "data/wiki.db"
+          },
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "jellyfin": {
+      "name": "Jellyfin",
+      "vetted": true,
+      "type": "web",
+      "description": "Free media server with web UI — stream movies, TV, music, and photos to any device",
+      "category": "media",
+      "author": "Jellyfin Contributors",
+      "homepage": "https://jellyfin.org",
+      "icon": "▷",
+      "keywords": ["media", "streaming", "movies", "tv", "music", "video", "web"],
+      "license": "GPL-2.0",
+      "versions": {
+        "10": {
+          "install": "apk add --no-cache jellyfin",
+          "command": "jellyfin --datadir data/ --webdir /usr/share/jellyfin/web --ffmpeg /usr/bin/ffmpeg",
+          "port": 8096,
+          "permissions": ["network", "filesystem", "gpu"],
+          "singleton": true
+        }
+      }
+    },
+    "navidrome": {
+      "name": "Navidrome",
+      "vetted": true,
+      "type": "web",
+      "description": "Modern music server with web player — Subsonic-compatible, lightweight, fast library scanning",
+      "category": "media",
+      "author": "Deluan Quintão",
+      "homepage": "https://navidrome.org",
+      "icon": "♪",
+      "keywords": ["music", "streaming", "audio", "subsonic", "library", "player", "web"],
+      "license": "GPL-3.0",
+      "versions": {
+        "0.52": {
+          "install": "apk add --no-cache navidrome",
+          "command": "navidrome --configfile data/navidrome.toml",
+          "port": 4533,
+          "post_install": "mkdir -p data/cache data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nCacheFolder = \"%s/data/cache\"\\nPort = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "photoprism": {
+      "name": "PhotoPrism",
+      "vetted": true,
+      "type": "web",
+      "description": "AI-powered photo management with web UI — facial recognition, maps, smart search",
+      "category": "media",
+      "author": "PhotoPrism",
+      "homepage": "https://photoprism.app",
+      "icon": "◻",
+      "keywords": ["photos", "gallery", "ai", "facial", "recognition", "web"],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "apk add --no-cache photoprism",
+          "command": "photoprism start",
+          "port": 2342,
+          "env": {
+            "PHOTOPRISM_HTTP_PORT": "${PORT}",
+            "PHOTOPRISM_STORAGE_PATH": "data/storage",
+            "PHOTOPRISM_ORIGINALS_PATH": "data/photos",
+            "PHOTOPRISM_DATABASE_DRIVER": "sqlite"
+          },
+          "post_install": "mkdir -p data/storage data/photos",
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "transmission": {
+      "name": "Transmission",
+      "vetted": true,
+      "type": "web",
+      "description": "Lightweight BitTorrent client with web UI — simple, fast, low resource usage",
+      "category": "network",
+      "author": "Transmission Project",
+      "homepage": "https://transmissionbt.com",
+      "icon": "⇅",
+      "keywords": ["torrent", "bittorrent", "download", "p2p", "transfer", "web"],
+      "license": "GPL-2.0",
+      "versions": {
+        "4": {
+          "install": "apk add --no-cache transmission-daemon",
+          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
+          "port": 9091,
+          "post_install": "mkdir -p data/downloads data/incomplete",
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    }
+  }
+}

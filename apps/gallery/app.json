@@ -2,6 +2,7 @@
   "id": "gallery",
   "name": "Media Gallery",
   "icon": "◫",
+  "icon_path": "icon.svg",
   "description": "Photos & videos organized by Recall",
   "version": "0.1.0",
   "command": "python3 server.py",
@@ -10,5 +11,8 @@
   "keywords": ["photos", "video", "media", "gallery", "images"],
   "deps": ["python3"],
   "auto_start": false,
-  "singleton": true
+  "singleton": true,
+  "permissions": ["filesystem"],
+  "author": "Vula OS",
+  "license": "MIT"
 }

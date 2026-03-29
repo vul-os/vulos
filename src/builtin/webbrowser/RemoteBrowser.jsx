@@ -191,6 +191,8 @@ export default function RemoteBrowser() {
       <video
         ref={videoRef}
         autoPlay playsInline
+        disablePictureInPicture
+        controlsList="noplaybackrate nodownload"
         className="w-full h-full"
         style={{ cursor: 'none', objectFit: 'fill' }}
       />

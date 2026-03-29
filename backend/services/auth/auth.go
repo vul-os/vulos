@@ -123,9 +123,15 @@ func (s *Store) FindOrCreateUser(provider, providerUserID, email, name, picture 
 		}
 	}
 
-	// Create new user
+	// Create new user — derive username from email or name
+	username := deriveUsername(email, name)
+	for s.usernameTaken(username) {
+		username += fmt.Sprintf("%d", time.Now().UnixNano()%1000)
+	}
+
 	u := &User{
 		ID:        generateID(),
+		Username:  username,
 		Email:     email,
 		Name:      name,
 		Picture:   picture,
@@ -272,6 +278,39 @@ func loadOrCreateSecret(path string) []byte {
 	return secret
 }
 
+// GetUserByEmail returns a user by email (nil if not found).
+func (s *Store) GetUserByEmail(email string) *User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if email == "" {
+		return nil
+	}
+	for _, u := range s.users {
+		if u.Email == email {
+			return u
+		}
+	}
+	return nil
+}
+
+func (s *Store) usernameTaken(username string) bool {
+	for _, u := range s.users {
+		if u.Username == username {
+			return true
+		}
+	}
+	return false
+}
+
+func deriveUsername(email, name string) string {
+	// Try email local part first
+	if idx := strings.Index(email, "@"); idx > 0 {
+		return strings.ToLower(email[:idx])
+	}
+	// Fall back to name
+	return strings.ToLower(strings.ReplaceAll(name, " ", ""))
+}
+
 func firstProvider(m map[string]string) string {
 	for k := range m {
 		return k
@@ -364,6 +403,17 @@ func (s *Store) HasAnyUsers() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.users) > 0
+}
+
+// ListUsernames returns all usernames in the store.
+func (s *Store) ListUsernames() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.users))
+	for _, u := range s.users {
+		out = append(out, u.Username)
+	}
+	return out
 }
 
 // ChangePassword updates a user's password.

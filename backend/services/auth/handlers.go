@@ -14,10 +14,12 @@ import (
 
 // Handler wires OAuth routes into an http.ServeMux.
 type Handler struct {
-	store     *Store
-	providers map[string]*OAuthProvider
-	states    *stateStore
-	limiter   *RateLimiter
+	store         *Store
+	providers     map[string]*OAuthProvider
+	states        *stateStore
+	limiter       *RateLimiter
+	OnUserCreated func(username, password string) // called after a new user is registered
+	OnUserLogin   func(username, password string) // called on every successful login to sync credentials
 }
 
 func NewHandler(store *Store) *Handler {
@@ -161,6 +163,11 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create corresponding Linux user for terminal/sudo access
+	if h.OnUserCreated != nil {
+		h.OnUserCreated(req.Username, req.Password)
+	}
+
 	sess := h.store.CreateSession(user, "")
 	h.store.Flush()
 
@@ -200,6 +207,12 @@ func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.limiter.RecordSuccess(ip)
+
+	// Sync Linux user password on every login
+	if h.OnUserLogin != nil {
+		h.OnUserLogin(req.Username, req.Password)
+	}
+
 	sess := h.store.CreateSession(user, "")
 	h.store.Flush()
 
@@ -299,7 +312,12 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	h.limiter.RecordSuccess(ip)
 
 	// Find or create user, create session
+	isNew := h.store.GetUserByEmail(info.Email) == nil
 	user := h.store.FindOrCreateUser(providerName, info.ProviderID, info.Email, info.Name, info.Picture)
+	if isNew && h.OnUserCreated != nil {
+		// OAuth users get a Linux account with a random password (can change later)
+		h.OnUserCreated(user.Username, generateRandomPassword())
+	}
 	sess := h.store.CreateSession(user, deviceID)
 	h.store.Flush()
 
@@ -638,4 +656,10 @@ func (h *Handler) handleValidatePIN(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 	valid := h.store.ValidatePIN(userID, req.PIN)
 	writeJSON(w, map[string]any{"valid": valid, "has_pin": h.store.HasPIN(userID)})
+}
+
+func generateRandomPassword() string {
+	b := make([]byte, 24)
+	rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }

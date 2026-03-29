@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -29,10 +30,14 @@ import (
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/notify"
 	ptyservice "vulos/backend/services/pty"
+	"vulos/backend/services/sysuser"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
 	"vulos/backend/services/webbrowser"
 	"vulos/backend/services/webproxy"
+	"vulos/backend/services/disks"
+	"vulos/backend/services/drivers"
+	"vulos/backend/services/packages"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/tunnel"
 	"vulos/backend/services/vault"
@@ -125,8 +130,8 @@ func main() {
 		}
 	}()
 
-	// PTY service
-	ptySvc := ptyservice.NewService()
+	// System user management (maps Vula profiles → Linux users)
+	sysUserSvc := sysuser.New()
 
 	// Tunnel (cloudflared / frp)
 	tunnelCfg := tunnel.LoadConfig()
@@ -207,6 +212,43 @@ func main() {
 		log.Printf("[auth] init warning: %v", err)
 	}
 	authHandler := auth.NewHandler(authStore)
+	authHandler.OnUserCreated = func(username, password string) {
+		if err := sysUserSvc.EnsureUser(username, password); err != nil {
+			log.Printf("[sysuser] failed to create Linux user %q: %v", username, err)
+		}
+	}
+
+	authHandler.OnUserLogin = func(username, password string) {
+		if err := sysUserSvc.EnsureUser(username, password); err != nil {
+			log.Printf("[sysuser] login sync failed for %q: %v", username, err)
+		}
+		if err := sysUserSvc.SetPassword(username, password); err != nil {
+			log.Printf("[sysuser] password sync failed for %q: %v", username, err)
+		}
+	}
+
+	// Set hostname to "vula" (Docker defaults to container ID)
+	if os.Getuid() == 0 {
+		os.WriteFile("/etc/hostname", []byte("vula\n"), 0644)
+		exec.Command("hostname", "vula").Run()
+	}
+
+	// Ensure Linux users exist for all registered accounts (survives container rebuilds)
+	if os.Getuid() == 0 {
+		for _, username := range authStore.ListUsernames() {
+			if err := sysUserSvc.EnsureUser(username, ""); err != nil {
+				log.Printf("[sysuser] failed to reconcile user %q: %v", username, err)
+			}
+		}
+	}
+
+	// PTY service — resolves Vula userID → Linux username via auth store
+	ptySvc := ptyservice.NewService(sysUserSvc, func(userID string) string {
+		if u, ok := authStore.GetUser(userID); ok {
+			return u.Username
+		}
+		return ""
+	})
 
 	// App auth gateway — all app traffic proxied through here
 	appGateway := gateway.New(authStore, netMgr, portPool)
@@ -670,6 +712,7 @@ func main() {
 
 	// PTY WebSocket — terminal access
 	mux.Handle("/api/pty", ptySvc.Handler())
+	mux.HandleFunc("/api/pty/sessions", ptySvc.SessionsHandler())
 
 	// Sandbox — AI-generated Python scripts
 	mux.HandleFunc("POST /api/sandbox/run", func(w http.ResponseWriter, r *http.Request) {
@@ -755,6 +798,11 @@ func main() {
 
 	// Telemetry WebSocket — live system stats
 	mux.Handle("/api/telemetry", telemetry.Handler())
+
+	// System info (one-shot, for About page)
+	mux.HandleFunc("GET /api/system/info", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, telemetry.SystemInfo())
+	})
 
 	// Tunnel management
 	mux.HandleFunc("GET /api/tunnel/status", func(w http.ResponseWriter, r *http.Request) {
@@ -1184,6 +1232,57 @@ func main() {
 		writeJSON(w, map[string]string{"status": "uninstalled"})
 	})
 
+	// Registry — vetted apps with versioned install recipes
+	mux.HandleFunc("GET /api/store/registry", func(w http.ResponseWriter, r *http.Request) {
+		reg := appStore.Registry()
+		entries := reg.ListEntries(appStore.AppDir())
+		writeJSON(w, entries)
+	})
+	mux.HandleFunc("GET /api/store/registry/{appId}", func(w http.ResponseWriter, r *http.Request) {
+		reg := appStore.Registry()
+		entry, ok := reg.Apps[r.PathValue("appId")]
+		if !ok {
+			writeErr(w, 404, "app not in registry")
+			return
+		}
+		writeJSON(w, entry)
+	})
+	mux.HandleFunc("POST /api/store/registry/install", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AppID   string `json:"app_id"`
+			Version string `json:"version"` // empty or "latest" = latest
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "invalid request")
+			return
+		}
+		if req.AppID == "" {
+			writeErr(w, 400, "app_id required")
+			return
+		}
+		if err := appStore.InstallFromRegistry(r.Context(), req.AppID, req.Version); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "installed", "app_id": req.AppID})
+	})
+	mux.HandleFunc("GET /api/store/validate", func(w http.ResponseWriter, r *http.Request) {
+		apps, errs := appStore.ValidateInstalled()
+		type result struct {
+			Valid  int      `json:"valid"`
+			Errors []string `json:"errors"`
+			Apps   []string `json:"apps"`
+		}
+		res := result{Valid: len(apps)}
+		for _, a := range apps {
+			res.Apps = append(res.Apps, a.ID)
+		}
+		for _, e := range errs {
+			res.Errors = append(res.Errors, e.Error())
+		}
+		writeJSON(w, res)
+	})
+
 	// TURN credentials (for WebRTC relay in remote mode)
 	mux.HandleFunc("GET /api/turn/credentials", func(w http.ResponseWriter, r *http.Request) {
 		if !turnCfg.Enabled {
@@ -1210,6 +1309,110 @@ func main() {
 			}
 		}
 		writeJSON(w, status)
+	})
+
+	// Disk usage
+	mux.HandleFunc("GET /api/disks", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, disks.GetStatus())
+	})
+	mux.HandleFunc("GET /api/disks/breakdown", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			path = "/"
+		}
+		writeJSON(w, disks.DirBreakdown(r.Context(), path))
+	})
+
+	// Drivers — hardware detection & kernel modules
+	mux.HandleFunc("GET /api/drivers", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, drivers.Detect(r.Context()))
+	})
+	mux.HandleFunc("POST /api/drivers/load", func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Module string `json:"module"` }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
+			writeErr(w, 400, "module required")
+			return
+		}
+		if err := drivers.LoadModule(r.Context(), req.Module); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "loaded", "module": req.Module})
+	})
+	mux.HandleFunc("POST /api/drivers/unload", func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Module string `json:"module"` }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
+			writeErr(w, 400, "module required")
+			return
+		}
+		if err := drivers.UnloadModule(r.Context(), req.Module); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "unloaded", "module": req.Module})
+	})
+
+	// Packages — Alpine apk package management
+	mux.HandleFunc("GET /api/packages/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, packages.GetStatus(r.Context()))
+	})
+	mux.HandleFunc("GET /api/packages/installed", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, packages.ListInstalled(r.Context()))
+	})
+	mux.HandleFunc("GET /api/packages/search", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+		if q == "" {
+			writeErr(w, 400, "q parameter required")
+			return
+		}
+		writeJSON(w, packages.Search(r.Context(), q))
+	})
+	mux.HandleFunc("GET /api/packages/info", func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			writeErr(w, 400, "name parameter required")
+			return
+		}
+		writeJSON(w, packages.GetInfo(r.Context(), name))
+	})
+	mux.HandleFunc("POST /api/packages/install", func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Name string `json:"name"` }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+			writeErr(w, 400, "name required")
+			return
+		}
+		if err := packages.Install(r.Context(), req.Name); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "installed", "name": req.Name})
+	})
+	mux.HandleFunc("POST /api/packages/remove", func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Name string `json:"name"` }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+			writeErr(w, 400, "name required")
+			return
+		}
+		if err := packages.Remove(r.Context(), req.Name); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "removed", "name": req.Name})
+	})
+	mux.HandleFunc("POST /api/packages/update", func(w http.ResponseWriter, r *http.Request) {
+		if err := packages.Update(r.Context()); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "updated"})
+	})
+	mux.HandleFunc("POST /api/packages/upgrade", func(w http.ResponseWriter, r *http.Request) {
+		output, err := packages.Upgrade(r.Context())
+		if err != nil {
+			writeErr(w, 500, output)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "upgraded", "output": output})
 	})
 
 	// Serve frontend static files (production build)
