@@ -1436,7 +1436,15 @@ func main() {
 					return
 				}
 				if r.URL.Path == "/docs" || r.URL.Path == "/docs/" {
-					http.ServeFile(w, r, filepath.Join(landingDir, "docs.html"))
+					data, err := os.ReadFile(filepath.Join(landingDir, "docs.html"))
+					if err != nil {
+						http.Error(w, "not found", 404)
+						return
+					}
+					html := strings.ReplaceAll(string(data), "{{APP_URL}}", appURL)
+					html = strings.ReplaceAll(html, "{{LANDING_URL}}", landingURL)
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					w.Write([]byte(html))
 					return
 				}
 				// Inject APP_URL into index.html
