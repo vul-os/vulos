@@ -21,11 +21,7 @@ services:
     environment:
       - PORT=8080
       - LANDING_PORT=3000
-      - AI_PROVIDER=ollama
-      - AI_ENDPOINT=http://host.docker.internal:11434
       - VULOS_DEV=true
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   frontend:
     image: node:22-alpine

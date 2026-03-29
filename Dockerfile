@@ -48,8 +48,6 @@ COPY registry.json /opt/vulos/registry.json
 RUN touch /var/lib/vulos/.setup-complete
 
 ENV PORT=8080
-ENV AI_PROVIDER=ollama
-ENV AI_ENDPOINT=http://host.docker.internal:11434
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV XDG_RUNTIME_DIR=/tmp/xdg-runtime
 ENV WLR_BACKENDS=headless

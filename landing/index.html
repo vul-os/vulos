@@ -116,7 +116,7 @@
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
       </a>
-      <a href="//localhost:8080" class="nav-link primary">Launch OS</a>
+      <a href="{{APP_URL}}" class="nav-link primary">Launch OS</a>
     </div>
   </div>
 </nav>
@@ -195,50 +195,48 @@
 <section class="section" id="install">
   <div class="section-header">
     <h2>Get Vula OS</h2>
-    <p>Run with Docker in one command, or pull the image for your platform.</p>
+    <p>Download, flash, and boot. Like Ubuntu, but web-first.</p>
   </div>
 
   <div class="install-card">
-    <h3 style="font-size: 16px; margin-bottom: 16px;">Quick Start</h3>
-    <div class="code-block">
-      <button class="copy-btn" onclick="navigator.clipboard.writeText('docker run -p 8080:8080 --shm-size=1g -v vulos-data:/root/.vulos ghcr.io/vul-os/vulos:latest')">Copy</button>
-      <span class="comment"># Run Vula OS</span><br>
-      docker run -p 8080:8080 --shm-size=1g \<br>
-      &nbsp;&nbsp;-v vulos-data:/root/.vulos \<br>
-      &nbsp;&nbsp;ghcr.io/vul-os/vulos:latest
-    </div>
-    <p style="font-size: 13px; color: var(--muted); margin-top: 12px;">Then open <a href="http://localhost:8080">http://localhost:8080</a></p>
+    <h3 style="font-size: 16px; margin-bottom: 8px;">Install on bare metal</h3>
+    <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">Vula OS is designed to replace your operating system. Flash it to a device or run it directly on hardware.</p>
 
-    <h3 style="font-size: 16px; margin-top: 32px; margin-bottom: 12px;">Download for your platform</h3>
-    <div class="download-grid" id="download-grid">
-      <a class="download-card" href="https://github.com/vul-os/vulos/pkgs/container/vulos" target="_blank">
-        <span class="os-icon">&#128051;</span>
-        <div>
-          <div class="os-name">Docker (any OS)</div>
-          <div class="os-arch">amd64 / arm64</div>
-        </div>
-      </a>
-      <a class="download-card" href="https://github.com/vul-os/vulos/pkgs/container/vulos" target="_blank">
-        <span class="os-icon">&#127823;</span>
-        <div>
-          <div class="os-name">macOS</div>
-          <div class="os-arch">Docker Desktop required</div>
-        </div>
-      </a>
-      <a class="download-card" href="https://github.com/vul-os/vulos/pkgs/container/vulos" target="_blank">
+    <div class="download-grid">
+      <a class="download-card" href="https://github.com/vul-os/vulos/releases/latest" target="_blank">
         <span class="os-icon">&#128039;</span>
         <div>
-          <div class="os-name">Linux</div>
-          <div class="os-arch">amd64 / arm64 native</div>
+          <div class="os-name">x86_64</div>
+          <div class="os-arch">PC, server, laptop</div>
         </div>
       </a>
-      <a class="download-card" href="https://github.com/vul-os/vulos/pkgs/container/vulos" target="_blank">
-        <span class="os-icon">&#129695;</span>
+      <a class="download-card" href="https://github.com/vul-os/vulos/releases/latest" target="_blank">
+        <span class="os-icon">&#128039;</span>
         <div>
-          <div class="os-name">Windows</div>
-          <div class="os-arch">WSL2 + Docker Desktop</div>
+          <div class="os-name">ARM64</div>
+          <div class="os-arch">Raspberry Pi, Pine64, Rock64</div>
         </div>
       </a>
+      <a class="download-card" href="https://github.com/vul-os/vulos/releases/latest" target="_blank">
+        <span class="os-icon">&#128241;</span>
+        <div>
+          <div class="os-name">postmarketOS</div>
+          <div class="os-arch">PinePhone, Librem 5, OnePlus 6</div>
+        </div>
+      </a>
+    </div>
+
+    <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
+      <h3 style="font-size: 16px; margin-bottom: 8px;">Try with Docker</h3>
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: 12px;">Not ready to install? Run Vula OS in a container first.</p>
+      <div class="code-block">
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('docker run -p 8080:8080 --shm-size=1g -v vulos-data:/root/.vulos ghcr.io/vul-os/vulos:latest')">Copy</button>
+        <span class="comment"># Run Vula OS in Docker</span><br>
+        docker run -p 8080:8080 --shm-size=1g \<br>
+        &nbsp;&nbsp;-v vulos-data:/root/.vulos \<br>
+        &nbsp;&nbsp;ghcr.io/vul-os/vulos:latest
+      </div>
+      <p style="font-size: 13px; color: var(--dim); margin-top: 8px;">Then open <a href="{{APP_URL}}">{{APP_URL}}</a>. Works on any OS with Docker.</p>
     </div>
 
     <h3 style="font-size: 16px; margin-top: 32px; margin-bottom: 12px;">Releases</h3>
@@ -286,16 +284,23 @@ fetch('https://api.github.com/repos/vul-os/vulos/releases?per_page=10')
       el.innerHTML = '<p style="font-size:13px;color:var(--dim)">No releases yet. Run from source or use <code>:latest</code> Docker tag.</p>'
       return
     }
-    el.innerHTML = releases.map(r => `
-      <div class="release-item">
-        <div>
-          <span class="tag">${r.tag_name}</span>
-          <span class="date" style="margin-left:12px">${new Date(r.published_at).toLocaleDateString()}</span>
-          ${r.prerelease ? '<span style="margin-left:8px;font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(234,179,8,0.15);color:#eab308">pre-release</span>' : ''}
-        </div>
-        <a href="${r.html_url}" target="_blank">View</a>
-      </div>
-    `).join('')
+    el.innerHTML = releases.map(r => {
+      const assets = (r.assets || []).map(a =>
+        `<a href="${a.browser_download_url}" style="font-size:11px;padding:3px 8px;border-radius:5px;background:rgba(59,130,246,0.1);color:var(--blue);margin-left:4px;text-decoration:none">${a.name}</a>`
+      ).join('')
+      return `
+        <div class="release-item" style="flex-wrap:wrap;gap:8px">
+          <div>
+            <span class="tag">${r.tag_name}</span>
+            <span class="date" style="margin-left:12px">${new Date(r.published_at).toLocaleDateString()}</span>
+            ${r.prerelease ? '<span style="margin-left:8px;font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(234,179,8,0.15);color:#eab308">pre-release</span>' : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+            ${assets || `<a href="${r.html_url}" target="_blank" style="font-size:12px;padding:4px 12px;border-radius:6px;background:rgba(59,130,246,0.1);color:var(--blue);text-decoration:none">View</a>`}
+            <a href="${r.html_url}" target="_blank" style="font-size:11px;color:var(--dim);margin-left:4px">Notes</a>
+          </div>
+        </div>`
+    }).join('')
   })
   .catch(() => {
     document.getElementById('releases-list').innerHTML = '<p style="font-size:13px;color:var(--dim)">Could not load releases. <a href="https://github.com/vul-os/vulos/releases" target="_blank">View on GitHub</a></p>'
