@@ -1427,6 +1427,7 @@ func main() {
 		if landingDir != "" {
 			landingMux := http.NewServeMux()
 			landingFS := http.FileServer(http.Dir(landingDir))
+			appURL, landingURL := cfg.AppURL, cfg.LandingURL
 			landingMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				// Serve file if exists, otherwise index.html
 				filePath := filepath.Join(landingDir, filepath.Clean(r.URL.Path))
@@ -1438,7 +1439,16 @@ func main() {
 					http.ServeFile(w, r, filepath.Join(landingDir, "docs.html"))
 					return
 				}
-				http.ServeFile(w, r, filepath.Join(landingDir, "index.html"))
+				// Inject APP_URL into index.html
+				data, err := os.ReadFile(filepath.Join(landingDir, "index.html"))
+				if err != nil {
+					http.Error(w, "not found", 404)
+					return
+				}
+				html := strings.ReplaceAll(string(data), "{{APP_URL}}", appURL)
+				html = strings.ReplaceAll(html, "{{LANDING_URL}}", landingURL)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Write([]byte(html))
 			})
 			landingAddr := ":" + cfg.LandingPort
 			go func() {

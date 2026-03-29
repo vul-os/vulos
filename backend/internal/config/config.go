@@ -14,7 +14,9 @@ var (
 
 type Config struct {
 	Port        string
+	AppURL      string // public URL of the OS app
 	LandingPort string // separate port for landing page (empty = disabled)
+	LandingURL  string // public URL of the landing page
 }
 
 func Load(env string) *Config {
@@ -57,6 +59,8 @@ func Load(env string) *Config {
 
 	return &Config{
 		Port:        get("PORT", "8080"),
+		AppURL:      get("APP_URL", "http://localhost:8080"),
 		LandingPort: get("LANDING_PORT", ""),
+		LandingURL:  get("LANDING_URL", "http://localhost:3000"),
 	}
 }

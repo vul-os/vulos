@@ -31,6 +31,7 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      # Build and push Docker images (for docker run users)
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -41,6 +42,27 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Build flashable system images for bare metal install
+      - name: Build system images
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # x86_64 image
+          echo "Building x86_64 image..."
+          docker buildx build --platform linux/amd64 --output type=docker -t vulos-amd64 .
+          CONTAINER=$(docker create vulos-amd64)
+          docker export $CONTAINER | gzip > "vulos-${VERSION}-x86_64.img.gz"
+          docker rm $CONTAINER
+
+          # ARM64 image
+          echo "Building ARM64 image..."
+          docker buildx build --platform linux/arm64 --output type=docker -t vulos-arm64 .
+          CONTAINER=$(docker create vulos-arm64)
+          docker export $CONTAINER | gzip > "vulos-${VERSION}-arm64.img.gz"
+          docker rm $CONTAINER
+
+          ls -lh vulos-*.img.gz
 
       - name: Generate changelog
         id: changelog
@@ -63,16 +85,35 @@ jobs:
           body: |
             ## Vula OS ${{ steps.version.outputs.VERSION }}
 
+            ### Install on bare metal
+
+            Download the image for your architecture, flash to a USB drive or SD card, and boot:
+
+            | Platform | File | Use for |
+            |----------|------|---------|
+            | x86_64 | `vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz` | PC, laptop, server |
+            | ARM64 | `vulos-${{ steps.version.outputs.VERSION }}-arm64.img.gz` | Raspberry Pi, Pine64, Rock64 |
+
+            **Flash with:**
+            ```bash
+            # Linux/macOS
+            gunzip -c vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+
+            # Or use Balena Etcher — drag and drop the .img.gz file
+            ```
+
             ### Docker
 
             ```bash
             docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
-            docker run -p 8080:8080 --shm-size=1g ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+            docker run -p 8080:8080 --shm-size=1g -v vulos-data:/root/.vulos ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
             ```
 
             ### Changes
 
             ${{ steps.changelog.outputs.CHANGES }}
+          files: |
+            vulos-*.img.gz
           draft: false
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-alpha') || contains(steps.version.outputs.VERSION, '-beta') || contains(steps.version.outputs.VERSION, '-rc') }}
         env:
