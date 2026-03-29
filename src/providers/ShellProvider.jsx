@@ -118,10 +118,20 @@ function shellReducer(state, action) {
     case 'REMOVE_DESKTOP': {
       if (Object.keys(state.desktops).length <= 1) return state
       const desktops = { ...state.desktops }
+      const closing = desktops[action.id]
       delete desktops[action.id]
       const newActive = state.activeDesktop === action.id
         ? Object.keys(desktops)[0]
         : state.activeDesktop
+      // Move orphaned windows to the target desktop (like macOS)
+      if (closing?.windows?.length > 0) {
+        const target = { ...desktops[newActive] }
+        target.windows = [...target.windows, ...closing.windows]
+        if (!target.activeWindow && closing.windows.length > 0) {
+          target.activeWindow = closing.windows[0].id
+        }
+        desktops[newActive] = target
+      }
       return { ...state, desktops, activeDesktop: newActive }
     }
     case 'MOVE_WINDOW_TO_DESKTOP': {

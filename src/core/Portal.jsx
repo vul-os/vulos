@@ -176,6 +176,16 @@ export default function Portal({ mode = 'panel' }) {
     }
   }, [addMessage, openWindow, setThinking, conversation])
 
+  // Listen for chat messages from launchpad
+  useEffect(() => {
+    const handler = (e) => {
+      const text = e.detail
+      if (text) handleIntent(text)
+    }
+    window.addEventListener('vulos:chat', handler)
+    return () => window.removeEventListener('vulos:chat', handler)
+  }, [handleIntent])
+
   // Parse AI response for <viewport> blocks → open as windows
   // Supports optional <script type="text/python"> for backend code
   const processAIResponse = useCallback(async (text) => {

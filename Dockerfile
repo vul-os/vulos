@@ -23,12 +23,17 @@ FROM alpine:edge
 
 # Core packages + remote browser stack (Xvfb + Chromium + GStreamer)
 RUN apk add --no-cache \
-    python3 curl jq ca-certificates \
+    tini bash sudo shadow python3 curl jq ca-certificates \
     xvfb-run chromium xdotool \
     gstreamer-tools gst-plugins-base gst-plugins-good gst-plugins-bad \
     pulseaudio pulseaudio-utils \
     font-noto socat \
     && curl -fsSL https://curl.se/ca/cacert.pem -o /etc/ssl/certs/ca-certificates.crt
+
+# Sudo infrastructure — users are created dynamically at registration
+RUN addgroup -S wheel 2>/dev/null || true \
+    && echo "%wheel ALL=(ALL) ALL" > /etc/sudoers.d/wheel \
+    && chmod 440 /etc/sudoers.d/wheel
 
 RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
     /var/lib/vulos /root/.vulos/data /root/.vulos/db /root/.vulos/sandbox \
@@ -37,6 +42,7 @@ RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
 COPY --from=backend /vulos-server /usr/local/bin/vulos-server
 COPY --from=frontend /app/dist /opt/vulos/webroot
 COPY apps/ /opt/vulos/apps/
+COPY registry.json /opt/vulos/registry.json
 
 RUN touch /var/lib/vulos/.setup-complete
 
@@ -47,7 +53,11 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV XDG_RUNTIME_DIR=/tmp/xdg-runtime
 ENV WLR_BACKENDS=headless
 ENV WLR_RENDERER=pixman
+ENV VULOS_REGISTRY=/opt/vulos/registry.json
+ENV SHELL=/bin/bash
 ENV DISPLAY=:99
+ENV HOSTNAME=vula
 
 EXPOSE 8080
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/usr/local/bin/vulos-server", "-env", "local"]

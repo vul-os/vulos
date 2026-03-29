@@ -1,4 +1,5 @@
 import { useShell } from '../providers/ShellProvider'
+import AppIcon from '../core/AppIcons'
 
 export default function Dock() {
   const {
@@ -70,7 +71,7 @@ export default function Dock() {
             onClick={() => win.minimized ? minimizeWindow(win.id) : focusWindow(win.id)}
             onDoubleClick={() => popoutApp({ title: win.title, url: win.url, icon: win.icon, appId: win.appId })}
           >
-            <span className="text-sm">{win.icon}</span>
+            <AppIcon id={win.appId} size={18} color="#a3a3a3" />
           </DockButton>
         ))}
 

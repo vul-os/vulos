@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Browser</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui; }
+.bar { display: flex; gap: 8px; padding: 8px; background: #111; border-bottom: 1px solid #222; }
+.bar input { flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 12px; color: #e5e5e5; font-size: 14px; outline: none; }
+.bar input:focus { border-color: #555; }
+.bar button { background: #333; border: none; border-radius: 8px; padding: 8px 16px; color: #e5e5e5; cursor: pointer; font-size: 13px; }
+.bar button:hover { background: #444; }
+.content { padding: 16px; }
+.content iframe { width: 100%; height: calc(100vh - 52px); border: none; background: white; border-radius: 4px; }
+.summary { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 14px; line-height: 1.5; }
+.summary h3 { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <input id="url" type="text" placeholder="Enter URL..." autofocus>
+  <button onclick="go()">Go</button>
+  <button onclick="summarize()">Summarize</button>
+</div>
+<div id="summary"></div>
+<div class="content"><iframe id="frame"></iframe></div>
+<script>
+const frame = document.getElementById('frame');
+const urlInput = document.getElementById('url');
+const summaryDiv = document.getElementById('summary');
+
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+
+function go() {
+  let url = urlInput.value.trim();
+  if (!url) return;
+  if (!url.startsWith('http')) url = 'https://' + url;
+  frame.src = '/browse?url=' + encodeURIComponent(url);
+}
+
+async function summarize() {
+  summaryDiv.innerHTML = '<div class="summary"><h3>AI Summary</h3>Loading...</div>';
+  const url = urlInput.value.trim();
+  try {
+    const res = await fetch('/summarize?url=' + encodeURIComponent(url));
+    const data = await res.json();
+    summaryDiv.innerHTML = '<div class="summary"><h3>AI Summary</h3>' + data.summary + '</div>';
+  } catch(e) {
+    summaryDiv.innerHTML = '<div class="summary"><h3>Error</h3>Could not summarize.</div>';
+  }
+}
+</script>
+</body>
+</html>

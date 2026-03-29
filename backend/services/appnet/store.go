@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+// ValidateInstalled runs validation on all installed app manifests.
+func (s *AppStore) ValidateInstalled() ([]*AppManifest, []error) {
+	return ScanAndValidateApps(s.appsDir)
+}
+
 // StoreEntry is an app listing in the app store.
 type StoreEntry struct {
 	AppManifest
@@ -25,18 +30,46 @@ type StoreEntry struct {
 
 // AppStore manages app discovery, install, and removal.
 type AppStore struct {
-	appsDir   string
-	catalogURL string // URL to fetch the app catalog (JSON)
-	client    *http.Client
+	appsDir      string
+	catalogURL   string    // URL to fetch the app catalog (JSON)
+	registry     *Registry // local vetted app registry
+	registryPath string    // path to registry.json
+	client       *http.Client
 }
 
 func NewAppStore(appsDir string) *AppStore {
 	os.MkdirAll(appsDir, 0755)
-	return &AppStore{
-		appsDir:    appsDir,
-		catalogURL: os.Getenv("VULOS_APP_CATALOG"),
-		client:     &http.Client{Timeout: 30 * time.Second},
+
+	// Load local registry if it exists
+	registryPath := filepath.Join(appsDir, "..", "registry.json")
+	if p := os.Getenv("VULOS_REGISTRY"); p != "" {
+		registryPath = p
 	}
+	var reg *Registry
+	if r, err := LoadRegistry(registryPath); err == nil {
+		reg = r
+		log.Printf("[appstore] loaded registry with %d apps", len(reg.Apps))
+	} else {
+		reg = &Registry{Apps: make(map[string]*RegistryEntry)}
+	}
+
+	return &AppStore{
+		appsDir:      appsDir,
+		catalogURL:   os.Getenv("VULOS_APP_CATALOG"),
+		registry:     reg,
+		registryPath: registryPath,
+		client:       &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// Registry returns the loaded registry.
+func (s *AppStore) Registry() *Registry {
+	return s.registry
+}
+
+// InstallFromRegistry installs an app from the vetted registry.
+func (s *AppStore) InstallFromRegistry(ctx context.Context, appID, version string) error {
+	return InstallFromRegistry(ctx, s.registry, appID, version, s.appsDir)
 }
 
 // Catalog fetches the app catalog from the remote store.

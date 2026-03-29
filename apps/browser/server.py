@@ -12,6 +12,7 @@ from html.parser import HTMLParser
 
 PORT = int(os.environ.get("PORT", os.environ.get("VULOS_PORT", 8080)))
 VULOS_API = os.environ.get("VULOS_API", "http://localhost:8080")
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Ad/tracker domain blocklist — loaded from file if available, else defaults
 _DEFAULT_AD_DOMAINS = {
@@ -36,17 +37,15 @@ _DEFAULT_AD_DOMAINS = {
 def load_blocklist():
     """Load blocklist from EasyList-format file if available."""
     domains = set(_DEFAULT_AD_DOMAINS)
-    blocklist_path = os.path.join(os.path.dirname(__file__), "blocklist.txt")
+    blocklist_path = os.path.join(APP_DIR, "blocklist.txt")
     if os.path.exists(blocklist_path):
         with open(blocklist_path) as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("!") or line.startswith("["):
                     continue
-                # EasyList domain rules: ||domain.com^
                 if line.startswith("||") and line.endswith("^"):
                     domains.add(line[2:-1])
-                # Plain domain lines
                 elif "." in line and " " not in line and "/" not in line:
                     domains.add(line)
     return domains
@@ -66,16 +65,13 @@ class AdStripper(HTMLParser):
 
     def _is_ad(self, tag, attrs):
         attrs_dict = dict(attrs)
-        # Check src/href against blocklist
         for attr in ("src", "href", "data-src"):
             val = attrs_dict.get(attr, "")
             if val and any(ad in val for ad in AD_DOMAINS):
                 return True
-        # Check class names for ad patterns
         classes = attrs_dict.get("class", "").lower().split()
         if any(c in self.AD_CLASSES for c in classes):
             return True
-        # Check id for ad patterns
         elem_id = attrs_dict.get("id", "").lower()
         if any(ad in elem_id for ad in ("ad-", "ads-", "advert", "banner-ad", "google_ads")):
             return True
@@ -110,68 +106,10 @@ class AdStripper(HTMLParser):
         return "".join(self.output)
 
 
-SHELL_HTML = """<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Smart Browser</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui; }
-.bar { display: flex; gap: 8px; padding: 8px; background: #111; border-bottom: 1px solid #222; }
-.bar input { flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 12px; color: #e5e5e5; font-size: 14px; outline: none; }
-.bar input:focus { border-color: #555; }
-.bar button { background: #333; border: none; border-radius: 8px; padding: 8px 16px; color: #e5e5e5; cursor: pointer; font-size: 13px; }
-.bar button:hover { background: #444; }
-.content { padding: 16px; }
-.content iframe { width: 100%; height: calc(100vh - 52px); border: none; background: white; border-radius: 4px; }
-.summary { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 14px; line-height: 1.5; }
-.summary h3 { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
-</style>
-</head>
-<body>
-<div class="bar">
-  <input id="url" type="text" placeholder="Enter URL..." autofocus>
-  <button onclick="go()">Go</button>
-  <button onclick="summarize()">Summarize</button>
-</div>
-<div id="summary"></div>
-<div class="content"><iframe id="frame"></iframe></div>
-<script>
-const frame = document.getElementById('frame');
-const urlInput = document.getElementById('url');
-const summaryDiv = document.getElementById('summary');
-
-urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-
-function go() {
-  let url = urlInput.value.trim();
-  if (!url) return;
-  if (!url.startsWith('http')) url = 'https://' + url;
-  frame.src = '/browse?url=' + encodeURIComponent(url);
-}
-
-async function summarize() {
-  summaryDiv.innerHTML = '<div class="summary"><h3>AI Summary</h3>Loading...</div>';
-  const url = urlInput.value.trim();
-  try {
-    const res = await fetch('/summarize?url=' + encodeURIComponent(url));
-    const data = await res.json();
-    summaryDiv.innerHTML = '<div class="summary"><h3>AI Summary</h3>' + data.summary + '</div>';
-  } catch(e) {
-    summaryDiv.innerHTML = '<div class="summary"><h3>Error</h3>Could not summarize.</div>';
-  }
-}
-</script>
-</body>
-</html>"""
-
-
 class BrowserHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/" or self.path == "":
-            self.send_html(SHELL_HTML)
+            self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
         elif self.path.startswith("/browse?url="):
             self.handle_browse()
         elif self.path.startswith("/summarize?url="):
@@ -186,7 +124,6 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; VulaOS)"})
             resp = urllib.request.urlopen(req, timeout=10)
             content = resp.read().decode("utf-8", errors="replace")
-            # Strip ads
             stripper = AdStripper()
             stripper.feed(content)
             clean = stripper.get_output()
@@ -198,14 +135,12 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
         url = self.path.split("url=", 1)[1]
         url = urllib.request.unquote(url)
         try:
-            # Fetch page text
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; VulaOS)"})
             resp = urllib.request.urlopen(req, timeout=10)
             html = resp.read().decode("utf-8", errors="replace")
             text = re.sub(r"<[^>]+>", " ", html)
             text = re.sub(r"\s+", " ", text).strip()[:3000]
 
-            # Ask AI to summarize
             ai_req = urllib.request.Request(
                 VULOS_API + "/api/ai/chat",
                 data=json.dumps({"messages": [{"role": "user", "content": f"Summarize this web page in 3 bullet points:\n\n{text}"}], "stream": False}).encode(),
@@ -226,6 +161,18 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
 
+    def serve_file(self, filepath, content_type):
+        try:
+            with open(filepath, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except FileNotFoundError:
+            self.send_error(404)
+
     def send_html(self, html):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -233,7 +180,7 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(html.encode())
 
     def log_message(self, format, *args):
-        pass  # quiet
+        pass
 
 print(f"[browser] Smart Browser on port {PORT}")
 http.server.HTTPServer(("0.0.0.0", PORT), BrowserHandler).serve_forever()

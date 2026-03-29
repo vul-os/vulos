@@ -1,11 +1,13 @@
 import { useRef, useCallback, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
+import AppIcon from '../core/AppIcons'
 
 export default function Window({ win }) {
   const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, activeWindow } = useShell()
   const [dragging, setDragging] = useState(false)
   const isActive = win._active !== undefined ? win._active : activeWindow === win.id
   const zBase = isActive ? 20 : 10
+  const isBrowser = win.appId === 'browser'
 
   const SNAP_EDGE = 12 // pixels from edge to trigger snap
 
@@ -66,36 +68,48 @@ export default function Window({ win }) {
       }}
       onPointerDown={() => focusWindow(win.id)}
     >
-      {/* Title bar */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart}>
-        {/* Traffic lights */}
-        <div className="flex items-center gap-1.5" data-no-drag>
-          <button onClick={() => closeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
-          <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
-          <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
+      {/* Title bar — hidden for browser, which has its own embedded controls */}
+      {!isBrowser && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart}>
+          {/* Traffic lights */}
+          <div className="flex items-center gap-1.5" data-no-drag>
+            <button onClick={() => closeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
+            <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
+            <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
+          </div>
+          <div className="flex-1 flex items-center justify-center gap-1.5 text-xs text-neutral-500 truncate">
+            <AppIcon id={win.appId} size={12} color="#737373" />
+            <span>{win.title}</span>
+          </div>
+          {/* Save AI viewport button */}
+          {win._saveable && (
+            <button
+              data-no-drag
+              onClick={async () => {
+                await fetch('/api/ai-apps/save', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ title: win._saveable.title, html: win._saveable.html, python: win._saveable.python || '' }),
+                })
+                const el = document.activeElement
+                if (el) { el.textContent = '\u2713'; setTimeout(() => { el.textContent = '\uD83D\uDCBE' }, 1000) }
+              }}
+              title="Save this AI app"
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-green-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
+            >
+              {'\uD83D\uDCBE'}
+            </button>
+          )}
         </div>
-        <div className="flex-1 text-center text-xs text-neutral-500 truncate">{win.icon} {win.title}</div>
-        {/* Save AI viewport button */}
-        {win._saveable && (
-          <button
-            data-no-drag
-            onClick={async () => {
-              await fetch('/api/ai-apps/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: win._saveable.title, html: win._saveable.html, python: win._saveable.python || '' }),
-              })
-              // Visual feedback
-              const el = document.activeElement
-              if (el) { el.textContent = '✓'; setTimeout(() => { el.textContent = '💾' }, 1000) }
-            }}
-            title="Save this AI app"
-            className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-green-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
-          >
-            💾
-          </button>
-        )}
-      </div>
+      )}
+
+      {/* Browser: thin draggable strip at top */}
+      {isBrowser && (
+        <div
+          className="h-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing"
+          onPointerDown={onDragStart}
+        />
+      )}
 
       {/* Content */}
       <div className="flex-1 relative bg-neutral-950 overflow-hidden">
@@ -118,7 +132,17 @@ export default function Window({ win }) {
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           />
         )}
+
       </div>
+
+      {/* Browser overlay controls — top right, matching Chrome's title bar */}
+      {isBrowser && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5" data-no-drag>
+          <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" title="Minimize" />
+          <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" title="Maximize" />
+          <button onClick={() => closeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" title="Close" />
+        </div>
+      )}
 
       {/* Resize handle */}
       <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart}>

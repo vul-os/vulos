@@ -61,6 +61,15 @@ func (s *Service) Start(parentCtx context.Context, _ int) error {
 
 	s.ctx, s.cancel = context.WithCancel(parentCtx)
 
+	// 0. Kill stale processes and clean up from previous runs
+	exec.Command("pkill", "-9", "Xvfb").Run()
+	exec.Command("pkill", "-9", "chromium").Run()
+	exec.Command("pkill", "-9", "gst-launch").Run()
+	exec.Command("pkill", "-9", "pulseaudio").Run()
+	os.Remove("/tmp/.X11-unix/X99")
+	os.Remove("/tmp/pulse-server")
+	time.Sleep(500 * time.Millisecond)
+
 	// 1. Xvfb
 	if err := s.startXvfb(); err != nil {
 		return fmt.Errorf("xvfb: %w", err)
@@ -100,7 +109,10 @@ func (s *Service) Start(parentCtx context.Context, _ int) error {
 	go s.listenRTP(rtpVideoPort, s.videoTrack)
 	go s.listenRTP(rtpAudioPort, s.audioTrack)
 
-	// 7. GStreamer pipelines (video + audio)
+	// 7. Give Xvfb + PulseAudio a moment to stabilize before GStreamer connects
+	time.Sleep(2 * time.Second)
+
+	// 8. GStreamer pipelines (video + audio) — auto-restart on crash
 	if err := s.startVideoGST(); err != nil {
 		return fmt.Errorf("gstreamer video: %w", err)
 	}
@@ -177,21 +189,57 @@ func (s *Service) startPulseAudio() error {
 	if bin == "" {
 		return fmt.Errorf("pulseaudio not found")
 	}
-	s.pulse = exec.CommandContext(s.ctx, bin,
+	args := []string{
 		"--daemonize=no", "--system=false", "--exit-idle-time=-1",
 		"--load=module-null-sink sink_name=virtual_speaker sink_properties=device.description=VirtualSpeaker",
 		"--load=module-always-sink",
-	)
-	s.pulse.Env = append(os.Environ(), "DISPLAY="+display)
-	s.pulse.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	s.pulse.Stdout = os.Stdout
-	s.pulse.Stderr = os.Stderr
-	if err := s.pulse.Start(); err != nil {
+	}
+	env := append(os.Environ(), "DISPLAY="+display)
+
+	cmd := exec.CommandContext(s.ctx, bin, args...)
+	cmd.Env = env
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
 		return err
 	}
+	s.pulse = cmd
+
+	// Auto-restart loop with backoff
 	go func() {
-		s.pulse.Wait()
-		log.Printf("[browser] pulseaudio exited")
+		cmd.Wait()
+		backoff := 3 * time.Second
+		for {
+			if s.ctx.Err() != nil {
+				return
+			}
+			log.Printf("[browser] pulseaudio exited, restarting in %s...", backoff)
+			time.Sleep(backoff)
+			c := exec.CommandContext(s.ctx, bin, args...)
+			c.Env = env
+			c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			if err := c.Start(); err != nil {
+				log.Printf("[browser] pulseaudio restart failed: %v", err)
+				if backoff < 30*time.Second {
+					backoff *= 2
+				}
+				continue
+			}
+			s.pulse = c
+			log.Printf("[browser] pulseaudio restarted")
+			backoff = 3 * time.Second // reset on successful start
+			start := time.Now()
+			c.Wait()
+			// If it ran for >10s, reset backoff (it was a real crash, not a startup failure)
+			if time.Since(start) > 10*time.Second {
+				backoff = 3 * time.Second
+			} else if backoff < 30*time.Second {
+				backoff *= 2
+			}
+		}
 	}()
 	time.Sleep(time.Second)
 	log.Printf("[browser] pulseaudio started")
@@ -203,7 +251,7 @@ func (s *Service) startVideoGST() error {
 	if bin == "" {
 		return fmt.Errorf("gst-launch-1.0 not found")
 	}
-	s.gstVideo = exec.CommandContext(s.ctx, bin, "-q",
+	args := []string{"-q",
 		"ximagesrc", fmt.Sprintf("display-name=%s", display),
 		"use-damage=false", "show-pointer=true",
 		"!", fmt.Sprintf("video/x-raw,framerate=%d/1", fps),
@@ -217,17 +265,44 @@ func (s *Service) startVideoGST() error {
 		"!", "rtpvp8pay", "pt=96", "mtu=1200",
 		"!", "udpsink", "host=127.0.0.1", fmt.Sprintf("port=%d", rtpVideoPort),
 		"sync=false", "async=false",
-	)
-	s.gstVideo.Env = append(os.Environ(), "DISPLAY="+display)
-	s.gstVideo.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	s.gstVideo.Stdout = os.Stdout
-	s.gstVideo.Stderr = os.Stderr
-	if err := s.gstVideo.Start(); err != nil {
-		return err
 	}
+	env := append(os.Environ(), "DISPLAY="+display)
+
+	// Auto-restart loop with backoff
 	go func() {
-		s.gstVideo.Wait()
-		log.Printf("[browser] gstreamer video exited")
+		backoff := 3 * time.Second
+		for {
+			if s.ctx.Err() != nil {
+				return
+			}
+			cmd := exec.CommandContext(s.ctx, bin, args...)
+			cmd.Env = env
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Start(); err != nil {
+				log.Printf("[browser] gstreamer video start failed: %v", err)
+				if backoff < 30*time.Second {
+					backoff *= 2
+				}
+				time.Sleep(backoff)
+				continue
+			}
+			s.gstVideo = cmd
+			backoff = 3 * time.Second
+			start := time.Now()
+			cmd.Wait()
+			if s.ctx.Err() != nil {
+				return
+			}
+			if time.Since(start) > 10*time.Second {
+				backoff = 3 * time.Second
+			} else if backoff < 30*time.Second {
+				backoff *= 2
+			}
+			log.Printf("[browser] gstreamer video exited, restarting in %s...", backoff)
+			time.Sleep(backoff)
+		}
 	}()
 	return nil
 }
@@ -237,7 +312,7 @@ func (s *Service) startAudioGST() error {
 	if bin == "" {
 		return fmt.Errorf("gst-launch-1.0 not found")
 	}
-	s.gstAudio = exec.CommandContext(s.ctx, bin, "-q",
+	args := []string{"-q",
 		"pulsesrc", "device=virtual_speaker.monitor",
 		"!", "audio/x-raw,rate=48000,channels=2",
 		"!", "queue", "max-size-buffers=1", "leaky=downstream",
@@ -245,17 +320,44 @@ func (s *Service) startAudioGST() error {
 		"!", "rtpopuspay", "pt=111",
 		"!", "udpsink", "host=127.0.0.1", fmt.Sprintf("port=%d", rtpAudioPort),
 		"sync=false", "async=false",
-	)
-	s.gstAudio.Env = append(os.Environ(), "DISPLAY="+display)
-	s.gstAudio.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	s.gstAudio.Stdout = os.Stdout
-	s.gstAudio.Stderr = os.Stderr
-	if err := s.gstAudio.Start(); err != nil {
-		return err
 	}
+	env := append(os.Environ(), "DISPLAY="+display)
+
+	// Auto-restart loop with backoff
 	go func() {
-		s.gstAudio.Wait()
-		log.Printf("[browser] gstreamer audio exited")
+		backoff := 3 * time.Second
+		for {
+			if s.ctx.Err() != nil {
+				return
+			}
+			cmd := exec.CommandContext(s.ctx, bin, args...)
+			cmd.Env = env
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Start(); err != nil {
+				log.Printf("[browser] gstreamer audio start failed: %v", err)
+				if backoff < 30*time.Second {
+					backoff *= 2
+				}
+				time.Sleep(backoff)
+				continue
+			}
+			s.gstAudio = cmd
+			backoff = 3 * time.Second
+			start := time.Now()
+			cmd.Wait()
+			if s.ctx.Err() != nil {
+				return
+			}
+			if time.Since(start) > 10*time.Second {
+				backoff = 3 * time.Second
+			} else if backoff < 30*time.Second {
+				backoff *= 2
+			}
+			log.Printf("[browser] gstreamer audio exited, restarting in %s...", backoff)
+			time.Sleep(backoff)
+		}
 	}()
 	return nil
 }

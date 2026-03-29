@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/websocket"
@@ -182,6 +183,113 @@ func parseMeminfo(data string) map[string]uint64 {
 		}
 	}
 	return vals
+}
+
+// SysInfo is the payload for the About page.
+type SysInfo struct {
+	Hostname     string `json:"hostname"`
+	Kernel       string `json:"kernel"`
+	Arch         string `json:"arch"`
+	CPUModel     string `json:"cpu_model"`
+	CPUCores     int    `json:"cpu_cores"`
+	MemTotalMB   int    `json:"mem_total_mb"`
+	MemUsedMB    int    `json:"mem_used_mb"`
+	MemPercent   float64 `json:"mem_percent"`
+	Uptime       string `json:"uptime"`
+	AlpineVer    string `json:"alpine_version"`
+	DeviceModel  string `json:"device_model"`
+	Battery      int    `json:"battery"`
+	Charging     bool   `json:"charging"`
+	StorageTotalMB int  `json:"storage_total_mb"`
+	StorageUsedMB  int  `json:"storage_used_mb"`
+}
+
+// SystemInfo returns a one-shot system info snapshot for the About page.
+func SystemInfo() SysInfo {
+	info := SysInfo{
+		CPUCores: runtime.NumCPU(),
+		Arch:     runtime.GOARCH,
+	}
+
+	info.Hostname, _ = os.Hostname()
+
+	// Kernel version
+	if data, err := os.ReadFile("/proc/version"); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) >= 3 {
+			info.Kernel = parts[2]
+		}
+	}
+
+	// CPU model from /proc/cpuinfo
+	if data, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "model name") || strings.HasPrefix(line, "Model") || strings.HasPrefix(line, "Hardware") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					info.CPUModel = strings.TrimSpace(parts[1])
+					break
+				}
+			}
+		}
+	}
+
+	// Memory
+	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+		vals := parseMeminfo(string(data))
+		info.MemTotalMB = int(vals["MemTotal"] / (1024 * 1024))
+		available := vals["MemAvailable"]
+		if available == 0 {
+			available = vals["MemFree"] + vals["Buffers"] + vals["Cached"]
+		}
+		used := vals["MemTotal"] - available
+		info.MemUsedMB = int(used / (1024 * 1024))
+		if vals["MemTotal"] > 0 {
+			info.MemPercent = float64(used) / float64(vals["MemTotal"]) * 100
+		}
+	}
+
+	// Uptime
+	if data, err := os.ReadFile("/proc/uptime"); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) > 0 {
+			secs, _ := strconv.ParseFloat(parts[0], 64)
+			d := time.Duration(secs * float64(time.Second))
+			days := int(d.Hours()) / 24
+			hours := int(d.Hours()) % 24
+			mins := int(d.Minutes()) % 60
+			if days > 0 {
+				info.Uptime = strconv.Itoa(days) + "d " + strconv.Itoa(hours) + "h " + strconv.Itoa(mins) + "m"
+			} else {
+				info.Uptime = strconv.Itoa(hours) + "h " + strconv.Itoa(mins) + "m"
+			}
+		}
+	}
+
+	// Alpine version
+	if data, err := os.ReadFile("/etc/alpine-release"); err == nil {
+		info.AlpineVer = strings.TrimSpace(string(data))
+	}
+
+	// Device model (common on ARM/mobile devices)
+	for _, path := range []string{"/sys/firmware/devicetree/base/model", "/sys/devices/virtual/dmi/id/product_name"} {
+		if data, err := os.ReadFile(path); err == nil {
+			info.DeviceModel = strings.TrimSpace(strings.ReplaceAll(string(data), "\x00", ""))
+			break
+		}
+	}
+
+	// Battery
+	info.Battery, info.Charging = readBattery()
+
+	// Root filesystem storage
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/", &stat); err == nil {
+		info.StorageTotalMB = int(stat.Blocks * uint64(stat.Bsize) / (1024 * 1024))
+		info.StorageUsedMB = int((stat.Blocks - stat.Bfree) * uint64(stat.Bsize) / (1024 * 1024))
+	}
+
+	return info
 }
 
 func readBattery() (int, bool) {

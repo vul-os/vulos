@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
+import { ThemeProvider } from './core/ThemeProvider'
+import { WallpaperProvider } from './core/useWallpaper.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
 import LoginScreen from './auth/LoginScreen'
 import LockScreen from './auth/LockScreen'
@@ -126,8 +128,12 @@ function AuthGate() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AuthGate />
-    </AuthProvider>
+    <ThemeProvider>
+      <WallpaperProvider>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
+      </WallpaperProvider>
+    </ThemeProvider>
   )
 }
