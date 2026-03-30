@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -56,11 +57,22 @@ func (l *Launcher) Launch(ctx context.Context, appID string, hostPort, appPort i
 		return nil, fmt.Errorf("create namespace: %w", err)
 	}
 
-	// Build command to run inside namespace
-	nsArgs := append([]string{"netns", "exec", ns.Name, command}, args...)
+	// Expand ${PORT} and ${CONSOLE_PORT} in command
+	expandedCmd := strings.ReplaceAll(command, "${PORT}", fmt.Sprintf("%d", appPort))
+
+	// Expand env vars in command (e.g. ${CONSOLE_PORT})
+	for _, e := range env {
+		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
+			expandedCmd = strings.ReplaceAll(expandedCmd, "${"+parts[0]+"}", parts[1])
+		}
+	}
+
+	// Build command to run inside namespace using sh -c for proper arg splitting
+	nsArgs := []string{"netns", "exec", ns.Name, "sh", "-c", expandedCmd}
 	cmd := exec.CommandContext(ctx, "ip", nsArgs...)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", appPort))
 	cmd.Stdout = os.Stdout // TODO: capture to log file per app
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{

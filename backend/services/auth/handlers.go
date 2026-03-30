@@ -73,6 +73,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/login":        true,
 	"/api/auth/status":       true,
 	"/api/setup/status":      true,
+	"/api/browser/status":    true,
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

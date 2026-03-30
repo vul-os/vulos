@@ -172,12 +172,20 @@ export default function RemoteBrowser() {
     if (status === 'connected') focusContainer()
   }, [status, focusContainer])
 
+  // Auto-retry when browser service isn't running (e.g. after redeploy)
+  useEffect(() => {
+    if (!error) return
+    const id = setInterval(() => connect(), 5000)
+    return () => clearInterval(id)
+  }, [error, connect])
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm">
-        <div className="text-center space-y-2">
-          <p>{error}</p>
-          <button onClick={connect} className="btn">Retry</button>
+        <div className="text-center space-y-3">
+          <span className="w-6 h-6 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin inline-block" />
+          <p className="text-neutral-400">Starting browser...</p>
+          <p className="text-neutral-600 text-xs">{error}</p>
         </div>
       </div>
     )

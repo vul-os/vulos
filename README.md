@@ -5,8 +5,8 @@
 <h1 align="center">Vula OS</h1>
 
 <p align="center">
-  <strong>A web-first operating system built on Alpine Linux.</strong><br/>
-  <em>"Vula" is Zulu for "open".</em>
+  <strong>An open-source web desktop environment and operating system built on Alpine Linux — a modern alternative to OS.js.</strong><br/>
+  <em>"Vula" is isiZulu for "open".</em>
 </p>
 
 <p align="center">
@@ -64,15 +64,15 @@ Open **http://localhost:8080**.
 
 ## Features
 
-- **Desktop Shell** — Window manager, dock, launchpad, multi-desktop, screensaver
-- **Terminal** — Persistent PTY sessions with detach/reattach
+- **Desktop Shell** — Full browser-based desktop with window manager, dock, launchpad, multi-desktop, and screensaver
+- **Terminal** — Persistent PTY sessions with detach/reattach — a web shell you can use from anywhere
 - **Chromium Browser** — Remote browser streamed via WebRTC
 - **File Manager** — Browse, upload, download, manage files
 - **AI Assistant** — Pluggable backend (Ollama, OpenAI, Anthropic) with sandboxed code execution
 - **App Hub** — Install apps from the registry
 - **Auth & Security** — Multi-user, OAuth, sessions, rate limiting
-- **Remote Access** — Built-in tunneling
-- **Mobile Ready** — Alpine Linux and postmarketOS builds
+- **Remote Desktop** — Built-in tunneling for self-hosted cloud desktop access from any device
+- **Mobile Ready** — Runs as a Linux web OS on phones via Alpine and postmarketOS
 
 <p align="center">
   <img src="landing/docs/login.png" width="260" alt="Login" />
@@ -163,6 +163,10 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup.
 ## License
 
 MIT
+
+---
+
+**See also:** [OS.js](https://www.os-js.org/) — a pioneering web desktop project that helped define the space. Vula OS is an independent, self-hosted, open-source online operating system — but we respect the groundwork OS.js laid for the browser desktop environment.
 
 <p align="center">
   <br/>

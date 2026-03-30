@@ -52,7 +52,24 @@ func New() *Service {
 
 // Start launches Xvfb, Chromium, GStreamer, and the RTP listener at boot.
 // Everything stays running so WebRTC connections are instant.
+// Retries up to 3 times with backoff if startup fails (e.g. stale sockets after redeploy).
 func (s *Service) Start(parentCtx context.Context, _ int) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			wait := time.Duration(attempt*3) * time.Second
+			log.Printf("[browser] startup attempt %d failed: %v — retrying in %s", attempt, lastErr, wait)
+			time.Sleep(wait)
+		}
+		lastErr = s.tryStart(parentCtx)
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return lastErr
+}
+
+func (s *Service) tryStart(parentCtx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
@@ -67,8 +84,9 @@ func (s *Service) Start(parentCtx context.Context, _ int) error {
 	exec.Command("pkill", "-9", "gst-launch").Run()
 	exec.Command("pkill", "-9", "pulseaudio").Run()
 	os.Remove("/tmp/.X11-unix/X99")
+	os.Remove("/tmp/.X99-lock")
 	os.Remove("/tmp/pulse-server")
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(time.Second)
 
 	// 1. Xvfb
 	if err := s.startXvfb(); err != nil {
@@ -120,7 +138,7 @@ func (s *Service) Start(parentCtx context.Context, _ int) error {
 		log.Printf("[browser] gstreamer audio warning: %v (audio disabled)", err)
 	}
 
-	// 8. Input channel
+	// 9. Input channel
 	go s.startInputListener()
 	go s.connectInput()
 
@@ -160,6 +178,7 @@ func (s *Service) startChromium() error {
 		"--disable-sync", "--disable-translate", "--metrics-recording-only",
 		"--no-default-browser-check", "--disable-dbus",
 		"--disable-features=TranslateUI,MediaRouter",
+		"--enable-features=SuppressUnsupportedCommandLineWarning",
 		"--disable-infobars",
 		"--disable-default-apps",
 		"--disable-extensions",
@@ -183,7 +202,62 @@ func (s *Service) startChromium() error {
 		return err
 	}
 	time.Sleep(2 * time.Second)
+
+	// Monitor: if Chromium exits (e.g. user closed all tabs), restart it
+	go s.watchChromium(bin)
+
 	return nil
+}
+
+func (s *Service) watchChromium(bin string) {
+	for {
+		s.mu.Lock()
+		cmd := s.chrome
+		s.mu.Unlock()
+		if cmd == nil {
+			return
+		}
+		cmd.Wait()
+		if s.ctx.Err() != nil {
+			return
+		}
+		log.Printf("[browser] chromium exited (all tabs closed?), restarting...")
+		time.Sleep(time.Second)
+
+		c := exec.CommandContext(s.ctx, bin,
+			"--no-sandbox", "--disable-gpu", "--disable-software-rasterizer",
+			"--disable-dev-shm-usage", "--no-first-run", "--disable-background-networking",
+			"--disable-sync", "--disable-translate", "--metrics-recording-only",
+			"--no-default-browser-check", "--disable-dbus",
+			"--disable-features=TranslateUI,MediaRouter",
+			"--disable-infobars",
+			"--disable-default-apps",
+			"--disable-extensions",
+			"--disable-component-update",
+			"--disable-domain-reliability",
+			"--disable-client-side-phishing-detection",
+			"--noerrdialogs",
+			"--hide-crash-restore-bubble",
+			"--disable-popup-blocking",
+			"--new-window",
+			fmt.Sprintf("--window-size=%d,%d", width, height),
+			"--window-position=0,0",
+			"--start-maximized",
+			"https://google.com",
+		)
+		c.Env = append(os.Environ(), "DISPLAY="+display)
+		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		if err := c.Start(); err != nil {
+			log.Printf("[browser] chromium restart failed: %v", err)
+			return
+		}
+		s.mu.Lock()
+		s.chrome = c
+		s.mu.Unlock()
+		log.Printf("[browser] chromium restarted with new tab")
+	}
 }
 
 func (s *Service) startPulseAudio() error {

@@ -1,8 +1,8 @@
 // Apps with builtin:true render as React components in the shell.
 // Apps with url/port are external services launched via the backend.
-// Apps with installed:false are available in the app store but not yet installed.
+// Installed apps are fetched from /api/store/installed and merged dynamically.
 
-const registry = [
+const builtinRegistry = [
   // --- Built-in (React components in src/builtin/, no port needed) ---
   {
     id: 'terminal',
@@ -84,7 +84,7 @@ const registry = [
     icon: '',
     description: 'Web browser',
     keywords: ['browser', 'web', 'internet', 'surf', 'chromium', 'chrome'],
-    category: 'core',
+    category: 'internet',
     builtin: true,
   },
 
@@ -109,17 +109,48 @@ const registry = [
   },
 ]
 
+// Dynamic installed apps from backend
+let installedApps = []
+let fetchPromise = null
+
+export function refreshInstalled() {
+  fetchPromise = fetch('/api/store/installed')
+    .then(r => r.ok ? r.json() : [])
+    .then(apps => {
+      installedApps = (apps || [])
+        .filter(a => !builtinRegistry.some(b => b.id === a.id))
+        .map(a => ({
+          id: a.id,
+          name: a.name,
+          icon: a.icon || a.name?.[0]?.toUpperCase() || '?',
+          description: a.description || '',
+          keywords: a.keywords || [],
+          category: a.category || 'other',
+          port: a.port || 80,
+          command: a.command || '',
+          workDir: a.work_dir || '',
+          installed: true,
+        }))
+      return installedApps
+    })
+    .catch(() => { installedApps = [] })
+  return fetchPromise
+}
+
+// Initial fetch
+refreshInstalled()
+
 export function getApps() {
-  return registry
+  return [...builtinRegistry, ...installedApps]
 }
 
 export function getAppById(id) {
-  return registry.find(app => app.id === id)
+  return getApps().find(app => app.id === id)
 }
 
 export function getAppsByCategory() {
   const cats = {}
-  for (const app of registry) {
+  for (const app of getApps()) {
     const c = app.category || 'other'
     if (!cats[c]) cats[c] = []
     cats[c].push(app)
@@ -129,8 +160,8 @@ export function getAppsByCategory() {
 
 export function searchApps(query) {
   const q = query.toLowerCase().trim()
-  if (!q) return registry
-  return registry.filter(app =>
+  if (!q) return getApps()
+  return getApps().filter(app =>
     app.name.toLowerCase().includes(q) ||
     app.description.toLowerCase().includes(q) ||
     app.keywords.some(k => k.includes(q))
