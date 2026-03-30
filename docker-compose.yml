@@ -16,6 +16,7 @@ services:
       - "8080:8080"
       - "3000:3000"
     shm_size: '1g'
+    privileged: true
     volumes:
       - vulos-data:/root/.vulos
     environment:

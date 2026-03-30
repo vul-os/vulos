@@ -14,7 +14,7 @@ const Packages = lazy(() => import('../builtin/packages/Packages'))
 const DiskUsage = lazy(() => import('../builtin/disks/DiskUsage'))
 
 const categoryLabels = {
-  core: 'Core',
+  internet: 'Internet',
   productivity: 'Productivity',
   utilities: 'Utilities',
   media: 'Media',
@@ -77,7 +77,7 @@ export default function Launchpad() {
       const res = await fetch('/api/apps/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '' }),
+        body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
       })
       if (res.ok) {
         const data = await res.json()

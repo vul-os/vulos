@@ -19,11 +19,12 @@ WORKDIR /app
 COPY backend/ .
 RUN go mod download && go build -ldflags="-s -w" -o /vulos-server ./cmd/server
 
-FROM alpine:edge
+FROM alpine:3.21
 
 # Core packages + remote browser stack (Xvfb + Chromium + GStreamer)
 RUN apk add --no-cache \
     tini bash sudo shadow python3 curl jq ca-certificates \
+    iproute2 iptables \
     xvfb-run chromium xdotool \
     gstreamer-tools gst-plugins-base gst-plugins-good gst-plugins-bad \
     pulseaudio pulseaudio-utils \

@@ -39,6 +39,7 @@ deploy_full() {
     -p "$PORT:8080" \
     -p "$LANDING:3000" \
     --shm-size="$SHM" \
+    --privileged \
     -v "$VOLUME:/root/.vulos" \
     -e LANDING_PORT=3000 \
     "$NAME"

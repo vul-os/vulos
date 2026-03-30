@@ -277,7 +277,19 @@ export function ShellProvider({ children }) {
   const openWindow = useCallback(({ appId, title, url, icon, component, html, _saveable }) => {
     dispatch({ type: 'OPEN_WINDOW', appId, title, url, icon, component, html, _saveable })
   }, [])
-  const closeWindow = useCallback((id) => dispatch({ type: 'CLOSE_WINDOW', id }), [])
+  const closeWindow = useCallback((id) => {
+    // Find the window to check if it's a running app that needs stopping
+    const win = allWindows.find(w => w.id === id)
+    if (win?.url && win.appId) {
+      // Non-builtin app with a URL — stop it on the backend
+      fetch('/api/apps/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: win.appId }),
+      }).catch(() => {})
+    }
+    dispatch({ type: 'CLOSE_WINDOW', id })
+  }, [allWindows])
   const focusWindow = useCallback((id) => dispatch({ type: 'FOCUS_WINDOW', id }), [])
   const moveWindow = useCallback((id, position) => dispatch({ type: 'MOVE_WINDOW', id, position }), [])
   const resizeWindow = useCallback((id, size) => dispatch({ type: 'RESIZE_WINDOW', id, size }), [])
