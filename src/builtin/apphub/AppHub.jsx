@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { refreshInstalled } from '../../core/AppRegistry'
-import { APP_LOGOS, APP_COLORS } from '../../core/AppIcons'
+import { APP_LOGOS, APP_COLORS, APP_LETTERS } from '../../core/AppIcons'
 
 const CATEGORY_LABELS = {
   all: 'All',
@@ -46,7 +46,7 @@ function AppIcon({ appId, size = 44 }) {
         fontSize: size * 0.36,
       }}
     >
-      {appId?.[0]?.toUpperCase() || '?'}
+      {APP_LETTERS[appId] || appId?.[0]?.toUpperCase() || '?'}
     </div>
   )
 }

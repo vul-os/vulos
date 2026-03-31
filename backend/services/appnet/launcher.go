@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 )
 
 // App represents a running application inside a namespace.
@@ -43,16 +42,19 @@ func NewLauncher(manager *Manager) *Launcher {
 // Launch starts an app inside its network namespace.
 // The app can bind to any port it wants — the namespace isolates it.
 // Traffic to host:hostPort is forwarded to ns:appPort via iptables.
-func (l *Launcher) Launch(ctx context.Context, appID string, hostPort, appPort int, command string, args []string, workDir string, env []string) (*App, error) {
+func (l *Launcher) Launch(ctx context.Context, appID, userID string, hostPort, appPort int, command string, args []string, workDir string, env []string) (*App, error) {
+	// Scope app instance by user — each user gets their own namespace
+	instanceID := userID + "-" + appID
+
 	l.mu.Lock()
-	if existing, ok := l.apps[appID]; ok && existing.Running {
+	if existing, ok := l.apps[instanceID]; ok && existing.Running {
 		l.mu.Unlock()
 		return existing, nil
 	}
 	l.mu.Unlock()
 
-	// Create namespace
-	ns, err := l.manager.Create(ctx, appID, hostPort, appPort)
+	// Create namespace scoped to user
+	ns, err := l.manager.Create(ctx, instanceID, userID, hostPort, appPort)
 	if err != nil {
 		return nil, fmt.Errorf("create namespace: %w", err)
 	}
@@ -67,9 +69,8 @@ func (l *Launcher) Launch(ctx context.Context, appID string, hostPort, appPort i
 		}
 	}
 
-	// Build command to run inside namespace using sh -c for proper arg splitting
-	nsArgs := []string{"netns", "exec", ns.Name, "sh", "-c", expandedCmd}
-	cmd := exec.CommandContext(ctx, "ip", nsArgs...)
+	// Run inside namespace — use background context so the app outlives the HTTP request
+	cmd := exec.Command("ip", "netns", "exec", ns.Name, "sh", "-c", expandedCmd)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", appPort))
@@ -79,13 +80,16 @@ func (l *Launcher) Launch(ctx context.Context, appID string, hostPort, appPort i
 		Setpgid: true, // own process group so we can kill cleanly
 	}
 
+	log.Printf("[appnet] starting %s: ip netns exec %s sh -c %q", instanceID, ns.Name, expandedCmd)
 	if err := cmd.Start(); err != nil {
-		l.manager.Destroy(ctx, appID)
+		log.Printf("[appnet] start FAILED for %s: %v", instanceID, err)
+		l.manager.Destroy(ctx, instanceID)
 		return nil, fmt.Errorf("start %s: %w", command, err)
 	}
+	log.Printf("[appnet] started %s pid=%d", instanceID, cmd.Process.Pid)
 
 	app := &App{
-		ID:          appID,
+		ID:          instanceID,
 		Namespace:   ns,
 		Command:     command,
 		Args:        args,
@@ -93,31 +97,25 @@ func (l *Launcher) Launch(ctx context.Context, appID string, hostPort, appPort i
 		Env:         env,
 		Process:     cmd.Process,
 		Running:     true,
-		MaxRestarts: 3,
+		MaxRestarts: 0,
 	}
 
 	l.mu.Lock()
-	l.apps[appID] = app
+	l.apps[instanceID] = app
 	l.mu.Unlock()
 
-	// Monitor process exit + auto-restart if configured
+	// Monitor process exit
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
+		exitCode := -1
+		if cmd.ProcessState != nil {
+			exitCode = cmd.ProcessState.ExitCode()
+		}
 		l.mu.Lock()
 		app.Running = false
-		shouldRestart := app.Restarts < app.MaxRestarts
-		if shouldRestart {
-			app.Restarts++
-		}
+		delete(l.apps, instanceID)
 		l.mu.Unlock()
-
-		if shouldRestart {
-			log.Printf("[appnet] app %s crashed (restart %d/%d), restarting...", appID, app.Restarts, app.MaxRestarts)
-			time.Sleep(2 * time.Second)
-			l.Launch(ctx, appID, hostPort, appPort, command, args, workDir, env)
-		} else {
-			log.Printf("[appnet] app %s exited", appID)
-		}
+		log.Printf("[appnet] app %s exited (code=%d, err=%v)", instanceID, exitCode, err)
 	}()
 
 	log.Printf("[appnet] launched %s (pid=%d) in %s — host:%d → %s:%d",
@@ -126,14 +124,30 @@ func (l *Launcher) Launch(ctx context.Context, appID string, hostPort, appPort i
 }
 
 // Stop kills an app and tears down its namespace.
+// Accepts either instanceID (userID-appID) or plain appID (stops all instances).
 func (l *Launcher) Stop(ctx context.Context, appID string) error {
 	l.mu.Lock()
+	// Try exact match first
 	app, ok := l.apps[appID]
+	var key string
+	if ok {
+		key = appID
+	} else {
+		// Search by suffix (plain appID matches any user's instance)
+		for k, a := range l.apps {
+			if strings.HasSuffix(k, "-"+appID) {
+				app = a
+				key = k
+				ok = true
+				break
+			}
+		}
+	}
 	if !ok {
 		l.mu.Unlock()
 		return fmt.Errorf("app %s not found", appID)
 	}
-	delete(l.apps, appID)
+	delete(l.apps, key)
 	l.mu.Unlock()
 
 	if app.Process != nil && app.Running {
@@ -153,7 +167,7 @@ func (l *Launcher) Stop(ctx context.Context, appID string) error {
 		}
 	}
 
-	return l.manager.Destroy(ctx, appID)
+	return l.manager.Destroy(ctx, key)
 }
 
 // StopAll stops all running apps.

@@ -27,6 +27,12 @@ start_container() {
   LANDING="${LANDING_PORT:-3000}"
 
   echo "Starting container..."
+  TLS_MOUNT=""
+  DOMAIN="${VULOS_DOMAIN:-lvh.me}"
+  if [ -f "$HOME/.vulos/localhost.pem" ] && [ -f "$HOME/.vulos/localhost-key.pem" ]; then
+    TLS_MOUNT="-v $HOME/.vulos/localhost.pem:/root/.vulos/localhost.pem:ro -v $HOME/.vulos/localhost-key.pem:/root/.vulos/localhost-key.pem:ro"
+    echo "TLS certs mounted (HTTPS enabled)"
+  fi
   docker run -d \
     --name "$NAME" \
     -p "$PORT:8080" \
@@ -34,8 +40,12 @@ start_container() {
     --shm-size="$SHM" \
     --privileged \
     -v "$VOLUME:/root/.vulos" \
+    $TLS_MOUNT \
     -e LANDING_PORT=3000 \
+    -e VULOS_DOMAIN="$DOMAIN" \
     "$NAME"
+
+  echo "Domain: $DOMAIN (web apps at https://{app}.$DOMAIN:$PORT)"
 
   echo "Waiting for startup..."
   sleep 3

@@ -171,13 +171,13 @@ export default function Launchpad() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        const url = data.url || `/app/${app.id}/`
-        openWindow({ appId: app.id, title: app.name, url, icon: app.icon })
-      } else {
-        openWindow({ appId: app.id, title: app.name, url: `/app/${app.id}/`, icon: app.icon })
-      }
+      // Use subdomain URL so the app gets the full / path (no broken asset paths)
+      const proto = location.protocol
+      const hostParts = location.host.split('.')
+      // If already on a subdomain (e.g. cockpit.localhost:8080), use the base domain
+      const baseDomain = hostParts.length > 2 ? hostParts.slice(1).join('.') : location.host
+      const appUrl = `${proto}//${app.id}.${baseDomain}/`
+      openWindow({ appId: app.id, title: app.name, url: appUrl, icon: app.icon })
     } catch {
       openWindow({ appId: app.id, title: app.name, url: `/app/${app.id}/`, icon: app.icon })
     }
