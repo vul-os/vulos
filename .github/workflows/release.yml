@@ -31,7 +31,7 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      # Build and push Docker images (for docker run users)
+      # Build and push Docker image
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -48,14 +48,14 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
 
-          # x86_64 image
+          # x86_64
           echo "Building x86_64 image..."
           docker buildx build --platform linux/amd64 --output type=docker -t vulos-amd64 .
           CONTAINER=$(docker create vulos-amd64)
           docker export $CONTAINER | gzip > "vulos-${VERSION}-x86_64.img.gz"
           docker rm $CONTAINER
 
-          # ARM64 image
+          # ARM64
           echo "Building ARM64 image..."
           docker buildx build --platform linux/arm64 --output type=docker -t vulos-arm64 .
           CONTAINER=$(docker create vulos-arm64)

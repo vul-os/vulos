@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os/exec"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,15 +90,14 @@ func (tm *TrafficMonitor) Forget(appID string) {
 	delete(tm.lastSeen, appID)
 }
 
-// readSysCounter reads a network counter from sysfs. Zero-cost, no exec.
+// readSysCounter reads a network counter from sysfs via direct file I/O.
 func readSysCounter(iface, counter string) uint64 {
 	path := fmt.Sprintf("/sys/class/net/%s/statistics/%s", iface, counter)
-	cmd := exec.Command("cat", path)
-	out, err := cmd.Output()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0
 	}
-	val, _ := strconv.ParseUint(strings.TrimSpace(string(out)), 10, 64)
+	val, _ := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
 	return val
 }
 

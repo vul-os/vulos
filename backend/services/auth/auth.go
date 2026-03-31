@@ -7,11 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Session represents an authenticated user session.
@@ -321,14 +324,24 @@ func firstProvider(m map[string]string) string {
 // --- Local username/password auth ---
 
 func hashPassword(password string) string {
-	salt := make([]byte, 16)
-	rand.Read(salt)
-	saltHex := fmt.Sprintf("%x", salt)
-	h := sha256.Sum256([]byte(saltHex + ":" + password))
-	return saltHex + "$" + fmt.Sprintf("%x", h)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		// Fallback to SHA256 if bcrypt fails (should never happen)
+		salt := make([]byte, 16)
+		rand.Read(salt)
+		saltHex := fmt.Sprintf("%x", salt)
+		h := sha256.Sum256([]byte(saltHex + ":" + password))
+		return saltHex + "$" + fmt.Sprintf("%x", h)
+	}
+	return string(hash)
 }
 
 func verifyPassword(hash, password string) bool {
+	// Try bcrypt first (new hashes)
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err == nil {
+		return true
+	}
+	// Fall back to legacy SHA256 for existing users (auto-migrated on next password change)
 	idx := strings.Index(hash, "$")
 	if idx < 0 {
 		return false
@@ -355,16 +368,25 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 		return nil, fmt.Errorf("username must be 2+ chars, password 4+ chars")
 	}
 
+	hash := hashPassword(password)
+
+	// Verify the hash works immediately — catch bcrypt issues at registration time
+	if !verifyPassword(hash, password) {
+		log.Printf("[auth] CRITICAL: password hash verification failed at registration for %q", username)
+		return nil, fmt.Errorf("internal error: password hash verification failed")
+	}
+
 	u := &User{
 		ID:           generateID(),
 		Username:     username,
-		PasswordHash: hashPassword(password),
+		PasswordHash: hash,
 		Name:         displayName,
 		Providers:    make(map[string]string),
 		CreatedAt:    time.Now(),
 		LastLogin:    time.Now(),
 	}
 	s.users[u.ID] = u
+	log.Printf("[auth] registered user %q (id=%s, hash_prefix=%s)", username, u.ID, hash[:20])
 
 	// Create profile — first user is admin
 	role := RoleUser
@@ -386,16 +408,20 @@ func (s *Store) Login(username, password string) (*User, error) {
 	for _, u := range s.users {
 		if u.Username == username {
 			if u.PasswordHash == "" {
+				log.Printf("[auth] login failed for %q: no password set", username)
 				return nil, fmt.Errorf("account has no password set")
 			}
 			if !verifyPassword(u.PasswordHash, password) {
-				return nil, fmt.Errorf("invalid password")
+				log.Printf("[auth] login failed for %q: password mismatch (hash_prefix=%s, pw_len=%d)", username, u.PasswordHash[:20], len(password))
+				return nil, fmt.Errorf("invalid username or password")
 			}
 			u.LastLogin = time.Now()
+			log.Printf("[auth] login OK for %q", username)
 			return u, nil
 		}
 	}
-	return nil, fmt.Errorf("user not found")
+	log.Printf("[auth] login failed: user %q not found (have %d users)", username, len(s.users))
+	return nil, fmt.Errorf("invalid username or password")
 }
 
 // HasAnyUsers returns true if at least one user exists.

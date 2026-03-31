@@ -1,15 +1,57 @@
 import { useRef, useCallback, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
+import { canSpawnNativeWindow } from '../core/useNativeMode'
 
-export default function Window({ win }) {
-  const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, activeWindow } = useShell()
+export default function Window({ win, pointerBlock }) {
+  const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, openNativeWindow, activeWindow } = useShell()
   const [dragging, setDragging] = useState(false)
   const isActive = win._active !== undefined ? win._active : activeWindow === win.id
   const zBase = isActive ? 20 : 10
   const isBrowser = win.appId === 'browser'
 
-  const SNAP_EDGE = 12 // pixels from edge to trigger snap
+  const SNAP_EDGE = 3 // pixels from edge to trigger snap on release
+  const SNAP_PREVIEW = 48 // larger zone to show snap preview while dragging
+
+  const [snapZone, setSnapZone] = useState(null) // 'left' | 'right' | 'top' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+  const getSnapZone = (x, y, vw, vh, edge) => {
+    const isLeft = x <= edge
+    const isRight = x >= vw - edge
+    const isTop = y <= edge
+    const isBottom = y >= vh - edge
+    if (isLeft && isTop) return 'top-left'
+    if (isRight && isTop) return 'top-right'
+    if (isLeft && isBottom) return 'bottom-left'
+    if (isRight && isBottom) return 'bottom-right'
+    if (isLeft) return 'left'
+    if (isRight) return 'right'
+    if (isTop) return 'top'
+    return null
+  }
+
+  const applySnap = (zone, vw, vh) => {
+    const top = 32    // menu bar
+    const usableH = vh - top
+    const halfW = Math.floor(vw / 2)
+    const halfH = Math.floor(usableH / 2)
+    switch (zone) {
+      case 'left':
+        moveWindow(win.id, { x: 0, y: top }); resizeWindow(win.id, { width: halfW, height: usableH }); break
+      case 'right':
+        moveWindow(win.id, { x: halfW, y: top }); resizeWindow(win.id, { width: halfW, height: usableH }); break
+      case 'top':
+        moveWindow(win.id, { x: 0, y: top }); resizeWindow(win.id, { width: vw, height: usableH }); break
+      case 'top-left':
+        moveWindow(win.id, { x: 0, y: top }); resizeWindow(win.id, { width: halfW, height: halfH }); break
+      case 'top-right':
+        moveWindow(win.id, { x: halfW, y: top }); resizeWindow(win.id, { width: halfW, height: halfH }); break
+      case 'bottom-left':
+        moveWindow(win.id, { x: 0, y: top + halfH }); resizeWindow(win.id, { width: halfW, height: halfH }); break
+      case 'bottom-right':
+        moveWindow(win.id, { x: halfW, y: top + halfH }); resizeWindow(win.id, { width: halfW, height: halfH }); break
+    }
+  }
 
   const onDragStart = useCallback((e) => {
     if (e.target.closest('[data-no-drag]')) return
@@ -21,27 +63,18 @@ export default function Window({ win }) {
     const vw = window.innerWidth
     const vh = window.innerHeight
 
-    const onMove = (ev) => moveWindow(win.id, { x: Math.max(0, ev.clientX - ox), y: Math.max(0, ev.clientY - oy) })
+    const onMove = (ev) => {
+      moveWindow(win.id, { x: Math.max(0, ev.clientX - ox), y: Math.max(0, ev.clientY - oy) })
+      setSnapZone(getSnapZone(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW))
+    }
     const onUp = (ev) => {
       setDragging(false)
+      const zone = snapZone || getSnapZone(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
+      setSnapZone(null)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
 
-      // Snap to edges
-      const x = ev.clientX, y = ev.clientY
-      if (x <= SNAP_EDGE) {
-        // Snap left half
-        moveWindow(win.id, { x: 0, y: 32 })
-        resizeWindow(win.id, { width: Math.floor(vw / 2), height: vh - 80 })
-      } else if (x >= vw - SNAP_EDGE) {
-        // Snap right half
-        moveWindow(win.id, { x: Math.floor(vw / 2), y: 32 })
-        resizeWindow(win.id, { width: Math.floor(vw / 2), height: vh - 80 })
-      } else if (y <= SNAP_EDGE) {
-        // Snap maximize
-        moveWindow(win.id, { x: 0, y: 32 })
-        resizeWindow(win.id, { width: vw, height: vh - 80 })
-      }
+      if (zone) applySnap(zone, vw, vh)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -59,6 +92,7 @@ export default function Window({ win }) {
 
   return (
     <div
+      data-window-id={win.id}
       className={`absolute flex flex-col rounded-lg overflow-hidden transition-shadow
         ${isActive ? 'ring-1 ring-neutral-600 shadow-2xl shadow-black/60' : 'ring-1 ring-neutral-800 shadow-lg shadow-black/30'}`}
       style={{
@@ -81,6 +115,20 @@ export default function Window({ win }) {
             <AppIcon id={win.appId} size={12} color="#737373" />
             <span>{win.title}</span>
           </div>
+          {/* Pop to native window button — only on native mode */}
+          {canSpawnNativeWindow() && win.url && (
+            <button
+              data-no-drag
+              onClick={() => openNativeWindow(win)}
+              title="Open in native window"
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-blue-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
+            >
+              <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M5 1H2a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V7" />
+                <path d="M7 1h4v4M11 1L5 7" />
+              </svg>
+            </button>
+          )}
           {/* Save AI viewport button */}
           {win._saveable && (
             <button
@@ -112,7 +160,7 @@ export default function Window({ win }) {
       )}
 
       {/* Content */}
-      <div className="flex-1 relative bg-neutral-950 overflow-hidden">
+      <div className="flex-1 relative bg-neutral-950 overflow-hidden" style={pointerBlock ? { pointerEvents: 'none' } : undefined}>
         {win.component ? (
           <div className="absolute inset-0 overflow-y-auto">{win.component}</div>
         ) : win.html ? (
@@ -150,6 +198,38 @@ export default function Window({ win }) {
           <path d="M9 1L1 9M9 5L5 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
         </svg>
       </div>
+
+      {/* Snap preview overlay */}
+      {snapZone && <SnapPreview zone={snapZone} />}
     </div>
+  )
+}
+
+function SnapPreview({ zone }) {
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const top = 32
+  const usableH = vh - top
+  const halfW = Math.floor(vw / 2)
+  const halfH = Math.floor(usableH / 2)
+
+  const styles = {
+    'left':         { left: 0, top, width: halfW, height: usableH },
+    'right':        { left: halfW, top, width: halfW, height: usableH },
+    'top':          { left: 0, top, width: vw, height: usableH },
+    'top-left':     { left: 0, top, width: halfW, height: halfH },
+    'top-right':    { left: halfW, top, width: halfW, height: halfH },
+    'bottom-left':  { left: 0, top: top + halfH, width: halfW, height: halfH },
+    'bottom-right': { left: halfW, top: top + halfH, width: halfW, height: halfH },
+  }
+
+  const s = styles[zone]
+  if (!s) return null
+
+  return (
+    <div
+      className="fixed z-[100] rounded-xl border-2 border-blue-500/40 bg-blue-500/10 pointer-events-none transition-all duration-150"
+      style={s}
+    />
   )
 }

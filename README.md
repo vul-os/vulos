@@ -5,7 +5,7 @@
 <h1 align="center">Vula OS</h1>
 
 <p align="center">
-  <strong>An open-source web desktop environment and operating system built on Alpine Linux — a modern alternative to OS.js.</strong><br/>
+  <strong>An open-source web desktop environment and operating system built on Debian Linux — a modern alternative to OS.js.</strong><br/>
   <em>"Vula" is isiZulu for "open".</em>
 </p>
 
@@ -42,7 +42,6 @@ Download, flash, boot — like Ubuntu.
 |----------|------|---------|
 | **x86_64** | `vulos-vX.X.X-x86_64.img.gz` | PC, laptop, server |
 | **ARM64** | `vulos-vX.X.X-arm64.img.gz` | Raspberry Pi, Pine64, Rock64 |
-| **postmarketOS** | See `alpine/` build scripts | PinePhone, Librem 5, OnePlus 6 |
 
 ```bash
 gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
@@ -60,6 +59,80 @@ docker run -p 8080:8080 --shm-size=1g -v vulos-data:/root/.vulos ghcr.io/vul-os/
 
 Open **http://localhost:8080**.
 
+#### GPU-accelerated streaming
+
+Vula OS auto-detects GPU hardware at startup and selects the best video encoder for remote browser and app streaming.
+
+**Tier 0 — No GPU (always works):**
+
+```bash
+docker run -p 8080:8080 --shm-size=1g vulos
+```
+
+Software VP8 encode, ~30fps. Good for VPS/containers without GPU passthrough.
+
+**Tier 1 — Intel/AMD (VA-API):**
+
+```bash
+docker run --device /dev/dri -p 8080:8080 --shm-size=1g vulos
+```
+
+Hardware H.264/AV1 encode via VA-API, 60fps, <2ms latency. Works with any Intel iGPU (2012+) or AMD GPU with Mesa drivers. Zero setup — just pass `/dev/dri`.
+
+**Tier 2 — NVIDIA (NVENC):**
+
+```bash
+docker run --gpus all -p 8080:8080 --shm-size=1g vulos
+```
+
+Hardware H.264/AV1 encode via NVENC, 60-120fps, <1ms latency. Requires [NVIDIA Container Toolkit](#nvidia-container-toolkit) on the host.
+
+---
+
+### NVIDIA Container Toolkit
+
+Required for `--gpus all` to work with Docker.
+
+**Ubuntu/Debian:**
+
+```bash
+# Add NVIDIA package repository
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# Install
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+
+# Configure Docker runtime
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# Verify
+docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi
+```
+
+**Fedora/RHEL:**
+
+```bash
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
+  sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+sudo dnf install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+Once installed, `docker run --gpus all` passes the GPU into the container and Vula OS auto-detects NVENC at startup.
+
 ---
 
 ## Features
@@ -72,7 +145,7 @@ Open **http://localhost:8080**.
 - **App Hub** — Install apps from the registry
 - **Auth & Security** — Multi-user, OAuth, sessions, rate limiting
 - **Remote Desktop** — Built-in tunneling for self-hosted cloud desktop access from any device
-- **Mobile Ready** — Runs as a Linux web OS on phones via Alpine and postmarketOS
+- **Mobile Ready** — Responsive design works on phones and tablets
 
 <p align="center">
   <img src="landing/docs/login.png" width="260" alt="Login" />
@@ -85,7 +158,7 @@ Open **http://localhost:8080**.
 | Frontend | React 19, Tailwind CSS 4, Vite 8, xterm.js |
 | Backend | Go (24 services, 110+ API endpoints) |
 | Apps | Python/HTML apps with JSON manifests |
-| Infrastructure | Alpine Linux, Docker, Chromium, GStreamer |
+| Infrastructure | Debian Linux, Docker, Chromium, GStreamer |
 
 <p align="center">
   <img src="landing/docs/apphub.png" width="500" alt="App Hub" />
@@ -128,8 +201,8 @@ vulos/
 ├── backend/              # Go backend (24 services)
 ├── apps/                 # Plugin apps with JSON manifests
 ├── landing/              # Landing page & docs (separate server)
-├── alpine/               # postmarketOS build scripts
-└── dev.sh                # Dev, build, deploy script
+├── dev.sh                # Dev and deploy script
+└── build.sh              # Bare-metal image builder
 ```
 
 ---

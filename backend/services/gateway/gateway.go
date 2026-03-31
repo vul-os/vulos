@@ -41,7 +41,7 @@ type rateBucket struct {
 }
 
 func New(authStore *auth.Store, netMgr *appnet.Manager, portPool *appnet.PortPool) *Gateway {
-	return &Gateway{
+	g := &Gateway{
 		authStore:  authStore,
 		netMgr:     netMgr,
 		portPool:   portPool,
@@ -62,6 +62,24 @@ func New(authStore *auth.Store, netMgr *appnet.Manager, portPool *appnet.PortPoo
 			},
 		},
 	}
+
+	// Periodically clean stale rate limit buckets
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			g.mu.Lock()
+			now := time.Now()
+			for id, b := range g.appHits {
+				if now.Sub(b.windowAt) > 5*time.Second {
+					delete(g.appHits, id)
+				}
+			}
+			g.mu.Unlock()
+		}
+	}()
+
+	return g
 }
 
 // GenerateAppSecret creates a secret for an app (injected as env var on launch).
@@ -230,7 +248,7 @@ func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *app
 		return
 	}
 
-	upstream := fmt.Sprintf("%s:%d", ns.NSIP, ns.AppPort)
+	upstream := net.JoinHostPort(ns.NSIP, fmt.Sprintf("%d", ns.AppPort))
 	upConn, err := net.DialTimeout("tcp", upstream, 5*time.Second)
 	if err != nil {
 		http.Error(w, "app unreachable", 502)

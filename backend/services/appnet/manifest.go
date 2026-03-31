@@ -48,11 +48,12 @@ type AppManifest struct {
 	Description string            `json:"description"`
 	Version     string            `json:"version"`
 	Command     string            `json:"command"`      // relative to app dir: "bin/server" or "python3 server.py"
-	Port        int               `json:"port"`         // port the app listens on inside namespace
+	Port        int               `json:"port"`         // port the app listens on inside namespace (web apps only)
+	Type        string            `json:"type"`         // "web", "desktop", or "service"
 	Category    string            `json:"category"`     // core, productivity, media, developer, system, network, database
 	Keywords    []string          `json:"keywords"`
 	Env         map[string]string `json:"env"`          // extra env vars
-	Deps        []string          `json:"deps"`         // alpine packages needed
+	Deps        []string          `json:"deps"`         // OS packages needed
 	WorkDir     string            `json:"work_dir"`     // defaults to app directory
 	AutoStart   bool              `json:"auto_start"`   // start on boot
 	Singleton   bool              `json:"singleton"`    // only one instance allowed

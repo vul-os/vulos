@@ -638,6 +638,9 @@ function RecallSettings() {
 function UsersSettings({ profile }) {
   const [profiles, setProfiles] = useState([])
   const [pin, setPin] = useState('')
+  const [newUser, setNewUser] = useState({ username: '', password: '', displayName: '' })
+  const [addError, setAddError] = useState('')
+  const [addSuccess, setAddSuccess] = useState('')
   const refresh = () => fetch('/api/profiles').then(r => r.json()).then(setProfiles).catch(() => {})
   useEffect(() => { refresh() }, [])
 
@@ -653,8 +656,37 @@ function UsersSettings({ profile }) {
   }
 
   const removeUser = async (userId) => {
+    if (!confirm('Remove this user? This cannot be undone.')) return
     await fetch(`/api/profiles/${userId}`, { method: 'DELETE' })
     refresh()
+  }
+
+  const addUser = async (e) => {
+    e.preventDefault()
+    setAddError('')
+    setAddSuccess('')
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: newUser.username,
+          password: newUser.password,
+          display_name: newUser.displayName || newUser.username,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAddError(data.error || 'Failed to create user')
+        return
+      }
+      setNewUser({ username: '', password: '', displayName: '' })
+      setAddSuccess(`User "${newUser.username}" created`)
+      setTimeout(() => setAddSuccess(''), 3000)
+      refresh()
+    } catch {
+      setAddError('Could not reach server')
+    }
   }
 
   const savePin = async () => {
@@ -677,6 +709,43 @@ function UsersSettings({ profile }) {
           <button onClick={savePin} className="btn">{pin ? 'Set PIN' : 'Remove PIN'}</button>
         </div>
       </div>
+
+      {/* Add user (admin only) */}
+      {isAdmin && (
+        <div className="mb-6 pb-4 border-b border-neutral-800/50">
+          <h3 className="text-sm font-medium mb-3">Add User</h3>
+          <form onSubmit={addUser} className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                value={newUser.displayName}
+                onChange={e => setNewUser({ ...newUser, displayName: e.target.value })}
+                placeholder="Display name"
+                className="input flex-1"
+              />
+              <input
+                value={newUser.username}
+                onChange={e => setNewUser({ ...newUser, username: e.target.value })}
+                placeholder="Username"
+                required
+                className="input flex-1"
+              />
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={newUser.password}
+                onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                placeholder="Password (4+ chars)"
+                required
+                className="input flex-1"
+              />
+              <button type="submit" className="btn">Add</button>
+            </div>
+            {addError && <p className="text-xs text-red-400">{addError}</p>}
+            {addSuccess && <p className="text-xs text-green-400">{addSuccess}</p>}
+          </form>
+        </div>
+      )}
 
       {/* User list */}
       <h3 className="text-sm font-medium mb-2">All Users</h3>
@@ -736,7 +805,7 @@ function AboutSettings() {
       <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
         <InfoRow label="Device" value={sys?.device_model || sys?.hostname || '—'} />
         <InfoRow label="Hostname" value={sys?.hostname} />
-        <InfoRow label="OS" value={sys?.alpine_version ? `Alpine Linux ${sys.alpine_version}` : 'Alpine Linux'} />
+        <InfoRow label="OS" value={sys?.os_version ? `Debian ${sys.os_version}` : 'Debian Linux'} />
         <InfoRow label="Kernel" value={sys?.kernel} />
         <InfoRow label="Architecture" value={sys?.arch} />
       </div>
@@ -767,19 +836,51 @@ function AboutSettings() {
         )}
       </div>
 
+      {/* GPU */}
+      {sys && (
+        <>
+          <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">Graphics</h3>
+          <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
+            <InfoRow label="GPU" value={sys.gpu_device || '—'} />
+            <InfoRow label="Vendor" value={sys.gpu_vendor !== 'none' ? sys.gpu_vendor : 'None'} />
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Tier</span>
+              <span className={`text-sm font-medium ${
+                sys.gpu_tier === 'nvenc' ? 'text-green-400' :
+                sys.gpu_tier === 'vaapi' ? 'text-blue-400' :
+                'text-neutral-400'
+              }`}>
+                {sys.gpu_tier === 'nvenc' ? 'Tier 2 — NVENC' :
+                 sys.gpu_tier === 'vaapi' ? 'Tier 1 — VA-API' :
+                 'Tier 0 — Software'}
+              </span>
+            </div>
+            <InfoRow label="Encoder" value={sys.gpu_encoder} />
+            <InfoRow label="Codec" value={sys.gpu_codec || '—'} />
+            {sys.gpu_av1 && (
+              <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+                <span className="text-xs text-neutral-500">AV1 Encode</span>
+                <span className="text-sm text-green-400 font-medium">Supported</span>
+              </div>
+            )}
+            <InfoRow label="Capture" value={sys.gpu_pipewire ? 'PipeWire DMA-BUF' : 'X11 SHM'} />
+          </div>
+        </>
+      )}
+
       {/* Runtime */}
       <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">Runtime</h3>
       <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
         <InfoRow label="Uptime" value={sys?.uptime} />
         <InfoRow label="Server" value={health?.status === 'ok' ? 'Running' : 'Unreachable'} ok={health?.status === 'ok'} />
         <InfoRow label="Shell" value="React 19 + Tailwind 4 + Vite" />
-        <InfoRow label="Backend" value="Go + Alpine Linux" />
+        <InfoRow label="Backend" value="Go + Debian Linux" />
       </div>
 
       {/* Powered by */}
       <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-neutral-800/30">
         <span className="text-[11px] text-neutral-600">Powered by</span>
-        <span className="text-xs text-neutral-400 font-medium">Alpine Linux</span>
+        <span className="text-xs text-neutral-400 font-medium">Debian Linux</span>
       </div>
     </div>
   )

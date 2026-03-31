@@ -43,10 +43,10 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Alpine Linux
+### Debian Linux
 
-- **Source**: https://alpinelinux.org/
-- **License**: GPL-2.0 (base system packages vary)
+- **Source**: https://www.debian.org/
+- **License**: Various (base system packages are DFSG-free)
 - **Usage**: Base container image and target platform
 
 ### GStreamer
@@ -218,8 +218,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 | LGPL-2.1+ | GStreamer, PulseAudio |
 | PSF | Python 3 |
 | OFL-1.1 | Noto Fonts |
-| GPL-2.0 | Alpine Linux (base system) |
+| DFSG-free | Debian Linux (base system) |
 
 > **Note**: LGPL dependencies (GStreamer, PulseAudio) are dynamically linked system
-> packages installed via Alpine's package manager. They are not statically linked into
+> packages installed via Debian's package manager. They are not statically linked into
 > or distributed as part of Vula OS's own source code.

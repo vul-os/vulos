@@ -34,7 +34,7 @@ export default function ActivityMonitor() {
 
   if (!connected) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-faint)', fontSize: 13 }}>
+      <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
         Connecting to system telemetry...
       </div>
     )
@@ -44,13 +44,23 @@ export default function ActivityMonitor() {
   const memVal = Math.round(stats?.mem_percent || 0)
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <span style={styles.title}>Activity Monitor</span>
-        <span style={{ ...styles.dot, background: connected ? '#22c55e' : '#ef4444' }} />
+    <div className="flex flex-col h-full p-4 gap-3 overflow-hidden bg-neutral-950 text-neutral-100">
+      {/* Header */}
+      <div className="flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <h1 className="text-sm font-semibold text-neutral-100 tracking-tight">Activity Monitor</h1>
+          <span className="text-[10px] text-neutral-500 font-mono">{stats?.hostname || ''}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {stats?.uptime && (
+            <span className="text-[10px] text-neutral-600 font-mono">up {stats.uptime}</span>
+          )}
+          <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+        </div>
       </div>
 
-      <div style={styles.graphGrid}>
+      {/* Graph cards */}
+      <div className="grid grid-cols-2 gap-2.5 flex-1 min-h-0">
         <GraphCard
           label="CPU"
           value={`${cpuVal}%`}
@@ -59,6 +69,8 @@ export default function ActivityMonitor() {
           data={history.map(h => h.cpu)}
           color="#3b82f6"
           colorFill="rgba(59,130,246,0.12)"
+          borderColor="border-blue-500/20"
+          bgGlow="from-blue-500/5 to-transparent"
         />
         <GraphCard
           label="Memory"
@@ -68,51 +80,70 @@ export default function ActivityMonitor() {
           data={history.map(h => h.mem)}
           color="#a855f7"
           colorFill="rgba(168,85,247,0.12)"
+          borderColor="border-purple-500/20"
+          bgGlow="from-purple-500/5 to-transparent"
         />
       </div>
 
-      <div style={styles.statsGrid}>
-        <StatCard label="Temp" value={stats?.temp > 0 ? `${Math.round(stats.temp)}\u00B0` : '\u2014'} />
-        <StatCard label="Battery" value={stats?.battery >= 0 ? `${stats.battery}%${stats.charging ? ' +' : ''}` : '\u2014'} />
-        <StatCard label="Net RX" value={fmtBytes(stats?.net_rx)} />
-        <StatCard label="Net TX" value={fmtBytes(stats?.net_tx)} />
-        <StatCard label="Uptime" value={stats?.uptime || '\u2014'} />
-        <StatCard label="Host" value={stats?.hostname || '\u2014'} />
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 shrink-0">
+        <StatCard icon="&#x1F321;" label="Temp" value={stats?.temp > 0 ? `${Math.round(stats.temp)}\u00B0` : '\u2014'} />
+        <StatCard icon="&#x1F50B;" label="Battery" value={stats?.battery >= 0 ? `${stats.battery}%${stats.charging ? ' +' : ''}` : '\u2014'} />
+        <StatCard icon="&#x25BC;" label="RX" value={fmtBytes(stats?.net_rx)} />
+        <StatCard icon="&#x25B2;" label="TX" value={fmtBytes(stats?.net_tx)} />
+        <StatCard icon="&#x23F1;" label="Uptime" value={stats?.uptime || '\u2014'} />
+        <StatCard icon="&#x1F4BB;" label="Host" value={stats?.hostname || '\u2014'} />
       </div>
 
-      <div style={styles.section}>
-        <div style={styles.sectionLabel}>Processes ({apps?.length || 0})</div>
-        {apps?.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>No apps running</div>}
-        {apps?.map(app => (
-          <div key={app.id} style={styles.processRow}>
-            <div style={styles.processName}>
-              <span style={{ ...styles.processDot, background: app.running ? '#22c55e' : '#ef4444' }} />
-              {app.id}
+      {/* Process list */}
+      <div className="flex flex-col flex-1 min-h-0 shrink">
+        <div className="text-[11px] text-neutral-500 uppercase tracking-wider mb-1.5 shrink-0 font-medium">
+          Processes ({apps?.length || 0})
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-neutral-800/60 bg-neutral-900/50">
+          {apps?.length === 0 && (
+            <div className="text-xs text-neutral-600 p-3">No apps running</div>
+          )}
+          {/* Table header */}
+          {apps?.length > 0 && (
+            <div className="grid grid-cols-[1fr_80px_60px_80px] gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 bg-neutral-900/90 backdrop-blur-sm">
+              <span>Name</span>
+              <span className="text-right">Port</span>
+              <span className="text-center">Status</span>
+              <span className="text-right">Traffic</span>
             </div>
-            <div style={styles.processInfo}>
-              <span>:{app.host_port}</span>
-              {app.traffic && <span>{fmtBytes(app.traffic.rx_bytes)}</span>}
+          )}
+          {apps?.map(app => (
+            <div key={app.id} className="grid grid-cols-[1fr_80px_60px_80px] gap-2 items-center px-3 py-2 text-xs border-b border-neutral-800/30 hover:bg-neutral-800/30 transition-colors">
+              <span className="text-neutral-300 truncate font-medium">{app.id}</span>
+              <span className="text-right text-neutral-500 font-mono text-[11px]">:{app.host_port}</span>
+              <span className="flex justify-center">
+                <span className={`inline-block w-1.5 h-1.5 rounded-full ${app.running ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              </span>
+              <span className="text-right text-neutral-500 text-[11px]">
+                {app.traffic ? fmtBytes(app.traffic.rx_bytes) : '\u2014'}
+              </span>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-function GraphCard({ label, value, sub, subRight, data, color, colorFill }) {
+function GraphCard({ label, value, sub, subRight, data, color, colorFill, borderColor, bgGlow }) {
   return (
-    <div style={styles.card}>
-      <div style={styles.cardHeader}>
+    <div className={`flex flex-col rounded-xl border ${borderColor} bg-gradient-to-b ${bgGlow} p-3 min-h-0 overflow-hidden`}>
+      <div className="flex justify-between items-start mb-2 shrink-0">
         <div>
-          <span style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-          <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.1, marginTop: 2 }}>{value}</div>
+          <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-medium">{label}</span>
+          <div className="text-xl font-semibold text-neutral-100 leading-tight mt-0.5">{value}</div>
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="flex-1 min-h-0">
         <AreaGraph data={data} color={color} fill={colorFill} />
       </div>
-      <div style={styles.cardFooter}>
+      <div className="flex justify-between text-[10px] text-neutral-600 mt-1.5 shrink-0">
         <span>{sub}</span>
         <span>{subRight}</span>
       </div>
@@ -159,11 +190,11 @@ function AreaGraph({ data, color, fill }) {
   const gridLines = [25, 50, 75].map(pct => padTop + graphH - (pct / 100) * graphH)
 
   return (
-    <div ref={ref} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <svg width={w} height={h} style={{ display: 'block' }}>
+    <div ref={ref} className="w-full h-full relative">
+      <svg width={w} height={h} className="block">
         {/* Grid */}
         {gridLines.map((y, i) => (
-          <line key={i} x1={0} y1={y} x2={w} y2={y} stroke="var(--graph-grid)" strokeWidth={1} />
+          <line key={i} x1={0} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
         ))}
         {/* Filled area */}
         {pts.length >= 2 && (
@@ -202,120 +233,14 @@ function smoothPath(pts) {
   return d
 }
 
-function StatCard({ label, value }) {
+function StatCard({ icon, label, value }) {
   return (
-    <div style={styles.stat}>
-      <div style={{ fontSize: 10, color: 'var(--text-ghost)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>{value}</div>
+    <div className="bg-neutral-900/60 border border-neutral-800/40 rounded-lg px-2.5 py-1.5 min-w-0">
+      <div className="text-[10px] text-neutral-600 uppercase tracking-wider flex items-center gap-1">
+        <span className="text-[9px] leading-none">{icon}</span>
+        {label}
+      </div>
+      <div className="text-xs text-neutral-300 mt-0.5 truncate">{value}</div>
     </div>
   )
-}
-
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    padding: 16,
-    gap: 12,
-    overflow: 'hidden',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexShrink: 0,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: 'var(--text-primary)',
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: '50%',
-  },
-  graphGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 10,
-    flex: 1,
-    minHeight: 0,
-  },
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    background: 'var(--bg-surface)',
-    borderRadius: 10,
-    border: '1px solid var(--border-default)',
-    padding: 12,
-    minHeight: 0,
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-    flexShrink: 0,
-  },
-  cardFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: 10,
-    color: 'var(--text-ghost)',
-    marginTop: 6,
-    flexShrink: 0,
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(6, 1fr)',
-    gap: 8,
-    flexShrink: 0,
-  },
-  stat: {
-    background: 'var(--bg-surface)',
-    borderRadius: 8,
-    border: '1px solid var(--border-default)',
-    padding: '8px 10px',
-  },
-  section: {
-    flexShrink: 0,
-    maxHeight: 140,
-    overflowY: 'auto',
-  },
-  sectionLabel: {
-    fontSize: 11,
-    color: 'var(--text-ghost)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    marginBottom: 6,
-  },
-  processRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '5px 0',
-    borderBottom: '1px solid var(--border-subtle)',
-    fontSize: 12,
-  },
-  processName: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    color: 'var(--text-secondary)',
-  },
-  processDot: {
-    width: 5,
-    height: 5,
-    borderRadius: '50%',
-    flexShrink: 0,
-  },
-  processInfo: {
-    display: 'flex',
-    gap: 10,
-    color: 'var(--text-dim)',
-    fontSize: 11,
-  },
 }

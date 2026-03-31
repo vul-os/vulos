@@ -1,6 +1,7 @@
 package appnet
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"vulos/backend/services/packages"
 	"sort"
 	"strings"
 )
@@ -28,8 +30,8 @@ import (
 //	      "author": "PostgreSQL Global Development Group",
 //	      "homepage": "https://postgresql.org",
 //	      "versions": {
-//	        "16": { "install": "apk add postgresql16", ... },
-//	        "15": { "install": "apk add postgresql15", ... }
+//	        "16": { "install": "apt-get install -y postgresql-16", ... },
+//	        "15": { "install": "apt-get install -y postgresql-15", ... }
 //	      }
 //	    }
 //	  }
@@ -42,7 +44,8 @@ type Registry struct {
 type RegistryEntry struct {
 	Name        string                    `json:"name"`
 	Vetted      bool                      `json:"vetted"`       // true = reviewed and approved by Vula OS team
-	Type        string                    `json:"type"`         // "web" (serves HTTP, accessible via gateway) or "service" (background daemon, no web UI)
+	Type        string                    `json:"type"`         // "web" (serves HTTP), "desktop" (GUI app, streamed via XvfbBackend), or "service" (background daemon)
+	Arch        []string                  `json:"arch"`         // supported architectures (e.g. ["amd64","arm64"]), empty = all
 	Description string                    `json:"description"`
 	Category    string                    `json:"category"`
 	Author      string                    `json:"author"`
@@ -56,11 +59,11 @@ type RegistryEntry struct {
 
 // VersionRecipe defines how to install and run a specific version of an app.
 type VersionRecipe struct {
-	Install     string            `json:"install"`      // shell command to install (e.g., "apk add postgresql16")
+	Install     string            `json:"install"`      // shell command to install (e.g., "apt-get install -y postgresql-16")
 	Command     string            `json:"command"`      // how to run it (e.g., "bin/postgres -D data/")
 	Port        int               `json:"port"`         // default port the app listens on
 	PostInstall string            `json:"post_install"` // one-time setup command (e.g., "bin/initdb -D data/")
-	Deps        []string          `json:"deps"`         // additional alpine package dependencies
+	Deps        []string          `json:"deps"`         // additional OS package dependencies
 	Env         map[string]string `json:"env"`          // default environment variables
 	Permissions []string          `json:"permissions"`  // required permissions
 	Checksum    string            `json:"checksum"`     // sha256 checksum of download (if applicable)
@@ -140,26 +143,40 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		os.MkdirAll(filepath.Join(appDir, dir), 0755)
 	}
 
+	// Ensure apt cache is ready before installing
+	if !packages.CacheReady() {
+		log.Printf("[registry] apt cache empty, running apt-get update...")
+		if err := exec.CommandContext(ctx, "apt-get", "update", "-qq").Run(); err != nil {
+			return fmt.Errorf("apt-get update failed: %w (run 'Update Package Index' from Settings first)", err)
+		}
+	}
+
 	// Run install command
 	if recipe.Install != "" {
 		log.Printf("[registry] installing %s@%s: %s", appID, version, recipe.Install)
+		var stderrBuf bytes.Buffer
 		cmd := exec.CommandContext(ctx, "sh", "-c", recipe.Install)
 		cmd.Dir = appDir
 		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = &stderrBuf
 		cmd.Env = append(os.Environ(), fmt.Sprintf("APP_DIR=%s", appDir))
 		if err := cmd.Run(); err != nil {
+			errOutput := lastLines(stderrBuf.String(), 10)
+			if errOutput != "" {
+				return fmt.Errorf("install command failed: %w\n%s", err, errOutput)
+			}
 			return fmt.Errorf("install command failed: %w", err)
 		}
 	}
 
 	// Install additional deps
 	if len(recipe.Deps) > 0 {
-		args := append([]string{"add", "--no-cache"}, recipe.Deps...)
-		exec.CommandContext(ctx, "apk", args...).Run()
+		packages.InstallDeps(ctx, recipe.Deps)
 	}
 
 	// Generate the app.json manifest
+	appType := entry.Type
+	if appType == "" { appType = "web" }
 	manifest := &AppManifest{
 		ID:          appID,
 		Name:        entry.Name,
@@ -169,6 +186,7 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		Version:     version,
 		Command:     recipe.Command,
 		Port:        recipe.Port,
+		Type:        appType,
 		Category:    entry.Category,
 		Keywords:    entry.Keywords,
 		Env:         recipe.Env,
@@ -201,16 +219,22 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	// Run post-install command
 	if recipe.PostInstall != "" {
 		log.Printf("[registry] post-install %s: %s", appID, recipe.PostInstall)
+		var stderrBuf bytes.Buffer
 		cmd := exec.CommandContext(ctx, "sh", "-c", recipe.PostInstall)
 		cmd.Dir = appDir
 		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = &stderrBuf
 		cmd.Env = append(os.Environ(),
 			fmt.Sprintf("APP_DIR=%s", appDir),
 			fmt.Sprintf("DATA_DIR=%s", filepath.Join(appDir, "data")),
 		)
 		if err := cmd.Run(); err != nil {
-			log.Printf("[registry] post-install warning for %s: %v", appID, err)
+			errOutput := lastLines(stderrBuf.String(), 10)
+			if errOutput != "" {
+				log.Printf("[registry] post-install warning for %s: %v\n%s", appID, err, errOutput)
+			} else {
+				log.Printf("[registry] post-install warning for %s: %v", appID, err)
+			}
 		}
 	}
 
@@ -237,7 +261,8 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 type RegistryListEntry struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
-	Type        string   `json:"type"` // "web" or "service"
+	Type        string   `json:"type"` // "web", "desktop", or "service"
+	Arch        []string `json:"arch"` // supported architectures, empty = all
 	Description string   `json:"description"`
 	Category    string   `json:"category"`
 	Author      string   `json:"author"`
@@ -267,6 +292,7 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 			ID:          id,
 			Name:        entry.Name,
 			Type:        appType,
+			Arch:        entry.Arch,
 			Description: entry.Description,
 			Category:    entry.Category,
 			Author:      entry.Author,
@@ -281,6 +307,18 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries
+}
+
+// lastLines returns the last n non-empty lines from s, trimmed.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+		return ""
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func availableVersions(entry *RegistryEntry) []string {

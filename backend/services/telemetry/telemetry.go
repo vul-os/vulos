@@ -12,7 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/websocket"
+	"vulos/backend/internal/wsutil"
+	"vulos/backend/services/gpu"
+
+	"github.com/gorilla/websocket"
 )
 
 // SystemStats is the telemetry payload streamed to clients.
@@ -33,35 +36,42 @@ type SystemStats struct {
 	Timestamp  int64   `json:"timestamp"`
 }
 
-// Handler returns a WebSocket handler that streams system telemetry.
+// Handler returns an HTTP handler that upgrades to WebSocket and streams system telemetry.
 // Connect via: ws://host:port/api/telemetry
-func Handler() http.Handler {
-	return websocket.Handler(func(ws *websocket.Conn) {
-		ws.PayloadType = websocket.TextFrame
+func Handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ws, err := wsutil.Upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("[telemetry] websocket upgrade: %v", err)
+			return
+		}
+		defer ws.Close()
+
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
 		log.Printf("[telemetry] client connected")
 
 		// Send initial stats immediately
-		send(ws, collect())
+		if err := sendStats(ws, collect()); err != nil {
+			return
+		}
 
 		for {
 			select {
 			case <-ticker.C:
-				if err := send(ws, collect()); err != nil {
+				if err := sendStats(ws, collect()); err != nil {
 					log.Printf("[telemetry] client disconnected")
 					return
 				}
 			}
 		}
-	})
+	}
 }
 
-func send(ws *websocket.Conn, stats SystemStats) error {
+func sendStats(ws *websocket.Conn, stats SystemStats) error {
 	data, _ := json.Marshal(stats)
-	_, err := ws.Write(data)
-	return err
+	return ws.WriteMessage(websocket.TextMessage, data)
 }
 
 var prevIdle, prevTotal uint64
@@ -196,12 +206,20 @@ type SysInfo struct {
 	MemUsedMB    int    `json:"mem_used_mb"`
 	MemPercent   float64 `json:"mem_percent"`
 	Uptime       string `json:"uptime"`
-	AlpineVer    string `json:"alpine_version"`
+	OSName       string `json:"os_name"`
+	OSVersion    string `json:"os_version"`
 	DeviceModel  string `json:"device_model"`
 	Battery      int    `json:"battery"`
 	Charging     bool   `json:"charging"`
-	StorageTotalMB int  `json:"storage_total_mb"`
-	StorageUsedMB  int  `json:"storage_used_mb"`
+	StorageTotalMB int    `json:"storage_total_mb"`
+	StorageUsedMB  int    `json:"storage_used_mb"`
+	GPUVendor      string `json:"gpu_vendor"`
+	GPUDevice      string `json:"gpu_device"`
+	GPUTier        string `json:"gpu_tier"`
+	GPUEncoder     string `json:"gpu_encoder"`
+	GPUCodec       string `json:"gpu_codec"`
+	GPUAV1         bool   `json:"gpu_av1"`
+	GPUPipeWire    bool   `json:"gpu_pipewire"`
 }
 
 // SystemInfo returns a one-shot system info snapshot for the About page.
@@ -266,9 +284,21 @@ func SystemInfo() SysInfo {
 		}
 	}
 
-	// Alpine version
-	if data, err := os.ReadFile("/etc/alpine-release"); err == nil {
-		info.AlpineVer = strings.TrimSpace(string(data))
+	// OS version via /etc/os-release
+	if data, err := os.ReadFile("/etc/os-release"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			k, v, ok := strings.Cut(line, "=")
+			if !ok {
+				continue
+			}
+			v = strings.Trim(v, `"'`)
+			switch k {
+			case "PRETTY_NAME":
+				info.OSName = v
+			case "VERSION_ID":
+				info.OSVersion = v
+			}
+		}
 	}
 
 	// Device model (common on ARM/mobile devices)
@@ -288,6 +318,16 @@ func SystemInfo() SysInfo {
 		info.StorageTotalMB = int(stat.Blocks * uint64(stat.Bsize) / (1024 * 1024))
 		info.StorageUsedMB = int((stat.Blocks - stat.Bfree) * uint64(stat.Bsize) / (1024 * 1024))
 	}
+
+	// GPU
+	g := gpu.Detect()
+	info.GPUVendor = string(g.Vendor)
+	info.GPUDevice = g.Device
+	info.GPUTier = g.TierName
+	info.GPUEncoder = g.Encoder
+	info.GPUCodec = g.Codec
+	info.GPUAV1 = g.HasAV1
+	info.GPUPipeWire = g.HasPipeWire
 
 	return info
 }

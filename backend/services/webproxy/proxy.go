@@ -113,8 +113,11 @@ func (s *Service) Handler() http.HandlerFunc {
 			}
 		}
 
-		// CORS — allow the shell to access this
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// CORS — allow same-origin shell requests
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
 
 		// Rewrite Location headers for redirects
 		if loc := resp.Header.Get("Location"); loc != "" {

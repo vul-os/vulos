@@ -13,8 +13,10 @@ function fmtSize(mb) {
   return mb + ' MB'
 }
 
-function PieChart({ segments, size = 200 }) {
-  const cx = size / 2, cy = size / 2, r = size / 2 - 8
+function DonutChart({ segments, size = 160, label, sublabel }) {
+  const cx = size / 2, cy = size / 2
+  const outerR = size / 2 - 4
+  const innerR = outerR * 0.62
   const total = segments.reduce((s, seg) => s + seg.value, 0)
   if (total === 0) return null
 
@@ -24,19 +26,23 @@ function PieChart({ segments, size = 200 }) {
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]
     const sweep = (seg.value / total) * Math.PI * 2
-    if (sweep < 0.005) continue
+    if (sweep < 0.003) continue
 
-    const x1 = cx + r * Math.cos(angle)
-    const y1 = cy + r * Math.sin(angle)
-    const x2 = cx + r * Math.cos(angle + sweep)
-    const y2 = cy + r * Math.sin(angle + sweep)
+    const ox1 = cx + outerR * Math.cos(angle)
+    const oy1 = cy + outerR * Math.sin(angle)
+    const ox2 = cx + outerR * Math.cos(angle + sweep)
+    const oy2 = cy + outerR * Math.sin(angle + sweep)
+    const ix1 = cx + innerR * Math.cos(angle + sweep)
+    const iy1 = cy + innerR * Math.sin(angle + sweep)
+    const ix2 = cx + innerR * Math.cos(angle)
+    const iy2 = cy + innerR * Math.sin(angle)
     const large = sweep > Math.PI ? 1 : 0
 
     paths.push(
       <path key={i}
-        d={`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} Z`}
+        d={`M${ox1},${oy1} A${outerR},${outerR} 0 ${large} 1 ${ox2},${oy2} L${ix1},${iy1} A${innerR},${innerR} 0 ${large} 0 ${ix2},${iy2} Z`}
         fill={seg.color}
-        stroke="#0c0c0c" strokeWidth="1.5"
+        stroke="#0a0a0a" strokeWidth="1"
         className="transition-opacity hover:opacity-80 cursor-pointer"
       >
         <title>{seg.label}: {fmtSize(seg.value)}</title>
@@ -46,17 +52,27 @@ function PieChart({ segments, size = 200 }) {
   }
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
       {paths}
-      {/* Center hole for donut style */}
-      <circle cx={cx} cy={cy} r={r * 0.5} fill="#0c0c0c" />
-      <text x={cx} y={cy - 6} textAnchor="middle" fill="#e5e5e5" fontSize="16" fontWeight="600">
-        {fmtSize(total)}
+      <text x={cx} y={cy - 4} textAnchor="middle" fill="#e5e5e5" fontSize="14" fontWeight="600">
+        {label || fmtSize(total)}
       </text>
-      <text x={cx} y={cy + 12} textAnchor="middle" fill="#666" fontSize="11">
-        total
-      </text>
+      {sublabel && (
+        <text x={cx} y={cy + 12} textAnchor="middle" fill="#525252" fontSize="10">
+          {sublabel}
+        </text>
+      )}
     </svg>
+  )
+}
+
+function UsageBar({ percent, className = '' }) {
+  const color = percent > 90 ? 'bg-red-500' : percent > 70 ? 'bg-amber-500' : 'bg-blue-500'
+  return (
+    <div className={`w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden ${className}`}>
+      <div className={`h-full rounded-full transition-all ${color}`}
+        style={{ width: `${Math.min(percent, 100)}%` }} />
+    </div>
   )
 }
 
@@ -89,14 +105,12 @@ export default function DiskUsage() {
     if (selectedMount) loadBreakdown(selectedMount.mount_point)
   }, [selectedMount])
 
-  // Pie segments for directory breakdown
   const breakdownSegments = (breakdown || []).map((d, i) => ({
     label: d.name,
     value: d.size_mb,
     color: COLORS[i % COLORS.length],
   }))
 
-  // If there's remaining space not accounted for, add "Other"
   if (selectedMount && breakdown) {
     const accounted = breakdown.reduce((s, d) => s + d.size_mb, 0)
     const remaining = selectedMount.used_mb - accounted
@@ -105,141 +119,152 @@ export default function DiskUsage() {
     }
   }
 
-  // Pie segments for mount overview (used vs free)
   const mountSegments = selectedMount ? [
     { label: 'Used', value: selectedMount.used_mb, color: '#3b82f6' },
     { label: 'Free', value: selectedMount.free_mb, color: '#1e293b' },
   ] : []
 
+  const canGoUp = breakdownPath !== '/' && breakdownPath !== selectedMount?.mount_point
+
   return (
-    <div className="h-full flex flex-col bg-neutral-950 text-neutral-200">
-      {/* Header */}
-      <div className="shrink-0 border-b border-neutral-800/50 px-5 pt-4 pb-3">
-        <h1 className="text-base font-semibold">Disk Usage</h1>
-        <p className="text-xs text-neutral-500 mt-0.5">Storage analyzer</p>
-      </div>
+    <div className="h-full flex flex-col bg-neutral-950 text-neutral-200 overflow-hidden">
+      {/* Sidebar + Detail layout */}
+      <div className="flex-1 flex min-h-0">
 
-      <div className="flex-1 overflow-y-auto p-5">
-        {loading && <div className="text-sm text-neutral-500 py-8 text-center">Scanning filesystems...</div>}
-
-        {mounts && (
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Left: mount selector + overview pie */}
-            <div className="lg:w-72 shrink-0 space-y-4">
-              {/* Mount selector */}
-              <div>
-                <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Filesystems</h3>
-                <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50">
-                  {mounts.map(m => (
-                    <button key={m.mount_point}
-                      onClick={() => setSelectedMount(m)}
-                      className={`w-full text-left px-4 py-3 transition-colors ${
-                        selectedMount?.mount_point === m.mount_point
-                          ? 'bg-neutral-800/60' : 'bg-neutral-900/40 hover:bg-neutral-900/60'}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                          <div className="text-sm font-mono truncate">{m.mount_point}</div>
-                          <div className="text-[11px] text-neutral-600 mt-0.5">{m.device} · {m.fs_type}</div>
-                        </div>
-                        <span className={`text-xs shrink-0 ml-2 ${
-                          m.percent > 90 ? 'text-red-400' : m.percent > 70 ? 'text-amber-400' : 'text-neutral-400'
-                        }`}>{Math.round(m.percent)}%</span>
-                      </div>
-                      {/* Usage bar */}
-                      <div className="mt-2 w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${
-                          m.percent > 90 ? 'bg-red-500' : m.percent > 70 ? 'bg-amber-500' : 'bg-blue-500'
-                        }`} style={{ width: `${Math.min(m.percent, 100)}%` }} />
-                      </div>
-                      <div className="text-[10px] text-neutral-600 mt-1">
-                        {fmtSize(m.used_mb)} of {fmtSize(m.total_mb)}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Overview pie */}
-              {selectedMount && (
-                <div className="flex flex-col items-center">
-                  <PieChart segments={mountSegments} size={180} />
-                  <div className="flex gap-4 mt-3 text-[11px]">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
-                      Used {fmtSize(selectedMount.used_mb)}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#1e293b' }} />
-                      Free {fmtSize(selectedMount.free_mb)}
-                    </span>
+        {/* Sidebar: filesystem list */}
+        <div className="w-52 shrink-0 flex flex-col border-r border-neutral-800/50 bg-neutral-950/80">
+          <div className="shrink-0 px-3 pt-3 pb-2">
+            <h2 className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">Volumes</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {loading && (
+              <div className="px-3 py-4 text-xs text-neutral-600">Scanning...</div>
+            )}
+            {mounts?.map(m => {
+              const active = selectedMount?.mount_point === m.mount_point
+              const pctColor = m.percent > 90 ? 'text-red-400' : m.percent > 70 ? 'text-amber-400' : 'text-neutral-500'
+              return (
+                <button key={m.mount_point}
+                  onClick={() => setSelectedMount(m)}
+                  className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
+                    active
+                      ? 'bg-neutral-800/50 border-blue-500'
+                      : 'border-transparent hover:bg-neutral-900/60'
+                  }`}>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-mono truncate">{m.mount_point}</span>
+                    <span className={`text-[10px] shrink-0 ${pctColor}`}>{Math.round(m.percent)}%</span>
                   </div>
-                </div>
-              )}
+                  <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{m.device}</div>
+                  <UsageBar percent={m.percent} className="mt-1.5" />
+                  <div className="text-[10px] text-neutral-600 mt-1">
+                    {fmtSize(m.used_mb)} / {fmtSize(m.total_mb)}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Detail pane */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          {!selectedMount ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-neutral-600">
+              {loading ? 'Loading...' : 'No filesystem selected'}
             </div>
-
-            {/* Right: directory breakdown */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="text-xs uppercase tracking-wider text-neutral-500">Directory Breakdown</h3>
-                  <div className="text-[11px] text-neutral-600 mt-0.5 font-mono flex items-center gap-1">
-                    {breakdownPath !== '/' && breakdownPath !== selectedMount?.mount_point && (
-                      <button onClick={() => {
-                        const parent = breakdownPath.replace(/\/[^/]+\/?$/, '') || '/'
-                        loadBreakdown(parent)
-                      }} className="text-blue-400 hover:text-blue-300 mr-1">&larr;</button>
-                    )}
-                    {breakdownPath}
+          ) : (
+            <>
+              {/* Top section: donut + mount info */}
+              <div className="shrink-0 p-4 pb-3 border-b border-neutral-800/40">
+                <div className="flex items-center gap-5">
+                  <DonutChart
+                    segments={mountSegments}
+                    size={110}
+                    label={`${Math.round(selectedMount.percent)}%`}
+                    sublabel="used"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-sm font-semibold truncate">{selectedMount.mount_point}</h1>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 font-mono truncate">
+                      {selectedMount.device} &middot; {selectedMount.fs_type}
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase text-neutral-600">Used</div>
+                        <div className="text-xs font-medium text-blue-400">{fmtSize(selectedMount.used_mb)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-neutral-600">Free</div>
+                        <div className="text-xs font-medium text-neutral-400">{fmtSize(selectedMount.free_mb)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-neutral-600">Total</div>
+                        <div className="text-xs font-medium text-neutral-300">{fmtSize(selectedMount.total_mb)}</div>
+                      </div>
+                    </div>
+                    <UsageBar percent={selectedMount.percent} className="mt-2.5" />
                   </div>
                 </div>
               </div>
 
-              {breakdownLoading && <div className="text-sm text-neutral-500 py-8 text-center">Scanning...</div>}
-
-              {!breakdownLoading && breakdown && (
-                <div className="flex flex-col lg:flex-row gap-5">
-                  {/* Breakdown pie */}
-                  {breakdownSegments.length > 0 && (
-                    <div className="shrink-0 flex justify-center">
-                      <PieChart segments={breakdownSegments} size={200} />
-                    </div>
+              {/* Directory breakdown header */}
+              <div className="shrink-0 px-4 pt-3 pb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  {canGoUp && (
+                    <button onClick={() => {
+                      const parent = breakdownPath.replace(/\/[^/]+\/?$/, '') || '/'
+                      loadBreakdown(parent)
+                    }} className="text-blue-400 hover:text-blue-300 text-xs shrink-0">
+                      &larr; Up
+                    </button>
                   )}
+                  <span className="text-[11px] text-neutral-500 font-mono truncate">{breakdownPath}</span>
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-neutral-600 shrink-0">Breakdown</span>
+              </div>
 
-                  {/* Breakdown list */}
-                  <div className="flex-1 min-w-0">
-                    <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50">
-                      {(breakdown || []).map((d, i) => (
+              {/* Directory breakdown list (scrollable) */}
+              <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-3">
+                {breakdownLoading && (
+                  <div className="text-xs text-neutral-600 py-6 text-center">Scanning directory...</div>
+                )}
+                {!breakdownLoading && breakdown && breakdown.length === 0 && (
+                  <div className="text-xs text-neutral-600 py-6 text-center">Empty or not accessible</div>
+                )}
+                {!breakdownLoading && breakdown && breakdown.length > 0 && (
+                  <div className="space-y-px rounded-lg overflow-hidden border border-neutral-800/40">
+                    {breakdown.map((d, i) => {
+                      const pct = selectedMount.total_mb > 0
+                        ? (d.size_mb / selectedMount.total_mb * 100)
+                        : 0
+                      return (
                         <button key={d.path}
                           onClick={() => loadBreakdown(d.path)}
-                          className="w-full text-left flex items-center gap-3 px-4 py-2.5 bg-neutral-900/40 hover:bg-neutral-900/60 transition-colors">
-                          <span className="w-3 h-3 rounded-sm shrink-0"
+                          className="w-full text-left flex items-center gap-2.5 px-3 py-2 bg-neutral-900/30 hover:bg-neutral-800/40 transition-colors group">
+                          <span className="w-2.5 h-2.5 rounded-sm shrink-0"
                             style={{ background: COLORS[i % COLORS.length] }} />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm truncate">{d.name}</div>
+                          <span className="text-xs truncate flex-1 min-w-0 group-hover:text-white transition-colors">
+                            {d.name}
+                          </span>
+                          <span className="text-[11px] text-neutral-500 shrink-0 tabular-nums">
+                            {fmtSize(d.size_mb)}
+                          </span>
+                          <div className="w-14 h-1 bg-neutral-800 rounded-full overflow-hidden shrink-0">
+                            <div className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.min(pct, 100)}%`,
+                                background: COLORS[i % COLORS.length],
+                              }} />
                           </div>
-                          <span className="text-xs text-neutral-400 shrink-0">{fmtSize(d.size_mb)}</span>
-                          {selectedMount && d.size_mb > 0 && (
-                            <div className="w-16 h-1 bg-neutral-800 rounded-full overflow-hidden shrink-0">
-                              <div className="h-full rounded-full"
-                                style={{
-                                  width: `${Math.min(d.size_mb / selectedMount.total_mb * 100, 100)}%`,
-                                  background: COLORS[i % COLORS.length],
-                                }} />
-                            </div>
-                          )}
                         </button>
-                      ))}
-                    </div>
-
-                    {breakdown?.length === 0 && (
-                      <p className="text-sm text-neutral-500 py-4 text-center">Empty or not accessible</p>
-                    )}
+                      )
+                    })}
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

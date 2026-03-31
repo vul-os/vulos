@@ -7,11 +7,12 @@ import { AppIconTile } from '../core/AppIcons'
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
 const FileManager = lazy(() => import('../builtin/files/FileManager'))
-const RemoteBrowser = lazy(() => import('../builtin/webbrowser/RemoteBrowser'))
+// RemoteBrowser removed — browser now launches via generic stream pool
 const AppHub = lazy(() => import('../builtin/apphub/AppHub'))
 const Drivers = lazy(() => import('../builtin/drivers/Drivers'))
 const Packages = lazy(() => import('../builtin/packages/Packages'))
 const DiskUsage = lazy(() => import('../builtin/disks/DiskUsage'))
+const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
 const categoryLabels = {
   internet: 'Internet',
@@ -26,8 +27,18 @@ export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
   const [search, setSearch] = useState('')
   const [chatInput, setChatInput] = useState('')
+  const [desktopEntries, setDesktopEntries] = useState([])
   const searchRef = useRef(null)
   const chatRef = useRef(null)
+
+  // Load desktop entries (apt-installed GUI apps)
+  useEffect(() => {
+    if (!launchpadOpen) return
+    fetch('/api/desktop/entries')
+      .then(r => r.json())
+      .then(entries => setDesktopEntries(entries || []))
+      .catch(() => {})
+  }, [launchpadOpen])
 
   // ESC to close + focus search on open
   useEffect(() => {
@@ -51,8 +62,32 @@ export default function Launchpad() {
 
   const close = () => { setLaunchpad(false); setSearch(''); setChatInput('') }
 
-  const apps = search.trim() ? searchApps(search) : getApps()
-  const grouped = search.trim() ? null : getAppsByCategory()
+  // Merge builtin/registry apps with desktop entries (apt-installed GUI apps)
+  const baseApps = search.trim() ? searchApps(search) : getApps()
+  const baseIds = new Set(baseApps.map(a => a.id))
+
+  // IDs of desktop entries that duplicate built-in apps (e.g. Chromium browser)
+  const hiddenDesktopIds = new Set(['chromium-browser', 'chromium', 'org.chromium.Chromium'])
+
+  // Convert desktop entries to app format, filter out duplicates and hidden entries
+  const desktopApps = desktopEntries
+    .filter(e => !e.no_display && e.exec && !baseIds.has(e.id) && !hiddenDesktopIds.has(e.id))
+    .map(e => ({
+      id: e.id,
+      name: e.name,
+      icon: e.icon || e.id,
+      category: mapDesktopCategory(e.categories),
+      _desktop: true, // Flag for stream-based launch
+      _exec: e.exec,
+    }))
+    .filter(a => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)
+    })
+
+  const apps = [...baseApps, ...desktopApps]
+  const grouped = search.trim() ? null : groupByCategory(apps)
 
   const launch = async (app) => {
     const loading = createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
@@ -61,14 +96,71 @@ export default function Launchpad() {
       terminal: () => createElement(Suspense, { fallback: loading }, createElement(Terminal)),
       activity: () => createElement(Suspense, { fallback: loading }, createElement(ActivityMonitor)),
       files: () => createElement(Suspense, { fallback: loading }, createElement(FileManager)),
-      browser: () => createElement(Suspense, { fallback: loading }, createElement(RemoteBrowser)),
       apphub: () => createElement(Suspense, { fallback: loading }, createElement(AppHub)),
       drivers: () => createElement(Suspense, { fallback: loading }, createElement(Drivers)),
       packages: () => createElement(Suspense, { fallback: loading }, createElement(Packages)),
       disks: () => createElement(Suspense, { fallback: loading }, createElement(DiskUsage)),
     }
+    const singletons = new Set(['persona', 'apphub'])
     if (builtins[app.id]) {
-      openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtins[app.id]() })
+      openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtins[app.id](), singleton: singletons.has(app.id) })
+      close()
+      return
+    }
+
+    // Desktop/stream apps — launch via stream system
+    // Includes: registry desktop apps, .desktop entries, and the browser
+    const isStreamApp = app._desktop || app.type === 'desktop' || app.id === 'browser'
+    if (isStreamApp) {
+      let cmd, args
+      if (app.id === 'browser') {
+        cmd = 'chromium'
+        const profile = `/tmp/chromium-${Date.now()}`
+        args = ['--no-sandbox', '--disable-gpu', '--disable-software-rasterizer',
+          '--disable-dev-shm-usage', '--no-first-run', '--disable-background-networking',
+          '--disable-sync', '--disable-translate', '--disable-dbus',
+          '--disable-infobars', '--disable-default-apps',
+          `--user-data-dir=${profile}`,
+          '--start-maximized', 'https://google.com']
+      } else {
+        cmd = app._exec ? app._exec.split(' ')[0] : app.command?.split(' ')[0] || app.id
+        args = app._exec ? app._exec.split(' ').slice(1) : app.command?.split(' ').slice(1) || []
+      }
+      // Browser: each window gets its own Chromium instance
+      // Desktop apps: fixed session ID (most enforce single-instance via lock files)
+      const sessionId = app.id === 'browser' ? `browser-${Date.now()}` : app.id
+      const streamW = window.innerWidth
+      const streamH = window.innerHeight - 32 - 64 - 36
+      // Fire stream launch in background — don't wait
+      fetch('/api/stream/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: sessionId,
+          name: app.name,
+          command: cmd,
+          args,
+          width: streamW,
+          height: streamH,
+          fps: 30,
+        }),
+      }).catch(() => {})
+      // Always open the viewer — it will connect when the stream is ready
+      const loading = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
+        createElement('span', { className: 'flex items-center gap-2' },
+          createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
+          'Starting...'
+        )
+      )
+      openWindow({
+        appId: app.id,
+        title: app.name,
+        icon: app.icon,
+        singleton: app.id !== 'browser', // desktop apps are single-instance, browser allows multiple
+        component: createElement(Suspense, { fallback: loading },
+          createElement(StreamViewer, { sessionId })
+        ),
+      })
       close()
       return
     }
@@ -200,6 +292,31 @@ export default function Launchpad() {
       </div>
     </div>
   )
+}
+
+// Map freedesktop.org categories to our launchpad categories
+function mapDesktopCategory(cats) {
+  if (!cats || cats.length === 0) return 'utilities'
+  const c = cats.map(s => s.toLowerCase())
+  if (c.some(s => ['game', 'amusement', 'blocksgame', 'boardgame', 'cardgame'].includes(s))) return 'media'
+  if (c.some(s => ['development', 'ide', 'debugger', 'building', 'database'].includes(s))) return 'developer'
+  if (c.some(s => ['graphics', 'audio', 'video', 'audiovisual', 'music', 'player', 'recorder'].includes(s))) return 'media'
+  if (c.some(s => ['network', 'webbrowser', 'email', 'chat', 'instantmessaging', 'remoteaccess'].includes(s))) return 'internet'
+  if (c.some(s => ['office', 'wordprocessor', 'spreadsheet', 'presentation', 'calendar', 'contactmanagement'].includes(s))) return 'productivity'
+  if (c.some(s => ['system', 'monitor', 'settings', 'terminalemulator', 'filesystem'].includes(s))) return 'system'
+  if (c.some(s => ['utility', 'texteditor', 'archiving', 'calculator', 'clock'].includes(s))) return 'utilities'
+  return 'utilities'
+}
+
+// Group apps by category (replacement for getAppsByCategory that works with merged list)
+function groupByCategory(apps) {
+  const groups = {}
+  for (const app of apps) {
+    const cat = app.category || 'utilities'
+    if (!groups[cat]) groups[cat] = []
+    groups[cat].push(app)
+  }
+  return groups
 }
 
 function AppTile({ app, onLaunch }) {

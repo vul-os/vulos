@@ -3,8 +3,7 @@ import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 
 export default function LoginScreen() {
-  const [authStatus, setAuthStatus] = useState(null)
-  const [mode, setMode] = useState('login') // 'login' or 'register'
+  const [hasUsers, setHasUsers] = useState(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -12,23 +11,25 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(true)
   const [showHelp, setShowHelp] = useState(false)
 
+  // Check if this is first-time setup (no users yet)
   useEffect(() => {
     fetch('/api/auth/status')
       .then(r => r.json())
       .then(data => {
-        setAuthStatus(data)
-        if (!data.has_users) setMode('register')
+        setHasUsers(data.has_users)
         setLoading(false)
       })
       .catch(() => setLoading(false))
   }, [])
 
+  const isSetup = hasUsers === false
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
-    const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
-    const body = mode === 'register'
+    const endpoint = isSetup ? '/api/auth/register' : '/api/auth/login'
+    const body = isSetup
       ? { username, password, display_name: displayName || username }
       : { username, password }
 
@@ -74,10 +75,10 @@ export default function LoginScreen() {
       {/* Auth form */}
       <form onSubmit={handleSubmit} className="relative w-full max-w-sm space-y-4">
         <h2 className="text-lg text-neutral-300 text-center mb-2">
-          {mode === 'register' ? 'Create your account' : 'Sign in'}
+          {isSetup ? 'Create your account' : 'Sign in'}
         </h2>
 
-        {mode === 'register' && (
+        {isSetup && (
           <div>
             <label className="block text-xs text-neutral-500 mb-1">Display Name</label>
             <input
@@ -120,20 +121,8 @@ export default function LoginScreen() {
         )}
 
         <button type="submit" className="btn-primary w-full py-3">
-          {mode === 'register' ? 'Create Account' : 'Sign In'}
+          {isSetup ? 'Create Account' : 'Sign In'}
         </button>
-
-        {authStatus?.has_users && mode === 'register' && (
-          <button type="button" onClick={() => { setMode('login'); setError('') }} className="w-full text-sm text-neutral-600 hover:text-neutral-400 text-center">
-            Already have an account? Sign in
-          </button>
-        )}
-
-        {mode === 'login' && (
-          <button type="button" onClick={() => { setMode('register'); setError('') }} className="w-full text-sm text-neutral-600 hover:text-neutral-400 text-center">
-            Create new account
-          </button>
-        )}
       </form>
 
       {/* Top-right controls */}
@@ -163,9 +152,10 @@ export default function LoginScreen() {
           </div>
           <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
             <HelpSection title="Getting Started" items={[
-              'Create an account to get started with Vula OS.',
+              isSetup
+                ? 'Create an account to get started with Vula OS.'
+                : 'Sign in with your credentials. Ask your admin for an account.',
               'Your username and password are also used for the terminal (sudo).',
-              'You can create additional accounts in Settings later.',
             ]} />
             <HelpSection title="Fullscreen Mode" items={[
               'Click the fullscreen button below or press F11 for the best experience.',

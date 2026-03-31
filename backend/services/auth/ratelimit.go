@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -140,21 +141,23 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 }
 
 func extractIP(r *http.Request) string {
-	// Check X-Forwarded-For for proxied requests
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first (client) IP
-		if idx := len(xff); idx > 0 {
+	// Only trust proxy headers from loopback (reverse proxy on same host)
+	remoteHost, _, _ := net.SplitHostPort(r.RemoteAddr)
+	fromTrustedProxy := remoteHost == "127.0.0.1" || remoteHost == "::1"
+
+	if fromTrustedProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			for i, c := range xff {
 				if c == ',' {
-					return xff[:i]
+					return strings.TrimSpace(xff[:i])
 				}
 				_ = i
 			}
-			return xff
+			return strings.TrimSpace(xff)
 		}
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return xri
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

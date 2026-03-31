@@ -94,7 +94,7 @@ func (tc TURNConfig) StartCoturn(ctx context.Context, dataDir string) (*exec.Cmd
 	}
 
 	if _, err := exec.LookPath("turnserver"); err != nil {
-		return nil, fmt.Errorf("turnserver not installed (apk add coturn)")
+		return nil, fmt.Errorf("turnserver not installed (install coturn with your package manager)")
 	}
 
 	cfgPath, err := tc.WriteCoturnConfig(dataDir)

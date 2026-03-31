@@ -2,9 +2,10 @@ import { useShell } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
 import Portal from '../core/Portal'
 import Window from '../shell/Window'
-import Dock from '../shell/Dock'
 import Launchpad from '../shell/Launchpad'
+import MissionControl, { useMissionControlLayout } from '../shell/MissionControl'
 import Toasts from '../shell/Toasts'
+import DesktopContextMenu from '../shell/DesktopContextMenu'
 import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
 import { useTheme } from '../core/ThemeProvider'
 
@@ -29,7 +30,8 @@ function DesktopIndicator() {
 }
 
 export default function DesktopCanvas() {
-  const { windows, allWindows, chatOpen } = useShell()
+  const { windows, allWindows, chatOpen, toggleMissionControl, toggleLaunchpad, toggleChat, missionControlOpen, setMissionControl, focusWindow, minimizeWindow } = useShell()
+  const mcLayout = useMissionControlLayout(windows.filter(w => !w.minimized), missionControlOpen)
   const { wallpaper } = useWallpaper()
   const { isDark } = useTheme()
 
@@ -39,6 +41,7 @@ export default function DesktopCanvas() {
     <div className="fixed inset-0 bg-neutral-950 overflow-hidden">
       {/* Desktop wallpaper — always visible behind windows */}
       <div
+        data-desktop-bg
         className="absolute inset-0 overflow-hidden flex items-center justify-center transition-colors duration-500"
         style={{ background: isDark ? '#0c0c0c' : '#f0f0f0' }}
       >
@@ -60,32 +63,111 @@ export default function DesktopCanvas() {
         <div className="flex items-center">
           <LifePulse />
           <DesktopIndicator />
+          {/* Launchpad button — rocket icon */}
+          <button
+            onClick={toggleLaunchpad}
+            title="Applications"
+            className="ml-1 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <path d="M8 1.5c0 0-3 3-3 7.5h6c0-4.5-3-7.5-3-7.5z" fill="currentColor" opacity="0.5" stroke="none" />
+              <path d="M8 1.5c0 0-3 3-3 7.5h6c0-4.5-3-7.5-3-7.5z" />
+              <path d="M5 9l-1.5 3L5 11" />
+              <path d="M11 9l1.5 3L11 11" />
+              <path d="M6.5 12.5h3" strokeLinecap="round" />
+              <circle cx="8" cy="6.5" r="1" fill="currentColor" stroke="none" opacity="0.7" />
+            </svg>
+          </button>
+          {/* Mission Control button — two staggered windows */}
+          <button
+            onClick={toggleMissionControl}
+            title="Mission Control (F3)"
+            className="ml-0.5 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.2">
+              <rect x="1" y="4" width="8" height="6" rx="1" fill="currentColor" opacity="0.25" />
+              <rect x="1" y="4" width="8" height="6" rx="1" />
+              <line x1="1" y1="6" x2="9" y2="6" />
+              <rect x="7" y="1.5" width="8" height="6" rx="1" fill="currentColor" opacity="0.15" />
+              <rect x="7" y="1.5" width="8" height="6" rx="1" />
+              <line x1="7" y1="3.5" x2="15" y2="3.5" />
+            </svg>
+          </button>
         </div>
-        <LifePulse compact />
+        <div className="flex items-center">
+          {/* Chat toggle */}
+          <button
+            onClick={toggleChat}
+            title="Chat (Ctrl+K)"
+            className={`mr-1 w-6 h-6 flex items-center justify-center rounded transition-colors
+              ${chatOpen ? 'bg-blue-600/40 text-blue-400' : 'hover:bg-neutral-700/50 text-neutral-400'}`}
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5">
+              <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" fill="currentColor" opacity="0.7" />
+            </svg>
+          </button>
+          <LifePulse compact />
+        </div>
       </div>
 
       {/* Windows area — render ALL windows persistently, hide inactive desktops via CSS */}
-      <div className="absolute inset-0 pt-8 pb-16">
-        {allWindows.map(win => (
-          <Window key={win.id} win={{ ...win, minimized: win.minimized || !win._visible }} />
-        ))}
+      <div className="absolute inset-0 pt-8">
+        {allWindows.map(win => {
+          const mc = missionControlOpen && win._visible && !win.minimized ? mcLayout[win.id] : null
+          return (
+            <div
+              key={win.id}
+              style={mc ? {
+                position: 'absolute',
+                left: 0, top: 0,
+                transform: `translate(${mc.x}px, ${mc.y}px) scale(${mc.scale})`,
+                transformOrigin: 'top left',
+                zIndex: 51,
+                transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                cursor: 'pointer',
+              } : undefined}
+              onClick={mc ? (e) => {
+                e.stopPropagation()
+                focusWindow(win.id)
+                setMissionControl(false)
+              } : undefined}
+            >
+              {mc && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); minimizeWindow(win.id) }}
+                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-neutral-700/90 text-neutral-300 hover:bg-red-500 hover:text-white text-xs flex items-center justify-center z-[53] transition-colors"
+                  style={{ transform: `scale(${1/mc.scale})`, transformOrigin: 'center' }}
+                >
+                  {'\u00D7'}
+                </button>
+              )}
+              <Window
+                win={{ ...win, minimized: win.minimized || !win._visible }}
+                pointerBlock={!!mc}
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* Chat panel — right side */}
       {chatOpen && (
-        <div className="absolute top-8 right-0 bottom-16 w-[380px] z-30">
+        <div className="absolute top-8 right-0 bottom-0 w-[380px] z-30">
           <Portal />
         </div>
       )}
 
-      {/* Dock */}
-      <Dock />
-
       {/* Launchpad overlay */}
       <Launchpad />
 
+      {/* Mission Control overlay */}
+      <MissionControl />
+
       {/* Toast notifications */}
       <Toasts />
+
+      {/* Native window context menu (only renders on native mode) */}
+      <DesktopContextMenu />
     </div>
   )
 }

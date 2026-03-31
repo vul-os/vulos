@@ -1,14 +1,15 @@
-// Package packages manages Alpine Linux packages via apk.
+// Package packages manages Debian packages via apt-get/dpkg.
 package packages
 
 import (
 	"bufio"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 )
 
-// Package represents an Alpine package.
+// Package represents a Debian package.
 type Package struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
@@ -35,39 +36,28 @@ type Repo struct {
 func GetStatus(ctx context.Context) Status {
 	s := Status{}
 
-	// Count installed packages
-	out, err := exec.CommandContext(ctx, "apk", "info").Output()
+	// Count installed
+	out, err := exec.CommandContext(ctx, "dpkg-query", "-W", "-f", "${Package}\n").Output()
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		s.InstalledCount = len(lines)
+		s.InstalledCount = len(strings.Split(strings.TrimSpace(string(out)), "\n"))
 	}
 
 	// Count available
-	out, err = exec.CommandContext(ctx, "apk", "list", "--available").Output()
+	out, err = exec.CommandContext(ctx, "apt-cache", "pkgnames").Output()
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		s.AvailableCount = len(lines)
+		s.AvailableCount = len(strings.Split(strings.TrimSpace(string(out)), "\n"))
 	}
 
-	// Repos from /etc/apk/repositories
-	out, _ = exec.CommandContext(ctx, "cat", "/etc/apk/repositories").Output()
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		enabled := !strings.HasPrefix(line, "#")
-		url := strings.TrimPrefix(line, "#")
-		s.Repos = append(s.Repos, Repo{URL: strings.TrimSpace(url), Enabled: enabled})
-	}
-
+	// Repos
+	s.Repos = readRepos()
 	return s
 }
 
 // ListInstalled returns all installed packages.
 func ListInstalled(ctx context.Context) []Package {
 	var pkgs []Package
-	out, err := exec.CommandContext(ctx, "apk", "info", "-v").Output()
+	// Use binary:Summary for single-line description (avoids multiline Description breaking parsing)
+	out, err := exec.CommandContext(ctx, "dpkg-query", "-W", "-f", "${Package}\t${Version}\t${binary:Summary}\n").Output()
 	if err != nil {
 		return nil
 	}
@@ -75,23 +65,22 @@ func ListInstalled(ctx context.Context) []Package {
 		if line == "" {
 			continue
 		}
-		// Format: "name-version - description" or just "name-version"
-		name, version := splitNameVersion(line)
-		pkgs = append(pkgs, Package{
-			Name:      name,
-			Version:   version,
-			Installed: true,
-		})
-	}
-	// Enrich with descriptions
-	descOut, err := exec.CommandContext(ctx, "apk", "info", "-d").Output()
-	if err == nil {
-		descMap := parseDescriptions(string(descOut))
-		for i := range pkgs {
-			if desc, ok := descMap[pkgs[i].Name]; ok {
-				pkgs[i].Description = desc
-			}
+		fields := strings.SplitN(line, "\t", 3)
+		p := Package{Installed: true}
+		if len(fields) >= 1 {
+			p.Name = fields[0]
 		}
+		if len(fields) >= 2 {
+			p.Version = fields[1]
+		}
+		if len(fields) >= 3 {
+			p.Description = fields[2]
+		}
+		// Skip continuation lines from broken Description output
+		if p.Name == "" || strings.HasPrefix(p.Name, " ") {
+			continue
+		}
+		pkgs = append(pkgs, p)
 	}
 	return pkgs
 }
@@ -99,12 +88,11 @@ func ListInstalled(ctx context.Context) []Package {
 // Search finds packages matching a query.
 func Search(ctx context.Context, query string) []Package {
 	var pkgs []Package
-	out, err := exec.CommandContext(ctx, "apk", "search", "-v", "-d", query).Output()
+	out, err := exec.CommandContext(ctx, "apt-cache", "search", query).Output()
 	if err != nil {
 		return nil
 	}
 
-	// Get installed set for marking
 	installed := installedSet(ctx)
 
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
@@ -113,16 +101,11 @@ func Search(ctx context.Context, query string) []Package {
 		if line == "" {
 			continue
 		}
-		// "name-version - description"
-		name, version := splitNameVersion(line)
-		desc := ""
-		if idx := strings.Index(line, " - "); idx >= 0 {
-			desc = line[idx+3:]
-		}
+		name, desc, _ := strings.Cut(line, " - ")
+		name = strings.TrimSpace(name)
 		pkgs = append(pkgs, Package{
 			Name:        name,
-			Version:     version,
-			Description: desc,
+			Description: strings.TrimSpace(desc),
 			Installed:   installed[name],
 		})
 	}
@@ -131,36 +114,52 @@ func Search(ctx context.Context, query string) []Package {
 
 // Install installs a package.
 func Install(ctx context.Context, name string) error {
-	return exec.CommandContext(ctx, "apk", "add", "--no-cache", name).Run()
+	return exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", name).Run()
 }
 
 // Remove removes a package.
 func Remove(ctx context.Context, name string) error {
-	return exec.CommandContext(ctx, "apk", "del", name).Run()
+	return exec.CommandContext(ctx, "apt-get", "remove", "-y", name).Run()
+}
+
+// CacheReady returns true if the apt package cache exists (apt-get update has been run).
+func CacheReady() bool {
+	entries, err := os.ReadDir("/var/lib/apt/lists")
+	if err != nil {
+		return false
+	}
+	// Need more than just lock and partial — real package lists are present
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.Contains(e.Name(), "Packages") {
+			count++
+		}
+	}
+	return count > 0
 }
 
 // Update refreshes the package index.
 func Update(ctx context.Context) error {
-	return exec.CommandContext(ctx, "apk", "update").Run()
+	return exec.CommandContext(ctx, "apt-get", "update", "-qq").Run()
 }
 
 // Upgrade upgrades all packages.
 func Upgrade(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "apk", "upgrade", "--no-cache").CombinedOutput()
+	out, err := exec.CommandContext(ctx, "apt-get", "upgrade", "-y").CombinedOutput()
 	return string(out), err
 }
 
 // GetInfo returns detailed info about a package.
 func GetInfo(ctx context.Context, name string) map[string]string {
 	info := make(map[string]string)
-	out, err := exec.CommandContext(ctx, "apk", "info", "-a", name).Output()
+	out, err := exec.CommandContext(ctx, "apt-cache", "show", name).Output()
 	if err != nil {
 		return info
 	}
 	for _, line := range strings.Split(string(out), "\n") {
-		if idx := strings.Index(line, ":"); idx > 0 {
+		if idx := strings.Index(line, ": "); idx > 0 {
 			key := strings.TrimSpace(line[:idx])
-			val := strings.TrimSpace(line[idx+1:])
+			val := strings.TrimSpace(line[idx+2:])
 			if key != "" && val != "" {
 				info[key] = val
 			}
@@ -170,24 +169,18 @@ func GetInfo(ctx context.Context, name string) map[string]string {
 	return info
 }
 
-func splitNameVersion(line string) (string, string) {
-	// Remove description if present
-	if idx := strings.Index(line, " - "); idx >= 0 {
-		line = line[:idx]
+// InstallDeps installs multiple packages at once.
+func InstallDeps(ctx context.Context, deps []string) error {
+	if len(deps) == 0 {
+		return nil
 	}
-	line = strings.TrimSpace(line)
-	// Split on last dash before a digit: "bash-5.2.21-r0" -> "bash", "5.2.21-r0"
-	for i := len(line) - 1; i >= 0; i-- {
-		if line[i] == '-' && i+1 < len(line) && line[i+1] >= '0' && line[i+1] <= '9' {
-			return line[:i], line[i+1:]
-		}
-	}
-	return line, ""
+	args := append([]string{"install", "-y", "--no-install-recommends"}, deps...)
+	return exec.CommandContext(ctx, "apt-get", args...).Run()
 }
 
 func installedSet(ctx context.Context) map[string]bool {
 	m := make(map[string]bool)
-	out, err := exec.CommandContext(ctx, "apk", "info").Output()
+	out, err := exec.CommandContext(ctx, "dpkg-query", "-W", "-f", "${Package}\n").Output()
 	if err != nil {
 		return m
 	}
@@ -197,21 +190,32 @@ func installedSet(ctx context.Context) map[string]bool {
 	return m
 }
 
-func parseDescriptions(raw string) map[string]string {
-	m := make(map[string]string)
-	lines := strings.Split(raw, "\n")
-	var currentPkg string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if strings.HasSuffix(trimmed, " description:") {
-			currentPkg = strings.TrimSuffix(trimmed, " description:")
-		} else if currentPkg != "" {
-			m[currentPkg] = trimmed
-			currentPkg = ""
+func readRepos() []Repo {
+	var repos []Repo
+	files := []string{"/etc/apt/sources.list"}
+	entries, _ := os.ReadDir("/etc/apt/sources.list.d")
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".list") || strings.HasSuffix(e.Name(), ".sources") {
+			files = append(files, "/etc/apt/sources.list.d/"+e.Name())
 		}
 	}
-	return m
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			enabled := !strings.HasPrefix(line, "#")
+			url := strings.TrimPrefix(line, "#")
+			url = strings.TrimSpace(url)
+			if strings.HasPrefix(url, "deb ") || strings.HasPrefix(url, "deb-src ") {
+				repos = append(repos, Repo{URL: url, Enabled: enabled})
+			}
+		}
+	}
+	return repos
 }
