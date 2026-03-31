@@ -2,9 +2,10 @@
 # Vula OS — Development Script
 #
 # Usage:
-#   ./dev.sh              Local dev (Go backend + Vite HMR, no Docker)
-#   ./dev.sh deploy       Full Docker build + deploy
-#   ./dev.sh deploy quick Quick rebuild (backend + frontend only, restart container)
+#   ./dev.sh                Local dev (Go backend + Vite HMR, no Docker)
+#   ./dev.sh deploy         Full Docker build + deploy
+#   ./dev.sh deploy quick   Quick rebuild (copy backend + frontend into running container)
+#   ./dev.sh deploy layer   Layered rebuild (Docker build, reuses cached apt layer — fast)
 #
 # Local dev:  http://localhost:5173
 # Docker:     http://localhost:8080
@@ -14,6 +15,7 @@ set -e
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
+DIM='\033[2m'
 NC='\033[0m'
 
 NAME="vulos"
@@ -21,16 +23,7 @@ PORT="${PORT:-8080}"
 SHM="1g"
 VOLUME="vulos-data"
 
-# ── Deploy: full Docker build ──────────────────────────────
-deploy_full() {
-  echo "${BLUE}Full Docker build + deploy${NC}"
-
-  echo "Stopping existing container..."
-  docker rm -f "$NAME" 2>/dev/null || true
-
-  echo "Building image..."
-  docker build -t "$NAME" .
-
+start_container() {
   LANDING="${LANDING_PORT:-3000}"
 
   echo "Starting container..."
@@ -57,9 +50,43 @@ deploy_full() {
   fi
 }
 
+# ── Deploy: full Docker build ──────────────────────────────
+deploy_full() {
+  echo "${BLUE}Full Docker build + deploy${NC}"
+
+  echo "Stopping existing container..."
+  docker rm -f "$NAME" 2>/dev/null || true
+
+  echo "Building image (all layers)..."
+  docker build -t "$NAME" .
+
+  start_container
+}
+
+# ── Deploy: layered rebuild (reuses apt cache) ────────────
+deploy_layer() {
+  echo "${BLUE}Layered rebuild — reuses cached system layers${NC}"
+
+  echo "Stopping existing container..."
+  docker rm -f "$NAME" 2>/dev/null || true
+
+  echo "Building image (cached apt, rebuilds Go + frontend)..."
+  START=$(date +%s)
+  docker build -t "$NAME" .
+  END=$(date +%s)
+  echo "${DIM}Build took $((END - START))s${NC}"
+
+  start_container
+}
+
 # ── Deploy: quick rebuild ─────────────────────────────────
 deploy_quick() {
   echo "${BLUE}Quick rebuild — backend + frontend only${NC}"
+
+  if ! docker ps --filter "name=$NAME" --format '{{.Status}}' | grep -q "Up"; then
+    echo "${RED}Container not running. Use './dev.sh deploy' first.${NC}"
+    exit 1
+  fi
 
   echo "Building Go backend..."
   cd backend
@@ -72,6 +99,7 @@ deploy_quick() {
   echo "Copying into container..."
   docker cp vulos-server "$NAME":/usr/local/bin/vulos-server
   docker cp dist/. "$NAME":/opt/vulos/webroot/
+  docker cp registry.json "$NAME":/opt/vulos/registry.json
   [ -d landing ] && docker exec "$NAME" mkdir -p /opt/vulos/landing && docker cp landing/. "$NAME":/opt/vulos/landing/
 
   echo "Restarting container..."
@@ -137,6 +165,7 @@ case "$1" in
   deploy)
     case "$2" in
       quick) deploy_quick ;;
+      layer) deploy_layer ;;
       *)     deploy_full ;;
     esac
     ;;

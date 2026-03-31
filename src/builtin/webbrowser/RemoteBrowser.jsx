@@ -5,16 +5,16 @@ export default function RemoteBrowser() {
   const wsRef = useRef(null)
   const pcRef = useRef(null)
   const dcRef = useRef(null)
+  const gpDcRef = useRef(null) // gamepad data channel
+  const gpLoopRef = useRef(null)
   const containerRef = useRef(null)
   const connectedRef = useRef(false)
   const lastMouseRef = useRef(0)
   const lastScrollRef = useRef(0)
   const [status, setStatus] = useState('connecting')
   const [error, setError] = useState(null)
+  const isEmbedded = navigator.userAgent.includes('WPE') || navigator.userAgent.includes('Cog')
 
-  if (navigator.userAgent.includes('WPE') || navigator.userAgent.includes('Cog')) {
-    return <LocalBrowser />
-  }
 
   const sendInput = useCallback((evt) => {
     const dc = dcRef.current
@@ -62,6 +62,11 @@ export default function RemoteBrowser() {
 
       const dc = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 })
       dcRef.current = dc
+
+      // Gamepad channel — separate so it doesn't block mouse/keyboard
+      const gpDc = pc.createDataChannel('gamepad', { ordered: false, maxRetransmits: 0 })
+      gpDcRef.current = gpDc
+
       pc.addTransceiver('video', { direction: 'recvonly' })
 
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -69,7 +74,9 @@ export default function RemoteBrowser() {
       wsRef.current = ws
 
       ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data)
+        if (!e.data || typeof e.data !== 'string') return
+        let msg
+        try { msg = JSON.parse(e.data) } catch { return }
         if (msg.type === 'answer') pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }))
         else if (msg.type === 'candidate' && msg.candidate) pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
       }
@@ -92,7 +99,7 @@ export default function RemoteBrowser() {
 
   useEffect(() => {
     connect()
-    return () => { pcRef.current?.close(); wsRef.current?.close() }
+    return () => { pcRef.current?.close(); wsRef.current?.close(); if (gpLoopRef.current) cancelAnimationFrame(gpLoopRef.current) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const focusContainer = useCallback(() => containerRef.current?.focus(), [])
@@ -139,19 +146,106 @@ export default function RemoteBrowser() {
 
   const onMouseUp = useCallback((e) => sendInput({ type: 'mouseup', button: e.button }), [sendInput])
 
+  // Scroll coalescing — accumulate delta over 16ms frames then send one event
+  const scrollAccRef = useRef(0)
+  const scrollRafRef = useRef(null)
+
   const onWheel = useCallback((e) => {
     e.preventDefault()
-    const now = performance.now()
-    if (now - lastScrollRef.current < 50) return
-    lastScrollRef.current = now
-    // Normalize deltaY across browsers/trackpads — clamp to reasonable range
+    // Normalize deltaY across browsers/trackpads
     let dy = e.deltaY
     if (e.deltaMode === 1) dy *= 40 // line mode
     else if (e.deltaMode === 2) dy *= 800 // page mode
-    // Convert pixel delta to scroll clicks (3 pixels per click, clamped 1-5)
-    const clicks = Math.min(5, Math.max(1, Math.round(Math.abs(dy) / 40)))
-    sendInput({ type: 'scroll', x: 0, y: dy > 0 ? clicks : -clicks })
+    scrollAccRef.current += dy
+
+    if (scrollRafRef.current) return // Already have a frame queued
+    scrollRafRef.current = requestAnimationFrame(() => {
+      const acc = scrollAccRef.current
+      scrollAccRef.current = 0
+      scrollRafRef.current = null
+      if (Math.abs(acc) < 1) return
+      // Convert accumulated pixel delta to scroll clicks (clamped 1-10)
+      const clicks = Math.min(10, Math.max(1, Math.round(Math.abs(acc) / 30)))
+      sendInput({ type: 'scroll', x: 0, y: acc > 0 ? clicks : -clicks })
+    })
   }, [sendInput])
+
+  // Touch gesture handling — translate touch events to mouse/scroll
+  const touchRef = useRef({ startX: 0, startY: 0, lastX: 0, lastY: 0, startTime: 0, fingers: 0 })
+  const momentumRef = useRef(null)
+
+  const onTouchStart = useCallback((e) => {
+    e.preventDefault()
+    focusContainer()
+    if (momentumRef.current) { cancelAnimationFrame(momentumRef.current); momentumRef.current = null }
+    const t = e.touches[0]
+    touchRef.current = { startX: t.clientX, startY: t.clientY, lastX: t.clientX, lastY: t.clientY, startTime: performance.now(), fingers: e.touches.length, velocityY: 0 }
+    if (e.touches.length === 1) {
+      sendInput({ type: 'mousemove', ...getPos(t) })
+    }
+  }, [getPos, sendInput, focusContainer])
+
+  const onTouchMove = useCallback((e) => {
+    e.preventDefault()
+    const t = e.touches[0]
+    const touch = touchRef.current
+
+    if (e.touches.length >= 2) {
+      // Two-finger scroll
+      const dy = touch.lastY - t.clientY
+      touch.velocityY = dy
+      touch.lastY = t.clientY
+      touch.lastX = t.clientX
+      if (Math.abs(dy) > 1) {
+        const clicks = Math.min(5, Math.max(1, Math.round(Math.abs(dy) / 15)))
+        sendInput({ type: 'scroll', x: 0, y: dy > 0 ? clicks : -clicks })
+      }
+    } else {
+      // Single finger — move cursor
+      const now = performance.now()
+      if (now - lastMouseRef.current < 16) return
+      lastMouseRef.current = now
+      touch.lastX = t.clientX
+      touch.lastY = t.clientY
+      sendInput({ type: 'mousemove', ...getPos(t) })
+    }
+  }, [getPos, sendInput])
+
+  const onTouchEnd = useCallback((e) => {
+    e.preventDefault()
+    const touch = touchRef.current
+    const elapsed = performance.now() - touch.startTime
+    const dx = touch.lastX - touch.startX
+    const dy = touch.lastY - touch.startY
+    const dist = Math.sqrt(dx * dx + dy * dy)
+
+    // Tap detection (short press, minimal movement)
+    if (touch.fingers === 1 && elapsed < 300 && dist < 15) {
+      const pos = getPos({ clientX: touch.startX, clientY: touch.startY })
+      sendInput({ type: 'click', ...pos, button: 0 })
+      return
+    }
+
+    // Long press = right click
+    if (touch.fingers === 1 && elapsed > 500 && dist < 15) {
+      const pos = getPos({ clientX: touch.startX, clientY: touch.startY })
+      sendInput({ type: 'click', ...pos, button: 2 })
+      return
+    }
+
+    // Momentum scrolling for two-finger gesture
+    if (touch.fingers >= 2 && Math.abs(touch.velocityY) > 2) {
+      let vel = touch.velocityY
+      const decay = () => {
+        vel *= 0.92
+        if (Math.abs(vel) < 0.5) { momentumRef.current = null; return }
+        const clicks = Math.min(3, Math.max(1, Math.round(Math.abs(vel) / 15)))
+        sendInput({ type: 'scroll', x: 0, y: vel > 0 ? clicks : -clicks })
+        momentumRef.current = requestAnimationFrame(decay)
+      }
+      momentumRef.current = requestAnimationFrame(decay)
+    }
+  }, [getPos, sendInput])
 
   const onKeyDown = useCallback((e) => {
     // Let Escape bubble to shell for window management
@@ -172,12 +266,58 @@ export default function RemoteBrowser() {
     if (status === 'connected') focusContainer()
   }, [status, focusContainer])
 
+  // Gamepad polling loop — reads state at 60fps and sends via dedicated channel
+  useEffect(() => {
+    if (status !== 'connected') return
+
+    let prevButtons = []
+    let prevAxes = []
+
+    const pollGamepad = () => {
+      const gpDc = gpDcRef.current
+      if (!gpDc || gpDc.readyState !== 'open') {
+        gpLoopRef.current = requestAnimationFrame(pollGamepad)
+        return
+      }
+
+      const gamepads = navigator.getGamepads?.() || []
+      const gp = gamepads[0] // primary gamepad
+      if (!gp) {
+        gpLoopRef.current = requestAnimationFrame(pollGamepad)
+        return
+      }
+
+      // Only send if state changed (avoid flooding)
+      const buttons = gp.buttons.map(b => b.pressed)
+      const axes = gp.axes.map(a => Math.abs(a) < 0.05 ? 0 : Math.round(a * 1000) / 1000)
+      // Triggers are buttons 6 and 7 in standard mapping, but have analog values
+      const triggers = [gp.buttons[6]?.value || 0, gp.buttons[7]?.value || 0]
+
+      const buttonsChanged = buttons.some((b, i) => b !== prevButtons[i])
+      const axesChanged = axes.some((a, i) => Math.abs(a - (prevAxes[i] || 0)) > 0.01)
+
+      if (buttonsChanged || axesChanged) {
+        gpDc.send(JSON.stringify({ buttons, axes, triggers }))
+        prevButtons = buttons
+        prevAxes = axes
+      }
+
+      gpLoopRef.current = requestAnimationFrame(pollGamepad)
+    }
+
+    gpLoopRef.current = requestAnimationFrame(pollGamepad)
+    return () => { if (gpLoopRef.current) cancelAnimationFrame(gpLoopRef.current) }
+  }, [status])
+
   // Auto-retry when browser service isn't running (e.g. after redeploy)
   useEffect(() => {
     if (!error) return
     const id = setInterval(() => connect(), 5000)
     return () => clearInterval(id)
   }, [error, connect])
+
+  // Embedded WebKit (bare metal) — use system browser directly
+  if (isEmbedded) return <LocalBrowser />
 
   if (error) {
     return (
@@ -192,14 +332,18 @@ export default function RemoteBrowser() {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full bg-neutral-950 outline-none overflow-hidden"
-      tabIndex={0}
-      onMouseMove={onMouseMove}
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-      onWheel={onWheel}
+    <div className="w-full h-full bg-neutral-950 flex flex-col overflow-hidden">
+      <div
+        ref={containerRef}
+        className="flex-1 relative outline-none overflow-hidden"
+        tabIndex={0}
+        onMouseMove={onMouseMove}
+        onMouseDown={onMouseDown}
+        onMouseUp={onMouseUp}
+        onWheel={onWheel}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
       onContextMenu={e => e.preventDefault()}
@@ -221,6 +365,7 @@ export default function RemoteBrowser() {
         className="w-full h-full"
         style={{ cursor: 'none', objectFit: 'contain', background: '#000' }}
       />
+      </div>
     </div>
   )
 }

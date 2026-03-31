@@ -1,6 +1,37 @@
+import { useState } from 'react'
+
 // SVG app icons for builtin and registry apps.
 // Each icon is a 16x16 viewBox SVG rendered inline.
 // Usage: <AppIcon id="terminal" size={20} />
+
+// Logo URLs for installed apps (shared with AppHub)
+export const APP_LOGOS = {
+  firefox: 'https://upload.wikimedia.org/wikipedia/commons/a/a0/Firefox_logo%2C_2019.svg',
+  thunderbird: 'https://upload.wikimedia.org/wikipedia/commons/e/e1/Thunderbird_Logo%2C_2018.svg',
+  gimp: 'https://upload.wikimedia.org/wikipedia/commons/4/45/The_GIMP_icon_-_gnome.svg',
+  blender: 'https://upload.wikimedia.org/wikipedia/commons/0/0c/Blender_logo_no_text.svg',
+  inkscape: 'https://upload.wikimedia.org/wikipedia/commons/0/0d/Inkscape_Logo.svg',
+  libreoffice: 'https://upload.wikimedia.org/wikipedia/commons/0/02/LibreOffice_Logo_Flat.svg',
+  vlc: 'https://upload.wikimedia.org/wikipedia/commons/e/e6/VLC_Icon.svg',
+  audacity: 'https://upload.wikimedia.org/wikipedia/commons/f/f6/Audacity_Logo.svg',
+  kicad: 'https://upload.wikimedia.org/wikipedia/commons/5/59/KiCad-Logo.svg',
+  keepassxc: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/KeePassXC_icon.svg',
+  filezilla: 'https://upload.wikimedia.org/wikipedia/commons/0/01/FileZilla_logo.svg',
+  transmission: 'https://upload.wikimedia.org/wikipedia/commons/6/6d/Transmission_icon.png',
+  nginx: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/Nginx_logo.svg',
+  grafana: 'https://upload.wikimedia.org/wikipedia/commons/a/a1/Grafana_logo.svg',
+  jupyter: 'https://upload.wikimedia.org/wikipedia/commons/3/38/Jupyter_logo.svg',
+  gitea: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Gitea_Logo.svg',
+  syncthing: 'https://upload.wikimedia.org/wikipedia/commons/8/83/SyncthingAugworGraphic.png',
+}
+
+export const APP_COLORS = {
+  firefox: '#FF7139', thunderbird: '#0A84FF', gimp: '#5C5543', blender: '#EA7600',
+  inkscape: '#000', libreoffice: '#18A303', vlc: '#FF8800', audacity: '#0000CC',
+  kicad: '#314CB0', keepassxc: '#6CAC4D', filezilla: '#BF0000', transmission: '#B91C1C',
+  nginx: '#009639', grafana: '#F46800', jupyter: '#F37626', gitea: '#609926',
+  syncthing: '#0891B2',
+}
 
 const icons = {
   terminal: (
@@ -112,28 +143,59 @@ export default function AppIcon({ id, size = 16, color, style }) {
 }
 
 // For dock/launchpad tiles — renders in a rounded square container
+// Shows: builtin SVG icon > logo URL from registry > letter fallback
 export function AppIconTile({ id, size = 48, unicode }) {
   const icon = icons[id]
+  const logo = APP_LOGOS[id]
+  const color = APP_COLORS[id]
+  const [logoFailed, setLogoFailed] = useState(false)
+  const radius = size * 0.28
 
-  return (
-    <div style={{
-      width: size,
-      height: size,
-      borderRadius: size * 0.28,
-      background: '#1a1a1a',
-      border: '1px solid #2a2a2a',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: '#d4d4d4',
-    }}>
-      {icon ? (
+  // Builtin SVG icon
+  if (icon) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: radius,
+        background: '#1a1a1a', border: '1px solid #2a2a2a',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d4d4d4',
+      }}>
         <svg viewBox="0 0 16 16" width={size * 0.5} height={size * 0.5} fill="none" style={{ color: '#d4d4d4' }}>
           {icon}
         </svg>
-      ) : (
-        <span style={{ fontSize: size * 0.4, lineHeight: 1 }}>{unicode || '?'}</span>
-      )}
+      </div>
+    )
+  }
+
+  // Logo URL from registry
+  if (logo && !logoFailed) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: radius,
+        background: color ? `${color}15` : '#1a1a1a',
+        border: `1px solid ${color ? color + '30' : '#2a2a2a'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      }}>
+        <img
+          src={logo}
+          alt=""
+          style={{ width: '70%', height: '70%', objectFit: 'contain' }}
+          onError={() => setLogoFailed(true)}
+          loading="lazy"
+        />
+      </div>
+    )
+  }
+
+  // Letter fallback
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: radius,
+      background: color ? `linear-gradient(135deg, ${color}40, ${color}20)` : '#1a1a1a',
+      border: `1px solid ${color ? color + '30' : '#2a2a2a'}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: color || '#d4d4d4', fontWeight: 700, fontSize: size * 0.38,
+    }}>
+      {(unicode || id?.[0] || '?').toUpperCase()}
     </div>
   )
 }

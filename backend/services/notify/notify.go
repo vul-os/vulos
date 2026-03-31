@@ -7,7 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
+
+	"vulos/backend/internal/wsutil"
 )
 
 // Level is the notification urgency.
@@ -70,7 +72,7 @@ func (s *Service) Send(title, body string, level Level, source string) *Notifica
 
 	data, _ := json.Marshal(n)
 	for _, c := range clients {
-		c.Write(data)
+		c.WriteMessage(websocket.TextMessage, data)
 	}
 
 	log.Printf("[notify] %s: %s — %s", level, title, body)
@@ -132,10 +134,17 @@ func (s *Service) Clear() {
 	s.history = nil
 }
 
-// Handler returns a WebSocket handler for live notification streaming.
+// Handler returns an HTTP handler that upgrades to WebSocket for live notification streaming.
 // Connect via: ws://host:port/api/notifications/stream
-func (s *Service) Handler() http.Handler {
-	return websocket.Handler(func(ws *websocket.Conn) {
+func (s *Service) Handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ws, err := wsutil.Upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("[notify] websocket upgrade: %v", err)
+			return
+		}
+		defer ws.Close()
+
 		s.mu.Lock()
 		s.clients[ws] = true
 		s.mu.Unlock()
@@ -143,9 +152,8 @@ func (s *Service) Handler() http.Handler {
 		log.Printf("[notify] client connected")
 
 		// Block until disconnect
-		buf := make([]byte, 256)
 		for {
-			if _, err := ws.Read(buf); err != nil {
+			if _, _, err := ws.ReadMessage(); err != nil {
 				break
 			}
 		}
@@ -154,5 +162,5 @@ func (s *Service) Handler() http.Handler {
 		delete(s.clients, ws)
 		s.mu.Unlock()
 		log.Printf("[notify] client disconnected")
-	})
+	}
 }

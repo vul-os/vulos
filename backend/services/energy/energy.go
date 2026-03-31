@@ -280,7 +280,7 @@ func (m *Manager) applyCPUGovernor() {
 	}
 }
 
-// --- System interactions (Alpine/Linux specific) ---
+// --- System interactions (Linux specific) ---
 
 func setBrightness(percent int) {
 	// Try backlight via sysfs

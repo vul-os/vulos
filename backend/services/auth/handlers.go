@@ -147,6 +147,21 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Allow unauthenticated registration ONLY when no users exist (first-time setup).
+	// Otherwise require an authenticated admin.
+	if h.store.HasAnyUsers() {
+		reqUserID := r.Header.Get("X-User-ID")
+		if reqUserID == "" {
+			writeErr(w, 401, "unauthorized")
+			return
+		}
+		reqProfile, _ := h.store.GetProfile(reqUserID)
+		if reqProfile == nil || reqProfile.Role != RoleAdmin {
+			writeErr(w, 403, "only admins can create users")
+			return
+		}
+	}
+
 	var req struct {
 		Username    string `json:"username"`
 		Password    string `json:"password"`
@@ -169,19 +184,26 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		h.OnUserCreated(req.Username, req.Password)
 	}
 
-	sess := h.store.CreateSession(user, "")
 	h.store.Flush()
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "vulos_session",
-		Value:    sess.Token,
-		Path:     "/",
-		MaxAge:   90 * 24 * 3600,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	// If caller is not authenticated (first-user setup), log them in
+	if r.Header.Get("X-User-ID") == "" {
+		sess := h.store.CreateSession(user, "")
+		h.store.Flush()
+		http.SetCookie(w, &http.Cookie{
+			Name:     "vulos_session",
+			Value:    sess.Token,
+			Path:     "/",
+			MaxAge:   90 * 24 * 3600,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
+		writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
+		return
+	}
 
-	writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
+	// Admin creating a user — just return the new user info
+	writeJSON(w, map[string]any{"user": user.Safe()})
 }
 
 func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {

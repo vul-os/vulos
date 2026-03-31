@@ -39,7 +39,7 @@ type SavedNetwork struct {
 	Priority int    `json:"priority"`
 }
 
-// Service manages WiFi via iw/wpa_supplicant (Alpine standard).
+// Service manages WiFi via iw/wpa_supplicant.
 type Service struct {
 	mu        sync.Mutex
 	iface     string

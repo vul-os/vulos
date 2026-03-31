@@ -31,7 +31,7 @@ type Status struct {
 	Devices     []Device `json:"devices"`
 }
 
-// Service manages Bluetooth via bluetoothctl (Alpine: apk add bluez).
+// Service manages Bluetooth via bluetoothctl.
 type Service struct {
 	mu sync.Mutex
 }

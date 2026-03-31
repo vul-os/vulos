@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"vulos/backend/services/packages"
 	"time"
 )
 
@@ -134,28 +136,92 @@ func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 	}
 	os.Remove(tarPath)
 
-	// Install Alpine dependencies if specified
+	// Install OS dependencies if specified
 	manifest, err := LoadManifest(filepath.Join(appDir, "app.json"))
 	if err == nil && len(manifest.Deps) > 0 {
-		args := append([]string{"add"}, manifest.Deps...)
-		exec.CommandContext(ctx, "apk", args...).Run()
+		packages.InstallDeps(ctx, manifest.Deps)
 	}
 
 	log.Printf("[appstore] installed %s", entry.ID)
 	return nil
 }
 
-// Uninstall removes an app.
+// Uninstall removes an app, its apt packages (for desktop apps), and cleans up.
 func (s *AppStore) Uninstall(appID string) error {
 	appDir := filepath.Join(s.appsDir, appID)
 	if _, err := os.Stat(appDir); os.IsNotExist(err) {
 		return fmt.Errorf("app %s not installed", appID)
 	}
+
+	log.Printf("[appstore] uninstalling %s from %s", appID, appDir)
+
+	// Read manifest to check app type
+	manifest, _ := LoadManifest(filepath.Join(appDir, "app.json"))
+
+	// For desktop apps installed via apt, remove the packages
+	if manifest != nil && manifest.Type == "desktop" && s.registry != nil {
+		if entry, ok := s.registry.Apps[appID]; ok {
+			ver := entry.LatestVersion()
+			if recipe := entry.GetRecipe(ver); recipe != nil && recipe.Install != "" {
+				pkgs := extractAptPackages(recipe.Install)
+				if len(pkgs) > 0 {
+					log.Printf("[appstore] apt-get remove for %s: %v", appID, pkgs)
+					args := append([]string{"remove", "-y"}, pkgs...)
+					cmd := exec.Command("apt-get", args...)
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
+					if err := cmd.Run(); err != nil {
+						log.Printf("[appstore] apt-get remove warning for %s: %v", appID, err)
+					}
+					exec.Command("apt-get", "autoremove", "-y", "-qq").Run()
+				}
+			}
+		}
+	}
+
+	// Remove symlinked data directory
+	dataDir := filepath.Join(os.Getenv("HOME"), ".vulos", "data", appID)
+	if info, err := os.Lstat(dataDir); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			os.Remove(dataDir)
+		} else {
+			os.RemoveAll(dataDir)
+		}
+	}
+
+	// Remove app directory (app.json, icon.svg, bin/, static/, data/)
 	if err := os.RemoveAll(appDir); err != nil {
+		log.Printf("[appstore] failed to remove app dir %s: %v", appDir, err)
 		return fmt.Errorf("remove %s: %w", appID, err)
 	}
+
 	log.Printf("[appstore] uninstalled %s", appID)
 	return nil
+}
+
+// extractAptPackages parses package names from an install command like
+// "apt-get install -y --no-install-recommends pkg1 pkg2 && other stuff"
+func extractAptPackages(installCmd string) []string {
+	var pkgs []string
+	parts := strings.Fields(installCmd)
+	pastInstall := false
+	for _, p := range parts {
+		if p == "install" {
+			pastInstall = true
+			continue
+		}
+		if !pastInstall {
+			continue
+		}
+		if strings.HasPrefix(p, "-") {
+			continue
+		}
+		if p == "&&" {
+			break
+		}
+		pkgs = append(pkgs, p)
+	}
+	return pkgs
 }
 
 // Installed lists all locally installed apps.

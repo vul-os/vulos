@@ -1,74 +1,5 @@
 {
   "apps": {
-    "adminer": {
-      "name": "Adminer",
-      "vetted": true,
-      "type": "web",
-      "description": "Web-based database management for PostgreSQL, MySQL, SQLite, and more — single PHP file, fast and lightweight",
-      "category": "database",
-      "author": "Jakub Vrána",
-      "homepage": "https://www.adminer.org",
-      "icon": "adminer",
-      "keywords": ["database", "sql", "admin", "postgres", "mysql", "sqlite", "management"],
-      "license": "Apache-2.0",
-      "versions": {
-        "4": {
-          "install": "apk add --no-cache php83 php83-pdo php83-pdo_sqlite php83-pdo_pgsql php83-pdo_mysql php83-session && mkdir -p static && wget -q -O static/index.php https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
-          "command": "php83 -S 0.0.0.0:${PORT} -t static/",
-          "port": 8080,
-          "permissions": ["network"],
-          "singleton": true
-        }
-      }
-    },
-    "sqlite-web": {
-      "name": "SQLite Browser",
-      "vetted": true,
-      "type": "web",
-      "description": "Web-based SQLite database browser and query editor with syntax highlighting",
-      "category": "database",
-      "author": "Charles Leifer",
-      "homepage": "https://github.com/coleifer/sqlite-web",
-      "icon": "sqlite",
-      "keywords": ["sqlite", "database", "browser", "editor", "sql", "query"],
-      "license": "MIT",
-      "versions": {
-        "0.6": {
-          "install": "apk add --no-cache py3-pip python3 && pip3 install --break-system-packages sqlite-web",
-          "command": "sqlite_web --port ${PORT} --host 0.0.0.0 --no-browser data/default.db",
-          "port": 8080,
-          "permissions": ["network", "filesystem"],
-          "singleton": true
-        }
-      }
-    },
-    "minio": {
-      "name": "MinIO",
-      "vetted": true,
-      "type": "web",
-      "description": "S3-compatible object storage with web console — store blobs, backups, and static assets",
-      "category": "database",
-      "author": "MinIO Inc",
-      "homepage": "https://min.io",
-      "icon": "minio",
-      "keywords": ["s3", "storage", "object", "blob", "backup", "minio", "web"],
-      "license": "AGPL-3.0",
-      "versions": {
-        "latest": {
-          "install": "apk add --no-cache minio minio-client",
-          "command": "minio server data/minio --address :${PORT} --console-address :${CONSOLE_PORT}",
-          "port": 9000,
-          "env": {
-            "MINIO_ROOT_USER": "minioadmin",
-            "MINIO_ROOT_PASSWORD": "minioadmin",
-            "CONSOLE_PORT": "9001"
-          },
-          "post_install": "mkdir -p data/minio",
-          "permissions": ["network", "filesystem"],
-          "singleton": true
-        }
-      }
-    },
     "gitea": {
       "name": "Gitea",
       "vetted": true,
@@ -78,15 +9,25 @@
       "author": "Gitea",
       "homepage": "https://gitea.io",
       "icon": "gitea",
-      "keywords": ["git", "repository", "code", "version-control", "forge", "ci"],
+      "keywords": [
+        "git",
+        "repository",
+        "code",
+        "version-control",
+        "forge",
+        "ci"
+      ],
       "license": "MIT",
       "versions": {
         "1": {
-          "install": "apk add --no-cache gitea",
+          "install": "wget -qO /usr/local/bin/gitea https://dl.gitea.com/gitea/1.22/gitea-1.22.0-linux-amd64 && chmod +x /usr/local/bin/gitea",
           "command": "gitea web --config data/app.ini",
           "port": 3000,
           "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
@@ -95,84 +36,29 @@
       "name": "Grafana",
       "vetted": true,
       "type": "web",
-      "description": "Monitoring dashboards — visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
+      "description": "Monitoring dashboards \u2014 visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
       "category": "developer",
       "author": "Grafana Labs",
       "homepage": "https://grafana.com",
       "icon": "grafana",
-      "keywords": ["monitoring", "dashboard", "metrics", "grafana", "visualization", "observability"],
+      "keywords": [
+        "monitoring",
+        "dashboard",
+        "metrics",
+        "grafana",
+        "visualization",
+        "observability"
+      ],
       "license": "AGPL-3.0",
       "versions": {
         "11": {
-          "install": "apk add --no-cache grafana",
+          "install": "apt-get install -y --no-install-recommends apt-transport-https software-properties-common && wget -qO- https://apt.grafana.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/grafana.gpg && echo \"deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\" > /etc/apt/sources.list.d/grafana.list && apt-get update && apt-get install -y --no-install-recommends grafana",
           "command": "grafana server --homepath /usr/share/grafana --config data/grafana.ini",
           "port": 3000,
           "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/grafana.ini",
-          "permissions": ["network"],
-          "singleton": true
-        }
-      }
-    },
-    "prometheus": {
-      "name": "Prometheus",
-      "vetted": true,
-      "type": "web",
-      "description": "Time-series monitoring and alerting with built-in web UI, PromQL query language, and scrape targets",
-      "category": "developer",
-      "author": "Cloud Native Computing Foundation",
-      "homepage": "https://prometheus.io",
-      "icon": "prometheus",
-      "keywords": ["monitoring", "metrics", "prometheus", "alerting", "time-series"],
-      "license": "Apache-2.0",
-      "versions": {
-        "2": {
-          "install": "apk add --no-cache prometheus",
-          "command": "prometheus --config.file=data/prometheus.yml --storage.tsdb.path=data/tsdb --web.listen-address=0.0.0.0:${PORT}",
-          "port": 9090,
-          "post_install": "mkdir -p data/tsdb && printf 'global:\\n  scrape_interval: 15s\\nscrape_configs:\\n  - job_name: vulos\\n    static_configs:\\n      - targets: [\"localhost:8080\"]\\n' > data/prometheus.yml",
-          "permissions": ["network"],
-          "singleton": true
-        }
-      }
-    },
-    "ttyd": {
-      "name": "ttyd",
-      "vetted": true,
-      "type": "web",
-      "description": "Share your terminal over the web — full terminal emulation via WebSocket in the browser",
-      "category": "developer",
-      "author": "Shuanglei Tao",
-      "homepage": "https://tsl0922.github.io/ttyd",
-      "icon": "ttyd",
-      "keywords": ["terminal", "web", "shell", "remote", "console"],
-      "license": "MIT",
-      "versions": {
-        "1": {
-          "install": "apk add --no-cache ttyd",
-          "command": "ttyd --port ${PORT} --writable /bin/sh",
-          "port": 7681,
-          "permissions": ["network"],
-          "singleton": true
-        }
-      }
-    },
-    "httpbin": {
-      "name": "httpbin",
-      "vetted": true,
-      "type": "web",
-      "description": "HTTP request/response testing service — inspect headers, methods, status codes, and more",
-      "category": "developer",
-      "author": "Kenneth Reitz",
-      "homepage": "https://httpbin.org",
-      "icon": "httpbin",
-      "keywords": ["http", "api", "testing", "debug", "request", "response"],
-      "license": "ISC",
-      "versions": {
-        "0.9": {
-          "install": "apk add --no-cache py3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
-          "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
-          "port": 8080,
-          "permissions": ["network"],
+          "permissions": [
+            "network"
+          ],
           "singleton": true
         }
       }
@@ -181,19 +67,29 @@
       "name": "Jupyter Lab",
       "vetted": true,
       "type": "web",
-      "description": "Interactive notebooks for Python, data science, and computation — web-based IDE with rich output",
+      "description": "Interactive notebooks for Python, data science, and computation \u2014 web-based IDE with rich output",
       "category": "developer",
       "author": "Project Jupyter",
       "homepage": "https://jupyter.org",
       "icon": "jupyter",
-      "keywords": ["notebook", "python", "data", "science", "jupyter", "computation"],
+      "keywords": [
+        "notebook",
+        "python",
+        "data",
+        "science",
+        "jupyter",
+        "computation"
+      ],
       "license": "BSD-3-Clause",
       "versions": {
         "4": {
-          "install": "apk add --no-cache py3-pip python3 && pip3 install --break-system-packages jupyterlab",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv && python3 -m pip install --break-system-packages jupyterlab",
           "command": "jupyter lab --ip=0.0.0.0 --port=${PORT} --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=data/",
           "port": 8888,
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
@@ -202,42 +98,29 @@
       "name": "Nginx",
       "vetted": true,
       "type": "web",
-      "description": "High-performance HTTP server and reverse proxy — serve static sites, proxy other services",
+      "description": "High-performance HTTP server and reverse proxy \u2014 serve static sites, proxy other services",
       "category": "network",
       "author": "F5 / Igor Sysoev",
       "homepage": "https://nginx.org",
       "icon": "nginx",
-      "keywords": ["web", "server", "proxy", "reverse-proxy", "http", "nginx"],
+      "keywords": [
+        "web",
+        "server",
+        "proxy",
+        "reverse-proxy",
+        "http",
+        "nginx"
+      ],
       "license": "BSD-2-Clause",
       "versions": {
         "1": {
-          "install": "apk add --no-cache nginx",
+          "install": "apt-get install -y --no-install-recommends nginx",
           "command": "nginx -c data/nginx.conf -g 'daemon off;'",
           "port": 8080,
           "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
-          "permissions": ["network"],
-          "singleton": true
-        }
-      }
-    },
-    "caddy": {
-      "name": "Caddy",
-      "vetted": true,
-      "type": "web",
-      "description": "Modern web server with automatic HTTPS, HTTP/3, and dead-simple config",
-      "category": "network",
-      "author": "Matthew Holt",
-      "homepage": "https://caddyserver.com",
-      "icon": "caddy",
-      "keywords": ["web", "server", "proxy", "https", "caddy", "http3"],
-      "license": "Apache-2.0",
-      "versions": {
-        "2": {
-          "install": "apk add --no-cache caddy",
-          "command": "caddy run --config data/Caddyfile --adapter caddyfile",
-          "port": 8080,
-          "post_install": "printf ':%s\\nroot * %s/static\\nfile_server\\n' \"${PORT}\" \"$APP_DIR\" > data/Caddyfile && mkdir -p static && echo '<h1>Caddy is running</h1>' > static/index.html",
-          "permissions": ["network"],
+          "permissions": [
+            "network"
+          ],
           "singleton": true
         }
       }
@@ -246,71 +129,30 @@
       "name": "Syncthing",
       "vetted": true,
       "type": "web",
-      "description": "Peer-to-peer file synchronization with web UI — sync folders across devices without a cloud",
+      "description": "Peer-to-peer file synchronization with web UI \u2014 sync folders across devices without a cloud",
       "category": "productivity",
       "author": "Syncthing Foundation",
       "homepage": "https://syncthing.net",
       "icon": "syncthing",
-      "keywords": ["sync", "files", "p2p", "backup", "share", "folders", "web"],
+      "keywords": [
+        "sync",
+        "files",
+        "p2p",
+        "backup",
+        "share",
+        "folders",
+        "web"
+      ],
       "license": "MPL-2.0",
       "versions": {
         "1": {
-          "install": "apk add --no-cache syncthing",
+          "install": "apt-get install -y --no-install-recommends curl apt-transport-https && curl -s https://syncthing.net/release-key.gpg | gpg --dearmor -o /usr/share/keyrings/syncthing.gpg && echo \"deb [signed-by=/usr/share/keyrings/syncthing.gpg] https://apt.syncthing.net/ syncthing stable\" > /etc/apt/sources.list.d/syncthing.list && apt-get update && apt-get install -y --no-install-recommends syncthing",
           "command": "syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
           "port": 8384,
-          "permissions": ["network", "filesystem"],
-          "singleton": true
-        }
-      }
-    },
-    "miniflux": {
-      "name": "Miniflux",
-      "vetted": true,
-      "type": "web",
-      "description": "Minimalist RSS/Atom feed reader — clean web UI, keyboard shortcuts, full-text search",
-      "category": "productivity",
-      "author": "Frédéric Guillot",
-      "homepage": "https://miniflux.app",
-      "icon": "miniflux",
-      "keywords": ["rss", "feed", "reader", "news", "articles", "atom", "web"],
-      "license": "Apache-2.0",
-      "versions": {
-        "2": {
-          "install": "apk add --no-cache miniflux postgresql16 postgresql16-client && mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql",
-          "command": "miniflux",
-          "port": 8080,
-          "env": {
-            "DATABASE_URL": "user=postgres dbname=miniflux sslmode=disable host=/run/postgresql",
-            "RUN_MIGRATIONS": "1",
-            "CREATE_ADMIN": "1",
-            "ADMIN_USERNAME": "admin",
-            "ADMIN_PASSWORD": "changeme",
-            "PORT": "8080"
-          },
-          "post_install": "su postgres -c 'pg_isready -h /run/postgresql || (initdb -D data/pgdata && pg_ctl -D data/pgdata -l data/pg.log start && createdb miniflux)' || true",
-          "permissions": ["network"],
-          "singleton": true
-        }
-      }
-    },
-    "navidrome": {
-      "name": "Navidrome",
-      "vetted": true,
-      "type": "web",
-      "description": "Modern music server with web player — Subsonic-compatible, lightweight, fast library scanning",
-      "category": "media",
-      "author": "Deluan Quintão",
-      "homepage": "https://navidrome.org",
-      "icon": "navidrome",
-      "keywords": ["music", "streaming", "audio", "subsonic", "library", "player", "web"],
-      "license": "GPL-3.0",
-      "versions": {
-        "0.53": {
-          "install": "apk add --no-cache navidrome",
-          "command": "navidrome --configfile data/navidrome.toml",
-          "port": 4533,
-          "post_install": "mkdir -p data/cache data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nCacheFolder = \"%s/data/cache\"\\nPort = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
@@ -319,42 +161,450 @@
       "name": "Transmission",
       "vetted": true,
       "type": "web",
-      "description": "Lightweight BitTorrent client with web UI — simple, fast, low resource usage",
+      "description": "Lightweight BitTorrent client with web UI \u2014 simple, fast, low resource usage",
       "category": "network",
       "author": "Transmission Project",
       "homepage": "https://transmissionbt.com",
       "icon": "transmission",
-      "keywords": ["torrent", "bittorrent", "download", "p2p", "transfer", "web"],
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer",
+        "web"
+      ],
       "license": "GPL-2.0",
       "versions": {
         "4": {
-          "install": "apk add --no-cache transmission-daemon",
+          "install": "apt-get install -y --no-install-recommends transmission-daemon",
           "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
           "port": 9091,
           "post_install": "mkdir -p data/downloads data/incomplete",
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
     },
-    "headscale": {
-      "name": "Headscale",
+    "gimp": {
+      "name": "GIMP",
       "vetted": true,
-      "type": "web",
-      "description": "Self-hosted coordination server for Tailscale — manage your own mesh VPN network",
-      "category": "network",
-      "author": "Headscale",
-      "homepage": "https://github.com/juanfont/headscale",
-      "icon": "headscale",
-      "keywords": ["vpn", "tailscale", "mesh", "network", "management", "wireguard"],
-      "license": "BSD-3-Clause",
+      "type": "desktop",
+      "description": "Professional image editor \u2014 layers, filters, brushes, and advanced photo manipulation tools",
+      "category": "media",
+      "author": "GIMP Team",
+      "homepage": "https://www.gimp.org",
+      "icon": "gimp",
+      "keywords": [
+        "image",
+        "editor",
+        "photo",
+        "graphics",
+        "design",
+        "painting"
+      ],
+      "license": "GPL-3.0",
       "versions": {
-        "0.23": {
-          "install": "apk add --no-cache headscale",
-          "command": "headscale serve --config data/config.yaml",
-          "port": 8080,
-          "post_install": "mkdir -p data && printf 'server_url: http://localhost:%s\\nlisten_addr: 0.0.0.0:%s\\ndb_type: sqlite3\\ndb_path: %s/data/headscale.db\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/config.yaml",
-          "permissions": ["network"],
+        "2.10": {
+          "install": "apt-get install -y --no-install-recommends gimp",
+          "command": "gimp",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "blender": {
+      "name": "Blender",
+      "vetted": true,
+      "type": "desktop",
+      "description": "3D creation suite \u2014 modelling, animation, rendering, compositing, and video editing",
+      "category": "media",
+      "author": "Blender Foundation",
+      "homepage": "https://www.blender.org",
+      "icon": "blender",
+      "keywords": [
+        "3d",
+        "modelling",
+        "animation",
+        "rendering",
+        "video",
+        "compositing"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends blender",
+          "command": "blender",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "inkscape": {
+      "name": "Inkscape",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Vector graphics editor \u2014 SVG editing, illustration, diagrams, and logo design",
+      "category": "media",
+      "author": "Inkscape Project",
+      "homepage": "https://inkscape.org",
+      "icon": "inkscape",
+      "keywords": [
+        "vector",
+        "svg",
+        "graphics",
+        "illustration",
+        "design",
+        "drawing"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "1": {
+          "install": "apt-get install -y --no-install-recommends inkscape",
+          "command": "inkscape",
+          "permissions": [
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "kicad": {
+      "name": "KiCad",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Electronic design automation \u2014 schematic capture, PCB layout, 3D viewer, and Gerber export",
+      "category": "developer",
+      "author": "KiCad Developers",
+      "homepage": "https://www.kicad.org",
+      "icon": "kicad",
+      "keywords": [
+        "eda",
+        "pcb",
+        "schematic",
+        "electronics",
+        "circuit",
+        "hardware",
+        "cad"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "8": {
+          "install": "apt-get install -y --no-install-recommends kicad",
+          "command": "kicad",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "libreoffice": {
+      "name": "LibreOffice",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Full office suite \u2014 word processor, spreadsheets, presentations, and database with MS Office compatibility",
+      "category": "productivity",
+      "author": "The Document Foundation",
+      "homepage": "https://www.libreoffice.org",
+      "icon": "libreoffice",
+      "keywords": [
+        "office",
+        "word",
+        "spreadsheet",
+        "presentation",
+        "document",
+        "writer",
+        "calc"
+      ],
+      "license": "MPL-2.0",
+      "versions": {
+        "24": {
+          "install": "apt-get install -y --no-install-recommends libreoffice",
+          "command": "libreoffice --norestore",
+          "permissions": [
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "vlc": {
+      "name": "VLC",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Universal media player \u2014 plays virtually any video and audio format, streams, DVDs, and network sources",
+      "category": "media",
+      "author": "VideoLAN",
+      "homepage": "https://www.videolan.org",
+      "icon": "vlc",
+      "keywords": [
+        "video",
+        "audio",
+        "player",
+        "media",
+        "streaming",
+        "codec"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "3": {
+          "install": "apt-get install -y --no-install-recommends vlc",
+          "command": "vlc --no-qt-privacy-ask",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "audacity": {
+      "name": "Audacity",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Audio editor and recorder \u2014 multi-track editing, effects, noise reduction, and format conversion",
+      "category": "media",
+      "author": "Audacity Team",
+      "homepage": "https://www.audacityteam.org",
+      "icon": "audacity",
+      "keywords": [
+        "audio",
+        "editor",
+        "recording",
+        "music",
+        "sound",
+        "podcast"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "3": {
+          "install": "apt-get install -y --no-install-recommends audacity",
+          "command": "audacity",
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "firefox": {
+      "name": "Firefox",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Privacy-focused web browser by Mozilla \u2014 built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
+      "category": "internet",
+      "author": "Mozilla Foundation",
+      "homepage": "https://www.mozilla.org/firefox",
+      "icon": "firefox",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "firefox",
+        "mozilla",
+        "privacy",
+        "drm",
+        "streaming"
+      ],
+      "license": "MPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends firefox-esr",
+          "command": "firefox-esr --no-remote",
+          "permissions": [
+            "network",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "thunderbird": {
+      "name": "Thunderbird",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Email, calendar, and contacts client \u2014 IMAP/POP3, RSS feeds, encryption, and add-ons",
+      "category": "productivity",
+      "author": "Mozilla Foundation",
+      "homepage": "https://www.thunderbird.net",
+      "icon": "thunderbird",
+      "keywords": [
+        "email",
+        "mail",
+        "calendar",
+        "contacts",
+        "imap",
+        "pop3"
+      ],
+      "license": "MPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends thunderbird",
+          "command": "thunderbird --no-remote",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "kdenlive": {
+      "name": "Kdenlive",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Non-linear video editor \u2014 multi-track timeline, effects, transitions, and proxy editing",
+      "category": "media",
+      "author": "KDE Community",
+      "homepage": "https://kdenlive.org",
+      "icon": "kdenlive",
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "effects",
+        "rendering",
+        "film"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "24": {
+          "install": "apt-get install -y --no-install-recommends kdenlive",
+          "command": "kdenlive",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "filezilla": {
+      "name": "FileZilla",
+      "vetted": true,
+      "type": "desktop",
+      "description": "FTP/SFTP/FTPS client \u2014 fast file transfers, site manager, directory comparison",
+      "category": "network",
+      "author": "FileZilla Project",
+      "homepage": "https://filezilla-project.org",
+      "icon": "filezilla",
+      "keywords": [
+        "ftp",
+        "sftp",
+        "transfer",
+        "upload",
+        "download",
+        "files"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "3": {
+          "install": "apt-get install -y --no-install-recommends filezilla",
+          "command": "filezilla",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "keepassxc": {
+      "name": "KeePassXC",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Offline password manager \u2014 AES-256 encrypted vault, TOTP, browser integration, auto-type",
+      "category": "system",
+      "author": "KeePassXC Team",
+      "homepage": "https://keepassxc.org",
+      "icon": "keepassxc",
+      "keywords": [
+        "password",
+        "security",
+        "vault",
+        "encryption",
+        "totp",
+        "manager"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "2": {
+          "install": "apt-get install -y --no-install-recommends keepassxc",
+          "command": "keepassxc",
+          "permissions": [
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "geany": {
+      "name": "Geany",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Lightweight IDE and code editor \u2014 syntax highlighting, code folding, auto-completion, and build system",
+      "category": "developer",
+      "author": "Geany Project",
+      "homepage": "https://www.geany.org",
+      "icon": "geany",
+      "keywords": [
+        "code",
+        "editor",
+        "ide",
+        "development",
+        "programming",
+        "extensions"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends geany geany-plugins",
+          "command": "geany",
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "qbittorrent": {
+      "name": "qBittorrent",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Feature-rich BitTorrent client \u2014 search, RSS, sequential download, IP filtering, and torrent creation",
+      "category": "network",
+      "author": "qBittorrent Project",
+      "homepage": "https://www.qbittorrent.org",
+      "icon": "qbittorrent",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends qbittorrent",
+          "command": "qbittorrent",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }

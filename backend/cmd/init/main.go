@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// vulos-init: Custom PID 1 for Alpine Linux.
-// Mounts filesystems, starts networking, launches OpenRC, then hands off to the vulos server.
+// vulos-init: Custom PID 1 for Debian Linux.
+// Mounts filesystems, starts networking, launches systemd, then hands off to the vulos server.
 //
 // Build: GOOS=linux GOARCH=amd64 go build -o vulos-init ./cmd/init
 // Install: copy to /sbin/init (or set init=/sbin/vulos-init in kernel cmdline)
@@ -34,8 +34,8 @@ func main() {
 	// Phase 2: Set hostname
 	setHostname()
 
-	// Phase 3: Start OpenRC (brings up system services)
-	startOpenRC()
+	// Phase 3: Start systemd services (if available)
+	startSystemd()
 
 	// Phase 4: Start vulos server
 	startServices()
@@ -81,20 +81,14 @@ func setHostname() {
 	log.Printf("hostname: %s", name)
 }
 
-func startOpenRC() {
-	if _, err := exec.LookPath("openrc"); err != nil {
-		log.Println("openrc not found, skipping")
+func startSystemd() {
+	// In a container, systemd won't be PID 1 so systemctl may not work.
+	// On bare metal, systemd manages services via unit files.
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		log.Println("systemd detected (services managed by systemd)")
 		return
 	}
-
-	cmd := exec.Command("openrc", "default")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Printf("openrc error: %v", err)
-	} else {
-		log.Println("openrc: default runlevel started")
-	}
+	log.Println("systemctl not found, continuing without init system")
 }
 
 func startServices() {

@@ -40,22 +40,21 @@ func (s *Service) EnsureUser(username, password string) error {
 		return fmt.Errorf("invalid username: %q", username)
 	}
 
-	// Create user with home dir, bash shell, wheel group
-	cmd := exec.Command("adduser", "-D", "-s", "/bin/bash", "-G", "wheel", "-h", "/home/"+sysName, sysName)
+	// Create user with home dir, bash shell, sudo group
+	homeDir := "/home/" + sysName
+	cmd := exec.Command("adduser", "--disabled-password", "--gecos", "", "--shell", "/bin/bash", "--ingroup", "sudo", "--home", homeDir, sysName)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("adduser failed: %s: %w", string(out), err)
+		return fmt.Errorf("adduser failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
-	// Set password (skip if empty — reconciliation on startup)
+	// Set password
 	if password != "" {
 		cmd = exec.Command("chpasswd")
 		cmd.Stdin = strings.NewReader(sysName + ":" + password)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("chpasswd failed: %s: %w", string(out), err)
+			return fmt.Errorf("chpasswd failed: %s: %w", strings.TrimSpace(string(out)), err)
 		}
 	}
-
-	homeDir := "/home/" + sysName
 
 	// Create standard XDG directories
 	for _, dir := range []string{"Documents", "Downloads", "Pictures", "Music", "Videos", "Desktop"} {
@@ -128,7 +127,7 @@ func (s *Service) SetPassword(username, password string) error {
 	cmd := exec.Command("chpasswd")
 	cmd.Stdin = strings.NewReader(sysName + ":" + password)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("chpasswd failed: %s: %w", string(out), err)
+		return fmt.Errorf("chpasswd failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
 }
@@ -141,7 +140,7 @@ func (s *Service) DeleteUser(username string) error {
 	sysName := sanitizeUsername(username)
 	cmd := exec.Command("deluser", "--remove-home", sysName)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("deluser failed: %s: %w", string(out), err)
+		return fmt.Errorf("deluser failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	log.Printf("[sysuser] deleted Linux user %q", sysName)
 	return nil

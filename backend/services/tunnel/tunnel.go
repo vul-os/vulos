@@ -199,7 +199,7 @@ func (s *Service) Status() Status {
 
 func (s *Service) startCloudflared(ctx context.Context) error {
 	if _, err := exec.LookPath("cloudflared"); err != nil {
-		return fmt.Errorf("cloudflared not installed (apk add cloudflared)")
+		return fmt.Errorf("cloudflared not installed (install with your package manager)")
 	}
 
 	// Write ingress config
@@ -287,7 +287,7 @@ func (s *Service) writeCloudflaredConfig(path string) error {
 
 func (s *Service) startFRP(ctx context.Context) error {
 	if _, err := exec.LookPath("frpc"); err != nil {
-		return fmt.Errorf("frpc not installed (apk add frp)")
+		return fmt.Errorf("frpc not installed (install with your package manager)")
 	}
 
 	cfgPath := filepath.Join(s.dataDir, "frpc.toml")

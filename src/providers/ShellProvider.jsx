@@ -1,5 +1,6 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
 import { useViewport } from '../shell/useViewport'
+import { canSpawnNativeWindow } from '../core/useNativeMode'
 
 const ShellContext = createContext(null)
 
@@ -11,11 +12,14 @@ function shellReducer(state, action) {
       const desktopId = state.activeDesktop
       const desktops = { ...state.desktops }
       const desk = { ...desktops[desktopId] }
-      const existing = desk.windows.find(w => w.appId === action.appId)
-      if (existing) {
-        desk.activeWindow = existing.id
-        desktops[desktopId] = desk
-        return { ...state, desktops }
+      // Allow multiple windows unless singleton flag is set
+      if (action.singleton) {
+        const existing = desk.windows.find(w => w.appId === action.appId)
+        if (existing) {
+          desk.activeWindow = existing.id
+          desktops[desktopId] = desk
+          return { ...state, desktops }
+        }
       }
       const id = nextId++
       desk.windows = [...desk.windows, {
@@ -79,14 +83,12 @@ function shellReducer(state, action) {
         if (w._maximized) {
           return { ...w, position: w._prevPosition, size: w._prevSize, _maximized: false }
         }
-        // Position below menu bar (32px), above dock (64px)
-        // Note: windows are absolutely positioned in inset-0 container,
-        // so y must account for menu bar height
+        // Position below menu bar (32px), fullscreen to bottom
         return {
           ...w,
           _prevPosition: w.position, _prevSize: w.size, _maximized: true,
           position: { x: 0, y: 32 },
-          size: { width: window.innerWidth, height: window.innerHeight - 32 - 64 },
+          size: { width: window.innerWidth, height: window.innerHeight - 32 },
         }
       })
       desktops[state.activeDesktop] = desk
@@ -153,6 +155,10 @@ function shellReducer(state, action) {
       desktops[toId] = to
       return { ...state, desktops }
     }
+    case 'ADD_NATIVE_WINDOW':
+      return { ...state, nativeWindows: [...(state.nativeWindows || []), action.nwin] }
+    case 'REMOVE_NATIVE_WINDOW':
+      return { ...state, nativeWindows: (state.nativeWindows || []).filter(n => n.pid !== action.pid) }
     case 'POPOUT_APP':
       return { ...state, popout: action.app }
     case 'CLOSE_POPOUT':
@@ -169,6 +175,10 @@ function shellReducer(state, action) {
       return { ...state, chatOpen: !state.chatOpen }
     case 'SET_CHAT':
       return { ...state, chatOpen: action.open }
+    case 'TOGGLE_MISSION_CONTROL':
+      return { ...state, missionControlOpen: !state.missionControlOpen }
+    case 'SET_MISSION_CONTROL':
+      return { ...state, missionControlOpen: action.open }
     case 'RESTORE_STATE':
       return { ...state, ...action.saved, conversation: state.conversation }
     default:
@@ -229,10 +239,12 @@ const initialState = {
   desktops: { 'desktop-1': initialDesktop },
   activeDesktop: 'desktop-1',
   popout: null,
+  nativeWindows: [],
   conversation: [],
   thinking: false,
   launchpadOpen: false,
   chatOpen: false,
+  missionControlOpen: false,
 }
 
 export function ShellProvider({ children }) {
@@ -301,6 +313,39 @@ export function ShellProvider({ children }) {
   const removeDesktop = useCallback((id) => dispatch({ type: 'REMOVE_DESKTOP', id }), [])
   const moveWindowToDesktop = useCallback((windowId, desktopId) => dispatch({ type: 'MOVE_WINDOW_TO_DESKTOP', windowId, desktopId }), [])
 
+  const openNativeWindow = useCallback(async (win) => {
+    if (!canSpawnNativeWindow()) return
+    try {
+      const res = await fetch('/api/shell/native-window', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: win.url || window.location.origin,
+          title: win.title || 'Vula',
+          width: win.size?.width || 720,
+          height: win.size?.height || 500,
+          always_on_top: true,
+        }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      dispatch({ type: 'ADD_NATIVE_WINDOW', nwin: { pid: data.pid, title: win.title, appId: win.appId } })
+      // If this was an embedded window, close it from the shell
+      if (win.id) closeWindow(win.id)
+    } catch {}
+  }, [closeWindow])
+
+  const closeNativeWindow = useCallback(async (pid) => {
+    try {
+      await fetch('/api/shell/native-window', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid }),
+      })
+    } catch {}
+    dispatch({ type: 'REMOVE_NATIVE_WINDOW', pid })
+  }, [])
+
   const popoutApp = useCallback((app) => dispatch({ type: 'POPOUT_APP', app }), [])
   const closePopout = useCallback(() => dispatch({ type: 'CLOSE_POPOUT' }), [])
 
@@ -308,6 +353,8 @@ export function ShellProvider({ children }) {
   const setLaunchpad = useCallback((open) => dispatch({ type: 'SET_LAUNCHPAD', open }), [])
   const toggleChat = useCallback(() => dispatch({ type: 'TOGGLE_CHAT' }), [])
   const setChat = useCallback((open) => dispatch({ type: 'SET_CHAT', open }), [])
+  const toggleMissionControl = useCallback(() => dispatch({ type: 'TOGGLE_MISSION_CONTROL' }), [])
+  const setMissionControl = useCallback((open) => dispatch({ type: 'SET_MISSION_CONTROL', open }), [])
   const addMessage = useCallback((role, text, meta) => {
     dispatch({ type: 'ADD_MESSAGE', message: { id: Date.now() + Math.random(), role, text, meta, timestamp: new Date() } })
   }, [])
@@ -317,14 +364,16 @@ export function ShellProvider({ children }) {
     <ShellContext.Provider value={{
       windows, activeWindow, allWindows,
       desktops: state.desktops, activeDesktop: state.activeDesktop,
-      popout: state.popout,
+      popout: state.popout, nativeWindows: state.nativeWindows || [],
       conversation: state.conversation, thinking: state.thinking,
-      launchpadOpen: state.launchpadOpen, chatOpen: state.chatOpen,
+      launchpadOpen: state.launchpadOpen, chatOpen: state.chatOpen, missionControlOpen: state.missionControlOpen,
       layout,
       openWindow, closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow,
       switchDesktop, addDesktop, removeDesktop, moveWindowToDesktop,
+      openNativeWindow, closeNativeWindow,
       popoutApp, closePopout,
       toggleLaunchpad, setLaunchpad, toggleChat, setChat,
+      toggleMissionControl, setMissionControl,
       addMessage, setThinking,
     }}>
       {children}

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -33,7 +34,10 @@ import (
 	"vulos/backend/services/sysuser"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
+	"vulos/backend/services/stream"
 	"vulos/backend/services/webbrowser"
+	"vulos/backend/services/wine"
+	"vulos/backend/services/desktop"
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/disks"
 	"vulos/backend/services/drivers"
@@ -101,6 +105,24 @@ func main() {
 	if err := netMgr.Init(ctx); err != nil {
 		log.Printf("[appnet] init warning (needs root + iproute2): %v", err)
 	}
+
+	// DNS manager — writes /etc/hosts entries for app subdomains (calculator.vulos → namespace IP)
+	dnsManager := appnet.NewDNSManager("vulos", netMgr)
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				dnsManager.Remove()
+				return
+			case <-ticker.C:
+				if err := dnsManager.Update(); err != nil {
+					log.Printf("[dns] update failed: %v", err)
+				}
+			}
+		}
+	}()
 
 	// Energy management
 	energyMgr := energy.NewManager(energy.ModeBalanced)
@@ -189,15 +211,22 @@ func main() {
 	// Browser profiles (isolated cookie jars / contexts)
 	browserProfiles := bprofiles.NewStore(filepath.Join(home, ".vulos", "db"))
 
-	// Remote browser (Xvfb + Chromium + GStreamer → WebRTC, starts at boot)
-	browserSvc := webbrowser.New()
+	// Stream pool (generic X11 app streaming — Xvfb + GStreamer + WebRTC)
+	streamPool := stream.NewPool()
+
+	// Remote browser (Chromium via stream pool — one persistent instance, always ready)
+	browserSvc := webbrowser.New(streamPool)
 	if err := browserSvc.Start(ctx, 0); err != nil {
 		log.Printf("[browser] start warning: %v", err)
 	} else {
 		browserSvc.WaitReady(30 * time.Second)
 	}
 
+	// Wine prefix management (create/delete/DXVK per user)
+	wineSvc := wine.New(filepath.Join(home, ".vulos", "wine"))
+
 	// Web proxy (for remote mode — kept for API proxy use)
+	desktopSvc := desktop.New()
 	proxySvc := webproxy.New()
 
 	// System settings services
@@ -231,6 +260,12 @@ func main() {
 	if os.Getuid() == 0 {
 		os.WriteFile("/etc/hostname", []byte("vula\n"), 0644)
 		exec.Command("hostname", "vula").Run()
+		// Ensure hostname resolves in /etc/hosts (fixes sudo "unable to resolve host")
+		if hosts, err := os.ReadFile("/etc/hosts"); err == nil {
+			if !strings.Contains(string(hosts), "vula") {
+				os.WriteFile("/etc/hosts", append(hosts, []byte("127.0.0.1 vula\n::1 vula\n")...), 0644)
+			}
+		}
 	}
 
 	// Ensure Linux users exist for all registered accounts (survives container rebuilds)
@@ -1035,8 +1070,15 @@ func main() {
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
 
-	// Remote browser — WebRTC
+	// Remote browser — WebRTC (delegates to stream pool)
 	browserSvc.RegisterHandlers(mux)
+
+	// Generic app streaming (any X11 app via WebRTC)
+	streamPool.RegisterHandlers(mux)
+
+	// Wine prefix management
+	wineSvc.RegisterHandlers(mux)
+	desktopSvc.RegisterHandlers(mux)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
@@ -1153,6 +1195,101 @@ func main() {
 		writeJSON(w, map[string]string{"status": "deleted"})
 	})
 
+	// Native window management — spawn Cog/WPE instances as real compositor windows
+	// Cached at startup: detect if we're on baremetal (sole Cog instance) or native (compositor with multi-window)
+	nativeMode := detectNativeMode()
+	log.Printf("[shell] native mode: %s", nativeMode)
+
+	mux.HandleFunc("GET /api/shell/native-mode", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"mode": nativeMode})
+	})
+
+	mux.HandleFunc("POST /api/shell/native-window", func(w http.ResponseWriter, r *http.Request) {
+		if nativeMode != "native" {
+			writeErr(w, 400, "native windows not supported in "+nativeMode+" mode")
+			return
+		}
+		var req struct {
+			URL         string `json:"url"`
+			Title       string `json:"title"`
+			Width       int    `json:"width"`
+			Height      int    `json:"height"`
+			AlwaysOnTop bool   `json:"always_on_top"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "invalid request")
+			return
+		}
+		if req.URL == "" {
+			writeErr(w, 400, "url required")
+			return
+		}
+		if req.Width == 0 { req.Width = 720 }
+		if req.Height == 0 { req.Height = 500 }
+		if req.Title == "" { req.Title = "Vula" }
+
+		// Spawn a new Cog instance as a standalone Wayland window
+		args := []string{}
+
+		// Try cog first, fall back to wpe-launch
+		cogBin := "cog"
+		if _, err := exec.LookPath("cog"); err != nil {
+			if _, err := exec.LookPath("wpe-launch"); err == nil {
+				cogBin = "wpe-launch"
+			} else {
+				writeErr(w, 500, "no cog or wpe-launch binary found")
+				return
+			}
+		}
+
+		if cogBin == "cog" {
+			// Cog supports --title and geometry hints
+			args = append(args, fmt.Sprintf("--title=%s", req.Title))
+			// Cog uses WPE_SHELL_GEOMETRY env for window size
+		}
+		args = append(args, req.URL)
+
+		cmd := exec.CommandContext(ctx, cogBin, args...)
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("WPE_SHELL_GEOMETRY=%dx%d+60+32", req.Width, req.Height),
+		)
+		// Set always-on-top via wlr-layer-shell env hint if requested
+		if req.AlwaysOnTop {
+			cmd.Env = append(cmd.Env, "WLR_SCENE_ALWAYS_ON_TOP=1")
+		}
+
+		if err := cmd.Start(); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+
+		pid := cmd.Process.Pid
+		// Track for cleanup
+		go func() {
+			cmd.Wait()
+			log.Printf("[shell] native window pid=%d exited", pid)
+		}()
+
+		writeJSON(w, map[string]any{"pid": pid, "title": req.Title})
+	})
+
+	mux.HandleFunc("DELETE /api/shell/native-window", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			PID int `json:"pid"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.PID == 0 {
+			writeErr(w, 400, "pid required")
+			return
+		}
+		proc, err := os.FindProcess(req.PID)
+		if err != nil {
+			writeErr(w, 404, "process not found")
+			return
+		}
+		proc.Signal(syscall.SIGTERM)
+		writeJSON(w, map[string]string{"status": "killed"})
+	})
+
 	// OS Control — AI and frontend can control the shell
 	mux.HandleFunc("POST /api/os/open-app", func(w http.ResponseWriter, r *http.Request) {
 		// Triggers app launch from backend (AI can call this)
@@ -1225,10 +1362,19 @@ func main() {
 	mux.HandleFunc("POST /api/store/uninstall", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ AppID string `json:"app_id"` }
 		json.NewDecoder(r.Body).Decode(&req)
+		// Stop any running stream session for this app
+		streamPool.Stop(req.AppID)
+		// Stop any running app process
+		launcher.Stop(ctx, req.AppID)
+		portPool.Release(req.AppID)
+		appGateway.RemoveAppSecret(req.AppID)
+		// Uninstall (removes apt packages for desktop apps + app dir)
 		if err := appStore.Uninstall(req.AppID); err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// Rescan desktop entries
+		desktopSvc.Scan()
 		writeJSON(w, map[string]string{"status": "uninstalled"})
 	})
 
@@ -1264,6 +1410,7 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		desktopSvc.Scan()
 		writeJSON(w, map[string]string{"status": "installed", "app_id": req.AppID})
 	})
 	mux.HandleFunc("GET /api/store/validate", func(w http.ResponseWriter, r *http.Request) {
@@ -1352,9 +1499,12 @@ func main() {
 		writeJSON(w, map[string]string{"status": "unloaded", "module": req.Module})
 	})
 
-	// Packages — Alpine apk package management
+	// Packages — OS package management (apk, apt, etc.)
 	mux.HandleFunc("GET /api/packages/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, packages.GetStatus(r.Context()))
+	})
+	mux.HandleFunc("GET /api/packages/cache", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"ready": packages.CacheReady(), "arch": runtime.GOARCH})
 	})
 	mux.HandleFunc("GET /api/packages/installed", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, packages.ListInstalled(r.Context()))
@@ -1499,6 +1649,7 @@ func main() {
 		<-ctx.Done()
 		log.Println("shutting down...")
 		browserSvc.StopAll()
+		streamPool.StopAll()
 		sandboxSvc.StopAll()
 		tunnelSvc.Stop()
 		ptySvc.DestroyAll()
@@ -1510,6 +1661,64 @@ func main() {
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// detectNativeMode checks if we're running on baremetal (sole fullscreen Cog/WPE)
+// or under a Wayland compositor that supports multiple windows.
+// Fast: just checks env vars and compositor presence, no subprocess.
+func detectNativeMode() string {
+	// Not on device at all (Docker dev, remote browser access)
+	ua := os.Getenv("WPE_USER_AGENT")
+	waylandDisplay := os.Getenv("WAYLAND_DISPLAY")
+	xdgSession := os.Getenv("XDG_SESSION_TYPE")
+
+	// Check if we're in a Wayland session with a compositor
+	if waylandDisplay != "" {
+		// We have a Wayland display — check if a multi-window compositor is running
+		// Known compositors: sway, labwc, weston, cage (cage is single-window like baremetal)
+		compositor := os.Getenv("XDG_CURRENT_DESKTOP")
+		sessionDesktop := os.Getenv("DESKTOP_SESSION")
+
+		// cage = single-app kiosk compositor (baremetal equivalent)
+		if compositor == "cage" || sessionDesktop == "cage" {
+			return "baremetal"
+		}
+
+		// Check for common multi-window compositors via their sockets/runtime
+		// If WAYLAND_DISPLAY is set and it's not cage, we likely have multi-window support
+		// Also verify by checking if wlr-foreign-toplevel or similar protocols are available
+		// Quick check: if any known compositor name is in env
+		for _, c := range []string{"sway", "labwc", "weston", "wayfire", "hyprland", "river"} {
+			if strings.Contains(strings.ToLower(compositor), c) ||
+				strings.Contains(strings.ToLower(sessionDesktop), c) {
+				return "native"
+			}
+		}
+
+		// WAYLAND_DISPLAY present but unknown compositor — try to detect via process list
+		// This is still fast (single /proc read)
+		if data, err := exec.Command("sh", "-c", "ps -eo comm 2>/dev/null | head -50").Output(); err == nil {
+			ps := strings.ToLower(string(data))
+			for _, c := range []string{"sway", "labwc", "weston", "wayfire", "hyprland"} {
+				if strings.Contains(ps, c) {
+					return "native"
+				}
+			}
+		}
+
+		// WAYLAND_DISPLAY set but can't identify compositor — assume multi-window capable
+		// since baremetal typically uses cage or direct Cog without WAYLAND_DISPLAY gymnastics
+		return "native"
+	}
+
+	// X11 session (unlikely on this project but handle it)
+	if xdgSession == "x11" || os.Getenv("DISPLAY") != "" {
+		return "native"
+	}
+
+	// No display server detected — or WPE is running as sole renderer
+	_ = ua
+	return "baremetal"
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -33,7 +33,7 @@ type Manager struct {
 }
 
 // NewManager creates an app network manager.
-// Requires iproute2 and iptables on the host (Alpine: apk add iproute2 iptables).
+// Requires iproute2 and iptables on the host.
 func NewManager() *Manager {
 	return &Manager{
 		namespaces: make(map[string]*Namespace),

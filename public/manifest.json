@@ -1,7 +1,7 @@
 {
   "name": "Vula OS",
   "short_name": "Vula",
-  "description": "A web-first operating system built on Alpine Linux",
+  "description": "A web-first operating system built on Debian Linux",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",
