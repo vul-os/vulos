@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -74,6 +76,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/status":       true,
 	"/api/setup/status":      true,
 	"/api/browser/status":    true,
+	"/manifest.json":         true,
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -190,14 +193,7 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("X-User-ID") == "" {
 		sess := h.store.CreateSession(user, "")
 		h.store.Flush()
-		http.SetCookie(w, &http.Cookie{
-			Name:     "vulos_session",
-			Value:    sess.Token,
-			Path:     "/",
-			MaxAge:   90 * 24 * 3600,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
+		http.SetCookie(w, sessionCookie(r, sess.Token))
 		writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
 		return
 	}
@@ -239,14 +235,7 @@ func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
 	sess := h.store.CreateSession(user, "")
 	h.store.Flush()
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "vulos_session",
-		Value:    sess.Token,
-		Path:     "/",
-		MaxAge:   90 * 24 * 3600,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	http.SetCookie(w, sessionCookie(r, sess.Token))
 
 	writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
 }
@@ -345,15 +334,7 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	h.store.Flush()
 
 	// Set cookie (long-lived, httponly)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "vulos_session",
-		Value:    sess.Token,
-		Path:     "/",
-		MaxAge:   90 * 24 * 3600,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
-	})
+	http.SetCookie(w, sessionCookie(r, sess.Token))
 
 	// Redirect to frontend
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
@@ -397,6 +378,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Name:   "vulos_session",
 		Value:  "",
 		Path:   "/",
+		Domain: cookieDomain(r),
 		MaxAge: -1,
 	})
 
@@ -424,6 +406,48 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	fmt.Fprintf(w, `{"error":%q}`, msg)
+}
+
+// sessionCookie creates a consistent session cookie for all auth endpoints.
+// Uses SameSite=None + Secure on HTTPS (required for subdomain iframes).
+// Uses SameSite=Lax on HTTP (localhost dev without mkcert).
+func sessionCookie(r *http.Request, token string) *http.Cookie {
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	sameSite := http.SameSiteLaxMode
+	if isSecure {
+		sameSite = http.SameSiteNoneMode
+	}
+	return &http.Cookie{
+		Name:     "vulos_session",
+		Value:    token,
+		Path:     "/",
+		Domain:   cookieDomain(r),
+		MaxAge:   90 * 24 * 3600,
+		HttpOnly: true,
+		SameSite: sameSite,
+		Secure:   isSecure,
+	}
+}
+
+// cookieDomain returns the domain for session cookies.
+// Uses VULOS_DOMAIN env if set (e.g. "lvh.me" for dev, "vula.example.com" for prod).
+// Ensures cookies are shared across app subdomains (cockpit.lvh.me, grafana.lvh.me, etc).
+func cookieDomain(r *http.Request) string {
+	if d := os.Getenv("VULOS_DOMAIN"); d != "" {
+		return d
+	}
+	host := r.Host
+	if idx := strings.Index(host, ":"); idx > 0 {
+		host = host[:idx]
+	}
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) >= 2 {
+		return strings.Join(parts[len(parts)-2:], ".")
+	}
+	return ""
 }
 
 func providerNames(m map[string]*OAuthProvider) []string {

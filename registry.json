@@ -1,5 +1,47 @@
 {
   "apps": {
+    "cockpit": {
+      "name": "Cockpit",
+      "vetted": true,
+      "type": "web",
+      "description": "Web-based server management — terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
+      "category": "system",
+      "author": "Red Hat / Cockpit Project",
+      "homepage": "https://cockpit-project.org",
+      "icon": "cockpit",
+      "keywords": ["admin", "server", "management", "terminal", "monitoring", "logs", "dashboard"],
+      "license": "LGPL-2.1",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
+          "command": "/usr/lib/cockpit/cockpit-ws --no-tls --port ${PORT}",
+          "port": 9090,
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
+    "httpbin": {
+      "name": "httpbin",
+      "vetted": true,
+      "type": "web",
+      "description": "HTTP request and response testing — inspect headers, methods, status codes",
+      "category": "developer",
+      "author": "Kenneth Reitz",
+      "homepage": "https://httpbin.org",
+      "icon": "httpbin",
+      "keywords": ["http", "api", "testing", "debug"],
+      "license": "ISC",
+      "versions": {
+        "0.9": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
+          "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
+          "port": 8080,
+          "permissions": ["network"],
+          "singleton": true
+        }
+      }
+    },
     "gitea": {
       "name": "Gitea",
       "vetted": true,
@@ -178,7 +220,7 @@
       "versions": {
         "4": {
           "install": "apt-get install -y --no-install-recommends transmission-daemon",
-          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
+          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth --allowed \\\"*\\\"",
           "port": 9091,
           "post_install": "mkdir -p data/downloads data/incomplete",
           "permissions": [

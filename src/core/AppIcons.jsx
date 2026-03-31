@@ -26,11 +26,24 @@ export const APP_LOGOS = {
 }
 
 export const APP_COLORS = {
+  // Desktop apps
   firefox: '#FF7139', thunderbird: '#0A84FF', gimp: '#5C5543', blender: '#EA7600',
   inkscape: '#000', libreoffice: '#18A303', vlc: '#FF8800', audacity: '#0000CC',
   kicad: '#314CB0', keepassxc: '#6CAC4D', filezilla: '#BF0000', transmission: '#B91C1C',
-  nginx: '#009639', grafana: '#F46800', jupyter: '#F37626', gitea: '#609926',
-  syncthing: '#0891B2',
+  freecad: '#374DF5', godot: '#478CBF', obs: '#302E31', kdenlive: '#527EB2',
+  darktable: '#97A8A0', shotcut: '#115740', wireshark: '#1679A7', remmina: '#00457C',
+  qbittorrent: '#2F67BA', geany: '#347C2C',
+  // Web apps
+  adminer: '#43853D', 'sqlite-web': '#003B57', minio: '#C72C48', gitea: '#609926',
+  grafana: '#F46800', prometheus: '#E6522C', ttyd: '#4EC9B0', httpbin: '#6C8EBF',
+  jupyter: '#F37626', nginx: '#009639', caddy: '#1F88C0', syncthing: '#0891B2',
+  miniflux: '#F59E0B', navidrome: '#8B5CF6', headscale: '#6366F1',
+}
+
+// First letter for fallback icons (override if app name starts differently than ID)
+export const APP_LETTERS = {
+  'sqlite-web': 'S', ttyd: 'T', httpbin: 'H', keepassxc: 'K', obs: 'O',
+  vlc: 'V', gimp: 'G', kicad: 'K', freecad: 'F',
 }
 
 const icons = {
@@ -186,16 +199,17 @@ export function AppIconTile({ id, size = 48, unicode }) {
     )
   }
 
-  // Letter fallback
+  // Letter fallback — single character with brand color
+  const letter = APP_LETTERS[id] || id?.[0]?.toUpperCase() || '?'
   return (
     <div style={{
       width: size, height: size, borderRadius: radius,
-      background: color ? `linear-gradient(135deg, ${color}40, ${color}20)` : '#1a1a1a',
-      border: `1px solid ${color ? color + '30' : '#2a2a2a'}`,
+      background: color ? `linear-gradient(135deg, ${color}40, ${color}20)` : '#262626',
+      border: `1px solid ${color ? color + '30' : '#333'}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: color || '#d4d4d4', fontWeight: 700, fontSize: size * 0.38,
+      color: color || '#a3a3a3', fontWeight: 700, fontSize: size * 0.38,
     }}>
-      {(unicode || id?.[0] || '?').toUpperCase()}
+      {letter}
     </div>
   )
 }

@@ -663,7 +663,8 @@ func main() {
 		appSecret := appGateway.GenerateAppSecret(req.AppID)
 		req.Env = append(req.Env, "VULOS_APP_SECRET="+appSecret, "VULOS_API=http://localhost:8080")
 
-		app, err := launcher.Launch(ctx, req.AppID, hostPort, req.AppPort, req.Command, req.Args, req.WorkDir, req.Env)
+		userID := r.Header.Get("X-User-ID")
+		app, err := launcher.Launch(ctx, req.AppID, userID, hostPort, req.AppPort, req.Command, req.Args, req.WorkDir, req.Env)
 		if err != nil {
 			portPool.Release(req.AppID)
 			appGateway.RemoveAppSecret(req.AppID)
@@ -1302,7 +1303,8 @@ func main() {
 		hostPort, ok := portPool.Allocate(req.AppID)
 		if !ok { writeErr(w, 503, "no ports"); return }
 		appSecret := appGateway.GenerateAppSecret(req.AppID)
-		_, err := launcher.Launch(ctx, req.AppID, hostPort, req.AppPort, "", nil, "", []string{"VULOS_APP_SECRET=" + appSecret})
+		userID := r.Header.Get("X-User-ID")
+		_, err := launcher.Launch(ctx, req.AppID, userID, hostPort, req.AppPort, "", nil, "", []string{"VULOS_APP_SECRET=" + appSecret})
 		if err != nil { portPool.Release(req.AppID); writeErr(w, 500, err.Error()); return }
 		writeJSON(w, map[string]any{"app_id": req.AppID, "url": gateway.URLForApp(req.AppID)})
 	})
@@ -1641,9 +1643,26 @@ func main() {
 		log.Printf("no frontend build found — API only mode (run npm run build)")
 	}
 
+	// Wrap mux with subdomain routing — if request comes on {appId}.host, route to gateway
+	appHandler := appGateway.Handler()
+	baseDomain := os.Getenv("VULOS_DOMAIN") // e.g. "lvh.me" or "vula.example.com"
+	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if idx := strings.Index(host, ":"); idx > 0 {
+			host = host[:idx]
+		}
+		// Check for app subdomain: {appId}.lvh.me, {appId}.vula.example.com, etc.
+		// Only route to gateway if host is a subdomain of the configured base domain
+		if baseDomain != "" && strings.HasSuffix(host, "."+baseDomain) {
+			appHandler(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+
 	addr := ":" + cfg.Port
-	log.Printf("vulos server listening on %s (env=%s)", addr, *env)
-	server := &http.Server{Addr: addr, Handler: authHandler.Middleware(mux)}
+	handler := authHandler.Middleware(mainHandler)
+	server := &http.Server{Addr: addr, Handler: handler}
 
 	go func() {
 		<-ctx.Done()
@@ -1658,8 +1677,31 @@ func main() {
 		server.Shutdown(context.Background())
 	}()
 
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatal(err)
+	// TLS: check for mkcert certs (dev) or production certs
+	certPaths := []struct{ cert, key string }{
+		{filepath.Join(home, ".vulos", "localhost.pem"), filepath.Join(home, ".vulos", "localhost-key.pem")},
+		{"/etc/vulos/tls/cert.pem", "/etc/vulos/tls/key.pem"},
+	}
+	var tlsCert, tlsKey string
+	for _, p := range certPaths {
+		if _, err := os.Stat(p.cert); err == nil {
+			if _, err := os.Stat(p.key); err == nil {
+				tlsCert, tlsKey = p.cert, p.key
+				break
+			}
+		}
+	}
+
+	if tlsCert != "" {
+		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, *env, tlsCert)
+		if err := server.ListenAndServeTLS(tlsCert, tlsKey); err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	} else {
+		log.Printf("vulos server listening on %s (env=%s, no TLS)", addr, *env)
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
 	}
 }
 

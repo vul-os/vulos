@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"net/http"
 	"strings"
 	"sync"
@@ -100,19 +101,35 @@ func (g *Gateway) RemoveAppSecret(appID string) {
 	delete(g.appSecrets, appID)
 }
 
-// Handler returns the HTTP handler for /app/{appId}/*
+// Handler returns the HTTP handler for app traffic.
+// Supports two modes:
+//   - Subdomain: cockpit.localhost:8080/* → namespace (app gets full path, all apps work)
+//   - Path prefix: /app/cockpit/* → namespace (legacy fallback)
 func (g *Gateway) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse: /app/{appId}/rest/of/path
-		path := strings.TrimPrefix(r.URL.Path, "/app/")
-		slashIdx := strings.Index(path, "/")
 		var appID, appPath string
-		if slashIdx == -1 {
-			appID = path
-			appPath = "/"
-		} else {
-			appID = path[:slashIdx]
-			appPath = path[slashIdx:]
+
+		// Try subdomain: {appId}.lvh.me or {appId}.vula.example.com
+		host := r.Host
+		if idx := strings.Index(host, ":"); idx > 0 {
+			host = host[:idx]
+		}
+		if baseDomain := os.Getenv("VULOS_DOMAIN"); baseDomain != "" && strings.HasSuffix(host, "."+baseDomain) {
+			appID = strings.TrimSuffix(host, "."+baseDomain)
+			appPath = r.URL.Path
+		}
+
+		// Fallback: /app/{appId}/path
+		if appID == "" {
+			path := strings.TrimPrefix(r.URL.Path, "/app/")
+			slashIdx := strings.Index(path, "/")
+			if slashIdx == -1 {
+				appID = path
+				appPath = "/"
+			} else {
+				appID = path[:slashIdx]
+				appPath = path[slashIdx:]
+			}
 		}
 
 		if appID == "" {
@@ -134,14 +151,14 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			return
 		}
 
-		// --- Find app namespace ---
-		ns, ok := g.netMgr.Get(appID)
+		// --- Find app namespace (scoped to user) ---
+		ns, ok := g.netMgr.GetForUser(appID, session.UserID)
 		if !ok {
 			http.Error(w, `{"error":"app not running"}`, 404)
 			return
 		}
 
-		// --- Build upstream URL ---
+		// --- Build upstream URL (full path forwarded) ---
 		upstream := fmt.Sprintf("http://%s:%d%s", ns.NSIP, ns.AppPort, appPath)
 		if r.URL.RawQuery != "" {
 			upstream += "?" + r.URL.RawQuery
@@ -160,55 +177,91 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			return
 		}
 
-		// Copy original headers
 		for k, vv := range r.Header {
 			for _, v := range vv {
 				proxyReq.Header.Add(k, v)
 			}
 		}
 
-		// Inject user identity
 		proxyReq.Header.Set("X-Vulos-User-ID", session.UserID)
 		proxyReq.Header.Set("X-Vulos-Email", session.Email)
 		proxyReq.Header.Set("X-Vulos-Session", session.ID)
 		proxyReq.Header.Set("X-Vulos-App-ID", appID)
-
-		// Remove headers that could confuse the app
-		proxyReq.Header.Del("Cookie") // don't leak vulos session cookie to apps
+		proxyReq.Header.Del("Cookie")
 		proxyReq.Header.Del("Host")
-		proxyReq.Host = fmt.Sprintf("%s:%d", ns.NSIP, ns.AppPort)
+		proxyReq.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
 
-		// Execute
-		resp, err := g.client.Do(proxyReq)
-		if err != nil {
-			log.Printf("[gateway] proxy to %s failed: %v", appID, err)
+		// Retry up to 3 times — app may still be starting
+		var resp *http.Response
+		var proxyErr error
+		for attempt := 0; attempt < 3; attempt++ {
+			if attempt > 0 {
+				time.Sleep(time.Second)
+				// Rebuild request (body may be consumed)
+				proxyReq, _ = http.NewRequestWithContext(r.Context(), r.Method, upstream, r.Body)
+				for k, vv := range r.Header {
+					for _, v := range vv {
+						proxyReq.Header.Add(k, v)
+					}
+				}
+				proxyReq.Header.Del("Cookie")
+				proxyReq.Header.Del("Host")
+				proxyReq.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
+			}
+			resp, proxyErr = g.client.Do(proxyReq)
+			if proxyErr == nil {
+				break
+			}
+		}
+		if proxyErr != nil {
+			log.Printf("[gateway] proxy to %s failed: %v", appID, proxyErr)
 			http.Error(w, `{"error":"app unreachable"}`, 502)
 			return
 		}
 		defer resp.Body.Close()
 
-		// Copy response headers
 		for k, vv := range resp.Header {
 			for _, v := range vv {
 				w.Header().Add(k, v)
 			}
 		}
 
-		// Strip sensitive headers from app response
-		w.Header().Del("Set-Cookie")              // apps can't set cookies on vulos domain
-		w.Header().Del("X-Powered-By")            // don't leak app stack
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Del("Set-Cookie")
+		w.Header().Del("X-Powered-By")
+		w.Header().Del("X-Frame-Options") // Allow embedding in Vula OS shell iframe
 		w.Header().Set("X-Vulos-App", appID)
 
-		// Rewrite Location headers so redirects stay on the gateway path
-		if loc := resp.Header.Get("Location"); loc != "" {
-			if strings.HasPrefix(loc, "/") {
-				w.Header().Set("Location", "/app/"+appID+loc)
+		// For HTML responses served via path prefix, inject <base> tag so
+		// the app's absolute paths resolve relative to /app/{appId}/
+		ct := resp.Header.Get("Content-Type")
+		isPathPrefix := strings.HasPrefix(r.URL.Path, "/app/")
+		if isPathPrefix && strings.Contains(ct, "text/html") {
+			body, err := io.ReadAll(resp.Body)
+			if err == nil {
+				baseTag := fmt.Sprintf(`<base href="/app/%s/">`, appID)
+				html := string(body)
+				// Inject after <head> or at the start of the document
+				if idx := strings.Index(strings.ToLower(html), "<head>"); idx >= 0 {
+					html = html[:idx+6] + baseTag + html[idx+6:]
+				} else if idx := strings.Index(strings.ToLower(html), "<html"); idx >= 0 {
+					end := strings.Index(html[idx:], ">")
+					if end >= 0 {
+						pos := idx + end + 1
+						html = html[:pos] + "<head>" + baseTag + "</head>" + html[pos:]
+					}
+				} else {
+					html = baseTag + html
+				}
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(html)))
+				w.WriteHeader(resp.StatusCode)
+				w.Write([]byte(html))
+			} else {
+				w.WriteHeader(resp.StatusCode)
 			}
+		} else {
+			w.WriteHeader(resp.StatusCode)
+			io.Copy(w, resp.Body)
 		}
-
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
 	}
 }
 
