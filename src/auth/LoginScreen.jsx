@@ -182,9 +182,8 @@ export default function LoginScreen() {
         </div>
       )}
 
-      {/* Bottom fullscreen hint */}
-      <div className="absolute bottom-6 text-center space-y-2">
-        <FullscreenHint />
+      {/* Bottom branding */}
+      <div className="absolute bottom-6 text-center">
         <p className="text-[10px] text-neutral-800">Vula OS</p>
       </div>
     </div>

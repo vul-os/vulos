@@ -43,24 +43,38 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build flashable system images for bare metal install
+      # Build flashable bare-metal images (Debian Trixie)
       - name: Build system images
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
 
-          # x86_64
-          echo "Building x86_64 image..."
-          docker buildx build --platform linux/amd64 --output type=docker -t vulos-amd64 .
-          CONTAINER=$(docker create vulos-amd64)
-          docker export $CONTAINER | gzip > "vulos-${VERSION}-x86_64.img.gz"
-          docker rm $CONTAINER
+          for ARCH in amd64 arm64; do
+            LABEL="x86_64"
+            [ "$ARCH" = "arm64" ] && LABEL="arm64"
+            echo "Building ${LABEL} system image..."
+            sudo ARCH=$ARCH ./build.sh --output "output-${ARCH}"
 
-          # ARM64
-          echo "Building ARM64 image..."
-          docker buildx build --platform linux/arm64 --output type=docker -t vulos-arm64 .
-          CONTAINER=$(docker create vulos-arm64)
-          docker export $CONTAINER | gzip > "vulos-${VERSION}-arm64.img.gz"
-          docker rm $CONTAINER
+            # Create a bootable disk image from the rootfs
+            IMG="vulos-${VERSION}-${LABEL}.img"
+            truncate -s 4G "$IMG"
+            LOOP=$(sudo losetup --find --show "$IMG")
+            sudo parted "$LOOP" mklabel gpt
+            sudo parted "$LOOP" mkpart primary ext4 1MiB 100%
+            sudo partprobe "$LOOP"
+            sudo mkfs.ext4 -L vulos "${LOOP}p1"
+            MNT=$(mktemp -d)
+            sudo mount "${LOOP}p1" "$MNT"
+            sudo cp -a "output-${ARCH}/." "$MNT/"
+            if [ "$ARCH" = "amd64" ]; then
+              sudo grub-install --target=x86_64-efi --boot-directory="$MNT/boot" --efi-directory="$MNT/boot/efi" --removable "$LOOP" 2>/dev/null || true
+              sudo grub-install --target=i386-pc --boot-directory="$MNT/boot" "$LOOP" 2>/dev/null || true
+            fi
+            sudo umount "$MNT"
+            sudo losetup -d "$LOOP"
+            rmdir "$MNT"
+            gzip "$IMG"
+            rm -rf "output-${ARCH}"
+          done
 
           ls -lh vulos-*.img.gz
 
@@ -87,19 +101,23 @@ jobs:
 
             ### Install on bare metal
 
-            Download the image for your architecture, flash to a USB drive or SD card, and boot:
+            ### Bare metal (flash to USB)
 
-            | Platform | File | Use for |
+            | Platform | File | Devices |
             |----------|------|---------|
             | x86_64 | `vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz` | PC, laptop, server |
             | ARM64 | `vulos-${{ steps.version.outputs.VERSION }}-arm64.img.gz` | Raspberry Pi, Pine64, Rock64 |
 
-            **Flash with:**
             ```bash
-            # Linux/macOS
             gunzip -c vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+            ```
 
-            # Or use Balena Etcher — drag and drop the .img.gz file
+            Or use [Balena Etcher](https://etcher.balena.io/) — drag and drop the `.img.gz` file.
+
+            ### Cloud server
+
+            ```bash
+            ./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
             ```
 
             ### Docker

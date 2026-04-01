@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"vulos/backend/services/packages"
 	"time"
 )
@@ -37,6 +38,7 @@ type AppStore struct {
 	registry     *Registry // local vetted app registry
 	registryPath string    // path to registry.json
 	client       *http.Client
+	installing   sync.Map  // appID → true while install is in progress
 }
 
 func NewAppStore(appsDir string) *AppStore {
@@ -70,8 +72,19 @@ func (s *AppStore) Registry() *Registry {
 }
 
 // InstallFromRegistry installs an app from the vetted registry.
+// Prevents duplicate concurrent installs of the same app.
 func (s *AppStore) InstallFromRegistry(ctx context.Context, appID, version string) error {
+	if _, loaded := s.installing.LoadOrStore(appID, true); loaded {
+		return fmt.Errorf("%s is already being installed", appID)
+	}
+	defer s.installing.Delete(appID)
 	return InstallFromRegistry(ctx, s.registry, appID, version, s.appsDir)
+}
+
+// IsInstalling returns true if an app install is currently in progress.
+func (s *AppStore) IsInstalling(appID string) bool {
+	_, ok := s.installing.Load(appID)
+	return ok
 }
 
 // Catalog fetches the app catalog from the remote store.
@@ -158,22 +171,31 @@ func (s *AppStore) Uninstall(appID string) error {
 	// Read manifest to check app type
 	manifest, _ := LoadManifest(filepath.Join(appDir, "app.json"))
 
-	// For desktop apps installed via apt, remove the packages
-	if manifest != nil && manifest.Type == "desktop" && s.registry != nil {
+	// Remove the actual app: Flatpak or apt
+	if s.registry != nil {
 		if entry, ok := s.registry.Apps[appID]; ok {
 			ver := entry.LatestVersion()
-			if recipe := entry.GetRecipe(ver); recipe != nil && recipe.Install != "" {
-				pkgs := extractAptPackages(recipe.Install)
-				if len(pkgs) > 0 {
-					log.Printf("[appstore] apt-get remove for %s: %v", appID, pkgs)
-					args := append([]string{"remove", "-y"}, pkgs...)
-					cmd := exec.Command("apt-get", args...)
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
-					if err := cmd.Run(); err != nil {
-						log.Printf("[appstore] apt-get remove warning for %s: %v", appID, err)
+			if recipe := entry.GetRecipe(ver); recipe != nil {
+				// Flatpak app
+				if recipe.FlatpakID != "" {
+					log.Printf("[appstore] flatpak uninstall for %s: %s", appID, recipe.FlatpakID)
+					if err := FlatpakUninstall(context.Background(), recipe.FlatpakID); err != nil {
+						log.Printf("[appstore] flatpak uninstall warning for %s: %v", appID, err)
 					}
-					exec.Command("apt-get", "autoremove", "-y", "-qq").Run()
+				} else if manifest != nil && manifest.Type == "desktop" && recipe.Install != "" {
+					// Apt-installed desktop app
+					pkgs := extractAptPackages(recipe.Install)
+					if len(pkgs) > 0 {
+						log.Printf("[appstore] apt-get remove for %s: %v", appID, pkgs)
+						args := append([]string{"remove", "-y"}, pkgs...)
+						cmd := exec.Command("apt-get", args...)
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						if err := cmd.Run(); err != nil {
+							log.Printf("[appstore] apt-get remove warning for %s: %v", appID, err)
+						}
+						exec.Command("apt-get", "autoremove", "-y", "-qq").Run()
+					}
 				}
 			}
 		}

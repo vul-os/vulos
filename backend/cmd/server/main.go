@@ -43,7 +43,7 @@ import (
 	"vulos/backend/services/drivers"
 	"vulos/backend/services/packages"
 	"vulos/backend/services/telemetry"
-	"vulos/backend/services/tunnel"
+	"vulos/backend/services/network"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/wifi"
 )
@@ -155,17 +155,8 @@ func main() {
 	// System user management (maps Vula profiles → Linux users)
 	sysUserSvc := sysuser.New()
 
-	// Tunnel (cloudflared / frp)
-	tunnelCfg := tunnel.LoadConfig()
-	tunnelDir := filepath.Join(home, ".vulos", "tunnel")
-	tunnelSvc := tunnel.New(tunnelCfg, tunnelDir)
-	if tunnelSvc.Configured() {
-		if err := tunnelSvc.Start(ctx); err != nil {
-			log.Printf("[tunnel] start warning: %v", err)
-		}
-	} else {
-		log.Printf("[tunnel] skipped — set TUNNEL_PROVIDER + credentials to enable")
-	}
+	// Remote access config
+	netSvc := network.New()
 
 	// AI service
 	aiSvc := ai.New()
@@ -196,7 +187,7 @@ func main() {
 	appStore := appnet.NewAppStore(appsDir)
 
 	// TURN server (WebRTC relay for remote mode)
-	turnCfg := tunnel.LoadTURNConfig()
+	turnCfg := network.LoadTURNConfig()
 	if turnCfg.Enabled {
 		if cmd, err := turnCfg.StartCoturn(ctx, filepath.Join(home, ".vulos", "tunnel")); err != nil {
 			log.Printf("[turn] start warning: %v", err)
@@ -241,19 +232,46 @@ func main() {
 		log.Printf("[auth] init warning: %v", err)
 	}
 	authHandler := auth.NewHandler(authStore)
-	authHandler.OnUserCreated = func(username, password string) {
-		if err := sysUserSvc.EnsureUser(username, password); err != nil {
+	authHandler.OnUserCreated = func(username, password, role string) {
+		if err := sysUserSvc.EnsureUser(username, password, role); err != nil {
 			log.Printf("[sysuser] failed to create Linux user %q: %v", username, err)
 		}
 	}
 
-	authHandler.OnUserLogin = func(username, password string) {
-		if err := sysUserSvc.EnsureUser(username, password); err != nil {
+	authHandler.OnUserLogin = func(username, password, role string) {
+		if err := sysUserSvc.EnsureUser(username, password, role); err != nil {
 			log.Printf("[sysuser] login sync failed for %q: %v", username, err)
 		}
 		if err := sysUserSvc.SetPassword(username, password); err != nil {
 			log.Printf("[sysuser] password sync failed for %q: %v", username, err)
 		}
+	}
+
+	authHandler.OnRoleChanged = func(username, role string) {
+		if err := sysUserSvc.SetRole(username, role); err != nil {
+			log.Printf("[sysuser] role sync failed for %q: %v", username, err)
+		}
+	}
+
+	// Resolve user home from auth context for per-user data isolation in streamed apps
+	streamPool.SetUserHomeResolver(func(r *http.Request) string {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			return "/root"
+		}
+		if u, ok := authStore.GetUser(userID); ok {
+			if sysU := sysUserSvc.Lookup(u.Username); sysU != nil {
+				return sysU.HomeDir
+			}
+		}
+		return "/root"
+	})
+
+	// Ensure /dev/uinput exists (direct input injection, much faster than xdotool)
+	if _, err := os.Stat("/dev/uinput"); os.IsNotExist(err) {
+		exec.Command("mknod", "/dev/uinput", "c", "10", "223").Run()
+		os.Chmod("/dev/uinput", 0666)
+		log.Println("[init] created /dev/uinput")
 	}
 
 	// Set hostname to "vula" (Docker defaults to container ID)
@@ -270,9 +288,9 @@ func main() {
 
 	// Ensure Linux users exist for all registered accounts (survives container rebuilds)
 	if os.Getuid() == 0 {
-		for _, username := range authStore.ListUsernames() {
-			if err := sysUserSvc.EnsureUser(username, ""); err != nil {
-				log.Printf("[sysuser] failed to reconcile user %q: %v", username, err)
+		for _, ur := range authStore.ListUsersWithRoles() {
+			if err := sysUserSvc.EnsureUser(ur.Username, "", ur.Role); err != nil {
+				log.Printf("[sysuser] failed to reconcile user %q: %v", ur.Username, err)
 			}
 		}
 	}
@@ -524,6 +542,24 @@ func main() {
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
 
+	// xdg-open handler — opens URL in the OS browser via CDP and signals frontend
+	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+			writeErr(w, 400, "url required")
+			return
+		}
+		tab, err := browserSvc.OpenTab(req.URL)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		notifySvc.Send("browser", req.URL, notify.LevelInfo, "xdg-open")
+		writeJSON(w, tab)
+	})
+
 	// Vault endpoints
 	mux.HandleFunc("GET /api/vault/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, v.Status())
@@ -671,20 +707,11 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
-		// Register tunnel route for this app
-		tunnelSvc.AddRoute(req.AppID, hostPort)
-
-		resp := map[string]any{
+		writeJSON(w, map[string]any{
 			"app_id":  app.ID,
-			"url":     gateway.URLForApp(req.AppID), // /app/{appId}/ — goes through auth gateway
+			"url":     gateway.URLForApp(req.AppID),
 			"running": app.Running,
-		}
-		// Include public URL if tunnel is active
-		st := tunnelSvc.Status()
-		if url, ok := st.PublicURLs[req.AppID]; ok {
-			resp["public_url"] = url
-		}
-		writeJSON(w, resp)
+		})
 	})
 	mux.HandleFunc("POST /api/apps/stop", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -700,7 +727,6 @@ func main() {
 		}
 		portPool.Release(req.AppID)
 		trafficMon.Forget(req.AppID)
-		tunnelSvc.RemoveRoute(req.AppID)
 		appGateway.RemoveAppSecret(req.AppID)
 		writeJSON(w, map[string]string{"status": "stopped"})
 	})
@@ -840,27 +866,25 @@ func main() {
 		writeJSON(w, telemetry.SystemInfo())
 	})
 
-	// Tunnel management
-	mux.HandleFunc("GET /api/tunnel/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, tunnelSvc.Status())
+	// System processes and network connections
+	mux.HandleFunc("GET /api/system/processes", telemetry.ProcessHandler())
+	mux.HandleFunc("GET /api/system/network", telemetry.NetworkHandler())
+
+	// Remote access config
+	mux.HandleFunc("GET /api/network/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, netSvc.Status())
 	})
-	mux.HandleFunc("POST /api/tunnel/start", func(w http.ResponseWriter, r *http.Request) {
-		if err := tunnelSvc.Start(ctx); err != nil {
-			writeErr(w, 500, err.Error())
+	mux.HandleFunc("GET /api/network/config", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, netSvc.Config())
+	})
+	mux.HandleFunc("POST /api/network/configure", func(w http.ResponseWriter, r *http.Request) {
+		var cfg network.Config
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeErr(w, 400, "invalid config")
 			return
 		}
-		writeJSON(w, tunnelSvc.Status())
-	})
-	mux.HandleFunc("POST /api/tunnel/stop", func(w http.ResponseWriter, r *http.Request) {
-		tunnelSvc.Stop()
-		writeJSON(w, map[string]string{"status": "stopped"})
-	})
-	mux.HandleFunc("POST /api/tunnel/reload", func(w http.ResponseWriter, r *http.Request) {
-		if err := tunnelSvc.Reload(ctx); err != nil {
-			writeErr(w, 500, err.Error())
-			return
-		}
-		writeJSON(w, tunnelSvc.Status())
+		netSvc.Configure(cfg)
+		writeJSON(w, netSvc.Config())
 	})
 
 	// --- System Settings ---
@@ -1350,6 +1374,11 @@ func main() {
 		writeJSON(w, apps)
 	})
 	mux.HandleFunc("POST /api/store/install", func(w http.ResponseWriter, r *http.Request) {
+		// Admin only
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var entry appnet.StoreEntry
 		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
 			writeErr(w, 400, "invalid request")
@@ -1362,6 +1391,11 @@ func main() {
 		writeJSON(w, map[string]string{"status": "installed"})
 	})
 	mux.HandleFunc("POST /api/store/uninstall", func(w http.ResponseWriter, r *http.Request) {
+		// Admin only
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct{ AppID string `json:"app_id"` }
 		json.NewDecoder(r.Body).Decode(&req)
 		// Stop any running stream session for this app
@@ -1396,6 +1430,11 @@ func main() {
 		writeJSON(w, entry)
 	})
 	mux.HandleFunc("POST /api/store/registry/install", func(w http.ResponseWriter, r *http.Request) {
+		// Admin only
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			AppID   string `json:"app_id"`
 			Version string `json:"version"` // empty or "latest" = latest
@@ -1567,59 +1606,6 @@ func main() {
 		writeJSON(w, map[string]string{"status": "upgraded", "output": output})
 	})
 
-	// Landing page — separate server on LANDING_PORT (default off)
-	if cfg.LandingPort != "" {
-		landingDir := ""
-		for _, dir := range []string{"/opt/vulos/landing", "./landing", "../landing"} {
-			if _, err := os.Stat(filepath.Join(dir, "index.html")); err == nil {
-				landingDir = dir
-				break
-			}
-		}
-		if landingDir != "" {
-			landingMux := http.NewServeMux()
-			landingFS := http.FileServer(http.Dir(landingDir))
-			appURL, landingURL := cfg.AppURL, cfg.LandingURL
-			landingMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				// Serve file if exists, otherwise index.html
-				filePath := filepath.Join(landingDir, filepath.Clean(r.URL.Path))
-				if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
-					landingFS.ServeHTTP(w, r)
-					return
-				}
-				if r.URL.Path == "/docs" || r.URL.Path == "/docs/" {
-					data, err := os.ReadFile(filepath.Join(landingDir, "docs.html"))
-					if err != nil {
-						http.Error(w, "not found", 404)
-						return
-					}
-					html := strings.ReplaceAll(string(data), "{{APP_URL}}", appURL)
-					html = strings.ReplaceAll(html, "{{LANDING_URL}}", landingURL)
-					w.Header().Set("Content-Type", "text/html; charset=utf-8")
-					w.Write([]byte(html))
-					return
-				}
-				// Inject APP_URL into index.html
-				data, err := os.ReadFile(filepath.Join(landingDir, "index.html"))
-				if err != nil {
-					http.Error(w, "not found", 404)
-					return
-				}
-				html := strings.ReplaceAll(string(data), "{{APP_URL}}", appURL)
-				html = strings.ReplaceAll(html, "{{LANDING_URL}}", landingURL)
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.Write([]byte(html))
-			})
-			landingAddr := ":" + cfg.LandingPort
-			go func() {
-				log.Printf("serving landing page from %s on %s", landingDir, landingAddr)
-				if err := http.ListenAndServe(landingAddr, landingMux); err != nil {
-					log.Printf("[landing] server error: %v", err)
-				}
-			}()
-		}
-	}
-
 	// Serve frontend static files (production build)
 	webrootDir := ""
 	for _, dir := range []string{"/opt/vulos/webroot", "./dist", "../dist", "../../dist"} {
@@ -1645,15 +1631,14 @@ func main() {
 
 	// Wrap mux with subdomain routing — if request comes on {appId}.host, route to gateway
 	appHandler := appGateway.Handler()
-	baseDomain := os.Getenv("VULOS_DOMAIN") // e.g. "lvh.me" or "vula.example.com"
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
 		if idx := strings.Index(host, ":"); idx > 0 {
 			host = host[:idx]
 		}
-		// Check for app subdomain: {appId}.lvh.me, {appId}.vula.example.com, etc.
-		// Only route to gateway if host is a subdomain of the configured base domain
-		if baseDomain != "" && strings.HasSuffix(host, "."+baseDomain) {
+		// Check for app subdomain: {appId}.lvh.me, {appId}.device.ts.net, etc.
+		baseDomain := netSvc.Domain()
+		if baseDomain != "" && baseDomain != "localhost" && strings.HasSuffix(host, "."+baseDomain) {
 			appHandler(w, r)
 			return
 		}
@@ -1670,7 +1655,7 @@ func main() {
 		browserSvc.StopAll()
 		streamPool.StopAll()
 		sandboxSvc.StopAll()
-		tunnelSvc.Stop()
+		netSvc.Stop()
 		ptySvc.DestroyAll()
 		launcher.StopAll(context.Background())
 		netMgr.DestroyAll(context.Background())

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -21,10 +22,11 @@ import (
 // Pool manages multiple concurrent streaming sessions.
 // Each session gets its own Xvfb display, GStreamer pipeline, and WebRTC tracks.
 type Pool struct {
-	mu          sync.Mutex
-	sessions    map[string]*Session
-	nextDisplay int
-	nextPort    int
+	mu              sync.Mutex
+	sessions        map[string]*Session
+	nextDisplay     int
+	nextPort        int
+	resolveUserHome func(r *http.Request) string // resolves user home from request context
 }
 
 // NewPool creates a streaming session pool.
@@ -35,6 +37,11 @@ func NewPool() *Pool {
 		nextDisplay: 10,
 		nextPort:    6100,
 	}
+}
+
+// SetUserHomeResolver sets a callback to resolve user home directories from HTTP requests.
+func (p *Pool) SetUserHomeResolver(fn func(r *http.Request) string) {
+	p.resolveUserHome = fn
 }
 
 // LaunchOpts configures a streaming session.
@@ -55,6 +62,8 @@ type LaunchOpts struct {
 	FPS int
 	// Restart: if true, restart the app if it exits.
 	Restart bool
+	// UserHome is the home directory of the requesting user (e.g. /home/alice).
+	UserHome string
 }
 
 // Launch starts a new streaming session: Xvfb + app + GStreamer + WebRTC.
@@ -145,8 +154,17 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	// Each session gets isolated runtime/config dirs so apps don't see each other's lock files
 	sessionHome := fmt.Sprintf("/tmp/stream-%s", opts.ID)
 	os.MkdirAll(sessionHome, 0755)
+	// Resolve user home — use provided UserHome, fall back to $HOME, then /root
+	home := opts.UserHome
+	if home == "" {
+		home = os.Getenv("HOME")
+	}
+	if home == "" {
+		home = "/root"
+	}
 	appEnv := append(os.Environ(),
 		"DISPLAY="+display,
+		"HOME="+home,
 		"XDG_RUNTIME_DIR="+sessionHome,
 		"XDG_CONFIG_HOME="+sessionHome+"/.config",
 		"XDG_DATA_HOME="+sessionHome+"/.local/share",
@@ -249,10 +267,39 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		}, &sess.gstAudio)
 	}
 
-	// 6. Monitor app exit
+	// 6. Monitor app exit — detect stale processes and auto-cleanup
+	appStartTime := time.Now()
 	go func() {
 		sess.app.Wait()
-		if opts.Restart && ctx.Err() == nil {
+		if ctx.Err() != nil {
+			// Context cancelled — clean shutdown
+			sess.Stop()
+			p.mu.Lock()
+			delete(p.sessions, opts.ID)
+			p.mu.Unlock()
+			return
+		}
+
+		elapsed := time.Since(appStartTime)
+
+		// Quick exit (<3s) likely means stale process holding a lock
+		if elapsed < 3*time.Second {
+			log.Printf("[stream] %s exited too quickly (%.1fs) — killing stale %s processes and retrying",
+				opts.Name, elapsed.Seconds(), opts.Command)
+			// Kill stale processes by command name
+			binName := filepath.Base(opts.Command)
+			exec.Command("pkill", "-9", binName).Run()
+			// Clean up stale lock files
+			os.RemoveAll(sessionHome)
+			os.MkdirAll(sessionHome, 0755)
+			os.MkdirAll(sessionHome+"/tmp", 0755)
+			os.MkdirAll(sessionHome+"/.config", 0755)
+			os.MkdirAll(sessionHome+"/.local/share", 0755)
+			os.MkdirAll(sessionHome+"/.cache", 0755)
+			time.Sleep(time.Second)
+		}
+
+		if opts.Restart {
 			log.Printf("[stream] %s exited, restarting...", opts.Name)
 			time.Sleep(time.Second)
 			newApp := exec.CommandContext(ctx, opts.Command, opts.Args...)
@@ -364,11 +411,16 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 			http.Error(w, `{"error":"command required"}`, 400)
 			return
 		}
+		// Resolve user home from request
+		userHome := ""
+		if p.resolveUserHome != nil {
+			userHome = p.resolveUserHome(r)
+		}
 		sess, err := p.Launch(LaunchOpts{
 			ID: req.ID, Name: req.Name, Command: req.Command,
 			Args: req.Args, Env: req.Env,
 			Width: req.Width, Height: req.Height, FPS: req.FPS,
-			Restart: req.Restart,
+			Restart: req.Restart, UserHome: userHome,
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)

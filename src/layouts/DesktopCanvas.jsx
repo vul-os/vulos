@@ -1,3 +1,4 @@
+import { useEffect, useRef, createElement, lazy, Suspense } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
 import Portal from '../core/Portal'
@@ -8,6 +9,8 @@ import Toasts from '../shell/Toasts'
 import DesktopContextMenu from '../shell/DesktopContextMenu'
 import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
 import { useTheme } from '../core/ThemeProvider'
+
+const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
 function DesktopIndicator() {
   const { desktops, activeDesktop, switchDesktop, removeDesktop } = useShell()
@@ -30,10 +33,51 @@ function DesktopIndicator() {
 }
 
 export default function DesktopCanvas() {
-  const { windows, allWindows, chatOpen, toggleMissionControl, toggleLaunchpad, toggleChat, missionControlOpen, setMissionControl, focusWindow, minimizeWindow } = useShell()
+  const { windows, allWindows, chatOpen, toggleMissionControl, toggleLaunchpad, toggleChat, missionControlOpen, setMissionControl, focusWindow, minimizeWindow, openWindow } = useShell()
   const mcLayout = useMissionControlLayout(windows.filter(w => !w.minimized), missionControlOpen)
   const { wallpaper } = useWallpaper()
   const { isDark } = useTheme()
+
+  // xdg-open: listen for browser open events and focus/open browser window
+  const windowsRef = useRef(windows)
+  windowsRef.current = windows
+  useEffect(() => {
+    const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/notifications/stream`
+    let alive = true
+    function connect() {
+      if (!alive) return
+      const ws = new WebSocket(wsUrl)
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.source !== 'xdg-open') return
+          const browserWin = windowsRef.current.find(w => w.appId === 'browser' || w.appId?.startsWith('browser'))
+          if (browserWin) {
+            focusWindow(browserWin.id)
+          } else {
+            const fallback = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
+              createElement('span', { className: 'flex items-center gap-2' },
+                createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
+                'Connecting...'
+              )
+            )
+            openWindow({
+              appId: 'browser',
+              title: 'Browser',
+              icon: '🌐',
+              component: createElement(Suspense, { fallback },
+                createElement(StreamViewer, { sessionId: 'browser' })
+              ),
+            })
+          }
+        } catch {}
+      }
+      ws.onclose = () => { if (alive) setTimeout(connect, 3000) }
+      ws.onerror = () => ws.close()
+    }
+    connect()
+    return () => { alive = false }
+  }, [focusWindow, openWindow])
 
   const bgSrc = wallpaper || DEFAULT_WALLPAPER
 
@@ -104,6 +148,19 @@ export default function DesktopCanvas() {
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5">
               <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" fill="currentColor" opacity="0.7" />
+            </svg>
+          </button>
+          {/* Fullscreen toggle */}
+          <button
+            onClick={() => {
+              if (document.fullscreenElement) document.exitFullscreen()
+              else document.documentElement.requestFullscreen()
+            }}
+            title="Toggle fullscreen"
+            className="mr-1 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 text-neutral-400 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+              <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
             </svg>
           </button>
           <LifePulse compact />

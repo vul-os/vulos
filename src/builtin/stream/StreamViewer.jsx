@@ -1,12 +1,33 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-// Generic stream viewer — connects to any stream session via WebRTC.
-// Used for desktop apps (GIMP, Audacity, etc.) launched via the stream pool.
-export default function StreamViewer({ sessionId }) {
+// Cloud-gaming grade stream viewer — connects via WebRTC with split input channels.
+// Mouse: unreliable/unordered (latest-wins, high freq)
+// Keyboard: reliable/ordered (every event must arrive in order)
+// Gamepad: unreliable/unordered (full state snapshots)
+
+// Modifier bitmask — sent with every keyboard event for state recovery
+const MOD_SHIFT    = 1
+const MOD_CTRL     = 2
+const MOD_ALT      = 4
+const MOD_META     = 8
+const MOD_CAPSLOCK = 16
+
+function getModifiers(e) {
+  let m = 0
+  if (e.shiftKey) m |= MOD_SHIFT
+  if (e.ctrlKey)  m |= MOD_CTRL
+  if (e.altKey)   m |= MOD_ALT
+  if (e.metaKey)  m |= MOD_META
+  if (e.getModifierState?.('CapsLock')) m |= MOD_CAPSLOCK
+  return m
+}
+
+export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
   const videoRef = useRef(null)
   const wsRef = useRef(null)
   const pcRef = useRef(null)
-  const dcRef = useRef(null)
+  const mouseDcRef = useRef(null)
+  const kbdDcRef = useRef(null)
   const containerRef = useRef(null)
   const connectedRef = useRef(false)
   const lastMouseRef = useRef(0)
@@ -16,8 +37,14 @@ export default function StreamViewer({ sessionId }) {
   const [error, setError] = useState(null)
   const streamSize = useRef({ w: 1280, h: 720 })
 
-  const sendInput = useCallback((evt) => {
-    const dc = dcRef.current
+  const sendMouse = useCallback((evt) => {
+    const dc = mouseDcRef.current
+    if (!dc || dc.readyState !== 'open') return
+    dc.send(JSON.stringify(evt))
+  }, [])
+
+  const sendKbd = useCallback((evt) => {
+    const dc = kbdDcRef.current
     if (!dc || dc.readyState !== 'open') return
     dc.send(JSON.stringify(evt))
   }, [])
@@ -30,12 +57,10 @@ export default function StreamViewer({ sessionId }) {
     setError(null)
 
     try {
-      // Check if session exists and get its resolution — retry if not ready yet
       const res = await fetch('/api/stream/sessions')
       const sessions = await res.json()
       const session = sessions?.find(s => s.id === sessionId)
       if (!session || !session.running) {
-        // Session still starting — retry in 1s (not an error, just waiting)
         setTimeout(() => connect(), 1000)
         return
       }
@@ -64,8 +89,13 @@ export default function StreamViewer({ sessionId }) {
         }
       }
 
-      const dc = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 })
-      dcRef.current = dc
+      // Mouse channel — unreliable, unordered (latest-wins for position)
+      const mouseDc = pc.createDataChannel('mouse', { ordered: false, maxRetransmits: 0 })
+      mouseDcRef.current = mouseDc
+
+      // Keyboard channel — reliable, ordered (every key must arrive in sequence)
+      const kbdDc = pc.createDataChannel('keyboard', { ordered: true })
+      kbdDcRef.current = kbdDc
 
       pc.addTransceiver('video', { direction: 'recvonly' })
 
@@ -119,7 +149,6 @@ export default function StreamViewer({ sessionId }) {
       const w = Math.round(width)
       const h = Math.round(height)
       if (w < 320 || h < 200) return
-      // Debounce — only resize after user stops dragging
       clearTimeout(resizeTimer)
       resizeTimer = setTimeout(() => {
         streamSize.current = { w, h }
@@ -140,7 +169,6 @@ export default function StreamViewer({ sessionId }) {
     const video = videoRef.current
     if (!video) return { x: 0, y: 0 }
     const rect = video.getBoundingClientRect()
-    // Use actual video dimensions (what the decoder reports) for accurate mapping
     const vidW = video.videoWidth || streamSize.current.w
     const vidH = video.videoHeight || streamSize.current.h
     const videoAspect = vidW / vidH
@@ -163,46 +191,48 @@ export default function StreamViewer({ sessionId }) {
     }
   }, [])
 
+  // --- Mouse events (unreliable channel) ---
   const onMouseMove = useCallback((e) => {
     const now = performance.now()
-    if (now - lastMouseRef.current < 16) return
+    if (now - lastMouseRef.current < 8) return // ~120hz cap
     lastMouseRef.current = now
-    sendInput({ type: 'mousemove', ...getPos(e) })
-  }, [getPos, sendInput])
+    sendMouse({ t: 'mm', ...getPos(e) })
+  }, [getPos, sendMouse])
 
   const onMouseDown = useCallback((e) => {
     e.preventDefault()
     focusContainer()
-    sendInput({ type: 'mousedown', ...getPos(e), button: e.button })
-  }, [getPos, sendInput, focusContainer])
+    sendMouse({ t: 'md', ...getPos(e), b: e.button })
+  }, [getPos, sendMouse, focusContainer])
 
-  const onMouseUp = useCallback((e) => sendInput({ type: 'mouseup', button: e.button }), [sendInput])
+  const onMouseUp = useCallback((e) => sendMouse({ t: 'mu', b: e.button }), [sendMouse])
 
   const onWheel = useCallback((e) => {
     e.preventDefault()
-    scrollAccRef.current += e.deltaY
+    scrollAccRef.current += e.deltaY * scrollSensitivity
     if (scrollRafRef.current) return
     scrollRafRef.current = requestAnimationFrame(() => {
       const acc = scrollAccRef.current
       scrollAccRef.current = 0
       scrollRafRef.current = null
       if (Math.abs(acc) < 1) return
-      const clicks = Math.min(10, Math.max(1, Math.round(Math.abs(acc) / 30)))
-      sendInput({ type: 'scroll', x: 0, y: acc > 0 ? clicks : -clicks })
+      const clicks = Math.min(10, Math.max(1, Math.round(Math.abs(acc) / 50)))
+      sendMouse({ t: 'sc', y: acc > 0 ? clicks : -clicks })
     })
-  }, [sendInput])
+  }, [sendMouse, scrollSensitivity])
 
+  // --- Keyboard events (reliable channel) ---
   const onKeyDown = useCallback((e) => {
     e.preventDefault()
     e.stopPropagation()
-    sendInput({ type: 'keydown', key: e.key, code: e.code })
-  }, [sendInput])
+    sendKbd({ t: 'kd', key: e.key, code: e.code, mod: getModifiers(e) })
+  }, [sendKbd])
 
   const onKeyUp = useCallback((e) => {
     e.preventDefault()
     e.stopPropagation()
-    sendInput({ type: 'keyup', key: e.key, code: e.code })
-  }, [sendInput])
+    sendKbd({ t: 'ku', key: e.key, code: e.code, mod: getModifiers(e) })
+  }, [sendKbd])
 
   useEffect(() => {
     if (status === 'connected') focusContainer()

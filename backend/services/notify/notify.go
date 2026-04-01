@@ -48,6 +48,28 @@ func New() *Service {
 	}
 }
 
+// SendWithAction creates and broadcasts a notification with a clickable action URL.
+func (s *Service) SendWithAction(title, body string, level Level, source, action string) *Notification {
+	n := s.Send(title, body, level, source)
+	s.mu.Lock()
+	for i := range s.history {
+		if s.history[i].ID == n.ID {
+			s.history[i].Action = action
+			break
+		}
+	}
+	s.mu.Unlock()
+	// Re-broadcast with action field
+	n.Action = action
+	data, _ := json.Marshal(n)
+	s.mu.RLock()
+	for c := range s.clients {
+		c.WriteMessage(websocket.TextMessage, data)
+	}
+	s.mu.RUnlock()
+	return n
+}
+
 // Send creates and broadcasts a notification.
 func (s *Service) Send(title, body string, level Level, source string) *Notification {
 	n := &Notification{

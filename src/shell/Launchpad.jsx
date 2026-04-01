@@ -115,12 +115,11 @@ export default function Launchpad() {
       let cmd, args
       if (app.id === 'browser') {
         cmd = 'chromium'
-        const profile = `/tmp/chromium-${Date.now()}`
         args = ['--no-sandbox', '--disable-gpu', '--disable-software-rasterizer',
-          '--disable-dev-shm-usage', '--no-first-run', '--disable-background-networking',
-          '--disable-sync', '--disable-translate', '--disable-dbus',
+          '--disable-dev-shm-usage', '--no-first-run',
+          '--disable-translate', '--disable-dbus',
           '--disable-infobars', '--disable-default-apps',
-          `--user-data-dir=${profile}`,
+          '--user-data-dir=/root/.vulos/browser/profile',
           '--start-maximized', 'https://google.com']
       } else {
         cmd = app._exec ? app._exec.split(' ')[0] : app.command?.split(' ')[0] || app.id
@@ -171,12 +170,11 @@ export default function Launchpad() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
       })
-      // Use subdomain URL so the app gets the full / path (no broken asset paths)
+      // Use subdomain URL: {appId}.{currentHost}
+      // os.vulos.org → transmission.os.vulos.org
+      // lvh.me:8080 → transmission.lvh.me:8080
       const proto = location.protocol
-      const hostParts = location.host.split('.')
-      // If already on a subdomain (e.g. cockpit.localhost:8080), use the base domain
-      const baseDomain = hostParts.length > 2 ? hostParts.slice(1).join('.') : location.host
-      const appUrl = `${proto}//${app.id}.${baseDomain}/`
+      const appUrl = `${proto}//${app.id}.${location.host}/`
       openWindow({ appId: app.id, title: app.name, url: appUrl, icon: app.icon })
     } catch {
       openWindow({ appId: app.id, title: app.name, url: `/app/${app.id}/`, icon: app.icon })

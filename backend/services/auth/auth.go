@@ -442,6 +442,27 @@ func (s *Store) ListUsernames() []string {
 	return out
 }
 
+// UserRole is a username + role pair for system reconciliation.
+type UserRole struct {
+	Username string
+	Role     string
+}
+
+// ListUsersWithRoles returns all users with their profile roles.
+func (s *Store) ListUsersWithRoles() []UserRole {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []UserRole
+	for id, u := range s.users {
+		role := "user"
+		if p, ok := s.profiles[id]; ok {
+			role = string(p.Role)
+		}
+		out = append(out, UserRole{Username: u.Username, Role: role})
+	}
+	return out
+}
+
 // ChangePassword updates a user's password.
 func (s *Store) ChangePassword(userID, oldPassword, newPassword string) error {
 	s.mu.Lock()

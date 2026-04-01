@@ -165,10 +165,21 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 	})
 	defer bc.Close()
 
-	// Input data channels — mouse/keyboard/gamepad events
-	// Uses uinput (zero-overhead) when available, xdotool fallback otherwise
+	// Input data channels — split by priority for cloud-gaming grade input
+	// Mouse: unreliable/unordered (latest-wins, high freq)
+	// Keyboard: reliable/ordered (every event must arrive in sequence)
+	// Gamepad: unreliable/unordered (full state snapshots)
+	// Legacy "input" channel also supported for backwards compat
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		switch dc.Label() {
+		case "mouse":
+			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+				s.handleMouse(msg.Data)
+			})
+		case "keyboard":
+			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+				s.handleKeyboard(msg.Data)
+			})
 		case "input":
 			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 				s.handleInput(msg.Data)
@@ -229,7 +240,70 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleInput processes mouse/keyboard events via the session's injector.
+// handleMouse processes mouse events from the dedicated mouse channel (unreliable/unordered).
+func (s *Session) handleMouse(data []byte) {
+	if s.injector == nil {
+		return
+	}
+	var evt struct {
+		T string  `json:"t"` // mm=move, md=down, mu=up, sc=scroll
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+		B int     `json:"b"` // button
+	}
+	if json.Unmarshal(data, &evt) != nil {
+		return
+	}
+	switch evt.T {
+	case "mm":
+		s.injector.MouseMove(int(evt.X), int(evt.Y))
+	case "md":
+		s.injector.MouseMove(int(evt.X), int(evt.Y))
+		s.injector.MouseButton(evt.B, true)
+	case "mu":
+		s.injector.MouseButton(evt.B, false)
+	case "sc":
+		s.injector.Scroll(int(evt.Y))
+	}
+}
+
+// Modifier bitmask constants — must match frontend
+const (
+	modShift    = 1
+	modCtrl     = 2
+	modAlt      = 4
+	modMeta     = 8
+	modCapsLock = 16
+)
+
+// handleKeyboard processes keyboard events from the dedicated keyboard channel (reliable/ordered).
+// Each event includes a modifier bitmask for state recovery if previous events were lost.
+func (s *Session) handleKeyboard(data []byte) {
+	if s.injector == nil {
+		return
+	}
+	var evt struct {
+		T    string `json:"t"`    // kd=keydown, ku=keyup
+		Key  string `json:"key"`
+		Code string `json:"code"`
+		Mod  int    `json:"mod"` // modifier bitmask
+	}
+	if json.Unmarshal(data, &evt) != nil {
+		return
+	}
+
+	// Sync modifier state — reconcile held modifiers from bitmask
+	s.injector.SyncModifiers(evt.Mod)
+
+	switch evt.T {
+	case "kd":
+		s.injector.KeyPress(evt.Key, evt.Code, true)
+	case "ku":
+		s.injector.KeyPress(evt.Key, evt.Code, false)
+	}
+}
+
+// handleInput processes legacy combined mouse/keyboard events (backwards compat).
 func (s *Session) handleInput(data []byte) {
 	if s.injector == nil {
 		return

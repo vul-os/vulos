@@ -80,8 +80,8 @@ const builtinRegistry = [
 
   {
     id: 'browser',
-    name: 'Browser',
-    icon: 'browser',
+    name: 'Chrome',
+    icon: 'chrome',
     description: 'Web browser',
     keywords: ['browser', 'web', 'internet', 'surf', 'chromium', 'chrome'],
     category: 'internet',
