@@ -264,17 +264,29 @@ func (d *Device) Close() {
 	}
 }
 
+// Modifier bitmask constants — must match frontend/backend protocol.
+const (
+	ModShift    = 1
+	ModCtrl     = 2
+	ModAlt      = 4
+	ModMeta     = 8
+	ModCapsLock = 16
+)
+
 // Injector manages virtual input devices and injects events.
-// Uses uinput when available, falls back to xdotool.
+// Uses uinput when available, falls back to xdotool via persistent pipe.
 type Injector struct {
 	mu       sync.Mutex
 	mouse    *Device
 	keyboard *Device
 	gamepad  *Device
+	pipe     *xdotoolPipe // persistent xdotool process (fallback path)
 	useUinput bool
 	screenW   int
 	screenH   int
 	display   string
+	// Tracked modifier state for reconciliation
+	modState int // current bitmask of held modifiers
 }
 
 // NewInjector creates an input injector for the given display.
@@ -289,14 +301,16 @@ func NewInjector(display string, screenW, screenH int) *Injector {
 	// Try uinput
 	mouse, err := createMouseDevice(screenW, screenH)
 	if err != nil {
-		log.Printf("[input] uinput not available (%v), using xdotool fallback", err)
+		log.Printf("[input] uinput not available (%v), using xdotool pipe fallback", err)
+		inj.pipe = newXdotoolPipe(display)
 		return inj
 	}
 
 	kbd, err := createKeyboardDevice()
 	if err != nil {
 		mouse.Close()
-		log.Printf("[input] keyboard uinput failed: %v, using xdotool", err)
+		log.Printf("[input] keyboard uinput failed: %v, using xdotool pipe", err)
+		inj.pipe = newXdotoolPipe(display)
 		return inj
 	}
 
@@ -314,7 +328,7 @@ func NewInjector(display string, screenW, screenH int) *Injector {
 	return inj
 }
 
-// Close destroys all virtual devices.
+// Close destroys all virtual devices and the xdotool pipe.
 func (inj *Injector) Close() {
 	if inj.mouse != nil {
 		inj.mouse.Close()
@@ -324,6 +338,9 @@ func (inj *Injector) Close() {
 	}
 	if inj.gamepad != nil {
 		inj.gamepad.Close()
+	}
+	if inj.pipe != nil {
+		inj.pipe.close()
 	}
 }
 
@@ -386,11 +403,75 @@ func (inj *Injector) Scroll(clicks int) {
 	inj.mouse.sync()
 }
 
-// KeyPress presses or releases a key. code is a Linux keycode.
+// SyncModifiers reconciles the remote modifier state with the client's bitmask.
+// If the client says shift is held but we haven't injected a shift-down, inject it.
+// If the client says shift is released but we think it's held, release it.
+// This recovers from dropped packets on unreliable channels.
+func (inj *Injector) SyncModifiers(clientMod int) {
+	modKeys := []struct {
+		bit  int
+		code uint16
+		xkey string
+	}{
+		{ModShift, keyLeftShift, "Shift_L"},
+		{ModCtrl, keyLeftCtrl, "Control_L"},
+		{ModAlt, keyLeftAlt, "Alt_L"},
+		{ModMeta, keyLeftMeta, "Super_L"},
+	}
+
+	for _, mk := range modKeys {
+		clientHeld := clientMod&mk.bit != 0
+		localHeld := inj.modState&mk.bit != 0
+		if clientHeld == localHeld {
+			continue
+		}
+		// State mismatch — reconcile
+		if clientHeld {
+			inj.modState |= mk.bit
+			if inj.useUinput {
+				inj.keyboard.emit(evKey, mk.code, 1)
+				inj.keyboard.sync()
+			} else {
+				inj.xdotool("keydown", mk.xkey)
+			}
+		} else {
+			inj.modState &^= mk.bit
+			if inj.useUinput {
+				inj.keyboard.emit(evKey, mk.code, 0)
+				inj.keyboard.sync()
+			} else {
+				inj.xdotool("keyup", mk.xkey)
+			}
+		}
+	}
+
+	// CapsLock is a toggle, not a held modifier — don't sync it here.
+	// The reliable keyboard channel guarantees keydown/keyup arrive in order,
+	// so KeyPress handles CapsLock toggle naturally. Syncing here would
+	// double-toggle (SyncModifiers toggles ON, then KeyPress toggles OFF).
+}
+
+// KeyPress presses or releases a key.
 func (inj *Injector) KeyPress(jsKey, jsCode string, pressed bool) {
 	val := int32(0)
 	if pressed {
 		val = 1
+	}
+
+	// Track modifier state locally
+	if linuxCode, ok := jsToLinuxKey(jsKey, jsCode); ok {
+		switch linuxCode {
+		case keyLeftShift, keyRightShift:
+			if pressed { inj.modState |= ModShift } else { inj.modState &^= ModShift }
+		case keyLeftCtrl, keyRightCtrl:
+			if pressed { inj.modState |= ModCtrl } else { inj.modState &^= ModCtrl }
+		case keyLeftAlt, keyRightAlt:
+			if pressed { inj.modState |= ModAlt } else { inj.modState &^= ModAlt }
+		case keyLeftMeta, keyRightMeta:
+			if pressed { inj.modState |= ModMeta } else { inj.modState &^= ModMeta }
+		case keyCapsLock:
+			if pressed { inj.modState ^= ModCapsLock } // toggle on press
+		}
 	}
 
 	if !inj.useUinput {
@@ -493,18 +574,12 @@ func itoa(i int) string {
 	return fmt.Sprintf("%d", i)
 }
 
-// xdotool fallback — spawns a process per call (slow but universal).
+// xdotool sends a command via the persistent pipe (fast) or falls back to fork-exec.
 func (inj *Injector) xdotool(args ...string) {
-	// Import would be circular — use inline exec
-	buf := make([]byte, 0, 256)
-	for i, a := range args {
-		if i > 0 {
-			buf = append(buf, ' ')
-		}
-		buf = append(buf, a...)
+	if inj.pipe != nil {
+		inj.pipe.send(args...)
+		return
 	}
-	_ = buf
-	// Use syscall.ForkExec directly to avoid importing os/exec in hot path
 	xdotoolExec(inj.display, args)
 }
 
@@ -523,8 +598,22 @@ func xKey(key string) string {
 	if x, ok := m[key]; ok {
 		return x
 	}
+	// Map single characters to X11 keysym names
+	charMap := map[byte]string{
+		'=': "equal", '+': "plus", '-': "minus", '_': "underscore",
+		'[': "bracketleft", ']': "bracketright", '{': "braceleft", '}': "braceright",
+		';': "semicolon", ':': "colon", '\'': "apostrophe", '"': "quotedbl",
+		',': "comma", '.': "period", '<': "less", '>': "greater",
+		'/': "slash", '?': "question", '\\': "backslash", '|': "bar",
+		'`': "grave", '~': "asciitilde", '!': "exclam", '@': "at",
+		'#': "numbersign", '$': "dollar", '%': "percent", '^': "asciicircum",
+		'&': "ampersand", '*': "asterisk", '(': "parenleft", ')': "parenright",
+	}
 	if len(key) == 1 {
-		return key
+		if sym, ok := charMap[key[0]]; ok {
+			return sym
+		}
+		return key // letters and digits pass through as-is
 	}
 	return ""
 }
@@ -624,6 +713,7 @@ const (
 	keyInsert    = 110
 	keyDelete    = 111
 	keyLeftMeta  = 125
+	keyRightMeta = 126
 	keyRightCtrl = 97
 	keyRightAlt  = 100
 )

@@ -24,8 +24,6 @@ SHM="1g"
 VOLUME="vulos-data"
 
 start_container() {
-  LANDING="${LANDING_PORT:-3000}"
-
   echo "Starting container..."
   TLS_MOUNT=""
   DOMAIN="${VULOS_DOMAIN:-lvh.me}"
@@ -36,12 +34,10 @@ start_container() {
   docker run -d \
     --name "$NAME" \
     -p "$PORT:8080" \
-    -p "$LANDING:3000" \
     --shm-size="$SHM" \
     --privileged \
     -v "$VOLUME:/root/.vulos" \
     $TLS_MOUNT \
-    -e LANDING_PORT=3000 \
     -e VULOS_DOMAIN="$DOMAIN" \
     "$NAME"
 
@@ -52,7 +48,6 @@ start_container() {
 
   if docker ps --filter "name=$NAME" --format '{{.Status}}' | grep -q "Up"; then
     echo "${GREEN}OS running at http://localhost:$PORT${NC}"
-    echo "${GREEN}Landing at http://localhost:$LANDING${NC}"
   else
     echo "${RED}Failed to start. Logs:${NC}"
     docker logs "$NAME" --tail 20

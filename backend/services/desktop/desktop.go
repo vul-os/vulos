@@ -50,6 +50,8 @@ func New() *Service {
 			"/usr/share/applications",
 			"/usr/local/share/applications",
 			filepath.Join(home, ".local", "share", "applications"),
+			"/var/lib/flatpak/exports/share/applications",
+			filepath.Join(home, ".local", "share", "flatpak", "exports", "share", "applications"),
 		},
 	}
 }
@@ -103,6 +105,21 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/desktop/entries", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(s.List())
+	})
+
+	// Serve app icons from system icon themes (e.g. /usr/share/icons/hicolor/*/apps/)
+	mux.HandleFunc("GET /api/desktop/icon/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/desktop/icon/")
+		if name == "" || strings.Contains(name, "/") || strings.Contains(name, "..") {
+			http.Error(w, "bad icon name", 400)
+			return
+		}
+		iconPath := findSystemIcon(name)
+		if iconPath == "" {
+			http.Error(w, "not found", 404)
+			return
+		}
+		http.ServeFile(w, r, iconPath)
 	})
 
 	// Force rescan (called after apt install/remove)
@@ -192,6 +209,35 @@ func parseDesktopFile(path string) (Entry, error) {
 	}
 
 	return e, scanner.Err()
+}
+
+// findSystemIcon searches for an icon by name in system icon theme directories.
+// Prefers SVG > PNG, larger sizes first.
+func findSystemIcon(name string) string {
+	sizes := []string{"scalable", "256x256", "128x128", "64x64", "48x48", "32x32", "24x24", "16x16"}
+	exts := []string{".svg", ".png", ".xpm"}
+	dirs := []string{"/usr/share/icons/hicolor", "/usr/share/icons/Adwaita", "/usr/share/pixmaps"}
+
+	for _, dir := range dirs {
+		if dir == "/usr/share/pixmaps" {
+			for _, ext := range exts {
+				p := filepath.Join(dir, name+ext)
+				if _, err := os.Stat(p); err == nil {
+					return p
+				}
+			}
+			continue
+		}
+		for _, sz := range sizes {
+			for _, ext := range exts {
+				p := filepath.Join(dir, sz, "apps", name+ext)
+				if _, err := os.Stat(p); err == nil {
+					return p
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // stripFieldCodes removes freedesktop field codes from Exec values.

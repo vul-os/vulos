@@ -94,10 +94,10 @@ func (s *Service) tryStart(parentCtx context.Context) error {
 	// Launch via stream pool — Xvfb, GStreamer, WebRTC tracks, input all handled
 	sess, err := s.pool.Launch(stream.LaunchOpts{
 		ID:   sessionID,
-		Name: "Chromium",
+		Name: "Chrome",
 		Command: bin,
 		Args: []string{
-			"--no-sandbox", "--test-type", "--disable-gpu", "--disable-software-rasterizer",
+			"--no-sandbox", "--test-type", "--disable-gpu", "--disable-software-rasterizer", "--disable-logging",
 			"--disable-dev-shm-usage", "--no-first-run", "--disable-background-networking",
 			"--disable-sync", "--disable-translate", "--metrics-recording-only",
 			"--no-default-browser-check", "--disable-dbus",
@@ -202,6 +202,16 @@ func (s *Service) startPulseAudio() error {
 	time.Sleep(time.Second)
 	log.Printf("[browser] pulseaudio started")
 	return nil
+}
+
+// OpenTab opens a URL in a new browser tab via CDP and activates it.
+func (s *Service) OpenTab(url string) (*cdpTab, error) {
+	tab, err := cdpNewTab(url)
+	if err != nil {
+		return nil, err
+	}
+	cdpActivateTab(tab.ID)
+	return tab, nil
 }
 
 // RegisterHandlers exposes browser-specific API endpoints.
@@ -427,7 +437,11 @@ func cdpListTabs() ([]cdpTab, error) {
 }
 
 func cdpNewTab(url string) (*cdpTab, error) {
-	resp, err := http.Get(cdpBase + "/json/new?" + url)
+	req, err := http.NewRequest("PUT", cdpBase+"/json/new?"+url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +454,8 @@ func cdpNewTab(url string) (*cdpTab, error) {
 }
 
 func cdpCloseTab(id string) error {
-	resp, err := http.Get(cdpBase + "/json/close/" + id)
+	req, _ := http.NewRequest("PUT", cdpBase+"/json/close/"+id, nil)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -449,7 +464,8 @@ func cdpCloseTab(id string) error {
 }
 
 func cdpActivateTab(id string) error {
-	resp, err := http.Get(cdpBase + "/json/activate/" + id)
+	req, _ := http.NewRequest("PUT", cdpBase+"/json/activate/"+id, nil)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}

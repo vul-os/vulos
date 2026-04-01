@@ -1,5 +1,26 @@
 {
   "apps": {
+    "wede": {
+      "name": "Wede",
+      "vetted": true,
+      "type": "web",
+      "description": "Lightweight web-based code editor — edit files and projects from your browser with syntax highlighting",
+      "category": "developer",
+      "author": "webcrft",
+      "homepage": "https://github.com/webcrft/wede",
+      "icon": "wede",
+      "keywords": ["editor", "code", "web", "ide", "files", "syntax"],
+      "license": "MIT",
+      "versions": {
+        "latest": {
+          "install": "curl -fsSL https://raw.githubusercontent.com/webcrft/wede/main/install.sh | bash",
+          "command": "/root/.local/bin/wede -port ${PORT}",
+          "port": 9090,
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
     "cockpit": {
       "name": "Cockpit",
       "vetted": true,
@@ -220,9 +241,9 @@
       "versions": {
         "4": {
           "install": "apt-get install -y --no-install-recommends transmission-daemon",
-          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth --allowed \\\"*\\\"",
+          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
           "port": 9091,
-          "post_install": "mkdir -p data/downloads data/incomplete",
+          "post_install": "mkdir -p data/downloads data/incomplete && printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" > data/settings.json",
           "permissions": [
             "network",
             "filesystem"
@@ -250,9 +271,9 @@
       ],
       "license": "GPL-3.0",
       "versions": {
-        "2.10": {
-          "install": "apt-get install -y --no-install-recommends gimp",
-          "command": "gimp",
+        "latest": {
+          "flatpak_id": "org.gimp.GIMP",
+          "command": "flatpak run org.gimp.GIMP",
           "permissions": [
             "filesystem",
             "gpu"
@@ -310,9 +331,9 @@
       ],
       "license": "GPL-2.0",
       "versions": {
-        "1": {
-          "install": "apt-get install -y --no-install-recommends inkscape",
-          "command": "inkscape",
+        "latest": {
+          "flatpak_id": "org.inkscape.Inkscape",
+          "command": "flatpak run org.inkscape.Inkscape",
           "permissions": [
             "filesystem"
           ],
@@ -340,9 +361,9 @@
       ],
       "license": "GPL-3.0",
       "versions": {
-        "8": {
-          "install": "apt-get install -y --no-install-recommends kicad",
-          "command": "kicad",
+        "latest": {
+          "flatpak_id": "org.kicad.KiCad",
+          "command": "flatpak run org.kicad.KiCad",
           "permissions": [
             "filesystem",
             "gpu"
@@ -367,13 +388,16 @@
         "presentation",
         "document",
         "writer",
-        "calc"
+        "calc",
+        "excel",
+        "docx",
+        "xlsx"
       ],
       "license": "MPL-2.0",
       "versions": {
-        "24": {
+        "26.2": {
           "install": "apt-get install -y --no-install-recommends libreoffice",
-          "command": "libreoffice --norestore",
+          "command": "libreoffice",
           "permissions": [
             "filesystem"
           ],
@@ -400,9 +424,9 @@
       ],
       "license": "GPL-2.0",
       "versions": {
-        "3": {
-          "install": "apt-get install -y --no-install-recommends vlc",
-          "command": "vlc --no-qt-privacy-ask",
+        "latest": {
+          "flatpak_id": "org.videolan.VLC",
+          "command": "flatpak run org.videolan.VLC",
           "permissions": [
             "filesystem",
             "gpu"
@@ -430,9 +454,9 @@
       ],
       "license": "GPL-3.0",
       "versions": {
-        "3": {
-          "install": "apt-get install -y --no-install-recommends audacity",
-          "command": "audacity",
+        "latest": {
+          "flatpak_id": "org.audacityteam.Audacity",
+          "command": "flatpak run org.audacityteam.Audacity",
           "permissions": [
             "filesystem",
             "microphone"
@@ -463,8 +487,8 @@
       "license": "MPL-2.0",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends firefox-esr",
-          "command": "firefox-esr --no-remote",
+          "flatpak_id": "org.mozilla.firefox",
+          "command": "flatpak run org.mozilla.firefox",
           "permissions": [
             "network",
             "gpu"
@@ -522,9 +546,9 @@
       ],
       "license": "GPL-3.0",
       "versions": {
-        "24": {
-          "install": "apt-get install -y --no-install-recommends kdenlive",
-          "command": "kdenlive",
+        "latest": {
+          "flatpak_id": "org.kde.kdenlive",
+          "command": "flatpak run org.kde.kdenlive",
           "permissions": [
             "filesystem",
             "gpu"
@@ -552,9 +576,9 @@
       ],
       "license": "GPL-2.0",
       "versions": {
-        "3": {
-          "install": "apt-get install -y --no-install-recommends filezilla",
-          "command": "filezilla",
+        "latest": {
+          "flatpak_id": "org.filezillaproject.Filezilla",
+          "command": "flatpak run org.filezillaproject.Filezilla",
           "permissions": [
             "network",
             "filesystem"
@@ -582,9 +606,9 @@
       ],
       "license": "GPL-3.0",
       "versions": {
-        "2": {
-          "install": "apt-get install -y --no-install-recommends keepassxc",
-          "command": "keepassxc",
+        "latest": {
+          "flatpak_id": "org.keepassxc.KeePassXC",
+          "command": "flatpak run org.keepassxc.KeePassXC",
           "permissions": [
             "filesystem"
           ],
@@ -612,8 +636,8 @@
       "license": "GPL-2.0",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends geany geany-plugins",
-          "command": "geany",
+          "flatpak_id": "org.geany.Geany",
+          "command": "flatpak run org.geany.Geany",
           "permissions": [
             "filesystem",
             "network"
@@ -640,9 +664,9 @@
       ],
       "license": "GPL-2.0",
       "versions": {
-        "4": {
-          "install": "apt-get install -y --no-install-recommends qbittorrent",
-          "command": "qbittorrent",
+        "latest": {
+          "flatpak_id": "org.qbittorrent.qBittorrent",
+          "command": "flatpak run org.qbittorrent.qBittorrent",
           "permissions": [
             "network",
             "filesystem"

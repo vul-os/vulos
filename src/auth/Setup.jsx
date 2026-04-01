@@ -3,7 +3,7 @@ import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 
-const STEPS = ['welcome', 'language', 'timezone', 'network', 'account', 'appearance', 'ready']
+const STEPS = ['welcome', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'ready']
 
 // Timezone data with approximate map positions (% from top-left)
 const TIMEZONES = [
@@ -56,6 +56,7 @@ export default function Setup({ onComplete }) {
     displayName: '',
     username: '',
     password: '',
+    pin: '',
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -128,6 +129,7 @@ export default function Setup({ onComplete }) {
           {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'account' && <AccountStep config={config} update={update} onNext={next} onPrev={prev} />}
+          {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
           {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
         </div>
@@ -425,6 +427,78 @@ function AccountStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // Appearance
 // ═══════════════════════════════════
+function PinStep({ config, update, onNext, onPrev }) {
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+
+  const handleNext = () => {
+    if (config.pin && config.pin !== confirm) {
+      setError('PINs do not match')
+      return
+    }
+    if (config.pin && config.pin.length < 4) {
+      setError('PIN must be at least 4 digits')
+      return
+    }
+    onNext()
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-6 max-w-sm mx-auto">
+      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 flex items-center justify-center mb-4">
+        <svg viewBox="0 0 24 24" className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" />
+          <path d="M7 11V7a5 5 0 0110 0v4" />
+          <circle cx="12" cy="16.5" r="1.5" fill="currentColor" />
+        </svg>
+      </div>
+      <h2 className="text-xl font-semibold text-neutral-100 text-center">Lock Screen PIN</h2>
+      <p className="text-sm text-neutral-500 text-center mt-2 mb-6">
+        Set a PIN to lock your screen. You can skip this and set it later in Settings.
+      </p>
+
+      {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+
+      <input
+        type="password"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={config.pin}
+        onChange={e => { update('pin', e.target.value.replace(/\D/g, '')); setError('') }}
+        placeholder="Enter PIN (4+ digits)"
+        maxLength={8}
+        className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-3"
+      />
+
+      {config.pin && (
+        <input
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={confirm}
+          onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setError('') }}
+          placeholder="Confirm PIN"
+          maxLength={8}
+          className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-3"
+        />
+      )}
+
+      <div className="flex gap-3 mt-4 w-full">
+        <button onClick={onPrev} className="flex-1 py-3 rounded-xl text-sm font-medium text-neutral-400 bg-neutral-800/60 hover:bg-neutral-800 transition-colors">
+          Back
+        </button>
+        <button onClick={() => { update('pin', ''); onNext() }} className="py-3 px-5 rounded-xl text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
+          Skip
+        </button>
+        <button onClick={handleNext} disabled={config.pin && config.pin.length < 4} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-40 transition-colors">
+          {config.pin ? 'Set PIN' : 'Skip'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
 function AppearanceStep({ onNext, onPrev }) {
   const { theme, setTheme, nightShiftMode, setNightShiftMode } = useTheme()
 
@@ -526,6 +600,15 @@ function ReadyStep({ config, onFinish, onPrev }) {
         setCreating(false)
         return
       }
+    }
+
+    // Set PIN if configured
+    if (config.pin) {
+      await fetch('/api/auth/pin/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: config.pin }),
+      }).catch(() => {})
     }
 
     await onFinish()

@@ -20,8 +20,9 @@ type Handler struct {
 	providers     map[string]*OAuthProvider
 	states        *stateStore
 	limiter       *RateLimiter
-	OnUserCreated func(username, password string) // called after a new user is registered
-	OnUserLogin   func(username, password string) // called on every successful login to sync credentials
+	OnUserCreated func(username, password, role string) // called after a new user is registered
+	OnUserLogin   func(username, password, role string) // called on every successful login to sync credentials
+	OnRoleChanged func(username, role string)           // called when a user's role changes
 }
 
 func NewHandler(store *Store) *Handler {
@@ -76,6 +77,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/status":       true,
 	"/api/setup/status":      true,
 	"/api/browser/status":    true,
+	"/api/open":              true,
 	"/manifest.json":         true,
 }
 
@@ -182,9 +184,14 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create corresponding Linux user for terminal/sudo access
+	// Create corresponding Linux user with appropriate permissions
 	if h.OnUserCreated != nil {
-		h.OnUserCreated(req.Username, req.Password)
+		profile, _ := h.store.GetProfile(user.ID)
+		role := "user"
+		if profile != nil {
+			role = string(profile.Role)
+		}
+		h.OnUserCreated(req.Username, req.Password, role)
 	}
 
 	h.store.Flush()
@@ -227,9 +234,14 @@ func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
 
 	h.limiter.RecordSuccess(ip)
 
-	// Sync Linux user password on every login
+	// Sync Linux user password + role on every login
 	if h.OnUserLogin != nil {
-		h.OnUserLogin(req.Username, req.Password)
+		profile, _ := h.store.GetProfile(user.ID)
+		role := "user"
+		if profile != nil {
+			role = string(profile.Role)
+		}
+		h.OnUserLogin(req.Username, req.Password, role)
 	}
 
 	sess := h.store.CreateSession(user, "")
@@ -327,8 +339,12 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	isNew := h.store.GetUserByEmail(info.Email) == nil
 	user := h.store.FindOrCreateUser(providerName, info.ProviderID, info.Email, info.Name, info.Picture)
 	if isNew && h.OnUserCreated != nil {
-		// OAuth users get a Linux account with a random password (can change later)
-		h.OnUserCreated(user.Username, generateRandomPassword())
+		profile, _ := h.store.GetProfile(user.ID)
+		role := "user"
+		if profile != nil {
+			role = string(profile.Role)
+		}
+		h.OnUserCreated(user.Username, generateRandomPassword(), role)
 	}
 	sess := h.store.CreateSession(user, deviceID)
 	h.store.Flush()
@@ -640,6 +656,14 @@ func (h *Handler) handleSetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.store.Flush()
+
+	// Sync Linux group membership
+	if h.OnRoleChanged != nil {
+		if user, ok := h.store.GetUser(userID); ok && user != nil {
+			h.OnRoleChanged(user.Username, string(role))
+		}
+	}
+
 	writeJSON(w, map[string]string{"status": "role updated"})
 }
 

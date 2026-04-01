@@ -23,26 +23,31 @@ func New() *Service {
 }
 
 // EnsureUser creates a Linux user for the given username if it doesn't exist.
-// The user gets: home directory, bash shell, wheel group (sudo), and the given password.
-func (s *Service) EnsureUser(username, password string) error {
+// Admin users get sudo group membership; regular users and guests do not.
+func (s *Service) EnsureUser(username, password, role string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if u, err := user.Lookup(username); err == nil {
-		// User exists — ensure .bashrc is present
-		s.ensureBashrc(u.HomeDir, username)
-		return nil
-	}
-
-	// Sanitize username for Linux (lowercase, alphanumeric + dash/underscore)
 	sysName := sanitizeUsername(username)
 	if sysName == "" {
 		return fmt.Errorf("invalid username: %q", username)
 	}
 
-	// Create user with home dir, bash shell, sudo group
+	if u, err := user.Lookup(sysName); err == nil {
+		// User exists — sync group membership and bashrc
+		s.ensureBashrc(u.HomeDir, sysName)
+		s.syncSudo(sysName, role)
+		return nil
+	}
+
+	// Create user with home dir, bash shell
 	homeDir := "/home/" + sysName
-	cmd := exec.Command("adduser", "--disabled-password", "--gecos", "", "--shell", "/bin/bash", "--ingroup", "sudo", "--home", homeDir, sysName)
+	args := []string{"--disabled-password", "--gecos", "", "--shell", "/bin/bash", "--home", homeDir}
+	if role == "admin" {
+		args = append(args, "--ingroup", "sudo")
+	}
+	args = append(args, sysName)
+	cmd := exec.Command("adduser", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("adduser failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
@@ -128,6 +133,29 @@ func (s *Service) SetPassword(username, password string) error {
 	cmd.Stdin = strings.NewReader(sysName + ":" + password)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("chpasswd failed: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// SetRole updates a user's sudo group membership based on their role.
+func (s *Service) SetRole(username, role string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.syncSudo(sanitizeUsername(username), role)
+}
+
+// syncSudo adds or removes a user from the sudo group based on role.
+func (s *Service) syncSudo(sysName, role string) error {
+	if sysName == "" {
+		return nil
+	}
+	if _, err := user.Lookup(sysName); err != nil {
+		return nil // user doesn't exist yet
+	}
+	if role == "admin" {
+		exec.Command("usermod", "-aG", "sudo", sysName).Run()
+	} else {
+		exec.Command("gpasswd", "-d", sysName, "sudo").Run()
 	}
 	return nil
 }

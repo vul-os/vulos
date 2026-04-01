@@ -1,8 +1,10 @@
 node_modules/
 dist/
+output/
 tmp/
 *.exe
 *.test
 *.out
 .DS_Store
 .claude
+local_build.sh

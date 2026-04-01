@@ -50,8 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
+    flatpak \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
 
 # Layer 2: System config (rarely changes)
 RUN groupadd -f sudo 2>/dev/null || true \
@@ -61,12 +63,12 @@ RUN groupadd -f sudo 2>/dev/null || true \
 RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
     /var/lib/vulos /root/.vulos/data /root/.vulos/db /root/.vulos/sandbox \
     /root/.vulos/browser/extensions \
-    /tmp/xdg-runtime
+    /tmp/xdg-runtime \
+    /etc/chromium/policies/managed \
+    && printf '{"CommandLineFlagSecurityWarningsEnabled": false}\n' > /etc/chromium/policies/managed/vulos.json
 
 # Layer 3: Static assets (changes with content updates)
 COPY apps/ /opt/vulos/apps/
-COPY landing/ /opt/vulos/landing/
-
 # Layer 4: Frontend build output (changes with UI work)
 COPY --from=frontend /app/dist /opt/vulos/webroot
 
@@ -76,6 +78,8 @@ COPY registry.json /opt/vulos/registry.json
 # Layer 6: Go binary (changes most often — last for fast rebuilds)
 COPY --from=backend /vulos-server /usr/local/bin/vulos-server
 COPY --from=backend /vulos-init /usr/local/bin/vulos-init
+COPY scripts/xdg-open /usr/local/bin/xdg-open
+RUN rm -f /usr/bin/xdg-open && ln -s /usr/local/bin/xdg-open /usr/bin/xdg-open
 
 RUN touch /var/lib/vulos/.setup-complete
 
@@ -89,6 +93,6 @@ ENV SHELL=/bin/bash
 ENV DISPLAY=:99
 ENV HOSTNAME=vula
 
-EXPOSE 8080 3000
+EXPOSE 8080
 ENTRYPOINT ["tini", "--"]
 CMD ["/usr/local/bin/vulos-server", "-env", "local"]

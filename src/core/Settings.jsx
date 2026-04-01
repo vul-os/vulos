@@ -14,7 +14,7 @@ const sections = [
   { id: 'energy', label: 'Battery & Energy' },
   { id: 'vault', label: 'Backup & Sync' },
   { id: 'recall', label: 'Search & Index' },
-  { id: 'tunnel', label: 'Remote Access' },
+  { id: 'network', label: 'Remote Access' },
   { id: 'users', label: 'Users & Profiles' },
   { id: 'account', label: 'Account' },
   { id: 'about', label: 'About' },
@@ -53,7 +53,7 @@ export default function Settings() {
         {active === 'energy' && <EnergySettings />}
         {active === 'vault' && <VaultSettings />}
         {active === 'recall' && <RecallSettings />}
-        {active === 'tunnel' && <TunnelSettings />}
+        {active === 'network' && <NetworkSettings />}
         {active === 'users' && <UsersSettings profile={profile} />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'about' && <AboutSettings />}
@@ -485,35 +485,41 @@ function EnergySettings() {
   )
 }
 
-// --- Tunnel ---
-function TunnelSettings() {
-  const [status, setStatus] = useState(null)
-  const refresh = () => fetch('/api/tunnel/status').then(r => r.json()).then(setStatus).catch(() => {})
-  useEffect(() => { refresh() }, [])
+// --- Remote Access ---
+function NetworkSettings() {
+  const [config, setConfig] = useState({ app_url: 'http://localhost:8080' })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
-  const start = () => fetch('/api/tunnel/start', { method: 'POST' }).then(r => r.json()).then(setStatus)
-  const stop = () => fetch('/api/tunnel/stop', { method: 'POST' }).then(refresh)
+  useEffect(() => {
+    fetch('/api/network/config').then(r => r.ok ? r.json() : null).then(d => d && !d.error && setConfig(d)).catch(() => {})
+  }, [])
+
+  const saveConfig = () => {
+    setSaving(true)
+    fetch('/api/network/configure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    }).then(r => r.json()).then(d => { setConfig(d); setSaved(true); setTimeout(() => setSaved(false), 2000) }).finally(() => setSaving(false))
+  }
 
   return (
     <Section title="Remote Access">
-      <div className={`text-sm mb-3 ${status?.running ? 'text-green-400' : 'text-neutral-500'}`}>
-        {status?.running ? `Online: ${status.domain}` : 'Tunnel not running'}
-      </div>
-      <div className="flex gap-2 mb-4">
-        <button onClick={start} disabled={status?.running} className="btn">Start</button>
-        <button onClick={stop} disabled={!status?.running} className="btn-ghost">Stop</button>
-      </div>
-      {status?.public_urls && Object.entries(status.public_urls).length > 0 && (
-        <>
-          <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">App URLs</h3>
-          {Object.entries(status.public_urls).map(([sub, url]) => (
-            <div key={sub} className="flex items-center justify-between py-1.5 text-sm">
-              <span className="text-neutral-400">{sub}</span>
-              <span className="text-xs text-neutral-600 font-mono">{url}</span>
-            </div>
-          ))}
-        </>
-      )}
+      <p className="text-xs text-neutral-600 mb-5">Configure how this device is reached from the network. If you're accessing remotely, set the URL to your public IP or domain.</p>
+
+      <label className="block text-sm text-neutral-400 mb-1">Access URL</label>
+      <input
+        value={config.app_url || ''}
+        onChange={e => setConfig(c => ({ ...c, app_url: e.target.value }))}
+        placeholder="http://localhost:8080"
+        className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-1.5 text-sm mb-1"
+      />
+      <p className="text-xs text-neutral-600 mb-5">The address used to reach this device. For local use, leave as localhost. For remote access, set to your IP or domain (e.g. http://41.193.144.126:8080).</p>
+
+      <button onClick={saveConfig} disabled={saving} className="btn text-sm">
+        {saving ? 'Saving...' : saved ? 'Saved' : 'Save'}
+      </button>
     </Section>
   )
 }

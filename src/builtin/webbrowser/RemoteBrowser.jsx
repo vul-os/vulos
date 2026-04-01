@@ -16,11 +16,41 @@ export default function RemoteBrowser() {
   const isEmbedded = navigator.userAgent.includes('WPE') || navigator.userAgent.includes('Cog')
 
 
-  const sendInput = useCallback((evt) => {
-    const dc = dcRef.current
-    if (!dc || dc.readyState !== 'open') return
+  const mouseDcRef = useRef(null)
+  const kbdDcRef = useRef(null)
+
+  const sendMouse = useCallback((evt) => {
+    const dc = mouseDcRef.current
+    if (!dc || dc.readyState !== 'open') {
+      // Fallback to legacy channel
+      const ldc = dcRef.current
+      if (ldc && ldc.readyState === 'open') ldc.send(JSON.stringify(evt))
+      return
+    }
     dc.send(JSON.stringify(evt))
   }, [])
+
+  const sendKbd = useCallback((evt) => {
+    const dc = kbdDcRef.current
+    if (!dc || dc.readyState !== 'open') {
+      const ldc = dcRef.current
+      if (ldc && ldc.readyState === 'open') ldc.send(JSON.stringify(evt))
+      return
+    }
+    dc.send(JSON.stringify(evt))
+  }, [])
+
+  // Keep legacy sendInput for touch gestures that mix mouse events
+  const sendInput = useCallback((evt) => {
+    // Route to appropriate channel
+    if (evt.type === 'keydown' || evt.type === 'keyup') {
+      sendKbd({ t: evt.type === 'keydown' ? 'kd' : 'ku', key: evt.key, code: evt.code, mod: 0 })
+    } else {
+      const t = { mousemove: 'mm', mousedown: 'md', mouseup: 'mu', click: 'md', scroll: 'sc' }[evt.type] || evt.type
+      sendMouse({ t, x: evt.x, y: evt.y, b: evt.button || 0 })
+      if (evt.type === 'click') sendMouse({ t: 'mu', b: evt.button || 0 })
+    }
+  }, [sendMouse, sendKbd])
 
   const connect = useCallback(async () => {
     pcRef.current?.close()
@@ -60,10 +90,19 @@ export default function RemoteBrowser() {
         }
       }
 
+      // Mouse channel — unreliable/unordered (latest-wins)
+      const mouseDc = pc.createDataChannel('mouse', { ordered: false, maxRetransmits: 0 })
+      mouseDcRef.current = mouseDc
+
+      // Keyboard channel — reliable/ordered (every event must arrive)
+      const kbdDc = pc.createDataChannel('keyboard', { ordered: true })
+      kbdDcRef.current = kbdDc
+
+      // Legacy input channel (fallback)
       const dc = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 })
       dcRef.current = dc
 
-      // Gamepad channel — separate so it doesn't block mouse/keyboard
+      // Gamepad channel — separate unreliable channel
       const gpDc = pc.createDataChannel('gamepad', { ordered: false, maxRetransmits: 0 })
       gpDcRef.current = gpDc
 
@@ -252,15 +291,27 @@ export default function RemoteBrowser() {
     if (e.key === 'Escape') return
     e.preventDefault()
     e.stopPropagation()
-    sendInput({ type: 'keydown', key: e.key, code: e.code })
-  }, [sendInput])
+    let m = 0
+    if (e.shiftKey) m |= 1
+    if (e.ctrlKey)  m |= 2
+    if (e.altKey)   m |= 4
+    if (e.metaKey)  m |= 8
+    if (e.getModifierState?.('CapsLock')) m |= 16
+    sendKbd({ t: 'kd', key: e.key, code: e.code, mod: m })
+  }, [sendKbd])
 
   const onKeyUp = useCallback((e) => {
     if (e.key === 'Escape') return
     e.preventDefault()
     e.stopPropagation()
-    sendInput({ type: 'keyup', key: e.key, code: e.code })
-  }, [sendInput])
+    let m = 0
+    if (e.shiftKey) m |= 1
+    if (e.ctrlKey)  m |= 2
+    if (e.altKey)   m |= 4
+    if (e.metaKey)  m |= 8
+    if (e.getModifierState?.('CapsLock')) m |= 16
+    sendKbd({ t: 'ku', key: e.key, code: e.code, mod: m })
+  }, [sendKbd])
 
   useEffect(() => {
     if (status === 'connected') focusContainer()

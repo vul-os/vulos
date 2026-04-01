@@ -60,6 +60,7 @@ type RegistryEntry struct {
 // VersionRecipe defines how to install and run a specific version of an app.
 type VersionRecipe struct {
 	Install     string            `json:"install"`      // shell command to install (e.g., "apt-get install -y postgresql-16")
+	FlatpakID   string            `json:"flatpak_id"`   // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
 	Command     string            `json:"command"`      // how to run it (e.g., "bin/postgres -D data/")
 	Port        int               `json:"port"`         // default port the app listens on
 	PostInstall string            `json:"post_install"` // one-time setup command (e.g., "bin/initdb -D data/")
@@ -143,29 +144,38 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		os.MkdirAll(filepath.Join(appDir, dir), 0755)
 	}
 
-	// Ensure apt cache is ready before installing
-	if !packages.CacheReady() {
-		log.Printf("[registry] apt cache empty, running apt-get update...")
-		if err := exec.CommandContext(ctx, "apt-get", "update", "-qq").Run(); err != nil {
-			return fmt.Errorf("apt-get update failed: %w (run 'Update Package Index' from Settings first)", err)
+	// Flatpak install path
+	if recipe.FlatpakID != "" {
+		if err := FlatpakInstall(ctx, recipe.FlatpakID); err != nil {
+			return fmt.Errorf("flatpak install %s: %w", recipe.FlatpakID, err)
 		}
-	}
-
-	// Run install command
-	if recipe.Install != "" {
-		log.Printf("[registry] installing %s@%s: %s", appID, version, recipe.Install)
-		var stderrBuf bytes.Buffer
-		cmd := exec.CommandContext(ctx, "sh", "-c", recipe.Install)
-		cmd.Dir = appDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = &stderrBuf
-		cmd.Env = append(os.Environ(), fmt.Sprintf("APP_DIR=%s", appDir))
-		if err := cmd.Run(); err != nil {
-			errOutput := lastLines(stderrBuf.String(), 10)
-			if errOutput != "" {
-				return fmt.Errorf("install command failed: %w\n%s", err, errOutput)
+	} else {
+		// Ensure apt cache is ready before installing
+		if !packages.CacheReady() {
+			log.Printf("[registry] apt cache empty, running apt-get update...")
+			if err := exec.CommandContext(ctx, "apt-get", "update", "-qq").Run(); err != nil {
+				return fmt.Errorf("apt-get update failed: %w (run 'Update Package Index' from Settings first)", err)
 			}
-			return fmt.Errorf("install command failed: %w", err)
+		}
+
+		// Run install command
+		if recipe.Install != "" {
+			log.Printf("[registry] installing %s@%s: %s", appID, version, recipe.Install)
+			var stderrBuf bytes.Buffer
+			cmd := exec.CommandContext(ctx, "sh", "-c", recipe.Install)
+			cmd.Dir = appDir
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = &stderrBuf
+			home := os.Getenv("HOME")
+			if home == "" { home = "/root" }
+			cmd.Env = append(os.Environ(), fmt.Sprintf("APP_DIR=%s", appDir), "HOME="+home)
+			if err := cmd.Run(); err != nil {
+				errOutput := lastLines(stderrBuf.String(), 10)
+				if errOutput != "" {
+					return fmt.Errorf("install command failed: %w\n%s", err, errOutput)
+				}
+				return fmt.Errorf("install command failed: %w", err)
+			}
 		}
 	}
 
@@ -177,6 +187,10 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	// Generate the app.json manifest
 	appType := entry.Type
 	if appType == "" { appType = "web" }
+	appCommand := recipe.Command
+	if recipe.FlatpakID != "" && appCommand == "" {
+		appCommand = FlatpakRunCommand(recipe.FlatpakID)
+	}
 	manifest := &AppManifest{
 		ID:          appID,
 		Name:        entry.Name,
@@ -184,7 +198,7 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		IconPath:    "icon.svg",
 		Description: entry.Description,
 		Version:     version,
-		Command:     recipe.Command,
+		Command:     appCommand,
 		Port:        recipe.Port,
 		Type:        appType,
 		Category:    entry.Category,
@@ -261,8 +275,9 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 type RegistryListEntry struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
-	Type        string   `json:"type"` // "web", "desktop", or "service"
-	Arch        []string `json:"arch"` // supported architectures, empty = all
+	Type        string   `json:"type"`       // "web", "desktop", or "service"
+	Arch        []string `json:"arch"`       // supported architectures, empty = all
+	FlatpakID   string   `json:"flatpak_id"` // non-empty if installed via Flatpak
 	Description string   `json:"description"`
 	Category    string   `json:"category"`
 	Author      string   `json:"author"`
@@ -276,7 +291,9 @@ type RegistryListEntry struct {
 }
 
 // ListEntries returns a flat list of all registry apps, marking which are installed.
+// For Flatpak apps, checks the live Flatpak state so removed apps disappear immediately.
 func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
+	flatpakApps := InstalledFlatpaks()
 	var entries []RegistryListEntry
 	for id, entry := range r.Apps {
 		versions := availableVersions(entry)
@@ -284,15 +301,31 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 		if _, err := os.Stat(filepath.Join(appsDir, id, "app.json")); err == nil {
 			installed = true
 		}
+		// Sync: if this is a flatpak app, verify it's still actually installed
+		if installed {
+			if recipe := entry.GetRecipe(entry.LatestVersion()); recipe != nil && recipe.FlatpakID != "" {
+				if !flatpakApps[recipe.FlatpakID] {
+					// Flatpak was removed externally — clean up stale manifest
+					installed = false
+					os.RemoveAll(filepath.Join(appsDir, id))
+				}
+			}
+		}
 		appType := entry.Type
 		if appType == "" {
 			appType = "web" // default to web
+		}
+		// Get flatpak ID from latest recipe
+		flatpakID := ""
+		if recipe := entry.GetRecipe(entry.LatestVersion()); recipe != nil {
+			flatpakID = recipe.FlatpakID
 		}
 		entries = append(entries, RegistryListEntry{
 			ID:          id,
 			Name:        entry.Name,
 			Type:        appType,
 			Arch:        entry.Arch,
+			FlatpakID:   flatpakID,
 			Description: entry.Description,
 			Category:    entry.Category,
 			Author:      entry.Author,

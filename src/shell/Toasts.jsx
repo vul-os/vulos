@@ -15,6 +15,7 @@ export default function Toasts() {
       ws.onmessage = (e) => {
         try {
           const notif = JSON.parse(e.data)
+          if (notif.source === 'xdg-open') return
           setToasts(prev => [...prev.slice(-4), { ...notif, _key: Date.now() + Math.random() }])
         } catch {}
       }
