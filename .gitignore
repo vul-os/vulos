@@ -8,3 +8,5 @@ tmp/
 .DS_Store
 .claude
 local_build.sh
+
+roadmap/VULOS_INTERNAL.md
