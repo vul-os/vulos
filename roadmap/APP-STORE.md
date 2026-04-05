@@ -8,6 +8,11 @@ Apps available for install from the Vulos app store. These are not bundled with 
 
 | Category | App | Type | In Registry | In Roadmap | Status |
 |---|---|---|---|---|---|
+| **Gaming** | Steam | Streamed | No | Yes | Planned |
+| | Lutris | Streamed | No | Yes | Planned |
+| | Wine (base) | Streamed | No | Yes | Planned |
+| | Flatpak games | Streamed | No | Yes | Planned |
+|---|---|---|---|---|---|
 | **Video Editing** | Kdenlive | Streamed | Yes | Yes | Done |
 | | Shotcut | Streamed | No | Yes | Planned |
 | | FFmpeg.wasm Editor | Web-native | No | Yes | Planned |
@@ -513,3 +518,64 @@ Run natively on the device (or remote GPU), UI streamed via WebRTC to the browse
 
 ### Hybrid approach
 For video/audio, the web-native editor handles quick tasks (trim a clip, clean up audio). When the user needs more power, they can open the full streamed app (Kdenlive, Audacity) from within the same workflow.
+
+---
+
+## Gaming
+
+Gaming apps are streamed via WebRTC. Installing any of them auto-enables gaming mode for their sessions (higher FPS, bitrate, low-latency encoder). See GAMING.md for streaming mode config.
+
+### Wine (base)
+- **What**: run Windows games and apps on Linux
+- **Type**: streamed
+- **Install**: `apt install wine wine64`
+- **Post-install config** (Settings → Wine):
+  - Create/manage Wine prefixes (Windows version: Win10 / Win7 / WinXP)
+  - Install DXVK (DirectX 9/10/11 → Vulkan) — one click, auto-downloads
+  - Install VKD3D-Proton (DirectX 12 → Vulkan) — one click
+  - Env var overrides per prefix (`DXVK_ASYNC`, `WINE_FULLSCREEN_FSR`, etc.)
+  - DXVK state cache — persists across prefix recreations
+  - Gaming prefix template: Win10, 64-bit, DXVK + VKD3D pre-installed, one click
+
+### Lutris
+- **What**: game manager — installs and runs games from GOG, itch.io, and manual sources. Manages Wine/Proton runners, DXVK versions, per-game config.
+- **Type**: streamed
+- **Install**: `apt install lutris`
+- **Post-install config** (via Lutris UI, streamed):
+  - Runner management (Wine-GE, Proton-GE, download in-app)
+  - Per-game Wine prefix, DXVK version, env vars
+  - Built-in GameMode support (auto CPU/GPU governor tuning)
+  - Game library from GOG / itch.io / manual installs
+- **API**: `GET /api/lutris/games` — list installed games; `POST /api/stream/launch` with `lutris:rungameid/<id>` to launch directly
+
+### Steam
+- **What**: PC gaming platform — access Steam library, Proton for Windows games on Linux
+- **Type**: streamed
+- **Install**: `apt install steam` (or Flatpak)
+- **Post-install config** (via Steam UI, streamed):
+  - Steam Play / Proton — enable for all titles or per-game
+  - Proton version per game (Proton-GE via ProtonUp-Qt for better compatibility)
+  - Steam Big Picture mode recommended for streamed use (controller-friendly UI)
+- **Note**: requires GPU for good performance. Proton compatibility layer handles most Windows-only titles.
+
+### Supporting tools (installed alongside gaming apps)
+
+| Tool | Purpose | Auto-installed with |
+|------|---------|-------------------|
+| `gamemode` | CPU/GPU governor, scheduler tuning when game is running | Wine, Lutris, Steam |
+| `mangohud` | FPS/latency overlay, toggleable in stream toolbar | Wine, Lutris, Steam |
+| `winetricks` | Install Windows runtime libraries into Wine prefixes | Wine |
+| `protontricks` | Same as winetricks but for Steam/Proton prefixes | Steam |
+| `protonup-qt` | Download and manage Proton-GE / Wine-GE runners | Steam, Lutris |
+
+### Docker requirements for gaming apps
+
+```bash
+# GPU required for good gaming performance
+docker run --gpus all \            # NVIDIA
+  --device /dev/dri \              # or Intel/AMD
+  --device /dev/uinput \           # gamepad + mouse input
+  --cap-add SYS_NICE \             # process priority (GameMode, SCHED_FIFO)
+  --shm-size=2g \                  # Wine/DXVK use shared memory heavily
+  -p 8080:8080 vulos
+```

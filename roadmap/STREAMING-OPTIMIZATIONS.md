@@ -101,6 +101,12 @@ The bitrate controller (`bitrate.go`) calculates quality levels from RTCP stats 
 ### PulseAudio (fallback)
 - [ ] Current system unchanged — null-sink capture, opusenc 128kbps
 
+### Gaming Mode Audio Tuning
+- [ ] Gaming mode: `PULSE_LATENCY_MSEC=30` (vs 60 default) / PipeWire quantum=256 rate=48000 (~5ms)
+- [ ] Opus `frame-size=10` in gaming mode (10ms vs 20ms default — halves audio latency)
+- [ ] Passthrough multichannel audio (5.1/7.1) when app outputs it — Opus supports up to 8 channels, fallback downmix to stereo
+- [ ] Route client microphone → WebRTC inbound audio track → PulseAudio/PipeWire virtual_mic source — games and voice chat pick up from virtual_mic (null-sink already exists, needs WebRTC inbound track wired up)
+
 ---
 
 ## Chromium Browser (GPU-Specific)
