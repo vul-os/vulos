@@ -8,48 +8,111 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-apple-system,sans-serif;font-size:14px}
 
-/* ── Layout ─────────────────────────────────────── */
+/* ── Layout ──────────────────────────────────────────────── */
 .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
-/* ── Top bar ─────────────────────────────────────── */
+/* ── Top bar ─────────────────────────────────────────────── */
 .topbar{
   display:flex;align-items:center;gap:8px;
   padding:8px 12px;
   background:#0e0e1a;
   border-bottom:1px solid #1e1e30;
-  flex-shrink:0;
+  flex-shrink:0;flex-wrap:wrap;
 }
 .topbar .logo{font-size:18px;color:#6366f1;flex-shrink:0}
-.topbar .instance-wrap{display:flex;flex:1;gap:6px;max-width:560px}
-.topbar input{
+
+/* public timeline controls (FED-01) */
+.public-controls{display:flex;flex:1;gap:6px;max-width:560px;align-items:center}
+.public-controls input{
   flex:1;
   background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
-  padding:7px 12px;color:#e2e2f0;font-size:13px;outline:none;
-  transition:border-color .15s;
+  padding:7px 12px;color:#e2e2f0;font-size:13px;outline:none;transition:border-color .15s;
 }
-.topbar input:focus{border-color:#6366f1}
-.topbar input::placeholder{color:#555}
-.topbar button{
+.public-controls input:focus{border-color:#6366f1}
+.public-controls input::placeholder{color:#555}
+.btn{
   background:#6366f1;border:none;border-radius:8px;
   padding:7px 14px;color:#fff;font-size:13px;font-weight:500;cursor:pointer;
   white-space:nowrap;flex-shrink:0;transition:background .15s;
 }
-.topbar button:hover{background:#5254cc}
-.topbar button:disabled{background:#333;color:#666;cursor:default}
-.topbar .filter-wrap{display:flex;gap:4px;margin-left:4px}
-.topbar .filter-btn{
+.btn:hover{background:#5254cc}
+.btn:disabled{background:#333;color:#666;cursor:default}
+.btn-ghost{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:7px 14px;color:#aaa;font-size:13px;cursor:pointer;white-space:nowrap;
+}
+.btn-ghost:hover{background:#1e1e30;color:#ccc}
+.btn-danger{background:#7f1d1d;color:#fca5a5;}
+.btn-danger:hover{background:#991b1b;}
+
+.filter-wrap{display:flex;gap:4px;margin-left:4px}
+.filter-btn{
   background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
   padding:6px 10px;color:#aaa;font-size:12px;cursor:pointer;white-space:nowrap;
 }
-.topbar .filter-btn.active{background:#6366f1;border-color:#6366f1;color:#fff}
+.filter-btn.active{background:#6366f1;border-color:#6366f1;color:#fff}
 
-/* ── Feed area ───────────────────────────────────── */
+/* ── Tab bar ─────────────────────────────────────────────── */
+.tabs{
+  display:flex;gap:0;
+  background:#0e0e1a;
+  border-bottom:1px solid #1e1e30;
+  flex-shrink:0;
+}
+.tab{
+  padding:9px 18px;font-size:13px;color:#666;cursor:pointer;
+  border-bottom:2px solid transparent;transition:color .15s,border-color .15s;
+  user-select:none;
+}
+.tab:hover{color:#aaa}
+.tab.active{color:#6366f1;border-bottom-color:#6366f1}
+
+/* ── Account bar (authenticated) ────────────────────────── */
+.acct-bar{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 14px;
+  background:#0a0a18;
+  border-bottom:1px solid #1e1e30;
+  flex-shrink:0;
+}
+.acct-bar .avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid #2a2a44}
+.acct-bar .name{font-size:13px;font-weight:600;color:#e2e2f0}
+.acct-bar .handle{font-size:11px;color:#666;margin-left:2px}
+.acct-bar .host-badge{
+  font-size:10px;background:#1e1e30;border:1px solid #2a2a44;border-radius:5px;
+  padding:2px 6px;color:#888;margin-left:4px;
+}
+.acct-bar .spacer{flex:1}
+
+/* ── Login panel ─────────────────────────────────────────── */
+.login-panel{
+  max-width:480px;width:100%;margin:60px auto;
+  background:#0e0e1a;border:1px solid #1e1e30;border-radius:14px;
+  padding:28px 28px 24px;
+  display:flex;flex-direction:column;gap:14px;
+}
+.login-panel h2{font-size:18px;font-weight:700;color:#e2e2f0}
+.login-panel p{font-size:13px;color:#888;line-height:1.5}
+.login-panel label{font-size:12px;color:#777;display:block;margin-bottom:4px}
+.login-panel input{
+  width:100%;background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:9px 12px;color:#e2e2f0;font-size:14px;outline:none;transition:border-color .15s;
+}
+.login-panel input:focus{border-color:#6366f1}
+.login-panel .or{text-align:center;color:#444;font-size:12px;margin:2px 0}
+.notice{
+  font-size:12px;border-radius:8px;padding:10px 12px;line-height:1.5;
+}
+.notice.error{background:#1a0a0a;border:1px solid #5c1e1e;color:#f87171}
+.notice.success{background:#0a1a0a;border:1px solid #1e5c1e;color:#86efac}
+
+/* ── Feed area ───────────────────────────────────────────── */
 .feed-wrap{flex:1;overflow-y:auto;padding:16px;max-width:720px;width:100%;margin:0 auto}
 .feed-wrap::-webkit-scrollbar{width:4px}
 .feed-wrap::-webkit-scrollbar-track{background:transparent}
 .feed-wrap::-webkit-scrollbar-thumb{background:#2a2a44;border-radius:2px}
 
-/* ── State messages ─────────────────────────────── */
+/* ── State messages ──────────────────────────────────────── */
 .state{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:12px;padding:60px 20px;color:#555;text-align:center;
@@ -70,22 +133,18 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
   padding:14px 16px;color:#f87171;font-size:13px;line-height:1.5;
 }
 
-/* ── Status card ─────────────────────────────────── */
+/* ── Status card ─────────────────────────────────────────── */
 .status-card{
   background:#0e0e1a;border:1px solid #1e1e30;border-radius:12px;
-  padding:14px 16px;margin-bottom:10px;
-  transition:border-color .1s;
+  padding:14px 16px;margin-bottom:10px;transition:border-color .1s;
 }
 .status-card:hover{border-color:#2e2e50}
 
-/* Boost banner */
 .boost-banner{
   display:flex;align-items:center;gap:6px;
   font-size:11px;color:#888;margin-bottom:8px;
 }
-.boost-banner .bi{font-style:normal}
 
-/* Account row */
 .account-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .avatar{
   width:40px;height:40px;border-radius:50%;object-fit:cover;
@@ -98,17 +157,15 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 }
 .account-info{flex:1;min-width:0}
 .display-name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.acct{font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.acct-handle{font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .timestamp{font-size:11px;color:#555;white-space:nowrap;flex-shrink:0}
 
-/* Content */
 .content{font-size:13px;line-height:1.6;color:#ccc;word-break:break-word}
 .content p{margin-bottom:6px}
 .content p:last-child{margin-bottom:0}
 .content a{color:#6366f1;text-decoration:none}
 .content a:hover{text-decoration:underline}
 
-/* CW / spoiler */
 .cw-label{
   font-size:11px;color:#f59e0b;background:#1a1200;border:1px solid #3a2a00;
   border-radius:5px;padding:2px 7px;display:inline-block;margin-bottom:6px;
@@ -120,7 +177,6 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 }
 .cw-toggle:hover{background:#1e1e30;color:#aaa}
 
-/* Media */
 .media-grid{display:grid;gap:6px;margin-top:10px;border-radius:8px;overflow:hidden}
 .media-grid.n1{grid-template-columns:1fr}
 .media-grid.n2{grid-template-columns:1fr 1fr}
@@ -132,15 +188,10 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 }
 .media-thumb:hover{opacity:.9}
 
-/* Stats bar */
 .stats{display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid #1e1e30}
 .stat{display:flex;align-items:center;gap:4px;font-size:12px;color:#555}
-.stat .si{font-style:normal;font-size:13px}
 
-/* ── Load more ───────────────────────────────────── */
-.load-more{
-  display:flex;justify-content:center;padding:16px 0;
-}
+.load-more{display:flex;justify-content:center;padding:16px 0}
 .load-more button{
   background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
   padding:8px 20px;color:#aaa;font-size:13px;cursor:pointer;
@@ -150,39 +201,217 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 </head>
 <body>
 <div class="app">
-  <!-- Top bar -->
+
+  <!-- ── Top bar ─────────────────────────────────────────── -->
   <div class="topbar">
     <span class="logo">◎</span>
-    <div class="instance-wrap">
-      <input id="host-input" type="text" placeholder="mastodon.social" value="mastodon.social" autocomplete="off" spellcheck="false">
-      <button id="load-btn" onclick="loadTimeline()">Load</button>
+    <!-- Public timeline controls (shown only in Public tab) -->
+    <div class="public-controls" id="public-controls">
+      <input id="host-input" type="text" placeholder="mastodon.social"
+             value="mastodon.social" autocomplete="off" spellcheck="false">
+      <button class="btn" id="load-btn" onclick="loadPublicTimeline()">Load</button>
     </div>
-    <div class="filter-wrap">
-      <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
-      <button class="filter-btn" id="filter-local" onclick="setFilter('local')">Local</button>
+    <div class="filter-wrap" id="filter-wrap">
+      <button class="filter-btn active" id="filter-all"   onclick="setFilter('all')">All</button>
+      <button class="filter-btn"        id="filter-local" onclick="setFilter('local')">Local</button>
+    </div>
+    <!-- Login / account button (right side) -->
+    <div id="auth-btn-area" style="margin-left:auto"></div>
+  </div>
+
+  <!-- ── Account bar (visible when authenticated) ─────────── -->
+  <div class="acct-bar" id="acct-bar" style="display:none">
+    <img id="ab-avatar" class="avatar" src="" alt="" style="display:none">
+    <div>
+      <span class="name" id="ab-name"></span>
+      <span class="handle" id="ab-handle"></span>
+    </div>
+    <span class="host-badge" id="ab-host"></span>
+    <span class="spacer"></span>
+    <button class="btn-ghost btn-danger" onclick="logout()" style="font-size:12px;padding:5px 12px">Log out</button>
+  </div>
+
+  <!-- ── Tab bar ───────────────────────────────────────────── -->
+  <div class="tabs">
+    <div class="tab active" id="tab-public" onclick="switchTab('public')">Public</div>
+    <div class="tab"        id="tab-home"   onclick="switchTab('home')">Home</div>
+  </div>
+
+  <!-- ── Main content ──────────────────────────────────────── -->
+  <div id="main-content" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+    <!-- Public timeline feed (FED-01) -->
+    <div id="view-public" style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
+      <div class="feed-wrap" id="feed-public">
+        <div class="state">
+          <div class="icon">◎</div>
+          <p>Enter a Mastodon-compatible instance above<br>and press <strong>Load</strong> to browse the public timeline.</p>
+          <small>No account needed — read-only mode.</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Home timeline feed (FED-02, authenticated) -->
+    <div id="view-home" style="flex:1;overflow-y:auto;display:none;flex-direction:column">
+      <div class="feed-wrap" id="feed-home">
+        <div class="state">
+          <div class="icon">◎</div>
+          <p>Log in to see your home timeline.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Login panel (shown in Home tab when not authenticated) -->
+    <div id="view-login" style="display:none;overflow-y:auto;flex:1">
+      <div class="login-panel">
+        <h2>Log in to Fediverse</h2>
+        <p>Enter your instance (e.g. <em>mastodon.social</em>, <em>fosstodon.org</em>,
+           <em>pixelfed.social</em>) and you will be redirected to log in there.</p>
+
+        <div id="oauth-notice" style="display:none"></div>
+
+        <div>
+          <label for="login-host">Your instance</label>
+          <input id="login-host" type="text" placeholder="mastodon.social"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <button class="btn" onclick="startLogin()">Continue with OAuth2</button>
+        <div class="or">— or —</div>
+        <button class="btn-ghost" onclick="switchTab('public')">Browse public timelines without logging in</button>
+      </div>
     </div>
   </div>
 
-  <!-- Feed -->
-  <div class="feed-wrap" id="feed">
-    <div class="state">
-      <div class="icon">◎</div>
-      <p>Enter a Mastodon-compatible instance above<br>and press <strong>Load</strong> to browse the public timeline.</p>
-      <small>No account needed — read-only mode.</small>
-    </div>
-  </div>
-</div>
+</div><!-- .app -->
 
 <script>
 'use strict';
 
-let currentHost = '';
-let currentFilter = 'all'; // 'all' | 'local'
-let maxId = null;
-let loading = false;
-let statuses = [];
+// ── State ──────────────────────────────────────────────────
+let currentTab    = 'public';
+let currentFilter = 'all';
+let publicMaxId   = null;
+let homeMaxId     = null;
+let publicLoading = false;
+let homeLoading   = false;
+let publicStatuses = [];
+let homeStatuses   = [];
+let authState      = { authenticated: false };
 
-// ── Utilities ────────────────────────────────────────────────
+// ── Boot ───────────────────────────────────────────────────
+(async function boot() {
+  // Check for OAuth callback result in query string
+  const sp = new URLSearchParams(location.search);
+  if (sp.has('oauth_success')) {
+    history.replaceState(null, '', '/');
+    await refreshAuthState();
+    switchTab('home');
+    return;
+  }
+  if (sp.has('oauth_error')) {
+    const msg = sp.get('oauth_error');
+    history.replaceState(null, '', '/');
+    await refreshAuthState();
+    switchTab('home');
+    showOAuthNotice('error', msg);
+    return;
+  }
+  await refreshAuthState();
+})();
+
+// ── Auth ───────────────────────────────────────────────────
+async function refreshAuthState() {
+  try {
+    const res = await fetch('/api/auth/status');
+    authState = await res.json();
+  } catch(e) {
+    authState = { authenticated: false };
+  }
+  renderAuthUI();
+}
+
+function renderAuthUI() {
+  const authArea = document.getElementById('auth-btn-area');
+  const acctBar  = document.getElementById('acct-bar');
+  const homeTab  = document.getElementById('tab-home');
+
+  if (authState.authenticated) {
+    const acct = authState.account || {};
+    authArea.innerHTML = '';
+
+    // Account bar
+    const avatar = acct.avatar_static || acct.avatar || '';
+    const el = document.getElementById('ab-avatar');
+    if (avatar) { el.src = avatar; el.style.display = ''; }
+    document.getElementById('ab-name').textContent =
+      acct.display_name || acct.username || '';
+    document.getElementById('ab-handle').textContent =
+      acct.acct ? '@' + acct.acct : '';
+    document.getElementById('ab-host').textContent = authState.host || '';
+    acctBar.style.display = 'flex';
+    homeTab.style.color = '';
+  } else {
+    authArea.innerHTML =
+      '<button class="btn" onclick="switchTab(\'home\')" style="font-size:12px;padding:6px 14px">Log in</button>';
+    acctBar.style.display = 'none';
+  }
+}
+
+async function startLogin() {
+  const host = document.getElementById('login-host').value.trim();
+  if (!host) return;
+  // Redirect to OAuth start — server will redirect to the instance
+  window.location.href = '/oauth/start?host=' + encodeURIComponent(host);
+}
+
+async function logout() {
+  await fetch('/api/auth/logout');
+  authState = { authenticated: false };
+  renderAuthUI();
+  homeStatuses = [];
+  homeMaxId = null;
+  document.getElementById('feed-home').innerHTML =
+    '<div class="state"><div class="icon">◎</div><p>Log in to see your home timeline.</p></div>';
+  switchTab('public');
+}
+
+function showOAuthNotice(type, msg) {
+  const el = document.getElementById('oauth-notice');
+  el.className = 'notice ' + type;
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── Tab switching ──────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+
+  // Update tab UI
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  // Show/hide public controls
+  const isPublic = tab === 'public';
+  document.getElementById('public-controls').style.display = isPublic ? '' : 'none';
+  document.getElementById('filter-wrap').style.display     = isPublic ? '' : 'none';
+
+  // Show correct view
+  document.getElementById('view-public').style.display = 'none';
+  document.getElementById('view-home').style.display   = 'none';
+  document.getElementById('view-login').style.display  = 'none';
+
+  if (tab === 'public') {
+    document.getElementById('view-public').style.display = 'flex';
+  } else if (tab === 'home') {
+    if (authState.authenticated) {
+      document.getElementById('view-home').style.display = 'flex';
+      if (homeStatuses.length === 0) loadHomeTimeline();
+    } else {
+      document.getElementById('view-login').style.display = 'flex';
+    }
+  }
+}
+
+// ── Utilities ──────────────────────────────────────────────
 function esc(str) {
   return String(str ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -190,114 +419,79 @@ function esc(str) {
 }
 
 function relativeTime(iso) {
-  const d = new Date(iso);
-  const diff = (Date.now() - d) / 1000;
-  if (diff < 60) return 'now';
-  if (diff < 3600) return Math.floor(diff / 60) + 'm';
+  const diff = (Date.now() - new Date(iso)) / 1000;
+  if (diff < 60)    return 'now';
+  if (diff < 3600)  return Math.floor(diff / 60) + 'm';
   if (diff < 86400) return Math.floor(diff / 3600) + 'h';
   return Math.floor(diff / 86400) + 'd';
 }
 
-function stripHtml(html) {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.innerHTML; // keep safe inner html
-}
-
-// ── Fetch ────────────────────────────────────────────────────
-async function fetchTimeline(host, filter, maxIdParam) {
-  const params = new URLSearchParams({
-    host,
-    path: '/api/v1/timelines/public',
-    limit: '20',
-  });
-  if (filter === 'local') params.set('local', 'true');
-  if (maxIdParam) params.set('max_id', maxIdParam);
-  const res = await fetch('/proxy?' + params.toString());
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
-  }
-  return res.json();
-}
-
-// ── Render ───────────────────────────────────────────────────
+// ── Status card renderer (shared by public + home) ─────────
 function renderStatus(s) {
-  // If this is a reblog (boost), show who boosted and render the inner status
-  let boostBanner = '';
-  const actual = s.reblog || s;
+  const actual  = s.reblog || s;
   const booster = s.reblog ? s.account : null;
 
+  let boostBanner = '';
   if (booster) {
-    boostBanner = `
-      <div class="boost-banner">
-        <i class="bi">⇄</i>
-        <span>${esc(booster.display_name || booster.acct)} boosted</span>
-      </div>`;
+    boostBanner = `<div class="boost-banner">
+      <span>⇄</span>
+      <span>${esc(booster.display_name || booster.acct)} boosted</span>
+    </div>`;
   }
 
-  // Avatar
-  const avatarUrl = actual.account.avatar_static || actual.account.avatar;
+  const avatarUrl  = actual.account.avatar_static || actual.account.avatar;
   const avatarHtml = avatarUrl
-    ? `<img class="avatar" src="${esc(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    ? `<img class="avatar" src="${esc(avatarUrl)}" alt="" loading="lazy"
+           onerror="this.style.display='none'">`
     : `<div class="avatar-fallback">${esc((actual.account.display_name||'?')[0])}</div>`;
 
-  // Content warning
   let cwHtml = '';
   let contentClass = 'content';
   if (actual.spoiler_text) {
     const cwId = 'cw-' + actual.id;
-    cwHtml = `
-      <div class="cw-label">CW: ${esc(actual.spoiler_text)}
+    cwHtml = `<div class="cw-label">CW: ${esc(actual.spoiler_text)}
         <button class="cw-toggle" onclick="toggleCW('${cwId}')">show</button>
       </div>`;
     contentClass = 'content cw-content';
   }
 
-  // Content
-  const contentHtml = `<div class="${contentClass}" id="${actual.spoiler_text ? 'cw-' + actual.id : ''}">${actual.content || ''}</div>`;
+  const contentHtml = `<div class="${contentClass}"
+    id="${actual.spoiler_text ? 'cw-' + actual.id : ''}">${actual.content||''}</div>`;
 
-  // Media attachments (images/gifv only for thumbnails)
   let mediaHtml = '';
-  const images = (actual.media_attachments || []).filter(m => m.type === 'image' || m.type === 'gifv');
-  if (images.length > 0) {
-    const gridClass = 'media-grid n' + Math.min(images.length, 4);
-    const thumbs = images.slice(0, 4).map(m => {
-      const thumb = m.preview_url || m.url;
-      const alt = esc(m.description || '');
-      return `<img class="media-thumb" src="${esc(thumb)}" alt="${alt}" loading="lazy"
-                   onclick="window.open('${esc(m.url)}','_blank')" onerror="this.style.display='none'">`;
-    }).join('');
-    mediaHtml = `<div class="${gridClass}">${thumbs}</div>`;
+  const images = (actual.media_attachments||[]).filter(m=>m.type==='image'||m.type==='gifv');
+  if (images.length) {
+    const cls = 'media-grid n' + Math.min(images.length, 4);
+    const thumbs = images.slice(0,4).map(m =>
+      `<img class="media-thumb" src="${esc(m.preview_url||m.url)}"
+            alt="${esc(m.description||'')}" loading="lazy"
+            onclick="window.open('${esc(m.url)}','_blank')"
+            onerror="this.style.display='none'">`
+    ).join('');
+    mediaHtml = `<div class="${cls}">${thumbs}</div>`;
   }
 
-  // Stats
-  const favs = actual.favourites_count ?? 0;
-  const boosts = actual.reblogs_count ?? 0;
-  const replies = actual.replies_count ?? 0;
-  const statsHtml = `
-    <div class="stats">
-      <span class="stat"><i class="si">↩</i> ${replies}</span>
-      <span class="stat"><i class="si">⇄</i> ${boosts}</span>
-      <span class="stat"><i class="si">♡</i> ${favs}</span>
-    </div>`;
+  const favs    = actual.favourites_count ?? 0;
+  const boosts  = actual.reblogs_count    ?? 0;
+  const replies = actual.replies_count    ?? 0;
+  const stats   = `<div class="stats">
+    <span class="stat">↩ ${replies}</span>
+    <span class="stat">⇄ ${boosts}</span>
+    <span class="stat">♡ ${favs}</span>
+  </div>`;
 
-  return `
-    <div class="status-card">
-      ${boostBanner}
-      <div class="account-row">
-        ${avatarHtml}
-        <div class="account-info">
-          <div class="display-name">${esc(actual.account.display_name || actual.account.username)}</div>
-          <div class="acct">@${esc(actual.account.acct)}</div>
-        </div>
-        <span class="timestamp">${relativeTime(actual.created_at)}</span>
+  return `<div class="status-card">
+    ${boostBanner}
+    <div class="account-row">
+      ${avatarHtml}
+      <div class="account-info">
+        <div class="display-name">${esc(actual.account.display_name||actual.account.username)}</div>
+        <div class="acct-handle">@${esc(actual.account.acct)}</div>
       </div>
-      ${cwHtml}
-      ${contentHtml}
-      ${mediaHtml}
-      ${statsHtml}
-    </div>`;
+      <span class="timestamp">${relativeTime(actual.created_at)}</span>
+    </div>
+    ${cwHtml}${contentHtml}${mediaHtml}${stats}
+  </div>`;
 }
 
 function toggleCW(id) {
@@ -305,106 +499,173 @@ function toggleCW(id) {
   if (!el) return;
   const shown = el.style.display !== 'none' && el.style.display !== '';
   el.style.display = shown ? 'none' : 'block';
-  // update button label
   const btn = el.closest('.status-card')?.querySelector('.cw-toggle');
   if (btn) btn.textContent = shown ? 'show' : 'hide';
 }
 
-function renderFeed(fresh) {
-  const feed = document.getElementById('feed');
-  if (fresh) {
-    feed.innerHTML = statuses.map(renderStatus).join('');
-    if (statuses.length >= 20) {
-      feed.insertAdjacentHTML('beforeend', `
-        <div class="load-more" id="load-more-wrap">
-          <button onclick="loadMore()">Load more</button>
-        </div>`);
-    }
-  } else {
-    const wrap = document.getElementById('load-more-wrap');
-    if (wrap) wrap.remove();
-    const newCards = statuses.slice(-20).map(renderStatus).join('');
-    feed.insertAdjacentHTML('beforeend', newCards);
-    if (statuses.length % 20 === 0) {
-      feed.insertAdjacentHTML('beforeend', `
-        <div class="load-more" id="load-more-wrap">
-          <button onclick="loadMore()">Load more</button>
-        </div>`);
-    }
-  }
-}
-
-// ── Actions ──────────────────────────────────────────────────
+// ── Public timeline (FED-01) ───────────────────────────────
 function setFilter(f) {
   currentFilter = f;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('filter-' + f).classList.add('active');
-  if (currentHost) loadTimeline();
+  if (document.getElementById('host-input').value.trim()) loadPublicTimeline();
 }
 
-async function loadTimeline() {
+async function loadPublicTimeline() {
   const host = document.getElementById('host-input').value.trim();
   if (!host) return;
-  currentHost = host;
-  maxId = null;
-  statuses = [];
-  loading = true;
+  publicMaxId   = null;
+  publicStatuses = [];
+  publicLoading  = true;
 
-  const btn = document.getElementById('load-btn');
-  btn.disabled = true;
+  const btn  = document.getElementById('load-btn');
+  const feed = document.getElementById('feed-public');
+  btn.disabled  = true;
   btn.textContent = '...';
-
-  const feed = document.getElementById('feed');
-  feed.innerHTML = `<div class="state"><div class="spinner"></div><p>Fetching public timeline from <strong>${esc(host)}</strong></p></div>`;
+  feed.innerHTML = `<div class="state"><div class="spinner"></div>
+    <p>Fetching public timeline from <strong>${esc(host)}</strong></p></div>`;
 
   try {
-    const data = await fetchTimeline(host, currentFilter, null);
-    if (!Array.isArray(data) || data.length === 0) {
-      feed.innerHTML = `<div class="state"><div class="icon">◌</div><p>No posts found on <strong>${esc(host)}</strong>.</p></div>`;
+    const data = await fetchPublic(host, currentFilter, null);
+    if (!Array.isArray(data) || !data.length) {
+      feed.innerHTML = `<div class="state"><div class="icon">◌</div>
+        <p>No posts found on <strong>${esc(host)}</strong>.</p></div>`;
       return;
     }
-    statuses = data;
-    maxId = data[data.length - 1].id;
-    renderFeed(true);
-  } catch (err) {
-    feed.innerHTML = `
-      <div class="state">
-        <div class="error-box">Could not load timeline from <strong>${esc(host)}</strong>:<br>${esc(err.message)}</div>
-        <small>Check the instance name and try again.</small>
-      </div>`;
+    publicStatuses = data;
+    publicMaxId    = data[data.length-1].id;
+    renderPublicFeed(true);
+  } catch(err) {
+    feed.innerHTML = `<div class="state">
+      <div class="error-box">Could not load timeline from <strong>${esc(host)}</strong>:<br>${esc(err.message)}</div>
+      <small>Check the instance name and try again.</small></div>`;
   } finally {
-    loading = false;
-    btn.disabled = false;
+    publicLoading   = false;
+    btn.disabled    = false;
     btn.textContent = 'Load';
   }
 }
 
-async function loadMore() {
-  if (loading || !currentHost || !maxId) return;
-  loading = true;
+async function fetchPublic(host, filter, maxId) {
+  const p = new URLSearchParams({host, path:'/api/v1/timelines/public', limit:'20'});
+  if (filter === 'local') p.set('local','true');
+  if (maxId)  p.set('max_id', maxId);
+  const res = await fetch('/proxy?' + p);
+  if (!res.ok) { const e = await res.json().catch(()=>({error:res.statusText})); throw new Error(e.error||res.statusText); }
+  return res.json();
+}
 
-  const wrap = document.getElementById('load-more-wrap');
-  if (wrap) wrap.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
-
-  try {
-    const data = await fetchTimeline(currentHost, currentFilter, maxId);
-    if (!Array.isArray(data) || data.length === 0) {
-      if (wrap) wrap.remove();
-      return;
-    }
-    statuses.push(...data);
-    maxId = data[data.length - 1].id;
-    renderFeed(false);
-  } catch (err) {
-    if (wrap) wrap.innerHTML = `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
-  } finally {
-    loading = false;
+function renderPublicFeed(fresh) {
+  const feed = document.getElementById('feed-public');
+  if (fresh) {
+    feed.innerHTML = publicStatuses.map(renderStatus).join('');
+  } else {
+    document.getElementById('pub-load-more')?.remove();
+    feed.insertAdjacentHTML('beforeend', publicStatuses.slice(-20).map(renderStatus).join(''));
+  }
+  if (publicStatuses.length >= 20) {
+    feed.insertAdjacentHTML('beforeend',
+      '<div class="load-more" id="pub-load-more"><button onclick="loadMorePublic()">Load more</button></div>');
   }
 }
 
-// Allow pressing Enter in the host input
+async function loadMorePublic() {
+  if (publicLoading || !publicMaxId) return;
+  publicLoading = true;
+  const wrap = document.getElementById('pub-load-more');
+  if (wrap) wrap.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
+  try {
+    const host = document.getElementById('host-input').value.trim();
+    const data = await fetchPublic(host, currentFilter, publicMaxId);
+    if (!Array.isArray(data)||!data.length){ wrap?.remove(); return; }
+    publicStatuses.push(...data);
+    publicMaxId = data[data.length-1].id;
+    renderPublicFeed(false);
+  } catch(err) {
+    if (wrap) wrap.innerHTML = `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
+  } finally { publicLoading = false; }
+}
+
+// ── Home timeline (FED-02) ─────────────────────────────────
+async function loadHomeTimeline() {
+  if (homeLoading) return;
+  homeLoading = true;
+  homeMaxId    = null;
+  homeStatuses  = [];
+
+  const feed = document.getElementById('feed-home');
+  feed.innerHTML = `<div class="state"><div class="spinner"></div><p>Loading your home timeline…</p></div>`;
+
+  try {
+    const data = await fetchHome(null);
+    if (!Array.isArray(data)||!data.length) {
+      feed.innerHTML = `<div class="state"><div class="icon">◌</div>
+        <p>Your home timeline is empty.<br><small>Follow some accounts to get started.</small></p></div>`;
+      return;
+    }
+    homeStatuses = data;
+    homeMaxId    = data[data.length-1].id;
+    renderHomeFeed(true);
+  } catch(err) {
+    if (err.message === '401') {
+      // Token expired
+      authState = { authenticated: false };
+      renderAuthUI();
+      switchTab('home');
+    } else {
+      feed.innerHTML = `<div class="state">
+        <div class="error-box">${esc(err.message)}</div></div>`;
+    }
+  } finally { homeLoading = false; }
+}
+
+async function fetchHome(maxId) {
+  const p = new URLSearchParams({limit:'20'});
+  if (maxId) p.set('max_id', maxId);
+  const res = await fetch('/api/timeline/home?' + p);
+  if (res.status === 401) throw new Error('401');
+  if (!res.ok) { const e = await res.json().catch(()=>({error:res.statusText})); throw new Error(e.error||res.statusText); }
+  return res.json();
+}
+
+function renderHomeFeed(fresh) {
+  const feed = document.getElementById('feed-home');
+  if (fresh) {
+    feed.innerHTML = homeStatuses.map(renderStatus).join('');
+  } else {
+    document.getElementById('home-load-more')?.remove();
+    feed.insertAdjacentHTML('beforeend', homeStatuses.slice(-20).map(renderStatus).join(''));
+  }
+  if (homeStatuses.length >= 20) {
+    feed.insertAdjacentHTML('beforeend',
+      '<div class="load-more" id="home-load-more"><button onclick="loadMoreHome()">Load more</button></div>');
+  }
+}
+
+async function loadMoreHome() {
+  if (homeLoading || !homeMaxId) return;
+  homeLoading = true;
+  const wrap = document.getElementById('home-load-more');
+  if (wrap) wrap.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
+  try {
+    const data = await fetchHome(homeMaxId);
+    if (!Array.isArray(data)||!data.length){ wrap?.remove(); return; }
+    homeStatuses.push(...data);
+    homeMaxId = data[data.length-1].id;
+    renderHomeFeed(false);
+  } catch(err) {
+    if (wrap) wrap.innerHTML = `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
+  } finally { homeLoading = false; }
+}
+
+// ── Enter key in public host input ────────────────────────
 document.getElementById('host-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') loadTimeline();
+  if (e.key === 'Enter') loadPublicTimeline();
+});
+
+// ── Enter key in login host input ─────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement?.id === 'login-host') startLogin();
 });
 </script>
 </body>
