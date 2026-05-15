@@ -47,13 +47,13 @@ const (
 
 // Info holds detected GPU capabilities.
 type Info struct {
-	Tier     Tier   `json:"tier"`
-	TierName string `json:"tier_name"`
-	Vendor   Vendor `json:"vendor"`
-	Device   string `json:"device"`   // GPU device name from lspci/nvidia-smi
-	Encoder  string `json:"encoder"`  // GStreamer encoder element name
-	Payloader string `json:"payloader"` // GStreamer RTP payloader element
-	Codec    string `json:"codec"`    // WebRTC codec mime type
+	Tier        Tier   `json:"tier"`
+	TierName    string `json:"tier_name"`
+	Vendor      Vendor `json:"vendor"`
+	Device      string `json:"device"`       // GPU device name from lspci/nvidia-smi
+	Encoder     string `json:"encoder"`      // GStreamer encoder element name
+	Payloader   string `json:"payloader"`    // GStreamer RTP payloader element
+	Codec       string `json:"codec"`        // WebRTC codec mime type
 	HasDRI      bool   `json:"has_dri"`      // /dev/dri exists
 	HasAV1      bool   `json:"has_av1"`      // AV1 hardware encode available
 	HasPipeWire bool   `json:"has_pipewire"` // PipeWire screen capture available
@@ -139,6 +139,52 @@ func (g *Info) EncoderArgs() []string {
 			"keyframe-max-dist=30", "threads=4", "end-usage=cbr",
 			"undershoot=95", "buffer-size=6000", "buffer-initial-size=4000",
 			"lag-in-frames=0", "error-resilient=1",
+		}
+	}
+}
+
+// GamingEncoderArgs returns the GStreamer encoder element + properties tuned for
+// gaming: zero-latency preset, no B-frames, no lookahead, high bitrate.
+// The fps and bitrate parameters let the caller pass session-specific values
+// (bitrate is in kbps for GPU tiers, converted to bps for VP8).
+func (g *Info) GamingEncoderArgs(fps, bitrate int) []string {
+	if bitrate <= 0 {
+		bitrate = 6000
+	}
+	gopSize := fps * 2 // 2-second keyframe interval for gaming
+
+	switch g.Tier {
+	case TierNVENC:
+		return []string{
+			"nvh264enc",
+			fmt.Sprintf("bitrate=%d", bitrate),
+			"preset=low-latency-hp",
+			"rc-mode=cbr",
+			fmt.Sprintf("gop-size=%d", gopSize),
+			"b-adapt=false",
+			"rc-lookahead=0",
+			"bframes=0",
+		}
+	case TierVAAPI:
+		return []string{
+			"vaapih264enc",
+			fmt.Sprintf("bitrate=%d", bitrate),
+			"rate-control=cbr",
+			fmt.Sprintf("keyframe-period=%d", gopSize),
+			"tune=low-power",
+			"max-bframes=0",
+		}
+	default:
+		// Software VP8: cpu-used=16 for minimum encode latency
+		return []string{
+			"vp8enc",
+			fmt.Sprintf("target-bitrate=%d", bitrate*1000),
+			"cpu-used=16",
+			"deadline=1",
+			fmt.Sprintf("keyframe-max-dist=%d", gopSize),
+			"threads=8",
+			"end-usage=cbr",
+			"lag-in-frames=0",
 		}
 	}
 }
