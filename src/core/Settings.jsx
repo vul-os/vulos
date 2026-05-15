@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import { useTheme } from './ThemeProvider'
+import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 
 const sections = [
@@ -109,6 +109,7 @@ function AppearanceSettings() {
     nightShiftMode, nightShiftActive, nightShiftWarmth,
     nightShiftFrom, nightShiftTo,
     setNightShiftMode, setNightShiftFrom, setNightShiftTo, setNightShiftWarmth,
+    accent, setAccent,
   } = useTheme()
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -225,6 +226,13 @@ function AppearanceSettings() {
         )}
       </div>
 
+      {/* Accent Colour */}
+      <div className="mt-6 pt-4 border-t border-neutral-800/50">
+        <h3 className="text-sm font-medium mb-1">Accent Colour</h3>
+        <p className="text-xs text-neutral-600 mb-3">Applied to primary buttons and focus rings across the system.</p>
+        <AccentPicker accent={accent} setAccent={setAccent} />
+      </div>
+
       {/* Wallpaper */}
       <div className="mt-6 pt-4 border-t border-neutral-800/50">
         <h3 className="text-sm font-medium mb-3">Wallpaper</h3>
@@ -270,6 +278,87 @@ function WallpaperPicker() {
         )}
       </div>
       <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+    </div>
+  )
+}
+
+const ACCENT_PRESETS = [
+  { label: 'Blue',    value: '#3b82f6' },
+  { label: 'Indigo',  value: '#6366f1' },
+  { label: 'Violet',  value: '#8b5cf6' },
+  { label: 'Pink',    value: '#ec4899' },
+  { label: 'Rose',    value: '#f43f5e' },
+  { label: 'Orange',  value: '#f97316' },
+  { label: 'Amber',   value: '#f59e0b' },
+  { label: 'Green',   value: '#22c55e' },
+  { label: 'Teal',    value: '#14b8a6' },
+  { label: 'Cyan',    value: '#06b6d4' },
+]
+
+function AccentPicker({ accent, setAccent }) {
+  return (
+    <div>
+      {/* Preset swatches */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {ACCENT_PRESETS.map(p => (
+          <button
+            key={p.value}
+            title={p.label}
+            onClick={() => setAccent(p.value)}
+            style={{ background: p.value }}
+            className={`w-7 h-7 rounded-full transition-all border-2 ${
+              accent === p.value
+                ? 'border-white scale-110 shadow-lg'
+                : 'border-transparent opacity-80 hover:opacity-100 hover:scale-105'
+            }`}
+          />
+        ))}
+      </div>
+
+      {/* Custom hex input */}
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={accent}
+          onChange={e => setAccent(e.target.value)}
+          className="w-8 h-8 rounded cursor-pointer border border-neutral-700 bg-transparent p-0.5"
+          title="Custom colour"
+        />
+        <input
+          type="text"
+          value={accent}
+          onChange={e => {
+            const v = e.target.value.trim()
+            if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setAccent(v)
+          }}
+          onBlur={e => {
+            const v = e.target.value.trim()
+            if (!/^#[0-9a-fA-F]{6}$/.test(v)) setAccent(DEFAULT_ACCENT)
+          }}
+          placeholder="#3b82f6"
+          className="input w-32 font-mono"
+        />
+        {accent !== DEFAULT_ACCENT && (
+          <button
+            onClick={() => setAccent(DEFAULT_ACCENT)}
+            className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
+      {/* Live preview */}
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          className="btn-primary text-sm"
+          style={{ background: accent }}
+          tabIndex={-1}
+        >
+          Preview button
+        </button>
+        <span className="text-xs text-neutral-600">Live preview</span>
+      </div>
     </div>
   )
 }
