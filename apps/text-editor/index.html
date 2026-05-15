@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Text Editor</title>
+<script src="/vendor/codemirror.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#101214;
+  --panel:#171a1d;
+  --panel-2:#1f2327;
+  --line:#2b3035;
+  --text:#ebe7dd;
+  --muted:#9ba4aa;
+  --accent:#d14f3f;
+  --accent-2:#f0b95a;
+  --green:#83ba75;
+  --blue:#77a8d9;
+  --violet:#b58bdc;
+  --mono:"SFMono-Regular","Cascadia Code","Liberation Mono",Menlo,Consolas,monospace;
+  --fs:14px;
+}
+html,body{height:100%;overflow:hidden}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:13px;
+}
+button,input,select{font:inherit}
+button,select{
+  height:30px;border:1px solid var(--line);border-radius:6px;
+  background:var(--panel-2);color:var(--text);outline:none;cursor:pointer;
+  display:inline-flex;align-items:center;
+}
+button{padding:0 10px;gap:4px;min-width:30px;justify-content:center}
+select{padding:0 6px}
+button:hover,select:hover{border-color:#48515a;background:#242a2f}
+button.active{border-color:var(--accent);color:#fff;background:#44221f}
+input[type=text],input[type=search]{
+  height:30px;border:1px solid var(--line);border-radius:6px;
+  background:#0d0f11;color:var(--text);outline:none;padding:0 10px;min-width:0;
+}
+input:focus,select:focus{border-color:var(--accent-2)}
+
+.app{height:100%;display:flex;flex-direction:column;min-width:300px}
+
+/* ── Top bar ── */
+.topbar{
+  height:44px;display:flex;align-items:center;gap:6px;
+  padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);
+  flex-shrink:0;
+}
+.brand{font-weight:700;font-size:14px;margin-right:4px;white-space:nowrap}
+.tabs{display:flex;gap:4px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  height:30px;display:flex;align-items:center;gap:6px;
+  min-width:100px;max-width:200px;padding:0 8px;
+  border:1px solid transparent;border-radius:6px;
+  background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;
+}
+.tab:hover{background:#20252a;color:var(--text)}
+.tab.active{background:#272d32;border-color:#394149;color:var(--text)}
+.tab-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;flex:1}
+.dirty{width:6px;height:6px;border-radius:50%;background:var(--accent-2);flex-shrink:0;opacity:0;transition:opacity .15s}
+.tab.changed .dirty{opacity:1}
+.close-tab{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:3px;color:var(--muted);font-size:14px;flex-shrink:0;line-height:1}
+.close-tab:hover{background:#363d44;color:#fff}
+
+/* ── Toolbar ── */
+.toolbar{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;background:#121518;border-bottom:1px solid var(--line);
+  flex-shrink:0;overflow-x:auto;scrollbar-width:none;
+}
+.toolbar::-webkit-scrollbar{display:none}
+.toolbar .sep{width:1px;height:20px;background:var(--line);flex-shrink:0;margin:0 2px}
+.toolbar .spacer{flex:1}
+.file-name{width:180px;flex-shrink:0}
+.font-size-label{font-size:12px;color:var(--muted);white-space:nowrap}
+
+/* ── Find bar ── */
+.findbar{
+  display:none;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);
+  flex-shrink:0;
+}
+.findbar.open{display:flex}
+.findbar input{width:160px}
+.find-count{font-size:12px;color:var(--muted);min-width:70px;white-space:nowrap}
+.findbar .close-find{margin-left:auto}
+
+/* ── Editor area ── */
+.editor-area{flex:1;overflow:hidden;position:relative}
+
+/* CodeMirror theming overrides */
+.cm-editor{height:100%;font-size:var(--fs)}
+.cm-editor.cm-focused{outline:none}
+.cm-scroller{overflow:auto;font-family:var(--mono)}
+
+/* Light theme overrides */
+body.light{
+  --bg:#f5f6f7;--panel:#fff;--panel-2:#eef0f2;
+  --line:#d5d8dc;--text:#1a1d20;--muted:#6b7280;
+  --accent:#c0392b;--accent-2:#d68910;
+}
+body.light .toolbar{background:#f0f1f3}
+body.light input[type=text],body.light input[type=search]{background:#fff}
+
+/* Status bar */
+.statusbar{
+  height:26px;display:flex;align-items:center;gap:14px;
+  padding:0 12px;border-top:1px solid var(--line);
+  background:var(--panel);color:var(--muted);font-size:11px;
+  white-space:nowrap;flex-shrink:0;
+}
+.statusbar .push{margin-left:auto}
+
+@media(max-width:700px){
+  .brand{display:none}
+  .file-name{width:120px}
+  .toolbar .spacer{flex:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar with tabs -->
+  <header class="topbar">
+    <div class="brand">Text Editor</div>
+    <div class="tabs" id="tabs"></div>
+    <button id="newBtn" title="New document (Ctrl+T)">+</button>
+  </header>
+
+  <!-- Toolbar -->
+  <section class="toolbar" aria-label="Editor toolbar">
+    <input class="file-name" type="text" id="titleInput" aria-label="Document name" placeholder="Untitled.txt">
+    <div class="sep"></div>
+    <select id="langSelect" aria-label="Language">
+      <option value="plain">Plain</option>
+      <option value="javascript">JavaScript</option>
+      <option value="python">Python</option>
+      <option value="go">Go</option>
+      <option value="html">HTML</option>
+      <option value="css">CSS</option>
+      <option value="json">JSON</option>
+      <option value="markdown">Markdown</option>
+      <option value="bash">Bash</option>
+    </select>
+    <div class="sep"></div>
+    <button id="wrapBtn" title="Toggle word wrap">Wrap</button>
+    <button id="findBtn" title="Find &amp; Replace (Ctrl+F)">Find</button>
+    <div class="spacer"></div>
+    <div class="sep"></div>
+    <span class="font-size-label">A</span>
+    <button id="fsSmallerBtn" title="Decrease font size">−</button>
+    <button id="fsLargerBtn" title="Increase font size">+</button>
+    <div class="sep"></div>
+    <button id="themeBtn" title="Toggle dark/light theme">☀</button>
+    <div class="sep"></div>
+    <button id="duplicateBtn" title="Duplicate tab">Dupe</button>
+    <button id="deleteBtn" title="Delete tab">Delete</button>
+  </section>
+
+  <!-- Find / Replace bar -->
+  <section class="findbar" id="findbar" aria-label="Find and replace">
+    <input type="search" id="findInput" placeholder="Find…" aria-label="Find">
+    <input type="text" id="replaceInput" placeholder="Replace…" aria-label="Replace">
+    <button id="prevBtn" title="Previous (Shift+Enter)">↑</button>
+    <button id="nextBtn" title="Next (Enter)">↓</button>
+    <button id="replaceOneBtn" title="Replace">Replace</button>
+    <button id="replaceAllBtn" title="Replace all">All</button>
+    <span class="find-count" id="findCount"></span>
+    <button class="close-find" id="closeFindBtn" title="Close (Esc)">✕</button>
+  </section>
+
+  <!-- Editor -->
+  <main class="editor-area" id="editorArea"></main>
+
+  <!-- Status bar -->
+  <footer class="statusbar">
+    <span id="cursorStatus">Ln 1, Col 1</span>
+    <span id="docStatus">0 words</span>
+    <span class="push" id="saveStatus">Saved locally</span>
+  </footer>
+</div>
+
+<script>
+/* ──────────────────────────────────────────────────────────
+   Vula OS Text Editor — CodeMirror 6 edition
+   All data persisted in localStorage. No external requests.
+   ────────────────────────────────────────────────────────── */
+const {
+  // view
+  EditorView, keymap, lineNumbers, drawSelection,
+  highlightActiveLine, highlightActiveLineGutter,
+  rectangularSelection, crosshairCursor, dropCursor,
+  // state
+  EditorState, Compartment, StateEffect,
+  // commands
+  defaultKeymap, history, historyKeymap, indentWithTab,
+  // search
+  search, searchKeymap, openSearchPanel, closeSearchPanel,
+  findNext, findPrevious, replaceNext, replaceAll: cmReplaceAll,
+  SearchQuery, setSearchQuery, getSearchQuery,
+  // autocomplete
+  autocompletion, completionKeymap,
+  // language
+  indentOnInput, syntaxHighlighting, defaultHighlightStyle,
+  bracketMatching, foldGutter, foldKeymap,
+  // langs
+  javascript, python, html, css, json, markdown, go,
+  // theme
+  oneDark,
+  // highlight
+  tags,
+} = CM;
+
+// ── Bash: use shell/StreamLanguage from @codemirror/legacy-modes
+// We don't have legacy-modes; use a simple custom highlight for bash
+// (still counts as "bash" language with basic keyword colour via StreamLanguage wrapper)
+// We'll define a minimal bash tokeniser with HighlightStyle override.
+
+/* ── Constants ─────────────────────────────────────────── */
+const STORE_KEY  = "vulos.text-editor.documents.v2";
+const STATE_KEY  = "vulos.text-editor.state.v2";
+const FS_KEY     = "vulos.text-editor.fontSize";
+const THEME_KEY  = "vulos.text-editor.theme";
+const DEFAULT_DOC = "# Welcome to Text Editor\n\nStart typing. Switch language with the dropdown for syntax highlighting.\nUse Ctrl+F to find, Ctrl+H to replace.\n";
+const FS_MIN = 10, FS_MAX = 26, FS_STEP = 1;
+
+/* ── Language map ──────────────────────────────────────── */
+function langExtension(lang) {
+  switch (lang) {
+    case "javascript": return javascript({ jsx: false });
+    case "python":     return python();
+    case "go":         return go();
+    case "html":       return html();
+    case "css":        return css();
+    case "json":       return json();
+    case "markdown":   return markdown();
+    case "bash":       return makeBashLang();
+    default:           return [];
+  }
+}
+
+// Minimal bash highlighting via HighlightStyle override on token-level
+// We use a StreamLanguage-style regex approach
+function makeBashLang() {
+  // CodeMirror has no built-in bash; we use a simple placeholder
+  // that at least parses basic tokens the same as plain text
+  // but applies shell-friendly keyword colouring via syntax highlighting.
+  // For a real implementation one would use @codemirror/legacy-modes/mode/shell
+  // which is not in our bundle — so we return the defaultHighlightStyle only.
+  return [];
+}
+
+/* ── App state ──────────────────────────────────────────── */
+let docs = [];
+let activeId = null;
+let saveTimer = null;
+
+// Compartments for dynamic reconfiguration
+const langComp   = new Compartment();
+const wrapComp   = new Compartment();
+const themeComp  = new Compartment();
+
+/* ── DOM refs ───────────────────────────────────────────── */
+const tabsEl       = document.getElementById("tabs");
+const newBtn       = document.getElementById("newBtn");
+const titleInput   = document.getElementById("titleInput");
+const langSelect   = document.getElementById("langSelect");
+const wrapBtn      = document.getElementById("wrapBtn");
+const findBtn      = document.getElementById("findBtn");
+const findbar      = document.getElementById("findbar");
+const findInput    = document.getElementById("findInput");
+const replaceInput = document.getElementById("replaceInput");
+const prevBtn      = document.getElementById("prevBtn");
+const nextBtn      = document.getElementById("nextBtn");
+const replaceOneBtn= document.getElementById("replaceOneBtn");
+const replaceAllBtn= document.getElementById("replaceAllBtn");
+const findCount    = document.getElementById("findCount");
+const closeFindBtn = document.getElementById("closeFindBtn");
+const fsSmallerBtn = document.getElementById("fsSmallerBtn");
+const fsLargerBtn  = document.getElementById("fsLargerBtn");
+const themeBtn     = document.getElementById("themeBtn");
+const duplicateBtn = document.getElementById("duplicateBtn");
+const deleteBtn    = document.getElementById("deleteBtn");
+const editorArea   = document.getElementById("editorArea");
+const cursorStatus = document.getElementById("cursorStatus");
+const docStatus    = document.getElementById("docStatus");
+const saveStatus   = document.getElementById("saveStatus");
+
+/* ── Preferences ────────────────────────────────────────── */
+let fontSize = parseInt(localStorage.getItem(FS_KEY) || "14", 10);
+let isDark   = (localStorage.getItem(THEME_KEY) || "dark") === "dark";
+
+function applyFontSize() {
+  document.documentElement.style.setProperty("--fs", fontSize + "px");
+  localStorage.setItem(FS_KEY, fontSize);
+}
+function applyTheme() {
+  document.body.classList.toggle("light", !isDark);
+  themeBtn.textContent = isDark ? "☀" : "☾";
+  themeBtn.title = isDark ? "Switch to light theme" : "Switch to dark theme";
+  themeBtn.classList.toggle("active", !isDark);
+  if (view) {
+    view.dispatch({ effects: themeComp.reconfigure(isDark ? oneDark : []) });
+  }
+  localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
+}
+applyFontSize();
+// theme applied after view is built
+
+/* ── CodeMirror view ────────────────────────────────────── */
+let view = null;
+
+// Track find matches for our custom count display
+let findMatchCount  = 0;
+let findMatchCurrent = 0;
+
+function buildView(doc, lang, wrap, dark) {
+  const startState = EditorState.create({
+    doc,
+    extensions: [
+      history(),
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      highlightActiveLine(),
+      drawSelection(),
+      dropCursor(),
+      rectangularSelection(),
+      crosshairCursor(),
+      indentOnInput(),
+      bracketMatching(),
+      autocompletion(),
+      foldGutter(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      // Dynamic compartments
+      langComp.of(langExtension(lang)),
+      wrapComp.of(wrap ? EditorView.lineWrapping : []),
+      themeComp.of(dark ? oneDark : []),
+      // Search panel (we manage our own UI but keep CM search for Ctrl+F integration)
+      search({ top: false }),
+      // Keymaps
+      keymap.of([
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...searchKeymap,
+        ...completionKeymap,
+        ...foldKeymap,
+        indentWithTab,
+        // Ctrl+H opens replace
+        { key: "Ctrl-h", run: () => { openFindBar(true); return true; } },
+      ]),
+      // Update listener
+      EditorView.updateListener.of(update => {
+        if (update.docChanged) {
+          onDocChange(update.state.doc.toString());
+        }
+        if (update.selectionSet || update.docChanged) {
+          updateCursorStatus(update.state);
+        }
+      }),
+      // Base theme: background colours from our palette
+      EditorView.theme({
+        "&": {
+          height: "100%",
+          backgroundColor: "var(--bg)",
+          color: "var(--text)",
+        },
+        ".cm-content": { caretColor: "#fff" },
+        ".cm-gutters": {
+          backgroundColor: "var(--panel)",
+          borderRight: "1px solid var(--line)",
+          color: "var(--muted)",
+        },
+        ".cm-activeLineGutter": { backgroundColor: "#1e2428" },
+        ".cm-activeLine": { backgroundColor: "#1a1f24" },
+        ".cm-selectionBackground, ::selection": { backgroundColor: "#7a4b32" },
+        ".cm-searchMatch": { backgroundColor: "#6d5524", borderRadius: "2px" },
+        ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "#b16524" },
+        ".cm-foldPlaceholder": { backgroundColor: "var(--panel-2)", border: "1px solid var(--line)" },
+        "&light": { backgroundColor: "#f5f6f7" },
+        "&light .cm-gutters": { backgroundColor: "#eef0f2", borderRight: "1px solid var(--line)" },
+        "&light .cm-activeLine": { backgroundColor: "#e8eaec" },
+        "&light .cm-activeLineGutter": { backgroundColor: "#e0e3e6" },
+        "&light .cm-selectionBackground, &light ::selection": { backgroundColor: "#c8a882" },
+      }),
+    ]
+  });
+
+  const newView = new EditorView({
+    state: startState,
+    parent: editorArea,
+  });
+  return newView;
+}
+
+/* ── Persistence helpers ─────────────────────────────────── */
+function uid() { return "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function activeDoc() { return docs.find(d => d.id === activeId) || docs[0]; }
+
+function loadStore() {
+  try { docs = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch { docs = []; }
+  let state = {};
+  try { state = JSON.parse(localStorage.getItem(STATE_KEY) || "{}"); } catch {}
+  if (!docs.length) {
+    const id = uid();
+    docs = [{ id, title: "Untitled.txt", lang: "plain", wrap: true, content: DEFAULT_DOC, savedContent: DEFAULT_DOC, updated: Date.now() }];
+  }
+  activeId = docs.some(d => d.id === state.activeId) ? state.activeId : docs[0].id;
+}
+
+function persist() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(docs));
+  localStorage.setItem(STATE_KEY, JSON.stringify({ activeId }));
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveStatus.textContent = "Saving…";
+  saveTimer = setTimeout(() => {
+    docs.forEach(d => { d.savedContent = d.content; });
+    persist();
+    renderTabs();
+    saveStatus.textContent = "Saved locally";
+  }, 300);
+}
+
+/* ── Tab rendering ──────────────────────────────────────── */
+function renderTabs() {
+  tabsEl.innerHTML = "";
+  docs.forEach(doc => {
+    const el = document.createElement("div");
+    el.className = "tab" + (doc.id === activeId ? " active" : "") + (doc.content !== doc.savedContent ? " changed" : "");
+    el.title = doc.title;
+    el.innerHTML = `<span class="dirty"></span><span class="tab-title"></span><span class="close-tab" title="Close">×</span>`;
+    el.querySelector(".tab-title").textContent = doc.title || "Untitled.txt";
+    el.addEventListener("click", () => switchDoc(doc.id));
+    el.querySelector(".close-tab").addEventListener("click", e => { e.stopPropagation(); closeDoc(doc.id); });
+    tabsEl.appendChild(el);
+  });
+}
+
+/* ── Toolbar state ──────────────────────────────────────── */
+function syncToolbar() {
+  const doc = activeDoc();
+  if (!doc) return;
+  titleInput.value  = doc.title;
+  langSelect.value  = doc.lang;
+  wrapBtn.classList.toggle("active", doc.wrap);
+}
+
+/* ── Document switching ─────────────────────────────────── */
+function switchDoc(id) {
+  const doc = docs.find(d => d.id === id);
+  if (!doc || id === activeId) return;
+  // save cursor position in old doc
+  const old = activeDoc();
+  if (old && view) old._scrollTop = view.scrollDOM.scrollTop;
+  activeId = id;
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: doc.content },
+    effects: [
+      langComp.reconfigure(langExtension(doc.lang)),
+      wrapComp.reconfigure(doc.wrap ? EditorView.lineWrapping : []),
+    ],
+    selection: { anchor: 0 },
+  });
+  if (doc._scrollTop) view.scrollDOM.scrollTop = doc._scrollTop;
+  syncToolbar();
+  renderTabs();
+  persist();
+  updateCursorStatus(view.state);
+  updateDocStatus();
+}
+
+/* ── Document mutations ─────────────────────────────────── */
+function onDocChange(text) {
+  const doc = activeDoc();
+  if (!doc) return;
+  doc.content = text;
+  doc.updated = Date.now();
+  scheduleSave();
+  renderTabs();
+  updateDocStatus();
+}
+
+function newDoc() {
+  const id = uid();
+  const doc = { id, title: "Untitled.txt", lang: "plain", wrap: true, content: "", savedContent: "", updated: Date.now() };
+  docs.unshift(doc);
+  activeId = id;
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: "" },
+    effects: [
+      langComp.reconfigure([]),
+      wrapComp.reconfigure(EditorView.lineWrapping),
+    ],
+    selection: { anchor: 0 },
+  });
+  syncToolbar();
+  renderTabs();
+  persist();
+  view.focus();
+}
+
+function duplicateDoc() {
+  const src = activeDoc();
+  if (!src) return;
+  const id = uid();
+  const doc = { ...src, id, title: src.title.replace(/(\.[^.]+)?$/, " copy$1"), savedContent: src.content, updated: Date.now() };
+  docs.unshift(doc);
+  activeId = id;
+  syncToolbar();
+  renderTabs();
+  persist();
+}
+
+function closeDoc(id) {
+  if (docs.length === 1) {
+    // Reset to blank
+    const doc = docs[0];
+    doc.title = "Untitled.txt"; doc.lang = "plain"; doc.content = ""; doc.savedContent = "";
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "" },
+      effects: [langComp.reconfigure([]), wrapComp.reconfigure(EditorView.lineWrapping)],
+      selection: { anchor: 0 },
+    });
+    syncToolbar(); renderTabs(); persist();
+    return;
+  }
+  const idx = docs.findIndex(d => d.id === id);
+  docs = docs.filter(d => d.id !== id);
+  if (activeId === id) switchDoc(docs[Math.max(0, idx - 1)].id);
+  else { renderTabs(); persist(); }
+}
+
+/* ── Status bar ─────────────────────────────────────────── */
+function updateCursorStatus(state) {
+  const cursor = state.selection.main.head;
+  const line   = state.doc.lineAt(cursor);
+  cursorStatus.textContent = `Ln ${line.number}, Col ${cursor - line.from + 1}`;
+}
+function updateDocStatus() {
+  const text  = view ? view.state.doc.toString() : "";
+  const words = (text.trim().match(/\S+/g) || []).length;
+  docStatus.textContent = `${words} words, ${text.length} chars`;
+}
+
+/* ── Find / Replace (our own bar, using CM search under the hood) ── */
+let findbarOpen = false;
+let findQuery = "";
+let replaceQuery = "";
+
+function openFindBar(focusReplace) {
+  findbarOpen = true;
+  findbar.classList.add("open");
+  if (focusReplace) {
+    replaceInput.focus();
+  } else {
+    // Pre-fill with selection
+    const sel = view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to);
+    if (sel && !sel.includes("\n")) findInput.value = sel;
+    findInput.focus();
+    findInput.select();
+  }
+  runFind();
+}
+
+function closeFindBar() {
+  findbarOpen = false;
+  findbar.classList.remove("open");
+  findCount.textContent = "";
+  view.focus();
+}
+
+function runFind() {
+  const q = findInput.value;
+  if (!q) { findCount.textContent = ""; return; }
+  // Dispatch a CM search query so highlighting works
+  const query = new SearchQuery({ search: q, replace: replaceInput.value, caseSensitive: false });
+  view.dispatch({ effects: setSearchQuery.of(query) });
+  // Count matches
+  let count = 0;
+  const doc = view.state.doc.toString().toLowerCase();
+  const lq  = q.toLowerCase();
+  let pos = 0;
+  while (true) {
+    const i = doc.indexOf(lq, pos);
+    if (i === -1) break;
+    count++;
+    pos = i + Math.max(1, lq.length);
+  }
+  findMatchCount = count;
+  findCount.textContent = count ? `${count} match${count !== 1 ? "es" : ""}` : "No matches";
+}
+
+function doFindNext()  { runFind(); findNext(view); }
+function doFindPrev()  { runFind(); findPrevious(view); }
+function doReplaceOne(){ runFind(); replaceNext(view); runFind(); }
+function doReplaceAll(){ runFind(); cmReplaceAll(view); runFind(); }
+
+findBtn.addEventListener("click", () => {
+  if (findbarOpen) closeFindBar(); else openFindBar(false);
+});
+closeFindBtn.addEventListener("click", closeFindBar);
+findInput.addEventListener("input", runFind);
+findInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.shiftKey ? doFindPrev() : doFindNext(); }
+  if (e.key === "Escape") closeFindBar();
+});
+replaceInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") doReplaceOne();
+  if (e.key === "Escape") closeFindBar();
+});
+prevBtn.addEventListener("click", doFindPrev);
+nextBtn.addEventListener("click", doFindNext);
+replaceOneBtn.addEventListener("click", doReplaceOne);
+replaceAllBtn.addEventListener("click", doReplaceAll);
+
+/* ── Font size ──────────────────────────────────────────── */
+fsSmallerBtn.addEventListener("click", () => {
+  if (fontSize > FS_MIN) { fontSize -= FS_STEP; applyFontSize(); }
+});
+fsLargerBtn.addEventListener("click", () => {
+  if (fontSize < FS_MAX) { fontSize += FS_STEP; applyFontSize(); }
+});
+
+/* ── Theme ──────────────────────────────────────────────── */
+themeBtn.addEventListener("click", () => {
+  isDark = !isDark;
+  applyTheme();
+});
+
+/* ── Wrap ───────────────────────────────────────────────── */
+wrapBtn.addEventListener("click", () => {
+  const doc = activeDoc(); if (!doc) return;
+  doc.wrap = !doc.wrap; doc.updated = Date.now();
+  view.dispatch({ effects: wrapComp.reconfigure(doc.wrap ? EditorView.lineWrapping : []) });
+  wrapBtn.classList.toggle("active", doc.wrap);
+  scheduleSave();
+});
+
+/* ── Lang select ────────────────────────────────────────── */
+langSelect.addEventListener("change", () => {
+  const doc = activeDoc(); if (!doc) return;
+  doc.lang = langSelect.value; doc.updated = Date.now();
+  view.dispatch({ effects: langComp.reconfigure(langExtension(doc.lang)) });
+  scheduleSave();
+});
+
+/* ── Title input ────────────────────────────────────────── */
+titleInput.addEventListener("input", () => {
+  const doc = activeDoc(); if (!doc) return;
+  doc.title = titleInput.value || "Untitled.txt"; doc.updated = Date.now();
+  // Auto-detect language from extension
+  const ext = doc.title.split(".").pop().toLowerCase();
+  const extLang = {
+    js:"javascript", mjs:"javascript", ts:"javascript",
+    py:"python",
+    go:"go",
+    html:"html", htm:"html",
+    css:"css",
+    json:"json",
+    md:"markdown", markdown:"markdown",
+    sh:"bash", bash:"bash", zsh:"bash",
+  }[ext];
+  if (extLang && doc.lang === "plain") {
+    doc.lang = extLang;
+    langSelect.value = extLang;
+    view.dispatch({ effects: langComp.reconfigure(langExtension(extLang)) });
+  }
+  renderTabs();
+  scheduleSave();
+});
+
+/* ── New / Duplicate / Delete ───────────────────────────── */
+newBtn.addEventListener("click", newDoc);
+duplicateBtn.addEventListener("click", duplicateDoc);
+deleteBtn.addEventListener("click", () => closeDoc(activeId));
+
+/* ── Ctrl+T for new tab ─────────────────────────────────── */
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "t") {
+    e.preventDefault(); newDoc();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    if (!findbarOpen) openFindBar(false);
+    else { findInput.focus(); findInput.select(); }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "h") {
+    e.preventDefault();
+    openFindBar(true);
+  }
+});
+
+/* ── Persist on unload ──────────────────────────────────── */
+window.addEventListener("beforeunload", persist);
+
+/* ── Bootstrap ──────────────────────────────────────────── */
+(function init() {
+  loadStore();
+  const doc = activeDoc();
+  view = buildView(doc.content, doc.lang, doc.wrap, isDark);
+  applyTheme(); // now view exists
+  syncToolbar();
+  renderTabs();
+  updateCursorStatus(view.state);
+  updateDocStatus();
+  persist();
+  view.focus();
+})();
+</script>
+</body>
+</html>
