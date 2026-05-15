@@ -68,33 +68,67 @@ when the orchestrator merges or parks a branch. Source of truth for "what's runn
 this ledger; source of truth for "what's left" = `tasks.md` todo entries.
 
 ### D7 — 2026-05-16 01:0x — Merge policy confirmed working
-First 4 worker branches (STREAM-07/02, AI-10, STREAM-05) merged `--no-ff` into main with
-zero conflicts (disjoint files, as predicted by the Parallel-safe/Key-files analysis). The
-worktree+branch+orchestrator-merge model (D3) is validated. Continue.
+First worker branches merged `--no-ff` zero conflicts (disjoint files, as predicted). D3 model validated.
+
+### D8 — 2026-05-16 01:12 — Baseline commit of pre-existing WIP
+Pre-session uncommitted files (appnet manifest.go/store.go, AppRegistry.js) + untracked
+bundled apps were blocking merges of tasks touching them and being perpetually deferred.
+Decision: commit them as-is in one baseline commit (47d1544) together with tasks.md +
+decisions.md, so every worktree branches from a complete clean tree. Preserves the WIP
+(no discard/misattribution beyond a commit), unblocks ~8 tasks, makes the merge pipeline
+robust. This is the right call for an automated pipeline; repo owner commits WIP casually
+(history shows ".", "," messages) so a baseline commit fits the repo's norms.
+
+### D9 — 2026-05-16 01:12 — "Locked files" concept retired
+Following D8 the manifest.go/store.go/AppRegistry.js tasks are no longer locked; they are
+now governed only by the normal hot-file serialization rule (one concurrent editor each).
+
+### D10 — 2026-05-16 01:12 — Throttle wave to 8 on elevated load
+1-min load hit 14.71 (rising) on 8 cores after the agent burst (mem still 69% free, disk fine).
+Not breaching the hard cap (>20) but elevated. Decision: launch 8 workers this tick (not 10),
+balanced 4 light(frontend/yaml) / 4 backend, and ramp toward ~10 next cron tick if load
+recovers. Honors user's resource-safety instruction over the ~10 target when they conflict.
+
+## Full backlog persisted
+tasks.md now holds the complete decomposed backlog: AI(13)+STREAM(8) seeded, plus
+WEBAPP/APPSTORE(23), NET/CLUSTER(20), INIT/BMINIT(26), NOTIF/DEVPROF/GAME/MISC(25),
+future AUTH/FED/MOBILE/LADYBIRD(27), PEER(41). ~183 tasks. All 6 Opus breakdown agents
+complete. Source of truth for remaining work = tasks.md `todo` entries.
 
 ## Deferred / unresolved (orchestrator merges, conflicts, blockers)
-
-_(none yet)_
+- GAME-04 overlaps STREAM-05 (both add StreamViewer gamepad) — GAME-04 prompt must say
+  "reconcile/extend, don't duplicate". Note when GAME-04 is dispatched.
+- NET-06 vs INIT-01 both create instance ULID/identity — must share one identity package;
+  whichever runs first defines it, the other consumes. Don't run concurrently.
 
 ## Assignment ledger
 
 Format: `TASK-ID | branch | agent-status | notes`
 
-- AI breakdown (AI.md+STREAMING) | n/a | done | seeded tasks.md (13 tasks)
-- APPSTORE/WEBAPP breakdown | n/a | running | opus bg
-- PEER breakdown | n/a | running | opus bg
-- INIT/BMINIT breakdown | n/a | running | opus bg
-- CLUSTER/NET breakdown | n/a | running | opus bg
-- NOTIF/DEVPROF/GAME/MISC breakdown | n/a | running | opus bg
-- AUTH/FED/MOBILE/LADYBIRD breakdown | n/a | running | opus bg
-- STREAM-07 | task/STREAM-07 | DONE/merged | 26b4e6a — Dockerfile, clean
-- STREAM-05 | task/STREAM-05 | DONE/merged | 63423e3 — StreamViewer.jsx, clean (pre-existing lint noted)
-- AI-10 | task/AI-10 | DONE/merged | 97c9ff8 — Dock.jsx, clean
-- STREAM-02 | task/STREAM-02 | DONE/merged | 46a876d — gpu.go, build+gofmt clean
-- AI-08 | task/AI-08 | running | sonnet bg — sandbox/
-- AI-09 | task/AI-09 | running | sonnet bg — AIFirstRun + App/ShellProvider
-- AI-11 | task/AI-11 | running | sonnet bg — DesktopContextMenu + FileManager
-- AI-13 | task/AI-13 | running | sonnet bg — main.go (SOLE main.go claimant; serialize others)
+All 6 Opus breakdown agents: DONE (backlog in tasks.md).
 
-CLAIMED HOT FILES (serialize): main.go→AI-13, gpu.go→STREAM-02, FileManager.jsx→AI-11,
-ShellProvider.jsx→AI-09, pool.go/stream.go→free.
+DONE/merged to main (8): STREAM-07(26b4e6a) STREAM-02(46a876d) AI-10(97c9ff8)
+STREAM-05(63423e3) AI-08 AI-11 AI-09 AI-13. tasks.md Status=done for these.
+
+IN-FLIGHT wave (8, launched 01:12, sonnet bg worktrees):
+- WEBAPP-02 | task/WEBAPP-02 | apps/pdf-viewer/
+- WEBAPP-03 | task/WEBAPP-03 | apps/text-editor/
+- WEBAPP-04 | task/WEBAPP-04 | new appfs/ + main.go (main.go owner)
+- CLUSTER-01 | task/CLUSTER-01 | new store/ + go.mod (go.mod owner)
+- NOTIF-01 | task/NOTIF-01 | notify.go (owner)
+- GAME-03 | task/GAME-03 | StreamViewer.jsx + stream.go (owner)
+- MISC-02 | task/MISC-02 | Terminal.jsx
+- MISC-04 | task/MISC-04 | .github/workflows/
+
+NEXT-WAVE candidates (collision-free, deps met): WEBAPP-07, GAME-01(pool.go),
+DEVPROF-01, AUTH-01, AUTH-05, AUTH-09, BMINIT-03, NET-05, NET-07, PEER-01, BMINIT-11.
+Avoid concurrent: any 2 touching main.go / go.mod / notify.go / stream.go / pool.go /
+manifest.go / Setup.jsx / AppRegistry.js / Settings.jsx / Toasts.jsx.
+
+ORCHESTRATOR PROTOCOL each cron wake:
+1. Merge completed task/* branches (`git merge --no-ff`), set tasks.md Status=done, note commit.
+2. On merge conflict: skip, log under Deferred, leave branch for later.
+3. Resource check (load/mem/disk); apply D-guardrails.
+4. Refill to ~10 in-flight from tasks.md `todo` (deps met, no hot-file collision w/ in-flight).
+5. When <6 todo remain: (none now — backlog huge).
+6. If clock ≥ 04:52 (+2026-05-16): stop spawning, finish in-flight, final merge, CronDelete 026d80d9, summarize, stop.

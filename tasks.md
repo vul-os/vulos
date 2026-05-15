@@ -200,7 +200,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** new `src/core/AskAIButton.jsx`, `src/builtin/files/FileManager.jsx`, one error-state location (e.g. `src/builtin/terminal/Terminal.jsx`).
 
 ### [AI-13] Expand proactive agent system checks (memory, disk, thermal)
-- **Status:** todo
+- **Status:** done
 - **Priority:** P2
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § Current Stack (Proactive agent)
@@ -352,17 +352,17 @@ Scope: Add `notifications` to `ValidPermissions` (manifest.go:18-27) with a comm
 AC: [ ] calendar+clock pass validation [ ] `notifications` in ValidPermissions w/ comment [ ] `/api/store/validate` lists them not errors
 
 ### [WEBAPP-02] Implement PDF.js rendering in PDF Viewer
-`todo` · P0 · M · dep: none · parallel: yes — apps/pdf-viewer/ only
+`done` · P0 · M · dep: none · parallel: yes — apps/pdf-viewer/ only
 Scope: Vendor PDF.js locally (no CDN) into apps/pdf-viewer/, render to canvas w/ page nav, zoom, fit-to-width; update server.py to serve assets.
 AC: [ ] local PDF renders on canvas [ ] prev/next/zoom/fit work [ ] no external network [ ] server.py serves assets
 
 ### [WEBAPP-03] Add CodeMirror editing to Text Editor
-`todo` · P0 · M · dep: none · parallel: yes — apps/text-editor/ only
+`done` · P0 · M · dep: none · parallel: yes — apps/text-editor/ only
 Scope: Vendor CodeMirror 6 locally; highlighting (JS/Py/Go/HTML/CSS/JSON/MD/Bash), line numbers, wrap toggle, find/replace, theme, font-size; keep localStorage persistence; server.py serves assets.
 AC: [ ] CM editor w/ 8-lang highlight [ ] linenums/wrap/find/theme/font work [ ] no ext network [ ] localStorage docs still work
 
 ### [WEBAPP-04] Filesystem persistence API for default apps
-`todo` · P0 · M · dep: none · parallel: no — new backend/services/appfs/, backend/cmd/server/main.go
+`done` · P0 · M · dep: none · parallel: no — new backend/services/appfs/, backend/cmd/server/main.go
 Scope: Sandboxed `GET/PUT/DELETE /api/appdata/{app}/{path}` + list under `~/.vulos/<app>/` w/ path-traversal protection (realpath prefix like apps/calculator/server.py:19-22).
 AC: [ ] PUT then GET round-trips [ ] `../`/abs rejected 400 [ ] list scoped to app subdir [ ] go test passes; route registered
 
@@ -377,7 +377,7 @@ Scope: Replace localStorage events with WEBAPP-04 appdata API persisting under `
 AC: [ ] events survive restart [ ] views/recurrence/.ics still work [ ] no CRUD UI regression
 
 ### [WEBAPP-07] Complete Weather app: hourly + geolocation + UV
-`todo` · P2 · S · dep: none · parallel: yes — apps/weather/ only
+`done` · P2 · S · dep: none · parallel: yes — apps/weather/ only
 Scope: Add Open-Meteo hourly strip, browser geolocation w/ IP/manual fallback, UV index in current conditions.
 AC: [ ] hourly strip renders [ ] geolocation auto-detect w/ fallback [ ] UV shown [ ] manual search still works
 
@@ -476,7 +476,7 @@ Scope: Add profile dimension to namespace/launcher keying; GetForProfile; Launch
 AC: [ ] same app 2 profiles = 2 ns [ ] gateway routes per profile [ ] default still resolves [ ] Stop targets single profile
 
 ### [NET-03] `--` naming validation (usernames/profiles/appIDs)
-`todo` · P0 · S · dep: none · parallel: no — backend/services/appnet/manifest.go, backend/services/auth/auth.go, backend/services/profiles/browser.go
+`done` · P0 · S · dep: none · parallel: no — backend/services/appnet/manifest.go, backend/services/auth/auth.go, backend/services/profiles/browser.go
 Scope: Shared regex `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (forbids `--`, leading/trailing `-`); apply to app id, username Register, profile Create/Update.
 AC: [ ] appID w/ `--` fails [ ] username `--`/lead/trail rejected [ ] profile `--` rejected [ ] single-hyphen still ok
 
@@ -486,7 +486,7 @@ Scope: /etc/hosts + Resolve use new format; Launchpad/Portal build {app}--{profi
 AC: [ ] /etc/hosts new format [ ] Resolve parses it [ ] Launchpad opens {app}--default [ ] path fallback unchanged
 
 ### [NET-05] Cookie domain across `{app}--{profile}.{ulid}.{domain}`
-`todo` · P1 · S · dep: NET-01 · parallel: yes — backend/services/auth/handlers.go
+`done` · P1 · S · dep: NET-01 · parallel: yes — backend/services/auth/handlers.go
 Scope: cookieDomain = per-instance base (strip {app}--{profile} label) so session shared across instance apps not instances.
 AC: [ ] cookie = .{ulid}.vulos.org [ ] IP/localhost dev still ok [ ] unit test subdomain/IP/localhost
 
@@ -516,7 +516,7 @@ Scope: GET/POST /api/turn/config (host, write-only secret) + POST /api/turn/test
 AC: [ ] host+secret save/reload (secret never returned) [ ] test reports success/fail [ ] creds use configured host
 
 ### [CLUSTER-01] SQLite store package w/ cr-sqlite extension
-`todo` · P0 · L · dep: none · parallel: yes — new backend/services/store/, backend/go.mod (GO.MOD OWNER)
+`done` · P0 · L · dep: none · parallel: yes — new backend/services/store/, backend/go.mod (GO.MOD OWNER)
 Scope: SQLite opener loading cr-sqlite ext, migration runner, crsql_as_crr helpers, schema (users/sessions/profiles/settings/installed_apps). Package+schema+tests only.
 AC: [ ] opens ~/.vulos/db/vulos.db + migrations [ ] cr-sqlite loads, crsql_as_crr ok (graceful if absent) [ ] idempotent migrations [ ] unit test CRUD
 
@@ -625,7 +625,7 @@ Scope: POST /api/setup/kit-backup{email,encrypted_kit} to VULOS_CLOUD_URL (defau
 AC: [ ] posts encrypted blob [ ] unconfigured = graceful msg [ ] button works, go build+npm build
 
 ### [BMINIT-01] labwc config + Vula traffic-light openbox theme
-`todo` · P0 · M · dep: none · parallel: yes — new assets/labwc/, assets/themes/, Dockerfile, build.sh
+`done` · P0 · M · dep: none · parallel: yes — new assets/labwc/, assets/themes/, Dockerfile, build.sh
 Scope: Add labwc+cage to 3 apt blocks; rc.xml (browser bg layer) + vulos openbox-3 themerc (button.layout CMI) in-repo, copied to image paths.
 AC: [ ] labwc+cage installed 3 places [ ] rc.xml+themerc in-repo+copied [ ] left close/min/max [ ] docker build
 
@@ -675,7 +675,7 @@ Scope: /dev/shm size=2g; mount efivarfs if /sys/firmware/efi exists; mount label
 AC: [ ] /dev/shm size=2g [ ] efivarfs only when present [ ] data partition mounted when present [ ] GOOS=linux build
 
 ### [BMINIT-11] Hardware detection phase + /var/log/vulos-boot.log
-`todo` · P2 · M · dep: none · parallel: yes — new backend/services/hwdetect/, backend/cmd/init/main.go (one call)
+`done` · P2 · M · dep: none · parallel: yes — new backend/services/hwdetect/, backend/cmd/init/main.go (one call)
 Scope: Probe GPU(reuse gpu)/audio/input/network/storage/battery; write /var/log/vulos-boot.log; new init phase best-effort non-fatal.
 AC: [ ] returns hw info [ ] boot.log written [ ] failures non-fatal [ ] GOOS=linux build
 
@@ -705,7 +705,7 @@ AC: [ ] rpi bootable image [ ] pinephone image [ ] generic arm64 unchanged [ ] s
 > Peer-to-peer notification spec deferred until PEERING lands (see PEER-* tasks).
 
 ### [NOTIF-01] Structured notification model (type/subtype/priority/TTL)
-`todo` · P0 · M · dep: none · parallel: no — backend/services/notify/notify.go
+`done` · P0 · M · dep: none · parallel: no — backend/services/notify/notify.go
 Scope: Add Type/Subtype/Priority/TTL/Body/UUIDv7 ID + SendNotification w/ defaults; Send/SendWithAction wrappers map Level→Priority; clamp critical→high non-call; IsExpired.
 AC: [ ] new fields [ ] legacy callers compile, priority=normal [ ] critical→high non-call [ ] unit test, go build
 
@@ -715,7 +715,7 @@ Scope: JSON store history(7d/1000)/queue(TTL,200)/settings; New(dataDir); atomic
 AC: [ ] survive restart [ ] prune age+count [ ] queue drains on WS connect [ ] main.go passes dir, go build, unit test
 
 ### [NOTIF-03] Priority-aware toast UI + sound + click-to-context
-`todo` · P0 · M · dep: NOTIF-01 · parallel: yes — src/shell/Toasts.jsx (+audio asset)
+`done` · P0 · M · dep: NOTIF-01 · parallel: yes — src/shell/Toasts.jsx (+audio asset)
 Scope: priority→UI (low=none, high=persistent, critical=fullscreen), chime normal+ (settings gate), click opens action URL via IntentRouter; keep level compat.
 AC: [ ] low no toast, high no auto-dismiss, normal sound [ ] click navigates [ ] legacy level renders
 
@@ -735,7 +735,7 @@ Scope: Render body.actions buttons; POST /api/notifications/action records choic
 AC: [ ] buttons render+post [ ] auto-resolve at TTL [ ] resolved don't reappear
 
 ### [DEVPROF-01] Profile model + form-factor detection backend
-`todo` · P0 · M · dep: none · parallel: no — new backend/services/profiles/device.go, main.go
+`done` · P0 · M · dep: none · parallel: no — new backend/services/profiles/device.go, main.go
 Scope: DeviceProfile store pc|tv|car|watch → ~/.vulos/db/device-profile.json; detection heuristic (DMI/screen); GET/PUT /api/device-profile.
 AC: [ ] GET returns {profile,suggested} default pc [ ] PUT persists+restart [ ] detection no crash w/o DMI [ ] go build, unit test
 
@@ -765,7 +765,7 @@ Scope: data-device-profile=car CSS enlarges targets, auto-enable DND via NOTIF-0
 AC: [ ] car enlarges targets scoped CSS [ ] car auto-enables DND [ ] no pc/tv effect
 
 ### [GAME-01] Configurable FPS: default 60 + per-session
-`todo` · P0 · S · dep: none · parallel: no — backend/services/stream/pool.go
+`done` · P0 · S · dep: none · parallel: no — backend/services/stream/pool.go
 Scope: Default FPS 60 in Launch, clamp to 30/60/90/120/144 (0=60); keep fps request field.
 AC: [ ] new sessions 60, explicit honored+clamped [ ] existing callers unaffected [ ] go build
 
@@ -775,7 +775,7 @@ Scope: LaunchOpts.Gaming; gaming encoder args per tier (zerolatency/no-Bframe/no
 AC: [ ] gaming:true uses zerolatency args+gaming tiers [ ] non-gaming byte-identical [ ] 10ms Opus [ ] go build, table test
 
 ### [GAME-03] Pointer lock + relative-mouse passthrough
-`todo` · P0 · M · dep: none · parallel: no — src/builtin/stream/StreamViewer.jsx, backend/services/stream/stream.go
+`done` · P0 · M · dep: none · parallel: no — src/builtin/stream/StreamViewer.jsx, backend/services/stream/stream.go
 Scope: requestPointerLock on click (gaming), send raw movementX/Y (`mr`) uncoalesced while locked, Esc exits; backend relative-move branch in handleMouse → MouseMoveRel.
 AC: [ ] click acquires lock, Esc releases [ ] raw deltas move cursor [ ] non-gaming unchanged
 
@@ -810,7 +810,7 @@ Scope: Accent in ThemeProvider→localStorage→--accent root var; swatch picker
 AC: [ ] picker persists+live --accent [ ] primary follows --accent, default blue [ ] reload preserves
 
 ### [MISC-02] Terminal theme + font config
-`todo` · P2 · M · dep: none · parallel: yes — src/builtin/terminal/Terminal.jsx (+localStorage)
+`done` · P2 · M · dep: none · parallel: yes — src/builtin/terminal/Terminal.jsx (+localStorage)
 Scope: In-terminal settings: color theme (Default/Solarized/Dracula/Light) + font family/size, localStorage, applied to xterm; default = current exactly.
 AC: [ ] theme+font controls apply immediately [ ] persist [ ] default byte-identical
 
@@ -820,7 +820,7 @@ Scope: Require admin role for /api/exec, structured audit log (user/cmd/ts/exit)
 AC: [ ] non-admin 403 [ ] every call audit-logged [ ] env flag disables [ ] setup completes, go build
 
 ### [MISC-04] Dependency + container CVE scanning in CI
-`todo` · P1 · S · dep: none · parallel: yes — new .github/workflows/security-scan.yml
+`done` · P1 · S · dep: none · parallel: yes — new .github/workflows/security-scan.yml
 Scope: CI govulncheck + npm audit --audit-level=high + Trivy container scan; fail on high/critical w/ documented ignore.
 AC: [ ] CI runs 3 scans on PRs [ ] fails high/critical, ignore documented [ ] workflow valid
 
@@ -1038,6 +1038,145 @@ AC: [ ] Vula ID advertises multi endpoints [ ] delivery succeeds via live one [ 
 `todo` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
 Scope: feed create/list/publish/get/entries, hash-chained signed entries (prev_hash), access public/peers/link, subscriber pull by seq, push to approved, content hash sha256(canonical).
 AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] public/link no auth, peers gated [ ] subscribers since last seq
+
+---
+
+## AUTH / FED / MOBILE / LADYBIRD (roadmap/future/*) — backlog default P3 unless foundational
+
+### [AUTH-01] TOTP secret store and code generation backend
+`done` · P2 · M · dep: none · parallel: yes — new backend/services/authvault/ (go.mod: pquerna/otp)
+Scope: RFC6238 TOTP; AES-256-GCM secrets at ~/.vulos/auth/totp/keychain.enc + accounts.json; otpauth:// parse; add/list/code/delete struct methods (no HTTP).
+AC: [x] merged 43d65d3 (11 tests incl RFC6238 vectors pass)
+
+### [AUTH-02] TOTP HTTP API endpoints
+`todo` · P2 · S · dep: AUTH-01 · parallel: no — backend/cmd/server/main.go, new authvault/handlers.go
+Scope: POST /api/auth/totp/add, GET /list, GET /code/:id, DELETE /:id; scoped per X-User-ID; wire in main.go.
+AC: [ ] 4 endpoints, auth-required, correct JSON [ ] add-then-code returns valid 6-digit [ ] go build
+
+### [AUTH-03] TOTP UI panel (authenticator overlay)
+`todo` · P2 · M · dep: AUTH-02 · parallel: yes — new src/apps/Authenticator/, src/core/AppRegistry.js
+Scope: React list of accounts w/ rolling codes + 30s countdown, tap-to-copy, add-account (paste otpauth URI / manual). Register in AppRegistry.
+AC: [ ] codes refresh 30s no reload [ ] click-copy w/ confirm [ ] add posts /totp/add [ ] in launcher
+
+### [AUTH-04] Google Authenticator import/export for TOTP
+`todo` · P3 · M · dep: AUTH-01, AUTH-02 · parallel: yes — new authvault/migration.go
+Scope: decode otpauth-migration:// protobuf → entries; POST /import + /export (encrypted blob).
+AC: [ ] sample migration imports all [ ] export re-imports identical [ ] unit test protobuf parse
+
+### [AUTH-05] Credential vault store (encrypted password manager backend)
+`todo` · P2 · L · dep: none · parallel: yes — new backend/services/credvault/
+Scope: AES-256-GCM vault.enc, Argon2id master key, lock/unlock state machine + auto-lock, entry CRUD (url/user/pass/notes/totp-id), password generator. Library only.
+AC: [ ] vault opaque, wrong pwd fails [ ] lock clears key, inaccessible [ ] generator random+passphrase [ ] go test encrypt/decrypt round-trip
+
+### [AUTH-06] Credential vault HTTP API
+`todo` · P2 · M · dep: AUTH-05 · parallel: no — backend/cmd/server/main.go
+Scope: POST /api/auth/vault/unlock|lock, GET /entries (metadata), GET /entry/:id, POST/PUT/DELETE /entry, POST /generate; 423 when locked.
+AC: [ ] list metadata only, detail requires unlock [ ] locked → clear error [ ] go build
+
+### [AUTH-07] Password manager UI
+`todo` · P3 · M · dep: AUTH-06 · parallel: yes — new src/apps/Vault/, src/core/AppRegistry.js
+Scope: master-pwd unlock screen, entry list/search, detail reveal/copy, add/edit, generator, auto-relock.
+AC: [ ] unlock gates list [ ] copy user/pass w/ confirm [ ] CRUD persists [ ] generator inserts into form
+
+### [AUTH-08] Credential vault import (Bitwarden/1Password/KeePass/Chrome)
+`todo` · P3 · M · dep: AUTH-05, AUTH-06 · parallel: yes — new credvault/import.go
+Scope: parsers for 4 formats → vault entries; POST /import + /export; dedupe url+username.
+AC: [ ] 4 formats import in unit tests [ ] export re-imports equivalent [ ] dupes merged
+
+### [AUTH-09] TPM/software-keystore abstraction for key sealing
+`todo` · P1 · L · dep: none · parallel: yes — new backend/services/devicekey/ (go.mod: go-tpm)
+Scope: KeyStore iface Seal/Unseal/Sign/DeviceIdentity; go-tpm tpm2 vs /dev/tpmrm0, software-encrypted fallback ~/.vulos/auth/tpm/; report backend type.
+AC: [ ] software fallback round-trips w/o TPM [ ] tpm/status reports type [ ] stable device identity [ ] builds+tests w/o hw TPM
+
+### [AUTH-10] Device identity & TPM status API
+`todo` · P2 · S · dep: AUTH-09 · parallel: no — backend/cmd/server/main.go
+Scope: GET /api/auth/device/identity, /tpm/status, POST /seal, /unseal (admin-only seal/unseal).
+AC: [ ] tpm/status returns backend type [ ] seal→unseal returns original [ ] go build
+
+### [AUTH-11] Client certificate (mTLS) store + management API
+`todo` · P2 · M · dep: AUTH-09 · parallel: yes — new backend/services/clientcerts/
+Scope: per-domain X.509 cert+key under ~/.vulos/auth/certificates/<domain>/ (key sealed via AUTH-09), CSR gen; install/list/delete/status/generate-csr endpoints.
+AC: [ ] install+list shows issuer/expiry [ ] CSR valid PEM w/ CN/SAN [ ] key sealed not plaintext [ ] unit test install+status
+
+### [AUTH-12] Server-side passkey (FIDO2) authenticator + API
+`todo` · P2 · L · dep: AUTH-09 · parallel: yes — new backend/services/passkeys/
+Scope: server-resident FIDO2 (go-webauthn): create/store credentials per RP sealed via AUTH-09, assertions, list/delete; passkeys endpoints.
+AC: [ ] register persists sealed, listed [ ] reg+assertion verifies in test [ ] delete removes [ ] go build
+
+### [AUTH-13] WebAuthn bridge data channel (server side)
+`todo` · P3 · M · dep: none · parallel: no — backend/services/stream/stream.go, new webauthn.go
+Scope: add `case "webauthn"` to OnDataChannel switch routing challenge/assertion to per-session relay + Go hook. Browser-side out of scope.
+AC: [ ] webauthn channel accepted bidirectional [ ] round-trips via relay in test [ ] input channels unaffected, go build
+
+### [AUTH-14] SMS receive via VoIP provider webhook
+`todo` · P3 · M · dep: none · parallel: yes — new backend/services/smsotp/
+Scope: POST /api/auth/sms/webhook (Twilio form) extract OTP regex, store ~/.vulos/auth/sms/history.json 24h, notify; recent/number/settings endpoints.
+AC: [ ] Twilio payload stores+notifies [ ] OTP regex on real samples in test [ ] >24h pruned
+
+### [FED-01] ActivityPub social app scaffold (read-only public timeline)
+`todo` · P3 · M · dep: none · parallel: yes — new apps/social/, src/core/AppRegistry.js (defer reg if AppRegistry contended)
+Scope: social app (manifest+server+UI), read-only: enter instance host, GET /api/v1/timelines/public, render statuses. No auth/posting.
+AC: [ ] app.json validates [ ] public host renders timeline [ ] launches
+
+### [FED-02] OAuth2 login to existing Mastodon/Pixelfed
+`todo` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
+Scope: dynamic client reg /api/v1/apps, OAuth2 code flow, token store, home timeline, verify-credentials.
+AC: [ ] login real instance returns token [ ] home timeline renders [ ] token persists, logout clears
+
+### [FED-03] Feed interactions — post/boost/favourite/reply
+`todo` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
+Scope: compose (500 char + CW), thread view, boost/fav/reply/bookmark optimistic UI vs Mastodon API.
+AC: [ ] post appears in home [ ] fav/boost persist server-side [ ] reply opens thread in-reply-to
+
+### [FED-04] Photos + Video views (Pixelfed grid, PeerTube HLS)
+`todo` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
+Scope: photo grid + fullscreen viewer + carousel; video list inline HLS (hls.js) + reply comments.
+AC: [ ] photo grid + fullscreen [ ] multi-attachment carousel [ ] video plays inline HLS
+
+### [FED-05] Forums view — Lemmy communities
+`todo` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
+Scope: Lemmy API client: communities, post listing w/ sort, comment trees, vote/subscribe (JWT), read-only fallback.
+AC: [ ] browse public Lemmy communities/posts [ ] sort hot/new/top/active [ ] logged-in vote+comment
+
+### [FED-06] Push notifications + share-to-Fediverse
+`todo` · P3 · S · dep: FED-02, FED-03 · parallel: yes — apps/social/, one notifySvc call
+Scope: Mastodon streaming WS → POST /api/notifications/send on mention; share target → compose prefilled.
+AC: [ ] new mention triggers Vula notification [ ] share opens compose prefilled
+
+### [MOBILE-01] Telephony service scaffold (Go + WS + D-Bus ModemManager)
+`todo` · P3 · M · dep: none · parallel: yes — new backend/services/telephony/, apps/phone/app.json, main.go
+Scope: HTTP server + WS hub + ModemManager D-Bus client enumerate modems/signal/SIM; graceful no-modem fallback.
+AC: [ ] status endpoint lists modems (empty when none) [ ] WS connects/stays open [ ] no panic w/o D-Bus [ ] go build
+
+### [MOBILE-02] ModemManager SMS send/receive + SQLite history
+`todo` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
+Scope: SMS send/list/delete via D-Bus Messaging, incoming-signal listener → WS push, SQLite thread-grouped history, search; mockable D-Bus.
+AC: [ ] send/list/delete exposed [ ] incoming (mocked) persisted+pushed [ ] thread-grouped query
+
+### [MOBILE-03] ModemManager voice calls (dial/answer/hangup/DTMF)
+`todo` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
+Scope: voice control via D-Bus Voice, call-state listener → WS; audio path excluded.
+AC: [ ] dial/answer/hangup/DTMF exposed [ ] call-state (mocked) pushes WS [ ] no hw to build/test
+
+### [MOBILE-04] Messages + Dialer React UI
+`todo` · P3 · L · dep: MOBILE-02, MOBILE-03 · parallel: yes — apps/phone/
+Scope: Messages (thread list/compose/search/status) + Dialer (T9, history, in-call screen, incoming banner) consuming MOBILE WS.
+AC: [ ] Messages lists threads, send/recv WS [ ] Dialer places call + in-call screen [ ] incoming surfaces realtime
+
+### [MOBILE-05] eSIM profile management via lpac
+`todo` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/, apps/phone/
+Scope: lpac CLI wrapper list/enable/disable/delete/add-by-code, endpoints, eSIM manager UI; graceful w/o lpac.
+AC: [ ] list/enable/disable/delete (mock lpac) [ ] add-by-activation-code [ ] UI lists+toggles [ ] missing lpac clear error
+
+### [MOBILE-06] Responsive / device-profile-aware UI shell
+`todo` · P3 · M · dep: none · parallel: no — src/ shell/layout (overlaps DEVPROF-03)
+Scope: useDeviceProfile hook (viewport+override), responsive breakpoints collapse desktop→mobile single-column, notification behavior stub per profile. (coordinate w/ DEVPROF-03 — share hook)
+AC: [ ] useDeviceProfile updates on resize [ ] mobile single-column at narrow [ ] profile overridable
+
+### [LADYBIRD-01] Ladybird headless engine spike behind Settings toggle
+`todo` · P3 · L · dep: none · parallel: yes — new backend/services/ladybird/, backend/services/webbrowser/chrome.go, main.go
+Scope: guarded experimental Ladybird launcher via stream.Pool, feature-flagged, fallback to Chromium when absent; no Chromium/Xvfb removal; log engine in /api/browser/status.
+AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallback [ ] engine logged + in /api/browser/status [ ] go build
 
 <!-- END-BACKLOG -->
 

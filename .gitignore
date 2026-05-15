@@ -10,3 +10,5 @@ tmp/
 local_build.sh
 
 roadmap/VULOS_INTERNAL.md
+worktrees/
+.clone/
