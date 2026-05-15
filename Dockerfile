@@ -51,6 +51,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
     flatpak \
+    openssh-server \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
     && rm -rf /var/lib/apt/lists/* \
     && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
@@ -66,6 +67,26 @@ RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
     /tmp/xdg-runtime \
     /etc/chromium/policies/managed \
     && printf '{"CommandLineFlagSecurityWarningsEnabled": false}\n' > /etc/chromium/policies/managed/vulos.json
+
+# Hardened sshd configuration
+RUN mkdir -p /etc/ssh/sshd_config.d \
+    && printf '# Vula OS — hardened sshd config\n\
+# Key-only auth — no passwords\n\
+PasswordAuthentication no\n\
+ChallengeResponseAuthentication no\n\
+UsePAM no\n\
+\n\
+# Root login only via key\n\
+PermitRootLogin prohibit-password\n\
+\n\
+# Hardening\n\
+X11Forwarding no\n\
+MaxAuthTries 3\n\
+LoginGraceTime 30\n\
+\n\
+# Keep alive (detect dead connections)\n\
+ClientAliveInterval 60\n\
+ClientAliveCountMax 3\n' > /etc/ssh/sshd_config.d/vulos.conf
 
 # Layer 3: Static assets (changes with content updates)
 COPY apps/ /opt/vulos/apps/
@@ -93,6 +114,6 @@ ENV SHELL=/bin/bash
 ENV DISPLAY=:99
 ENV HOSTNAME=vula
 
-EXPOSE 8080
+EXPOSE 8080 22
 ENTRYPOINT ["tini", "--"]
 CMD ["/usr/local/bin/vulos-server", "-env", "local"]
