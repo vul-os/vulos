@@ -68,17 +68,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                true,
-	"/api/auth/providers":    true,
-	"/api/auth/me":           true,
-	"/api/auth/logout":       true,
-	"/api/auth/register":     true,
-	"/api/auth/login":        true,
-	"/api/auth/status":       true,
-	"/api/setup/status":      true,
-	"/api/browser/status":    true,
-	"/api/open":              true,
-	"/manifest.json":         true,
+	"/health":             true,
+	"/api/auth/providers": true,
+	"/api/auth/me":        true,
+	"/api/auth/logout":    true,
+	"/api/auth/register":  true,
+	"/api/auth/login":     true,
+	"/api/auth/status":    true,
+	"/api/setup/status":   true,
+	"/api/browser/status": true,
+	"/api/open":           true,
+	"/manifest.json":      true,
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -140,7 +140,7 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 
 func (h *Handler) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
-		"has_users":   h.store.HasAnyUsers(),
+		"has_users":       h.store.HasAnyUsers(),
 		"oauth_providers": providerNames(h.providers),
 	})
 }
@@ -446,24 +446,65 @@ func sessionCookie(r *http.Request, token string) *http.Cookie {
 }
 
 // cookieDomain returns the domain for session cookies.
-// Uses VULOS_DOMAIN env if set (e.g. "lvh.me" for dev, "vula.example.com" for prod).
-// Ensures cookies are shared across app subdomains (cockpit.lvh.me, grafana.lvh.me, etc).
+//
+// When VULOS_DOMAIN is set it contains the per-instance base domain
+// (e.g. "01h5t3e8k2qj7r9xmvn4p.vulos.org" in production or "lvh.me" in
+// dev). The returned value is prefixed with "." so the cookie is shared
+// across all {app}--{profile} subdomains of that instance but not across
+// different instances.
+//
+// When VULOS_DOMAIN is not set the function derives the cookie scope from the
+// request Host. Subdomains that follow the {app}--{profile}.{base} pattern
+// (identified by the "--" separator in the leading label) are stripped down
+// to their per-instance base: browser--work.abc.vulos.org → .abc.vulos.org.
+// Hosts with fewer than two DNS labels (e.g. "localhost") and bare IP
+// addresses receive an empty domain so the cookie is scoped to that exact
+// origin only.
 func cookieDomain(r *http.Request) string {
 	if d := os.Getenv("VULOS_DOMAIN"); d != "" {
+		// Ensure the returned value is a parent-domain cookie scope.
+		if !strings.HasPrefix(d, ".") {
+			return "." + d
+		}
 		return d
 	}
+
 	host := r.Host
-	if idx := strings.Index(host, ":"); idx > 0 {
-		host = host[:idx]
+	// Strip port if present.
+	if idx := strings.LastIndex(host, ":"); idx > 0 {
+		// Make sure we are not confusing an IPv6 address — a bare ":" after
+		// the closing "]" is the port separator.
+		if !strings.Contains(host[:idx], "]") || host[idx-1] == ']' {
+			host = host[:idx]
+		}
 	}
+
+	// Bare IP addresses (v4 or v6) — no domain scoping.
 	if net.ParseIP(host) != nil {
 		return ""
 	}
+
+	// "localhost" or any single-label name — no domain scoping.
 	parts := strings.Split(host, ".")
-	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], ".")
+	if len(parts) < 2 {
+		return ""
 	}
-	return ""
+
+	// If the first (leftmost) label contains "--" it is an {app}--{profile}
+	// label. Strip it so the cookie covers all apps of this instance.
+	// e.g. browser--work.abc123.vulos.org → .abc123.vulos.org
+	if strings.Contains(parts[0], "--") {
+		base := strings.Join(parts[1:], ".")
+		if base == "" {
+			return ""
+		}
+		return "." + base
+	}
+
+	// Plain subdomain (no "--"): scope cookie to the parent domain so that
+	// simple {sub}.{domain} setups still work.
+	// e.g. cockpit.lvh.me → .lvh.me
+	return "." + strings.Join(parts[1:], ".")
 }
 
 func providerNames(m map[string]*OAuthProvider) []string {
@@ -592,14 +633,30 @@ func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if update.DisplayName != nil { existing.DisplayName = *update.DisplayName }
-	if update.Theme != nil { existing.Theme = *update.Theme }
-	if update.Locale != nil { existing.Locale = *update.Locale }
-	if update.Timezone != nil { existing.Timezone = *update.Timezone }
-	if update.AIProvider != nil { existing.AIProvider = *update.AIProvider }
-	if update.AIModel != nil { existing.AIModel = *update.AIModel }
-	if update.AIAPIKey != nil { existing.AIAPIKey = *update.AIAPIKey }
-	if update.Initiative != nil { existing.Initiative = *update.Initiative }
+	if update.DisplayName != nil {
+		existing.DisplayName = *update.DisplayName
+	}
+	if update.Theme != nil {
+		existing.Theme = *update.Theme
+	}
+	if update.Locale != nil {
+		existing.Locale = *update.Locale
+	}
+	if update.Timezone != nil {
+		existing.Timezone = *update.Timezone
+	}
+	if update.AIProvider != nil {
+		existing.AIProvider = *update.AIProvider
+	}
+	if update.AIModel != nil {
+		existing.AIModel = *update.AIModel
+	}
+	if update.AIAPIKey != nil {
+		existing.AIAPIKey = *update.AIAPIKey
+	}
+	if update.Initiative != nil {
+		existing.Initiative = *update.Initiative
+	}
 
 	h.store.SetProfile(existing)
 	h.store.Flush()
@@ -707,7 +764,9 @@ func (h *Handler) handleSetPIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
-	var req struct{ PIN string `json:"pin"` }
+	var req struct {
+		PIN string `json:"pin"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	if err := h.store.SetPIN(userID, req.PIN); err != nil {
 		writeErr(w, 400, err.Error())
@@ -723,7 +782,9 @@ func (h *Handler) handleValidatePIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
-	var req struct{ PIN string `json:"pin"` }
+	var req struct {
+		PIN string `json:"pin"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	valid := h.store.ValidatePIN(userID, req.PIN)
 	writeJSON(w, map[string]any{"valid": valid, "has_pin": h.store.HasPIN(userID)})
