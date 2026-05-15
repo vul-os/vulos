@@ -1,0 +1,18 @@
+{
+  "id": "pdf-viewer",
+  "name": "PDF Viewer",
+  "icon": "▤",
+  "icon_path": "icon.svg",
+  "description": "Local PDF reader with notes and quick controls",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "productivity",
+  "keywords": ["pdf", "reader", "document", "annotations", "notes"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["filesystem"],
+  "author": "Vula OS",
+  "license": "MIT"
+}

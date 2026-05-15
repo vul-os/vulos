@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PDF Viewer">
+  <rect width="64" height="64" rx="14" fill="#18181b"/>
+  <path d="M20 10h18l12 12v32H20z" fill="#f8fafc"/>
+  <path d="M38 10v12h12z" fill="#cbd5e1"/>
+  <path d="M16 36h32v14H16z" rx="3" fill="#dc2626"/>
+  <path d="M22 46v-7h4c1.7 0 2.8 1 2.8 2.4S27.7 44 26 44h-1.7v2zm2.3-3.8h1.3c.6 0 .9-.3.9-.8s-.3-.8-.9-.8h-1.3zM31 46v-7h3c2.3 0 3.8 1.4 3.8 3.5S36.3 46 34 46zm2.2-1.8h.7c1 0 1.6-.6 1.6-1.7s-.6-1.7-1.6-1.7h-.7zM40 46v-7h5.3v1.8h-3.1v1.1h2.8v1.7h-2.8V46z" fill="#fff"/>
+</svg>
