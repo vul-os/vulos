@@ -51,6 +51,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
     flatpak \
+    plymouth plymouth-themes \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
     && rm -rf /var/lib/apt/lists/* \
     && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
@@ -69,6 +70,14 @@ RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
 
 # Layer 3: Static assets (changes with content updates)
 COPY apps/ /opt/vulos/apps/
+
+# BMINIT-07: Plymouth boot splash — vulos theme
+# Kernel cmdline: quiet splash plymouth.theme=vulos
+COPY assets/plymouth/themes/vulos/ /usr/share/plymouth/themes/vulos/
+RUN plymouth-set-default-theme vulos 2>/dev/null || \
+    ln -sf /usr/share/plymouth/themes/vulos/vulos.plymouth \
+        /etc/alternatives/default.plymouth 2>/dev/null || true
+
 # Layer 4: Frontend build output (changes with UI work)
 COPY --from=frontend /app/dist /opt/vulos/webroot
 
