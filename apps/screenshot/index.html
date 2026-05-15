@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Screenshot</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d16;--surface:#13131f;--border:#1e1e2e;--accent:#7c6af7;
+  --accent2:#a78bfa;--danger:#ef4444;--text:#e2e0ff;--muted:#6b6a8a;
+  --tool-active:#7c6af7;
+}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;
+  display:flex;flex-direction:column;height:100vh;overflow:hidden;font-size:13px}
+
+/* ── Top toolbar ── */
+#toolbar{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  flex-shrink:0;flex-wrap:wrap;
+}
+#toolbar .group{display:flex;gap:4px;align-items:center}
+#toolbar .sep{width:1px;height:24px;background:var(--border);margin:0 4px}
+button{
+  background:#1e1e30;border:1px solid var(--border);border-radius:6px;
+  color:var(--text);cursor:pointer;padding:5px 10px;font-size:12px;
+  display:flex;align-items:center;gap:5px;white-space:nowrap;transition:background .1s;
+}
+button:hover{background:#252538}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:#6b5ce7}
+button.danger{background:#2a1515;border-color:#4a1515;color:#f87171}
+button.danger:hover{background:#3a1515}
+button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:0.4;cursor:default}
+
+.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--danger)}
+.rec-dot.pulse{animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── Main area: canvas editor + sidebar ── */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* ── Canvas editor ── */
+#editor-wrap{
+  flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;
+  background:#080810;
+}
+#canvas-container{
+  flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;
+  position:relative;
+}
+#canvas{display:block;cursor:crosshair}
+#canvas.cursor-arrow{cursor:crosshair}
+#canvas.cursor-text{cursor:text}
+#canvas.cursor-blur{cursor:crosshair}
+#canvas.cursor-crop{cursor:crosshair}
+#canvas.cursor-pan{cursor:default}
+
+/* region overlay for crop */
+#crop-overlay{
+  display:none;position:absolute;border:2px dashed var(--accent2);pointer-events:none;
+}
+
+/* ── Annotation toolbar ── */
+#annot-bar{
+  display:flex;align-items:center;gap:4px;padding:6px 12px;
+  background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;
+}
+#annot-bar .label{color:var(--muted);font-size:11px;margin-right:4px}
+input[type=color]{width:28px;height:28px;border:1px solid var(--border);border-radius:4px;
+  background:none;cursor:pointer;padding:0}
+input[type=range]{width:80px;accent-color:var(--accent)}
+#tool-size-label{color:var(--muted);font-size:11px;min-width:20px}
+
+/* ── Sidebar: gallery ── */
+#sidebar{
+  width:200px;border-left:1px solid var(--border);background:var(--surface);
+  display:flex;flex-direction:column;flex-shrink:0;
+}
+#sidebar h3{padding:10px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);
+  text-transform:uppercase;letter-spacing:.05em}
+#gallery{flex:1;overflow-y:auto;padding:6px}
+.thumb-item{
+  margin-bottom:6px;border-radius:6px;overflow:hidden;cursor:pointer;
+  border:2px solid transparent;transition:border-color .1s;position:relative;background:#0d0d16;
+}
+.thumb-item:hover{border-color:var(--muted)}
+.thumb-item.active{border-color:var(--accent)}
+.thumb-item img,.thumb-item video{width:100%;height:80px;object-fit:cover;display:block}
+.thumb-label{
+  padding:3px 6px;font-size:10px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.thumb-del{
+  position:absolute;top:3px;right:3px;background:rgba(0,0,0,.7);
+  border:none;border-radius:4px;color:#f87171;cursor:pointer;padding:1px 5px;font-size:11px;
+  display:none;
+}
+.thumb-item:hover .thumb-del{display:block}
+
+/* ── Status bar ── */
+#status{
+  padding:4px 12px;font-size:11px;color:var(--muted);
+  background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;
+}
+
+/* ── Placeholder ── */
+#placeholder{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;color:var(--muted);height:100%;text-align:center;padding:24px;
+}
+#placeholder svg{opacity:.3}
+#placeholder h2{color:var(--text);opacity:.7;font-size:16px;font-weight:500}
+#placeholder p{font-size:12px;max-width:280px;line-height:1.6}
+#placeholder .shortcuts{
+  font-size:11px;color:var(--muted);line-height:2;
+  background:#13131f;border:1px solid var(--border);
+  border-radius:8px;padding:12px 20px;text-align:left;
+}
+kbd{
+  background:#1e1e30;border:1px solid var(--border);border-radius:3px;
+  padding:1px 5px;font-size:10px;font-family:monospace;color:var(--text);
+}
+
+/* Recording timer */
+#rec-timer{font-variant-numeric:tabular-nums;font-size:12px;color:var(--danger)}
+
+/* Crop confirm bar */
+#crop-bar{
+  display:none;flex-shrink:0;gap:8px;align-items:center;justify-content:center;
+  padding:6px;background:#0f0f1e;border-top:1px solid var(--border);
+}
+</style>
+</head>
+<body>
+
+<!-- Top toolbar -->
+<div id="toolbar">
+  <div class="group">
+    <button id="btn-capture" class="primary" onclick="startCapture()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/>
+      </svg>
+      Screenshot
+    </button>
+    <button id="btn-record" onclick="toggleRecord()">
+      <div class="rec-dot" id="rec-dot"></div>
+      <span id="rec-label">Record</span>
+      <span id="rec-timer" style="display:none"></span>
+    </button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button id="btn-undo" onclick="undo()" disabled title="Undo (Ctrl+Z)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+      </svg>
+      Undo
+    </button>
+    <button id="btn-redo" onclick="redo()" disabled title="Redo (Ctrl+Y)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 0 4-4h12"/>
+      </svg>
+      Redo
+    </button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button id="btn-crop" onclick="setCropMode()" title="Crop region">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>
+      </svg>
+      Crop
+    </button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button id="btn-copy" onclick="copyToClipboard()" disabled>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      </svg>
+      Copy
+    </button>
+    <button id="btn-save" onclick="saveToServer()" disabled>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Save
+    </button>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <!-- Canvas editor -->
+  <div id="editor-wrap">
+    <div id="canvas-container">
+      <div id="placeholder">
+        <svg width="64" height="64" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="8" width="40" height="28" rx="3" stroke="#7c6af7" stroke-width="2"/>
+          <line x1="24" y1="8" x2="24" y2="36" stroke="#7c6af7" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+          <line x1="4" y1="22" x2="44" y2="22" stroke="#7c6af7" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+          <circle cx="40" cy="10" r="5" fill="#ef4444"/>
+          <rect x="18" y="36" width="12" height="2" rx="1" fill="#7c6af7" opacity="0.5"/>
+          <rect x="14" y="38" width="20" height="2" rx="1" fill="#7c6af7" opacity="0.3"/>
+        </svg>
+        <h2>Screenshot &amp; Screen Capture</h2>
+        <p>Capture your screen, annotate with arrows, text, and blur — then save or copy.</p>
+        <div class="shortcuts">
+          <div><kbd>Click</kbd> Screenshot</div>
+          <div><kbd>Ctrl+Z</kbd> Undo &nbsp; <kbd>Ctrl+Y</kbd> Redo</div>
+          <div><kbd>Ctrl+C</kbd> Copy to clipboard</div>
+          <div><kbd>Ctrl+S</kbd> Save file</div>
+        </div>
+      </div>
+      <canvas id="canvas" style="display:none"></canvas>
+      <div id="crop-overlay"></div>
+    </div>
+
+    <!-- Crop confirm -->
+    <div id="crop-bar">
+      <button class="primary" onclick="applyCrop()">Apply Crop</button>
+      <button onclick="cancelCrop()">Cancel</button>
+    </div>
+
+    <!-- Annotation toolbar -->
+    <div id="annot-bar" style="display:none">
+      <span class="label">Tool:</span>
+      <button id="t-arrow" class="active" onclick="setTool('arrow')" title="Arrow">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="5" y1="19" x2="19" y2="5"/><polyline points="8 5 19 5 19 16"/>
+        </svg>Arrow
+      </button>
+      <button id="t-text" onclick="setTool('text')" title="Text">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/>
+          <line x1="12" y1="4" x2="12" y2="20"/>
+        </svg>Text
+      </button>
+      <button id="t-rect" onclick="setTool('rect')" title="Rectangle">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+        </svg>Rect
+      </button>
+      <button id="t-blur" onclick="setTool('blur')" title="Blur region">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9"/><path d="M9 12h6M12 9v6"/>
+        </svg>Blur
+      </button>
+      <div class="sep"></div>
+      <span class="label">Color:</span>
+      <input type="color" id="tool-color" value="#ef4444" title="Annotation color">
+      <div class="sep"></div>
+      <span class="label">Size:</span>
+      <input type="range" id="tool-size" min="1" max="20" value="3" oninput="updateSize()">
+      <span id="tool-size-label">3</span>
+    </div>
+  </div>
+
+  <!-- Gallery sidebar -->
+  <div id="sidebar">
+    <h3>Saved</h3>
+    <div id="gallery"></div>
+  </div>
+</div>
+
+<div id="status">Ready — click Screenshot to capture</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const placeholder = document.getElementById('placeholder');
+const annotBar = document.getElementById('annot-bar');
+const cropBar = document.getElementById('crop-bar');
+const cropOverlay = document.getElementById('crop-overlay');
+const statusEl = document.getElementById('status');
+
+let baseImage = null;       // ImageData of the clean captured image
+let undoStack = [];         // stack of ImageData snapshots
+let redoStack = [];
+let currentTool = 'arrow';
+let toolColor = '#ef4444';
+let toolSize = 3;
+
+// Drawing state
+let drawing = false;
+let startX = 0, startY = 0;
+let previewSnap = null;     // snapshot before current stroke (for live preview)
+
+// Crop state
+let cropping = false;
+let cropStart = {x:0,y:0}, cropEnd = {x:0,y:0};
+
+// Recording state
+let mediaRecorder = null;
+let recChunks = [];
+let recInterval = null;
+let recStart = 0;
+let recording = false;
+
+// ─── Capture ──────────────────────────────────────────────
+async function startCapture() {
+  setStatus('Requesting screen access…');
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'always' },
+      audio: false,
+    });
+  } catch(e) {
+    setStatus('Screen capture cancelled.');
+    return;
+  }
+  const video = document.createElement('video');
+  video.srcObject = stream;
+  video.onloadedmetadata = () => {
+    video.play();
+    requestAnimationFrame(() => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      stream.getTracks().forEach(t => t.stop());
+      baseImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      showCanvas();
+      pushUndo();
+      setStatus(`Captured ${canvas.width}×${canvas.height} — annotate or save`);
+    });
+  };
+}
+
+function showCanvas() {
+  placeholder.style.display = 'none';
+  canvas.style.display = 'block';
+  annotBar.style.display = 'flex';
+  document.getElementById('btn-copy').disabled = false;
+  document.getElementById('btn-save').disabled = false;
+  document.getElementById('btn-crop').disabled = false;
+}
+
+// ─── Screen Recording ─────────────────────────────────────
+async function toggleRecord() {
+  if (recording) {
+    stopRecord();
+  } else {
+    await startRecord();
+  }
+}
+
+async function startRecord() {
+  setStatus('Requesting screen access for recording…');
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'always' },
+      audio: true,
+    });
+  } catch(e) {
+    setStatus('Recording cancelled.');
+    return;
+  }
+
+  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+    ? 'video/webm;codecs=vp9'
+    : 'video/webm';
+
+  recChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType });
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recChunks.push(e.data); };
+  mediaRecorder.onstop = finishRecord;
+  mediaRecorder.start(1000);
+
+  // Stop if user ends share via browser UI
+  stream.getVideoTracks()[0].addEventListener('ended', () => {
+    if (recording) stopRecord();
+  });
+
+  recording = true;
+  recStart = Date.now();
+  recInterval = setInterval(updateRecTimer, 500);
+
+  const dot = document.getElementById('rec-dot');
+  dot.classList.add('pulse');
+  document.getElementById('rec-label').textContent = 'Stop';
+  document.getElementById('rec-timer').style.display = 'inline';
+  document.getElementById('btn-record').style.borderColor = '#ef4444';
+  setStatus('Recording…');
+}
+
+function stopRecord() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    mediaRecorder.stop();
+  }
+  recording = false;
+  clearInterval(recInterval);
+  document.getElementById('rec-dot').classList.remove('pulse');
+  document.getElementById('rec-label').textContent = 'Record';
+  document.getElementById('rec-timer').style.display = 'none';
+  document.getElementById('btn-record').style.borderColor = '';
+  setStatus('Processing recording…');
+}
+
+function updateRecTimer() {
+  const secs = Math.floor((Date.now() - recStart) / 1000);
+  const m = String(Math.floor(secs / 60)).padStart(2, '0');
+  const s = String(secs % 60).padStart(2, '0');
+  document.getElementById('rec-timer').textContent = `${m}:${s}`;
+}
+
+async function finishRecord() {
+  const blob = new Blob(recChunks, { type: 'video/webm' });
+  const buf = await blob.arrayBuffer();
+  try {
+    const res = await fetch('/api/save/recording', {
+      method: 'POST',
+      headers: { 'Content-Type': 'video/webm', 'Content-Length': buf.byteLength },
+      body: buf,
+    });
+    const data = await res.json();
+    setStatus(`Recording saved: ${data.name}`);
+    loadGallery();
+  } catch(e) {
+    setStatus(`Save failed: ${e.message}`);
+  }
+}
+
+// ─── Annotation tools ─────────────────────────────────────
+function setTool(t) {
+  currentTool = t;
+  cancelCrop();
+  ['arrow','text','rect','blur'].forEach(id => {
+    document.getElementById('t-'+id).classList.toggle('active', id===t);
+  });
+  canvas.className = `cursor-${t}`;
+}
+
+function updateSize() {
+  toolSize = +document.getElementById('tool-size').value;
+  document.getElementById('tool-size-label').textContent = toolSize;
+}
+
+// Canvas scale (for HiDPI)
+function getScale() {
+  const cont = canvas.parentElement;
+  const scaleX = cont.clientWidth / canvas.width;
+  const scaleY = cont.clientHeight / canvas.height;
+  return Math.min(scaleX, scaleY, 1);
+}
+
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (!baseImage) return;
+  if (cropping) { startCropDrag(e); return; }
+  if (currentTool === 'text') { addText(e); return; }
+  drawing = true;
+  const p = canvasPos(e);
+  startX = p.x; startY = p.y;
+  previewSnap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (cropping) { updateCropDrag(e); return; }
+  if (!drawing) return;
+  const p = canvasPos(e);
+  // Restore pre-stroke snapshot for live preview
+  ctx.putImageData(previewSnap, 0, 0);
+  const color = document.getElementById('tool-color').value;
+  drawShape(currentTool, startX, startY, p.x, p.y, color, toolSize, false);
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (cropping) { endCropDrag(e); return; }
+  if (!drawing) return;
+  drawing = false;
+  const p = canvasPos(e);
+  ctx.putImageData(previewSnap, 0, 0);
+  const color = document.getElementById('tool-color').value;
+  drawShape(currentTool, startX, startY, p.x, p.y, color, toolSize, true);
+  previewSnap = null;
+  pushUndo();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  if (drawing && previewSnap) {
+    ctx.putImageData(previewSnap, 0, 0);
+    drawing = false;
+    previewSnap = null;
+  }
+});
+
+function drawShape(tool, x1, y1, x2, y2, color, size, commit) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (tool === 'arrow') {
+    drawArrow(x1, y1, x2, y2, size);
+  } else if (tool === 'rect') {
+    ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+  } else if (tool === 'blur') {
+    if (commit) {
+      applyBlur(x1, y1, x2, y2);
+    } else {
+      // Preview: dashed rect
+      ctx.setLineDash([4,4]);
+      ctx.strokeStyle = color;
+      ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+    }
+  }
+  ctx.restore();
+}
+
+function drawArrow(x1, y1, x2, y2, size) {
+  const headLen = Math.max(12, size * 4);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(
+    x2 - headLen * Math.cos(angle - Math.PI/7),
+    y2 - headLen * Math.sin(angle - Math.PI/7)
+  );
+  ctx.lineTo(
+    x2 - headLen * Math.cos(angle + Math.PI/7),
+    y2 - headLen * Math.sin(angle + Math.PI/7)
+  );
+  ctx.closePath();
+  ctx.fill();
+}
+
+function applyBlur(x1, y1, x2, y2) {
+  const lx = Math.min(x1,x2), ly = Math.min(y1,y2);
+  const w = Math.abs(x2-x1), h = Math.abs(y2-y1);
+  if (w < 2 || h < 2) return;
+  // Pixelate region (no OffscreenCanvas required)
+  const blockSize = Math.max(8, Math.round(Math.min(w,h)/10));
+  const imgData = ctx.getImageData(lx, ly, w, h);
+  const d = imgData.data;
+  for (let by = 0; by < h; by += blockSize) {
+    for (let bx = 0; bx < w; bx += blockSize) {
+      // Average block colour
+      let r=0, g=0, b=0, count=0;
+      for (let py=by; py<Math.min(by+blockSize,h); py++) {
+        for (let px=bx; px<Math.min(bx+blockSize,w); px++) {
+          const i=(py*w+px)*4;
+          r+=d[i]; g+=d[i+1]; b+=d[i+2]; count++;
+        }
+      }
+      r=r/count|0; g=g/count|0; b=b/count|0;
+      // Fill block
+      for (let py=by; py<Math.min(by+blockSize,h); py++) {
+        for (let px=bx; px<Math.min(bx+blockSize,w); px++) {
+          const i=(py*w+px)*4;
+          d[i]=r; d[i+1]=g; d[i+2]=b;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, lx, ly);
+}
+
+function addText(e) {
+  const p = canvasPos(e);
+  const color = document.getElementById('tool-color').value;
+  const size = Math.max(14, toolSize * 5);
+  const text = prompt('Enter text:');
+  if (!text) return;
+  ctx.save();
+  ctx.font = `bold ${size}px system-ui, sans-serif`;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 3;
+  ctx.strokeText(text, p.x, p.y);
+  ctx.fillText(text, p.x, p.y);
+  ctx.restore();
+  pushUndo();
+}
+
+// ─── Crop ─────────────────────────────────────────────────
+let _cropRect = null;
+
+function setCropMode() {
+  if (!baseImage) return;
+  cropping = true;
+  _cropRect = null;
+  canvas.style.cursor = 'crosshair';
+  cropBar.style.display = 'flex';
+  cropOverlay.style.display = 'block';
+  setStatus('Drag to select crop region');
+}
+
+function cancelCrop() {
+  cropping = false;
+  _cropRect = null;
+  cropBar.style.display = 'none';
+  cropOverlay.style.display = 'none';
+  canvas.style.cursor = '';
+}
+
+function startCropDrag(e) {
+  const p = canvasPos(e);
+  cropStart = p; cropEnd = p;
+  updateCropOverlay();
+}
+
+function updateCropDrag(e) {
+  const p = canvasPos(e);
+  cropEnd = p;
+  updateCropOverlay();
+}
+
+function endCropDrag(e) {
+  const p = canvasPos(e);
+  cropEnd = p;
+  _cropRect = getNormalizedRect(cropStart, cropEnd);
+  updateCropOverlay();
+}
+
+function updateCropOverlay() {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+  const contRect = canvas.parentElement.getBoundingClientRect();
+  const off = { left: rect.left - contRect.left, top: rect.top - contRect.top };
+  const r = getNormalizedRect(cropStart, cropEnd);
+  cropOverlay.style.left   = (off.left + r.x * scaleX) + 'px';
+  cropOverlay.style.top    = (off.top  + r.y * scaleY) + 'px';
+  cropOverlay.style.width  = (r.w * scaleX) + 'px';
+  cropOverlay.style.height = (r.h * scaleY) + 'px';
+}
+
+function getNormalizedRect(a, b) {
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(b.x - a.x),
+    h: Math.abs(b.y - a.y),
+  };
+}
+
+function applyCrop() {
+  if (!_cropRect || _cropRect.w < 2 || _cropRect.h < 2) { cancelCrop(); return; }
+  const {x, y, w, h} = _cropRect;
+  const imgData = ctx.getImageData(x, y, w, h);
+  canvas.width = w;
+  canvas.height = h;
+  ctx.putImageData(imgData, 0, 0);
+  baseImage = ctx.getImageData(0, 0, w, h);
+  cancelCrop();
+  pushUndo();
+  setStatus(`Cropped to ${w}×${h}`);
+}
+
+// ─── Undo / Redo ──────────────────────────────────────────
+function pushUndo() {
+  undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  if (undoStack.length > 30) undoStack.shift();
+  redoStack = [];
+  document.getElementById('btn-undo').disabled = undoStack.length <= 1;
+  document.getElementById('btn-redo').disabled = true;
+}
+
+function undo() {
+  if (undoStack.length <= 1) return;
+  redoStack.push(undoStack.pop());
+  const snap = undoStack[undoStack.length - 1];
+  canvas.width = snap.width; canvas.height = snap.height;
+  ctx.putImageData(snap, 0, 0);
+  document.getElementById('btn-undo').disabled = undoStack.length <= 1;
+  document.getElementById('btn-redo').disabled = false;
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  const snap = redoStack.pop();
+  undoStack.push(snap);
+  canvas.width = snap.width; canvas.height = snap.height;
+  ctx.putImageData(snap, 0, 0);
+  document.getElementById('btn-undo').disabled = false;
+  document.getElementById('btn-redo').disabled = !redoStack.length;
+}
+
+// ─── Save ─────────────────────────────────────────────────
+async function saveToServer() {
+  if (!baseImage && undoStack.length === 0) return;
+  const dataUrl = canvas.toDataURL('image/png');
+  setStatus('Saving…');
+  try {
+    const res = await fetch('/api/save/screenshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    setStatus(`Saved: ${data.name}`);
+    loadGallery();
+  } catch(e) {
+    setStatus(`Save failed: ${e.message}`);
+  }
+}
+
+// ─── Clipboard ────────────────────────────────────────────
+async function copyToClipboard() {
+  try {
+    canvas.toBlob(async (blob) => {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob }),
+        ]);
+        setStatus('Copied to clipboard!');
+      } catch(e) {
+        // Fallback: open in new tab so user can right-click save
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setStatus('Opened in new tab (clipboard unavailable)');
+      }
+    }, 'image/png');
+  } catch(e) {
+    setStatus(`Copy failed: ${e.message}`);
+  }
+}
+
+// ─── Gallery ──────────────────────────────────────────────
+async function loadGallery() {
+  try {
+    const res = await fetch('/api/screenshots');
+    const items = await res.json();
+    const el = document.getElementById('gallery');
+    if (!items.length) {
+      el.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:11px;text-align:center">No captures yet</div>';
+      return;
+    }
+    el.innerHTML = items.map(it => `
+      <div class="thumb-item" onclick="loadItem('${it.name}')" id="th-${CSS.escape(it.name)}">
+        ${it.type === 'video'
+          ? `<video src="/api/file/${encodeURIComponent(it.name)}" muted></video>`
+          : `<img src="/api/file/${encodeURIComponent(it.name)}" loading="lazy">`
+        }
+        <div class="thumb-label">${it.name}</div>
+        <button class="thumb-del" onclick="deleteItem(event,'${it.name}')">✕</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.warn('gallery load failed', e);
+  }
+}
+
+async function loadItem(name) {
+  if (name.endsWith('.webm')) {
+    const url = `/api/file/${encodeURIComponent(name)}`;
+    window.open(url, '_blank');
+    return;
+  }
+  // Load PNG onto canvas
+  const img = new Image();
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    baseImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    undoStack = [];
+    redoStack = [];
+    showCanvas();
+    pushUndo();
+    setStatus(`Loaded: ${name} — ${img.width}×${img.height}`);
+  };
+  img.src = `/api/file/${encodeURIComponent(name)}`;
+}
+
+async function deleteItem(e, name) {
+  e.stopPropagation();
+  if (!confirm(`Delete ${name}?`)) return;
+  await fetch('/api/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  loadGallery();
+}
+
+// ─── Keyboard shortcuts ───────────────────────────────────
+document.addEventListener('keydown', e => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+  if (ctrl && e.key === 's') { e.preventDefault(); saveToServer(); }
+  if (ctrl && e.key === 'c' && canvas.style.display !== 'none') { e.preventDefault(); copyToClipboard(); }
+});
+
+// ─── Helpers ──────────────────────────────────────────────
+function setStatus(msg) { statusEl.textContent = msg; }
+
+// color picker change
+document.getElementById('tool-color').addEventListener('input', e => { toolColor = e.target.value; });
+
+// ─── Init ─────────────────────────────────────────────────
+loadGallery();
+</script>
+</body>
+</html>

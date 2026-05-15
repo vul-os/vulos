@@ -1,0 +1,18 @@
+{
+  "id": "screenshot",
+  "name": "Screenshot",
+  "icon": "◉",
+  "icon_path": "icon.svg",
+  "description": "Screenshot and screen recording — capture, annotate, and save",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "system",
+  "keywords": ["screenshot", "screen", "capture", "record", "annotate"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": [],
+  "author": "Vula OS",
+  "license": "MIT"
+}
