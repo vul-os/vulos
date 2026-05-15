@@ -77,10 +77,13 @@ export default function Dock() {
 
         <div className="w-px h-6 bg-neutral-700/50 mx-1" />
 
-        {/* Chat */}
-        <DockButton label="Chat" active={chatOpen} onClick={toggleChat}>
+        {/* AI Chat — persistent entry point, always visible */}
+        <DockButton label="AI Chat" active={chatOpen} onClick={toggleChat}>
           <svg viewBox="0 0 16 16" className="w-5 h-5 text-neutral-400">
-            <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" fill="currentColor" opacity="0.6" />
+            {/* Sparkle / AI icon */}
+            <path d="M8 1l1.2 3.8L13 6l-3.8 1.2L8 11l-1.2-3.8L3 6l3.8-1.2z" fill="currentColor" opacity="0.85" />
+            <path d="M13 1l.6 1.4 1.4.6-1.4.6L13 5l-.6-1.4L11 3l1.4-.6z" fill="currentColor" opacity="0.5" />
+            <path d="M3.5 11l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z" fill="currentColor" opacity="0.4" />
           </svg>
         </DockButton>
       </div>
