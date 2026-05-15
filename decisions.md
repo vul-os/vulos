@@ -117,6 +117,21 @@ not via the stale branch. tasks.md GAME-04 left `todo`.
 - go.mod (CLUSTER-01 + AUTH-01): different require lines auto-merge clean; if conflict,
   `--theirs` then `go mod tidy` + `go build`.
 
+### D13 — 2026-05-16 01:38 — STRATEGIC PIVOT: greenfield-biased waves
+ROOT CAUSE confirmed: Agent worktree isolation pins each worker's base at ~session-start
+main, NOT current main. So any task touching a file a previously-merged task also touched
+conflicts; git auto-merges only when regions differ. Re-tasking a conflicting task from the
+same pinned base RE-CONFLICTS — defer+retask is a treadmill for hot files.
+DECISION: future waves select almost exclusively GREENFIELD/ISOLATED tasks — brand-new
+`apps/<x>/` dirs and brand-new `backend/services/<pkg>/` packages, plus "cold" files no
+merged task has touched. These 3-way auto-merge clean regardless of stale base. Hot shared
+files (cmd/server/main.go, Setup.jsx, notify.go, Terminal.jsx, stream.go, registry.json,
+go.mod, AppRegistry.js, Settings.jsx, App.jsx) are SERIALIZED: ≤1 per wave, or drained by
+the orchestrator near the end. WEBAPP new-app workers instructed NOT to edit AppRegistry.js
+(dynamic /api/store/installed discovers apps/ dirs) → fully isolated.
+Deferred-from-stale-base (re-task only after their hot file is otherwise quiesced, or
+orchestrator does them serially): GAME-04, NOTIF-02, INIT-02, AI-12.
+
 ### Still open
 - NET-06 vs INIT-01 both create instance ULID/identity — share one identity package;
   don't run concurrently (INIT-01 not yet dispatched; NET-06 not yet dispatched).

@@ -422,7 +422,7 @@ Scope: Read-only dashboard from existing backend endpoints (OS/kernel/arch, CPU/
 AC: [ ] passes validation [ ] shows live hw data [ ] no mock values
 
 ### [APPSTORE-01] Static (download) install path in registry
-`todo` · P0 · M · dep: none · parallel: no — backend/services/appnet/registry.go, registry.json
+`done` · P0 · M · dep: none · parallel: no — backend/services/appnet/registry.go, registry.json
 Scope: Add Static/DownloadURL recipe to VersionRecipe (registry.go:61-73): download+extract+manifest+port, checksum-verified; reuse store.go:178-183 tar logic; keep apt/Flatpak.
 AC: [ ] static recipe w/ checksum [ ] installs end-to-end [ ] apt/flatpak unchanged, go test passes [ ] 1 real static entry works
 
@@ -740,7 +740,7 @@ Scope: DeviceProfile store pc|tv|car|watch → ~/.vulos/db/device-profile.json; 
 AC: [ ] GET returns {profile,suggested} default pc [ ] PUT persists+restart [ ] detection no crash w/o DMI [ ] go build, unit test
 
 ### [DEVPROF-02] Profile selection step in setup wizard
-`todo` · P0 · M · dep: DEVPROF-01 · parallel: yes — src/auth/Setup.jsx
+`done` · P0 · M · dep: DEVPROF-01 · parallel: yes — src/auth/Setup.jsx
 Scope: Insert `device` step (after welcome) PC/TV/Car/Watch cards, detected preselected (GET /api/device-profile), PUT on finish.
 AC: [ ] device step w/ 4 cards [ ] detected preselected [ ] persisted via PUT
 
@@ -770,7 +770,7 @@ Scope: Default FPS 60 in Launch, clamp to 30/60/90/120/144 (0=60); keep fps requ
 AC: [ ] new sessions 60, explicit honored+clamped [ ] existing callers unaffected [ ] go build
 
 ### [GAME-02] Gaming-mode flag + encoder profiles + bitrate tiers
-`todo` · P0 · L · dep: GAME-01 · parallel: no — backend/services/stream/pool.go, bitrate.go, backend/services/gpu/gpu.go
+`done` · P0 · L · dep: GAME-01 · parallel: no — backend/services/stream/pool.go, bitrate.go, backend/services/gpu/gpu.go
 Scope: LaunchOpts.Gaming; gaming encoder args per tier (zerolatency/no-Bframe/no-lookahead), 10ms Opus, QualityGaming=6000/Max=10000, GamingEncoderArgs().
 AC: [ ] gaming:true uses zerolatency args+gaming tiers [ ] non-gaming byte-identical [ ] 10ms Opus [ ] go build, table test
 
@@ -805,7 +805,7 @@ Scope: Overlay toolbar (gaming): FPS selector→new POST /api/stream/fps (restar
 AC: [ ] toolbar FPS changes framerate [ ] RTT+quality live [ ] fullscreen+MangoHud toggle [ ] go build
 
 ### [MISC-01] Accent colour picker (system CSS var)
-`todo` · P1 · M · dep: none · parallel: no — src/core/ThemeProvider.jsx, src/core/Settings.jsx, src/index.css
+`done` · P1 · M · dep: none · parallel: no — src/core/ThemeProvider.jsx, src/core/Settings.jsx, src/index.css
 Scope: Accent in ThemeProvider→localStorage→--accent root var; swatch picker in Settings Appearance; .btn-primary/focus use --accent, blue default.
 AC: [ ] picker persists+live --accent [ ] primary follows --accent, default blue [ ] reload preserves
 
@@ -1064,7 +1064,7 @@ Scope: decode otpauth-migration:// protobuf → entries; POST /import + /export 
 AC: [ ] sample migration imports all [ ] export re-imports identical [ ] unit test protobuf parse
 
 ### [AUTH-05] Credential vault store (encrypted password manager backend)
-`todo` · P2 · L · dep: none · parallel: yes — new backend/services/credvault/
+`done` · P2 · L · dep: none · parallel: yes — new backend/services/credvault/
 Scope: AES-256-GCM vault.enc, Argon2id master key, lock/unlock state machine + auto-lock, entry CRUD (url/user/pass/notes/totp-id), password generator. Library only.
 AC: [ ] vault opaque, wrong pwd fails [ ] lock clears key, inaccessible [ ] generator random+passphrase [ ] go test encrypt/decrypt round-trip
 
@@ -1114,7 +1114,7 @@ Scope: POST /api/auth/sms/webhook (Twilio form) extract OTP regex, store ~/.vulo
 AC: [ ] Twilio payload stores+notifies [ ] OTP regex on real samples in test [ ] >24h pruned
 
 ### [FED-01] ActivityPub social app scaffold (read-only public timeline)
-`todo` · P3 · M · dep: none · parallel: yes — new apps/social/, src/core/AppRegistry.js (defer reg if AppRegistry contended)
+`done` · P3 · M · dep: none · parallel: yes — new apps/social/, src/core/AppRegistry.js (defer reg if AppRegistry contended)
 Scope: social app (manifest+server+UI), read-only: enter instance host, GET /api/v1/timelines/public, render statuses. No auth/posting.
 AC: [ ] app.json validates [ ] public host renders timeline [ ] launches
 
