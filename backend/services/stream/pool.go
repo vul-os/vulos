@@ -58,7 +58,7 @@ type LaunchOpts struct {
 	Env []string
 	// Width and Height of the virtual display (default 1280x720).
 	Width, Height int
-	// FPS for GStreamer capture (default 30).
+	// FPS for GStreamer capture (default 60). Clamped to {30,60,90,120,144}.
 	FPS int
 	// Restart: if true, restart the app if it exits.
 	Restart bool
@@ -74,8 +74,19 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	if opts.Height == 0 {
 		opts.Height = 720
 	}
+	// allowedFPS is the set of supported frame rates; 0/unset defaults to 60.
+	allowedFPS := []int{30, 60, 90, 120, 144}
 	if opts.FPS == 0 {
-		opts.FPS = 30
+		opts.FPS = 60
+	} else {
+		// Clamp to the nearest allowed value.
+		clamped := allowedFPS[0]
+		for _, f := range allowedFPS {
+			if opts.FPS >= f {
+				clamped = f
+			}
+		}
+		opts.FPS = clamped
 	}
 	if opts.ID == "" {
 		opts.ID = fmt.Sprintf("stream-%d", time.Now().UnixMilli())
