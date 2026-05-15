@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"vulos/backend/services/hwdetect"
 )
 
 // vulos-init: Custom PID 1 for Debian Linux.
@@ -31,13 +33,16 @@ func main() {
 	// Phase 1: Mount essential filesystems
 	mountAll()
 
-	// Phase 2: Set hostname
+	// Phase 2: Hardware detection (best-effort, non-fatal)
+	detectHardware()
+
+	// Phase 3: Set hostname
 	setHostname()
 
-	// Phase 3: Start systemd services (if available)
+	// Phase 4: Start systemd services (if available)
 	startSystemd()
 
-	// Phase 4: Start vulos server
+	// Phase 5: Start vulos server
 	startServices()
 
 	// Phase 5: Reap zombies (PID 1 duty)
@@ -70,6 +75,14 @@ func mountAll() {
 		}
 	}
 	log.Println("filesystems mounted")
+}
+
+// detectHardware runs the hardware detection phase. It is best-effort: any
+// panic or error inside hwdetect is already recovered there and only logged,
+// so this wrapper never returns an error to the caller.
+func detectHardware() {
+	log.Println("phase 2: hardware detection")
+	hwdetect.Run()
 }
 
 func setHostname() {
