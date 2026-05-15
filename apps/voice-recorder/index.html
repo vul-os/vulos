@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voice Recorder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0a;--surface:#111;--surface2:#1a1a1a;--border:#222;
+  --text:#e5e5e5;--muted:#666;--accent:#ef4444;--accent2:#f87171;
+  --green:#22c55e;--blue:#3b82f6;--yellow:#eab308;
+}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ---- Header ---- */
+.header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0}
+.header h1{font-size:16px;font-weight:600;letter-spacing:.3px}
+.header .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s,box-shadow .3s}
+.header .dot.recording{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+/* ---- Main layout ---- */
+.main{flex:1;display:flex;overflow:hidden}
+.sidebar{width:260px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-header{padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-weight:600}
+.recordings-list{flex:1;overflow-y:auto}
+.rec-item{padding:10px 12px;border-bottom:1px solid #161616;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .15s}
+.rec-item:hover{background:var(--surface)}
+.rec-item.active{background:var(--surface2);border-left:2px solid var(--blue)}
+.rec-item .rec-icon{font-size:18px;flex-shrink:0}
+.rec-item .rec-info{flex:1;min-width:0}
+.rec-item .rec-name{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-item .rec-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.rec-item .rec-del{background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:4px;opacity:0;transition:opacity .15s,color .15s;font-size:14px}
+.rec-item:hover .rec-del{opacity:1}
+.rec-item .rec-del:hover{color:var(--accent)}
+.no-recordings{padding:24px 16px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ---- Content area ---- */
+.content{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px;gap:20px;overflow-y:auto}
+
+/* ---- Waveform canvas ---- */
+.waveform-wrap{width:100%;max-width:600px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative}
+.waveform-label{font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.6px}
+canvas#waveform{width:100%;height:80px;display:block;border-radius:6px}
+
+/* ---- Timer ---- */
+.timer{font-size:48px;font-weight:300;letter-spacing:4px;font-variant-numeric:tabular-nums;color:var(--text)}
+.timer.recording-on{color:var(--accent)}
+
+/* ---- Record button ---- */
+.record-btn{width:72px;height:72px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;transition:transform .1s,box-shadow .2s;background:var(--accent);box-shadow:0 0 0 0 rgba(239,68,68,0)}
+.record-btn:hover{transform:scale(1.05);box-shadow:0 0 24px rgba(239,68,68,.4)}
+.record-btn:active{transform:scale(.96)}
+.record-btn.recording{background:var(--surface2);border:3px solid var(--accent);box-shadow:0 0 16px rgba(239,68,68,.3)}
+.record-btn .icon{transition:transform .2s}
+
+/* ---- Playback / trim section ---- */
+.playback-section{width:100%;max-width:600px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.playback-section.hidden{display:none}
+.pb-title{font-size:13px;font-weight:600;color:var(--text)}
+.pb-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* Trim sliders */
+.trim-wrap{display:flex;flex-direction:column;gap:6px}
+.trim-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.trim-row{display:flex;align-items:center;gap:10px}
+.trim-row label{font-size:12px;color:var(--muted);width:36px;flex-shrink:0}
+.trim-row input[type=range]{flex:1;accent-color:var(--blue)}
+.trim-row span{font-size:12px;color:var(--text);width:44px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* Audio element hidden, we control it */
+audio{display:none}
+
+/* Playback controls */
+.pb-controls{display:flex;align-items:center;gap:12px}
+.pb-play-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.pb-play-btn:hover{background:#2563eb}
+.pb-progress{flex:1;accent-color:var(--blue)}
+.pb-time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Save / discard buttons */
+.action-row{display:flex;gap:10px;justify-content:flex-end}
+.btn{padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:500;transition:background .15s}
+.btn-primary{background:var(--green);color:#fff}
+.btn-primary:hover{background:#16a34a}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#222}
+.btn-danger{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btn-danger:hover{background:rgba(239,68,68,.1)}
+
+/* ---- Status bar ---- */
+.status-bar{padding:6px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);flex-shrink:0}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="dot" id="recDot"></div>
+  <h1>Voice Recorder</h1>
+  <span id="headerStatus" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+</div>
+
+<div class="main">
+  <!-- Sidebar: saved recordings list -->
+  <div class="sidebar">
+    <div class="sidebar-header">Recordings</div>
+    <div class="recordings-list" id="recList">
+      <div class="no-recordings">No recordings yet</div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="content">
+
+    <!-- Live waveform during recording -->
+    <div class="waveform-wrap" id="waveformWrap">
+      <div class="waveform-label">Live waveform</div>
+      <canvas id="waveform"></canvas>
+    </div>
+
+    <!-- Timer -->
+    <div class="timer" id="timer">0:00.0</div>
+
+    <!-- Record button -->
+    <button class="record-btn" id="recordBtn" title="Start recording" onclick="toggleRecord()">
+      <span class="icon" id="recordIcon">⏺</span>
+    </button>
+    <div style="font-size:12px;color:var(--muted)" id="recordHint">Click to record</div>
+
+    <!-- Playback & trim (shown after recording stops) -->
+    <div class="playback-section hidden" id="playbackSection">
+      <div>
+        <div class="pb-title" id="pbTitle">New Recording</div>
+        <div class="pb-sub" id="pbSub"></div>
+      </div>
+
+      <div class="trim-wrap">
+        <div class="trim-label">Trim</div>
+        <div class="trim-row">
+          <label>Start</label>
+          <input type="range" id="trimStart" min="0" max="100" step="0.1" value="0" oninput="onTrimChange()">
+          <span id="trimStartVal">0.0s</span>
+        </div>
+        <div class="trim-row">
+          <label>End</label>
+          <input type="range" id="trimEnd" min="0" max="100" step="0.1" value="100" oninput="onTrimChange()">
+          <span id="trimEndVal">—</span>
+        </div>
+      </div>
+
+      <div class="pb-controls">
+        <button class="pb-play-btn" id="pbPlayBtn" onclick="togglePlayback()" title="Play / pause">▶</button>
+        <input type="range" id="pbProgress" class="pb-progress" min="0" max="100" step="0.01" value="0" oninput="onSeek()">
+        <span class="pb-time" id="pbTime">0:00 / 0:00</span>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-danger" onclick="discardRecording()">Discard</button>
+        <button class="btn btn-secondary" onclick="reRecord()">Re-record</button>
+        <button class="btn btn-primary" onclick="saveRecording()">Save</button>
+      </div>
+    </div>
+
+  </div><!-- .content -->
+</div><!-- .main -->
+
+<!-- Hidden audio element for playback -->
+<audio id="audioPlayer"></audio>
+
+<div class="status-bar" id="statusBar">Ready</div>
+
+<script>
+/* ================================================================
+   State
+================================================================ */
+let mediaRecorder = null;
+let audioChunks   = [];
+let recordedBlob  = null;
+let trimmedBlob   = null;
+let isRecording   = false;
+let startTime     = 0;
+let timerInterval = null;
+
+// Web Audio
+let audioCtx      = null;
+let analyser      = null;
+let sourceNode    = null;
+let animFrameId   = null;
+let micStream     = null;
+
+// Playback
+const audioEl     = document.getElementById('audioPlayer');
+let audioDuration = 0;
+
+/* ================================================================
+   DOM refs
+================================================================ */
+const recDot         = document.getElementById('recDot');
+const timerEl        = document.getElementById('timer');
+const recordBtn      = document.getElementById('recordBtn');
+const recordIcon     = document.getElementById('recordIcon');
+const recordHint     = document.getElementById('recordHint');
+const playbackSection= document.getElementById('playbackSection');
+const waveformWrap   = document.getElementById('waveformWrap');
+const canvas         = document.getElementById('waveform');
+const ctx2d          = canvas.getContext('2d');
+const pbPlayBtn      = document.getElementById('pbPlayBtn');
+const pbProgress     = document.getElementById('pbProgress');
+const pbTime         = document.getElementById('pbTime');
+const trimStartEl    = document.getElementById('trimStart');
+const trimEndEl      = document.getElementById('trimEnd');
+const trimStartVal   = document.getElementById('trimStartVal');
+const trimEndVal     = document.getElementById('trimEndVal');
+const pbTitle        = document.getElementById('pbTitle');
+const pbSub          = document.getElementById('pbSub');
+const statusBar      = document.getElementById('statusBar');
+const recList        = document.getElementById('recList');
+const headerStatus   = document.getElementById('headerStatus');
+
+/* ================================================================
+   Utilities
+================================================================ */
+function fmtTime(secs) {
+  if (!isFinite(secs)) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60).toString().padStart(2,'0');
+  return `${m}:${s}`;
+}
+
+function fmtTimeLive(ms) {
+  const total = ms / 1000;
+  const m = Math.floor(total / 60);
+  const s = Math.floor(total % 60).toString().padStart(2,'0');
+  const ds = Math.floor((total % 1) * 10);
+  return `${m}:${s}.${ds}`;
+}
+
+function fmtDate(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  } catch { return iso; }
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1048576).toFixed(1) + ' MB';
+}
+
+function setStatus(msg) { statusBar.textContent = msg; }
+
+/* ================================================================
+   Waveform drawing
+================================================================ */
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width  * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  ctx2d.scale(devicePixelRatio, devicePixelRatio);
+}
+
+function drawWaveform() {
+  if (!analyser) return;
+  animFrameId = requestAnimationFrame(drawWaveform);
+
+  const bufferLength = analyser.fftSize;
+  const dataArray    = new Float32Array(bufferLength);
+  analyser.getFloatTimeDomainData(dataArray);
+
+  const W = canvas.width  / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+
+  ctx2d.clearRect(0, 0, W, H);
+
+  // Background
+  ctx2d.fillStyle = '#0f0f0f';
+  ctx2d.fillRect(0, 0, W, H);
+
+  // Waveform line
+  ctx2d.lineWidth   = 2;
+  ctx2d.strokeStyle = '#ef4444';
+  ctx2d.shadowColor = '#ef4444';
+  ctx2d.shadowBlur  = 8;
+  ctx2d.beginPath();
+
+  const sliceWidth = W / bufferLength;
+  let x = 0;
+  for (let i = 0; i < bufferLength; i++) {
+    const v = dataArray[i];
+    const y = (H / 2) + (v * H / 2);
+    i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+    x += sliceWidth;
+  }
+  ctx2d.stroke();
+  ctx2d.shadowBlur = 0;
+}
+
+function drawIdleWaveform() {
+  const W = canvas.width  / devicePixelRatio;
+  const H = canvas.height / devicePixelRatio;
+  ctx2d.clearRect(0, 0, W, H);
+  ctx2d.fillStyle = '#0f0f0f';
+  ctx2d.fillRect(0, 0, W, H);
+
+  // Flat line with subtle dots
+  ctx2d.lineWidth   = 1.5;
+  ctx2d.strokeStyle = '#333';
+  ctx2d.beginPath();
+  ctx2d.moveTo(0, H / 2);
+  ctx2d.lineTo(W, H / 2);
+  ctx2d.stroke();
+}
+
+/* ================================================================
+   Recording
+================================================================ */
+async function toggleRecord() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    await startRecording();
+  }
+}
+
+async function startRecording() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch (err) {
+    setStatus('Microphone access denied: ' + err.message);
+    return;
+  }
+
+  // Web Audio for live waveform
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  sourceNode = audioCtx.createMediaStreamSource(micStream);
+  sourceNode.connect(analyser);
+  // Note: do NOT connect analyser to destination — we don't want monitoring feedback
+
+  resizeCanvas();
+  drawWaveform();
+
+  // MediaRecorder
+  const mimeType = getSupportedMime();
+  const options  = mimeType ? { mimeType } : {};
+  mediaRecorder  = new MediaRecorder(micStream, options);
+  audioChunks    = [];
+
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = onRecordStop;
+  mediaRecorder.start(100); // collect in 100ms chunks
+
+  isRecording = true;
+  startTime   = Date.now();
+
+  // UI
+  recordBtn.classList.add('recording');
+  recordIcon.textContent = '⏹';
+  recordHint.textContent = 'Click to stop';
+  recDot.classList.add('recording');
+  timerEl.classList.add('recording-on');
+  playbackSection.classList.add('hidden');
+
+  // Live timer
+  timerInterval = setInterval(() => {
+    timerEl.textContent = fmtTimeLive(Date.now() - startTime);
+  }, 100);
+
+  setStatus('Recording...');
+  headerStatus.textContent = 'Recording';
+}
+
+function getSupportedMime() {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
+  ];
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return '';
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  mediaRecorder.stop();
+  isRecording = false;
+
+  clearInterval(timerInterval);
+  timerInterval = null;
+
+  // Stop mic tracks
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+
+  // Stop waveform animation
+  if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+  if (sourceNode)  { try { sourceNode.disconnect(); } catch(_) {} sourceNode = null; }
+  if (analyser)    { analyser = null; }
+  if (audioCtx)    { audioCtx.close().catch(()=>{}); audioCtx = null; }
+
+  drawIdleWaveform();
+
+  // UI reset
+  recordBtn.classList.remove('recording');
+  recordIcon.textContent = '⏺';
+  recordHint.textContent = 'Click to record';
+  recDot.classList.remove('recording');
+  timerEl.classList.remove('recording-on');
+  headerStatus.textContent = '';
+  setStatus('Processing...');
+}
+
+function onRecordStop() {
+  const mime = mediaRecorder.mimeType || 'audio/webm';
+  recordedBlob = new Blob(audioChunks, { type: mime });
+  trimmedBlob  = null;
+
+  const url = URL.createObjectURL(recordedBlob);
+  audioEl.src = url;
+  audioEl.load();
+
+  audioEl.onloadedmetadata = () => {
+    audioDuration = audioEl.duration;
+    initTrimControls(audioDuration);
+    updatePbTime(0);
+    showPlaybackSection();
+    setStatus('Ready to save');
+  };
+
+  audioEl.onerror = () => {
+    audioDuration = 0;
+    initTrimControls(0);
+    showPlaybackSection();
+    setStatus('Ready to save (duration unknown)');
+  };
+}
+
+/* ================================================================
+   Trim controls
+================================================================ */
+function initTrimControls(duration) {
+  trimStartEl.value = 0;
+  trimEndEl.value   = 100;
+  updateTrimLabels(duration);
+}
+
+function onTrimChange() {
+  const sVal = parseFloat(trimStartEl.value);
+  const eVal = parseFloat(trimEndEl.value);
+
+  // Clamp: start < end
+  if (sVal >= eVal) {
+    trimStartEl.value = Math.max(0, eVal - 1);
+  }
+  updateTrimLabels(audioDuration);
+
+  // Move playback position to trim start
+  const startSec = (parseFloat(trimStartEl.value) / 100) * audioDuration;
+  if (isFinite(startSec)) {
+    audioEl.currentTime = startSec;
+    pbProgress.value     = trimStartEl.value;
+    updatePbTime(startSec);
+  }
+}
+
+function updateTrimLabels(duration) {
+  const s = (parseFloat(trimStartEl.value) / 100) * (duration || 0);
+  const e = (parseFloat(trimEndEl.value)   / 100) * (duration || 0);
+  trimStartVal.textContent = s.toFixed(1) + 's';
+  trimEndVal.textContent   = e.toFixed(1) + 's';
+}
+
+function getTrimSeconds() {
+  const s = (parseFloat(trimStartEl.value) / 100) * audioDuration;
+  const e = (parseFloat(trimEndEl.value)   / 100) * audioDuration;
+  return { start: s, end: e };
+}
+
+/* ================================================================
+   Playback controls
+================================================================ */
+function showPlaybackSection() {
+  const elapsed = timerEl.textContent;
+  pbTitle.textContent = 'New Recording';
+  pbSub.textContent   = `Duration: ${elapsed}`;
+  playbackSection.classList.remove('hidden');
+}
+
+function togglePlayback() {
+  if (audioEl.paused) {
+    // Honour trim: don't play before start or past end
+    const { start, end } = getTrimSeconds();
+    if (!isFinite(audioDuration) || audioDuration === 0) {
+      audioEl.play().catch(()=>{});
+    } else {
+      if (audioEl.currentTime < start || audioEl.currentTime >= end) {
+        audioEl.currentTime = start;
+      }
+      audioEl.play().catch(()=>{});
+    }
+    pbPlayBtn.textContent = '⏸';
+  } else {
+    audioEl.pause();
+    pbPlayBtn.textContent = '▶';
+  }
+}
+
+audioEl.addEventListener('timeupdate', () => {
+  if (!audioDuration || !isFinite(audioDuration)) return;
+  const pct = (audioEl.currentTime / audioDuration) * 100;
+  pbProgress.value = pct;
+  updatePbTime(audioEl.currentTime);
+
+  // Auto-stop at trim end
+  const { end } = getTrimSeconds();
+  if (isFinite(end) && audioEl.currentTime >= end) {
+    audioEl.pause();
+    audioEl.currentTime = end;
+    pbPlayBtn.textContent = '▶';
+  }
+});
+
+audioEl.addEventListener('ended', () => { pbPlayBtn.textContent = '▶'; });
+audioEl.addEventListener('pause',  () => { pbPlayBtn.textContent = '▶'; });
+audioEl.addEventListener('play',   () => { pbPlayBtn.textContent = '⏸'; });
+
+function onSeek() {
+  if (!audioDuration || !isFinite(audioDuration)) return;
+  const t = (parseFloat(pbProgress.value) / 100) * audioDuration;
+  audioEl.currentTime = t;
+  updatePbTime(t);
+}
+
+function updatePbTime(current) {
+  const dur = (audioDuration && isFinite(audioDuration)) ? audioDuration : 0;
+  pbTime.textContent = `${fmtTime(current)} / ${fmtTime(dur)}`;
+}
+
+/* ================================================================
+   Trim + Save
+================================================================ */
+async function buildTrimmedBlob() {
+  // If duration unknown or no meaningful trim, return original
+  const { start, end } = getTrimSeconds();
+  if (!audioDuration || !isFinite(audioDuration) ||
+      (start <= 0.05 && end >= audioDuration - 0.05)) {
+    return recordedBlob;
+  }
+
+  // Use Web Audio OfflineAudioContext to decode + trim
+  try {
+    const arrayBuf = await recordedBlob.arrayBuffer();
+    const decodedCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded    = await decodedCtx.decodeAudioData(arrayBuf);
+    decodedCtx.close().catch(()=>{});
+
+    const sampleRate    = decoded.sampleRate;
+    const startSample   = Math.floor(start * sampleRate);
+    const endSample     = Math.min(Math.ceil(end * sampleRate), decoded.length);
+    const trimLength    = Math.max(1, endSample - startSample);
+    const numChannels   = decoded.numberOfChannels;
+
+    const offCtx = new OfflineAudioContext(numChannels, trimLength, sampleRate);
+    const offBuf = offCtx.createBuffer(numChannels, trimLength, sampleRate);
+    for (let c = 0; c < numChannels; c++) {
+      const srcData  = decoded.getChannelData(c);
+      const destData = offBuf.getChannelData(c);
+      for (let i = 0; i < trimLength; i++) {
+        destData[i] = srcData[startSample + i] || 0;
+      }
+    }
+
+    const src = offCtx.createBufferSource();
+    src.buffer = offBuf;
+    src.connect(offCtx.destination);
+    src.start();
+    const rendered = await offCtx.startRendering();
+
+    // Encode rendered AudioBuffer → WAV
+    return audioBufferToWav(rendered);
+  } catch (err) {
+    console.warn('Trim via OfflineAudioContext failed, saving original:', err);
+    return recordedBlob;
+  }
+}
+
+function audioBufferToWav(buffer) {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate  = buffer.sampleRate;
+  const length      = buffer.length;
+  const bitDepth    = 16;
+  const bytesPerSample = bitDepth / 8;
+  const blockAlign  = numChannels * bytesPerSample;
+  const byteRate    = sampleRate * blockAlign;
+  const dataSize    = length * blockAlign;
+  const ab          = new ArrayBuffer(44 + dataSize);
+  const view        = new DataView(ab);
+
+  function writeStr(off, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+  }
+
+  writeStr(0,  'RIFF');
+  view.setUint32(4,  36 + dataSize, true);
+  writeStr(8,  'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1,  true); // PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  let off = 44;
+  for (let i = 0; i < length; i++) {
+    for (let c = 0; c < numChannels; c++) {
+      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(c)[i]));
+      view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      off += 2;
+    }
+  }
+
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+async function saveRecording() {
+  setStatus('Trimming and saving...');
+  try {
+    trimmedBlob = await buildTrimmedBlob();
+    const ext  = trimmedBlob.type.includes('wav') ? '.wav' : '.webm';
+    const ts   = new Date().toISOString().replace(/[:.]/g,'-').replace('T','_').slice(0,19);
+    const name = `recording_${ts}${ext}`;
+
+    const resp = await fetch(`/api/recordings?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': trimmedBlob.type || 'audio/webm' },
+      body: trimmedBlob,
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    setStatus('Saved: ' + name);
+    resetUI();
+    loadRecordings();
+  } catch (err) {
+    setStatus('Save failed: ' + err.message);
+  }
+}
+
+function discardRecording() {
+  audioEl.pause();
+  URL.revokeObjectURL(audioEl.src);
+  audioEl.src = '';
+  recordedBlob = null;
+  trimmedBlob  = null;
+  resetUI();
+  setStatus('Discarded');
+}
+
+function reRecord() {
+  discardRecording();
+}
+
+function resetUI() {
+  playbackSection.classList.add('hidden');
+  timerEl.textContent = '0:00.0';
+  drawIdleWaveform();
+}
+
+/* ================================================================
+   Recordings list
+================================================================ */
+async function loadRecordings() {
+  try {
+    const resp = await fetch('/api/recordings');
+    const recs  = await resp.json();
+    renderRecordingsList(recs);
+  } catch (err) {
+    setStatus('Could not load recordings: ' + err.message);
+  }
+}
+
+function renderRecordingsList(recs) {
+  if (!recs || recs.length === 0) {
+    recList.innerHTML = '<div class="no-recordings">No recordings yet.<br>Hit the button to start.</div>';
+    return;
+  }
+  recList.innerHTML = recs.map(r => `
+    <div class="rec-item" onclick="playbackSaved('${r.id}')">
+      <div class="rec-icon">🎙</div>
+      <div class="rec-info">
+        <div class="rec-name" title="${r.name}">${r.name}</div>
+        <div class="rec-meta">${fmtDate(r.created_iso)} · ${fmtSize(r.size)}</div>
+      </div>
+      <button class="rec-del" title="Delete" onclick="deleteRecording(event,'${r.id}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function playbackSaved(id) {
+  // Highlight
+  document.querySelectorAll('.rec-item').forEach(el => el.classList.remove('active'));
+  const items = document.querySelectorAll('.rec-item');
+  items.forEach(el => {
+    if (el.querySelector('.rec-name')?.title === id ||
+        el.querySelector('.rec-name')?.textContent === id) {
+      el.classList.add('active');
+    }
+  });
+
+  audioEl.pause();
+  audioEl.src = `/audio/${encodeURIComponent(id)}`;
+  audioEl.load();
+
+  audioEl.onloadedmetadata = () => {
+    audioDuration = audioEl.duration;
+    initTrimControls(audioDuration);
+    updatePbTime(0);
+
+    pbTitle.textContent = id;
+    pbSub.textContent   = `Duration: ${fmtTime(audioDuration)}`;
+    recordedBlob = null; // marks as saved — save button will be hidden
+    playbackSection.classList.remove('hidden');
+
+    // Hide save/discard actions for already-saved recordings
+    document.querySelector('.action-row').style.display = 'none';
+    trimmedBlob = null;
+    setStatus('Playing: ' + id);
+  };
+}
+
+async function deleteRecording(evt, id) {
+  evt.stopPropagation();
+  if (!confirm(`Delete "${id}"?`)) return;
+  try {
+    const resp = await fetch(`/api/recordings/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    setStatus('Deleted: ' + id);
+    loadRecordings();
+    if (audioEl.src.includes(encodeURIComponent(id))) {
+      audioEl.pause();
+      audioEl.src = '';
+      playbackSection.classList.add('hidden');
+      document.querySelector('.action-row').style.display = 'flex';
+    }
+  } catch (err) {
+    setStatus('Delete failed: ' + err.message);
+  }
+}
+
+/* ================================================================
+   Resize handler
+================================================================ */
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (!isRecording) drawIdleWaveform();
+});
+
+/* ================================================================
+   Init
+================================================================ */
+resizeCanvas();
+drawIdleWaveform();
+loadRecordings();
+
+// Restore action-row display when starting a new record
+document.getElementById('recordBtn').addEventListener('click', () => {
+  document.querySelector('.action-row').style.display = 'flex';
+});
+</script>
+</body>
+</html>
