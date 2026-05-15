@@ -202,6 +202,9 @@ func main() {
 	// Browser profiles (isolated cookie jars / contexts)
 	browserProfiles := bprofiles.NewStore(filepath.Join(home, ".vulos", "db"))
 
+	// Device profile — form-factor selection (pc|tv|car|watch)
+	deviceProfile := bprofiles.NewDeviceProfileStore(dbDir)
+
 	// Stream pool (generic X11 app streaming — Xvfb + GStreamer + WebRTC)
 	streamPool := stream.NewPool()
 
@@ -332,6 +335,32 @@ func main() {
 	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter, r *http.Request) {
 		_, err := os.Stat("/var/lib/vulos/.setup-complete")
 		writeJSON(w, map[string]bool{"setup_complete": err == nil})
+	})
+
+	// Device profile — form-factor selection
+	mux.HandleFunc("GET /api/device-profile", func(w http.ResponseWriter, r *http.Request) {
+		profile, suggested := deviceProfile.Get()
+		writeJSON(w, map[string]string{"profile": string(profile), "suggested": string(suggested)})
+	})
+	mux.HandleFunc("PUT /api/device-profile", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Profile string `json:"profile"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "invalid request")
+			return
+		}
+		ff := bprofiles.FormFactor(req.Profile)
+		if !bprofiles.ValidFormFactor(ff) {
+			writeErr(w, 400, "profile must be one of: pc, tv, car, watch")
+			return
+		}
+		if err := deviceProfile.Set(ff); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		profile, suggested := deviceProfile.Get()
+		writeJSON(w, map[string]string{"profile": string(profile), "suggested": string(suggested)})
 	})
 
 	// Auth routes
