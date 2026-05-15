@@ -147,6 +147,52 @@ func (g *Info) EncoderArgs() []string {
 	}
 }
 
+// GamingEncoderArgs returns the GStreamer encoder element + properties tuned for
+// gaming: zero-latency preset, no B-frames, no lookahead, high bitrate.
+// The fps and bitrate parameters let the caller pass session-specific values
+// (bitrate is in kbps for GPU tiers, converted to bps for VP8).
+func (g *Info) GamingEncoderArgs(fps, bitrate int) []string {
+	if bitrate <= 0 {
+		bitrate = 6000
+	}
+	gopSize := fps * 2 // 2-second keyframe interval for gaming
+
+	switch g.Tier {
+	case TierNVENC:
+		return []string{
+			"nvh264enc",
+			fmt.Sprintf("bitrate=%d", bitrate),
+			"preset=low-latency-hp",
+			"rc-mode=cbr",
+			fmt.Sprintf("gop-size=%d", gopSize),
+			"b-adapt=false",
+			"rc-lookahead=0",
+			"bframes=0",
+		}
+	case TierVAAPI:
+		return []string{
+			"vaapih264enc",
+			fmt.Sprintf("bitrate=%d", bitrate),
+			"rate-control=cbr",
+			fmt.Sprintf("keyframe-period=%d", gopSize),
+			"tune=low-power",
+			"max-bframes=0",
+		}
+	default:
+		// Software VP8: cpu-used=16 for minimum encode latency
+		return []string{
+			"vp8enc",
+			fmt.Sprintf("target-bitrate=%d", bitrate*1000),
+			"cpu-used=16",
+			"deadline=1",
+			fmt.Sprintf("keyframe-max-dist=%d", gopSize),
+			"threads=8",
+			"end-usage=cbr",
+			"lag-in-frames=0",
+		}
+	}
+}
+
 // PayloaderArgs returns the RTP payloader element + properties.
 func (g *Info) PayloaderArgs() []string {
 	if g.HasAV1 && (g.Tier == TierNVENC || g.Tier == TierVAAPI) {
