@@ -20,12 +20,12 @@ const (
 	uinputPath = "/dev/uinput"
 
 	// ioctl codes
-	uiSetEvBit  = 0x40045564 // UI_SET_EVBIT
-	uiSetKeyBit = 0x40045565 // UI_SET_KEYBIT
-	uiSetRelBit = 0x40045566 // UI_SET_RELBIT
-	uiSetAbsBit = 0x40045567 // UI_SET_ABSBIT
-	uiDevCreate = 0x5501     // UI_DEV_CREATE
-	uiDevDestroy = 0x5502    // UI_DEV_DESTROY
+	uiSetEvBit   = 0x40045564 // UI_SET_EVBIT
+	uiSetKeyBit  = 0x40045565 // UI_SET_KEYBIT
+	uiSetRelBit  = 0x40045566 // UI_SET_RELBIT
+	uiSetAbsBit  = 0x40045567 // UI_SET_ABSBIT
+	uiDevCreate  = 0x5501     // UI_DEV_CREATE
+	uiDevDestroy = 0x5502     // UI_DEV_DESTROY
 
 	// Event types
 	evSyn = 0x00
@@ -42,14 +42,14 @@ const (
 	relWheel = 0x08
 
 	// Absolute axes
-	absX        = 0x00
-	absY        = 0x01
-	absRx       = 0x03 // right stick X
-	absRy       = 0x04 // right stick Y
-	absHat0X    = 0x10 // d-pad X
-	absHat0Y    = 0x11 // d-pad Y
-	absZ        = 0x02 // left trigger
-	absRz       = 0x05 // right trigger
+	absX     = 0x00
+	absY     = 0x01
+	absRx    = 0x03 // right stick X
+	absRy    = 0x04 // right stick Y
+	absHat0X = 0x10 // d-pad X
+	absHat0Y = 0x11 // d-pad Y
+	absZ     = 0x02 // left trigger
+	absRz    = 0x05 // right trigger
 
 	// Mouse buttons
 	btnLeft   = 0x110
@@ -132,7 +132,9 @@ func createMouseDevice(screenW, screenH int) (*Device, error) {
 	ioctl(fd, uiSetAbsBit, absX)
 	ioctl(fd, uiSetAbsBit, absY)
 
-	// Scroll wheel
+	// Relative axes: X/Y for pointer-lock / gaming relative moves, wheel for scroll
+	ioctl(fd, uiSetRelBit, relX)
+	ioctl(fd, uiSetRelBit, relY)
 	ioctl(fd, uiSetRelBit, relWheel)
 
 	// Setup device info
@@ -276,11 +278,11 @@ const (
 // Injector manages virtual input devices and injects events.
 // Uses uinput when available, falls back to xdotool via persistent pipe.
 type Injector struct {
-	mu       sync.Mutex
-	mouse    *Device
-	keyboard *Device
-	gamepad  *Device
-	pipe     *xdotoolPipe // persistent xdotool process (fallback path)
+	mu        sync.Mutex
+	mouse     *Device
+	keyboard  *Device
+	gamepad   *Device
+	pipe      *xdotoolPipe // persistent xdotool process (fallback path)
 	useUinput bool
 	screenW   int
 	screenH   int
@@ -352,6 +354,20 @@ func (inj *Injector) MouseMove(x, y int) {
 	}
 	inj.mouse.emit(evAbs, absX, int32(x))
 	inj.mouse.emit(evAbs, absY, int32(y))
+	inj.mouse.sync()
+}
+
+// MouseMoveRel moves the virtual mouse by relative deltas (gaming / pointer-lock mode).
+// Uses EV_REL events so the OS treats it as a raw relative move, not an absolute warp.
+// Falls back to xdotool mousemove_relative when uinput is unavailable.
+func (inj *Injector) MouseMoveRel(dx, dy int) {
+	if !inj.useUinput {
+		inj.xdotool("mousemove_relative", "--", itoa(dx), itoa(dy))
+		return
+	}
+	// The mouse device already has EV_REL / relX / relY enabled via createMouseDevice.
+	inj.mouse.emit(evRel, relX, int32(dx))
+	inj.mouse.emit(evRel, relY, int32(dy))
 	inj.mouse.sync()
 }
 
@@ -462,15 +478,33 @@ func (inj *Injector) KeyPress(jsKey, jsCode string, pressed bool) {
 	if linuxCode, ok := jsToLinuxKey(jsKey, jsCode); ok {
 		switch linuxCode {
 		case keyLeftShift, keyRightShift:
-			if pressed { inj.modState |= ModShift } else { inj.modState &^= ModShift }
+			if pressed {
+				inj.modState |= ModShift
+			} else {
+				inj.modState &^= ModShift
+			}
 		case keyLeftCtrl, keyRightCtrl:
-			if pressed { inj.modState |= ModCtrl } else { inj.modState &^= ModCtrl }
+			if pressed {
+				inj.modState |= ModCtrl
+			} else {
+				inj.modState &^= ModCtrl
+			}
 		case keyLeftAlt, keyRightAlt:
-			if pressed { inj.modState |= ModAlt } else { inj.modState &^= ModAlt }
+			if pressed {
+				inj.modState |= ModAlt
+			} else {
+				inj.modState &^= ModAlt
+			}
 		case keyLeftMeta, keyRightMeta:
-			if pressed { inj.modState |= ModMeta } else { inj.modState &^= ModMeta }
+			if pressed {
+				inj.modState |= ModMeta
+			} else {
+				inj.modState &^= ModMeta
+			}
 		case keyCapsLock:
-			if pressed { inj.modState ^= ModCapsLock } // toggle on press
+			if pressed {
+				inj.modState ^= ModCapsLock
+			} // toggle on press
 		}
 	}
 
@@ -633,89 +667,89 @@ func jsToLinuxKey(key, code string) (uint16, bool) {
 
 // Linux KEY_* constants
 const (
-	keyEsc       = 1
-	key1         = 2
-	key2         = 3
-	key3         = 4
-	key4         = 5
-	key5         = 6
-	key6         = 7
-	key7         = 8
-	key8         = 9
-	key9         = 10
-	key0         = 11
-	keyMinus     = 12
-	keyEqual     = 13
-	keyBackspace = 14
-	keyTab       = 15
-	keyQ         = 16
-	keyW         = 17
-	keyE         = 18
-	keyR         = 19
-	keyT         = 20
-	keyY         = 21
-	keyU         = 22
-	keyI         = 23
-	keyO         = 24
-	keyP         = 25
-	keyLeftBrace = 26
+	keyEsc        = 1
+	key1          = 2
+	key2          = 3
+	key3          = 4
+	key4          = 5
+	key5          = 6
+	key6          = 7
+	key7          = 8
+	key8          = 9
+	key9          = 10
+	key0          = 11
+	keyMinus      = 12
+	keyEqual      = 13
+	keyBackspace  = 14
+	keyTab        = 15
+	keyQ          = 16
+	keyW          = 17
+	keyE          = 18
+	keyR          = 19
+	keyT          = 20
+	keyY          = 21
+	keyU          = 22
+	keyI          = 23
+	keyO          = 24
+	keyP          = 25
+	keyLeftBrace  = 26
 	keyRightBrace = 27
-	keyEnter     = 28
-	keyLeftCtrl  = 29
-	keyA         = 30
-	keyS         = 31
-	keyD         = 32
-	keyF         = 33
-	keyG         = 34
-	keyH         = 35
-	keyJ         = 36
-	keyK         = 37
-	keyL         = 38
-	keySemicolon = 39
+	keyEnter      = 28
+	keyLeftCtrl   = 29
+	keyA          = 30
+	keyS          = 31
+	keyD          = 32
+	keyF          = 33
+	keyG          = 34
+	keyH          = 35
+	keyJ          = 36
+	keyK          = 37
+	keyL          = 38
+	keySemicolon  = 39
 	keyApostrophe = 40
-	keyGrave     = 41
-	keyLeftShift = 42
-	keyBackslash = 43
-	keyZ         = 44
-	keyX         = 45
-	keyC         = 46
-	keyV         = 47
-	keyB         = 48
-	keyN         = 49
-	keyM         = 50
-	keyComma     = 51
-	keyDot       = 52
-	keySlash     = 53
+	keyGrave      = 41
+	keyLeftShift  = 42
+	keyBackslash  = 43
+	keyZ          = 44
+	keyX          = 45
+	keyC          = 46
+	keyV          = 47
+	keyB          = 48
+	keyN          = 49
+	keyM          = 50
+	keyComma      = 51
+	keyDot        = 52
+	keySlash      = 53
 	keyRightShift = 54
-	keyLeftAlt   = 56
-	keySpace     = 57
-	keyCapsLock  = 58
-	keyF1        = 59
-	keyF2        = 60
-	keyF3        = 61
-	keyF4        = 62
-	keyF5        = 63
-	keyF6        = 64
-	keyF7        = 65
-	keyF8        = 66
-	keyF9        = 67
-	keyF10       = 68
-	keyF11       = 87
-	keyF12       = 88
-	keyHome      = 102
-	keyUp        = 103
-	keyPageUp    = 104
-	keyLeft      = 105
-	keyRight     = 106
-	keyEnd       = 107
-	keyDown      = 108
-	keyPageDown  = 109
-	keyInsert    = 110
-	keyDelete    = 111
-	keyLeftMeta  = 125
-	keyRightMeta = 126
-	keyRightCtrl = 97
-	keyRightAlt  = 100
+	keyLeftAlt    = 56
+	keySpace      = 57
+	keyCapsLock   = 58
+	keyF1         = 59
+	keyF2         = 60
+	keyF3         = 61
+	keyF4         = 62
+	keyF5         = 63
+	keyF6         = 64
+	keyF7         = 65
+	keyF8         = 66
+	keyF9         = 67
+	keyF10        = 68
+	keyF11        = 87
+	keyF12        = 88
+	keyHome       = 102
+	keyUp         = 103
+	keyPageUp     = 104
+	keyLeft       = 105
+	keyRight      = 106
+	keyEnd        = 107
+	keyDown       = 108
+	keyPageDown   = 109
+	keyInsert     = 110
+	keyDelete     = 111
+	keyLeftMeta   = 125
+	keyRightMeta  = 126
+	keyRightCtrl  = 97
+	keyRightAlt   = 100
 )
 
 var jsCodeToLinux = map[string]uint16{
@@ -723,7 +757,7 @@ var jsCodeToLinux = map[string]uint16{
 	"Digit4": key4, "Digit5": key5, "Digit6": key6, "Digit7": key7,
 	"Digit8": key8, "Digit9": key9, "Digit0": key0,
 	"Minus": keyMinus, "Equal": keyEqual, "Backspace": keyBackspace,
-	"Tab": keyTab,
+	"Tab":  keyTab,
 	"KeyQ": keyQ, "KeyW": keyW, "KeyE": keyE, "KeyR": keyR, "KeyT": keyT,
 	"KeyY": keyY, "KeyU": keyU, "KeyI": keyI, "KeyO": keyO, "KeyP": keyP,
 	"BracketLeft": keyLeftBrace, "BracketRight": keyRightBrace,
@@ -737,7 +771,7 @@ var jsCodeToLinux = map[string]uint16{
 	"Comma": keyComma, "Period": keyDot, "Slash": keySlash,
 	"ShiftRight": keyRightShift, "AltLeft": keyLeftAlt, "Space": keySpace,
 	"CapsLock": keyCapsLock,
-	"F1": keyF1, "F2": keyF2, "F3": keyF3, "F4": keyF4, "F5": keyF5, "F6": keyF6,
+	"F1":       keyF1, "F2": keyF2, "F3": keyF3, "F4": keyF4, "F5": keyF5, "F6": keyF6,
 	"F7": keyF7, "F8": keyF8, "F9": keyF9, "F10": keyF10, "F11": keyF11, "F12": keyF12,
 	"Home": keyHome, "ArrowUp": keyUp, "PageUp": keyPageUp,
 	"ArrowLeft": keyLeft, "ArrowRight": keyRight,
