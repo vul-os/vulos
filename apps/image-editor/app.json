@@ -1,0 +1,18 @@
+{
+  "id": "image-editor",
+  "name": "Image Editor",
+  "icon": "✏",
+  "icon_path": "icon.svg",
+  "description": "Edit images with crop, rotate, filters, and annotation tools",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "media",
+  "keywords": ["image", "edit", "photo", "crop", "filter", "draw", "annotate"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["filesystem"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
