@@ -8,23 +8,25 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"vulos/backend/services/naming"
 )
 
 // BrowserProfile is an isolated browsing context — its own cookies, storage,
 // and session state. Like Firefox containers but at the OS level.
 //
 // How isolation works:
-// - Local (WebKit/Cage): Each profile maps to a separate WebKitWebsiteDataManager
-//   with its own data directory. Cog supports --data-dir for this.
-// - Remote (browser over network): The gateway injects a profile-specific cookie
-//   prefix and the proxy maintains separate cookie jars per profile.
-// - Apps: Each app launched through the gateway gets its own profile by default
-//   (app ID = profile ID). Users can also assign apps to named profiles.
+//   - Local (WebKit/Cage): Each profile maps to a separate WebKitWebsiteDataManager
+//     with its own data directory. Cog supports --data-dir for this.
+//   - Remote (browser over network): The gateway injects a profile-specific cookie
+//     prefix and the proxy maintains separate cookie jars per profile.
+//   - Apps: Each app launched through the gateway gets its own profile by default
+//     (app ID = profile ID). Users can also assign apps to named profiles.
 type BrowserProfile struct {
 	ID          string            `json:"id"`
 	UserID      string            `json:"user_id"`
 	Name        string            `json:"name"`
-	Color       string            `json:"color"`       // hex color for visual identification
+	Color       string            `json:"color"` // hex color for visual identification
 	Icon        string            `json:"icon"`
 	Isolated    bool              `json:"isolated"`     // if true, strict isolation (no shared state)
 	AppBindings []string          `json:"app_bindings"` // app IDs bound to this profile
@@ -64,7 +66,14 @@ func NewStore(dataDir string) *Store {
 }
 
 // Create makes a new browser profile.
-func (s *Store) Create(userID, name, color, icon string) *BrowserProfile {
+// name must satisfy the Vulos naming rules: lowercase alphanumeric with
+// optional single hyphens, no leading/trailing or consecutive hyphens,
+// 2–32 characters. This prevents "--" from appearing in DNS subdomains.
+func (s *Store) Create(userID, name, color, icon string) (*BrowserProfile, error) {
+	if err := naming.ValidateIdent(name, "profile name", 2, 32); err != nil {
+		return nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -86,7 +95,7 @@ func (s *Store) Create(userID, name, color, icon string) *BrowserProfile {
 	}
 	s.profiles[id] = p
 	log.Printf("[profiles] created browser profile %s (%s) for user %s", id, name, userID)
-	return p
+	return p, nil
 }
 
 // EnsureDefaults creates the standard profiles for a user if they don't exist.
@@ -95,9 +104,11 @@ func (s *Store) EnsureDefaults(userID string) {
 	if len(existing) > 0 {
 		return
 	}
-	s.Create(userID, "Personal", "#3b82f6", "👤")
-	s.Create(userID, "Work", "#22c55e", "💼")
-	s.Create(userID, "Private", "#a855f7", "🔒")
+	// Names are lowercase to comply with the Vulos naming rules (DNS-safe).
+	// These literals are always valid, so errors are intentionally ignored.
+	s.Create(userID, "personal", "#3b82f6", "👤") //nolint:errcheck
+	s.Create(userID, "work", "#22c55e", "💼")     //nolint:errcheck
+	s.Create(userID, "private", "#a855f7", "🔒")  //nolint:errcheck
 }
 
 // Get returns a profile by ID.
@@ -122,7 +133,14 @@ func (s *Store) ListForUser(userID string) []*BrowserProfile {
 }
 
 // Update modifies a profile.
+// If name is non-empty it must satisfy the Vulos naming rules (see Create).
 func (s *Store) Update(id, name, color, icon string) error {
+	if name != "" {
+		if err := naming.ValidateIdent(name, "profile name", 2, 32); err != nil {
+			return err
+		}
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.profiles[id]
