@@ -47,13 +47,13 @@ const (
 
 // Info holds detected GPU capabilities.
 type Info struct {
-	Tier     Tier   `json:"tier"`
-	TierName string `json:"tier_name"`
-	Vendor   Vendor `json:"vendor"`
-	Device   string `json:"device"`   // GPU device name from lspci/nvidia-smi
-	Encoder  string `json:"encoder"`  // GStreamer encoder element name
-	Payloader string `json:"payloader"` // GStreamer RTP payloader element
-	Codec    string `json:"codec"`    // WebRTC codec mime type
+	Tier        Tier   `json:"tier"`
+	TierName    string `json:"tier_name"`
+	Vendor      Vendor `json:"vendor"`
+	Device      string `json:"device"`       // GPU device name from lspci/nvidia-smi
+	Encoder     string `json:"encoder"`      // GStreamer encoder element name
+	Payloader   string `json:"payloader"`    // GStreamer RTP payloader element
+	Codec       string `json:"codec"`        // WebRTC codec mime type
 	HasDRI      bool   `json:"has_dri"`      // /dev/dri exists
 	HasAV1      bool   `json:"has_av1"`      // AV1 hardware encode available
 	HasPipeWire bool   `json:"has_pipewire"` // PipeWire screen capture available
@@ -110,12 +110,14 @@ func (g *Info) EncoderArgs() []string {
 				"nvav1enc",
 				"bitrate=1500", "preset=low-latency-hq", "rc-mode=cbr",
 				"gop-size=30",
+				"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "aud=true",
 			}
 		case TierVAAPI:
 			return []string{
 				"vaav1enc",
 				"bitrate=1500", "rate-control=cbr",
 				"keyframe-period=30",
+				"tune=low-power",
 			}
 		}
 	}
@@ -125,12 +127,14 @@ func (g *Info) EncoderArgs() []string {
 			"nvh264enc",
 			"bitrate=2000", "preset=low-latency-hq", "rc-mode=cbr",
 			"gop-size=30",
+			"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "aud=true",
 		}
 	case TierVAAPI:
 		return []string{
 			"vaapih264enc",
 			"bitrate=2000", "rate-control=cbr",
 			"keyframe-period=30",
+			"tune=low-power", "cabac-entropy-coding=true",
 		}
 	default:
 		return []string{
