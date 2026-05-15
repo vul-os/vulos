@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- labwc rc.xml — Vula OS compositor config
+     Browser (Cog) pinned to background layer; all other windows float on top.
+-->
+<labwc_config>
+  <theme>
+    <name>vulos</name>
+    <titlebar>
+      <height>28</height>
+      <font>Noto Sans 11</font>
+    </titlebar>
+  </theme>
+
+  <!-- Pin the browser window to the background layer -->
+  <windowRules>
+    <windowRule identifier="cog" type="full_maximise" skipTaskbar="yes">
+      <action name="MoveToLayer" layer="background" />
+    </windowRule>
+  </windowRules>
+
+  <!-- Floating focus: click to focus, no mouse-follow -->
+  <focus>
+    <followMouse>no</followMouse>
+    <raiseOnFocus>yes</raiseOnFocus>
+  </focus>
+</labwc_config>

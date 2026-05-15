@@ -1,0 +1,27 @@
+# Vula OS traffic-light openbox theme
+# Button layout: close, minimize, maximize on the LEFT (macOS-style)
+
+# Title bar backgrounds
+window.active.title.bg: flat solid
+window.active.title.bg.color: #1a1a1a
+window.inactive.title.bg: flat solid
+window.inactive.title.bg.color: #2a2a2a
+
+# Traffic light buttons — unpressed colours
+window.active.button.close.unpressed.image.color: #ff5f57
+window.active.button.max.unpressed.image.color: #28c840
+window.active.button.iconify.unpressed.image.color: #febc2e
+
+# Traffic light buttons — hover colours
+window.active.button.close.hover.image.color: #ff3b30
+window.active.button.max.hover.image.color: #00b341
+window.active.button.iconify.hover.image.color: #f5a623
+
+# Button layout: Close, Minimize (iconify), maximize on the left
+window.active.button.layout: CMI
+
+# Border / handle
+border.width: 1
+border.color: #333333
+window.handle.width: 0
+padding.width: 8

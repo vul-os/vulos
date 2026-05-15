@@ -50,10 +50,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
+    labwc cage \
     flatpak \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
     && rm -rf /var/lib/apt/lists/* \
-    && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
+    && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Layer 2: System config (rarely changes)
 RUN groupadd -f sudo 2>/dev/null || true \
@@ -69,6 +70,11 @@ RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
 
 # Layer 3: Static assets (changes with content updates)
 COPY apps/ /opt/vulos/apps/
+
+# labwc compositor config (browser pinned to background, floating focus)
+COPY assets/labwc/ /root/.config/labwc/
+# Vula OS traffic-light openbox theme for labwc SSD
+COPY assets/themes/vulos/ /usr/share/themes/vulos/
 # Layer 4: Frontend build output (changes with UI work)
 COPY --from=frontend /app/dist /opt/vulos/webroot
 
