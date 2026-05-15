@@ -4,6 +4,7 @@ import { ThemeProvider } from './core/ThemeProvider'
 import { WallpaperProvider } from './core/useWallpaper.jsx'
 import { DeviceProfileProvider } from './core/useDeviceProfile.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
+import { useSpatialNav } from './core/useSpatialNav'
 import LoginScreen from './auth/LoginScreen'
 import LockScreen from './auth/LockScreen'
 import Setup from './auth/Setup'
@@ -128,6 +129,9 @@ function AuthGate() {
 }
 
 export default function App() {
+  // TV D-pad navigation — no-op when data-device-profile !== "tv"
+  useSpatialNav()
+
   return (
     <DeviceProfileProvider>
       <ThemeProvider>
