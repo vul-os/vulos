@@ -1,5 +1,29 @@
 {
   "apps": {
+    "navidrome": {
+      "name": "Navidrome",
+      "vetted": true,
+      "type": "web",
+      "description": "Self-hosted music streaming server — your own Spotify with web UI and Subsonic API",
+      "category": "media",
+      "author": "Navidrome Project",
+      "homepage": "https://www.navidrome.org",
+      "icon": "🎵",
+      "keywords": ["music", "streaming", "audio", "subsonic", "self-hosted"],
+      "license": "GPL-3.0",
+      "versions": {
+        "0.54.5": {
+          "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_amd64.tar.gz",
+          "archive_strip": 0,
+          "command": "bin/navidrome --configfile data/navidrome.toml",
+          "port": 4533,
+          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
+          "checksum": "",
+          "permissions": ["network", "filesystem"],
+          "singleton": true
+        }
+      }
+    },
     "wede": {
       "name": "Wede",
       "vetted": true,
