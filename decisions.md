@@ -96,10 +96,32 @@ future AUTH/FED/MOBILE/LADYBIRD(27), PEER(41). ~183 tasks. All 6 Opus breakdown 
 complete. Source of truth for remaining work = tasks.md `todo` entries.
 
 ## Deferred / unresolved (orchestrator merges, conflicts, blockers)
-- GAME-04 overlaps STREAM-05 (both add StreamViewer gamepad) — GAME-04 prompt must say
-  "reconcile/extend, don't duplicate". Note when GAME-04 is dispatched.
-- NET-06 vs INIT-01 both create instance ULID/identity — must share one identity package;
-  whichever runs first defines it, the other consumes. Don't run concurrently.
+
+### GAME-04 — DEFERRED (tangled merge conflict) — 2026-05-16 ~01:29
+GAME-04 (useGamepad hook refactor) branched from baseline which had STREAM-05's inline
+gamepad loop. GAME-03 (merged) retained that inline loop + added pointer-lock. GAME-04
+removed `gpLoopRef`+inline loop for the hook. 3-way merge left 2 trivial hunks BUT 6
+orphaned `gpLoopRef` refs (GAME-03's retained loop referencing the removed decl) — a
+semantic break, clean-text but broken. Per protocol, `git merge --abort` (StreamViewer.jsx
+restored to working HEAD = STREAM-05 loop + GAME-03 pointer-lock, NO regression). Branch
+`task/GAME-04`/`69a1836` preserved. RE-TASK later: re-implement the useGamepad refactor
+fresh on top of current main (which has both STREAM-05 inline loop + GAME-03 pointer-lock),
+not via the stale branch. tasks.md GAME-04 left `todo`.
+
+### Resolved conflict pattern (reference for future cycles)
+- main.go dup-import (WEBAPP-04): worker re-added an import that already exists → keep only
+  the genuinely-new import line, drop the dup, gofmt, `go build`, commit. Build-gate every
+  main.go merge.
+- app-dir rewrites (WEBAPP-02/03/07): worker rewrote apps/<x>/ that baseline also has →
+  `git checkout --theirs -- apps/<x>` (impl supersedes the shell), commit.
+- go.mod (CLUSTER-01 + AUTH-01): different require lines auto-merge clean; if conflict,
+  `--theirs` then `go mod tidy` + `go build`.
+
+### Still open
+- NET-06 vs INIT-01 both create instance ULID/identity — share one identity package;
+  don't run concurrently (INIT-01 not yet dispatched; NET-06 not yet dispatched).
+- D12: future AUTH/FED/MOBILE/LADYBIRD section was missing from tasks.md (initial big
+  append covered 5/6 areas). FIXED 01:30 — now persisted (AUTH-01 marked done).
 
 ## Assignment ledger
 
@@ -124,6 +146,19 @@ NEXT-WAVE candidates (collision-free, deps met): WEBAPP-07, GAME-01(pool.go),
 DEVPROF-01, AUTH-01, AUTH-05, AUTH-09, BMINIT-03, NET-05, NET-07, PEER-01, BMINIT-11.
 Avoid concurrent: any 2 touching main.go / go.mod / notify.go / stream.go / pool.go /
 manifest.go / Setup.jsx / AppRegistry.js / Settings.jsx / Toasts.jsx.
+
+--- SNAPSHOT 2026-05-16 01:30 (cron cycle) ---
+DONE/merged to main: 25 tasks (wave-1 8, wave-2 8, wave-3 9: GAME-01 NOTIF-03 NET-05
+DEVPROF-01 BMINIT-11 WEBAPP-07 BMINIT-01 AUTH-01 NET-03). GAME-04 DEFERRED (see above).
+tasks.md committed 8f6cbbd. Backlog: ~158 todo, ~183 total. Deadline 04:52 (~3h20m left).
+Resources at snapshot: load ~10-12/8 cores, mem 68% free, disk 511Gi. Healthy.
+IN-FLIGHT wave-4 (10, launched 01:30, sonnet bg worktrees, branch task/<ID>):
+NOTIF-02(notify.go+main.go) GAME-02(pool/bitrate/gpu.go) APPSTORE-01(appnet registry/store.go+registry.json)
+DEVPROF-02(Setup.jsx) MISC-01(ThemeProvider/Settings/index.css) AUTH-05(credvault/ new)
+CLUSTER-02(auth pkg) INIT-02(Dockerfile/build.sh/cmd-init) AI-12(AskAIButton/FileManager/Terminal)
+FED-01(apps/social/ new + AppRegistry.js).
+Conflict-resolution playbook recorded in Deferred section above.
+--- END SNAPSHOT ---
 
 ORCHESTRATOR PROTOCOL each cron wake:
 1. Merge completed task/* branches (`git merge --no-ff`), set tasks.md Status=done, note commit.
