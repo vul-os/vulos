@@ -30,6 +30,7 @@ import (
 	"vulos/backend/services/energy"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/notify"
+	"vulos/backend/services/peering"
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/sysuser"
 	"vulos/backend/services/recall"
@@ -163,6 +164,9 @@ func main() {
 	aiCfg := ai.DefaultConfig()
 	chatHistory := ai.NewHistoryStore(dbDir)
 	missionStore := ai.NewMissionStore(dbDir)
+
+	// Peering (direct Vula-to-Vula communication)
+	peeringSvc := peering.New(home)
 
 	// Notifications
 	notifySvc := notify.New()
@@ -1104,6 +1108,9 @@ func main() {
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)
+
+	// Peering — direct Vula-to-Vula communication
+	peeringSvc.RegisterHandlers(mux)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
