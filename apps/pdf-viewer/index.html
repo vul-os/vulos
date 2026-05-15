@@ -8,11 +8,11 @@
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0b0d10;--panel:#12161b;--panel2:#171d24;--elev:#1f2630;--border:#2a3340;--border2:#3a4656;--text:#eef2f7;--text2:#a7b0bd;--text3:#6f7b8a;--accent:#0ea5a4;--accent2:#f97316;--danger:#ef4444}
 body{height:100vh;display:flex;overflow:hidden;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-button,input,textarea{font:inherit}
+button,input,textarea,select{font:inherit}
 button{border:1px solid var(--border2);background:var(--elev);color:var(--text);border-radius:6px;cursor:pointer;min-height:32px;padding:6px 10px;transition:background .15s,border-color .15s,color .15s}
 button:hover{background:#263140;border-color:#526071}
 button:disabled{opacity:.45;cursor:not-allowed}
-.app{display:grid;grid-template-columns:250px minmax(0,1fr)320px;width:100%;height:100%}
+.app{display:grid;grid-template-columns:250px minmax(0,1fr) 320px;width:100%;height:100%}
 .sidebar,.notes{background:var(--panel);border-color:var(--border);display:flex;flex-direction:column;min-width:0}
 .sidebar{border-right:1px solid var(--border)}
 .notes{border-left:1px solid var(--border)}
@@ -35,19 +35,17 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .file-name{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file-meta{font-size:11px;color:var(--text3);margin-top:3px}
 .main{display:flex;flex-direction:column;min-width:0;background:#080a0d}
-.toolbar{height:56px;display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
-.doc-title{font-size:13px;font-weight:650;min-width:140px;max-width:28vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2)}
+.toolbar{height:56px;display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;flex-wrap:wrap}
+.doc-title{font-size:13px;font-weight:650;min-width:120px;max-width:24vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2)}
 .group{display:flex;align-items:center;gap:6px;padding-left:8px;border-left:1px solid var(--border)}
 .page-input,.zoom-select{height:32px;background:var(--panel2);border:1px solid var(--border2);border-radius:6px;color:var(--text);outline:none}
-.page-input{width:64px;text-align:center}
+.page-input{width:52px;text-align:center}
+.page-total{font-size:12px;color:var(--text3)}
 .zoom-select{width:88px;padding:0 6px}
-.viewer-wrap{flex:1;position:relative;min-height:0;display:flex}
+.viewer-wrap{flex:1;position:relative;min-height:0;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px}
 .viewer-empty{margin:auto;text-align:center;color:var(--text3);max-width:420px;padding:24px;line-height:1.5}
 .viewer-empty strong{display:block;color:var(--text);font-size:20px;margin-bottom:8px}
-.pdf-frame{width:100%;height:100%;border:0;background:#2d333b;display:none}
-.pdf-frame.ready{display:block}
-.fallback{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px;text-align:center;color:var(--text2);max-width:360px}
-.fallback a{color:var(--accent)}
+#pdfCanvas{display:block;box-shadow:0 4px 24px #0007;background:#fff;max-width:100%}
 .notes-body{display:flex;flex-direction:column;gap:10px;padding:12px;min-height:0;flex:1}
 .note-tabs{display:flex;gap:6px}
 .note-tabs button{flex:1;font-size:12px;color:var(--text2)}
@@ -66,12 +64,13 @@ textarea{flex:1;min-height:0;resize:none;background:var(--panel2);border:1px sol
 .status{height:30px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text3);font-size:11px;background:var(--panel);flex-shrink:0}
 .status .dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
 .status .dot.on{background:var(--accent)}
-@media(max-width:960px){.app{grid-template-columns:210px minmax(0,1fr)}.notes{position:absolute;right:0;top:0;bottom:0;width:320px;z-index:5;transform:translateX(calc(100% - 44px))}.notes:focus-within,.notes:hover{transform:translateX(0)}.doc-title{max-width:22vw}}
-@media(max-width:700px){.app{grid-template-columns:1fr}.sidebar{display:none}.toolbar{flex-wrap:wrap;height:auto}.doc-title{max-width:100%;width:100%}.viewer-wrap{min-height:0}.notes{display:none}.group{padding-left:0;border-left:0}}
+@media(max-width:960px){.app{grid-template-columns:210px minmax(0,1fr)}.notes{position:absolute;right:0;top:0;bottom:0;width:320px;z-index:5;transform:translateX(calc(100% - 44px))}.notes:focus-within,.notes:hover{transform:translateX(0)}.doc-title{max-width:18vw}}
+@media(max-width:700px){.app{grid-template-columns:1fr}.sidebar{display:none}.toolbar{height:auto}.doc-title{max-width:100%;width:100%}.notes{display:none}.group{padding-left:0;border-left:0}}
 </style>
 </head>
 <body>
 <div class="app">
+  <!-- Sidebar: file list -->
   <aside class="sidebar">
     <div class="head">
       <h1>PDF Viewer</h1>
@@ -81,54 +80,57 @@ textarea{flex:1;min-height:0;resize:none;background:var(--panel2);border:1px sol
     <div class="side-section">
       <div id="dropZone" class="drop">Drop PDFs here or open files from this device.</div>
     </div>
-    <div class="side-section">
+    <div class="side-section" style="padding-top:14px">
       <div class="section-title">Recent PDFs</div>
     </div>
     <div id="fileList" class="file-list"></div>
   </aside>
 
+  <!-- Main viewer -->
   <main class="main">
     <div class="toolbar">
       <div id="docTitle" class="doc-title">No PDF open</div>
       <span class="spacer"></span>
       <div class="group">
-        <button id="prevPage" title="Previous page">‹</button>
-        <input id="pageInput" class="page-input" type="number" min="1" value="1" title="Page">
-        <button id="nextPage" title="Next page">›</button>
+        <button id="prevPage" title="Previous page" disabled>&#8249;</button>
+        <input id="pageInput" class="page-input" type="number" min="1" value="1" title="Current page" disabled>
+        <span class="page-total" id="pageTotal">/ —</span>
+        <button id="nextPage" title="Next page" disabled>&#8250;</button>
       </div>
       <div class="group">
-        <button id="zoomOut" title="Zoom out">−</button>
-        <select id="zoomSelect" class="zoom-select" title="Zoom">
+        <button id="zoomOut" title="Zoom out" disabled>&#8722;</button>
+        <select id="zoomSelect" class="zoom-select" title="Zoom" disabled>
+          <option value="50">50%</option>
           <option value="75">75%</option>
           <option value="100" selected>100%</option>
           <option value="125">125%</option>
           <option value="150">150%</option>
           <option value="200">200%</option>
-          <option value="page-width">Width</option>
-          <option value="page-fit">Fit</option>
+          <option value="page-width">Fit Width</option>
         </select>
-        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="zoomIn" title="Zoom in" disabled>+</button>
       </div>
       <div class="group">
-        <button id="printBtn" title="Print">Print</button>
+        <button id="printBtn" title="Print" disabled>Print</button>
       </div>
     </div>
-    <div class="viewer-wrap">
+
+    <div class="viewer-wrap" id="viewerWrap">
       <div id="empty" class="viewer-empty">
         <strong>Open a local PDF</strong>
         Files stay in this browser session. Notes and annotations are saved locally per file.
+        Rendered using PDF.js — no network requests required.
       </div>
-      <object id="pdfObject" class="pdf-frame" type="application/pdf">
-        <embed id="pdfEmbed" type="application/pdf">
-      </object>
-      <div id="fallback" class="fallback">
-        This browser cannot show embedded PDFs here.<br>
-        <a id="fallbackLink" href="#" target="_blank" rel="noopener">Open the PDF in a new tab</a>
-      </div>
+      <canvas id="pdfCanvas" style="display:none"></canvas>
     </div>
-    <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Waiting for a PDF</span></div>
+
+    <div class="status">
+      <span id="statusDot" class="dot"></span>
+      <span id="statusText">Waiting for a PDF</span>
+    </div>
   </main>
 
+  <!-- Right panel: notes + annotations -->
   <aside class="notes">
     <div class="head">
       <h1>Notes</h1>
@@ -150,84 +152,78 @@ textarea{flex:1;min-height:0;resize:none;background:var(--panel2);border:1px sol
   </aside>
 </div>
 
-<script>
+<!-- PDF.js served locally — no CDN, no external network requests -->
+<script type="module">
+import * as pdfjsLib from './pdfjs/pdf.mjs';
+
+// Point the worker at the locally-served worker script.
+pdfjsLib.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.mjs';
+
+// ─── State ────────────────────────────────────────────────────────────────
 const state = {
-  current: null,
   files: [],
-  objectUrls: new Map(),
+  current: null,      // file record
+  pdfDoc: null,       // PDFDocumentProxy
   page: 1,
-  zoom: '100',
-  tab: 'notes',
-  saveTimer: null
+  totalPages: 0,
+  zoom: 100,          // numeric percent or 'page-width'
+  rendering: false,
+  renderTask: null,
+  saveTimer: null,
+  tab: 'notes'
 };
 
+// ─── DOM refs ─────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
 const els = {
-  fileInput: document.getElementById('fileInput'),
-  dropZone: document.getElementById('dropZone'),
-  fileList: document.getElementById('fileList'),
-  docTitle: document.getElementById('docTitle'),
-  pageInput: document.getElementById('pageInput'),
-  prevPage: document.getElementById('prevPage'),
-  nextPage: document.getElementById('nextPage'),
-  zoomSelect: document.getElementById('zoomSelect'),
-  zoomOut: document.getElementById('zoomOut'),
-  zoomIn: document.getElementById('zoomIn'),
-  printBtn: document.getElementById('printBtn'),
-  empty: document.getElementById('empty'),
-  pdfObject: document.getElementById('pdfObject'),
-  pdfEmbed: document.getElementById('pdfEmbed'),
-  fallback: document.getElementById('fallback'),
-  fallbackLink: document.getElementById('fallbackLink'),
-  notesText: document.getElementById('notesText'),
-  annotationPane: document.getElementById('annotationPane'),
-  annotationPage: document.getElementById('annotationPage'),
-  addAnnotation: document.getElementById('addAnnotation'),
-  notesTab: document.getElementById('notesTab'),
-  annTab: document.getElementById('annTab'),
-  clearNotes: document.getElementById('clearNotes'),
-  statusDot: document.getElementById('statusDot'),
-  statusText: document.getElementById('statusText')
+  fileInput:      $('fileInput'),
+  dropZone:       $('dropZone'),
+  fileList:       $('fileList'),
+  docTitle:       $('docTitle'),
+  pageInput:      $('pageInput'),
+  pageTotal:      $('pageTotal'),
+  prevPage:       $('prevPage'),
+  nextPage:       $('nextPage'),
+  zoomSelect:     $('zoomSelect'),
+  zoomOut:        $('zoomOut'),
+  zoomIn:         $('zoomIn'),
+  printBtn:       $('printBtn'),
+  viewerWrap:     $('viewerWrap'),
+  empty:          $('empty'),
+  pdfCanvas:      $('pdfCanvas'),
+  notesText:      $('notesText'),
+  annotationPane: $('annotationPane'),
+  annotationPage: $('annotationPage'),
+  addAnnotation:  $('addAnnotation'),
+  notesTab:       $('notesTab'),
+  annTab:         $('annTab'),
+  clearNotes:     $('clearNotes'),
+  statusDot:      $('statusDot'),
+  statusText:     $('statusText')
 };
 
-function fingerprint(file) {
-  return [file.name, file.size, file.lastModified].join(':');
-}
-
-function storageKey(id) {
-  return 'pdf-viewer:' + id;
-}
-
-function recentKey() {
-  return 'pdf-viewer:recent';
-}
-
-function formatSize(bytes) {
-  const units = ['B','KB','MB','GB'];
-  let n = bytes, i = 0;
-  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-  return n.toFixed(n < 10 && i ? 1 : 0) + ' ' + units[i];
-}
+// ─── Storage helpers ──────────────────────────────────────────────────────
+const storageKey  = id  => 'pdf-viewer:' + id;
+const recentKey   = ()  => 'pdf-viewer:recent';
+const fingerprint = f   => [f.name, f.size, f.lastModified].join(':');
 
 function loadDocState(id) {
   try { return JSON.parse(localStorage.getItem(storageKey(id))) || { notes: '', annotations: [] }; }
   catch { return { notes: '', annotations: [] }; }
 }
 
-function saveDocState() {
+function persistDocState() {
   if (!state.current) return;
   const doc = loadDocState(state.current.id);
   doc.notes = els.notesText.value;
   localStorage.setItem(storageKey(state.current.id), JSON.stringify(doc));
-  setStatus('Notes saved locally', true);
+  setStatus('Notes saved', true);
 }
 
 function saveRecent() {
   const recent = state.files.map(f => ({
-    id: f.id,
-    name: f.name,
-    size: f.size,
-    lastModified: f.lastModified,
-    openedAt: f.openedAt
+    id: f.id, name: f.name, size: f.size,
+    lastModified: f.lastModified, openedAt: f.openedAt
   })).slice(0, 20);
   localStorage.setItem(recentKey(), JSON.stringify(recent));
 }
@@ -237,68 +233,44 @@ function loadRecent() {
   catch { return []; }
 }
 
+// ─── Utilities ────────────────────────────────────────────────────────────
+function formatSize(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let n = bytes, i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n < 10 && i ? 1 : 0) + ' ' + units[i];
+}
+
+function escapeHtml(v) {
+  return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function setStatus(text, ok) {
+  els.statusText.textContent = text;
+  els.statusDot.classList.toggle('on', !!ok);
+}
+
+function setControls(enabled) {
+  [els.prevPage, els.nextPage, els.pageInput, els.zoomSelect,
+   els.zoomOut, els.zoomIn, els.printBtn].forEach(el => el.disabled = !enabled);
+}
+
+// ─── File management ──────────────────────────────────────────────────────
 function addFiles(fileList) {
-  const pdfs = Array.from(fileList).filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+  const pdfs = Array.from(fileList).filter(
+    f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+  );
   for (const file of pdfs) {
     const id = fingerprint(file);
     const existing = state.files.find(f => f.id === id);
-    if (existing) {
-      existing.file = file;
-      existing.openedAt = Date.now();
-      continue;
-    }
-    state.files.unshift({
-      id,
-      name: file.name,
-      size: file.size,
-      lastModified: file.lastModified,
-      openedAt: Date.now(),
-      file
-    });
+    if (existing) { existing.file = file; existing.openedAt = Date.now(); continue; }
+    state.files.unshift({ id, name: file.name, size: file.size,
+      lastModified: file.lastModified, openedAt: Date.now(), file });
   }
-  state.files.sort((a,b) => b.openedAt - a.openedAt);
+  state.files.sort((a, b) => b.openedAt - a.openedAt);
   renderFileList();
   saveRecent();
   if (pdfs[0]) openDoc(fingerprint(pdfs[0]));
-}
-
-function openDoc(id) {
-  const doc = state.files.find(f => f.id === id);
-  if (!doc) return;
-  if (!doc.file) {
-    setStatus('Reopen this PDF from disk to view it; notes are still available', false);
-    state.current = doc;
-    loadNotesForDoc(doc);
-    renderFileList();
-    return;
-  }
-  state.current = doc;
-  state.page = 1;
-  state.zoom = els.zoomSelect.value || '100';
-  doc.openedAt = Date.now();
-  if (!state.objectUrls.has(doc.id)) state.objectUrls.set(doc.id, URL.createObjectURL(doc.file));
-  loadNotesForDoc(doc);
-  refreshPdf();
-  renderFileList();
-  saveRecent();
-}
-
-function refreshPdf() {
-  if (!state.current || !state.objectUrls.has(state.current.id)) return;
-  const base = state.objectUrls.get(state.current.id);
-  const page = Math.max(1, Number(els.pageInput.value) || state.page || 1);
-  state.page = page;
-  state.zoom = els.zoomSelect.value;
-  const view = base + '#page=' + page + '&zoom=' + encodeURIComponent(state.zoom);
-  els.pdfObject.data = view;
-  els.pdfEmbed.src = view;
-  els.fallbackLink.href = base;
-  els.empty.style.display = 'none';
-  els.fallback.style.display = 'none';
-  els.pdfObject.classList.add('ready');
-  els.docTitle.textContent = state.current.name;
-  els.annotationPage.value = page;
-  setStatus('Viewing ' + state.current.name, true);
 }
 
 function renderFileList() {
@@ -310,7 +282,7 @@ function renderFileList() {
   }
   els.fileList.innerHTML = list.map(doc => {
     const active = state.current && state.current.id === doc.id ? ' active' : '';
-    const local = doc.file ? '' : ' · reopen to view';
+    const local  = doc.file ? '' : ' · reopen to view';
     return `<button class="file-card${active}" data-id="${escapeHtml(doc.id)}">
       <div class="thumb"><span>PDF</span></div>
       <div>
@@ -319,16 +291,134 @@ function renderFileList() {
       </div>
     </button>`;
   }).join('');
-  els.fileList.querySelectorAll('.file-card').forEach(btn => {
-    btn.addEventListener('click', () => openDoc(btn.dataset.id));
-  });
+  els.fileList.querySelectorAll('.file-card').forEach(btn =>
+    btn.addEventListener('click', () => openDoc(btn.dataset.id))
+  );
 }
 
+// ─── PDF loading ──────────────────────────────────────────────────────────
+async function openDoc(id) {
+  const doc = state.files.find(f => f.id === id);
+  if (!doc) return;
+  if (!doc.file) {
+    setStatus('Reopen this PDF from disk to view it; notes are still available', false);
+    state.current = doc;
+    loadNotesForDoc(doc);
+    renderFileList();
+    return;
+  }
+
+  state.current = doc;
+  doc.openedAt = Date.now();
+  els.docTitle.textContent = doc.name;
+  loadNotesForDoc(doc);
+  renderFileList();
+  saveRecent();
+  setStatus('Loading…', false);
+  setControls(false);
+
+  try {
+    const arrayBuffer = await doc.file.arrayBuffer();
+    // Close previous document if any
+    if (state.pdfDoc) {
+      state.pdfDoc.destroy();
+      state.pdfDoc = null;
+    }
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    state.pdfDoc = await loadingTask.promise;
+    state.totalPages = state.pdfDoc.numPages;
+    state.page = 1;
+
+    els.pageInput.min   = 1;
+    els.pageInput.max   = state.totalPages;
+    els.pageInput.value = 1;
+    els.pageTotal.textContent = '/ ' + state.totalPages;
+    els.annotationPage.max   = state.totalPages;
+    els.annotationPage.value = 1;
+
+    els.empty.style.display    = 'none';
+    els.pdfCanvas.style.display = 'block';
+    setControls(true);
+    await renderPage(state.page);
+    setStatus('Viewing ' + doc.name + ' (' + state.totalPages + ' page' + (state.totalPages > 1 ? 's' : '') + ')', true);
+  } catch (err) {
+    setStatus('Error loading PDF: ' + err.message, false);
+    console.error('[pdf-viewer]', err);
+  }
+}
+
+// ─── Page rendering ───────────────────────────────────────────────────────
+async function renderPage(pageNum) {
+  if (!state.pdfDoc) return;
+  // Cancel any in-progress render
+  if (state.rendering && state.renderTask) {
+    state.renderTask.cancel();
+  }
+  state.rendering = true;
+
+  const page = await state.pdfDoc.getPage(pageNum);
+  const scale = computeScale(page);
+
+  const viewport  = page.getViewport({ scale });
+  const canvas    = els.pdfCanvas;
+  const ctx       = canvas.getContext('2d');
+
+  // Set canvas dimensions to match viewport at device pixel ratio for crisp text
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(viewport.width  * dpr);
+  canvas.height = Math.floor(viewport.height * dpr);
+  canvas.style.width  = Math.floor(viewport.width)  + 'px';
+  canvas.style.height = Math.floor(viewport.height) + 'px';
+  ctx.scale(dpr, dpr);
+
+  const renderContext = { canvasContext: ctx, viewport };
+  try {
+    state.renderTask = page.render(renderContext);
+    await state.renderTask.promise;
+  } catch (err) {
+    if (err?.name === 'RenderingCancelledException') return;
+    throw err;
+  } finally {
+    page.cleanup();
+    state.rendering = false;
+    state.renderTask = null;
+  }
+}
+
+// Compute scale factor from zoom setting vs page natural size
+function computeScale(page) {
+  const zoomVal = els.zoomSelect.value;
+  if (zoomVal === 'page-width') {
+    const wrap = els.viewerWrap;
+    const availableWidth = wrap.clientWidth - 40; // 20px padding each side
+    const viewport1 = page.getViewport({ scale: 1 });
+    return Math.max(0.1, availableWidth / viewport1.width);
+  }
+  return parseFloat(zoomVal) / 100;
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────
+function goToPage(n) {
+  if (!state.pdfDoc) return;
+  state.page = Math.max(1, Math.min(state.totalPages, n));
+  els.pageInput.value = state.page;
+  els.annotationPage.value = state.page;
+  renderPage(state.page);
+}
+
+function stepZoom(delta) {
+  const steps = ['50', '75', '100', '125', '150', '200'];
+  const current = steps.indexOf(els.zoomSelect.value);
+  const next = Math.max(0, Math.min(steps.length - 1, (current === -1 ? 2 : current) + delta));
+  els.zoomSelect.value = steps[next];
+  if (state.pdfDoc) renderPage(state.page);
+}
+
+// ─── Notes / Annotations ──────────────────────────────────────────────────
 function loadNotesForDoc(doc) {
   const data = loadDocState(doc.id);
   els.notesText.value = data.notes || '';
   renderAnnotations();
-  els.docTitle.textContent = doc.name;
 }
 
 function renderAnnotations() {
@@ -336,7 +426,7 @@ function renderAnnotations() {
     els.annotationPane.innerHTML = '<div class="file-meta">Open a PDF to add annotations.</div>';
     return;
   }
-  const data = loadDocState(state.current.id);
+  const data        = loadDocState(state.current.id);
   const annotations = data.annotations || [];
   if (!annotations.length) {
     els.annotationPane.innerHTML = '<div class="file-meta">No annotations yet.</div>';
@@ -344,28 +434,27 @@ function renderAnnotations() {
   }
   els.annotationPane.innerHTML = annotations.map((a, idx) => `
     <div class="annotation">
-      <div class="annotation-top"><strong>Page ${a.page}</strong><span>${new Date(a.created).toLocaleString()}</span><button data-del="${idx}">Delete</button></div>
+      <div class="annotation-top">
+        <strong>Page ${a.page}</strong>
+        <span>${new Date(a.created).toLocaleString()}</span>
+        <button data-del="${idx}">Delete</button>
+      </div>
       <p>${escapeHtml(a.text)}</p>
-    </div>
-  `).join('');
-  els.annotationPane.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', () => deleteAnnotation(Number(btn.dataset.del)));
-  });
+    </div>`).join('');
+  els.annotationPane.querySelectorAll('[data-del]').forEach(btn =>
+    btn.addEventListener('click', () => deleteAnnotation(Number(btn.dataset.del)))
+  );
 }
 
 function addAnnotation() {
   if (!state.current) return;
   const text = els.notesText.value.trim();
-  if (!text) {
-    setStatus('Write note text before adding an annotation', false);
-    return;
-  }
+  if (!text) { setStatus('Write note text before adding an annotation', false); return; }
   const doc = loadDocState(state.current.id);
   doc.annotations = doc.annotations || [];
   doc.annotations.unshift({
     page: Math.max(1, Number(els.annotationPage.value) || state.page || 1),
-    text,
-    created: Date.now()
+    text, created: Date.now()
   });
   localStorage.setItem(storageKey(state.current.id), JSON.stringify(doc));
   els.notesText.value = '';
@@ -388,61 +477,57 @@ function setTab(tab) {
   const notes = tab === 'notes';
   els.notesTab.classList.toggle('active', notes);
   els.annTab.classList.toggle('active', !notes);
-  els.notesText.style.display = notes ? 'block' : 'none';
+  els.notesText.style.display     = notes ? 'block' : 'none';
   els.annotationPane.style.display = notes ? 'none' : 'block';
   renderAnnotations();
 }
 
-function setStatus(text, ok) {
-  els.statusText.textContent = text;
-  els.statusDot.classList.toggle('on', !!ok);
-}
-
+// ─── Print ────────────────────────────────────────────────────────────────
 function printCurrent() {
-  if (!state.current || !state.objectUrls.has(state.current.id)) return;
-  const url = state.objectUrls.get(state.current.id);
+  if (!state.current || !state.current.file) return;
+  const url   = URL.createObjectURL(state.current.file);
   const frame = document.createElement('iframe');
-  frame.style.position = 'fixed';
-  frame.style.right = '0';
-  frame.style.bottom = '0';
-  frame.style.width = '0';
-  frame.style.height = '0';
-  frame.style.border = '0';
+  Object.assign(frame.style, {
+    position: 'fixed', right: '0', bottom: '0',
+    width: '0', height: '0', border: '0'
+  });
   frame.src = url;
   frame.onload = () => {
-    try {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-    } catch {
-      window.open(url, '_blank', 'noopener');
-    }
-    setTimeout(() => frame.remove(), 3000);
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch { window.open(url, '_blank', 'noopener'); }
+    setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 3000);
   };
   document.body.appendChild(frame);
 }
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-}
-
+// ─── Event wiring ─────────────────────────────────────────────────────────
 els.fileInput.addEventListener('change', e => addFiles(e.target.files));
-els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('drag'); });
+
+els.dropZone.addEventListener('dragover', e => {
+  e.preventDefault(); els.dropZone.classList.add('drag');
+});
 els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));
-els.dropZone.addEventListener('drop', e => { e.preventDefault(); els.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
-els.pageInput.addEventListener('change', refreshPdf);
-els.prevPage.addEventListener('click', () => { els.pageInput.value = Math.max(1, (Number(els.pageInput.value) || 1) - 1); refreshPdf(); });
-els.nextPage.addEventListener('click', () => { els.pageInput.value = (Number(els.pageInput.value) || 1) + 1; refreshPdf(); });
-els.zoomSelect.addEventListener('change', refreshPdf);
+els.dropZone.addEventListener('drop', e => {
+  e.preventDefault(); els.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files);
+});
+
+els.prevPage.addEventListener('click', () => goToPage(state.page - 1));
+els.nextPage.addEventListener('click', () => goToPage(state.page + 1));
+els.pageInput.addEventListener('change', () => goToPage(Number(els.pageInput.value)));
+
+els.zoomSelect.addEventListener('change', () => { if (state.pdfDoc) renderPage(state.page); });
 els.zoomOut.addEventListener('click', () => stepZoom(-1));
-els.zoomIn.addEventListener('click', () => stepZoom(1));
+els.zoomIn.addEventListener('click',  () => stepZoom(+1));
+
 els.printBtn.addEventListener('click', printCurrent);
+
 els.notesText.addEventListener('input', () => {
   clearTimeout(state.saveTimer);
-  state.saveTimer = setTimeout(saveDocState, 250);
+  state.saveTimer = setTimeout(persistDocState, 250);
 });
 els.addAnnotation.addEventListener('click', addAnnotation);
 els.notesTab.addEventListener('click', () => setTab('notes'));
-els.annTab.addEventListener('click', () => setTab('annotations'));
+els.annTab.addEventListener('click',   () => setTab('annotations'));
 els.clearNotes.addEventListener('click', () => {
   if (!state.current) return;
   localStorage.removeItem(storageKey(state.current.id));
@@ -451,18 +536,16 @@ els.clearNotes.addEventListener('click', () => {
   setStatus('Notes cleared for this PDF', false);
 });
 
-function stepZoom(delta) {
-  const values = ['75','100','125','150','200'];
-  const current = values.includes(els.zoomSelect.value) ? values.indexOf(els.zoomSelect.value) : 1;
-  const next = Math.max(0, Math.min(values.length - 1, current + delta));
-  els.zoomSelect.value = values[next];
-  refreshPdf();
-}
-
-window.addEventListener('beforeunload', () => {
-  for (const url of state.objectUrls.values()) URL.revokeObjectURL(url);
+// Re-render on wrap resize (e.g. fit-width after window resize)
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.pdfDoc && els.zoomSelect.value === 'page-width') renderPage(state.page);
+  }, 150);
 });
 
+// ─── Boot ─────────────────────────────────────────────────────────────────
 state.files = loadRecent();
 renderFileList();
 setTab('notes');
