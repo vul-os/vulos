@@ -51,6 +51,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
     flatpak \
+    cage labwc \
+    pipewire pipewire-pulse wireplumber \
+    gstreamer1.0-pipewire \
+    xdg-desktop-portal-wlr \
+    libgbm1 libegl1 \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
     && rm -rf /var/lib/apt/lists/* \
     && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
@@ -88,6 +93,8 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV XDG_RUNTIME_DIR=/tmp/xdg-runtime
 ENV WLR_BACKENDS=headless
 ENV WLR_RENDERER=pixman
+ENV XDG_SESSION_TYPE=wayland
+ENV MOZ_ENABLE_WAYLAND=1
 ENV VULOS_REGISTRY=/opt/vulos/registry.json
 ENV SHELL=/bin/bash
 ENV DISPLAY=:99
