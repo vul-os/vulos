@@ -3,10 +3,16 @@ package ai
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"vulos/backend/services/notify"
 )
+
+// AlertCooldown is the minimum time between repeated alerts with the same title.
+// This prevents the agent from spamming notifications every check interval while
+// a condition persists. Env-overridable via registering checks with WithCooldown.
+const AlertCooldown = 15 * time.Minute
 
 // ProactiveAgent monitors system state and generates AI-driven alerts.
 // Instead of just "your battery is low," it says "Your battery is at 12%.
@@ -16,6 +22,9 @@ type ProactiveAgent struct {
 	cfg      Config
 	notifier *notify.Service
 	checks   []ProactiveCheck
+
+	mu        sync.Mutex
+	lastAlert map[string]time.Time // title → last sent time (deduplication)
 }
 
 // ProactiveCheck is a function that examines system state and returns
@@ -23,7 +32,12 @@ type ProactiveAgent struct {
 type ProactiveCheck func(ctx context.Context) (title, body string, level notify.Level, ok bool)
 
 func NewProactiveAgent(ai *Service, cfg Config, notifier *notify.Service) *ProactiveAgent {
-	return &ProactiveAgent{ai: ai, cfg: cfg, notifier: notifier}
+	return &ProactiveAgent{
+		ai:        ai,
+		cfg:       cfg,
+		notifier:  notifier,
+		lastAlert: make(map[string]time.Time),
+	}
 }
 
 // RegisterCheck adds a system check to the agent's watch list.
@@ -46,20 +60,37 @@ func (pa *ProactiveAgent) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
+// canAlert returns true if enough time has passed since the last alert with
+// this title, preventing repeated notifications while a condition persists.
+func (pa *ProactiveAgent) canAlert(title string) bool {
+	pa.mu.Lock()
+	defer pa.mu.Unlock()
+	if last, ok := pa.lastAlert[title]; ok && time.Since(last) < AlertCooldown {
+		return false
+	}
+	pa.lastAlert[title] = time.Now()
+	return true
+}
+
 func (pa *ProactiveAgent) runChecks(ctx context.Context) {
 	for _, check := range pa.checks {
 		title, body, level, shouldAlert := check(ctx)
-		if shouldAlert {
-			// Optionally enhance with AI
-			if pa.cfg.APIKey != "" || pa.cfg.Provider == ProviderOllama {
-				enhanced := pa.enhance(ctx, title, body)
-				if enhanced != "" {
-					body = enhanced
-				}
-			}
-			pa.notifier.Send(title, body, level, "ai-agent")
-			log.Printf("[proactive] alert: %s — %s", title, body)
+		if !shouldAlert {
+			continue
 		}
+		// Deduplicate: skip if the same alert was sent recently.
+		if !pa.canAlert(title) {
+			continue
+		}
+		// Optionally enhance with AI
+		if pa.cfg.APIKey != "" || pa.cfg.Provider == ProviderOllama {
+			enhanced := pa.enhance(ctx, title, body)
+			if enhanced != "" {
+				body = enhanced
+			}
+		}
+		pa.notifier.Send(title, body, level, "ai-agent")
+		log.Printf("[proactive] alert: %s — %s", title, body)
 	}
 }
 
