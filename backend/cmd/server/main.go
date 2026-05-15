@@ -20,6 +20,7 @@ import (
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
+	"vulos/backend/services/appfs"
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
@@ -1621,6 +1622,11 @@ func main() {
 		}
 		writeJSON(w, res)
 	})
+
+	// App filesystem persistence — sandboxed read/write under ~/.vulos/<app>/
+	appfsBaseDir := filepath.Join(home, ".vulos")
+	appfsSvc := appfs.New(appfsBaseDir)
+	appfsSvc.Register(mux)
 
 	// TURN credentials (for WebRTC relay in remote mode)
 	mux.HandleFunc("GET /api/turn/credentials", func(w http.ResponseWriter, r *http.Request) {
