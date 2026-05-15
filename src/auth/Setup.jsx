@@ -3,7 +3,68 @@ import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 
-const STEPS = ['welcome', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'ready']
+const STEPS = ['welcome', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'ready']
+
+const DEVICE_PROFILES = [
+  {
+    id: 'pc',
+    label: 'PC / Tablet / Mobile',
+    desc: 'Full desktop & responsive experience',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+      </svg>
+    ),
+    accent: 'blue',
+  },
+  {
+    id: 'tv',
+    label: 'TV',
+    desc: '10-foot UI, remote navigation, media focus',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+        <rect x="2" y="4" width="20" height="14" rx="2" />
+        <path d="M8 20h8M7 4l5-3 5 3" />
+      </svg>
+    ),
+    accent: 'violet',
+  },
+  {
+    id: 'car',
+    label: 'Car',
+    desc: 'Large touch targets, voice-first, glanceable',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+        <path d="M5 12l1.5-4.5A2 2 0 018.4 6h7.2a2 2 0 011.9 1.5L19 12" />
+        <rect x="2" y="12" width="20" height="6" rx="2" />
+        <circle cx="7" cy="18" r="2" />
+        <circle cx="17" cy="18" r="2" />
+      </svg>
+    ),
+    accent: 'amber',
+  },
+  {
+    id: 'watch',
+    label: 'Watch',
+    desc: 'Companion device, AI chat, notifications',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+        <rect x="7" y="5" width="10" height="14" rx="3" />
+        <path d="M9 5V3M15 5V3M9 19v2M15 19v2" />
+        <circle cx="12" cy="12" r="2" fill="currentColor" />
+      </svg>
+    ),
+    accent: 'emerald',
+  },
+]
+
+const PROFILE_ACCENT_CLASSES = {
+  blue:    { selected: 'bg-blue-600/15 border-blue-500/60 text-white shadow-blue-500/10', icon: 'text-blue-400', check: 'bg-blue-500' },
+  violet:  { selected: 'bg-violet-600/15 border-violet-500/60 text-white shadow-violet-500/10', icon: 'text-violet-400', check: 'bg-violet-500' },
+  amber:   { selected: 'bg-amber-600/15 border-amber-500/60 text-white shadow-amber-500/10', icon: 'text-amber-400', check: 'bg-amber-500' },
+  emerald: { selected: 'bg-emerald-600/15 border-emerald-500/60 text-white shadow-emerald-500/10', icon: 'text-emerald-400', check: 'bg-emerald-500' },
+}
 
 // Timezone data with approximate map positions (% from top-left)
 const TIMEZONES = [
@@ -49,6 +110,7 @@ const LANGUAGES = [
 export default function Setup({ onComplete }) {
   const [step, setStep] = useState(0)
   const [config, setConfig] = useState({
+    deviceProfile: '',
     locale: 'en',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
     wifiSSID: '',
@@ -72,6 +134,12 @@ export default function Setup({ onComplete }) {
 
   const finish = async () => {
     try {
+      if (config.deviceProfile) {
+        await fetch('/api/device-profile', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: config.deviceProfile }),
+        }).catch(() => {})
+      }
       if (config.timezone) {
         await fetch('/api/exec', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -125,6 +193,7 @@ export default function Setup({ onComplete }) {
         {/* Content */}
         <div className={`w-full max-w-xl transition-all duration-200 ${transitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
           {current === 'welcome' && <WelcomeStep onNext={next} />}
+          {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'language' && <LanguageStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
@@ -154,6 +223,86 @@ function WelcomeStep({ onNext }) {
       <button onClick={onNext} className="btn-primary px-10 py-3 text-base mt-8">
         Get Started
       </button>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// Device Profile
+// ═══════════════════════════════════
+function DeviceStep({ config, update, onNext, onPrev }) {
+  const [loading, setLoading] = useState(true)
+  const [detected, setDetected] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/device-profile')
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return
+        const suggested = data?.suggested || data?.profile || null
+        setDetected(suggested)
+        if (suggested && !config.deviceProfile) {
+          update('deviceProfile', suggested)
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selected = config.deviceProfile || detected || ''
+
+  return (
+    <div>
+      <StepHeader
+        title="What kind of device is this?"
+        subtitle={loading ? 'Detecting your device…' : detected ? `Auto-detected: ${DEVICE_PROFILES.find(p => p.id === detected)?.label || detected}` : 'Choose how Vula OS should behave on this device'}
+      />
+
+      <div className="grid grid-cols-2 gap-3">
+        {DEVICE_PROFILES.map(profile => {
+          const isSelected = selected === profile.id
+          const ac = PROFILE_ACCENT_CLASSES[profile.accent]
+          return (
+            <button
+              key={profile.id}
+              onClick={() => update('deviceProfile', profile.id)}
+              className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all border-2
+                ${isSelected
+                  ? `${ac.selected} shadow-lg`
+                  : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+            >
+              <span className={isSelected ? ac.icon : 'text-neutral-500'}>
+                {profile.icon}
+              </span>
+              <div>
+                <div className="text-sm font-medium leading-snug">{profile.label}</div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 leading-snug">{profile.desc}</div>
+              </div>
+              {detected === profile.id && !isSelected && (
+                <div className="absolute top-2 right-2 text-[9px] font-semibold tracking-wider text-neutral-500 uppercase">
+                  Detected
+                </div>
+              )}
+              {detected === profile.id && isSelected && (
+                <div className="absolute top-2 left-2 text-[9px] font-semibold tracking-wider text-neutral-400 uppercase">
+                  Detected
+                </div>
+              )}
+              {isSelected && (
+                <div className={`absolute top-2 right-2 w-5 h-5 rounded-full ${ac.check} flex items-center justify-center`}>
+                  <svg viewBox="0 0 16 16" className="w-3 h-3 text-white">
+                    <path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      <NavBar onPrev={onPrev} onNext={onNext} nextLabel={selected ? 'Continue' : 'Skip'} />
     </div>
   )
 }
@@ -625,6 +774,9 @@ function ReadyStep({ config, onFinish, onPrev }) {
       <StepHeader title="You're all set" subtitle="Here's what we'll configure" />
 
       <div className="grid grid-cols-2 gap-3 text-left mb-8">
+        {config.deviceProfile && (
+          <SummaryCard icon="💻" label="Device" value={DEVICE_PROFILES.find(p => p.id === config.deviceProfile)?.label || config.deviceProfile} />
+        )}
         <SummaryCard icon="🌍" label="Language" value={selectedLang?.native || config.locale} />
         <SummaryCard icon="🕐" label="Timezone" value={selectedTz?.label || config.timezone || 'Auto'} />
         <SummaryCard icon="📶" label="WiFi" value={config.wifiSSID || 'Not configured'} />
