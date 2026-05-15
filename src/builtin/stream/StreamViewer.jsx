@@ -22,7 +22,7 @@ function getModifiers(e) {
   return m
 }
 
-export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
+export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gaming = false }) {
   const videoRef = useRef(null)
   const wsRef = useRef(null)
   const pcRef = useRef(null)
@@ -33,8 +33,10 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
   const lastMouseRef = useRef(0)
   const scrollAccRef = useRef(0)
   const scrollRafRef = useRef(null)
+  const pointerLockedRef = useRef(false)
   const [status, setStatus] = useState('connecting')
   const [error, setError] = useState(null)
+  const [pointerLocked, setPointerLocked] = useState(false)
   const streamSize = useRef({ w: 1280, h: 720 })
 
   const sendMouse = useCallback((evt) => {
@@ -191,8 +193,40 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
     }
   }, [])
 
+  // Pointer lock lifecycle — track lock state via document events.
+  // pointerLockedRef is used in hot-path handlers; pointerLocked state drives UI.
+  useEffect(() => {
+    const onLockChange = () => {
+      const locked = document.pointerLockElement === containerRef.current ||
+                     document.pointerLockElement === videoRef.current
+      pointerLockedRef.current = locked
+      setPointerLocked(locked)
+    }
+    const onLockError = () => {
+      pointerLockedRef.current = false
+      setPointerLocked(false)
+    }
+    document.addEventListener('pointerlockchange', onLockChange)
+    document.addEventListener('pointerlockerror', onLockError)
+    return () => {
+      document.removeEventListener('pointerlockchange', onLockChange)
+      document.removeEventListener('pointerlockerror', onLockError)
+      // Release lock if component unmounts while locked
+      if (pointerLockedRef.current) document.exitPointerLock?.()
+    }
+  }, [])
+
   // --- Mouse events (unreliable channel) ---
   const onMouseMove = useCallback((e) => {
+    if (pointerLockedRef.current) {
+      // Pointer-lock mode: bypass coalesce throttle, send raw deltas immediately
+      const dx = e.movementX
+      const dy = e.movementY
+      if (dx !== 0 || dy !== 0) {
+        sendMouse({ t: 'mr', dx, dy })
+      }
+      return
+    }
     const now = performance.now()
     if (now - lastMouseRef.current < 8) return // ~120hz cap
     lastMouseRef.current = now
@@ -202,8 +236,14 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
   const onMouseDown = useCallback((e) => {
     e.preventDefault()
     focusContainer()
+    // In gaming mode, first click acquires pointer lock instead of sending a button event
+    if (gaming && !pointerLockedRef.current && status === 'connected') {
+      const el = containerRef.current
+      if (el) el.requestPointerLock()
+      return
+    }
     sendMouse({ t: 'md', ...getPos(e), b: e.button })
-  }, [getPos, sendMouse, focusContainer])
+  }, [gaming, status, getPos, sendMouse, focusContainer])
 
   const onMouseUp = useCallback((e) => sendMouse({ t: 'mu', b: e.button }), [sendMouse])
 
@@ -225,8 +265,14 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
   const onKeyDown = useCallback((e) => {
     e.preventDefault()
     e.stopPropagation()
+    // Escape releases pointer lock in gaming mode; the keydown is NOT forwarded
+    // so the remote app does not receive an unintended Escape while unlocking.
+    if (gaming && e.key === 'Escape' && pointerLockedRef.current) {
+      document.exitPointerLock?.()
+      return
+    }
     sendKbd({ t: 'kd', key: e.key, code: e.code, mod: getModifiers(e) })
-  }, [sendKbd])
+  }, [gaming, sendKbd])
 
   const onKeyUp = useCallback((e) => {
     e.preventDefault()
@@ -263,6 +309,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
       onKeyUp={onKeyUp}
       onContextMenu={e => e.preventDefault()}
       onClick={focusContainer}
+      style={{ cursor: pointerLocked ? 'none' : undefined }}
     >
       {status === 'connecting' && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-neutral-950">
@@ -272,13 +319,20 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
           </span>
         </div>
       )}
+      {gaming && !pointerLocked && status === 'connected' && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <div className="bg-black/60 text-neutral-300 text-xs px-3 py-1.5 rounded-full backdrop-blur-sm select-none">
+            Click to capture mouse &mdash; Esc to release
+          </div>
+        </div>
+      )}
       <video
         ref={videoRef}
         autoPlay playsInline
         disablePictureInPicture
         controlsList="noplaybackrate nodownload"
         className="absolute inset-0 w-full h-full"
-        style={{ cursor: 'default', objectFit: 'contain' }}
+        style={{ cursor: pointerLocked ? 'none' : 'default', objectFit: 'contain' }}
       />
     </div>
   )

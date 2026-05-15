@@ -34,15 +34,15 @@ import (
 
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Display string  `json:"display"`
-	Width   int     `json:"width"`
-	Height  int     `json:"height"`
-	FPS     int     `json:"fps"`
-	Running bool    `json:"running"`
-	Encoder string  `json:"encoder"`
-	Quality string  `json:"quality"` // current adaptive quality level
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	FPS     int    `json:"fps"`
+	Running bool   `json:"running"`
+	Encoder string `json:"encoder"`
+	Quality string `json:"quality"` // current adaptive quality level
 
 	mu         sync.Mutex
 	ctx        context.Context
@@ -241,15 +241,24 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMouse processes mouse events from the dedicated mouse channel (unreliable/unordered).
+// Message types:
+//
+//	mm  — absolute move (normal mode)
+//	mr  — relative move delta (gaming / pointer-lock mode, no coalescing)
+//	md  — mouse button down (includes absolute position)
+//	mu  — mouse button up
+//	sc  — scroll wheel
 func (s *Session) handleMouse(data []byte) {
 	if s.injector == nil {
 		return
 	}
 	var evt struct {
-		T string  `json:"t"` // mm=move, md=down, mu=up, sc=scroll
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-		B int     `json:"b"` // button
+		T  string  `json:"t"`  // mm=move, mr=move-relative, md=down, mu=up, sc=scroll
+		X  float64 `json:"x"`  // absolute X (mm/md) or delta X (mr)
+		Y  float64 `json:"y"`  // absolute Y (mm/md) or delta Y (mr)
+		DX float64 `json:"dx"` // alias delta X for mr (movementX)
+		DY float64 `json:"dy"` // alias delta Y for mr (movementY)
+		B  int     `json:"b"`  // button index
 	}
 	if json.Unmarshal(data, &evt) != nil {
 		return
@@ -257,6 +266,15 @@ func (s *Session) handleMouse(data []byte) {
 	switch evt.T {
 	case "mm":
 		s.injector.MouseMove(int(evt.X), int(evt.Y))
+	case "mr":
+		// Raw relative delta from pointer-lock movementX/movementY.
+		// Frontend sends dx/dy; x/y are kept as aliases for forward compat.
+		dx := evt.DX
+		dy := evt.DY
+		if dx == 0 && dy == 0 {
+			dx, dy = evt.X, evt.Y
+		}
+		s.injector.MouseMoveRel(int(dx), int(dy))
 	case "md":
 		s.injector.MouseMove(int(evt.X), int(evt.Y))
 		s.injector.MouseButton(evt.B, true)
@@ -283,7 +301,7 @@ func (s *Session) handleKeyboard(data []byte) {
 		return
 	}
 	var evt struct {
-		T    string `json:"t"`    // kd=keydown, ku=keyup
+		T    string `json:"t"` // kd=keydown, ku=keyup
 		Key  string `json:"key"`
 		Code string `json:"code"`
 		Mod  int    `json:"mod"` // modifier bitmask
