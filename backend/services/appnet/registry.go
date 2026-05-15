@@ -3,15 +3,20 @@ package appnet
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"vulos/backend/services/packages"
 	"sort"
 	"strings"
+	"time"
+	"vulos/backend/services/packages"
 )
 
 // Registry holds the catalog of vetted apps with versioned install recipes.
@@ -43,15 +48,15 @@ type Registry struct {
 // RegistryEntry is a single app in the registry.
 type RegistryEntry struct {
 	Name        string                    `json:"name"`
-	Vetted      bool                      `json:"vetted"`       // true = reviewed and approved by Vula OS team
-	Type        string                    `json:"type"`         // "web" (serves HTTP), "desktop" (GUI app, streamed via XvfbBackend), or "service" (background daemon)
-	Arch        []string                  `json:"arch"`         // supported architectures (e.g. ["amd64","arm64"]), empty = all
+	Vetted      bool                      `json:"vetted"` // true = reviewed and approved by Vula OS team
+	Type        string                    `json:"type"`   // "web" (serves HTTP), "desktop" (GUI app, streamed via XvfbBackend), or "service" (background daemon)
+	Arch        []string                  `json:"arch"`   // supported architectures (e.g. ["amd64","arm64"]), empty = all
 	Description string                    `json:"description"`
 	Category    string                    `json:"category"`
 	Author      string                    `json:"author"`
 	Homepage    string                    `json:"homepage"`
-	Icon        string                    `json:"icon"`         // unicode fallback icon
-	IconURL     string                    `json:"icon_url"`     // URL to download icon from
+	Icon        string                    `json:"icon"`     // unicode fallback icon
+	IconURL     string                    `json:"icon_url"` // URL to download icon from
 	Keywords    []string                  `json:"keywords"`
 	License     string                    `json:"license"`
 	Versions    map[string]*VersionRecipe `json:"versions"`
@@ -59,17 +64,19 @@ type RegistryEntry struct {
 
 // VersionRecipe defines how to install and run a specific version of an app.
 type VersionRecipe struct {
-	Install     string            `json:"install"`      // shell command to install (e.g., "apt-get install -y postgresql-16")
-	FlatpakID   string            `json:"flatpak_id"`   // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
-	Command     string            `json:"command"`      // how to run it (e.g., "bin/postgres -D data/")
-	Port        int               `json:"port"`         // default port the app listens on
-	PostInstall string            `json:"post_install"` // one-time setup command (e.g., "bin/initdb -D data/")
-	Deps        []string          `json:"deps"`         // additional OS package dependencies
-	Env         map[string]string `json:"env"`          // default environment variables
-	Permissions []string          `json:"permissions"`  // required permissions
-	Checksum    string            `json:"checksum"`     // sha256 checksum of download (if applicable)
-	Singleton   bool              `json:"singleton"`    // only one instance allowed
-	AutoStart   bool              `json:"auto_start"`   // start on boot
+	Install      string            `json:"install"`       // shell command to install (e.g., "apt-get install -y postgresql-16")
+	FlatpakID    string            `json:"flatpak_id"`    // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
+	DownloadURL  string            `json:"download_url"`  // static install: URL to download a binary or tar.gz archive
+	ArchiveStrip int               `json:"archive_strip"` // static install: number of leading path components to strip when extracting (tar --strip-components)
+	Command      string            `json:"command"`       // how to run it (e.g., "bin/postgres -D data/")
+	Port         int               `json:"port"`          // default port the app listens on
+	PostInstall  string            `json:"post_install"`  // one-time setup command (e.g., "bin/initdb -D data/")
+	Deps         []string          `json:"deps"`          // additional OS package dependencies
+	Env          map[string]string `json:"env"`           // default environment variables
+	Permissions  []string          `json:"permissions"`   // required permissions
+	Checksum     string            `json:"checksum"`      // sha256 checksum of download (if applicable)
+	Singleton    bool              `json:"singleton"`     // only one instance allowed
+	AutoStart    bool              `json:"auto_start"`    // start on boot
 }
 
 // LatestVersion returns the highest version string for an entry.
@@ -149,6 +156,11 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		if err := FlatpakInstall(ctx, recipe.FlatpakID); err != nil {
 			return fmt.Errorf("flatpak install %s: %w", recipe.FlatpakID, err)
 		}
+	} else if recipe.DownloadURL != "" {
+		// Static (download) install path: download archive/binary, verify checksum, extract into app dir.
+		if err := staticInstall(ctx, recipe, appDir); err != nil {
+			return fmt.Errorf("static install %s: %w", appID, err)
+		}
 	} else {
 		// Ensure apt cache is ready before installing
 		if !packages.CacheReady() {
@@ -167,7 +179,9 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = &stderrBuf
 			home := os.Getenv("HOME")
-			if home == "" { home = "/root" }
+			if home == "" {
+				home = "/root"
+			}
 			cmd.Env = append(os.Environ(), fmt.Sprintf("APP_DIR=%s", appDir), "HOME="+home)
 			if err := cmd.Run(); err != nil {
 				errOutput := lastLines(stderrBuf.String(), 10)
@@ -186,7 +200,9 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 
 	// Generate the app.json manifest
 	appType := entry.Type
-	if appType == "" { appType = "web" }
+	if appType == "" {
+		appType = "web"
+	}
 	appCommand := recipe.Command
 	if recipe.FlatpakID != "" && appCommand == "" {
 		appCommand = FlatpakRunCommand(recipe.FlatpakID)
@@ -361,6 +377,114 @@ func availableVersions(entry *RegistryEntry) []string {
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
 	return versions
+}
+
+// staticInstall downloads a binary or archive from recipe.DownloadURL, verifies its SHA-256
+// checksum (when recipe.Checksum is set), and installs it into appDir.
+//
+//   - .tar.gz / .tgz archives: extracted with tar, stripping recipe.ArchiveStrip leading
+//     path components. The caller is expected to set recipe.Command to a path relative to
+//     appDir (e.g. "bin/server").
+//   - Single binary: saved directly to bin/<basename>, made executable.
+//
+// The download is streamed so large files do not require buffering in memory.
+func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) error {
+	url := recipe.DownloadURL
+	log.Printf("[registry/static] downloading %s", url)
+
+	client := &http.Client{Timeout: 10 * time.Minute}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download: HTTP %d", resp.StatusCode)
+	}
+
+	// Buffer to a temp file so we can verify the checksum before extracting.
+	tmpFile, err := os.CreateTemp(appDir, ".dl-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmpFile, h), resp.Body); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write download: %w", err)
+	}
+	tmpFile.Close()
+
+	// Verify checksum when provided.
+	if recipe.Checksum != "" {
+		got := hex.EncodeToString(h.Sum(nil))
+		if got != strings.ToLower(recipe.Checksum) {
+			return fmt.Errorf("checksum mismatch: expected %s, got %s", recipe.Checksum, got)
+		}
+		log.Printf("[registry/static] checksum OK (%s)", got[:12])
+	}
+
+	// Detect archive vs plain binary by URL extension.
+	lowerURL := strings.ToLower(url)
+	isArchive := strings.HasSuffix(lowerURL, ".tar.gz") ||
+		strings.HasSuffix(lowerURL, ".tgz") ||
+		strings.HasSuffix(lowerURL, ".tar.bz2") ||
+		strings.HasSuffix(lowerURL, ".tar.xz")
+
+	if isArchive {
+		args := []string{"xf", tmpPath, "-C", appDir}
+		if recipe.ArchiveStrip > 0 {
+			args = append(args, fmt.Sprintf("--strip-components=%d", recipe.ArchiveStrip))
+		}
+		log.Printf("[registry/static] extracting archive into %s (strip=%d)", appDir, recipe.ArchiveStrip)
+		cmd := exec.CommandContext(ctx, "tar", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("extract archive: %w\n%s", err, strings.TrimSpace(string(out)))
+		}
+	} else {
+		// Plain binary: install to bin/<filename>.
+		base := filepath.Base(strings.SplitN(url, "?", 2)[0])
+		destPath := filepath.Join(appDir, "bin", base)
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("create bin dir: %w", err)
+		}
+		if err := os.Rename(tmpPath, destPath); err != nil {
+			// Rename may fail across mount points; fall back to copy.
+			if err2 := copyFile(tmpPath, destPath); err2 != nil {
+				return fmt.Errorf("install binary: %w", err2)
+			}
+		}
+		if err := os.Chmod(destPath, 0755); err != nil {
+			return fmt.Errorf("chmod binary: %w", err)
+		}
+		log.Printf("[registry/static] installed binary → %s", destPath)
+	}
+
+	return nil
+}
+
+// copyFile copies src to dst, creating dst if it does not exist.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 // generatePlaceholderIcon creates a simple SVG icon with the app's unicode icon or first letter.
