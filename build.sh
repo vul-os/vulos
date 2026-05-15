@@ -163,6 +163,7 @@ apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
+    labwc cage \
     flatpak rsync systemd systemd-sysv
 
 # Intel VA-API (amd64 only)
@@ -389,6 +390,7 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
+    labwc cage \
     flatpak rsync systemd systemd-sysv
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
@@ -419,6 +421,14 @@ mkdir -p "$ROOTFS/root/.vulos/data" "$ROOTFS/root/.vulos/db" \
 
 mkdir -p "$ROOTFS/etc/chromium/policies/managed"
 printf '{"CommandLineFlagSecurityWarningsEnabled": false}\n' > "$ROOTFS/etc/chromium/policies/managed/vulos.json"
+
+# labwc compositor config (browser pinned to background, floating focus)
+mkdir -p "$ROOTFS/root/.config/labwc"
+cp -r assets/labwc/. "$ROOTFS/root/.config/labwc/"
+
+# Vula OS traffic-light openbox theme for labwc SSD
+mkdir -p "$ROOTFS/usr/share/themes/vulos/openbox-3"
+cp -r assets/themes/vulos/. "$ROOTFS/usr/share/themes/vulos/"
 
 echo "vula" > "$ROOTFS/etc/hostname"
 echo "%sudo ALL=(ALL) ALL" > "$ROOTFS/etc/sudoers.d/sudo-group"
