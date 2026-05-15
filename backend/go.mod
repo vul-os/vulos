@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
+	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/pion/interceptor v0.1.44
 	github.com/pion/webrtc/v4 v4.2.11
 )
