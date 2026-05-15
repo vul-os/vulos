@@ -382,17 +382,17 @@ Scope: Add Open-Meteo hourly strip, browser geolocation w/ IP/manual fallback, U
 AC: [ ] hourly strip renders [ ] geolocation auto-detect w/ fallback [ ] UV shown [ ] manual search still works
 
 ### [WEBAPP-08] Music Player default app
-`todo` · P2 · M · dep: WEBAPP-04 · parallel: yes — new apps/music/
+`done` · P2 · M · dep: WEBAPP-04 · parallel: yes — new apps/music/
 Scope: New app (app.json+server.py+index.html+icon.svg): play `~/.vulos/music/`, playlists, ID3 art, transport, shuffle/repeat, library, kbd shortcuts; valid permissions only.
 AC: [ ] passes ScanAndValidateApps [ ] plays mp3/ogg/wav/m4a [ ] playlist/shuffle/seek/volume [ ] space/arrows
 
 ### [WEBAPP-09] Video Player default app
-`todo` · P2 · M · dep: WEBAPP-04 · parallel: yes — new apps/video/
+`done` · P2 · M · dep: WEBAPP-04 · parallel: yes — new apps/video/
 Scope: New app: mp4/webm/mkv playback, transport/volume/fullscreen/speed, srt/vtt drag-drop subtitles, PiP, queue, kbd.
 AC: [ ] passes validation [ ] plays mp4/webm, PiP+fullscreen [ ] srt/vtt loads [ ] queue+space/arrows/F
 
 ### [WEBAPP-10] Image Editor default app
-`todo` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/image-editor/
+`done` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/image-editor/
 Scope: Canvas editor: crop/rotate/flip/resize, adjust sliders, ≥5 filters, annotate, undo/redo, export jpg/png/webp to `~/.vulos/pictures/`.
 AC: [ ] passes validation [ ] crop/rotate/flip/resize+sliders [ ] ≥5 filters+undo/redo [ ] export works
 
@@ -402,12 +402,12 @@ Scope: getDisplayMedia screenshot + MediaRecorder .webm, annotate (arrow/text/bl
 AC: [ ] passes validation [ ] screenshot+webm [ ] annotate+crop [ ] save+clipboard
 
 ### [WEBAPP-12] Voice Recorder app
-`todo` · P3 · S · dep: WEBAPP-04 · parallel: yes — new apps/voice-recorder/
+`done` · P3 · S · dep: WEBAPP-04 · parallel: yes — new apps/voice-recorder/
 Scope: MediaRecorder mic capture, live waveform, playback, trim, save via WEBAPP-04, timestamped list; `microphone` permission.
 AC: [ ] passes validation w/ microphone [ ] record+waveform+playback [ ] trim+timestamped list
 
 ### [WEBAPP-13] Camera app
-`todo` · P3 · S · dep: WEBAPP-04 · parallel: yes — new apps/camera/
+`done` · P3 · S · dep: WEBAPP-04 · parallel: yes — new apps/camera/
 Scope: getUserMedia photo+video, front/back flip, optional filters, save to pictures/videos; camera+microphone perms.
 AC: [ ] passes validation w/ perms [ ] photo+video saved [ ] camera switch
 
@@ -417,7 +417,7 @@ Scope: Vendored Leaflet, OSM tiles, Nominatim search, OSRM routing, geolocation,
 AC: [ ] passes validation [ ] map+search recenters [ ] directions route [ ] favourites persist
 
 ### [WEBAPP-15] System Info app
-`todo` · P3 · S · dep: none · parallel: yes — new apps/system-info/
+`done` · P3 · S · dep: none · parallel: yes — new apps/system-info/
 Scope: Read-only dashboard from existing backend endpoints (OS/kernel/arch, CPU/RAM/storage, GPU, net, uptime); add thin /api/system/info aggregator only if missing.
 AC: [ ] passes validation [ ] shows live hw data [ ] no mock values
 
@@ -745,7 +745,7 @@ Scope: Insert `device` step (after welcome) PC/TV/Car/Watch cards, detected pres
 AC: [ ] device step w/ 4 cards [ ] detected preselected [ ] persisted via PUT
 
 ### [DEVPROF-03] Profile context provider + responsive root class
-`todo` · P1 · S · dep: DEVPROF-01 · parallel: no — new src/core/useDeviceProfile.jsx, src/App.jsx, src/providers/
+`done` · P1 · S · dep: DEVPROF-01 · parallel: no — new src/core/useDeviceProfile.jsx, src/App.jsx, src/providers/
 Scope: DeviceProfileProvider/useDeviceProfile fetch once; data-device-profile attr on root; no visual change.
 AC: [ ] hook returns profile app-wide [ ] root has data-device-profile [ ] pc unchanged
 
@@ -1109,7 +1109,7 @@ Scope: add `case "webauthn"` to OnDataChannel switch routing challenge/assertion
 AC: [ ] webauthn channel accepted bidirectional [ ] round-trips via relay in test [ ] input channels unaffected, go build
 
 ### [AUTH-14] SMS receive via VoIP provider webhook
-`todo` · P3 · M · dep: none · parallel: yes — new backend/services/smsotp/
+`done` · P3 · M · dep: none · parallel: yes — new backend/services/smsotp/
 Scope: POST /api/auth/sms/webhook (Twilio form) extract OTP regex, store ~/.vulos/auth/sms/history.json 24h, notify; recent/number/settings endpoints.
 AC: [ ] Twilio payload stores+notifies [ ] OTP regex on real samples in test [ ] >24h pruned
 

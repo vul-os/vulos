@@ -132,6 +132,28 @@ the orchestrator near the end. WEBAPP new-app workers instructed NOT to edit App
 Deferred-from-stale-base (re-task only after their hot file is otherwise quiesced, or
 orchestrator does them serially): GAME-04, NOTIF-02, INIT-02, AI-12.
 
+### D14 — 2026-05-16 01:43 — INTEGRITY INCIDENT (recovered, no loss) + main-guard
+A worker `git checkout -b task/X` leaked into the SHARED repo, moving the primary checkout
+off `main` onto a dead-end task branch (parent = original 590a586). Detected via HEAD≠main.
+`main` ref intact at f620409 with all merges; `git checkout -f main` fully recovered, tree
+clean, zero work lost. NEW PROTOCOL: every merge batch asserts
+`[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ]` before AND after; abort the batch if
+drift detected and `git checkout -f main`. Greenfield strategy (D13) also reduces this
+exposure. Validated: 8 greenfield branches merged 0-conflict post-recovery.
+
+### D15 — 2026-05-16 01:45 — Dependency bottleneck → smaller targeted waves
+Independent greenfield pool is thinning: most remaining tasks depend on foundational
+hot-file tasks (PEER-01→40 PEER tasks, NET-06→CLUSTER, AI-01/02, AUTH-09→AUTH-11/12,
+NOTIF-02 deferred). Decision: stop forcing 10-wide waves when the conflict-free pool is
+small (forcing dependent/hot tasks just manufactures deferrals). Run right-sized waves
+(~5-7) led by ONE foundational main.go-owner per wave (e.g. PEER-01) to unlock the next
+greenfield tier. Quality of merges > raw agent count; still ≤15 cap, resources permitting.
+
+### Deferred (re-task fresh on current main, orchestrator-serial near end)
+GAME-04, NOTIF-02, INIT-02, AI-12, CLUSTER-02 (auth.go full-rewrite vs merged NET-03 +
+go.mod dup — high blast radius), APPSTORE-02 (registry.json stale base; main already has
+APPSTORE-01 navidrome — re-task to ADD memos+uptime-kuma only).
+
 ### Still open
 - NET-06 vs INIT-01 both create instance ULID/identity — share one identity package;
   don't run concurrently (INIT-01 not yet dispatched; NET-06 not yet dispatched).
