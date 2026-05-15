@@ -1,0 +1,20 @@
+{
+  "id": "social",
+  "name": "Fediverse",
+  "icon": "◎",
+  "icon_path": "icon.svg",
+  "description": "Read-only ActivityPub social client — browse public Mastodon-compatible timelines",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "type": "web",
+  "category": "network",
+  "keywords": ["social", "fediverse", "mastodon", "activitypub", "timeline", "feed"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["network"],
+  "author": "Vula OS",
+  "license": "MIT",
+  "homepage": "https://activitypub.rocks"
+}
