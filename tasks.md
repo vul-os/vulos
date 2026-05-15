@@ -397,7 +397,7 @@ Scope: Canvas editor: crop/rotate/flip/resize, adjust sliders, ≥5 filters, ann
 AC: [ ] passes validation [ ] crop/rotate/flip/resize+sliders [ ] ≥5 filters+undo/redo [ ] export works
 
 ### [WEBAPP-11] Screenshot/Screen Capture app
-`todo` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/screenshot/
+`done` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/screenshot/
 Scope: getDisplayMedia screenshot + MediaRecorder .webm, annotate (arrow/text/blur), region crop, save `~/.vulos/screenshots/`, clipboard copy.
 AC: [ ] passes validation [ ] screenshot+webm [ ] annotate+crop [ ] save+clipboard
 
@@ -412,7 +412,7 @@ Scope: getUserMedia photo+video, front/back flip, optional filters, save to pict
 AC: [ ] passes validation w/ perms [ ] photo+video saved [ ] camera switch
 
 ### [WEBAPP-14] Maps app (Leaflet+OSM)
-`todo` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/maps/
+`done` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/maps/
 Scope: Vendored Leaflet, OSM tiles, Nominatim search, OSRM routing, geolocation, favourites via WEBAPP-04; `network` perm.
 AC: [ ] passes validation [ ] map+search recenters [ ] directions route [ ] favourites persist
 
@@ -750,7 +750,7 @@ Scope: DeviceProfileProvider/useDeviceProfile fetch once; data-device-profile at
 AC: [ ] hook returns profile app-wide [ ] root has data-device-profile [ ] pc unchanged
 
 ### [DEVPROF-04] TV profile: D-pad spatial navigation
-`todo` · P1 · L · dep: DEVPROF-03 · parallel: yes — new src/core/useSpatialNav.js, src/index.css
+`done` · P1 · L · dep: DEVPROF-03 · parallel: yes — new src/core/useSpatialNav.js, src/index.css
 Scope: Arrow-key nearest-focus traversal + Enter, gated TV profile; high-contrast focus outline scoped [data-device-profile=tv].
 AC: [ ] TV arrows move focus ring, Enter activates [ ] no-op non-TV [ ] outline visible at distance
 
@@ -835,7 +835,7 @@ AC: [ ] t() app-wide, locale from profile [ ] Setup renders via catalog en+af [ 
 Phases: P1 ident/foundation PEER-01..05 · P2 trust/contacts 06-09 · P3 verify/profile 10-13 · P4 messaging/media 14-18 · P5 calls 19-24 · P6 multiparty 25-29 · P7 collab 30-33 · P8 drop 34-36 · P9 security/ext 37-41
 
 ### [PEER-01] Scaffold peering service: package, storage, routes
-`todo` · P0 · M · dep: none · parallel: no — new backend/services/peering/peering.go, main.go
+`done` · P0 · M · dep: none · parallel: no — new backend/services/peering/peering.go, main.go
 Scope: peering.Service owning ~/.vulos/peering/ tree (identity/profile/inbox/outbox/media/groups/contacts.json), RegisterHandlers stub (501), wire in main.go.
 AC: [ ] New(home) creates tree idempotent [ ] RegisterHandlers wired, GET /api/peering/identity 200 stub [ ] go build
 
@@ -1119,7 +1119,7 @@ Scope: social app (manifest+server+UI), read-only: enter instance host, GET /api
 AC: [ ] app.json validates [ ] public host renders timeline [ ] launches
 
 ### [FED-02] OAuth2 login to existing Mastodon/Pixelfed
-`todo` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
+`done` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
 Scope: dynamic client reg /api/v1/apps, OAuth2 code flow, token store, home timeline, verify-credentials.
 AC: [ ] login real instance returns token [ ] home timeline renders [ ] token persists, logout clears
 
