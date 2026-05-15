@@ -1,0 +1,18 @@
+{
+  "id": "music",
+  "name": "Music Player",
+  "icon": "♪",
+  "icon_path": "icon.svg",
+  "description": "Music player with library, playlists, album art and keyboard shortcuts",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "media",
+  "keywords": ["music", "audio", "player", "playlist", "mp3", "flac"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["filesystem", "background"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
