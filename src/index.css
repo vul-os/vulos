@@ -5,6 +5,8 @@
    Used by inline-styled components
    ═══════════════════════════════════════ */
 :root {
+  --accent: #3b82f6; /* blue-500 default — overridden by ThemeProvider via JS */
+  --accent-hover: color-mix(in srgb, var(--accent) 80%, black);
   --bg-base: #0c0c0c;
   --bg-surface: #111111;
   --bg-elevated: #1a1a1a;
@@ -183,7 +185,7 @@ html, body, #root {
 
 .btn-primary {
   padding: 0.5rem 1.25rem;
-  background: #3b82f6;
+  background: var(--accent);
   border: none;
   border-radius: 0.5rem;
   color: white;
@@ -191,4 +193,11 @@ html, body, #root {
   font-weight: 500;
   cursor: pointer;
 }
-.btn-primary:hover { background: #2563eb; }
+.btn-primary:hover { background: var(--accent-hover); }
+
+/* Primary focus rings follow accent */
+.focus-primary:focus,
+.focus-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

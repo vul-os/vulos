@@ -10,7 +10,10 @@ const STORAGE_KEYS = {
   nightShiftFrom: 'vulos-nightshift-from',
   nightShiftTo: 'vulos-nightshift-to',
   nightShiftWarmth: 'vulos-nightshift-warmth', // 0-100
+  accent: 'vulos-accent', // hex colour string
 }
+
+export const DEFAULT_ACCENT = '#3b82f6' // blue-500
 
 function ls(key, fallback) {
   try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
@@ -90,6 +93,7 @@ export function ThemeProvider({ children }) {
   const [nightShiftFrom, setNightShiftFromState] = useState(() => ls(STORAGE_KEYS.nightShiftFrom, '20:00'))
   const [nightShiftTo, setNightShiftToState] = useState(() => ls(STORAGE_KEYS.nightShiftTo, '07:00'))
   const [nightShiftWarmth, setNightShiftWarmthState] = useState(() => parseInt(ls(STORAGE_KEYS.nightShiftWarmth, '40'), 10))
+  const [accent, setAccentState] = useState(() => ls(STORAGE_KEYS.accent, DEFAULT_ACCENT))
 
   // Re-evaluate time-based modes every minute
   const [tick, setTick] = useState(0)
@@ -126,6 +130,11 @@ export function ThemeProvider({ children }) {
     }
   }, [nightShiftActive, nightShiftWarmth])
 
+  // Apply accent colour as CSS custom property
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', accent)
+  }, [accent])
+
   // Listen for system theme changes when in auto mode
   useEffect(() => {
     if (theme !== 'auto') return
@@ -143,6 +152,7 @@ export function ThemeProvider({ children }) {
   const setNightShiftFrom = useCallback((t) => { setNightShiftFromState(t); lsSet(STORAGE_KEYS.nightShiftFrom, t) }, [])
   const setNightShiftTo = useCallback((t) => { setNightShiftToState(t); lsSet(STORAGE_KEYS.nightShiftTo, t) }, [])
   const setNightShiftWarmth = useCallback((v) => { setNightShiftWarmthState(v); lsSet(STORAGE_KEYS.nightShiftWarmth, String(v)) }, [])
+  const setAccent = useCallback((c) => { setAccentState(c); lsSet(STORAGE_KEYS.accent, c) }, [])
 
   const toggle = useCallback(() => {
     setTheme(resolved === 'dark' ? 'light' : 'dark')
@@ -154,12 +164,14 @@ export function ThemeProvider({ children }) {
     nightShiftMode, nightShiftActive, nightShiftWarmth,
     nightShiftFrom, nightShiftTo,
     setNightShiftMode, setNightShiftFrom, setNightShiftTo, setNightShiftWarmth,
+    accent, setAccent,
   }), [
     theme, resolved, setTheme, toggle,
     scheduleDark, scheduleLight, setScheduleDark, setScheduleLight,
     nightShiftMode, nightShiftActive, nightShiftWarmth,
     nightShiftFrom, nightShiftTo,
     setNightShiftMode, setNightShiftFrom, setNightShiftTo, setNightShiftWarmth,
+    accent, setAccent,
   ])
 
   return (
@@ -177,6 +189,7 @@ export function useTheme() {
     nightShiftMode: 'off', nightShiftActive: false, nightShiftWarmth: 40,
     nightShiftFrom: '20:00', nightShiftTo: '07:00',
     setNightShiftMode: () => {}, setNightShiftFrom: () => {}, setNightShiftTo: () => {}, setNightShiftWarmth: () => {},
+    accent: DEFAULT_ACCENT, setAccent: () => {},
   }
   return ctx
 }
