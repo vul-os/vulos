@@ -1,0 +1,18 @@
+{
+  "id": "voice-recorder",
+  "name": "Voice Recorder",
+  "icon": "⏺",
+  "icon_path": "icon.svg",
+  "description": "Record audio from microphone with live waveform, playback, trim, and timestamped history",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "media",
+  "keywords": ["voice", "record", "audio", "microphone", "memo", "sound", "capture"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["microphone"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
