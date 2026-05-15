@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>System Info</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;
+  --surface:#111118;
+  --border:#1e1e2e;
+  --text:#e2e8f0;
+  --muted:#64748b;
+  --accent:#4f8ef7;
+  --accent2:#7c6ef7;
+  --green:#22c55e;
+  --yellow:#f59e0b;
+  --red:#ef4444;
+  --radius:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;min-height:100vh;padding:20px}
+h1{font-size:20px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:10px;margin-bottom:20px}
+h1 svg{flex-shrink:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card-title svg{opacity:.7}
+.row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none}
+.row .label{color:var(--muted);font-size:13px}
+.row .value{font-size:13px;font-weight:500;color:var(--text);text-align:right;max-width:65%;word-break:break-all}
+/* Progress bars */
+.bar-wrap{background:#1a1a2a;border-radius:4px;height:6px;overflow:hidden;flex:1;margin:0 10px}
+.bar-fill{height:100%;border-radius:4px;transition:width .4s ease}
+.bar-wrap+span{font-size:12px;color:var(--muted);min-width:36px;text-align:right}
+.live-row{display:flex;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.live-row:last-child{border-bottom:none}
+.live-label{color:var(--muted);font-size:13px;width:60px;flex-shrink:0}
+/* Network table */
+.net-table{width:100%;border-collapse:collapse;font-size:12px}
+.net-table th{color:var(--muted);font-weight:500;text-align:left;padding:4px 6px;border-bottom:1px solid var(--border)}
+.net-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+.net-table tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#1e293b;color:var(--accent)}
+.badge.green{background:#14532d22;color:var(--green)}
+.badge.red{background:#7f1d1d22;color:var(--red)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer;transition:border-color .15s,color .15s}
+.refresh-btn:hover{border-color:var(--accent);color:var(--accent)}
+.error-notice{background:#7f1d1d22;border:1px solid #7f1d1d44;border-radius:6px;padding:8px 12px;font-size:12px;color:#fca5a5;margin-top:8px}
+.uptime-big{font-size:28px;font-weight:700;color:var(--accent);letter-spacing:-.5px;margin:4px 0 2px}
+.hostname-sub{font-size:13px;color:var(--muted)}
+.header-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.ts{font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <h1>
+    <svg width="22" height="22" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="5" y="8" width="38" height="25" rx="3" stroke="#4f8ef7" stroke-width="2.5"/>
+      <rect x="8" y="11" width="32" height="19" rx="1.5" fill="#0d1117"/>
+      <rect x="11" y="20" width="3" height="7" rx="1" fill="#4f8ef7"/>
+      <rect x="16" y="16" width="3" height="11" rx="1" fill="#7c6ef7"/>
+      <rect x="21" y="22" width="3" height="5" rx="1" fill="#4f8ef7"/>
+      <rect x="26" y="18" width="3" height="9" rx="1" fill="#6fb7f7"/>
+      <rect x="31" y="14" width="3" height="13" rx="1" fill="#7c6ef7"/>
+      <rect x="20" y="33" width="8" height="4" rx="1" fill="#2a2a4a"/>
+      <rect x="16" y="37" width="16" height="2.5" rx="1.5" fill="#4f8ef7"/>
+    </svg>
+    System Info
+  </h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="ts" id="ts"></span>
+    <button class="refresh-btn" onclick="loadAll()">Refresh</button>
+  </div>
+</div>
+
+<div class="grid" id="grid">
+  <!-- Cards rendered by JS -->
+</div>
+
+<script>
+const grid = document.getElementById('grid');
+let sysInfo = null, disks = [], network = [], live = {};
+
+function fmt(bytes){
+  if(bytes >= 1e12) return (bytes/1e12).toFixed(1)+' TB';
+  if(bytes >= 1e9)  return (bytes/1e9).toFixed(1)+' GB';
+  if(bytes >= 1e6)  return (bytes/1e6).toFixed(1)+' MB';
+  return bytes+' B';
+}
+function fmtMB(mb){
+  if(mb >= 1024) return (mb/1024).toFixed(1)+' GB';
+  return mb+' MB';
+}
+function pctColor(p){
+  if(p >= 90) return 'var(--red)';
+  if(p >= 70) return 'var(--yellow)';
+  return 'var(--green)';
+}
+
+async function apiFetch(path){
+  const r = await fetch(path);
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function loadAll(){
+  document.getElementById('ts').textContent = 'Loading…';
+  await Promise.allSettled([
+    apiFetch('/api/info').then(d=>{ sysInfo=d; }).catch(()=>{}),
+    apiFetch('/api/disks').then(d=>{ disks=d; }).catch(()=>{}),
+    apiFetch('/api/network').then(d=>{ network=d; }).catch(()=>{}),
+    apiFetch('/api/live').then(d=>{ live=d; }).catch(()=>{}),
+  ]);
+  render();
+  document.getElementById('ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+function card(title, icon, content){
+  return `<div class="card">
+    <div class="card-title">${icon} ${title}</div>
+    ${content}
+  </div>`;
+}
+
+function row(label, value){
+  return `<div class="row"><span class="label">${label}</span><span class="value">${value || '—'}</span></div>`;
+}
+
+function barRow(label, used, total, unit){
+  if(!total) return '';
+  const pct = Math.min(100, Math.round(used/total*100));
+  const color = pctColor(pct);
+  return `<div class="live-row">
+    <span class="live-label">${label}</span>
+    <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <span>${pct}%</span>
+  </div>`;
+}
+
+function render(){
+  const s = sysInfo || {};
+  const l = live || {};
+  let html = '';
+
+  // -- Uptime / Identity card --
+  const uptime = l.uptime || s.uptime || '—';
+  const hostname = s.hostname || location.hostname;
+  html += card('Overview', iconComputer(), `
+    <div class="uptime-big">${uptime}</div>
+    <div class="hostname-sub">uptime on <strong>${hostname}</strong></div>
+    <div style="margin-top:14px">
+      ${row('OS', s.os_name || '—')}
+      ${row('Kernel', s.kernel || '—')}
+      ${row('Architecture', s.arch || '—')}
+      ${row('Device', s.device_model || '—')}
+      ${l.load_avg ? row('Load avg', l.load_avg) : ''}
+    </div>
+  `);
+
+  // -- CPU card --
+  const cpuPct = typeof l.cpu === 'number' ? l.cpu : null;
+  html += card('CPU', iconCPU(), `
+    ${row('Model', s.cpu_model || '—')}
+    ${row('Cores', s.cpu_cores || '—')}
+    ${cpuPct !== null ? `
+    <div class="live-row" style="margin-top:8px">
+      <span class="live-label">Usage</span>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.min(cpuPct,100)}%;background:${pctColor(cpuPct)}"></div></div>
+      <span>${cpuPct.toFixed(1)}%</span>
+    </div>` : ''}
+  `);
+
+  // -- Memory card --
+  const memTotal = l.mem_total || (s.mem_total_mb ? s.mem_total_mb*1024*1024 : 0);
+  const memUsed  = l.mem_used  || (s.mem_used_mb  ? s.mem_used_mb*1024*1024  : 0);
+  const memPct   = typeof l.mem_percent === 'number' ? l.mem_percent : (s.mem_percent || 0);
+  html += card('Memory', iconRAM(), `
+    ${row('Total', memTotal ? fmt(memTotal) : (s.mem_total_mb ? fmtMB(s.mem_total_mb) : '—'))}
+    ${row('Used',  memUsed  ? fmt(memUsed)  : (s.mem_used_mb  ? fmtMB(s.mem_used_mb)  : '—'))}
+    ${row('Free',  (memTotal && memUsed) ? fmt(memTotal - memUsed) : '—')}
+    ${barRow('', memPct, 100, '%')}
+  `);
+
+  // -- Storage card --
+  let storageHtml = '';
+  if(disks.length > 0){
+    storageHtml = disks.map(d => {
+      const pct = d.percent || 0;
+      return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text)">${d.mount_point}</span>
+          <span style="color:var(--muted)">${fmtMB(d.used_mb)} / ${fmtMB(d.total_mb)}</span>
+        </div>
+        <div class="bar-wrap" style="margin:0">
+          <div class="bar-fill" style="width:${Math.min(pct,100)}%;background:${pctColor(pct)}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px">
+          <span>${d.device} · ${d.fs_type}</span>
+          <span>${pct.toFixed(1)}%</span>
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    // Fallback from sysInfo
+    const stTotal = s.storage_total_mb || 0;
+    const stUsed  = s.storage_used_mb  || 0;
+    if(stTotal){
+      const pct = Math.round(stUsed/stTotal*100);
+      storageHtml = `
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text)">/</span>
+          <span style="color:var(--muted)">${fmtMB(stUsed)} / ${fmtMB(stTotal)}</span>
+        </div>
+        <div class="bar-wrap" style="margin:0">
+          <div class="bar-fill" style="width:${Math.min(pct,100)}%;background:${pctColor(pct)}"></div>
+        </div>
+      </div>`;
+    } else {
+      storageHtml = '<div style="color:var(--muted);font-size:13px">No storage data available</div>';
+    }
+  }
+  html += card('Storage', iconDisk(), storageHtml);
+
+  // -- GPU card --
+  if(s.gpu_device || s.gpu_vendor){
+    html += card('GPU', iconGPU(), `
+      ${row('Vendor', s.gpu_vendor || '—')}
+      ${row('Device', s.gpu_device || '—')}
+      ${row('Tier',   s.gpu_tier   || '—')}
+      ${row('Encoder', s.gpu_encoder || '—')}
+      ${row('Codec',   s.gpu_codec   || '—')}
+      ${s.gpu_av1 !== undefined ? row('AV1 Encode', s.gpu_av1 ? '<span class="badge green">Yes</span>' : 'No') : ''}
+    `);
+  }
+
+  // -- Battery card (only if battery present) --
+  if(typeof s.battery === 'number' && s.battery >= 0){
+    const batColor = s.battery < 20 ? 'var(--red)' : s.battery < 50 ? 'var(--yellow)' : 'var(--green)';
+    html += card('Battery', iconBattery(), `
+      <div class="live-row">
+        <span class="live-label">Charge</span>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${s.battery}%;background:${batColor}"></div></div>
+        <span>${s.battery}%</span>
+      </div>
+      ${row('Status', s.charging ? '<span class="badge green">Charging</span>' : 'On battery')}
+    `);
+  }
+
+  // -- Network card --
+  const netRows = network.filter(n => n.name !== 'lo' && (n.addresses||[]).length > 0 || n.rx_bytes > 0);
+  if(netRows.length > 0){
+    const tableRows = netRows.map(n => {
+      const addrs = (n.addresses||[]).map(a=>`<div>${a.address} <span style="color:var(--muted);font-size:10px">${a.family}</span></div>`).join('');
+      const rx = n.rx_bytes ? fmt(n.rx_bytes) : '—';
+      const tx = n.tx_bytes ? fmt(n.tx_bytes) : '—';
+      return `<tr>
+        <td><span class="badge">${n.name}</span></td>
+        <td>${addrs || '<span style="color:var(--muted)">—</span>'}</td>
+        <td style="color:var(--muted);white-space:nowrap">↓ ${rx}<br>↑ ${tx}</td>
+      </tr>`;
+    }).join('');
+    html += card('Network', iconNet(), `
+      <table class="net-table">
+        <thead><tr><th>Interface</th><th>IP</th><th>Traffic</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    `);
+  } else {
+    html += card('Network', iconNet(), '<div style="color:var(--muted);font-size:13px">No active interfaces detected</div>');
+  }
+
+  grid.innerHTML = html;
+}
+
+// SVG icon helpers
+function iconComputer(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`;}
+function iconCPU(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M7 9H5M7 12H5M7 15H5M17 9h2M17 12h2M17 15h2M9 7V5M12 7V5M15 7V5M9 19v-2M12 19v-2M15 19v-2"/></svg>`;}
+function iconRAM(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="1" y="6" width="22" height="12" rx="2"/><path d="M6 6v12M10 6v12M14 6v12M18 6v12"/></svg>`;}
+function iconDisk(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/></svg>`;}
+function iconGPU(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h.01M10 12h.01M14 12h.01"/></svg>`;}
+function iconBattery(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="1" y="7" width="18" height="10" rx="2"/><path d="M23 11v2"/></svg>`;}
+function iconNet(){return `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>`;}
+
+// Initial load + auto-refresh every 8s
+loadAll();
+setInterval(()=>{ apiFetch('/api/live').then(d=>{ live=d; render(); document.getElementById('ts').textContent='Updated '+new Date().toLocaleTimeString(); }).catch(()=>{}); }, 8000);
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect width="48" height="48" rx="10" fill="#1a1a2e"/>
+  <!-- Monitor frame -->
+  <rect x="5" y="8" width="38" height="25" rx="3" fill="none" stroke="#4f8ef7" stroke-width="2.5"/>
+  <!-- Screen -->
+  <rect x="8" y="11" width="32" height="19" rx="1.5" fill="#0d1117"/>
+  <!-- Bar chart lines -->
+  <rect x="11" y="20" width="3" height="7" rx="1" fill="#4f8ef7"/>
+  <rect x="16" y="16" width="3" height="11" rx="1" fill="#7c6ef7"/>
+  <rect x="21" y="22" width="3" height="5" rx="1" fill="#4f8ef7"/>
+  <rect x="26" y="18" width="3" height="9" rx="1" fill="#6fb7f7"/>
+  <rect x="31" y="14" width="3" height="13" rx="1" fill="#7c6ef7"/>
+  <!-- Stand -->
+  <rect x="20" y="33" width="8" height="4" rx="1" fill="#2a2a4a"/>
+  <rect x="16" y="37" width="16" height="2.5" rx="1.5" fill="#4f8ef7"/>
+</svg>

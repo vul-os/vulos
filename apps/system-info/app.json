@@ -1,0 +1,18 @@
+{
+  "id": "system-info",
+  "name": "System Info",
+  "icon": "💻",
+  "icon_path": "icon.svg",
+  "description": "Live dashboard — OS, CPU, RAM, storage, GPU, network and uptime",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "system",
+  "keywords": ["system", "info", "about", "hardware", "cpu", "ram", "gpu", "network", "uptime"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["network"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
