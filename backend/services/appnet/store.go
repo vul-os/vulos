@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"vulos/backend/services/packages"
 	"time"
+	"vulos/backend/services/packages"
 )
 
 // ValidateInstalled runs validation on all installed app manifests.
@@ -34,11 +34,12 @@ type StoreEntry struct {
 // AppStore manages app discovery, install, and removal.
 type AppStore struct {
 	appsDir      string
+	bundledDirs  []string
 	catalogURL   string    // URL to fetch the app catalog (JSON)
 	registry     *Registry // local vetted app registry
 	registryPath string    // path to registry.json
 	client       *http.Client
-	installing   sync.Map  // appID → true while install is in progress
+	installing   sync.Map // appID → true while install is in progress
 }
 
 func NewAppStore(appsDir string) *AppStore {
@@ -59,11 +60,43 @@ func NewAppStore(appsDir string) *AppStore {
 
 	return &AppStore{
 		appsDir:      appsDir,
+		bundledDirs:  discoverBundledAppDirs(),
 		catalogURL:   os.Getenv("VULOS_APP_CATALOG"),
 		registry:     reg,
 		registryPath: registryPath,
 		client:       &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+func discoverBundledAppDirs() []string {
+	candidates := []string{}
+	if p := os.Getenv("VULOS_BUNDLED_APPS"); p != "" {
+		candidates = append(candidates, p)
+	}
+	candidates = append(candidates, "/opt/vulos/apps")
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(wd, "apps"),
+			filepath.Join(wd, "..", "apps"),
+		)
+	}
+
+	seen := map[string]bool{}
+	var dirs []string
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		abs, err := filepath.Abs(c)
+		if err != nil || seen[abs] {
+			continue
+		}
+		if st, err := os.Stat(abs); err == nil && st.IsDir() {
+			seen[abs] = true
+			dirs = append(dirs, abs)
+		}
+	}
+	return dirs
 }
 
 // Registry returns the loaded registry.
@@ -107,7 +140,7 @@ func (s *AppStore) Catalog(ctx context.Context) ([]StoreEntry, error) {
 
 	// Mark installed apps
 	for i := range entries {
-		if _, err := os.Stat(filepath.Join(s.appsDir, entries[i].ID, "app.json")); err == nil {
+		if s.hasApp(entries[i].ID) {
 			entries[i].Installed = true
 		}
 	}
@@ -248,10 +281,52 @@ func extractAptPackages(installCmd string) []string {
 
 // Installed lists all locally installed apps.
 func (s *AppStore) Installed() ([]*AppManifest, error) {
-	return ScanApps(s.appsDir)
+	merged := map[string]*AppManifest{}
+	order := []string{}
+	add := func(dir string) error {
+		apps, err := ScanApps(dir)
+		if err != nil {
+			return err
+		}
+		for _, app := range apps {
+			if app == nil || app.ID == "" {
+				continue
+			}
+			if _, ok := merged[app.ID]; !ok {
+				order = append(order, app.ID)
+			}
+			merged[app.ID] = app
+		}
+		return nil
+	}
+
+	for _, dir := range s.bundledDirs {
+		_ = add(dir)
+	}
+	if err := add(s.appsDir); err != nil && len(merged) == 0 {
+		return nil, err
+	}
+
+	apps := make([]*AppManifest, 0, len(order))
+	for _, id := range order {
+		apps = append(apps, merged[id])
+	}
+	return apps, nil
 }
 
 // AppDir returns the base directory for apps.
 func (s *AppStore) AppDir() string {
 	return s.appsDir
+}
+
+func (s *AppStore) hasApp(appID string) bool {
+	if _, err := os.Stat(filepath.Join(s.appsDir, appID, "app.json")); err == nil {
+		return true
+	}
+	for _, dir := range s.bundledDirs {
+		if _, err := os.Stat(filepath.Join(dir, appID, "app.json")); err == nil {
+			return true
+		}
+	}
+	return false
 }

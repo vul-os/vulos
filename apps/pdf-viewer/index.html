@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDF Viewer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0b0d10;--panel:#12161b;--panel2:#171d24;--elev:#1f2630;--border:#2a3340;--border2:#3a4656;--text:#eef2f7;--text2:#a7b0bd;--text3:#6f7b8a;--accent:#0ea5a4;--accent2:#f97316;--danger:#ef4444}
+body{height:100vh;display:flex;overflow:hidden;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,textarea{font:inherit}
+button{border:1px solid var(--border2);background:var(--elev);color:var(--text);border-radius:6px;cursor:pointer;min-height:32px;padding:6px 10px;transition:background .15s,border-color .15s,color .15s}
+button:hover{background:#263140;border-color:#526071}
+button:disabled{opacity:.45;cursor:not-allowed}
+.app{display:grid;grid-template-columns:250px minmax(0,1fr)320px;width:100%;height:100%}
+.sidebar,.notes{background:var(--panel);border-color:var(--border);display:flex;flex-direction:column;min-width:0}
+.sidebar{border-right:1px solid var(--border)}
+.notes{border-left:1px solid var(--border)}
+.head{height:56px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.head h1{font-size:15px;font-weight:650;white-space:nowrap}
+.head .spacer{flex:1}
+.open-btn{position:relative;background:var(--accent);border-color:var(--accent);color:#042f2e;font-weight:650}
+.open-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.small{min-height:28px;padding:4px 8px;font-size:12px;color:var(--text2)}
+.side-section{padding:12px 12px 0;min-height:0}
+.section-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+.drop{border:1px dashed var(--border2);border-radius:8px;background:var(--panel2);padding:16px 12px;text-align:center;color:var(--text2);font-size:13px;line-height:1.45}
+.drop.drag{border-color:var(--accent);background:#0f2f31;color:var(--text)}
+.file-list{overflow-y:auto;padding:8px 8px 14px;flex:1;min-height:0}
+.file-card{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:8px;padding:8px;color:var(--text2);margin-bottom:6px}
+.file-card:hover,.file-card.active{background:var(--panel2);border-color:var(--border)}
+.thumb{height:54px;border-radius:5px;background:linear-gradient(180deg,#f8fafc,#cbd5e1);position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px #0002}
+.thumb:before{content:"";position:absolute;right:0;top:0;border-left:13px solid transparent;border-bottom:13px solid #94a3b8}
+.thumb span{position:absolute;left:7px;bottom:7px;background:#dc2626;color:white;font-size:9px;font-weight:800;letter-spacing:.04em;border-radius:3px;padding:2px 4px}
+.file-name{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-meta{font-size:11px;color:var(--text3);margin-top:3px}
+.main{display:flex;flex-direction:column;min-width:0;background:#080a0d}
+.toolbar{height:56px;display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
+.doc-title{font-size:13px;font-weight:650;min-width:140px;max-width:28vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2)}
+.group{display:flex;align-items:center;gap:6px;padding-left:8px;border-left:1px solid var(--border)}
+.page-input,.zoom-select{height:32px;background:var(--panel2);border:1px solid var(--border2);border-radius:6px;color:var(--text);outline:none}
+.page-input{width:64px;text-align:center}
+.zoom-select{width:88px;padding:0 6px}
+.viewer-wrap{flex:1;position:relative;min-height:0;display:flex}
+.viewer-empty{margin:auto;text-align:center;color:var(--text3);max-width:420px;padding:24px;line-height:1.5}
+.viewer-empty strong{display:block;color:var(--text);font-size:20px;margin-bottom:8px}
+.pdf-frame{width:100%;height:100%;border:0;background:#2d333b;display:none}
+.pdf-frame.ready{display:block}
+.fallback{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px;text-align:center;color:var(--text2);max-width:360px}
+.fallback a{color:var(--accent)}
+.notes-body{display:flex;flex-direction:column;gap:10px;padding:12px;min-height:0;flex:1}
+.note-tabs{display:flex;gap:6px}
+.note-tabs button{flex:1;font-size:12px;color:var(--text2)}
+.note-tabs button.active{background:var(--accent);border-color:var(--accent);color:#042f2e;font-weight:700}
+.note-row{display:flex;gap:8px}
+.note-row input{width:78px;background:var(--panel2);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:7px 8px;outline:none}
+.note-row input:focus,textarea:focus{border-color:var(--accent)}
+.note-row button{flex:1}
+textarea{flex:1;min-height:0;resize:none;background:var(--panel2);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:10px;line-height:1.45;outline:none}
+.annotation-list{flex:1;overflow-y:auto;display:none;min-height:0}
+.annotation{border:1px solid var(--border);background:var(--panel2);border-radius:8px;padding:9px;margin-bottom:8px}
+.annotation-top{display:flex;align-items:center;gap:8px;color:var(--text3);font-size:11px;margin-bottom:6px}
+.annotation-top strong{color:var(--accent2)}
+.annotation-top button{margin-left:auto;min-height:22px;padding:2px 6px;border-radius:4px;background:transparent;color:var(--text3)}
+.annotation p{font-size:13px;color:var(--text2);line-height:1.45;white-space:pre-wrap}
+.status{height:30px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text3);font-size:11px;background:var(--panel);flex-shrink:0}
+.status .dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
+.status .dot.on{background:var(--accent)}
+@media(max-width:960px){.app{grid-template-columns:210px minmax(0,1fr)}.notes{position:absolute;right:0;top:0;bottom:0;width:320px;z-index:5;transform:translateX(calc(100% - 44px))}.notes:focus-within,.notes:hover{transform:translateX(0)}.doc-title{max-width:22vw}}
+@media(max-width:700px){.app{grid-template-columns:1fr}.sidebar{display:none}.toolbar{flex-wrap:wrap;height:auto}.doc-title{max-width:100%;width:100%}.viewer-wrap{min-height:0}.notes{display:none}.group{padding-left:0;border-left:0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="head">
+      <h1>PDF Viewer</h1>
+      <span class="spacer"></span>
+      <label class="open-btn">Open<input id="fileInput" type="file" accept="application/pdf,.pdf" multiple></label>
+    </div>
+    <div class="side-section">
+      <div id="dropZone" class="drop">Drop PDFs here or open files from this device.</div>
+    </div>
+    <div class="side-section">
+      <div class="section-title">Recent PDFs</div>
+    </div>
+    <div id="fileList" class="file-list"></div>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <div id="docTitle" class="doc-title">No PDF open</div>
+      <span class="spacer"></span>
+      <div class="group">
+        <button id="prevPage" title="Previous page">‹</button>
+        <input id="pageInput" class="page-input" type="number" min="1" value="1" title="Page">
+        <button id="nextPage" title="Next page">›</button>
+      </div>
+      <div class="group">
+        <button id="zoomOut" title="Zoom out">−</button>
+        <select id="zoomSelect" class="zoom-select" title="Zoom">
+          <option value="75">75%</option>
+          <option value="100" selected>100%</option>
+          <option value="125">125%</option>
+          <option value="150">150%</option>
+          <option value="200">200%</option>
+          <option value="page-width">Width</option>
+          <option value="page-fit">Fit</option>
+        </select>
+        <button id="zoomIn" title="Zoom in">+</button>
+      </div>
+      <div class="group">
+        <button id="printBtn" title="Print">Print</button>
+      </div>
+    </div>
+    <div class="viewer-wrap">
+      <div id="empty" class="viewer-empty">
+        <strong>Open a local PDF</strong>
+        Files stay in this browser session. Notes and annotations are saved locally per file.
+      </div>
+      <object id="pdfObject" class="pdf-frame" type="application/pdf">
+        <embed id="pdfEmbed" type="application/pdf">
+      </object>
+      <div id="fallback" class="fallback">
+        This browser cannot show embedded PDFs here.<br>
+        <a id="fallbackLink" href="#" target="_blank" rel="noopener">Open the PDF in a new tab</a>
+      </div>
+    </div>
+    <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Waiting for a PDF</span></div>
+  </main>
+
+  <aside class="notes">
+    <div class="head">
+      <h1>Notes</h1>
+      <span class="spacer"></span>
+      <button id="clearNotes" class="small">Clear</button>
+    </div>
+    <div class="notes-body">
+      <div class="note-tabs">
+        <button id="notesTab" class="active">Document notes</button>
+        <button id="annTab">Annotations</button>
+      </div>
+      <textarea id="notesText" placeholder="Notes for this PDF..."></textarea>
+      <div id="annotationPane" class="annotation-list"></div>
+      <div class="note-row">
+        <input id="annotationPage" type="number" min="1" value="1" title="Annotation page">
+        <button id="addAnnotation">Add annotation for current page</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+const state = {
+  current: null,
+  files: [],
+  objectUrls: new Map(),
+  page: 1,
+  zoom: '100',
+  tab: 'notes',
+  saveTimer: null
+};
+
+const els = {
+  fileInput: document.getElementById('fileInput'),
+  dropZone: document.getElementById('dropZone'),
+  fileList: document.getElementById('fileList'),
+  docTitle: document.getElementById('docTitle'),
+  pageInput: document.getElementById('pageInput'),
+  prevPage: document.getElementById('prevPage'),
+  nextPage: document.getElementById('nextPage'),
+  zoomSelect: document.getElementById('zoomSelect'),
+  zoomOut: document.getElementById('zoomOut'),
+  zoomIn: document.getElementById('zoomIn'),
+  printBtn: document.getElementById('printBtn'),
+  empty: document.getElementById('empty'),
+  pdfObject: document.getElementById('pdfObject'),
+  pdfEmbed: document.getElementById('pdfEmbed'),
+  fallback: document.getElementById('fallback'),
+  fallbackLink: document.getElementById('fallbackLink'),
+  notesText: document.getElementById('notesText'),
+  annotationPane: document.getElementById('annotationPane'),
+  annotationPage: document.getElementById('annotationPage'),
+  addAnnotation: document.getElementById('addAnnotation'),
+  notesTab: document.getElementById('notesTab'),
+  annTab: document.getElementById('annTab'),
+  clearNotes: document.getElementById('clearNotes'),
+  statusDot: document.getElementById('statusDot'),
+  statusText: document.getElementById('statusText')
+};
+
+function fingerprint(file) {
+  return [file.name, file.size, file.lastModified].join(':');
+}
+
+function storageKey(id) {
+  return 'pdf-viewer:' + id;
+}
+
+function recentKey() {
+  return 'pdf-viewer:recent';
+}
+
+function formatSize(bytes) {
+  const units = ['B','KB','MB','GB'];
+  let n = bytes, i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n < 10 && i ? 1 : 0) + ' ' + units[i];
+}
+
+function loadDocState(id) {
+  try { return JSON.parse(localStorage.getItem(storageKey(id))) || { notes: '', annotations: [] }; }
+  catch { return { notes: '', annotations: [] }; }
+}
+
+function saveDocState() {
+  if (!state.current) return;
+  const doc = loadDocState(state.current.id);
+  doc.notes = els.notesText.value;
+  localStorage.setItem(storageKey(state.current.id), JSON.stringify(doc));
+  setStatus('Notes saved locally', true);
+}
+
+function saveRecent() {
+  const recent = state.files.map(f => ({
+    id: f.id,
+    name: f.name,
+    size: f.size,
+    lastModified: f.lastModified,
+    openedAt: f.openedAt
+  })).slice(0, 20);
+  localStorage.setItem(recentKey(), JSON.stringify(recent));
+}
+
+function loadRecent() {
+  try { return JSON.parse(localStorage.getItem(recentKey())) || []; }
+  catch { return []; }
+}
+
+function addFiles(fileList) {
+  const pdfs = Array.from(fileList).filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+  for (const file of pdfs) {
+    const id = fingerprint(file);
+    const existing = state.files.find(f => f.id === id);
+    if (existing) {
+      existing.file = file;
+      existing.openedAt = Date.now();
+      continue;
+    }
+    state.files.unshift({
+      id,
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      openedAt: Date.now(),
+      file
+    });
+  }
+  state.files.sort((a,b) => b.openedAt - a.openedAt);
+  renderFileList();
+  saveRecent();
+  if (pdfs[0]) openDoc(fingerprint(pdfs[0]));
+}
+
+function openDoc(id) {
+  const doc = state.files.find(f => f.id === id);
+  if (!doc) return;
+  if (!doc.file) {
+    setStatus('Reopen this PDF from disk to view it; notes are still available', false);
+    state.current = doc;
+    loadNotesForDoc(doc);
+    renderFileList();
+    return;
+  }
+  state.current = doc;
+  state.page = 1;
+  state.zoom = els.zoomSelect.value || '100';
+  doc.openedAt = Date.now();
+  if (!state.objectUrls.has(doc.id)) state.objectUrls.set(doc.id, URL.createObjectURL(doc.file));
+  loadNotesForDoc(doc);
+  refreshPdf();
+  renderFileList();
+  saveRecent();
+}
+
+function refreshPdf() {
+  if (!state.current || !state.objectUrls.has(state.current.id)) return;
+  const base = state.objectUrls.get(state.current.id);
+  const page = Math.max(1, Number(els.pageInput.value) || state.page || 1);
+  state.page = page;
+  state.zoom = els.zoomSelect.value;
+  const view = base + '#page=' + page + '&zoom=' + encodeURIComponent(state.zoom);
+  els.pdfObject.data = view;
+  els.pdfEmbed.src = view;
+  els.fallbackLink.href = base;
+  els.empty.style.display = 'none';
+  els.fallback.style.display = 'none';
+  els.pdfObject.classList.add('ready');
+  els.docTitle.textContent = state.current.name;
+  els.annotationPage.value = page;
+  setStatus('Viewing ' + state.current.name, true);
+}
+
+function renderFileList() {
+  const fromRecent = loadRecent().filter(r => !state.files.some(f => f.id === r.id));
+  const list = [...state.files, ...fromRecent];
+  if (!list.length) {
+    els.fileList.innerHTML = '<div class="file-meta" style="padding:8px">No recent PDFs yet.</div>';
+    return;
+  }
+  els.fileList.innerHTML = list.map(doc => {
+    const active = state.current && state.current.id === doc.id ? ' active' : '';
+    const local = doc.file ? '' : ' · reopen to view';
+    return `<button class="file-card${active}" data-id="${escapeHtml(doc.id)}">
+      <div class="thumb"><span>PDF</span></div>
+      <div>
+        <div class="file-name">${escapeHtml(doc.name)}</div>
+        <div class="file-meta">${formatSize(doc.size)}${local}</div>
+      </div>
+    </button>`;
+  }).join('');
+  els.fileList.querySelectorAll('.file-card').forEach(btn => {
+    btn.addEventListener('click', () => openDoc(btn.dataset.id));
+  });
+}
+
+function loadNotesForDoc(doc) {
+  const data = loadDocState(doc.id);
+  els.notesText.value = data.notes || '';
+  renderAnnotations();
+  els.docTitle.textContent = doc.name;
+}
+
+function renderAnnotations() {
+  if (!state.current) {
+    els.annotationPane.innerHTML = '<div class="file-meta">Open a PDF to add annotations.</div>';
+    return;
+  }
+  const data = loadDocState(state.current.id);
+  const annotations = data.annotations || [];
+  if (!annotations.length) {
+    els.annotationPane.innerHTML = '<div class="file-meta">No annotations yet.</div>';
+    return;
+  }
+  els.annotationPane.innerHTML = annotations.map((a, idx) => `
+    <div class="annotation">
+      <div class="annotation-top"><strong>Page ${a.page}</strong><span>${new Date(a.created).toLocaleString()}</span><button data-del="${idx}">Delete</button></div>
+      <p>${escapeHtml(a.text)}</p>
+    </div>
+  `).join('');
+  els.annotationPane.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', () => deleteAnnotation(Number(btn.dataset.del)));
+  });
+}
+
+function addAnnotation() {
+  if (!state.current) return;
+  const text = els.notesText.value.trim();
+  if (!text) {
+    setStatus('Write note text before adding an annotation', false);
+    return;
+  }
+  const doc = loadDocState(state.current.id);
+  doc.annotations = doc.annotations || [];
+  doc.annotations.unshift({
+    page: Math.max(1, Number(els.annotationPage.value) || state.page || 1),
+    text,
+    created: Date.now()
+  });
+  localStorage.setItem(storageKey(state.current.id), JSON.stringify(doc));
+  els.notesText.value = '';
+  renderAnnotations();
+  setTab('annotations');
+  setStatus('Annotation saved locally', true);
+}
+
+function deleteAnnotation(idx) {
+  if (!state.current) return;
+  const doc = loadDocState(state.current.id);
+  doc.annotations = doc.annotations || [];
+  doc.annotations.splice(idx, 1);
+  localStorage.setItem(storageKey(state.current.id), JSON.stringify(doc));
+  renderAnnotations();
+}
+
+function setTab(tab) {
+  state.tab = tab;
+  const notes = tab === 'notes';
+  els.notesTab.classList.toggle('active', notes);
+  els.annTab.classList.toggle('active', !notes);
+  els.notesText.style.display = notes ? 'block' : 'none';
+  els.annotationPane.style.display = notes ? 'none' : 'block';
+  renderAnnotations();
+}
+
+function setStatus(text, ok) {
+  els.statusText.textContent = text;
+  els.statusDot.classList.toggle('on', !!ok);
+}
+
+function printCurrent() {
+  if (!state.current || !state.objectUrls.has(state.current.id)) return;
+  const url = state.objectUrls.get(state.current.id);
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.src = url;
+  frame.onload = () => {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch {
+      window.open(url, '_blank', 'noopener');
+    }
+    setTimeout(() => frame.remove(), 3000);
+  };
+  document.body.appendChild(frame);
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+els.fileInput.addEventListener('change', e => addFiles(e.target.files));
+els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('drag'); });
+els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag'));
+els.dropZone.addEventListener('drop', e => { e.preventDefault(); els.dropZone.classList.remove('drag'); addFiles(e.dataTransfer.files); });
+els.pageInput.addEventListener('change', refreshPdf);
+els.prevPage.addEventListener('click', () => { els.pageInput.value = Math.max(1, (Number(els.pageInput.value) || 1) - 1); refreshPdf(); });
+els.nextPage.addEventListener('click', () => { els.pageInput.value = (Number(els.pageInput.value) || 1) + 1; refreshPdf(); });
+els.zoomSelect.addEventListener('change', refreshPdf);
+els.zoomOut.addEventListener('click', () => stepZoom(-1));
+els.zoomIn.addEventListener('click', () => stepZoom(1));
+els.printBtn.addEventListener('click', printCurrent);
+els.notesText.addEventListener('input', () => {
+  clearTimeout(state.saveTimer);
+  state.saveTimer = setTimeout(saveDocState, 250);
+});
+els.addAnnotation.addEventListener('click', addAnnotation);
+els.notesTab.addEventListener('click', () => setTab('notes'));
+els.annTab.addEventListener('click', () => setTab('annotations'));
+els.clearNotes.addEventListener('click', () => {
+  if (!state.current) return;
+  localStorage.removeItem(storageKey(state.current.id));
+  els.notesText.value = '';
+  renderAnnotations();
+  setStatus('Notes cleared for this PDF', false);
+});
+
+function stepZoom(delta) {
+  const values = ['75','100','125','150','200'];
+  const current = values.includes(els.zoomSelect.value) ? values.indexOf(els.zoomSelect.value) : 1;
+  const next = Math.max(0, Math.min(values.length - 1, current + delta));
+  els.zoomSelect.value = values[next];
+  refreshPdf();
+}
+
+window.addEventListener('beforeunload', () => {
+  for (const url of state.objectUrls.values()) URL.revokeObjectURL(url);
+});
+
+state.files = loadRecent();
+renderFileList();
+setTab('notes');
+</script>
+</body>
+</html>

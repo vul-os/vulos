@@ -1,0 +1,18 @@
+{
+  "id": "weather",
+  "name": "Weather",
+  "icon": "☀",
+  "icon_path": "icon.svg",
+  "description": "Current conditions and 7-day forecast powered by Open-Meteo",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "utilities",
+  "keywords": ["weather", "forecast", "temperature", "climate"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["network"],
+  "author": "Vula OS",
+  "license": "MIT"
+}

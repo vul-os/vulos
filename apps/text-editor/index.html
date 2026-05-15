@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Text Editor</title>
+<style>
+*{box-sizing:border-box}
+:root{
+  color-scheme:dark;
+  --bg:#101214;
+  --panel:#171a1d;
+  --panel-2:#1f2327;
+  --line:#2b3035;
+  --text:#ebe7dd;
+  --muted:#9ba4aa;
+  --accent:#d14f3f;
+  --accent-2:#f0b95a;
+  --green:#83ba75;
+  --blue:#77a8d9;
+  --violet:#b58bdc;
+  --mono:"SFMono-Regular","Cascadia Code","Liberation Mono",Menlo,Consolas,monospace;
+}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+button,input,select,textarea{font:inherit}
+button,select{height:32px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--text);outline:none}
+button{display:inline-grid;place-items:center;min-width:32px;padding:0 10px;cursor:pointer}
+button:hover,select:hover{border-color:#48515a;background:#242a2f}
+button.active{border-color:var(--accent);color:#fff;background:#44221f}
+input{height:32px;border:1px solid var(--line);border-radius:6px;background:#0d0f11;color:var(--text);outline:none;padding:0 10px;min-width:0}
+input:focus,select:focus,textarea:focus{border-color:var(--accent-2)}
+.app{height:100%;display:grid;grid-template-rows:auto auto 1fr auto;min-width:320px}
+.topbar{height:44px;display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:14px;margin-right:6px;white-space:nowrap}
+.tabs{display:flex;gap:4px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:thin}
+.tab{height:30px;display:flex;align-items:center;gap:7px;min-width:104px;max-width:220px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;flex:0 1 auto}
+.tab:hover{background:#20252a;color:var(--text)}
+.tab.active{background:#272d32;border-color:#394149;color:var(--text)}
+.tab-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.dirty{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:0 0 auto;opacity:0}
+.tab.changed .dirty{opacity:1}
+.close{width:18px;height:18px;display:grid;place-items:center;border-radius:4px;color:var(--muted);font-size:15px;line-height:1;flex:0 0 auto}
+.close:hover{background:#363d44;color:#fff}
+.toolbar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#121518;border-bottom:1px solid var(--line);overflow-x:auto}
+.toolbar .group{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.toolbar .spacer{flex:1}
+.file-name{width:210px}
+.findbar{display:none;align-items:center;gap:8px;padding:8px 10px;background:#171a1d;border-bottom:1px solid var(--line)}
+.findbar.open{display:flex}
+.findbar input{width:180px}
+.find-count{font-size:12px;color:var(--muted);min-width:70px}
+.editor-shell{min-height:0;display:grid;grid-template-columns:auto 1fr;background:#0c0e10}
+.gutter{width:58px;background:#101214;border-right:1px solid var(--line);color:#69727a;font:14px/1.55 var(--mono);padding:14px 9px 14px 0;text-align:right;overflow:hidden;user-select:none;white-space:pre}
+.editor-wrap{position:relative;min-width:0;overflow:hidden}
+.highlight,.editor{
+  position:absolute;inset:0;margin:0;border:0;padding:14px 16px;
+  font:14px/1.55 var(--mono);tab-size:2;white-space:pre;overflow:auto;
+}
+.highlight{pointer-events:none;color:var(--text);background:#0c0e10}
+.editor{
+  resize:none;outline:none;background:transparent;color:transparent;caret-color:#fff;
+  -webkit-text-fill-color:transparent;z-index:2;
+}
+.editor::selection{-webkit-text-fill-color:#fff;background:#7a4b32}
+.wrap .highlight,.wrap .editor{white-space:pre-wrap;overflow-wrap:anywhere}
+.plain .editor{color:var(--text);-webkit-text-fill-color:var(--text)}
+.plain .highlight{display:none}
+.token-key{color:var(--violet)}
+.token-str{color:var(--green)}
+.token-com{color:#768079;font-style:italic}
+.token-num{color:#e0a35d}
+.token-tag{color:#77a8d9}
+.token-find{background:#6d5524;color:#fff;border-radius:2px}
+.token-find.current{background:#b16524}
+.statusbar{height:28px;display:flex;align-items:center;gap:14px;padding:0 12px;border-top:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:12px;white-space:nowrap}
+.statusbar span:last-child{margin-left:auto}
+@media (max-width:720px){
+  .brand{display:none}
+  .topbar{height:auto;align-items:stretch}
+  .toolbar,.findbar{flex-wrap:wrap;overflow:visible}
+  .toolbar .spacer{display:none}
+  .file-name,.findbar input{width:100%;flex:1 1 150px}
+  .gutter{width:46px;font-size:12px}
+  .highlight,.editor{font-size:13px;padding:12px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">Text Editor</div>
+    <div class="tabs" id="tabs"></div>
+    <button id="newBtn" title="New document">+</button>
+  </header>
+
+  <section class="toolbar" aria-label="Editor toolbar">
+    <div class="group">
+      <input class="file-name" id="titleInput" aria-label="Document name" placeholder="Untitled.txt">
+      <select id="modeSelect" aria-label="Syntax mode">
+        <option value="plain">Plain text</option>
+        <option value="javascript">JavaScript</option>
+        <option value="html">HTML</option>
+        <option value="css">CSS</option>
+        <option value="python">Python</option>
+        <option value="json">JSON</option>
+        <option value="markdown">Markdown</option>
+      </select>
+    </div>
+    <div class="group">
+      <button id="wrapBtn" title="Toggle word wrap">Wrap</button>
+      <button id="findBtn" title="Find and replace">Find</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="group">
+      <button id="duplicateBtn" title="Duplicate current document">Duplicate</button>
+      <button id="deleteBtn" title="Delete current document">Delete</button>
+    </div>
+  </section>
+
+  <section class="findbar" id="findbar" aria-label="Find and replace">
+    <input id="findInput" placeholder="Find" aria-label="Find">
+    <input id="replaceInput" placeholder="Replace" aria-label="Replace">
+    <button id="prevBtn" title="Previous match">Prev</button>
+    <button id="nextBtn" title="Next match">Next</button>
+    <button id="replaceBtn" title="Replace current match">Replace</button>
+    <button id="replaceAllBtn" title="Replace all matches">All</button>
+    <span class="find-count" id="findCount">No query</span>
+  </section>
+
+  <main class="editor-shell">
+    <pre class="gutter" id="gutter">1</pre>
+    <div class="editor-wrap plain" id="editorWrap">
+      <pre class="highlight" id="highlight" aria-hidden="true"></pre>
+      <textarea class="editor" id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Document editor"></textarea>
+    </div>
+  </main>
+
+  <footer class="statusbar">
+    <span id="cursorStatus">Ln 1, Col 1</span>
+    <span id="docStatus">0 words</span>
+    <span id="saveStatus">Saved locally</span>
+  </footer>
+</div>
+
+<script>
+const STORE_KEY = "vulos.text-editor.documents.v1";
+const STATE_KEY = "vulos.text-editor.state.v1";
+const DEFAULT_TEXT = "Start typing, or switch syntax mode for lightweight code highlighting.\n";
+const modes = {
+  javascript: /\b(await|break|case|catch|class|const|continue|default|else|export|for|from|function|if|import|let|new|null|return|switch|this|throw|try|undefined|var|while|yield)\b/g,
+  python: /\b(and|as|break|class|continue|def|elif|else|except|False|for|from|if|import|in|is|lambda|None|not|or|pass|return|True|try|while|with|yield)\b/g,
+  css: /\b(align-items|background|border|color|display|flex|font|gap|grid|height|margin|padding|position|width|z-index)\b/g,
+  json: /\b(true|false|null)\b/g,
+  markdown: /(^|\s)(#{1,6}|[-*]|\d+\.)\s/gm
+};
+let docs = [];
+let activeId = null;
+let findMatches = [];
+let findIndex = -1;
+let saveTimer = null;
+
+const tabs = document.getElementById("tabs");
+const editor = document.getElementById("editor");
+const highlight = document.getElementById("highlight");
+const gutter = document.getElementById("gutter");
+const editorWrap = document.getElementById("editorWrap");
+const titleInput = document.getElementById("titleInput");
+const modeSelect = document.getElementById("modeSelect");
+const wrapBtn = document.getElementById("wrapBtn");
+const findbar = document.getElementById("findbar");
+const findInput = document.getElementById("findInput");
+const replaceInput = document.getElementById("replaceInput");
+const findCount = document.getElementById("findCount");
+const cursorStatus = document.getElementById("cursorStatus");
+const docStatus = document.getElementById("docStatus");
+const saveStatus = document.getElementById("saveStatus");
+
+function uid(){ return "doc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,7); }
+function activeDoc(){ return docs.find(doc => doc.id === activeId) || docs[0]; }
+function escapeHtml(value){
+  return value.replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
+}
+function load(){
+  try{ docs = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); }catch{ docs = []; }
+  let state = {};
+  try{ state = JSON.parse(localStorage.getItem(STATE_KEY) || "{}"); }catch{}
+  if(!docs.length){
+    docs = [{ id: uid(), title: "Untitled.txt", mode: "plain", wrap: true, content: DEFAULT_TEXT, savedContent: DEFAULT_TEXT, updated: Date.now() }];
+  }
+  activeId = docs.some(doc => doc.id === state.activeId) ? state.activeId : docs[0].id;
+  renderAll();
+}
+function persist(){
+  localStorage.setItem(STORE_KEY, JSON.stringify(docs));
+  localStorage.setItem(STATE_KEY, JSON.stringify({ activeId }));
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveStatus.textContent = "Saving...";
+  saveTimer = setTimeout(() => {
+    docs.forEach(doc => { doc.savedContent = doc.content; });
+    persist();
+    renderTabs();
+    saveStatus.textContent = "Saved locally";
+  }, 160);
+}
+function renderAll(){
+  const doc = activeDoc();
+  activeId = doc.id;
+  titleInput.value = doc.title;
+  modeSelect.value = doc.mode;
+  editor.value = doc.content;
+  wrapBtn.classList.toggle("active", doc.wrap);
+  editorWrap.classList.toggle("wrap", doc.wrap);
+  editorWrap.classList.toggle("plain", doc.mode === "plain");
+  renderTabs();
+  renderEditorChrome();
+  updateFind();
+  persist();
+}
+function renderTabs(){
+  tabs.innerHTML = "";
+  docs.forEach(doc => {
+    const tab = document.createElement("div");
+    tab.className = "tab" + (doc.id === activeId ? " active" : "") + (doc.content !== doc.savedContent ? " changed" : "");
+    tab.title = doc.title;
+    tab.addEventListener("click", () => switchDoc(doc.id));
+    tab.innerHTML = `<span class="dirty"></span><span class="tab-title"></span><span class="close" title="Close tab">&times;</span>`;
+    tab.querySelector(".tab-title").textContent = doc.title || "Untitled.txt";
+    tab.querySelector(".close").addEventListener("click", event => { event.stopPropagation(); closeDoc(doc.id); });
+    tabs.appendChild(tab);
+  });
+}
+function renderEditorChrome(){
+  const text = editor.value;
+  const lineCount = Math.max(1, text.split("\n").length);
+  gutter.textContent = Array.from({ length: lineCount }, (_, index) => index + 1).join("\n");
+  highlight.innerHTML = renderHighlight(text, modeSelect.value);
+  updateStats();
+}
+function renderHighlight(text, mode){
+  let html = escapeHtml(text);
+  if(mode !== "plain"){
+    const tokens = [];
+    const hold = (cls, value) => {
+      const id = "\uE000" + tokenName(tokens.length) + "\uE001";
+      tokens.push({ id, html: `<span class="${cls}">${value}</span>` });
+      return id;
+    };
+    html = html
+      .replace(/(\/\/.*?$|#.*?$|\/\*[\s\S]*?\*\/|&lt;!--[\s\S]*?--&gt;)/gm, value => hold("token-com", value))
+      .replace(/(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`)/g, value => hold("token-str", value))
+      .replace(/\b(\d+(?:\.\d+)?)\b/g, "<span class=\"token-num\">$1</span>");
+    if(mode === "html"){
+      html = html.replace(/(&lt;\/?[\w-]+|&gt;)/g, "<span class=\"token-tag\">$1</span>");
+    }
+    if(modes[mode]){
+      html = html.replace(modes[mode], "<span class=\"token-key\">$&</span>");
+    }
+    tokens.forEach(token => { html = html.replaceAll(token.id, token.html); });
+  }
+  const query = findInput.value;
+  if(query){
+    const escaped = escapeRegExp(escapeHtml(query));
+    let seen = 0;
+    html = html.replace(new RegExp(escaped, "gi"), match => {
+      const cls = seen === findIndex ? "token-find current" : "token-find";
+      seen += 1;
+      return `<span class="${cls}">${match}</span>`;
+    });
+  }
+  return html || "\n";
+}
+function tokenName(index){
+  let n = index;
+  let name = "";
+  do {
+    name = String.fromCharCode(65 + (n % 26)) + name;
+    n = Math.floor(n / 26) - 1;
+  } while(n >= 0);
+  return name;
+}
+function escapeRegExp(value){ return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function switchDoc(id){
+  const doc = docs.find(item => item.id === id);
+  if(!doc) return;
+  activeId = id;
+  renderAll();
+}
+function mutateActive(mutator){
+  const doc = activeDoc();
+  if(!doc) return;
+  mutator(doc);
+  doc.updated = Date.now();
+  scheduleSave();
+  renderTabs();
+}
+function newDoc(){
+  const doc = { id: uid(), title: "Untitled.txt", mode: "plain", wrap: true, content: "", savedContent: "", updated: Date.now() };
+  docs.unshift(doc);
+  activeId = doc.id;
+  renderAll();
+  editor.focus();
+}
+function duplicateDoc(){
+  const doc = activeDoc();
+  const copy = { ...doc, id: uid(), title: doc.title.replace(/(\.[^.]+)?$/, " copy$1"), savedContent: doc.content, updated: Date.now() };
+  docs.unshift(copy);
+  activeId = copy.id;
+  renderAll();
+}
+function closeDoc(id){
+  if(docs.length === 1){
+    mutateActive(doc => { doc.title = "Untitled.txt"; doc.mode = "plain"; doc.content = ""; doc.savedContent = ""; });
+    renderAll();
+    return;
+  }
+  const index = docs.findIndex(doc => doc.id === id);
+  docs = docs.filter(doc => doc.id !== id);
+  if(activeId === id) activeId = docs[Math.max(0, index - 1)].id;
+  renderAll();
+}
+function updateStats(){
+  const text = editor.value;
+  const words = (text.trim().match(/\S+/g) || []).length;
+  const chars = text.length;
+  docStatus.textContent = `${words} words, ${chars} chars`;
+  updateCursor();
+}
+function updateCursor(){
+  const before = editor.value.slice(0, editor.selectionStart);
+  const lines = before.split("\n");
+  cursorStatus.textContent = `Ln ${lines.length}, Col ${lines[lines.length - 1].length + 1}`;
+}
+function syncScroll(){
+  highlight.scrollTop = editor.scrollTop;
+  highlight.scrollLeft = editor.scrollLeft;
+  gutter.scrollTop = editor.scrollTop;
+}
+function updateFind(){
+  const query = findInput.value;
+  findMatches = [];
+  findIndex = -1;
+  if(query){
+    const lowerText = editor.value.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    let start = 0;
+    while(true){
+      const index = lowerText.indexOf(lowerQuery, start);
+      if(index === -1) break;
+      findMatches.push({ start: index, end: index + query.length });
+      start = index + Math.max(1, query.length);
+    }
+    const cursor = editor.selectionStart;
+    findIndex = findMatches.findIndex(match => match.start >= cursor);
+    if(findIndex === -1 && findMatches.length) findIndex = 0;
+  }
+  findCount.textContent = query ? `${findMatches.length ? findIndex + 1 : 0} of ${findMatches.length}` : "No query";
+  renderEditorChrome();
+}
+function goFind(delta){
+  if(!findMatches.length) return;
+  findIndex = (findIndex + delta + findMatches.length) % findMatches.length;
+  const match = findMatches[findIndex];
+  editor.focus();
+  editor.setSelectionRange(match.start, match.end);
+  findCount.textContent = `${findIndex + 1} of ${findMatches.length}`;
+  renderEditorChrome();
+}
+function replaceCurrent(){
+  if(!findMatches.length) return;
+  const match = findMatches[findIndex < 0 ? 0 : findIndex];
+  const replacement = replaceInput.value;
+  const next = editor.value.slice(0, match.start) + replacement + editor.value.slice(match.end);
+  editor.value = next;
+  editor.setSelectionRange(match.start, match.start + replacement.length);
+  commitEditorValue();
+  updateFind();
+}
+function replaceAll(){
+  const query = findInput.value;
+  if(!query) return;
+  const next = editor.value.replace(new RegExp(escapeRegExp(query), "gi"), replaceInput.value);
+  editor.value = next;
+  commitEditorValue();
+  updateFind();
+}
+function commitEditorValue(){
+  mutateActive(doc => { doc.content = editor.value; });
+  renderEditorChrome();
+}
+
+document.getElementById("newBtn").addEventListener("click", newDoc);
+document.getElementById("duplicateBtn").addEventListener("click", duplicateDoc);
+document.getElementById("deleteBtn").addEventListener("click", () => closeDoc(activeId));
+document.getElementById("findBtn").addEventListener("click", () => {
+  findbar.classList.toggle("open");
+  if(findbar.classList.contains("open")) findInput.focus();
+});
+wrapBtn.addEventListener("click", () => {
+  mutateActive(doc => { doc.wrap = !doc.wrap; });
+  renderAll();
+});
+titleInput.addEventListener("input", () => {
+  mutateActive(doc => { doc.title = titleInput.value || "Untitled.txt"; });
+});
+modeSelect.addEventListener("change", () => {
+  mutateActive(doc => { doc.mode = modeSelect.value; });
+  renderAll();
+});
+editor.addEventListener("input", () => {
+  commitEditorValue();
+  updateFind();
+});
+editor.addEventListener("scroll", syncScroll);
+editor.addEventListener("click", updateCursor);
+editor.addEventListener("keyup", updateCursor);
+editor.addEventListener("keydown", event => {
+  if(event.key === "Tab"){
+    event.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.slice(0, start) + "  " + editor.value.slice(end);
+    editor.setSelectionRange(start + 2, start + 2);
+    commitEditorValue();
+  }
+  if((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f"){
+    event.preventDefault();
+    findbar.classList.add("open");
+    findInput.focus();
+    findInput.select();
+  }
+});
+findInput.addEventListener("input", updateFind);
+replaceInput.addEventListener("keydown", event => {
+  if(event.key === "Enter") replaceCurrent();
+});
+document.getElementById("prevBtn").addEventListener("click", () => goFind(-1));
+document.getElementById("nextBtn").addEventListener("click", () => goFind(1));
+document.getElementById("replaceBtn").addEventListener("click", replaceCurrent);
+document.getElementById("replaceAllBtn").addEventListener("click", replaceAll);
+window.addEventListener("beforeunload", persist);
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Calculator">
+  <rect width="128" height="128" rx="24" fill="#171717"/>
+  <rect x="24" y="18" width="80" height="92" rx="12" fill="#262626" stroke="#3f3f46" stroke-width="4"/>
+  <rect x="34" y="30" width="60" height="18" rx="5" fill="#d9f99d"/>
+  <g fill="#f5f5f5">
+    <rect x="34" y="60" width="14" height="14" rx="3"/>
+    <rect x="57" y="60" width="14" height="14" rx="3"/>
+    <rect x="80" y="60" width="14" height="14" rx="3"/>
+    <rect x="34" y="82" width="14" height="14" rx="3"/>
+    <rect x="57" y="82" width="14" height="14" rx="3"/>
+  </g>
+  <rect x="80" y="82" width="14" height="14" rx="3" fill="#38bdf8"/>
+</svg>

@@ -112,13 +112,16 @@ const builtinRegistry = [
 // Dynamic installed apps from backend
 let installedApps = []
 let fetchPromise = null
+const builtinAliases = new Map([
+  ['notes', 'library'],
+])
 
 export function refreshInstalled() {
   fetchPromise = fetch('/api/store/installed')
     .then(r => r.ok ? r.json() : [])
     .then(apps => {
       installedApps = (apps || [])
-        .filter(a => !builtinRegistry.some(b => b.id === a.id))
+        .filter(a => !builtinRegistry.some(b => b.id === (builtinAliases.get(a.id) || a.id)))
         .map(a => ({
           id: a.id,
           name: a.name,

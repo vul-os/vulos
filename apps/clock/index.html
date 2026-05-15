@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clock</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#0d1117;--panel:#151b23;--panel2:#1f2937;--line:#303946;--text:#f4f7fb;--muted:#9aa6b2;--accent:#67e8f9;--accent2:#f97316;--ok:#22c55e;--danger:#ef4444}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+button,input,select{font:inherit}
+button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:9px 12px;cursor:pointer}
+button:hover{border-color:#526071;background:#263241}
+button.primary{background:#0e7490;border-color:#0891b2}
+button.success{background:#166534;border-color:#22c55e}
+button.danger{background:#7f1d1d;border-color:#ef4444}
+input,select{background:#0f141b;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px;min-width:0}
+.app{height:100vh;display:grid;grid-template-columns:260px 1fr;min-width:0}
+.sidebar{background:#0f141b;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px;gap:8px}
+.brand{display:flex;align-items:center;gap:10px;padding:8px 8px 16px}
+.mark{width:34px;height:34px;border-radius:50%;background:conic-gradient(from 0deg,var(--accent),var(--accent2),var(--accent));position:relative}
+.mark:after{content:"";position:absolute;inset:7px;border-radius:50%;background:#0f141b}
+.brand h1{font-size:18px;margin:0;font-weight:700}
+.nav{display:grid;gap:6px}
+.nav button{text-align:left;background:transparent;border-color:transparent;color:var(--muted);display:flex;align-items:center;gap:10px}
+.nav button.active{background:var(--panel);border-color:var(--line);color:var(--text)}
+.nav .glyph{width:22px;text-align:center;color:var(--accent)}
+.side-note{margin-top:auto;color:var(--muted);font-size:12px;line-height:1.45;padding:10px 8px;border-top:1px solid var(--line)}
+.main{min-width:0;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:18px}
+.view{display:none;min-height:100%}
+.view.active{display:block}
+.now-wrap{min-height:calc(100vh - 44px);display:grid;grid-template-rows:auto 1fr;gap:16px}
+.topline{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.topline h2{margin:0;font-size:16px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.time-card{display:flex;align-items:center;justify-content:center;text-align:center;border:1px solid var(--line);background:radial-gradient(circle at 50% 20%,#1d2a33 0,#151b23 42%,#10151c 100%);border-radius:8px;min-height:380px;padding:28px}
+.clock-time{font-size:clamp(64px,13vw,178px);line-height:.92;font-weight:800;letter-spacing:0;font-variant-numeric:tabular-nums}
+.clock-date{font-size:clamp(18px,2.4vw,32px);color:var(--muted);margin-top:22px}
+.clock-zone{font-size:14px;color:var(--accent);margin-top:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+.world-card{display:grid;gap:8px}
+.world-city{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.world-city strong{font-size:17px}
+.world-city button{padding:4px 8px;color:var(--muted)}
+.world-time{font-size:34px;font-weight:750;font-variant-numeric:tabular-nums}
+.world-date{color:var(--muted);font-size:13px}
+.add-row{display:grid;grid-template-columns:minmax(130px,1fr) minmax(140px,1fr) auto;gap:10px;margin-bottom:14px}
+.display{font-size:clamp(54px,10vw,126px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums;text-align:center;margin:42px 0 28px}
+.controls{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.timer-inputs{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:24px 0}
+.timer-inputs label{display:grid;gap:6px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.timer-inputs input{width:96px;text-align:center;font-size:24px}
+.laps{max-width:520px;margin:22px auto 0;border-top:1px solid var(--line)}
+.lap{display:flex;justify-content:space-between;padding:9px 4px;border-bottom:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+.status{text-align:center;color:var(--muted);min-height:22px;margin-top:14px}
+@media (max-width:760px){
+  body{overflow:auto}
+  .app{height:auto;min-height:100vh;grid-template-columns:1fr}
+  .sidebar{position:sticky;top:0;z-index:5;border-right:none;border-bottom:1px solid var(--line)}
+  .brand{padding-bottom:8px}
+  .nav{grid-template-columns:repeat(4,1fr)}
+  .nav button{justify-content:center;padding:9px 6px}
+  .nav .label{display:none}
+  .side-note{display:none}
+  .main{padding:14px}
+  .time-card{min-height:340px}
+  .add-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="mark"></div><h1>Clock</h1></div>
+    <nav class="nav" aria-label="Clock modes">
+      <button class="active" data-view="current"><span class="glyph">◷</span><span class="label">Current Time</span></button>
+      <button data-view="world"><span class="glyph">◎</span><span class="label">World Clocks</span></button>
+      <button data-view="stopwatch"><span class="glyph">◴</span><span class="label">Stopwatch</span></button>
+      <button data-view="timer"><span class="glyph">⏱</span><span class="label">Timer</span></button>
+    </nav>
+    <div class="side-note" id="notificationState">Notifications available when your browser permits them.</div>
+  </aside>
+
+  <main class="main">
+    <section class="view active now-wrap" id="view-current">
+      <div class="topline">
+        <h2>Current Time</h2>
+        <button id="notifyBtn">Enable Notifications</button>
+      </div>
+      <div class="time-card">
+        <div>
+          <div class="clock-time" id="localTime">--:--:--</div>
+          <div class="clock-date" id="localDate">Loading date</div>
+          <div class="clock-zone" id="localZone"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-world">
+      <div class="topline"><h2>World Clocks</h2></div>
+      <div class="add-row">
+        <input id="cityName" placeholder="Label, e.g. Tokyo" maxlength="32">
+        <select id="cityZone"></select>
+        <button class="primary" id="addClockBtn">Add</button>
+      </div>
+      <div class="grid" id="worldGrid"></div>
+    </section>
+
+    <section class="view" id="view-stopwatch">
+      <div class="topline"><h2>Stopwatch</h2></div>
+      <div class="display" id="stopwatchDisplay">00:00.00</div>
+      <div class="controls">
+        <button class="success" id="swStart">Start</button>
+        <button id="swLap">Lap</button>
+        <button class="danger" id="swReset">Reset</button>
+      </div>
+      <div class="laps" id="laps"></div>
+    </section>
+
+    <section class="view" id="view-timer">
+      <div class="topline"><h2>Timer</h2></div>
+      <div class="display" id="timerDisplay">00:00:00</div>
+      <div class="timer-inputs">
+        <label>Hours<input id="hours" type="number" min="0" max="99" value="0"></label>
+        <label>Minutes<input id="minutes" type="number" min="0" max="59" value="5"></label>
+        <label>Seconds<input id="seconds" type="number" min="0" max="59" value="0"></label>
+      </div>
+      <div class="controls">
+        <button class="success" id="timerStart">Start</button>
+        <button id="timerPause">Pause</button>
+        <button class="danger" id="timerReset">Reset</button>
+      </div>
+      <div class="status" id="timerStatus"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const zones = [
+  ["New York","America/New_York"],["London","Europe/London"],["Paris","Europe/Paris"],
+  ["Johannesburg","Africa/Johannesburg"],["Dubai","Asia/Dubai"],["Mumbai","Asia/Kolkata"],
+  ["Singapore","Asia/Singapore"],["Tokyo","Asia/Tokyo"],["Sydney","Australia/Sydney"],
+  ["Los Angeles","America/Los_Angeles"],["Sao Paulo","America/Sao_Paulo"]
+];
+let worldClocks = JSON.parse(localStorage.getItem("clock.worldClocks") || "null") || zones.slice(0,4).map(([name,zone]) => ({name,zone}));
+let stopwatchBase = 0, stopwatchElapsed = 0, stopwatchRunning = false, lapCount = 0;
+let timerTotal = 300, timerRemaining = 300, timerEnd = 0, timerRunning = false, audioCtx = null;
+
+const fmtTime = new Intl.DateTimeFormat(undefined,{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const fmtDate = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+
+function $(id){return document.getElementById(id)}
+function pad(n){return String(n).padStart(2,"0")}
+
+function setView(view){
+  document.querySelectorAll(".nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
+  document.querySelectorAll(".view").forEach(el => el.classList.toggle("active", el.id === "view-" + view));
+}
+
+function updateLocal(){
+  const now = new Date();
+  $("localTime").textContent = fmtTime.format(now);
+  $("localDate").textContent = fmtDate.format(now);
+  $("localZone").textContent = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
+}
+
+function saveWorld(){localStorage.setItem("clock.worldClocks", JSON.stringify(worldClocks))}
+
+function renderWorld(){
+  $("worldGrid").innerHTML = worldClocks.map((clock, idx) => `
+    <article class="card world-card">
+      <div class="world-city"><strong>${escapeHtml(clock.name)}</strong><button aria-label="Remove ${escapeHtml(clock.name)}" onclick="removeClock(${idx})">Remove</button></div>
+      <div class="world-time" data-zone="${clock.zone}">--:--:--</div>
+      <div class="world-date" data-date-zone="${clock.zone}"></div>
+    </article>
+  `).join("");
+  updateWorldTimes();
+}
+
+function updateWorldTimes(){
+  const now = new Date();
+  document.querySelectorAll("[data-zone]").forEach(el => {
+    el.textContent = new Intl.DateTimeFormat(undefined,{timeZone:el.dataset.zone,hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(now);
+  });
+  document.querySelectorAll("[data-date-zone]").forEach(el => {
+    el.textContent = new Intl.DateTimeFormat(undefined,{timeZone:el.dataset.dateZone,weekday:"short",month:"short",day:"numeric",timeZoneName:"short"}).format(now);
+  });
+}
+
+function removeClock(idx){
+  worldClocks.splice(idx,1);
+  saveWorld();
+  renderWorld();
+}
+
+function escapeHtml(value){
+  return String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+}
+
+function formatStopwatch(ms){
+  const total = Math.max(0, Math.floor(ms / 10));
+  const hundredths = total % 100;
+  const seconds = Math.floor(total / 100) % 60;
+  const minutes = Math.floor(total / 6000);
+  return `${pad(minutes)}:${pad(seconds)}.${pad(hundredths)}`;
+}
+
+function updateStopwatch(){
+  const elapsed = stopwatchRunning ? performance.now() - stopwatchBase + stopwatchElapsed : stopwatchElapsed;
+  $("stopwatchDisplay").textContent = formatStopwatch(elapsed);
+}
+
+function setTimerFromInputs(){
+  const h = Math.min(99, Math.max(0, Number($("hours").value) || 0));
+  const m = Math.min(59, Math.max(0, Number($("minutes").value) || 0));
+  const s = Math.min(59, Math.max(0, Number($("seconds").value) || 0));
+  timerTotal = h * 3600 + m * 60 + s;
+  timerRemaining = timerTotal;
+  updateTimerDisplay();
+}
+
+function formatTimer(total){
+  total = Math.max(0, Math.ceil(total));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+function updateTimerDisplay(){
+  if (timerRunning) timerRemaining = Math.max(0, (timerEnd - Date.now()) / 1000);
+  $("timerDisplay").textContent = formatTimer(timerRemaining);
+  if (timerRunning && timerRemaining <= 0) finishTimer();
+}
+
+function requestNotifications(){
+  if (!("Notification" in window)) {
+    $("notificationState").textContent = "This browser does not support notifications.";
+    return;
+  }
+  Notification.requestPermission().then(updateNotificationState);
+}
+
+function updateNotificationState(){
+  if (!("Notification" in window)) return;
+  $("notificationState").textContent = Notification.permission === "granted"
+    ? "Timer notifications are enabled."
+    : "Timer notifications need browser permission.";
+}
+
+function notifyAlarm(){
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification("Timer finished", {body:"Your Clock timer has ended.", icon:"/icon.svg"});
+  }
+}
+
+function playAlarm(){
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const now = audioCtx.currentTime;
+  [0, .22, .44, .78, 1.0, 1.22].forEach((offset, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(i % 2 ? 740 : 520, now + offset);
+    gain.gain.setValueAtTime(.0001, now + offset);
+    gain.gain.exponentialRampToValueAtTime(.28, now + offset + .03);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + offset + .18);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now + offset);
+    osc.stop(now + offset + .2);
+  });
+}
+
+function finishTimer(){
+  timerRunning = false;
+  timerRemaining = 0;
+  $("timerStart").textContent = "Start";
+  $("timerStatus").textContent = "Timer finished";
+  playAlarm();
+  notifyAlarm();
+  updateTimerDisplay();
+}
+
+document.querySelectorAll(".nav button").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
+$("notifyBtn").addEventListener("click", requestNotifications);
+$("addClockBtn").addEventListener("click", () => {
+  const zone = $("cityZone").value;
+  const chosen = zones.find(item => item[1] === zone);
+  const name = $("cityName").value.trim() || (chosen ? chosen[0] : zone);
+  worldClocks.push({name, zone});
+  $("cityName").value = "";
+  saveWorld();
+  renderWorld();
+});
+
+$("swStart").addEventListener("click", () => {
+  if (stopwatchRunning) {
+    stopwatchElapsed += performance.now() - stopwatchBase;
+    stopwatchRunning = false;
+    $("swStart").textContent = "Start";
+  } else {
+    stopwatchBase = performance.now();
+    stopwatchRunning = true;
+    $("swStart").textContent = "Stop";
+  }
+});
+$("swLap").addEventListener("click", () => {
+  if (!stopwatchRunning && stopwatchElapsed === 0) return;
+  const elapsed = stopwatchRunning ? performance.now() - stopwatchBase + stopwatchElapsed : stopwatchElapsed;
+  lapCount += 1;
+  $("laps").insertAdjacentHTML("afterbegin", `<div class="lap"><span>Lap ${lapCount}</span><span>${formatStopwatch(elapsed)}</span></div>`);
+});
+$("swReset").addEventListener("click", () => {
+  stopwatchBase = 0; stopwatchElapsed = 0; stopwatchRunning = false; lapCount = 0;
+  $("swStart").textContent = "Start";
+  $("laps").innerHTML = "";
+  updateStopwatch();
+});
+
+["hours","minutes","seconds"].forEach(id => $(id).addEventListener("change", () => {
+  if (!timerRunning) setTimerFromInputs();
+}));
+$("timerStart").addEventListener("click", () => {
+  if (!timerRunning) {
+    if (timerRemaining <= 0) setTimerFromInputs();
+    if (timerRemaining <= 0) return;
+    timerEnd = Date.now() + timerRemaining * 1000;
+    timerRunning = true;
+    $("timerStart").textContent = "Running";
+    $("timerStatus").textContent = "Timer running";
+  }
+});
+$("timerPause").addEventListener("click", () => {
+  if (!timerRunning) return;
+  updateTimerDisplay();
+  timerRunning = false;
+  $("timerStart").textContent = "Resume";
+  $("timerStatus").textContent = "Paused";
+});
+$("timerReset").addEventListener("click", () => {
+  timerRunning = false;
+  $("timerStart").textContent = "Start";
+  $("timerStatus").textContent = "";
+  setTimerFromInputs();
+});
+
+function init(){
+  $("cityZone").innerHTML = zones.map(([name, zone]) => `<option value="${zone}">${name} - ${zone}</option>`).join("");
+  updateLocal();
+  renderWorld();
+  setTimerFromInputs();
+  updateNotificationState();
+  setInterval(() => { updateLocal(); updateWorldTimes(); }, 1000);
+  setInterval(() => { updateStopwatch(); updateTimerDisplay(); }, 50);
+}
+init();
+</script>
+</body>
+</html>
