@@ -107,6 +107,15 @@ const builtinRegistry = [
     port: 80,
     category: 'media',
   },
+  {
+    id: 'social',
+    name: 'Fediverse',
+    icon: '◎',
+    description: 'Read-only ActivityPub social client — browse public Mastodon timelines',
+    keywords: ['social', 'fediverse', 'mastodon', 'activitypub', 'timeline', 'feed'],
+    port: 80,
+    category: 'network',
+  },
 ]
 
 // Dynamic installed apps from backend

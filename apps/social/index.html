@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fediverse — Vula OS</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-apple-system,sans-serif;font-size:14px}
+
+/* ── Layout ─────────────────────────────────────── */
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── Top bar ─────────────────────────────────────── */
+.topbar{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;
+  background:#0e0e1a;
+  border-bottom:1px solid #1e1e30;
+  flex-shrink:0;
+}
+.topbar .logo{font-size:18px;color:#6366f1;flex-shrink:0}
+.topbar .instance-wrap{display:flex;flex:1;gap:6px;max-width:560px}
+.topbar input{
+  flex:1;
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:7px 12px;color:#e2e2f0;font-size:13px;outline:none;
+  transition:border-color .15s;
+}
+.topbar input:focus{border-color:#6366f1}
+.topbar input::placeholder{color:#555}
+.topbar button{
+  background:#6366f1;border:none;border-radius:8px;
+  padding:7px 14px;color:#fff;font-size:13px;font-weight:500;cursor:pointer;
+  white-space:nowrap;flex-shrink:0;transition:background .15s;
+}
+.topbar button:hover{background:#5254cc}
+.topbar button:disabled{background:#333;color:#666;cursor:default}
+.topbar .filter-wrap{display:flex;gap:4px;margin-left:4px}
+.topbar .filter-btn{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:6px 10px;color:#aaa;font-size:12px;cursor:pointer;white-space:nowrap;
+}
+.topbar .filter-btn.active{background:#6366f1;border-color:#6366f1;color:#fff}
+
+/* ── Feed area ───────────────────────────────────── */
+.feed-wrap{flex:1;overflow-y:auto;padding:16px;max-width:720px;width:100%;margin:0 auto}
+.feed-wrap::-webkit-scrollbar{width:4px}
+.feed-wrap::-webkit-scrollbar-track{background:transparent}
+.feed-wrap::-webkit-scrollbar-thumb{background:#2a2a44;border-radius:2px}
+
+/* ── State messages ─────────────────────────────── */
+.state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;padding:60px 20px;color:#555;text-align:center;
+}
+.state .icon{font-size:40px;opacity:.6}
+.state p{font-size:15px;line-height:1.5}
+.state small{font-size:12px;color:#444}
+
+.spinner{
+  width:28px;height:28px;
+  border:2px solid #2a2a44;border-top-color:#6366f1;
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.error-box{
+  background:#1a0a0a;border:1px solid #5c1e1e;border-radius:10px;
+  padding:14px 16px;color:#f87171;font-size:13px;line-height:1.5;
+}
+
+/* ── Status card ─────────────────────────────────── */
+.status-card{
+  background:#0e0e1a;border:1px solid #1e1e30;border-radius:12px;
+  padding:14px 16px;margin-bottom:10px;
+  transition:border-color .1s;
+}
+.status-card:hover{border-color:#2e2e50}
+
+/* Boost banner */
+.boost-banner{
+  display:flex;align-items:center;gap:6px;
+  font-size:11px;color:#888;margin-bottom:8px;
+}
+.boost-banner .bi{font-style:normal}
+
+/* Account row */
+.account-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.avatar{
+  width:40px;height:40px;border-radius:50%;object-fit:cover;
+  background:#1a1a2e;flex-shrink:0;border:1px solid #2a2a44;
+}
+.avatar-fallback{
+  width:40px;height:40px;border-radius:50%;
+  background:#2a2a44;display:flex;align-items:center;justify-content:center;
+  font-size:16px;color:#888;flex-shrink:0;
+}
+.account-info{flex:1;min-width:0}
+.display-name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct{font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.timestamp{font-size:11px;color:#555;white-space:nowrap;flex-shrink:0}
+
+/* Content */
+.content{font-size:13px;line-height:1.6;color:#ccc;word-break:break-word}
+.content p{margin-bottom:6px}
+.content p:last-child{margin-bottom:0}
+.content a{color:#6366f1;text-decoration:none}
+.content a:hover{text-decoration:underline}
+
+/* CW / spoiler */
+.cw-label{
+  font-size:11px;color:#f59e0b;background:#1a1200;border:1px solid #3a2a00;
+  border-radius:5px;padding:2px 7px;display:inline-block;margin-bottom:6px;
+}
+.cw-content{display:none}
+.cw-toggle{
+  background:none;border:1px solid #2a2a44;border-radius:5px;
+  padding:2px 8px;color:#888;font-size:11px;cursor:pointer;margin-left:6px;
+}
+.cw-toggle:hover{background:#1e1e30;color:#aaa}
+
+/* Media */
+.media-grid{display:grid;gap:6px;margin-top:10px;border-radius:8px;overflow:hidden}
+.media-grid.n1{grid-template-columns:1fr}
+.media-grid.n2{grid-template-columns:1fr 1fr}
+.media-grid.n3{grid-template-columns:1fr 1fr 1fr}
+.media-grid.n4{grid-template-columns:1fr 1fr}
+.media-thumb{
+  width:100%;aspect-ratio:16/10;object-fit:cover;display:block;
+  background:#1a1a2e;cursor:pointer;border-radius:4px;
+}
+.media-thumb:hover{opacity:.9}
+
+/* Stats bar */
+.stats{display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid #1e1e30}
+.stat{display:flex;align-items:center;gap:4px;font-size:12px;color:#555}
+.stat .si{font-style:normal;font-size:13px}
+
+/* ── Load more ───────────────────────────────────── */
+.load-more{
+  display:flex;justify-content:center;padding:16px 0;
+}
+.load-more button{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:8px 20px;color:#aaa;font-size:13px;cursor:pointer;
+}
+.load-more button:hover{background:#1e1e30;color:#ccc}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <div class="topbar">
+    <span class="logo">◎</span>
+    <div class="instance-wrap">
+      <input id="host-input" type="text" placeholder="mastodon.social" value="mastodon.social" autocomplete="off" spellcheck="false">
+      <button id="load-btn" onclick="loadTimeline()">Load</button>
+    </div>
+    <div class="filter-wrap">
+      <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
+      <button class="filter-btn" id="filter-local" onclick="setFilter('local')">Local</button>
+    </div>
+  </div>
+
+  <!-- Feed -->
+  <div class="feed-wrap" id="feed">
+    <div class="state">
+      <div class="icon">◎</div>
+      <p>Enter a Mastodon-compatible instance above<br>and press <strong>Load</strong> to browse the public timeline.</p>
+      <small>No account needed — read-only mode.</small>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+let currentHost = '';
+let currentFilter = 'all'; // 'all' | 'local'
+let maxId = null;
+let loading = false;
+let statuses = [];
+
+// ── Utilities ────────────────────────────────────────────────
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function relativeTime(iso) {
+  const d = new Date(iso);
+  const diff = (Date.now() - d) / 1000;
+  if (diff < 60) return 'now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+  return Math.floor(diff / 86400) + 'd';
+}
+
+function stripHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.innerHTML; // keep safe inner html
+}
+
+// ── Fetch ────────────────────────────────────────────────────
+async function fetchTimeline(host, filter, maxIdParam) {
+  const params = new URLSearchParams({
+    host,
+    path: '/api/v1/timelines/public',
+    limit: '20',
+  });
+  if (filter === 'local') params.set('local', 'true');
+  if (maxIdParam) params.set('max_id', maxIdParam);
+  const res = await fetch('/proxy?' + params.toString());
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+// ── Render ───────────────────────────────────────────────────
+function renderStatus(s) {
+  // If this is a reblog (boost), show who boosted and render the inner status
+  let boostBanner = '';
+  const actual = s.reblog || s;
+  const booster = s.reblog ? s.account : null;
+
+  if (booster) {
+    boostBanner = `
+      <div class="boost-banner">
+        <i class="bi">⇄</i>
+        <span>${esc(booster.display_name || booster.acct)} boosted</span>
+      </div>`;
+  }
+
+  // Avatar
+  const avatarUrl = actual.account.avatar_static || actual.account.avatar;
+  const avatarHtml = avatarUrl
+    ? `<img class="avatar" src="${esc(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<div class="avatar-fallback">${esc((actual.account.display_name||'?')[0])}</div>`;
+
+  // Content warning
+  let cwHtml = '';
+  let contentClass = 'content';
+  if (actual.spoiler_text) {
+    const cwId = 'cw-' + actual.id;
+    cwHtml = `
+      <div class="cw-label">CW: ${esc(actual.spoiler_text)}
+        <button class="cw-toggle" onclick="toggleCW('${cwId}')">show</button>
+      </div>`;
+    contentClass = 'content cw-content';
+  }
+
+  // Content
+  const contentHtml = `<div class="${contentClass}" id="${actual.spoiler_text ? 'cw-' + actual.id : ''}">${actual.content || ''}</div>`;
+
+  // Media attachments (images/gifv only for thumbnails)
+  let mediaHtml = '';
+  const images = (actual.media_attachments || []).filter(m => m.type === 'image' || m.type === 'gifv');
+  if (images.length > 0) {
+    const gridClass = 'media-grid n' + Math.min(images.length, 4);
+    const thumbs = images.slice(0, 4).map(m => {
+      const thumb = m.preview_url || m.url;
+      const alt = esc(m.description || '');
+      return `<img class="media-thumb" src="${esc(thumb)}" alt="${alt}" loading="lazy"
+                   onclick="window.open('${esc(m.url)}','_blank')" onerror="this.style.display='none'">`;
+    }).join('');
+    mediaHtml = `<div class="${gridClass}">${thumbs}</div>`;
+  }
+
+  // Stats
+  const favs = actual.favourites_count ?? 0;
+  const boosts = actual.reblogs_count ?? 0;
+  const replies = actual.replies_count ?? 0;
+  const statsHtml = `
+    <div class="stats">
+      <span class="stat"><i class="si">↩</i> ${replies}</span>
+      <span class="stat"><i class="si">⇄</i> ${boosts}</span>
+      <span class="stat"><i class="si">♡</i> ${favs}</span>
+    </div>`;
+
+  return `
+    <div class="status-card">
+      ${boostBanner}
+      <div class="account-row">
+        ${avatarHtml}
+        <div class="account-info">
+          <div class="display-name">${esc(actual.account.display_name || actual.account.username)}</div>
+          <div class="acct">@${esc(actual.account.acct)}</div>
+        </div>
+        <span class="timestamp">${relativeTime(actual.created_at)}</span>
+      </div>
+      ${cwHtml}
+      ${contentHtml}
+      ${mediaHtml}
+      ${statsHtml}
+    </div>`;
+}
+
+function toggleCW(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const shown = el.style.display !== 'none' && el.style.display !== '';
+  el.style.display = shown ? 'none' : 'block';
+  // update button label
+  const btn = el.closest('.status-card')?.querySelector('.cw-toggle');
+  if (btn) btn.textContent = shown ? 'show' : 'hide';
+}
+
+function renderFeed(fresh) {
+  const feed = document.getElementById('feed');
+  if (fresh) {
+    feed.innerHTML = statuses.map(renderStatus).join('');
+    if (statuses.length >= 20) {
+      feed.insertAdjacentHTML('beforeend', `
+        <div class="load-more" id="load-more-wrap">
+          <button onclick="loadMore()">Load more</button>
+        </div>`);
+    }
+  } else {
+    const wrap = document.getElementById('load-more-wrap');
+    if (wrap) wrap.remove();
+    const newCards = statuses.slice(-20).map(renderStatus).join('');
+    feed.insertAdjacentHTML('beforeend', newCards);
+    if (statuses.length % 20 === 0) {
+      feed.insertAdjacentHTML('beforeend', `
+        <div class="load-more" id="load-more-wrap">
+          <button onclick="loadMore()">Load more</button>
+        </div>`);
+    }
+  }
+}
+
+// ── Actions ──────────────────────────────────────────────────
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('filter-' + f).classList.add('active');
+  if (currentHost) loadTimeline();
+}
+
+async function loadTimeline() {
+  const host = document.getElementById('host-input').value.trim();
+  if (!host) return;
+  currentHost = host;
+  maxId = null;
+  statuses = [];
+  loading = true;
+
+  const btn = document.getElementById('load-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  const feed = document.getElementById('feed');
+  feed.innerHTML = `<div class="state"><div class="spinner"></div><p>Fetching public timeline from <strong>${esc(host)}</strong></p></div>`;
+
+  try {
+    const data = await fetchTimeline(host, currentFilter, null);
+    if (!Array.isArray(data) || data.length === 0) {
+      feed.innerHTML = `<div class="state"><div class="icon">◌</div><p>No posts found on <strong>${esc(host)}</strong>.</p></div>`;
+      return;
+    }
+    statuses = data;
+    maxId = data[data.length - 1].id;
+    renderFeed(true);
+  } catch (err) {
+    feed.innerHTML = `
+      <div class="state">
+        <div class="error-box">Could not load timeline from <strong>${esc(host)}</strong>:<br>${esc(err.message)}</div>
+        <small>Check the instance name and try again.</small>
+      </div>`;
+  } finally {
+    loading = false;
+    btn.disabled = false;
+    btn.textContent = 'Load';
+  }
+}
+
+async function loadMore() {
+  if (loading || !currentHost || !maxId) return;
+  loading = true;
+
+  const wrap = document.getElementById('load-more-wrap');
+  if (wrap) wrap.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
+
+  try {
+    const data = await fetchTimeline(currentHost, currentFilter, maxId);
+    if (!Array.isArray(data) || data.length === 0) {
+      if (wrap) wrap.remove();
+      return;
+    }
+    statuses.push(...data);
+    maxId = data[data.length - 1].id;
+    renderFeed(false);
+  } catch (err) {
+    if (wrap) wrap.innerHTML = `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
+  } finally {
+    loading = false;
+  }
+}
+
+// Allow pressing Enter in the host input
+document.getElementById('host-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadTimeline();
+});
+</script>
+</body>
+</html>
