@@ -2,8 +2,12 @@ import { useState, useCallback, useEffect } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { canSpawnNativeWindow } from '../core/useNativeMode'
 
+function dispatchAskAI(prompt) {
+  window.dispatchEvent(new CustomEvent('vulos:chat', { detail: prompt }))
+}
+
 export default function DesktopContextMenu() {
-  const [menu, setMenu] = useState(null) // { x, y }
+  const [menu, setMenu] = useState(null) // { x, y, selectedText }
   const { openNativeWindow } = useShell()
 
   useEffect(() => {
@@ -18,7 +22,8 @@ export default function DesktopContextMenu() {
       if (!canvas) return
 
       e.preventDefault()
-      setMenu({ x: e.clientX, y: e.clientY })
+      const selectedText = window.getSelection()?.toString().trim() || ''
+      setMenu({ x: e.clientX, y: e.clientY, selectedText })
     }
 
     window.addEventListener('contextmenu', onCtx)
@@ -47,6 +52,14 @@ export default function DesktopContextMenu() {
     setMenu(null)
   }, [openNativeWindow])
 
+  const handleAskAI = useCallback(() => {
+    const prompt = menu?.selectedText
+      ? `Tell me about the following text: "${menu.selectedText}"`
+      : 'What can you help me with on the desktop?'
+    dispatchAskAI(prompt)
+    setMenu(null)
+  }, [menu])
+
   if (!menu) return null
 
   return (
@@ -61,6 +74,13 @@ export default function DesktopContextMenu() {
           className="w-full text-left px-3 py-1.5 text-[13px] text-neutral-300 hover:bg-neutral-700/60 hover:text-white transition-colors"
         >
           Open Native Window
+        </button>
+        <div className="my-1 mx-2 border-t border-neutral-700/40" />
+        <button
+          onClick={handleAskAI}
+          className="w-full text-left px-3 py-1.5 text-[13px] text-violet-300 hover:bg-neutral-700/60 hover:text-violet-200 transition-colors"
+        >
+          {menu.selectedText ? 'Ask AI about selection' : 'Ask AI about this'}
         </button>
       </div>
     </div>

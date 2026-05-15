@@ -240,6 +240,12 @@ async function exec(command) {
   return data.output || ''
 }
 
+/* ── AI helper ── */
+
+function dispatchAskAI(prompt) {
+  window.dispatchEvent(new CustomEvent('vulos:chat', { detail: prompt }))
+}
+
 /* ── Main Component ── */
 
 export default function FileManager() {
@@ -260,6 +266,7 @@ export default function FileManager() {
   const [editingPath, setEditingPath] = useState(false)
   const [hidden, setHidden] = useState(false)
   const [resolvedHome, setResolvedHome] = useState(null)
+  const [ctxMenu, setCtxMenu] = useState(null) // { x, y, entry, filePath }
   const searchRef = useRef(null)
 
   // Resolve actual home path once
@@ -403,6 +410,32 @@ export default function FileManager() {
     }
     setPreviewLoading(false)
   }
+
+  // Close file context menu on outside click or Escape
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = () => setCtxMenu(null)
+    const onKey = (e) => { if (e.key === 'Escape') setCtxMenu(null) }
+    const id = setTimeout(() => {
+      window.addEventListener('pointerdown', close)
+      window.addEventListener('keydown', onKey)
+    }, 0)
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [ctxMenu])
+
+  const handleAskAIAboutFile = useCallback(() => {
+    if (!ctxMenu) return
+    const { entry, filePath } = ctxMenu
+    const prompt = entry.isDir
+      ? `Tell me about the directory "${filePath}". What might it contain and how is it typically used?`
+      : `Tell me about the file "${filePath}" (name: "${entry.name}"). What is its purpose, format, and how is it typically used?`
+    dispatchAskAI(prompt)
+    setCtxMenu(null)
+  }, [ctxMenu])
 
   const sorted = [...entries].sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
@@ -693,6 +726,12 @@ export default function FileManager() {
                     ${selected === i ? 'bg-blue-500/10 border-blue-500/20' : 'hover:bg-neutral-800/30'}`}
                   onClick={() => selectEntry(entry, i)}
                   onDoubleClick={() => entry.isDir && navigate(entry.name)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const filePath = cwd === '/' ? `/${entry.name}` : `${cwd}/${entry.name}`
+                    setCtxMenu({ x: e.clientX, y: e.clientY, entry, filePath })
+                  }}
                 >
                   <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
                     <FileIcon name={entry.name} isDir={entry.isDir} isLink={entry.isLink} className="shrink-0" />
@@ -822,6 +861,27 @@ export default function FileManager() {
         <span>{entries.length} items</span>
         <span className="text-neutral-700 truncate ml-4">{cwd}</span>
       </div>
+
+      {/* File context menu */}
+      {ctxMenu && (
+        <div
+          className="fixed z-[9999]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[200px] shadow-2xl shadow-black/60">
+            <div className="px-3 py-1.5 text-[11px] text-neutral-600 truncate border-b border-neutral-700/40 mb-1">
+              {ctxMenu.entry.name}
+            </div>
+            <button
+              onClick={handleAskAIAboutFile}
+              className="w-full text-left px-3 py-1.5 text-[13px] text-violet-300 hover:bg-neutral-700/60 hover:text-violet-200 transition-colors"
+            >
+              Ask AI about this
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
