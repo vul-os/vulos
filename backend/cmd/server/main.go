@@ -21,31 +21,31 @@ import (
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/appnet"
-	bprofiles "vulos/backend/services/profiles"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/bluetooth"
+	"vulos/backend/services/desktop"
+	"vulos/backend/services/disks"
 	"vulos/backend/services/display"
+	"vulos/backend/services/drivers"
 	"vulos/backend/services/embeddings"
 	"vulos/backend/services/energy"
 	"vulos/backend/services/gateway"
+	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
+	"vulos/backend/services/packages"
+	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
-	"vulos/backend/services/sysuser"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
 	"vulos/backend/services/stream"
-	"vulos/backend/services/webbrowser"
-	"vulos/backend/services/wine"
-	"vulos/backend/services/desktop"
-	"vulos/backend/services/webproxy"
-	"vulos/backend/services/disks"
-	"vulos/backend/services/drivers"
-	"vulos/backend/services/packages"
+	"vulos/backend/services/sysuser"
 	"vulos/backend/services/telemetry"
-	"vulos/backend/services/network"
 	"vulos/backend/services/vault"
+	"vulos/backend/services/webbrowser"
+	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
+	"vulos/backend/services/wine"
 )
 
 func main() {
@@ -170,6 +170,19 @@ func main() {
 	// Proactive AI agent
 	proactiveAgent := ai.NewProactiveAgent(aiSvc, aiCfg, notifySvc)
 	// Register system checks
+
+	// Threshold constants — named for readability and easy env-tuning.
+	const (
+		// proactiveMemThreshold is the memory usage percentage above which an alert fires.
+		proactiveMemThreshold = 90.0
+		// proactiveDiskThreshold is the disk usage percentage above which an alert fires.
+		proactiveDiskThreshold = 90.0
+		// proactiveTempThreshold is the CPU temperature (°C) above which an alert fires.
+		proactiveTempThreshold = 85.0
+		// proactiveCPUThreshold is the CPU load (%) used when no thermal sensor is present.
+		proactiveCPUThreshold = 95.0
+	)
+
 	proactiveAgent.RegisterCheck(func(ctx context.Context) (string, string, notify.Level, bool) {
 		// Low battery check
 		st := energyMgr.State()
@@ -180,6 +193,79 @@ func main() {
 		}
 		return "", "", "", false
 	})
+
+	proactiveAgent.RegisterCheck(func(ctx context.Context) (string, string, notify.Level, bool) {
+		// High memory pressure check
+		info := telemetry.SystemInfo()
+		if info.MemPercent >= proactiveMemThreshold {
+			return "High Memory Pressure",
+				fmt.Sprintf("Memory usage is at %.0f%% (%d MB of %d MB used). Consider closing unused apps.",
+					info.MemPercent, info.MemUsedMB, info.MemTotalMB),
+				notify.LevelWarning, true
+		}
+		return "", "", "", false
+	})
+
+	proactiveAgent.RegisterCheck(func(ctx context.Context) (string, string, notify.Level, bool) {
+		// Low disk space check — alert on any real mount above threshold
+		status := disks.GetStatus()
+		for _, m := range status.Mounts {
+			if m.TotalMB > 0 && m.Percent >= proactiveDiskThreshold {
+				return "Low Disk Space",
+					fmt.Sprintf("Disk %s (%s) is %.0f%% full (%d MB free of %d MB). Free up space to avoid issues.",
+						m.MountPoint, m.Device, m.Percent, m.FreeMB, m.TotalMB),
+					notify.LevelWarning, true
+			}
+		}
+		return "", "", "", false
+	})
+
+	proactiveAgent.RegisterCheck(func(ctx context.Context) (string, string, notify.Level, bool) {
+		// High CPU temperature check; falls back to sustained high CPU load when
+		// no thermal sensor is available (e.g. virtual machines, some ARM boards).
+		//
+		// Read max thermal zone temperature from sysfs (same source as telemetry).
+		var maxTemp float64
+		thermalMatches, _ := filepath.Glob("/sys/class/thermal/thermal_zone*/temp")
+		for _, m := range thermalMatches {
+			if data, err := os.ReadFile(m); err == nil {
+				var v float64
+				if _, err2 := fmt.Sscanf(strings.TrimSpace(string(data)), "%f", &v); err2 == nil {
+					if t := v / 1000; t > maxTemp {
+						maxTemp = t
+					}
+				}
+			}
+		}
+		if len(thermalMatches) > 0 {
+			// Thermal sensors present — alert on high temperature.
+			if maxTemp >= proactiveTempThreshold {
+				return "High CPU Temperature",
+					fmt.Sprintf("CPU temperature is %.1f°C, above the %.0f°C threshold. Check ventilation and reduce workload.",
+						maxTemp, proactiveTempThreshold),
+					notify.LevelWarning, true
+			}
+		} else {
+			// No thermal sensors — fall back to 1-minute load average scaled per core.
+			if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+				var load1 float64
+				fmt.Sscanf(strings.TrimSpace(string(data)), "%f", &load1)
+				info := telemetry.SystemInfo()
+				numCPU := float64(info.CPUCores)
+				if numCPU == 0 {
+					numCPU = 1
+				}
+				if loadPct := (load1 / numCPU) * 100; loadPct >= proactiveCPUThreshold {
+					return "Sustained High CPU Load",
+						fmt.Sprintf("1-min load average is %.2f across %d cores (%.0f%% utilisation). System may be under heavy load.",
+							load1, info.CPUCores, loadPct),
+						notify.LevelWarning, true
+				}
+			}
+		}
+		return "", "", "", false
+	})
+
 	go proactiveAgent.Run(ctx, 60*time.Second)
 
 	// App store
@@ -515,7 +601,9 @@ func main() {
 		writeJSON(w, map[string]int{"unread": notifySvc.UnreadCount()})
 	})
 	mux.HandleFunc("POST /api/notifications/read", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.ID == "" {
 			notifySvc.MarkAllRead()
@@ -532,8 +620,12 @@ func main() {
 			Source string       `json:"source"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.Level == "" { req.Level = notify.LevelInfo }
-		if req.Source == "" { req.Source = "system" }
+		if req.Level == "" {
+			req.Level = notify.LevelInfo
+		}
+		if req.Source == "" {
+			req.Source = "system"
+		}
 		n := notifySvc.Send(req.Title, req.Body, req.Level, req.Source)
 		writeJSON(w, n)
 	})
@@ -800,7 +892,9 @@ func main() {
 		})
 	})
 	mux.HandleFunc("POST /api/sandbox/stop", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		sandboxSvc.Stop(req.ID)
 		writeJSON(w, map[string]string{"status": "stopped"})
@@ -849,7 +943,9 @@ func main() {
 
 	// One-shot command exec (for Portal /commands)
 	mux.HandleFunc("POST /api/exec", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Command string `json:"command"` }
+		var req struct {
+			Command string `json:"command"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
 			writeErr(w, 400, "invalid request")
 			return
@@ -924,7 +1020,9 @@ func main() {
 		writeJSON(w, wifiSvc.SavedNetworks(r.Context()))
 	})
 	mux.HandleFunc("POST /api/wifi/forget", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ SSID string `json:"ssid"` }
+		var req struct {
+			SSID string `json:"ssid"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		wifiSvc.ForgetNetwork(r.Context(), req.SSID)
 		writeJSON(w, map[string]string{"status": "forgotten"})
@@ -935,7 +1033,9 @@ func main() {
 		writeJSON(w, wifi.ListEthernet(r.Context()))
 	})
 	mux.HandleFunc("POST /api/ethernet/dhcp", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Interface string `json:"interface"` }
+		var req struct {
+			Interface string `json:"interface"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := wifi.EnableDHCP(r.Context(), req.Interface); err != nil {
 			writeErr(w, 500, err.Error())
@@ -957,7 +1057,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "configured"})
 	})
 	mux.HandleFunc("POST /api/ethernet/disable", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Interface string `json:"interface"` }
+		var req struct {
+			Interface string `json:"interface"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		wifi.DisableEthernet(r.Context(), req.Interface)
 		writeJSON(w, map[string]string{"status": "disabled"})
@@ -968,7 +1070,9 @@ func main() {
 		writeJSON(w, btSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/bluetooth/power", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ On bool `json:"on"` }
+		var req struct {
+			On bool `json:"on"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := btSvc.SetPower(r.Context(), req.On); err != nil {
 			writeErr(w, 500, err.Error())
@@ -977,7 +1081,9 @@ func main() {
 		writeJSON(w, btSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/bluetooth/scan", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ On bool `json:"on"` }
+		var req struct {
+			On bool `json:"on"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.On {
 			btSvc.StartDiscovery(r.Context())
@@ -987,7 +1093,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/pair", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := btSvc.Pair(r.Context(), req.Address); err != nil {
 			writeErr(w, 500, err.Error())
@@ -996,7 +1104,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "paired"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/connect", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := btSvc.Connect(r.Context(), req.Address); err != nil {
 			writeErr(w, 500, err.Error())
@@ -1005,13 +1115,17 @@ func main() {
 		writeJSON(w, map[string]string{"status": "connected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/disconnect", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		btSvc.Disconnect(r.Context(), req.Address)
 		writeJSON(w, map[string]string{"status": "disconnected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/remove", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		btSvc.Remove(r.Context(), req.Address)
 		writeJSON(w, map[string]string{"status": "removed"})
@@ -1062,7 +1176,9 @@ func main() {
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/display/brightness", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Brightness int `json:"brightness"` }
+		var req struct {
+			Brightness int `json:"brightness"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := displaySvc.SetBrightness(r.Context(), req.Brightness); err != nil {
 			writeErr(w, 500, err.Error())
@@ -1149,7 +1265,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
 	mux.HandleFunc("POST /api/browser-profiles/{id}/bind", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ AppID string `json:"app_id"` }
+		var req struct {
+			AppID string `json:"app_id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		browserProfiles.BindApp(r.PathValue("id"), req.AppID)
 		browserProfiles.Flush()
@@ -1184,7 +1302,9 @@ func main() {
 		entries, _ := os.ReadDir(aiAppsDir)
 		var apps []map[string]string
 		for _, e := range entries {
-			if !e.IsDir() { continue }
+			if !e.IsDir() {
+				continue
+			}
 			metaPath := filepath.Join(aiAppsDir, e.Name(), "meta.json")
 			if data, err := os.ReadFile(metaPath); err == nil {
 				var meta map[string]string
@@ -1204,14 +1324,20 @@ func main() {
 	mux.HandleFunc("GET /api/ai-apps/{id}/html", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		data, err := os.ReadFile(filepath.Join(aiAppsDir, id, "index.html"))
-		if err != nil { writeErr(w, 404, "not found"); return }
+		if err != nil {
+			writeErr(w, 404, "not found")
+			return
+		}
 		w.Header().Set("Content-Type", "text/html")
 		w.Write(data)
 	})
 	mux.HandleFunc("GET /api/ai-apps/{id}/python", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		data, err := os.ReadFile(filepath.Join(aiAppsDir, id, "server.py"))
-		if err != nil { writeErr(w, 404, "not found"); return }
+		if err != nil {
+			writeErr(w, 404, "not found")
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write(data)
 	})
@@ -1249,9 +1375,15 @@ func main() {
 			writeErr(w, 400, "url required")
 			return
 		}
-		if req.Width == 0 { req.Width = 720 }
-		if req.Height == 0 { req.Height = 500 }
-		if req.Title == "" { req.Title = "Vula" }
+		if req.Width == 0 {
+			req.Width = 720
+		}
+		if req.Height == 0 {
+			req.Height = 500
+		}
+		if req.Title == "" {
+			req.Title = "Vula"
+		}
 
 		// Spawn a new Cog instance as a standalone Wayland window
 		args := []string{}
@@ -1319,21 +1451,32 @@ func main() {
 	mux.HandleFunc("POST /api/os/open-app", func(w http.ResponseWriter, r *http.Request) {
 		// Triggers app launch from backend (AI can call this)
 		var req struct {
-			AppID string `json:"app_id"`
-			AppPort int  `json:"app_port"`
+			AppID   string `json:"app_id"`
+			AppPort int    `json:"app_port"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.AppPort == 0 { req.AppPort = 80 }
+		if req.AppPort == 0 {
+			req.AppPort = 80
+		}
 		hostPort, ok := portPool.Allocate(req.AppID)
-		if !ok { writeErr(w, 503, "no ports"); return }
+		if !ok {
+			writeErr(w, 503, "no ports")
+			return
+		}
 		appSecret := appGateway.GenerateAppSecret(req.AppID)
 		userID := r.Header.Get("X-User-ID")
 		_, err := launcher.Launch(ctx, req.AppID, userID, hostPort, req.AppPort, "", nil, "", []string{"VULOS_APP_SECRET=" + appSecret})
-		if err != nil { portPool.Release(req.AppID); writeErr(w, 500, err.Error()); return }
+		if err != nil {
+			portPool.Release(req.AppID)
+			writeErr(w, 500, err.Error())
+			return
+		}
 		writeJSON(w, map[string]any{"app_id": req.AppID, "url": gateway.URLForApp(req.AppID)})
 	})
 	mux.HandleFunc("POST /api/os/close-app", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ AppID string `json:"app_id"` }
+		var req struct {
+			AppID string `json:"app_id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		launcher.Stop(ctx, req.AppID)
 		portPool.Release(req.AppID)
@@ -1342,19 +1485,25 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/os/notify", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Title  string `json:"title"`
-			Body   string `json:"body"`
-			Level  string `json:"level"`
+			Title string `json:"title"`
+			Body  string `json:"body"`
+			Level string `json:"level"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
 		level := notify.LevelInfo
-		if req.Level == "warning" { level = notify.LevelWarning }
-		if req.Level == "urgent" { level = notify.LevelUrgent }
+		if req.Level == "warning" {
+			level = notify.LevelWarning
+		}
+		if req.Level == "urgent" {
+			level = notify.LevelUrgent
+		}
 		notifySvc.Send(req.Title, req.Body, level, "ai")
 		writeJSON(w, map[string]string{"status": "sent"})
 	})
 	mux.HandleFunc("POST /api/os/energy-mode", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Mode string `json:"mode"` }
+		var req struct {
+			Mode string `json:"mode"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		energyMgr.SetMode(energy.Mode(req.Mode))
 		writeJSON(w, energyMgr.State())
@@ -1396,7 +1545,9 @@ func main() {
 			writeErr(w, 403, "admin only")
 			return
 		}
-		var req struct{ AppID string `json:"app_id"` }
+		var req struct {
+			AppID string `json:"app_id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		// Stop any running stream session for this app
 		streamPool.Stop(req.AppID)
@@ -1516,7 +1667,9 @@ func main() {
 		writeJSON(w, drivers.Detect(r.Context()))
 	})
 	mux.HandleFunc("POST /api/drivers/load", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Module string `json:"module"` }
+		var req struct {
+			Module string `json:"module"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
 			writeErr(w, 400, "module required")
 			return
@@ -1528,7 +1681,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "loaded", "module": req.Module})
 	})
 	mux.HandleFunc("POST /api/drivers/unload", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Module string `json:"module"` }
+		var req struct {
+			Module string `json:"module"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
 			writeErr(w, 400, "module required")
 			return
@@ -1567,7 +1722,9 @@ func main() {
 		writeJSON(w, packages.GetInfo(r.Context(), name))
 	})
 	mux.HandleFunc("POST /api/packages/install", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Name string `json:"name"` }
+		var req struct {
+			Name string `json:"name"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 			writeErr(w, 400, "name required")
 			return
@@ -1579,7 +1736,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "installed", "name": req.Name})
 	})
 	mux.HandleFunc("POST /api/packages/remove", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Name string `json:"name"` }
+		var req struct {
+			Name string `json:"name"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 			writeErr(w, 400, "name required")
 			return
@@ -1760,6 +1919,8 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 }
 
 func errStr(err error) string {
-	if err == nil { return "" }
+	if err == nil {
+		return ""
+	}
 	return err.Error()
 }
