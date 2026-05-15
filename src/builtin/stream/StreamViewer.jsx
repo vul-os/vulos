@@ -28,6 +28,8 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
   const pcRef = useRef(null)
   const mouseDcRef = useRef(null)
   const kbdDcRef = useRef(null)
+  const gpDcRef = useRef(null)
+  const gpLoopRef = useRef(null)
   const containerRef = useRef(null)
   const connectedRef = useRef(false)
   const lastMouseRef = useRef(0)
@@ -97,6 +99,10 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
       const kbdDc = pc.createDataChannel('keyboard', { ordered: true })
       kbdDcRef.current = kbdDc
 
+      // Gamepad channel — unreliable, unordered (full state snapshots, latest-wins)
+      const gpDc = pc.createDataChannel('gamepad', { ordered: false, maxRetransmits: 0 })
+      gpDcRef.current = gpDc
+
       pc.addTransceiver('video', { direction: 'recvonly' })
 
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -129,7 +135,11 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
 
   useEffect(() => {
     connect()
-    return () => { pcRef.current?.close(); wsRef.current?.close() }
+    return () => {
+      pcRef.current?.close()
+      wsRef.current?.close()
+      if (gpLoopRef.current) cancelAnimationFrame(gpLoopRef.current)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-retry on error
@@ -138,6 +148,52 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
     const id = setInterval(() => connect(), 2000)
     return () => clearInterval(id)
   }, [error, connect])
+
+  // Gamepad polling loop — reads full state at rAF rate and sends via dedicated channel.
+  // Only polls when a gamepad is actually connected; stops cleanly on unmount or disconnect.
+  useEffect(() => {
+    if (status !== 'connected') return
+
+    let prevButtons = []
+    let prevAxes = []
+
+    const pollGamepad = () => {
+      const gpDc = gpDcRef.current
+      if (!gpDc || gpDc.readyState !== 'open') {
+        gpLoopRef.current = requestAnimationFrame(pollGamepad)
+        return
+      }
+
+      const gamepads = navigator.getGamepads?.() || []
+      const gp = gamepads[0] // primary gamepad only
+      if (!gp) {
+        // No gamepad connected — keep loop alive so we detect a future connection
+        gpLoopRef.current = requestAnimationFrame(pollGamepad)
+        return
+      }
+
+      // Build state snapshot matching backend handleGamepad struct:
+      // buttons []bool, axes []float64, triggers []float64
+      const buttons = gp.buttons.map(b => b.pressed)
+      const axes = gp.axes.map(a => (Math.abs(a) < 0.05 ? 0 : Math.round(a * 1000) / 1000))
+      // Triggers are buttons 6 (LT) and 7 (RT) in the standard gamepad mapping
+      const triggers = [gp.buttons[6]?.value ?? 0, gp.buttons[7]?.value ?? 0]
+
+      const buttonsChanged = buttons.some((b, i) => b !== prevButtons[i])
+      const axesChanged = axes.some((a, i) => Math.abs(a - (prevAxes[i] ?? 0)) > 0.01)
+
+      if (buttonsChanged || axesChanged) {
+        gpDc.send(JSON.stringify({ buttons, axes, triggers }))
+        prevButtons = buttons
+        prevAxes = axes
+      }
+
+      gpLoopRef.current = requestAnimationFrame(pollGamepad)
+    }
+
+    gpLoopRef.current = requestAnimationFrame(pollGamepad)
+    return () => { if (gpLoopRef.current) cancelAnimationFrame(gpLoopRef.current) }
+  }, [status])
 
   // Dynamically resize Xvfb to match container size
   useEffect(() => {
