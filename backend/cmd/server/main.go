@@ -1123,7 +1123,11 @@ func main() {
 			Icon  string `json:"icon"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		p := browserProfiles.Create(userID, req.Name, req.Color, req.Icon)
+		p, err := browserProfiles.Create(userID, req.Name, req.Color, req.Icon)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		browserProfiles.Flush()
 		writeJSON(w, p)
 	})

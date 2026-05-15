@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"vulos/backend/services/naming"
 )
 
 // Session represents an authenticated user session.
@@ -57,9 +59,9 @@ func (u *User) Safe() map[string]any {
 // Store persists users, sessions, and profiles to disk so logins survive reboots.
 type Store struct {
 	mu       sync.RWMutex
-	users    map[string]*User     // user_id -> User
-	sessions map[string]*Session  // token -> Session
-	profiles map[string]*Profile  // user_id -> Profile
+	users    map[string]*User    // user_id -> User
+	sessions map[string]*Session // token -> Session
+	profiles map[string]*Profile // user_id -> Profile
 	path     string
 	secret   []byte
 }
@@ -364,8 +366,11 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 		}
 	}
 
-	if len(username) < 2 || len(password) < 4 {
-		return nil, fmt.Errorf("username must be 2+ chars, password 4+ chars")
+	if len(password) < 4 {
+		return nil, fmt.Errorf("password must be 4+ chars")
+	}
+	if err := naming.ValidateIdent(username, "username", 2, 32); err != nil {
+		return nil, err
 	}
 
 	hash := hashPassword(password)

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+
+	"vulos/backend/services/naming"
 )
 
 // Valid app categories.
@@ -26,7 +27,8 @@ var ValidPermissions = []string{
 	"background", // run when window is closed
 }
 
-var appIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{0,62}$`)
+// appIDMaxLen is the maximum length of an app ID (63 chars to fit in a DNS label).
+const appIDMaxLen = 63
 
 // AppManifest describes an installable app.
 // Stored as app.json in each app's directory under /opt/vulos/apps/<id>/.
@@ -43,31 +45,31 @@ var appIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{0,62}$`)
 type AppManifest struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
-	IconPath    string            `json:"icon_path"`    // relative path to icon file, e.g., "icon.svg"
-	Icon        string            `json:"icon"`         // fallback unicode icon for dock/launchpad
+	IconPath    string            `json:"icon_path"` // relative path to icon file, e.g., "icon.svg"
+	Icon        string            `json:"icon"`      // fallback unicode icon for dock/launchpad
 	Description string            `json:"description"`
 	Version     string            `json:"version"`
-	Command     string            `json:"command"`      // relative to app dir: "bin/server" or "python3 server.py"
-	Port        int               `json:"port"`         // port the app listens on inside namespace (web apps only)
-	Type        string            `json:"type"`         // "web", "desktop", or "service"
-	Category    string            `json:"category"`     // core, productivity, media, developer, system, network, database
+	Command     string            `json:"command"`  // relative to app dir: "bin/server" or "python3 server.py"
+	Port        int               `json:"port"`     // port the app listens on inside namespace (web apps only)
+	Type        string            `json:"type"`     // "web", "desktop", or "service"
+	Category    string            `json:"category"` // core, productivity, media, developer, system, network, database
 	Keywords    []string          `json:"keywords"`
-	Env         map[string]string `json:"env"`          // extra env vars
-	Deps        []string          `json:"deps"`         // OS packages needed
-	WorkDir     string            `json:"work_dir"`     // defaults to app directory
-	AutoStart   bool              `json:"auto_start"`   // start on boot
-	Singleton   bool              `json:"singleton"`    // only one instance allowed
-	Permissions []string          `json:"permissions"`  // requested permissions: "network", "filesystem", etc.
-	Author      string            `json:"author"`       // app author/publisher
-	License     string            `json:"license"`      // SPDX license identifier
-	Homepage    string            `json:"homepage"`     // upstream project URL
+	Env         map[string]string `json:"env"`         // extra env vars
+	Deps        []string          `json:"deps"`        // OS packages needed
+	WorkDir     string            `json:"work_dir"`    // defaults to app directory
+	AutoStart   bool              `json:"auto_start"`  // start on boot
+	Singleton   bool              `json:"singleton"`   // only one instance allowed
+	Permissions []string          `json:"permissions"` // requested permissions: "network", "filesystem", etc.
+	Author      string            `json:"author"`      // app author/publisher
+	License     string            `json:"license"`     // SPDX license identifier
+	Homepage    string            `json:"homepage"`    // upstream project URL
 }
 
 // Validate checks that the manifest has all required fields and conforms
 // to the strict bundle structure. appDir is the directory containing app.json.
 func (m *AppManifest) Validate(appDir string) error {
-	if !appIDPattern.MatchString(m.ID) {
-		return fmt.Errorf("invalid app id %q: must be lowercase alphanumeric with hyphens, 1-63 chars", m.ID)
+	if err := naming.ValidateIdent(m.ID, "app id", 2, appIDMaxLen); err != nil {
+		return err
 	}
 	if m.Name == "" {
 		return fmt.Errorf("app %s: name is required", m.ID)
