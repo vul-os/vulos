@@ -1084,7 +1084,7 @@ Scope: parsers for 4 formats → vault entries; POST /import + /export; dedupe u
 AC: [ ] 4 formats import in unit tests [ ] export re-imports equivalent [ ] dupes merged
 
 ### [AUTH-09] TPM/software-keystore abstraction for key sealing
-`todo` · P1 · L · dep: none · parallel: yes — new backend/services/devicekey/ (go.mod: go-tpm)
+`done` · P1 · L · dep: none · parallel: yes — new backend/services/devicekey/ (go.mod: go-tpm)
 Scope: KeyStore iface Seal/Unseal/Sign/DeviceIdentity; go-tpm tpm2 vs /dev/tpmrm0, software-encrypted fallback ~/.vulos/auth/tpm/; report backend type.
 AC: [ ] software fallback round-trips w/o TPM [ ] tpm/status reports type [ ] stable device identity [ ] builds+tests w/o hw TPM
 
