@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ThemeProvider } from './core/ThemeProvider'
 import { WallpaperProvider } from './core/useWallpaper.jsx'
+import { DeviceProfileProvider } from './core/useDeviceProfile.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
 import LoginScreen from './auth/LoginScreen'
 import LockScreen from './auth/LockScreen'
@@ -128,12 +129,14 @@ function AuthGate() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <WallpaperProvider>
-        <AuthProvider>
-          <AuthGate />
-        </AuthProvider>
-      </WallpaperProvider>
-    </ThemeProvider>
+    <DeviceProfileProvider>
+      <ThemeProvider>
+        <WallpaperProvider>
+          <AuthProvider>
+            <AuthGate />
+          </AuthProvider>
+        </WallpaperProvider>
+      </ThemeProvider>
+    </DeviceProfileProvider>
   )
 }
