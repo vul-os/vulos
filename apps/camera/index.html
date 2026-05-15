@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camera</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0a;--surface:#111;--elevated:#1a1a1a;--border:#222;--border2:#333;
+  --text:#e5e5e5;--text2:#999;--text3:#555;--accent:#3b82f6;--danger:#ef4444;
+  --record:#ef4444;--record-pulse:#ff6060;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;overflow:hidden}
+
+/* Layout */
+.shell{display:flex;flex-direction:column;height:100vh}
+
+/* Viewfinder */
+.viewfinder-wrap{flex:1;position:relative;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;min-height:0}
+#preview{width:100%;height:100%;object-fit:cover;display:block;transition:filter .3s}
+#preview.mirror{transform:scaleX(-1)}
+
+/* Overlay badges */
+.badge-wrap{position:absolute;top:12px;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:0 14px;pointer-events:none}
+.mode-badge{background:#000a;border:1px solid #ffffff18;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;letter-spacing:.04em;color:#fff;pointer-events:auto;cursor:pointer;user-select:none}
+.mode-badge.active-photo{border-color:var(--accent);color:var(--accent)}
+.mode-badge.active-video{border-color:var(--record);color:var(--record)}
+.rec-indicator{display:none;align-items:center;gap:6px;background:#000a;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;color:var(--record);letter-spacing:.04em}
+.rec-indicator.on{display:flex}
+.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--record);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.rec-timer{font-variant-numeric:tabular-nums}
+
+/* Filter pill row */
+.filter-row{position:absolute;bottom:88px;left:0;right:0;padding:0 12px;pointer-events:auto}
+.filter-scroll{display:flex;gap:8px;overflow-x:auto;padding:4px 0;scrollbar-width:none}
+.filter-scroll::-webkit-scrollbar{display:none}
+.filter-pill{flex-shrink:0;background:#000b;border:1.5px solid transparent;border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s;backdrop-filter:blur(4px)}
+.filter-pill.active{border-color:#fff5;color:#fff;background:#fff1}
+
+/* Controls bar */
+.controls{height:88px;background:#0008;backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;border-top:1px solid #ffffff08}
+
+/* Last capture thumbnail */
+.thumb-btn{width:52px;height:52px;border-radius:8px;overflow:hidden;background:var(--elevated);border:2px solid #fff2;cursor:pointer;transition:transform .12s,border-color .12s;flex-shrink:0}
+.thumb-btn:hover{transform:scale(1.06);border-color:#fff5}
+.thumb-btn img,.thumb-btn video{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-btn.empty{display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:20px}
+
+/* Shutter */
+.shutter-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+.shutter{width:68px;height:68px;border-radius:50%;border:4px solid #fff;background:#fff1;cursor:pointer;transition:transform .1s,background .1s;display:flex;align-items:center;justify-content:center;position:relative}
+.shutter:hover{background:#fff2}
+.shutter:active{transform:scale(.93)}
+.shutter .shutter-inner{width:54px;height:54px;border-radius:50%;background:#fff;transition:background .1s,border-radius .1s}
+.shutter.video-mode .shutter-inner{background:var(--record)}
+.shutter.recording .shutter-inner{border-radius:8px;width:28px;height:28px;background:var(--record)}
+
+/* Flip camera */
+.flip-btn{width:52px;height:52px;border-radius:50%;background:#fff1;border:1.5px solid #fff2;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all .15s;color:#fff;backdrop-filter:blur(4px);flex-shrink:0}
+.flip-btn:hover{background:#fff2}
+.flip-btn:active{transform:scale(.9)}
+.flip-btn.hidden{visibility:hidden;pointer-events:none}
+
+/* Mode selector tabs */
+.mode-tabs{display:flex;justify-content:center;gap:0;background:#0006;border-top:1px solid #ffffff0a}
+.mode-tab{flex:1;max-width:100px;padding:6px 0;font-size:11px;font-weight:600;letter-spacing:.05em;text-align:center;color:var(--text3);cursor:pointer;transition:color .15s;user-select:none;text-transform:uppercase}
+.mode-tab.active{color:#fff}
+
+/* Toast */
+.toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#111c;border:1px solid #fff1;border-radius:20px;padding:6px 16px;font-size:12px;color:#fff;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;z-index:100}
+.toast.show{opacity:1}
+
+/* Permission error */
+.perm-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center;background:var(--bg)}
+.perm-error .icon{font-size:48px;opacity:.4}
+.perm-error p{color:var(--text2);font-size:14px;line-height:1.5;max-width:320px}
+.perm-error button{background:var(--accent);border:none;border-radius:8px;color:#fff;padding:8px 20px;font-size:13px;cursor:pointer;font-weight:600}
+.perm-error button:hover{background:#2563eb}
+
+/* Save flash */
+@keyframes saveflash{0%{opacity:.5}100%{opacity:0}}
+.save-flash{position:absolute;inset:0;background:#fff;pointer-events:none;opacity:0}
+.save-flash.on{animation:saveflash .18s ease-out forwards}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- Viewfinder -->
+  <div class="viewfinder-wrap" id="vfWrap">
+    <video id="preview" autoplay playsinline muted></video>
+    <div class="save-flash" id="saveFlash"></div>
+
+    <!-- Top bar -->
+    <div class="badge-wrap">
+      <div class="rec-indicator" id="recIndicator">
+        <span class="rec-dot"></span>
+        <span class="rec-timer" id="recTimer">0:00</span>
+      </div>
+      <div></div>
+    </div>
+
+    <!-- CSS filter pills -->
+    <div class="filter-row">
+      <div class="filter-scroll" id="filterRow"></div>
+    </div>
+
+    <!-- Permission error overlay -->
+    <div class="perm-error" id="permError" style="display:none">
+      <div class="icon">⬤</div>
+      <p id="permMsg">Camera access is required. Please allow camera permission and reload.</p>
+      <button onclick="initCamera()">Try Again</button>
+    </div>
+  </div>
+
+  <!-- Mode tabs -->
+  <div class="mode-tabs" id="modeTabs">
+    <div class="mode-tab active" data-mode="photo" onclick="switchMode('photo')">Photo</div>
+    <div class="mode-tab" data-mode="video" onclick="switchMode('video')">Video</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <!-- Last capture preview -->
+    <div class="thumb-btn empty" id="thumbBtn" title="Last capture" onclick="openLastCapture()">
+      <span>&#9634;</span>
+    </div>
+
+    <!-- Shutter -->
+    <div class="shutter-wrap">
+      <div class="shutter" id="shutter" onclick="handleShutter()" title="Capture">
+        <div class="shutter-inner"></div>
+      </div>
+    </div>
+
+    <!-- Flip camera -->
+    <button class="flip-btn" id="flipBtn" onclick="flipCamera()" title="Flip camera">&#8645;</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let stream = null;
+let mode = 'photo';           // 'photo' | 'video'
+let recorder = null;
+let recordingChunks = [];
+let recordingSeconds = 0;
+let recTimerHandle = null;
+let devices = [];             // VideoInputDevice list
+let currentDeviceIdx = 0;
+let currentFacingMode = 'user'; // 'user' (front) | 'environment' (back)
+let isMirrored = true;        // mirror front cam by default
+let lastCapture = null;       // { type: 'photo'|'video', url: blobURL }
+let currentFilter = 'none';
+
+// ── CSS Filters ───────────────────────────────────────────────────────────────
+const FILTERS = [
+  { id: 'none',      label: 'Normal',    css: 'none' },
+  { id: 'vivid',     label: 'Vivid',     css: 'saturate(1.8) contrast(1.1)' },
+  { id: 'muted',     label: 'Muted',     css: 'saturate(0.6) brightness(1.05)' },
+  { id: 'bw',        label: 'B&W',       css: 'grayscale(1)' },
+  { id: 'sepia',     label: 'Sepia',     css: 'sepia(0.9)' },
+  { id: 'warm',      label: 'Warm',      css: 'sepia(0.3) saturate(1.4) hue-rotate(-10deg)' },
+  { id: 'cool',      label: 'Cool',      css: 'hue-rotate(30deg) saturate(1.2)' },
+  { id: 'fade',      label: 'Fade',      css: 'brightness(1.15) contrast(0.85) saturate(0.8)' },
+  { id: 'drama',     label: 'Drama',     css: 'contrast(1.4) saturate(1.2) brightness(0.9)' },
+  { id: 'invert',    label: 'Invert',    css: 'invert(1)' },
+];
+
+function buildFilterRow() {
+  const row = document.getElementById('filterRow');
+  row.innerHTML = FILTERS.map(f =>
+    `<div class="filter-pill${f.id === 'none' ? ' active' : ''}" data-id="${f.id}" onclick="setFilter('${f.id}')">${f.label}</div>`
+  ).join('');
+}
+
+function setFilter(id) {
+  const f = FILTERS.find(x => x.id === id);
+  if (!f) return;
+  currentFilter = id;
+  document.getElementById('preview').style.filter = f.css;
+  document.querySelectorAll('.filter-pill').forEach(p => p.classList.toggle('active', p.dataset.id === id));
+}
+
+// ── Camera init ───────────────────────────────────────────────────────────────
+async function initCamera() {
+  document.getElementById('permError').style.display = 'none';
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+  try {
+    await enumerateDevices();
+
+    const constraints = buildConstraints();
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    document.getElementById('preview').srcObject = stream;
+
+    // Mirror front cam
+    const track = stream.getVideoTracks()[0];
+    const settings = track.getSettings ? track.getSettings() : {};
+    isMirrored = settings.facingMode !== 'environment';
+    applyMirror();
+
+    // Show/hide flip button based on device count
+    document.getElementById('flipBtn').classList.toggle('hidden', devices.length < 2);
+  } catch (err) {
+    showPermError(err);
+  }
+}
+
+function buildConstraints() {
+  // If we have multiple labelled devices, pick by index
+  if (devices.length > 1) {
+    return {
+      video: { deviceId: { exact: devices[currentDeviceIdx].deviceId } },
+      audio: true,
+    };
+  }
+  // Fallback: use facingMode
+  return {
+    video: {
+      facingMode: currentFacingMode,
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
+    audio: true,
+  };
+}
+
+async function enumerateDevices() {
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    devices = all.filter(d => d.kind === 'videoinput');
+    // Clamp index
+    if (currentDeviceIdx >= devices.length) currentDeviceIdx = 0;
+  } catch (_) {
+    devices = [];
+  }
+}
+
+function applyMirror() {
+  document.getElementById('preview').classList.toggle('mirror', isMirrored);
+}
+
+function showPermError(err) {
+  const el = document.getElementById('permError');
+  el.style.display = 'flex';
+  let msg = 'Camera access is required. Please allow camera permission and reload.';
+  if (err && err.name === 'NotAllowedError') {
+    msg = 'Camera permission was denied. Allow access in your browser settings, then try again.';
+  } else if (err && err.name === 'NotFoundError') {
+    msg = 'No camera device found on this system.';
+  } else if (err && err.message) {
+    msg = 'Could not start camera: ' + err.message;
+  }
+  document.getElementById('permMsg').textContent = msg;
+}
+
+// ── Flip camera ───────────────────────────────────────────────────────────────
+async function flipCamera() {
+  if (devices.length > 1) {
+    // Cycle through devices by index
+    currentDeviceIdx = (currentDeviceIdx + 1) % devices.length;
+  } else {
+    // Toggle facing mode
+    currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  }
+  await initCamera();
+}
+
+// ── Mode switch ───────────────────────────────────────────────────────────────
+function switchMode(m) {
+  if (recorder && recorder.state === 'recording') stopRecording();
+  mode = m;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === m));
+  const shutter = document.getElementById('shutter');
+  shutter.classList.toggle('video-mode', m === 'video');
+  shutter.classList.remove('recording');
+}
+
+// ── Shutter / Record ──────────────────────────────────────────────────────────
+function handleShutter() {
+  if (mode === 'photo') {
+    takePhoto();
+  } else {
+    if (recorder && recorder.state === 'recording') {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }
+}
+
+// ── Photo capture ─────────────────────────────────────────────────────────────
+function takePhoto() {
+  const video = document.getElementById('preview');
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  const ctx = canvas.getContext('2d');
+
+  // Apply mirror transform when drawing if front cam
+  if (isMirrored) {
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+  }
+
+  // Apply CSS filter via canvas filter API (best-effort — may not be supported in all envs)
+  const f = FILTERS.find(x => x.id === currentFilter);
+  if (f && f.css !== 'none' && ctx.filter !== undefined) {
+    ctx.filter = f.css;
+  }
+
+  ctx.drawImage(video, 0, 0);
+
+  // Flash effect
+  const flash = document.getElementById('saveFlash');
+  flash.classList.remove('on');
+  void flash.offsetWidth;
+  flash.classList.add('on');
+
+  // Get data URL and send to server
+  const dataURL = canvas.toDataURL('image/png');
+  savePhoto(dataURL);
+
+  // Update thumbnail
+  setThumb('photo', dataURL);
+}
+
+async function savePhoto(dataURL) {
+  try {
+    const res = await fetch('/api/save-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: dataURL }),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      showToast('Photo saved — ' + d.filename);
+    } else {
+      showToast('Failed to save photo');
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  }
+}
+
+// ── Video recording ───────────────────────────────────────────────────────────
+function startRecording() {
+  if (!stream) return;
+  recordingChunks = [];
+  recordingSeconds = 0;
+
+  // Pick best supported MIME type
+  const mimes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+  const mime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || '';
+
+  try {
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  } catch (e) {
+    recorder = new MediaRecorder(stream);
+  }
+
+  recorder.ondataavailable = e => {
+    if (e.data && e.data.size > 0) recordingChunks.push(e.data);
+  };
+
+  recorder.onstop = () => {
+    const blob = new Blob(recordingChunks, { type: recorder.mimeType || 'video/webm' });
+    saveVideo(blob);
+    const url = URL.createObjectURL(blob);
+    setThumb('video', url);
+    lastCapture = { type: 'video', url };
+  };
+
+  recorder.start(1000); // collect chunks every 1s
+
+  // UI
+  document.getElementById('shutter').classList.add('recording');
+  document.getElementById('recIndicator').classList.add('on');
+  updateRecTimer();
+  recTimerHandle = setInterval(() => {
+    recordingSeconds++;
+    updateRecTimer();
+  }, 1000);
+}
+
+function stopRecording() {
+  if (!recorder || recorder.state !== 'recording') return;
+  clearInterval(recTimerHandle);
+  recorder.stop();
+  // UI reset
+  document.getElementById('shutter').classList.remove('recording');
+  document.getElementById('recIndicator').classList.remove('on');
+}
+
+function updateRecTimer() {
+  const m = Math.floor(recordingSeconds / 60);
+  const s = recordingSeconds % 60;
+  document.getElementById('recTimer').textContent = m + ':' + String(s).padStart(2, '0');
+}
+
+async function saveVideo(blob) {
+  try {
+    const res = await fetch('/api/save-video', {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type || 'video/webm' },
+      body: blob,
+    });
+    if (res.ok) {
+      const d = await res.json();
+      showToast('Video saved — ' + d.filename);
+    } else {
+      showToast('Failed to save video');
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  }
+}
+
+// ── Thumbnail ─────────────────────────────────────────────────────────────────
+function setThumb(type, url) {
+  const btn = document.getElementById('thumbBtn');
+  btn.classList.remove('empty');
+  if (type === 'photo') {
+    btn.innerHTML = `<img src="${url}" alt="Last photo">`;
+  } else {
+    btn.innerHTML = `<video src="${url}" muted></video>`;
+  }
+  lastCapture = { type, url };
+}
+
+function openLastCapture() {
+  if (!lastCapture) return;
+  window.open(lastCapture.url, '_blank');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+buildFilterRow();
+initCamera();
+
+// Re-enumerate when devices change (plug/unplug)
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', async () => {
+    await enumerateDevices();
+    document.getElementById('flipBtn').classList.toggle('hidden', devices.length < 2);
+  });
+}
+
+// Space bar = shutter
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space') { e.preventDefault(); handleShutter(); }
+  if (e.key === 'f' || e.key === 'F') flipCamera();
+  if (e.key === 'v' || e.key === 'V') switchMode(mode === 'photo' ? 'video' : 'photo');
+});
+</script>
+</body>
+</html>

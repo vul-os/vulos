@@ -1,0 +1,18 @@
+{
+  "id": "camera",
+  "name": "Camera",
+  "icon": "⬤",
+  "icon_path": "icon.svg",
+  "description": "Take photos and record videos with your device camera",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "media",
+  "keywords": ["camera", "photo", "video", "capture", "record", "selfie"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["camera", "microphone"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
