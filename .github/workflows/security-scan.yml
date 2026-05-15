@@ -1,0 +1,169 @@
+# Security scanning workflow — MISC-04
+#
+# Runs on every pull request targeting main.  Three parallel jobs cover the
+# full dependency + container attack surface:
+#
+#   go-vuln   — govulncheck scans Go module dependencies in backend/
+#   npm-audit — npm audit flags high/critical advisories in the JS frontend
+#   trivy     — Trivy scans the built Docker image for OS and app-layer CVEs
+#
+# IGNORE MECHANISMS
+# ─────────────────
+# • Go / govulncheck
+#     Create backend/.govulncheck-ignore containing vuln IDs (one per line,
+#     lines starting with # are comments). govulncheck does not have a native
+#     allowlist file, so a wrapper script reads the file and post-filters
+#     results.  Example entry:
+#       GO-2024-1234   # tracked in issue #99, not reachable in our code
+#
+# • npm audit
+#     Add advisory IDs to a top-level .npmauditignore JSON file or use the
+#     "overrides" / "resolutions" fields in package.json.  The step uses
+#     `npm audit --audit-level=high`; raise the level to "critical" if you
+#     only want to block on the most severe findings.
+#     To temporarily silence a known advisory while a fix lands upstream:
+#       npm audit fix --dry-run    # confirm scope
+#       # then add the advisory number to .npmauditignore (see below)
+#
+# • Trivy (container scan)
+#     Add CVE IDs or severity classes to .trivyignore at the repo root.
+#     Format: one CVE-ID per line; comments start with #.  Example:
+#       CVE-2024-12345  # false positive — package not installed at runtime
+#     Full syntax: https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#trivyignore
+#
+# SEVERITY THRESHOLDS
+# ───────────────────
+# • govulncheck: fails on any vulnerability found (all severities)
+# • npm audit:   --audit-level=high  (blocks on HIGH and CRITICAL)
+# • Trivy:       --severity HIGH,CRITICAL
+#
+# Adjust these per-job as project policy evolves.
+
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+
+# Read-only token is enough for all three scanning jobs.
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. Go dependency vulnerability scan ─────────────────────────────────────
+  go-vuln:
+    name: Go Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # govulncheck is the official Go vulnerability scanner maintained by the
+      # Go security team.  It checks both direct and transitive dependencies
+      # against the Go vulnerability database (vuln.go.dev).
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        # Run from backend/ so the module root is resolved correctly.
+        # Exit code 3 = vulnerabilities found (govulncheck convention).
+        # IGNORE: add vuln IDs (e.g. GO-2024-1234) to backend/.govulncheck-ignore,
+        #         one per line; lines starting with # are treated as comments.
+        run: |
+          cd backend
+
+          RAW_OUTPUT=$(govulncheck ./... 2>&1) || EXIT_CODE=$?
+          echo "$RAW_OUTPUT"
+
+          # Apply ignore list if present
+          IGNORE_FILE=".govulncheck-ignore"
+          if [ -f "$IGNORE_FILE" ]; then
+            IGNORED=$(grep -v '^\s*#' "$IGNORE_FILE" | grep -v '^\s*$' | tr '\n' '|' | sed 's/|$//')
+            if [ -n "$IGNORED" ] && echo "$RAW_OUTPUT" | grep -qE "($IGNORED)"; then
+              echo ""
+              echo "NOTE: Some findings suppressed by $IGNORE_FILE — review periodically."
+              # Re-run filtering: if all remaining lines after removing ignored IDs
+              # indicate no vulnerabilities, override the exit code.
+              FILTERED=$(echo "$RAW_OUTPUT" | grep -vE "($IGNORED)" || true)
+              if ! echo "$FILTERED" | grep -q "^Vulnerability #"; then
+                echo "All vulnerabilities are in the ignore list. Passing."
+                exit 0
+              fi
+            fi
+          fi
+
+          exit ${EXIT_CODE:-0}
+
+  # ── 2. npm dependency audit ──────────────────────────────────────────────────
+  npm-audit:
+    name: npm Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails on HIGH and CRITICAL advisories.
+      # To silence a known advisory while a fix is pending upstream:
+      #   1. Confirm the advisory ID from `npm audit --json`
+      #   2. Add it to .npmauditignore at the repo root (JSON array):
+      #        [1234567, 1234568]
+      #   3. Document the reason and a review date in a comment above the entry.
+      - name: Run npm audit
+        run: |
+          AUDIT_OUTPUT=$(npm audit --audit-level=high --json 2>&1) || AUDIT_EXIT=$?
+          echo "$AUDIT_OUTPUT" | npx --yes audit-filter .npmauditignore 2>/dev/null \
+            || npm audit --audit-level=high
+
+  # ── 3. Container image CVE scan (Trivy) ─────────────────────────────────────
+  trivy:
+    name: Container CVE Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build the image locally (linux/amd64 only; arm64 is covered by ci.yml
+      # and is too slow without cross-compilation for a quick security gate).
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: vulos:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Trivy scans the image for OS-level and application-layer CVEs.
+      # Severity threshold: HIGH and CRITICAL only (adjust --severity as needed).
+      #
+      # IGNORE: Create .trivyignore at the repo root.  One CVE-ID per line.
+      # Comments start with #.  Full syntax docs:
+      #   https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#trivyignore
+      #
+      # Example .trivyignore:
+      #   # Not exploitable — library loaded but function not callable externally
+      #   CVE-2024-12345
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: vulos:scan
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          trivyignores: .trivyignore
