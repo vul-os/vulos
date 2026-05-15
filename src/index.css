@@ -192,3 +192,32 @@ html, body, #root {
   cursor: pointer;
 }
 .btn-primary:hover { background: #2563eb; }
+
+/* ═══════════════════════════════════════
+   TV Profile — D-pad spatial navigation
+   High-contrast focus ring, couch-distance readable.
+   Scoped under [data-device-profile="tv"] to avoid
+   any impact on other profiles.
+   ═══════════════════════════════════════ */
+[data-device-profile="tv"] :focus {
+  outline: none; /* reset browser default; replaced below */
+}
+
+[data-device-profile="tv"] :focus-visible {
+  outline: 4px solid #ffffff;
+  outline-offset: 4px;
+  box-shadow:
+    0 0 0 4px #ffffff,
+    0 0 0 8px #000000,
+    0 0 20px 6px rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  transition: outline-offset 80ms ease, box-shadow 80ms ease;
+}
+
+/* Slightly larger ring on interactive controls for easier targeting */
+[data-device-profile="tv"] button:focus-visible,
+[data-device-profile="tv"] a:focus-visible,
+[data-device-profile="tv"] [role="button"]:focus-visible {
+  outline-width: 5px;
+  outline-offset: 5px;
+}
