@@ -1159,7 +1159,7 @@ Scope: voice control via D-Bus Voice, call-state listener → WS; audio path exc
 AC: [ ] dial/answer/hangup/DTMF exposed [ ] call-state (mocked) pushes WS [ ] no hw to build/test
 
 ### [MOBILE-04] Messages + Dialer React UI
-`todo` · P3 · L · dep: MOBILE-02, MOBILE-03 · parallel: yes — apps/phone/
+`done` · P3 · L · dep: MOBILE-02, MOBILE-03 · parallel: yes — apps/phone/
 Scope: Messages (thread list/compose/search/status) + Dialer (T9, history, in-call screen, incoming banner) consuming MOBILE WS.
 AC: [ ] Messages lists threads, send/recv WS [ ] Dialer places call + in-call screen [ ] incoming surfaces realtime
 
