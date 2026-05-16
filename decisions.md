@@ -514,3 +514,6 @@ User: improve testing of everything + pen testing + security testing + test all 
 - Sonnet ×3: finish bare-pkg coverage [bluetooth+display] [desktop+hwdetect] [profiles+sysuser].
 - Sonnet ×1: integration smoke harness — server boots, key endpoints reachable, security invariants (X-User-ID strip, /api/open not public, admin-gates) assert at HTTP layer.
 Plus 2 already running (TEST-ai, TEST-appfs+audio). All test/report-only or new-dir → low merge risk; build-gate each.
+
+## D80 (22:10) — Tier-2 coverage complete (9/9 bare pkgs) + latent finding
+All 9 previously-untested pkgs now covered: ai, appfs, audio, bluetooth, display, desktop, hwdetect, profiles, sysuser (merged 197-200). + SMOKE integration harness (48b6b7f, 11 invariants). FINDING (from TEST-profiles): profiles.Store.Create uses time.Now().UnixMilli() as the profile ID → rapid back-to-back creates within one ms collide (last-write-wins). Latent, low-severity (UI-driven creates are human-paced), but real. Logged for a follow-up fix (switch to ULID or monotonic counter). Not blocking. Awaiting SECAUDIT2 Opus pen-test.
