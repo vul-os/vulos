@@ -329,3 +329,22 @@ Pre-work (inline, no agent cost):
 10. RELAY-03 internal/circuit (relay module) — stateless byte forwarder core
 
 Cron 44dbf100 (every 5 min) still armed for 2h. JSX-only rule preserved for vulos-cloud (no .tsx). Workers commit local, no push, per standing rule.
+
+## D34 (17:14) — Pivot back to OSS; cloud wave abandoned (worktree-base mismatch)
+User: "i want 5 agents working on the oss project to make it a robust operating system, carefully select tasks that have high impact to user" → escalated to "keep 10 sonnet agents running towards tasks and roadmap focused on high impact features for users of vulos oss".
+
+Cloud wave (D33) hit an orchestration problem: Agent tool worktrees are pinned to vulos OSS (session origin), so workers wrote `backend/cp/*` files into vulos OSS worktrees rather than vulos-cloud. Transplant attempt revealed many workers re-created their own go.mod from scratch, with thousands of file-diffs vs current main — clean extraction is not viable mid-flight. Decision: **abandon cloud worker branches** (work survives in .claude/worktrees/agent-*; can be salvaged offline later if useful). DO NOT merge any `task/ROUTE-*`/`task/SSH-01`/`task/OTA-01`/`task/BILL-01`/`task/FLEET-01`/`task/SECX-01`/`task/RELAY-*` onto vulos OSS main. Future cloud agent work must dispatch from inside vulos-cloud (Agent tool will need a workaround — possibly do cloud work inline only, no agents).
+
+10 OSS high-impact picks (file-disjoint via routes_<area>.go pattern):
+1. GAME-08 — stream toolbar (gamers: FPS, RTT, fullscreen, MangoHud) — sole pool.go + StreamViewer.jsx
+2. NET-10 — TURN config UI (NAT'd users: reliable connect) — sole Settings.jsx + network/turn.go + routes_turn.go
+3. AI-06 — AI app editing ("make button bigger") — Portal.jsx + routes_aiapps.go
+4. INIT-08 — join-flow backend (new device joining your cluster) — joinsync/ pkg + routes_join.go
+5. BMINIT-09 — init DHCP/WiFi/mDNS (baremetal: actually get online) — cmd/init/main.go + Dockerfile + build.sh
+6. APPSTORE-04 — Vaultwarden + LibreTranslate (catalog: high-value apps) — registry.json
+7. INIT-11 — Recovery Kit backup (trust: don't lose access) — kitbackup/ pkg + Setup.jsx
+8. AUTH-13 — WebAuthn for stream auth (security: phishable session→hardware key)
+9. BMINIT-06 — Launchpad native vs stream mode (baremetal: native windows) — Launchpad.jsx + ShellProvider.jsx
+10. INIT-03 — SSH keys backend (recovery + headless setup) — sshkey/ pkg + routes_sshkey.go
+
+Cron 44dbf100 (every 5 min, until 18:55 ~2h mark) still active. Each new endpoint goes in its own routes_<area>.go per ROUTES.md (D33 refactor) — main.go contention is now just 1-line wires in different sections.
