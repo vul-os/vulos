@@ -1144,7 +1144,7 @@ Scope: Mastodon streaming WS → POST /api/notifications/send on mention; share 
 AC: [ ] new mention triggers Vula notification [ ] share opens compose prefilled
 
 ### [MOBILE-01] Telephony service scaffold (Go + WS + D-Bus ModemManager)
-`todo` · P3 · M · dep: none · parallel: yes — new backend/services/telephony/, apps/phone/app.json, main.go
+`done` · P3 · M · dep: none · parallel: yes — new backend/services/telephony/, apps/phone/app.json, main.go
 Scope: HTTP server + WS hub + ModemManager D-Bus client enumerate modems/signal/SIM; graceful no-modem fallback.
 AC: [ ] status endpoint lists modems (empty when none) [ ] WS connects/stays open [ ] no panic w/o D-Bus [ ] go build
 
