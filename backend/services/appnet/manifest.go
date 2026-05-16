@@ -61,6 +61,7 @@ type AppManifest struct {
 	Author      string            `json:"author"`       // app author/publisher
 	License     string            `json:"license"`      // SPDX license identifier
 	Homepage    string            `json:"homepage"`     // upstream project URL
+	Visibility  string            `json:"visibility"`   // "private" | "local" | "public"; default "private"
 }
 
 // Validate checks that the manifest has all required fields and conforms
@@ -127,6 +128,14 @@ func (m *AppManifest) Validate(appDir string) error {
 		if _, err := os.Stat(iconFull); err != nil {
 			return fmt.Errorf("app %s: icon_path %q not found", m.ID, m.IconPath)
 		}
+	}
+
+	// Default empty visibility to "private" and validate.
+	if m.Visibility == "" {
+		m.Visibility = VisibilityPrivate
+	}
+	if err := ValidateVisibility(m.Visibility); err != nil {
+		return fmt.Errorf("app %s: %w", m.ID, err)
 	}
 
 	return nil
