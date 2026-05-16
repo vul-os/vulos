@@ -670,7 +670,7 @@ Scope: Networking phase: wired DHCP, WiFi fallback from saved creds (reuse wifi.
 AC: [ ] wired DHCP [ ] WiFi fallback [ ] avahi installed, hostname.local resolvable [ ] no-net still serves, GOOS=linux build
 
 ### [BMINIT-10] Phase-1 fs: efivars, /dev/shm size, data partition
-`todo` · P2 · S · dep: none · parallel: no — backend/cmd/init/main.go
+`done` · P2 · S · dep: none · parallel: no — backend/cmd/init/main.go
 Scope: /dev/shm size=2g; mount efivarfs if /sys/firmware/efi exists; mount labeled vulos-data partition into ~/.vulos; best-effort.
 AC: [ ] /dev/shm size=2g [ ] efivarfs only when present [ ] data partition mounted when present [ ] GOOS=linux build
 
