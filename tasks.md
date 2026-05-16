@@ -491,7 +491,7 @@ Scope: cookieDomain = per-instance base (strip {app}--{profile} label) so sessio
 AC: [ ] cookie = .{ulid}.vulos.org [ ] IP/localhost dev still ok [ ] unit test subdomain/IP/localhost
 
 ### [NET-06] Node/instance identity config (ULID/hostname/domain mode)
-`todo` · P0 · M · dep: none · parallel: no — backend/internal/config/config.go, backend/services/network/network.go, main.go
+`done` · P0 · M · dep: none · parallel: no — backend/internal/config/config.go, backend/services/network/network.go, main.go
 Scope: Load VULOS_INSTANCE_ID/HOSTNAME/DOMAIN_MODE/NODE_ID/MODE; persist ULID to ~/.vulos/instance-id first boot (no net call); Domain() derives {ulid}.vulos.org; expose /api/network/status. (overlaps INIT-01 — coordinate, prefer shared identity)
 AC: [ ] ULID persisted stable [ ] Domain() = {ulid}.vulos.org fabric/direct [ ] /api/network/status has fields [ ] no net call
 
