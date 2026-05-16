@@ -635,7 +635,7 @@ Scope: Rework startKiosk(): display connected + labwc present → labwc + cog fu
 AC: [ ] display+labwc → labwc+cog bg [ ] no display → headless still serves [ ] labwc missing → cage [ ] GOOS=linux build
 
 ### [BMINIT-03] `GET /api/shell/native-mode` endpoint
-`todo` · P0 · S · dep: none · parallel: yes — backend/cmd/server/main.go (one route)
+`done` · P0 · S · dep: none · parallel: yes — backend/cmd/server/main.go (one route)
 Scope: Register GET /api/shell/native-mode → {mode:detectNativeMode()} (main.go:1696-1749 exists); frontend useNativeMode.js:30 depends on it.
 AC: [ ] returns {mode:...} [ ] useNativeMode resolves not catch [ ] go build
 
