@@ -1216,7 +1216,7 @@ Scope: store.go ~:153-193 — validate `entry.ID` charset (^[a-z0-9-]+$, reject 
 AC: [ ] bad ID rejected [ ] malicious tar (../, absolute, symlink) cannot escape appsDir [ ] checksum enforced [ ] go build + appnet tests
 
 ### [SEC-H] /api/open public SSRF + X-Forwarded-Proto trust (H6,M4)
-`todo` · P1 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
+`done` · P1 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
 Scope: remove `/api/open` from publicPaths (handlers.go ~:80) OR strictly validate scheme∈{http,https} + reject private/loopback/link-local + cap concurrent tabs (main.go ~:701-716); encode the CDP `/json/new?<url>` param. M4: gate `X-Forwarded-Proto` trust to loopback like `extractIP` already does (handlers.go ~:431). SOLE owner of main.go+handlers.go this area.
 AC: [ ] /api/open not unauth-reachable / strictly validated + tab cap [ ] X-Forwarded-Proto only trusted from loopback [ ] go build + auth tests
 
