@@ -1206,7 +1206,7 @@ Scope: resolve host ONCE and dial the validated pinned IP (kill TOCTOU between i
 AC: [ ] single-resolution dial, no rebinding window [ ] fail-closed on bad resolve [ ] TLS verified [ ] encoded-IP literals blocked [ ] go build + webproxy tests
 
 ### [SEC-F] registry recipes: forbid curl|bash, hard-fail empty checksum (H3)
-`todo` · P1 · M · dep: none · parallel: no — registry.json, backend/services/appnet/registry.go
+`done` · P1 · M · dep: none · parallel: no — registry.json, backend/services/appnet/registry.go
 Scope: registry.go ~:425 — make empty/missing checksum a HARD failure (not silent skip); reject install/post_install recipes that pipe-to-shell (`curl|bash`, `wget|sh`) — require pinned artifact + checksum (or signature). registry.json — populate pinned checksums; rewrite any `curl|bash` install entries to verified-artifact form.
 AC: [ ] empty checksum → install refused [ ] pipe-to-shell recipe rejected [ ] registry.json valid + every versioned entry has non-empty checksum [ ] go build + appnet tests
 
