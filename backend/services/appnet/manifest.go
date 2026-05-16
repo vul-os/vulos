@@ -13,6 +13,7 @@ import (
 // Valid app categories.
 var ValidCategories = []string{
 	"core", "productivity", "utilities", "media", "developer", "system", "network", "database", "other",
+	"core", "productivity", "media", "developer", "system", "network", "database", "other", "gaming",
 }
 
 // Valid permission types apps can request.

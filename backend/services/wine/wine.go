@@ -304,6 +304,25 @@ func dirSizeMB(path string) int {
 	return int(total / (1024 * 1024))
 }
 
+// g07GamingCommands is the set of executables that indicate a gaming session.
+var g07GamingCommands = map[string]bool{
+	"wine":           true,
+	"wine64":         true,
+	"lutris":         true,
+	"steam":          true,
+	"steam-runtime":  true,
+}
+
+// IsGamingCommand reports whether cmd starts with a well-known gaming launcher.
+// It inspects the first whitespace-separated token (the executable name, basename only).
+func IsGamingCommand(cmd string) bool {
+	if cmd == "" {
+		return false
+	}
+	token := strings.Fields(cmd)[0]
+	return g07GamingCommands[filepath.Base(token)]
+}
+
 // RegisterHandlers registers Wine prefix API endpoints.
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/wine/prefixes", func(w http.ResponseWriter, r *http.Request) {
