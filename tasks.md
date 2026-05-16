@@ -1074,7 +1074,7 @@ Scope: POST /api/auth/vault/unlock|lock, GET /entries (metadata), GET /entry/:id
 AC: [ ] list metadata only, detail requires unlock [ ] locked → clear error [ ] go build
 
 ### [AUTH-07] Password manager UI
-`todo` · P3 · M · dep: AUTH-06 · parallel: yes — new src/apps/Vault/, src/core/AppRegistry.js
+`done` · P3 · M · dep: AUTH-06 · parallel: yes — new src/apps/Vault/, src/core/AppRegistry.js
 Scope: master-pwd unlock screen, entry list/search, detail reveal/copy, add/edit, generator, auto-relock.
 AC: [ ] unlock gates list [ ] copy user/pass w/ confirm [ ] CRUD persists [ ] generator inserts into form
 
