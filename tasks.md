@@ -975,7 +975,7 @@ Scope: VAD/audio-level detection, dominant→high simulcast layer, mix top-3 aud
 AC: [ ] dominant gets high layer [ ] ≤3 audio streams per participant [ ] never hears self
 
 ### [PEER-29] SFU host handoff + 50-participant cap
-`todo` · P3 · M · dep: PEER-27, PEER-25 · parallel: no — new backend/services/peering/sfu/handoff.go, src/builtin/peering/call/useSFUCall.js
+`done` · P3 · M · dep: PEER-27, PEER-25 · parallel: no — new backend/services/peering/sfu/handoff.go, src/builtin/peering/call/useSFUCall.js
 Scope: detect host loss, auto-select highest-upload new host (PEER-20/25 data), orchestrate browser reconnect, enforce cap 50.
 AC: [ ] kill host → failover best-bw [ ] resumes few sec no full drop [ ] 51st rejected
 
