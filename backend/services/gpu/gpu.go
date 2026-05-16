@@ -102,19 +102,21 @@ func (g *Info) ConvertArgs() []string {
 
 // EncoderArgs returns the GStreamer encoder element + properties as args.
 // Prefers AV1 when available (better quality/bitrate), falls back to H.264/VP8.
+// All encoder elements carry name=venc so the pipeline element can be looked up
+// by a stable name (e.g. for adaptive-bitrate property changes).
 func (g *Info) EncoderArgs() []string {
 	if g.HasAV1 {
 		switch g.Tier {
 		case TierNVENC:
 			return []string{
-				"nvav1enc",
+				"nvav1enc", "name=venc",
 				"bitrate=1500", "preset=low-latency-hq", "rc-mode=cbr",
 				"gop-size=30",
 				"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "aud=true",
 			}
 		case TierVAAPI:
 			return []string{
-				"vaav1enc",
+				"vaav1enc", "name=venc",
 				"bitrate=1500", "rate-control=cbr",
 				"keyframe-period=30",
 				"tune=low-power",
@@ -124,21 +126,21 @@ func (g *Info) EncoderArgs() []string {
 	switch g.Tier {
 	case TierNVENC:
 		return []string{
-			"nvh264enc",
+			"nvh264enc", "name=venc",
 			"bitrate=2000", "preset=low-latency-hq", "rc-mode=cbr",
 			"gop-size=30",
 			"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "aud=true",
 		}
 	case TierVAAPI:
 		return []string{
-			"vaapih264enc",
+			"vaapih264enc", "name=venc",
 			"bitrate=2000", "rate-control=cbr",
 			"keyframe-period=30",
 			"tune=low-power", "cabac-entropy-coding=true",
 		}
 	default:
 		return []string{
-			"vp8enc",
+			"vp8enc", "name=venc",
 			"target-bitrate=2000000", "cpu-used=8", "deadline=1",
 			"keyframe-max-dist=30", "threads=4", "end-usage=cbr",
 			"undershoot=95", "buffer-size=6000", "buffer-initial-size=4000",

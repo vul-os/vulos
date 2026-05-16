@@ -19,6 +19,12 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// EncoderElementName is the stable GStreamer pipeline name assigned to the video
+// encoder element in every session pipeline (name=venc in EncoderArgs).
+// It can be used to look up the element via gst_bin_get_by_name for property
+// changes such as adaptive-bitrate updates.
+const EncoderElementName = "venc"
+
 // Pool manages multiple concurrent streaming sessions.
 // Each session gets its own Xvfb display, GStreamer pipeline, and WebRTC tracks.
 type Pool struct {
@@ -547,4 +553,12 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 		}
 		sess.HandleSignaling(w, r)
 	})
+}
+
+// SetBitrate is a no-op stub that will be wired to dynamically update the
+// GStreamer encoder element (EncoderElementName / name=venc) bitrate property
+// via gst-launch signals once the adaptive-bitrate pipeline is implemented.
+// It is exposed here so callers can reference it without further refactoring.
+func (s *Session) SetBitrate(_ int) {
+	// no-op: ABR pipeline update not yet implemented
 }
