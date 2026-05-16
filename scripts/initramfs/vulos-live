@@ -1,0 +1,66 @@
+#!/bin/sh
+# Vula OS — initramfs-tools init-bottom hook
+# Location in rootfs: /etc/initramfs-tools/scripts/init-bottom/vulos-live
+#
+# Executed by initramfs at init-bottom stage (just before pivot_root to real root).
+# Mounts the squashfs read-only layer, an in-RAM tmpfs writable layer, and
+# combines them with overlayfs so the live system appears fully writable.
+#
+# Boot kernel cmdline must supply:
+#   root=/dev/sdXY  (the data partition holding image.squashfs)
+# The standard initramfs will have already set $rootmnt.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+
+case "$1" in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+. /scripts/functions
+
+SQUASHFS_PATH="/image.squashfs"
+LOWER="/run/vulos/lower"
+UPPER="/run/vulos/upper"
+WORK="/run/vulos/work"
+MERGED="/run/vulos/merged"
+
+# Only activate when live mode is requested via kernel parameter
+if ! grep -q "vulos.live" /proc/cmdline; then
+    exit 0
+fi
+
+log_begin_msg "Vula OS: setting up live overlayfs"
+
+# Ensure helper directories exist
+mkdir -p "$LOWER" "$UPPER" "$WORK" "$MERGED"
+
+# Mount the squashfs from the real rootmnt (data partition)
+if ! mount -t squashfs -o loop,ro "${rootmnt}${SQUASHFS_PATH}" "$LOWER"; then
+    panic "vulos-live: failed to mount squashfs at ${rootmnt}${SQUASHFS_PATH}"
+fi
+
+# Writable tmpfs upper layer (in RAM)
+if ! mount -t tmpfs -o mode=0755 tmpfs-upper "$UPPER"; then
+    panic "vulos-live: failed to mount tmpfs upper"
+fi
+
+# Work directory must be on same fs as upper
+mkdir -p "$UPPER" "$WORK"
+
+# Overlay: lower=squashfs(ro), upper=tmpfs(rw)
+if ! mount -t overlay -o "lowerdir=$LOWER,upperdir=$UPPER,workdir=$WORK" overlay "$MERGED"; then
+    panic "vulos-live: failed to mount overlayfs"
+fi
+
+# Move the merged overlay to $rootmnt so the standard pivot_root works
+# We need to bind-mount /run into the new root so our mounts are visible
+mkdir -p "${rootmnt}/run/vulos"
+mount --bind /run/vulos "${rootmnt}/run/vulos"
+
+# Rebind $rootmnt to the merged overlay view
+mount --bind "$MERGED" "$rootmnt"
+
+log_end_msg "Vula OS: live overlayfs active (squashfs ro + tmpfs rw)"
+
+exit 0

@@ -12,6 +12,7 @@
 #   ./build.sh --deploy 192.168.1.50 \
 #     --domain os.vulos.org \
 #     --dns-namecheap myuser APIKEY123                  # with Caddy wildcard TLS
+#   sudo ./build.sh --live                             # produce bootable live-USB image
 #
 # Env vars (alternative to flags):
 #   NAMECHEAP_USER, NAMECHEAP_KEY, VULOS_DOMAIN
@@ -45,6 +46,7 @@ DOMAIN="${VULOS_DOMAIN:-}"
 NC_USER="${NAMECHEAP_USER:-}"
 NC_KEY="${NAMECHEAP_KEY:-}"
 OUTDIR_ARG=""
+LIVE_MODE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -52,6 +54,7 @@ while [ $# -gt 0 ]; do
     --deploy-only) DEPLOY_HOST="$2"; DEPLOY_ONLY=true; shift 2 ;;
     --domain)      DOMAIN="$2"; shift 2 ;;
     --dns-namecheap) NC_USER="$2"; NC_KEY="$3"; shift 3 ;;
+    --live)        LIVE_MODE=1; shift ;;
     *) OUTDIR_ARG="$1"; shift ;;
   esac
 done
@@ -80,6 +83,7 @@ echo "${BLUE}╠═════════════════════�
 echo "${BLUE}║${NC} Arch:   $ARCH"
 echo "${BLUE}║${NC} Suite:  $SUITE"
 echo "${BLUE}║${NC} Output: $OUTDIR"
+[ "$LIVE_MODE" = "1" ] && echo "${BLUE}║${NC} Mode:   live-USB (squashfs + overlayfs)"
 [ -n "$DEPLOY_HOST" ] && echo "${BLUE}║${NC} Deploy: $DEPLOY_HOST"
 [ -n "$DOMAIN" ] && echo "${BLUE}║${NC} Domain: $DOMAIN (+ *.$DOMAIN)"
 [ -n "$NC_USER" ] && echo "${BLUE}║${NC} DNS:    Namecheap ($NC_USER)"
@@ -453,6 +457,99 @@ touch "$ROOTFS/var/lib/vulos/.setup-complete"
 
 echo "  ${GREEN}✓${NC} rootfs built"
 
+# ═══════════════════════════════════
+# 5. Live-USB image (--live only)
+# ═══════════════════════════════════
+if [ "$LIVE_MODE" = "1" ]; then
+  echo "${BLUE}▸ Building live-USB image...${NC}"
+
+  # --- Guard: require host tools ---
+  LIVE_MISSING=""
+  for _tool in mksquashfs parted mkfs.vfat dd; do
+    if ! command -v "$_tool" >/dev/null 2>&1; then
+      LIVE_MISSING="$LIVE_MISSING $_tool"
+    fi
+  done
+  if [ -n "$LIVE_MISSING" ]; then
+    echo "${RED}✗ Missing host tools required for --live:$LIVE_MISSING${NC}"
+    echo "  Install squashfs-tools parted dosfstools and retry."
+    exit 1
+  fi
+
+  # --- Install squashfs-tools in the chroot (needed for mksquashfs inside if ever used) ---
+  chroot "$ROOTFS" apt-get install -y --no-install-recommends squashfs-tools
+  chroot "$ROOTFS" apt-get clean
+  rm -rf "$ROOTFS/var/lib/apt/lists/"*
+
+  # --- Install initramfs hook into rootfs ---
+  INITRAMFS_HOOK_DIR="$ROOTFS/etc/initramfs-tools/scripts/init-bottom"
+  mkdir -p "$INITRAMFS_HOOK_DIR"
+  cp "$ROOT_DIR/scripts/initramfs/vulos-live" "$INITRAMFS_HOOK_DIR/vulos-live"
+  chmod 0755 "$INITRAMFS_HOOK_DIR/vulos-live"
+  echo "  ${GREEN}✓${NC} initramfs hook installed in rootfs"
+
+  # --- Pack squashfs from the rootfs ---
+  SQUASHFS="$OUTDIR/image.squashfs"
+  echo "${BLUE}▸ Packing squashfs (xz, this may take a while)...${NC}"
+  mksquashfs "$ROOTFS" "$SQUASHFS" -comp xz -noappend -quiet
+  echo "  ${GREEN}✓${NC} image.squashfs ($(du -h "$SQUASHFS" | cut -f1))"
+
+  # --- Build bootable GPT image ---
+  # Layout:
+  #   Partition 1: ESP  — FAT32, 64 MiB, GRUB bootloader stub + squashfs-less files
+  #   Partition 2: data — ext4-ish container holding image.squashfs
+  #
+  # We use raw dd + parted + mkfs.vfat to stay dependency-light.
+  # The initramfs will find image.squashfs on the data partition at /image.squashfs.
+
+  LIVE_IMG="$OUTDIR/vulos-live-$ARCH.img"
+  ESP_MB=64
+  SQUASHFS_MB=$(( ($(du -m "$SQUASHFS" | cut -f1) + 32) ))   # add 32 MiB headroom
+  IMG_MB=$(( ESP_MB + SQUASHFS_MB + 4 ))                      # 4 MiB for alignment/GPT
+
+  echo "${BLUE}▸ Creating GPT image (${IMG_MB} MiB)...${NC}"
+  # Allocate the image file
+  dd if=/dev/zero of="$LIVE_IMG" bs=1M count="$IMG_MB" status=none
+
+  # Partition table: GPT, ESP at 1 MiB, data after ESP
+  parted -s "$LIVE_IMG" \
+    mklabel gpt \
+    mkpart ESP  fat32  1MiB  $(( ESP_MB + 1 ))MiB \
+    set 1 esp on \
+    mkpart data       $(( ESP_MB + 1 ))MiB 100%
+
+  # Format ESP partition via loop offset
+  ESP_START_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 1 /{print $2}' | tr -d 'B')
+  ESP_END_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 1 /{print $3}' | tr -d 'B')
+  ESP_SIZE_BYTES=$(( ESP_END_BYTES - ESP_START_BYTES ))
+
+  DATA_START_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 2 /{print $2}' | tr -d 'B')
+  DATA_SIZE_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 2 /{print $3 - $2}' | tr -d 'B')
+
+  # Write FAT32 ESP directly into the image at offset
+  dd if=/dev/zero bs=1 count="$ESP_SIZE_BYTES" | dd of="$LIVE_IMG" bs=1 seek="$ESP_START_BYTES" conv=notrunc status=none
+  # mkfs.vfat on offset via a temp file extract/merge approach (no loop device needed)
+  ESP_TMP="$OUTDIR/_esp.img"
+  dd if=/dev/zero of="$ESP_TMP" bs=1 count="$ESP_SIZE_BYTES" status=none
+  mkfs.vfat -F 32 -n "EFI" "$ESP_TMP" >/dev/null
+  dd if="$ESP_TMP" of="$LIVE_IMG" bs=1 seek="$ESP_START_BYTES" conv=notrunc status=none
+  rm -f "$ESP_TMP"
+
+  # Write the squashfs into the data partition (raw, no filesystem — initramfs reads squashfs directly)
+  dd if="$SQUASHFS" of="$LIVE_IMG" bs=1M seek=$(( DATA_START_BYTES / (1024 * 1024) )) conv=notrunc status=none
+
+  echo "  ${GREEN}✓${NC} GPT image: vulos-live-$ARCH.img ($(du -h "$LIVE_IMG" | cut -f1))"
+  echo "  ${DIM}  Partition 1: ESP (FAT32, ${ESP_MB} MiB) — bootloader${NC}"
+  echo "  ${DIM}  Partition 2: data — image.squashfs${NC}"
+  echo ""
+  echo "${GREEN}Live-USB image ready:${NC} $LIVE_IMG"
+  echo "${GREEN}Flash with:${NC} dd if=$LIVE_IMG of=/dev/sdX bs=4M status=progress"
+  echo ""
+fi
+
+# ═══════════════════════════════════
+# 5b. Rootfs tarball (always — non-live path unchanged)
+# ═══════════════════════════════════
 echo "${BLUE}▸ Creating rootfs tarball...${NC}"
 tar czf "$OUTDIR/vulos-$ARCH.tar.gz" -C "$ROOTFS" .
 echo "  ${GREEN}✓${NC} vulos-$ARCH.tar.gz ($(du -h "$OUTDIR/vulos-$ARCH.tar.gz" | cut -f1))"
