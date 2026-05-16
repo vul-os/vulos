@@ -531,7 +531,7 @@ Scope: minio-go wrapper putEncrypted/getEncrypted SSE-C, Argon2id key from passp
 AC: [ ] encrypted PUT/GET round-trip [ ] Argon2id(3,64MiB,4,32) [ ] salt created/reused [ ] wrong passphrase fails
 
 ### [CLUSTER-04] cluster package: Node identity/Register/Peers
-`todo` · P1 · M · dep: NET-06, CLUSTER-03 · parallel: yes — new backend/services/cluster/cluster.go, main.go
+`done` · P1 · M · dep: NET-06, CLUSTER-03 · parallel: yes — new backend/services/cluster/cluster.go, main.go
 Scope: Node/Cluster types; Register() writes nodes/{id}/meta.json heartbeat; Peers() lists; Health() reuses NET-07; wire heartbeat at startup when S3 configured.
 AC: [ ] Register writes+refreshes last_seen [ ] Peers returns all incl stale [ ] disabled cleanly w/o S3 [ ] unit test mock S3
 
@@ -1049,7 +1049,7 @@ Scope: RFC6238 TOTP; AES-256-GCM secrets at ~/.vulos/auth/totp/keychain.enc + ac
 AC: [x] merged 43d65d3 (11 tests incl RFC6238 vectors pass)
 
 ### [AUTH-02] TOTP HTTP API endpoints
-`todo` · P2 · S · dep: AUTH-01 · parallel: no — backend/cmd/server/main.go, new authvault/handlers.go
+`done` · P2 · S · dep: AUTH-01 · parallel: no — backend/cmd/server/main.go, new authvault/handlers.go
 Scope: POST /api/auth/totp/add, GET /list, GET /code/:id, DELETE /:id; scoped per X-User-ID; wire in main.go.
 AC: [ ] 4 endpoints, auth-required, correct JSON [ ] add-then-code returns valid 6-digit [ ] go build
 
