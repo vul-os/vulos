@@ -685,7 +685,7 @@ Scope: GET /api/installer/disks (lsblk -J), /status (live vs installed), POST /i
 AC: [ ] disks lists drives [ ] status live vs installed [ ] install does part→format→rsync→bootctl [ ] progress WS % [ ] go build
 
 ### [BMINIT-13] Installer React app (live-USB)
-`todo` · P3 · L · dep: BMINIT-12 · parallel: yes — new src/builtin/installer/, src/core/AppRegistry.js (LOCKED dirty — defer reg until resolved)
+`done` · P3 · L · dep: BMINIT-12 · parallel: yes — new src/builtin/installer/, src/core/AppRegistry.js (LOCKED dirty — defer reg until resolved)
 Scope: welcome→disk-select(visual map)→progress(WS)→success/reboot; shown only when status=live-USB.
 AC: [ ] app shown only live-USB [ ] disk select+install [ ] WS progress+reboot [ ] error recovery, npm build
 
