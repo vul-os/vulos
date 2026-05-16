@@ -1226,7 +1226,7 @@ Scope: main.go ~:1370/1414-1437 — validate `r.PathValue("id")` charset + realp
 AC: [ ] encoded/`..` id cannot escape aiAppsDir [ ] save admin-gated [ ] saved python only runs via gated sandbox [ ] go build
 
 ### [SEC-J] auth hygiene: revoke-on-pw-change, password policy, log scrub (L2,L3,L4)
-`todo` · P3 · S · dep: none · parallel: yes — backend/services/auth/auth.go
+`done` · P3 · S · dep: none · parallel: yes — backend/services/auth/auth.go
 Scope: auth.go — call RevokeAllSessions on ChangePassword (~:472); raise min password length from 4 (~:369) and tighten/remove legacy salted-SHA256 fallback gating (~:341-354); stop logging hash_prefix + password length (~:420).
 AC: [ ] password change revokes sessions [ ] min length raised, legacy hash path constrained [ ] no credential-shaped data in logs [ ] go build + auth tests
 
