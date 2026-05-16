@@ -17,14 +17,15 @@ var ValidCategories = []string{
 
 // Valid permission types apps can request.
 var ValidPermissions = []string{
-	"network",    // outbound network access (all apps get loopback)
-	"filesystem", // read/write outside app data dir
-	"camera",     // camera device access
-	"microphone", // microphone device access
-	"bluetooth",  // bluetooth access
-	"usb",        // USB device access
-	"gpu",        // GPU acceleration
-	"background", // run when window is closed
+	"network",       // outbound network access (all apps get loopback)
+	"filesystem",    // read/write outside app data dir
+	"camera",        // camera device access
+	"microphone",    // microphone device access
+	"bluetooth",     // bluetooth access
+	"usb",           // USB device access
+	"gpu",           // GPU acceleration
+	"background",    // run when window is closed
+	"notifications", // send desktop/push notifications to the user
 }
 
 // appIDMaxLen is the maximum length of an app ID (63 chars to fit in a DNS label).
