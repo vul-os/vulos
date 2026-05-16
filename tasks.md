@@ -1134,7 +1134,7 @@ Scope: photo grid + fullscreen viewer + carousel; video list inline HLS (hls.js)
 AC: [ ] photo grid + fullscreen [ ] multi-attachment carousel [ ] video plays inline HLS
 
 ### [FED-05] Forums view — Lemmy communities
-`todo` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
+`done` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
 Scope: Lemmy API client: communities, post listing w/ sort, comment trees, vote/subscribe (JWT), read-only fallback.
 AC: [ ] browse public Lemmy communities/posts [ ] sort hot/new/top/active [ ] logged-in vote+comment
 
