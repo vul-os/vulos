@@ -1015,7 +1015,7 @@ Scope: BLE advertise service UUID + truncated Vula ID hash w/ rotation, scan to 
 AC: [ ] advertises vula-drop BLE when discoverable [ ] scan surfaces devices [ ] payload rotates, no hw=no-op
 
 ### [PEER-37] E2E encryption: X25519 + XChaCha20-Poly1305
-`todo` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
+`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
 Scope: X25519 from identity, per-conversation shared secret, encrypt/decrypt message bodies+CRDT payloads XChaCha20-Poly1305 transparently; servers store ciphertext only.
 AC: [ ] bodies ciphertext at rest+transit, only endpoints decrypt [ ] wrong key fails closed [ ] round-trip+key exchange tests
 
