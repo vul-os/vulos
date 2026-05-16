@@ -1005,7 +1005,7 @@ Scope: mDNS advertise/browse _vula-drop._tcp, nearby endpoint, discoverability e
 AC: [ ] 2 LAN instances discover when discoverable [ ] discoverability filters ads [ ] drop transfers+accept/decline+progress
 
 ### [PEER-35] Drop: proximity code (gen/redeem + rendezvous)
-`todo` · P3 · M · dep: PEER-34 · parallel: yes — backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
+`done` · P3 · M · dep: PEER-34 · parallel: yes — backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
 Scope: 6-digit code TTL 5min/single-use, stateless vulos.org rendezvous fallback (configurable) when no mDNS, then normal transfer.
 AC: [ ] code 6-digit expires 5min/first use [ ] valid code connects+transfers [ ] works cross-network via rendezvous
 
