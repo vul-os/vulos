@@ -955,7 +955,7 @@ Scope: shell-wide incoming-call modal on signal call-request + ringtone; backend
 AC: [ ] modal regardless of focus [ ] accept/reject drives signaling [ ] completed/missed recorded+listed
 
 ### [PEER-25] Pre-call lobby: bandwidth, host select, capacity
-`todo` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
+`done` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
 Scope: collect bandwidth reports, table, volunteer SFU host, capacity estimate from host upload per formula.
 AC: [ ] lists ▲up▼down latency [ ] host dropdown defaults initiator, updates capacity [ ] estimate matches math
 
