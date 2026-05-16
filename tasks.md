@@ -658,7 +658,7 @@ Scope: SQLite opener loading cr-sqlite ext, migration runner, crsql_as_crr helpe
 AC: [ ] opens ~/.vulos/db/vulos.db + migrations [ ] cr-sqlite loads, crsql_as_crr ok (graceful if absent) [ ] idempotent migrations [ ] unit test CRUD
 
 ### [CLUSTER-02] Migrate auth.Store to SQLite
-`todo` · P0 · L · dep: CLUSTER-01 · parallel: no — backend/services/auth/auth.go, profiles.go
+`done` · P0 · L · dep: CLUSTER-01 · parallel: no — backend/services/auth/auth.go, profiles.go
 Scope: Back auth.Store w/ SQLite, preserve public API, Flush()=no-op, one-time auth.json→SQLite import.
 AC: [ ] all methods work SQLite-backed [ ] auth.json imported once [ ] Flush no-op, sessions survive restart [ ] expired sessions not returned
 
