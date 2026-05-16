@@ -37,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	"vulos/backend/services/bootmode"
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/identity"
 )
@@ -68,7 +69,25 @@ var (
 	ErrUnreachable = errors.New("joinsync: S3 bucket unreachable")
 	// ErrBadPassphrase indicates the passphrase failed to decrypt the marker.
 	ErrBadPassphrase = errors.New("joinsync: incorrect passphrase for this cluster")
+	// ErrAlreadyProvisioned is returned when Join is called on an instance that
+	// is already in "normal" (fully provisioned) bootmode. The join endpoint
+	// must be blocked after initial setup is complete (SECAUDIT2 L-2).
+	ErrAlreadyProvisioned = errors.New("joinsync: instance already provisioned — setup is complete")
 )
+
+// IsProvisioned reports whether home is a fully-provisioned instance
+// (bootmode "normal": instance.json exists and no active sync).
+// It returns false for "setup" and "sync" modes, so callers on those paths
+// continue to work normally.
+func IsProvisioned(home string) bool {
+	result, err := bootmode.Detect(home)
+	if err != nil {
+		// On a stat error we fail-open: let the handler proceed to its own
+		// error handling rather than silently gating a legitimate first-boot.
+		return false
+	}
+	return result.Mode == "normal"
+}
 
 // JoinRequest is the body accepted by POST /api/setup/join.
 // Passphrase is intentionally NEVER persisted to disk.
@@ -195,7 +214,16 @@ func s3ConfigFor(req JoinRequest) cluster.S3Config {
 // persists S3 creds + writes sync-state.json, then spawns the async pull.
 // The passphrase is held only in memory for the lifetime of the pull
 // goroutine and is never written anywhere.
+//
+// SECAUDIT2 L-2: if the instance is already provisioned (bootmode "normal"),
+// Join refuses immediately with ErrAlreadyProvisioned. This closes the
+// unauthenticated config-write/SSRF surface once setup is complete while
+// leaving first-boot and sync-mode paths unchanged.
 func Join(req JoinRequest, home string) (*JoinResult, error) {
+	if IsProvisioned(home) {
+		return nil, ErrAlreadyProvisioned
+	}
+
 	if err := sanitize(&req); err != nil {
 		return nil, err
 	}
