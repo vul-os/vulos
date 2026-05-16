@@ -551,7 +551,7 @@ Scope: installed_apps (CRR) + local_app_status (local) tables; write desired-sta
 AC: [ ] install records row [ ] reconciler installs missing [ ] uninstalls status=removed [ ] failures recorded+retried
 
 ### [CLUSTER-08] File sync (fsnotify→S3) w/ conflict copies
-`todo` · P2 · L · dep: CLUSTER-03, CLUSTER-04 · parallel: yes — new backend/services/sync/, backend/go.mod
+`done` · P2 · L · dep: CLUSTER-03, CLUSTER-04 · parallel: yes — new backend/services/sync/, backend/go.mod
 Scope: fsnotify watch ~/.vulos/data + db/browser-profiles (ignore apps/bin); upload encrypted files/{rel}+.meta; pull overwrite-if-unchanged else name.conflict-{node}-{ts}.
 AC: [ ] edit uploads file+meta [ ] pull overwrites unchanged [ ] divergent edit = conflict copy no loss [ ] apps/bin ignored
 
