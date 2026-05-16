@@ -407,3 +407,6 @@ Original 4h brief (started 17:14) has 192 min left. My self-imposed "wind-down 1
 
 ## D49 (18:03) — Tick: 3 wave-13 workers in flight, hold
 Mem 1651, load 6/10/10. 0 completions yet. NET-01/CLUSTER-06/BMINIT-15 still running. Holding dispatch — 3 in flight is sufficient given hot-file contention on remaining tasks. Cron 44dbf100 expires at 18:55 (52 min); brief continues to ~21:14 — I'll CronDelete at 18:55 and keep merging completions until brief expiry.
+
+## D50 (18:10) — Wave-13 complete: 156 total merges
+NET-01 (subdomain parser {app}--{profile}.{ulid}.{domain}, 18 tests, gateway wired), CLUSTER-06 (storage status API + Settings UI, registry preserved at 40 apps), BMINIT-15 (--arm64 + --device rpi4/pinephone build.sh flags). Session total: **156 task-branches merged**. Build green @ 8419e51. ~3h remain on brief; will continue tick-by-tick.
