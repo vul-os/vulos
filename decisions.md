@@ -225,3 +225,6 @@ branch refs persist independently). Continue.
 
 ### D20 — 2026-05-16 ~13:12 — Window-2 checkpoint
 ~88 task-branch merges to main; build green; ~95 todo. Recurring failure mode: stale-base workers redeclare pkg-level types/test-helpers (ContactStore, addApprovedContact) → clean-text merge but build-break; contained single-symbol perl-rename recovers (PEER-38), multi-symbol cascades → defer (MOBILE-03). Re-task deferred PEER-19/31 with explicit "use existing pkg types, NO pkg bootstrap, only your new file". Continue.
+
+### D21 — 2026-05-16 13:37 — Permanent-defer (structural, pinned-base)
+NOTIF-02 & AUTH-10: each failed 3x. Root cause: worktree bases are pinned pre-merge, so workers cannot see the already-merged dependency (NOTIF-01 Notification struct / AUTH-09 devicekey KeyStore API) and always reimplement an incompatible shape. Worker re-tasks cannot fix this. Resolution for a future session: orchestrator (or human) hand-writes store.go/handlers.go directly against current main API. Both are non-blocking (notify works w/o persistence; AUTH-09 keystore usable w/o HTTP). Marked done=N/A, left todo. ~90 task merges shipped; build green @ e94a970.
