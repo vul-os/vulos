@@ -762,20 +762,79 @@ function AccountSettings({ profile, updateProfile, logout }) {
 }
 
 // --- AI Apps Gallery ---
+function AIAppVersions({ appId, onClose }) {
+  const [versions, setVersions] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/ai-apps/${appId}/versions`)
+      .then(r => r.json())
+      .then(setVersions)
+      .catch(() => setVersions([]))
+  }, [appId])
+
+  const rollback = async (version) => {
+    setBusy(true)
+    setMsg('')
+    try {
+      const r = await fetch(`/api/ai-apps/${appId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version }),
+      })
+      const d = await r.json()
+      if (!r.ok) setMsg(d.error || 'Rollback failed')
+      else setMsg('Rolled back successfully')
+    } catch {
+      setMsg('Request failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 mb-4 rounded border border-neutral-700 bg-neutral-900 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-neutral-300">Version History</span>
+        <button onClick={onClose} className="text-xs text-neutral-500 hover:text-neutral-300">Close</button>
+      </div>
+      {versions.length === 0 && <p className="text-xs text-neutral-500">No snapshots yet.</p>}
+      {versions.map(v => (
+        <div key={v.version} className="flex items-center justify-between py-1 border-b border-neutral-800/30">
+          <div>
+            <span className="text-xs text-neutral-400">{v.timestamp}</span>
+            {v.brief && <span className="text-[10px] text-neutral-600 ml-2">{v.brief}</span>}
+          </div>
+          <button
+            onClick={() => rollback(v.version)}
+            disabled={busy}
+            className="text-[10px] text-amber-400 hover:text-amber-300 disabled:opacity-50"
+          >
+            Restore
+          </button>
+        </div>
+      ))}
+      {msg && <p className="text-xs mt-2 text-green-400">{msg}</p>}
+    </div>
+  )
+}
+
 function AIAppsSettings() {
   const [apps, setApps] = useState([])
   const [visRefreshKey, setVisRefreshKey] = useState(0)
+  const [versionsOpen, setVersionsOpen] = useState(null)
   const refresh = useCallback(() => fetch('/api/ai-apps').then(r => r.json()).then(setApps).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
 
   const remove = async (id) => {
     await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
+    if (versionsOpen === id) setVersionsOpen(null)
     refresh()
   }
 
-  const handleVisChanged = useCallback(() => {
-    setVisRefreshKey(k => k + 1)
-  }, [])
+  const handleVisChanged = useCallback(() => { setVisRefreshKey(k => k + 1) }, [])
+  const toggleVersions = (id) => { setVersionsOpen(prev => prev === id ? null : id) }
 
   return (
     <Section title="AI-Generated Apps">
@@ -790,9 +849,13 @@ function AIAppsSettings() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <PamVisibilityControl key={`${app.id}-${visRefreshKey}`} appId={app.id} onChanged={handleVisChanged} />
+            <button onClick={() => toggleVersions(app.id)} className="text-xs text-neutral-400">Versions</button>
             <button onClick={() => window.open(`/api/ai-apps/${app.id}/html`, '_blank')} className="text-xs text-blue-400">Open</button>
             <button onClick={() => remove(app.id)} className="text-xs text-red-400">Delete</button>
           </div>
+          {versionsOpen === app.id && (
+            <AIAppVersions appId={app.id} onClose={() => setVersionsOpen(null)} />
+          )}
         </div>
       ))}
     </Section>
