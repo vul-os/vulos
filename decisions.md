@@ -449,3 +449,7 @@ Wine + Lutris + Steam spliced onto current main; registry now 45 active apps. Se
 
 ## D63 (18:47) — Brief re-fire; rescue NET-09 via Opus (cleanest deferred)
 Tasks effectively drained; per brief "break down more roadmap with Opus when tasks run low" — but rather than speculative new tasks, more valuable to RESCUE a deferred one. Picked NET-09 (D57 defer): smallest structural mismatch (worker's network.Service struct doesn't match NET-06's current shape; needs ~30min of careful adapter work). One Opus agent doing it carefully should land it cleanly. Mem 2478 OK. 147 min on brief.
+
+## D64 (18:52) — Wind-down: CronDelete both jobs
+Per cron prompt step 5, deleted cron 44dbf100 (5-min Wave-10 tick) and 3b9c595e (15-min orchestrator brief — the original one from earlier in the session). Reactive mode from here. Brief deadline 21:14 (142 min) is now opportunistic — only act on explicit user prompts or in-flight completions (NET-09-v2 Opus still running).
+**Session final tally**: 164 task-branches merged, build green @ da185c2, registry 45 active apps, tasks.md ≈170/195 done. Major architectural wins this run: SEC remediation (C1-C4/H1-H6 closed), routes_<area>.go pattern (parallelism unlock), NET subdomain chain (01/02/04), AI app full lifecycle (gen/edit/version/visibility), baremetal init (labwc+plymouth+networking+--live ISO+ARM variants), recovery kit, Setup wizard 14 steps, demo/join codes, Matrix client, gaming catalog.
