@@ -1,15 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1a1a1a"/>
+  <!-- Media: violet tile -->
+  <rect width="64" height="64" rx="14" fill="#4c1d95"/>
+  <!-- Viewfinder bump -->
+  <rect x="24" y="16" width="16" height="8" rx="4" fill="#2e1065"/>
   <!-- Camera body -->
-  <rect x="8" y="20" width="48" height="32" rx="5" fill="#2a2a2a" stroke="#444" stroke-width="1.5"/>
-  <!-- Lens outer ring -->
-  <circle cx="32" cy="36" r="11" fill="#111" stroke="#555" stroke-width="2"/>
-  <!-- Lens inner -->
-  <circle cx="32" cy="36" r="7" fill="#0a0a0a" stroke="#3b82f6" stroke-width="1.5"/>
-  <!-- Lens highlight -->
-  <circle cx="32" cy="36" r="3.5" fill="#1a2a4a"/>
-  <!-- Flash / viewfinder bump -->
-  <rect x="26" y="14" width="12" height="8" rx="3" fill="#2a2a2a" stroke="#444" stroke-width="1.2"/>
-  <!-- Shutter button indicator -->
-  <circle cx="52" cy="26" r="3" fill="#3b82f6"/>
+  <rect x="10" y="21" width="44" height="28" rx="6" fill="#2e1065" stroke="#7c3aed" stroke-width="1.5"/>
+  <!-- Lens ring outer -->
+  <circle cx="32" cy="35" r="10" fill="#1e1035" stroke="#c4b5fd" stroke-width="2"/>
+  <!-- Lens ring inner -->
+  <circle cx="32" cy="35" r="6" fill="#2e1065" stroke="#a78bfa" stroke-width="1.5"/>
+  <!-- Lens center -->
+  <circle cx="32" cy="35" r="3" fill="#4c1d95"/>
+  <!-- Shutter button -->
+  <circle cx="50" cy="27" r="3.5" fill="#c4b5fd"/>
+  <!-- Flash indicator -->
+  <rect x="14" y="27" width="5" height="3" rx="1.5" fill="#c4b5fd" opacity="0.6"/>
 </svg>

@@ -1,8 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Clock">
-  <rect width="128" height="128" rx="28" fill="#101418"/>
-  <circle cx="64" cy="64" r="42" fill="#f8fafc"/>
-  <circle cx="64" cy="64" r="35" fill="#17202a"/>
-  <path d="M64 35v31l22 13" fill="none" stroke="#67e8f9" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="64" cy="64" r="5" fill="#f97316"/>
-  <path d="M64 21v9M64 98v9M21 64h9M98 64h9" stroke="#f8fafc" stroke-width="6" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Productivity: indigo tile -->
+  <rect width="64" height="64" rx="14" fill="#312e81"/>
+  <!-- Clock face outer ring -->
+  <circle cx="32" cy="32" r="19" fill="#1e1b4b" stroke="#a5b4fc" stroke-width="2"/>
+  <!-- Hour markers (4 cardinal) -->
+  <rect x="30.5" y="15" width="3" height="5" rx="1.5" fill="#a5b4fc"/>
+  <rect x="30.5" y="44" width="3" height="5" rx="1.5" fill="#a5b4fc"/>
+  <rect x="15" y="30.5" width="5" height="3" rx="1.5" fill="#a5b4fc"/>
+  <rect x="44" y="30.5" width="5" height="3" rx="1.5" fill="#a5b4fc"/>
+  <!-- Minute hand -->
+  <line x1="32" y1="32" x2="32" y2="19" stroke="#c7d2fe" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Hour hand -->
+  <line x1="32" y1="32" x2="41" y2="37" stroke="#a5b4fc" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Center pivot -->
+  <circle cx="32" cy="32" r="2.5" fill="#a5b4fc"/>
 </svg>

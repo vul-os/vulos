@@ -1,4 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1a1a1a"/>
-  <text x="32" y="40" text-anchor="middle" font-size="28" fill="#e5e5e5" font-family="system-ui">◎</text>
+  <!-- Core/system: slate tile -->
+  <rect width="64" height="64" rx="14" fill="#1e293b"/>
+  <!-- Chromium pinwheel: 3 arcs of the outer ring per color pair -->
+  <!-- Red arc: top (330deg to 90deg) -->
+  <path d="M32 32 L32 13 A19 19 0 0 1 48.5 22.5 Z" fill="#EA4335"/>
+  <!-- Yellow arc: top-left (210deg to 330deg) -->
+  <path d="M32 32 L15.5 22.5 A19 19 0 0 1 32 13 Z" fill="#FBBC05"/>
+  <!-- Green arc: right (90deg to 210deg) -->
+  <path d="M32 32 L48.5 22.5 A19 19 0 0 1 48.5 41.5 Z" fill="#34A853"/>
+  <!-- Blue arc: bottom (210deg to 330deg) -->
+  <path d="M32 32 L48.5 41.5 A19 19 0 0 1 15.5 41.5 Z" fill="#4285F4"/>
+  <!-- Red arc: left bottom -->
+  <path d="M32 32 L15.5 41.5 A19 19 0 0 1 15.5 22.5 Z" fill="#EA4335"/>
+  <!-- White separator ring -->
+  <circle cx="32" cy="32" r="13.5" fill="#1e293b"/>
+  <!-- Blue center hub -->
+  <circle cx="32" cy="32" r="10" fill="#4285F4"/>
+  <!-- Subtle highlight -->
+  <circle cx="29.5" cy="29.5" r="3" fill="#6aaff8" opacity="0.5"/>
 </svg>

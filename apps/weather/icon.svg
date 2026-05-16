@@ -1,12 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="sky" x1="10" y1="6" x2="56" y2="60" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#0f766e"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="14" fill="url(#sky)"/>
-  <circle cx="24" cy="24" r="10" fill="#fde68a"/>
-  <path d="M18 42c0-6.1 4.9-11 11-11 4.4 0 8.2 2.6 10 6.4 1-.5 2.1-.8 3.3-.8 4.2 0 7.7 3.4 7.7 7.7S46.5 52 42.3 52H23.2C20.3 52 18 49.7 18 46.8V42Z" fill="#f8fafc"/>
-  <path d="M21 42.8c0-4.4 3.6-8 8-8 3.6 0 6.7 2.4 7.7 5.8.9-.8 2-1.2 3.3-1.2 2.9 0 5.2 2.3 5.2 5.2S42.9 50 40 50H23.5c-1.4 0-2.5-1.1-2.5-2.5v-4.7Z" fill="#dbeafe"/>
+  <!-- Utility: teal tile -->
+  <rect width="64" height="64" rx="14" fill="#134e4a"/>
+  <!-- Sun rays (8 lines radiating) -->
+  <line x1="22" y1="14" x2="22" y2="10" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="13" y1="23" x2="9" y2="23" stroke="#5eead4" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="15" y1="16" x2="12" y2="13" stroke="#5eead4" stroke-width="2" stroke-linecap="round"/>
+  <line x1="29" y1="16" x2="32" y2="13" stroke="#5eead4" stroke-width="2" stroke-linecap="round"/>
+  <line x1="15" y1="30" x2="12" y2="33" stroke="#5eead4" stroke-width="2" stroke-linecap="round"/>
+  <!-- Sun circle -->
+  <circle cx="22" cy="23" r="8" fill="#5eead4"/>
+  <!-- Cloud body -->
+  <circle cx="32" cy="38" r="9" fill="#0f3d3a" stroke="#99f6e4" stroke-width="1.5"/>
+  <circle cx="44" cy="40" r="7" fill="#0f3d3a" stroke="#99f6e4" stroke-width="1.5"/>
+  <!-- Cloud base fill (connector) -->
+  <rect x="32" y="36" width="19" height="11" rx="0" fill="#0f3d3a"/>
+  <!-- Cloud outline on top only -->
+  <path d="M23 44 Q23 33 32 33 Q36 33 39 36 Q41 31 47 31 Q54 31 54 38 Q54 47 44 47 L28 47 Q23 47 23 44 Z" fill="#0f3d3a" stroke="#5eead4" stroke-width="1.5"/>
 </svg>

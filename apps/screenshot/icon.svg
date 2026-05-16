@@ -1,21 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
-  <rect width="48" height="48" rx="10" fill="#1a1a2e"/>
-  <!-- Screen frame -->
-  <rect x="6" y="10" width="36" height="24" rx="3" stroke="#7c6af7" stroke-width="2" fill="#0f0f1a"/>
-  <!-- Screen inner -->
-  <rect x="9" y="13" width="30" height="18" rx="1" fill="#1e1e3a"/>
-  <!-- Crosshair / region selection indicator -->
-  <line x1="24" y1="13" x2="24" y2="31" stroke="#7c6af7" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>
-  <line x1="9" y1="22" x2="39" y2="22" stroke="#7c6af7" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>
-  <!-- Corner brackets -->
-  <path d="M11 15 L11 19 M11 15 L15 15" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
-  <path d="M37 15 L37 19 M37 15 L33 15" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
-  <path d="M11 29 L11 25 M11 29 L15 29" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
-  <path d="M37 29 L37 25 M37 29 L33 29" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
-  <!-- Record dot -->
-  <circle cx="38" cy="12" r="4" fill="#ef4444"/>
-  <circle cx="38" cy="12" r="2" fill="#fff" opacity="0.9"/>
-  <!-- Stand -->
-  <rect x="19" y="34" width="10" height="2" rx="1" fill="#7c6af7" opacity="0.6"/>
-  <rect x="16" y="36" width="16" height="2" rx="1" fill="#7c6af7" opacity="0.4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Core/system: slate tile -->
+  <rect width="64" height="64" rx="14" fill="#1e293b"/>
+  <!-- Screen area -->
+  <rect x="10" y="14" width="44" height="30" rx="5" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>
+  <!-- Dashed capture frame inside screen -->
+  <rect x="16" y="19" width="32" height="20" rx="3" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="4 3"/>
+  <!-- Corner bracket: top-left -->
+  <path d="M16 24 L16 19 L21 19" fill="none" stroke="#7dd3fc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Corner bracket: top-right -->
+  <path d="M48 24 L48 19 L43 19" fill="none" stroke="#7dd3fc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Corner bracket: bottom-left -->
+  <path d="M16 35 L16 39 L21 39" fill="none" stroke="#7dd3fc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Corner bracket: bottom-right -->
+  <path d="M48 35 L48 39 L43 39" fill="none" stroke="#7dd3fc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Monitor stand -->
+  <rect x="28" y="44" width="8" height="5" rx="2" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+  <rect x="22" y="49" width="20" height="3" rx="1.5" fill="#38bdf8" opacity="0.7"/>
 </svg>

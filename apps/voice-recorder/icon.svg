@@ -1,15 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1a1a1a"/>
-  <!-- Microphone body -->
-  <rect x="24" y="10" width="16" height="26" rx="8" fill="#ef4444"/>
-  <!-- Microphone stand arc -->
-  <path d="M16 32 Q16 48 32 48 Q48 48 48 32" fill="none" stroke="#e5e5e5" stroke-width="3" stroke-linecap="round"/>
-  <!-- Stand base vertical line -->
-  <line x1="32" y1="48" x2="32" y2="56" stroke="#e5e5e5" stroke-width="3" stroke-linecap="round"/>
-  <!-- Stand base horizontal -->
-  <line x1="22" y1="56" x2="42" y2="56" stroke="#e5e5e5" stroke-width="3" stroke-linecap="round"/>
-  <!-- Microphone grille lines -->
-  <line x1="24" y1="22" x2="40" y2="22" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
-  <line x1="24" y1="26" x2="40" y2="26" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
-  <line x1="24" y1="30" x2="40" y2="30" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <!-- Media: violet tile -->
+  <rect width="64" height="64" rx="14" fill="#4c1d95"/>
+  <!-- Microphone capsule body -->
+  <rect x="24" y="10" width="16" height="24" rx="8" fill="#2e1065" stroke="#c4b5fd" stroke-width="2"/>
+  <!-- Grille lines on capsule -->
+  <line x1="24" y1="20" x2="40" y2="20" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="24" y1="25" x2="40" y2="25" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="24" y1="30" x2="40" y2="30" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <!-- Pickup arc -->
+  <path d="M16 32 Q16 48 32 48 Q48 48 48 32" fill="none" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Stand vertical -->
+  <line x1="32" y1="48" x2="32" y2="55" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Stand base -->
+  <line x1="22" y1="55" x2="42" y2="55" stroke="#c4b5fd" stroke-width="2.5" stroke-linecap="round"/>
 </svg>

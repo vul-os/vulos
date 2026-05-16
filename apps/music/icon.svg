@@ -1,12 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="14" fill="#1a1a2e"/>
-  <circle cx="32" cy="32" r="20" fill="#16213e" stroke="#e94560" stroke-width="2"/>
-  <circle cx="32" cy="32" r="7" fill="#e94560"/>
-  <circle cx="32" cy="32" r="2.5" fill="#1a1a2e"/>
-  <!-- Musical note lines -->
-  <line x1="44" y1="14" x2="44" y2="24" stroke="#e94560" stroke-width="2.5" stroke-linecap="round"/>
-  <line x1="44" y1="14" x2="50" y2="12" stroke="#e94560" stroke-width="2.5" stroke-linecap="round"/>
-  <circle cx="44" cy="24" r="2.5" fill="#e94560"/>
-  <circle cx="50" cy="22" r="2.5" fill="#e94560"/>
-  <line x1="50" y1="12" x2="50" y2="22" stroke="#e94560" stroke-width="2.5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Media: violet tile -->
+  <rect width="64" height="64" rx="14" fill="#4c1d95"/>
+  <!-- Musical note stem -->
+  <rect x="30" y="16" width="3" height="22" rx="1.5" fill="#c4b5fd"/>
+  <!-- Beam / flag -->
+  <rect x="33" y="16" width="12" height="3" rx="1.5" fill="#c4b5fd"/>
+  <!-- Second note stem -->
+  <rect x="42" y="16" width="3" height="18" rx="1.5" fill="#c4b5fd"/>
+  <!-- Note head 1 -->
+  <ellipse cx="29" cy="38" rx="6" ry="4" transform="rotate(-15 29 38)" fill="#c4b5fd"/>
+  <!-- Note head 2 -->
+  <ellipse cx="41" cy="34" rx="6" ry="4" transform="rotate(-15 41 34)" fill="#c4b5fd"/>
+  <!-- Equalizer bars at bottom -->
+  <rect x="13" y="42" width="4" height="10" rx="2" fill="#a78bfa"/>
+  <rect x="20" y="38" width="4" height="14" rx="2" fill="#c4b5fd"/>
+  <rect x="27" y="45" width="4" height="7" rx="2" fill="#a78bfa"/>
 </svg>

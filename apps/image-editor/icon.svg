@@ -1,16 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1a1a1a"/>
-  <!-- Image frame -->
-  <rect x="10" y="14" width="36" height="28" rx="3" fill="none" stroke="#6c8ebf" stroke-width="2.5"/>
-  <!-- Mountain/landscape in frame -->
-  <polygon points="14,38 24,22 34,38" fill="#4a7cbf" opacity="0.8"/>
-  <polygon points="26,38 34,28 42,38" fill="#5a8ccf" opacity="0.7"/>
-  <!-- Sun/circle in frame -->
-  <circle cx="38" cy="21" r="4" fill="#f0c040" opacity="0.9"/>
-  <!-- Pencil -->
-  <rect x="38" y="36" width="6" height="16" rx="1.5" transform="rotate(-45 41 44)" fill="#e0a030"/>
-  <polygon points="38,36 44,36 41,30" transform="rotate(-45 41 44)" fill="#d09020"/>
-  <rect x="38" y="49" width="6" height="3" rx="1" transform="rotate(-45 41 44)" fill="#c0c0c0"/>
-  <!-- Pencil tip -->
-  <polygon points="40,52 44,52 42,56" transform="rotate(-45 41 44)" fill="#f0e0c0"/>
+  <!-- Media: violet tile -->
+  <rect width="64" height="64" rx="14" fill="#4c1d95"/>
+  <!-- Canvas frame -->
+  <rect x="10" y="12" width="30" height="26" rx="4" fill="#2e1065" stroke="#a78bfa" stroke-width="1.5"/>
+  <!-- Mountains in canvas -->
+  <polygon points="13,35 21,23 29,35" fill="#7c3aed"/>
+  <polygon points="23,35 31,26 37,35" fill="#6d28d9"/>
+  <!-- Sun dot in canvas -->
+  <circle cx="33" cy="19" r="3" fill="#c4b5fd"/>
+  <!-- Pencil body (diagonal, bottom-right) -->
+  <rect x="37" y="30" width="6" height="20" rx="2" transform="rotate(-45 40 40)" fill="#ddd6fe"/>
+  <!-- Pencil eraser end -->
+  <rect x="37" y="30" width="6" height="4" rx="2" transform="rotate(-45 40 40)" fill="#a78bfa"/>
+  <!-- Pencil tip triangle -->
+  <polygon points="47,47 53,47 50,53" transform="rotate(-45 50 49)" fill="#ede9fe"/>
 </svg>

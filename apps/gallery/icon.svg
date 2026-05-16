@@ -1,4 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1a1a1a"/>
-  <text x="32" y="40" text-anchor="middle" font-size="28" fill="#e5e5e5" font-family="system-ui">◫</text>
+  <!-- Media: violet tile -->
+  <rect width="64" height="64" rx="14" fill="#4c1d95"/>
+  <!-- Back photo frame (offset) -->
+  <rect x="18" y="14" width="30" height="24" rx="4" fill="#2e1065" stroke="#7c3aed" stroke-width="1.5"/>
+  <!-- Middle photo frame -->
+  <rect x="14" y="18" width="30" height="24" rx="4" fill="#3b0764" stroke="#a78bfa" stroke-width="1.5"/>
+  <!-- Front photo frame -->
+  <rect x="10" y="22" width="34" height="26" rx="4" fill="#2e1065" stroke="#c4b5fd" stroke-width="1.5"/>
+  <!-- Mountain landscape in front frame -->
+  <!-- Sky area -->
+  <rect x="11" y="23" width="32" height="16" rx="3" fill="#1e1035"/>
+  <!-- Mountain peaks -->
+  <polygon points="14,38 22,28 30,38" fill="#7c3aed"/>
+  <polygon points="24,38 34,25 41,38" fill="#6d28d9"/>
+  <!-- Sun circle -->
+  <circle cx="36" cy="28" r="3.5" fill="#c4b5fd"/>
 </svg>

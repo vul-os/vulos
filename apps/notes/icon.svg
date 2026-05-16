@@ -1,4 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1a1a1a"/>
-  <text x="32" y="40" text-anchor="middle" font-size="28" fill="#e5e5e5" font-family="system-ui">☰</text>
+  <!-- Productivity: indigo tile -->
+  <rect width="64" height="64" rx="14" fill="#312e81"/>
+  <!-- Note paper body -->
+  <rect x="14" y="12" width="36" height="42" rx="5" fill="#1e1b4b" stroke="#4338ca" stroke-width="1.5"/>
+  <!-- Ruled lines -->
+  <line x1="20" y1="24" x2="44" y2="24" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round"/>
+  <line x1="20" y1="31" x2="44" y2="31" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round"/>
+  <line x1="20" y1="38" x2="44" y2="38" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round"/>
+  <line x1="20" y1="45" x2="36" y2="45" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/>
+  <!-- Vertical margin line -->
+  <line x1="23" y1="12" x2="23" y2="54" stroke="#4338ca" stroke-width="1" opacity="0.6"/>
+  <!-- Top spiral binding dots -->
+  <circle cx="23" cy="12" r="2.5" fill="#312e81"/>
+  <circle cx="32" cy="12" r="2.5" fill="#312e81"/>
+  <circle cx="41" cy="12" r="2.5" fill="#312e81"/>
+  <!-- Horizontal binding strip -->
+  <rect x="14" y="10" width="36" height="5" rx="2" fill="#4338ca" opacity="0.8"/>
 </svg>

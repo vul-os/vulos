@@ -1,7 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PDF Viewer">
-  <rect width="64" height="64" rx="14" fill="#18181b"/>
-  <path d="M20 10h18l12 12v32H20z" fill="#f8fafc"/>
-  <path d="M38 10v12h12z" fill="#cbd5e1"/>
-  <path d="M16 36h32v14H16z" rx="3" fill="#dc2626"/>
-  <path d="M22 46v-7h4c1.7 0 2.8 1 2.8 2.4S27.7 44 26 44h-1.7v2zm2.3-3.8h1.3c.6 0 .9-.3.9-.8s-.3-.8-.9-.8h-1.3zM31 46v-7h3c2.3 0 3.8 1.4 3.8 3.5S36.3 46 34 46zm2.2-1.8h.7c1 0 1.6-.6 1.6-1.7s-.6-1.7-1.6-1.7h-.7zM40 46v-7h5.3v1.8h-3.1v1.1h2.8v1.7h-2.8V46z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Productivity: indigo tile -->
+  <rect width="64" height="64" rx="14" fill="#312e81"/>
+  <!-- Document body -->
+  <rect x="14" y="10" width="30" height="40" rx="4" fill="#1e1b4b" stroke="#4338ca" stroke-width="1.5"/>
+  <!-- Folded corner -->
+  <path d="M36 10 L44 18 L36 18 Z" fill="#4338ca"/>
+  <path d="M36 10 L44 18" stroke="#1e1b4b" stroke-width="1"/>
+  <!-- Document lines -->
+  <line x1="19" y1="24" x2="37" y2="24" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="19" y1="29" x2="37" y2="29" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="19" y1="34" x2="31" y2="34" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- PDF badge: red rectangle -->
+  <rect x="16" y="39" width="28" height="9" rx="3" fill="#dc2626"/>
+  <!-- "P" glyph via rects (no text) -->
+  <rect x="20" y="41" width="2" height="5" rx="1" fill="#fff"/>
+  <rect x="20" y="41" width="5" height="2" rx="1" fill="#fff"/>
+  <rect x="23" y="43" width="2" height="2" rx="1" fill="#fff"/>
+  <!-- "D" glyph via shapes -->
+  <rect x="27" y="41" width="2" height="5" rx="1" fill="#fff"/>
+  <path d="M29 41 Q34 41 34 43.5 Q34 46 29 46" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- "F" glyph via rects -->
+  <rect x="36" y="41" width="2" height="5" rx="1" fill="#fff"/>
+  <rect x="36" y="41" width="5" height="1.5" rx="0.75" fill="#fff"/>
+  <rect x="36" y="43.5" width="4" height="1.5" rx="0.75" fill="#fff"/>
 </svg>
