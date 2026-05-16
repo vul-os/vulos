@@ -35,7 +35,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"vulos/backend/services/cluster"
@@ -52,10 +51,10 @@ const joinMarkerKey = "cluster/join-marker"
 // joinMarkerPlaintext is the canonical sentinel stored at joinMarkerKey.
 const joinMarkerPlaintext = "vulos-cluster-join-marker-v1"
 
-// storageFileName / syncStateFileName / instanceFileName mirror the filenames
-// the rest of the system uses inside ~/.vulos/db. They are duplicated here
-// deliberately (the owning packages keep them unexported) — the JSON *shape*
-// is what matters for cross-service compatibility, asserted by tests.
+// storageFileName / syncStateFileName mirror the filenames the rest of the
+// system uses inside ~/.vulos/db. They are duplicated here deliberately (the
+// owning packages keep them unexported) — the JSON *shape* is what matters
+// for cross-service compatibility, asserted by tests.
 const (
 	storageFileName   = "storage.json"
 	syncStateFileName = "sync-state.json"
@@ -114,8 +113,8 @@ type storageState struct {
 	SSECKey       string    `json:"ssec_key"`
 	BucketName    string    `json:"bucket_name"`
 	ProvisionedAt time.Time `json:"provisioned_at"`
-	// CLUSTER-06 status-reader fields (harmless to storageprov, which ignores
-	// unknown keys when it overwrites the file).
+	// CLUSTER-06 status-reader fields (harmless to storageprov, which
+	// overwrites the whole file with its own struct on /api/setup/storage).
 	Endpoint string  `json:"endpoint"`
 	Bucket   string  `json:"bucket"`
 	Region   string  `json:"region"`
@@ -127,7 +126,7 @@ type storageState struct {
 // bootmode.Detect only inspects "status"; "phase"/"progress_pct" are extra
 // telemetry the setup UI can poll. status=="syncing" → bootmode mode "sync".
 type syncState struct {
-	Status      string `json:"status"` // "syncing" | "complete" | "error"
+	Status      string `json:"status"` // "syncing" | "complete" | "error" | "idle"
 	Phase       string `json:"phase"`
 	ProgressPct int    `json:"progress_pct"`
 	Message     string `json:"message,omitempty"`
@@ -141,7 +140,7 @@ type clusterBackend interface {
 	// validate connects to S3 with cfg, derives the cluster key from
 	// passphrase, and confirms the passphrase by decrypting (or, on a fresh
 	// bucket, by writing) the join marker.
-	//   - ErrUnreachable  → endpoint/bucket not reachable / bad S3 creds.
+	//   - ErrUnreachable   → endpoint/bucket not reachable / bad S3 creds.
 	//   - ErrBadPassphrase → marker present but won't decrypt.
 	validate(ctx context.Context, cfg cluster.S3Config, passphrase string) error
 	// pull performs the post-join data pull. progress is called with
@@ -149,17 +148,8 @@ type clusterBackend interface {
 	pull(ctx context.Context, cfg cluster.S3Config, passphrase string, progress func(phase string, pct int)) error
 }
 
-// backend is the active clusterBackend. Tests swap it via SetBackendForTest.
+// backend is the active clusterBackend. Tests swap it in-package.
 var backend clusterBackend = realBackend{}
-
-// progress getter state -------------------------------------------------------
-
-var (
-	progMu      sync.RWMutex
-	lastProg    syncState
-	progLoaded  bool
-	progHomeDir string
-)
 
 // Validate / Join -------------------------------------------------------------
 
@@ -169,8 +159,8 @@ func sanitize(req *JoinRequest) error {
 	req.Access = strings.TrimSpace(req.Access)
 	req.Secret = strings.TrimSpace(req.Secret)
 	req.Endpoint = strings.TrimSpace(req.Endpoint)
-	// Passphrase is NOT trimmed of internal content but leading/trailing
-	// whitespace is almost always an input error; trim for usability.
+	// Leading/trailing whitespace in a passphrase is almost always an input
+	// error; trim for usability. Internal characters are preserved.
 	req.Passphrase = strings.TrimSpace(req.Passphrase)
 
 	switch {
@@ -297,11 +287,6 @@ func Progress(home string) syncState {
 		// No sync-state yet (never joined, or file removed) → idle.
 		return syncState{Status: "idle", Phase: "", ProgressPct: 0}
 	}
-	progMu.Lock()
-	lastProg = st
-	progLoaded = true
-	progHomeDir = home
-	progMu.Unlock()
 	return st
 }
 
