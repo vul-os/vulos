@@ -13,6 +13,7 @@ const Drivers = lazy(() => import('../builtin/drivers/Drivers'))
 const Packages = lazy(() => import('../builtin/packages/Packages'))
 const DiskUsage = lazy(() => import('../builtin/disks/DiskUsage'))
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
+const Vault = lazy(() => import('../apps/Vault/Vault'))
 
 const categoryLabels = {
   internet: 'Internet',
@@ -100,6 +101,7 @@ export default function Launchpad() {
       drivers: () => createElement(Suspense, { fallback: loading }, createElement(Drivers)),
       packages: () => createElement(Suspense, { fallback: loading }, createElement(Packages)),
       disks: () => createElement(Suspense, { fallback: loading }, createElement(DiskUsage)),
+      vault: () => createElement(Suspense, { fallback: loading }, createElement(Vault)),
     }
     const singletons = new Set(['persona', 'apphub'])
     if (builtins[app.id]) {
