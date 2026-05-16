@@ -474,3 +474,6 @@ User: "send off wave of 15 sonnet + opus, want 98%". Realistic constraint: NOTIF
 - **Opus**: NOTIF-02 (keystone, unblocks 4 deps), AUTH-12 (devicekey adapter), INIT-08 (storageprov adapter), CLUSTER-02 (auth-SQLite rescue)
 - **Sonnet**: AUTH-10 (admin-token, small), INIT-02 (sshd hardening, additive)
 After NOTIF-02 lands → auto-dispatch NOTIF-04/05/06 + DEVPROF-06 (4 more Sonnet). Total potential: 10 agents across waves. Target: 98%+ (193/195).
+
+## D69 (19:12) — 10 independent Sonnet workers (test-coverage hardening + follow-ups)
+User: spin 10 sonnet elsewhere independently. Highest-ROI independent work = unit-test coverage for the 165 merged features (22 pkgs have 0 tests; each pkg = file-disjoint) + 2 concrete logged follow-ups. Zero overlap with the 6 in-flight rescues (notify/passkeys/joinsync/auth/devicekey/cmd-init/Dockerfile/build.sh). Wave: 9 test-coverage (gateway, vault, recall+embeddings, pty, input, webbrowser, energy+telemetry, wifi+hwdetect, packages+disks+drivers) + 1 follow-ups (STREAM-08 cage-env into buildVideoCmd + CLUSTER-10 sync→NotifyOnConflict hook). Test-only diffs = low merge risk. Total agents now: 6 rescues + 10 independent = 16 (over the 15 soft cap by 1 — acceptable, test workers are lightweight + the rescues are nearly done).
