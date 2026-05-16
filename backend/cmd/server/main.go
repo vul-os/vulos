@@ -36,7 +36,6 @@ import (
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/packages"
-	"vulos/backend/services/peering"
 	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/recall"
