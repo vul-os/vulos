@@ -103,6 +103,12 @@ func isPublicPath(path string) bool {
 // Middleware extracts the session, enforces auth on protected endpoints, and rate limits.
 func (h *Handler) Middleware(next http.Handler) http.Handler {
 	return h.limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// C1: Strip any attacker-supplied identity headers unconditionally before
+		// doing anything else, so downstream code can trust these headers are
+		// set only by us from a validated session.
+		r.Header.Del("X-User-ID")
+		r.Header.Del("X-User-Email")
+
 		// Extract session if present
 		token := extractToken(r)
 		if token != "" {
@@ -576,8 +582,27 @@ func (s *stateStore) delete(state string) {
 // --- Profile management handlers ---
 
 func (h *Handler) handleListProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles := h.store.ListProfiles()
-	writeJSON(w, profiles)
+	// C2: Require an authenticated admin session.
+	reqUserID := r.Header.Get("X-User-ID")
+	if reqUserID == "" {
+		writeErr(w, 401, "unauthorized")
+		return
+	}
+	reqProfile, _ := h.store.GetProfile(reqUserID)
+	if reqProfile == nil || reqProfile.Role != RoleAdmin {
+		writeErr(w, 403, "admin only")
+		return
+	}
+
+	// C2: Scrub AIAPIKey from every profile before returning.
+	raw := h.store.ListProfiles()
+	scrubbed := make([]Profile, 0, len(raw))
+	for _, p := range raw {
+		cp := *p
+		cp.AIAPIKey = ""
+		scrubbed = append(scrubbed, cp)
+	}
+	writeJSON(w, scrubbed)
 }
 
 func (h *Handler) handleGetProfile(w http.ResponseWriter, r *http.Request) {
