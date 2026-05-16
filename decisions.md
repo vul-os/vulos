@@ -385,3 +385,8 @@ Mem cleared to 1066 MB, 1m load 3.8 (idle), 0 unmerged, 72 min to wind-down. Dis
 
 ## D43 (17:46) — Tick: hold (4 wave-11 workers still in flight; mem 113<500)
 APPSTORE-05 already spliced @ e46b5f4. 4 workers (INIT-05, INIT-01, AI-07, CLUSTER-10) still running (no completions yet despite 1m load 2.88 = system idle — completion notifications presumably in-flight). Mem 113 MB. No dispatch this tick. Next tick handles completions.
+
+## D44 (17:53) — Wave-11 complete (5/5 OSS tasks merged)
+APPSTORE-05 (8 streamed apt apps, registry 40 active), INIT-01 (identity pkg + ULID + auto-hostname + GET/POST /api/identity, oklog/ulid added), INIT-05 (Setup wizard 4 new steps: Identity/Storage/SSH/RecoveryKit — JSX, all i18n preserved), AI-07 (versioning + rollback + Settings UI; execAuditLog dup deleted, callsites adapted), CLUSTER-10 (sync conflict toasts + resolver UI, NotifyOnConflict helper exposed for CLUSTER-08).
+Session task-branch merges: $(git log --oneline | grep -cE 'Merge task/[A-Z]+-[0-9]+') total.
+Free mem 350 MB. 62 min to 18:55 wind-down. Next-tick decision: top-up if mem clears 500, else hold for clean wind-down.
