@@ -76,6 +76,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/login":        true,
 	"/api/auth/status":       true,
 	"/api/setup/status":      true,
+	"/api/setup/join-code":   true, // INIT-10: unauthenticated setup-wizard join
 	"/api/browser/status":    true,
 	"/api/open":              true,
 	"/manifest.json":         true,
