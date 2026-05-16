@@ -57,14 +57,12 @@
           "command": "bin/navidrome --configfile data/navidrome.toml",
           "port": 4533,
           "post_install": "mkdir -p data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
-          "checksum": "",
+          "checksum": "73c1a42958dc2c96fa9787fb060e36f664bb0d9f58f66c07b3b3ba12be4a3ca1",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "SECAUDIT2-H1: static download lacks a verified sha256; set checksum to re-enable"
+          "singleton": true
         }
       }
     },
@@ -806,7 +804,7 @@
           ],
           "singleton": true,
           "_disabled": true,
-          "_note": "SECAUDIT2-H1: static download lacks a verified sha256; set checksum to re-enable"
+          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling"
         }
       }
     },
@@ -842,7 +840,7 @@
           ],
           "singleton": true,
           "_disabled": true,
-          "_note": "SECAUDIT2-H1: static download lacks a verified sha256; set checksum to re-enable"
+          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling"
         }
       }
     },
