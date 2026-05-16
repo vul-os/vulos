@@ -9,14 +9,24 @@
       "author": "webcrft",
       "homepage": "https://github.com/webcrft/wede",
       "icon": "wede",
-      "keywords": ["editor", "code", "web", "ide", "files", "syntax"],
+      "keywords": [
+        "editor",
+        "code",
+        "web",
+        "ide",
+        "files",
+        "syntax"
+      ],
       "license": "MIT",
       "versions": {
         "latest": {
           "install": "curl -fsSL https://raw.githubusercontent.com/webcrft/wede/main/install.sh | bash",
           "command": "/root/.local/bin/wede -port ${PORT}",
           "port": 9090,
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
@@ -30,14 +40,25 @@
       "author": "Red Hat / Cockpit Project",
       "homepage": "https://cockpit-project.org",
       "icon": "cockpit",
-      "keywords": ["admin", "server", "management", "terminal", "monitoring", "logs", "dashboard"],
+      "keywords": [
+        "admin",
+        "server",
+        "management",
+        "terminal",
+        "monitoring",
+        "logs",
+        "dashboard"
+      ],
       "license": "LGPL-2.1",
       "versions": {
         "latest": {
           "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
           "command": "/usr/lib/cockpit/cockpit-ws --no-tls --port ${PORT}",
           "port": 9090,
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
@@ -51,14 +72,21 @@
       "author": "Kenneth Reitz",
       "homepage": "https://httpbin.org",
       "icon": "httpbin",
-      "keywords": ["http", "api", "testing", "debug"],
+      "keywords": [
+        "http",
+        "api",
+        "testing",
+        "debug"
+      ],
       "license": "ISC",
       "versions": {
         "0.9": {
           "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
           "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
           "port": 8080,
-          "permissions": ["network"],
+          "permissions": [
+            "network"
+          ],
           "singleton": true
         }
       }
@@ -99,7 +127,7 @@
       "name": "Grafana",
       "vetted": true,
       "type": "web",
-      "description": "Monitoring dashboards \u2014 visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
+      "description": "Monitoring dashboards — visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
       "category": "developer",
       "author": "Grafana Labs",
       "homepage": "https://grafana.com",
@@ -130,7 +158,7 @@
       "name": "Jupyter Lab",
       "vetted": true,
       "type": "web",
-      "description": "Interactive notebooks for Python, data science, and computation \u2014 web-based IDE with rich output",
+      "description": "Interactive notebooks for Python, data science, and computation — web-based IDE with rich output",
       "category": "developer",
       "author": "Project Jupyter",
       "homepage": "https://jupyter.org",
@@ -161,7 +189,7 @@
       "name": "Nginx",
       "vetted": true,
       "type": "web",
-      "description": "High-performance HTTP server and reverse proxy \u2014 serve static sites, proxy other services",
+      "description": "High-performance HTTP server and reverse proxy — serve static sites, proxy other services",
       "category": "network",
       "author": "F5 / Igor Sysoev",
       "homepage": "https://nginx.org",
@@ -192,7 +220,7 @@
       "name": "Syncthing",
       "vetted": true,
       "type": "web",
-      "description": "Peer-to-peer file synchronization with web UI \u2014 sync folders across devices without a cloud",
+      "description": "Peer-to-peer file synchronization with web UI — sync folders across devices without a cloud",
       "category": "productivity",
       "author": "Syncthing Foundation",
       "homepage": "https://syncthing.net",
@@ -224,7 +252,7 @@
       "name": "Transmission",
       "vetted": true,
       "type": "web",
-      "description": "Lightweight BitTorrent client with web UI \u2014 simple, fast, low resource usage",
+      "description": "Lightweight BitTorrent client with web UI — simple, fast, low resource usage",
       "category": "network",
       "author": "Transmission Project",
       "homepage": "https://transmissionbt.com",
@@ -256,7 +284,7 @@
       "name": "GIMP",
       "vetted": true,
       "type": "desktop",
-      "description": "Professional image editor \u2014 layers, filters, brushes, and advanced photo manipulation tools",
+      "description": "Professional image editor — layers, filters, brushes, and advanced photo manipulation tools",
       "category": "media",
       "author": "GIMP Team",
       "homepage": "https://www.gimp.org",
@@ -286,7 +314,7 @@
       "name": "Blender",
       "vetted": true,
       "type": "desktop",
-      "description": "3D creation suite \u2014 modelling, animation, rendering, compositing, and video editing",
+      "description": "3D creation suite — modelling, animation, rendering, compositing, and video editing",
       "category": "media",
       "author": "Blender Foundation",
       "homepage": "https://www.blender.org",
@@ -316,7 +344,7 @@
       "name": "Inkscape",
       "vetted": true,
       "type": "desktop",
-      "description": "Vector graphics editor \u2014 SVG editing, illustration, diagrams, and logo design",
+      "description": "Vector graphics editor — SVG editing, illustration, diagrams, and logo design",
       "category": "media",
       "author": "Inkscape Project",
       "homepage": "https://inkscape.org",
@@ -345,7 +373,7 @@
       "name": "KiCad",
       "vetted": true,
       "type": "desktop",
-      "description": "Electronic design automation \u2014 schematic capture, PCB layout, 3D viewer, and Gerber export",
+      "description": "Electronic design automation — schematic capture, PCB layout, 3D viewer, and Gerber export",
       "category": "developer",
       "author": "KiCad Developers",
       "homepage": "https://www.kicad.org",
@@ -376,7 +404,7 @@
       "name": "LibreOffice",
       "vetted": true,
       "type": "desktop",
-      "description": "Full office suite \u2014 word processor, spreadsheets, presentations, and database with MS Office compatibility",
+      "description": "Full office suite — word processor, spreadsheets, presentations, and database with MS Office compatibility",
       "category": "productivity",
       "author": "The Document Foundation",
       "homepage": "https://www.libreoffice.org",
@@ -409,7 +437,7 @@
       "name": "VLC",
       "vetted": true,
       "type": "desktop",
-      "description": "Universal media player \u2014 plays virtually any video and audio format, streams, DVDs, and network sources",
+      "description": "Universal media player — plays virtually any video and audio format, streams, DVDs, and network sources",
       "category": "media",
       "author": "VideoLAN",
       "homepage": "https://www.videolan.org",
@@ -439,7 +467,7 @@
       "name": "Audacity",
       "vetted": true,
       "type": "desktop",
-      "description": "Audio editor and recorder \u2014 multi-track editing, effects, noise reduction, and format conversion",
+      "description": "Audio editor and recorder — multi-track editing, effects, noise reduction, and format conversion",
       "category": "media",
       "author": "Audacity Team",
       "homepage": "https://www.audacityteam.org",
@@ -469,7 +497,7 @@
       "name": "Firefox",
       "vetted": true,
       "type": "desktop",
-      "description": "Privacy-focused web browser by Mozilla \u2014 built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
+      "description": "Privacy-focused web browser by Mozilla — built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
       "category": "internet",
       "author": "Mozilla Foundation",
       "homepage": "https://www.mozilla.org/firefox",
@@ -501,7 +529,7 @@
       "name": "Thunderbird",
       "vetted": true,
       "type": "desktop",
-      "description": "Email, calendar, and contacts client \u2014 IMAP/POP3, RSS feeds, encryption, and add-ons",
+      "description": "Email, calendar, and contacts client — IMAP/POP3, RSS feeds, encryption, and add-ons",
       "category": "productivity",
       "author": "Mozilla Foundation",
       "homepage": "https://www.thunderbird.net",
@@ -531,7 +559,7 @@
       "name": "Kdenlive",
       "vetted": true,
       "type": "desktop",
-      "description": "Non-linear video editor \u2014 multi-track timeline, effects, transitions, and proxy editing",
+      "description": "Non-linear video editor — multi-track timeline, effects, transitions, and proxy editing",
       "category": "media",
       "author": "KDE Community",
       "homepage": "https://kdenlive.org",
@@ -561,7 +589,7 @@
       "name": "FileZilla",
       "vetted": true,
       "type": "desktop",
-      "description": "FTP/SFTP/FTPS client \u2014 fast file transfers, site manager, directory comparison",
+      "description": "FTP/SFTP/FTPS client — fast file transfers, site manager, directory comparison",
       "category": "network",
       "author": "FileZilla Project",
       "homepage": "https://filezilla-project.org",
@@ -591,7 +619,7 @@
       "name": "KeePassXC",
       "vetted": true,
       "type": "desktop",
-      "description": "Offline password manager \u2014 AES-256 encrypted vault, TOTP, browser integration, auto-type",
+      "description": "Offline password manager — AES-256 encrypted vault, TOTP, browser integration, auto-type",
       "category": "system",
       "author": "KeePassXC Team",
       "homepage": "https://keepassxc.org",
@@ -620,7 +648,7 @@
       "name": "Geany",
       "vetted": true,
       "type": "desktop",
-      "description": "Lightweight IDE and code editor \u2014 syntax highlighting, code folding, auto-completion, and build system",
+      "description": "Lightweight IDE and code editor — syntax highlighting, code folding, auto-completion, and build system",
       "category": "developer",
       "author": "Geany Project",
       "homepage": "https://www.geany.org",
@@ -650,7 +678,7 @@
       "name": "qBittorrent",
       "vetted": true,
       "type": "desktop",
-      "description": "Feature-rich BitTorrent client \u2014 search, RSS, sequential download, IP filtering, and torrent creation",
+      "description": "Feature-rich BitTorrent client — search, RSS, sequential download, IP filtering, and torrent creation",
       "category": "network",
       "author": "qBittorrent Project",
       "homepage": "https://www.qbittorrent.org",
@@ -667,6 +695,37 @@
         "latest": {
           "flatpak_id": "org.qbittorrent.qBittorrent",
           "command": "flatpak run org.qbittorrent.qBittorrent",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "minio": {
+      "name": "MinIO",
+      "vetted": true,
+      "type": "web",
+      "description": "High-performance S3-compatible object storage — self-hosted, scalable, with SSE-C encryption support",
+      "category": "storage",
+      "author": "MinIO, Inc.",
+      "homepage": "https://min.io",
+      "icon": "minio",
+      "keywords": [
+        "storage",
+        "s3",
+        "object-storage",
+        "minio",
+        "bucket",
+        "encryption"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x /usr/local/bin/minio",
+          "command": "minio server ${DATA_DIR:-data} --address 0.0.0.0:${PORT}",
+          "port": 9000,
           "permissions": [
             "network",
             "filesystem"

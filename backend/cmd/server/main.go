@@ -44,6 +44,7 @@ import (
 	"vulos/backend/services/packages"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/network"
+	"vulos/backend/services/storageprov"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/wifi"
 )
@@ -1104,6 +1105,9 @@ func main() {
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)
+
+	// MinIO storage provisioning
+	storageprov.RegisterHandlers(mux, home)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
