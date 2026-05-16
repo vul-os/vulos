@@ -1098,6 +1098,7 @@ func main() {
 
 	// TURN/coturn settings routes (NET-10)
 	registerTURNRoutes(mux, turnStore)
+	registerNetModeRoutes(mux, netSvc, authStore)
 
 	// --- System Settings ---
 
