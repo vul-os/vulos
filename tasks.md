@@ -1180,3 +1180,57 @@ AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallbac
 
 <!-- END-BACKLOG -->
 
+
+---
+
+## SECURITY (post-audit remediation — Opus app-exposure audit, this session)
+
+> Source: read-only Opus security audit of the app-exposure surface. The
+> unauthenticated RCE chain is CLOSED. Remaining = HIGH/MED/LOW hardening,
+> Sonnet-executable, file-disjoint where possible. C5/M2 (visibility
+> enforcement) moved to vulos-cloud SECURITY-EXPOSURE roadmap (it IS the cloud
+> exposure model). See decisions.md D24/D26/D27.
+
+### [SEC-A] Strip spoofable identity headers (C1) + lock /api/profiles (C2)
+`done` · P0 · S · dep: none · parallel: yes — backend/services/auth/handlers.go (merged 9c289ed)
+
+### [SEC-B] Manifest-resolve + admin-gate /api/apps/launch & /api/sandbox/run, scrub env (C3,C4)
+`done` · P0 · M · dep: none · parallel: no — backend/cmd/server/main.go, appnet/launcher.go, sandbox/sandbox.go (merged e491b6b; both cold-start+warm-pool env scrubbed)
+
+### [SEC-D] notes path-traversal + browser SSRF + CSP/XSS (H1,H2,H5)
+`done` · P1 · M · dep: none · parallel: yes — apps/notes/server.py, apps/browser/server.py, apps/browser/index.html (merged 6881e78)
+
+### [SEC-E] webproxy DNS-rebinding + TLS-verify (H4)
+`todo` · P1 · M · dep: none · parallel: yes — backend/services/webproxy/proxy.go
+Scope: resolve host ONCE and dial the validated pinned IP (kill TOCTOU between isPrivate check ~:147 and client.Do ~:99); fail CLOSED on resolution error (~:160); remove `InsecureSkipVerify:true` (~:33), enable TLS verification; normalize/parse decimal/hex/octal/IPv4-mapped IP literals before the private/loopback/link-local check.
+AC: [ ] single-resolution dial, no rebinding window [ ] fail-closed on bad resolve [ ] TLS verified [ ] encoded-IP literals blocked [ ] go build + webproxy tests
+
+### [SEC-F] registry recipes: forbid curl|bash, hard-fail empty checksum (H3)
+`todo` · P1 · M · dep: none · parallel: no — registry.json, backend/services/appnet/registry.go
+Scope: registry.go ~:425 — make empty/missing checksum a HARD failure (not silent skip); reject install/post_install recipes that pipe-to-shell (`curl|bash`, `wget|sh`) — require pinned artifact + checksum (or signature). registry.json — populate pinned checksums; rewrite any `curl|bash` install entries to verified-artifact form.
+AC: [ ] empty checksum → install refused [ ] pipe-to-shell recipe rejected [ ] registry.json valid + every versioned entry has non-empty checksum [ ] go build + appnet tests
+
+### [SEC-G] AppStore.Install: validate ID + contain extraction (M3)
+`todo` · P1 · M · dep: none · parallel: no — backend/services/appnet/store.go
+Scope: store.go ~:153-193 — validate `entry.ID` charset (^[a-z0-9-]+$, reject `.`/`/`); use a safe tar extractor that rejects `..`/absolute paths and symlink escape; realpath-contain extraction to `<appsDir>/<id>`; add the checksum verification AppStore.Install currently lacks.
+AC: [ ] bad ID rejected [ ] malicious tar (../, absolute, symlink) cannot escape appsDir [ ] checksum enforced [ ] go build + appnet tests
+
+### [SEC-H] /api/open public SSRF + X-Forwarded-Proto trust (H6,M4)
+`todo` · P1 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
+Scope: remove `/api/open` from publicPaths (handlers.go ~:80) OR strictly validate scheme∈{http,https} + reject private/loopback/link-local + cap concurrent tabs (main.go ~:701-716); encode the CDP `/json/new?<url>` param. M4: gate `X-Forwarded-Proto` trust to loopback like `extractIP` already does (handlers.go ~:431). SOLE owner of main.go+handlers.go this area.
+AC: [ ] /api/open not unauth-reachable / strictly validated + tab cap [ ] X-Forwarded-Proto only trusted from loopback [ ] go build + auth tests
+
+### [SEC-I] AI-apps path-traversal + admin-gate save (M1)
+`todo` · P2 · M · dep: SEC-H · parallel: no — backend/cmd/server/main.go (ai-apps handlers)
+Scope: main.go ~:1370/1414-1437 — validate `r.PathValue("id")` charset + realpath-contain under aiAppsDir before read/RemoveAll; admin-gate `POST /api/ai-apps/save` (mirror /api/exec gate); never execute saved server.py without the SEC-B sandbox/isolation path. (Serialized after SEC-H — same file.)
+AC: [ ] encoded/`..` id cannot escape aiAppsDir [ ] save admin-gated [ ] saved python only runs via gated sandbox [ ] go build
+
+### [SEC-J] auth hygiene: revoke-on-pw-change, password policy, log scrub (L2,L3,L4)
+`todo` · P3 · S · dep: none · parallel: yes — backend/services/auth/auth.go
+Scope: auth.go — call RevokeAllSessions on ChangePassword (~:472); raise min password length from 4 (~:369) and tighten/remove legacy salted-SHA256 fallback gating (~:341-354); stop logging hash_prefix + password length (~:420).
+AC: [ ] password change revokes sessions [ ] min length raised, legacy hash path constrained [ ] no credential-shaped data in logs [ ] go build + auth tests
+
+### [SEC-K] gallery/music traversal prefix separator (L1)
+`todo` · P3 · S · dep: none · parallel: yes — apps/gallery/server.py, apps/music/server.py
+Scope: containment check uses `startswith(realpath(root))` without trailing sep → sibling dir sharing prefix reachable. Append `os.sep` to the contained root in every check.
+AC: [ ] sibling-prefix dir not reachable [ ] normal media still served [ ] py_compile clean
