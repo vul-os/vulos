@@ -810,9 +810,21 @@ func main() {
 		writeJSON(w, result)
 	})
 	mux.HandleFunc("POST /api/apps/launch", func(w http.ResponseWriter, r *http.Request) {
+		// Kill-switch: operator can disable all privileged exec at runtime.
+		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+			writeErr(w, 503, "exec disabled by administrator")
+			return
+		}
+		// Admin-only gate.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
-			AppID   string   `json:"app_id"`
-			AppPort int      `json:"app_port"`
+			AppID   string `json:"app_id"`
+			AppPort int    `json:"app_port"`
+			// Command field is accepted for API compatibility but IGNORED — the
+			// command is resolved exclusively from the validated app manifest.
 			Command string   `json:"command"`
 			Args    []string `json:"args"`
 			WorkDir string   `json:"work_dir"`
@@ -822,14 +834,36 @@ func main() {
 			writeErr(w, 400, "invalid request")
 			return
 		}
-		// Validate: app ID must be alphanumeric
+		if req.AppID == "" {
+			writeErr(w, 400, "app_id required")
+			return
+		}
+		// Validate: app ID must be alphanumeric (defence-in-depth before filesystem lookup)
 		for _, c := range req.AppID {
 			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
 				writeErr(w, 400, "invalid app_id")
 				return
 			}
 		}
-		// Validate: block dangerous env vars
+		// Resolve command strictly from the validated installed manifest — never use
+		// any client-supplied command value.
+		manifest, err := appStore.GetManifest(req.AppID)
+		if err != nil {
+			writeErr(w, 404, "app not found or invalid manifest")
+			return
+		}
+		// Use manifest values authoritatively; client WorkDir/AppPort are hints only
+		// when manifest does not override them.
+		manifestCmd := manifest.Command
+		manifestWorkDir := manifest.WorkDir
+		manifestAppPort := manifest.Port
+		if req.AppPort != 0 && manifestAppPort == 0 {
+			manifestAppPort = req.AppPort
+		}
+		if manifestAppPort == 0 {
+			manifestAppPort = 80
+		}
+		// Validate: block dangerous env vars supplied by caller
 		for _, e := range req.Env {
 			lower := strings.ToLower(e)
 			if strings.HasPrefix(lower, "ld_preload=") || strings.HasPrefix(lower, "ld_library_path=") {
@@ -837,14 +871,9 @@ func main() {
 				return
 			}
 		}
-		// Validate: workdir must not escape
-		if strings.Contains(req.WorkDir, "..") {
-			writeErr(w, 400, "invalid work_dir")
-			return
-		}
-		if req.AppPort == 0 {
-			req.AppPort = 80
-		}
+		// Merge manifest env (authoritative) with caller-supplied extra env
+		launchEnv := manifest.EnvSlice()
+		launchEnv = append(launchEnv, req.Env...)
 		// Allocate host port from pool
 		hostPort, ok := portPool.Allocate(req.AppID)
 		if !ok {
@@ -853,10 +882,11 @@ func main() {
 		}
 		// Generate app secret and inject into env
 		appSecret := appGateway.GenerateAppSecret(req.AppID)
-		req.Env = append(req.Env, "VULOS_APP_SECRET="+appSecret, "VULOS_API=http://localhost:8080")
+		launchEnv = append(launchEnv, "VULOS_APP_SECRET="+appSecret, "VULOS_API=http://localhost:8080")
 
 		userID := r.Header.Get("X-User-ID")
-		app, err := launcher.Launch(ctx, req.AppID, userID, hostPort, req.AppPort, req.Command, req.Args, req.WorkDir, req.Env)
+		execAuditLog(r, "POST /api/apps/launch", fmt.Sprintf("app_id=%s cmd=%q", req.AppID, manifestCmd))
+		app, err := launcher.Launch(ctx, req.AppID, userID, hostPort, manifestAppPort, manifestCmd, req.Args, manifestWorkDir, launchEnv)
 		if err != nil {
 			portPool.Release(req.AppID)
 			appGateway.RemoveAppSecret(req.AppID)
@@ -934,6 +964,16 @@ func main() {
 
 	// Sandbox — AI-generated Python scripts
 	mux.HandleFunc("POST /api/sandbox/run", func(w http.ResponseWriter, r *http.Request) {
+		// Kill-switch: operator can disable all privileged exec at runtime.
+		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+			writeErr(w, 503, "exec disabled by administrator")
+			return
+		}
+		// Admin-only gate.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			ID   string `json:"id"`
 			Code string `json:"code"`
@@ -945,6 +985,7 @@ func main() {
 		if req.ID == "" {
 			req.ID = fmt.Sprintf("script-%d", time.Now().UnixMilli())
 		}
+		execAuditLog(r, "POST /api/sandbox/run", fmt.Sprintf("script_id=%s code_len=%d", req.ID, len(req.Code)))
 		script, err := sandboxSvc.Run(r.Context(), req.ID, req.Code)
 		if err != nil {
 			writeErr(w, 500, err.Error())
@@ -1025,6 +1066,7 @@ func main() {
 			writeErr(w, 400, "invalid request")
 			return
 		}
+		execAuditLog(r, "POST /api/exec", req.Command)
 		result := ptyservice.Exec(r.Context(), req.Command)
 		logExecAudit(userID, req.Command, result.ExitCode)
 		writeJSON(w, result)

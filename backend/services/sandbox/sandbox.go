@@ -169,10 +169,13 @@ func (s *Sandbox) Run(ctx context.Context, id, code string) (*Script, error) {
 		_ = sandboxCancel
 		cmd = exec.CommandContext(sandboxCtx, python, scriptPath)
 		cmd.Dir = s.dir
-		cmd.Env = append(os.Environ(),
+		cmd.Env = []string{
+			"PATH=/usr/local/bin:/usr/bin:/bin",
+			fmt.Sprintf("HOME=%s", s.dir),
+			fmt.Sprintf("TMPDIR=%s", s.dir),
 			fmt.Sprintf("VULOS_PORT=%d", port),
 			fmt.Sprintf("PORT=%d", port),
-		)
+		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -404,10 +407,13 @@ func (s *Sandbox) spawnWarm() {
 
 	cmd := exec.Command(s.python, s.launcherPath)
 	cmd.Dir = s.dir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin",
+		fmt.Sprintf("HOME=%s", s.dir),
+		fmt.Sprintf("TMPDIR=%s", s.dir),
 		fmt.Sprintf("VULOS_PORT=%d", port),
 		fmt.Sprintf("PORT=%d", port),
-	)
+	}
 	cmd.Stdin = pr // launcher reads from here
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

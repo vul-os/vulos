@@ -330,3 +330,10 @@ func (s *AppStore) hasApp(appID string) bool {
 	}
 	return false
 }
+
+// GetManifest loads and validates the manifest for an installed app by ID.
+// Returns an error if the app is not installed or the manifest is invalid.
+func (s *AppStore) GetManifest(appID string) (*AppManifest, error) {
+	manifestPath := filepath.Join(s.appsDir, appID, "app.json")
+	return LoadAndValidateManifest(manifestPath)
+}
