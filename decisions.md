@@ -352,3 +352,9 @@ Cron 44dbf100 (every 5 min, until 18:55 ~2h mark) still active. Each new endpoin
 ## D35 (17:17) — cron tick: HOLD on memory pressure
 Cron 44dbf100 fired. State: free mem ≈287 MB (BELOW 500 MB threshold per D33 cron contract), 15m load 13.56 (under 20 threshold). Memory is binding. 8 OSS workers actively held in worktrees (task/AI-06, APPSTORE-04, BMINIT-06, BMINIT-09, GAME-08, INIT-08, INIT-11, NET-10 all `+` prefix = checked out); AUTH-13/INIT-03/SEC-I worker branches not yet visible — still spawning/working. No OSS completions to merge. Decision: do NOT dispatch more workers this tick. Next tick (17:22) re-check; expect mem to recover as workers complete + worktrees release.
 Reminder: cloud worker branches (D34 abandoned) remain do-not-merge.
+
+## D36 (17:32) — INIT-08 permanent-defer this run (dep-mismatch)
+INIT-08's worker (stale base) re-implemented `storageprov` with a `Config` struct and `bootmode` with a `SyncState` type. Current main has INIT-04's `storageprov.storageprovState` and INIT-07's `bootmode.Result`/`Mode` constants — different APIs. joinsync pkg imports types that don't exist on main. Take-theirs would regress INIT-04/INIT-07 work. Take-ours leaves joinsync broken. Defer per-run; branch preserved for future hand-integration (adapt joinsync's storage references to current API). Non-blocking.
+
+## D37 (17:33) — Merge sequencing for remaining OSS wave
+Completions: GAME-08 (stream toolbar — cloud gaming), AUTH-13 (WebAuthn stream gate), AI-06 (AI edit), INIT-03 (ssh keys), SEC-I (ai-apps hardening). All touch main.go for ≥1 wire line; serialize. Order by impact: GAME-08 → AUTH-13 → AI-06 → INIT-03 → SEC-I. Each merge prunes worktrees to recover memory; build-gated with GOMAXPROCS=1.
