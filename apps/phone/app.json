@@ -1,0 +1,18 @@
+{
+  "id": "phone",
+  "name": "Phone",
+  "icon": "📞",
+  "icon_path": "icon.svg",
+  "description": "Calls, SMS and modem management via ModemManager",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "other",
+  "keywords": ["phone", "calls", "sms", "modem", "telephony", "cellular"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["network"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
