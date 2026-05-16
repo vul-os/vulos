@@ -1174,7 +1174,7 @@ Scope: useDeviceProfile hook (viewport+override), responsive breakpoints collaps
 AC: [ ] useDeviceProfile updates on resize [ ] mobile single-column at narrow [ ] profile overridable
 
 ### [LADYBIRD-01] Ladybird headless engine spike behind Settings toggle
-`todo` · P3 · L · dep: none · parallel: yes — new backend/services/ladybird/, backend/services/webbrowser/chrome.go, main.go
+`done` · P3 · L · dep: none · parallel: yes — new backend/services/ladybird/, backend/services/webbrowser/chrome.go, main.go
 Scope: guarded experimental Ladybird launcher via stream.Pool, feature-flagged, fallback to Chromium when absent; no Chromium/Xvfb removal; log engine in /api/browser/status.
 AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallback [ ] engine logged + in /api/browser/status [ ] go build
 
