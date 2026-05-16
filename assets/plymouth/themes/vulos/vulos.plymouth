@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Vula OS
+Description=Vula OS boot splash — dark background, centred logo, determinate progress bar
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/vulos
+ScriptFile=/usr/share/plymouth/themes/vulos/vulos.script

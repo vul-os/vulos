@@ -1,0 +1,247 @@
+/*
+ * Vula OS Plymouth boot splash — vulos.script
+ *
+ * Features:
+ *   - Dark background (#111111)
+ *   - Centred Vula OS logo
+ *   - Determinate progress bar with percentage (tied to real boot milestones)
+ *   - Ctrl+V verbose toggle (shows live systemd journal output)
+ *
+ * Kernel cmdline: quiet splash plymouth.theme=vulos
+ *
+ * Progress milestones (called by systemd units via
+ *   plymouth update --status="phase" and
+ *   plymouth system-update --progress=<0-100>):
+ *
+ *    0%   Kernel loaded, initramfs running
+ *   10%   Filesystems mounted
+ *   20%   systemd started
+ *   30%   Networking up (DHCP acquired)
+ *   45%   PipeWire started
+ *   55%   labwc started (compositor ready)
+ *   65%   vulos-server started (HTTP 200 on /health)
+ *   80%   Browser launched, loading React app
+ *   95%   Desktop shell rendered
+ *  100%   Plymouth fades out → desktop visible
+ */
+
+/* ── Colours ─────────────────────────────────────────────────── */
+bg_colour.red   = 0.067;  /* #111111 */
+bg_colour.green = 0.067;
+bg_colour.blue  = 0.067;
+
+bar_fg.red   = 0.788;  /* #C96AFF — Vula purple accent */
+bar_fg.green = 0.416;
+bar_fg.blue  = 1.0;
+
+bar_bg.red   = 0.141;  /* #242424 — track background */
+bar_bg.green = 0.141;
+bar_bg.blue  = 0.141;
+
+text_colour.red   = 0.6;
+text_colour.green = 0.6;
+text_colour.blue  = 0.6;
+
+hint_colour.red   = 0.4;
+hint_colour.green = 0.4;
+hint_colour.blue  = 0.4;
+
+/* ── Screen dimensions ───────────────────────────────────────── */
+screen_width  = Window.GetWidth();
+screen_height = Window.GetHeight();
+cx = screen_width  / 2;
+cy = screen_height / 2;
+
+/* ── Background ─────────────────────────────────────────────── */
+bg_image = Image("background.png");
+if (bg_image) {
+    bg_sprite = Sprite(bg_image.Scale(screen_width, screen_height));
+    bg_sprite.SetX(0);
+    bg_sprite.SetY(0);
+    bg_sprite.SetZ(-100);
+} else {
+    Window.SetBackgroundTopColor(bg_colour.red, bg_colour.green, bg_colour.blue);
+    Window.SetBackgroundBottomColor(bg_colour.red, bg_colour.green, bg_colour.blue);
+}
+
+/* ── Logo ────────────────────────────────────────────────────── */
+logo_image = Image("logo.png");
+if (logo_image) {
+    lw = logo_image.GetWidth();
+    lh = logo_image.GetHeight();
+    logo_sprite = Sprite(logo_image);
+    logo_sprite.SetX(cx - lw / 2);
+    logo_sprite.SetY(cy - lh / 2 - 60);
+    logo_sprite.SetZ(10);
+}
+
+/* ── Progress bar geometry ───────────────────────────────────── */
+bar_w      = Math.Min(400, screen_width * 0.5);
+bar_h      = 6;
+bar_x      = cx - bar_w / 2;
+bar_y      = cy + 80;
+
+bar_radius = bar_h / 2;   /* used for rounded ends via progress sprite */
+
+/* Track (background) */
+bar_bg_image = Image.CreateFilledRoundedRectangle(bar_w, bar_h, bar_radius,
+    bar_bg.red, bar_bg.green, bar_bg.blue, 1.0);
+bar_bg_sprite = Sprite(bar_bg_image);
+bar_bg_sprite.SetX(bar_x);
+bar_bg_sprite.SetY(bar_y);
+bar_bg_sprite.SetZ(20);
+
+/* Fill — redrawn on each progress update */
+progress_sprite = NULL;
+progress_pct    = 0;
+
+/* ── Percentage label ────────────────────────────────────────── */
+pct_label = NULL;   /* created on first update */
+
+/* ── Hint text ───────────────────────────────────────────────── */
+hint_text = "Ctrl+V for verbose output";
+hint_image = Image.Text(hint_text, hint_colour.red, hint_colour.green, hint_colour.blue);
+if (hint_image) {
+    hint_sprite = Sprite(hint_image);
+    hint_sprite.SetX(cx - hint_image.GetWidth() / 2);
+    hint_sprite.SetY(screen_height - 48);
+    hint_sprite.SetZ(20);
+}
+
+/* ── Helper: clamp ───────────────────────────────────────────── */
+fun Clamp(v, lo, hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+/* ── DrawProgress: render fill + percentage label ────────────── */
+fun DrawProgress(pct) {
+    pct = Clamp(pct, 0, 100);
+
+    fill_w = Math.Max(bar_h, Math.Round(bar_w * pct / 100));
+
+    if (fill_w > 0) {
+        fill_image = Image.CreateFilledRoundedRectangle(fill_w, bar_h, bar_radius,
+            bar_fg.red, bar_fg.green, bar_fg.blue, 1.0);
+        if (progress_sprite)
+            progress_sprite.SetImage(fill_image);
+        else {
+            progress_sprite = Sprite(fill_image);
+            progress_sprite.SetX(bar_x);
+            progress_sprite.SetY(bar_y);
+            progress_sprite.SetZ(25);
+        }
+    }
+
+    /* percentage label — e.g. "67%" */
+    pct_str   = Math.Int(pct) + "%";
+    pct_image = Image.Text(pct_str, text_colour.red, text_colour.green, text_colour.blue);
+    if (pct_image) {
+        if (pct_label)
+            pct_label.SetImage(pct_image);
+        else {
+            pct_label = Sprite(pct_image);
+            pct_label.SetZ(20);
+        }
+        pct_label.SetX(cx - pct_image.GetWidth() / 2);
+        pct_label.SetY(bar_y + bar_h + 10);
+    }
+}
+
+/* ── Boot callbacks ──────────────────────────────────────────── */
+
+/*
+ * Plymouth.SetUpdateStatusFunction — called by:
+ *   plymouth update --status="phase name"
+ * We parse a numeric prefix (e.g. "55:labwc ready") if present,
+ * otherwise use the progress already set via system-update.
+ */
+fun UpdateStatus(status) {
+    /* Optional numeric prefix "NN:description" */
+    colon = String.Find(status, ":");
+    if (colon >= 0) {
+        n = Math.Int(String.SubString(status, 0, colon));
+        if (n >= 0 && n <= 100)
+            progress_pct = n;
+    }
+    DrawProgress(progress_pct);
+}
+Plymouth.SetUpdateStatusFunction(UpdateStatus);
+
+/*
+ * Plymouth.SetBootProgressFunction — called by:
+ *   plymouth system-update --progress=<0-100>
+ */
+fun BootProgress(duration, progress) {
+    progress_pct = Math.Int(progress * 100);
+    DrawProgress(progress_pct);
+}
+Plymouth.SetBootProgressFunction(BootProgress);
+
+/*
+ * Plymouth.SetRootMountedFunction — filesystem ready (~10%)
+ */
+fun RootMounted() {
+    progress_pct = 10;
+    DrawProgress(progress_pct);
+}
+Plymouth.SetRootMountedFunction(RootMounted);
+
+/*
+ * Plymouth.SetDisplayNormalFunction — called when returning from verbose mode
+ */
+fun DisplayNormal() {
+    if (bg_image && bg_sprite)  bg_sprite.SetOpacity(1);
+    if (logo_image && logo_sprite) logo_sprite.SetOpacity(1);
+    bar_bg_sprite.SetOpacity(1);
+    if (progress_sprite) progress_sprite.SetOpacity(1);
+    if (pct_label)       pct_label.SetOpacity(1);
+    if (hint_image && hint_sprite) hint_sprite.SetOpacity(1);
+}
+Plymouth.SetDisplayNormalFunction(DisplayNormal);
+
+/*
+ * Plymouth.SetDisplayPasswordFunction — not used, but required stub
+ */
+fun DisplayPassword(prompt, stars) { }
+Plymouth.SetDisplayPasswordFunction(DisplayPassword);
+
+/*
+ * Plymouth.SetQuitFunction — called just before Plymouth exits;
+ * fade to transparent so labwc/desktop appears without a flash.
+ */
+fun Quit() {
+    Window.SetBackgroundTopColor(bg_colour.red, bg_colour.green, bg_colour.blue);
+    Window.SetBackgroundBottomColor(bg_colour.red, bg_colour.green, bg_colour.blue);
+    DrawProgress(100);
+}
+Plymouth.SetQuitFunction(Quit);
+
+/*
+ * Ctrl+V verbose toggle
+ * Pressing V (Plymouth intercepts Ctrl+V → key "v") hides the splash and
+ * reveals the TTY with live systemd journal output scrolling behind it.
+ * Pressing V again calls DisplayNormal to restore the splash.
+ */
+verbose_mode = 0;
+fun KeyPressed(key) {
+    if (key == "v" || key == "V") {
+        verbose_mode = 1 - verbose_mode;
+        if (verbose_mode) {
+            /* Hide splash elements — TTY scrolls beneath */
+            if (bg_sprite)       bg_sprite.SetOpacity(0);
+            if (logo_sprite)     logo_sprite.SetOpacity(0);
+            bar_bg_sprite.SetOpacity(0);
+            if (progress_sprite) progress_sprite.SetOpacity(0);
+            if (pct_label)       pct_label.SetOpacity(0);
+            if (hint_sprite)     hint_sprite.SetOpacity(0);
+        } else {
+            DisplayNormal();
+        }
+    }
+}
+Plymouth.SetKeyHandler(KeyPressed);
+
+/* Initial render at 0% */
+DrawProgress(0);

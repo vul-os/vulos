@@ -164,7 +164,8 @@ apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
     labwc cage \
-    flatpak rsync systemd systemd-sysv
+    flatpak rsync systemd systemd-sysv \
+    plymouth plymouth-themes
 
 # Intel VA-API (amd64 only)
 dpkg --print-architecture | grep -q amd64 && \
@@ -391,7 +392,8 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
     labwc cage \
-    flatpak rsync systemd systemd-sysv
+    flatpak rsync systemd systemd-sysv \
+    plymouth plymouth-themes
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
 
@@ -414,6 +416,14 @@ mkdir -p "$ROOTFS/opt/vulos"
 cp -r "$OUTDIR/webroot" "$ROOTFS/opt/vulos/webroot"
 cp -r "$OUTDIR/apps" "$ROOTFS/opt/vulos/apps"
 cp "$OUTDIR/registry.json" "$ROOTFS/opt/vulos/registry.json"
+
+# BMINIT-07: Plymouth boot splash — vulos theme
+# Kernel cmdline: quiet splash plymouth.theme=vulos
+mkdir -p "$ROOTFS/usr/share/plymouth/themes/vulos"
+cp -r "$ROOT_DIR/assets/plymouth/themes/vulos/." "$ROOTFS/usr/share/plymouth/themes/vulos/"
+chroot "$ROOTFS" plymouth-set-default-theme vulos 2>/dev/null || \
+    ln -sf /usr/share/plymouth/themes/vulos/vulos.plymouth \
+        "$ROOTFS/etc/alternatives/default.plymouth" 2>/dev/null || true
 
 mkdir -p "$ROOTFS/root/.vulos/data" "$ROOTFS/root/.vulos/db" \
     "$ROOTFS/root/.vulos/sandbox" "$ROOTFS/root/.vulos/browser/extensions" \
