@@ -755,7 +755,7 @@ Scope: Arrow-key nearest-focus traversal + Enter, gated TV profile; high-contras
 AC: [ ] TV arrows move focus ring, Enter activates [ ] no-op non-TV [ ] outline visible at distance
 
 ### [DEVPROF-05] TV profile: 10-foot home layout
-`todo` · P2 · M · dep: DEVPROF-03, DEVPROF-04 · parallel: yes — new src/layouts/TVHome.jsx, src/App.jsx
+`done` · P2 · M · dep: DEVPROF-03, DEVPROF-04 · parallel: yes — new src/layouts/TVHome.jsx, src/App.jsx
 Scope: Large-card focusable home selected when profile=tv, from AppRegistry.
 AC: [ ] TV renders TVHome large focusable cards [ ] 10ft readable [ ] non-TV unaffected
 
