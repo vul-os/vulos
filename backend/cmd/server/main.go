@@ -1101,6 +1101,70 @@ func main() {
 	// Generic app streaming (any X11 app via WebRTC)
 	streamPool.RegisterHandlers(mux)
 
+	// GAME-07: manifest-aware stream launch — detects gaming sessions automatically.
+	// Sets LaunchOpts.Gaming=true when the manifest category=="gaming" OR the
+	// command starts with wine/wine64/lutris/steam/steam-runtime.
+	mux.HandleFunc("POST /api/stream/launch-app", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AppID   string   `json:"app_id"`
+			Name    string   `json:"name"`
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+			Env     []string `json:"env"`
+			Width   int      `json:"width"`
+			Height  int      `json:"height"`
+			FPS     int      `json:"fps"`
+			Restart bool     `json:"restart"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "invalid request")
+			return
+		}
+		if req.Command == "" {
+			writeErr(w, 400, "command required")
+			return
+		}
+
+		// Resolve user home (mirrors the resolver registered on the pool)
+		userHome := ""
+		if uid := r.Header.Get("X-User-ID"); uid != "" {
+			if u, ok := authStore.GetUser(uid); ok {
+				if su := sysUserSvc.Lookup(u.Username); su != nil {
+					userHome = su.HomeDir
+				}
+			}
+		}
+
+		// GAME-07: auto-detect gaming mode.
+		// Check manifest category first (if app_id provided and manifest exists).
+		g07Gaming := wine.IsGamingCommand(req.Command)
+		if !g07Gaming && req.AppID != "" {
+			manifestPath := filepath.Join(appsDir, req.AppID, "app.json")
+			if m, err := appnet.LoadManifest(manifestPath); err == nil {
+				g07Gaming = (m.Category == "gaming")
+			}
+		}
+
+		sess, err := streamPool.Launch(stream.LaunchOpts{
+			ID:       req.AppID,
+			Name:     req.Name,
+			Command:  req.Command,
+			Args:     req.Args,
+			Env:      req.Env,
+			Width:    req.Width,
+			Height:   req.Height,
+			FPS:      req.FPS,
+			Restart:  req.Restart,
+			UserHome: userHome,
+			Gaming:   g07Gaming,
+		})
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, sess)
+	})
+
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)

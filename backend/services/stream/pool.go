@@ -64,6 +64,10 @@ type LaunchOpts struct {
 	Restart bool
 	// UserHome is the home directory of the requesting user (e.g. /home/alice).
 	UserHome string
+	// Gaming: if true, the session was identified as a gaming workload
+	// (wine/lutris/steam command or manifest category=="gaming").
+	// Set by GAME-07 auto-detection logic.
+	Gaming bool
 }
 
 // Launch starts a new streaming session: Xvfb + app + GStreamer + WebRTC.
