@@ -839,6 +839,111 @@
           "singleton": true
         }
       }
+    },
+    "excalidraw": {
+      "name": "Excalidraw",
+      "vetted": true,
+      "type": "web",
+      "description": "Virtual whiteboard for sketching hand-drawn-like diagrams \u2014 collaborative, end-to-end encrypted, and privacy-first",
+      "category": "productivity",
+      "author": "Excalidraw Team",
+      "homepage": "https://excalidraw.com",
+      "icon": "excalidraw",
+      "keywords": [
+        "whiteboard",
+        "drawing",
+        "diagram",
+        "sketch",
+        "collaboration",
+        "canvas"
+      ],
+      "license": "MIT",
+      "versions": {
+        "0.18.0": {
+          "download_url": "https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz",
+          "install": "wget -qO /tmp/excalidraw.tgz https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz && tar -xzf /tmp/excalidraw.tgz -C static/ --strip-components=1 && rm /tmp/excalidraw.tgz",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "checksum": "",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "_disabled": true,
+          "_note": "awaiting checksum \u2014 GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz"
+        }
+      }
+    },
+    "drawio": {
+      "name": "draw.io",
+      "vetted": true,
+      "type": "web",
+      "description": "Powerful open-source diagramming tool \u2014 flowcharts, network diagrams, UML, ER diagrams, and more, served as a static SPA",
+      "category": "productivity",
+      "author": "JGraph Ltd",
+      "homepage": "https://www.drawio.com",
+      "icon": "drawio",
+      "keywords": [
+        "diagram",
+        "flowchart",
+        "uml",
+        "network",
+        "drawing",
+        "chart",
+        "whiteboard"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "30.0.1": {
+          "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war",
+          "install": "apt-get install -y --no-install-recommends unzip && wget -qO /tmp/draw.war https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war && mkdir -p static && unzip -q /tmp/draw.war -d static/ && rm /tmp/draw.war",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "hoppscotch": {
+      "name": "Hoppscotch",
+      "vetted": true,
+      "type": "web",
+      "description": "Open-source API development ecosystem \u2014 REST, GraphQL, WebSocket, and SSE testing with a fast, clean web UI",
+      "category": "developer",
+      "author": "Hoppscotch Inc.",
+      "homepage": "https://hoppscotch.io",
+      "icon": "hoppscotch",
+      "keywords": [
+        "api",
+        "rest",
+        "graphql",
+        "testing",
+        "http",
+        "developer",
+        "postman"
+      ],
+      "license": "MIT",
+      "versions": {
+        "2026.4.1": {
+          "download_url": "https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz",
+          "install": "wget -qO /tmp/hoppscotch.tar.gz https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz && tar -xzf /tmp/hoppscotch.tar.gz -C static/ --strip-components=1 && rm /tmp/hoppscotch.tar.gz",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "checksum": "",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "_disabled": true,
+          "_note": "awaiting checksum \u2014 GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum"
+        }
+      }
     }
   }
 }
