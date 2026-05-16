@@ -443,3 +443,6 @@ Session merges remain at 159.
 
 ## D61 (18:42) — Final dispatch: APPSTORE-06 scoped to registry-only
 Mem 3232 cleared. Brief 152 min. Cron 13 min from expiry. APPSTORE-06's part-2 (gaming-mode wiring) effectively done by GAME-08/07 already merged. Dispatching part-1 only (3 registry entries: Wine, Lutris, Steam — type:desktop apt installs). Single-file (registry.json), low risk. After this, no more dispatch.
+
+## D62 (18:44) — APPSTORE-06 spliced; roadmap effectively complete
+Wine + Lutris + Steam spliced onto current main; registry now 45 active apps. Session merges 164. Build green. Brief 148 min remaining but no more scheduled work to dispatch. After cron 44dbf100 expires at 18:55, will stay reactive to user prompts through brief expiry.
