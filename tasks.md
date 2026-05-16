@@ -905,7 +905,7 @@ Scope: create→sign→deliver peer inbound/message; inbound verify+store ~/.vul
 AC: [ ] msg to approved peer stored their inbox [ ] inbound rejects non-approved/bad sig [ ] list+history persist [ ] recipient gets realtime frame
 
 ### [PEER-15] Offline queue: outbox, retry/backoff, ACK, reconnect sync
-`todo` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
+`done` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
 Scope: Persist unacked outbox, retry 1s/5s/30s/5m/1h then periodic, ACK removes, reconnect pull since last-seen.
 AC: [ ] unreachable stays+retried [ ] ACK removes [ ] online peer pulls missed
 
