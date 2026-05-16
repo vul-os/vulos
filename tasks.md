@@ -890,7 +890,7 @@ Scope: Profile store + GET/PUT profile, POST profile/image (resize 256² WebP), 
 AC: [ ] avatar resized WebP at path [ ] image honors ETag+visibility [ ] fields persist w/ default visibility
 
 ### [PEER-12] Peer profile fetch/sync + well-known endpoint
-`todo` · P1 · M · dep: PEER-11, PEER-07 · parallel: no — backend/services/peering/profile.go, new wellknown.go, main.go
+`done` · P1 · M · dep: PEER-11, PEER-07 · parallel: no — backend/services/peering/profile.go, new wellknown.go, main.go
 Scope: Unauth GET /.well-known/vula-id (public fields+verified+endpoints placeholder) at root mux; GET /api/peering/profile/:vula_id fetch+cache; profile-changed push.
 AC: [ ] well-known no auth public only [ ] peer profile cached, respects visibility [ ] approve triggers fetch
 
