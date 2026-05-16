@@ -390,3 +390,6 @@ APPSTORE-05 already spliced @ e46b5f4. 4 workers (INIT-05, INIT-01, AI-07, CLUST
 APPSTORE-05 (8 streamed apt apps, registry 40 active), INIT-01 (identity pkg + ULID + auto-hostname + GET/POST /api/identity, oklog/ulid added), INIT-05 (Setup wizard 4 new steps: Identity/Storage/SSH/RecoveryKit — JSX, all i18n preserved), AI-07 (versioning + rollback + Settings UI; execAuditLog dup deleted, callsites adapted), CLUSTER-10 (sync conflict toasts + resolver UI, NotifyOnConflict helper exposed for CLUSTER-08).
 Session task-branch merges: $(git log --oneline | grep -cE 'Merge task/[A-Z]+-[0-9]+') total.
 Free mem 350 MB. 62 min to 18:55 wind-down. Next-tick decision: top-up if mem clears 500, else hold for clean wind-down.
+
+## D45 (17:52) — Final-tick wave: 3 file-disjoint, 63 min to wind-down
+Mem 899 MB, load 8, build green @ b4d633c. Dispatching 3 conservative workers (vs 5-10) to optimize merge success on the remaining timeline: INIT-09 (Setup.jsx New/Join chooser + App.jsx — frontend isolated), INIT-10 (new joincode/ pkg + routes_joincode.go + 1 main.go wire), BMINIT-14 (build.sh --live squashfs + new scripts/initramfs/). INIT-09/10 depend on deferred INIT-08 backend; workers should degrade-gracefully (404 acceptable for now). After this wave: clean wind-down at 18:55 with no further dispatch.
