@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ThemeProvider } from './core/ThemeProvider'
 import { WallpaperProvider } from './core/useWallpaper.jsx'
-import { DeviceProfileProvider } from './core/useDeviceProfile.jsx'
+import { DeviceProfileProvider, useDeviceProfile } from './core/useDeviceProfile.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
 import { useSpatialNav } from './core/useSpatialNav'
 import LoginScreen from './auth/LoginScreen'
@@ -10,6 +10,7 @@ import LockScreen from './auth/LockScreen'
 import Setup from './auth/Setup'
 import DesktopCanvas from './layouts/DesktopCanvas'
 import MobileStack from './layouts/MobileStack'
+import TVHome from './layouts/TVHome'
 import Popout from './shell/Popout'
 import Screensaver from './shell/Screensaver'
 
@@ -83,10 +84,12 @@ function useEnergyState() {
 function Shell() {
   const { layout, popout } = useShell()
   const { profile } = useAuth()
+  const { profile: deviceProfile } = useDeviceProfile()
   const { locked, screensaver, unlock, dismissScreensaver } = useEnergyState()
   if (locked) return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
   if (screensaver) return <Screensaver onDismiss={dismissScreensaver} />
   if (popout) return <Popout />
+  if (deviceProfile === 'tv') return <TVHome />
 
   return (
     <>
