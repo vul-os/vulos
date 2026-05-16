@@ -47,13 +47,13 @@ const (
 
 // Info holds detected GPU capabilities.
 type Info struct {
-	Tier     Tier   `json:"tier"`
-	TierName string `json:"tier_name"`
-	Vendor   Vendor `json:"vendor"`
-	Device   string `json:"device"`   // GPU device name from lspci/nvidia-smi
-	Encoder  string `json:"encoder"`  // GStreamer encoder element name
-	Payloader string `json:"payloader"` // GStreamer RTP payloader element
-	Codec    string `json:"codec"`    // WebRTC codec mime type
+	Tier        Tier   `json:"tier"`
+	TierName    string `json:"tier_name"`
+	Vendor      Vendor `json:"vendor"`
+	Device      string `json:"device"`       // GPU device name from lspci/nvidia-smi
+	Encoder     string `json:"encoder"`      // GStreamer encoder element name
+	Payloader   string `json:"payloader"`    // GStreamer RTP payloader element
+	Codec       string `json:"codec"`        // WebRTC codec mime type
 	HasDRI      bool   `json:"has_dri"`      // /dev/dri exists
 	HasAV1      bool   `json:"has_av1"`      // AV1 hardware encode available
 	HasPipeWire bool   `json:"has_pipewire"` // PipeWire screen capture available
@@ -102,18 +102,20 @@ func (g *Info) ConvertArgs() []string {
 
 // EncoderArgs returns the GStreamer encoder element + properties as args.
 // Prefers AV1 when available (better quality/bitrate), falls back to H.264/VP8.
+// All encoder elements carry name=venc so the pipeline element can be looked up
+// by a stable name (e.g. for adaptive-bitrate property changes).
 func (g *Info) EncoderArgs() []string {
 	if g.HasAV1 {
 		switch g.Tier {
 		case TierNVENC:
 			return []string{
-				"nvav1enc",
+				"nvav1enc", "name=venc",
 				"bitrate=1500", "preset=low-latency-hq", "rc-mode=cbr",
 				"gop-size=30",
 			}
 		case TierVAAPI:
 			return []string{
-				"vaav1enc",
+				"vaav1enc", "name=venc",
 				"bitrate=1500", "rate-control=cbr",
 				"keyframe-period=30",
 			}
@@ -122,19 +124,19 @@ func (g *Info) EncoderArgs() []string {
 	switch g.Tier {
 	case TierNVENC:
 		return []string{
-			"nvh264enc",
+			"nvh264enc", "name=venc",
 			"bitrate=2000", "preset=low-latency-hq", "rc-mode=cbr",
 			"gop-size=30",
 		}
 	case TierVAAPI:
 		return []string{
-			"vaapih264enc",
+			"vaapih264enc", "name=venc",
 			"bitrate=2000", "rate-control=cbr",
 			"keyframe-period=30",
 		}
 	default:
 		return []string{
-			"vp8enc",
+			"vp8enc", "name=venc",
 			"target-bitrate=2000000", "cpu-used=8", "deadline=1",
 			"keyframe-max-dist=30", "threads=4", "end-usage=cbr",
 			"undershoot=95", "buffer-size=6000", "buffer-initial-size=4000",
