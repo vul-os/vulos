@@ -44,6 +44,7 @@ import (
 	"vulos/backend/services/packages"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/network"
+	"vulos/backend/services/credvault"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/wifi"
 )
@@ -336,6 +337,12 @@ func main() {
 
 	// Auth routes
 	authHandler.Register(mux)
+
+	// Credential vault HTTP API (password manager, per-user, AES-256-GCM)
+	credVaultHandler := credvault.NewHandler(func(userID string) string {
+		return filepath.Join(home, ".vulos", "auth", "vault", userID)
+	})
+	credVaultHandler.RegisterHandlers(mux)
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
