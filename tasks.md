@@ -1000,7 +1000,7 @@ Scope: Sheets y-json, Notes, Text Editor CodeMirror/Monaco binding; reconnect ca
 AC: [ ] Sheets+TextEditor live multi-user [ ] offline reconnect gets only diff [ ] time-travel from history
 
 ### [PEER-34] Drop: mDNS LAN discovery + nearby + send/accept
-`todo` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
+`done` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
 Scope: mDNS advertise/browse _vula-drop._tcp, nearby endpoint, discoverability everyone/peers/nobody, send (LAN else internet), inbound drop accept/decline+auto-accept-contact; Drop UI tiles+progress.
 AC: [ ] 2 LAN instances discover when discoverable [ ] discoverability filters ads [ ] drop transfers+accept/decline+progress
 
