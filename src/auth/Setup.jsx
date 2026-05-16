@@ -650,6 +650,16 @@ function ReadyStep({ config, onFinish, onPrev }) {
       <button onClick={onPrev} className="block mx-auto mt-4 text-sm text-neutral-600 hover:text-neutral-400">
         Go back
       </button>
+
+      {/* kitBackup-IK11: recovery kit hint — additive, admin context */}
+      <div className="mt-6 mx-auto max-w-sm rounded-xl border border-neutral-800/50 bg-neutral-900/40 px-4 py-3 text-left">
+        <p className="text-xs text-neutral-500 leading-relaxed">
+          <span className="text-neutral-400 font-medium">Recovery kit</span> — your credentials JSON was shown once during setup.
+          You can re-download it any time as an admin via{' '}
+          <code className="text-blue-400/80 text-[11px]">GET /api/recovery/kit</code>
+          {' '}from a trusted local session.
+        </p>
+      </div>
     </div>
   )
 }
