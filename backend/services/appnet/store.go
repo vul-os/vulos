@@ -255,3 +255,14 @@ func (s *AppStore) Installed() ([]*AppManifest, error) {
 func (s *AppStore) AppDir() string {
 	return s.appsDir
 }
+
+// GetManifest loads the manifest for an installed app by ID.
+// Returns nil, false if the app is not installed.
+func (s *AppStore) GetManifest(appID string) (*AppManifest, bool) {
+	path := filepath.Join(s.appsDir, appID, "app.json")
+	m, err := LoadManifest(path)
+	if err != nil {
+		return nil, false
+	}
+	return m, true
+}
