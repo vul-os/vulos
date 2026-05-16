@@ -1054,7 +1054,7 @@ Scope: POST /api/auth/totp/add, GET /list, GET /code/:id, DELETE /:id; scoped pe
 AC: [ ] 4 endpoints, auth-required, correct JSON [ ] add-then-code returns valid 6-digit [ ] go build
 
 ### [AUTH-03] TOTP UI panel (authenticator overlay)
-`todo` · P2 · M · dep: AUTH-02 · parallel: yes — new src/apps/Authenticator/, src/core/AppRegistry.js
+`done` · P2 · M · dep: AUTH-02 · parallel: yes — new src/apps/Authenticator/, src/core/AppRegistry.js
 Scope: React list of accounts w/ rolling codes + 30s countdown, tap-to-copy, add-account (paste otpauth URI / manual). Register in AppRegistry.
 AC: [ ] codes refresh 30s no reload [ ] click-copy w/ confirm [ ] add posts /totp/add [ ] in launcher
 
