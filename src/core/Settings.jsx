@@ -544,14 +544,78 @@ function AccountSettings({ profile, updateProfile, logout }) {
 }
 
 // --- AI Apps Gallery ---
+function AIAppVersions({ appId, onClose }) {
+  const [versions, setVersions] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/ai-apps/${appId}/versions`)
+      .then(r => r.json())
+      .then(setVersions)
+      .catch(() => setVersions([]))
+  }, [appId])
+
+  const rollback = async (version) => {
+    setBusy(true)
+    setMsg('')
+    try {
+      const r = await fetch(`/api/ai-apps/${appId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version }),
+      })
+      const d = await r.json()
+      if (!r.ok) setMsg(d.error || 'Rollback failed')
+      else setMsg('Rolled back successfully')
+    } catch {
+      setMsg('Request failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 mb-4 rounded border border-neutral-700 bg-neutral-900 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-neutral-300">Version History</span>
+        <button onClick={onClose} className="text-xs text-neutral-500 hover:text-neutral-300">Close</button>
+      </div>
+      {versions.length === 0 && <p className="text-xs text-neutral-500">No snapshots yet.</p>}
+      {versions.map(v => (
+        <div key={v.version} className="flex items-center justify-between py-1 border-b border-neutral-800/30">
+          <div>
+            <span className="text-xs text-neutral-400">{v.timestamp}</span>
+            {v.brief && <span className="text-[10px] text-neutral-600 ml-2">{v.brief}</span>}
+          </div>
+          <button
+            onClick={() => rollback(v.version)}
+            disabled={busy}
+            className="text-[10px] text-amber-400 hover:text-amber-300 disabled:opacity-50"
+          >
+            Restore
+          </button>
+        </div>
+      ))}
+      {msg && <p className="text-xs mt-2 text-green-400">{msg}</p>}
+    </div>
+  )
+}
+
 function AIAppsSettings() {
   const [apps, setApps] = useState([])
+  const [versionsOpen, setVersionsOpen] = useState(null)
   const refresh = () => fetch('/api/ai-apps').then(r => r.json()).then(setApps).catch(() => {})
   useEffect(() => { refresh() }, [])
 
   const remove = async (id) => {
     await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
+    if (versionsOpen === id) setVersionsOpen(null)
     refresh()
+  }
+
+  const toggleVersions = (id) => {
+    setVersionsOpen(prev => prev === id ? null : id)
   }
 
   return (
@@ -559,16 +623,22 @@ function AIAppsSettings() {
       <p className="text-xs text-neutral-600 mb-4">Apps created by the AI assistant. Click to reopen.</p>
       {apps?.length === 0 && <p className="text-sm text-neutral-500">No saved apps yet. Ask the AI to build something visual.</p>}
       {apps?.map(app => (
-        <div key={app.id} className="flex items-center justify-between py-2 border-b border-neutral-800/30">
-          <div>
-            <span className="text-sm">{app.title || 'Untitled'}</span>
-            <span className="text-xs text-neutral-600 ml-2">{app.created?.slice(0, 10)}</span>
-            {app.has_python === 'true' && <span className="text-[10px] text-blue-400 ml-2">Python</span>}
+        <div key={app.id}>
+          <div className="flex items-center justify-between py-2 border-b border-neutral-800/30">
+            <div>
+              <span className="text-sm">{app.title || 'Untitled'}</span>
+              <span className="text-xs text-neutral-600 ml-2">{app.created?.slice(0, 10)}</span>
+              {app.has_python === 'true' && <span className="text-[10px] text-blue-400 ml-2">Python</span>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => window.open(`/api/ai-apps/${app.id}/html`, '_blank')} className="text-xs text-blue-400">Open</button>
+              <button onClick={() => toggleVersions(app.id)} className="text-xs text-neutral-400 hover:text-neutral-200">Versions</button>
+              <button onClick={() => remove(app.id)} className="text-xs text-red-400">Delete</button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => window.open(`/api/ai-apps/${app.id}/html`, '_blank')} className="text-xs text-blue-400">Open</button>
-            <button onClick={() => remove(app.id)} className="text-xs text-red-400">Delete</button>
-          </div>
+          {versionsOpen === app.id && (
+            <AIAppVersions appId={app.id} onClose={() => setVersionsOpen(null)} />
+          )}
         </div>
       ))}
     </Section>

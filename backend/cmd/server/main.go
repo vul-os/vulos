@@ -1220,6 +1220,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "deleted"})
 	})
 
+	// AI-07: version history + rollback endpoints
+	registerAIAppsVersionsRoutes(mux, aiAppsDir, authStore)
+
 	// Native window management — spawn Cog/WPE instances as real compositor windows
 	// Cached at startup: detect if we're on baremetal (sole Cog instance) or native (compositor with multi-window)
 	nativeMode := detectNativeMode()
