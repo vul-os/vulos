@@ -27,9 +27,9 @@ type Notification struct {
 	Title     string    `json:"title"`
 	Body      string    `json:"body"`
 	Level     Level     `json:"level"`
-	Source    string    `json:"source"`  // "system", "ai", app ID
-	Action   string    `json:"action,omitempty"` // URL or action ID
-	Read     bool      `json:"read"`
+	Source    string    `json:"source"`           // "system", "ai", app ID
+	Action    string    `json:"action,omitempty"` // URL or action ID
+	Read      bool      `json:"read"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -144,7 +144,9 @@ func (s *Service) UnreadCount() int {
 	defer s.mu.RUnlock()
 	count := 0
 	for _, n := range s.history {
-		if !n.Read { count++ }
+		if !n.Read {
+			count++
+		}
 	}
 	return count
 }
@@ -154,6 +156,19 @@ func (s *Service) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = nil
+}
+
+// NotifyOnConflict emits a toast-level notification for a sync conflict file.
+// Category "sync" is encoded in the Source field so the frontend can route it
+// to the ConflictResolver view. The deep-link payload is the relative conflict path.
+func (s *Service) NotifyOnConflict(path string) *Notification {
+	return s.SendWithAction(
+		"Sync conflict detected",
+		"A conflict copy was created: "+path,
+		LevelWarning,
+		"sync",
+		"/api/sync/conflicts",
+	)
 }
 
 // Handler returns an HTTP handler that upgrades to WebSocket for live notification streaming.
