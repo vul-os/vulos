@@ -29,6 +29,14 @@ func registerJoinRoutes(mux *http.ServeMux, home string) {
 	rl := newJoinRateLimiter()
 
 	mux.HandleFunc("POST /api/setup/join", func(w http.ResponseWriter, r *http.Request) {
+		// SECAUDIT2 L-2: block once the instance is fully provisioned.
+		// The check is intentionally BEFORE rate-limit accounting so a
+		// provisioned instance does not burn the rate budget.
+		if joinsync.IsProvisioned(home) {
+			writeErr(w, http.StatusConflict, "setup already complete — this instance is provisioned")
+			return
+		}
+
 		ip := joinExtractIP(r)
 		if rl.limited(ip) {
 			w.Header().Set("Retry-After", "60")
@@ -47,6 +55,9 @@ func registerJoinRoutes(mux *http.ServeMux, home string) {
 		if err != nil {
 			rl.record(ip)
 			switch {
+			case errors.Is(err, joinsync.ErrAlreadyProvisioned):
+				// Defence-in-depth: Join() also checks; surface as 409.
+				writeErr(w, http.StatusConflict, "setup already complete — this instance is provisioned")
 			case errors.Is(err, joinsync.ErrBadRequest):
 				writeErr(w, http.StatusBadRequest, err.Error())
 			case errors.Is(err, joinsync.ErrBadPassphrase):
@@ -67,6 +78,12 @@ func registerJoinRoutes(mux *http.ServeMux, home string) {
 	})
 
 	mux.HandleFunc("GET /api/setup/join/status", func(w http.ResponseWriter, r *http.Request) {
+		// SECAUDIT2 L-2: block status polling once provisioned to avoid
+		// leaking sync-state.json contents to unauthenticated callers.
+		if joinsync.IsProvisioned(home) {
+			writeErr(w, http.StatusForbidden, "setup already complete — this instance is provisioned")
+			return
+		}
 		writeJSON(w, joinsync.Progress(home))
 	})
 }

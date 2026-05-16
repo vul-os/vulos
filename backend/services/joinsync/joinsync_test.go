@@ -406,6 +406,12 @@ func walkAssertNoPassphrase(t *testing.T, root, passphrase string) {
 	t.Helper()
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			// A TOCTOU race between background atomicWriteJSON's rename of a
+			// .tmp file and filepath.Walk's internal lstat is benign: skip
+			// entries that vanished between Walk's readdir and our visit.
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
 		if info.IsDir() {
@@ -413,6 +419,11 @@ func walkAssertNoPassphrase(t *testing.T, root, passphrase string) {
 		}
 		data, rerr := os.ReadFile(path)
 		if rerr != nil {
+			// File removed by the atomic rename between our visit and ReadFile;
+			// that's fine — a .tmp scratch file that disappears is not a leak.
+			if os.IsNotExist(rerr) {
+				return nil
+			}
 			return rerr
 		}
 		if containsBytes(data, []byte(passphrase)) {
