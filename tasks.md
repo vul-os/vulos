@@ -496,7 +496,7 @@ Scope: Load VULOS_INSTANCE_ID/HOSTNAME/DOMAIN_MODE/NODE_ID/MODE; persist ULID to
 AC: [ ] ULID persisted stable [ ] Domain() = {ulid}.vulos.org fabric/direct [ ] /api/network/status has fields [ ] no net call
 
 ### [NET-07] `/api/health` cluster health endpoint
-`todo` · P1 · S · dep: none · parallel: yes — backend/cmd/server/main.go (new handler)
+`done` · P1 · S · dep: none · parallel: yes — backend/cmd/server/main.go (new handler)
 Scope: Public GET /api/health: data-dir writable + disk threshold + sync-lag placeholder; 200 healthy / 503 degraded JSON.
 AC: [ ] 200+JSON healthy [ ] 503 when not writable/low disk [ ] no auth
 
