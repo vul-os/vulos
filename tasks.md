@@ -1020,7 +1020,7 @@ Scope: X25519 from identity, per-conversation shared secret, encrypt/decrypt mes
 AC: [ ] bodies ciphertext at rest+transit, only endpoints decrypt [ ] wrong key fails closed [ ] round-trip+key exchange tests
 
 ### [PEER-38] Relay peers: deposit/pickup/ack + config/store
-`todo` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
+`done` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
 Scope: relay role config (enabled/capacity/TTL/allowed), deposit (mutual-trust+limits), signed pickup, ack-delete; sender uses relay when recipient unreachable. Limits 100MB/recip, 72h, 25MB blob, 100/h.
 AC: [ ] deposit stores by recipient, relay never decrypts [ ] signed pickup returns, ack deletes [ ] limits enforced, mutual-trust only
 

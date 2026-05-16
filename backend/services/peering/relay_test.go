@@ -91,8 +91,8 @@ func relayPickupAuthHeader(t *testing.T, priv ed25519.PrivateKey, vulaID string)
 	return fmt.Sprintf("Vula-Relay %s.%s.%s", vulaID, tsStr, sigB64)
 }
 
-// addApprovedContact adds a contact to the ContactStore in the Approved state.
-func addApprovedContact(t *testing.T, cs *ContactStore, vulaID, displayName string) {
+// relayAddApprovedContact adds a contact to the ContactStore in the Approved state.
+func relayAddApprovedContact(t *testing.T, cs *ContactStore, vulaID, displayName string) {
 	t.Helper()
 	if err := cs.Add(vulaID, displayName, "test-server:8080"); err != nil {
 		t.Fatalf("cs.Add: %v", err)
@@ -186,7 +186,7 @@ func TestDeposit_Success(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	blobData := []byte("this is an encrypted blob")
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-001", blobData, 24)
@@ -203,7 +203,7 @@ func TestDeposit_RelayDisabled(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-002", []byte("data"), 24)
 	err := rs.Deposit(req)
@@ -231,7 +231,7 @@ func TestDeposit_InvalidSignature(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-004", []byte("data"), 24)
 	// Corrupt the signature.
@@ -248,7 +248,7 @@ func TestDeposit_BlobTooLarge(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	// Create a blob that exceeds relayMaxBlobBytes.
 	bigBlob := make([]byte, relayMaxBlobBytes+1)
@@ -265,7 +265,7 @@ func TestDeposit_RateLimit(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	// Fill the rate-limit bucket directly.
 	now := time.Now().UTC()
@@ -291,7 +291,7 @@ func TestDeposit_AllowedListEnforced(t *testing.T) {
 	_, _, otherSenderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
 
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	// Restrict relay to only otherSenderID.
 	cfg := rs.GetConfig()
@@ -314,7 +314,7 @@ func TestDeposit_NeverDecrypts(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	recipientPriv, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	// Pretend this is an encrypted blob — relay should not try to decrypt.
 	fakeEncrypted := []byte("OPAQUE_CIPHERTEXT_DO_NOT_DECRYPT")
@@ -349,7 +349,7 @@ func TestPickup_Success(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	recipientPriv, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-p1", []byte("payload"), 24)
 	if err := rs.Deposit(req); err != nil {
@@ -379,7 +379,7 @@ func TestPickup_WrongRecipient(t *testing.T) {
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
 	wrongPriv, _, wrongID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-p2", []byte("payload"), 24)
 	rs.Deposit(req) //nolint:errcheck
@@ -454,7 +454,7 @@ func TestAck_DeletesBlob(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	recipientPriv, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-ack1", []byte("payload"), 24)
 	rs.Deposit(req) //nolint:errcheck
@@ -486,7 +486,7 @@ func TestAck_Idempotent(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	recipientPriv, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-ack2", []byte("payload"), 24)
 	rs.Deposit(req) //nolint:errcheck
@@ -528,7 +528,7 @@ func TestReaper_RemovesExpiredBlobs(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-exp1", []byte("payload"), 1)
 	if err := rs.Deposit(req); err != nil {
@@ -620,7 +620,7 @@ func TestHTTP_Deposit_Success(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "http-blob-001", []byte("payload"), 24)
 	body, _ := json.Marshal(req)
@@ -646,7 +646,7 @@ func TestHTTP_Deposit_Disabled(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "http-blob-dis", []byte("x"), 24)
 	body, _ := json.Marshal(req)
@@ -669,7 +669,7 @@ func TestHTTP_Pickup_Success(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	recipientPriv, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	dep := relayTestDeposit(t, senderPriv, senderID, recipientID, "http-blob-p1", []byte("ciphertext"), 24)
 	rs.Deposit(dep) //nolint:errcheck
@@ -720,7 +720,7 @@ func TestHTTP_Ack_Success(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	recipientPriv, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	dep := relayTestDeposit(t, senderPriv, senderID, recipientID, "http-blob-a1", []byte("ciphertext"), 24)
 	rs.Deposit(dep) //nolint:errcheck
@@ -779,7 +779,7 @@ func TestDeposit_PerRecipientCapEnforced(t *testing.T) {
 
 	senderPriv, _, senderID := genKeyPair(t)
 	_, _, recipientID := genKeyPair(t)
-	addApprovedContact(t, cs, senderID, "Sender")
+	relayAddApprovedContact(t, cs, senderID, "Sender")
 
 	// Deposit a small blob and confirm byte accounting is correct.
 	payload := []byte("small payload for accounting test")
@@ -820,8 +820,8 @@ func TestDeposit_MutualTrustBothDirections(t *testing.T) {
 
 	alicePriv, _, aliceID := genKeyPair(t)
 	bobPriv, _, bobID := genKeyPair(t)
-	addApprovedContact(t, cs, aliceID, "Alice")
-	addApprovedContact(t, cs, bobID, "Bob")
+	relayAddApprovedContact(t, cs, aliceID, "Alice")
+	relayAddApprovedContact(t, cs, bobID, "Bob")
 
 	// Alice → Bob.
 	req1 := relayTestDeposit(t, alicePriv, aliceID, bobID, "mt-blob-ab", []byte("msg for bob"), 24)
