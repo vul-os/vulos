@@ -925,7 +925,7 @@ Scope: group create/list/add-member, store ~/.vulos/peering/groups/, fan-out via
 AC: [ ] create distributes def to members [ ] group msg delivered each member [ ] add-member policy-gated propagates
 
 ### [PEER-19] Call signaling relay (S2S SDP/ICE)
-`todo` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
+`done` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
 Scope: call lifecycle relay: initiate→peer inbound/signal→callee frame; answer/reject/hangup; signal relays opaque SDP/ICE via signal channel; servers no media.
 AC: [ ] initiate → callee incoming-call frame [ ] SDP/ICE relay end-to-end [ ] reject/hangup terminates both [ ] rejected for non-call contacts
 
