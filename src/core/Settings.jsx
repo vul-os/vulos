@@ -15,6 +15,7 @@ const sections = [
   { id: 'vault', label: 'Backup & Sync' },
   { id: 'recall', label: 'Search & Index' },
   { id: 'network', label: 'Remote Access' },
+  { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
   { id: 'account', label: 'Account' },
   { id: 'about', label: 'About' },
@@ -54,6 +55,7 @@ export default function Settings() {
         {active === 'vault' && <VaultSettings />}
         {active === 'recall' && <RecallSettings />}
         {active === 'network' && <NetworkSettings />}
+        {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'about' && <AboutSettings />}
@@ -520,6 +522,132 @@ function NetworkSettings() {
       <button onClick={saveConfig} disabled={saving} className="btn text-sm">
         {saving ? 'Saving...' : saved ? 'Saved' : 'Save'}
       </button>
+    </Section>
+  )
+}
+
+// --- TURN / WebRTC (NET-10) ---
+function TURNSettingsSection() {
+  const [host, setHost] = useState('')
+  const [port, setPort] = useState(3478)
+  const [realm, setRealm] = useState('vulos')
+  const [secret, setSecret] = useState('')
+  const [configured, setConfigured] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+  const [testing, setTesting] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/turn/config')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || d.error) return
+        setHost(d.host || '')
+        setPort(d.port || 3478)
+        setRealm(d.realm || 'vulos')
+        setConfigured(!!d.configured)
+      })
+      .catch(() => {})
+  }, [])
+
+  const turnSettings_save = () => {
+    setSaving(true)
+    setSaved(false)
+    fetch('/api/turn/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port: Number(port), realm, secret: secret || undefined }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d && !d.error) {
+          setConfigured(!!d.configured)
+          setSecret('')
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
+        }
+      })
+      .finally(() => setSaving(false))
+  }
+
+  const turnSettings_test = () => {
+    setTesting(true)
+    setTestResult(null)
+    fetch('/api/turn/test', { method: 'POST' })
+      .then(r => r.json())
+      .then(setTestResult)
+      .catch(e => setTestResult({ success: false, error: e.message }))
+      .finally(() => setTesting(false))
+  }
+
+  return (
+    <Section title="TURN / WebRTC Relay">
+      <p className="text-xs text-neutral-600 mb-5">
+        Users behind strict NAT need a TURN relay for reliable WebRTC.
+        Point at your own coturn server or a tier-provided one.
+        The shared secret is stored securely and never returned by the API.
+      </p>
+
+      {configured && (
+        <div className="text-xs text-green-500 mb-3">TURN server configured</div>
+      )}
+
+      <Field label="TURN Host">
+        <input
+          value={host}
+          onChange={e => setHost(e.target.value)}
+          placeholder="turn.example.com"
+          className="input"
+        />
+      </Field>
+
+      <Field label="Port">
+        <input
+          type="number"
+          value={port}
+          onChange={e => setPort(e.target.value)}
+          placeholder="3478"
+          className="input"
+        />
+      </Field>
+
+      <Field label="Realm">
+        <input
+          value={realm}
+          onChange={e => setRealm(e.target.value)}
+          placeholder="vulos"
+          className="input"
+        />
+      </Field>
+
+      <Field label="Shared Secret">
+        <input
+          type="password"
+          value={secret}
+          onChange={e => setSecret(e.target.value)}
+          placeholder={configured ? '(leave blank to keep existing)' : 'enter shared secret'}
+          className="input"
+        />
+        <p className="text-xs text-neutral-600 mt-1">Write-only — the secret is never returned once saved.</p>
+      </Field>
+
+      <div className="flex gap-3 mt-4 items-center">
+        <button onClick={turnSettings_save} disabled={saving} className="btn text-sm">
+          {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+        </button>
+        <button onClick={turnSettings_test} disabled={testing || !configured} className="btn text-sm">
+          {testing ? 'Testing…' : 'Test Reachability'}
+        </button>
+      </div>
+
+      {testResult && (
+        <div className={`mt-3 text-xs rounded px-3 py-2 ${testResult.success ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+          {testResult.success
+            ? `Reachable — latency ${testResult.latency_ms} ms`
+            : `Unreachable: ${testResult.error || 'connection failed'}`}
+        </div>
+      )}
     </Section>
   )
 }
