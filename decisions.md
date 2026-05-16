@@ -401,3 +401,6 @@ Mem 695 MB cleared, build green @ c6f2d79, 0 unmerged branches. INIT-10 worker s
 INIT-10 merged @ d0e0a22 — last task of D45 wave. All 3/3 of the final tick landed (INIT-09, INIT-10, BMINIT-14). SEC-H invariant preserved (handlers.go publicPaths: /api/open OUT, /api/setup/join-code IN for setup-time unauth join).
 Session total: **153 task-branches merged**. Build green @ d0e0a22.
 No further dispatch — wind-down at 18:55. Cron 44dbf100 will fire once more before then; I'll let it tick clean (no merges, no dispatches) and CronDelete at 18:55.
+
+## D48 (18:02) — Re-firing of 4h brief; 192 min remaining. Dispatching 3
+Original 4h brief (started 17:14) has 192 min left. My self-imposed "wind-down 18:55" was the cron's 2h lifetime (D33), not the brief's 4h. Correcting: continue dispatch while brief holds. Mem 1043 MB, load fine. Dispatching 3 file-disjoint: NET-01 (subdomain parser {app}--{profile}.{ulid}.{domain} — gateway.go + main.go + dns.go), CLUSTER-06 (MinIO settings UI — registry.json + new routes_storage.go + Settings.jsx section), BMINIT-15 (ARM device variants — build.sh additive). Conservative count (vs 10) because remaining roadmap is hot-file-bound; merge success rate > raw count.
