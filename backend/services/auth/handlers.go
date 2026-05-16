@@ -68,17 +68,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                true,
-	"/api/auth/providers":    true,
-	"/api/auth/me":           true,
-	"/api/auth/logout":       true,
-	"/api/auth/register":     true,
-	"/api/auth/login":        true,
-	"/api/auth/status":       true,
-	"/api/setup/status":      true,
-	"/api/browser/status":    true,
-	"/api/open":              true,
-	"/manifest.json":         true,
+	"/health":             true,
+	"/api/auth/providers": true,
+	"/api/auth/me":        true,
+	"/api/auth/logout":    true,
+	"/api/auth/register":  true,
+	"/api/auth/login":     true,
+	"/api/auth/status":    true,
+	"/api/setup/status":   true,
+	"/api/browser/status": true,
+	"/api/open":           true,
+	"/manifest.json":      true,
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -101,14 +101,30 @@ func isPublicPath(path string) bool {
 }
 
 // Middleware extracts the session, enforces auth on protected endpoints, and rate limits.
+// AT10: additionally checks for `Authorization: Bearer vulos-admin-<token>` and, if
+// valid, injects the first registered user's identity (admin by convention).
 func (h *Handler) Middleware(next http.Handler) http.Handler {
 	return h.limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract session if present
-		token := extractToken(r)
-		if token != "" {
-			if sess, ok := h.store.ValidateToken(token); ok {
-				r.Header.Set("X-User-ID", sess.UserID)
-				r.Header.Set("X-User-Email", sess.Email)
+		// AT10 — check admin bearer token before cookie path.
+		if authHdr := r.Header.Get("Authorization"); strings.HasPrefix(authHdr, "Bearer "+AT10TokenPrefix) {
+			presented := strings.TrimPrefix(authHdr, "Bearer ")
+			home, _ := os.UserHomeDir()
+			if ok, _, _ := ValidateAdminToken(home, presented); ok {
+				if adminUser := h.store.at10FirstUser(); adminUser != nil {
+					r.Header.Set("X-User-ID", adminUser.ID)
+					r.Header.Set("X-User-Email", adminUser.Email)
+				}
+			}
+		}
+
+		// Extract session if present (cookie / regular Bearer session token).
+		if r.Header.Get("X-User-ID") == "" {
+			token := extractToken(r)
+			if token != "" {
+				if sess, ok := h.store.ValidateToken(token); ok {
+					r.Header.Set("X-User-ID", sess.UserID)
+					r.Header.Set("X-User-Email", sess.Email)
+				}
 			}
 		}
 
@@ -140,7 +156,7 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 
 func (h *Handler) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
-		"has_users":   h.store.HasAnyUsers(),
+		"has_users":       h.store.HasAnyUsers(),
 		"oauth_providers": providerNames(h.providers),
 	})
 }
@@ -592,14 +608,30 @@ func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if update.DisplayName != nil { existing.DisplayName = *update.DisplayName }
-	if update.Theme != nil { existing.Theme = *update.Theme }
-	if update.Locale != nil { existing.Locale = *update.Locale }
-	if update.Timezone != nil { existing.Timezone = *update.Timezone }
-	if update.AIProvider != nil { existing.AIProvider = *update.AIProvider }
-	if update.AIModel != nil { existing.AIModel = *update.AIModel }
-	if update.AIAPIKey != nil { existing.AIAPIKey = *update.AIAPIKey }
-	if update.Initiative != nil { existing.Initiative = *update.Initiative }
+	if update.DisplayName != nil {
+		existing.DisplayName = *update.DisplayName
+	}
+	if update.Theme != nil {
+		existing.Theme = *update.Theme
+	}
+	if update.Locale != nil {
+		existing.Locale = *update.Locale
+	}
+	if update.Timezone != nil {
+		existing.Timezone = *update.Timezone
+	}
+	if update.AIProvider != nil {
+		existing.AIProvider = *update.AIProvider
+	}
+	if update.AIModel != nil {
+		existing.AIModel = *update.AIModel
+	}
+	if update.AIAPIKey != nil {
+		existing.AIAPIKey = *update.AIAPIKey
+	}
+	if update.Initiative != nil {
+		existing.Initiative = *update.Initiative
+	}
 
 	h.store.SetProfile(existing)
 	h.store.Flush()
@@ -707,7 +739,9 @@ func (h *Handler) handleSetPIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
-	var req struct{ PIN string `json:"pin"` }
+	var req struct {
+		PIN string `json:"pin"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	if err := h.store.SetPIN(userID, req.PIN); err != nil {
 		writeErr(w, 400, err.Error())
@@ -723,7 +757,9 @@ func (h *Handler) handleValidatePIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
-	var req struct{ PIN string `json:"pin"` }
+	var req struct {
+		PIN string `json:"pin"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	valid := h.store.ValidatePIN(userID, req.PIN)
 	writeJSON(w, map[string]any{"valid": valid, "has_pin": h.store.HasPIN(userID)})

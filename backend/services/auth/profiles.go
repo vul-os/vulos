@@ -12,9 +12,9 @@ import (
 type Role string
 
 const (
-	RoleAdmin  Role = "admin"
-	RoleUser   Role = "user"
-	RoleGuest  Role = "guest"
+	RoleAdmin Role = "admin"
+	RoleUser  Role = "user"
+	RoleGuest Role = "guest"
 )
 
 // Profile extends a User with OS-level settings and role.
@@ -29,7 +29,7 @@ type Profile struct {
 	AIProvider  string            `json:"ai_provider"` // "claude", "openai", "ollama"
 	AIModel     string            `json:"ai_model"`
 	AIAPIKey    string            `json:"ai_api_key,omitempty"`
-	Initiative  string            `json:"initiative"`  // "minimal", "balanced", "proactive"
+	Initiative  string            `json:"initiative"` // "minimal", "balanced", "proactive"
 	PinHash     string            `json:"pin_hash,omitempty"`
 	Settings    map[string]string `json:"settings,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`

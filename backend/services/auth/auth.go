@@ -57,9 +57,9 @@ func (u *User) Safe() map[string]any {
 // Store persists users, sessions, and profiles to disk so logins survive reboots.
 type Store struct {
 	mu       sync.RWMutex
-	users    map[string]*User     // user_id -> User
-	sessions map[string]*Session  // token -> Session
-	profiles map[string]*Profile  // user_id -> Profile
+	users    map[string]*User    // user_id -> User
+	sessions map[string]*Session // token -> Session
+	profiles map[string]*Profile // user_id -> Profile
 	path     string
 	secret   []byte
 }
@@ -422,6 +422,24 @@ func (s *Store) Login(username, password string) (*User, error) {
 	}
 	log.Printf("[auth] login failed: user %q not found (have %d users)", username, len(s.users))
 	return nil, fmt.Errorf("invalid username or password")
+}
+
+// at10FirstUser returns the first registered user — the admin by convention.
+// Returns nil if no users exist.
+func (s *Store) at10FirstUser() *User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	// Prefer an explicit admin profile.
+	for id, p := range s.profiles {
+		if p.Role == RoleAdmin {
+			return s.users[id]
+		}
+	}
+	// Fallback: return any user.
+	for _, u := range s.users {
+		return u
+	}
+	return nil
 }
 
 // HasAnyUsers returns true if at least one user exists.
