@@ -47,13 +47,13 @@ const (
 
 // Info holds detected GPU capabilities.
 type Info struct {
-	Tier     Tier   `json:"tier"`
-	TierName string `json:"tier_name"`
-	Vendor   Vendor `json:"vendor"`
-	Device   string `json:"device"`   // GPU device name from lspci/nvidia-smi
-	Encoder  string `json:"encoder"`  // GStreamer encoder element name
-	Payloader string `json:"payloader"` // GStreamer RTP payloader element
-	Codec    string `json:"codec"`    // WebRTC codec mime type
+	Tier        Tier   `json:"tier"`
+	TierName    string `json:"tier_name"`
+	Vendor      Vendor `json:"vendor"`
+	Device      string `json:"device"`       // GPU device name from lspci/nvidia-smi
+	Encoder     string `json:"encoder"`      // GStreamer encoder element name
+	Payloader   string `json:"payloader"`    // GStreamer RTP payloader element
+	Codec       string `json:"codec"`        // WebRTC codec mime type
 	HasDRI      bool   `json:"has_dri"`      // /dev/dri exists
 	HasAV1      bool   `json:"has_av1"`      // AV1 hardware encode available
 	HasPipeWire bool   `json:"has_pipewire"` // PipeWire screen capture available
@@ -139,6 +139,53 @@ func (g *Info) EncoderArgs() []string {
 			"keyframe-max-dist=30", "threads=4", "end-usage=cbr",
 			"undershoot=95", "buffer-size=6000", "buffer-initial-size=4000",
 			"lag-in-frames=0", "error-resilient=1",
+		}
+	}
+}
+
+// GamingEncoderArgs returns GStreamer encoder args tuned for gaming:
+// zero-latency, no B-frames, no lookahead, CBR at the given bitrate (kbps).
+func (g *Info) GamingEncoderArgs(fps, bitrate int) []string {
+	if g.HasAV1 {
+		switch g.Tier {
+		case TierNVENC:
+			return []string{
+				"nvav1enc",
+				fmt.Sprintf("bitrate=%d", bitrate), "preset=low-latency-hp", "rc-mode=cbr",
+				"zerolatency=true", fmt.Sprintf("gop-size=%d", fps*2),
+			}
+		case TierVAAPI:
+			return []string{
+				"vaav1enc",
+				fmt.Sprintf("bitrate=%d", bitrate), "rate-control=cbr",
+				"tune=low-power", fmt.Sprintf("keyframe-period=%d", fps*2),
+			}
+		}
+	}
+	switch g.Tier {
+	case TierNVENC:
+		return []string{
+			"nvh264enc",
+			fmt.Sprintf("bitrate=%d", bitrate), "preset=low-latency-hp", "rc-mode=cbr",
+			"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "bframes=0",
+			fmt.Sprintf("gop-size=%d", fps*2),
+		}
+	case TierVAAPI:
+		return []string{
+			"vaapih264enc",
+			fmt.Sprintf("bitrate=%d", bitrate), "rate-control=cbr",
+			"tune=low-power", "max-bframes=0",
+			fmt.Sprintf("keyframe-period=%d", fps*2),
+		}
+	default:
+		bps := bitrate * 1000
+		return []string{
+			"vp8enc",
+			fmt.Sprintf("target-bitrate=%d", bps), "cpu-used=16", "deadline=1",
+			"lag-in-frames=0", "end-usage=cbr",
+			fmt.Sprintf("threads=%d", 8), fmt.Sprintf("keyframe-max-dist=%d", fps*2),
+			"undershoot=95", "buffer-size=6000", "buffer-initial-size=4000",
+			"error-resilient=1",
 		}
 	}
 }

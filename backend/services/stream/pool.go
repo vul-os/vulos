@@ -64,6 +64,22 @@ type LaunchOpts struct {
 	Restart bool
 	// UserHome is the home directory of the requesting user (e.g. /home/alice).
 	UserHome string
+	// Gaming enables gaming-mode encoder profile and bitrate tiers.
+	// When true: zero-latency encoder args, no B-frames, no lookahead,
+	// Opus 10ms frames, and gaming bitrate tiers (6000–10000 kbps).
+	// When false (default): byte-identical to the pre-gaming-mode path.
+	Gaming bool
+}
+
+// applyGamingPriority raises scheduling priority for a just-started process when
+// gaming mode is enabled. It is called immediately after cmd.Start() returns.
+// On Linux: attempts SCHED_FIFO via sched_setscheduler; falls back to nice -10
+// on EPERM (no CAP_SYS_NICE). On other platforms the call is a no-op.
+// Failures are logged but never propagate — non-gaming sessions are unaffected.
+func applyGamingPriority(pid int, label string) {
+	if err := setRealtimePriority(pid); err != nil {
+		log.Printf("[stream] gaming priority (%s, pid=%d): %v", label, pid, err)
+	}
 }
 
 // Launch starts a new streaming session: Xvfb + app + GStreamer + WebRTC.
@@ -199,6 +215,9 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		sess.Stop()
 		return nil, fmt.Errorf("app %q: %w", opts.Command, err)
 	}
+	if opts.Gaming {
+		applyGamingPriority(sess.app.Process.Pid, opts.Name)
+	}
 
 	// 3. WebRTC tracks
 	vTrack, _ := webrtc.NewTrackLocalStaticRTP(
@@ -222,9 +241,23 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 
 	gstBin, _ := exec.LookPath("gst-launch-1.0")
 	if gstBin != "" {
+		// niceBin returns the binary + prepended args to run a command under
+		// nice -10 when gaming mode is active and the `nice` binary is available.
+		// Falls back to the plain binary when nice is not found.
+		niceBin, niceArgs := gstBin, []string(nil)
+		if opts.Gaming {
+			if nb, err := exec.LookPath("nice"); err == nil {
+				niceBin = nb
+				niceArgs = []string{"-n", "-10", gstBin}
+			} else {
+				log.Printf("[stream] gaming encoder priority: `nice` not found, running at default priority")
+			}
+		}
+
 		// Video pipeline
 		go runWithBackoff(ctx, sess.Name+"-video", func() *exec.Cmd {
-			args := []string{"-q"}
+			args := append([]string(nil), niceArgs...)
+			args = append(args, "-q")
 			// Capture source: PipeWire DMA-BUF when available, ximagesrc fallback
 			args = append(args, gpuInfo.CaptureArgs(display, opts.FPS)...)
 			// Color conversion / GPU upload (DMA-BUF for VA-API, CUDA for NVENC, CPU for software)
@@ -232,14 +265,19 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			args = append(args, gpuInfo.ConvertArgs()...)
 			args = append(args, "!", "queue", "max-size-buffers=1", "leaky=downstream")
 			args = append(args, "!")
-			args = append(args, gpuInfo.EncoderArgs()...)
+			// Encoder: gaming profile (zero-latency, no B-frames) or standard profile
+			if opts.Gaming {
+				args = append(args, gpuInfo.GamingEncoderArgs(opts.FPS, QualityGaming.Bitrate())...)
+			} else {
+				args = append(args, gpuInfo.EncoderArgs()...)
+			}
 			args = append(args, "!")
 			args = append(args, gpuInfo.PayloaderArgs()...)
 			args = append(args, "!",
 				"udpsink", "host=127.0.0.1", fmt.Sprintf("port=%d", videoPort),
 				"sync=false", "async=false",
 			)
-			cmd := exec.CommandContext(ctx, gstBin, args...)
+			cmd := exec.CommandContext(ctx, niceBin, args...)
 			cmd.Env = append(os.Environ(), "DISPLAY="+display)
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			cmd.Stdout = os.Stdout
@@ -249,11 +287,17 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 
 		// Audio pipeline — captures from virtual speaker monitor (all app audio)
 		go runWithBackoff(ctx, sess.Name+"-audio", func() *exec.Cmd {
+			// Gaming mode: 10ms Opus frames for lower audio latency.
+			// Normal mode: 20ms frames (standard quality/CPU trade-off).
+			opusFrameSize := "20"
+			if opts.Gaming {
+				opusFrameSize = "10"
+			}
 			args := []string{"-q",
 				"pulsesrc", "device=virtual_speaker.monitor",
 				"!", "audio/x-raw,rate=48000,channels=2",
 				"!", "queue", "max-size-buffers=1", "leaky=downstream",
-				"!", "opusenc", "bitrate=128000", "frame-size=20",
+				"!", "opusenc", "bitrate=128000", "frame-size=" + opusFrameSize,
 				"!", "rtpopuspay", "pt=111",
 				"!", "udpsink", "host=127.0.0.1", fmt.Sprintf("port=%d", audioPort),
 				"sync=false", "async=false",
@@ -315,6 +359,9 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 				p.mu.Unlock()
 				return
 			}
+			if opts.Gaming {
+				applyGamingPriority(newApp.Process.Pid, opts.Name)
+			}
 			sess.mu.Lock()
 			sess.app = newApp
 			sess.mu.Unlock()
@@ -331,8 +378,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	p.sessions[opts.ID] = sess
 	p.mu.Unlock()
 
-	log.Printf("[stream] launched %q on %s (encoder=%s, %dx%d@%dfps)",
-		opts.Name, display, gpuInfo.Encoder, opts.Width, opts.Height, opts.FPS)
+	log.Printf("[stream] launched %q on %s (encoder=%s, %dx%d@%dfps, gaming=%v)",
+		opts.Name, display, gpuInfo.Encoder, opts.Width, opts.Height, opts.FPS, opts.Gaming)
 	return sess, nil
 }
 
@@ -402,6 +449,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 			Height  int      `json:"height"`
 			FPS     int      `json:"fps"`
 			Restart bool     `json:"restart"`
+			Gaming  bool     `json:"gaming"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, `{"error":"bad request"}`, 400)
@@ -421,6 +469,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 			Args: req.Args, Env: req.Env,
 			Width: req.Width, Height: req.Height, FPS: req.FPS,
 			Restart: req.Restart, UserHome: userHome,
+			Gaming: req.Gaming,
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)

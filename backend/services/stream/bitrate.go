@@ -13,17 +13,21 @@ import (
 type Quality int
 
 const (
-	QualityLow    Quality = 0 // 500 kbps — high loss / slow connection
-	QualityMedium Quality = 1 // 1500 kbps — default
-	QualityHigh   Quality = 2 // 2500 kbps — good connection
-	QualityMax    Quality = 3 // 4000 kbps — excellent connection
+	QualityLow       Quality = 0 // 500 kbps — high loss / slow connection
+	QualityMedium    Quality = 1 // 1500 kbps — default
+	QualityHigh      Quality = 2 // 2500 kbps — good connection
+	QualityMax       Quality = 3 // 4000 kbps — excellent connection
+	QualityGaming    Quality = 4 // 6000 kbps — gaming default
+	QualityGamingMax Quality = 5 // 10000 kbps — gaming, excellent connection
 )
 
 var qualityBitrates = map[Quality]int{
-	QualityLow:    500,
-	QualityMedium: 1500,
-	QualityHigh:   2500,
-	QualityMax:    4000,
+	QualityLow:       500,
+	QualityMedium:    1500,
+	QualityHigh:      2500,
+	QualityMax:       4000,
+	QualityGaming:    6000,
+	QualityGamingMax: 10000,
 }
 
 func (q Quality) Bitrate() int {
@@ -51,11 +55,11 @@ func (q Quality) String() string {
 // bitrateController monitors a WebRTC peer connection and signals when
 // the stream quality should change. It reads RTCP stats every few seconds.
 type bitrateController struct {
-	mu      sync.Mutex
-	pc      *webrtc.PeerConnection
-	current Quality
+	mu       sync.Mutex
+	pc       *webrtc.PeerConnection
+	current  Quality
 	onChange func(Quality)
-	stop    chan struct{}
+	stop     chan struct{}
 }
 
 func newBitrateController(pc *webrtc.PeerConnection, initial Quality, onChange func(Quality)) *bitrateController {
