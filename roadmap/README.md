@@ -1,0 +1,63 @@
+# Vula OS Roadmap
+
+This directory holds the design documents — one per system area. Each document explains *what* a part of Vula OS is meant to do and *how* it's structured, but **not** the day-to-day "what's left to ship" view. That lives in [`../tasks.md`](../tasks.md), with one task per `### [ID]` entry pointing back here.
+
+Read it like this:
+
+1. Start with the area that interests you.
+2. Skim the **Goal** + **Non-goals** at the top of the file.
+3. If you want to *do* something rather than just read, jump to `tasks.md`, find that area's section, and pick a `todo` task.
+
+> Status labels below reflect the implementation state in `tasks.md` at the time of writing, not the design's completeness. Designs are mostly done; what varies is how much of the design has shipped.
+
+## Areas
+
+| Area | File | What it's about | Status |
+|---|---|---|---|
+| AI assistant | [`AI.md`](AI.md) | The Cmd+K / chat panel, AI-generated mini-apps, sandbox, harness choice, where chat is surfaced across the desktop | in-progress |
+| App store | [`APP-STORE.md`](APP-STORE.md) | apt / Flatpak / static-binary recipes, how installable apps reach the registry, web-native vs streamed apps | in-progress |
+| Default web apps | [`DEFAULT-WEB-APPS.md`](DEFAULT-WEB-APPS.md) | The small apps that ship in the OS: calculator, calendar, clock, text editor, weather, maps, music, video, etc. | stable |
+| Bare-metal init | [`BAREMETAL-INIT.md`](BAREMETAL-INIT.md) | Power-on → compositor → desktop. labwc + cage, Plymouth splash, live USB + installer, ARM device variants | in-progress |
+| First-boot setup | [`INIT.md`](INIT.md) | The setup wizard that runs the first time the desktop loads: identity, storage, SSH, recovery kit, join flow | planned |
+| Cluster & storage | [`CLUSTER.md`](CLUSTER.md) | Multi-node sync via S3 (MinIO) + cr-sqlite CRDT replication, file sync, presence leases, conflicts | in-progress |
+| Network & remote access | [`NETWORK.md`](NETWORK.md) | Subdomain routing, connection modes (fabric / direct / local), TURN/coturn, `{app}--{profile}` naming | in-progress |
+| Notifications | [`NOTIFICATIONS.md`](NOTIFICATIONS.md) | Structured notification model, notification center, DND, action buttons, push-via-peering | planned |
+| Peering | [`PEERING.md`](PEERING.md) | The big one: Ed25519 identity, contacts, signed S2S envelopes, messaging, media, WebRTC calls, SFU, drop, relays, feeds | stable |
+| Device profiles | [`DEVICE-PROFILES.md`](DEVICE-PROFILES.md) | pc / tv / car / watch — different layouts, focus models, and behaviors per form factor | stable |
+| Streaming optimizations | [`STREAMING-OPTIMIZATIONS.md`](STREAMING-OPTIMIZATIONS.md) | GPU encoder selection, NVENC/VA-API low-latency tuning, adaptive bitrate, audio backends, Wayland capture | stable |
+| Gaming | [`GAMING.md`](GAMING.md) | Per-session gaming mode: FPS, encoder profiles, pointer-lock, gamepad rumble, process priority, MangoHud | in-progress |
+| Other | [`OTHER.md`](OTHER.md) | Catch-all: theming, i18n, accessibility — small items that don't deserve their own file yet | in-progress |
+
+### Future / exploratory
+
+The `future/` subdirectory holds areas that are designed but not actively being shipped (or where the tasks are still long-tail backlog). These are real designs, not napkin sketches — they're just lower priority than the items above.
+
+| Area | File | What it's about |
+|---|---|---|
+| Authentication | [`future/AUTHENTICATION.md`](future/AUTHENTICATION.md) | TPM-sealed device identity, TOTP, password manager, FIDO2 passkeys, mTLS client certs, SMS-over-VoIP |
+| Mobile / telephony | [`future/MOBILE.md`](future/MOBILE.md) | ModemManager-backed SMS, voice calls, eSIM management; Messages + Dialer apps |
+| ActivityPub | [`future/ACTIVITYPUB.md`](future/ACTIVITYPUB.md) | A single Fediverse client (Mastodon, Pixelfed, PeerTube, Lemmy) as a default app |
+| Ladybird browser | [`future/LADYBIRD-BROWSER.md`](future/LADYBIRD-BROWSER.md) | Spike on replacing Chromium with Ladybird's headless engine for zero-copy capture |
+
+## Where to start reading
+
+If you're new to the project and want to understand it end to end, read in roughly this order:
+
+1. [`AI.md`](AI.md) — small, conversational, sets the tone of "the OS should feel like an assistant."
+2. [`DEFAULT-WEB-APPS.md`](DEFAULT-WEB-APPS.md) — concrete: what shipping apps look like inside the shell.
+3. [`APP-STORE.md`](APP-STORE.md) — how the OS *gains* apps: the registry, recipes, web vs streamed.
+4. [`NETWORK.md`](NETWORK.md) — domain model and how an instance is reachable. Sets up the next two.
+5. [`PEERING.md`](PEERING.md) — the most distinctive idea in the project. Long, but the design is unusually concrete.
+6. [`BAREMETAL-INIT.md`](BAREMETAL-INIT.md) — what happens when you flash to USB. Closes the loop.
+
+The rest you can pick up as you need them.
+
+## Status labels
+
+The badge column above uses three values:
+
+- **stable** — design and implementation are both done, give or take small follow-ups. Most `tasks.md` entries in this area read `done`.
+- **in-progress** — design is settled but a meaningful portion of the work is still `todo`.
+- **planned** — design exists but very little has shipped; expect rough edges and lots of `todo` tasks.
+
+For the precise done/total count per area, see the **At-a-glance** table at the top of [`../tasks.md`](../tasks.md).

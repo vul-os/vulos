@@ -1,3 +1,8 @@
+# Other / Catch-all
+
+> **Goal.** Small items that don't yet justify their own area document — theming, terminal config, accessibility, i18n, and the "security audit" line item that grew into the SECURITY task area after the audit pass (see `tasks.md` `SEC-*`).
+> **Non-goals.** Becoming the dumping ground for every wishlist item. If something here gets more than ~6 tasks, it graduates to its own roadmap file.
+> **Status.** Accent picker, terminal theme, CI CVE scanning, and i18n scaffold have shipped; full security audit is in flight as the `SEC-*` task series.
 
 ### Theming & Display
 - [ ] Night Shift — auto-adjust colour temperature during evening/night hours

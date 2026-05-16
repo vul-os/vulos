@@ -2,6 +2,10 @@
 
 Vulos supports multiple device form factors through a profile system. Profile is selected during initial setup.
 
+> **Goal.** One codebase, four UIs. `pc` (default), `tv` (10-foot, D-pad spatial nav), `car` (large targets + auto-DND), `watch` (companion, Qt). Profile is auto-detected at first boot, overridable from settings.
+> **Non-goals.** Separate forks per form factor. We re-use the same React shell and switch layout/behavior through a `data-device-profile` attribute on the root.
+> **Status.** Profile model, detection, persistence, TV spatial navigation, and TV 10-foot home are in. Outstanding: car driving mode (DEVPROF-06).
+
 ## Profiles
 
 ### PC / Tablet / Mobile

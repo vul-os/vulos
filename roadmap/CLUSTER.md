@@ -4,6 +4,10 @@ How multiple Vula instances share state. Each node is a full, independent Vula i
 
 For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For bare metal boot see BAREMETAL-INIT.md.
 
+> **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. CRDT-backed (cr-sqlite) so two nodes editing concurrently merge cleanly. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
+> **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS.
+> **Status.** SQLite + cr-sqlite store, S3 client (SSE-C + Argon2id), node identity, change-set sync loop, file sync with conflict copies, and presence leases are in. Outstanding: SQLite-backed auth (CLUSTER-02), conflict-resolver UI, MinIO registry entry.
+
 ---
 
 ## Architecture

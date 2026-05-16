@@ -4,6 +4,10 @@ System-level notifications for Vula OS, delivered through the peering layer. Onl
 
 This spec depends on the peering system defined in [PEERING.md](PEERING.md). Notifications use the same identity, trust model, server-to-server delivery, and cryptographic guarantees. Read PEERING.md first.
 
+> **Goal.** A real notification system: structured priorities (low / normal / high / critical), persistent history with grouping, Do-Not-Disturb modes, action buttons on the notification itself, and — when peering lands — cross-instance push.
+> **Non-goals.** A push-notification service. We're a peer system; notifications travel the same trust path as messages.
+> **Status.** Notification model + toast UI are in. Outstanding: persistent storage (NOTIF-02 — currently blocked on stale-base merge, see decisions.md D21), notification center, DND, inline actions.
+
 ---
 
 ## Core Concept

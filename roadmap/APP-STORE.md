@@ -2,6 +2,10 @@
 
 Apps available for install from the Vulos app store. These are not bundled with the OS — users install what they need. Mix of web-native apps (run in browser) and streamed apps (run natively, UI streamed via WebRTC).
 
+> **Goal.** A curated registry that turns "self-hosting an app" into one click. Recipes for apt + Flatpak (already working), static binaries, and download-and-extract artefacts (Vaultwarden, Navidrome, Memos, etc.). Each installed app gets its own subdomain and isolated network namespace.
+> **Non-goals.** Becoming the Debian package archive. Hosting third-party app binaries — we point at upstream releases with pinned checksums.
+> **Status.** Recipe types and the install pipeline are in. Outstanding: more curated registry entries (gaming, Matrix, Vaultwarden, LibreTranslate, productivity apps), auto-gaming-mode flag for known gaming apps.
+
 ---
 
 ## Full App Checklist

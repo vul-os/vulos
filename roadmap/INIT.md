@@ -2,6 +2,10 @@
 
 The software-level setup wizard that runs after the OS boots for the first time. Separate from BAREMETAL-INIT.md (which covers hardware boot, compositor, installer). This is what the user sees once the desktop is loaded and no `~/.vulos/db/` exists.
 
+> **Goal.** Take a brand-new instance from "blank disk" to "running, identifiable, recoverable." Generate a stable ULID, pick a hostname, optionally provision MinIO for cluster sync, register an emergency SSH key, and walk the user through a printable Recovery Kit (JSON + QR). Joining an existing cluster is a parallel sub-flow: paste S3 creds → sync → done.
+> **Non-goals.** Re-running on every boot. We gate on `instance.json` so this fires once.
+> **Status.** Identity step + boot-mode router + MinIO provisioning endpoint are in. Outstanding: the wizard UI itself (INIT-05/06/09), join codes, and the cloud recovery-kit backup.
+
 ---
 
 ## New or Join

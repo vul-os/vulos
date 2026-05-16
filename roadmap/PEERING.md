@@ -2,6 +2,10 @@
 
 Direct communication between Vula OS instances. Every Vula instance is a server — if you're running Vula, you can receive. No relay infrastructure, no third-party accounts, no federation bureaucracy. Your OS is your inbox.
 
+> **Goal.** Make instances first-class peers. Ed25519 identity (`vula:ed25519:<base58>`), signed canonical-JSON envelopes, server-to-server HTTP, WebSocket fan-out to the user's browser. On top of that primitive: contacts + trust, messaging, media, voice/video (WebRTC, optional Pion SFU), Yjs collaboration, AirDrop-style Drop, and optional encrypted relays for offline delivery.
+> **Non-goals.** Federation (no shared global namespace). Anonymous messaging. Hosting other people's data without their key.
+> **Status.** Everything in the 41-task PEER- track is done. The design here is the implementation that shipped, not a forward plan. Cross-references to it from other areas (notifications, files, presence) are still being wired up.
+
 ---
 
 ## Core Concept

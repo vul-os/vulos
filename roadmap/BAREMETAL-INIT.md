@@ -8,6 +8,10 @@ Works two ways simultaneously:
 
 On bare metal, apps launch as real native windows on the Wayland compositor — not streamed via WebRTC. The browser (showing the Vula OS shell) sits in the background like a wallpaper. Native windows get the same traffic light UI as in-browser windows.
 
+> **Goal.** Boot the same image on USB / VM / cloud and reach a Vula desktop in seconds. labwc + cage compose the screen; the WebKit/Chromium browser is pinned to the background layer; native windows live above it.
+> **Non-goals.** Replacing GNOME/KDE for general-purpose Linux. Building our own kernel. We use stock Debian + a few well-chosen pieces (labwc, cage, Plymouth, sd-boot).
+> **Status.** Compositor + browser-as-background works; live USB + installer work. Outstanding: ARM device variants (RPi, PinePhone), Plymouth ↔ labwc handoff polish, init networking (DHCP / WiFi fallback / mDNS).
+
 ---
 
 ## How Modern OS Boot Works

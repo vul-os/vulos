@@ -2,6 +2,10 @@
 
 How users reach their Vula instances from the internet. Domain setup, TLS, subdomain routing, connection modes.
 
+> **Goal.** A clean naming scheme — `{app}--{profile}.{instance-ulid}.{domain}` — and four ways to reach it: Vulos fabric (Ziti, NAT-traversal), direct (your IP + acme-dns), own domain, or local-only. Cookies scoped per-instance so sessions don't leak between instances.
+> **Non-goals.** Running a hosted control plane for end-users. The fabric service is open-source and self-hostable; the default Vulos-operated fabric is a convenience, not a lock-in.
+> **Status.** Identity, cookie scoping, health endpoint, direct-mode enrollment, and `--` naming validation are in. Outstanding: subdomain parser + namespace keying (NET-01/02/04), connection-mode UI (NET-09), TURN UI (NET-10).
+
 ---
 
 ## Connection Modes

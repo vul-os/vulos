@@ -1,5 +1,9 @@
 # AI
 
+> **Goal.** Make the AI assistant feel like the OS's brain rather than a separate app — surfaced from the desktop, the dock, app empty/error states, and right-click context menus. Let users generate, save, and iterate on small "AI apps" (HTML + optional Python sandbox).
+> **Non-goals.** Replacing real apps with chat. Training models. Running models inside the OS — providers (Ollama, Claude, OpenAI) are pluggable.
+> **Status.** Foundation is in: provider layer, sandbox, viewport rendering, save/launch. Outstanding: editing/versioning AI apps, public-app visibility + topbar warning, deeper context-menu integration.
+
 ## Choosing a Harness
 
 The system already has a custom multi-provider AI layer (Ollama, Claude, OpenAI) with streaming, chat history, embeddings, sandbox execution, and viewport rendering. The question is whether to adopt an external harness for orchestration, tool use, and agent workflows — or continue building our own.

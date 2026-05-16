@@ -6,6 +6,10 @@ The core insight: a Vula instance with a TPM is a better "possession factor" tha
 
 This is not a single app. It's an OS-level service that every Vula app uses when authenticating against external services.
 
+> **Goal.** Make a Vula instance a credible "possession factor" — TPM-sealed device identity, TOTP (with Google Authenticator import/export), a real encrypted password manager, FIDO2 server-side passkeys, mTLS client certs, and SMS-over-VoIP for the last-mile services that still demand it.
+> **Non-goals.** Becoming an identity provider for the open web. We're a local authenticator/vault, not Okta.
+> **Status.** TOTP (vault + UI + import), credential vault, TPM/software keystore abstraction, mTLS cert store, and SMS receive are all in. Outstanding: device-identity API surface (AUTH-10), FIDO2 finishing, WebAuthn bridge.
+
 ---
 
 ## Difficulty Rating Scale

@@ -2,6 +2,10 @@
 
 Gaming mode is a per-session configuration flag that raises FPS, bitrate, encoder aggressiveness, and input polling rate. Normal app streaming is unchanged.
 
+> **Goal.** Stream Wine/Lutris/Steam games over the same WebRTC pipeline as everything else, but with the latency budget cranked: 60–144 FPS, zerolatency NVENC/VA-API, 10ms Opus frames, pointer-lock, raw gamepad. Auto-enable when launching Wine/Lutris/Steam or any `gaming` category app.
+> **Non-goals.** Cloud-gaming-as-a-service. We don't host games. We do everything per-session, on the user's own hardware.
+> **Status.** FPS config, gaming-mode encoder profiles, pointer-lock, shared gamepad hook, rumble, and process priority are all in. Outstanding: stream-toolbar UI (GAME-08) and auto-enable on app category (GAME-07).
+
 ---
 
 ## Streaming Modes
