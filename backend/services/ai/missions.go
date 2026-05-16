@@ -25,11 +25,11 @@ type Mission struct {
 type MissionStatus string
 
 const (
-	MissionPending    MissionStatus = "pending"
-	MissionRunning    MissionStatus = "running"
-	MissionCompleted  MissionStatus = "completed"
-	MissionFailed     MissionStatus = "failed"
-	MissionCancelled  MissionStatus = "cancelled"
+	MissionPending   MissionStatus = "pending"
+	MissionRunning   MissionStatus = "running"
+	MissionCompleted MissionStatus = "completed"
+	MissionFailed    MissionStatus = "failed"
+	MissionCancelled MissionStatus = "cancelled"
 )
 
 type MissionStep struct {

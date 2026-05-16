@@ -17,15 +17,15 @@ import (
 type Provider string
 
 const (
-	ProviderClaude  Provider = "claude"
-	ProviderOpenAI  Provider = "openai"
-	ProviderOllama  Provider = "ollama"
-	ProviderCustom  Provider = "custom" // any OpenAI-compatible endpoint
+	ProviderClaude Provider = "claude"
+	ProviderOpenAI Provider = "openai"
+	ProviderOllama Provider = "ollama"
+	ProviderCustom Provider = "custom" // any OpenAI-compatible endpoint
 )
 
 // Message is a chat message.
 type Message struct {
-	Role    string `json:"role"`    // "system", "user", "assistant"
+	Role    string `json:"role"` // "system", "user", "assistant"
 	Content string `json:"content"`
 }
 
@@ -218,7 +218,9 @@ func (s *Service) completeClaude(ctx context.Context, cfg Config, req Completion
 	}
 
 	var result struct {
-		Content []struct{ Text string `json:"text"` } `json:"content"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 	if len(result.Content) > 0 {
@@ -467,11 +469,15 @@ func filterMessages(msgs []Message, excludeRole string) []Message {
 }
 
 func orDefault(v, def int) int {
-	if v > 0 { return v }
+	if v > 0 {
+		return v
+	}
 	return def
 }
 
 func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" { return v }
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
 	return fallback
 }
