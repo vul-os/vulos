@@ -980,7 +980,7 @@ Scope: detect host loss, auto-select highest-upload new host (PEER-20/25 data), 
 AC: [ ] kill host → failover best-bw [ ] resumes few sec no full drop [ ] 51st rejected
 
 ### [PEER-30] Yjs collab transport: sync WS + awareness
-`todo` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
+`done` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
 Scope: store Yjs doc binaries+meta, relay opaque CRDT blobs S2S, broadcast updates+awareness on collab channel; useYDoc(docId) hook.
 AC: [ ] 2 browsers same doc merge realtime [ ] awareness broadcasts+clears on disconnect [ ] yjs state persists
 
