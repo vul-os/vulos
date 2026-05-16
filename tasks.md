@@ -546,7 +546,7 @@ Scope: minio type:service registry entry (per roadmap, ${PORT}/${VULOS_STORAGE_*
 AC: [ ] minio entry valid [ ] panel w/ toggle+status [ ] enable installs MinIO via /api/store [ ] JSON still parses
 
 ### [CLUSTER-07] App registry sync: installed_apps reconciler
-`todo` · P2 · L · dep: CLUSTER-01, CLUSTER-05 · parallel: no — new backend/services/cluster/reconcile.go, backend/services/appnet/store.go
+`done` · P2 · L · dep: CLUSTER-01, CLUSTER-05 · parallel: no — new backend/services/cluster/reconcile.go, backend/services/appnet/store.go
 Scope: installed_apps (CRR) + local_app_status (local) tables; write desired-state on install/uninstall; ReconcileApps() diffs DB vs Installed() w/ backoff.
 AC: [ ] install records row [ ] reconciler installs missing [ ] uninstalls status=removed [ ] failures recorded+retried
 
