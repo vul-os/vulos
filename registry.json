@@ -1364,6 +1364,119 @@
           "auto_start": false
         }
       }
+    },
+    "wine": {
+      "name": "Wine",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Windows compatibility layer \u2014 run Windows applications and games on Linux without a virtual machine",
+      "category": "games",
+      "author": "WineHQ Project",
+      "homepage": "https://www.winehq.org",
+      "icon": "wine",
+      "keywords": [
+        "windows",
+        "compatibility",
+        "emulation",
+        "games",
+        "exe",
+        "win32"
+      ],
+      "license": "LGPL-2.1",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends wine winetricks",
+          "command": "wine",
+          "arch": "amd64",
+          "permissions": [
+            "display",
+            "filesystem",
+            "network"
+          ],
+          "singleton": false,
+          "post_install": "wineboot --init",
+          "env": {
+            "VULOS_GAMING": "1"
+          }
+        }
+      }
+    },
+    "lutris": {
+      "name": "Lutris",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Open-source gaming platform \u2014 manage and launch games from GOG, Epic, Steam, emulators, and Windows installers",
+      "category": "games",
+      "author": "Lutris Project",
+      "homepage": "https://lutris.net",
+      "icon": "lutris",
+      "keywords": [
+        "games",
+        "gaming",
+        "launcher",
+        "gog",
+        "epic",
+        "emulator",
+        "wine"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends lutris",
+          "command": "lutris",
+          "arch": "amd64",
+          "permissions": [
+            "display",
+            "filesystem",
+            "network",
+            "gpu"
+          ],
+          "singleton": true,
+          "post_install": "lutris --init 2>/dev/null || true",
+          "env": {
+            "VULOS_GAMING": "1"
+          }
+        }
+      }
+    },
+    "steam": {
+      "name": "Steam",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Steam gaming client \u2014 access your Steam library, store, community, and Proton-powered Windows game compatibility",
+      "category": "games",
+      "author": "Valve Corporation",
+      "homepage": "https://store.steampowered.com",
+      "icon": "steam",
+      "keywords": [
+        "games",
+        "gaming",
+        "steam",
+        "valve",
+        "proton",
+        "store",
+        "library"
+      ],
+      "license": "proprietary",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends steam-installer",
+          "command": "steam",
+          "arch": "amd64",
+          "permissions": [
+            "display",
+            "filesystem",
+            "network",
+            "gpu",
+            "audio"
+          ],
+          "singleton": true,
+          "post_install": "steam --reset 2>/dev/null || true",
+          "env": {
+            "VULOS_GAMING": "1"
+          }
+        }
+      }
     }
   }
 }
