@@ -207,7 +207,8 @@ class MusicHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(400)
             return
         full = os.path.realpath(os.path.join(MUSIC_DIR, rel))
-        if not full.startswith(os.path.realpath(MUSIC_DIR)):
+        _mdir_real = os.path.realpath(MUSIC_DIR)
+        if not (full == _mdir_real or full.startswith(_mdir_real + os.sep)):
             self.send_error(403)
             return
         if not os.path.isfile(full):
@@ -229,7 +230,8 @@ class MusicHandler(http.server.BaseHTTPRequestHandler):
         """Serve audio file with range support for seeking."""
         rel = unquote(rel)
         full = os.path.realpath(os.path.join(MUSIC_DIR, rel))
-        if not full.startswith(os.path.realpath(MUSIC_DIR)):
+        _mdir_real = os.path.realpath(MUSIC_DIR)
+        if not (full == _mdir_real or full.startswith(_mdir_real + os.sep)):
             self.send_error(403)
             return
         if not os.path.isfile(full):

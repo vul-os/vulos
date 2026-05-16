@@ -96,7 +96,8 @@ def list_albums(root):
 def get_file_info(root, rel_path):
     """Get detailed file info including basic EXIF for JPEGs."""
     path = os.path.realpath(os.path.join(root, rel_path))
-    if not path.startswith(os.path.realpath(root)):
+    _root_real = os.path.realpath(root)
+    if not (path == _root_real or path.startswith(_root_real + os.sep)):
         return None
     if not os.path.isfile(path):
         return None
@@ -304,7 +305,8 @@ class GalleryHandler(http.server.BaseHTTPRequestHandler):
         elif parsed.path == "/api/delete":
             rel = body.get("path", "")
             full = os.path.realpath(os.path.join(MEDIA_DIR, rel))
-            if not full.startswith(os.path.realpath(MEDIA_DIR)):
+            _mdir_real = os.path.realpath(MEDIA_DIR)
+            if not (full == _mdir_real or full.startswith(_mdir_real + os.sep)):
                 self.send_error(403); return
             if os.path.isfile(full):
                 os.remove(full)
@@ -344,7 +346,8 @@ class GalleryHandler(http.server.BaseHTTPRequestHandler):
     def handle_describe(self, rel_path):
         """Ask AI to describe an image."""
         full = os.path.realpath(os.path.join(MEDIA_DIR, rel_path))
-        if not full.startswith(os.path.realpath(MEDIA_DIR)):
+        _mdir_real = os.path.realpath(MEDIA_DIR)
+        if not (full == _mdir_real or full.startswith(_mdir_real + os.sep)):
             self.send_error(403); return
         try:
             ai_req = urllib.request.Request(
@@ -368,7 +371,8 @@ class GalleryHandler(http.server.BaseHTTPRequestHandler):
         rel = self.path[len("/media/"):]
         path = os.path.join(MEDIA_DIR, unquote(rel))
         path = os.path.realpath(path)
-        if not path.startswith(os.path.realpath(MEDIA_DIR)):
+        _mdir_real = os.path.realpath(MEDIA_DIR)
+        if not (path == _mdir_real or path.startswith(_mdir_real + os.sep)):
             self.send_error(403); return
         if not os.path.isfile(path):
             self.send_error(404); return
