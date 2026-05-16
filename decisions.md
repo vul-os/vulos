@@ -507,3 +507,10 @@ D77 (21:30): Ladybird removed (Chromium-only, build green @ 875878f); roadmap+ta
 ## D78 (21:45) — Tier-1 fixed; Tier-2 wave (6 Sonnet)
 TestGamingEncoderArgs was a STALE TEST not a code regression: STREAM-03/04 made low-latency tokens (zerolatency/b-adapt=false/rc-lookahead=0/tune=low-power) baseline; GAME-07's worker test wrongly listed them gaming-exclusive. Fixed test forbidden-list to genuinely-gaming-only tokens, no prod change @ 1e2521d. Full suite GREEN.
 Tier-2: 6 Sonnet agents — coverage for the 9 bare pkgs grouped file-disjoint [ai] [appfs+audio] [bluetooth+display] [desktop+hwdetect] [profiles+sysuser] + 1 integration smoke harness (server boot + key-endpoint reachability). Test-only/new-dir diffs = low merge risk. 568 unpushed commits = user decision, NOT auto-pushing (significant outward action; awaiting explicit instruction).
+
+## D79 (21:50) — Comprehensive test+security uplift (1 Opus pen-test + 4 Sonnet)
+User: improve testing of everything + pen testing + security testing + test all features properly. Attack surface grew massively since the D24 audit (NOTIF persist endpoints, joinsync unauth setup paths, AUTH-10 admin-token bearer in Middleware, AUTH-12 passkeys, CLUSTER-02 SQLite auth, DEMO mode, BMINIT native-launch). Dispatch:
+- Opus SECURITY-AUDIT-2: read-only adversarial re-audit of CURRENT main (authorized — owner's own code) + WRITE an adversarial/regression security test suite (auth-bypass, SSRF, path-traversal, injection, SEC-A C1 invariant under new bearer path, joinsync unauth, admin-token, passkeys) + SECURITY-AUDIT-2.md findings report. Verifies the SEC-A/B/E/F/G/H/I fixes still hold post-merge.
+- Sonnet ×3: finish bare-pkg coverage [bluetooth+display] [desktop+hwdetect] [profiles+sysuser].
+- Sonnet ×1: integration smoke harness — server boots, key endpoints reachable, security invariants (X-User-ID strip, /api/open not public, admin-gates) assert at HTTP layer.
+Plus 2 already running (TEST-ai, TEST-appfs+audio). All test/report-only or new-dir → low merge risk; build-gate each.
