@@ -645,7 +645,7 @@ Scope: POST /api/shell/native-launch{binary,args,app_id} guarded nativeMode==nat
 AC: [ ] spawns w/ WAYLAND_DISPLAY, returns pid [ ] 400 when not native [ ] PID reaped+logged [ ] go build
 
 ### [BMINIT-05] Dock: list/focus/close native windows (wlr-foreign-toplevel)
-`todo` · P1 · L · dep: BMINIT-04 · parallel: yes — new backend/services/wltoplevel/, main.go (routes)
+`done` · P1 · L · dep: BMINIT-04 · parallel: yes — new backend/services/wltoplevel/, main.go (routes)
 Scope: Enumerate Wayland toplevels (lswt-style/minimal client); GET /api/shell/windows + focus/minimize/close; empty list outside labwc; add helper to apt if used.
 AC: [ ] /api/shell/windows under labwc [ ] focus/min/close act on handle [ ] empty outside native [ ] go build
 
