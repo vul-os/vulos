@@ -1763,23 +1763,8 @@ func main() {
 		writeJSON(w, turnCfg.GenerateCredentials(userID))
 	})
 
-	// S3 health
-	mux.HandleFunc("GET /api/storage/status", func(w http.ResponseWriter, r *http.Request) {
-		status := map[string]any{
-			"configured": s3cfg.Configured(),
-			"endpoint":   s3cfg.Endpoint,
-			"bucket":     s3cfg.Bucket,
-		}
-		if s3cfg.Configured() {
-			if err := s3cfg.HealthCheck(r.Context()); err != nil {
-				status["reachable"] = false
-				status["error"] = err.Error()
-			} else {
-				status["reachable"] = true
-			}
-		}
-		writeJSON(w, status)
-	})
+	// Storage status (CLUSTER-06) — reads ~/.vulos/db/storage.json, no creds leaked
+	registerStorageRoutes(mux, home)
 
 	// Disk usage
 	mux.HandleFunc("GET /api/disks", func(w http.ResponseWriter, r *http.Request) {

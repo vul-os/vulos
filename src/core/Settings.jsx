@@ -15,6 +15,7 @@ const sections = [
   { id: 'energy', label: 'Battery & Energy' },
   { id: 'vault', label: 'Backup & Sync' },
   { id: 'recall', label: 'Search & Index' },
+  { id: 'storage', label: 'Storage' },
   { id: 'network', label: 'Remote Access' },
   { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
@@ -55,6 +56,7 @@ export default function Settings() {
         {active === 'energy' && <EnergySettings />}
         {active === 'vault' && <VaultSettings />}
         {active === 'recall' && <RecallSettings />}
+        {active === 'storage' && <StorageSettings />}
         {active === 'network' && <NetworkSettings />}
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
@@ -923,6 +925,159 @@ function RecallSettings() {
         </div>
       )}
       <button onClick={reindex} className="btn">Re-index Now</button>
+    </Section>
+  )
+}
+
+// --- Storage / Cluster Sync (CLUSTER-06) ---
+function StorageSettings() {
+  const [status, setStatus] = useState(null)
+  const [showModal, setShowModal] = useState(false)
+  const [form, setForm] = useState({ endpoint: '', bucket: '', region: 'us-east-1', access_key: '', secret_key: '' })
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+
+  const refresh = () =>
+    fetch('/api/storage/status')
+      .then(r => r.json())
+      .then(setStatus)
+      .catch(() => {})
+
+  useEffect(() => { refresh() }, [])
+
+  const enable = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setSaveMsg('')
+    try {
+      const res = await fetch('/api/setup/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (res.ok) {
+        setSaveMsg('Saved')
+        setShowModal(false)
+        setTimeout(() => setSaveMsg(''), 3000)
+        refresh()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setSaveMsg(d.error || 'Failed to save')
+      }
+    } catch {
+      setSaveMsg('Could not reach server')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const fmtGB = (gb) => (gb > 0 ? `${gb.toFixed(1)} GB` : '—')
+
+  return (
+    <Section title="Storage / Cluster Sync">
+      <p className="text-xs text-neutral-600 mb-4">
+        Configure an S3-compatible object store (AWS S3, MinIO, Wasabi, Backblaze) used for vault backups and cluster sync.
+      </p>
+
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-5">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">Status</span>
+          <span className={`text-sm font-medium ${status?.configured ? 'text-green-400' : 'text-neutral-500'}`}>
+            {status == null ? '…' : status.configured ? 'Configured' : 'Disabled'}
+          </span>
+        </div>
+        {status?.configured && (
+          <>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Bucket</span>
+              <span className="text-sm text-neutral-300">{status.bucket || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Region</span>
+              <span className="text-sm text-neutral-300">{status.region || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Allocated</span>
+              <span className="text-sm text-neutral-300">{fmtGB(status.size_gb)}</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Used</span>
+              <span className="text-sm text-neutral-300">{fmtGB(status.used_gb)}</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex gap-3 items-center">
+        <button onClick={() => setShowModal(true)} className="btn text-sm">
+          {status?.configured ? 'Reconfigure' : 'Enable Storage'}
+        </button>
+        {saveMsg && <span className="text-xs text-green-400">{saveMsg}</span>}
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-base font-semibold mb-4">Configure Object Storage</h3>
+            <form onSubmit={enable} className="space-y-3">
+              <Field label="Endpoint">
+                <input
+                  value={form.endpoint}
+                  onChange={e => setForm(f => ({ ...f, endpoint: e.target.value }))}
+                  placeholder="s3.amazonaws.com or minio:9000"
+                  className="input"
+                  required
+                />
+              </Field>
+              <Field label="Bucket">
+                <input
+                  value={form.bucket}
+                  onChange={e => setForm(f => ({ ...f, bucket: e.target.value }))}
+                  placeholder="my-vulos-bucket"
+                  className="input"
+                  required
+                />
+              </Field>
+              <Field label="Region">
+                <input
+                  value={form.region}
+                  onChange={e => setForm(f => ({ ...f, region: e.target.value }))}
+                  placeholder="us-east-1"
+                  className="input"
+                />
+              </Field>
+              <Field label="Access Key">
+                <input
+                  value={form.access_key}
+                  onChange={e => setForm(f => ({ ...f, access_key: e.target.value }))}
+                  placeholder="AKIA…"
+                  className="input"
+                  required
+                />
+              </Field>
+              <Field label="Secret Key">
+                <input
+                  type="password"
+                  value={form.secret_key}
+                  onChange={e => setForm(f => ({ ...f, secret_key: e.target.value }))}
+                  placeholder="••••••••"
+                  className="input"
+                  required
+                />
+              </Field>
+              {saveMsg && <p className="text-xs text-red-400">{saveMsg}</p>}
+              <div className="flex gap-2 pt-1">
+                <button type="submit" disabled={saving} className="btn flex-1">
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" onClick={() => { setShowModal(false); setSaveMsg('') }} className="btn-ghost flex-1">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Section>
   )
 }
