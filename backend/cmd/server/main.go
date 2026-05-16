@@ -29,6 +29,7 @@ import (
 	"vulos/backend/services/bootmode"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
+	"vulos/backend/services/devicekey"
 	"vulos/backend/services/disks"
 	"vulos/backend/services/display"
 	"vulos/backend/services/drivers"
@@ -39,6 +40,7 @@ import (
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/packages"
+	"vulos/backend/services/passkeys"
 	"vulos/backend/services/peering"
 	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
@@ -495,6 +497,16 @@ func main() {
 	credVaultHandler.RegisterHandlers(mux)
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)
+
+	// AUTH-12: server-side passkey (FIDO2/WebAuthn) authenticator. Credentials
+	// are sealed at rest per-user via the device KeyStore (TPM or software).
+	deviceKS, deviceKSErr := devicekey.Open(filepath.Join(home, ".vulos", "auth", "tpm"))
+	if deviceKSErr != nil {
+		log.Printf("passkeys: devicekey unavailable, server-side passkeys disabled: %v", deviceKSErr)
+	} else {
+		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
+		registerPasskeysRoutes(mux, passkeysSvc, authStore)
+	}
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
