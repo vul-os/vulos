@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"vulos/backend/internal/ulid"
 	"vulos/backend/services/naming"
 )
 
@@ -82,7 +83,11 @@ func (s *Store) Create(userID, name, color, icon string) (*BrowserProfile, error
 	defer s.mu.Unlock()
 
 	now := s.nowFn()
-	id := fmt.Sprintf("bp-%d", now.UnixMilli())
+	// Use a ULID so that two creates within the same millisecond are still
+	// distinct (80-bit random suffix).  The "bp-" prefix keeps IDs
+	// recognisable and backward-compatible: old millis-based IDs ("bp-<ms>")
+	// remain valid string keys and continue to load from JSON without change.
+	id := "bp-" + ulid.NewULID()
 	dataDir := filepath.Join(s.baseDir, id)
 	os.MkdirAll(dataDir, 0755)
 

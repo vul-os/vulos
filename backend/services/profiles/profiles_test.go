@@ -2,6 +2,7 @@ package profiles
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -444,6 +445,50 @@ func TestDeviceProfileStore_InvalidPersistedValueFallsBack(t *testing.T) {
 	}
 	if !ValidFormFactor(profile) {
 		t.Errorf("fallback profile %q is not a valid form factor", profile)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// D80 regression: collision-free IDs under same-millisecond burst
+// ---------------------------------------------------------------------------
+
+// sameMilliClock returns a nowFn that always returns exactly the same
+// timestamp, simulating many creates within the same millisecond.
+func sameMilliClock() func() time.Time {
+	fixed := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	return func() time.Time { return fixed }
+}
+
+// TestCreate_CollisionFreeUnderSameMilli creates N profiles in a tight loop
+// where the clock is frozen (same millisecond for every call) and asserts
+// that every profile gets a distinct ID and no profile silently overwrites
+// another.
+func TestCreate_CollisionFreeUnderSameMilli(t *testing.T) {
+	const N = 200
+
+	s := NewStore(t.TempDir())
+	s.nowFn = sameMilliClock()
+
+	ids := make(map[string]struct{}, N)
+	// Use different names to avoid name-collision errors (names must be unique
+	// per the Vulos naming rules but the store doesn't enforce uniqueness —
+	// only IDs must be unique for this test).
+	for i := 0; i < N; i++ {
+		name := fmt.Sprintf("p%04d", i)
+		p, err := s.Create("user1", name, "#fff", "")
+		if err != nil {
+			t.Fatalf("Create #%d error: %v", i, err)
+		}
+		if _, dup := ids[p.ID]; dup {
+			t.Fatalf("duplicate ID %q at iteration %d — D80 collision detected", p.ID, i)
+		}
+		ids[p.ID] = struct{}{}
+	}
+
+	// Also verify the store actually holds N distinct profiles.
+	list := s.ListForUser("user1")
+	if len(list) != N {
+		t.Errorf("store has %d profiles, want %d — some were silently overwritten", len(list), N)
 	}
 }
 
