@@ -427,7 +427,7 @@ Scope: Add Static/DownloadURL recipe to VersionRecipe (registry.go:61-73): downl
 AC: [ ] static recipe w/ checksum [ ] installs end-to-end [ ] apt/flatpak unchanged, go test passes [ ] 1 real static entry works
 
 ### [APPSTORE-02] Single-binary web apps: Navidrome, Memos, Uptime Kuma
-`todo` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
+`done` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
 Scope: Add 3 type:web entries (gitea single-binary pattern), correct ports, 0.0.0.0:${PORT}, data dir, perms network+filesystem.
 AC: [ ] 3 entries valid [ ] each installs+serves UI [ ] registry.json valid JSON
 
