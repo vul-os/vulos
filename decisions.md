@@ -410,3 +410,6 @@ Mem 1651, load 6/10/10. 0 completions yet. NET-01/CLUSTER-06/BMINIT-15 still run
 
 ## D50 (18:10) — Wave-13 complete: 156 total merges
 NET-01 (subdomain parser {app}--{profile}.{ulid}.{domain}, 18 tests, gateway wired), CLUSTER-06 (storage status API + Settings UI, registry preserved at 40 apps), BMINIT-15 (--arm64 + --device rpi4/pinephone build.sh flags). Session total: **156 task-branches merged**. Build green @ 8419e51. ~3h remain on brief; will continue tick-by-tick.
+
+## D51 (18:09) — Wave-14: NET-02/NET-04/APPSTORE-07 (file-disjoint)
+Mem 1290, load 2.7/15m 7.5 — excellent. 185 min brief / 46 min cron. tasks.md 170/195 done after reconcile (10 flipped). Dispatching 3 file-disjoint final-area tasks: NET-02 (namespace keying by profile — namespace.go + launcher.go + gateway.go), NET-04 (DNS + frontend URLs use {app}--{profile} — appnet/dns.go + Launchpad.jsx + Portal.jsx), APPSTORE-07 (Matrix Conduit + Cinny — registry.json + new apps/cinny/). All structurally independent of each other (NET-02 + NET-04 share appnet/ pkg but different files).
