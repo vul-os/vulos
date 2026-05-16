@@ -14,3 +14,5 @@ worktrees/
 .clone/
 __pycache__/
 *.pyc
+backend/init
+backend/vulos-server
