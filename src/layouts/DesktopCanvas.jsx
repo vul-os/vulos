@@ -10,6 +10,7 @@ import DesktopContextMenu from '../shell/DesktopContextMenu'
 import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
 import { useTheme } from '../core/ThemeProvider'
 import AIFirstRun from '../core/AIFirstRun'
+import PublicAppsManager from '../core/PublicAppsManager'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -229,6 +230,8 @@ export default function DesktopCanvas() {
 
       {/* First-run AI chat introduction (one-time, persisted via localStorage) */}
       <AIFirstRun />
+      {/* Public apps manager popover — listens for vulos:open-public-apps */}
+      <PublicAppsManager />
     </div>
   )
 }
