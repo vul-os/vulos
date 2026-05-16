@@ -1156,69 +1156,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "bound"})
 	})
 
-	// AI-generated apps gallery — save, list, search, launch saved viewports
+	// AI-generated apps gallery — hardened handlers in routes_aiapps_security.go (SEC-I).
 	aiAppsDir := filepath.Join(home, ".vulos", "ai-apps")
-	os.MkdirAll(aiAppsDir, 0755)
-	mux.HandleFunc("POST /api/ai-apps/save", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Title  string `json:"title"`
-			HTML   string `json:"html"`
-			Python string `json:"python"`
-		}
-		json.NewDecoder(r.Body).Decode(&req)
-		id := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
-		appDir := filepath.Join(aiAppsDir, id)
-		os.MkdirAll(appDir, 0755)
-		meta := map[string]string{"title": req.Title, "id": id, "created": time.Now().Format(time.RFC3339)}
-		metaData, _ := json.MarshalIndent(meta, "", "  ")
-		os.WriteFile(filepath.Join(appDir, "meta.json"), metaData, 0644)
-		if req.HTML != "" {
-			os.WriteFile(filepath.Join(appDir, "index.html"), []byte(req.HTML), 0644)
-		}
-		if req.Python != "" {
-			os.WriteFile(filepath.Join(appDir, "server.py"), []byte(req.Python), 0644)
-		}
-		writeJSON(w, map[string]string{"id": id, "status": "saved"})
-	})
-	mux.HandleFunc("GET /api/ai-apps", func(w http.ResponseWriter, r *http.Request) {
-		entries, _ := os.ReadDir(aiAppsDir)
-		var apps []map[string]string
-		for _, e := range entries {
-			if !e.IsDir() { continue }
-			metaPath := filepath.Join(aiAppsDir, e.Name(), "meta.json")
-			if data, err := os.ReadFile(metaPath); err == nil {
-				var meta map[string]string
-				json.Unmarshal(data, &meta)
-				// Check what files exist
-				if _, err := os.Stat(filepath.Join(aiAppsDir, e.Name(), "server.py")); err == nil {
-					meta["has_python"] = "true"
-				}
-				if _, err := os.Stat(filepath.Join(aiAppsDir, e.Name(), "index.html")); err == nil {
-					meta["has_html"] = "true"
-				}
-				apps = append(apps, meta)
-			}
-		}
-		writeJSON(w, apps)
-	})
-	mux.HandleFunc("GET /api/ai-apps/{id}/html", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		data, err := os.ReadFile(filepath.Join(aiAppsDir, id, "index.html"))
-		if err != nil { writeErr(w, 404, "not found"); return }
-		w.Header().Set("Content-Type", "text/html")
-		w.Write(data)
-	})
-	mux.HandleFunc("GET /api/ai-apps/{id}/python", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		data, err := os.ReadFile(filepath.Join(aiAppsDir, id, "server.py"))
-		if err != nil { writeErr(w, 404, "not found"); return }
-		w.Header().Set("Content-Type", "text/plain")
-		w.Write(data)
-	})
-	mux.HandleFunc("DELETE /api/ai-apps/{id}", func(w http.ResponseWriter, r *http.Request) {
-		os.RemoveAll(filepath.Join(aiAppsDir, r.PathValue("id")))
-		writeJSON(w, map[string]string{"status": "deleted"})
-	})
+	registerAIAppsSecurityWrappers(mux, aiAppsDir, authStore)
 
 	// Native window management — spawn Cog/WPE instances as real compositor windows
 	// Cached at startup: detect if we're on baremetal (sole Cog instance) or native (compositor with multi-window)
