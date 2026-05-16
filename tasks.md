@@ -139,7 +139,7 @@ _Design doc: [`roadmap/AI.md`](../roadmap/AI.md)_  ·  _Prefix: `AI-*`_
 - **Key files:** new `src/core/PublicAppsManager.jsx`, `src/core/Settings.jsx`, `src/core/PublicAppsWarning.jsx`.
 
 ### [AI-05] Make saved AI apps appear in the app launcher with icons and categories
-- **Status:** todo
+- **Status:** done
 - **Priority:** P1
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § AI Apps (persistence, icons, categories)
@@ -446,7 +446,7 @@ Scope: opts.Gaming → app nice -10 + try SCHED_FIFO (soft-fail nice on EPERM), 
 AC: [ ] gaming elevated priority, non-gaming unchanged [ ] missing SYS_NICE warns no fail [ ] go build
 
 ### [GAME-07] Auto gaming-mode for Wine/Lutris/Steam/gaming-category
-`todo` · P1 · M · dep: GAME-02 · parallel: no — backend/services/appnet/manifest.go, backend/services/wine/wine.go, main.go
+`done` · P1 · M · dep: GAME-02 · parallel: no — backend/services/appnet/manifest.go, backend/services/wine/wine.go, main.go
 Scope: Add `gaming` to ValidCategories; set Gaming:true when cmd is wine/lutris/steam or manifest category=gaming. (manifest.go LOCKED dirty — coordinate)
 AC: [ ] gaming valid category [ ] wine/lutris/steam/gaming-cat sets Gaming:true [ ] non-gaming unaffected, go build
 
@@ -464,7 +464,7 @@ _Design doc: [`roadmap/DEFAULT-WEB-APPS.md`](../roadmap/DEFAULT-WEB-APPS.md)_  �
 > Why this matters: The bundled apps that ship in `apps/`: calculator, calendar, clock, weather, text editor, PDF viewer, music, video, gallery, maps, camera, voice recorder, screenshot, system info. Lightweight, no streaming, open instantly.
 
 ### [WEBAPP-01] Fix invalid `notifications` permission in calendar+clock manifests
-`todo` · P0 · S · dep: none · parallel: no — apps/calendar/app.json, apps/clock/app.json, backend/services/appnet/manifest.go
+`done` · P0 · S · dep: none · parallel: no — apps/calendar/app.json, apps/clock/app.json, backend/services/appnet/manifest.go
 Scope: Add `notifications` to `ValidPermissions` (manifest.go:18-27) with a comment (or remove from both manifests). Calendar/clock currently fail `ScanAndValidateApps`.
 AC: [ ] calendar+clock pass validation [ ] `notifications` in ValidPermissions w/ comment [ ] `/api/store/validate` lists them not errors
 
@@ -484,7 +484,7 @@ Scope: Sandboxed `GET/PUT/DELETE /api/appdata/{app}/{path}` + list under `~/.vul
 AC: [ ] PUT then GET round-trips [ ] `../`/abs rejected 400 [ ] list scoped to app subdir [ ] go test passes; route registered
 
 ### [WEBAPP-05] Wire default web apps into AppRegistry builtinRegistry
-`todo` · P1 · S · dep: WEBAPP-01 · parallel: no — src/core/AppRegistry.js (LOCKED dirty — defer until resolved)
+`done` · P1 · S · dep: WEBAPP-01 · parallel: no — src/core/AppRegistry.js (LOCKED dirty — defer until resolved)
 Scope: Curated registry entries/aliases for calculator/calendar/clock/pdf-viewer/text-editor/weather (icon/name/category/keywords), pattern of library/gallery entries.
 AC: [ ] getApps() returns the 6 w/ metadata [ ] no dupes vs /api/store/installed [ ] searchApps finds them
 
