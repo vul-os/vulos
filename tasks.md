@@ -572,7 +572,7 @@ Scope: 8 type:desktop apt entries mirroring gimp/kdenlive (category/arch/homepag
 AC: [ ] 8 valid entries [ ] ≥2 install+launch via stream pool [ ] valid JSON
 
 ### [APPSTORE-06] Gaming apps + auto gaming-mode (Steam/Lutris/Wine)
-`todo` · P2 · L · dep: APPSTORE-05, GAME-02 · parallel: no — registry.json, backend/services/stream/, backend/services/wine/wine.go
+`done` · P2 · L · dep: APPSTORE-05, GAME-02 · parallel: no — registry.json, backend/services/stream/, backend/services/wine/wine.go
 Scope: Wine/Lutris/Steam type:desktop entries + deps (gamemode/mangohud/winetricks); flag gaming-category sessions for gaming mode (wire to stream LaunchOpts/bitrate).
 AC: [ ] 3 entries w/ deps [ ] gaming-category session gets elevated bitrate/fps/low-latency [ ] non-gaming unaffected, go test passes
 
@@ -635,7 +635,7 @@ Scope: Detect public IP, POST control API /api/enroll/direct {ulid,ip,email}, pe
 AC: [ ] public IP detected [ ] enroll stores creds [ ] IP-change triggers DNS update [ ] control URL configurable
 
 ### [NET-09] Connection-mode switching API + Settings UI
-`todo` · P2 · M · dep: NET-06, NET-08 · parallel: no — src/core/Settings.jsx, main.go, backend/services/network/network.go
+`done` · P2 · M · dep: NET-06, NET-08 · parallel: no — src/core/Settings.jsx, main.go, backend/services/network/network.go
 Scope: Mode field + POST /api/network/mode (fabric/direct/own/local), never regen ULID; radio-group UI w/ status.
 AC: [ ] UI 4 modes w/ active+status [ ] local-only stops ext listener [ ] direct triggers NET-08 [ ] ULID never regen
 
@@ -736,7 +736,7 @@ Scope: Add 4 step components per roadmap order; Identity (GET /api/identity, edi
 AC: [ ] STEPS reflects roadmap order [ ] Identity shows ULID+DNS, edits hostname [ ] Storage posts+skip [ ] SSH shows privkey once [ ] npm build
 
 ### [INIT-06] Recovery Kit step: JSON download + QR + confirm-gate
-`todo` · P0 · M · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, package.json
+`done` · P0 · M · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, package.json
 Scope: RecoveryKitStep shows all creds w/ copy; build versioned JSON download (vula-recovery-kit.json), inline QR (add qrcode dep), Next disabled until typed `confirm`.
 AC: [ ] creds+copy [ ] JSON matches schema v1 [ ] QR renders [ ] gated until `confirm` [ ] storage-skipped variant works, npm build
 
