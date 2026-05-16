@@ -186,6 +186,12 @@ func main() {
 	appsDir := filepath.Join(home, ".vulos", "apps")
 	appStore := appnet.NewAppStore(appsDir)
 
+	// App visibility store (private|local|public per app)
+	visStore, err := appnet.NewVisibilityStore(filepath.Join(dbDir, "visibility.json"))
+	if err != nil {
+		log.Printf("[visibility] init warning: %v", err)
+	}
+
 	// TURN server (WebRTC relay for remote mode)
 	turnCfg := network.LoadTURNConfig()
 	if turnCfg.Enabled {
@@ -1104,6 +1110,9 @@ func main() {
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)
+
+	// App visibility (private|local|public)
+	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
