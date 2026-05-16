@@ -379,3 +379,6 @@ Deadline 18:55 = 82 min. If mem stays <500 by 18:30, do wind-down without furthe
 ## D41 (17:39) — Tick: pruned 192 stale worker dirs; hold dispatch this tick
 Cron tick. Mem started 1167 MB (cleared threshold) — about to dispatch the D40-planned wave when I noticed 192 stale worker worktree directories accumulated across waves (D14 hazard left dead dirs even after branch merges/prunes). `git worktree prune` didn't touch them (no git metadata); manual `rm -rf` of dirs without .git pointer cleared all 192, recovered disk pressure. I/O burst dropped mem to 62 MB and 1m load to 16. Holding dispatch this tick; expect next tick (~5min) to find recovered state. Disk now 508Gi free.
 Net cleanup gain: large. Future orchestration runs should periodically prune dead worker dirs (the empty-after-prune ones), not just rely on git worktree prune.
+
+## D42 (17:43) — Tick: dispatch D40-planned 5-worker wave
+Mem cleared to 1066 MB, 1m load 3.8 (idle), 0 unmerged, 72 min to wind-down. Dispatching the 5 file-disjoint tasks from D40: APPSTORE-05 (registry.json), INIT-05 (Setup.jsx wizard), INIT-01 (identity pkg + routes_identity.go), AI-07 (routes_aiapps_versions.go), CLUSTER-10 (routes_conflicts.go + Toasts.jsx + notify/). All use routes_<area>.go pattern. Conservative cap of 5 vs 10 given 72 min remaining — prioritize merge success rate over raw count.
