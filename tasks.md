@@ -536,7 +536,7 @@ Scope: Node/Cluster types; Register() writes nodes/{id}/meta.json heartbeat; Pee
 AC: [ ] Register writes+refreshes last_seen [ ] Peers returns all incl stale [ ] disabled cleanly w/o S3 [ ] unit test mock S3
 
 ### [CLUSTER-05] cr-sqlite changeset sync loop to S3
-`todo` · P1 · L · dep: CLUSTER-01, CLUSTER-03, CLUSTER-04 · parallel: yes — new backend/services/cluster/sync.go
+`done` · P1 · L · dep: CLUSTER-01, CLUSTER-03, CLUSTER-04 · parallel: yes — new backend/services/cluster/sync.go
 Scope: Every VULOS_SYNC_INTERVAL: push crsql_changes>last_pushed encrypted to nodes/{id}/changes/{ver}.bin; pull+apply peers; per-peer cursors.
 AC: [ ] 2 DBs sync insert in 1 cycle [ ] concurrent writes merge (CRDT) [ ] cursors persisted, resume [ ] stops on ctx cancel
 
