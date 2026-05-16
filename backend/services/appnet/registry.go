@@ -147,6 +147,16 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 			"set a sha256 checksum in the registry entry before installing (SEC-H3)")
 	}
 
+	// SECAUDIT2 H1: the static-download path (recipe.DownloadURL set, Install
+	// empty) fetches an archive/binary over the network and installs it. It
+	// MUST have a sha256 checksum — requiresChecksum() only inspects
+	// recipe.Install, so without this an unverified artifact would pass the
+	// gate. registry.json is cluster-replicated trust data; never relax this.
+	if strings.TrimSpace(recipe.DownloadURL) != "" && strings.TrimSpace(recipe.Checksum) == "" {
+		return fmt.Errorf("static download recipe (download_url set) has no checksum — " +
+			"set a sha256 checksum in the registry entry before installing (SECAUDIT2-H1)")
+	}
+
 	return nil
 }
 
@@ -515,7 +525,27 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 		strings.HasSuffix(lowerURL, ".tar.xz")
 
 	if isArchive {
-		args := []string{"xf", tmpPath, "-C", appDir}
+		// SECAUDIT2 H1: pre-extraction traversal screen. `tar` does not block
+		// `../` / absolute / symlink-escaping members. List members first and
+		// refuse any that would escape appDir. Archive-format-agnostic so
+		// strip-components and .bz2/.xz keep working; the artifact is already
+		// checksum-verified above, this is defense-in-depth on its contents.
+		listCmd := exec.CommandContext(ctx, "tar", "tf", tmpPath)
+		listOut, lerr := listCmd.Output()
+		if lerr != nil {
+			return fmt.Errorf("list archive: %w", lerr)
+		}
+		for _, m := range strings.Split(string(listOut), "\n") {
+			m = strings.TrimSpace(m)
+			if m == "" {
+				continue
+			}
+			if strings.HasPrefix(m, "/") || strings.HasPrefix(m, "../") ||
+				strings.Contains(m, "/../") || m == ".." {
+				return fmt.Errorf("refusing archive: unsafe member %q (path traversal)", m)
+			}
+		}
+		args := []string{"xf", tmpPath, "-C", appDir, "--no-same-owner"}
 		if recipe.ArchiveStrip > 0 {
 			args = append(args, fmt.Sprintf("--strip-components=%d", recipe.ArchiveStrip))
 		}

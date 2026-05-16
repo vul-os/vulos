@@ -62,7 +62,9 @@
             "network",
             "filesystem"
           ],
-          "singleton": true
+          "singleton": true,
+          "_disabled": true,
+          "_note": "SECAUDIT2-H1: static download lacks a verified sha256; set checksum to re-enable"
         }
       }
     },
@@ -802,7 +804,9 @@
             "network",
             "filesystem"
           ],
-          "singleton": true
+          "singleton": true,
+          "_disabled": true,
+          "_note": "SECAUDIT2-H1: static download lacks a verified sha256; set checksum to re-enable"
         }
       }
     },
@@ -836,7 +840,9 @@
             "network",
             "filesystem"
           ],
-          "singleton": true
+          "singleton": true,
+          "_disabled": true,
+          "_note": "SECAUDIT2-H1: static download lacks a verified sha256; set checksum to re-enable"
         }
       }
     },

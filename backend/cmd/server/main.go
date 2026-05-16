@@ -1626,6 +1626,19 @@ func main() {
 		}
 		// [4] If app_id is supplied, resolve binary from the installed manifest.
 		if req.AppID != "" && req.Binary == "" {
+			// SECAUDIT2 M-1: charset-validate app_id before the manifest path
+			// join (parity with /api/apps/launch). ^[a-z0-9][a-z0-9-]{0,63}$
+			validAppID := len(req.AppID) >= 1 && len(req.AppID) <= 64
+			for i := 0; i < len(req.AppID) && validAppID; i++ {
+				c := req.AppID[i]
+				if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '-' && i > 0)) {
+					validAppID = false
+				}
+			}
+			if !validAppID {
+				writeErr(w, 400, "invalid app_id")
+				return
+			}
 			if m, err := appStore.GetManifest(req.AppID); err == nil && m.Command != "" {
 				req.Binary = m.Command
 			}
