@@ -17,6 +17,7 @@
 package peering
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -38,6 +39,11 @@ var subdirs = []string{
 type Service struct {
 	// root is the absolute path to ~/.vulos/peering/
 	root string
+
+	// Identity fields — populated by New() from loadOrGenerate.
+	priv   ed25519.PrivateKey
+	pub    ed25519.PublicKey
+	vulaID string
 }
 
 // New creates a Service and ensures the full ~/.vulos/peering/ directory tree
@@ -65,20 +71,27 @@ func New(home string) *Service {
 		}
 	}
 
+	// Load or generate the Ed25519 identity keypair.
+	identityDir := filepath.Join(root, "identity")
+	priv, pub, vulaID, err := loadOrGenerate(identityDir)
+	if err != nil {
+		log.Printf("[peering] identity init error: %v", err)
+	}
+
 	log.Printf("[peering] storage root: %s", root)
-	return &Service{root: root}
+	return &Service{root: root, priv: priv, pub: pub, vulaID: vulaID}
 }
 
 // RegisterHandlers wires all peering API routes onto mux.
 //
-// Implemented routes:
+// Implemented routes (PEER-01 + PEER-02):
 //
-//	GET  /api/peering/identity           → own Vula ID stub (200)
+//	GET  /api/peering/identity           → own Vula ID + public key (200)
+//	POST /api/peering/identity/export    → export encrypted keypair bundle
+//	POST /api/peering/identity/import    → import encrypted keypair bundle
 //
 // Planned routes (501 Not Implemented until the relevant wave ships):
 //
-//	POST /api/peering/identity/export
-//	POST /api/peering/identity/import
 //	POST /api/peering/identity/verify
 //	POST /api/peering/identity/confirm
 //	GET  /api/peering/profile
@@ -106,24 +119,18 @@ func New(home string) *Service {
 //	POST /api/peering/inbound/signal
 //	POST /api/peering/inbound/media
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
-	// --- Identity (implemented) ---
+	// --- Identity (PEER-02: implemented) ---
 
-	// GET /api/peering/identity — returns own Vula ID stub.
-	// Full implementation (keypair generation, persistent Vula ID) ships in PEER-02.
-	mux.HandleFunc("GET /api/peering/identity", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"vula_id":      "",
-			"display_name": "",
-			"verified":     false,
-			"storage_root": s.root,
-			"status":       "scaffold — keypair generation not yet implemented",
-		})
-	})
+	// GET /api/peering/identity — returns the node's Vula ID and public key.
+	mux.HandleFunc("GET /api/peering/identity", s.handleGetIdentity)
+
+	// POST /api/peering/identity/export — export keypair encrypted with passphrase.
+	mux.HandleFunc("POST /api/peering/identity/export", s.handleExportIdentity)
+
+	// POST /api/peering/identity/import — import an encrypted keypair bundle.
+	mux.HandleFunc("POST /api/peering/identity/import", s.handleImportIdentity)
 
 	// --- Identity (planned) ---
-	mux.HandleFunc("POST /api/peering/identity/export", s.stub("identity export"))
-	mux.HandleFunc("POST /api/peering/identity/import", s.stub("identity import"))
 	mux.HandleFunc("POST /api/peering/identity/verify", s.stub("email verification initiation"))
 	mux.HandleFunc("POST /api/peering/identity/confirm", s.stub("email verification confirmation"))
 
