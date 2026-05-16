@@ -528,3 +528,6 @@ User: "fix and sort out all" — resolve every non-CRITICAL residual, not just l
 - L-2: /api/setup/join reachable post-setup → add setup-complete gate. routes_join.go/joinsync only.
 - D80: profiles.Store.Create UnixMilli ID collision → collision-free IDs (ULID/monotonic). profiles/ only.
 All file-disjoint; each must keep its SECAUDIT2/coverage tests green + add a regression test. Build+test gate per merge.
+
+## D83 (22:55) — ALL residuals closed; final state
+L-2 merged: /api/setup/join + /status now refuse once bootmode=normal (provisioned), first-boot/sync paths unchanged, +5 regression tests, +fixed a pre-existing joinsync test TOCTOU flake. Close-out wave complete: L-1 (1332ded passkeys DoS), D80 (f8a1f9c profile-ID ULID), H1-fu (df72f54 navidrome real sha256 / memos+uptime-kuma honestly disabled), L-2. EVERY SECAUDIT2 finding (1 HIGH + 1 MED + 2 LOW) + the D80 latent finding is now FIXED with regression tests. No open findings at any severity. Full suite (unit + integration smoke + adversarial security) GREEN. 568→ unpushed commits remain local (no push w/o explicit instruction).
