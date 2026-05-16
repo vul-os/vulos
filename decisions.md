@@ -222,3 +222,6 @@ playbooks (D14 main-guard, D16 if-go-build gate, D17 PEER serialize / new-files-
 reset-HEAD~1 on clean-merge-build-break, go.mod ours+tidy, app-dir take-theirs, perl-strip
 keep-both) remain in force. 93 stale worktree dirs exist (disk 505Gi free — harmless, leave;
 branch refs persist independently). Continue.
+
+### D20 — 2026-05-16 ~13:12 — Window-2 checkpoint
+~88 task-branch merges to main; build green; ~95 todo. Recurring failure mode: stale-base workers redeclare pkg-level types/test-helpers (ContactStore, addApprovedContact) → clean-text merge but build-break; contained single-symbol perl-rename recovers (PEER-38), multi-symbol cascades → defer (MOBILE-03). Re-task deferred PEER-19/31 with explicit "use existing pkg types, NO pkg bootstrap, only your new file". Continue.
