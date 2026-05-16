@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTelemetry } from './useTelemetry'
 import { useTheme } from './ThemeProvider'
 import { useAuth } from '../auth/AuthProvider'
+import NotificationCenter from '../shell/NotificationCenter'
 
 // --- Hooks ---
 function useTime() {
@@ -443,6 +444,9 @@ export default function LifePulse({ compact = false, className = '' }) {
             </Dropdown>
           </div>
         )}
+
+        {/* Notification Center */}
+        <NotificationCenter />
 
         {/* Theme toggle */}
         <StatusButton onClick={toggle}>
