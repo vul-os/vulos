@@ -945,7 +945,7 @@ Scope: RTCPeerConnection audio, getUserMedia, offer/answer+ICE over signal chann
 AC: [ ] 2 browsers direct audio via signaling only [ ] mute/hangup, media not via servers [ ] ICE-restart on drop
 
 ### [PEER-23] 1:1 video + screen sharing
-`todo` · P1 · M · dep: PEER-22 · parallel: yes — src/builtin/peering/call/
+`done` · P1 · M · dep: PEER-22 · parallel: yes — src/builtin/peering/call/
 Scope: video track 2-layer simulcast, camera on/off, getDisplayMedia screen-share swap, PiP, quality indicator (getStats).
 AC: [ ] video call toggleable camera [ ] screen share add/stop [ ] quality+PiP
 
