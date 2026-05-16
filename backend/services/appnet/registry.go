@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -64,19 +65,89 @@ type RegistryEntry struct {
 
 // VersionRecipe defines how to install and run a specific version of an app.
 type VersionRecipe struct {
-	Install      string            `json:"install"`       // shell command to install (e.g., "apt-get install -y postgresql-16")
-	FlatpakID    string            `json:"flatpak_id"`    // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
-	DownloadURL  string            `json:"download_url"`  // static install: URL to download a binary or tar.gz archive
-	ArchiveStrip int               `json:"archive_strip"` // static install: number of leading path components to strip when extracting (tar --strip-components)
-	Command      string            `json:"command"`       // how to run it (e.g., "bin/postgres -D data/")
-	Port         int               `json:"port"`          // default port the app listens on
-	PostInstall  string            `json:"post_install"`  // one-time setup command (e.g., "bin/initdb -D data/")
-	Deps         []string          `json:"deps"`          // additional OS package dependencies
-	Env          map[string]string `json:"env"`           // default environment variables
-	Permissions  []string          `json:"permissions"`   // required permissions
-	Checksum     string            `json:"checksum"`      // sha256 checksum of download (if applicable)
-	Singleton    bool              `json:"singleton"`     // only one instance allowed
-	AutoStart    bool              `json:"auto_start"`    // start on boot
+	Install      string            `json:"install"`             // shell command to install (e.g., "apt-get install -y postgresql-16")
+	FlatpakID    string            `json:"flatpak_id"`          // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
+	DownloadURL  string            `json:"download_url"`        // static install: URL to download a binary or tar.gz archive
+	ArchiveStrip int               `json:"archive_strip"`       // static install: number of leading path components to strip when extracting (tar --strip-components)
+	Command      string            `json:"command"`             // how to run it (e.g., "bin/postgres -D data/")
+	Port         int               `json:"port"`                // default port the app listens on
+	PostInstall  string            `json:"post_install"`        // one-time setup command (e.g., "bin/initdb -D data/")
+	Deps         []string          `json:"deps"`                // additional OS package dependencies
+	Env          map[string]string `json:"env"`                 // default environment variables
+	Permissions  []string          `json:"permissions"`         // required permissions
+	Checksum     string            `json:"checksum"`            // sha256 checksum of download (if applicable)
+	Singleton    bool              `json:"singleton"`           // only one instance allowed
+	AutoStart    bool              `json:"auto_start"`          // start on boot
+	Disabled     bool              `json:"_disabled,omitempty"` // true = entry is administratively disabled; install is refused
+}
+
+// pipeToShellRe matches curl|bash and wget|bash patterns (pipe-to-shell install anti-pattern).
+var pipeToShellRe = regexp.MustCompile(`(?i)\b(curl|wget)\b[^|]*\|\s*(ba)?sh\b`)
+
+// shCPipeRe matches sh -c / bash -c invocations that contain a pipe (covers the sh -c "curl … | bash" shape).
+var shCPipeRe = regexp.MustCompile(`(?i)^\s*(ba)?sh\s+-c\s+['"]?[^'"]*\|`)
+
+// rejectPipeToShell returns an error if cmd contains a pipe-to-shell pattern.
+// Pipe-to-shell recipes (curl|bash, wget|bash, sh -c "…|bash") allow arbitrary code
+// execution from a remote URL with no integrity check and are unconditionally rejected.
+func rejectPipeToShell(cmd string) error {
+	if pipeToShellRe.MatchString(cmd) {
+		return fmt.Errorf("recipe contains a pipe-to-shell pattern (curl|bash / wget|bash) which is a security risk: %q — use a pinned artifact download with a checksum instead", cmd)
+	}
+	if shCPipeRe.MatchString(cmd) {
+		return fmt.Errorf("recipe contains a sh -c pipe pattern which is a security risk: %q — use a pinned artifact download with a checksum instead", cmd)
+	}
+	return nil
+}
+
+// binaryDownloadRe matches recipes that download a binary directly via curl/wget to a file
+// (as opposed to piping to a shell or delegating to a package manager).
+var binaryDownloadRe = regexp.MustCompile(`(?i)\b(curl|wget)\b`)
+
+// requiresChecksum reports whether an install command downloads a binary directly and
+// therefore requires a non-empty Checksum field for integrity verification.
+// Package-manager installs (apt-get, pip, npm, gem) and Flatpak installs verify
+// integrity through their own signing mechanisms and do not require the Checksum field.
+func requiresChecksum(install string) bool {
+	if install == "" {
+		return false
+	}
+	// Package-manager keywords — these handle their own integrity.
+	pkgMgrRe := regexp.MustCompile(`(?i)\b(apt-get|apt|pip[0-9]*|pip3|npm|yarn|gem|brew|dnf|yum|pacman)\b`)
+	if pkgMgrRe.MatchString(install) && !binaryDownloadRe.MatchString(install) {
+		return false
+	}
+	// Pure apt-get lines that also happen to pull a key via curl (e.g. Grafana/Syncthing)
+	// only need package manager integrity, not a binary checksum.
+	if pkgMgrRe.MatchString(install) {
+		return false
+	}
+	// If the recipe downloads a binary directly (curl/wget writing to a file), checksum is required.
+	return binaryDownloadRe.MatchString(install)
+}
+
+// validateRecipeSecurity checks a recipe for disallowed patterns and missing checksums.
+// It must be called before executing any install or post-install commands.
+func validateRecipeSecurity(recipe *VersionRecipe) error {
+	if recipe.Disabled {
+		return fmt.Errorf("this version entry is disabled and cannot be installed")
+	}
+
+	// Reject pipe-to-shell in install and post_install.
+	if err := rejectPipeToShell(recipe.Install); err != nil {
+		return err
+	}
+	if err := rejectPipeToShell(recipe.PostInstall); err != nil {
+		return err
+	}
+
+	// Require checksum when the recipe downloads a binary directly.
+	if requiresChecksum(recipe.Install) && strings.TrimSpace(recipe.Checksum) == "" {
+		return fmt.Errorf("install recipe downloads a binary directly but has no checksum — " +
+			"set a sha256 checksum in the registry entry before installing (SEC-H3)")
+	}
+
+	return nil
 }
 
 // LatestVersion returns the highest version string for an entry.
@@ -142,6 +213,12 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	if !ok {
 		return fmt.Errorf("version %q not found for app %q (available: %s)",
 			version, appID, strings.Join(availableVersions(entry), ", "))
+	}
+
+	// Security gate: reject disabled entries, pipe-to-shell recipes, and
+	// binary downloads with empty checksums before touching the filesystem.
+	if err := validateRecipeSecurity(recipe); err != nil {
+		return fmt.Errorf("security check failed for %s@%s: %w", appID, version, err)
 	}
 
 	appDir := filepath.Join(appsDir, appID)

@@ -27,7 +27,9 @@
             "network",
             "filesystem"
           ],
-          "singleton": true
+          "singleton": true,
+          "_disabled": true,
+          "_note": "disabled until pinned checksum added; storageprov pkg owns real install"
         }
       }
     },
@@ -35,12 +37,18 @@
       "name": "Navidrome",
       "vetted": true,
       "type": "web",
-      "description": "Self-hosted music streaming server — your own Spotify with web UI and Subsonic API",
+      "description": "Self-hosted music streaming server \u2014 your own Spotify with web UI and Subsonic API",
       "category": "media",
       "author": "Navidrome Project",
       "homepage": "https://www.navidrome.org",
-      "icon": "🎵",
-      "keywords": ["music", "streaming", "audio", "subsonic", "self-hosted"],
+      "icon": "\ud83c\udfb5",
+      "keywords": [
+        "music",
+        "streaming",
+        "audio",
+        "subsonic",
+        "self-hosted"
+      ],
       "license": "GPL-3.0",
       "versions": {
         "0.54.5": {
@@ -50,29 +58,44 @@
           "port": 4533,
           "post_install": "mkdir -p data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
           "checksum": "",
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
     },
     "wede": {
       "name": "Wede",
-      "vetted": true,
+      "vetted": false,
       "type": "web",
-      "description": "Lightweight web-based code editor — edit files and projects from your browser with syntax highlighting",
+      "description": "Lightweight web-based code editor \u2014 edit files and projects from your browser with syntax highlighting",
       "category": "developer",
       "author": "webcrft",
       "homepage": "https://github.com/webcrft/wede",
       "icon": "wede",
-      "keywords": ["editor", "code", "web", "ide", "files", "syntax"],
+      "keywords": [
+        "editor",
+        "code",
+        "web",
+        "ide",
+        "files",
+        "syntax"
+      ],
       "license": "MIT",
       "versions": {
         "latest": {
-          "install": "curl -fsSL https://raw.githubusercontent.com/webcrft/wede/main/install.sh | bash",
+          "_disabled": true,
+          "install": "",
           "command": "/root/.local/bin/wede -port ${PORT}",
           "port": 9090,
-          "permissions": ["network", "filesystem"],
-          "singleton": true
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true,
+          "_note": "Disabled (SEC-H3): previous recipe used curl|bash with no pinned version or checksum. Re-enable once a pinned release artifact with sha256 is available."
         }
       }
     },
@@ -80,19 +103,30 @@
       "name": "Cockpit",
       "vetted": true,
       "type": "web",
-      "description": "Web-based server management — terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
+      "description": "Web-based server management \u2014 terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
       "category": "system",
       "author": "Red Hat / Cockpit Project",
       "homepage": "https://cockpit-project.org",
       "icon": "cockpit",
-      "keywords": ["admin", "server", "management", "terminal", "monitoring", "logs", "dashboard"],
+      "keywords": [
+        "admin",
+        "server",
+        "management",
+        "terminal",
+        "monitoring",
+        "logs",
+        "dashboard"
+      ],
       "license": "LGPL-2.1",
       "versions": {
         "latest": {
           "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
           "command": "/usr/lib/cockpit/cockpit-ws --no-tls --port ${PORT}",
           "port": 9090,
-          "permissions": ["network", "filesystem"],
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
           "singleton": true
         }
       }
@@ -101,19 +135,26 @@
       "name": "httpbin",
       "vetted": true,
       "type": "web",
-      "description": "HTTP request and response testing — inspect headers, methods, status codes",
+      "description": "HTTP request and response testing \u2014 inspect headers, methods, status codes",
       "category": "developer",
       "author": "Kenneth Reitz",
       "homepage": "https://httpbin.org",
       "icon": "httpbin",
-      "keywords": ["http", "api", "testing", "debug"],
+      "keywords": [
+        "http",
+        "api",
+        "testing",
+        "debug"
+      ],
       "license": "ISC",
       "versions": {
         "0.9": {
           "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
           "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
           "port": 8080,
-          "permissions": ["network"],
+          "permissions": [
+            "network"
+          ],
           "singleton": true
         }
       }
@@ -137,9 +178,10 @@
       ],
       "license": "MIT",
       "versions": {
-        "1": {
-          "install": "wget -qO /usr/local/bin/gitea https://dl.gitea.com/gitea/1.22/gitea-1.22.0-linux-amd64 && chmod +x /usr/local/bin/gitea",
-          "command": "gitea web --config data/app.ini",
+        "1.22.0": {
+          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 && echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - && chmod +x bin/gitea && ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
+          "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
+          "command": "bin/gitea web --config data/app.ini",
           "port": 3000,
           "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
           "permissions": [
