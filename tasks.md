@@ -970,7 +970,7 @@ Scope: Pion SFU room: N PCs, accept 2-layer simulcast, forward selected layer pe
 AC: [ ] 5+ routes through SFU [ ] simulcast received+forwarded per receiver [ ] Last-N limits [ ] no transcoding
 
 ### [PEER-28] SFU dominant speaker + audio mixing (top 3)
-`todo` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
+`done` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
 Scope: VAD/audio-level detection, dominant→high simulcast layer, mix top-3 audio per participant excl self.
 AC: [ ] dominant gets high layer [ ] ≤3 audio streams per participant [ ] never hears self
 
