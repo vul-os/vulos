@@ -1124,7 +1124,7 @@ Scope: dynamic client reg /api/v1/apps, OAuth2 code flow, token store, home time
 AC: [ ] login real instance returns token [ ] home timeline renders [ ] token persists, logout clears
 
 ### [FED-03] Feed interactions — post/boost/favourite/reply
-`todo` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
+`done` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
 Scope: compose (500 char + CW), thread view, boost/fav/reply/bookmark optimistic UI vs Mastodon API.
 AC: [ ] post appears in home [ ] fav/boost persist server-side [ ] reply opens thread in-reply-to
 
