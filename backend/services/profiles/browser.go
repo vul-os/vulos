@@ -42,6 +42,9 @@ type Store struct {
 	profiles map[string]*BrowserProfile // profileID → profile
 	baseDir  string
 	path     string
+	// nowFn is used to generate timestamps and IDs. Defaults to time.Now.
+	// Tests may replace it to produce monotonically distinct values.
+	nowFn func() time.Time
 }
 
 func NewStore(dataDir string) *Store {
@@ -53,6 +56,7 @@ func NewStore(dataDir string) *Store {
 		profiles: make(map[string]*BrowserProfile),
 		baseDir:  baseDir,
 		path:     storePath,
+		nowFn:    time.Now,
 	}
 
 	if data, err := os.ReadFile(storePath); err == nil {
@@ -77,7 +81,8 @@ func (s *Store) Create(userID, name, color, icon string) (*BrowserProfile, error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id := fmt.Sprintf("bp-%d", time.Now().UnixMilli())
+	now := s.nowFn()
+	id := fmt.Sprintf("bp-%d", now.UnixMilli())
 	dataDir := filepath.Join(s.baseDir, id)
 	os.MkdirAll(dataDir, 0755)
 
@@ -90,8 +95,8 @@ func (s *Store) Create(userID, name, color, icon string) (*BrowserProfile, error
 		Isolated:  true,
 		Cookies:   make(map[string]string),
 		DataDir:   dataDir,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	s.profiles[id] = p
 	log.Printf("[profiles] created browser profile %s (%s) for user %s", id, name, userID)
@@ -156,7 +161,7 @@ func (s *Store) Update(id, name, color, icon string) error {
 	if icon != "" {
 		p.Icon = icon
 	}
-	p.UpdatedAt = time.Now()
+	p.UpdatedAt = s.nowFn()
 	return nil
 }
 
@@ -179,7 +184,7 @@ func (s *Store) BindApp(profileID, appID string) error {
 		other.AppBindings = filtered
 	}
 	p.AppBindings = append(p.AppBindings, appID)
-	p.UpdatedAt = time.Now()
+	p.UpdatedAt = s.nowFn()
 	return nil
 }
 
@@ -225,7 +230,7 @@ func (s *Store) ClearData(id string) error {
 	os.RemoveAll(p.DataDir)
 	os.MkdirAll(p.DataDir, 0755)
 	p.Cookies = make(map[string]string)
-	p.UpdatedAt = time.Now()
+	p.UpdatedAt = s.nowFn()
 	log.Printf("[profiles] cleared data for profile %s", id)
 	return nil
 }
