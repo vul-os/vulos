@@ -1,19 +1,80 @@
 # Vula OS — Roadmap Tasks
 
-Backlog for autonomous Sonnet coding agents. One task = one focused PR on branch `task/<ID>`.
+The full backlog of decomposed work. **147 done · 46 open · 193 total** at the time of writing.
 
-**Status legend:** `todo` · `in_progress` · `review` (branch committed, awaiting merge) · `done` (merged to main) · `blocked`
+> If you came here looking for a task to pick up, the **At-a-glance** table below is the right starting point. Each row links to that area's section, and the "first open" column points at the highest-priority unblocked task in the area.
 
-**Worker contract:** work only on your assigned task in your isolated worktree; implement fully;
-run the relevant build/lint; commit to `task/<ID>`; do not push; report build status + blockers.
+## At-a-glance
 
-Operating model & decisions: see `decisions.md`. More roadmap areas (App Store, Peering, Init,
-Baremetal, Cluster, Network, Notifications, Device Profiles, Gaming, Other, future/*) are being
-decomposed by Opus agents and appended below as they complete.
+| Area | Roadmap | Done / Total | Progress | First open |
+|---|---|---:|:---:|---|
+| [AI Assistant](#area-ai-assistant) | [AI](../roadmap/AI.md) | 10 / 13 | `[████████··]` 77% | [AI-05](#ai-05-make-saved-ai-apps-appear-in-the-app-launcher-with-icons-and-categories) · P1 |
+| [Streaming](#area-streaming) | [STREAMING-OPTIMIZATIONS](../roadmap/STREAMING-OPTIMIZATIONS.md) | 7 / 8 | `[█████████·]` 88% | [STREAM-08](#stream-08-add-cage-headless-wayland-compositor-path-for-gpu-streaming-sessions) · P2 |
+| [Gaming](#area-gaming) | [GAMING](../roadmap/GAMING.md) | 6 / 8 | `[████████··]` 75% | [GAME-07](#game-07-auto-gaming-mode-for-winelutrissteamgaming-category) · P1 |
+| [Default Web Apps](#area-default-web-apps) | [DEFAULT-WEB-APPS](../roadmap/DEFAULT-WEB-APPS.md) | 13 / 15 | `[█████████·]` 87% | [WEBAPP-01](#webapp-01-fix-invalid-notifications-permission-in-calendarclock-manifests) · P0 |
+| [App Store](#area-app-store) | [APP-STORE](../roadmap/APP-STORE.md) | 3 / 8 | `[████······]` 38% | [APPSTORE-03](#appstore-03-static-web-apps-excalidraw-drawio-hoppscotch) · P1 |
+| [Network & Remote Access](#area-network-remote-access) | [NETWORK](../roadmap/NETWORK.md) | 5 / 10 | `[█████·····]` 50% | [NET-01](#net-01-subdomain-parser-app--profileuliddomain) · P0 |
+| [Cluster & Storage](#area-cluster-storage) | [CLUSTER](../roadmap/CLUSTER.md) | 7 / 10 | `[███████···]` 70% | [CLUSTER-02](#cluster-02-migrate-authstore-to-sqlite) · P0 |
+| [First-boot Setup](#area-first-boot-setup) | [INIT](../roadmap/INIT.md) | 2 / 11 | `[██········]` 18% | [INIT-01](#init-01-instance-ulid-auto-hostname-at-first-boot) · P0 |
+| [Bare-metal Init](#area-bare-metal-init) | [BAREMETAL-INIT](../roadmap/BAREMETAL-INIT.md) | 9 / 15 | `[██████····]` 60% | [BMINIT-04](#bminit-04-native-app-launch-endpoint-skip-streaming) · P1 |
+| [Notifications](#area-notifications) | [NOTIFICATIONS](../roadmap/NOTIFICATIONS.md) | 2 / 6 | `[███·······]` 33% | [NOTIF-02](#notif-02-persistent-notification-storage) · P0 |
+| [Device Profiles](#area-device-profiles) | [DEVICE-PROFILES](../roadmap/DEVICE-PROFILES.md) | 5 / 6 | `[████████··]` 83% | [DEVPROF-06](#devprof-06-car-profile-driving-mode-large-targets-dnd) · P2 |
+| [Theming, i18n, CI](#area-theming-i18n-ci) | [OTHER](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% | — all done |
+| [Peering](#area-peering) | [PEERING](../roadmap/PEERING.md) | 41 / 41 | `[██████████]` 100% | — all done |
+| [Authentication](#area-authentication) | [AUTHENTICATION](../roadmap/future/AUTHENTICATION.md) | 11 / 14 | `[████████··]` 79% | [AUTH-10](#auth-10-device-identity-tpm-status-api) · P2 |
+| [Fediverse Client](#area-fediverse-client) | [ACTIVITYPUB](../roadmap/future/ACTIVITYPUB.md) | 6 / 6 | `[██████████]` 100% | — all done |
+| [Telephony](#area-telephony) | [MOBILE](../roadmap/future/MOBILE.md) | 5 / 6 | `[████████··]` 83% | [MOBILE-06](#mobile-06-responsive-device-profile-aware-ui-shell) · P3 |
+| [Ladybird Browser Spike](#area-ladybird-browser-spike) | [LADYBIRD-BROWSER](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% | — all done |
+| [Security](#area-security) | [D27](../see decisions.md D24/D26/D27) | 9 / 10 | `[█████████·]` 90% | [SEC-I](#sec-i-ai-apps-path-traversal-admin-gate-save-m1) · P2 |
+| **Total** |  | **147 / 193** | `[████████··]` 76% |  |
+
+## How to read a task
+
+Each task is a self-contained chunk of work: one ID, one title, a status token, then a scope description and acceptance criteria. Two formats are in use; both are equally valid and equally machine-parseable. Don't change the format of an existing task.
+
+**Compact form** — one-line metadata + Scope + AC:
+
+```
+### [SEC-E] webproxy DNS-rebinding + TLS-verify (H4)
+`todo` · P1 · M · dep: none · parallel: yes — backend/services/webproxy/proxy.go
+Scope: resolve host ONCE and dial the validated pinned IP …
+AC: [ ] single-resolution dial [ ] fail-closed on bad resolve [ ] TLS verified …
+```
+
+**Verbose form** — one bullet per field:
+
+```
+### [AI-05] Make saved AI apps appear in the app launcher with icons and categories
+- **Status:** todo
+- **Priority:** P1
+- **Effort:** M
+- **Roadmap:** roadmap/AI.md § AI Apps
+- **Depends on:** none
+- **Parallel-safe:** no — modifies src/core/AppRegistry.js …
+- **Context:** …
+- **Scope:** …
+- **Acceptance criteria:**
+  - [ ] …
+- **Key files:** …
+```
+
+**Status token.** The line *immediately after* the `### [ID]` header carries the status — `` `todo` `` / `` `done` `` (compact) or `- **Status:** todo` / `- **Status:** done` (verbose). Orchestration tooling reads this line. Don't move it.
+
+**Priority + effort.** `P0` highest → `P3` lowest. `S` / `M` / `L` is a rough size hint, not a contract.
+
+**`parallel: no`** means the task touches a hot shared file (`backend/cmd/server/main.go`, `src/core/AppRegistry.js`, `backend/services/stream/pool.go`, etc.) — left over from the autonomous-orchestrator era where parallel worktrees needed to avoid file overlap. For a human contributor, the practical reading is: rebase on `main` before opening your PR, and don't be surprised if another in-flight PR is touching the same file.
+
+**Picking a task.** Any `todo` whose `dep:` / `Depends on` entries are all `done` is fair game. P0/P1 items are usually load-bearing for later work; P2/P3 are good for warming up.
+
+**Working a task.** Branch `task/<ID>`, implement Scope, tick AC, run `go build ./...` (backend) and/or `npm run build` (frontend), open a PR. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full flow.
 
 ---
 
-## AI (roadmap/AI.md)
+## Area: AI Assistant
+
+_Design doc: [`roadmap/AI.md`](../roadmap/AI.md)_  ·  _Prefix: `AI-*`_
+
+> Why this matters: Cmd+K chat, AI-generated mini-apps, and surfacing the assistant everywhere it could help — context menus, empty states, the dock. Public-app visibility lives here too because AI-generated apps are the easiest to accidentally expose.
 
 ### [AI-01] Add visibility field to app manifest and persistent visibility store
 - **Status:** done
@@ -216,7 +277,11 @@ decomposed by Opus agents and appended below as they complete.
 
 ---
 
-## STREAM (roadmap/STREAMING-OPTIMIZATIONS.md)
+## Area: Streaming
+
+_Design doc: [`roadmap/STREAMING-OPTIMIZATIONS.md`](../roadmap/STREAMING-OPTIMIZATIONS.md)_  ·  _Prefix: `STREAM-*`_
+
+> Why this matters: How a Linux app gets to your browser as low-latency video + audio. NVENC/VA-API tuning, adaptive bitrate, PipeWire vs PulseAudio, Wayland (cage) capture. The plumbing under every "open this app" click for non-web apps.
 
 ### [STREAM-01] Add conditional Chromium GPU flags driven by gpu.Detect()
 - **Status:** done
@@ -344,7 +409,59 @@ decomposed by Opus agents and appended below as they complete.
 
 ---
 
-## APPSTORE / WEBAPP (roadmap/APP-STORE.md, roadmap/DEFAULT-WEB-APPS.md)
+## Area: Gaming
+
+_Design doc: [`roadmap/GAMING.md`](../roadmap/GAMING.md)_  ·  _Prefix: `GAME-*`_
+
+> Why this matters: Per-session knobs for Wine/Lutris/Steam streams: higher FPS, zerolatency encoder, pointer-lock, multi-pad gamepad, rumble, process priority. Normal streaming is unchanged when these are off.
+
+### [GAME-01] Configurable FPS: default 60 + per-session
+`done` · P0 · S · dep: none · parallel: no — backend/services/stream/pool.go
+Scope: Default FPS 60 in Launch, clamp to 30/60/90/120/144 (0=60); keep fps request field.
+AC: [ ] new sessions 60, explicit honored+clamped [ ] existing callers unaffected [ ] go build
+
+### [GAME-02] Gaming-mode flag + encoder profiles + bitrate tiers
+`done` · P0 · L · dep: GAME-01 · parallel: no — backend/services/stream/pool.go, bitrate.go, backend/services/gpu/gpu.go
+Scope: LaunchOpts.Gaming; gaming encoder args per tier (zerolatency/no-Bframe/no-lookahead), 10ms Opus, QualityGaming=6000/Max=10000, GamingEncoderArgs().
+AC: [ ] gaming:true uses zerolatency args+gaming tiers [ ] non-gaming byte-identical [ ] 10ms Opus [ ] go build, table test
+
+### [GAME-03] Pointer lock + relative-mouse passthrough
+`done` · P0 · M · dep: none · parallel: no — src/builtin/stream/StreamViewer.jsx, backend/services/stream/stream.go
+Scope: requestPointerLock on click (gaming), send raw movementX/Y (`mr`) uncoalesced while locked, Esc exits; backend relative-move branch in handleMouse → MouseMoveRel.
+AC: [ ] click acquires lock, Esc releases [ ] raw deltas move cursor [ ] non-gaming unchanged
+
+### [GAME-04] Shared useGamepad hook → StreamViewer (multi-pad, deadzone)
+`done` · P1 · M · dep: none · parallel: no — new src/core/useGamepad.js, src/builtin/stream/StreamViewer.jsx, src/builtin/webbrowser/RemoteBrowser.jsx
+Scope: Extract shared useGamepad({send,deadzone,pollHz}), all pads (index in payload), 120Hz; wire StreamViewer gamepad channel; refactor RemoteBrowser. (NOTE: STREAM-05 already added basic StreamViewer gamepad — reconcile/extend, don't duplicate)
+AC: [ ] StreamViewer gamepad channel [ ] multi-pad w/ index [ ] deadzone+poll params [ ] RemoteBrowser still works
+
+### [GAME-05] Gamepad rumble (data channel + uinput FF)
+`done` · P2 · L · dep: GAME-04 · parallel: no — backend/services/input/uinput.go, backend/services/stream/stream.go, src/core/useGamepad.js
+Scope: Enable EV_FF/FF_RUMBLE on uinput pad, read FF uploads, forward server→client over gamepad channel, apply via vibrationActuator.playEffect.
+AC: [ ] uinput advertises FF_RUMBLE, captures FF [ ] rumble reaches browser playEffect [ ] go build
+
+### [GAME-06] Process priority scheduling (game+encoder)
+`done` · P2 · M · dep: GAME-02 · parallel: no — backend/services/stream/pool.go
+Scope: opts.Gaming → app nice -10 + try SCHED_FIFO (soft-fail nice on EPERM), raise encoder priority; degrade w/o SYS_NICE.
+AC: [ ] gaming elevated priority, non-gaming unchanged [ ] missing SYS_NICE warns no fail [ ] go build
+
+### [GAME-07] Auto gaming-mode for Wine/Lutris/Steam/gaming-category
+`todo` · P1 · M · dep: GAME-02 · parallel: no — backend/services/appnet/manifest.go, backend/services/wine/wine.go, main.go
+Scope: Add `gaming` to ValidCategories; set Gaming:true when cmd is wine/lutris/steam or manifest category=gaming. (manifest.go LOCKED dirty — coordinate)
+AC: [ ] gaming valid category [ ] wine/lutris/steam/gaming-cat sets Gaming:true [ ] non-gaming unaffected, go build
+
+### [GAME-08] Stream toolbar: FPS/latency/quality/fullscreen/MangoHud
+`todo` · P2 · L · dep: GAME-01, GAME-02 · parallel: no — src/builtin/stream/StreamViewer.jsx, main.go, backend/services/stream/pool.go
+Scope: Overlay toolbar (gaming): FPS selector→new POST /api/stream/fps (restart capture), RTT from getStats, quality tier, fullscreen+pointer-lock, MangoHud toggle (MANGOHUD=1 env relaunch).
+AC: [ ] toolbar FPS changes framerate [ ] RTT+quality live [ ] fullscreen+MangoHud toggle [ ] go build
+
+---
+
+## Area: Default Web Apps
+
+_Design doc: [`roadmap/DEFAULT-WEB-APPS.md`](../roadmap/DEFAULT-WEB-APPS.md)_  ·  _Prefix: `WEBAPP-*`_
+
+> Why this matters: The bundled apps that ship in `apps/`: calculator, calendar, clock, weather, text editor, PDF viewer, music, video, gallery, maps, camera, voice recorder, screenshot, system info. Lightweight, no streaming, open instantly.
 
 ### [WEBAPP-01] Fix invalid `notifications` permission in calendar+clock manifests
 `todo` · P0 · S · dep: none · parallel: no — apps/calendar/app.json, apps/clock/app.json, backend/services/appnet/manifest.go
@@ -421,6 +538,14 @@ AC: [ ] passes validation [ ] map+search recenters [ ] directions route [ ] favo
 Scope: Read-only dashboard from existing backend endpoints (OS/kernel/arch, CPU/RAM/storage, GPU, net, uptime); add thin /api/system/info aggregator only if missing.
 AC: [ ] passes validation [ ] shows live hw data [ ] no mock values
 
+---
+
+## Area: App Store
+
+_Design doc: [`roadmap/APP-STORE.md`](../roadmap/APP-STORE.md)_  ·  _Prefix: `APPSTORE-*`_
+
+> Why this matters: The registry + installer plumbing that turns "I want Memos" into a running app with its own subdomain. Recipe types (apt, Flatpak, static binary, download+extract), curated entries, auto gaming-mode for known gaming apps.
+
 ### [APPSTORE-01] Static (download) install path in registry
 `done` · P0 · M · dep: none · parallel: no — backend/services/appnet/registry.go, registry.json
 Scope: Add Static/DownloadURL recipe to VersionRecipe (registry.go:61-73): download+extract+manifest+port, checksum-verified; reuse store.go:178-183 tar logic; keep apt/Flatpak.
@@ -463,7 +588,11 @@ AC: [ ] badge per app from type [ ] type filter toggles list [ ] no backend chan
 
 ---
 
-## NET / CLUSTER (roadmap/NETWORK.md, roadmap/CLUSTER.md)
+## Area: Network & Remote Access
+
+_Design doc: [`roadmap/NETWORK.md`](../roadmap/NETWORK.md)_  ·  _Prefix: `NET-*`_
+
+> Why this matters: Where instances live on the internet: `{app}--{profile}.{ulid}.{domain}` naming, four connection modes (fabric / direct / own domain / local), cookie scoping, TURN configuration. Everything that makes an instance reachable from outside.
 
 ### [NET-01] Subdomain parser `{app}--{profile}.{ulid}.{domain}`
 `todo` · P0 · M · dep: none · parallel: no — backend/services/gateway/gateway.go, backend/cmd/server/main.go, backend/services/appnet/dns.go
@@ -514,6 +643,14 @@ AC: [ ] UI 4 modes w/ active+status [ ] local-only stops ext listener [ ] direct
 `todo` · P2 · S · dep: none · parallel: yes — src/core/Settings.jsx, backend/services/network/turn.go, main.go (new TURN routes)
 Scope: GET/POST /api/turn/config (host, write-only secret) + POST /api/turn/test reachability; Network settings section.
 AC: [ ] host+secret save/reload (secret never returned) [ ] test reports success/fail [ ] creds use configured host
+
+---
+
+## Area: Cluster & Storage
+
+_Design doc: [`roadmap/CLUSTER.md`](../roadmap/CLUSTER.md)_  ·  _Prefix: `CLUSTER-*`_
+
+> Why this matters: Multi-node sync via S3 (MinIO) + cr-sqlite CRDT replication. No primary node — every instance is equal. Encrypted at rest (SSE-C + Argon2id), conflict-resolving, file sync with `*.conflict-*` copies.
 
 ### [CLUSTER-01] SQLite store package w/ cr-sqlite extension
 `done` · P0 · L · dep: none · parallel: yes — new backend/services/store/, backend/go.mod (GO.MOD OWNER)
@@ -567,7 +704,11 @@ AC: [ ] conflict pushes toast [ ] view lists conflicts w/ node+ts [ ] resolve ke
 
 ---
 
-## INIT / BMINIT (roadmap/INIT.md, roadmap/BAREMETAL-INIT.md)
+## Area: First-boot Setup
+
+_Design doc: [`roadmap/INIT.md`](../roadmap/INIT.md)_  ·  _Prefix: `INIT-*`_
+
+> Why this matters: The wizard a brand-new instance runs once: identity (ULID, hostname), MinIO storage provisioning, SSH emergency key, the printable Recovery Kit (JSON + QR). "Join existing cluster" is the parallel sub-flow.
 
 ### [INIT-01] Instance ULID + auto hostname at first boot
 `todo` · P0 · M · dep: none · parallel: no — new backend/services/identity/, main.go, backend/go.mod (overlaps NET-06 — share identity pkg; coordinate)
@@ -623,6 +764,14 @@ AC: [ ] returns short code+QR [ ] round-trips, rejects expired [ ] 1h expiry, go
 `todo` · P3 · M · dep: INIT-06 · parallel: yes — new backend/services/kitbackup/, src/auth/Setup.jsx (one button)
 Scope: POST /api/setup/kit-backup{email,encrypted_kit} to VULOS_CLOUD_URL (default vulos.org); button in Recovery Kit; graceful if unset.
 AC: [ ] posts encrypted blob [ ] unconfigured = graceful msg [ ] button works, go build+npm build
+
+---
+
+## Area: Bare-metal Init
+
+_Design doc: [`roadmap/BAREMETAL-INIT.md`](../roadmap/BAREMETAL-INIT.md)_  ·  _Prefix: `BMINIT-*`_
+
+> Why this matters: Power-on → labwc + cage compositor → browser shell pinned to the background layer → native windows on top. Live USB, installer, Plymouth boot splash, ARM device variants. The path from `dd` to desktop.
 
 ### [BMINIT-01] labwc config + Vula traffic-light openbox theme
 `done` · P0 · M · dep: none · parallel: yes — new assets/labwc/, assets/themes/, Dockerfile, build.sh
@@ -701,8 +850,11 @@ AC: [ ] rpi bootable image [ ] pinephone image [ ] generic arm64 unchanged [ ] s
 
 ---
 
-## NOTIF / DEVPROF / GAME / MISC (roadmap/NOTIFICATIONS.md, DEVICE-PROFILES.md, GAMING.md, OTHER.md)
-> Peer-to-peer notification spec deferred until PEERING lands (see PEER-* tasks).
+## Area: Notifications
+
+_Design doc: [`roadmap/NOTIFICATIONS.md`](../roadmap/NOTIFICATIONS.md)_  ·  _Prefix: `NOTIF-*`_
+
+> Why this matters: A real notification system: structured priorities, persistent history, Do-Not-Disturb, inline action buttons. Plays nicely with peering so contacts can push you notifications over the same trust gate as messages.
 
 ### [NOTIF-01] Structured notification model (type/subtype/priority/TTL)
 `done` · P0 · M · dep: none · parallel: no — backend/services/notify/notify.go
@@ -734,6 +886,14 @@ AC: [ ] On: low drop, normal queue+replay [ ] critical always [ ] schedule auto-
 Scope: Render body.actions buttons; POST /api/notifications/action records choice+resolves; auto-resolve default at TTL.
 AC: [ ] buttons render+post [ ] auto-resolve at TTL [ ] resolved don't reappear
 
+---
+
+## Area: Device Profiles
+
+_Design doc: [`roadmap/DEVICE-PROFILES.md`](../roadmap/DEVICE-PROFILES.md)_  ·  _Prefix: `DEVPROF-*`_
+
+> Why this matters: One codebase, four UIs: `pc`, `tv`, `car`, `watch`. Profile is auto-detected, overridable. Drives layout, focus model (D-pad spatial nav on TV), and behavior (auto-DND in car).
+
 ### [DEVPROF-01] Profile model + form-factor detection backend
 `done` · P0 · M · dep: none · parallel: no — new backend/services/profiles/device.go, main.go
 Scope: DeviceProfile store pc|tv|car|watch → ~/.vulos/db/device-profile.json; detection heuristic (DMI/screen); GET/PUT /api/device-profile.
@@ -764,45 +924,13 @@ AC: [ ] TV renders TVHome large focusable cards [ ] 10ft readable [ ] non-TV una
 Scope: data-device-profile=car CSS enlarges targets, auto-enable DND via NOTIF-05 settings; useDrivingMode toggle default on car.
 AC: [ ] car enlarges targets scoped CSS [ ] car auto-enables DND [ ] no pc/tv effect
 
-### [GAME-01] Configurable FPS: default 60 + per-session
-`done` · P0 · S · dep: none · parallel: no — backend/services/stream/pool.go
-Scope: Default FPS 60 in Launch, clamp to 30/60/90/120/144 (0=60); keep fps request field.
-AC: [ ] new sessions 60, explicit honored+clamped [ ] existing callers unaffected [ ] go build
+---
 
-### [GAME-02] Gaming-mode flag + encoder profiles + bitrate tiers
-`done` · P0 · L · dep: GAME-01 · parallel: no — backend/services/stream/pool.go, bitrate.go, backend/services/gpu/gpu.go
-Scope: LaunchOpts.Gaming; gaming encoder args per tier (zerolatency/no-Bframe/no-lookahead), 10ms Opus, QualityGaming=6000/Max=10000, GamingEncoderArgs().
-AC: [ ] gaming:true uses zerolatency args+gaming tiers [ ] non-gaming byte-identical [ ] 10ms Opus [ ] go build, table test
+## Area: Theming, i18n, CI
 
-### [GAME-03] Pointer lock + relative-mouse passthrough
-`done` · P0 · M · dep: none · parallel: no — src/builtin/stream/StreamViewer.jsx, backend/services/stream/stream.go
-Scope: requestPointerLock on click (gaming), send raw movementX/Y (`mr`) uncoalesced while locked, Esc exits; backend relative-move branch in handleMouse → MouseMoveRel.
-AC: [ ] click acquires lock, Esc releases [ ] raw deltas move cursor [ ] non-gaming unchanged
+_Design doc: [`roadmap/OTHER.md`](../roadmap/OTHER.md)_  ·  _Prefix: `MISC-*`_
 
-### [GAME-04] Shared useGamepad hook → StreamViewer (multi-pad, deadzone)
-`done` · P1 · M · dep: none · parallel: no — new src/core/useGamepad.js, src/builtin/stream/StreamViewer.jsx, src/builtin/webbrowser/RemoteBrowser.jsx
-Scope: Extract shared useGamepad({send,deadzone,pollHz}), all pads (index in payload), 120Hz; wire StreamViewer gamepad channel; refactor RemoteBrowser. (NOTE: STREAM-05 already added basic StreamViewer gamepad — reconcile/extend, don't duplicate)
-AC: [ ] StreamViewer gamepad channel [ ] multi-pad w/ index [ ] deadzone+poll params [ ] RemoteBrowser still works
-
-### [GAME-05] Gamepad rumble (data channel + uinput FF)
-`done` · P2 · L · dep: GAME-04 · parallel: no — backend/services/input/uinput.go, backend/services/stream/stream.go, src/core/useGamepad.js
-Scope: Enable EV_FF/FF_RUMBLE on uinput pad, read FF uploads, forward server→client over gamepad channel, apply via vibrationActuator.playEffect.
-AC: [ ] uinput advertises FF_RUMBLE, captures FF [ ] rumble reaches browser playEffect [ ] go build
-
-### [GAME-06] Process priority scheduling (game+encoder)
-`done` · P2 · M · dep: GAME-02 · parallel: no — backend/services/stream/pool.go
-Scope: opts.Gaming → app nice -10 + try SCHED_FIFO (soft-fail nice on EPERM), raise encoder priority; degrade w/o SYS_NICE.
-AC: [ ] gaming elevated priority, non-gaming unchanged [ ] missing SYS_NICE warns no fail [ ] go build
-
-### [GAME-07] Auto gaming-mode for Wine/Lutris/Steam/gaming-category
-`todo` · P1 · M · dep: GAME-02 · parallel: no — backend/services/appnet/manifest.go, backend/services/wine/wine.go, main.go
-Scope: Add `gaming` to ValidCategories; set Gaming:true when cmd is wine/lutris/steam or manifest category=gaming. (manifest.go LOCKED dirty — coordinate)
-AC: [ ] gaming valid category [ ] wine/lutris/steam/gaming-cat sets Gaming:true [ ] non-gaming unaffected, go build
-
-### [GAME-08] Stream toolbar: FPS/latency/quality/fullscreen/MangoHud
-`todo` · P2 · L · dep: GAME-01, GAME-02 · parallel: no — src/builtin/stream/StreamViewer.jsx, main.go, backend/services/stream/pool.go
-Scope: Overlay toolbar (gaming): FPS selector→new POST /api/stream/fps (restart capture), RTT from getStats, quality tier, fullscreen+pointer-lock, MangoHud toggle (MANGOHUD=1 env relaunch).
-AC: [ ] toolbar FPS changes framerate [ ] RTT+quality live [ ] fullscreen+MangoHud toggle [ ] go build
+> Why this matters: Catch-all for cross-cutting items: accent color picker, terminal theme/font, i18n scaffold, dependency + container CVE scanning in CI. Small, useful, easy to overlook.
 
 ### [MISC-01] Accent colour picker (system CSS var)
 `done` · P1 · M · dep: none · parallel: no — src/core/ThemeProvider.jsx, src/core/Settings.jsx, src/index.css
@@ -831,8 +959,11 @@ AC: [ ] t() app-wide, locale from profile [ ] Setup renders via catalog en+af [ 
 
 ---
 
-## PEER (roadmap/PEERING.md) — greenfield; phasing in agent notes
-Phases: P1 ident/foundation PEER-01..05 · P2 trust/contacts 06-09 · P3 verify/profile 10-13 · P4 messaging/media 14-18 · P5 calls 19-24 · P6 multiparty 25-29 · P7 collab 30-33 · P8 drop 34-36 · P9 security/ext 37-41
+## Area: Peering
+
+_Design doc: [`roadmap/PEERING.md`](../roadmap/PEERING.md)_  ·  _Prefix: `PEER-*`_
+
+> Why this matters: The big one. Ed25519 identity, signed canonical-JSON envelopes, S2S HTTP, WebSocket fan-out — and then on top of that: contacts, messaging, media, voice/video calls, Pion SFU, Yjs collaboration, AirDrop-style Drop, encrypted relays, signed content feeds.
 
 ### [PEER-01] Scaffold peering service: package, storage, routes
 `done` · P0 · M · dep: none · parallel: no — new backend/services/peering/peering.go, main.go
@@ -1041,7 +1172,11 @@ AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] 
 
 ---
 
-## AUTH / FED / MOBILE / LADYBIRD (roadmap/future/*) — backlog default P3 unless foundational
+## Area: Authentication
+
+_Design doc: [`roadmap/future/AUTHENTICATION.md`](../roadmap/future/AUTHENTICATION.md)_  ·  _Prefix: `AUTH-*`_
+
+> Why this matters: Make a Vula instance a credible "possession factor." TPM-sealed device identity, TOTP (with Google Authenticator import/export), encrypted password vault, FIDO2 server-side passkeys, mTLS client certs, SMS-over-VoIP for the last-mile.
 
 ### [AUTH-01] TOTP secret store and code generation backend
 `done` · P2 · M · dep: none · parallel: yes — new backend/services/authvault/ (go.mod: pquerna/otp)
@@ -1113,6 +1248,14 @@ AC: [ ] webauthn channel accepted bidirectional [ ] round-trips via relay in tes
 Scope: POST /api/auth/sms/webhook (Twilio form) extract OTP regex, store ~/.vulos/auth/sms/history.json 24h, notify; recent/number/settings endpoints.
 AC: [ ] Twilio payload stores+notifies [ ] OTP regex on real samples in test [ ] >24h pruned
 
+---
+
+## Area: Fediverse Client
+
+_Design doc: [`roadmap/future/ACTIVITYPUB.md`](../roadmap/future/ACTIVITYPUB.md)_  ·  _Prefix: `FED-*`_
+
+> Why this matters: One bundled app speaking ActivityPub: Mastodon, Pixelfed (photos), PeerTube (video), Lemmy (forums). OAuth2 against the user's existing server — we don't run one.
+
 ### [FED-01] ActivityPub social app scaffold (read-only public timeline)
 `done` · P3 · M · dep: none · parallel: yes — new apps/social/, src/core/AppRegistry.js (defer reg if AppRegistry contended)
 Scope: social app (manifest+server+UI), read-only: enter instance host, GET /api/v1/timelines/public, render statuses. No auth/posting.
@@ -1142,6 +1285,14 @@ AC: [ ] browse public Lemmy communities/posts [ ] sort hot/new/top/active [ ] lo
 `done` · P3 · S · dep: FED-02, FED-03 · parallel: yes — apps/social/, one notifySvc call
 Scope: Mastodon streaming WS → POST /api/notifications/send on mention; share target → compose prefilled.
 AC: [ ] new mention triggers Vula notification [ ] share opens compose prefilled
+
+---
+
+## Area: Telephony
+
+_Design doc: [`roadmap/future/MOBILE.md`](../roadmap/future/MOBILE.md)_  ·  _Prefix: `MOBILE-*`_
+
+> Why this matters: ModemManager (D-Bus) for SMS + voice + signal, lpac for eSIM, a `phone` app for Messages + Dialer. Treat the modem as another OS service.
 
 ### [MOBILE-01] Telephony service scaffold (Go + WS + D-Bus ModemManager)
 `done` · P3 · M · dep: none · parallel: yes — new backend/services/telephony/, apps/phone/app.json, main.go
@@ -1173,23 +1324,26 @@ AC: [ ] list/enable/disable/delete (mock lpac) [ ] add-by-activation-code [ ] UI
 Scope: useDeviceProfile hook (viewport+override), responsive breakpoints collapse desktop→mobile single-column, notification behavior stub per profile. (coordinate w/ DEVPROF-03 — share hook)
 AC: [ ] useDeviceProfile updates on resize [ ] mobile single-column at narrow [ ] profile overridable
 
+---
+
+## Area: Ladybird Browser Spike
+
+_Design doc: [`roadmap/future/LADYBIRD-BROWSER.md`](../roadmap/future/LADYBIRD-BROWSER.md)_  ·  _Prefix: `LADYBIRD-*`_
+
+> Why this matters: An experimental, feature-flagged second remote-browser engine using Ladybird's headless WebContent — promises a zero-copy capture path. Chromium stays default.
+
 ### [LADYBIRD-01] Ladybird headless engine spike behind Settings toggle
 `done` · P3 · L · dep: none · parallel: yes — new backend/services/ladybird/, backend/services/webbrowser/chrome.go, main.go
 Scope: guarded experimental Ladybird launcher via stream.Pool, feature-flagged, fallback to Chromium when absent; no Chromium/Xvfb removal; log engine in /api/browser/status.
 AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallback [ ] engine logged + in /api/browser/status [ ] go build
 
-<!-- END-BACKLOG -->
-
-
 ---
 
-## SECURITY (post-audit remediation — Opus app-exposure audit, this session)
+## Area: Security
 
-> Source: read-only Opus security audit of the app-exposure surface. The
-> unauthenticated RCE chain is CLOSED. Remaining = HIGH/MED/LOW hardening,
-> Sonnet-executable, file-disjoint where possible. C5/M2 (visibility
-> enforcement) moved to vulos-cloud SECURITY-EXPOSURE roadmap (it IS the cloud
-> exposure model). See decisions.md D24/D26/D27.
+_Design doc: [`see decisions.md D24/D26/D27`]()_  ·  _Prefix: `SEC-*`_
+
+> Why this matters: Post-audit hardening track. The unauthenticated-RCE chain (C1–C4 + H1/H2/H5) is closed; what's left is HIGH/MED/LOW items from the same Opus app-exposure audit. C5/M2 (visibility enforcement) moved to vulos-cloud's exposure model.
 
 ### [SEC-A] Strip spoofable identity headers (C1) + lock /api/profiles (C2)
 `done` · P0 · S · dep: none · parallel: yes — backend/services/auth/handlers.go (merged 9c289ed)
@@ -1234,3 +1388,7 @@ AC: [ ] password change revokes sessions [ ] min length raised, legacy hash path
 `done` · P3 · S · dep: none · parallel: yes — apps/gallery/server.py, apps/music/server.py
 Scope: containment check uses `startswith(realpath(root))` without trailing sep → sibling dir sharing prefix reachable. Append `os.sep` to the contained root in every check.
 AC: [ ] sibling-prefix dir not reachable [ ] normal media still served [ ] py_compile clean
+
+---
+
+<!-- END-BACKLOG -->

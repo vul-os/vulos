@@ -1641,6 +1641,57 @@ func main() {
 		writeJSON(w, map[string]string{"status": "killed"})
 	})
 
+	// BMINIT-04: native-launch — spawn an arbitrary binary as a Wayland/X11 native window.
+	// Admin-gated; only available when nativeMode == "native".
+	mux.HandleFunc("POST /api/shell/native-launch", func(w http.ResponseWriter, r *http.Request) {
+		// [1] Mode gate — must be native before any further work.
+		if nativeMode != "native" {
+			writeErr(w, 400, "native-launch not available in "+nativeMode+" mode")
+			return
+		}
+		// [2] Admin gate.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
+		// [3] Parse request.
+		var req struct {
+			Binary string   `json:"binary"`
+			Args   []string `json:"args"`
+			AppID  string   `json:"app_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "invalid request")
+			return
+		}
+		// [4] If app_id is supplied, resolve binary from the installed manifest.
+		if req.AppID != "" && req.Binary == "" {
+			if m, err := appStore.GetManifest(req.AppID); err == nil && m.Command != "" {
+				req.Binary = m.Command
+			}
+		}
+		if req.Binary == "" {
+			writeErr(w, 400, "binary required")
+			return
+		}
+		// [5] Audit log.
+		log.Printf("[native-launch] admin=%s binary=%q args=%v app_id=%q",
+			r.Header.Get("X-User-ID"), req.Binary, req.Args, req.AppID)
+		// [6] Launch with scrubbed env.
+		spec := appnet.NativeLaunchSpec{
+			Binary:         req.Binary,
+			Args:           req.Args,
+			WaylandDisplay: os.Getenv("WAYLAND_DISPLAY"),
+			XDGRuntimeDir:  os.Getenv("XDG_RUNTIME_DIR"),
+		}
+		pid, err := appnet.LaunchNative(spec)
+		if err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, map[string]any{"pid": pid})
+	})
+
 	// OS Control — AI and frontend can control the shell
 	mux.HandleFunc("POST /api/os/open-app", func(w http.ResponseWriter, r *http.Request) {
 		// Triggers app launch from backend (AI can call this)
