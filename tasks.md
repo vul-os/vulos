@@ -965,7 +965,7 @@ Scope: multiple RTCPeerConnections full mesh, per-peer signaling, grid, SFU-reco
 AC: [ ] 3–4 mesh A/V call [ ] join/leave updates mesh no drop [ ] low-bw triggers SFU prompt
 
 ### [PEER-27] Pion SFU on host (forward, simulcast, Last-N)
-`todo` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
+`done` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
 Scope: Pion SFU room: N PCs, accept 2-layer simulcast, forward selected layer per receiver, Last-N (4/6/9), join/leave; 5+ routes through host SFU.
 AC: [ ] 5+ routes through SFU [ ] simulcast received+forwarded per receiver [ ] Last-N limits [ ] no transcoding
 
