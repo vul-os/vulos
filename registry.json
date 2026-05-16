@@ -944,6 +944,78 @@
           "_note": "awaiting checksum \u2014 GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum"
         }
       }
+    },
+    "vaultwarden": {
+      "name": "Vaultwarden",
+      "vetted": true,
+      "type": "web",
+      "description": "Bitwarden-compatible self-hosted password vault \u2014 end-to-end encrypted, supports all Bitwarden clients and browser extensions",
+      "category": "system",
+      "author": "dani-garcia",
+      "homepage": "https://github.com/dani-garcia/vaultwarden",
+      "icon": "\ud83d\udd11",
+      "keywords": [
+        "password",
+        "vault",
+        "bitwarden",
+        "security",
+        "encryption",
+        "credentials",
+        "secrets"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "1.32.7": {
+          "_disabled": true,
+          "_note": "awaiting verified upstream checksum \u2014 pin a sha256 from https://github.com/dani-garcia/vaultwarden/releases before enabling",
+          "command": "bin/vaultwarden",
+          "port": 8080,
+          "env": {
+            "DATA_FOLDER": "data/",
+            "ROCKET_PORT": "${PORT}",
+            "ROCKET_ADDRESS": "0.0.0.0",
+            "WEBSOCKET_ENABLED": "true"
+          },
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true,
+          "checksum": ""
+        }
+      }
+    },
+    "libretranslate": {
+      "name": "LibreTranslate",
+      "vetted": true,
+      "type": "web",
+      "description": "Offline machine translation server \u2014 translate text between languages locally with no data leaving your device",
+      "category": "productivity",
+      "author": "LibreTranslate",
+      "homepage": "https://libretranslate.com",
+      "icon": "\ud83c\udf10",
+      "keywords": [
+        "translation",
+        "translate",
+        "language",
+        "nlp",
+        "offline",
+        "privacy"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "1.5.3": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev && pip3 install --break-system-packages libretranslate==1.5.3",
+          "command": "libretranslate --load-only en,es,fr,de --port ${PORT} --host 0.0.0.0",
+          "port": 5000,
+          "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2>/dev/null || true",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "checksum": ""
+        }
+      }
     }
   }
 }
