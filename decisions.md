@@ -396,3 +396,8 @@ Mem 899 MB, load 8, build green @ b4d633c. Dispatching 3 conservative workers (v
 
 ## D46 (17:57) — Tick: hold (INIT-10 in flight, wind-down approaching)
 Mem 695 MB cleared, build green @ c6f2d79, 0 unmerged branches. INIT-10 worker still working (no completion yet, no branch). Per D45 plan: no new dispatch — let INIT-10 complete, merge it, then clean wind-down at 18:55 (58 min). Final session tally so far: 152 task-branches merged.
+
+## D47 (18:02) — Final wave merged; 53 min to wind-down (clean)
+INIT-10 merged @ d0e0a22 — last task of D45 wave. All 3/3 of the final tick landed (INIT-09, INIT-10, BMINIT-14). SEC-H invariant preserved (handlers.go publicPaths: /api/open OUT, /api/setup/join-code IN for setup-time unauth join).
+Session total: **153 task-branches merged**. Build green @ d0e0a22.
+No further dispatch — wind-down at 18:55. Cron 44dbf100 will fire once more before then; I'll let it tick clean (no merges, no dispatches) and CronDelete at 18:55.
