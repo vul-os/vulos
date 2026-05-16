@@ -1025,7 +1025,7 @@ Scope: relay role config (enabled/capacity/TTL/allowed), deposit (mutual-trust+l
 AC: [ ] deposit stores by recipient, relay never decrypts [ ] signed pickup returns, ack deletes [ ] limits enforced, mutual-trust only
 
 ### [PEER-39] Relay attestation: verify TEE before send
-`todo` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
+`done` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
 Scope: relay exposes attestation doc; sender validates vs policy before deposit, pluggable verifier (start AWS Nitro), strict reject-on-failure.
 AC: [ ] sender verifies attestation before deposit [ ] failed/absent rejects relay [ ] verifier interface extensible
 
