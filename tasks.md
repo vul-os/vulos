@@ -960,7 +960,7 @@ Scope: collect bandwidth reports, table, volunteer SFU host, capacity estimate f
 AC: [ ] lists ▲up▼down latency [ ] host dropdown defaults initiator, updates capacity [ ] estimate matches math
 
 ### [PEER-26] Mesh group calls (3–4 full-mesh)
-`todo` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
+`done` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
 Scope: multiple RTCPeerConnections full mesh, per-peer signaling, grid, SFU-recommend guard when low bandwidth.
 AC: [ ] 3–4 mesh A/V call [ ] join/leave updates mesh no drop [ ] low-bw triggers SFU prompt
 
