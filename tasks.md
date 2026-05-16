@@ -885,7 +885,7 @@ Scope: Call vulos.org verify/send+confirm (configurable base URL), store signed 
 AC: [ ] verify sends, confirm stores token [ ] token sig validated [ ] unverified still works [ ] base URL configurable
 
 ### [PEER-11] Profile model: fields, avatar resize, visibility
-`todo` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
+`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
 Scope: Profile store + GET/PUT profile, POST profile/image (resize 256² WebP), GET profile/image (ETag, visibility-gated); visibility resolver.
 AC: [ ] avatar resized WebP at path [ ] image honors ETag+visibility [ ] fields persist w/ default visibility
 
