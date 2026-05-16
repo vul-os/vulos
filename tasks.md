@@ -716,7 +716,7 @@ Scope: First boot gen ULID (oklog/ulid/v2), default hostname {user}-{device}, pe
 AC: [ ] first boot 26-char ULID persisted [ ] reused on 2nd boot [ ] GET /api/identity [ ] POST hostname updates [ ] go build, ulid in go.mod
 
 ### [INIT-02] Hardened OpenSSH in image + first-boot host keys
-`todo` · P0 · M · dep: none · parallel: no — Dockerfile, build.sh, backend/cmd/init/main.go
+`done` · P0 · M · dep: none · parallel: no — Dockerfile, build.sh, backend/cmd/init/main.go
 Scope: openssh-server in 3 apt blocks; sshd_config.d/vulos.conf hardened; init gen host keys + start sshd idempotent; EXPOSE 22.
 AC: [ ] openssh in Dockerfile+2 build.sh blocks [ ] vulos.conf no-password/prohibit-password [ ] init gens keys+sshd idempotent [ ] docker build ok
 
