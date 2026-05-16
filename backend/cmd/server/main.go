@@ -34,6 +34,7 @@ import (
 	"vulos/backend/services/embeddings"
 	"vulos/backend/services/energy"
 	"vulos/backend/services/gateway"
+	"vulos/backend/services/gpu"
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/packages"
@@ -1296,6 +1297,7 @@ func main() {
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)
+	gpu.RegisterGPUInfoHandlers(mux)
 
 	// Peering — direct Vula-to-Vula communication
 	peeringSvc.RegisterHandlers(mux)

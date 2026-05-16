@@ -25,6 +25,34 @@ const categoryLabels = {
   system: 'System',
 }
 
+// Cached GPU tier — fetched once, best-effort. null = not yet fetched.
+let gpuapiTierCache = null
+
+async function gpuapiGetChromiumArgs() {
+  const softwareArgs = ['--no-sandbox', '--disable-gpu', '--disable-software-rasterizer',
+    '--disable-dev-shm-usage', '--no-first-run',
+    '--disable-translate', '--disable-dbus',
+    '--disable-infobars', '--disable-default-apps',
+    '--user-data-dir=/root/.vulos/browser/profile',
+    '--start-maximized', 'https://google.com']
+  try {
+    if (gpuapiTierCache === null) {
+      const res = await fetch('/api/gpu/info')
+      const data = await res.json()
+      gpuapiTierCache = data.tier_name || 'software'
+    }
+    if (gpuapiTierCache === 'software') return softwareArgs
+    // GPU tier (vaapi or nvenc) — enable hardware acceleration, drop --disable-gpu
+    return ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run',
+      '--disable-translate', '--disable-dbus',
+      '--disable-infobars', '--disable-default-apps',
+      '--user-data-dir=/root/.vulos/browser/profile',
+      '--start-maximized', 'https://google.com']
+  } catch {
+    return softwareArgs
+  }
+}
+
 export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
   const [search, setSearch] = useState('')
@@ -119,12 +147,7 @@ export default function Launchpad() {
       let cmd, args
       if (app.id === 'browser') {
         cmd = 'chromium'
-        args = ['--no-sandbox', '--disable-gpu', '--disable-software-rasterizer',
-          '--disable-dev-shm-usage', '--no-first-run',
-          '--disable-translate', '--disable-dbus',
-          '--disable-infobars', '--disable-default-apps',
-          '--user-data-dir=/root/.vulos/browser/profile',
-          '--start-maximized', 'https://google.com']
+        args = await gpuapiGetChromiumArgs()
       } else {
         cmd = app._exec ? app._exec.split(' ')[0] : app.command?.split(' ')[0] || app.id
         args = app._exec ? app._exec.split(' ').slice(1) : app.command?.split(' ').slice(1) || []
