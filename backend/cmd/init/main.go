@@ -21,6 +21,29 @@ import (
 // Build: GOOS=linux GOARCH=amd64 go build -o vulos-init ./cmd/init
 // Install: copy to /sbin/init (or set init=/sbin/vulos-init in kernel cmdline)
 
+// plymouthProgress sends a progress update to Plymouth (0–100).
+// No-ops silently when the plymouth binary is not found — safe in containers.
+func plymouthProgress(n int) {
+	bin, err := exec.LookPath("plymouth")
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(bin, "system-update", fmt.Sprintf("--progress=%d", n))
+	_ = cmd.Run()
+}
+
+// plymouthQuitRetainSplash tears down the Plymouth splash while keeping
+// the last frame visible until the compositor (labwc) draws its first frame.
+// No-ops silently when the plymouth binary is not found.
+func plymouthQuitRetainSplash() {
+	bin, err := exec.LookPath("plymouth")
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(bin, "quit", "--retain-splash")
+	_ = cmd.Run()
+}
+
 func main() {
 	if os.Getpid() != 1 {
 		fmt.Println("vulos-init: not running as PID 1, starting in service mode")
@@ -30,18 +53,22 @@ func main() {
 
 	log.SetPrefix("[vulos-init] ")
 	log.Println("booting Vula OS...")
+	plymouthProgress(0) // milestone: boot start
 
 	// Phase 1: Mount essential filesystems
 	mountAll()
+	plymouthProgress(20) // milestone: mountAll done
 
 	// Phase 2: Hardware detection (best-effort, non-fatal)
 	detectHardware()
 
 	// Phase 3: Set hostname
 	setHostname()
+	plymouthProgress(40) // milestone: hostname set / hardware detected
 
 	// Phase 4: Start systemd services (if available)
 	startSystemd()
+	plymouthProgress(60) // milestone: systemd handed off / services starting
 
 	// Phase 5: Start vulos server
 	startServices()
@@ -152,6 +179,8 @@ func startSystemd() {
 }
 
 func startServices() {
+	plymouthProgress(80) // milestone: server starting
+
 	// Locate vulos server binary
 	serverBin := findBinary("vulos-server", "/usr/local/bin/vulos-server", "/opt/vulos/server")
 	if serverBin == "" {
@@ -192,6 +221,9 @@ func startKiosk() {
 
 	// Wait for server to be ready before launching browser.
 	time.Sleep(2 * time.Second)
+
+	plymouthProgress(100)      // milestone: kiosk up
+	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
 
 	// Prefer labwc (multi-window, traffic-light SSD, browser-as-background).
 	labwcBin, err := exec.LookPath("labwc")

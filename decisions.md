@@ -1,33 +1,76 @@
-# Autonomous Roadmap Orchestration — Decisions Log
+# Vula OS — Decisions Log
 
-This is an **automated session**. No questions are asked of the user. Every fork-in-the-road
-decision is made autonomously (with Opus where it matters) and recorded here with rationale.
+## What this is
 
-## Operating policy
+A running record of every design or operational decision that shaped Vula OS. Most entries are short — three to ten lines — and dated. Read them when you want to understand *why* a piece of the codebase looks the way it does, before changing it.
 
-- **Goal:** drive the `roadmap/` toward completion by continuously running Sonnet coding agents
-  against tasks in `tasks.md`.
-- **Fleet:** target ~10 concurrent Sonnet worker agents; **hard cap 15** total concurrent agents
-  (Sonnet workers + any Opus breakdown agents combined).
-- **Cadence:** orchestrator wakes every 15 min via cron job `026d80d9`.
-- **Deadline:** started 2026-05-16 00:52 +0200. **Hard stop 2026-05-16 04:52 +0200** (4h).
-  At/after deadline: stop spawning, let in-flight agents finish, do a final merge/consolidation,
-  `CronDelete 026d80d9`, write a final summary, stop.
-- **Isolation model:** every code-modifying Sonnet worker runs in its **own git worktree**
-  (`isolation: "worktree"`) and commits to a branch `task/<TASK-ID>`. Worktrees share `.git`,
-  so committed branches are visible from the main repo. The orchestrator merges clean branches
-  into `main` during wake cycles.
-- **Collision avoidance:** never run two concurrent workers whose `Key files` overlap. Hot shared
-  files (`backend/cmd/server/main.go`, `backend/services/stream/pool.go`, `stream.go`,
-  `src/core/AppRegistry.js`) are serialized — at most one in-flight task touching each at a time.
-- **Task selection each wake:** pick `Status: todo` tasks whose `Depends on` are all `done` and
-  whose `Key files` don't collide with an in-flight task, highest priority (P0→P3) first.
-- **Resource guardrails (checked every wake):** if any breached, shrink fleet / pause spawning:
-  - disk free on `/System/Volumes/Data` < 20 GB → stop spawning, prune worktrees.
-  - memory free < 15% → cap fleet at 5.
-  - 1-min load average > 2.5 × cores (cores=8 → >20) → cap fleet at 5.
-- **Running low on tasks:** when fewer than ~6 actionable `todo` tasks remain, dispatch Opus
-  agents to break down not-yet-decomposed roadmap files into more `tasks.md` entries.
+The log is append-only. Decisions can be **superseded** by later ones, but the original entry stays. If you want a snapshot of "what rules are currently in force", read the **Decision index** below and look at the Status column.
+
+## How to read this
+
+Two kinds of entries live here:
+
+- **`### D##` / `## D##` entries** — terse, dated, written by the autonomous orchestrator that drove the May 16 2026 push. They cover orchestration mechanics (worktree isolation, conflict-resolution playbooks, load guardrails), strategic pivots (greenfield-bias, security remediation), and the operating policy at the top. They're meant to be skimmed; the title plus one paragraph is usually enough.
+- **Verbose / named sections** — written during human-author or Opus-led sessions when a topic needed more than a paragraph (`Operating policy`, `Deferred / unresolved`, `Assignment ledger`, `Bookkeeping appendix` at the bottom). Treat these as living reference, not history.
+
+A few conventions:
+
+- **IDs are forever.** D1 is D1 even when superseded. There is no D11, D12, D16, D17 — those numbers were claimed by entries that were folded into the larger named sections during the session and never extracted out. Don't reuse them; the next decision is D33.
+- **Dates are local to the day.** Most of these decisions were made over a 16-hour window; intra-day clock times (e.g. `01:38`, `16:21`) matter for the orchestration narrative.
+- **Status terms:**
+    - *active rule* — still the way we do things.
+    - *superseded by D##* — replaced; here for context.
+    - *done* — one-off action that completed; preserved as a record.
+    - *bookkeeping* — operational note (snapshot, ledger, conflict resolution) rather than a forward-looking rule.
+
+## Decision index
+
+| ID | Date / Time | Summary | Status |
+|---|---|---|---|
+| D1 | 2026-05-16 00:52 | Use cron `/loop 15m` for the orchestrator wake-up loop | done (session-scoped) |
+| D2 | 2026-05-16 00:52 | Preserve the first Opus breakdown's 13 AI/STREAM tasks verbatim | done |
+| D3 | 2026-05-16 00:52 | Worker isolation = git worktree + `task/<ID>` branch + orchestrator merge | **active rule** |
+| D4 | 2026-05-16 00:52 | Iteration-1 fleet shape: 6 Opus breakdown + 5 Sonnet workers | done |
+| D5 | 2026-05-16 00:5x | Respect 15-agent hard cap over the "add 5 more" request | **active rule** |
+| D6 | 2026-05-16 01:0x | Status tracking: in-flight tracked in the ledger here; `tasks.md` only flips on terminal transitions | **active rule** |
+| D7 | 2026-05-16 01:0x | Merge policy (worktree + `--no-ff`) validated on first wave | done |
+| D8 | 2026-05-16 01:12 | Baseline-commit pre-session WIP to unblock the merge pipeline | done |
+| D9 | 2026-05-16 01:12 | Retire the "locked files" concept in favour of normal hot-file serialization | **active rule** (supersedes locked-files) |
+| D10 | 2026-05-16 01:12 | Throttle wave to 8 (from 10) on elevated load | done |
+| D13 | 2026-05-16 01:38 | **Pivot:** select greenfield/isolated tasks first; serialize hot files | **active rule** |
+| D14 | 2026-05-16 01:43 | Main-branch guard: assert HEAD=main before/after every merge batch | **active rule** |
+| D15 | 2026-05-16 01:45 | Smaller targeted waves (5-7) when conflict-free pool thins | **active rule** |
+| D18 | 2026-05-16 02:48 | Revert clean-merge-but-build-break with `git reset --hard HEAD~1` | **active rule** |
+| D19 | 2026-05-16 12:59 | Loop resumed after machine sleep; fresh 4h15m window | done |
+| D20 | 2026-05-16 13:12 | Window-2 checkpoint; multi-symbol cascades = defer | bookkeeping |
+| D21 | 2026-05-16 13:37 | Permanent-defer NOTIF-02, AUTH-10, INIT-02 (structural pinned-base failures) | done |
+| D22 | 2026-05-16 15:46 | Deadline-window wave-sizing: clean merges > forced volume | **active rule** |
+| D23 | 2026-05-16 16:03 | CLUSTER-02 permanent-defer (catastrophic stale base, +1828/-168709) | done |
+| D24 | 2026-05-16 16:08 | **Pivot:** orchestration → security remediation after Opus audit | done |
+| D25 | 2026-05-16 16:09 | Load-aware sizing; scaffold sibling `vulos-cloud` repo | done |
+| D26 | 2026-05-16 16:21 | C5/M2 reclassified — visibility model belongs in vulos-cloud, not OSS | **active rule** |
+| D27 | 2026-05-16 16:29 | Two-roadmap split: OSS inline (this file), cloud via 1 Opus | **active rule** |
+| D28 | 2026-05-16 16:33 | Stop running `go build ./...` in routine state-checks (self-inflicted CPU) | **active rule** |
+| D29 | 2026-05-16 16:39 | User override: push SEC wave despite load | done |
+| D30 | 2026-05-16 16:40 | Dispatch Opus to humanize OSS docs (decisions / roadmap / tasks) | done (this commit) |
+| D31 | 2026-05-16 16:48 | 5-worker feature wave (cloud + baremetal aligned, file-disjoint) | done |
+| D32 | 2026-05-16 16:51 | Triple-check security: 2 Opus auditors (OSS verify + cloud design) | **active rule** |
+
+> If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
+
+## Operating policy (active rules, summarised)
+
+The single most useful thing to know if you're reading existing code:
+
+- **Worktree isolation.** Code-modifying agents run in their own git worktree, commit to `task/<ID>`, never push. The orchestrator merges with `--no-ff` into `main` (D3).
+- **Hot-file serialization.** Never run two concurrent workers whose key files overlap. Hot files (`backend/cmd/server/main.go`, `backend/services/stream/pool.go`, `stream.go`, `src/core/AppRegistry.js`, etc.) are serialized: ≤1 in-flight task touches each at a time (D9, D13).
+- **Greenfield bias.** Prefer brand-new `apps/<x>/` and `backend/services/<pkg>/` packages — they auto-merge cleanly regardless of stale base (D13).
+- **Main-branch guard.** Every merge batch asserts `HEAD == main` before and after (D14).
+- **Build-gate every merge.** Run `go build ./...` only at merge time, not in routine state checks (D28). On clean-merge-but-build-break, recover with `git reset --hard HEAD~1` (D18).
+- **Status truth.** `tasks.md` status flips only on terminal transitions (done / blocked). Live `in_progress` state lives in the Assignment ledger further down (D6).
+- **Resource guardrails.** Pause spawning if disk < 20 GB, memory < 15%, or 1-min load > 2.5 × cores. Right-size waves when the conflict-free pool is small (D15, D22).
+
+Everything below is the raw entry stream, in chronological order.
 
 ## Decision log
 
