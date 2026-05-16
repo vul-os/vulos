@@ -46,7 +46,16 @@ async function summarize() {
   try {
     const res = await fetch('/summarize?url=' + encodeURIComponent(url));
     const data = await res.json();
-    summaryDiv.innerHTML = '<div class="summary"><h3>AI Summary</h3>' + data.summary + '</div>';
+    // H5: use textContent to prevent XSS — do NOT use innerHTML with untrusted data.summary
+    const wrapper = document.createElement('div');
+    wrapper.className = 'summary';
+    const heading = document.createElement('h3');
+    heading.textContent = 'AI Summary';
+    wrapper.appendChild(heading);
+    const body = document.createElement('p');
+    body.textContent = data.summary || '';
+    wrapper.appendChild(body);
+    summaryDiv.replaceChildren(wrapper);
   } catch(e) {
     summaryDiv.innerHTML = '<div class="summary"><h3>Error</h3>Could not summarize.</div>';
   }
