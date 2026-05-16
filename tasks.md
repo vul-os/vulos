@@ -1201,7 +1201,7 @@ AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallbac
 `done` · P1 · M · dep: none · parallel: yes — apps/notes/server.py, apps/browser/server.py, apps/browser/index.html (merged 6881e78)
 
 ### [SEC-E] webproxy DNS-rebinding + TLS-verify (H4)
-`todo` · P1 · M · dep: none · parallel: yes — backend/services/webproxy/proxy.go
+`done` · P1 · M · dep: none · parallel: yes — backend/services/webproxy/proxy.go
 Scope: resolve host ONCE and dial the validated pinned IP (kill TOCTOU between isPrivate check ~:147 and client.Do ~:99); fail CLOSED on resolution error (~:160); remove `InsecureSkipVerify:true` (~:33), enable TLS verification; normalize/parse decimal/hex/octal/IPv4-mapped IP literals before the private/loopback/link-local check.
 AC: [ ] single-resolution dial, no rebinding window [ ] fail-closed on bad resolve [ ] TLS verified [ ] encoded-IP literals blocked [ ] go build + webproxy tests
 
