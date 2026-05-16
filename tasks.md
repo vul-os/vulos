@@ -655,7 +655,7 @@ Scope: Branch on useNativeMode(): builtin unchanged; desktop/registry app + canS
 AC: [ ] native mode → native-launch no stream [ ] remote → stream unchanged [ ] builtin identical [ ] npm build
 
 ### [BMINIT-07] Plymouth boot splash + determinate progress
-`todo` · P2 · M · dep: none · parallel: yes — new assets/plymouth/, Dockerfile, build.sh
+`done` · P2 · M · dep: none · parallel: yes — new assets/plymouth/, Dockerfile, build.sh
 Scope: assets/plymouth/themes/vulos (vulos.plymouth, vulos.script w/ determinate bar+Ctrl+V verbose, placeholder PNGs); install plymouth, set default, kernel cmdline `quiet splash plymouth.theme=vulos`.
 AC: [ ] theme dir in-repo [ ] plymouth installed+default [ ] script has bar+Ctrl+V [ ] build ok
 
