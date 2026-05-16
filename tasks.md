@@ -16,7 +16,7 @@ decomposed by Opus agents and appended below as they complete.
 ## AI (roadmap/AI.md)
 
 ### [AI-01] Add visibility field to app manifest and persistent visibility store
-- **Status:** todo
+- **Status:** done
 - **Priority:** P0
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § Public Apps
@@ -32,7 +32,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `backend/services/appnet/manifest.go`, `backend/services/appnet/store.go`, new `backend/services/appnet/visibility.go`, `backend/cmd/server/main.go`.
 
 ### [AI-02] API endpoints to get/set per-app visibility
-- **Status:** todo
+- **Status:** done
 - **Priority:** P0
 - **Effort:** S
 - **Roadmap:** roadmap/AI.md § Public Apps
@@ -185,7 +185,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `src/shell/DesktopContextMenu.jsx`, `src/builtin/files/FileManager.jsx`.
 
 ### [AI-12] App empty-state and error-state "Ask AI" affordances
-- **Status:** todo
+- **Status:** done
 - **Priority:** P2
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § Desktop & Apps Must Lead to Chat → empty/error states
@@ -251,7 +251,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `backend/services/gpu/gpu.go`.
 
 ### [STREAM-03] Expose GStreamer video encoder as a named element
-- **Status:** todo
+- **Status:** done
 - **Priority:** P0
 - **Effort:** M
 - **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Adaptive Bitrate — Wire It Up
@@ -266,7 +266,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `backend/services/gpu/gpu.go`, `backend/services/stream/pool.go`, `backend/services/stream/stream.go`.
 
 ### [STREAM-04] Apply adaptive bitrate changes to the running encoder
-- **Status:** todo
+- **Status:** done
 - **Priority:** P0
 - **Effort:** M
 - **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Adaptive Bitrate — Wire It Up
@@ -297,7 +297,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `src/builtin/stream/StreamViewer.jsx` (reference `src/builtin/webbrowser/RemoteBrowser.jsx`).
 
 ### [STREAM-06] Add PipeWire/PulseAudio backend detection to the audio capture pipeline
-- **Status:** todo
+- **Status:** done
 - **Priority:** P1
 - **Effort:** M
 - **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Audio
@@ -855,7 +855,7 @@ Scope: Outbound signed POST to peer /api/peering/inbound/* (TLS, timeout, SSRF g
 AC: [ ] mw rejects unsigned 401 [ ] non-approved 403 (except request) [ ] outbound refuses private+timeout [ ] table tests states
 
 ### [PEER-05] Peering WS multiplex channel (browser↔own server)
-`todo` · P0 · M · dep: PEER-01 · parallel: yes — new backend/services/peering/ws.go, src/core/usePeering.js
+`done` · P0 · M · dep: PEER-01 · parallel: yes — new backend/services/peering/ws.go, src/core/usePeering.js
 Scope: WS /api/peering/stream (wsutil.Upgrader), per-user register, channel-tagged frames (message/signal/collab/notification/presence), server Push(); frontend usePeering() reconnect.
 AC: [ ] browser opens stream, Push delivers [ ] channel discriminator, multi-sub [ ] hook reconnects backoff
 
@@ -1094,7 +1094,7 @@ Scope: GET /api/auth/device/identity, /tpm/status, POST /seal, /unseal (admin-on
 AC: [ ] tpm/status returns backend type [ ] seal→unseal returns original [ ] go build
 
 ### [AUTH-11] Client certificate (mTLS) store + management API
-`todo` · P2 · M · dep: AUTH-09 · parallel: yes — new backend/services/clientcerts/
+`done` · P2 · M · dep: AUTH-09 · parallel: yes — new backend/services/clientcerts/
 Scope: per-domain X.509 cert+key under ~/.vulos/auth/certificates/<domain>/ (key sealed via AUTH-09), CSR gen; install/list/delete/status/generate-csr endpoints.
 AC: [ ] install+list shows issuer/expiry [ ] CSR valid PEM w/ CN/SAN [ ] key sealed not plaintext [ ] unit test install+status
 
