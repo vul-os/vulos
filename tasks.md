@@ -950,7 +950,7 @@ Scope: video track 2-layer simulcast, camera on/off, getDisplayMedia screen-shar
 AC: [ ] video call toggleable camera [ ] screen share add/stop [ ] quality+PiP
 
 ### [PEER-24] Incoming-call UI, ring, call history
-`todo` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
+`done` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
 Scope: shell-wide incoming-call modal on signal call-request + ringtone; backend call-history + GET endpoint + UI panel.
 AC: [ ] modal regardless of focus [ ] accept/reject drives signaling [ ] completed/missed recorded+listed
 
