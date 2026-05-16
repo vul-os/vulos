@@ -985,7 +985,7 @@ Scope: store Yjs doc binaries+meta, relay opaque CRDT blobs S2S, broadcast updat
 AC: [ ] 2 browsers same doc merge realtime [ ] awareness broadcasts+clears on disconnect [ ] yjs state persists
 
 ### [PEER-31] Document share/accept + per-peer permissions
-`todo` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
+`done` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
 Scope: doc-share invitation send/recv, accept adds w/ Shared badge, edit/view enforce (view recv-only), owner revoke, documents list/leave.
 AC: [ ] share→invitation, accept registers [ ] view-only sends rejected [ ] revoke stops updates
 
