@@ -1149,7 +1149,7 @@ Scope: HTTP server + WS hub + ModemManager D-Bus client enumerate modems/signal/
 AC: [ ] status endpoint lists modems (empty when none) [ ] WS connects/stays open [ ] no panic w/o D-Bus [ ] go build
 
 ### [MOBILE-02] ModemManager SMS send/receive + SQLite history
-`todo` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
+`done` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
 Scope: SMS send/list/delete via D-Bus Messaging, incoming-signal listener → WS push, SQLite thread-grouped history, search; mockable D-Bus.
 AC: [ ] send/list/delete exposed [ ] incoming (mocked) persisted+pushed [ ] thread-grouped query
 
