@@ -1079,7 +1079,7 @@ Scope: master-pwd unlock screen, entry list/search, detail reveal/copy, add/edit
 AC: [ ] unlock gates list [ ] copy user/pass w/ confirm [ ] CRUD persists [ ] generator inserts into form
 
 ### [AUTH-08] Credential vault import (Bitwarden/1Password/KeePass/Chrome)
-`todo` · P3 · M · dep: AUTH-05, AUTH-06 · parallel: yes — new credvault/import.go
+`done` · P3 · M · dep: AUTH-05, AUTH-06 · parallel: yes — new credvault/import.go
 Scope: parsers for 4 formats → vault entries; POST /import + /export; dedupe url+username.
 AC: [ ] 4 formats import in unit tests [ ] export re-imports equivalent [ ] dupes merged
 
