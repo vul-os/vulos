@@ -9,9 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"vulos/backend/services/packages"
 	"sort"
 	"strings"
+	"vulos/backend/services/packages"
 )
 
 // Registry holds the catalog of vetted apps with versioned install recipes.
@@ -43,15 +43,15 @@ type Registry struct {
 // RegistryEntry is a single app in the registry.
 type RegistryEntry struct {
 	Name        string                    `json:"name"`
-	Vetted      bool                      `json:"vetted"`       // true = reviewed and approved by Vula OS team
-	Type        string                    `json:"type"`         // "web" (serves HTTP), "desktop" (GUI app, streamed via XvfbBackend), or "service" (background daemon)
-	Arch        []string                  `json:"arch"`         // supported architectures (e.g. ["amd64","arm64"]), empty = all
+	Vetted      bool                      `json:"vetted"` // true = reviewed and approved by Vula OS team
+	Type        string                    `json:"type"`   // "web" (serves HTTP), "desktop" (GUI app, streamed via XvfbBackend), or "service" (background daemon)
+	Arch        []string                  `json:"arch"`   // supported architectures (e.g. ["amd64","arm64"]), empty = all
 	Description string                    `json:"description"`
 	Category    string                    `json:"category"`
 	Author      string                    `json:"author"`
 	Homepage    string                    `json:"homepage"`
-	Icon        string                    `json:"icon"`         // unicode fallback icon
-	IconURL     string                    `json:"icon_url"`     // URL to download icon from
+	Icon        string                    `json:"icon"`     // unicode fallback icon
+	IconURL     string                    `json:"icon_url"` // URL to download icon from
 	Keywords    []string                  `json:"keywords"`
 	License     string                    `json:"license"`
 	Versions    map[string]*VersionRecipe `json:"versions"`
@@ -167,7 +167,9 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = &stderrBuf
 			home := os.Getenv("HOME")
-			if home == "" { home = "/root" }
+			if home == "" {
+				home = "/root"
+			}
 			cmd.Env = append(os.Environ(), fmt.Sprintf("APP_DIR=%s", appDir), "HOME="+home)
 			if err := cmd.Run(); err != nil {
 				errOutput := lastLines(stderrBuf.String(), 10)
@@ -186,7 +188,9 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 
 	// Generate the app.json manifest
 	appType := entry.Type
-	if appType == "" { appType = "web" }
+	if appType == "" {
+		appType = "web"
+	}
 	appCommand := recipe.Command
 	if recipe.FlatpakID != "" && appCommand == "" {
 		appCommand = FlatpakRunCommand(recipe.FlatpakID)

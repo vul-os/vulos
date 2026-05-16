@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"vulos/backend/services/packages"
 	"time"
+	"vulos/backend/services/packages"
 )
 
 // ValidateInstalled runs validation on all installed app manifests.
@@ -38,7 +38,7 @@ type AppStore struct {
 	registry     *Registry // local vetted app registry
 	registryPath string    // path to registry.json
 	client       *http.Client
-	installing   sync.Map  // appID → true while install is in progress
+	installing   sync.Map // appID → true while install is in progress
 }
 
 func NewAppStore(appsDir string) *AppStore {

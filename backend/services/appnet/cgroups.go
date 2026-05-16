@@ -10,16 +10,16 @@ import (
 
 // ResourceLimits defines cgroup v2 resource constraints for an app.
 type ResourceLimits struct {
-	MemoryMax   int64 // bytes, 0 = unlimited
-	CPUQuota    int   // microseconds per 100ms period, 0 = unlimited (100000 = 1 core)
-	PidsMax     int   // max number of processes, 0 = unlimited
+	MemoryMax int64 // bytes, 0 = unlimited
+	CPUQuota  int   // microseconds per 100ms period, 0 = unlimited (100000 = 1 core)
+	PidsMax   int   // max number of processes, 0 = unlimited
 }
 
 // DefaultLimits returns sensible defaults for an app.
 func DefaultLimits() ResourceLimits {
 	return ResourceLimits{
 		MemoryMax: 512 * 1024 * 1024, // 512MB
-		CPUQuota:  100000,             // 1 core
+		CPUQuota:  100000,            // 1 core
 		PidsMax:   256,
 	}
 }

@@ -42,9 +42,22 @@ func NewLauncher(manager *Manager) *Launcher {
 // Launch starts an app inside its network namespace.
 // The app can bind to any port it wants — the namespace isolates it.
 // Traffic to host:hostPort is forwarded to ns:appPort via iptables.
+// Profile defaults to "default"; use LaunchWithProfile to specify an explicit profile.
 func (l *Launcher) Launch(ctx context.Context, appID, userID string, hostPort, appPort int, command string, args []string, workDir string, env []string) (*App, error) {
+	return l.LaunchWithProfile(ctx, appID, userID, "default", hostPort, appPort, command, args, workDir, env)
+}
+
+// LaunchWithProfile starts an app inside its network namespace, scoped to the
+// given profile.  When profile is "" or "default" the behaviour is identical
+// to Launch (backwards-compatible key = userID-appID).  Any other profile
+// value creates a separate, isolated namespace for the same appID
+// (key = userID-profile:appID).
+func (l *Launcher) LaunchWithProfile(ctx context.Context, appID, userID, profile string, hostPort, appPort int, command string, args []string, workDir string, env []string) (*App, error) {
+	// Scope app instance by user + profile — each (user, profile) pair gets
+	// its own namespace.  net02ProfileKey keeps "default" backwards-compat.
+	appKey := net02ProfileKey(profile, appID)
 	// Scope app instance by user — each user gets their own namespace
-	instanceID := userID + "-" + appID
+	instanceID := userID + "-" + appKey
 
 	l.mu.Lock()
 	if existing, ok := l.apps[instanceID]; ok && existing.Running {

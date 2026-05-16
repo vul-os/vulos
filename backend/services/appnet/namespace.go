@@ -33,6 +33,15 @@ type Manager struct {
 	subnet     int    // next subnet octet
 }
 
+// net02ProfileKey returns the composite map key for a (profile, appID) pair.
+// "default" profile maps to the bare appID for backwards-compatibility.
+func net02ProfileKey(profile, appID string) string {
+	if profile == "" || profile == "default" {
+		return appID
+	}
+	return profile + ":" + appID
+}
+
 // NewManager creates an app network manager.
 // Requires iproute2 and iptables on the host.
 func NewManager() *Manager {
@@ -255,17 +264,31 @@ func (m *Manager) Get(key string) (*Namespace, bool) {
 }
 
 // GetForUser finds a namespace for a given appID owned by the specified user.
+// Preserved for backwards-compatibility; equivalent to GetForProfile(appID, userID, "default").
 func (m *Manager) GetForUser(appID, userID string) (*Namespace, bool) {
+	return m.GetForProfile(appID, userID, "default")
+}
+
+// GetForProfile finds a namespace for a given appID + profile owned by the
+// specified user.  Profile "default" (or "") retains backwards-compatible
+// behaviour: the key is the bare userID-appID form so existing namespaces
+// created before NET-02 are still found.
+func (m *Manager) GetForProfile(appID, userID, profile string) (*Namespace, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// Try exact instanceID first
-	key := userID + "-" + appID
+
+	// Compose the per-profile instance key the same way Launch does.
+	// net02ProfileKey("default", appID) == appID, so the full key for the
+	// default profile is userID + "-" + appID — unchanged from before NET-02.
+	appKey := net02ProfileKey(profile, appID)
+	key := userID + "-" + appKey
 	if ns, ok := m.namespaces[key]; ok {
 		return ns, true
 	}
-	// Search by owner + app suffix
+	// Fallback: search by owner + app suffix (handles old-style namespace keys
+	// that predate the profile dimension or were created with raw instanceIDs).
 	for _, ns := range m.namespaces {
-		if ns.OwnerID == userID && strings.HasSuffix(ns.AppID, "-"+appID) {
+		if ns.OwnerID == userID && strings.HasSuffix(ns.AppID, "-"+appKey) {
 			return ns, true
 		}
 	}

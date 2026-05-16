@@ -43,24 +43,24 @@ var appIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{0,62}$`)
 type AppManifest struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
-	IconPath    string            `json:"icon_path"`    // relative path to icon file, e.g., "icon.svg"
-	Icon        string            `json:"icon"`         // fallback unicode icon for dock/launchpad
+	IconPath    string            `json:"icon_path"` // relative path to icon file, e.g., "icon.svg"
+	Icon        string            `json:"icon"`      // fallback unicode icon for dock/launchpad
 	Description string            `json:"description"`
 	Version     string            `json:"version"`
-	Command     string            `json:"command"`      // relative to app dir: "bin/server" or "python3 server.py"
-	Port        int               `json:"port"`         // port the app listens on inside namespace (web apps only)
-	Type        string            `json:"type"`         // "web", "desktop", or "service"
-	Category    string            `json:"category"`     // core, productivity, media, developer, system, network, database
+	Command     string            `json:"command"`  // relative to app dir: "bin/server" or "python3 server.py"
+	Port        int               `json:"port"`     // port the app listens on inside namespace (web apps only)
+	Type        string            `json:"type"`     // "web", "desktop", or "service"
+	Category    string            `json:"category"` // core, productivity, media, developer, system, network, database
 	Keywords    []string          `json:"keywords"`
-	Env         map[string]string `json:"env"`          // extra env vars
-	Deps        []string          `json:"deps"`         // OS packages needed
-	WorkDir     string            `json:"work_dir"`     // defaults to app directory
-	AutoStart   bool              `json:"auto_start"`   // start on boot
-	Singleton   bool              `json:"singleton"`    // only one instance allowed
-	Permissions []string          `json:"permissions"`  // requested permissions: "network", "filesystem", etc.
-	Author      string            `json:"author"`       // app author/publisher
-	License     string            `json:"license"`      // SPDX license identifier
-	Homepage    string            `json:"homepage"`     // upstream project URL
+	Env         map[string]string `json:"env"`         // extra env vars
+	Deps        []string          `json:"deps"`        // OS packages needed
+	WorkDir     string            `json:"work_dir"`    // defaults to app directory
+	AutoStart   bool              `json:"auto_start"`  // start on boot
+	Singleton   bool              `json:"singleton"`   // only one instance allowed
+	Permissions []string          `json:"permissions"` // requested permissions: "network", "filesystem", etc.
+	Author      string            `json:"author"`      // app author/publisher
+	License     string            `json:"license"`     // SPDX license identifier
+	Homepage    string            `json:"homepage"`    // upstream project URL
 }
 
 // Validate checks that the manifest has all required fields and conforms
