@@ -358,3 +358,9 @@ INIT-08's worker (stale base) re-implemented `storageprov` with a `Config` struc
 
 ## D37 (17:33) — Merge sequencing for remaining OSS wave
 Completions: GAME-08 (stream toolbar — cloud gaming), AUTH-13 (WebAuthn stream gate), AI-06 (AI edit), INIT-03 (ssh keys), SEC-I (ai-apps hardening). All touch main.go for ≥1 wire line; serialize. Order by impact: GAME-08 → AUTH-13 → AI-06 → INIT-03 → SEC-I. Each merge prunes worktrees to recover memory; build-gated with GOMAXPROCS=1.
+
+## D38 (17:38) — cron tick: merged 5/8 remaining, AUTH-13 deferred this tick
+Cron 44dbf100 fire. Merged this tick: SEC-I (0f85d38, aiapps inline → security wrappers), AI-06 (9725216, /api/ai-apps/{id}/update + Edit-with-AI flow), INIT-03 (a30a0b1, ssh keys + authorized_keys API). INIT-08 deferred (D36 dep-mismatch).
+AUTH-13: 3-file conflict (main.go + stream pool.go + stream.go) collides with GAME-08's new Session fields (inputGated bool needs splicing alongside FPS/MangoHud/fpsC/mangoHudC/cage/cageRTDir). Mem at 60 MB after merge attempt — aborted to avoid OOM mid-conflict-resolve. Retry next tick with recovered mem.
+Top-off held: 15m load currently fine but mem trend through tick stayed mostly <500 MB. No new dispatches this tick.
+This-session OSS wave merge tally: BMINIT-06, BMINIT-09, INIT-11, APPSTORE-04 (spliced), NET-10, GAME-08, SEC-I, AI-06, INIT-03 = 9 merged. Pending: AUTH-13. Deferred: INIT-08.
