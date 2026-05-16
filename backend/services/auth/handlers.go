@@ -68,17 +68,16 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                true,
-	"/api/auth/providers":    true,
-	"/api/auth/me":           true,
-	"/api/auth/logout":       true,
-	"/api/auth/register":     true,
-	"/api/auth/login":        true,
-	"/api/auth/status":       true,
-	"/api/setup/status":      true,
-	"/api/browser/status":    true,
-	"/api/open":              true,
-	"/manifest.json":         true,
+	"/health":             true,
+	"/api/auth/providers": true,
+	"/api/auth/me":        true,
+	"/api/auth/logout":    true,
+	"/api/auth/register":  true,
+	"/api/auth/login":     true,
+	"/api/auth/status":    true,
+	"/api/setup/status":   true,
+	"/api/browser/status": true,
+	"/manifest.json":      true,
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -140,7 +139,7 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 
 func (h *Handler) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
-		"has_users":   h.store.HasAnyUsers(),
+		"has_users":       h.store.HasAnyUsers(),
 		"oauth_providers": providerNames(h.providers),
 	})
 }
@@ -428,7 +427,11 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 // Uses SameSite=None + Secure on HTTPS (required for subdomain iframes).
 // Uses SameSite=Lax on HTTP (localhost dev without mkcert).
 func sessionCookie(r *http.Request, token string) *http.Cookie {
-	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	// Only trust X-Forwarded-Proto from loopback (reverse proxy on same host),
+	// mirroring the loopback gate used in extractIP for X-Forwarded-For.
+	remoteHost, _, _ := net.SplitHostPort(r.RemoteAddr)
+	fromTrustedProxy := remoteHost == "127.0.0.1" || remoteHost == "::1"
+	isSecure := r.TLS != nil || (fromTrustedProxy && r.Header.Get("X-Forwarded-Proto") == "https")
 	sameSite := http.SameSiteLaxMode
 	if isSecure {
 		sameSite = http.SameSiteNoneMode
@@ -592,14 +595,30 @@ func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if update.DisplayName != nil { existing.DisplayName = *update.DisplayName }
-	if update.Theme != nil { existing.Theme = *update.Theme }
-	if update.Locale != nil { existing.Locale = *update.Locale }
-	if update.Timezone != nil { existing.Timezone = *update.Timezone }
-	if update.AIProvider != nil { existing.AIProvider = *update.AIProvider }
-	if update.AIModel != nil { existing.AIModel = *update.AIModel }
-	if update.AIAPIKey != nil { existing.AIAPIKey = *update.AIAPIKey }
-	if update.Initiative != nil { existing.Initiative = *update.Initiative }
+	if update.DisplayName != nil {
+		existing.DisplayName = *update.DisplayName
+	}
+	if update.Theme != nil {
+		existing.Theme = *update.Theme
+	}
+	if update.Locale != nil {
+		existing.Locale = *update.Locale
+	}
+	if update.Timezone != nil {
+		existing.Timezone = *update.Timezone
+	}
+	if update.AIProvider != nil {
+		existing.AIProvider = *update.AIProvider
+	}
+	if update.AIModel != nil {
+		existing.AIModel = *update.AIModel
+	}
+	if update.AIAPIKey != nil {
+		existing.AIAPIKey = *update.AIAPIKey
+	}
+	if update.Initiative != nil {
+		existing.Initiative = *update.Initiative
+	}
 
 	h.store.SetProfile(existing)
 	h.store.Flush()
@@ -707,7 +726,9 @@ func (h *Handler) handleSetPIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
-	var req struct{ PIN string `json:"pin"` }
+	var req struct {
+		PIN string `json:"pin"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	if err := h.store.SetPIN(userID, req.PIN); err != nil {
 		writeErr(w, 400, err.Error())
@@ -723,7 +744,9 @@ func (h *Handler) handleValidatePIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
-	var req struct{ PIN string `json:"pin"` }
+	var req struct {
+		PIN string `json:"pin"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	valid := h.store.ValidatePIN(userID, req.PIN)
 	writeJSON(w, map[string]any{"valid": valid, "has_pin": h.store.HasPIN(userID)})
