@@ -14,7 +14,7 @@ import (
 
 // Output is a display/monitor.
 type Output struct {
-	Name       string   `json:"name"`       // e.g., "HDMI-1", "eDP-1"
+	Name       string   `json:"name"` // e.g., "HDMI-1", "eDP-1"
 	Connected  bool     `json:"connected"`
 	Enabled    bool     `json:"enabled"`
 	Primary    bool     `json:"primary"`
@@ -61,8 +61,12 @@ func (s *Service) SetBrightness(ctx context.Context, percent int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if percent < 0 { percent = 0 }
-	if percent > 100 { percent = 100 }
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
 
 	// Try brightnessctl first
 	if _, err := exec.LookPath("brightnessctl"); err == nil {
@@ -73,9 +77,13 @@ func (s *Service) SetBrightness(ctx context.Context, percent int) error {
 	matches, _ := filepath.Glob("/sys/class/backlight/*/max_brightness")
 	for _, maxPath := range matches {
 		data, err := os.ReadFile(maxPath)
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		maxVal, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-		if maxVal == 0 { continue }
+		if maxVal == 0 {
+			continue
+		}
 		target := maxVal * percent / 100
 		brightPath := filepath.Join(filepath.Dir(maxPath), "brightness")
 		os.WriteFile(brightPath, []byte(strconv.Itoa(target)), 0644)
@@ -108,11 +116,15 @@ func (s *Service) EnableOutput(ctx context.Context, outputName string, enable bo
 	switch s.compositor {
 	case "wlroots", "cage":
 		flag := "--on"
-		if !enable { flag = "--off" }
+		if !enable {
+			flag = "--off"
+		}
 		return run(ctx, "wlr-randr", "--output", outputName, flag)
 	case "x11":
 		flag := "--auto"
-		if !enable { flag = "--off" }
+		if !enable {
+			flag = "--off"
+		}
 		return run(ctx, "xrandr", "--output", outputName, flag)
 	}
 	return fmt.Errorf("unsupported compositor: %s", s.compositor)
@@ -145,7 +157,9 @@ func (s *Service) listWlr(ctx context.Context) []Output {
 			name := strings.Fields(line)[0]
 			cur = &Output{Name: name, Connected: true}
 		}
-		if cur == nil { continue }
+		if cur == nil {
+			continue
+		}
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "Enabled:") {
 			cur.Enabled = strings.Contains(trimmed, "yes")
@@ -191,7 +205,9 @@ func (s *Service) listXrandr(ctx context.Context) []Output {
 				Primary:   strings.Contains(line, "primary"),
 			}
 		}
-		if cur == nil { continue }
+		if cur == nil {
+			continue
+		}
 		trimmed := strings.TrimSpace(line)
 		if len(trimmed) > 0 && (trimmed[0] >= '0' && trimmed[0] <= '9') {
 			fields := strings.Fields(trimmed)
@@ -221,9 +237,13 @@ func (s *Service) getBrightness() Brightness {
 		dir := filepath.Dir(bPath)
 		device := filepath.Base(dir)
 		curData, err := os.ReadFile(bPath)
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		maxData, err := os.ReadFile(filepath.Join(dir, "max_brightness"))
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		cur, _ := strconv.Atoi(strings.TrimSpace(string(curData)))
 		max, _ := strconv.Atoi(strings.TrimSpace(string(maxData)))
 		pct := 0
@@ -233,6 +253,101 @@ func (s *Service) getBrightness() Brightness {
 		return Brightness{Current: pct, Max: max, Device: device}
 	}
 	return Brightness{Current: 100, Device: "none"}
+}
+
+// parseWlrOutput parses the text output of "wlr-randr" into Output structs.
+// Exposed for testing.
+func parseWlrOutput(out string) []Output {
+	var outputs []Output
+	var cur *Output
+
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, " ") && strings.Contains(line, "(") {
+			if cur != nil {
+				outputs = append(outputs, *cur)
+			}
+			name := strings.Fields(line)[0]
+			cur = &Output{Name: name, Connected: true}
+		}
+		if cur == nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Enabled:") {
+			cur.Enabled = strings.Contains(trimmed, "yes")
+		}
+		if strings.Contains(trimmed, "px,") && strings.Contains(trimmed, "Hz") {
+			fields := strings.Fields(trimmed)
+			if len(fields) >= 1 {
+				cur.Modes = append(cur.Modes, fields[0])
+				if strings.Contains(trimmed, "current") {
+					cur.Resolution = fields[0]
+					if len(fields) >= 3 {
+						cur.Refresh = strings.TrimSuffix(fields[2], ",")
+					}
+				}
+			}
+		}
+	}
+	if cur != nil {
+		outputs = append(outputs, *cur)
+	}
+	return outputs
+}
+
+// parseXrandrOutput parses the text output of "xrandr --query" into Output structs.
+// Exposed for testing.
+func parseXrandrOutput(out string) []Output {
+	var outputs []Output
+	var cur *Output
+
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, " connected") || strings.Contains(line, " disconnected") {
+			if cur != nil {
+				outputs = append(outputs, *cur)
+			}
+			fields := strings.Fields(line)
+			cur = &Output{
+				Name:      fields[0],
+				Connected: strings.Contains(line, " connected"),
+				Primary:   strings.Contains(line, "primary"),
+			}
+		}
+		if cur == nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) > 0 && (trimmed[0] >= '0' && trimmed[0] <= '9') {
+			fields := strings.Fields(trimmed)
+			if len(fields) >= 1 {
+				cur.Modes = append(cur.Modes, fields[0])
+				if strings.Contains(trimmed, "*") {
+					cur.Resolution = fields[0]
+					cur.Enabled = true
+					for _, f := range fields[1:] {
+						if strings.Contains(f, "*") {
+							cur.Refresh = strings.TrimRight(f, "*+ ")
+						}
+					}
+				}
+			}
+		}
+	}
+	if cur != nil {
+		outputs = append(outputs, *cur)
+	}
+	return outputs
+}
+
+// clampBrightness clamps percent to [0, 100]. Exposed for testing.
+func clampBrightness(percent int) int {
+	if percent < 0 {
+		return 0
+	}
+	if percent > 100 {
+		return 100
+	}
+	return percent
 }
 
 func detectCompositor() string {
