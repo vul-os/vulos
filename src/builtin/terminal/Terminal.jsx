@@ -3,6 +3,7 @@ import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import 'xterm/css/xterm.css'
+import AskAIButton from '../../core/AskAIButton'
 
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/pty`
 
@@ -68,6 +69,7 @@ function SessionPicker({ sessions, onNew, onAttach, onKill }) {
 
 function TerminalView({ sessionID }) {
   const containerRef = useRef(null)
+  const [sessionEnded, setSessionEnded] = useState(false)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -127,6 +129,7 @@ function TerminalView({ sessionID }) {
 
     ws.onclose = () => {
       term.write('\r\n\x1b[90m[session ended]\x1b[0m\r\n')
+      setSessionEnded(true)
     }
 
     term.onData((data) => {
@@ -153,11 +156,21 @@ function TerminalView({ sessionID }) {
   }, [sessionID])
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full"
-      style={{ padding: '4px', background: '#0a0a0a' }}
-    />
+    <div className="w-full h-full relative" style={{ background: '#0a0a0a' }}>
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ padding: '4px' }}
+      />
+      {sessionEnded && (
+        <div style={{
+          position: 'absolute', bottom: 16, right: 16,
+          display: 'flex', alignItems: 'center',
+        }}>
+          <AskAIButton context="My terminal session ended. Can you help me troubleshoot or start a new task?" />
+        </div>
+      )}
+    </div>
   )
 }
 

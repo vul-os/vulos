@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import AskAIButton from '../../core/AskAIButton'
 
 /* ── SVG Icon Components ── */
 
@@ -716,7 +717,10 @@ export default function FileManager() {
             )}
 
             {!loading && !searchResults && entries.length === 0 && (
-              <div className="py-12 text-center text-neutral-700 text-xs">Empty directory</div>
+              <div className="py-12 flex flex-col items-center gap-3 text-neutral-700 text-xs">
+                <span>Empty directory</span>
+                <AskAIButton context={`I'm browsing an empty folder at ${cwd}. What would you suggest I do here?`} label="Ask AI about this folder" />
+              </div>
             )}
           </div>
         </div>
