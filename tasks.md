@@ -825,7 +825,7 @@ Scope: CI govulncheck + npm audit --audit-level=high + Trivy container scan; fai
 AC: [ ] CI runs 3 scans on PRs [ ] fails high/critical, ignore documented [ ] workflow valid
 
 ### [MISC-05] i18n scaffold (provider + locale wiring)
-`todo` · P2 · L · dep: none · parallel: no — new src/core/i18n.jsx, src/locales/{en,af}.json, src/App.jsx, src/auth/Setup.jsx, src/core/Settings.jsx
+`done` · P2 · L · dep: none · parallel: no — new src/core/i18n.jsx, src/locales/{en,af}.json, src/App.jsx, src/auth/Setup.jsx, src/core/Settings.jsx
 Scope: Lightweight i18n provider t()+locale ctx, JSON catalogs en+af, init from profile locale, migrate Setup wizard strings; pattern only, not whole app.
 AC: [ ] t() app-wide, locale from profile [ ] Setup renders via catalog en+af [ ] locale switch updates w/o reload
 
