@@ -6,6 +6,7 @@ import { WallpaperProvider } from './core/useWallpaper.jsx'
 import { DeviceProfileProvider, useDeviceProfile } from './core/useDeviceProfile.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
 import { useSpatialNav } from './core/useSpatialNav'
+import { useDeviceProfile } from './core/useDeviceProfile'
 import LoginScreen from './auth/LoginScreen'
 import LockScreen from './auth/LockScreen'
 import Setup from './auth/Setup'
@@ -87,6 +88,11 @@ function Shell() {
   const { profile } = useAuth()
   const { profile: deviceProfile } = useDeviceProfile()
   const { locked, screensaver, unlock, dismissScreensaver } = useEnergyState()
+  // MOBILE-06: device profile overrides the viewport-only `layout` value;
+  // 'mobile' and 'tablet' both collapse to single-column MobileStack.
+  const { profile: deviceProfile } = useDeviceProfile()
+  const useDesktop = deviceProfile === 'desktop' && layout === 'desktop'
+
   if (locked) return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
   if (screensaver) return <Screensaver onDismiss={dismissScreensaver} />
   if (popout) return <Popout />
@@ -95,7 +101,7 @@ function Shell() {
   return (
     <>
       <DesktopShortcuts />
-      {layout === 'desktop' ? <DesktopCanvas /> : <MobileStack />}
+      {useDesktop ? <DesktopCanvas /> : <MobileStack />}
     </>
   )
 }
