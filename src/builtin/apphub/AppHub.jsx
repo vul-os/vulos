@@ -31,6 +31,34 @@ const SOURCE_BADGE = {
   web: { label: 'Web', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
 }
 
+// APPSTORE-08: type badge config — maps the `type` field values to display labels + styles
+const APPTYPE_BADGE = {
+  web:     { label: 'Web',      bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20' },
+  desktop: { label: 'Streamed', bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },
+  service: { label: 'Service',  bg: 'bg-slate-500/10',  text: 'text-slate-400',  border: 'border-slate-500/20'  },
+}
+
+// APPSTORE-08: derive a normalised app-type key for filtering and badge rendering
+function appTypeKey(app) {
+  if (!app.type) return null
+  if (app.type === 'web') return 'web'
+  if (app.type === 'desktop') return 'desktop'
+  if (app.type === 'service') return 'service'
+  return null
+}
+
+// APPSTORE-08: small per-card badge derived from the `type` field
+function AppTypeBadge({ app, className = '' }) {
+  const key = appTypeKey(app)
+  if (!key) return null
+  const s = APPTYPE_BADGE[key]
+  return (
+    <span className={`inline-flex items-center text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
+      {s.label}
+    </span>
+  )
+}
+
 function getSourceType(app) {
   if (app.flatpak_id) return 'flatpak'
   if (app.type === 'web') return 'web'
@@ -121,6 +149,7 @@ export default function AppHub() {
   const [uninstalling, setUninstalling] = useState(null)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
+  const [appTypeFilter, setAppTypeFilter] = useState('all') // APPSTORE-08
   const [selectedApp, setSelectedApp] = useState(null)
   const [selectedVersion, setSelectedVersion] = useState('')
   const [tab, setTab] = useState('browse')
@@ -227,6 +256,8 @@ export default function AppHub() {
 
   const filtered = apps.filter(app => {
     if (category !== 'all' && app.category !== category) return false
+    // APPSTORE-08: type filter composes with category + search
+    if (appTypeFilter !== 'all' && appTypeKey(app) !== appTypeFilter) return false
     if (search.trim()) {
       const q = search.toLowerCase()
       return app.name.toLowerCase().includes(q) ||
@@ -292,6 +323,34 @@ export default function AppHub() {
               )}
             </button>
           ))}
+        </div>
+
+        {/* APPSTORE-08: Type filter */}
+        <div className="px-3 pt-3 border-t border-white/[0.04]">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">App Type</div>
+          <div className="flex flex-col gap-0.5">
+            {[
+              { id: 'all',     label: 'All Types' },
+              { id: 'web',     label: 'Web' },
+              { id: 'desktop', label: 'Streamed' },
+              { id: 'service', label: 'Service' },
+            ].map(t => (
+              <button
+                key={t.id}
+                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-all text-left ${
+                  appTypeFilter === t.id
+                    ? 'bg-white/[0.08] text-white font-medium'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.03]'
+                }`}
+                onClick={() => setAppTypeFilter(t.id)}
+              >
+                {t.id !== 'all' && APPTYPE_BADGE[t.id] && (
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${APPTYPE_BADGE[t.id].bg} border ${APPTYPE_BADGE[t.id].border}`} />
+                )}
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Categories */}
@@ -401,9 +460,10 @@ export default function AppHub() {
                   >
                     <AppIcon appId={app.icon || app.id} size={42} />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[13px] font-medium text-white truncate">{app.name}</span>
                         <SourceBadge app={app} />
+                        <AppTypeBadge app={app} />{/* APPSTORE-08 */}
                       </div>
                       <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{app.description}</p>
                     </div>
