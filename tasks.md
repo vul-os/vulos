@@ -457,7 +457,7 @@ Scope: Conduit static-binary type:service homeserver (SQLite, localhost) + Cinny
 AC: [ ] conduit runs localhost SQLite [ ] cinny loads, local register/login works [ ] E2EE local DM works
 
 ### [APPSTORE-08] Surface streamed vs web-native type in App Hub UI
-`todo` · P2 · S · dep: none · parallel: yes — src/builtin/apphub/AppHub.jsx
+`done` · P2 · S · dep: none · parallel: yes — src/builtin/apphub/AppHub.jsx
 Scope: Show Web vs Streamed badge from existing `type` field; add type filter alongside category.
 AC: [ ] badge per app from type [ ] type filter toggles list [ ] no backend change, category/search still work
 
