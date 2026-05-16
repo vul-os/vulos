@@ -1606,6 +1606,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "upgraded", "output": output})
 	})
 
+	// Identity service (instance ULID + hostname)
+	registerIdentityRoutes(mux, home)
+
 	// Serve frontend static files (production build)
 	webrootDir := ""
 	for _, dir := range []string{"/opt/vulos/webroot", "./dist", "../dist", "../../dist"} {
