@@ -288,6 +288,7 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPre=-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/local/bin/vulos-server -env main
 Restart=on-failure
 RestartSec=3
@@ -431,6 +432,7 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPre=-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/local/bin/vulos-server -env main
 Restart=on-failure
 RestartSec=3
