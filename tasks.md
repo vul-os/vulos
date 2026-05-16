@@ -990,7 +990,7 @@ Scope: doc-share invitation send/recv, accept adds w/ Shared badge, edit/view en
 AC: [ ] share→invitation, accept registers [ ] view-only sends rejected [ ] revoke stops updates
 
 ### [PEER-32] Collaboration in Docs (TipTap + y-tiptap)
-`todo` · P3 · M · dep: PEER-30, PEER-31 · parallel: yes — Docs/Notes app (apps/notes/), src/core/useYDoc.js
+`done` · P3 · M · dep: PEER-30, PEER-31 · parallel: yes — Docs/Notes app (apps/notes/), src/core/useYDoc.js
 Scope: wire Docs/Notes editor to useYDoc via y-tiptap, shared-doc badge, remote cursors from awareness, Share entry point.
 AC: [ ] 2 users co-edit live merge [ ] remote cursors name+color [ ] Share grants access
 
