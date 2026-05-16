@@ -52,10 +52,16 @@ func (d *DNSManager) Update() error {
 		clean = clean[:len(clean)-1]
 	}
 
-	// Add our section
+	// Add our section.
+	// NET-04: emit {app}--default.{domain} so the hostname matches the
+	// NET-01 ParseSubdomain format ({app}--{profile}.{ulid}.{domain}).
+	// Profile is always "default" here; there is no ULID label at this layer
+	// because Namespace does not carry one yet — the bare two-label form
+	// "{app}--default.{domain}" is still parseable by ParseSubdomain when the
+	// gateway passes the first label to it directly.
 	clean = append(clean, "", "# --- vulos apps start ---")
 	for _, ns := range nsList {
-		hostname := fmt.Sprintf("%s.%s", ns.AppID, d.domain)
+		hostname := fmt.Sprintf("%s--default.%s", ns.AppID, d.domain)
 		clean = append(clean, fmt.Sprintf("%s\t%s", ns.NSIP, hostname))
 	}
 	clean = append(clean, "# --- vulos apps end ---", "")
@@ -94,10 +100,16 @@ func (d *DNSManager) Remove() {
 }
 
 // Resolve returns the namespace IP for an app subdomain.
+// NET-04: uses ParseSubdomain to extract the app identifier from the new
+// {app}--default.{domain} format as well as the legacy {app}.{domain} form.
 func (d *DNSManager) Resolve(subdomain string) (string, bool) {
-	appID := strings.TrimSuffix(subdomain, "."+d.domain)
-	ns, ok := d.netMgr.Get(appID)
+	appID, _, ok := ParseSubdomain(subdomain, d.domain)
 	if !ok {
+		// Fallback: strip domain suffix directly (handles bare {app}.{domain}).
+		appID = strings.TrimSuffix(subdomain, "."+d.domain)
+	}
+	ns, nsOK := d.netMgr.Get(appID)
+	if !nsOK {
 		return "", false
 	}
 	return ns.NSIP, true

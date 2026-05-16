@@ -80,8 +80,18 @@ export default function Portal({ mode = 'panel' }) {
       case 'launch_service':
         addMessage('user', input)
         addMessage('system', `Opening ${intent.service.name}`)
-        // Use gateway URL — auth-protected
-        openWindow({ appId: intent.service.id, title: intent.service.name, url: `/app/${intent.service.id}/`, icon: intent.service.icon })
+        // NET-04: prefer subdomain URL ({app}--default.{host}) so the gateway
+        // resolves via ParseSubdomain (profile="default").  The /app/{id}/
+        // path-prefix fallback is kept as the url when the fetch fails or
+        // subdomain DNS is unavailable; here we optimistically use the
+        // subdomain form and rely on the gateway to fall back if needed.
+        // The /app/{id}/ path-prefix fallback is preserved in Launchpad's
+        // catch block and in the gateway itself.
+        {
+          const net04Proto = location.protocol
+          const net04AppUrl = `${net04Proto}//${intent.service.id}--default.${location.host}/`
+          openWindow({ appId: intent.service.id, title: intent.service.name, url: net04AppUrl, icon: intent.service.icon })
+        }
         break
       case 'service_suggestions':
         addMessage('user', input)
