@@ -501,7 +501,7 @@ Scope: Public GET /api/health: data-dir writable + disk threshold + sync-lag pla
 AC: [ ] 200+JSON healthy [ ] 503 when not writable/low disk [ ] no auth
 
 ### [NET-08] Direct mode (Mode B) enrollment + acme-dns
-`todo` · P1 · L · dep: NET-06 · parallel: no — new backend/services/network/enroll.go, main.go
+`done` · P1 · L · dep: NET-06 · parallel: no — new backend/services/network/enroll.go, main.go
 Scope: Detect public IP, POST control API /api/enroll/direct {ulid,ip,email}, persist acme-dns creds, PUT /api/dns/update on IP change; local trigger route. Ziti/cert issuance out of scope.
 AC: [ ] public IP detected [ ] enroll stores creds [ ] IP-change triggers DNS update [ ] control URL configurable
 
