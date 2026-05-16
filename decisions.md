@@ -228,3 +228,4 @@ branch refs persist independently). Continue.
 
 ### D21 — 2026-05-16 13:37 — Permanent-defer (structural, pinned-base)
 NOTIF-02 & AUTH-10: each failed 3x. Root cause: worktree bases are pinned pre-merge, so workers cannot see the already-merged dependency (NOTIF-01 Notification struct / AUTH-09 devicekey KeyStore API) and always reimplement an incompatible shape. Worker re-tasks cannot fix this. Resolution for a future session: orchestrator (or human) hand-writes store.go/handlers.go directly against current main API. Both are non-blocking (notify works w/o persistence; AUTH-09 keystore usable w/o HTTP). Marked done=N/A, left todo. ~90 task merges shipped; build green @ e94a970.
+INIT-02 added to permanent-defer (D21 class): Dockerfile+build.sh warm (STREAM-07+BMINIT-01 merged); stale-base apt-line conflict, 3 attempts. Needs orchestrator hand-merge vs current Dockerfile/build.sh in a future session. Non-blocking (SSH is an add-on).
