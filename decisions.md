@@ -440,3 +440,6 @@ Session merges remain at 159.
 
 ## D60 (18:38) — Tick: hold (mem 402, roadmap drained)
 0 workers, 0 unmerged, build green. Mem 402<500 → no dispatch per rule. Only remaining actionable task is APPSTORE-06 (gaming wiring sprawl across registry/stream/wine — parallel:no, high collision risk). Decision: do NOT chase APPSTORE-06; let cron 44dbf100 expire at 18:55 then CronDelete; brief continues to 21:14 but OSS roadmap is effectively complete. Final session totals: 159 distinct task-branches merged, build green throughout the wind-down.
+
+## D61 (18:42) — Final dispatch: APPSTORE-06 scoped to registry-only
+Mem 3232 cleared. Brief 152 min. Cron 13 min from expiry. APPSTORE-06's part-2 (gaming-mode wiring) effectively done by GAME-08/07 already merged. Dispatching part-1 only (3 registry entries: Wine, Lutris, Steam — type:desktop apt installs). Single-file (registry.json), low risk. After this, no more dispatch.
