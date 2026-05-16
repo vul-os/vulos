@@ -68,16 +68,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":             true,
-	"/api/auth/providers": true,
-	"/api/auth/me":        true,
-	"/api/auth/logout":    true,
-	"/api/auth/register":  true,
-	"/api/auth/login":     true,
-	"/api/auth/status":    true,
-	"/api/setup/status":   true,
-	"/api/browser/status": true,
-	"/manifest.json":      true,
+	"/health":              true,
+	"/api/auth/providers":  true,
+	"/api/auth/me":         true,
+	"/api/auth/logout":     true,
+	"/api/auth/register":   true,
+	"/api/auth/login":      true,
+	"/api/auth/status":     true,
+	"/api/setup/status":    true,
+	"/api/setup/join-code": true, // INIT-10: unauthenticated join-code decode
+	"/api/browser/status":  true,
+	"/manifest.json":       true,
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

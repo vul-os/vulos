@@ -1902,6 +1902,8 @@ func main() {
 	registerIdentityRoutes(mux, home)
 	// Conflict resolver (CLUSTER-10)
 	registerConflictRoutes(mux, dataDir, notifySvc)
+	// Join codes — cross-device cluster joins via short-codes / QR (INIT-10)
+	registerJoinCodeRoutes(mux, home, authStore)
 
 	// Serve frontend static files (production build)
 	webrootDir := ""
