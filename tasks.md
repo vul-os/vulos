@@ -895,7 +895,7 @@ Scope: Unauth GET /.well-known/vula-id (public fields+verified+endpoints placeho
 AC: [ ] well-known no auth public only [ ] peer profile cached, respects visibility [ ] approve triggers fetch
 
 ### [PEER-13] Email/directory discovery lookup
-`todo` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
+`done` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
 Scope: GET /api/peering/discover?email/name proxy to vulos.org verify/lookup + optional directory → Vula ID+server; configurable.
 AC: [ ] email lookup resolves when opted-in [ ] name search returns matches [ ] graceful empty
 
