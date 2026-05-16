@@ -870,7 +870,7 @@ Scope: POST contacts/request (sign+send), inbound/request (store pending+notify)
 AC: [ ] request creates pending on recipient [ ] inbound/request allowed w/o approval, others require [ ] approve→approved+notify [ ] block silent drop
 
 ### [PEER-08] Peering settings + contacts/requests UI
-`todo` · P1 · L · dep: PEER-07 · parallel: yes — new src/builtin/peering/Peering.jsx, src/core/AppRegistry.js (LOCKED dirty — defer reg), src/App.jsx, src/core/Settings.jsx
+`done` · P1 · L · dep: PEER-07 · parallel: yes — new src/builtin/peering/Peering.jsx, src/core/AppRegistry.js (LOCKED dirty — defer reg), src/App.jsx, src/core/Settings.jsx
 Scope: Builtin Peering app: Vula ID/QR, contacts list w/ state+perm toggles, pending-requests approve/block; Settings Peering section.
 AC: [ ] app in launcher opens [ ] contacts+requests from API, approve/block [ ] perm toggles persist [ ] Settings section
 
