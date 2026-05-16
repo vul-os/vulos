@@ -204,3 +204,11 @@ ORCHESTRATOR PROTOCOL each cron wake:
 4. Refill to ~10 in-flight from tasks.md `todo` (deps met, no hot-file collision w/ in-flight).
 5. When <6 todo remain: (none now — backlog huge).
 6. If clock ≥ 04:52 (+2026-05-16): stop spawning, finish in-flight, final merge, CronDelete 026d80d9, summarize, stop.
+
+### D18 — 2026-05-16 02:48 — Clean-text-but-broken merge revert = reset HEAD~1
+3rd occurrence: stale-base worker recreates a symbol that collides with already-merged
+code (CLUSTER-09 `heartbeatInterval` vs cluster.go). `git merge --no-ff` AUTO-COMMITS when
+text-merge is clean, so on build failure `git merge --abort`/`git reset --hard HEAD` do
+NOT undo it (HEAD == the bad merge). CORRECT revert after a clean-auto-merge that fails the
+build/test gate: `git reset --hard HEAD~1`. Build-gate still mandatory (it caught it).
+CLUSTER-09 deferred → re-task: rename presence.go const to leaseHeartbeatInterval.
