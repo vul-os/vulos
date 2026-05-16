@@ -1411,6 +1411,7 @@ func main() {
 	// AI-generated apps gallery — hardened handlers in routes_aiapps_security.go (SEC-I).
 	aiAppsDir := filepath.Join(home, ".vulos", "ai-apps")
 	registerAIAppsSecurityWrappers(mux, aiAppsDir, authStore)
+	registerAIAppsRoutes(mux, aiAppsDir, authStore)
 
 	// Native window management — spawn Cog/WPE instances as real compositor windows
 	// Cached at startup: detect if we're on baremetal (sole Cog instance) or native (compositor with multi-window)
