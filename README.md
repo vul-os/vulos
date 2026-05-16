@@ -36,13 +36,32 @@
 
 Vula OS is a **web-native window manager and operating system** built on Debian Linux. Instead of streaming an entire remote desktop, Vula streams individual application windows on demand — web apps run as first-class citizens in the browser, and native Linux GUI apps (GIMP, LibreOffice, Blender, games via Wine/Lutris) stream via WebRTC only when you open them.
 
-**Key ideas:**
+### The four ideas
+
+1. **Web-native OS.** The shell is a real OS shell — windows, dock, file manager, terminal, settings — but it lives in a browser tab. Open it from your laptop, phone, or a TV at someone else's house and you get the same desktop.
+2. **Web-app sovereignty.** Self-host the apps you'd normally rent from a SaaS company. The bundled app store installs things like Memos, Navidrome, Uptime Kuma, and Vaultwarden as proper OS apps with their own subdomain and isolated network namespace — not embedded iframes, not browser bookmarks.
+3. **Peering, not federation.** Every Vula instance is a server with a stable identity (Ed25519 keypair, `vula:<id>` URI). Instances message, share files, and place WebRTC calls directly. No middleman, no account on someone else's server. See `roadmap/PEERING.md`.
+4. **Real baremetal.** Flash the same image to a USB stick and it boots into a Wayland (labwc/cage) compositor that renders the browser shell fullscreen. Native Linux app windows live alongside the browser as real compositor windows. See `roadmap/BAREMETAL-INIT.md`.
+
+### How the pieces fit
 
 - **Web apps are first-class** — install from apt or Flatpak, they run in isolated network namespaces and load in their own subdomain. No streaming overhead, just proxied HTTP.
 - **Desktop apps stream on demand** — open Audacity and it launches in its own virtual display, streams via WebRTC. Close the window, the stream stops. No always-on VNC session.
 - **Cloud gaming built in** — Wine/Lutris games stream with GPU-accelerated encoding (NVENC, VA-API, AV1). Gamepad, keyboard, and mouse input injected via uinput at kernel level.
 - **Full OS underneath** — real Debian Linux with terminal, file manager, package management. Multi-user with per-user isolation.
 - **Runs anywhere** — flash to bare metal (boots into a WebKit kiosk), deploy to a cloud server, or run in Docker for development.
+
+### How to read this project
+
+The repo carries its own project-management docs. If you want to follow along or contribute:
+
+| You want to… | Read |
+|---|---|
+| Understand the design of a specific area (peering, gaming, init, network, …) | `roadmap/` — start at [`roadmap/README.md`](roadmap/README.md) |
+| See what's done, what's open, and pick something to work on | [`tasks.md`](tasks.md) — start at the "At-a-glance" table |
+| Understand *why* the project was built a certain way | [`decisions.md`](decisions.md) — the running design-decision log |
+| Submit a change | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Build / run / deploy | [`DEVELOPMENT.md`](DEVELOPMENT.md) |
 
 ---
 
@@ -188,12 +207,14 @@ Download from the [Releases](https://github.com/vul-os/vulos/releases) page.
 
 ## Contributing
 
-1. Fork and clone
-2. `./dev.sh` to run locally
-3. Create a branch (`feat/`, `fix/`, `docs/`, `refactor/`)
-4. Open a PR
+The short version:
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup.
+1. Skim [`tasks.md`](tasks.md) → "At-a-glance" → pick a `todo` task whose dependencies are `done`.
+2. `./dev.sh` to run locally.
+3. Branch as `task/<ID>` (e.g. `task/AUTH-10`) or `feat/`, `fix/`, `docs/`, `refactor/` for off-roadmap work.
+4. Tick the task's acceptance criteria, run `go build ./...` + `npm run build`, open a PR.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full flow, including how tasks are formatted, where decisions live, and how to report a security issue.
 
 ---
 

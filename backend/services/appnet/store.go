@@ -1,7 +1,11 @@
 package appnet
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,10 +14,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 	"vulos/backend/services/packages"
+)
+
+// installIDPattern enforces a strict charset for app IDs used in Install.
+// Must start with lowercase alphanumeric, then alphanumeric or hyphen, max 64 chars total.
+var installIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+const (
+	// maxExtractTotal is the maximum total bytes allowed across all extracted files
+	// (zip-bomb / decompression-bomb defense).
+	maxExtractTotal int64 = 200 * 1024 * 1024 // 200 MB
+	// maxExtractEntry is the maximum size for a single extracted file.
+	maxExtractEntry int64 = 100 * 1024 * 1024 // 100 MB
 )
 
 // ValidateInstalled runs validation on all installed app manifests.
@@ -25,6 +42,7 @@ func (s *AppStore) ValidateInstalled() ([]*AppManifest, []error) {
 type StoreEntry struct {
 	AppManifest
 	DownloadURL string `json:"download_url"`
+	Checksum    string `json:"checksum"` // optional sha256 hex digest of the download archive
 	Author      string `json:"author"`
 	Size        string `json:"size"`
 	Stars       int    `json:"stars"`
@@ -150,45 +168,208 @@ func (s *AppStore) Catalog(ctx context.Context) ([]StoreEntry, error) {
 
 // Install downloads and installs an app from its download URL.
 // Expects a tar.gz archive containing app.json + app files.
+//
+// Security measures (M3):
+//   - entry.ID is validated against a strict allowlist pattern before use in paths.
+//   - The tar.gz is extracted with pure Go (no shell) and each entry is containment-checked.
+//   - If entry.Checksum is non-empty the archive sha256 is verified before extraction.
 func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
+	// --- ID validation ---
+	if !installIDPattern.MatchString(entry.ID) {
+		return fmt.Errorf("invalid app id %q: must match ^[a-z0-9][a-z0-9-]{0,63}$", entry.ID)
+	}
 	if entry.DownloadURL == "" {
 		return fmt.Errorf("no download URL for %s", entry.ID)
 	}
 
 	appDir := filepath.Join(s.appsDir, entry.ID)
-	os.MkdirAll(appDir, 0755)
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		return fmt.Errorf("create app dir: %w", err)
+	}
 
-	// Download
-	req, _ := http.NewRequestWithContext(ctx, "GET", entry.DownloadURL, nil)
+	// --- Download to temp file ---
+	req, err := http.NewRequestWithContext(ctx, "GET", entry.DownloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("build request for %s: %w", entry.ID, err)
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("download %s: %w", entry.ID, err)
 	}
 	defer resp.Body.Close()
 
-	// Save tarball
-	tarPath := filepath.Join(appDir, "app.tar.gz")
-	f, err := os.Create(tarPath)
+	// Write to a temp file so we can (optionally) verify the checksum before
+	// extraction and avoid holding the whole archive in memory.
+	tmp, err := os.CreateTemp("", "vulos-install-*.tar.gz")
 	if err != nil {
-		return err
+		return fmt.Errorf("create temp file: %w", err)
 	}
-	io.Copy(f, resp.Body)
-	f.Close()
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) // best-effort cleanup
 
-	// Extract
-	cmd := exec.CommandContext(ctx, "tar", "xzf", tarPath, "-C", appDir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("extract: %s", out)
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		tmp.Close()
+		return fmt.Errorf("download %s: %w", entry.ID, err)
 	}
-	os.Remove(tarPath)
+	tmp.Close()
 
-	// Install OS dependencies if specified
+	// --- Checksum verification ---
+	if entry.Checksum != "" {
+		if err := verifySHA256(tmpPath, entry.Checksum); err != nil {
+			return fmt.Errorf("checksum mismatch for %s: %w", entry.ID, err)
+		}
+	}
+
+	// --- Safe tar extraction ---
+	if err := safeExtractTarGz(tmpPath, appDir); err != nil {
+		return fmt.Errorf("extract %s: %w", entry.ID, err)
+	}
+
+	// --- Install OS dependencies if specified ---
 	manifest, err := LoadManifest(filepath.Join(appDir, "app.json"))
 	if err == nil && len(manifest.Deps) > 0 {
 		packages.InstallDeps(ctx, manifest.Deps)
 	}
 
 	log.Printf("[appstore] installed %s", entry.ID)
+	return nil
+}
+
+// verifySHA256 reads the file at path and compares its sha256 hex digest against want.
+func verifySHA256(path, want string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(got, want) {
+		return fmt.Errorf("got %s, want %s", got, want)
+	}
+	return nil
+}
+
+// safeExtractTarGz extracts a .tar.gz archive into destDir with full containment checks.
+//
+//   - Rejects absolute paths.
+//   - Rejects any path component equal to "..".
+//   - Realpath-contains every output path inside destDir.
+//   - Rejects symlinks.
+//   - Enforces per-entry (maxExtractEntry) and total (maxExtractTotal) size caps.
+func safeExtractTarGz(archivePath, destDir string) error {
+	// Resolve the canonical destination so we can do prefix-containment checks.
+	absDestDir, err := filepath.Abs(destDir)
+	if err != nil {
+		return fmt.Errorf("abs destDir: %w", err)
+	}
+	// Ensure trailing separator for reliable prefix check.
+	containPrefix := absDestDir + string(os.PathSeparator)
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("gzip: %w", err)
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+
+	var totalExtracted int64
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read tar: %w", err)
+		}
+
+		name := hdr.Name
+
+		// --- Reject absolute paths ---
+		if strings.HasPrefix(name, "/") {
+			return fmt.Errorf("tar entry has absolute path: %q", name)
+		}
+
+		// --- Reject ".." in any path component ---
+		clean := filepath.Clean(name)
+		for _, part := range strings.Split(clean, string(os.PathSeparator)) {
+			if part == ".." {
+				return fmt.Errorf("tar entry path traversal rejected: %q", name)
+			}
+		}
+
+		// --- Build target path and realpath-contain ---
+		targetPath := filepath.Join(absDestDir, clean)
+		// targetPath must be strictly inside absDestDir (not equal to it for files).
+		if targetPath != absDestDir && !strings.HasPrefix(targetPath, containPrefix) {
+			return fmt.Errorf("tar entry escapes destination: %q → %q", name, targetPath)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("mkdir %q: %w", targetPath, err)
+			}
+
+		case tar.TypeReg, tar.TypeRegA:
+			// --- Per-entry size cap ---
+			if hdr.Size > maxExtractEntry {
+				return fmt.Errorf("tar entry %q too large (%d bytes, max %d)", name, hdr.Size, maxExtractEntry)
+			}
+
+			// Ensure parent directory exists.
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("mkdir parent for %q: %w", targetPath, err)
+			}
+
+			out, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode()&0755)
+			if err != nil {
+				return fmt.Errorf("create %q: %w", targetPath, err)
+			}
+
+			// Use a LimitReader to enforce per-entry cap during actual copy
+			// (protects against header.Size lying in malicious archives).
+			limited := &io.LimitedReader{R: tr, N: maxExtractEntry + 1}
+			written, copyErr := io.Copy(out, limited)
+			out.Close()
+			if copyErr != nil {
+				return fmt.Errorf("write %q: %w", targetPath, copyErr)
+			}
+			if written > maxExtractEntry {
+				os.Remove(targetPath)
+				return fmt.Errorf("tar entry %q exceeded size cap during extraction", name)
+			}
+
+			// --- Total size cap (zip-bomb defense) ---
+			totalExtracted += written
+			if totalExtracted > maxExtractTotal {
+				os.Remove(targetPath)
+				return fmt.Errorf("tar archive total extraction size exceeded %d bytes", maxExtractTotal)
+			}
+
+		case tar.TypeSymlink, tar.TypeLink:
+			// Symlinks and hardlinks are rejected outright to prevent escape via
+			// link targets that point outside the extraction root.
+			return fmt.Errorf("tar entry %q is a symlink/hardlink — rejected for security", name)
+
+		default:
+			// Device nodes, fifos, etc. are also rejected.
+			return fmt.Errorf("tar entry %q has unsupported type %d — rejected", name, hdr.Typeflag)
+		}
+	}
+
 	return nil
 }
 
