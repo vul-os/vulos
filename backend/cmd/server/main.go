@@ -26,6 +26,7 @@ import (
 	"vulos/backend/services/auth"
 	"vulos/backend/services/authvault"
 	"vulos/backend/services/bluetooth"
+	"vulos/backend/services/bootmode"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
 	"vulos/backend/services/disks"
@@ -1287,6 +1288,8 @@ func main() {
 
 	// Peering multiplex WebSocket — GET /api/peering/stream
 	peeringHub.RegisterHandlers(mux)
+	// Boot-mode router — GET /api/setup/mode
+	bootmode.RegisterHandlers(mux, home)
 
 	// Remote browser — WebRTC (delegates to stream pool)
 	browserSvc.RegisterHandlers(mux)
