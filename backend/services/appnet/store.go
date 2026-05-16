@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"vulos/backend/services/packages"
 	"time"
+	"vulos/backend/services/packages"
 )
 
 // ValidateInstalled runs validation on all installed app manifests.
@@ -38,7 +38,7 @@ type AppStore struct {
 	registry     *Registry // local vetted app registry
 	registryPath string    // path to registry.json
 	client       *http.Client
-	installing   sync.Map  // appID → true while install is in progress
+	installing   sync.Map // appID → true while install is in progress
 }
 
 func NewAppStore(appsDir string) *AppStore {
@@ -254,4 +254,11 @@ func (s *AppStore) Installed() ([]*AppManifest, error) {
 // AppDir returns the base directory for apps.
 func (s *AppStore) AppDir() string {
 	return s.appsDir
+}
+
+// GetManifest loads and validates the manifest for an installed app by ID.
+// Returns an error if the app is not installed or the manifest is invalid.
+func (s *AppStore) GetManifest(appID string) (*AppManifest, error) {
+	manifestPath := filepath.Join(s.appsDir, appID, "app.json")
+	return LoadAndValidateManifest(manifestPath)
 }

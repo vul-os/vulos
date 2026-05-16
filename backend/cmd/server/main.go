@@ -21,31 +21,31 @@ import (
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/appnet"
-	bprofiles "vulos/backend/services/profiles"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/bluetooth"
+	"vulos/backend/services/desktop"
+	"vulos/backend/services/disks"
 	"vulos/backend/services/display"
+	"vulos/backend/services/drivers"
 	"vulos/backend/services/embeddings"
 	"vulos/backend/services/energy"
 	"vulos/backend/services/gateway"
+	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
+	"vulos/backend/services/packages"
+	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
-	"vulos/backend/services/sysuser"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
 	"vulos/backend/services/stream"
-	"vulos/backend/services/webbrowser"
-	"vulos/backend/services/wine"
-	"vulos/backend/services/desktop"
-	"vulos/backend/services/webproxy"
-	"vulos/backend/services/disks"
-	"vulos/backend/services/drivers"
-	"vulos/backend/services/packages"
+	"vulos/backend/services/sysuser"
 	"vulos/backend/services/telemetry"
-	"vulos/backend/services/network"
 	"vulos/backend/services/vault"
+	"vulos/backend/services/webbrowser"
+	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
+	"vulos/backend/services/wine"
 )
 
 func main() {
@@ -515,7 +515,9 @@ func main() {
 		writeJSON(w, map[string]int{"unread": notifySvc.UnreadCount()})
 	})
 	mux.HandleFunc("POST /api/notifications/read", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.ID == "" {
 			notifySvc.MarkAllRead()
@@ -532,8 +534,12 @@ func main() {
 			Source string       `json:"source"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.Level == "" { req.Level = notify.LevelInfo }
-		if req.Source == "" { req.Source = "system" }
+		if req.Level == "" {
+			req.Level = notify.LevelInfo
+		}
+		if req.Source == "" {
+			req.Source = "system"
+		}
 		n := notifySvc.Send(req.Title, req.Body, req.Level, req.Source)
 		writeJSON(w, n)
 	})
@@ -654,9 +660,21 @@ func main() {
 		writeJSON(w, result)
 	})
 	mux.HandleFunc("POST /api/apps/launch", func(w http.ResponseWriter, r *http.Request) {
+		// Kill-switch: operator can disable all privileged exec at runtime.
+		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+			writeErr(w, 503, "exec disabled by administrator")
+			return
+		}
+		// Admin-only gate.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
-			AppID   string   `json:"app_id"`
-			AppPort int      `json:"app_port"`
+			AppID   string `json:"app_id"`
+			AppPort int    `json:"app_port"`
+			// Command field is accepted for API compatibility but IGNORED — the
+			// command is resolved exclusively from the validated app manifest.
 			Command string   `json:"command"`
 			Args    []string `json:"args"`
 			WorkDir string   `json:"work_dir"`
@@ -666,14 +684,36 @@ func main() {
 			writeErr(w, 400, "invalid request")
 			return
 		}
-		// Validate: app ID must be alphanumeric
+		if req.AppID == "" {
+			writeErr(w, 400, "app_id required")
+			return
+		}
+		// Validate: app ID must be alphanumeric (defence-in-depth before filesystem lookup)
 		for _, c := range req.AppID {
 			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
 				writeErr(w, 400, "invalid app_id")
 				return
 			}
 		}
-		// Validate: block dangerous env vars
+		// Resolve command strictly from the validated installed manifest — never use
+		// any client-supplied command value.
+		manifest, err := appStore.GetManifest(req.AppID)
+		if err != nil {
+			writeErr(w, 404, "app not found or invalid manifest")
+			return
+		}
+		// Use manifest values authoritatively; client WorkDir/AppPort are hints only
+		// when manifest does not override them.
+		manifestCmd := manifest.Command
+		manifestWorkDir := manifest.WorkDir
+		manifestAppPort := manifest.Port
+		if req.AppPort != 0 && manifestAppPort == 0 {
+			manifestAppPort = req.AppPort
+		}
+		if manifestAppPort == 0 {
+			manifestAppPort = 80
+		}
+		// Validate: block dangerous env vars supplied by caller
 		for _, e := range req.Env {
 			lower := strings.ToLower(e)
 			if strings.HasPrefix(lower, "ld_preload=") || strings.HasPrefix(lower, "ld_library_path=") {
@@ -681,14 +721,9 @@ func main() {
 				return
 			}
 		}
-		// Validate: workdir must not escape
-		if strings.Contains(req.WorkDir, "..") {
-			writeErr(w, 400, "invalid work_dir")
-			return
-		}
-		if req.AppPort == 0 {
-			req.AppPort = 80
-		}
+		// Merge manifest env (authoritative) with caller-supplied extra env
+		launchEnv := manifest.EnvSlice()
+		launchEnv = append(launchEnv, req.Env...)
 		// Allocate host port from pool
 		hostPort, ok := portPool.Allocate(req.AppID)
 		if !ok {
@@ -697,10 +732,11 @@ func main() {
 		}
 		// Generate app secret and inject into env
 		appSecret := appGateway.GenerateAppSecret(req.AppID)
-		req.Env = append(req.Env, "VULOS_APP_SECRET="+appSecret, "VULOS_API=http://localhost:8080")
+		launchEnv = append(launchEnv, "VULOS_APP_SECRET="+appSecret, "VULOS_API=http://localhost:8080")
 
 		userID := r.Header.Get("X-User-ID")
-		app, err := launcher.Launch(ctx, req.AppID, userID, hostPort, req.AppPort, req.Command, req.Args, req.WorkDir, req.Env)
+		execAuditLog(r, "POST /api/apps/launch", fmt.Sprintf("app_id=%s cmd=%q", req.AppID, manifestCmd))
+		app, err := launcher.Launch(ctx, req.AppID, userID, hostPort, manifestAppPort, manifestCmd, req.Args, manifestWorkDir, launchEnv)
 		if err != nil {
 			portPool.Release(req.AppID)
 			appGateway.RemoveAppSecret(req.AppID)
@@ -778,6 +814,16 @@ func main() {
 
 	// Sandbox — AI-generated Python scripts
 	mux.HandleFunc("POST /api/sandbox/run", func(w http.ResponseWriter, r *http.Request) {
+		// Kill-switch: operator can disable all privileged exec at runtime.
+		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+			writeErr(w, 503, "exec disabled by administrator")
+			return
+		}
+		// Admin-only gate.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			ID   string `json:"id"`
 			Code string `json:"code"`
@@ -789,6 +835,7 @@ func main() {
 		if req.ID == "" {
 			req.ID = fmt.Sprintf("script-%d", time.Now().UnixMilli())
 		}
+		execAuditLog(r, "POST /api/sandbox/run", fmt.Sprintf("script_id=%s code_len=%d", req.ID, len(req.Code)))
 		script, err := sandboxSvc.Run(r.Context(), req.ID, req.Code)
 		if err != nil {
 			writeErr(w, 500, err.Error())
@@ -800,7 +847,9 @@ func main() {
 		})
 	})
 	mux.HandleFunc("POST /api/sandbox/stop", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		sandboxSvc.Stop(req.ID)
 		writeJSON(w, map[string]string{"status": "stopped"})
@@ -849,11 +898,24 @@ func main() {
 
 	// One-shot command exec (for Portal /commands)
 	mux.HandleFunc("POST /api/exec", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Command string `json:"command"` }
+		// Kill-switch: operator can disable all privileged exec at runtime.
+		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+			writeErr(w, 503, "exec disabled by administrator")
+			return
+		}
+		// Admin-only gate.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
+		var req struct {
+			Command string `json:"command"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
 			writeErr(w, 400, "invalid request")
 			return
 		}
+		execAuditLog(r, "POST /api/exec", req.Command)
 		result := ptyservice.Exec(r.Context(), req.Command)
 		writeJSON(w, result)
 	})
@@ -924,7 +986,9 @@ func main() {
 		writeJSON(w, wifiSvc.SavedNetworks(r.Context()))
 	})
 	mux.HandleFunc("POST /api/wifi/forget", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ SSID string `json:"ssid"` }
+		var req struct {
+			SSID string `json:"ssid"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		wifiSvc.ForgetNetwork(r.Context(), req.SSID)
 		writeJSON(w, map[string]string{"status": "forgotten"})
@@ -935,7 +999,9 @@ func main() {
 		writeJSON(w, wifi.ListEthernet(r.Context()))
 	})
 	mux.HandleFunc("POST /api/ethernet/dhcp", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Interface string `json:"interface"` }
+		var req struct {
+			Interface string `json:"interface"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := wifi.EnableDHCP(r.Context(), req.Interface); err != nil {
 			writeErr(w, 500, err.Error())
@@ -957,7 +1023,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "configured"})
 	})
 	mux.HandleFunc("POST /api/ethernet/disable", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Interface string `json:"interface"` }
+		var req struct {
+			Interface string `json:"interface"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		wifi.DisableEthernet(r.Context(), req.Interface)
 		writeJSON(w, map[string]string{"status": "disabled"})
@@ -968,7 +1036,9 @@ func main() {
 		writeJSON(w, btSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/bluetooth/power", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ On bool `json:"on"` }
+		var req struct {
+			On bool `json:"on"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := btSvc.SetPower(r.Context(), req.On); err != nil {
 			writeErr(w, 500, err.Error())
@@ -977,7 +1047,9 @@ func main() {
 		writeJSON(w, btSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/bluetooth/scan", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ On bool `json:"on"` }
+		var req struct {
+			On bool `json:"on"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.On {
 			btSvc.StartDiscovery(r.Context())
@@ -987,7 +1059,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/pair", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := btSvc.Pair(r.Context(), req.Address); err != nil {
 			writeErr(w, 500, err.Error())
@@ -996,7 +1070,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "paired"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/connect", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := btSvc.Connect(r.Context(), req.Address); err != nil {
 			writeErr(w, 500, err.Error())
@@ -1005,13 +1081,17 @@ func main() {
 		writeJSON(w, map[string]string{"status": "connected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/disconnect", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		btSvc.Disconnect(r.Context(), req.Address)
 		writeJSON(w, map[string]string{"status": "disconnected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/remove", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Address string `json:"address"` }
+		var req struct {
+			Address string `json:"address"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		btSvc.Remove(r.Context(), req.Address)
 		writeJSON(w, map[string]string{"status": "removed"})
@@ -1062,7 +1142,9 @@ func main() {
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/display/brightness", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Brightness int `json:"brightness"` }
+		var req struct {
+			Brightness int `json:"brightness"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := displaySvc.SetBrightness(r.Context(), req.Brightness); err != nil {
 			writeErr(w, 500, err.Error())
@@ -1149,7 +1231,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
 	mux.HandleFunc("POST /api/browser-profiles/{id}/bind", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ AppID string `json:"app_id"` }
+		var req struct {
+			AppID string `json:"app_id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		browserProfiles.BindApp(r.PathValue("id"), req.AppID)
 		browserProfiles.Flush()
@@ -1184,7 +1268,9 @@ func main() {
 		entries, _ := os.ReadDir(aiAppsDir)
 		var apps []map[string]string
 		for _, e := range entries {
-			if !e.IsDir() { continue }
+			if !e.IsDir() {
+				continue
+			}
 			metaPath := filepath.Join(aiAppsDir, e.Name(), "meta.json")
 			if data, err := os.ReadFile(metaPath); err == nil {
 				var meta map[string]string
@@ -1204,14 +1290,20 @@ func main() {
 	mux.HandleFunc("GET /api/ai-apps/{id}/html", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		data, err := os.ReadFile(filepath.Join(aiAppsDir, id, "index.html"))
-		if err != nil { writeErr(w, 404, "not found"); return }
+		if err != nil {
+			writeErr(w, 404, "not found")
+			return
+		}
 		w.Header().Set("Content-Type", "text/html")
 		w.Write(data)
 	})
 	mux.HandleFunc("GET /api/ai-apps/{id}/python", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		data, err := os.ReadFile(filepath.Join(aiAppsDir, id, "server.py"))
-		if err != nil { writeErr(w, 404, "not found"); return }
+		if err != nil {
+			writeErr(w, 404, "not found")
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write(data)
 	})
@@ -1249,9 +1341,15 @@ func main() {
 			writeErr(w, 400, "url required")
 			return
 		}
-		if req.Width == 0 { req.Width = 720 }
-		if req.Height == 0 { req.Height = 500 }
-		if req.Title == "" { req.Title = "Vula" }
+		if req.Width == 0 {
+			req.Width = 720
+		}
+		if req.Height == 0 {
+			req.Height = 500
+		}
+		if req.Title == "" {
+			req.Title = "Vula"
+		}
 
 		// Spawn a new Cog instance as a standalone Wayland window
 		args := []string{}
@@ -1319,21 +1417,32 @@ func main() {
 	mux.HandleFunc("POST /api/os/open-app", func(w http.ResponseWriter, r *http.Request) {
 		// Triggers app launch from backend (AI can call this)
 		var req struct {
-			AppID string `json:"app_id"`
-			AppPort int  `json:"app_port"`
+			AppID   string `json:"app_id"`
+			AppPort int    `json:"app_port"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.AppPort == 0 { req.AppPort = 80 }
+		if req.AppPort == 0 {
+			req.AppPort = 80
+		}
 		hostPort, ok := portPool.Allocate(req.AppID)
-		if !ok { writeErr(w, 503, "no ports"); return }
+		if !ok {
+			writeErr(w, 503, "no ports")
+			return
+		}
 		appSecret := appGateway.GenerateAppSecret(req.AppID)
 		userID := r.Header.Get("X-User-ID")
 		_, err := launcher.Launch(ctx, req.AppID, userID, hostPort, req.AppPort, "", nil, "", []string{"VULOS_APP_SECRET=" + appSecret})
-		if err != nil { portPool.Release(req.AppID); writeErr(w, 500, err.Error()); return }
+		if err != nil {
+			portPool.Release(req.AppID)
+			writeErr(w, 500, err.Error())
+			return
+		}
 		writeJSON(w, map[string]any{"app_id": req.AppID, "url": gateway.URLForApp(req.AppID)})
 	})
 	mux.HandleFunc("POST /api/os/close-app", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ AppID string `json:"app_id"` }
+		var req struct {
+			AppID string `json:"app_id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		launcher.Stop(ctx, req.AppID)
 		portPool.Release(req.AppID)
@@ -1342,19 +1451,25 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/os/notify", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Title  string `json:"title"`
-			Body   string `json:"body"`
-			Level  string `json:"level"`
+			Title string `json:"title"`
+			Body  string `json:"body"`
+			Level string `json:"level"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
 		level := notify.LevelInfo
-		if req.Level == "warning" { level = notify.LevelWarning }
-		if req.Level == "urgent" { level = notify.LevelUrgent }
+		if req.Level == "warning" {
+			level = notify.LevelWarning
+		}
+		if req.Level == "urgent" {
+			level = notify.LevelUrgent
+		}
 		notifySvc.Send(req.Title, req.Body, level, "ai")
 		writeJSON(w, map[string]string{"status": "sent"})
 	})
 	mux.HandleFunc("POST /api/os/energy-mode", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Mode string `json:"mode"` }
+		var req struct {
+			Mode string `json:"mode"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		energyMgr.SetMode(energy.Mode(req.Mode))
 		writeJSON(w, energyMgr.State())
@@ -1396,7 +1511,9 @@ func main() {
 			writeErr(w, 403, "admin only")
 			return
 		}
-		var req struct{ AppID string `json:"app_id"` }
+		var req struct {
+			AppID string `json:"app_id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		// Stop any running stream session for this app
 		streamPool.Stop(req.AppID)
@@ -1516,7 +1633,9 @@ func main() {
 		writeJSON(w, drivers.Detect(r.Context()))
 	})
 	mux.HandleFunc("POST /api/drivers/load", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Module string `json:"module"` }
+		var req struct {
+			Module string `json:"module"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
 			writeErr(w, 400, "module required")
 			return
@@ -1528,7 +1647,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "loaded", "module": req.Module})
 	})
 	mux.HandleFunc("POST /api/drivers/unload", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Module string `json:"module"` }
+		var req struct {
+			Module string `json:"module"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
 			writeErr(w, 400, "module required")
 			return
@@ -1567,7 +1688,9 @@ func main() {
 		writeJSON(w, packages.GetInfo(r.Context(), name))
 	})
 	mux.HandleFunc("POST /api/packages/install", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Name string `json:"name"` }
+		var req struct {
+			Name string `json:"name"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 			writeErr(w, 400, "name required")
 			return
@@ -1579,7 +1702,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "installed", "name": req.Name})
 	})
 	mux.HandleFunc("POST /api/packages/remove", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Name string `json:"name"` }
+		var req struct {
+			Name string `json:"name"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 			writeErr(w, 400, "name required")
 			return
@@ -1760,6 +1885,8 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 }
 
 func errStr(err error) string {
-	if err == nil { return "" }
+	if err == nil {
+		return ""
+	}
 	return err.Error()
 }

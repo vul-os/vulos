@@ -16,10 +16,10 @@ import (
 
 // Script is a running AI-generated Python backend.
 type Script struct {
-	ID      string     `json:"id"`
-	Port    int        `json:"port"`
-	File    string     `json:"file"`
-	Running bool       `json:"running"`
+	ID      string `json:"id"`
+	Port    int    `json:"port"`
+	File    string `json:"file"`
+	Running bool   `json:"running"`
 	cmd     *exec.Cmd
 	done    chan struct{}
 }
@@ -86,10 +86,15 @@ func (s *Sandbox) Run(ctx context.Context, id, code string) (*Script, error) {
 	_ = sandboxCancel // stored in script for cleanup
 	cmd := exec.CommandContext(sandboxCtx, python, scriptPath)
 	cmd.Dir = s.dir
-	cmd.Env = append(os.Environ(),
+	// Minimal scrubbed environment — never inherit os.Environ() to avoid
+	// leaking secrets (API keys, tokens, etc.) present in the server process.
+	cmd.Env = []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin",
+		fmt.Sprintf("HOME=%s", s.dir),
+		fmt.Sprintf("TMPDIR=%s", s.dir),
 		fmt.Sprintf("VULOS_PORT=%d", port),
 		fmt.Sprintf("PORT=%d", port),
-	)
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

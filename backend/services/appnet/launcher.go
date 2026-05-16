@@ -72,7 +72,13 @@ func (l *Launcher) Launch(ctx context.Context, appID, userID string, hostPort, a
 	// Run inside namespace — use background context so the app outlives the HTTP request
 	cmd := exec.Command("ip", "netns", "exec", ns.Name, "sh", "-c", expandedCmd)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), env...)
+	// Minimal scrubbed environment — never inherit os.Environ() to avoid
+	// leaking server secrets (API keys, tokens, etc.) into untrusted app processes.
+	cmd.Env = append([]string{
+		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
+		"HOME=/root",
+		"TMPDIR=/tmp",
+	}, env...)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", appPort))
 	cmd.Stdout = os.Stdout // TODO: capture to log file per app
 	cmd.Stderr = os.Stderr
