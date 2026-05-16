@@ -1164,7 +1164,7 @@ Scope: Messages (thread list/compose/search/status) + Dialer (T9, history, in-ca
 AC: [ ] Messages lists threads, send/recv WS [ ] Dialer places call + in-call screen [ ] incoming surfaces realtime
 
 ### [MOBILE-05] eSIM profile management via lpac
-`todo` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/, apps/phone/
+`done` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/, apps/phone/
 Scope: lpac CLI wrapper list/enable/disable/delete/add-by-code, endpoints, eSIM manager UI; graceful w/o lpac.
 AC: [ ] list/enable/disable/delete (mock lpac) [ ] add-by-activation-code [ ] UI lists+toggles [ ] missing lpac clear error
 
