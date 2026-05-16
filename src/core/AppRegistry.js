@@ -77,6 +77,15 @@ const builtinRegistry = [
     category: 'system',
     builtin: true,
   },
+  {
+    id: 'authenticator',
+    name: 'Authenticator',
+    icon: '⊛',
+    description: 'TOTP two-factor authentication codes',
+    keywords: ['totp', 'otp', '2fa', 'authenticator', 'mfa', 'two-factor', 'security', 'codes'],
+    category: 'system',
+    builtin: true,
+  },
 
   {
     id: 'browser',
