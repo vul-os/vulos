@@ -24,6 +24,7 @@ import (
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
+	"vulos/backend/services/peering"
 	"vulos/backend/services/bluetooth"
 	"vulos/backend/services/desktop"
 	"vulos/backend/services/disks"
@@ -168,6 +169,9 @@ func main() {
 
 	// Peering (direct Vula-to-Vula communication)
 	peeringSvc := peering.New(home)
+
+	// Peering WebSocket multiplex hub
+	peeringHub := peering.NewHub()
 
 	// Notifications
 	notifySvc := notify.New()
@@ -1244,6 +1248,9 @@ func main() {
 		}
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
+
+	// Peering multiplex WebSocket — GET /api/peering/stream
+	peeringHub.RegisterHandlers(mux)
 
 	// Remote browser — WebRTC (delegates to stream pool)
 	browserSvc.RegisterHandlers(mux)
