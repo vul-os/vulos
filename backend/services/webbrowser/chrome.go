@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"sync"
@@ -93,8 +94,8 @@ func (s *Service) tryStart(parentCtx context.Context) error {
 
 	// Launch via stream pool — Xvfb, GStreamer, WebRTC tracks, input all handled
 	sess, err := s.pool.Launch(stream.LaunchOpts{
-		ID:   sessionID,
-		Name: "Chrome",
+		ID:      sessionID,
+		Name:    "Chrome",
 		Command: bin,
 		Args: []string{
 			"--no-sandbox", "--test-type", "--disable-gpu", "--disable-software-rasterizer", "--disable-logging",
@@ -250,9 +251,13 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("POST /api/browser/tabs/new", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ URL string `json:"url"` }
+		var req struct {
+			URL string `json:"url"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
-		if req.URL == "" { req.URL = "about:blank" }
+		if req.URL == "" {
+			req.URL = "about:blank"
+		}
 		tab, err := cdpNewTab(req.URL)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)
@@ -263,7 +268,9 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("POST /api/browser/tabs/close", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := cdpCloseTab(req.ID); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)
@@ -274,7 +281,9 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("POST /api/browser/tabs/activate", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		if err := cdpActivateTab(req.ID); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)
@@ -306,7 +315,9 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("DELETE /api/browser/extensions", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ ID string `json:"id"` }
+		var req struct {
+			ID string `json:"id"`
+		}
 		json.NewDecoder(r.Body).Decode(&req)
 		extDir := "/root/.vulos/browser/extensions/" + req.ID
 		if err := os.RemoveAll(extDir); err != nil {
@@ -437,7 +448,7 @@ func cdpListTabs() ([]cdpTab, error) {
 }
 
 func cdpNewTab(url string) (*cdpTab, error) {
-	req, err := http.NewRequest("PUT", cdpBase+"/json/new?"+url, nil)
+	req, err := http.NewRequest("PUT", cdpBase+"/json/new?"+neturl.Values{"url": {url}}.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}

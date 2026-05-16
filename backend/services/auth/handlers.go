@@ -77,7 +77,6 @@ var publicPaths = map[string]bool{
 	"/api/auth/status":    true,
 	"/api/setup/status":   true,
 	"/api/browser/status": true,
-	"/api/open":           true,
 	"/manifest.json":      true,
 }
 
@@ -434,7 +433,11 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 // Uses SameSite=None + Secure on HTTPS (required for subdomain iframes).
 // Uses SameSite=Lax on HTTP (localhost dev without mkcert).
 func sessionCookie(r *http.Request, token string) *http.Cookie {
-	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	// Only trust X-Forwarded-Proto from loopback (reverse proxy on same host),
+	// mirroring the loopback gate used in extractIP for X-Forwarded-For.
+	remoteHost, _, _ := net.SplitHostPort(r.RemoteAddr)
+	fromTrustedProxy := remoteHost == "127.0.0.1" || remoteHost == "::1"
+	isSecure := r.TLS != nil || (fromTrustedProxy && r.Header.Get("X-Forwarded-Proto") == "https")
 	sameSite := http.SameSiteLaxMode
 	if isSecure {
 		sameSite = http.SameSiteNoneMode
