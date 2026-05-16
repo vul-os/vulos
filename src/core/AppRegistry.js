@@ -234,14 +234,43 @@ export function refreshInstalled() {
   return fetchPromise
 }
 
+// AI5: Dynamic AI-generated apps from ~/.vulos/ai-apps/
+let ai5AIApps = []
+let ai5FetchPromise = null
+
+export function refreshAIApps() {
+  ai5FetchPromise = fetch('/api/ai-apps')
+    .then(r => r.ok ? r.json() : [])
+    .then(apps => {
+      ai5AIApps = (apps || [])
+        .filter(a => a.id && a.has_html === 'true') // only apps with a launchable HTML page
+        .filter(a => !builtinRegistry.some(b => b.id === a.id)) // dedup against builtins
+        .map(a => ({
+          id: a.id,
+          name: a.title || a.id,
+          icon: a.icon || '🤖',
+          description: a.title || 'AI-generated app',
+          keywords: ['ai', 'generated', ...(a.title ? a.title.toLowerCase().split(/\s+/) : [])],
+          category: a.category || 'ai',
+          url: `/api/ai-apps/${a.id}/html`,
+          ai5AIApp: true,
+        }))
+      return ai5AIApps
+    })
+    .catch(() => { ai5AIApps = [] })
+  return ai5FetchPromise
+}
+
 // Initial fetch
 refreshInstalled()
+refreshAIApps()
 
 export function getApps() {
-  // Merge defaultWebApps: installed apps override them by id; builtinRegistry entries are unaffected.
+  // Merge defaultWebApps + AI apps; installed apps override by id; builtinRegistry unaffected.
   const installedIds = new Set(installedApps.map(a => a.id))
   const webAppsNotInstalled = defaultWebApps.filter(a => !installedIds.has(a.id))
-  return [...builtinRegistry, ...webAppsNotInstalled, ...installedApps]
+  const ai5Deduped = ai5AIApps.filter(a => !installedIds.has(a.id) && !defaultWebApps.some(b => b.id === a.id) && !builtinRegistry.some(b => b.id === a.id))
+  return [...builtinRegistry, ...webAppsNotInstalled, ...installedApps, ...ai5Deduped]
 }
 
 export function getAppById(id) {
