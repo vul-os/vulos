@@ -485,3 +485,11 @@ NOTIF-02-v2 (Opus rescue) hit the SAME structural wall as D21/prior: notify.go o
 CLUSTER-02-v2 (Opus, well-built in isolation) fails its own auth tests once merged: keep-both of SEC-J's session-revoke loop + CLUSTER-02's persistUser disturbs NewStore SQLite-init ordering (TestRegisterLoginRoundTrip + 4 persistence tests fail). Same class as NOTIF-02-v2 (D70): deep storage-layer rewrite against a session-evolved package. Build GREEN on main (reset clean @ 7feda5c). DEFER CLUSTER-02 this run; sqlite.go + migration preserved on task/CLUSTER-02-v2 for hand-integration after an auth.go API-freeze. Lesson reaffirmed: storage-layer swaps (notify, auth) need an API-freeze checkpoint before agent rescue.
 Rescued this push: NET-09 (earlier), AUTH-10, INIT-02, WEBAPP-01/05, GAME-07, AI-05, + 9 test-coverage pkgs. Deferred: NOTIF-02 (D70), CLUSTER-02 (D71). AUTH-12-v2 + INIT-08-v2 + FOLLOWUPS-1 pending merge.
 D72: FOLLOWUPS-1 aborted — main already has cage-env + sync-hook (STREAM-08/CLUSTER-10 landed). Redundant stale-base.
+
+## D73 (19:48) — Interface-first NOTIF cluster: API freeze + 4 independent agents
+Root cause of D70 (NOTIF-02 ×3 fails) = worker stale-base redefining notify Send/struct. Fix: committed backend/services/notify/NOTIF_API.md — authoritative frozen contract (existing API verbatim + the EXACT additive surface NOTIF-02 adds + strict per-agent file ownership so 4 agents never collide). Dispatching 4 independent:
+- Opus NOTIF-02: keystone — owns notify.go struct (adds store+dnd fields), notify_store.go persistence, notify_dnd_state.go state holder, SetStore + DND() accessors. ADDITIVE only.
+- Sonnet NOTIF-05+06+DEVPROF-06: notify_dnd.go + notify_action.go + routes_notify.go (new files, *Service methods, ZERO notify.go edits) + DEVPROF-06 driving-mode frontend (depends on DND, bundled since same feature).
+- Sonnet NOTIF-04: pure frontend NotificationCenter.jsx + SystemPulse mount.
+- Opus CLUSTER-02: independent auth.Store→SQLite; explicit instruction to NOT keep-both with SEC-J (read current auth.go, integrate persistUser AFTER the revoke loop without reordering NewStore init — the D71 failure mode).
+Contract guarantees agents compile against identical truth regardless of merge order. @ commit after freeze.
