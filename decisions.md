@@ -464,3 +464,7 @@ The "locked dirty" tags were stale — working tree is clean now (apps/calendar+
 - GAME-07: gaming category + Wine/Lutris/Steam detection (manifest.go + wine.go + main.go)
 - AI-05: AI apps in launcher (AppRegistry.js + main.go ai-apps)
 Collisions: manifest.go (WEBAPP-01+GAME-07 different consts), AppRegistry.js (WEBAPP-05+AI-05 different sections), main.go (routes-pattern). All resolvable keep-both at merge time.
+
+## D67 (19:05) — Dirty-fix wave complete (4/4)
+WEBAPP-01 (notifications permission), WEBAPP-05 (6 default web apps in launcher), GAME-07 (auto gaming-mode for Wine/Lutris/Steam/gaming-cat), AI-05 (AI apps in launcher w/ icon+category) — all merged. The "locked dirty" status that had blocked them was stale (files committed earlier in session); user prompt to retry caught it. Session totals: **169 task-branches merged**.
+Permanent-defers now: NOTIF-02/04/05/06, AUTH-10/12, INIT-02/08, DEVPROF-06, CLUSTER-02 = 9 (down from 11 — NET-09 rescued, AI-05/WEBAPP-01/05/GAME-07 unblocked).
