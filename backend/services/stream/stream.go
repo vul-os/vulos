@@ -188,6 +188,14 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 				s.handleGamepad(msg.Data)
 			})
+			// Forward FF_RUMBLE events from uinput back to the browser over
+			// the same gamepad channel (server→client direction).
+			dc.OnOpen(func() {
+				if s.injector == nil || s.injector.RumbleCh == nil {
+					return
+				}
+				go rumbleForwardLoop(s.injector.RumbleCh, dc, s.ctx)
+			})
 		}
 	})
 
@@ -356,6 +364,35 @@ func (s *Session) handleInput(data []byte) {
 		s.injector.KeyPress(evt.Key, evt.Code, true)
 	case "keyup":
 		s.injector.KeyPress(evt.Key, evt.Code, false)
+	}
+}
+
+// rumbleForwardLoop reads FF_RUMBLE events from the uinput channel and sends
+// them to the browser over the existing gamepad WebRTC data channel.
+// Message format: {"t":"rumble","strong":<0–65535>,"weak":<0–65535>}
+// The browser maps strong→leftActuator, weak→rightActuator for playEffect.
+func rumbleForwardLoop(ch <-chan input.RumbleEvent, dc *webrtc.DataChannel, ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			if dc.ReadyState() != webrtc.DataChannelStateOpen {
+				continue
+			}
+			b, err := json.Marshal(map[string]any{
+				"t":      "rumble",
+				"strong": evt.Strong,
+				"weak":   evt.Weak,
+			})
+			if err != nil {
+				continue
+			}
+			dc.SendText(string(b))
+		}
 	}
 }
 
