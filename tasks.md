@@ -1231,6 +1231,6 @@ Scope: auth.go — call RevokeAllSessions on ChangePassword (~:472); raise min p
 AC: [ ] password change revokes sessions [ ] min length raised, legacy hash path constrained [ ] no credential-shaped data in logs [ ] go build + auth tests
 
 ### [SEC-K] gallery/music traversal prefix separator (L1)
-`todo` · P3 · S · dep: none · parallel: yes — apps/gallery/server.py, apps/music/server.py
+`done` · P3 · S · dep: none · parallel: yes — apps/gallery/server.py, apps/music/server.py
 Scope: containment check uses `startswith(realpath(root))` without trailing sep → sibling dir sharing prefix reachable. Append `os.sep` to the contained root in every check.
 AC: [ ] sibling-prefix dir not reachable [ ] normal media still served [ ] py_compile clean
