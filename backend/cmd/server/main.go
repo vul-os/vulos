@@ -44,6 +44,7 @@ import (
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
+	"vulos/backend/services/storageprov"
 	"vulos/backend/services/stream"
 	"vulos/backend/services/sysuser"
 	"vulos/backend/services/telemetry"
@@ -1306,6 +1307,9 @@ func main() {
 	peeringSvc.RegisterHandlers(mux)
 	// App visibility (private|local|public)
 	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
+
+	// MinIO storage provisioning
+	storageprov.RegisterHandlers(mux, home)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())

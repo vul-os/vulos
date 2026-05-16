@@ -1,5 +1,36 @@
 {
   "apps": {
+    "minio": {
+      "name": "MinIO",
+      "vetted": true,
+      "type": "web",
+      "description": "High-performance S3-compatible object storage \u2014 self-hosted, scalable, with SSE-C encryption support",
+      "category": "storage",
+      "author": "MinIO, Inc.",
+      "homepage": "https://min.io",
+      "icon": "minio",
+      "keywords": [
+        "storage",
+        "s3",
+        "object-storage",
+        "minio",
+        "bucket",
+        "encryption"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x /usr/local/bin/minio",
+          "command": "minio server ${DATA_DIR:-data} --address 0.0.0.0:${PORT}",
+          "port": 9000,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
     "navidrome": {
       "name": "Navidrome",
       "vetted": true,
