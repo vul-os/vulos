@@ -166,6 +166,8 @@ apt-get install -y --no-install-recommends \
     labwc cage \
     flatpak rsync systemd systemd-sysv \
     plymouth plymouth-themes
+    flatpak rsync systemd systemd-sysv \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant
 
 # Intel VA-API (amd64 only)
 dpkg --print-architecture | grep -q amd64 && \
@@ -395,6 +397,8 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     labwc cage \
     flatpak rsync systemd systemd-sysv \
     plymouth plymouth-themes
+    flatpak rsync systemd systemd-sysv \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
 

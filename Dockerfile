@@ -58,6 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-desktop-portal-wlr \
     libgbm1 libegl1 \
     plymouth plymouth-themes \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
     && rm -rf /var/lib/apt/lists/* \
     && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo

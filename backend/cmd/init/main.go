@@ -70,10 +70,13 @@ func main() {
 	startSystemd()
 	plymouthProgress(60) // milestone: systemd handed off / services starting
 
+	// Phase 4: Bring up networking (DHCP, WiFi fallback, mDNS)
+	phaseNetwork()
+
 	// Phase 5: Start vulos server
 	startServices()
 
-	// Phase 5: Reap zombies (PID 1 duty)
+	// Phase 6: Reap zombies (PID 1 duty)
 	reapLoop()
 }
 
@@ -176,6 +179,250 @@ func startSystemd() {
 		return
 	}
 	log.Println("systemctl not found, continuing without init system")
+}
+
+// phaseNetwork brings the machine online:
+//  1. Wired DHCP — tries udhcpc then dhclient on every eth*/en* interface.
+//  2. WiFi fallback — if wired fails and wpa_cli lists saved networks, connect
+//     to each in turn via wpa_supplicant and run DHCP on the wireless interface.
+//  3. resolv.conf — writes fallback nameservers (Cloudflare + Google) so DNS
+//     works even when the DHCP server forgets to send option 6.
+//  4. avahi-daemon — started in the background so hostname.local resolves on
+//     the LAN via mDNS.
+//
+// All steps are best-effort: errors are logged, never fatal.
+// BMINIT9_/initnet- phase.
+func phaseNetwork() {
+	log.Println("BMINIT9: starting network phase")
+
+	wiredOK := initnetWired()
+	if !wiredOK {
+		log.Println("BMINIT9: wired DHCP failed — trying WiFi fallback")
+		initnetWifi()
+	}
+
+	initnetResolvConf()
+	initnetAvahi()
+
+	log.Println("BMINIT9: network phase complete")
+}
+
+// initnetWired enumerates eth*/en* interfaces from /sys/class/net and runs DHCP
+// (udhcpc preferred, dhclient as fallback) on each until one succeeds.
+func initnetWired() bool {
+	ifaces := initnetEthernetIfaces()
+	if len(ifaces) == 0 {
+		log.Println("BMINIT9: no wired interfaces found in /sys/class/net")
+		return false
+	}
+
+	dhcpBin, dhcpArgs := initnetDHCPCmd()
+	if dhcpBin == "" {
+		log.Println("BMINIT9: neither udhcpc nor dhclient found — skipping wired DHCP")
+		return false
+	}
+
+	for _, iface := range ifaces {
+		log.Printf("BMINIT9: bringing up %s, running %s", iface, dhcpBin)
+
+		// Bring link up (ignore errors — may already be up)
+		exec.Command("ip", "link", "set", iface, "up").Run()
+
+		args := append(dhcpArgs, iface)
+		cmd := exec.Command(dhcpBin, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("BMINIT9: DHCP on %s failed: %v", iface, err)
+			continue
+		}
+		log.Printf("BMINIT9: DHCP on %s succeeded", iface)
+		return true
+	}
+	return false
+}
+
+// initnetEthernetIfaces reads /sys/class/net and returns physical wired
+// interface names (eth*, en* — excluding lo, wl*, virtual, docker, etc.).
+func initnetEthernetIfaces() []string {
+	entries, err := os.ReadDir("/sys/class/net")
+	if err != nil {
+		log.Printf("BMINIT9: readdir /sys/class/net: %v", err)
+		return nil
+	}
+	var result []string
+	for _, e := range entries {
+		n := e.Name()
+		if n == "lo" {
+			continue
+		}
+		if strings.HasPrefix(n, "eth") || strings.HasPrefix(n, "en") {
+			// Skip virtual interfaces that show up as en* (e.g. enX0 on Xen).
+			// A quick heuristic: skip if no /sys/class/net/<iface>/device symlink
+			// (i.e. it has no physical device backing).
+			devicePath := "/sys/class/net/" + n + "/device"
+			if _, err := os.Lstat(devicePath); err != nil {
+				// No physical device — likely a virtual NIC; still try it.
+				log.Printf("BMINIT9: %s has no /device symlink, will still try DHCP", n)
+			}
+			result = append(result, n)
+		}
+	}
+	return result
+}
+
+// initnetDHCPCmd returns the best available DHCP client binary and its
+// arguments (everything except the interface name, which is appended last).
+func initnetDHCPCmd() (string, []string) {
+	// udhcpc (busybox) — lightweight, exits 0 on success
+	if p, err := exec.LookPath("udhcpc"); err == nil {
+		// -i <iface> -n (exit if lease not obtained) -q (quit after lease)
+		return p, []string{"-i"}
+	}
+	// dhclient (isc-dhcp-client)
+	if p, err := exec.LookPath("dhclient"); err == nil {
+		return p, []string{"-v"}
+	}
+	// dhcpcd
+	if p, err := exec.LookPath("dhcpcd"); err == nil {
+		return p, []string{}
+	}
+	return "", nil
+}
+
+// initnetWifi tries each saved wpa_supplicant network in turn, bringing up
+// the wireless interface with DHCP after a brief association wait.
+func initnetWifi() {
+	wifiIface := initnetWifiIface()
+	if wifiIface == "" {
+		log.Println("BMINIT9: no wireless interface found, skipping WiFi fallback")
+		return
+	}
+
+	// Ask wpa_cli for saved networks.
+	out, err := exec.Command("wpa_cli", "-i", wifiIface, "list_networks").Output()
+	if err != nil {
+		log.Printf("BMINIT9: wpa_cli list_networks: %v", err)
+		return
+	}
+
+	type savedNet struct{ id, ssid string }
+	var nets []savedNet
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) >= 2 {
+			// First field is numeric network id; skip header line
+			id := strings.TrimSpace(fields[0])
+			if id == "" || id == "network" || strings.HasPrefix(id, "Selected") {
+				continue
+			}
+			// Validate numeric id
+			valid := true
+			for _, c := range id {
+				if c < '0' || c > '9' {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				nets = append(nets, savedNet{id: id, ssid: strings.TrimSpace(fields[1])})
+			}
+		}
+	}
+
+	if len(nets) == 0 {
+		log.Println("BMINIT9: no saved WiFi networks in wpa_supplicant")
+		return
+	}
+
+	exec.Command("ip", "link", "set", wifiIface, "up").Run()
+
+	dhcpBin, dhcpArgs := initnetDHCPCmd()
+
+	for _, n := range nets {
+		log.Printf("BMINIT9: trying WiFi SSID=%q (network id %s)", n.ssid, n.id)
+
+		// Select the network and reassociate.
+		exec.Command("wpa_cli", "-i", wifiIface, "select_network", n.id).Run()
+
+		// Wait up to 8 seconds for association.
+		associated := false
+		for i := 0; i < 8; i++ {
+			time.Sleep(1 * time.Second)
+			statusOut, _ := exec.Command("wpa_cli", "-i", wifiIface, "status").Output()
+			if strings.Contains(string(statusOut), "wpa_state=COMPLETED") {
+				associated = true
+				break
+			}
+		}
+		if !associated {
+			log.Printf("BMINIT9: association timed out for SSID=%q", n.ssid)
+			continue
+		}
+
+		if dhcpBin != "" {
+			args := append(dhcpArgs, wifiIface)
+			cmd := exec.Command(dhcpBin, args...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Printf("BMINIT9: DHCP on WiFi %s failed: %v", wifiIface, err)
+				continue
+			}
+			log.Printf("BMINIT9: WiFi up on %s (SSID=%q)", wifiIface, n.ssid)
+			return
+		}
+	}
+	log.Println("BMINIT9: WiFi fallback exhausted all saved networks")
+}
+
+// initnetWifiIface finds the first wl* interface in /sys/class/net.
+func initnetWifiIface() string {
+	entries, err := os.ReadDir("/sys/class/net")
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "wl") {
+			return e.Name()
+		}
+	}
+	return ""
+}
+
+// initnetResolvConf writes a minimal /etc/resolv.conf if DNS nameservers are
+// missing, ensuring external names resolve even when DHCP doesn't supply them.
+func initnetResolvConf() {
+	const path = "/etc/resolv.conf"
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "nameserver") {
+		log.Println("BMINIT9: /etc/resolv.conf already has nameservers, leaving untouched")
+		return
+	}
+	content := "# Written by vulos-init (BMINIT9)\nnameserver 1.1.1.1\nnameserver 8.8.8.8\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		log.Printf("BMINIT9: write /etc/resolv.conf: %v", err)
+		return
+	}
+	log.Println("BMINIT9: wrote fallback nameservers to /etc/resolv.conf")
+}
+
+// initnetAvahi starts avahi-daemon in the background so that hostname.local
+// resolves on the LAN via mDNS.  Errors are logged, not fatal.
+func initnetAvahi() {
+	avahi, err := exec.LookPath("avahi-daemon")
+	if err != nil {
+		log.Println("BMINIT9: avahi-daemon not found, mDNS unavailable")
+		return
+	}
+	cmd := exec.Command(avahi, "--no-rlimits", "--no-drop-root")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		log.Printf("BMINIT9: avahi-daemon start error: %v", err)
+		return
+	}
+	log.Printf("BMINIT9: avahi-daemon started (pid=%d) — hostname.local is resolvable", cmd.Process.Pid)
 }
 
 func startServices() {
