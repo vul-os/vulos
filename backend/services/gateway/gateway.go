@@ -109,17 +109,27 @@ func (g *Gateway) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var appID, appPath string
 
-		// Try subdomain: {app}--{profile}.{ulid}.{domain} or {app}.{ulid}.{domain}
-		// ParseSubdomain handles port stripping, case normalisation, and separator logic.
-		if baseDomain := os.Getenv("VULOS_DOMAIN"); baseDomain != "" {
-			if parsedApp, parsedProfile, ok := appnet.ParseSubdomain(r.Host, baseDomain); ok {
+		// Try subdomain: {appId}.lvh.me or {appId}.vula.example.com
+		// With NET-02, subdomain may carry a profile prefix:
+		//   {profile}--{appId}.{baseDomain}  →  profile=profile, appID=appId
+		//   {appId}.{baseDomain}             →  profile=default, appID=appId
+		var net02Profile string
+		host := r.Host
+		if idx := strings.Index(host, ":"); idx > 0 {
+			host = host[:idx]
+		}
+		if baseDomain := os.Getenv("VULOS_DOMAIN"); baseDomain != "" && strings.HasSuffix(host, "."+baseDomain) {
+			// ParseSubdomain (NET-01) handles both plain and profile-prefixed subdomains:
+			//   {profile}--{appId}.{baseDomain}  →  profile=profile, appID=appId
+			//   {appId}.{baseDomain}             →  profile="default", appID=appId
+			if parsedApp, parsedProfile, ok := appnet.ParseSubdomain(host, baseDomain); ok {
 				appID = parsedApp
-				appPath = r.URL.Path
-				if parsedProfile != "default" {
-					// Profile-dimensional routing is NET-02; log for observability only.
-					log.Printf("[gateway] subdomain profile=%q for app=%q (NET-02 pending)", parsedProfile, appID)
-				}
+				net02Profile = parsedProfile
+			} else {
+				// Shouldn't happen given HasSuffix check above, but degrade gracefully.
+				appID = strings.TrimSuffix(host, "."+baseDomain)
 			}
+			appPath = r.URL.Path
 		}
 
 		// Fallback: /app/{appId}/path
@@ -154,8 +164,10 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			return
 		}
 
-		// --- Find app namespace (scoped to user) ---
-		ns, ok := g.netMgr.GetForUser(appID, session.UserID)
+		// --- Find app namespace (scoped to user + profile) ---
+		// net02Profile is "" when no profile subdomain was present; GetForProfile
+		// normalises "" to "default", which keeps backwards-compat behaviour.
+		ns, ok := g.netMgr.GetForProfile(appID, session.UserID, net02Profile)
 		if !ok {
 			http.Error(w, `{"error":"app not running"}`, 404)
 			return
