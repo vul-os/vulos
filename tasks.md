@@ -840,7 +840,7 @@ Scope: peering.Service owning ~/.vulos/peering/ tree (identity/profile/inbox/out
 AC: [ ] New(home) creates tree idempotent [ ] RegisterHandlers wired, GET /api/peering/identity 200 stub [ ] go build
 
 ### [PEER-02] Ed25519 identity: keypair, Vula ID, import/export
-`todo` · P0 · M · dep: PEER-01 · parallel: yes — backend/services/peering/identity.go
+`done` · P0 · M · dep: PEER-01 · parallel: yes — backend/services/peering/identity.go
 Scope: Gen Ed25519 first boot (priv 0600), Vula ID vula:ed25519:<base58> encode/decode, parse <id>@<server>:<port>; GET identity, POST identity/export(enc)/import.
 AC: [ ] first boot persists, reload same [ ] GET returns Vula ID+pubkey [ ] export→import same ID [ ] unit test encode/parse
 
