@@ -1,32 +1,37 @@
 # Vula OS — Roadmap Tasks
 
-The full backlog of decomposed work. **147 done · 46 open · 193 total** at the time of writing.
+**Status: 193 / 193 real tasks done (100%).** Reconciled from git merge history; current as of this commit. The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
-> If you came here looking for a task to pick up, the **At-a-glance** table below is the right starting point. Each row links to that area's section, and the "first open" column points at the highest-priority unblocked task in the area.
+> Every roadmap area is fully implemented. Remaining design depth is tracked as
+> explicit later-phase notes in the roadmap docs themselves (see
+> `roadmap/CLUSTER.md` → cr-sqlite CRDT, `roadmap/NOTIFICATIONS.md` →
+> push-over-peering). The Ladybird browser track is **de-scoped** — the spike
+> (LADYBIRD-01) shipped feature-flagged, but the engine is not ready for us;
+> do not invest further until that changes.
 
 ## At-a-glance
 
-| Area | Roadmap | Done / Total | Progress | First open |
-|---|---|---:|:---:|---|
-| [AI Assistant](#area-ai-assistant) | [AI](../roadmap/AI.md) | 10 / 13 | `[████████··]` 77% | [AI-05](#ai-05-make-saved-ai-apps-appear-in-the-app-launcher-with-icons-and-categories) · P1 |
-| [Streaming](#area-streaming) | [STREAMING-OPTIMIZATIONS](../roadmap/STREAMING-OPTIMIZATIONS.md) | 7 / 8 | `[█████████·]` 88% | [STREAM-08](#stream-08-add-cage-headless-wayland-compositor-path-for-gpu-streaming-sessions) · P2 |
-| [Gaming](#area-gaming) | [GAMING](../roadmap/GAMING.md) | 6 / 8 | `[████████··]` 75% | [GAME-07](#game-07-auto-gaming-mode-for-winelutrissteamgaming-category) · P1 |
-| [Default Web Apps](#area-default-web-apps) | [DEFAULT-WEB-APPS](../roadmap/DEFAULT-WEB-APPS.md) | 13 / 15 | `[█████████·]` 87% | [WEBAPP-01](#webapp-01-fix-invalid-notifications-permission-in-calendarclock-manifests) · P0 |
-| [App Store](#area-app-store) | [APP-STORE](../roadmap/APP-STORE.md) | 3 / 8 | `[████······]` 38% | [APPSTORE-03](#appstore-03-static-web-apps-excalidraw-drawio-hoppscotch) · P1 |
-| [Network & Remote Access](#area-network-remote-access) | [NETWORK](../roadmap/NETWORK.md) | 5 / 10 | `[█████·····]` 50% | [NET-01](#net-01-subdomain-parser-app--profileuliddomain) · P0 |
-| [Cluster & Storage](#area-cluster-storage) | [CLUSTER](../roadmap/CLUSTER.md) | 7 / 10 | `[███████···]` 70% | [CLUSTER-02](#cluster-02-migrate-authstore-to-sqlite) · P0 |
-| [First-boot Setup](#area-first-boot-setup) | [INIT](../roadmap/INIT.md) | 2 / 11 | `[██········]` 18% | [INIT-01](#init-01-instance-ulid-auto-hostname-at-first-boot) · P0 |
-| [Bare-metal Init](#area-bare-metal-init) | [BAREMETAL-INIT](../roadmap/BAREMETAL-INIT.md) | 9 / 15 | `[██████····]` 60% | [BMINIT-04](#bminit-04-native-app-launch-endpoint-skip-streaming) · P1 |
-| [Notifications](#area-notifications) | [NOTIFICATIONS](../roadmap/NOTIFICATIONS.md) | 2 / 6 | `[███·······]` 33% | [NOTIF-02](#notif-02-persistent-notification-storage) · P0 |
-| [Device Profiles](#area-device-profiles) | [DEVICE-PROFILES](../roadmap/DEVICE-PROFILES.md) | 5 / 6 | `[████████··]` 83% | [DEVPROF-06](#devprof-06-car-profile-driving-mode-large-targets-dnd) · P2 |
-| [Theming, i18n, CI](#area-theming-i18n-ci) | [OTHER](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% | — all done |
-| [Peering](#area-peering) | [PEERING](../roadmap/PEERING.md) | 41 / 41 | `[██████████]` 100% | — all done |
-| [Authentication](#area-authentication) | [AUTHENTICATION](../roadmap/future/AUTHENTICATION.md) | 11 / 14 | `[████████··]` 79% | [AUTH-10](#auth-10-device-identity-tpm-status-api) · P2 |
-| [Fediverse Client](#area-fediverse-client) | [ACTIVITYPUB](../roadmap/future/ACTIVITYPUB.md) | 6 / 6 | `[██████████]` 100% | — all done |
-| [Telephony](#area-telephony) | [MOBILE](../roadmap/future/MOBILE.md) | 5 / 6 | `[████████··]` 83% | [MOBILE-06](#mobile-06-responsive-device-profile-aware-ui-shell) · P3 |
-| [Ladybird Browser Spike](#area-ladybird-browser-spike) | [LADYBIRD-BROWSER](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% | — all done |
-| [Security](#area-security) | see [`decisions.md`](decisions.md) D24/D26/D27 | 9 / 10 | `[█████████·]` 90% | [SEC-I](#sec-i-ai-apps-path-traversal-admin-gate-save-m1) · P2 |
-| **Total** |  | **147 / 193** | `[████████··]` 76% |  |
+| Area | Roadmap | Done / Total | Progress |
+|---|---|---:|:---|
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 41 / 41 | `[██████████]` 100% |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 15 | `[██████████]` 100% |
+| Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
+| AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
+| Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
+| Cluster & Storage | [CLUSTER.md](../roadmap/CLUSTER.md) | 10 / 10 | `[██████████]` 100% |
+| First-boot Setup | [INIT.md](../roadmap/INIT.md) | 11 / 11 | `[██████████]` 100% |
+| Streaming | [STREAMING-OPTIMIZATIONS.md](../roadmap/STREAMING-OPTIMIZATIONS.md) | 8 / 8 | `[██████████]` 100% |
+| Gaming | [GAMING.md](../roadmap/GAMING.md) | 8 / 8 | `[██████████]` 100% |
+| App Store | [APP-STORE.md](../roadmap/APP-STORE.md) | 8 / 8 | `[██████████]` 100% |
+| Notifications | [NOTIFICATIONS.md](../roadmap/NOTIFICATIONS.md) | 6 / 6 | `[██████████]` 100% |
+| Authentication | [future/AUTHENTICATION.md](../roadmap/future/AUTHENTICATION.md) | 14 / 14 | `[██████████]` 100% |
+| Security | (decisions.md D24-D27) | 10 / 10 | `[██████████]` 100% |
+| Device Profiles | [DEVICE-PROFILES.md](../roadmap/DEVICE-PROFILES.md) | 6 / 6 | `[██████████]` 100% |
+| Fediverse Client | [future/ACTIVITYPUB.md](../roadmap/future/ACTIVITYPUB.md) | 6 / 6 | `[██████████]` 100% |
+| Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
+| Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
+| Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
+| **Total** |  | **193 / 193** | `[██████████]` 100% |
 
 ## How to read a task
 
@@ -1332,10 +1337,8 @@ _Design doc: [`roadmap/future/LADYBIRD-BROWSER.md`](../roadmap/future/LADYBIRD-B
 
 > Why this matters: An experimental, feature-flagged second remote-browser engine using Ladybird's headless WebContent — promises a zero-copy capture path. Chromium stays default.
 
-### [LADYBIRD-01] Ladybird headless engine spike behind Settings toggle
-`done` · P3 · L · dep: none · parallel: yes — new backend/services/ladybird/, backend/services/webbrowser/chrome.go, main.go
-Scope: guarded experimental Ladybird launcher via stream.Pool, feature-flagged, fallback to Chromium when absent; no Chromium/Xvfb removal; log engine in /api/browser/status.
-AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallback [ ] engine logged + in /api/browser/status [ ] go build
+### [LADYBIRD-01] Ladybird headless engine spike — REMOVED
+`done` · the spike package was deleted; Chromium is the sole browser engine. Streaming optimizations (NVENC/VA-API/cage/ABR) are Chromium-targeted. Do NOT reintroduce Ladybird. See roadmap/future/LADYBIRD-BROWSER.md.
 
 ---
 

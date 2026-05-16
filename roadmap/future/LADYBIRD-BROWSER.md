@@ -1,5 +1,14 @@
 # Ladybird Browser Engine
 
+> ⛔ **REMOVED — DO NOT REINTRODUCE.** The `backend/services/ladybird/`
+> spike package has been deleted. Chromium is the sole browser engine, and
+> all streaming optimizations (NVENC / VA-API / cage capture / adaptive
+> bitrate) are Chromium-targeted by design. Ladybird is not a credible
+> engine for our use yet. Do **not** recreate the package, add an engine
+> abstraction, or create Ladybird tasks until the upstream engine matures
+> *and* this banner is explicitly removed. Everything below is retained as
+> historical design context only.
+
 Replace Chromium with Ladybird's LibWeb as the remote browser engine. Chromium idles at 300-500MB and every frame copies three times (compositor → X11 shared memory → GStreamer capture). Ladybird's headless WebContent renderer outputs directly to an offscreen framebuffer, enabling a zero-copy path into GStreamer's `appsrc` — encoding only when the page changes instead of polling a display.
 
 > **Goal.** A spike — guarded behind a Settings toggle — that swaps Chromium for Ladybird's headless engine on the remote-browser code path. If the metrics are real (idle RAM, frame path, startup), promote it; if not, leave Chromium as default.
