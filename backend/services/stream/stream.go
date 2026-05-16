@@ -34,15 +34,16 @@ import (
 
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Display string `json:"display"`
-	Width   int    `json:"width"`
-	Height  int    `json:"height"`
-	FPS     int    `json:"fps"`
-	Running bool   `json:"running"`
-	Encoder string `json:"encoder"`
-	Quality string `json:"quality"` // current adaptive quality level
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Display  string `json:"display"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	FPS      int    `json:"fps"`
+	Running  bool   `json:"running"`
+	Encoder  string `json:"encoder"`
+	Quality  string `json:"quality"`  // current adaptive quality level
+	MangoHud bool   `json:"mangohud"` // whether MangoHud overlay is active
 
 	mu            sync.Mutex
 	ctx           context.Context
@@ -63,6 +64,8 @@ type Session struct {
 	bitrateC      chan int         // debounced bitrate change signals (SetBitrate → restart goroutine)
 	buildVideoCmd func() *exec.Cmd // rebuilds video gst cmd with current bitrate
 	injector      *input.Injector
+	fpsC          chan int  // GAME-08 FPS-change debounce signals
+	mangoHudC     chan bool // GAME-08 MangoHud toggle signals
 }
 
 // Resize changes the Xvfb framebuffer resolution via xrandr.
@@ -129,6 +132,64 @@ func (s *Session) Stop() {
 	}
 	s.Running = false
 	log.Printf("[stream] session %s (%s) stopped", s.ID, s.Name)
+}
+
+// SetFPS changes the capture framerate by signalling the video pipeline to restart.
+// Calls are debounced — rapid calls coalesce and only the latest FPS wins.
+// Valid range: 1–240. Values outside range are clamped.
+func (s *Session) SetFPS(fps int) {
+	if fps < 1 {
+		fps = 1
+	}
+	if fps > 240 {
+		fps = 240
+	}
+	s.mu.Lock()
+	s.FPS = fps
+	ch := s.fpsC
+	s.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	// Non-blocking send — if the channel already has a pending value, drain it
+	// and replace with the latest so only one restart happens.
+	select {
+	case ch <- fps:
+	default:
+		// Drain old value and send new one (best-effort; if reader races, that's fine)
+		select {
+		case <-ch:
+		default:
+		}
+		select {
+		case ch <- fps:
+		default:
+		}
+	}
+}
+
+// SetMangoHud toggles the MangoHud overlay on the next GStreamer pipeline restart.
+// Calls are debounced — only the latest value takes effect if called in rapid succession.
+func (s *Session) SetMangoHud(on bool) {
+	s.mu.Lock()
+	s.MangoHud = on
+	ch := s.mangoHudC
+	s.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	select {
+	case ch <- on:
+	default:
+		select {
+		case <-ch:
+		default:
+		}
+		select {
+		case ch <- on:
+		default:
+		}
+	}
 }
 
 // HandleSignaling upgrades an HTTP request to WebSocket and runs WebRTC signaling.
