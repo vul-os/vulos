@@ -103,20 +103,34 @@ func isPublicPath(path string) bool {
 }
 
 // Middleware extracts the session, enforces auth on protected endpoints, and rate limits.
+// AT10: additionally checks for `Authorization: Bearer vulos-admin-<token>` and, if
+// valid, injects the first registered user's identity (admin by convention).
 func (h *Handler) Middleware(next http.Handler) http.Handler {
 	return h.limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// C1: Strip any attacker-supplied identity headers unconditionally before
-		// doing anything else, so downstream code can trust these headers are
-		// set only by us from a validated session.
+		// C1 (SEC-A): strip attacker-supplied identity headers before anything else.
 		r.Header.Del("X-User-ID")
 		r.Header.Del("X-User-Email")
 
-		// Extract session if present
-		token := extractToken(r)
-		if token != "" {
-			if sess, ok := h.store.ValidateToken(token); ok {
-				r.Header.Set("X-User-ID", sess.UserID)
-				r.Header.Set("X-User-Email", sess.Email)
+		// AT10 — check admin bearer token before cookie path.
+		if authHdr := r.Header.Get("Authorization"); strings.HasPrefix(authHdr, "Bearer "+AT10TokenPrefix) {
+			presented := strings.TrimPrefix(authHdr, "Bearer ")
+			home, _ := os.UserHomeDir()
+			if ok, _, _ := ValidateAdminToken(home, presented); ok {
+				if adminUser := h.store.at10FirstUser(); adminUser != nil {
+					r.Header.Set("X-User-ID", adminUser.ID)
+					r.Header.Set("X-User-Email", adminUser.Email)
+				}
+			}
+		}
+
+		// Extract session if present (cookie / regular Bearer session token).
+		if r.Header.Get("X-User-ID") == "" {
+			token := extractToken(r)
+			if token != "" {
+				if sess, ok := h.store.ValidateToken(token); ok {
+					r.Header.Set("X-User-ID", sess.UserID)
+					r.Header.Set("X-User-Email", sess.Email)
+				}
 			}
 		}
 

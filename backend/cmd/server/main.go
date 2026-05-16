@@ -485,6 +485,7 @@ func main() {
 
 	// Auth routes
 	authHandler.Register(mux)
+	registerAdminTokenRoutes(mux, authStore, home) // AT10: rotating admin token
 
 	// TOTP vault routes (/api/auth/totp/*)
 	totpHandler := authvault.NewHandler()

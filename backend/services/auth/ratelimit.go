@@ -23,9 +23,9 @@ type RateLimiter struct {
 }
 
 type attemptRecord struct {
-	count    int
-	firstAt  time.Time
-	lastAt   time.Time
+	count   int
+	firstAt time.Time
+	lastAt  time.Time
 }
 
 func NewRateLimiter(maxAttempts int, window, banDuration time.Duration) *RateLimiter {

@@ -441,6 +441,24 @@ func (s *Store) Login(username, password string) (*User, error) {
 	return nil, fmt.Errorf("invalid username or password")
 }
 
+// at10FirstUser returns the first registered user — the admin by convention.
+// Returns nil if no users exist.
+func (s *Store) at10FirstUser() *User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	// Prefer an explicit admin profile.
+	for id, p := range s.profiles {
+		if p.Role == RoleAdmin {
+			return s.users[id]
+		}
+	}
+	// Fallback: return any user.
+	for _, u := range s.users {
+		return u
+	}
+	return nil
+}
+
 // HasAnyUsers returns true if at least one user exists.
 func (s *Store) HasAnyUsers() bool {
 	s.mu.RLock()
