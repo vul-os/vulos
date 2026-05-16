@@ -46,6 +46,7 @@ import (
 	"vulos/backend/services/network"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/wifi"
+	"vulos/backend/services/gpu"
 )
 
 func main() {
@@ -1104,6 +1105,7 @@ func main() {
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)
+	gpu.RegisterGPUInfoHandlers(mux)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
