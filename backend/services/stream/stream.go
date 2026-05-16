@@ -34,15 +34,15 @@ import (
 
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Display string  `json:"display"`
-	Width   int     `json:"width"`
-	Height  int     `json:"height"`
-	FPS     int     `json:"fps"`
-	Running bool    `json:"running"`
-	Encoder string  `json:"encoder"`
-	Quality string  `json:"quality"` // current adaptive quality level
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	FPS     int    `json:"fps"`
+	Running bool   `json:"running"`
+	Encoder string `json:"encoder"`
+	Quality string `json:"quality"` // current adaptive quality level
 
 	mu         sync.Mutex
 	ctx        context.Context
@@ -59,6 +59,10 @@ type Session struct {
 	displayNum int
 	bitrate    int // current target bitrate in kbps
 	injector   *input.Injector
+	// inputGated is true when the WebAuthn re-auth gate is active (AUTH-13).
+	// Input injection is blocked until a valid assertion lifts the gate.
+	// Default: true for any session that wires uinput injection.
+	inputGated bool
 }
 
 // Resize changes the Xvfb framebuffer resolution via xrandr.
@@ -103,6 +107,7 @@ func (s *Session) Stop() {
 	s.cancel()
 	if s.injector != nil {
 		s.injector.Close()
+		saWebauthn_unregister(s.ID) // AUTH-13: clean up gate state
 	}
 	procs := []*exec.Cmd{s.gstAudio, s.gstVideo, s.app, s.wm, s.xvfb}
 	for _, cmd := range procs {
@@ -165,6 +170,29 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 	})
 	defer bc.Close()
 
+	var wsMu sync.Mutex
+	wsWrite := func(data []byte) {
+		wsMu.Lock()
+		defer wsMu.Unlock()
+		ws.WriteMessage(websocket.TextMessage, data)
+	}
+
+	// AUTH-13: notify client that input is gated if this session has injection.
+	// We send {"t":"need-webauthn"} once the peer connection transitions to connected.
+	if s.injector != nil {
+		s.mu.Lock()
+		isGated := s.inputGated
+		s.mu.Unlock()
+		if isGated {
+			pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+				if state == webrtc.PeerConnectionStateConnected {
+					msg, _ := json.Marshal(map[string]string{"t": "need-webauthn"})
+					wsWrite(msg)
+				}
+			})
+		}
+	}
+
 	// Input data channels — split by priority for cloud-gaming grade input
 	// Mouse: unreliable/unordered (latest-wins, high freq)
 	// Keyboard: reliable/ordered (every event must arrive in sequence)
@@ -190,13 +218,6 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	})
-
-	var wsMu sync.Mutex
-	wsWrite := func(data []byte) {
-		wsMu.Lock()
-		defer wsMu.Unlock()
-		ws.WriteMessage(websocket.TextMessage, data)
-	}
 
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
@@ -245,6 +266,12 @@ func (s *Session) handleMouse(data []byte) {
 	if s.injector == nil {
 		return
 	}
+	s.mu.Lock()
+	gated := s.inputGated
+	s.mu.Unlock()
+	if gated {
+		return // AUTH-13: block input until WebAuthn assertion is verified
+	}
 	var evt struct {
 		T string  `json:"t"` // mm=move, md=down, mu=up, sc=scroll
 		X float64 `json:"x"`
@@ -282,8 +309,14 @@ func (s *Session) handleKeyboard(data []byte) {
 	if s.injector == nil {
 		return
 	}
+	s.mu.Lock()
+	gated := s.inputGated
+	s.mu.Unlock()
+	if gated {
+		return // AUTH-13: block input until WebAuthn assertion is verified
+	}
 	var evt struct {
-		T    string `json:"t"`    // kd=keydown, ku=keyup
+		T    string `json:"t"` // kd=keydown, ku=keyup
 		Key  string `json:"key"`
 		Code string `json:"code"`
 		Mod  int    `json:"mod"` // modifier bitmask
@@ -307,6 +340,12 @@ func (s *Session) handleKeyboard(data []byte) {
 func (s *Session) handleInput(data []byte) {
 	if s.injector == nil {
 		return
+	}
+	s.mu.Lock()
+	gated := s.inputGated
+	s.mu.Unlock()
+	if gated {
+		return // AUTH-13: block input until WebAuthn assertion is verified
 	}
 	var evt struct {
 		Type   string  `json:"type"`
@@ -345,6 +384,12 @@ func (s *Session) handleInput(data []byte) {
 func (s *Session) handleGamepad(data []byte) {
 	if s.injector == nil {
 		return
+	}
+	s.mu.Lock()
+	gated := s.inputGated
+	s.mu.Unlock()
+	if gated {
+		return // AUTH-13: block input until WebAuthn assertion is verified
 	}
 	var state struct {
 		Buttons  []bool    `json:"buttons"`

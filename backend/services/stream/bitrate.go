@@ -51,11 +51,11 @@ func (q Quality) String() string {
 // bitrateController monitors a WebRTC peer connection and signals when
 // the stream quality should change. It reads RTCP stats every few seconds.
 type bitrateController struct {
-	mu      sync.Mutex
-	pc      *webrtc.PeerConnection
-	current Quality
+	mu       sync.Mutex
+	pc       *webrtc.PeerConnection
+	current  Quality
 	onChange func(Quality)
-	stop    chan struct{}
+	stop     chan struct{}
 }
 
 func newBitrateController(pc *webrtc.PeerConnection, initial Quality, onChange func(Quality)) *bitrateController {

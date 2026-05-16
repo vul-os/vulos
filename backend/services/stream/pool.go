@@ -22,11 +22,12 @@ import (
 // Pool manages multiple concurrent streaming sessions.
 // Each session gets its own Xvfb display, GStreamer pipeline, and WebRTC tracks.
 type Pool struct {
-	mu              sync.Mutex
-	sessions        map[string]*Session
-	nextDisplay     int
-	nextPort        int
-	resolveUserHome func(r *http.Request) string // resolves user home from request context
+	mu               sync.Mutex
+	sessions         map[string]*Session
+	nextDisplay      int
+	nextPort         int
+	resolveUserHome  func(r *http.Request) string // resolves user home from request context
+	webAuthnVerifier A13_WebAuthnVerifier         // AUTH-13: verifier for input-injection re-auth
 }
 
 // NewPool creates a streaming session pool.
@@ -42,6 +43,23 @@ func NewPool() *Pool {
 // SetUserHomeResolver sets a callback to resolve user home directories from HTTP requests.
 func (p *Pool) SetUserHomeResolver(fn func(r *http.Request) string) {
 	p.resolveUserHome = fn
+}
+
+// SetWebAuthnVerifier configures the WebAuthn verifier used for input-injection
+// re-auth (AUTH-13). Call this from main.go once the passkeys backend is wired.
+// If never called, RequireAssertion uses the stub verifier that always rejects.
+func (p *Pool) SetWebAuthnVerifier(v A13_WebAuthnVerifier) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.webAuthnVerifier = v
+}
+
+// WebAuthnVerifier returns the configured verifier (may be nil — caller should
+// fall back to the stub).
+func (p *Pool) WebAuthnVerifier() A13_WebAuthnVerifier {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.webAuthnVerifier
 }
 
 // LaunchOpts configures a streaming session.
@@ -64,6 +82,8 @@ type LaunchOpts struct {
 	Restart bool
 	// UserHome is the home directory of the requesting user (e.g. /home/alice).
 	UserHome string
+	// UserID is the authenticated Vulos user ID. Used for WebAuthn re-auth (AUTH-13).
+	UserID string
 }
 
 // Launch starts a new streaming session: Xvfb + app + GStreamer + WebRTC.
@@ -150,6 +170,13 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 
 	// 1c. Create input injector (uinput or xdotool fallback)
 	sess.injector = input.NewInjector(display, opts.Width, opts.Height)
+
+	// AUTH-13: gate input injection behind WebAuthn re-auth for any session with an injector.
+	// Default policy: ON.  The gate is lifted by POST /api/stream/webauthn-assert.
+	if sess.injector != nil {
+		sess.inputGated = true
+		saWebauthn_register(sess.ID, opts.UserID)
+	}
 
 	// Each session gets isolated runtime/config dirs so apps don't see each other's lock files
 	sessionHome := fmt.Sprintf("/tmp/stream-%s", opts.ID)
@@ -421,6 +448,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 			Args: req.Args, Env: req.Env,
 			Width: req.Width, Height: req.Height, FPS: req.FPS,
 			Restart: req.Restart, UserHome: userHome,
+			UserID: r.Header.Get("X-User-ID"),
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)
