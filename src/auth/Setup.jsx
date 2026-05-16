@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
+import { useI18n } from '../core/i18n'
 
 const STEPS = ['welcome', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'ready']
 
@@ -211,17 +212,18 @@ export default function Setup({ onComplete }) {
 // Welcome
 // ═══════════════════════════════════
 function WelcomeStep({ onNext }) {
+  const { t } = useI18n()
   return (
     <div className="text-center">
       <div className="mb-6 flex flex-col items-center">
         <img src="/icon-128.png" alt="Vula OS" className="w-20 h-20 mb-4" />
         <div className="text-5xl font-extralight text-neutral-100 tracking-[0.2em] mb-3">vula</div>
         <div className="h-px w-16 mx-auto bg-gradient-to-r from-transparent via-blue-500 to-transparent mb-3" />
-        <p className="text-neutral-500 text-lg font-light">an open operating system</p>
-        <p className="text-neutral-700 text-sm mt-1 italic">"vula" — isiZulu for "open"</p>
+        <p className="text-neutral-500 text-lg font-light">{t('setup.welcome.tagline')}</p>
+        <p className="text-neutral-700 text-sm mt-1 italic">{t('setup.welcome.zulu')}</p>
       </div>
       <button onClick={onNext} className="btn-primary px-10 py-3 text-base mt-8">
-        Get Started
+        {t('setup.welcome.cta')}
       </button>
     </div>
   )
@@ -311,14 +313,15 @@ function DeviceStep({ config, update, onNext, onPrev }) {
 // Language
 // ═══════════════════════════════════
 function LanguageStep({ config, update, onNext, onPrev }) {
+  const { t, setLocale } = useI18n()
   return (
     <div>
-      <StepHeader title="Choose your language" subtitle="You can change this later in Settings" />
+      <StepHeader title={t('setup.language.title')} subtitle={t('setup.language.subtitle')} />
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-1">
         {LANGUAGES.map(lang => (
           <button
             key={lang.code}
-            onClick={() => update('locale', lang.code)}
+            onClick={() => { update('locale', lang.code); setLocale(lang.code) }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all
               ${config.locale === lang.code
                 ? 'bg-blue-600/20 border border-blue-500/50 text-white'
@@ -341,11 +344,12 @@ function LanguageStep({ config, update, onNext, onPrev }) {
 // Timezone (interactive map)
 // ═══════════════════════════════════
 function TimezoneStep({ config, update, onNext, onPrev }) {
-  const selected = TIMEZONES.find(t => t.id === config.timezone)
+  const { t } = useI18n()
+  const selected = TIMEZONES.find(tz => tz.id === config.timezone)
 
   return (
     <div>
-      <StepHeader title="Select your timezone" subtitle={selected ? `${selected.label} (${selected.offset})` : 'Click a city on the map'} />
+      <StepHeader title={t('setup.timezone.title')} subtitle={selected ? `${selected.label} (${selected.offset})` : t('setup.timezone.subtitle_none')} />
 
       {/* World map */}
       <div className="relative w-full aspect-[2/1] bg-neutral-900/50 rounded-2xl border border-neutral-800/50 overflow-hidden mb-4">
@@ -419,6 +423,7 @@ function TimezoneStep({ config, update, onNext, onPrev }) {
 // Network
 // ═══════════════════════════════════
 function NetworkStep({ config, update, onNext, onPrev }) {
+  const { t } = useI18n()
   const [networks, setNetworks] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -442,7 +447,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
 
   return (
     <div>
-      <StepHeader title="Connect to the internet" subtitle="WiFi or Ethernet — you can configure this later" />
+      <StepHeader title={t('setup.network.title')} subtitle={t('setup.network.subtitle')} />
 
       <button
         onClick={scan}
@@ -455,16 +460,16 @@ function NetworkStep({ config, update, onNext, onPrev }) {
         {scanning ? (
           <span className="flex items-center justify-center gap-2">
             <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-500 rounded-full animate-spin" />
-            Scanning...
+            {t('setup.network.scanning')}
           </span>
-        ) : networks ? 'Scan Again' : 'Scan for WiFi Networks'}
+        ) : networks ? t('setup.network.scan_again') : t('setup.network.scan')}
       </button>
 
       {/* Network list */}
       {networks && (
         <div className="max-h-[35vh] overflow-y-auto rounded-xl border border-neutral-800/50 mb-4">
           {networks.length === 0 && (
-            <div className="p-4 text-sm text-neutral-600 text-center">No networks found</div>
+            <div className="p-4 text-sm text-neutral-600 text-center">{t('setup.network.no_networks')}</div>
           )}
           {networks.map((n, i) => (
             <button
@@ -480,7 +485,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
                 <div className="text-sm truncate">{n.ssid || '(hidden)'}</div>
                 <div className="text-[10px] text-neutral-600">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
               </div>
-              {config.wifiSSID === n.ssid && <span className="text-blue-500 text-xs">Selected</span>}
+              {config.wifiSSID === n.ssid && <span className="text-blue-500 text-xs">{t('setup.network.selected')}</span>}
             </button>
           ))}
         </div>
@@ -491,20 +496,20 @@ function NetworkStep({ config, update, onNext, onPrev }) {
         <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl p-4 mb-4 animate-[fadeIn_0.2s_ease-out]">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-sm text-neutral-300">{config.wifiSSID}</span>
-            <button onClick={() => { update('wifiSSID', ''); setShowPassword(false) }} className="text-xs text-neutral-600 hover:text-neutral-400">Change</button>
+            <button onClick={() => { update('wifiSSID', ''); setShowPassword(false) }} className="text-xs text-neutral-600 hover:text-neutral-400">{t('setup.network.change')}</button>
           </div>
           <input
             type="password"
             value={config.wifiPassword}
             onChange={e => update('wifiPassword', e.target.value)}
-            placeholder="WiFi password"
+            placeholder={t('setup.network.wifi_password')}
             autoFocus
             className="input"
           />
         </div>
       )}
 
-      <NavBar onPrev={onPrev} onNext={onNext} skipLabel="Skip — use Ethernet" onSkip={onNext} />
+      <NavBar onPrev={onPrev} onNext={onNext} skipLabel={t('setup.network.skip_ethernet')} onSkip={onNext} />
     </div>
   )
 }
@@ -513,15 +518,16 @@ function NetworkStep({ config, update, onNext, onPrev }) {
 // Account
 // ═══════════════════════════════════
 function AccountStep({ config, update, onNext, onPrev }) {
+  const { t } = useI18n()
   const [error, setError] = useState('')
 
   const validate = () => {
     if (!config.username || config.username.length < 2) {
-      setError('Username must be at least 2 characters')
+      setError(t('setup.account.error_username'))
       return
     }
     if (!config.password || config.password.length < 4) {
-      setError('Password must be at least 4 characters')
+      setError(t('setup.account.error_password'))
       return
     }
     setError('')
@@ -530,37 +536,37 @@ function AccountStep({ config, update, onNext, onPrev }) {
 
   return (
     <div>
-      <StepHeader title="Create your account" subtitle="This will be the administrator account" />
+      <StepHeader title={t('setup.account.title')} subtitle={t('setup.account.subtitle')} />
 
       <div className="space-y-4">
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Your name</label>
+          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.name_label')}</label>
           <input
             value={config.displayName}
             onChange={e => update('displayName', e.target.value)}
-            placeholder="What should we call you?"
+            placeholder={t('setup.account.name_placeholder')}
             autoFocus
             className="input text-base py-3"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Username</label>
+          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.username_label')}</label>
           <input
             value={config.username}
             onChange={e => update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-            placeholder="Username for login"
+            placeholder={t('setup.account.username_placeholder')}
             className="input text-base py-3 font-mono"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Password</label>
+          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.password_label')}</label>
           <input
             type="password"
             value={config.password}
             onChange={e => update('password', e.target.value)}
-            placeholder="Choose a password"
+            placeholder={t('setup.account.password_placeholder')}
             className="input text-base py-3"
           />
         </div>
@@ -568,7 +574,7 @@ function AccountStep({ config, update, onNext, onPrev }) {
         {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
 
-      <NavBar onPrev={onPrev} onNext={validate} nextLabel="Continue" />
+      <NavBar onPrev={onPrev} onNext={validate} />
     </div>
   )
 }
@@ -577,16 +583,17 @@ function AccountStep({ config, update, onNext, onPrev }) {
 // Appearance
 // ═══════════════════════════════════
 function PinStep({ config, update, onNext, onPrev }) {
+  const { t } = useI18n()
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
 
   const handleNext = () => {
     if (config.pin && config.pin !== confirm) {
-      setError('PINs do not match')
+      setError(t('setup.pin.error_match'))
       return
     }
     if (config.pin && config.pin.length < 4) {
-      setError('PIN must be at least 4 digits')
+      setError(t('setup.pin.error_length'))
       return
     }
     onNext()
@@ -601,9 +608,9 @@ function PinStep({ config, update, onNext, onPrev }) {
           <circle cx="12" cy="16.5" r="1.5" fill="currentColor" />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold text-neutral-100 text-center">Lock Screen PIN</h2>
+      <h2 className="text-xl font-semibold text-neutral-100 text-center">{t('setup.pin.title')}</h2>
       <p className="text-sm text-neutral-500 text-center mt-2 mb-6">
-        Set a PIN to lock your screen. You can skip this and set it later in Settings.
+        {t('setup.pin.subtitle')}
       </p>
 
       {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
@@ -614,7 +621,7 @@ function PinStep({ config, update, onNext, onPrev }) {
         pattern="[0-9]*"
         value={config.pin}
         onChange={e => { update('pin', e.target.value.replace(/\D/g, '')); setError('') }}
-        placeholder="Enter PIN (4+ digits)"
+        placeholder={t('setup.pin.placeholder')}
         maxLength={8}
         className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-3"
       />
@@ -626,7 +633,7 @@ function PinStep({ config, update, onNext, onPrev }) {
           pattern="[0-9]*"
           value={confirm}
           onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setError('') }}
-          placeholder="Confirm PIN"
+          placeholder={t('setup.pin.confirm_placeholder')}
           maxLength={8}
           className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-3"
         />
@@ -634,13 +641,13 @@ function PinStep({ config, update, onNext, onPrev }) {
 
       <div className="flex gap-3 mt-4 w-full">
         <button onClick={onPrev} className="flex-1 py-3 rounded-xl text-sm font-medium text-neutral-400 bg-neutral-800/60 hover:bg-neutral-800 transition-colors">
-          Back
+          {t('setup.pin.back')}
         </button>
         <button onClick={() => { update('pin', ''); onNext() }} className="py-3 px-5 rounded-xl text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
-          Skip
+          {t('setup.pin.skip')}
         </button>
         <button onClick={handleNext} disabled={config.pin && config.pin.length < 4} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-40 transition-colors">
-          {config.pin ? 'Set PIN' : 'Skip'}
+          {config.pin ? t('setup.pin.set') : t('setup.pin.skip')}
         </button>
       </div>
     </div>
@@ -649,43 +656,44 @@ function PinStep({ config, update, onNext, onPrev }) {
 
 // ═══════════════════════════════════
 function AppearanceStep({ onNext, onPrev }) {
+  const { t } = useI18n()
   const { theme, setTheme, nightShiftMode, setNightShiftMode } = useTheme()
 
   const themes = [
-    { value: 'dark', label: 'Dark', desc: 'Easy on the eyes', preview: '#0c0c0c',
+    { value: 'dark', label: t('setup.appearance.theme_dark'), desc: t('setup.appearance.theme_dark_desc'), preview: '#0c0c0c',
       icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><path d="M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 01-4.4 2.26 5.4 5.4 0 01-3.14-9.8A9.06 9.06 0 0012 3z" fill="currentColor"/></svg> },
-    { value: 'light', label: 'Light', desc: 'Clean and bright', preview: '#ffffff',
+    { value: 'light', label: t('setup.appearance.theme_light'), desc: t('setup.appearance.theme_light_desc'), preview: '#ffffff',
       icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
-    { value: 'auto', label: 'Auto', desc: 'Follows your system', preview: 'linear-gradient(135deg, #0c0c0c 50%, #ffffff 50%)',
+    { value: 'auto', label: t('setup.appearance.theme_auto'), desc: t('setup.appearance.theme_auto_desc'), preview: 'linear-gradient(135deg, #0c0c0c 50%, #ffffff 50%)',
       icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 3a9 9 0 010 18V3z" fill="currentColor"/></svg> },
-    { value: 'schedule', label: 'Schedule', desc: 'Dark at night, light by day', preview: 'linear-gradient(180deg, #1a1a2e 0%, #f5a623 100%)',
+    { value: 'schedule', label: t('setup.appearance.theme_schedule'), desc: t('setup.appearance.theme_schedule_desc'), preview: 'linear-gradient(180deg, #1a1a2e 0%, #f5a623 100%)',
       icon: <svg viewBox="0 0 24 24" className="w-8 h-8"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
   ]
 
   return (
     <div>
-      <StepHeader title="Choose your look" subtitle="Pick a theme — you can always change it later" />
+      <StepHeader title={t('setup.appearance.title')} subtitle={t('setup.appearance.subtitle')} />
 
       <div className="grid grid-cols-2 gap-3 mb-6">
-        {themes.map(t => (
+        {themes.map(thm => (
           <button
-            key={t.value}
-            onClick={() => setTheme(t.value)}
+            key={thm.value}
+            onClick={() => setTheme(thm.value)}
             className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all
-              ${theme === t.value
+              ${theme === thm.value
                 ? 'bg-blue-600/15 border-2 border-blue-500/60 text-white shadow-lg shadow-blue-500/10'
                 : 'bg-neutral-900/50 border-2 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
           >
             {/* Preview swatch */}
             <div className="w-12 h-12 rounded-xl border border-neutral-700/50 flex items-center justify-center overflow-hidden"
-              style={{ background: t.preview }}>
-              <span className={theme === t.value ? 'text-blue-400' : 'text-neutral-400'}>{t.icon}</span>
+              style={{ background: thm.preview }}>
+              <span className={theme === thm.value ? 'text-blue-400' : 'text-neutral-400'}>{thm.icon}</span>
             </div>
             <div>
-              <div className="text-sm font-medium">{t.label}</div>
-              <div className="text-[11px] text-neutral-500 mt-0.5">{t.desc}</div>
+              <div className="text-sm font-medium">{thm.label}</div>
+              <div className="text-[11px] text-neutral-500 mt-0.5">{thm.desc}</div>
             </div>
-            {theme === t.value && (
+            {theme === thm.value && (
               <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
                 <svg viewBox="0 0 16 16" className="w-3 h-3 text-white"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
               </div>
@@ -698,8 +706,8 @@ function AppearanceStep({ onNext, onPrev }) {
       <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-2">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-neutral-300">Night Shift</div>
-            <div className="text-[11px] text-neutral-600">Warm screen colours in the evening</div>
+            <div className="text-sm text-neutral-300">{t('setup.appearance.night_shift')}</div>
+            <div className="text-[11px] text-neutral-600">{t('setup.appearance.night_shift_desc')}</div>
           </div>
           <button
             onClick={() => setNightShiftMode(nightShiftMode === 'off' ? 'auto' : 'off')}
@@ -719,6 +727,7 @@ function AppearanceStep({ onNext, onPrev }) {
 // Ready
 // ═══════════════════════════════════
 function ReadyStep({ config, onFinish, onPrev }) {
+  const { t } = useI18n()
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
@@ -745,7 +754,7 @@ function ReadyStep({ config, onFinish, onPrev }) {
           return
         }
       } catch {
-        setError('Could not reach server')
+        setError(t('setup.ready.error_server'))
         setCreating(false)
         return
       }
@@ -763,25 +772,30 @@ function ReadyStep({ config, onFinish, onPrev }) {
     await onFinish()
   }
 
-  const selectedTz = TIMEZONES.find(t => t.id === config.timezone)
+  const selectedTz = TIMEZONES.find(tz => tz.id === config.timezone)
   const selectedLang = LANGUAGES.find(l => l.code === config.locale)
   const { theme } = useTheme()
-  const themeLabels = { dark: 'Dark', light: 'Light', auto: 'Auto', schedule: 'Scheduled' }
+  const themeLabels = {
+    dark: t('setup.ready.theme_dark'),
+    light: t('setup.ready.theme_light'),
+    auto: t('setup.ready.theme_auto'),
+    schedule: t('setup.ready.theme_schedule'),
+  }
 
   return (
     <div className="text-center">
       <div className="text-4xl mb-2">✓</div>
-      <StepHeader title="You're all set" subtitle="Here's what we'll configure" />
+      <StepHeader title={t('setup.ready.title')} subtitle={t('setup.ready.subtitle')} />
 
       <div className="grid grid-cols-2 gap-3 text-left mb-8">
         {config.deviceProfile && (
           <SummaryCard icon="💻" label="Device" value={DEVICE_PROFILES.find(p => p.id === config.deviceProfile)?.label || config.deviceProfile} />
         )}
-        <SummaryCard icon="🌍" label="Language" value={selectedLang?.native || config.locale} />
-        <SummaryCard icon="🕐" label="Timezone" value={selectedTz?.label || config.timezone || 'Auto'} />
-        <SummaryCard icon="📶" label="WiFi" value={config.wifiSSID || 'Not configured'} />
-        <SummaryCard icon="👤" label="Account" value={config.username || 'Not set'} />
-        <SummaryCard icon="🎨" label="Theme" value={themeLabels[theme] || theme} />
+                <SummaryCard icon="🌍" label={t('setup.ready.label_language')} value={selectedLang?.native || config.locale} />
+        <SummaryCard icon="🕐" label={t('setup.ready.label_timezone')} value={selectedTz?.label || config.timezone || t('setup.ready.timezone_auto')} />
+        <SummaryCard icon="📶" label={t('setup.ready.label_wifi')} value={config.wifiSSID || t('setup.ready.wifi_none')} />
+        <SummaryCard icon="👤" label={t('setup.ready.label_account')} value={config.username || t('setup.ready.account_none')} />
+        <SummaryCard icon="🎨" label={t('setup.ready.label_theme')} value={themeLabels[theme] || theme} />
       </div>
 
       {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
@@ -794,13 +808,13 @@ function ReadyStep({ config, onFinish, onPrev }) {
         {creating ? (
           <span className="flex items-center gap-2">
             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Setting up...
+            {t('setup.ready.setting_up')}
           </span>
-        ) : 'Enter Vula OS'}
+        ) : t('setup.ready.enter')}
       </button>
 
       <button onClick={onPrev} className="block mx-auto mt-4 text-sm text-neutral-600 hover:text-neutral-400">
-        Go back
+        {t('setup.ready.go_back')}
       </button>
     </div>
   )
@@ -818,11 +832,13 @@ function StepHeader({ title, subtitle }) {
   )
 }
 
-function NavBar({ onPrev, onNext, nextLabel = 'Continue', skipLabel, onSkip }) {
+function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip }) {
+  const { t } = useI18n()
+  const resolvedNext = nextLabel ?? t('nav.continue')
   return (
     <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
       <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
-        ← Back
+        {t('nav.back')}
       </button>
       <div className="flex items-center gap-3">
         {skipLabel && (
@@ -831,7 +847,7 @@ function NavBar({ onPrev, onNext, nextLabel = 'Continue', skipLabel, onSkip }) {
           </button>
         )}
         <button onClick={onNext} className="btn-primary">
-          {nextLabel} →
+          {resolvedNext} →
         </button>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ThemeProvider } from './core/ThemeProvider'
+import { I18nProvider } from './core/i18n'
 import { WallpaperProvider } from './core/useWallpaper.jsx'
 import { DeviceProfileProvider, useDeviceProfile } from './core/useDeviceProfile.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
@@ -136,6 +137,7 @@ export default function App() {
   useSpatialNav()
 
   return (
+    <I18nProvider>
     <DeviceProfileProvider>
       <ThemeProvider>
         <WallpaperProvider>
@@ -145,5 +147,6 @@ export default function App() {
         </WallpaperProvider>
       </ThemeProvider>
     </DeviceProfileProvider>
+    </I18nProvider>
   )
 }
