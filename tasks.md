@@ -1154,7 +1154,7 @@ Scope: SMS send/list/delete via D-Bus Messaging, incoming-signal listener → WS
 AC: [ ] send/list/delete exposed [ ] incoming (mocked) persisted+pushed [ ] thread-grouped query
 
 ### [MOBILE-03] ModemManager voice calls (dial/answer/hangup/DTMF)
-`todo` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
+`done` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
 Scope: voice control via D-Bus Voice, call-state listener → WS; audio path excluded.
 AC: [ ] dial/answer/hangup/DTMF exposed [ ] call-state (mocked) pushes WS [ ] no hw to build/test
 
