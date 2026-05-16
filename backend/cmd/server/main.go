@@ -44,6 +44,7 @@ import (
 	"vulos/backend/services/packages"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/network"
+	"vulos/backend/services/bootmode"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/wifi"
 )
@@ -1094,6 +1095,9 @@ func main() {
 		}
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
+
+	// Boot-mode router — GET /api/setup/mode
+	bootmode.RegisterHandlers(mux, home)
 
 	// Remote browser — WebRTC (delegates to stream pool)
 	browserSvc.RegisterHandlers(mux)
