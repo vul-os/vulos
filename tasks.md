@@ -780,7 +780,7 @@ Scope: requestPointerLock on click (gaming), send raw movementX/Y (`mr`) uncoale
 AC: [ ] click acquires lock, Esc releases [ ] raw deltas move cursor [ ] non-gaming unchanged
 
 ### [GAME-04] Shared useGamepad hook → StreamViewer (multi-pad, deadzone)
-`todo` · P1 · M · dep: none · parallel: no — new src/core/useGamepad.js, src/builtin/stream/StreamViewer.jsx, src/builtin/webbrowser/RemoteBrowser.jsx
+`done` · P1 · M · dep: none · parallel: no — new src/core/useGamepad.js, src/builtin/stream/StreamViewer.jsx, src/builtin/webbrowser/RemoteBrowser.jsx
 Scope: Extract shared useGamepad({send,deadzone,pollHz}), all pads (index in payload), 120Hz; wire StreamViewer gamepad channel; refactor RemoteBrowser. (NOTE: STREAM-05 already added basic StreamViewer gamepad — reconcile/extend, don't duplicate)
 AC: [ ] StreamViewer gamepad channel [ ] multi-pad w/ index [ ] deadzone+poll params [ ] RemoteBrowser still works
 
