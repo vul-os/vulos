@@ -338,6 +338,11 @@ func hashPassword(password string) string {
 	return string(hash)
 }
 
+// isbcryptHash returns true when hash was produced by bcrypt (starts with $2).
+func isbcryptHash(hash string) bool {
+	return strings.HasPrefix(hash, "$2")
+}
+
 func verifyPassword(hash, password string) bool {
 	// Try bcrypt first (new hashes)
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err == nil {
@@ -366,8 +371,8 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 		}
 	}
 
-	if len(password) < 4 {
-		return nil, fmt.Errorf("password must be 4+ chars")
+	if len(password) < 12 {
+		return nil, fmt.Errorf("password must be 12+ chars")
 	}
 	if err := naming.ValidateIdent(username, "username", 2, 32); err != nil {
 		return nil, err
@@ -391,7 +396,7 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 		LastLogin:    time.Now(),
 	}
 	s.users[u.ID] = u
-	log.Printf("[auth] registered user %q (id=%s, hash_prefix=%s)", username, u.ID, hash[:20])
+	log.Printf("[auth] registered user %q (id=%s)", username, u.ID)
 
 	// Create profile — first user is admin
 	role := RoleUser
@@ -416,9 +421,16 @@ func (s *Store) Login(username, password string) (*User, error) {
 				log.Printf("[auth] login failed for %q: no password set", username)
 				return nil, fmt.Errorf("account has no password set")
 			}
+			isLegacy := !isbcryptHash(u.PasswordHash)
 			if !verifyPassword(u.PasswordHash, password) {
-				log.Printf("[auth] login failed for %q: password mismatch (hash_prefix=%s, pw_len=%d)", username, u.PasswordHash[:20], len(password))
+				log.Printf("[auth] login failed for %q: password mismatch", username)
 				return nil, fmt.Errorf("invalid username or password")
+			}
+			// Upgrade legacy SHA256 hash to bcrypt on first successful login.
+			if isLegacy {
+				if newHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost); err == nil {
+					u.PasswordHash = string(newHash)
+				}
 			}
 			u.LastLogin = time.Now()
 			log.Printf("[auth] login OK for %q", username)
@@ -479,9 +491,17 @@ func (s *Store) ChangePassword(userID, oldPassword, newPassword string) error {
 	if u.PasswordHash != "" && !verifyPassword(u.PasswordHash, oldPassword) {
 		return fmt.Errorf("incorrect current password")
 	}
-	if len(newPassword) < 4 {
-		return fmt.Errorf("password must be 4+ chars")
+	if len(newPassword) < 12 {
+		return fmt.Errorf("password must be 12+ chars")
 	}
 	u.PasswordHash = hashPassword(newPassword)
+	// Revoke all existing sessions so stale tokens cannot be used after a
+	// password change. Lock order: we already hold s.mu (write), so call the
+	// inner loop directly rather than re-entering via RevokeAllSessions.
+	for token, sess := range s.sessions {
+		if sess.UserID == userID {
+			delete(s.sessions, token)
+		}
+	}
 	return nil
 }
