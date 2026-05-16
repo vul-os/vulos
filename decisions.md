@@ -348,3 +348,7 @@ Cloud wave (D33) hit an orchestration problem: Agent tool worktrees are pinned t
 10. INIT-03 — SSH keys backend (recovery + headless setup) — sshkey/ pkg + routes_sshkey.go
 
 Cron 44dbf100 (every 5 min, until 18:55 ~2h mark) still active. Each new endpoint goes in its own routes_<area>.go per ROUTES.md (D33 refactor) — main.go contention is now just 1-line wires in different sections.
+
+## D35 (17:17) — cron tick: HOLD on memory pressure
+Cron 44dbf100 fired. State: free mem ≈287 MB (BELOW 500 MB threshold per D33 cron contract), 15m load 13.56 (under 20 threshold). Memory is binding. 8 OSS workers actively held in worktrees (task/AI-06, APPSTORE-04, BMINIT-06, BMINIT-09, GAME-08, INIT-08, INIT-11, NET-10 all `+` prefix = checked out); AUTH-13/INIT-03/SEC-I worker branches not yet visible — still spawning/working. No OSS completions to merge. Decision: do NOT dispatch more workers this tick. Next tick (17:22) re-check; expect mem to recover as workers complete + worktrees release.
+Reminder: cloud worker branches (D34 abandoned) remain do-not-merge.
