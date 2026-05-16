@@ -416,3 +416,6 @@ Mem 1290, load 2.7/15m 7.5 — excellent. 185 min brief / 46 min cron. tasks.md 
 
 ## D52 (18:13) — Tick hold: mem 56 critical
 Mem 56 MB (well below 500), 1m load 2.89 (workers idle / OS cache hot). 0 unmerged branches yet despite 3 wave-14 workers in flight (NET-02/NET-04/APPSTORE-07). Hold dispatch. Cron 44dbf100 expires 18:55 (42 min); brief continues to 21:14 (181 min).
+
+## D53 (18:18) — Wave-14 complete (159 total merges)
+NET-02 (namespace profile-keying: GetForProfile + LaunchWithProfile + gateway wired; dropped inverted-ordering test that contradicted NET-01's shipped contract), NET-04 (DNS + Launchpad/Portal use {app}--default format), APPSTORE-07 (Conduit + Cinny spliced; conduit marked _disabled awaiting checksum). Session total: **159 task-branches merged**. Build green @ e549451. registry now 42 active apps. NET subdomain chain (01/02/04) complete.
