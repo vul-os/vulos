@@ -34,31 +34,33 @@ import (
 
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Display string  `json:"display"`
-	Width   int     `json:"width"`
-	Height  int     `json:"height"`
-	FPS     int     `json:"fps"`
-	Running bool    `json:"running"`
-	Encoder string  `json:"encoder"`
-	Quality string  `json:"quality"` // current adaptive quality level
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	FPS     int    `json:"fps"`
+	Running bool   `json:"running"`
+	Encoder string `json:"encoder"`
+	Quality string `json:"quality"` // current adaptive quality level
 
-	mu         sync.Mutex
-	ctx        context.Context
-	cancel     context.CancelFunc
-	xvfb       *exec.Cmd
-	wm         *exec.Cmd
-	app        *exec.Cmd
-	gstVideo   *exec.Cmd
-	gstAudio   *exec.Cmd
-	videoTrack *webrtc.TrackLocalStaticRTP
-	audioTrack *webrtc.TrackLocalStaticRTP
-	videoPort  int
-	audioPort  int
-	displayNum int
-	bitrate    int // current target bitrate in kbps
-	injector   *input.Injector
+	mu            sync.Mutex
+	ctx           context.Context
+	cancel        context.CancelFunc
+	xvfb          *exec.Cmd
+	wm            *exec.Cmd
+	app           *exec.Cmd
+	gstVideo      *exec.Cmd
+	gstAudio      *exec.Cmd
+	videoTrack    *webrtc.TrackLocalStaticRTP
+	audioTrack    *webrtc.TrackLocalStaticRTP
+	videoPort     int
+	audioPort     int
+	displayNum    int
+	bitrate       int              // current target bitrate in kbps
+	bitrateC      chan int         // debounced bitrate change signals (SetBitrate → restart goroutine)
+	buildVideoCmd func() *exec.Cmd // rebuilds video gst cmd with current bitrate
+	injector      *input.Injector
 }
 
 // Resize changes the Xvfb framebuffer resolution via xrandr.
@@ -162,6 +164,7 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 		s.bitrate = q.Bitrate()
 		s.Quality = q.String()
 		s.mu.Unlock()
+		s.SetBitrate(q.Bitrate())
 	})
 	defer bc.Close()
 
@@ -283,7 +286,7 @@ func (s *Session) handleKeyboard(data []byte) {
 		return
 	}
 	var evt struct {
-		T    string `json:"t"`    // kd=keydown, ku=keyup
+		T    string `json:"t"` // kd=keydown, ku=keyup
 		Key  string `json:"key"`
 		Code string `json:"code"`
 		Mod  int    `json:"mod"` // modifier bitmask

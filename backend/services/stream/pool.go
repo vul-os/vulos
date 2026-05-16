@@ -19,6 +19,10 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// EncoderElementName is the GStreamer element name given to the video encoder in
+// the pipeline (name=venc). Kept for future live-property support via GstBus.
+const EncoderElementName = "venc"
+
 // Pool manages multiple concurrent streaming sessions.
 // Each session gets its own Xvfb display, GStreamer pipeline, and WebRTC tracks.
 type Pool struct {
@@ -111,6 +115,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		videoPort:  videoPort,
 		audioPort:  audioPort,
 		displayNum: displayNum,
+		bitrate:    1500, // default medium quality in kbps
+		bitrateC:   make(chan int, 1),
 	}
 
 	// 1. Start Xvfb
@@ -222,8 +228,12 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 
 	gstBin, _ := exec.LookPath("gst-launch-1.0")
 	if gstBin != "" {
-		// Video pipeline
-		go runWithBackoff(ctx, sess.Name+"-video", func() *exec.Cmd {
+		// buildVideoCmd constructs a gst-launch command with the current session bitrate.
+		// Called on initial launch and on every adaptive-bitrate restart.
+		sess.buildVideoCmd = func() *exec.Cmd {
+			sess.mu.Lock()
+			kbps := sess.bitrate
+			sess.mu.Unlock()
 			args := []string{"-q"}
 			// Capture source: PipeWire DMA-BUF when available, ximagesrc fallback
 			args = append(args, gpuInfo.CaptureArgs(display, opts.FPS)...)
@@ -232,7 +242,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			args = append(args, gpuInfo.ConvertArgs()...)
 			args = append(args, "!", "queue", "max-size-buffers=1", "leaky=downstream")
 			args = append(args, "!")
-			args = append(args, gpuInfo.EncoderArgs()...)
+			args = append(args, encoderArgsWithBitrate(gpuInfo, kbps)...)
 			args = append(args, "!")
 			args = append(args, gpuInfo.PayloaderArgs()...)
 			args = append(args, "!",
@@ -245,7 +255,42 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			return cmd
-		}, &sess.gstVideo)
+		}
+
+		// Video pipeline
+		go runWithBackoff(ctx, sess.Name+"-video", sess.buildVideoCmd, &sess.gstVideo)
+
+		// Debounced adaptive-bitrate restart: waits ≥5 s after a quality change,
+		// then kills the running gst video process so runWithBackoff relaunches it
+		// with the updated bitrate from sess.buildVideoCmd.
+		go func() {
+			const debounce = 5 * time.Second
+			timer := time.NewTimer(debounce)
+			timer.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-sess.bitrateC:
+					// Reset/restart the debounce window on every new signal.
+					timer.Stop()
+					timer.Reset(debounce)
+				case <-timer.C:
+					// Debounce elapsed — kill current gst video process.
+					// runWithBackoff will relaunch via buildVideoCmd (reads updated bitrate).
+					sess.mu.Lock()
+					kbps := sess.bitrate
+					cmd := sess.gstVideo
+					sess.mu.Unlock()
+					log.Printf("[stream] adaptive bitrate restart: encoder=%s bitrate=%dkbps",
+						sess.Encoder, kbps)
+					if cmd != nil && cmd.Process != nil {
+						syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+					}
+				}
+			}
+		}()
 
 		// Audio pipeline — captures from virtual speaker monitor (all app audio)
 		go runWithBackoff(ctx, sess.Name+"-audio", func() *exec.Cmd {
@@ -504,4 +549,67 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 		}
 		sess.HandleSignaling(w, r)
 	})
+}
+
+// SetBitrate signals the session to restart the video encoder at the given kbps.
+// The restart is debounced by ≥5 s (handled by the goroutine started in Launch).
+// Safe to call from any goroutine; non-blocking.
+func (s *Session) SetBitrate(kbps int) {
+	if s.bitrateC == nil {
+		return // session launched without GStreamer (e.g. unit tests)
+	}
+	// Drain any pending signal so the channel never blocks.
+	select {
+	case <-s.bitrateC:
+	default:
+	}
+	// Send the new target; the debounce goroutine picks it up.
+	select {
+	case s.bitrateC <- kbps:
+	default:
+	}
+}
+
+// encoderArgsWithBitrate builds GStreamer encoder args using an explicit bitrate (kbps).
+// Units: vp8enc expects bps (target-bitrate), nvenc/vaapi expect kbps (bitrate).
+func encoderArgsWithBitrate(g gpu.Info, kbps int) []string {
+	if g.HasAV1 {
+		switch g.Tier {
+		case gpu.TierNVENC:
+			return []string{
+				"nvav1enc",
+				fmt.Sprintf("bitrate=%d", kbps), "preset=low-latency-hq", "rc-mode=cbr",
+				"gop-size=30",
+			}
+		case gpu.TierVAAPI:
+			return []string{
+				"vaav1enc",
+				fmt.Sprintf("bitrate=%d", kbps), "rate-control=cbr",
+				"keyframe-period=30",
+			}
+		}
+	}
+	switch g.Tier {
+	case gpu.TierNVENC:
+		return []string{
+			"nvh264enc",
+			fmt.Sprintf("bitrate=%d", kbps), "preset=low-latency-hq", "rc-mode=cbr",
+			"gop-size=30",
+		}
+	case gpu.TierVAAPI:
+		return []string{
+			"vaapih264enc",
+			fmt.Sprintf("bitrate=%d", kbps), "rate-control=cbr",
+			"keyframe-period=30",
+		}
+	default:
+		// vp8enc: target-bitrate is in bps
+		return []string{
+			"vp8enc",
+			fmt.Sprintf("target-bitrate=%d", kbps*1000), "cpu-used=8", "deadline=1",
+			"keyframe-max-dist=30", "threads=4", "end-usage=cbr",
+			"undershoot=95", "buffer-size=6000", "buffer-initial-size=4000",
+			"lag-in-frames=0", "error-resilient=1",
+		}
+	}
 }
