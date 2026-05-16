@@ -674,6 +674,47 @@
           "singleton": true
         }
       }
+    },
+    "minio": {
+      "name": "MinIO",
+      "vetted": false,
+      "_disabled": true,
+      "_disabled_reason": "Binary checksum not pinned; review CLUSTER-06 before enabling. Install recipe is correct for amd64 Debian \u2014 verify sha256 at https://dl.min.io/server/minio/release/linux-amd64/archive/ before production use.",
+      "type": "service",
+      "description": "High-performance S3-compatible object storage \u2014 self-hosted bucket server for Vula OS cluster sync and vault",
+      "category": "system",
+      "author": "MinIO Inc.",
+      "homepage": "https://min.io",
+      "icon": "minio",
+      "keywords": [
+        "s3",
+        "storage",
+        "object",
+        "bucket",
+        "cluster",
+        "sync",
+        "backup",
+        "minio"
+      ],
+      "license": "AGPL-3.0",
+      "admin_only": true,
+      "versions": {
+        "latest": {
+          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x /usr/local/bin/minio",
+          "command": "minio server data/ --address 0.0.0.0:${PORT} --console-address 0.0.0.0:$((PORT+1))",
+          "port": 9000,
+          "post_install": "mkdir -p data",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true,
+          "env": {
+            "MINIO_ROOT_USER": "vulos",
+            "MINIO_ROOT_PASSWORD": "vulos-change-me"
+          }
+        }
+      }
     }
   }
 }
