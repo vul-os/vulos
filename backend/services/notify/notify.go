@@ -257,6 +257,19 @@ func (s *Service) Clear() {
 	s.history = nil
 }
 
+// NotifyOnConflict emits a toast-level notification for a sync conflict file.
+// Category "sync" is encoded in the Source field so the frontend can route it
+// to the ConflictResolver view. The deep-link payload is the relative conflict path.
+func (s *Service) NotifyOnConflict(path string) *Notification {
+	return s.SendWithAction(
+		"Sync conflict detected",
+		"A conflict copy was created: "+path,
+		LevelWarning,
+		"sync",
+		"/api/sync/conflicts",
+	)
+}
+
 // Handler returns an HTTP handler that upgrades to WebSocket for live notification streaming.
 // Connect via: ws://host:port/api/notifications/stream
 func (s *Service) Handler() http.HandlerFunc {

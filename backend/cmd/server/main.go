@@ -1900,6 +1900,8 @@ func main() {
 	registerKitRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
 	registerIdentityRoutes(mux, home)
+	// Conflict resolver (CLUSTER-10)
+	registerConflictRoutes(mux, dataDir, notifySvc)
 
 	// Serve frontend static files (production build)
 	webrootDir := ""
