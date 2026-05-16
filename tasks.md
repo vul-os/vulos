@@ -1139,7 +1139,7 @@ Scope: Lemmy API client: communities, post listing w/ sort, comment trees, vote/
 AC: [ ] browse public Lemmy communities/posts [ ] sort hot/new/top/active [ ] logged-in vote+comment
 
 ### [FED-06] Push notifications + share-to-Fediverse
-`todo` · P3 · S · dep: FED-02, FED-03 · parallel: yes — apps/social/, one notifySvc call
+`done` · P3 · S · dep: FED-02, FED-03 · parallel: yes — apps/social/, one notifySvc call
 Scope: Mastodon streaming WS → POST /api/notifications/send on mention; share target → compose prefilled.
 AC: [ ] new mention triggers Vula notification [ ] share opens compose prefilled
 
