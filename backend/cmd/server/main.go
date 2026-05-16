@@ -25,8 +25,8 @@ import (
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/authvault"
-	"vulos/backend/services/peering"
 	"vulos/backend/services/bluetooth"
+	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
 	"vulos/backend/services/disks"
 	"vulos/backend/services/display"
@@ -37,6 +37,7 @@ import (
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/packages"
+	"vulos/backend/services/peering"
 	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/recall"
@@ -464,6 +465,12 @@ func main() {
 	// TOTP vault routes (/api/auth/totp/*)
 	totpHandler := authvault.NewHandler()
 	totpHandler.RegisterHandlers(mux)
+
+	// Credential vault HTTP API (password manager, per-user, AES-256-GCM)
+	credVaultHandler := credvault.NewHandler(func(userID string) string {
+		return filepath.Join(home, ".vulos", "auth", "vault", userID)
+	})
+	credVaultHandler.RegisterHandlers(mux)
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
