@@ -456,3 +456,11 @@ Per cron prompt step 5, deleted cron 44dbf100 (5-min Wave-10 tick) and 3b9c595e 
 
 ## D65 (18:55) — NET-09 v2 rescue merged (+1 from defer)
 Opus's additive-only rescue (D63) landed CLEAN — strictly extended Service struct, new ConnectionMode type/constants, new methods (LoadMode/GetMode/SetMode/ExternalListenerBlocked/TriggerDirectReenroll), new routes_netmode.go, one-line wire in main.go, Settings.jsx Connection-Mode section. 7 new tests pass. Dropped stale task/NET-09 (D57). Session final: **165 task-branches merged**. Permanent-defers list updated: NET-09 removed.
+
+## D66 (18:58) — User-driven: fix the "dirty" 4 (WEBAPP-01/05, GAME-07, AI-05)
+The "locked dirty" tags were stale — working tree is clean now (apps/calendar+clock committed, AppRegistry.js + manifest.go un-modified). Dispatching 4 Sonnet workers in parallel:
+- WEBAPP-01: add `notifications` to manifest.go ValidPermissions (small)
+- WEBAPP-05: builtinRegistry entries in AppRegistry.js (dep WEBAPP-01 functionally)
+- GAME-07: gaming category + Wine/Lutris/Steam detection (manifest.go + wine.go + main.go)
+- AI-05: AI apps in launcher (AppRegistry.js + main.go ai-apps)
+Collisions: manifest.go (WEBAPP-01+GAME-07 different consts), AppRegistry.js (WEBAPP-05+AI-05 different sections), main.go (routes-pattern). All resolvable keep-both at merge time.
