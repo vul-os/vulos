@@ -930,7 +930,7 @@ Scope: call lifecycle relay: initiate→peer inbound/signal→callee frame; answ
 AC: [ ] initiate → callee incoming-call frame [ ] SDP/ICE relay end-to-end [ ] reject/hangup terminates both [ ] rejected for non-call contacts
 
 ### [PEER-20] Bandwidth measurement + /api/peering/bandwidth
-`todo` · P1 · M · dep: PEER-01 · parallel: yes — new backend/services/peering/bandwidth.go
+`done` · P1 · M · dep: PEER-01 · parallel: yes — new backend/services/peering/bandwidth.go
 Scope: periodic speed test (configurable endpoint) or traffic estimate, cache, GET bandwidth, peer-query path.
 AC: [ ] returns up/down+latency periodic [ ] peer can request approved peer's [ ] non-blocking startup
 
