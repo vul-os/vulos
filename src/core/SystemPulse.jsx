@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import PublicAppsWarning from './PublicAppsWarning'
 import { useTelemetry } from './useTelemetry'
 import { useTheme } from './ThemeProvider'
 import { useAuth } from '../auth/AuthProvider'
@@ -471,6 +472,8 @@ export default function LifePulse({ compact = false, className = '' }) {
             <ClockDropdown now={now} />
           </Dropdown>
         </div>
+
+        <PublicAppsWarning />
       </div>
     )
   }
