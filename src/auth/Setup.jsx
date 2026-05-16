@@ -4,7 +4,7 @@ import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 
-const STEPS = ['welcome', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 const DEVICE_PROFILES = [
   {
@@ -134,15 +134,57 @@ export default function Setup({ onComplete }) {
   })
   const [transitioning, setTransitioning] = useState(false)
 
-  const current = STEPS[step]
+  // INIT-09: flow type — 'new' (default) or 'join'
+  const [IS09_flowType, IS09_setFlowType] = useState('new')
+  // INIT-09: whether mode check is done
+  const [IS09_modeChecked, IS09_setModeChecked] = useState(false)
+
+  // INIT-09: On mount, check /api/setup/mode. If mode==="sync", jump straight to syncing.
+  useEffect(() => {
+    fetch('/api/setup/mode')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.mode === 'normal') {
+          // Already set up — shouldn't be here, but complete gracefully
+          onComplete()
+          return
+        }
+        if (data && data.mode === 'sync') {
+          IS09_setFlowType('join')
+          // Jump straight to the syncing step in the join flow
+          const syncIdx = IS09_JOIN_STEPS.indexOf('IS09_syncing')
+          setStep(syncIdx >= 0 ? syncIdx : 0)
+        }
+        IS09_setModeChecked(true)
+      })
+      .catch(() => {
+        IS09_setModeChecked(true)
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // INIT-09: choose active step list based on flow type
+  const IS09_activeSteps = IS09_flowType === 'join' ? IS09_JOIN_STEPS : STEPS
+
+  const current = IS09_activeSteps[step]
   const update = (key, val) => setConfig(c => ({ ...c, [key]: val }))
 
   const goTo = (idx) => {
     setTransitioning(true)
     setTimeout(() => { setStep(idx); setTransitioning(false) }, 200)
   }
-  const next = () => goTo(Math.min(step + 1, STEPS.length - 1))
+  const next = () => goTo(Math.min(step + 1, IS09_activeSteps.length - 1))
   const prev = () => goTo(Math.max(step - 1, 0))
+
+  // INIT-09: chooser handler — pick flow type and advance
+  const IS09_handleChooseNew = () => {
+    IS09_setFlowType('new')
+    goTo(step + 1)
+  }
+  const IS09_handleChooseJoin = () => {
+    IS09_setFlowType('join')
+    // After choosing join, the next step in IS09_JOIN_STEPS after chooser is IS09_join_storage
+    goTo(step + 1)
+  }
 
   const finish = async () => {
     try {
@@ -172,6 +214,15 @@ export default function Setup({ onComplete }) {
     onComplete()
   }
 
+  // INIT-09: show loading until mode check resolves
+  if (!IS09_modeChecked) {
+    return (
+      <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center">
+        <span className="text-neutral-600 text-sm">Checking system mode...</span>
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 bg-neutral-950 overflow-hidden">
       {/* Animated background */}
@@ -192,7 +243,7 @@ export default function Setup({ onComplete }) {
 
         {/* Progress dots */}
         <div className="absolute top-8 flex gap-2">
-          {STEPS.map((_, i) => (
+          {IS09_activeSteps.map((_, i) => (
             <button
               key={i}
               onClick={() => i < step && goTo(i)}
@@ -206,16 +257,32 @@ export default function Setup({ onComplete }) {
         <div className={`w-full max-w-xl transition-all duration-200 ${transitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
           {current === 'welcome' && <WelcomeStep onNext={next} />}
           {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
+          {current === 'IS09_chooser' && (
+            <IS09_NewJoinChooserStep
+              onChooseNew={IS09_handleChooseNew}
+              onChooseJoin={IS09_handleChooseJoin}
+              onPrev={prev}
+            />
+          )}
+          {/* New-system flow steps */}
           {current === 'language' && <LanguageStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'account' && <AccountStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
           {current === 'identity' && <IS05_IdentityStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'storage' && <IS05_StorageStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'ssh' && <IS05_SSHStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'recoverykit' && <IS05_RecoveryKitStep config={config} update={update} onNext={next} onPrev={prev} />}
+          {/* Join-flow steps */}
+          {current === 'IS09_join_storage' && (
+            <IS09_JoinConnectStorageStep config={config} update={update} onNext={next} onPrev={prev} />
+          )}
+          {current === 'IS09_syncing' && (
+            <IS09_SyncingStep onNext={next} onComplete={onComplete} />
+          )}
+          {/* Shared steps (pin + ready used by both flows) */}
+          {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
           {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
         </div>
       </div>
@@ -320,6 +387,362 @@ function DeviceStep({ config, update, onNext, onPrev }) {
       </div>
 
       <NavBar onPrev={onPrev} onNext={onNext} nextLabel={selected ? 'Continue' : 'Skip'} />
+// INIT-09: New vs Join chooser
+// ═══════════════════════════════════
+function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
+  return (
+    <div className="text-center">
+      <StepHeader
+        title="How would you like to set up?"
+        subtitle="Start fresh or join an existing Vula OS installation"
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 mb-6">
+        {/* New system card */}
+        <button
+          onClick={onChooseNew}
+          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-blue-500/50 hover:bg-blue-600/5 transition-all"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-blue-600/15 flex items-center justify-center group-hover:bg-blue-600/25 transition-colors">
+            <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v8M8 12h8" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-base font-semibold text-neutral-100 mb-1">New System</div>
+            <div className="text-sm text-neutral-500">Set up this device from scratch with a new identity and storage.</div>
+          </div>
+        </button>
+        {/* Join existing card */}
+        <button
+          onClick={onChooseJoin}
+          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-violet-500/50 hover:bg-violet-600/5 transition-all"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-violet-600/15 flex items-center justify-center group-hover:bg-violet-600/25 transition-colors">
+            <svg viewBox="0 0 24 24" className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-base font-semibold text-neutral-100 mb-1">Join Existing</div>
+            <div className="text-sm text-neutral-500">Connect to an existing Vula OS cluster by providing storage credentials.</div>
+          </div>
+        </button>
+      </div>
+      <div className="flex justify-start pt-4 border-t border-neutral-800/30">
+        <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+          ← Back
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// INIT-09: Join — Connect Storage
+// ═══════════════════════════════════
+function IS09_JoinConnectStorageStep({ config, update, onNext, onPrev }) {
+  const [IS09_s3Bucket, IS09_setS3Bucket] = useState('')
+  const [IS09_s3Region, IS09_setS3Region] = useState('')
+  const [IS09_s3AccessKey, IS09_setS3AccessKey] = useState('')
+  const [IS09_s3SecretKey, IS09_setS3SecretKey] = useState('')
+  const [IS09_passphrase, IS09_setPassphrase] = useState('')
+  const [IS09_joining, IS09_setJoining] = useState(false)
+  const [IS09_error, IS09_setError] = useState('')
+
+  const IS09_handleJoin = async () => {
+    if (!IS09_s3Bucket || !IS09_s3AccessKey || !IS09_s3SecretKey || !IS09_passphrase) {
+      IS09_setError('Please fill in all required fields.')
+      return
+    }
+    IS09_setJoining(true)
+    IS09_setError('')
+    try {
+      const res = await fetch('/api/setup/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          s3_bucket: IS09_s3Bucket,
+          s3_region: IS09_s3Region || 'us-east-1',
+          s3_access_key: IS09_s3AccessKey,
+          s3_secret_key: IS09_s3SecretKey,
+          passphrase: IS09_passphrase,
+        }),
+      })
+      if (res.status === 404) {
+        IS09_setError('Backend not yet available — join endpoint is not ready. Please retry later.')
+        IS09_setJoining(false)
+        return
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        IS09_setError(data.error || `Unexpected error (${res.status}). Please retry.`)
+        IS09_setJoining(false)
+        return
+      }
+      // Success — proceed to syncing screen
+      onNext()
+    } catch {
+      IS09_setError('Could not reach the server. Check your network and retry.')
+      IS09_setJoining(false)
+    }
+  }
+
+  return (
+    <div>
+      <StepHeader
+        title="Connect to existing storage"
+        subtitle="Provide your S3-compatible storage credentials and encryption passphrase"
+      />
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">S3 Bucket <span className="text-red-400">*</span></label>
+            <input
+              value={IS09_s3Bucket}
+              onChange={e => IS09_setS3Bucket(e.target.value.trim())}
+              placeholder="my-vula-backup"
+              autoFocus
+              className="input text-sm py-2.5"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Region</label>
+            <input
+              value={IS09_s3Region}
+              onChange={e => IS09_setS3Region(e.target.value.trim())}
+              placeholder="us-east-1"
+              className="input text-sm py-2.5"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1.5">Access Key <span className="text-red-400">*</span></label>
+          <input
+            value={IS09_s3AccessKey}
+            onChange={e => IS09_setS3AccessKey(e.target.value.trim())}
+            placeholder="AKIAIOSFODNN7EXAMPLE"
+            className="input text-sm py-2.5 font-mono"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1.5">Secret Key <span className="text-red-400">*</span></label>
+          <input
+            type="password"
+            value={IS09_s3SecretKey}
+            onChange={e => IS09_setS3SecretKey(e.target.value)}
+            placeholder="Secret access key"
+            className="input text-sm py-2.5 font-mono"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1.5">Encryption Passphrase <span className="text-red-400">*</span></label>
+          <input
+            type="password"
+            value={IS09_passphrase}
+            onChange={e => IS09_setPassphrase(e.target.value)}
+            placeholder="Decryption passphrase for existing backup"
+            className="input text-sm py-2.5"
+          />
+        </div>
+        {IS09_error && (
+          <div className="flex flex-col gap-2 bg-red-900/20 border border-red-800/40 rounded-xl px-4 py-3">
+            <p className="text-sm text-red-400">{IS09_error}</p>
+            {IS09_error.includes('not yet available') && (
+              <button
+                onClick={IS09_handleJoin}
+                className="self-start text-xs text-red-300 underline underline-offset-2 hover:text-red-200"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
+        <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+          ← Back
+        </button>
+        <button
+          onClick={IS09_handleJoin}
+          disabled={IS09_joining}
+          className="btn-primary flex items-center gap-2"
+        >
+          {IS09_joining ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            'Connect & Sync →'
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// INIT-09: Syncing screen
+// ═══════════════════════════════════
+const IS09_SYNC_PHASES = [
+  { key: 'init', label: 'Initialising sync' },
+  { key: 'keys', label: 'Fetching encryption keys' },
+  { key: 'identity', label: 'Restoring identity' },
+  { key: 'storage', label: 'Syncing storage' },
+  { key: 'apps', label: 'Restoring applications' },
+  { key: 'done', label: 'Finalising' },
+]
+
+function IS09_SyncingStep({ onNext, onComplete }) {
+  const [IS09_phase, IS09_setPhase] = useState('init')
+  const [IS09_phaseIdx, IS09_setPhaseIdx] = useState(0)
+  const [IS09_error, IS09_setError] = useState('')
+  const [IS09_done, IS09_setDone] = useState(false)
+  const [IS09_bgMode, IS09_setBgMode] = useState(false)
+  const IS09_pollRef = useRef(null)
+
+  const IS09_poll = async () => {
+    try {
+      // Try /api/setup/join/status first, fall back to /api/setup/mode
+      let data = null
+      const statusRes = await fetch('/api/setup/join/status')
+      if (statusRes.ok) {
+        data = await statusRes.json()
+      } else if (statusRes.status === 404) {
+        const modeRes = await fetch('/api/setup/mode')
+        if (modeRes.ok) {
+          const modeData = await modeRes.json()
+          data = { phase: modeData.sync_state?.phase || 'init', done: modeData.mode !== 'sync' }
+        }
+      }
+      if (!data) return
+
+      const currentPhase = data.phase || 'init'
+      const phaseIdx = IS09_SYNC_PHASES.findIndex(p => p.key === currentPhase)
+      IS09_setPhase(currentPhase)
+      IS09_setPhaseIdx(phaseIdx >= 0 ? phaseIdx : 0)
+
+      if (data.done || data.phase === 'done' || data.mode === 'normal') {
+        IS09_setDone(true)
+        clearInterval(IS09_pollRef.current)
+        if (IS09_bgMode) {
+          onComplete()
+        }
+      }
+    } catch {
+      // Network error — keep polling silently
+    }
+  }
+
+  useEffect(() => {
+    IS09_poll()
+    IS09_pollRef.current = setInterval(IS09_poll, 3000)
+    return () => clearInterval(IS09_pollRef.current)
+  }, [IS09_bgMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const IS09_progress = IS09_SYNC_PHASES.length > 0
+    ? ((IS09_phaseIdx + 1) / IS09_SYNC_PHASES.length) * 100
+    : 0
+
+  if (IS09_bgMode) {
+    return (
+      <div className="text-center">
+        <div className="text-4xl mb-4">🔄</div>
+        <StepHeader title="Syncing in the background" subtitle="You can use Vula OS while sync continues." />
+        <p className="text-sm text-neutral-500">Setup will complete automatically when sync finishes.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="text-center">
+      <div className="mb-6 flex flex-col items-center">
+        <div className="w-16 h-16 rounded-2xl bg-violet-600/15 flex items-center justify-center mb-4">
+          {IS09_done ? (
+            <svg viewBox="0 0 24 24" className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="w-8 h-8 text-violet-400 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ animationDuration: '2s' }}>
+              <path d="M21 12a9 9 0 11-6.219-8.56" />
+            </svg>
+          )}
+        </div>
+        <h2 className="text-2xl font-light text-neutral-100">
+          {IS09_done ? 'Sync complete' : 'Syncing your data'}
+        </h2>
+        <p className="text-sm text-neutral-500 mt-1">
+          {IS09_done
+            ? 'Everything has been restored. Continue to set your PIN.'
+            : 'Restoring your identity and data from storage...'}
+        </p>
+      </div>
+
+      {/* Phase progress bar */}
+      <div className="mb-4">
+        <div className="flex justify-between text-xs text-neutral-600 mb-1.5">
+          <span>{IS09_SYNC_PHASES[IS09_phaseIdx]?.label || 'Initialising'}</span>
+          <span>{Math.round(IS09_progress)}%</span>
+        </div>
+        <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-violet-600 to-blue-500 rounded-full transition-all duration-700"
+            style={{ width: `${IS09_progress}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Phase steps */}
+      <div className="space-y-1.5 mb-6 text-left">
+        {IS09_SYNC_PHASES.map((phase, i) => {
+          const isDone = i < IS09_phaseIdx || IS09_done
+          const isCurrent = i === IS09_phaseIdx && !IS09_done
+          return (
+            <div key={phase.key} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors
+              ${isCurrent ? 'bg-violet-600/10 border border-violet-500/20' : ''}
+            `}>
+              <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px]
+                ${isDone ? 'bg-green-500/20 text-green-400' : isCurrent ? 'bg-violet-500/20 text-violet-400' : 'bg-neutral-800 text-neutral-600'}`}>
+                {isDone ? '✓' : isCurrent ? '·' : '○'}
+              </span>
+              <span className={`text-sm ${isDone ? 'text-neutral-400' : isCurrent ? 'text-neutral-200' : 'text-neutral-600'}`}>
+                {phase.label}
+              </span>
+              {isCurrent && (
+                <span className="ml-auto flex gap-0.5">
+                  {[0, 1, 2].map(d => (
+                    <span key={d} className="w-1 h-1 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />
+                  ))}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {IS09_error && (
+        <div className="mb-4 bg-red-900/20 border border-red-800/40 rounded-xl px-4 py-3">
+          <p className="text-sm text-red-400">{IS09_error}</p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {IS09_done ? (
+          <button onClick={onNext} className="btn-primary px-10 py-3 text-base">
+            Continue →
+          </button>
+        ) : (
+          <button
+            onClick={() => { IS09_setBgMode(true); onComplete() }}
+            className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors underline underline-offset-2"
+          >
+            Continue in Background
+          </button>
+        )}
+      </div>
     </div>
   )
 }
