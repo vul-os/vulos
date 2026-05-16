@@ -1035,7 +1035,7 @@ Scope: endpoint registry (register/list/remove/priority), include endpoints in w
 AC: [ ] Vula ID advertises multi endpoints [ ] delivery succeeds via live one [ ] duplicate msg ID no-op
 
 ### [PEER-41] Signed feeds: append-only log, pub/sub, content-addr
-`todo` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
+`done` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
 Scope: feed create/list/publish/get/entries, hash-chained signed entries (prev_hash), access public/peers/link, subscriber pull by seq, push to approved, content hash sha256(canonical).
 AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] public/link no auth, peers gated [ ] subscribers since last seq
 
