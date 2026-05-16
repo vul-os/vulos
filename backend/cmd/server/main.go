@@ -1943,6 +1943,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "upgraded", "output": output})
 	})
 
+	// Recovery Kit re-download (admin-only)
+	registerKitRoutes(mux, authStore, home)
+
 	// Serve frontend static files (production build)
 	webrootDir := ""
 	for _, dir := range []string{"/opt/vulos/webroot", "./dist", "../dist", "../../dist"} {
