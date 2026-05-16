@@ -1016,6 +1016,278 @@
           "checksum": ""
         }
       }
+    },
+    "shotcut": {
+      "name": "Shotcut",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Free, open-source video editor \u2014 multi-track timeline, 4K support, hundreds of filters and transitions",
+      "category": "media",
+      "author": "Meltytech, LLC",
+      "homepage": "https://www.shotcut.org",
+      "icon": "shotcut",
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "4k",
+        "filters",
+        "transitions",
+        "film"
+      ],
+      "license": "GPL-3.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends shotcut",
+          "command": "shotcut",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "ardour": {
+      "name": "Ardour",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Professional digital audio workstation \u2014 multi-track recording, editing, mixing, and mastering",
+      "category": "media",
+      "author": "Paul Davis and The Ardour Community",
+      "homepage": "https://ardour.org",
+      "icon": "ardour",
+      "keywords": [
+        "audio",
+        "daw",
+        "recording",
+        "mixing",
+        "mastering",
+        "music",
+        "studio"
+      ],
+      "license": "GPL-2.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends ardour",
+          "command": "ardour8",
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "lmms": {
+      "name": "LMMS",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Linux MultiMedia Studio \u2014 beat+bassline editor, song editor, synthesizers, and VST plugin support",
+      "category": "media",
+      "author": "LMMS Developers",
+      "homepage": "https://lmms.io",
+      "icon": "lmms",
+      "keywords": [
+        "music",
+        "studio",
+        "daw",
+        "beats",
+        "synthesizer",
+        "vst",
+        "sequencer"
+      ],
+      "license": "GPL-2.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends lmms",
+          "command": "lmms",
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "darktable": {
+      "name": "Darktable",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Photography workflow and RAW developer \u2014 non-destructive editing, colour grading, and print/export pipeline",
+      "category": "media",
+      "author": "Darktable Developers",
+      "homepage": "https://www.darktable.org",
+      "icon": "darktable",
+      "keywords": [
+        "photography",
+        "raw",
+        "editor",
+        "colour",
+        "grading",
+        "lightroom",
+        "darkroom"
+      ],
+      "license": "GPL-3.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends darktable",
+          "command": "darktable",
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "obs-studio": {
+      "name": "OBS Studio",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Open Broadcaster Software \u2014 screen recording and live streaming with scenes, sources, and filters",
+      "category": "media",
+      "author": "OBS Project",
+      "homepage": "https://obsproject.com",
+      "icon": "obs",
+      "keywords": [
+        "streaming",
+        "recording",
+        "screen",
+        "broadcast",
+        "obs",
+        "twitch",
+        "youtube"
+      ],
+      "license": "GPL-2.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends obs-studio",
+          "command": "obs",
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "microphone",
+            "camera"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "qgis": {
+      "name": "QGIS",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Free and open-source GIS \u2014 view, edit, and analyse geospatial data with layers, plugins, and map export",
+      "category": "productivity",
+      "author": "QGIS Development Team",
+      "homepage": "https://www.qgis.org",
+      "icon": "qgis",
+      "keywords": [
+        "gis",
+        "mapping",
+        "geospatial",
+        "cartography",
+        "spatial",
+        "geography",
+        "layers"
+      ],
+      "license": "GPL-2.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends qgis",
+          "command": "qgis",
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "octave": {
+      "name": "GNU Octave",
+      "vetted": true,
+      "type": "desktop",
+      "description": "High-level language for numerical computations \u2014 MATLAB-compatible syntax, plotting, and signal processing",
+      "category": "productivity",
+      "author": "GNU Project",
+      "homepage": "https://www.gnu.org/software/octave",
+      "icon": "octave",
+      "keywords": [
+        "math",
+        "numerical",
+        "matlab",
+        "scientific",
+        "plotting",
+        "computation",
+        "engineering"
+      ],
+      "license": "GPL-3.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends octave",
+          "command": "octave --gui",
+          "permissions": [
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "gnucash": {
+      "name": "GnuCash",
+      "vetted": true,
+      "type": "desktop",
+      "description": "Personal and small-business finance manager \u2014 double-entry accounting, budgeting, invoicing, and reports",
+      "category": "productivity",
+      "author": "GnuCash Development Team",
+      "homepage": "https://www.gnucash.org",
+      "icon": "gnucash",
+      "keywords": [
+        "finance",
+        "accounting",
+        "budget",
+        "invoicing",
+        "money",
+        "double-entry",
+        "bookkeeping"
+      ],
+      "license": "GPL-2.0",
+      "arch": [
+        "amd64"
+      ],
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends gnucash",
+          "command": "gnucash",
+          "permissions": [
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
     }
   }
 }
