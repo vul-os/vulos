@@ -459,27 +459,38 @@ func (svc *Service) au12UpdateLastUsed(userID, credID string) {
 }
 
 // au12ConsumeSession validates and removes a pending ceremony session.
+//
+// Security invariant (SECAUDIT2 L-1): the userID binding check is performed
+// BEFORE the session is deleted. On a mismatch the session is left intact so
+// the legitimate owner's in-flight ceremony is not disrupted by a wrong-user
+// (DoS) caller that merely knows the session token.
 func (svc *Service) au12ConsumeSession(userID string, sessionData []byte) (*au12Session, error) {
 	tok, err := au12ExtractToken(sessionData)
 	if err != nil {
 		return nil, err
 	}
+
 	svc.mu.Lock()
 	sess, ok := svc.sessions[tok]
-	if ok {
-		delete(svc.sessions, tok)
-	}
-	svc.mu.Unlock()
-
 	if !ok || sess == nil {
+		svc.mu.Unlock()
 		return nil, errors.New("passkeys: session not found or expired")
 	}
+	// Check expiry and userID binding BEFORE consuming (deleting) the session.
+	// An expired or mismatched session must NOT be removed so that accidental or
+	// adversarial wrong-user calls cannot DoS the legitimate owner's ceremony.
 	if time.Now().After(sess.ExpiresAt) {
+		svc.mu.Unlock()
 		return nil, errors.New("passkeys: session expired")
 	}
 	if sess.UserID != userID {
+		svc.mu.Unlock()
 		return nil, errors.New("passkeys: session userID mismatch")
 	}
+	// All checks passed — now consume (delete) the session (single-use).
+	delete(svc.sessions, tok)
+	svc.mu.Unlock()
+
 	return sess, nil
 }
 
