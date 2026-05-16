@@ -24,6 +24,7 @@ import (
 	bprofiles "vulos/backend/services/profiles"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
+	"vulos/backend/services/peering"
 	"vulos/backend/services/bluetooth"
 	"vulos/backend/services/display"
 	"vulos/backend/services/embeddings"
@@ -163,6 +164,9 @@ func main() {
 	aiCfg := ai.DefaultConfig()
 	chatHistory := ai.NewHistoryStore(dbDir)
 	missionStore := ai.NewMissionStore(dbDir)
+
+	// Peering WebSocket multiplex hub
+	peeringHub := peering.NewHub()
 
 	// Notifications
 	notifySvc := notify.New()
@@ -1094,6 +1098,9 @@ func main() {
 		}
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
+
+	// Peering multiplex WebSocket — GET /api/peering/stream
+	peeringHub.RegisterHandlers(mux)
 
 	// Remote browser — WebRTC (delegates to stream pool)
 	browserSvc.RegisterHandlers(mux)
