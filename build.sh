@@ -224,6 +224,8 @@ apt-get install -y --no-install-recommends \
     plymouth plymouth-themes
     flatpak rsync systemd systemd-sysv \
     avahi-daemon avahi-utils dhcpcd5 wpasupplicant
+    flatpak rsync systemd systemd-sysv \
+    openssh-server
 
 # Intel VA-API (amd64 only)
 dpkg --print-architecture | grep -q amd64 && \
@@ -231,6 +233,28 @@ dpkg --print-architecture | grep -q amd64 && \
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+# Hardened sshd configuration
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/vulos.conf << 'SSHD_CONF'
+# Vula OS — hardened sshd config
+# Key-only auth — no passwords
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM no
+
+# Root login only via key
+PermitRootLogin prohibit-password
+
+# Hardening
+X11Forwarding no
+MaxAuthTries 3
+LoginGraceTime 30
+
+# Keep alive (detect dead connections)
+ClientAliveInterval 60
+ClientAliveCountMax 3
+SSHD_CONF
 
 # Flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -464,6 +488,8 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     plymouth plymouth-themes
     flatpak rsync systemd systemd-sysv \
     avahi-daemon avahi-utils dhcpcd5 wpasupplicant
+    flatpak rsync systemd systemd-sysv \
+    openssh-server
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
 
@@ -514,6 +540,28 @@ fi
 chroot "$ROOTFS" apt-get clean
 rm -rf "$ROOTFS/var/lib/apt/lists/"*
 chroot "$ROOTFS" flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+# Hardened sshd configuration (rootfs)
+mkdir -p "$ROOTFS/etc/ssh/sshd_config.d"
+cat > "$ROOTFS/etc/ssh/sshd_config.d/vulos.conf" << 'SSHD_CONF'
+# Vula OS — hardened sshd config
+# Key-only auth — no passwords
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM no
+
+# Root login only via key
+PermitRootLogin prohibit-password
+
+# Hardening
+X11Forwarding no
+MaxAuthTries 3
+LoginGraceTime 30
+
+# Keep alive (detect dead connections)
+ClientAliveInterval 60
+ClientAliveCountMax 3
+SSHD_CONF
 
 cp "$OUTDIR/vulos-server" "$ROOTFS/usr/local/bin/"
 cp "$OUTDIR/vulos-init" "$ROOTFS/sbin/vulos-init"

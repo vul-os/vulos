@@ -47,6 +47,7 @@ func plymouthQuitRetainSplash() {
 func main() {
 	if os.Getpid() != 1 {
 		fmt.Println("vulos-init: not running as PID 1, starting in service mode")
+		startSSH()
 		startServices()
 		return
 	}
@@ -72,6 +73,8 @@ func main() {
 
 	// Phase 4: Bring up networking (DHCP, WiFi fallback, mDNS)
 	phaseNetwork()
+	// Phase 4: Generate SSH host keys + start sshd
+	startSSH()
 
 	// Phase 5: Start vulos server
 	startServices()
@@ -449,6 +452,33 @@ func startServices() {
 
 	// Start Cage/WPE WebKit kiosk if available
 	startKiosk()
+}
+
+// startSSH generates SSH host keys on first boot (idempotent) and starts sshd.
+func startSSH() {
+	// Generate all host key types if the ed25519 key is missing (first boot only).
+	if _, err := os.Stat("/etc/ssh/ssh_host_ed25519_key"); os.IsNotExist(err) {
+		log.Println("generating SSH host keys (first boot)...")
+		if out, err := exec.Command("ssh-keygen", "-A").CombinedOutput(); err != nil {
+			log.Printf("ssh-keygen -A failed: %v: %s", err, out)
+		} else {
+			log.Println("SSH host keys generated")
+		}
+	} else {
+		log.Println("SSH host keys already present")
+	}
+
+	// Start sshd in daemon mode (idempotent — sshd refuses to start if already running).
+	sshdBin := findBinary("/usr/sbin/sshd", "sshd")
+	if sshdBin == "" {
+		log.Println("sshd not found, skipping SSH daemon")
+		return
+	}
+	if out, err := exec.Command(sshdBin).CombinedOutput(); err != nil {
+		log.Printf("sshd start warning: %v: %s", err, out)
+	} else {
+		log.Println("sshd started")
+	}
 }
 
 func startKiosk() {
