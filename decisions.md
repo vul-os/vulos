@@ -426,3 +426,6 @@ Reconcile fixed (include splice commits): tasks.md flipped 4 more → **176/195 
 ## D55 (18:23) — Wave-15 (final): NET-09 / INIT-06 / AUTH-12
 Mem 1899 cleared, brief 175 min remaining. Dispatching 3 file-disjoint: NET-09 (connection-mode UI — routes_netmode.go + Settings.jsx section + network.go state), INIT-06 (Recovery Kit polish — Setup.jsx QR + confirm-gate + qrcode dep in package.json), AUTH-12 (server-side passkey pkg — new backend/services/passkeys/). APPSTORE-06 skipped (registry+stream+wine sprawl too large for remaining window; defer).
 D56: tick 18:28, 3 wave-15 workers in flight, mem 165<500, hold
+
+## D57 (18:31) — NET-09 permanent-defer this run (structural network.go conflict)
+NET-09 worker's stale base had different Service struct than current main (NET-06's instance-id/hostname/domain richness). Multiple resolve attempts hit struct-field syntax errors; surgical splice non-trivial without full hand-rewrite. Per orchestration discipline (D21, D23, D36), defer NET-09. Backend Mode methods exist on `task/NET-09`; needs follow-up that respects NET-06's Service shape. Settings.jsx Connection-Mode UI lost too. Non-blocking — fabric mode is default and works.
