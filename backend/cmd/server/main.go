@@ -282,6 +282,12 @@ func main() {
 	appsDir := filepath.Join(home, ".vulos", "apps")
 	appStore := appnet.NewAppStore(appsDir)
 
+	// App visibility store (private|local|public per app)
+	visStore, err := appnet.NewVisibilityStoreAt(filepath.Join(dbDir, "visibility.json"))
+	if err != nil {
+		log.Printf("[visibility] init warning: %v", err)
+	}
+
 	// TURN server (WebRTC relay for remote mode)
 	turnCfg := network.LoadTURNConfig()
 	if turnCfg.Enabled {
@@ -1009,7 +1015,9 @@ func main() {
 			writeErr(w, 403, "admin only")
 			return
 		}
-		var req struct{ Command string `json:"command"` }
+		var req struct {
+			Command string `json:"command"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
 			writeErr(w, 400, "invalid request")
 			return
@@ -1291,6 +1299,8 @@ func main() {
 
 	// Peering — direct Vula-to-Vula communication
 	peeringSvc.RegisterHandlers(mux)
+	// App visibility (private|local|public)
+	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
