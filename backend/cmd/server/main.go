@@ -24,6 +24,7 @@ import (
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
+	"vulos/backend/services/authvault"
 	"vulos/backend/services/peering"
 	"vulos/backend/services/bluetooth"
 	"vulos/backend/services/desktop"
@@ -459,6 +460,10 @@ func main() {
 
 	// Auth routes
 	authHandler.Register(mux)
+
+	// TOTP vault routes (/api/auth/totp/*)
+	totpHandler := authvault.NewHandler()
+	totpHandler.RegisterHandlers(mux)
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
