@@ -1,0 +1,18 @@
+{
+  "id": "clock",
+  "name": "Clock",
+  "icon": "◷",
+  "icon_path": "icon.svg",
+  "description": "Time, world clocks, stopwatch, and timer",
+  "version": "0.1.0",
+  "command": "python3 server.py",
+  "port": 80,
+  "category": "utilities",
+  "keywords": ["clock", "time", "world clock", "stopwatch", "timer", "alarm"],
+  "deps": ["python3"],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["notifications"],
+  "author": "Vula OS",
+  "license": "MIT"
+}

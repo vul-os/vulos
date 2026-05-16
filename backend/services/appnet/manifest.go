@@ -11,19 +11,20 @@ import (
 
 // Valid app categories.
 var ValidCategories = []string{
-	"core", "productivity", "media", "developer", "system", "network", "database", "other",
+	"core", "productivity", "utilities", "media", "developer", "system", "network", "database", "other",
 }
 
 // Valid permission types apps can request.
 var ValidPermissions = []string{
-	"network",    // outbound network access (all apps get loopback)
-	"filesystem", // read/write outside app data dir
-	"camera",     // camera device access
-	"microphone", // microphone device access
-	"bluetooth",  // bluetooth access
-	"usb",        // USB device access
-	"gpu",        // GPU acceleration
-	"background", // run when window is closed
+	"network",       // outbound network access (all apps get loopback)
+	"filesystem",    // read/write outside app data dir
+	"camera",        // camera device access
+	"microphone",    // microphone device access
+	"bluetooth",     // bluetooth access
+	"usb",           // USB device access
+	"gpu",           // GPU acceleration
+	"background",    // run when window is closed
+	"notifications", // send desktop/push notifications to the user
 }
 
 var appIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{0,62}$`)
