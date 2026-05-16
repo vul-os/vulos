@@ -404,3 +404,6 @@ No further dispatch — wind-down at 18:55. Cron 44dbf100 will fire once more be
 
 ## D48 (18:02) — Re-firing of 4h brief; 192 min remaining. Dispatching 3
 Original 4h brief (started 17:14) has 192 min left. My self-imposed "wind-down 18:55" was the cron's 2h lifetime (D33), not the brief's 4h. Correcting: continue dispatch while brief holds. Mem 1043 MB, load fine. Dispatching 3 file-disjoint: NET-01 (subdomain parser {app}--{profile}.{ulid}.{domain} — gateway.go + main.go + dns.go), CLUSTER-06 (MinIO settings UI — registry.json + new routes_storage.go + Settings.jsx section), BMINIT-15 (ARM device variants — build.sh additive). Conservative count (vs 10) because remaining roadmap is hot-file-bound; merge success rate > raw count.
+
+## D49 (18:03) — Tick: 3 wave-13 workers in flight, hold
+Mem 1651, load 6/10/10. 0 completions yet. NET-01/CLUSTER-06/BMINIT-15 still running. Holding dispatch — 3 in flight is sufficient given hot-file contention on remaining tasks. Cron 44dbf100 expires at 18:55 (52 min); brief continues to ~21:14 — I'll CronDelete at 18:55 and keep merging completions until brief expiry.
