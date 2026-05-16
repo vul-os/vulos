@@ -746,7 +746,7 @@ Scope: Detect(home)->{mode,syncState} per db-dir + sync-state.json rules; GET /a
 AC: [ ] fresh→setup [ ] sync-state syncing→sync [ ] db no sync-state→normal [ ] GET /api/setup/mode, go build
 
 ### [INIT-08] Join flow backend: validate S3 + sync-state + bg sync
-`todo` · P1 · L · dep: INIT-07 · parallel: yes — new backend/services/joinsync/, main.go (route reg)
+`done` · P1 · L · dep: INIT-07 · parallel: yes — new backend/services/joinsync/, main.go (route reg)
 Scope: POST /api/setup/join validate bucket, write sync-state.json phased, bg sync goroutine; GET sync-status; POST sync-background; resume on boot if mode=sync.
 AC: [ ] bad creds rejected, valid writes sync-state [ ] sync-status per-phase [ ] interrupted resumes [ ] sync-background flag, go build
 
@@ -1224,7 +1224,7 @@ Scope: KeyStore iface Seal/Unseal/Sign/DeviceIdentity; go-tpm tpm2 vs /dev/tpmrm
 AC: [ ] software fallback round-trips w/o TPM [ ] tpm/status reports type [ ] stable device identity [ ] builds+tests w/o hw TPM
 
 ### [AUTH-10] Device identity & TPM status API
-`todo` · P2 · S · dep: AUTH-09 · parallel: no — backend/cmd/server/main.go
+`done` · P2 · S · dep: AUTH-09 · parallel: no — backend/cmd/server/main.go
 Scope: GET /api/auth/device/identity, /tpm/status, POST /seal, /unseal (admin-only seal/unseal).
 AC: [ ] tpm/status returns backend type [ ] seal→unseal returns original [ ] go build
 
@@ -1234,7 +1234,7 @@ Scope: per-domain X.509 cert+key under ~/.vulos/auth/certificates/<domain>/ (key
 AC: [ ] install+list shows issuer/expiry [ ] CSR valid PEM w/ CN/SAN [ ] key sealed not plaintext [ ] unit test install+status
 
 ### [AUTH-12] Server-side passkey (FIDO2) authenticator + API
-`todo` · P2 · L · dep: AUTH-09 · parallel: yes — new backend/services/passkeys/
+`done` · P2 · L · dep: AUTH-09 · parallel: yes — new backend/services/passkeys/
 Scope: server-resident FIDO2 (go-webauthn): create/store credentials per RP sealed via AUTH-09, assertions, list/delete; passkeys endpoints.
 AC: [ ] register persists sealed, listed [ ] reg+assertion verifies in test [ ] delete removes [ ] go build
 
