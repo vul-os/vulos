@@ -155,7 +155,7 @@ _Design doc: [`roadmap/AI.md`](../roadmap/AI.md)_  ·  _Prefix: `AI-*`_
 - **Key files:** `src/core/AppRegistry.js`, `backend/cmd/server/main.go`, `src/shell/Launchpad.jsx`.
 
 ### [AI-06] AI app editing/iteration workflow ("make the button bigger")
-- **Status:** todo
+- **Status:** done
 - **Priority:** P1
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § AI Apps → Editing
@@ -392,7 +392,7 @@ _Design doc: [`roadmap/STREAMING-OPTIMIZATIONS.md`](../roadmap/STREAMING-OPTIMIZ
 - **Key files:** `Dockerfile`.
 
 ### [STREAM-08] Add cage headless Wayland compositor path for GPU streaming sessions
-- **Status:** todo
+- **Status:** done
 - **Priority:** P2
 - **Effort:** L
 - **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Display Server / Screen Capture
@@ -451,7 +451,7 @@ Scope: Add `gaming` to ValidCategories; set Gaming:true when cmd is wine/lutris/
 AC: [ ] gaming valid category [ ] wine/lutris/steam/gaming-cat sets Gaming:true [ ] non-gaming unaffected, go build
 
 ### [GAME-08] Stream toolbar: FPS/latency/quality/fullscreen/MangoHud
-`todo` · P2 · L · dep: GAME-01, GAME-02 · parallel: no — src/builtin/stream/StreamViewer.jsx, main.go, backend/services/stream/pool.go
+`done` · P2 · L · dep: GAME-01, GAME-02 · parallel: no — src/builtin/stream/StreamViewer.jsx, main.go, backend/services/stream/pool.go
 Scope: Overlay toolbar (gaming): FPS selector→new POST /api/stream/fps (restart capture), RTT from getStats, quality tier, fullscreen+pointer-lock, MangoHud toggle (MANGOHUD=1 env relaunch).
 AC: [ ] toolbar FPS changes framerate [ ] RTT+quality live [ ] fullscreen+MangoHud toggle [ ] go build
 
@@ -640,7 +640,7 @@ Scope: Mode field + POST /api/network/mode (fabric/direct/own/local), never rege
 AC: [ ] UI 4 modes w/ active+status [ ] local-only stops ext listener [ ] direct triggers NET-08 [ ] ULID never regen
 
 ### [NET-10] TURN/coturn Settings UI + test endpoint
-`todo` · P2 · S · dep: none · parallel: yes — src/core/Settings.jsx, backend/services/network/turn.go, main.go (new TURN routes)
+`done` · P2 · S · dep: none · parallel: yes — src/core/Settings.jsx, backend/services/network/turn.go, main.go (new TURN routes)
 Scope: GET/POST /api/turn/config (host, write-only secret) + POST /api/turn/test reachability; Network settings section.
 AC: [ ] host+secret save/reload (secret never returned) [ ] test reports success/fail [ ] creds use configured host
 
@@ -721,7 +721,7 @@ Scope: openssh-server in 3 apt blocks; sshd_config.d/vulos.conf hardened; init g
 AC: [ ] openssh in Dockerfile+2 build.sh blocks [ ] vulos.conf no-password/prohibit-password [ ] init gens keys+sshd idempotent [ ] docker build ok
 
 ### [INIT-03] SSH emergency-key endpoint (return-once)
-`todo` · P0 · M · dep: INIT-02 · parallel: yes — new backend/services/sshkey/, main.go (route reg only)
+`done` · P0 · M · dep: INIT-02 · parallel: yes — new backend/services/sshkey/, main.go (route reg only)
 Scope: POST /api/setup/ssh-key: gen Ed25519, append pub to /root/.ssh/authorized_keys (0700/0600), return privkey once, never persist.
 AC: [ ] returns valid ed25519 pair [ ] pub appended no dupe [ ] privkey never written [ ] go build
 
@@ -761,7 +761,7 @@ Scope: GET /api/cluster/join-code builds JoinCode (1h TTL) as base32 VULA-XXXX-X
 AC: [ ] returns short code+QR [ ] round-trips, rejects expired [ ] 1h expiry, go build
 
 ### [INIT-11] Cloud backup of recovery kit to vulos.org
-`todo` · P3 · M · dep: INIT-06 · parallel: yes — new backend/services/kitbackup/, src/auth/Setup.jsx (one button)
+`done` · P3 · M · dep: INIT-06 · parallel: yes — new backend/services/kitbackup/, src/auth/Setup.jsx (one button)
 Scope: POST /api/setup/kit-backup{email,encrypted_kit} to VULOS_CLOUD_URL (default vulos.org); button in Recovery Kit; graceful if unset.
 AC: [ ] posts encrypted blob [ ] unconfigured = graceful msg [ ] button works, go build+npm build
 
@@ -789,7 +789,7 @@ Scope: Register GET /api/shell/native-mode → {mode:detectNativeMode()} (main.g
 AC: [ ] returns {mode:...} [ ] useNativeMode resolves not catch [ ] go build
 
 ### [BMINIT-04] Native app launch endpoint (skip streaming)
-`todo` · P1 · M · dep: BMINIT-02, BMINIT-03 · parallel: yes — main.go (new route), backend/services/appnet/launcher.go
+`done` · P1 · M · dep: BMINIT-02, BMINIT-03 · parallel: yes — main.go (new route), backend/services/appnet/launcher.go
 Scope: POST /api/shell/native-launch{binary,args,app_id} guarded nativeMode==native; exec w/ WAYLAND_DISPLAY, track PID, return {pid}.
 AC: [ ] spawns w/ WAYLAND_DISPLAY, returns pid [ ] 400 when not native [ ] PID reaped+logged [ ] go build
 
@@ -799,7 +799,7 @@ Scope: Enumerate Wayland toplevels (lswt-style/minimal client); GET /api/shell/w
 AC: [ ] /api/shell/windows under labwc [ ] focus/min/close act on handle [ ] empty outside native [ ] go build
 
 ### [BMINIT-06] Launchpad: native launch vs stream by mode
-`todo` · P1 · M · dep: BMINIT-04 · parallel: no — src/shell/Launchpad.jsx, src/providers/ShellProvider.jsx
+`done` · P1 · M · dep: BMINIT-04 · parallel: no — src/shell/Launchpad.jsx, src/providers/ShellProvider.jsx
 Scope: Branch on useNativeMode(): builtin unchanged; desktop/registry app + canSpawnNativeWindow → /api/shell/native-launch else stream; remote unchanged.
 AC: [ ] native mode → native-launch no stream [ ] remote → stream unchanged [ ] builtin identical [ ] npm build
 
@@ -809,12 +809,12 @@ Scope: assets/plymouth/themes/vulos (vulos.plymouth, vulos.script w/ determinate
 AC: [ ] theme dir in-repo [ ] plymouth installed+default [ ] script has bar+Ctrl+V [ ] build ok
 
 ### [BMINIT-08] Plymouth→labwc handoff + per-phase progress
-`todo` · P2 · M · dep: BMINIT-02, BMINIT-07 · parallel: no — backend/cmd/init/main.go, build.sh (systemd units)
+`done` · P2 · M · dep: BMINIT-02, BMINIT-07 · parallel: no — backend/cmd/init/main.go, build.sh (systemd units)
 Scope: init shells `plymouth update --progress=N` at roadmap milestones (no-op if absent); `plymouth quit --retain-splash` at compositor up; systemd ExecStart hooks.
 AC: [ ] progress at milestones [ ] quit --retain-splash at ready [ ] no-op w/o plymouth [ ] units updated, GOOS=linux build
 
 ### [BMINIT-09] Init networking: DHCP, WiFi fallback, mDNS/Avahi
-`todo` · P2 · M · dep: none · parallel: no — backend/cmd/init/main.go, Dockerfile, build.sh
+`done` · P2 · M · dep: none · parallel: no — backend/cmd/init/main.go, Dockerfile, build.sh
 Scope: Networking phase: wired DHCP, WiFi fallback from saved creds (reuse wifi.SavedNetworks/Connect), resolv.conf; install+enable avahi-daemon; localhost-only must still work.
 AC: [ ] wired DHCP [ ] WiFi fallback [ ] avahi installed, hostname.local resolvable [ ] no-net still serves, GOOS=linux build
 
@@ -1239,7 +1239,7 @@ Scope: server-resident FIDO2 (go-webauthn): create/store credentials per RP seal
 AC: [ ] register persists sealed, listed [ ] reg+assertion verifies in test [ ] delete removes [ ] go build
 
 ### [AUTH-13] WebAuthn bridge data channel (server side)
-`todo` · P3 · M · dep: none · parallel: no — backend/services/stream/stream.go, new webauthn.go
+`done` · P3 · M · dep: none · parallel: no — backend/services/stream/stream.go, new webauthn.go
 Scope: add `case "webauthn"` to OnDataChannel switch routing challenge/assertion to per-session relay + Go hook. Browser-side out of scope.
 AC: [ ] webauthn channel accepted bidirectional [ ] round-trips via relay in test [ ] input channels unaffected, go build
 
@@ -1320,7 +1320,7 @@ Scope: lpac CLI wrapper list/enable/disable/delete/add-by-code, endpoints, eSIM 
 AC: [ ] list/enable/disable/delete (mock lpac) [ ] add-by-activation-code [ ] UI lists+toggles [ ] missing lpac clear error
 
 ### [MOBILE-06] Responsive / device-profile-aware UI shell
-`todo` · P3 · M · dep: none · parallel: no — src/ shell/layout (overlaps DEVPROF-03)
+`done` · P3 · M · dep: none · parallel: no — src/ shell/layout (overlaps DEVPROF-03)
 Scope: useDeviceProfile hook (viewport+override), responsive breakpoints collapse desktop→mobile single-column, notification behavior stub per profile. (coordinate w/ DEVPROF-03 — share hook)
 AC: [ ] useDeviceProfile updates on resize [ ] mobile single-column at narrow [ ] profile overridable
 
@@ -1375,7 +1375,7 @@ Scope: remove `/api/open` from publicPaths (handlers.go ~:80) OR strictly valida
 AC: [ ] /api/open not unauth-reachable / strictly validated + tab cap [ ] X-Forwarded-Proto only trusted from loopback [ ] go build + auth tests
 
 ### [SEC-I] AI-apps path-traversal + admin-gate save (M1)
-`todo` · P2 · M · dep: SEC-H · parallel: no — backend/cmd/server/main.go (ai-apps handlers)
+`done` · P2 · M · dep: SEC-H · parallel: no — backend/cmd/server/main.go (ai-apps handlers)
 Scope: main.go ~:1370/1414-1437 — validate `r.PathValue("id")` charset + realpath-contain under aiAppsDir before read/RemoveAll; admin-gate `POST /api/ai-apps/save` (mirror /api/exec gate); never execute saved server.py without the SEC-B sandbox/isolation path. (Serialized after SEC-H — same file.)
 AC: [ ] encoded/`..` id cannot escape aiAppsDir [ ] save admin-gated [ ] saved python only runs via gated sandbox [ ] go build
 
