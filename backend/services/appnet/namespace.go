@@ -295,6 +295,15 @@ func (m *Manager) GetForProfile(appID, userID, profile string) (*Namespace, bool
 	return nil, false
 }
 
+// AddNamespace inserts a pre-built Namespace directly into the manager's registry.
+// Intended for testing and integration scenarios where system-level namespace
+// creation is not possible or desired.
+func (m *Manager) AddNamespace(key string, ns *Namespace) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.namespaces[key] = ns
+}
+
 func run(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
