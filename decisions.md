@@ -370,3 +370,8 @@ AUTH-13 merged @ 20ee7ef (H1 keep-both with injected `}` to close waylandDisplay
 Wave-9 final tally (this 4h run): BMINIT-06, BMINIT-09, INIT-11, APPSTORE-04 (spliced), NET-10, GAME-08, SEC-I, AI-06, INIT-03, AUTH-13 = **10 merged**. INIT-08 permanent-deferred this run (D36 dep-mismatch, retry after adapt-to-current-storageprov/bootmode-API).
 Cron 44dbf100 still firing every 5 min; ~83 min to wind-down deadline 18:55.
 Top-off this tick: HOLD — mem trending in 100-300 MB band after merges/builds; want >500 MB sustained before adding workers.
+
+## D40 (17:34) — Cron tick: hold, mem 399<500
+Cron 44dbf100 fired. Active workers: 0. Branches to merge: 0. Mem 399 MB (rule threshold 500). 15m load 11.29 (fine). 1m load 3.61 (system idle — mem is OS-cache-bound, not workload-bound). Per the brief's hold rule, NOT dispatching this tick.
+Planned next wave (5 file-disjoint, when mem clears or wind-down arrives): APPSTORE-05 registry.json; INIT-05 Setup.jsx wizard; INIT-01 identity pkg+routes_identity.go; AI-07 AI versioning routes_aiapps_versions.go; CLUSTER-10 conflict notif routes_conflicts.go+Toasts.jsx. All use the routes_<area>.go pattern → main.go contention = 1 line/worker in different sections.
+Deadline 18:55 = 82 min. If mem stays <500 by 18:30, do wind-down without further dispatch (vs risk OOM near close).
