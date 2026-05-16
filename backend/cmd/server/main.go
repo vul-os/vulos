@@ -541,6 +541,7 @@ func main() {
 		notifySvc.Clear()
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
+	registerNotifyExtRoutes(mux, notifySvc, home) // NOTIF-05+06: DND + inline actions
 
 	// xdg-open handler — opens URL in the OS browser via CDP and signals frontend
 	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {

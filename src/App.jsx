@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useDrivingMode } from './core/useDrivingMode' // DEVPROF-06
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ThemeProvider } from './core/ThemeProvider'
 import { WallpaperProvider } from './core/useWallpaper.jsx'
@@ -82,6 +83,8 @@ function Shell() {
   const { layout, popout } = useShell()
   const { profile } = useAuth()
   const { locked, screensaver, unlock, dismissScreensaver } = useEnergyState()
+  const { isDriving } = useDrivingMode() // DEVPROF-06
+  useEffect(() => { document.body.classList.toggle('driving-mode', isDriving) }, [isDriving])
   if (locked) return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
   if (screensaver) return <Screensaver onDismiss={dismissScreensaver} />
   if (popout) return <Popout />
