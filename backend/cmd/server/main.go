@@ -1161,15 +1161,32 @@ func main() {
 	os.MkdirAll(aiAppsDir, 0755)
 	mux.HandleFunc("POST /api/ai-apps/save", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Title  string `json:"title"`
-			HTML   string `json:"html"`
-			Python string `json:"python"`
+			Title    string `json:"title"`
+			HTML     string `json:"html"`
+			Python   string `json:"python"`
+			Icon     string `json:"icon"`     // AI5: optional, defaults to 🤖
+			Category string `json:"category"` // AI5: optional, defaults to "ai"
 		}
 		json.NewDecoder(r.Body).Decode(&req)
 		id := fmt.Sprintf("ai-%d", time.Now().UnixMilli())
 		appDir := filepath.Join(aiAppsDir, id)
 		os.MkdirAll(appDir, 0755)
-		meta := map[string]string{"title": req.Title, "id": id, "created": time.Now().Format(time.RFC3339)}
+		// AI5: apply defaults for icon and category
+		ai5Icon := req.Icon
+		if ai5Icon == "" {
+			ai5Icon = "🤖"
+		}
+		ai5Category := req.Category
+		if ai5Category == "" {
+			ai5Category = "ai"
+		}
+		meta := map[string]string{
+			"title":    req.Title,
+			"id":       id,
+			"created":  time.Now().Format(time.RFC3339),
+			"icon":     ai5Icon,     // AI5
+			"category": ai5Category, // AI5
+		}
 		metaData, _ := json.MarshalIndent(meta, "", "  ")
 		os.WriteFile(filepath.Join(appDir, "meta.json"), metaData, 0644)
 		if req.HTML != "" {
@@ -1195,6 +1212,13 @@ func main() {
 				}
 				if _, err := os.Stat(filepath.Join(aiAppsDir, e.Name(), "index.html")); err == nil {
 					meta["has_html"] = "true"
+				}
+				// AI5: ensure icon + category have defaults when reading legacy meta.json
+				if meta["icon"] == "" {
+					meta["icon"] = "🤖"
+				}
+				if meta["category"] == "" {
+					meta["category"] = "ai"
 				}
 				apps = append(apps, meta)
 			}
