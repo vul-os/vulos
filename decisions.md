@@ -429,3 +429,7 @@ D56: tick 18:28, 3 wave-15 workers in flight, mem 165<500, hold
 
 ## D57 (18:31) — NET-09 permanent-defer this run (structural network.go conflict)
 NET-09 worker's stale base had different Service struct than current main (NET-06's instance-id/hostname/domain richness). Multiple resolve attempts hit struct-field syntax errors; surgical splice non-trivial without full hand-rewrite. Per orchestration discipline (D21, D23, D36), defer NET-09. Backend Mode methods exist on `task/NET-09`; needs follow-up that respects NET-06's Service shape. Settings.jsx Connection-Mode UI lost too. Non-blocking — fabric mode is default and works.
+
+## D58 (18:32) — Tick hold: AUTH-12 in flight; tasks largely drained
+Mem 1882 cleared. AUTH-12 still working. Remaining actionable post-AUTH-12: APPSTORE-06 (gaming wiring — large sprawl across registry/stream/wine, parallel:no, defer-or-skip). Roadmap is ~90% done; rest is deferred/locked/blocked. No new dispatch this tick — wait AUTH-12, then likely wind-down rather than chase the sprawling APPSTORE-06.
+Brief remaining: 162 min. Cron expires in 23 min.
