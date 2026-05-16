@@ -75,6 +75,7 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12
 .swatch.active{border-color:#f8fafc}
 .file-input{display:none}
 .empty{color:#6f7e91;font-size:13px;padding:8px 4px}
+.save-status{font-size:11px;color:#708096;margin-left:8px;min-width:60px}
 @media (max-width:850px){
   body{overflow:auto}
   .app{height:auto;min-height:100vh;grid-template-columns:1fr}
@@ -93,9 +94,9 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12
     <div class="brand"><div class="mark">31</div><h1>Calendar</h1></div>
     <div class="side-section">
       <div class="mini-head">
-        <button class="icon" id="miniPrev" title="Previous month">‹</button>
+        <button class="icon" id="miniPrev" title="Previous month">&#x2039;</button>
         <div class="mini-title" id="miniTitle"></div>
-        <button class="icon" id="miniNext" title="Next month">›</button>
+        <button class="icon" id="miniNext" title="Next month">&#x203a;</button>
       </div>
       <div class="mini-grid" id="miniCalendar"></div>
     </div>
@@ -103,9 +104,9 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12
   </aside>
   <main class="main">
     <div class="toolbar">
-      <button class="icon" id="prevBtn" title="Previous">‹</button>
+      <button class="icon" id="prevBtn" title="Previous">&#x2039;</button>
       <button id="todayBtn">Today</button>
-      <button class="icon" id="nextBtn" title="Next">›</button>
+      <button class="icon" id="nextBtn" title="Next">&#x203a;</button>
       <h2 id="rangeTitle"></h2>
       <div class="tabs">
         <button id="monthTab">Month</button>
@@ -113,6 +114,7 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12
         <button id="dayTab">Day</button>
       </div>
       <div class="spacer"></div>
+      <span class="save-status" id="saveStatus"></span>
       <button id="notifyBtn" title="Enable browser notifications">Notify</button>
       <button id="importBtn">Import</button>
       <button id="exportBtn">Export</button>
@@ -127,7 +129,7 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12
   <form class="dialog" id="eventForm">
     <div class="dialog-head">
       <h2 id="modalTitle">New event</h2>
-      <button class="icon" type="button" id="closeModal" title="Close">×</button>
+      <button class="icon" type="button" id="closeModal" title="Close">&#x00d7;</button>
     </div>
     <div class="dialog-body">
       <label>Title<input id="titleInput" required maxlength="120" placeholder="Event title"></label>
@@ -173,14 +175,20 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12
 </div>
 
 <script>
-const STORE_KEY='vulos.calendar.events.v1';
+// ---------------------------------------------------------------------------
+// Persistence — server-side via /api/events (proxied to appdata API)
+// Falls back to empty array on first run (no localStorage dependency).
+// ---------------------------------------------------------------------------
 const COLORS=['#0ea5e9','#22c55e','#f97316','#8b5cf6','#ef4444','#eab308','#14b8a6','#ec4899'];
 const DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-let events=loadEvents(), view='month', cursor=startOfDay(new Date()), selectedDate=startOfDay(new Date()), editingId=null, selectedColor=COLORS[0], notified={};
+
+let events=[], view='month', cursor=startOfDay(new Date()), selectedDate=startOfDay(new Date()), editingId=null, selectedColor=COLORS[0], notified={};
+let _saveTimer=null;
 
 const $=id=>document.getElementById(id);
-const calendar=$('calendar'), rangeTitle=$('rangeTitle'), modal=$('eventModal');
+const calendar=$('calendar'), rangeTitle=$('rangeTitle'), modal=$('eventModal'), saveStatus=$('saveStatus');
 
+// -- date helpers --
 function pad(n){return String(n).padStart(2,'0')}
 function ymd(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
 function localInput(d){return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`}
@@ -193,17 +201,60 @@ function sameDay(a,b){return ymd(a)===ymd(b)}
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function timeLabel(d){return d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}
 function monthLabel(d){return d.toLocaleDateString([], {month:'long', year:'numeric'})}
-
-function loadEvents(){
-  try{return JSON.parse(localStorage.getItem(STORE_KEY)||'[]')}
-  catch{return []}
-}
-function saveEvents(){
-  localStorage.setItem(STORE_KEY,JSON.stringify(events));
-  render();
-}
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 
+// -- server persistence --
+async function loadEventsFromServer(){
+  try{
+    const resp=await fetch('/api/events');
+    if(resp.ok){
+      const data=await resp.json();
+      return Array.isArray(data)?data:[];
+    }
+    // 404 = no file yet, start fresh
+    if(resp.status===404)return [];
+    console.warn('[calendar] load failed', resp.status);
+    return [];
+  }catch(err){
+    console.warn('[calendar] load error', err);
+    return [];
+  }
+}
+
+function setSaveStatus(msg,color){
+  saveStatus.textContent=msg;
+  saveStatus.style.color=color||'#708096';
+}
+
+async function persistEvents(){
+  setSaveStatus('Saving…','#60a5fa');
+  try{
+    const resp=await fetch('/api/events',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(events)
+    });
+    if(resp.ok){
+      setSaveStatus('Saved','#4ade80');
+      setTimeout(()=>setSaveStatus(''),2000);
+    } else {
+      setSaveStatus('Save failed','#ef4444');
+      console.error('[calendar] save failed', resp.status);
+    }
+  }catch(err){
+    setSaveStatus('Save error','#ef4444');
+    console.error('[calendar] save error', err);
+  }
+}
+
+// Debounced save — coalesces rapid edits into a single PUT.
+function saveEvents(){
+  if(_saveTimer)clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(()=>{_saveTimer=null;persistEvents();},300);
+  render();
+}
+
+// -- recurrence --
 function occurrencesBetween(from,to){
   const out=[];
   for(const ev of events){
@@ -236,6 +287,7 @@ function eventsForDay(day){
   return occurrencesBetween(from,new Date(to-1));
 }
 
+// -- rendering --
 function render(){
   renderMini();
   renderAgenda();
@@ -342,6 +394,7 @@ function bindHourCells(){
   calendar.querySelectorAll('[data-id]').forEach(el=>el.onclick=e=>{e.stopPropagation();openEvent(el.dataset.id)});
 }
 
+// -- modal --
 function openNew(date){
   editingId=null;
   selectedColor=COLORS[0];
@@ -444,6 +497,7 @@ setInterval(()=>{
   }
 },30000);
 
+// -- ICS export --
 function exportIcs(){
   const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Vula OS//Calendar//EN'];
   for(const ev of events){
@@ -464,6 +518,8 @@ function exportIcs(){
 function icsDate(d){return d.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z'}
 function icsText(s){return String(s||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;')}
 $('exportBtn').onclick=exportIcs;
+
+// -- ICS import --
 $('importBtn').onclick=()=>$('icsFile').click();
 $('icsFile').onchange=async e=>{
   const file=e.target.files[0]; if(!file)return;
@@ -502,8 +558,14 @@ function parseIcsDate(v){
 }
 function unIcs(s){return s.replace(/\\n/g,'\n').replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\\\/g,'\\')}
 
+// -- boot: load events from server then render --
 renderColors(selectedColor);
-render();
+setSaveStatus('Loading…','#60a5fa');
+loadEventsFromServer().then(loaded=>{
+  events=loaded;
+  setSaveStatus('');
+  render();
+});
 </script>
 </body>
 </html>

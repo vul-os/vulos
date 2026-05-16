@@ -1,18 +1,19 @@
 {
   "id": "calendar",
   "name": "Calendar",
-  "icon": "□",
+  "icon": "📅",
   "icon_path": "icon.svg",
-  "description": "Month, week, and day planning with local events",
-  "version": "0.1.0",
+  "description": "Month, week, and day planning with server-side persistent events",
+  "version": "0.2.0",
   "command": "python3 server.py",
   "port": 80,
+  "type": "web",
   "category": "productivity",
   "keywords": ["calendar", "schedule", "events", "reminders", "ics"],
   "deps": ["python3"],
   "auto_start": false,
   "singleton": true,
-  "permissions": ["notifications"],
+  "permissions": [],
   "author": "Vula OS",
   "license": "MIT"
 }
