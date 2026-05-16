@@ -228,4 +228,65 @@ html, body, #root {
 [data-device-profile="tv"] [role="button"]:focus-visible {
   outline-width: 5px;
   outline-offset: 5px;
+.btn-primary:hover { background: #2563eb; }
+
+/* ═══════════════════════════════════════
+   DEVPROF-06: Driving mode
+   Applied to <body> by useDrivingMode via App.jsx
+   Large-touch-target + simplified visual hierarchy
+   ═══════════════════════════════════════ */
+.driving-mode {
+  /* Minimum 48 × 48 px touch targets (WCAG 2.5.8) */
+  --dm-touch-min: 3rem;
+  /* Slightly larger font baseline */
+  --dm-font-scale: 1.15;
+}
+
+/* Scale up all interactive controls */
+.driving-mode button,
+.driving-mode [role="button"],
+.driving-mode input[type="checkbox"],
+.driving-mode input[type="radio"],
+.driving-mode select {
+  min-width: var(--dm-touch-min);
+  min-height: var(--dm-touch-min);
+  font-size: calc(0.875rem * var(--dm-font-scale));
+}
+
+/* Larger tap area for all .btn variants */
+.driving-mode .btn,
+.driving-mode .btn-ghost,
+.driving-mode .btn-primary {
+  padding: 0.75rem 1.25rem;
+  font-size: calc(0.875rem * var(--dm-font-scale));
+}
+
+/* Suppress non-critical UI chrome */
+.driving-mode .notification-badge,
+.driving-mode [data-dm-hide] {
+  display: none !important;
+}
+
+/* High-contrast focus ring for glare visibility */
+.driving-mode :focus-visible {
+  outline: 3px solid #facc15; /* yellow-400 */
+  outline-offset: 2px;
+}
+
+/* Indicator strip at top of viewport */
+.driving-mode::before {
+  content: "Driving Mode";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #f59e0b; /* amber-500 */
+  color: #000;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  padding: 0.125rem 0;
+  pointer-events: none;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useDrivingMode } from './core/useDrivingMode' // DEVPROF-06
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ThemeProvider } from './core/ThemeProvider'
 import { I18nProvider } from './core/i18n'
@@ -93,6 +94,8 @@ function Shell() {
   const { profile: deviceProfile } = useDeviceProfile()
   const useDesktop = deviceProfile === 'desktop' && layout === 'desktop'
 
+  const { isDriving } = useDrivingMode() // DEVPROF-06
+  useEffect(() => { document.body.classList.toggle('driving-mode', isDriving) }, [isDriving])
   if (locked) return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
   if (screensaver) return <Screensaver onDismiss={dismissScreensaver} />
   if (popout) return <Popout />
