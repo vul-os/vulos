@@ -63,7 +63,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `src/core/SystemPulse.jsx`, new `src/core/PublicAppsWarning.jsx`.
 
 ### [AI-04] Public apps manager popover + first-time confirmation dialog
-- **Status:** todo
+- **Status:** done
 - **Priority:** P1
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § Public Apps → Topbar warning / Settings UI
