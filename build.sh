@@ -163,7 +163,8 @@ apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
-    flatpak rsync systemd systemd-sysv
+    flatpak rsync systemd systemd-sysv \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant
 
 # Intel VA-API (amd64 only)
 dpkg --print-architecture | grep -q amd64 && \
@@ -389,7 +390,8 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
-    flatpak rsync systemd systemd-sysv
+    flatpak rsync systemd systemd-sysv \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
 

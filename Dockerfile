@@ -51,6 +51,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
     flatpak \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant \
     && ( dpkg --print-architecture | grep -q amd64 && apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true ) \
     && rm -rf /var/lib/apt/lists/* \
     && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
