@@ -1954,6 +1954,8 @@ func main() {
 	registerConflictRoutes(mux, dataDir, notifySvc)
 	// Join codes — cross-device cluster joins via short-codes / QR (INIT-10)
 	registerJoinCodeRoutes(mux, home, authStore)
+	// Cluster join from a NEW device — validate S3+passphrase, begin sync (INIT-08)
+	registerJoinRoutes(mux, home)
 
 	// Serve frontend static files (production build)
 	webrootDir := ""
