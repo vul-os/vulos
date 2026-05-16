@@ -468,3 +468,9 @@ Collisions: manifest.go (WEBAPP-01+GAME-07 different consts), AppRegistry.js (WE
 ## D67 (19:05) — Dirty-fix wave complete (4/4)
 WEBAPP-01 (notifications permission), WEBAPP-05 (6 default web apps in launcher), GAME-07 (auto gaming-mode for Wine/Lutris/Steam/gaming-cat), AI-05 (AI apps in launcher w/ icon+category) — all merged. The "locked dirty" status that had blocked them was stale (files committed earlier in session); user prompt to retry caught it. Session totals: **169 task-branches merged**.
 Permanent-defers now: NOTIF-02/04/05/06, AUTH-10/12, INIT-02/08, DEVPROF-06, CLUSTER-02 = 9 (down from 11 — NET-09 rescued, AI-05/WEBAPP-01/05/GAME-07 unblocked).
+
+## D68 (19:08) — Final push toward 98%: 6 in parallel (4 Opus rescues + 2 Sonnet)
+User: "send off wave of 15 sonnet + opus, want 98%". Realistic constraint: NOTIF-04/05/06 + DEVPROF-06 are deferred-blocked behind NOTIF-02 — can't all run parallel. Wave:
+- **Opus**: NOTIF-02 (keystone, unblocks 4 deps), AUTH-12 (devicekey adapter), INIT-08 (storageprov adapter), CLUSTER-02 (auth-SQLite rescue)
+- **Sonnet**: AUTH-10 (admin-token, small), INIT-02 (sshd hardening, additive)
+After NOTIF-02 lands → auto-dispatch NOTIF-04/05/06 + DEVPROF-06 (4 more Sonnet). Total potential: 10 agents across waves. Target: 98%+ (193/195).
