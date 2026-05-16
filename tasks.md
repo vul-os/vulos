@@ -815,7 +815,7 @@ Scope: In-terminal settings: color theme (Default/Solarized/Dracula/Light) + fon
 AC: [ ] theme+font controls apply immediately [ ] persist [ ] default byte-identical
 
 ### [MISC-03] Harden /api/exec (restrict + audit)
-`todo` · P0 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
+`done` · P0 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
 Scope: Require admin role for /api/exec, structured audit log (user/cmd/ts/exit), env kill-switch; keep setup flows working (admin-gated or server-side).
 AC: [ ] non-admin 403 [ ] every call audit-logged [ ] env flag disables [ ] setup completes, go build
 
