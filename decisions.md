@@ -493,3 +493,6 @@ Root cause of D70 (NOTIF-02 ×3 fails) = worker stale-base redefining notify Sen
 - Sonnet NOTIF-04: pure frontend NotificationCenter.jsx + SystemPulse mount.
 - Opus CLUSTER-02: independent auth.Store→SQLite; explicit instruction to NOT keep-both with SEC-J (read current auth.go, integrate persistUser AFTER the revoke loop without reordering NewStore init — the D71 failure mode).
 Contract guarantees agents compile against identical truth regardless of merge order. @ commit after freeze.
+
+## D74 (20:02) — NOTIF-02 v3 MERGED — D70 resolved via interface-first
+NOTIF-02 v3 merged CLEAN @ 7c1824e (zero conflicts). Root cause CONFIRMED by the worker: agent worktree HEAD was stale (590a586, no NOTIF_API.md / old notify.go lineage) — exactly D70. Fix that worked: (1) committed frozen API contract to main, (2) instructed worker to branch from `main` not stale worktree HEAD, (3) strict additive ownership. Result: 3-times-failed keystone landed first try. NOTIF-04 also merged (e168834). This interface-first + branch-from-main pattern is the general fix for the whole stale-base defer class — applies to CLUSTER-02 v3 (in flight, same instruction) and any future rescue. NOTIF-05/06+DEVPROF-06 in flight against same contract. Build GREEN, 193 merges.
