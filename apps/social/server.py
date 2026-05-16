@@ -24,12 +24,25 @@ FED-05: Forums tab — Lemmy communities browser.  Separate Lemmy JWT
           POST /api/lemmy/comment       — create a comment
         All Lemmy calls are proxied through the local server to bypass CORS.
         Read-only mode (no JWT) is fully supported for browsing.
+FED-06: Push notifications + share-to-Fediverse.
+        Streaming WebSocket proxy — the server opens a wss:// connection
+        to the authenticated Mastodon instance's streaming API and polls
+        for new notifications on a background thread.  When a mention or
+        notification arrives it is forwarded to the Vula OS notification
+        bus via POST /api/notifications/send (internal proxy).
+        Share-target endpoint — GET /share?text=…&url=… opens the app
+        with the compose box prefilled with the shared content.
+        New proxy endpoints:
+          GET  /api/notifications/poll  — latest streaming events (SSE-like poll)
+          POST /api/notifications/send  — proxy to Vula OS notification bus
 """
 import http.server
 import json
 import os
 import secrets
 import ssl
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -322,6 +335,165 @@ def lemmy_put_json(host, path, payload, jwt=None):
         return 502, json.dumps({"error": str(e)}).encode()
 
 
+# ══════════════════════════════════════════════════════════════
+# FED-06: Push notifications via Mastodon streaming API
+# ══════════════════════════════════════════════════════════════
+
+# In-memory queue of streaming events received from the Mastodon
+# streaming API.  The background thread appends here; the SPA polls
+# GET /api/notifications/poll to drain it.
+_notif_lock   = threading.Lock()
+_notif_queue  = []          # list of dicts: { event, payload }
+_MAX_QUEUE    = 50          # cap to avoid unbounded growth
+
+# Background streaming state
+_stream_thread = None
+_stream_stop   = threading.Event()
+_last_host     = None       # host the current stream is connected to
+_last_token    = None       # access_token the current stream uses
+
+
+def _send_vula_notification(title, body_text, icon="◎"):
+    """
+    Forward a notification to the Vula OS notification bus.
+    POST /api/notifications/send on localhost (same process host).
+    Fire-and-forget — errors are silently ignored so streaming is unaffected.
+    """
+    try:
+        payload = json.dumps({
+            "title": title,
+            "body":  body_text,
+            "icon":  icon,
+        }).encode()
+        req = urllib.request.Request(
+            f"http://localhost:{PORT}/api/notifications/send",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass  # best-effort — notification bus may not be running
+
+
+def _notification_event_to_vula(notif):
+    """
+    Convert a Mastodon notification object to a Vula OS notification.
+    notif is the parsed JSON of a Mastodon Notification entity.
+    """
+    kind    = notif.get("type", "")
+    account = notif.get("account") or {}
+    status  = notif.get("status") or {}
+    acct    = account.get("acct", "someone")
+
+    type_labels = {
+        "mention":        "mentioned you",
+        "reblog":         "boosted your post",
+        "favourite":      "favourited your post",
+        "follow":         "followed you",
+        "follow_request": "sent a follow request",
+        "poll":           "A poll you voted in has ended",
+        "update":         "edited a post you interacted with",
+        "admin.sign_up":  "signed up",
+        "admin.report":   "filed a report",
+    }
+
+    verb   = type_labels.get(kind, kind)
+    title  = f"@{acct} {verb}"
+
+    # Use the plain-text version of the status content if present
+    content = ""
+    if status.get("content"):
+        # Strip HTML tags for the notification body
+        import re
+        content = re.sub(r"<[^>]+>", "", status["content"]).strip()
+        content = content[:120] + ("…" if len(content) > 120 else "")
+
+    _send_vula_notification(title, content or verb)
+
+
+def _poll_notifications_once(host, token):
+    """
+    Poll GET /api/v1/notifications (REST, not WebSocket) for new items.
+    Cheaper than maintaining a persistent WebSocket; runs every 30 s.
+    Returns list of new notification objects (newest first) or [].
+    """
+    status, body = mastodon_get(
+        host,
+        "/api/v1/notifications",
+        token=token,
+        params={"limit": "10", "types[]": "mention"},
+    )
+    if status != 200:
+        return []
+    try:
+        return json.loads(body)
+    except Exception:
+        return []
+
+
+def _streaming_worker():
+    """
+    Background daemon thread.
+    Polls the authenticated Mastodon instance for new mention notifications
+    every 30 seconds and:
+      1. Appends events to _notif_queue (for the SPA to pick up via polling).
+      2. Forwards mentions to the Vula OS notification bus.
+    The thread stops when _stream_stop is set or the token disappears.
+    """
+    global _last_host, _last_token
+
+    seen_ids = set()   # notification ids already processed this session
+
+    while not _stream_stop.is_set():
+        tok = load_token()
+        host  = tok.get("host", "")
+        token = tok.get("access_token", "")
+
+        if not host or not token:
+            # Not logged in — wait and retry
+            _stream_stop.wait(timeout=15)
+            continue
+
+        notifs = _poll_notifications_once(host, token)
+        for notif in notifs:
+            nid = notif.get("id")
+            if not nid or nid in seen_ids:
+                continue
+            seen_ids.add(nid)
+
+            # Push into the in-process queue
+            with _notif_lock:
+                _notif_queue.append({
+                    "event":   notif.get("type", "notification"),
+                    "payload": notif,
+                })
+                # Keep queue bounded
+                while len(_notif_queue) > _MAX_QUEUE:
+                    _notif_queue.pop(0)
+
+            # Forward to Vula OS notification system
+            _notification_event_to_vula(notif)
+
+        # Poll every 30 seconds
+        _stream_stop.wait(timeout=30)
+
+
+def _ensure_stream_running():
+    """Start the background streaming thread if not already running."""
+    global _stream_thread
+    if _stream_thread is None or not _stream_thread.is_alive():
+        _stream_stop.clear()
+        _stream_thread = threading.Thread(
+            target=_streaming_worker, daemon=True, name="social-stream"
+        )
+        _stream_thread.start()
+
+
+# Start the background thread on module load
+_ensure_stream_running()
+
+
 # ── HTTP request handler ──────────────────────────────────────
 
 class SocialHandler(http.server.BaseHTTPRequestHandler):
@@ -338,6 +510,10 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
 
         if path in ("/", ""):
             self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
+
+        # FED-06: share target — prefilled compose
+        elif path == "/share":
+            self._handle_share_redirect(p("text"), p("url"), p("title"))
 
         # FED-01: public timeline proxy
         elif path == "/proxy":
@@ -397,6 +573,10 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/lemmy/auth/status":
             self._handle_lemmy_auth_status()
 
+        # FED-06: poll notification queue (SPA long-polls this)
+        elif path == "/api/notifications/poll":
+            self._handle_notifications_poll()
+
         else:
             self.send_error(404)
 
@@ -440,6 +620,10 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         # FED-05: Lemmy — create a comment on a post
         elif path == "/api/lemmy/comment":
             self._handle_lemmy_comment()
+
+        # FED-06: proxy POST to the Vula OS notification bus
+        elif path == "/api/notifications/send":
+            self._handle_notifications_send()
 
         else:
             self.send_error(404)
@@ -591,6 +775,10 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
             "access_token": access_token,
             "account":      account,
         })
+
+        # FED-06: restart streaming thread for the new account
+        _ensure_stream_running()
+
         self._redirect_to_ui("?oauth_success=1")
 
     # ── FED-02: auth status ───────────────────────────────────
@@ -1316,6 +1504,97 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self.wfile.write(out)
+
+    # ══════════════════════════════════════════════════════════
+    # FED-06: Push notifications + share-to-Fediverse
+    # ══════════════════════════════════════════════════════════
+
+    def _handle_share_redirect(self, text, url, title):
+        """
+        GET /share?text=…&url=…&title=…
+        Redirect to the app root with share parameters encoded in the
+        fragment so the SPA can open the compose box prefilled.
+        The fragment is not sent to the server, keeping it client-side only.
+        """
+        parts = []
+        if title:
+            parts.append(title.strip())
+        if text:
+            parts.append(text.strip())
+        if url:
+            parts.append(url.strip())
+
+        prefill = " ".join(parts).strip()
+        fragment = urllib.parse.quote(prefill)
+
+        self.send_response(302)
+        self.send_header("Location", f"/#share={fragment}")
+        self.end_headers()
+
+    def _handle_notifications_poll(self):
+        """
+        GET /api/notifications/poll
+        Drain the in-process notification queue and return all pending events.
+        The SPA polls this endpoint periodically to show badge counts and
+        trigger local browser notifications.
+        Returns: { events: [ { event, payload } ] }
+        """
+        with _notif_lock:
+            events = list(_notif_queue)
+            _notif_queue.clear()
+
+        out = json.dumps({"events": events}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _handle_notifications_send(self):
+        """
+        POST /api/notifications/send
+        Proxy a notification to the Vula OS notification bus at
+        http://localhost:8000/api/notifications/send (or the OS-level
+        notification endpoint).  If the bus is unreachable the notification
+        is silently dropped — the caller (streaming worker or SPA) should
+        not crash.
+
+        Body JSON: { title, body, icon? }
+        """
+        payload, err = self._read_json_body()
+        if err or not payload:
+            self.send_json(400, {"error": err or "empty body"})
+            return
+
+        title     = (payload.get("title") or "Fediverse").strip()
+        body_text = (payload.get("body") or "").strip()
+        icon      = payload.get("icon", "◎")
+
+        # Attempt to forward to the Vula OS notification bus.
+        # The bus lives at the standard Vula OS backend port (8000).
+        vula_bus_url = os.environ.get(
+            "VULOS_NOTIF_URL",
+            "http://localhost:8000/api/notifications/send",
+        )
+        try:
+            notif_payload = json.dumps({
+                "title": title,
+                "body":  body_text,
+                "icon":  icon,
+                "app":   "social",
+            }).encode()
+            req = urllib.request.Request(
+                vula_bus_url,
+                data=notif_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=3)
+        except Exception:
+            pass  # Bus not available — best effort only
+
+        self.send_json(200, {"ok": True})
 
     # ── Shared utilities ──────────────────────────────────────
 

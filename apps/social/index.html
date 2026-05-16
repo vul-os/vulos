@@ -620,6 +620,45 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 .lemmy-login-cancel{background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
   padding:7px 14px;color:#aaa;font-size:13px;cursor:pointer}
 .lemmy-login-cancel:hover{background:#1e1e30;color:#ccc}
+
+/* ══════════════════════════════════════════════════════════
+   FED-06: Push notifications badge + share target
+   ══════════════════════════════════════════════════════════ */
+
+/* Notification bell button in topbar */
+.notif-btn{
+  position:relative;
+  background:none;border:none;border-radius:8px;
+  padding:6px 10px;color:#666;font-size:16px;cursor:pointer;
+  transition:color .15s,background .15s;flex-shrink:0;
+}
+.notif-btn:hover{background:#1a1a2e;color:#aaa}
+.notif-btn.has-notif{color:#6366f1}
+
+/* Red badge count on the bell */
+.notif-badge{
+  position:absolute;top:2px;right:2px;
+  background:#ef4444;color:#fff;font-size:9px;font-weight:700;
+  border-radius:8px;padding:1px 4px;line-height:1.4;
+  pointer-events:none;min-width:14px;text-align:center;
+}
+
+/* Notification toast that slides in from the top-right */
+.notif-toast{
+  position:fixed;top:14px;right:14px;z-index:500;
+  background:#0e0e1a;border:1px solid #6366f1;border-radius:12px;
+  padding:12px 16px;max-width:340px;
+  box-shadow:0 4px 24px rgba(0,0,0,.5);
+  animation:toast-in .25s ease;
+}
+@keyframes toast-in{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+.notif-toast-title{font-size:13px;font-weight:600;color:#e2e2f0;margin-bottom:3px}
+.notif-toast-body{font-size:12px;color:#999;line-height:1.4;word-break:break-word}
+.notif-toast-close{
+  position:absolute;top:8px;right:10px;
+  background:none;border:none;color:#555;font-size:16px;cursor:pointer;line-height:1;
+}
+.notif-toast-close:hover{color:#aaa}
 </style>
 </head>
 <body>
@@ -638,6 +677,12 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
       <button class="filter-btn active" id="filter-all"   onclick="setFilter('all')">All</button>
       <button class="filter-btn"        id="filter-local" onclick="setFilter('local')">Local</button>
     </div>
+    <!-- FED-06: notification bell (right side, before login) -->
+    <button class="notif-btn" id="notif-btn" onclick="openNotifPanel()"
+            title="Notifications" style="display:none">
+      &#x1F514;
+      <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+    </button>
     <!-- Login / account button (right side) -->
     <div id="auth-btn-area" style="margin-left:auto"></div>
   </div>
@@ -895,6 +940,16 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
     <div class="lightbox-dots" id="lb-dots"></div>
     <div class="lightbox-counter" id="lb-counter"></div>
     <div class="lightbox-caption" id="lb-caption"></div>
+  </div>
+
+  <!-- FED-06: share target banner (shown when opened via /share?…) -->
+  <div id="share-banner" style="display:none;
+       background:#131320;border-bottom:1px solid #6366f1;
+       padding:6px 14px;font-size:12px;color:#a0a0c0;
+       display:none;align-items:center;gap:8px;flex-shrink:0">
+    <span>&#x1F4E4; Sharing — compose box is prefilled.</span>
+    <button style="background:none;border:none;color:#555;cursor:pointer;margin-left:auto;font-size:14px"
+            onclick="document.getElementById('share-banner').style.display='none'">&#x2715;</button>
   </div>
 
   <!-- Thread overlay (FED-03) -->
@@ -3013,6 +3068,219 @@ document.getElementById('forum-compose-text').addEventListener('keydown', e => {
   await refreshLemmyAuthState();
   refreshLemmyAuthUI();
 })();
+
+// ═══════════════════════════════════════════════════════════
+// FED-06: Push notifications + share-to-Fediverse
+// ═══════════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────────
+let _pendingNotifs  = [];   // buffered notification events from poll
+let _notifPollTimer = null; // setInterval handle
+const NOTIF_POLL_MS = 30000; // poll every 30 s (matches server-side polling cadence)
+
+// ── Share target: handle #share=<encoded text> on page load ─
+
+(function handleShareTarget() {
+  // The server redirects /share?text=…&url=… to /#share=<encoded>
+  const hash = location.hash;
+  if (!hash.startsWith('#share=')) return;
+
+  const prefill = decodeURIComponent(hash.slice('#share='.length));
+  if (!prefill) return;
+
+  // Clear the fragment so refreshing doesn't re-trigger
+  history.replaceState(null, '', '/');
+
+  // Wait for the DOM + auth state to settle then open compose
+  setTimeout(() => {
+    openShareCompose(prefill);
+  }, 400);
+})();
+
+function openShareCompose(prefill) {
+  // Switch to Home tab (compose lives there)
+  if (!authState.authenticated) {
+    // Not logged in — still switch to Home so user sees the login prompt
+    switchTab('home');
+    return;
+  }
+  switchTab('home');
+
+  // Show the share banner
+  const banner = document.getElementById('share-banner');
+  if (banner) banner.style.display = 'flex';
+
+  // Prefill compose textarea
+  const ta = document.getElementById('compose-text');
+  if (ta) {
+    ta.value = prefill;
+    onComposeInput();
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+  }
+}
+
+// Also handle the case where the boot() function fires before handleShareTarget
+// (async boot may finish after the sync IIFE above, so re-check after auth resolves)
+const _origBoot = window._fed06BootDone;
+(function() {
+  const _origRefresh = window.refreshAuthState;
+  if (typeof refreshAuthState === 'function') {
+    const _savedRefresh = refreshAuthState;
+    window.refreshAuthState = async function() {
+      await _savedRefresh.apply(this, arguments);
+      // After auth state is known, re-check share target
+      const hash = location.hash;
+      if (hash.startsWith('#share=')) {
+        const prefill = decodeURIComponent(hash.slice('#share='.length));
+        history.replaceState(null, '', '/');
+        if (prefill && authState.authenticated) openShareCompose(prefill);
+      }
+    };
+  }
+})();
+
+// ── Notification polling ────────────────────────────────────
+
+async function pollNotifications() {
+  if (!authState.authenticated) return;
+  try {
+    const res = await fetch('/api/notifications/poll');
+    if (!res.ok) return;
+    const data = await res.json();
+    const events = data.events || [];
+    if (!events.length) return;
+
+    _pendingNotifs.push(...events);
+    updateNotifBadge();
+
+    // Show a brief toast for the most recent mention
+    const mention = events.find(e => e.event === 'mention');
+    if (mention) showNotifToast(mention.payload);
+  } catch(e) {
+    // Polling failure is non-fatal
+  }
+}
+
+function updateNotifBadge() {
+  const btn   = document.getElementById('notif-btn');
+  const badge = document.getElementById('notif-badge');
+  if (!btn || !badge) return;
+
+  const count = _pendingNotifs.length;
+  if (count > 0) {
+    btn.style.display = '';
+    btn.classList.add('has-notif');
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.style.display = '';
+  } else {
+    btn.classList.remove('has-notif');
+    badge.style.display = 'none';
+  }
+}
+
+function showNotifToast(notif) {
+  // Build title + body from notification object
+  const kind    = notif.type || 'notification';
+  const account = notif.account || {};
+  const status  = notif.status || {};
+  const acct    = account.acct || 'someone';
+
+  const labels = {
+    mention:        'mentioned you',
+    reblog:         'boosted your post',
+    favourite:      'favourited your post',
+    follow:         'followed you',
+    follow_request: 'sent a follow request',
+    poll:           'A poll you voted in has ended',
+    update:         'edited a post you interacted with',
+  };
+  const verb  = labels[kind] || kind;
+  const title = `@${acct} ${verb}`;
+
+  let body = '';
+  if (status.content) {
+    // Strip HTML tags
+    const tmp = document.createElement('div');
+    tmp.innerHTML = status.content;
+    body = (tmp.textContent || '').trim().slice(0, 120);
+  }
+
+  // Remove any existing toast
+  document.querySelectorAll('.notif-toast').forEach(t => t.remove());
+
+  const toast = document.createElement('div');
+  toast.className = 'notif-toast';
+  toast.innerHTML = `
+    <button class="notif-toast-close" onclick="this.closest('.notif-toast').remove()">&#x2715;</button>
+    <div class="notif-toast-title">${esc(title)}</div>
+    ${body ? `<div class="notif-toast-body">${esc(body)}</div>` : ''}
+  `;
+  document.body.appendChild(toast);
+
+  // Auto-dismiss after 6 seconds
+  setTimeout(() => toast.remove(), 6000);
+
+  // Also request a system (browser) notification if permitted
+  if (window.Notification && Notification.permission === 'granted') {
+    new Notification(title, { body: body || verb, icon: '/icon.svg' });
+  }
+}
+
+function openNotifPanel() {
+  // Clear badge — open Home tab so the user can see notifications
+  _pendingNotifs = [];
+  updateNotifBadge();
+  switchTab('home');
+  // Optionally scroll to top
+  const feed = document.getElementById('feed-home');
+  if (feed) feed.scrollTop = 0;
+}
+
+// ── Request browser notification permission on first auth ───
+
+function requestNotifPermission() {
+  if (window.Notification && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+// ── Start / stop polling when auth changes ──────────────────
+
+function startNotifPolling() {
+  if (_notifPollTimer) return; // already running
+  // Show bell button
+  const btn = document.getElementById('notif-btn');
+  if (btn) btn.style.display = '';
+  // Request browser notification permission
+  requestNotifPermission();
+  // Initial poll immediately, then every 30 s
+  pollNotifications();
+  _notifPollTimer = setInterval(pollNotifications, NOTIF_POLL_MS);
+}
+
+function stopNotifPolling() {
+  if (_notifPollTimer) {
+    clearInterval(_notifPollTimer);
+    _notifPollTimer = null;
+  }
+  _pendingNotifs = [];
+  updateNotifBadge();
+  const btn = document.getElementById('notif-btn');
+  if (btn) btn.style.display = 'none';
+}
+
+// ── Patch renderAuthUI to start/stop polling on auth changes ─
+
+const _fed05RenderAuthUI = renderAuthUI;
+renderAuthUI = function() {
+  _fed05RenderAuthUI.apply(this, arguments);
+  if (authState.authenticated) {
+    startNotifPolling();
+  } else {
+    stopNotifPolling();
+  }
+};
 </script>
 </body>
 </html>
