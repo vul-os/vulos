@@ -995,7 +995,7 @@ Scope: wire Docs/Notes editor to useYDoc via y-tiptap, shared-doc badge, remote 
 AC: [ ] 2 users co-edit live merge [ ] remote cursors name+color [ ] Share grants access
 
 ### [PEER-33] Collab in Sheets/Notes/Text Editor + offline state-vector
-`todo` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
+`done` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
 Scope: Sheets y-json, Notes, Text Editor CodeMirror/Monaco binding; reconnect catch-up via state vectors GET inbound/collab-sync.
 AC: [ ] Sheets+TextEditor live multi-user [ ] offline reconnect gets only diff [ ] time-travel from history
 
