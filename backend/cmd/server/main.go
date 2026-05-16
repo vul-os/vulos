@@ -1969,6 +1969,8 @@ func main() {
 	registerJoinCodeRoutes(mux, home, authStore)
 	// Cluster join from a NEW device — validate S3+passphrase, begin sync (INIT-08)
 	registerJoinRoutes(mux, home)
+	// Persistent notification store + prune endpoint (NOTIF-02)
+	registerNotifyPersistRoutes(mux, notifySvc, home)
 
 	// Serve frontend static files (production build)
 	webrootDir := ""

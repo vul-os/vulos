@@ -129,6 +129,11 @@ type Service struct {
 	history []Notification
 	clients map[*websocket.Conn]bool
 	maxHist int
+
+	// NOTIF-02 additive fields. Both are optional; the in-memory history
+	// path is fully functional with either left nil.
+	store *Store    // persistent on-disk store (set via SetStore); nil = memory-only
+	dnd   *dndState // do-not-disturb state holder (lazily created by DND())
 }
 
 func New() *Service {
@@ -158,6 +163,13 @@ func (s *Service) SendNotification(n Notification) *Notification {
 	data, _ := json.Marshal(n)
 	for _, c := range clients {
 		c.WriteMessage(websocket.TextMessage, data)
+	}
+
+	// NOTIF-02: additively persist to the on-disk store when configured.
+	// The in-memory history path above is unchanged; this is nil-safe and
+	// a no-op when no store has been attached via SetStore.
+	if s.store != nil {
+		s.store.Append(&n)
 	}
 
 	log.Printf("[notify] %s (%s/%s): %s", n.Priority, n.Type, n.Subtype, n.Title)
