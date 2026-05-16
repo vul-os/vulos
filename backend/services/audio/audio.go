@@ -14,7 +14,7 @@ import (
 type Device struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
-	Type    string `json:"type"`    // "sink" (output) or "source" (input)
+	Type    string `json:"type"` // "sink" (output) or "source" (input)
 	Default bool   `json:"default"`
 	Muted   bool   `json:"muted"`
 	Volume  int    `json:"volume"` // 0-100
@@ -59,13 +59,19 @@ func (s *Service) SetVolume(ctx context.Context, deviceID string, deviceType str
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if volume < 0 { volume = 0 }
-	if volume > 100 { volume = 100 }
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 100 {
+		volume = 100
+	}
 
 	switch s.backend {
 	case "pipewire", "pulseaudio":
 		kind := "sink"
-		if deviceType == "input" { kind = "source" }
+		if deviceType == "input" {
+			kind = "source"
+		}
 		return run(ctx, "pactl", "set-"+kind+"-volume", deviceID, fmt.Sprintf("%d%%", volume))
 	case "alsa":
 		return run(ctx, "amixer", "sset", deviceID, fmt.Sprintf("%d%%", volume))
@@ -79,16 +85,22 @@ func (s *Service) SetMute(ctx context.Context, deviceID string, deviceType strin
 	defer s.mu.Unlock()
 
 	val := "0"
-	if muted { val = "1" }
+	if muted {
+		val = "1"
+	}
 
 	switch s.backend {
 	case "pipewire", "pulseaudio":
 		kind := "sink"
-		if deviceType == "input" { kind = "source" }
+		if deviceType == "input" {
+			kind = "source"
+		}
 		return run(ctx, "pactl", "set-"+kind+"-mute", deviceID, val)
 	case "alsa":
 		toggle := "unmute"
-		if muted { toggle = "mute" }
+		if muted {
+			toggle = "mute"
+		}
 		return run(ctx, "amixer", "sset", deviceID, toggle)
 	}
 	return fmt.Errorf("unsupported backend: %s", s.backend)
@@ -102,7 +114,9 @@ func (s *Service) SetDefault(ctx context.Context, deviceID string, deviceType st
 	switch s.backend {
 	case "pipewire", "pulseaudio":
 		kind := "default-sink"
-		if deviceType == "input" { kind = "default-source" }
+		if deviceType == "input" {
+			kind = "default-source"
+		}
 		return run(ctx, "pactl", "set-"+kind, deviceID)
 	}
 	log.Printf("[audio] set default %s=%s", deviceType, deviceID)
@@ -120,10 +134,18 @@ func (s *Service) pactlList(ctx context.Context, kind string) []Device {
 		return nil
 	}
 
+	return parsePactlOutput(defName, string(out), kind)
+}
+
+// parsePactlOutput parses the text output of "pactl list sinks|sources" and
+// returns a Device slice. defName is the current default device name (from
+// "pactl get-default-sink|source"). This function is pure (no exec) and is
+// package-accessible for testing.
+func parsePactlOutput(defName, out, kind string) []Device {
 	var devices []Device
 	var cur *Device
 
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 
 		if strings.HasPrefix(trimmed, "Name:") {
@@ -137,7 +159,9 @@ func (s *Service) pactlList(ctx context.Context, kind string) []Device {
 				Default: name == defName,
 			}
 		}
-		if cur == nil { continue }
+		if cur == nil {
+			continue
+		}
 
 		if strings.HasPrefix(trimmed, "Description:") {
 			cur.Name = strings.TrimSpace(strings.TrimPrefix(trimmed, "Description:"))
