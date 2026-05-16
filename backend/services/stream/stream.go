@@ -49,6 +49,8 @@ type Session struct {
 	cancel        context.CancelFunc
 	xvfb          *exec.Cmd
 	wm            *exec.Cmd
+	cage          *exec.Cmd // STREAM-08 headless wlroots compositor (GPU path)
+	cageRTDir     string    // STREAM-08 per-session XDG_RUNTIME_DIR for cage socket
 	app           *exec.Cmd
 	gstVideo      *exec.Cmd
 	gstAudio      *exec.Cmd
@@ -106,7 +108,7 @@ func (s *Session) Stop() {
 	if s.injector != nil {
 		s.injector.Close()
 	}
-	procs := []*exec.Cmd{s.gstAudio, s.gstVideo, s.app, s.wm, s.xvfb}
+	procs := []*exec.Cmd{s.gstAudio, s.gstVideo, s.app, s.wm, s.cage, s.xvfb}
 	for _, cmd := range procs {
 		if cmd != nil && cmd.Process != nil {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -118,9 +120,13 @@ func (s *Session) Stop() {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
 	}
-	// Clean up X11 socket
+	// Clean up X11 socket (Xvfb path)
 	os.Remove(fmt.Sprintf("/tmp/.X11-unix/X%d", s.displayNum))
 	os.Remove(fmt.Sprintf("/tmp/.X%d-lock", s.displayNum))
+	// Clean up cage per-session runtime dir (Wayland path)
+	if s.cageRTDir != "" {
+		os.RemoveAll(s.cageRTDir)
+	}
 	s.Running = false
 	log.Printf("[stream] session %s (%s) stopped", s.ID, s.Name)
 }
