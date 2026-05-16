@@ -1100,6 +1100,8 @@ func main() {
 
 	// Generic app streaming (any X11 app via WebRTC)
 	streamPool.RegisterHandlers(mux)
+	// Stream toolbar endpoints (FPS selector, MangoHud toggle — GAME-08)
+	registerStreamRoutes(mux, streamPool)
 
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)

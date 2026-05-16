@@ -12,6 +12,209 @@ const MOD_ALT      = 4
 const MOD_META     = 8
 const MOD_CAPSLOCK = 16
 
+// ---------------------------------------------------------------------------
+// StreamToolbar — gamer overlay: FPS selector, live RTT/quality, fullscreen,
+// MangoHud toggle.  All identifiers are gameToolbar-/streamToolbar- prefixed
+// to avoid collisions with existing component state.
+// ---------------------------------------------------------------------------
+
+const STREAM_TOOLBAR_FPS_OPTIONS = [30, 60, 90, 120]
+
+function StreamToolbar({
+  sessionId,
+  pcRef,
+  quality,
+  streamToolbarCollapsed,
+  onStreamToolbarToggle,
+}) {
+  const [streamToolbarFps, setStreamToolbarFps] = useState(30)
+  const [streamToolbarRtt, setStreamToolbarRtt] = useState(null)
+  const [streamToolbarMangoHud, setStreamToolbarMangoHud] = useState(false)
+  const [streamToolbarFullscreen, setStreamToolbarFullscreen] = useState(false)
+  const streamToolbarRttRef = useRef(null)
+
+  // Poll ICE candidate-pair RTT from WebRTC stats every 2 s
+  useEffect(() => {
+    streamToolbarRttRef.current = setInterval(async () => {
+      const pc = pcRef.current
+      if (!pc) return
+      try {
+        const stats = await pc.getStats()
+        stats.forEach((report) => {
+          if (
+            report.type === 'candidate-pair' &&
+            report.state === 'succeeded' &&
+            report.nominated &&
+            report.currentRoundTripTime != null
+          ) {
+            setStreamToolbarRtt(Math.round(report.currentRoundTripTime * 1000))
+          }
+        })
+      } catch {
+        // getStats can throw if PC is closing — ignore
+      }
+    }, 2000)
+    return () => clearInterval(streamToolbarRttRef.current)
+  }, [pcRef])
+
+  // Track fullscreen state from browser events
+  useEffect(() => {
+    const onFsChange = () => setStreamToolbarFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  const streamToolbarSetFps = useCallback(async (fps) => {
+    setStreamToolbarFps(fps)
+    try {
+      await fetch('/api/stream/fps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId, fps }),
+      })
+    } catch {
+      // non-fatal — toolbar still shows selection
+    }
+  }, [sessionId])
+
+  const streamToolbarToggleMangoHud = useCallback(async () => {
+    const next = !streamToolbarMangoHud
+    setStreamToolbarMangoHud(next)
+    try {
+      await fetch('/api/stream/mangohud', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId, enabled: next }),
+      })
+    } catch {
+      // non-fatal
+    }
+  }, [sessionId, streamToolbarMangoHud])
+
+  const streamToolbarToggleFullscreen = useCallback(async () => {
+    if (!document.fullscreenElement) {
+      const el = document.documentElement
+      try {
+        await el.requestFullscreen()
+        // Request pointer lock so mouse is captured inside the stream
+        el.requestPointerLock?.()
+      } catch {
+        // Browser may deny fullscreen without a transient user gesture — ignore
+      }
+    } else {
+      try {
+        await document.exitFullscreen()
+        document.exitPointerLock?.()
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
+
+  const streamToolbarRttColor =
+    streamToolbarRtt == null ? 'text-neutral-500' :
+    streamToolbarRtt < 50   ? 'text-green-400' :
+    streamToolbarRtt < 120  ? 'text-yellow-400' :
+                               'text-red-400'
+
+  const streamToolbarQualityColor =
+    quality === 'max'    ? 'text-green-400' :
+    quality === 'high'   ? 'text-green-500' :
+    quality === 'medium' ? 'text-yellow-400' :
+    quality === 'low'    ? 'text-red-400' :
+                           'text-neutral-500'
+
+  if (streamToolbarCollapsed) {
+    return (
+      <button
+        className="absolute top-2 right-2 z-30 px-2 py-1 rounded bg-black/60 text-neutral-400 text-xs hover:bg-black/80 hover:text-white transition-colors select-none"
+        onMouseDown={e => e.stopPropagation()}
+        onClick={onStreamToolbarToggle}
+        title="Show stream toolbar"
+      >
+        ⚙
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className="absolute top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-1.5 bg-black/70 backdrop-blur-sm text-xs select-none"
+      onMouseDown={e => e.stopPropagation()}
+      onKeyDown={e => e.stopPropagation()}
+    >
+      {/* FPS selector */}
+      <div className="flex items-center gap-1">
+        <span className="text-neutral-500 mr-0.5">FPS</span>
+        {STREAM_TOOLBAR_FPS_OPTIONS.map(fps => (
+          <button
+            key={fps}
+            onClick={() => streamToolbarSetFps(fps)}
+            className={`px-1.5 py-0.5 rounded transition-colors ${
+              streamToolbarFps === fps
+                ? 'bg-blue-600 text-white'
+                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
+            }`}
+          >
+            {fps}
+          </button>
+        ))}
+      </div>
+
+      <div className="w-px h-4 bg-neutral-700" />
+
+      {/* Live RTT */}
+      <div className={`flex items-center gap-1 ${streamToolbarRttColor}`}>
+        <span className="text-neutral-500">RTT</span>
+        <span>{streamToolbarRtt != null ? `${streamToolbarRtt}ms` : '—'}</span>
+      </div>
+
+      <div className="w-px h-4 bg-neutral-700" />
+
+      {/* Quality tier */}
+      <div className={`flex items-center gap-1 ${streamToolbarQualityColor}`}>
+        <span className="text-neutral-500">Q</span>
+        <span>{quality || '—'}</span>
+      </div>
+
+      <div className="w-px h-4 bg-neutral-700" />
+
+      {/* MangoHud toggle */}
+      <button
+        onClick={streamToolbarToggleMangoHud}
+        className={`px-1.5 py-0.5 rounded transition-colors ${
+          streamToolbarMangoHud
+            ? 'bg-orange-600 text-white'
+            : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
+        }`}
+        title="Toggle MangoHud overlay (restarts capture)"
+      >
+        HUD
+      </button>
+
+      <div className="w-px h-4 bg-neutral-700" />
+
+      {/* Fullscreen + pointer-lock */}
+      <button
+        onClick={streamToolbarToggleFullscreen}
+        className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors"
+        title={streamToolbarFullscreen ? 'Exit fullscreen' : 'Fullscreen + pointer lock (Esc to exit)'}
+      >
+        {streamToolbarFullscreen ? '⤓' : '⤢'}
+      </button>
+
+      {/* Collapse button */}
+      <button
+        onClick={onStreamToolbarToggle}
+        className="ml-auto px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500 hover:bg-neutral-700 hover:text-white transition-colors"
+        title="Hide toolbar"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 function getModifiers(e) {
   let m = 0
   if (e.shiftKey) m |= MOD_SHIFT
@@ -36,6 +239,10 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
   const [status, setStatus] = useState('connecting')
   const [error, setError] = useState(null)
   const streamSize = useRef({ w: 1280, h: 720 })
+
+  // Stream toolbar state — GAME-08
+  const [streamToolbarQuality, setStreamToolbarQuality] = useState(null)
+  const [streamToolbarCollapsed, setStreamToolbarCollapsed] = useState(false)
 
   const sendMouse = useCallback((evt) => {
     const dc = mouseDcRef.current
@@ -163,6 +370,22 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
     return () => { observer.disconnect(); clearTimeout(resizeTimer) }
   }, [sessionId])
 
+  // Poll adaptive quality tier from session metadata — GAME-08 toolbar.
+  // The backend exposes `quality` in the session JSON (set by bitrateController).
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch('/api/stream/sessions')
+        const sessions = await res.json()
+        const sess = sessions?.find(s => s.id === sessionId)
+        if (sess?.quality) setStreamToolbarQuality(sess.quality)
+      } catch {
+        // non-fatal
+      }
+    }, 4000)
+    return () => clearInterval(id)
+  }, [sessionId])
+
   const focusContainer = useCallback(() => containerRef.current?.focus(), [])
 
   const getPos = useCallback((e) => {
@@ -264,6 +487,17 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0 }) {
       onContextMenu={e => e.preventDefault()}
       onClick={focusContainer}
     >
+      {/* Stream toolbar overlay — GAME-08 (additive, does not touch existing layout) */}
+      {status === 'connected' && (
+        <StreamToolbar
+          sessionId={sessionId}
+          pcRef={pcRef}
+          quality={streamToolbarQuality}
+          streamToolbarCollapsed={streamToolbarCollapsed}
+          onStreamToolbarToggle={() => setStreamToolbarCollapsed(c => !c)}
+        />
+      )}
+
       {status === 'connecting' && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-neutral-950">
           <span className="text-neutral-600 text-sm flex items-center gap-2">

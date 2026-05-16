@@ -111,6 +111,9 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		videoPort:  videoPort,
 		audioPort:  audioPort,
 		displayNum: displayNum,
+		// Debounce channels for FPS and MangoHud changes (capacity 1).
+		fpsC:      make(chan int, 1),
+		mangoHudC: make(chan bool, 1),
 	}
 
 	// 1. Start Xvfb
@@ -222,11 +225,19 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 
 	gstBin, _ := exec.LookPath("gst-launch-1.0")
 	if gstBin != "" {
-		// Video pipeline
-		go runWithBackoff(ctx, sess.Name+"-video", func() *exec.Cmd {
+		// buildVideoCmd is the canonical STREAM-04 closure — reads sess.FPS and
+		// sess.MangoHud at call time so every restart picks up the latest values.
+		// DO NOT remove or replace this closure; SetFPS/SetMangoHud trigger
+		// restarts by signalling the pipeline restart goroutine below.
+		buildVideoCmd := func() *exec.Cmd {
+			sess.mu.Lock()
+			currentFPS := sess.FPS
+			mangoHud := sess.MangoHud
+			sess.mu.Unlock()
+
 			args := []string{"-q"}
 			// Capture source: PipeWire DMA-BUF when available, ximagesrc fallback
-			args = append(args, gpuInfo.CaptureArgs(display, opts.FPS)...)
+			args = append(args, gpuInfo.CaptureArgs(display, currentFPS)...)
 			// Color conversion / GPU upload (DMA-BUF for VA-API, CUDA for NVENC, CPU for software)
 			args = append(args, "!")
 			args = append(args, gpuInfo.ConvertArgs()...)
@@ -240,12 +251,60 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 				"sync=false", "async=false",
 			)
 			cmd := exec.CommandContext(ctx, gstBin, args...)
-			cmd.Env = append(os.Environ(), "DISPLAY="+display)
+			gstEnv := append(os.Environ(), "DISPLAY="+display)
+			if mangoHud {
+				gstEnv = append(gstEnv, "MANGOHUD=1")
+			}
+			cmd.Env = gstEnv
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			return cmd
-		}, &sess.gstVideo)
+		}
+
+		// Video pipeline — adaptive-bitrate restarts via runWithBackoff (STREAM-04).
+		go runWithBackoff(ctx, sess.Name+"-video", buildVideoCmd, &sess.gstVideo)
+
+		// FPS / MangoHud change controller — watches debounce channels from SetFPS and
+		// SetMangoHud, then kills the current gstVideo process so runWithBackoff restarts
+		// it with updated parameters.  Mirrors the STREAM-04 ABR channel pattern.
+		go func() {
+			const debounce = 300 * time.Millisecond
+			var debounceTimer *time.Timer
+			triggerRestart := func() {
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(debounce, func() {
+					sess.mu.Lock()
+					cur := sess.gstVideo
+					sess.mu.Unlock()
+					if cur != nil && cur.Process != nil {
+						log.Printf("[stream] %s: restarting video pipeline (fps=%d mangohud=%v)",
+							sess.Name, sess.FPS, sess.MangoHud)
+						syscall.Kill(-cur.Process.Pid, syscall.SIGTERM)
+					}
+				})
+			}
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case fps, ok := <-sess.fpsC:
+					if !ok {
+						return
+					}
+					log.Printf("[stream] %s: FPS change request → %d", sess.Name, fps)
+					triggerRestart()
+				case on, ok := <-sess.mangoHudC:
+					if !ok {
+						return
+					}
+					log.Printf("[stream] %s: MangoHud change request → %v", sess.Name, on)
+					triggerRestart()
+				}
+			}
+		}()
 
 		// Audio pipeline — captures from virtual speaker monitor (all app audio)
 		go runWithBackoff(ctx, sess.Name+"-audio", func() *exec.Cmd {
