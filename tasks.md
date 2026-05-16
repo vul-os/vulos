@@ -915,7 +915,7 @@ Scope: media store ~/.vulos/peering/media/, upload→hash+signed URL, S2S fetch 
 AC: [ ] upload→stable hash+signed URL [ ] recipient fetches own copy post-offline [ ] thumbnails [ ] signed URL rejects tamper/expire
 
 ### [PEER-17] Inbox UI: conversations, thread, composer, media
-`todo` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
+`done` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
 Scope: Messages view: conversation list, thread, composer, drag media, live message channel, contact profile.
 AC: [ ] conversations+threads from API [ ] text+media end-to-end [ ] incoming realtime no refresh
 
