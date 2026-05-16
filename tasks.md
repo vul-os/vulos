@@ -1010,7 +1010,7 @@ Scope: 6-digit code TTL 5min/single-use, stateless vulos.org rendezvous fallback
 AC: [ ] code 6-digit expires 5min/first use [ ] valid code connects+transfers [ ] works cross-network via rendezvous
 
 ### [PEER-36] Drop: BLE advertise/scan for bare-metal
-`todo` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
+`done` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
 Scope: BLE advertise service UUID + truncated Vula ID hash w/ rotation, scan to surface devices into nearby; clean no-op w/o BLE hw.
 AC: [ ] advertises vula-drop BLE when discoverable [ ] scan surfaces devices [ ] payload rotates, no hw=no-op
 
