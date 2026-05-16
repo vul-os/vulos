@@ -900,7 +900,7 @@ Scope: GET /api/peering/discover?email/name proxy to vulos.org verify/lookup + o
 AC: [ ] email lookup resolves when opted-in [ ] name search returns matches [ ] graceful empty
 
 ### [PEER-14] S2S text message delivery (send+inbound+store)
-`todo` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
+`done` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
 Scope: create→sign→deliver peer inbound/message; inbound verify+store ~/.vulos/peering/inbox/<conv>/, push message frame; conversations list+history.
 AC: [ ] msg to approved peer stored their inbox [ ] inbound rejects non-approved/bad sig [ ] list+history persist [ ] recipient gets realtime frame
 
