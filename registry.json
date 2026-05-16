@@ -1288,6 +1288,80 @@
           "singleton": true
         }
       }
+    },
+    "conduit": {
+      "name": "Conduit",
+      "vetted": true,
+      "type": "service",
+      "admin_only": true,
+      "_disabled": true,
+      "_note": "awaiting verified upstream checksum \u2014 famedly/conduit GitLab releases ship source archives only; no sha256-signed pre-built x86_64-unknown-linux-musl binary confirmed as of 2026-05-16",
+      "description": "Lightweight Matrix homeserver written in Rust \u2014 SQLite backend, federation-ready, single binary, runs on localhost",
+      "category": "network",
+      "author": "Famedly GmbH",
+      "homepage": "https://conduit.rs",
+      "icon": "C",
+      "keywords": [
+        "matrix",
+        "chat",
+        "homeserver",
+        "messaging",
+        "federation",
+        "self-hosted"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "0.10.0": {
+          "install": "wget -qO data/bin/conduit https://gitlab.com/famedly/conduit/-/releases/v0.10.0/downloads/conduit-x86_64-unknown-linux-musl && chmod +x data/bin/conduit",
+          "checksum": "",
+          "command": "data/bin/conduit",
+          "port": 6167,
+          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"%s\"\\ndatabase_backend = \"sqlite\"\\ndatabase_path = \"%s/data/db\"\\nport = %s\\naddress = \"127.0.0.1\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"$APP_DIR\" \"${PORT}\" > data/conduit.toml",
+          "env": {
+            "CONDUIT_CONFIG": "data/conduit.toml",
+            "SERVER_NAME": "localhost"
+          },
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true,
+          "auto_start": false
+        }
+      }
+    },
+    "cinny": {
+      "name": "Cinny",
+      "vetted": true,
+      "type": "web",
+      "description": "Modern Matrix client \u2014 clean, fast web UI for chatting on any Matrix homeserver including a local Conduit instance",
+      "category": "network",
+      "author": "Cinny Contributors",
+      "homepage": "https://cinny.in",
+      "icon": "C",
+      "keywords": [
+        "matrix",
+        "chat",
+        "client",
+        "messaging",
+        "web",
+        "element-alternative"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "4.12.1": {
+          "install": "wget -qO /tmp/cinny.tar.gz https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz && echo 'b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc  /tmp/cinny.tar.gz' | sha256sum -c - && tar xzf /tmp/cinny.tar.gz -C static/ --strip-components=1 && rm /tmp/cinny.tar.gz",
+          "checksum": "sha256:b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "auto_start": false
+        }
+      }
     }
   }
 }
