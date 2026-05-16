@@ -25,7 +25,7 @@ The full backlog of decomposed work. **147 done · 46 open · 193 total** at the
 | [Fediverse Client](#area-fediverse-client) | [ACTIVITYPUB](../roadmap/future/ACTIVITYPUB.md) | 6 / 6 | `[██████████]` 100% | — all done |
 | [Telephony](#area-telephony) | [MOBILE](../roadmap/future/MOBILE.md) | 5 / 6 | `[████████··]` 83% | [MOBILE-06](#mobile-06-responsive-device-profile-aware-ui-shell) · P3 |
 | [Ladybird Browser Spike](#area-ladybird-browser-spike) | [LADYBIRD-BROWSER](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% | — all done |
-| [Security](#area-security) | [D27](../see decisions.md D24/D26/D27) | 9 / 10 | `[█████████·]` 90% | [SEC-I](#sec-i-ai-apps-path-traversal-admin-gate-save-m1) · P2 |
+| [Security](#area-security) | see [`decisions.md`](decisions.md) D24/D26/D27 | 9 / 10 | `[█████████·]` 90% | [SEC-I](#sec-i-ai-apps-path-traversal-admin-gate-save-m1) · P2 |
 | **Total** |  | **147 / 193** | `[████████··]` 76% |  |
 
 ## How to read a task
@@ -35,20 +35,20 @@ Each task is a self-contained chunk of work: one ID, one title, a status token, 
 **Compact form** — one-line metadata + Scope + AC:
 
 ```
-### [SEC-E] webproxy DNS-rebinding + TLS-verify (H4)
-`todo` · P1 · M · dep: none · parallel: yes — backend/services/webproxy/proxy.go
-Scope: resolve host ONCE and dial the validated pinned IP …
-AC: [ ] single-resolution dial [ ] fail-closed on bad resolve [ ] TLS verified …
+### [EXAMPLE-1] short title
+`todo` · P1 · M · dep: none · parallel: yes — path/to/file.go
+Scope: one paragraph describing what to do, file:line references where useful.
+AC: [ ] first measurable outcome [ ] second outcome [ ] build/test passes
 ```
 
 **Verbose form** — one bullet per field:
 
 ```
-### [AI-05] Make saved AI apps appear in the app launcher with icons and categories
+### [EXAMPLE-2] longer title with more context up top
 - **Status:** todo
 - **Priority:** P1
 - **Effort:** M
-- **Roadmap:** roadmap/AI.md § AI Apps
+- **Roadmap:** roadmap/<AREA>.md § Section
 - **Depends on:** none
 - **Parallel-safe:** no — modifies src/core/AppRegistry.js …
 - **Context:** …
@@ -1341,7 +1341,7 @@ AC: [ ] toggle off = Chromium unchanged [ ] no binary → clean Chromium fallbac
 
 ## Area: Security
 
-_Design doc: [`see decisions.md D24/D26/D27`]()_  ·  _Prefix: `SEC-*`_
+_Origin: post-audit remediation; see [`decisions.md`](decisions.md) D24, D26, D27_  ·  _Prefix: `SEC-*`_
 
 > Why this matters: Post-audit hardening track. The unauthenticated-RCE chain (C1–C4 + H1/H2/H5) is closed; what's left is HIGH/MED/LOW items from the same Opus app-exposure audit. C5/M2 (visibility enforcement) moved to vulos-cloud's exposure model.
 
