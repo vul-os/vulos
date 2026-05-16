@@ -13,6 +13,45 @@ DATA_DIR = os.environ.get("NOTES_DIR", os.path.expanduser("~/.vulos/data/notes")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Realpath of DATA_DIR used for containment checks (resolved once at startup)
+_DATA_DIR_REAL = os.path.realpath(DATA_DIR)
+
+CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'"
+)
+
+# ---------------------------------------------------------------------------
+# H1: safe note-id validation + realpath containment
+# ---------------------------------------------------------------------------
+
+def _sanitize_note_id(note_id):
+    """Return a safe basename note_id, or raise ValueError.
+
+    Rules:
+    - Must not be empty.
+    - Must not contain path separators or '..' components.
+    - After os.path.join with DATA_DIR, the realpath must remain inside DATA_DIR.
+    """
+    if not note_id:
+        raise ValueError("empty note_id")
+    # Reject any path separator characters or traversal sequences
+    if "/" in note_id or "\\" in note_id or ".." in note_id:
+        raise ValueError("invalid note_id")
+    safe_id = os.path.basename(note_id)
+    if not safe_id or safe_id != note_id:
+        raise ValueError("invalid note_id")
+    # Realpath containment check
+    candidate = os.path.realpath(os.path.join(DATA_DIR, safe_id + ".md"))
+    if not candidate.startswith(_DATA_DIR_REAL + os.sep):
+        raise ValueError("path escapes DATA_DIR")
+    return safe_id
+
+
 def list_notes():
     notes = []
     for f in sorted(os.listdir(DATA_DIR), reverse=True):
@@ -25,6 +64,7 @@ def list_notes():
     return notes
 
 def get_note(note_id):
+    note_id = _sanitize_note_id(note_id)
     path = os.path.join(DATA_DIR, note_id + ".md")
     if not os.path.exists(path): return None
     with open(path) as f: return f.read()
@@ -32,6 +72,7 @@ def get_note(note_id):
 def save_note(note_id, content):
     if not note_id:
         note_id = str(int(time.time() * 1000))
+    note_id = _sanitize_note_id(note_id)
     path = os.path.join(DATA_DIR, note_id + ".md")
     with open(path, "w") as f: f.write(content)
     # Trigger Recall re-index
@@ -40,6 +81,7 @@ def save_note(note_id, content):
     return note_id
 
 def delete_note(note_id):
+    note_id = _sanitize_note_id(note_id)
     path = os.path.join(DATA_DIR, note_id + ".md")
     if os.path.exists(path): os.remove(path)
 
@@ -52,12 +94,17 @@ class NotesHandler(http.server.BaseHTTPRequestHandler):
             self.send_json(list_notes())
         elif self.path.startswith("/api/notes/"):
             note_id = self.path.split("/api/notes/")[1]
-            content = get_note(note_id)
+            try:
+                content = get_note(note_id)
+            except ValueError:
+                self.send_error(400, "Invalid note id")
+                return
             if content is None:
                 self.send_error(404)
             else:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Security-Policy", CSP)
                 self.end_headers()
                 self.wfile.write(content.encode())
         else:
@@ -71,13 +118,21 @@ class NotesHandler(http.server.BaseHTTPRequestHandler):
             self.send_json({"id": note_id})
         elif self.path.startswith("/api/notes/"):
             note_id = self.path.split("/api/notes/")[1]
-            save_note(note_id, body)
+            try:
+                note_id = save_note(note_id, body)
+            except ValueError:
+                self.send_error(400, "Invalid note id")
+                return
             self.send_json({"id": note_id})
 
     def do_DELETE(self):
         if self.path.startswith("/api/notes/"):
             note_id = self.path.split("/api/notes/")[1]
-            delete_note(note_id)
+            try:
+                delete_note(note_id)
+            except ValueError:
+                self.send_error(400, "Invalid note id")
+                return
             self.send_json({"status": "deleted"})
 
     def serve_file(self, filepath, content_type):
@@ -87,6 +142,7 @@ class NotesHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Security-Policy", CSP)
             self.end_headers()
             self.wfile.write(data)
         except FileNotFoundError:
@@ -95,7 +151,7 @@ class NotesHandler(http.server.BaseHTTPRequestHandler):
     def send_json(self, data):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Security-Policy", CSP)
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
