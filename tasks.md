@@ -47,7 +47,7 @@ decomposed by Opus agents and appended below as they complete.
 - **Key files:** `backend/cmd/server/main.go`, `backend/services/appnet/visibility.go`.
 
 ### [AI-03] Topbar always-visible public-app warning indicator
-- **Status:** todo
+- **Status:** done
 - **Priority:** P0
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § Public Apps → Topbar warning
