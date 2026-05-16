@@ -372,7 +372,7 @@ Scope: Curated registry entries/aliases for calculator/calendar/clock/pdf-viewer
 AC: [ ] getApps() returns the 6 w/ metadata [ ] no dupes vs /api/store/installed [ ] searchApps finds them
 
 ### [WEBAPP-06] Server-side persistence to Calendar app
-`todo` · P1 · S · dep: WEBAPP-04 · parallel: yes — apps/calendar/ only
+`done` · P1 · S · dep: WEBAPP-04 · parallel: yes — apps/calendar/ only
 Scope: Replace localStorage events with WEBAPP-04 appdata API persisting under `~/.vulos/calendar/`; keep views/recurrence/.ics.
 AC: [ ] events survive restart [ ] views/recurrence/.ics still work [ ] no CRUD UI regression
 
