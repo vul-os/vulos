@@ -197,6 +197,92 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
   padding:8px 20px;color:#aaa;font-size:13px;cursor:pointer;
 }
 .load-more button:hover{background:#1e1e30;color:#ccc}
+
+/* ── Compose box (FED-03) ────────────────────────────────── */
+.compose-wrap{
+  background:#0e0e1a;border-bottom:1px solid #1e1e30;
+  padding:10px 16px;flex-shrink:0;
+}
+.compose-inner{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:7px}
+.compose-cw{
+  background:#1a1a2e;border:1px solid #3a2a00;border-radius:8px;
+  padding:7px 12px;color:#f59e0b;font-size:13px;outline:none;
+  resize:none;font-family:inherit;transition:border-color .15s;
+}
+.compose-cw:focus{border-color:#f59e0b}
+.compose-cw::placeholder{color:#5a4a20}
+.compose-textarea{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:10px 12px;color:#e2e2f0;font-size:13px;outline:none;
+  resize:none;min-height:68px;font-family:inherit;transition:border-color .15s;line-height:1.5;
+}
+.compose-textarea:focus{border-color:#6366f1}
+.compose-textarea::placeholder{color:#444}
+.compose-footer{display:flex;align-items:center;gap:8px}
+.compose-counter{font-size:12px;color:#555;margin-right:auto;min-width:2.5em;text-align:right}
+.compose-counter.warn{color:#f59e0b}
+.compose-counter.over{color:#f87171}
+.cw-toggle-btn{
+  background:none;border:1px solid #2a2a44;border-radius:6px;
+  padding:4px 10px;color:#888;font-size:11px;cursor:pointer;
+}
+.cw-toggle-btn:hover{background:#1e1e30;color:#f59e0b}
+.cw-toggle-btn.active{border-color:#f59e0b;color:#f59e0b}
+.reply-banner{
+  font-size:11px;color:#888;background:#131320;border:1px solid #1e1e30;
+  border-radius:6px;padding:5px 10px;display:flex;align-items:center;gap:6px;
+}
+.reply-banner button{
+  background:none;border:none;color:#555;cursor:pointer;font-size:14px;
+  margin-left:auto;padding:0 2px;line-height:1;
+}
+.reply-banner button:hover{color:#f87171}
+
+/* ── Action bar on status cards (FED-03) ─────────────────── */
+.action-bar{
+  display:flex;gap:0;margin-top:8px;padding-top:8px;
+  border-top:1px solid #1e1e30;
+}
+.action-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:4px;
+  background:none;border:none;border-radius:6px;
+  padding:5px 2px;color:#555;font-size:12px;cursor:pointer;
+  transition:background .12s,color .12s;user-select:none;
+}
+.action-btn:hover{background:#1a1a2e;color:#aaa}
+.action-btn.active-fav{color:#f59e0b}
+.action-btn.active-boost{color:#34d399}
+.action-btn.active-bookmark{color:#6366f1}
+.action-btn .aicon{font-size:14px;line-height:1}
+.action-btn .acount{font-size:11px}
+
+/* ── Thread view overlay (FED-03) ────────────────────────── */
+.thread-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;
+  display:flex;align-items:stretch;justify-content:flex-end;
+}
+.thread-panel{
+  width:min(540px,100%);height:100%;background:#090910;
+  border-left:1px solid #1e1e30;display:flex;flex-direction:column;
+  animation:slide-in .18s ease;
+}
+@keyframes slide-in{from{transform:translateX(100%)}to{transform:none}}
+.thread-header{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;background:#0e0e1a;border-bottom:1px solid #1e1e30;flex-shrink:0;
+}
+.thread-header h3{font-size:14px;font-weight:600;color:#ccc;flex:1}
+.thread-close{
+  background:none;border:none;color:#555;cursor:pointer;font-size:20px;
+  padding:0 4px;line-height:1;
+}
+.thread-close:hover{color:#aaa}
+.thread-body{flex:1;overflow-y:auto;padding:12px}
+.thread-section-label{
+  font-size:10px;color:#444;text-transform:uppercase;letter-spacing:.06em;
+  padding:6px 0 4px;border-bottom:1px solid #131320;margin-bottom:6px;
+}
+.thread-root .status-card{border-color:#6366f1}
 </style>
 </head>
 <body>
@@ -251,11 +337,38 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
     </div>
 
     <!-- Home timeline feed (FED-02, authenticated) -->
-    <div id="view-home" style="flex:1;overflow-y:auto;display:none;flex-direction:column">
-      <div class="feed-wrap" id="feed-home">
-        <div class="state">
-          <div class="icon">◎</div>
-          <p>Log in to see your home timeline.</p>
+    <div id="view-home" style="flex:1;overflow:hidden;display:none;flex-direction:column">
+
+      <!-- Compose box (FED-03, only visible when authenticated) -->
+      <div class="compose-wrap" id="compose-wrap" style="display:none">
+        <div class="compose-inner">
+          <!-- Reply-to banner (shown when replying) -->
+          <div class="reply-banner" id="reply-banner" style="display:none">
+            <span id="reply-label"></span>
+            <button onclick="clearReply()" title="Cancel reply">&#x2715;</button>
+          </div>
+          <!-- Content warning row (hidden until CW toggled) -->
+          <textarea class="compose-cw" id="compose-cw" rows="1"
+            placeholder="Content warning (optional)" style="display:none"></textarea>
+          <!-- Main compose area -->
+          <textarea class="compose-textarea" id="compose-text"
+            placeholder="What's on your mind?"
+            oninput="onComposeInput()"></textarea>
+          <div class="compose-footer">
+            <button class="cw-toggle-btn" id="cw-btn" onclick="toggleCWField()">CW</button>
+            <span class="compose-counter" id="compose-counter">500</span>
+            <button class="btn" id="post-btn" onclick="submitPost()" disabled>Post</button>
+          </div>
+          <div id="post-error" style="display:none;font-size:12px;color:#f87171;margin-top:2px"></div>
+        </div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto">
+        <div class="feed-wrap" id="feed-home">
+          <div class="state">
+            <div class="icon">◎</div>
+            <p>Log in to see your home timeline.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -281,6 +394,19 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
     </div>
   </div>
 
+  <!-- Thread overlay (FED-03) -->
+  <div class="thread-overlay" id="thread-overlay" style="display:none" onclick="closeThread(event)">
+    <div class="thread-panel" id="thread-panel">
+      <div class="thread-header">
+        <h3>Thread</h3>
+        <button class="thread-close" onclick="closeThread(null)">&#x2715;</button>
+      </div>
+      <div class="thread-body" id="thread-body">
+        <div class="state"><div class="spinner"></div><p>Loading thread…</p></div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- .app -->
 
 <script>
@@ -296,6 +422,14 @@ let homeLoading   = false;
 let publicStatuses = [];
 let homeStatuses   = [];
 let authState      = { authenticated: false };
+
+// FED-03 state
+let replyToId   = null;   // status id being replied to
+let replyToAcct = null;   // @handle being replied to
+let cwVisible   = false;
+// Optimistic UI: track fav/boost/bookmark state per status id
+// { [id]: { favourited, reblogged, bookmarked, favourites_count, reblogs_count } }
+const statusState = {};
 
 // ── Boot ───────────────────────────────────────────────────
 (async function boot() {
@@ -334,6 +468,8 @@ function renderAuthUI() {
   const acctBar  = document.getElementById('acct-bar');
   const homeTab  = document.getElementById('tab-home');
 
+  const composeWrap = document.getElementById('compose-wrap');
+
   if (authState.authenticated) {
     const acct = authState.account || {};
     authArea.innerHTML = '';
@@ -349,10 +485,12 @@ function renderAuthUI() {
     document.getElementById('ab-host').textContent = authState.host || '';
     acctBar.style.display = 'flex';
     homeTab.style.color = '';
+    if (composeWrap) composeWrap.style.display = '';
   } else {
     authArea.innerHTML =
       '<button class="btn" onclick="switchTab(\'home\')" style="font-size:12px;padding:6px 14px">Log in</button>';
     acctBar.style.display = 'none';
+    if (composeWrap) composeWrap.style.display = 'none';
   }
 }
 
@@ -369,6 +507,12 @@ async function logout() {
   renderAuthUI();
   homeStatuses = [];
   homeMaxId = null;
+  // Reset FED-03 compose state
+  clearReply();
+  document.getElementById('compose-text').value = '';
+  document.getElementById('compose-cw').value = '';
+  if (cwVisible) toggleCWField();
+  onComposeInput();
   document.getElementById('feed-home').innerHTML =
     '<div class="state"><div class="icon">◎</div><p>Log in to see your home timeline.</p></div>';
   switchTab('public');
@@ -427,9 +571,24 @@ function relativeTime(iso) {
 }
 
 // ── Status card renderer (shared by public + home) ─────────
-function renderStatus(s) {
+function renderStatus(s, opts) {
+  // opts: { inThread, noActions }
+  opts = opts || {};
   const actual  = s.reblog || s;
   const booster = s.reblog ? s.account : null;
+  const sid     = actual.id;
+
+  // Seed statusState from server data (don't overwrite optimistic updates)
+  if (!statusState[sid]) {
+    statusState[sid] = {
+      favourited:       actual.favourited       || false,
+      reblogged:        actual.reblogged        || false,
+      bookmarked:       actual.bookmarked        || false,
+      favourites_count: actual.favourites_count  ?? 0,
+      reblogs_count:    actual.reblogs_count     ?? 0,
+      replies_count:    actual.replies_count     ?? 0,
+    };
+  }
 
   let boostBanner = '';
   if (booster) {
@@ -448,7 +607,7 @@ function renderStatus(s) {
   let cwHtml = '';
   let contentClass = 'content';
   if (actual.spoiler_text) {
-    const cwId = 'cw-' + actual.id;
+    const cwId = 'cw-' + sid;
     cwHtml = `<div class="cw-label">CW: ${esc(actual.spoiler_text)}
         <button class="cw-toggle" onclick="toggleCW('${cwId}')">show</button>
       </div>`;
@@ -456,7 +615,7 @@ function renderStatus(s) {
   }
 
   const contentHtml = `<div class="${contentClass}"
-    id="${actual.spoiler_text ? 'cw-' + actual.id : ''}">${actual.content||''}</div>`;
+    id="${actual.spoiler_text ? 'cw-' + sid : ''}">${actual.content||''}</div>`;
 
   let mediaHtml = '';
   const images = (actual.media_attachments||[]).filter(m=>m.type==='image'||m.type==='gifv');
@@ -471,14 +630,55 @@ function renderStatus(s) {
     mediaHtml = `<div class="${cls}">${thumbs}</div>`;
   }
 
-  const favs    = actual.favourites_count ?? 0;
-  const boosts  = actual.reblogs_count    ?? 0;
-  const replies = actual.replies_count    ?? 0;
-  const stats   = `<div class="stats">
-    <span class="stat">↩ ${replies}</span>
-    <span class="stat">⇄ ${boosts}</span>
-    <span class="stat">♡ ${favs}</span>
-  </div>`;
+  const st = statusState[sid];
+  const replies = st.replies_count;
+  const boosts  = st.reblogs_count;
+  const favs    = st.favourites_count;
+
+  // FED-03: action bar (only for authenticated users on home timeline or thread)
+  let actionBar = '';
+  const isAuth = authState && authState.authenticated;
+  if (!opts.noActions) {
+    const replyBtn = `<button class="action-btn" id="ab-reply-${sid}"
+        onclick="startReply('${sid}','${esc(actual.account.acct)}')" title="Reply">
+      <span class="aicon">↩</span><span class="acount">${replies||''}</span>
+    </button>`;
+
+    const boostCls = st.reblogged ? ' active-boost' : '';
+    const boostBtn = isAuth
+      ? `<button class="action-btn${boostCls}" id="ab-boost-${sid}"
+            onclick="toggleBoost('${sid}')" title="Boost">
+          <span class="aicon">⇄</span><span class="acount" id="bc-${sid}">${boosts||''}</span>
+         </button>`
+      : `<span class="action-btn" style="cursor:default;opacity:.35" title="Log in to boost">
+          <span class="aicon">⇄</span><span class="acount">${boosts||''}</span>
+         </span>`;
+
+    const favCls = st.favourited ? ' active-fav' : '';
+    const favBtn = isAuth
+      ? `<button class="action-btn${favCls}" id="ab-fav-${sid}"
+            onclick="toggleFav('${sid}')" title="Favourite">
+          <span class="aicon">♡</span><span class="acount" id="fc-${sid}">${favs||''}</span>
+         </button>`
+      : `<span class="action-btn" style="cursor:default;opacity:.35" title="Log in to favourite">
+          <span class="aicon">♡</span><span class="acount">${favs||''}</span>
+         </span>`;
+
+    const bkCls = st.bookmarked ? ' active-bookmark' : '';
+    const bkBtn = isAuth
+      ? `<button class="action-btn${bkCls}" id="ab-bk-${sid}"
+            onclick="toggleBookmark('${sid}')" title="Bookmark">
+          <span class="aicon">&#x2605;</span>
+         </button>`
+      : '';
+
+    // Thread button (show for all)
+    const threadBtn = `<button class="action-btn" onclick="openThread('${sid}')" title="View thread">
+      <span class="aicon">&#x29C9;</span>
+    </button>`;
+
+    actionBar = `<div class="action-bar">${replyBtn}${boostBtn}${favBtn}${bkBtn}${threadBtn}</div>`;
+  }
 
   return `<div class="status-card">
     ${boostBanner}
@@ -490,7 +690,8 @@ function renderStatus(s) {
       </div>
       <span class="timestamp">${relativeTime(actual.created_at)}</span>
     </div>
-    ${cwHtml}${contentHtml}${mediaHtml}${stats}
+    ${cwHtml}${contentHtml}${mediaHtml}
+    ${actionBar}
   </div>`;
 }
 
@@ -666,6 +867,256 @@ document.getElementById('host-input').addEventListener('keydown', e => {
 // ── Enter key in login host input ─────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement?.id === 'login-host') startLogin();
+});
+
+// ── FED-03: Compose box ────────────────────────────────────
+
+function onComposeInput() {
+  const text    = document.getElementById('compose-text').value;
+  const counter = document.getElementById('compose-counter');
+  const btn     = document.getElementById('post-btn');
+  const remaining = 500 - text.length;
+  counter.textContent = remaining;
+  counter.className = 'compose-counter' +
+    (remaining < 0 ? ' over' : remaining < 50 ? ' warn' : '');
+  btn.disabled = text.trim().length === 0 || remaining < 0;
+}
+
+function toggleCWField() {
+  cwVisible = !cwVisible;
+  const field = document.getElementById('compose-cw');
+  const btn   = document.getElementById('cw-btn');
+  field.style.display = cwVisible ? '' : 'none';
+  btn.classList.toggle('active', cwVisible);
+  if (!cwVisible) field.value = '';
+}
+
+function startReply(statusId, acct) {
+  replyToId   = statusId;
+  replyToAcct = acct;
+  const banner = document.getElementById('reply-banner');
+  const label  = document.getElementById('reply-label');
+  banner.style.display = '';
+  label.textContent = 'Replying to @' + acct;
+  // Pre-fill @mention in compose if not already there
+  const ta = document.getElementById('compose-text');
+  const mention = '@' + acct + ' ';
+  if (!ta.value.startsWith(mention)) ta.value = mention + ta.value;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+  onComposeInput();
+  // Switch to home tab if needed
+  if (currentTab !== 'home') switchTab('home');
+}
+
+function clearReply() {
+  replyToId   = null;
+  replyToAcct = null;
+  const banner = document.getElementById('reply-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+async function submitPost() {
+  const text    = document.getElementById('compose-text').value.trim();
+  const cw      = document.getElementById('compose-cw').value.trim();
+  const btn     = document.getElementById('post-btn');
+  const errEl   = document.getElementById('post-error');
+
+  if (!text || text.length > 500) return;
+
+  btn.disabled    = true;
+  btn.textContent = '…';
+  errEl.style.display = 'none';
+
+  const payload = { status: text };
+  if (cw) payload.spoiler_text = cw;
+  if (replyToId) payload.in_reply_to_id = replyToId;
+
+  try {
+    const res = await fetch('/api/v1/statuses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || `HTTP ${res.status}`);
+    }
+    const newStatus = await res.json();
+
+    // Clear compose
+    document.getElementById('compose-text').value = '';
+    document.getElementById('compose-cw').value = '';
+    if (cwVisible) toggleCWField();
+    clearReply();
+    onComposeInput();
+
+    // Prepend to home feed optimistically
+    homeStatuses.unshift(newStatus);
+    renderHomeFeed(true);
+
+  } catch(err) {
+    errEl.textContent = 'Post failed: ' + err.message;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Post';
+  }
+}
+
+// ── FED-03: Fav / Boost / Bookmark ────────────────────────
+
+async function toggleFav(sid) {
+  const st  = statusState[sid];
+  if (!st) return;
+
+  // Optimistic update
+  const wasFav = st.favourited;
+  st.favourited       = !wasFav;
+  st.favourites_count = Math.max(0, st.favourites_count + (wasFav ? -1 : 1));
+  updateActionBtn(sid, 'fav', st.favourited, 'fc-' + sid, st.favourites_count);
+
+  const action = wasFav ? 'unfavourite' : 'favourite';
+  try {
+    const res = await fetch(`/api/v1/statuses/${sid}/${action}`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed');
+    const updated = await res.json();
+    st.favourited       = updated.favourited;
+    st.favourites_count = updated.favourites_count;
+    updateActionBtn(sid, 'fav', st.favourited, 'fc-' + sid, st.favourites_count);
+  } catch {
+    // Rollback on error
+    st.favourited       = wasFav;
+    st.favourites_count = Math.max(0, st.favourites_count + (wasFav ? 1 : -1));
+    updateActionBtn(sid, 'fav', st.favourited, 'fc-' + sid, st.favourites_count);
+  }
+}
+
+async function toggleBoost(sid) {
+  const st = statusState[sid];
+  if (!st) return;
+
+  const wasReblogged = st.reblogged;
+  st.reblogged    = !wasReblogged;
+  st.reblogs_count = Math.max(0, st.reblogs_count + (wasReblogged ? -1 : 1));
+  updateActionBtn(sid, 'boost', st.reblogged, 'bc-' + sid, st.reblogs_count);
+
+  const action = wasReblogged ? 'unreblog' : 'reblog';
+  try {
+    const res = await fetch(`/api/v1/statuses/${sid}/${action}`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed');
+    const updated = await res.json();
+    // unreblog returns the original status, reblog returns the boost wrapper
+    const actual = updated.reblog || updated;
+    st.reblogged    = actual.reblogged;
+    st.reblogs_count = actual.reblogs_count;
+    updateActionBtn(sid, 'boost', st.reblogged, 'bc-' + sid, st.reblogs_count);
+  } catch {
+    st.reblogged    = wasReblogged;
+    st.reblogs_count = Math.max(0, st.reblogs_count + (wasReblogged ? 1 : -1));
+    updateActionBtn(sid, 'boost', st.reblogged, 'bc-' + sid, st.reblogs_count);
+  }
+}
+
+async function toggleBookmark(sid) {
+  const st = statusState[sid];
+  if (!st) return;
+
+  const wasBookmarked = st.bookmarked;
+  st.bookmarked = !wasBookmarked;
+  updateActionBtn(sid, 'bk', st.bookmarked, null, null);
+
+  const action = wasBookmarked ? 'unbookmark' : 'bookmark';
+  try {
+    const res = await fetch(`/api/v1/statuses/${sid}/${action}`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed');
+    const updated = await res.json();
+    st.bookmarked = updated.bookmarked;
+    updateActionBtn(sid, 'bk', st.bookmarked, null, null);
+  } catch {
+    st.bookmarked = wasBookmarked;
+    updateActionBtn(sid, 'bk', st.bookmarked, null, null);
+  }
+}
+
+function updateActionBtn(sid, type, active, countId, count) {
+  const btn = document.getElementById(`ab-${type}-${sid}`);
+  if (btn) {
+    const activeClass = type === 'fav' ? 'active-fav' : type === 'boost' ? 'active-boost' : 'active-bookmark';
+    btn.classList.toggle(activeClass, active);
+  }
+  if (countId && count !== null) {
+    const el = document.getElementById(countId);
+    if (el) el.textContent = count || '';
+  }
+}
+
+// ── FED-03: Thread view ────────────────────────────────────
+
+async function openThread(sid) {
+  const overlay = document.getElementById('thread-overlay');
+  const body    = document.getElementById('thread-body');
+  overlay.style.display = 'flex';
+  body.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading thread…</p></div>';
+
+  try {
+    const host = authState.authenticated ? '' : ('&host=' + encodeURIComponent(
+      document.getElementById('host-input').value.trim() || 'mastodon.social'));
+    const res = await fetch(`/api/v1/statuses/${sid}/context?${host}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    let html = '';
+
+    if (data.ancestors && data.ancestors.length) {
+      html += `<div class="thread-section-label">Earlier in thread</div>`;
+      html += data.ancestors.map(s => renderStatus(s)).join('');
+    }
+
+    html += `<div class="thread-root">`;
+    if (data.root && data.root.id) {
+      html += renderStatus(data.root);
+    }
+    html += `</div>`;
+
+    if (data.descendants && data.descendants.length) {
+      html += `<div class="thread-section-label">Replies</div>`;
+      html += data.descendants.map(s => renderStatus(s)).join('');
+    }
+
+    if (!html.trim() || (!data.root?.id && !data.ancestors?.length && !data.descendants?.length)) {
+      html = '<div class="state"><div class="icon">◌</div><p>No thread context found.</p></div>';
+    }
+
+    body.innerHTML = html;
+
+    // Scroll root status into view
+    const rootEl = body.querySelector('.thread-root');
+    if (rootEl) rootEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  } catch(err) {
+    body.innerHTML = `<div class="state"><div class="error-box">${esc(err.message)}</div></div>`;
+  }
+}
+
+function closeThread(evt) {
+  if (evt && evt.target !== document.getElementById('thread-overlay')) return;
+  document.getElementById('thread-overlay').style.display = 'none';
+}
+
+// Escape key closes thread
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const overlay = document.getElementById('thread-overlay');
+    if (overlay && overlay.style.display !== 'none') {
+      overlay.style.display = 'none';
+    }
+  }
+});
+
+// Ctrl+Enter submits post
+document.getElementById('compose-text').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitPost();
 });
 </script>
 </body>

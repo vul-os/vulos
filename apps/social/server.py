@@ -5,6 +5,8 @@ FED-01: read-only public timeline proxy (CORS bypass).
 FED-02: dynamic client registration, OAuth2 authorization-code flow,
         token storage in ~/.vulos/data/social/, authenticated home
         timeline, verify-credentials, logout.
+FED-03: feed interactions — compose (POST /api/v1/statuses), boost,
+        favourite, reply (in-reply-to), bookmark, thread/context view.
 """
 import http.server
 import json
@@ -139,6 +141,25 @@ def mastodon_post_form(host, path, data_dict, token=None):
         return 502, json.dumps({"error": str(e)}).encode()
 
 
+def mastodon_post_empty(host, path, token):
+    """POST with no body (used for favourite/boost/bookmark toggles)."""
+    url = f"https://{host}{path}"
+    headers = {
+        "User-Agent": "VulaOS-Social/0.2 (+https://vulos.io)",
+        "Accept": "application/json",
+        "Content-Length": "0",
+        "Authorization": f"Bearer {token}",
+    }
+    req = urllib.request.Request(url, data=b"", headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=12, context=_ssl_ctx())
+        return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b"{}"
+    except Exception as e:
+        return 502, json.dumps({"error": str(e)}).encode()
+
+
 # ── Dynamic client registration ───────────────────────────────
 
 def ensure_app_registered(host):
@@ -235,13 +256,34 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/account/verify":
             self._handle_verify_credentials()
 
+        # FED-03: thread/conversation view
+        elif path.startswith("/api/v1/statuses/") and path.endswith("/context"):
+            self._handle_thread_context(path)
+
         else:
             self.send_error(404)
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/api/auth/logout":
+        path   = parsed.path
+
+        if path == "/api/auth/logout":
             self._handle_logout()
+
+        # FED-03: compose a new post
+        elif path == "/api/v1/statuses":
+            self._handle_post_status()
+
+        # FED-03: favourite / unfavourite / boost / unboost / bookmark / unbookmark
+        elif path.startswith("/api/v1/statuses/") and any(
+            path.endswith(s) for s in (
+                "/favourite", "/unfavourite",
+                "/reblog",    "/unreblog",
+                "/bookmark",  "/unbookmark",
+            )
+        ):
+            self._handle_status_action(path)
+
         else:
             self.send_error(404)
 
@@ -466,6 +508,136 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
             token=tok["access_token"],
         )
         self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ── FED-03: compose a new status ─────────────────────────
+
+    def _handle_post_status(self):
+        tok = load_token()
+        if not tok.get("access_token"):
+            self.send_json(401, {"error": "not authenticated"})
+            return
+
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b""
+
+        content_type = self.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                self.send_json(400, {"error": "invalid JSON body"})
+                return
+        else:
+            # fall back to form-encoded
+            payload = dict(urllib.parse.parse_qsl(raw.decode(errors="replace")))
+
+        status_text = (payload.get("status") or "").strip()
+        if not status_text:
+            self.send_json(400, {"error": "status text is required"})
+            return
+        if len(status_text) > 500:
+            self.send_json(400, {"error": "status exceeds 500 characters"})
+            return
+
+        post_data = {"status": status_text}
+        if payload.get("spoiler_text"):
+            post_data["spoiler_text"] = payload["spoiler_text"]
+        if payload.get("in_reply_to_id"):
+            post_data["in_reply_to_id"] = payload["in_reply_to_id"]
+        if payload.get("visibility"):
+            post_data["visibility"] = payload["visibility"]
+
+        status, body = mastodon_post_form(
+            tok["host"],
+            "/api/v1/statuses",
+            post_data,
+            token=tok["access_token"],
+        )
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ── FED-03: single-status action (fav/boost/bookmark) ────
+
+    def _handle_status_action(self, path):
+        """Proxy a POST to /api/v1/statuses/:id/<action> authenticated."""
+        tok = load_token()
+        if not tok.get("access_token"):
+            self.send_json(401, {"error": "not authenticated"})
+            return
+
+        # Consume any body sent by the client (not forwarded)
+        length = int(self.headers.get("Content-Length", 0))
+        if length:
+            self.rfile.read(length)
+
+        status, body = mastodon_post_empty(
+            tok["host"], path, tok["access_token"]
+        )
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ── FED-03: thread/context view ───────────────────────────
+
+    def _handle_thread_context(self, path):
+        """
+        Proxy GET /api/v1/statuses/:id/context — works for both
+        authenticated (home) and unauthenticated (public) requests.
+        path format: /api/v1/statuses/<id>/context
+        """
+        # Extract the status id to also fetch the root status itself
+        parts = path.split("/")
+        # path = ['', 'api', 'v1', 'statuses', '<id>', 'context']
+        status_id = parts[4] if len(parts) >= 6 else ""
+
+        tok = load_token()
+        token = tok.get("access_token") if tok else None
+        host  = tok.get("host") if tok else None
+
+        # For unauthenticated thread view we need a host from the query string
+        parsed = urllib.parse.urlparse(self.path)
+        qs     = urllib.parse.parse_qs(parsed.query)
+        if not host:
+            host = _sanitise_host(qs.get("host", [""])[0])
+        if not host or "." not in host:
+            self.send_json(400, {"error": "host required for unauthenticated thread view"})
+            return
+
+        # Fetch context (ancestors + descendants)
+        ctx_status, ctx_body = mastodon_get(host, path, token=token)
+        # Fetch the root status itself so the UI can show it at the top
+        root_status_code, root_body = mastodon_get(
+            host, f"/api/v1/statuses/{status_id}", token=token
+        )
+
+        try:
+            ctx  = json.loads(ctx_body)
+        except Exception:
+            ctx  = {"ancestors": [], "descendants": []}
+        try:
+            root = json.loads(root_body) if root_status_code == 200 else {}
+        except Exception:
+            root = {}
+
+        result = {
+            "root":        root,
+            "ancestors":   ctx.get("ancestors", []),
+            "descendants": ctx.get("descendants", []),
+        }
+        body = json.dumps(result).encode()
+        self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
