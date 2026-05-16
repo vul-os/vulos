@@ -4,719 +4,944 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Text Editor</title>
-<script src="/vendor/codemirror.min.js"></script>
 <style>
+/* ── Reset & base ───────────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#101214;
-  --panel:#171a1d;
-  --panel-2:#1f2327;
-  --line:#2b3035;
-  --text:#ebe7dd;
-  --muted:#9ba4aa;
-  --accent:#d14f3f;
-  --accent-2:#f0b95a;
-  --green:#83ba75;
-  --blue:#77a8d9;
-  --violet:#b58bdc;
-  --mono:"SFMono-Regular","Cascadia Code","Liberation Mono",Menlo,Consolas,monospace;
-  --fs:14px;
-}
 html,body{height:100%;overflow:hidden}
-body{
-  background:var(--bg);
-  color:var(--text);
-  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  font-size:13px;
-}
-button,input,select{font:inherit}
-button,select{
-  height:30px;border:1px solid var(--line);border-radius:6px;
-  background:var(--panel-2);color:var(--text);outline:none;cursor:pointer;
-  display:inline-flex;align-items:center;
-}
-button{padding:0 10px;gap:4px;min-width:30px;justify-content:center}
-select{padding:0 6px}
-button:hover,select:hover{border-color:#48515a;background:#242a2f}
-button.active{border-color:var(--accent);color:#fff;background:#44221f}
-input[type=text],input[type=search]{
-  height:30px;border:1px solid var(--line);border-radius:6px;
-  background:#0d0f11;color:var(--text);outline:none;padding:0 10px;min-width:0;
-}
-input:focus,select:focus{border-color:var(--accent-2)}
+body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column}
 
-.app{height:100%;display:flex;flex-direction:column;min-width:300px}
-
-/* ── Top bar ── */
-.topbar{
-  height:44px;display:flex;align-items:center;gap:6px;
-  padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);
-  flex-shrink:0;
-}
-.brand{font-weight:700;font-size:14px;margin-right:4px;white-space:nowrap}
-.tabs{display:flex;gap:4px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tab{
-  height:30px;display:flex;align-items:center;gap:6px;
-  min-width:100px;max-width:200px;padding:0 8px;
-  border:1px solid transparent;border-radius:6px;
-  background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;
-}
-.tab:hover{background:#20252a;color:var(--text)}
-.tab.active{background:#272d32;border-color:#394149;color:var(--text)}
-.tab-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;flex:1}
-.dirty{width:6px;height:6px;border-radius:50%;background:var(--accent-2);flex-shrink:0;opacity:0;transition:opacity .15s}
-.tab.changed .dirty{opacity:1}
-.close-tab{width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:3px;color:var(--muted);font-size:14px;flex-shrink:0;line-height:1}
-.close-tab:hover{background:#363d44;color:#fff}
-
-/* ── Toolbar ── */
-.toolbar{
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+#toolbar{
   display:flex;align-items:center;gap:6px;
-  padding:6px 10px;background:#121518;border-bottom:1px solid var(--line);
-  flex-shrink:0;overflow-x:auto;scrollbar-width:none;
-}
-.toolbar::-webkit-scrollbar{display:none}
-.toolbar .sep{width:1px;height:20px;background:var(--line);flex-shrink:0;margin:0 2px}
-.toolbar .spacer{flex:1}
-.file-name{width:180px;flex-shrink:0}
-.font-size-label{font-size:12px;color:var(--muted);white-space:nowrap}
-
-/* ── Find bar ── */
-.findbar{
-  display:none;align-items:center;gap:6px;flex-wrap:wrap;
-  padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);
+  padding:6px 10px;
+  background:#111;border-bottom:1px solid #222;
   flex-shrink:0;
+  flex-wrap:wrap;
 }
-.findbar.open{display:flex}
-.findbar input{width:160px}
-.find-count{font-size:12px;color:var(--muted);min-width:70px;white-space:nowrap}
-.findbar .close-find{margin-left:auto}
+#toolbar button{
+  background:#222;border:1px solid #333;border-radius:5px;
+  padding:4px 10px;color:#ccc;cursor:pointer;font-size:12px;
+  white-space:nowrap;
+}
+#toolbar button:hover{background:#2a2a2a;color:#fff}
+#toolbar button.active{background:#1e40af;border-color:#3b82f6;color:#fff}
+#toolbar select{
+  background:#222;border:1px solid #333;border-radius:5px;
+  padding:4px 6px;color:#ccc;font-size:12px;cursor:pointer;
+}
+#toolbar input[type=text]{
+  background:#1a1a1a;border:1px solid #333;border-radius:5px;
+  padding:4px 8px;color:#e5e5e5;font-size:12px;width:140px;outline:none;
+}
+#toolbar input[type=number]{
+  background:#1a1a1a;border:1px solid #333;border-radius:5px;
+  padding:4px 6px;color:#e5e5e5;font-size:12px;width:52px;outline:none;
+}
+#toolbar .sep{width:1px;background:#333;height:20px;flex-shrink:0}
+#toolbar .spacer{flex:1}
+#file-label{color:#666;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* ── Editor area ── */
-.editor-area{flex:1;overflow:hidden;position:relative}
+/* ── Body layout ────────────────────────────────────────────────────────── */
+#body{display:flex;flex:1;overflow:hidden}
 
-/* CodeMirror theming overrides */
-.cm-editor{height:100%;font-size:var(--fs)}
-.cm-editor.cm-focused{outline:none}
-.cm-scroller{overflow:auto;font-family:var(--mono)}
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+#sidebar{
+  width:200px;flex-shrink:0;display:flex;flex-direction:column;
+  border-right:1px solid #222;
+}
+#sidebar .top{padding:8px;border-bottom:1px solid #222;display:flex;gap:4px}
+#sidebar .top button{
+  flex:1;background:#222;border:1px solid #333;border-radius:5px;
+  padding:5px 0;color:#ccc;cursor:pointer;font-size:11px;
+}
+#sidebar .top button:hover{background:#2a2a2a}
+#file-list{flex:1;overflow-y:auto}
+.file-item{
+  padding:8px 10px;border-bottom:1px solid #111;cursor:pointer;
+  font-size:12px;display:flex;align-items:center;gap:6px;
+}
+.file-item:hover{background:#111}
+.file-item.active{background:#1a1a1a;border-left:2px solid #3b82f6}
+.file-item .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-item .del{color:#555;font-size:10px;padding:1px 4px;border-radius:3px;flex-shrink:0}
+.file-item .del:hover{background:#3f1212;color:#f87171}
+
+/* ── Editor area ────────────────────────────────────────────────────────── */
+#editor-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+#cm-host{flex:1;overflow:auto;font-size:14px}
+
+/* ── Find/replace panel ─────────────────────────────────────────────────── */
+#find-bar{
+  display:none;flex-shrink:0;
+  background:#111;border-top:1px solid #222;
+  padding:6px 10px;gap:6px;align-items:center;flex-wrap:wrap;
+}
+#find-bar.open{display:flex}
+#find-bar input{
+  background:#1a1a1a;border:1px solid #333;border-radius:5px;
+  padding:4px 8px;color:#e5e5e5;font-size:12px;width:160px;outline:none;
+}
+#find-bar input:focus{border-color:#3b82f6}
+#find-bar button{
+  background:#222;border:1px solid #333;border-radius:5px;
+  padding:4px 10px;color:#ccc;cursor:pointer;font-size:12px;
+}
+#find-bar button:hover{background:#2a2a2a}
+#find-count{color:#666;font-size:11px;min-width:60px}
+
+/* ── Status bar ─────────────────────────────────────────────────────────── */
+#statusbar{
+  display:flex;align-items:center;gap:12px;
+  padding:3px 10px;
+  background:#111;border-top:1px solid #222;
+  font-size:11px;color:#555;flex-shrink:0;
+}
+#statusbar .s-right{margin-left:auto;display:flex;gap:12px}
+#save-status{color:#555}
+#save-status.saving{color:#f59e0b}
+#save-status.saved{color:#22c55e}
+#save-status.error{color:#f87171}
+
+/* ── Collab panel (Share) ───────────────────────────────────────────────── */
+#collab-bar{
+  display:none;flex-shrink:0;
+  background:#0f1929;border-top:1px solid #1e3a5f;
+  padding:6px 10px;gap:8px;align-items:center;font-size:12px;
+}
+#collab-bar.open{display:flex}
+#collab-bar .c-title{color:#60a5fa;font-weight:600}
+#collab-peers{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+.peer-badge{
+  display:flex;align-items:center;gap:4px;
+  background:#1e3a5f;border:1px solid #2563eb;border-radius:12px;
+  padding:2px 8px;font-size:11px;
+}
+.peer-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+#collab-link-wrap{display:flex;align-items:center;gap:6px}
+#collab-link{
+  background:#1a1a1a;border:1px solid #333;border-radius:5px;
+  padding:3px 8px;color:#93c5fd;font-size:11px;
+  cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+#collab-link:hover{border-color:#3b82f6}
+
+/* ── Share modal ────────────────────────────────────────────────────────── */
+#share-modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+  z-index:100;align-items:center;justify-content:center;
+}
+#share-modal.open{display:flex}
+#share-box{
+  background:#111;border:1px solid #333;border-radius:10px;
+  padding:20px;width:340px;display:flex;flex-direction:column;gap:12px;
+}
+#share-box h3{color:#e5e5e5;font-size:14px}
+#share-box label{color:#888;font-size:12px}
+#share-box input,#share-box select{
+  background:#1a1a1a;border:1px solid #333;border-radius:5px;
+  padding:6px 8px;color:#e5e5e5;font-size:13px;width:100%;outline:none;
+}
+#share-box input:focus,#share-box select:focus{border-color:#3b82f6}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.modal-actions button{
+  background:#222;border:1px solid #333;border-radius:6px;
+  padding:6px 14px;color:#ccc;cursor:pointer;font-size:13px;
+}
+.modal-actions button.primary{background:#1d4ed8;border-color:#3b82f6;color:#fff}
+.modal-actions button:hover{background:#2a2a2a}
+.modal-actions button.primary:hover{background:#1e40af}
+
+/* ── CodeMirror overrides ───────────────────────────────────────────────── */
+.cm-editor{height:100%}
+.cm-scroller{height:100%}
+.cm-content{padding:12px 0}
+.cm-line{padding:0 16px}
 
 /* Light theme overrides */
-body.light{
-  --bg:#f5f6f7;--panel:#fff;--panel-2:#eef0f2;
-  --line:#d5d8dc;--text:#1a1d20;--muted:#6b7280;
-  --accent:#c0392b;--accent-2:#d68910;
-}
-body.light .toolbar{background:#f0f1f3}
-body.light input[type=text],body.light input[type=search]{background:#fff}
-
-/* Status bar */
-.statusbar{
-  height:26px;display:flex;align-items:center;gap:14px;
-  padding:0 12px;border-top:1px solid var(--line);
-  background:var(--panel);color:var(--muted);font-size:11px;
-  white-space:nowrap;flex-shrink:0;
-}
-.statusbar .push{margin-left:auto}
-
-@media(max-width:700px){
-  .brand{display:none}
-  .file-name{width:120px}
-  .toolbar .spacer{flex:none}
-}
+body.light-theme{background:#fafafa;color:#1a1a1a}
+body.light-theme #toolbar,body.light-theme #find-bar,body.light-theme #statusbar{background:#f0f0f0;border-color:#ddd}
+body.light-theme #sidebar{border-color:#ddd}
+body.light-theme #sidebar .top{border-color:#ddd}
+body.light-theme #sidebar .top button{background:#e8e8e8;border-color:#ccc;color:#333}
+body.light-theme .file-item{border-color:#eee}
+body.light-theme .file-item:hover{background:#f0f0f0}
+body.light-theme .file-item.active{background:#e8f0fe}
+body.light-theme #toolbar button{background:#e8e8e8;border-color:#ccc;color:#333}
+body.light-theme #toolbar button:hover{background:#d8d8d8;color:#000}
+body.light-theme #toolbar select,body.light-theme #toolbar input{background:#fff;border-color:#ccc;color:#1a1a1a}
+body.light-theme #collab-bar{background:#eff6ff;border-color:#bfdbfe}
 </style>
 </head>
 <body>
-<div class="app">
 
-  <!-- Top bar with tabs -->
-  <header class="topbar">
-    <div class="brand">Text Editor</div>
-    <div class="tabs" id="tabs"></div>
-    <button id="newBtn" title="New document (Ctrl+T)">+</button>
-  </header>
-
-  <!-- Toolbar -->
-  <section class="toolbar" aria-label="Editor toolbar">
-    <input class="file-name" type="text" id="titleInput" aria-label="Document name" placeholder="Untitled.txt">
-    <div class="sep"></div>
-    <select id="langSelect" aria-label="Language">
-      <option value="plain">Plain</option>
-      <option value="javascript">JavaScript</option>
-      <option value="python">Python</option>
-      <option value="go">Go</option>
-      <option value="html">HTML</option>
-      <option value="css">CSS</option>
-      <option value="json">JSON</option>
-      <option value="markdown">Markdown</option>
-      <option value="bash">Bash</option>
-    </select>
-    <div class="sep"></div>
-    <button id="wrapBtn" title="Toggle word wrap">Wrap</button>
-    <button id="findBtn" title="Find &amp; Replace (Ctrl+F)">Find</button>
-    <div class="spacer"></div>
-    <div class="sep"></div>
-    <span class="font-size-label">A</span>
-    <button id="fsSmallerBtn" title="Decrease font size">−</button>
-    <button id="fsLargerBtn" title="Increase font size">+</button>
-    <div class="sep"></div>
-    <button id="themeBtn" title="Toggle dark/light theme">☀</button>
-    <div class="sep"></div>
-    <button id="duplicateBtn" title="Duplicate tab">Dupe</button>
-    <button id="deleteBtn" title="Delete tab">Delete</button>
-  </section>
-
-  <!-- Find / Replace bar -->
-  <section class="findbar" id="findbar" aria-label="Find and replace">
-    <input type="search" id="findInput" placeholder="Find…" aria-label="Find">
-    <input type="text" id="replaceInput" placeholder="Replace…" aria-label="Replace">
-    <button id="prevBtn" title="Previous (Shift+Enter)">↑</button>
-    <button id="nextBtn" title="Next (Enter)">↓</button>
-    <button id="replaceOneBtn" title="Replace">Replace</button>
-    <button id="replaceAllBtn" title="Replace all">All</button>
-    <span class="find-count" id="findCount"></span>
-    <button class="close-find" id="closeFindBtn" title="Close (Esc)">✕</button>
-  </section>
-
-  <!-- Editor -->
-  <main class="editor-area" id="editorArea"></main>
-
-  <!-- Status bar -->
-  <footer class="statusbar">
-    <span id="cursorStatus">Ln 1, Col 1</span>
-    <span id="docStatus">0 words</span>
-    <span class="push" id="saveStatus">Saved locally</span>
-  </footer>
+<!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <span id="file-label">No file open</span>
+  <div class="sep"></div>
+  <button id="btn-new" title="New file">New</button>
+  <button id="btn-save" title="Save (Ctrl+S)">Save</button>
+  <div class="sep"></div>
+  <select id="lang-select" title="Language / syntax">
+    <option value="">Plain text</option>
+    <option value="javascript">JavaScript</option>
+    <option value="typescript">TypeScript</option>
+    <option value="python">Python</option>
+    <option value="html">HTML</option>
+    <option value="css">CSS</option>
+    <option value="json">JSON</option>
+    <option value="markdown">Markdown</option>
+    <option value="sql">SQL</option>
+    <option value="xml">XML</option>
+    <option value="go">Go</option>
+    <option value="rust">Rust</option>
+    <option value="cpp">C/C++</option>
+    <option value="java">Java</option>
+    <option value="shell">Shell</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btn-wrap" title="Toggle word wrap">Wrap</button>
+  <button id="btn-find" title="Find/Replace (Ctrl+F)">Find</button>
+  <div class="sep"></div>
+  <label style="font-size:12px;color:#666">Size</label>
+  <input type="number" id="font-size" value="14" min="8" max="32" title="Font size">
+  <div class="sep"></div>
+  <select id="theme-select" title="Theme">
+    <option value="dark">Dark</option>
+    <option value="light">Light</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btn-share" title="Share for collaboration" style="background:#1d4ed8;border-color:#3b82f6;color:#fff">Share</button>
 </div>
 
-<script>
-/* ──────────────────────────────────────────────────────────
-   Vula OS Text Editor — CodeMirror 6 edition
-   All data persisted in localStorage. No external requests.
-   ────────────────────────────────────────────────────────── */
-const {
-  // view
-  EditorView, keymap, lineNumbers, drawSelection,
-  highlightActiveLine, highlightActiveLineGutter,
-  rectangularSelection, crosshairCursor, dropCursor,
-  // state
-  EditorState, Compartment, StateEffect,
-  // commands
-  defaultKeymap, history, historyKeymap, indentWithTab,
-  // search
-  search, searchKeymap, openSearchPanel, closeSearchPanel,
-  findNext, findPrevious, replaceNext, replaceAll: cmReplaceAll,
-  SearchQuery, setSearchQuery, getSearchQuery,
-  // autocomplete
-  autocompletion, completionKeymap,
-  // language
-  indentOnInput, syntaxHighlighting, defaultHighlightStyle,
-  bracketMatching, foldGutter, foldKeymap,
-  // langs
-  javascript, python, html, css, json, markdown, go,
-  // theme
-  oneDark,
-  // highlight
-  tags,
-} = CM;
+<!-- ── Body ────────────────────────────────────────────────────────────── -->
+<div id="body">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="top">
+      <button id="btn-new2" title="New file">+ New</button>
+    </div>
+    <div id="file-list"></div>
+  </div>
 
-// ── Bash: use shell/StreamLanguage from @codemirror/legacy-modes
-// We don't have legacy-modes; use a simple custom highlight for bash
-// (still counts as "bash" language with basic keyword colour via StreamLanguage wrapper)
-// We'll define a minimal bash tokeniser with HighlightStyle override.
+  <!-- Editor + panels -->
+  <div id="editor-wrap">
+    <!-- Collaboration bar -->
+    <div id="collab-bar">
+      <span class="c-title">Live</span>
+      <div id="collab-peers"></div>
+      <div id="collab-link-wrap" style="display:none">
+        <span style="color:#666">Link:</span>
+        <span id="collab-link" title="Click to copy"></span>
+      </div>
+    </div>
 
-/* ── Constants ─────────────────────────────────────────── */
-const STORE_KEY  = "vulos.text-editor.documents.v2";
-const STATE_KEY  = "vulos.text-editor.state.v2";
-const FS_KEY     = "vulos.text-editor.fontSize";
-const THEME_KEY  = "vulos.text-editor.theme";
-const DEFAULT_DOC = "# Welcome to Text Editor\n\nStart typing. Switch language with the dropdown for syntax highlighting.\nUse Ctrl+F to find, Ctrl+H to replace.\n";
-const FS_MIN = 10, FS_MAX = 26, FS_STEP = 1;
+    <!-- CodeMirror mount point -->
+    <div id="cm-host"></div>
 
-/* ── Language map ──────────────────────────────────────── */
-function langExtension(lang) {
-  switch (lang) {
-    case "javascript": return javascript({ jsx: false });
-    case "python":     return python();
-    case "go":         return go();
-    case "html":       return html();
-    case "css":        return css();
-    case "json":       return json();
-    case "markdown":   return markdown();
-    case "bash":       return makeBashLang();
-    default:           return [];
+    <!-- Find/Replace bar -->
+    <div id="find-bar">
+      <input type="text" id="find-input" placeholder="Find…">
+      <input type="text" id="replace-input" placeholder="Replace…">
+      <button id="find-prev">Prev</button>
+      <button id="find-next">Next</button>
+      <button id="btn-replace-one">Replace</button>
+      <button id="btn-replace-all">All</button>
+      <span id="find-count"></span>
+      <div class="spacer"></div>
+      <button id="find-close" style="background:transparent;border:none;color:#666;font-size:16px">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div id="statusbar">
+  <span id="cursor-pos">Ln 1, Col 1</span>
+  <span id="sel-count"></span>
+  <span class="s-right">
+    <span id="save-status">Ready</span>
+    <span id="collab-status" style="color:#3b82f6;display:none">● Collab active</span>
+    <span id="word-count"></span>
+  </span>
+</div>
+
+<!-- Share modal -->
+<div id="share-modal">
+  <div id="share-box">
+    <h3>Share for collaboration</h3>
+    <div>
+      <label>Peer Vula ID or email</label>
+      <input type="text" id="share-peer" placeholder="vula:ed25519:… or user@example.com" autocomplete="off">
+    </div>
+    <div>
+      <label>Permission</label>
+      <select id="share-perm">
+        <option value="edit">Edit — can write</option>
+        <option value="view">View — read only</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button id="share-cancel">Cancel</button>
+      <button class="primary" id="share-confirm">Share</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────── -->
+<!--
+  All libraries loaded from CDN (esm.sh / unpkg) as ES modules.
+  CodeMirror 6, Yjs, y-codemirror.next, y-websocket provider.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "@codemirror/state":       "https://esm.sh/@codemirror/state@6.4.1",
+    "@codemirror/view":        "https://esm.sh/@codemirror/view@6.34.3",
+    "@codemirror/commands":    "https://esm.sh/@codemirror/commands@6.7.1",
+    "@codemirror/language":    "https://esm.sh/@codemirror/language@6.10.3",
+    "@codemirror/search":      "https://esm.sh/@codemirror/search@6.5.8",
+    "@codemirror/autocomplete": "https://esm.sh/@codemirror/autocomplete@6.18.4",
+    "@codemirror/lint":        "https://esm.sh/@codemirror/lint@6.8.4",
+    "@codemirror/theme-one-dark": "https://esm.sh/@codemirror/theme-one-dark@6.1.2",
+    "@codemirror/lang-javascript": "https://esm.sh/@codemirror/lang-javascript@6.2.2",
+    "@codemirror/lang-python":    "https://esm.sh/@codemirror/lang-python@6.1.6",
+    "@codemirror/lang-html":      "https://esm.sh/@codemirror/lang-html@6.4.9",
+    "@codemirror/lang-css":       "https://esm.sh/@codemirror/lang-css@6.3.1",
+    "@codemirror/lang-json":      "https://esm.sh/@codemirror/lang-json@6.0.1",
+    "@codemirror/lang-markdown":  "https://esm.sh/@codemirror/lang-markdown@6.3.1",
+    "@codemirror/lang-sql":       "https://esm.sh/@codemirror/lang-sql@6.8.0",
+    "@codemirror/lang-xml":       "https://esm.sh/@codemirror/lang-xml@6.1.0",
+    "@lezer/highlight":           "https://esm.sh/@lezer/highlight@1.2.1",
+    "yjs":                        "https://esm.sh/yjs@13.6.18",
+    "y-websocket":                "https://esm.sh/y-websocket@1.5.4",
+    "y-codemirror.next":          "https://esm.sh/y-codemirror.next@0.3.5",
+    "lib0":                       "https://esm.sh/lib0@0.2.99"
   }
 }
+</script>
 
-// Minimal bash highlighting via HighlightStyle override on token-level
-// We use a StreamLanguage-style regex approach
-function makeBashLang() {
-  // CodeMirror has no built-in bash; we use a simple placeholder
-  // that at least parses basic tokens the same as plain text
-  // but applies shell-friendly keyword colouring via syntax highlighting.
-  // For a real implementation one would use @codemirror/legacy-modes/mode/shell
-  // which is not in our bundle — so we return the defaultHighlightStyle only.
-  return [];
-}
+<script type="module">
+// ── Imports ─────────────────────────────────────────────────────────────
+import { EditorState, Compartment } from "@codemirror/state";
+import {
+  EditorView, keymap, lineNumbers, highlightActiveLineGutter,
+  highlightSpecialChars, drawSelection, dropCursor, rectangularSelection,
+  crosshairCursor, highlightActiveLine, ViewUpdate
+} from "@codemirror/view";
+import {
+  defaultKeymap, history, historyKeymap,
+  indentWithTab, undo, redo
+} from "@codemirror/commands";
+import {
+  syntaxHighlighting, defaultHighlightStyle,
+  bracketMatching, foldGutter, indentOnInput,
+  StreamLanguage
+} from "@codemirror/language";
+import {
+  searchKeymap, search, findNext, findPrevious,
+  openSearchPanel, closeSearchPanel, replaceNext, replaceAll,
+  SearchQuery, setSearchQuery, getSearchQuery
+} from "@codemirror/search";
+import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { html } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
+import { json } from "@codemirror/lang-json";
+import { markdown } from "@codemirror/lang-markdown";
+import { sql } from "@codemirror/lang-sql";
+import { xml } from "@codemirror/lang-xml";
 
-/* ── App state ──────────────────────────────────────────── */
-let docs = [];
-let activeId = null;
+// Yjs
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
+
+// ── State ────────────────────────────────────────────────────────────────
+let view = null;          // CodeMirror EditorView
+let currentFile = null;   // currently open filename
 let saveTimer = null;
+let wordWrap = false;
 
-// Compartments for dynamic reconfiguration
-const langComp   = new Compartment();
-const wrapComp   = new Compartment();
-const themeComp  = new Compartment();
+// Yjs collab state
+let ydoc = null;
+let wsProvider = null;
+let collabActive = false;
+let currentDocId = null;
 
-/* ── DOM refs ───────────────────────────────────────────── */
-const tabsEl       = document.getElementById("tabs");
-const newBtn       = document.getElementById("newBtn");
-const titleInput   = document.getElementById("titleInput");
-const langSelect   = document.getElementById("langSelect");
-const wrapBtn      = document.getElementById("wrapBtn");
-const findBtn      = document.getElementById("findBtn");
-const findbar      = document.getElementById("findbar");
-const findInput    = document.getElementById("findInput");
-const replaceInput = document.getElementById("replaceInput");
-const prevBtn      = document.getElementById("prevBtn");
-const nextBtn      = document.getElementById("nextBtn");
-const replaceOneBtn= document.getElementById("replaceOneBtn");
-const replaceAllBtn= document.getElementById("replaceAllBtn");
-const findCount    = document.getElementById("findCount");
-const closeFindBtn = document.getElementById("closeFindBtn");
-const fsSmallerBtn = document.getElementById("fsSmallerBtn");
-const fsLargerBtn  = document.getElementById("fsLargerBtn");
-const themeBtn     = document.getElementById("themeBtn");
-const duplicateBtn = document.getElementById("duplicateBtn");
-const deleteBtn    = document.getElementById("deleteBtn");
-const editorArea   = document.getElementById("editorArea");
-const cursorStatus = document.getElementById("cursorStatus");
-const docStatus    = document.getElementById("docStatus");
-const saveStatus   = document.getElementById("saveStatus");
+// CodeMirror Compartments (for dynamic reconfiguration)
+const langCompartment  = new Compartment();
+const themeCompartment = new Compartment();
+const wrapCompartment  = new Compartment();
 
-/* ── Preferences ────────────────────────────────────────── */
-let fontSize = parseInt(localStorage.getItem(FS_KEY) || "14", 10);
-let isDark   = (localStorage.getItem(THEME_KEY) || "dark") === "dark";
+// ── Language map ────────────────────────────────────────────────────────
+const LANG_EXT = {
+  javascript: javascript(),
+  typescript: javascript({ typescript: true }),
+  python: python(),
+  html: html(),
+  css: css(),
+  json: json(),
+  markdown: markdown(),
+  sql: sql(),
+  xml: xml(),
+  go: [],   // no dedicated lang extension; plain text fallback
+  rust: [],
+  cpp: [],
+  java: [],
+  shell: [],
+};
 
-function applyFontSize() {
-  document.documentElement.style.setProperty("--fs", fontSize + "px");
-  localStorage.setItem(FS_KEY, fontSize);
+// Guess language from filename
+function guessLang(name) {
+  const ext = (name || "").split(".").pop().toLowerCase();
+  const map = {
+    js: "javascript", mjs: "javascript", cjs: "javascript",
+    ts: "typescript", tsx: "typescript",
+    py: "python",
+    html: "html", htm: "html",
+    css: "css", scss: "css",
+    json: "json",
+    md: "markdown", mdx: "markdown",
+    sql: "sql",
+    xml: "xml", svg: "xml",
+    go: "go",
+    rs: "rust",
+    c: "cpp", cpp: "cpp", cc: "cpp", h: "cpp",
+    java: "java",
+    sh: "shell", bash: "shell", zsh: "shell",
+  };
+  return map[ext] || "";
 }
-function applyTheme() {
-  document.body.classList.toggle("light", !isDark);
-  themeBtn.textContent = isDark ? "☀" : "☾";
-  themeBtn.title = isDark ? "Switch to light theme" : "Switch to dark theme";
-  themeBtn.classList.toggle("active", !isDark);
+
+// ── Build CodeMirror extensions ─────────────────────────────────────────
+function buildExtensions(langId, dark, wrap, collabExts=[]) {
+  const langExt = LANG_EXT[langId] || [];
+  return [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightSpecialChars(),
+    history(),
+    foldGutter(),
+    drawSelection(),
+    dropCursor(),
+    EditorState.allowMultipleSelections.of(true),
+    indentOnInput(),
+    syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
+    bracketMatching(),
+    closeBrackets(),
+    autocompletion(),
+    rectangularSelection(),
+    crosshairCursor(),
+    highlightActiveLine(),
+    // keymaps
+    keymap.of([
+      ...closeBracketsKeymap,
+      ...defaultKeymap,
+      ...historyKeymap,
+      ...searchKeymap,
+      ...yUndoManagerKeymap,
+      indentWithTab,
+    ]),
+    // language compartment
+    langCompartment.of(langExt),
+    // theme compartment
+    themeCompartment.of(dark ? oneDark : []),
+    // word wrap compartment
+    wrapCompartment.of(wrap ? EditorView.lineWrapping : []),
+    // update listener → cursor pos + save
+    EditorView.updateListener.of(onUpdate),
+    // collab extensions (Yjs) injected here
+    ...collabExts,
+  ];
+}
+
+// ── Create / reset editor ───────────────────────────────────────────────
+function createEditor(content, langId, collabExts=[]) {
+  const dark = document.getElementById("theme-select").value === "dark";
+  const wrap = wordWrap;
+
   if (view) {
-    view.dispatch({ effects: themeComp.reconfigure(isDark ? oneDark : []) });
+    view.destroy();
+    view = null;
   }
-  localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
-}
-applyFontSize();
-// theme applied after view is built
 
-/* ── CodeMirror view ────────────────────────────────────── */
-let view = null;
-
-// Track find matches for our custom count display
-let findMatchCount  = 0;
-let findMatchCurrent = 0;
-
-function buildView(doc, lang, wrap, dark) {
-  const startState = EditorState.create({
-    doc,
-    extensions: [
-      history(),
-      lineNumbers(),
-      highlightActiveLineGutter(),
-      highlightActiveLine(),
-      drawSelection(),
-      dropCursor(),
-      rectangularSelection(),
-      crosshairCursor(),
-      indentOnInput(),
-      bracketMatching(),
-      autocompletion(),
-      foldGutter(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      // Dynamic compartments
-      langComp.of(langExtension(lang)),
-      wrapComp.of(wrap ? EditorView.lineWrapping : []),
-      themeComp.of(dark ? oneDark : []),
-      // Search panel (we manage our own UI but keep CM search for Ctrl+F integration)
-      search({ top: false }),
-      // Keymaps
-      keymap.of([
-        ...defaultKeymap,
-        ...historyKeymap,
-        ...searchKeymap,
-        ...completionKeymap,
-        ...foldKeymap,
-        indentWithTab,
-        // Ctrl+H opens replace
-        { key: "Ctrl-h", run: () => { openFindBar(true); return true; } },
-      ]),
-      // Update listener
-      EditorView.updateListener.of(update => {
-        if (update.docChanged) {
-          onDocChange(update.state.doc.toString());
-        }
-        if (update.selectionSet || update.docChanged) {
-          updateCursorStatus(update.state);
-        }
-      }),
-      // Base theme: background colours from our palette
-      EditorView.theme({
-        "&": {
-          height: "100%",
-          backgroundColor: "var(--bg)",
-          color: "var(--text)",
-        },
-        ".cm-content": { caretColor: "#fff" },
-        ".cm-gutters": {
-          backgroundColor: "var(--panel)",
-          borderRight: "1px solid var(--line)",
-          color: "var(--muted)",
-        },
-        ".cm-activeLineGutter": { backgroundColor: "#1e2428" },
-        ".cm-activeLine": { backgroundColor: "#1a1f24" },
-        ".cm-selectionBackground, ::selection": { backgroundColor: "#7a4b32" },
-        ".cm-searchMatch": { backgroundColor: "#6d5524", borderRadius: "2px" },
-        ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "#b16524" },
-        ".cm-foldPlaceholder": { backgroundColor: "var(--panel-2)", border: "1px solid var(--line)" },
-        "&light": { backgroundColor: "#f5f6f7" },
-        "&light .cm-gutters": { backgroundColor: "#eef0f2", borderRight: "1px solid var(--line)" },
-        "&light .cm-activeLine": { backgroundColor: "#e8eaec" },
-        "&light .cm-activeLineGutter": { backgroundColor: "#e0e3e6" },
-        "&light .cm-selectionBackground, &light ::selection": { backgroundColor: "#c8a882" },
-      }),
-    ]
+  const state = EditorState.create({
+    doc: content,
+    extensions: buildExtensions(langId, dark, wrap, collabExts),
   });
 
-  const newView = new EditorView({
-    state: startState,
-    parent: editorArea,
+  view = new EditorView({
+    state,
+    parent: document.getElementById("cm-host"),
   });
-  return newView;
+
+  // Restore font size
+  applyFontSize(parseInt(document.getElementById("font-size").value, 10));
 }
 
-/* ── Persistence helpers ─────────────────────────────────── */
-function uid() { return "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
-function activeDoc() { return docs.find(d => d.id === activeId) || docs[0]; }
-
-function loadStore() {
-  try { docs = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch { docs = []; }
-  let state = {};
-  try { state = JSON.parse(localStorage.getItem(STATE_KEY) || "{}"); } catch {}
-  if (!docs.length) {
-    const id = uid();
-    docs = [{ id, title: "Untitled.txt", lang: "plain", wrap: true, content: DEFAULT_DOC, savedContent: DEFAULT_DOC, updated: Date.now() }];
+// ── Update listener ─────────────────────────────────────────────────────
+function onUpdate(upd) {
+  if (upd.docChanged && !collabActive && currentFile) {
+    schedSave();
   }
-  activeId = docs.some(d => d.id === state.activeId) ? state.activeId : docs[0].id;
+
+  // Cursor position
+  const sel = upd.state.selection.main;
+  const line = upd.state.doc.lineAt(sel.head);
+  document.getElementById("cursor-pos").textContent =
+    `Ln ${line.number}, Col ${sel.head - line.from + 1}`;
+
+  // Selection count
+  const selLen = sel.to - sel.from;
+  document.getElementById("sel-count").textContent =
+    selLen > 0 ? `${selLen} selected` : "";
+
+  // Word count
+  const text = upd.state.doc.toString();
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  document.getElementById("word-count").textContent = `${words} words`;
 }
 
-function persist() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(docs));
-  localStorage.setItem(STATE_KEY, JSON.stringify({ activeId }));
-}
-
-function scheduleSave() {
+// ── Auto-save (local files only, not while collab is active) ────────────
+function schedSave() {
   clearTimeout(saveTimer);
-  saveStatus.textContent = "Saving…";
-  saveTimer = setTimeout(() => {
-    docs.forEach(d => { d.savedContent = d.content; });
-    persist();
-    renderTabs();
-    saveStatus.textContent = "Saved locally";
-  }, 300);
+  setStatus("saving");
+  saveTimer = setTimeout(saveFile, 600);
 }
 
-/* ── Tab rendering ──────────────────────────────────────── */
-function renderTabs() {
-  tabsEl.innerHTML = "";
-  docs.forEach(doc => {
-    const el = document.createElement("div");
-    el.className = "tab" + (doc.id === activeId ? " active" : "") + (doc.content !== doc.savedContent ? " changed" : "");
-    el.title = doc.title;
-    el.innerHTML = `<span class="dirty"></span><span class="tab-title"></span><span class="close-tab" title="Close">×</span>`;
-    el.querySelector(".tab-title").textContent = doc.title || "Untitled.txt";
-    el.addEventListener("click", () => switchDoc(doc.id));
-    el.querySelector(".close-tab").addEventListener("click", e => { e.stopPropagation(); closeDoc(doc.id); });
-    tabsEl.appendChild(el);
-  });
-}
-
-/* ── Toolbar state ──────────────────────────────────────── */
-function syncToolbar() {
-  const doc = activeDoc();
-  if (!doc) return;
-  titleInput.value  = doc.title;
-  langSelect.value  = doc.lang;
-  wrapBtn.classList.toggle("active", doc.wrap);
-}
-
-/* ── Document switching ─────────────────────────────────── */
-function switchDoc(id) {
-  const doc = docs.find(d => d.id === id);
-  if (!doc || id === activeId) return;
-  // save cursor position in old doc
-  const old = activeDoc();
-  if (old && view) old._scrollTop = view.scrollDOM.scrollTop;
-  activeId = id;
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: doc.content },
-    effects: [
-      langComp.reconfigure(langExtension(doc.lang)),
-      wrapComp.reconfigure(doc.wrap ? EditorView.lineWrapping : []),
-    ],
-    selection: { anchor: 0 },
-  });
-  if (doc._scrollTop) view.scrollDOM.scrollTop = doc._scrollTop;
-  syncToolbar();
-  renderTabs();
-  persist();
-  updateCursorStatus(view.state);
-  updateDocStatus();
-}
-
-/* ── Document mutations ─────────────────────────────────── */
-function onDocChange(text) {
-  const doc = activeDoc();
-  if (!doc) return;
-  doc.content = text;
-  doc.updated = Date.now();
-  scheduleSave();
-  renderTabs();
-  updateDocStatus();
-}
-
-function newDoc() {
-  const id = uid();
-  const doc = { id, title: "Untitled.txt", lang: "plain", wrap: true, content: "", savedContent: "", updated: Date.now() };
-  docs.unshift(doc);
-  activeId = id;
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: "" },
-    effects: [
-      langComp.reconfigure([]),
-      wrapComp.reconfigure(EditorView.lineWrapping),
-    ],
-    selection: { anchor: 0 },
-  });
-  syncToolbar();
-  renderTabs();
-  persist();
-  view.focus();
-}
-
-function duplicateDoc() {
-  const src = activeDoc();
-  if (!src) return;
-  const id = uid();
-  const doc = { ...src, id, title: src.title.replace(/(\.[^.]+)?$/, " copy$1"), savedContent: src.content, updated: Date.now() };
-  docs.unshift(doc);
-  activeId = id;
-  syncToolbar();
-  renderTabs();
-  persist();
-}
-
-function closeDoc(id) {
-  if (docs.length === 1) {
-    // Reset to blank
-    const doc = docs[0];
-    doc.title = "Untitled.txt"; doc.lang = "plain"; doc.content = ""; doc.savedContent = "";
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: "" },
-      effects: [langComp.reconfigure([]), wrapComp.reconfigure(EditorView.lineWrapping)],
-      selection: { anchor: 0 },
+async function saveFile() {
+  if (!currentFile || !view) return;
+  const content = view.state.doc.toString();
+  try {
+    const res = await fetch("/api/files/" + encodeURIComponent(currentFile), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: content,
     });
-    syncToolbar(); renderTabs(); persist();
+    if (!res.ok) throw new Error(res.statusText);
+    setStatus("saved");
+    loadFileList();
+  } catch (e) {
+    setStatus("error");
+    console.error("save error:", e);
+  }
+}
+
+function setStatus(s) {
+  const el = document.getElementById("save-status");
+  el.className = s;
+  el.textContent = s === "saving" ? "Saving…" : s === "saved" ? "Saved" : s === "error" ? "Save failed" : "Ready";
+}
+
+// ── File list ───────────────────────────────────────────────────────────
+async function loadFileList() {
+  const res = await fetch("/api/files");
+  const files = await res.json();
+  const list = document.getElementById("file-list");
+  if (!files.length) {
+    list.innerHTML = '<div style="padding:10px;color:#555;font-size:11px">No files yet</div>';
     return;
   }
-  const idx = docs.findIndex(d => d.id === id);
-  docs = docs.filter(d => d.id !== id);
-  if (activeId === id) switchDoc(docs[Math.max(0, idx - 1)].id);
-  else { renderTabs(); persist(); }
+  list.innerHTML = files.map(f => `
+    <div class="file-item ${f.name === currentFile ? "active" : ""}" data-name="${esc(f.name)}">
+      <span class="fname">${esc(f.name)}</span>
+      <span class="del" data-del="${esc(f.name)}" title="Delete">✕</span>
+    </div>`).join("");
+
+  list.querySelectorAll(".file-item").forEach(el => {
+    el.addEventListener("click", e => {
+      if (e.target.dataset.del) { deleteFile(e.target.dataset.del); return; }
+      openFile(el.dataset.name);
+    });
+  });
 }
 
-/* ── Status bar ─────────────────────────────────────────── */
-function updateCursorStatus(state) {
-  const cursor = state.selection.main.head;
-  const line   = state.doc.lineAt(cursor);
-  cursorStatus.textContent = `Ln ${line.number}, Col ${cursor - line.from + 1}`;
-}
-function updateDocStatus() {
-  const text  = view ? view.state.doc.toString() : "";
-  const words = (text.trim().match(/\S+/g) || []).length;
-  docStatus.textContent = `${words} words, ${text.length} chars`;
+function esc(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-/* ── Find / Replace (our own bar, using CM search under the hood) ── */
-let findbarOpen = false;
-let findQuery = "";
-let replaceQuery = "";
+// ── Open file ───────────────────────────────────────────────────────────
+async function openFile(name) {
+  disconnectCollab(); // leave any active collab session
+  const res = await fetch("/api/files/" + encodeURIComponent(name));
+  if (!res.ok) return;
+  const content = await res.text();
+  currentFile = name;
+  const langId = guessLang(name);
 
-function openFindBar(focusReplace) {
-  findbarOpen = true;
-  findbar.classList.add("open");
-  if (focusReplace) {
-    replaceInput.focus();
-  } else {
-    // Pre-fill with selection
-    const sel = view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to);
-    if (sel && !sel.includes("\n")) findInput.value = sel;
-    findInput.focus();
-    findInput.select();
+  document.getElementById("lang-select").value = langId || "";
+  document.getElementById("file-label").textContent = name;
+
+  createEditor(content, langId);
+  loadFileList();
+  setStatus("ready");
+}
+
+// ── New file ────────────────────────────────────────────────────────────
+async function newFile() {
+  disconnectCollab();
+  const name = prompt("File name:", "untitled.txt");
+  if (!name) return;
+  const res = await fetch("/api/files/" + encodeURIComponent(name), {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: "",
+  });
+  if (!res.ok) return;
+  await loadFileList();
+  openFile(name);
+}
+
+// ── Delete file ─────────────────────────────────────────────────────────
+async function deleteFile(name) {
+  if (!confirm("Delete "" + name + ""?")) return;
+  await fetch("/api/files/" + encodeURIComponent(name), { method: "DELETE" });
+  if (currentFile === name) {
+    currentFile = null;
+    document.getElementById("file-label").textContent = "No file open";
+    createEditor("", "");
   }
-  runFind();
+  loadFileList();
 }
 
-function closeFindBar() {
-  findbarOpen = false;
-  findbar.classList.remove("open");
-  findCount.textContent = "";
-  view.focus();
+// ── Language switch ──────────────────────────────────────────────────────
+function switchLang(langId) {
+  if (!view) return;
+  view.dispatch({ effects: langCompartment.reconfigure(LANG_EXT[langId] || []) });
 }
 
-function runFind() {
-  const q = findInput.value;
-  if (!q) { findCount.textContent = ""; return; }
-  // Dispatch a CM search query so highlighting works
-  const query = new SearchQuery({ search: q, replace: replaceInput.value, caseSensitive: false });
-  view.dispatch({ effects: setSearchQuery.of(query) });
-  // Count matches
-  let count = 0;
-  const doc = view.state.doc.toString().toLowerCase();
-  const lq  = q.toLowerCase();
-  let pos = 0;
-  while (true) {
-    const i = doc.indexOf(lq, pos);
-    if (i === -1) break;
-    count++;
-    pos = i + Math.max(1, lq.length);
-  }
-  findMatchCount = count;
-  findCount.textContent = count ? `${count} match${count !== 1 ? "es" : ""}` : "No matches";
+// ── Theme switch ─────────────────────────────────────────────────────────
+function switchTheme(theme) {
+  document.body.classList.toggle("light-theme", theme === "light");
+  if (!view) return;
+  view.dispatch({ effects: themeCompartment.reconfigure(theme === "dark" ? oneDark : []) });
 }
 
-function doFindNext()  { runFind(); findNext(view); }
-function doFindPrev()  { runFind(); findPrevious(view); }
-function doReplaceOne(){ runFind(); replaceNext(view); runFind(); }
-function doReplaceAll(){ runFind(); cmReplaceAll(view); runFind(); }
+// ── Font size ────────────────────────────────────────────────────────────
+function applyFontSize(px) {
+  if (!view) return;
+  view.dom.style.fontSize = px + "px";
+}
 
-findBtn.addEventListener("click", () => {
-  if (findbarOpen) closeFindBar(); else openFindBar(false);
-});
-closeFindBtn.addEventListener("click", closeFindBar);
-findInput.addEventListener("input", runFind);
-findInput.addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.shiftKey ? doFindPrev() : doFindNext(); }
-  if (e.key === "Escape") closeFindBar();
-});
-replaceInput.addEventListener("keydown", e => {
-  if (e.key === "Enter") doReplaceOne();
-  if (e.key === "Escape") closeFindBar();
-});
-prevBtn.addEventListener("click", doFindPrev);
-nextBtn.addEventListener("click", doFindNext);
-replaceOneBtn.addEventListener("click", doReplaceOne);
-replaceAllBtn.addEventListener("click", doReplaceAll);
+// ── Word wrap toggle ─────────────────────────────────────────────────────
+function toggleWrap() {
+  wordWrap = !wordWrap;
+  document.getElementById("btn-wrap").classList.toggle("active", wordWrap);
+  if (!view) return;
+  view.dispatch({ effects: wrapCompartment.reconfigure(wordWrap ? EditorView.lineWrapping : []) });
+}
 
-/* ── Font size ──────────────────────────────────────────── */
-fsSmallerBtn.addEventListener("click", () => {
-  if (fontSize > FS_MIN) { fontSize -= FS_STEP; applyFontSize(); }
-});
-fsLargerBtn.addEventListener("click", () => {
-  if (fontSize < FS_MAX) { fontSize += FS_STEP; applyFontSize(); }
-});
+// ── Find/Replace ─────────────────────────────────────────────────────────
+let findOpen = false;
 
-/* ── Theme ──────────────────────────────────────────────── */
-themeBtn.addEventListener("click", () => {
-  isDark = !isDark;
-  applyTheme();
-});
+function toggleFind() {
+  findOpen = !findOpen;
+  document.getElementById("find-bar").classList.toggle("open", findOpen);
+  if (findOpen) document.getElementById("find-input").focus();
+}
 
-/* ── Wrap ───────────────────────────────────────────────── */
-wrapBtn.addEventListener("click", () => {
-  const doc = activeDoc(); if (!doc) return;
-  doc.wrap = !doc.wrap; doc.updated = Date.now();
-  view.dispatch({ effects: wrapComp.reconfigure(doc.wrap ? EditorView.lineWrapping : []) });
-  wrapBtn.classList.toggle("active", doc.wrap);
-  scheduleSave();
-});
+function doSearch() {
+  if (!view) return;
+  const q = new SearchQuery({
+    search: document.getElementById("find-input").value,
+    replace: document.getElementById("replace-input").value,
+    caseSensitive: false,
+  });
+  view.dispatch({ effects: setSearchQuery.of(q) });
+}
 
-/* ── Lang select ────────────────────────────────────────── */
-langSelect.addEventListener("change", () => {
-  const doc = activeDoc(); if (!doc) return;
-  doc.lang = langSelect.value; doc.updated = Date.now();
-  view.dispatch({ effects: langComp.reconfigure(langExtension(doc.lang)) });
-  scheduleSave();
-});
+document.getElementById("find-input").addEventListener("input", doSearch);
+document.getElementById("replace-input").addEventListener("input", doSearch);
 
-/* ── Title input ────────────────────────────────────────── */
-titleInput.addEventListener("input", () => {
-  const doc = activeDoc(); if (!doc) return;
-  doc.title = titleInput.value || "Untitled.txt"; doc.updated = Date.now();
-  // Auto-detect language from extension
-  const ext = doc.title.split(".").pop().toLowerCase();
-  const extLang = {
-    js:"javascript", mjs:"javascript", ts:"javascript",
-    py:"python",
-    go:"go",
-    html:"html", htm:"html",
-    css:"css",
-    json:"json",
-    md:"markdown", markdown:"markdown",
-    sh:"bash", bash:"bash", zsh:"bash",
-  }[ext];
-  if (extLang && doc.lang === "plain") {
-    doc.lang = extLang;
-    langSelect.value = extLang;
-    view.dispatch({ effects: langComp.reconfigure(langExtension(extLang)) });
-  }
-  renderTabs();
-  scheduleSave();
+document.getElementById("find-next").addEventListener("click", () => {
+  doSearch(); if (view) findNext(view);
+});
+document.getElementById("find-prev").addEventListener("click", () => {
+  doSearch(); if (view) findPrevious(view);
+});
+document.getElementById("btn-replace-one").addEventListener("click", () => {
+  doSearch(); if (view) replaceNext(view);
+});
+document.getElementById("btn-replace-all").addEventListener("click", () => {
+  doSearch(); if (view) replaceAll(view);
+});
+document.getElementById("find-close").addEventListener("click", () => {
+  findOpen = false;
+  document.getElementById("find-bar").classList.remove("open");
 });
 
-/* ── New / Duplicate / Delete ───────────────────────────── */
-newBtn.addEventListener("click", newDoc);
-duplicateBtn.addEventListener("click", duplicateDoc);
-deleteBtn.addEventListener("click", () => closeDoc(activeId));
-
-/* ── Ctrl+T for new tab ─────────────────────────────────── */
+// ── Keyboard shortcuts ───────────────────────────────────────────────────
 document.addEventListener("keydown", e => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "t") {
-    e.preventDefault(); newDoc();
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
     e.preventDefault();
-    if (!findbarOpen) openFindBar(false);
-    else { findInput.focus(); findInput.select(); }
+    saveFile();
   }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "h") {
+  if ((e.ctrlKey || e.metaKey) && e.key === "f") {
     e.preventDefault();
-    openFindBar(true);
+    if (!findOpen) toggleFind();
+  }
+  if (e.key === "Escape" && findOpen) {
+    findOpen = false;
+    document.getElementById("find-bar").classList.remove("open");
+    view?.focus();
   }
 });
 
-/* ── Persist on unload ──────────────────────────────────── */
-window.addEventListener("beforeunload", persist);
+// ── localStorage persistence (selected file / settings) ─────────────────
+function persistSettings() {
+  localStorage.setItem("te-theme", document.getElementById("theme-select").value);
+  localStorage.setItem("te-fontsize", document.getElementById("font-size").value);
+  localStorage.setItem("te-wrap", wordWrap ? "1" : "0");
+  if (currentFile) localStorage.setItem("te-file", currentFile);
+}
 
-/* ── Bootstrap ──────────────────────────────────────────── */
-(function init() {
-  loadStore();
-  const doc = activeDoc();
-  view = buildView(doc.content, doc.lang, doc.wrap, isDark);
-  applyTheme(); // now view exists
-  syncToolbar();
-  renderTabs();
-  updateCursorStatus(view.state);
-  updateDocStatus();
-  persist();
-  view.focus();
-})();
+function restoreSettings() {
+  const theme = localStorage.getItem("te-theme") || "dark";
+  const fontSize = parseInt(localStorage.getItem("te-fontsize") || "14", 10);
+  const wrap = localStorage.getItem("te-wrap") === "1";
+
+  document.getElementById("theme-select").value = theme;
+  document.getElementById("font-size").value = fontSize;
+  if (theme === "light") document.body.classList.add("light-theme");
+  wordWrap = wrap;
+  document.getElementById("btn-wrap").classList.toggle("active", wrap);
+}
+
+// ── Collab (Yjs + WebSocket) ─────────────────────────────────────────────
+
+// Colour palette for remote cursors
+const PEER_COLORS = [
+  "#f87171","#fb923c","#facc15","#4ade80",
+  "#34d399","#38bdf8","#818cf8","#c084fc","#f472b6",
+];
+let peerColorIdx = 0;
+function nextPeerColor() { return PEER_COLORS[peerColorIdx++ % PEER_COLORS.length]; }
+
+function buildCollabWsUrl(docId) {
+  // The Vula backend exposes the collab WS at /api/peering/collab/<docId>/sync
+  // Derive from current window location so it works both locally and proxied.
+  const loc = window.location;
+  const proto = loc.protocol === "https:" ? "wss:" : "ws:";
+  // The app server proxies through VULOS_API; the WS endpoint is on the main
+  // Vula backend (port 8080 by default). We connect directly to the backend.
+  const backendHost = loc.hostname + ":8080";
+  return `${proto}//${backendHost}/api/peering/collab/${encodeURIComponent(docId)}/sync`;
+}
+
+function startCollab(docId, peer, permission) {
+  if (collabActive) disconnectCollab();
+
+  // Create a fresh Yjs document
+  ydoc = new Y.Doc();
+  const yText = ydoc.getText("codemirror");
+
+  // Colour for this user
+  const myColor = nextPeerColor();
+  const myName  = "Me";
+
+  const wsUrl = buildCollabWsUrl(docId);
+  wsProvider = new WebsocketProvider(wsUrl, docId, ydoc, { connect: true });
+
+  // Set local awareness (presence / cursor)
+  wsProvider.awareness.setLocalStateField("user", {
+    name: myName,
+    color: myColor,
+    colorLight: myColor + "55",
+  });
+
+  // Build yCollab extension
+  const collabExts = [
+    yCollab(yText, wsProvider.awareness, {
+      undoManager: new Y.UndoManager(yText),
+    }),
+    search(), // keep search working
+  ];
+
+  // If we have existing content (owner), load it into yText
+  if (view && permission === "edit") {
+    const existingContent = view.state.doc.toString();
+    if (existingContent && yText.toString() === "") {
+      ydoc.transact(() => { yText.insert(0, existingContent); });
+    }
+  }
+
+  // Recreate editor with collab extensions
+  const langId = document.getElementById("lang-select").value;
+  createEditor("", langId, collabExts);
+
+  collabActive = true;
+  currentDocId = docId;
+
+  // Show collab UI
+  document.getElementById("collab-bar").classList.add("open");
+  document.getElementById("collab-status").style.display = "";
+
+  // Track awareness changes (remote cursors / peers)
+  wsProvider.awareness.on("change", updatePeerBadges);
+
+  wsProvider.on("status", ({ status }) => {
+    if (status === "disconnected") {
+      document.getElementById("collab-status").textContent = "● Collab (reconnecting…)";
+    } else if (status === "connected") {
+      document.getElementById("collab-status").textContent = "● Collab active";
+    }
+  });
+}
+
+function updatePeerBadges() {
+  const peers = [];
+  wsProvider.awareness.getStates().forEach((state, clientId) => {
+    if (clientId !== wsProvider.awareness.clientID && state.user) {
+      peers.push(state.user);
+    }
+  });
+  const container = document.getElementById("collab-peers");
+  if (!peers.length) {
+    container.innerHTML = '<span style="color:#3b6bbf;font-size:11px">Waiting for peers…</span>';
+    return;
+  }
+  container.innerHTML = peers.map(p => `
+    <span class="peer-badge">
+      <span class="peer-dot" style="background:${p.color}"></span>
+      ${esc(p.name || "Peer")}
+    </span>`).join("");
+}
+
+function disconnectCollab() {
+  if (!collabActive) return;
+  wsProvider?.disconnect();
+  wsProvider?.destroy();
+  ydoc?.destroy();
+  wsProvider = null;
+  ydoc = null;
+  collabActive = false;
+  currentDocId = null;
+
+  document.getElementById("collab-bar").classList.remove("open");
+  document.getElementById("collab-status").style.display = "none";
+}
+
+// ── Share modal ──────────────────────────────────────────────────────────
+
+function openShareModal() {
+  if (!currentFile) {
+    alert("Please open or save a file before sharing.");
+    return;
+  }
+  document.getElementById("share-peer").value = "";
+  document.getElementById("share-perm").value = "edit";
+  document.getElementById("share-modal").classList.add("open");
+  document.getElementById("share-peer").focus();
+}
+
+async function confirmShare() {
+  const peer = document.getElementById("share-peer").value.trim();
+  const perm = document.getElementById("share-perm").value;
+
+  if (!peer) {
+    alert("Enter a Vula ID or email.");
+    return;
+  }
+
+  // Generate a doc ID from the file name + timestamp (simple, stable)
+  const docId = "te-" + btoa(currentFile).replace(/[^a-zA-Z0-9]/g,"") +
+                "-" + Date.now().toString(36);
+
+  // POST /api/peering/collab/share (proxied through our server.py)
+  try {
+    const res = await fetch("/api/peering/collab/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        doc_id: docId,
+        doc_type: "text",
+        title: currentFile,
+        peer: peer,
+        permission: perm,
+        app: "text-editor",
+      }),
+    });
+    // 502 means backend not up (expected in dev) — still start local collab
+    if (!res.ok && res.status !== 502) {
+      console.warn("share API returned", res.status);
+    }
+  } catch (e) {
+    console.warn("share API error (continuing):", e);
+  }
+
+  document.getElementById("share-modal").classList.remove("open");
+
+  // Show link in collab bar
+  const shareUrl = window.location.origin + "/?collab=" + encodeURIComponent(docId);
+  const linkEl = document.getElementById("collab-link");
+  linkEl.textContent = shareUrl;
+  linkEl.title = "Click to copy";
+  linkEl.onclick = () => { navigator.clipboard.writeText(shareUrl).catch(()=>{}); };
+  document.getElementById("collab-link-wrap").style.display = "flex";
+
+  // Start collab session
+  startCollab(docId, peer, perm);
+}
+
+// Join if URL has ?collab=<docId>
+function maybeJoinFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const docId = params.get("collab");
+  if (docId) {
+    startCollab(docId, null, "edit");
+  }
+}
+
+// ── Wire up UI ───────────────────────────────────────────────────────────
+
+document.getElementById("btn-new").addEventListener("click", newFile);
+document.getElementById("btn-new2").addEventListener("click", newFile);
+document.getElementById("btn-save").addEventListener("click", saveFile);
+document.getElementById("btn-wrap").addEventListener("click", () => { toggleWrap(); persistSettings(); });
+document.getElementById("btn-find").addEventListener("click", toggleFind);
+document.getElementById("btn-share").addEventListener("click", openShareModal);
+
+document.getElementById("lang-select").addEventListener("change", e => switchLang(e.target.value));
+document.getElementById("theme-select").addEventListener("change", e => { switchTheme(e.target.value); persistSettings(); });
+document.getElementById("font-size").addEventListener("input", e => {
+  applyFontSize(parseInt(e.target.value, 10)); persistSettings();
+});
+
+document.getElementById("share-cancel").addEventListener("click", () => {
+  document.getElementById("share-modal").classList.remove("open");
+});
+document.getElementById("share-confirm").addEventListener("click", confirmShare);
+document.getElementById("share-peer").addEventListener("keydown", e => {
+  if (e.key === "Enter") confirmShare();
+  if (e.key === "Escape") document.getElementById("share-modal").classList.remove("open");
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────
+
+restoreSettings();
+
+// Create an empty editor immediately so the shell feels responsive
+createEditor("", "");
+document.getElementById("word-count").textContent = "0 words";
+
+// Load file list; restore last open file
+loadFileList().then(async () => {
+  const lastFile = localStorage.getItem("te-file");
+  if (lastFile) {
+    const res = await fetch("/api/files");
+    const files = await res.json();
+    if (files.find(f => f.name === lastFile)) {
+      openFile(lastFile);
+    }
+  }
+});
+
+// Check for collab join URL
+maybeJoinFromUrl();
+
+// Persist settings when leaving
+window.addEventListener("beforeunload", persistSettings);
 </script>
 </body>
 </html>

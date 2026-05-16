@@ -1,18 +1,18 @@
 {
   "id": "text-editor",
   "name": "Text Editor",
-  "icon": "✎",
+  "icon": "⌨",
   "icon_path": "icon.svg",
-  "description": "Tabbed plain text and code editor with local documents",
+  "description": "Code & plain text editor with syntax highlighting, find/replace, and live collaboration",
   "version": "0.1.0",
   "command": "python3 server.py",
   "port": 80,
-  "category": "productivity",
-  "keywords": ["text", "editor", "code", "tabs", "documents"],
+  "category": "developer",
+  "keywords": ["text", "editor", "code", "syntax", "developer", "collab"],
   "deps": ["python3"],
   "auto_start": false,
   "singleton": true,
-  "permissions": [],
+  "permissions": ["network", "filesystem"],
   "author": "Vula OS",
   "license": "MIT"
 }

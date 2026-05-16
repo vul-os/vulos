@@ -1,76 +1,195 @@
-"""Vula OS - Text Editor
-Tabbed localStorage-backed code editor powered by CodeMirror 6.
-All assets are served locally — no external network requests.
+"""Vula OS — Text Editor
+Code & plain text editor with syntax highlighting and live collaboration (PEER-33).
+Yjs-based co-editing over /api/peering/collab WS + remote cursors + Share button.
 """
 import http.server
+import json
 import os
-import posixpath
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 PORT = int(os.environ.get("PORT", os.environ.get("VULOS_PORT", 8080)))
+VULOS_API = os.environ.get("VULOS_API", "http://localhost:8080")
+DATA_DIR = os.environ.get("EDITOR_DIR", os.path.expanduser("~/.vulos/data/text-editor"))
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(DATA_DIR, exist_ok=True)
 
-CONTENT_TYPES = {
-    ".html": "text/html; charset=utf-8",
-    ".js":   "application/javascript; charset=utf-8",
-    ".css":  "text/css; charset=utf-8",
-    ".svg":  "image/svg+xml",
-    ".ico":  "image/x-icon",
-    ".woff2":"font/woff2",
-    ".woff": "font/woff",
-    ".ttf":  "font/ttf",
-}
 
-# Allowed sub-paths (whitelist to prevent directory traversal)
-ALLOWED_DIRS = {"vendor"}
+# ---------------------------------------------------------------------------
+# File helpers
+# ---------------------------------------------------------------------------
 
+def list_files():
+    files = []
+    for name in sorted(os.listdir(DATA_DIR)):
+        path = os.path.join(DATA_DIR, name)
+        if os.path.isfile(path):
+            files.append({
+                "name": name,
+                "modified": os.path.getmtime(path),
+                "size": os.path.getsize(path),
+            })
+    return files
+
+
+def read_file(name):
+    path = os.path.join(DATA_DIR, name)
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", errors="replace") as f:
+        return f.read()
+
+
+def write_file(name, content):
+    # Sanitise: no path traversal
+    name = os.path.basename(name)
+    if not name:
+        name = "untitled-" + str(int(time.time() * 1000)) + ".txt"
+    path = os.path.join(DATA_DIR, name)
+    with open(path, "w") as f:
+        f.write(content)
+    return name
+
+
+def delete_file(name):
+    path = os.path.join(DATA_DIR, os.path.basename(name))
+    if os.path.exists(path):
+        os.remove(path)
+
+
+# ---------------------------------------------------------------------------
+# Peering collab proxy helpers
+# ---------------------------------------------------------------------------
+
+def collab_share(payload_bytes):
+    """Proxy POST /api/peering/collab/share to the Vula backend."""
+    url = VULOS_API + "/api/peering/collab/share"
+    req = urllib.request.Request(
+        url,
+        data=payload_bytes,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+    except Exception as e:
+        return 502, json.dumps({"error": str(e)}).encode()
+
+
+# ---------------------------------------------------------------------------
+# HTTP handler
+# ---------------------------------------------------------------------------
 
 class TextEditorHandler(http.server.BaseHTTPRequestHandler):
+
+    # ------------------------------------------------------------------
+    # GET
+    # ------------------------------------------------------------------
     def do_GET(self):
-        path = self.path.split("?", 1)[0].split("#", 1)[0]
+        if self.path in ("/", ""):
+            self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
 
-        if path == "/" or path == "/index.html":
-            self.serve_file("index.html")
-            return
+        elif self.path == "/api/files":
+            self.send_json(list_files())
 
-        if path == "/icon.svg":
-            self.serve_file("icon.svg")
-            return
+        elif self.path.startswith("/api/files/"):
+            name = urllib.parse.unquote(self.path[len("/api/files/"):])
+            content = read_file(name)
+            if content is None:
+                self.send_error(404)
+            else:
+                data = content.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
 
-        # Serve files under /vendor/ and any other whitelisted sub-directory
-        parts = [p for p in path.lstrip("/").split("/") if p and p != ".."]
-        if parts and parts[0] in ALLOWED_DIRS:
-            rel = os.path.join(*parts)
-            # Prevent path traversal
-            full = os.path.realpath(os.path.join(APP_DIR, rel))
-            if full.startswith(os.path.realpath(APP_DIR) + os.sep):
-                self.serve_file(rel)
-                return
+        else:
+            self.send_error(404)
 
-        self.send_error(404)
+    # ------------------------------------------------------------------
+    # POST
+    # ------------------------------------------------------------------
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else b""
 
-    def serve_file(self, rel_path):
-        filepath = os.path.join(APP_DIR, rel_path)
+        if self.path == "/api/files":
+            # Create a new untitled file
+            name = write_file("", body.decode("utf-8", errors="replace"))
+            self.send_json({"name": name})
+
+        elif self.path.startswith("/api/files/"):
+            name = urllib.parse.unquote(self.path[len("/api/files/"):])
+            name = write_file(name, body.decode("utf-8", errors="replace"))
+            self.send_json({"name": name})
+
+        elif self.path == "/api/peering/collab/share":
+            # Proxy to Vula backend peering API
+            status, resp_body = collab_share(body)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(resp_body)
+
+        else:
+            self.send_error(404)
+
+    # ------------------------------------------------------------------
+    # DELETE
+    # ------------------------------------------------------------------
+    def do_DELETE(self):
+        if self.path.startswith("/api/files/"):
+            name = urllib.parse.unquote(self.path[len("/api/files/"):])
+            delete_file(name)
+            self.send_json({"status": "deleted"})
+        else:
+            self.send_error(404)
+
+    # ------------------------------------------------------------------
+    # OPTIONS (CORS pre-flight)
+    # ------------------------------------------------------------------
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def serve_file(self, filepath, content_type):
         try:
             with open(filepath, "rb") as f:
                 data = f.read()
-            _, ext = os.path.splitext(filepath)
-            content_type = CONTENT_TYPES.get(ext.lower(), "application/octet-stream")
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
-            # Cache vendor assets aggressively; HTML never cached
-            if rel_path.startswith("vendor"):
-                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-            else:
-                self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(data)
         except FileNotFoundError:
             self.send_error(404)
 
-    def log_message(self, fmt, *args):  # silence access log
-        pass
+    def send_json(self, data):
+        encoded = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, format, *args):
+        pass  # silence per-request logs
 
 
-print(f"[text-editor] serving on port {PORT}")
+print(f"[text-editor] Text Editor on port {PORT}")
 http.server.HTTPServer(("0.0.0.0", PORT), TextEditorHandler).serve_forever()
