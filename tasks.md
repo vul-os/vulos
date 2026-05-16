@@ -680,7 +680,7 @@ Scope: Probe GPU(reuse gpu)/audio/input/network/storage/battery; write /var/log/
 AC: [ ] returns hw info [ ] boot.log written [ ] failures non-fatal [ ] GOOS=linux build
 
 ### [BMINIT-12] Installer backend: disks/status/install/progress
-`todo` · P2 · L · dep: none · parallel: yes — new backend/services/installer/, main.go (routes)
+`done` · P2 · L · dep: none · parallel: yes — new backend/services/installer/, main.go (routes)
 Scope: GET /api/installer/disks (lsblk -J), /status (live vs installed), POST /install (ESP+root part/format/rsync/bootctl), GET /progress WS (wsutil); guard destructive.
 AC: [ ] disks lists drives [ ] status live vs installed [ ] install does part→format→rsync→bootctl [ ] progress WS % [ ] go build
 
