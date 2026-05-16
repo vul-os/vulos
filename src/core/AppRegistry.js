@@ -88,6 +88,16 @@ const builtinRegistry = [
   },
 
   {
+    id: 'vault',
+    name: 'Vault',
+    icon: '⊕',
+    description: 'Password manager & credential store',
+    keywords: ['vault', 'password', 'passwords', 'credentials', 'secrets', 'login', 'keychain', 'manager', 'security'],
+    category: 'system',
+    builtin: true,
+  },
+
+  {
     id: 'browser',
     name: 'Chrome',
     icon: 'chrome',
