@@ -585,7 +585,7 @@ Scope: POST /api/setup/ssh-key: gen Ed25519, append pub to /root/.ssh/authorized
 AC: [ ] returns valid ed25519 pair [ ] pub appended no dupe [ ] privkey never written [ ] go build
 
 ### [INIT-04] MinIO storage provisioning endpoint
-`todo` · P0 · L · dep: none · parallel: yes — new backend/services/storageprov/, registry.json, main.go (route reg only)
+`done` · P0 · L · dep: none · parallel: yes — new backend/services/storageprov/, registry.json, main.go (route reg only)
 Scope: POST /api/setup/storage{enable,size_gb,password,passphrase}: install MinIO, gen keys, bucket vulos-cluster, SSE-C, persist storage.json (not passphrase); skip case.
 AC: [ ] enable starts MinIO+bucket [ ] returns keys, passphrase not persisted [ ] enable:false no-op [ ] storage.json written, go build
 
