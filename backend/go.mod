@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/minio/minio-go/v7 v7.1.0
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pion/interceptor v0.1.44
 	github.com/pion/webrtc/v4 v4.2.11
 	github.com/pquerna/otp v1.5.0

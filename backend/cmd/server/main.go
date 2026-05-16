@@ -1895,6 +1895,8 @@ func main() {
 
 	// Recovery Kit re-download (admin-only)
 	registerKitRoutes(mux, authStore, home)
+	// Identity service (instance ULID + hostname)
+	registerIdentityRoutes(mux, home)
 
 	// Serve frontend static files (production build)
 	webrootDir := ""
