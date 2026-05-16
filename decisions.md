@@ -393,3 +393,6 @@ Free mem 350 MB. 62 min to 18:55 wind-down. Next-tick decision: top-up if mem cl
 
 ## D45 (17:52) — Final-tick wave: 3 file-disjoint, 63 min to wind-down
 Mem 899 MB, load 8, build green @ b4d633c. Dispatching 3 conservative workers (vs 5-10) to optimize merge success on the remaining timeline: INIT-09 (Setup.jsx New/Join chooser + App.jsx — frontend isolated), INIT-10 (new joincode/ pkg + routes_joincode.go + 1 main.go wire), BMINIT-14 (build.sh --live squashfs + new scripts/initramfs/). INIT-09/10 depend on deferred INIT-08 backend; workers should degrade-gracefully (404 acceptable for now). After this wave: clean wind-down at 18:55 with no further dispatch.
+
+## D46 (17:57) — Tick: hold (INIT-10 in flight, wind-down approaching)
+Mem 695 MB cleared, build green @ c6f2d79, 0 unmerged branches. INIT-10 worker still working (no completion yet, no branch). Per D45 plan: no new dispatch — let INIT-10 complete, merge it, then clean wind-down at 18:55 (58 min). Final session tally so far: 152 task-branches merged.
