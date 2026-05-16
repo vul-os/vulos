@@ -268,7 +268,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			return cmd
 		}, &sess.gstVideo)
 
-		// Audio pipeline — captures from virtual speaker monitor (all app audio)
+		// Audio pipeline — captures from virtual speaker monitor (all app audio).
+		// Uses pipewiresrc when PipeWire is available; falls back to pulsesrc.
 		go runWithBackoff(ctx, sess.Name+"-audio", func() *exec.Cmd {
 			// Gaming mode: 10ms Opus frames for lower audio latency.
 			// Normal mode: 20ms frames (standard quality/CPU trade-off).
@@ -276,15 +277,16 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			if opts.Gaming {
 				opusFrameSize = "10"
 			}
-			args := []string{"-q",
-				"pulsesrc", "device=virtual_speaker.monitor",
+			args := []string{"-q"}
+			args = append(args, audioSourceArgs(gpuInfo)...)
+			args = append(args,
 				"!", "audio/x-raw,rate=48000,channels=2",
 				"!", "queue", "max-size-buffers=1", "leaky=downstream",
 				"!", "opusenc", "bitrate=128000", "frame-size=" + opusFrameSize,
 				"!", "rtpopuspay", "pt=111",
 				"!", "udpsink", "host=127.0.0.1", fmt.Sprintf("port=%d", audioPort),
 				"sync=false", "async=false",
-			}
+			)
 			cmd := exec.CommandContext(ctx, gstBin, args...)
 			cmd.Env = append(os.Environ(), "DISPLAY="+display)
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -361,6 +363,18 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	log.Printf("[stream] launched %q on %s (encoder=%s, %dx%d@%dfps, gaming=%v)",
 		opts.Name, display, gpuInfo.Encoder, opts.Width, opts.Height, opts.FPS, opts.Gaming)
 	return sess, nil
+}
+
+// audioSourceArgs returns GStreamer audio source arguments for the capture pipeline.
+// When PipeWire is available (detected by gpu.Info.HasPipeWire), it uses pipewiresrc
+// targeting the virtual_speaker monitor node. Otherwise it falls back to the original
+// pulsesrc path (byte-identical to the pre-STREAM-06 pipeline).
+func audioSourceArgs(g gpu.Info) []string {
+	if g.HasPipeWire {
+		return []string{"pipewiresrc", `target-object=virtual_speaker.monitor`}
+	}
+	// PulseAudio fallback — unchanged from original pipeline
+	return []string{"pulsesrc", "device=virtual_speaker.monitor"}
 }
 
 // Get returns a session by ID.
