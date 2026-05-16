@@ -3,6 +3,7 @@ import { useShell } from '../providers/ShellProvider'
 import { getApps, searchApps, getAppsByCategory } from '../core/AppRegistry'
 import Settings from '../core/Settings'
 import { AppIconTile } from '../core/AppIcons'
+import { useNativeMode } from '../core/useNativeMode'
 
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
@@ -55,6 +56,8 @@ async function gpuapiGetChromiumArgs() {
 
 export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
+  // BMINIT-06: detect native mode (baremetal compositor — labwc, Sway, etc.)
+  const { isNative: bm6_isNative } = useNativeMode()
   const [search, setSearch] = useState('')
   const [chatInput, setChatInput] = useState('')
   const [desktopEntries, setDesktopEntries] = useState([])
@@ -136,6 +139,33 @@ export default function Launchpad() {
     const singletons = new Set(['persona', 'apphub'])
     if (builtins[app.id]) {
       openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtins[app.id](), singleton: singletons.has(app.id) })
+      close()
+      return
+    }
+
+    // BMINIT-06: Native-launch branch — bare metal with a real Wayland compositor.
+    // Desktop entries and registry desktop-type apps spawn real native windows via labwc/Sway.
+    // Builtin apps (handled above) and browser (handled below) are excluded.
+    // Remote/browser mode falls through to the stream path unchanged.
+    const bm6_isDesktopApp = app._desktop || app.type === 'desktop'
+    if (bm6_isNative && bm6_isDesktopApp) {
+      // Resolve binary + args: prefer fields already on the app object; server resolves from
+      // manifest when binary === '' (BMINIT-04 backend behaviour).
+      const bm6_binary = app._exec
+        ? app._exec.split(' ')[0]
+        : app.command?.split(' ')[0] || ''
+      const bm6_args = app._exec
+        ? app._exec.split(' ').slice(1)
+        : app.command?.split(' ').slice(1) || []
+      fetch('/api/shell/native-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_id: app.id,
+          binary: bm6_binary,
+          args: bm6_args,
+        }),
+      }).catch(() => {})
       close()
       return
     }
