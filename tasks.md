@@ -600,7 +600,7 @@ Scope: RecoveryKitStep shows all creds w/ copy; build versioned JSON download (v
 AC: [ ] creds+copy [ ] JSON matches schema v1 [ ] QR renders [ ] gated until `confirm` [ ] storage-skipped variant works, npm build
 
 ### [INIT-07] Server boot-mode router (setup/sync/normal)
-`todo` · P0 · M · dep: none · parallel: yes — new backend/services/bootmode/, main.go (one call+route)
+`done` · P0 · M · dep: none · parallel: yes — new backend/services/bootmode/, main.go (one call+route)
 Scope: Detect(home)->{mode,syncState} per db-dir + sync-state.json rules; GET /api/setup/mode; decouple from pre-touched .setup-complete (gate on instance.json).
 AC: [ ] fresh→setup [ ] sync-state syncing→sync [ ] db no sync-state→normal [ ] GET /api/setup/mode, go build
 
