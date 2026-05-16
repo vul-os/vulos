@@ -520,3 +520,11 @@ All 9 previously-untested pkgs now covered: ai, appfs, audio, bluetooth, display
 
 ## D81 (22:25) — SECAUDIT2 merged + H1/M-1 fixed; security verdict
 SECAUDIT2 (Opus pen-test) merged @ 77ffb24: SECURITY-AUDIT-2.md + 8 adversarial *_security_test.go files. VERDICT: SEC-A/C1 invariant HOLDS (header-strip is first in Middleware, proven by 2 tests); ALL prior fixes (C1-C4,H1-H6,M3/M4,SEC-A/B/E/F/G/H/I/J,CLUSTER-02,AUTH-12,INIT-08,NOTIF-02) verified intact; NO CRITICAL findings; D24 unauth-RCE chain stays closed. New: 1 HIGH (H1 static-download checksum bypass + unsafe tar) — FIXED @ next commit (checksum now mandatory for download_url; pre-extraction traversal screen; 3 unverified entries disabled pending checksums); 1 MED (M-1 native-launch app_id) — FIXED (charset gate); 2 LOW (passkeys ceremony DoS self-healing; /api/setup/join post-setup reachable) — logged, low-sev, accepted for now. Full test suite GREEN incl the SECAUDIT2 regression suite. Tier-2 fully complete: 18 pkgs covered + integration smoke + adversarial security suite.
+
+## D82 (22:35) — Close out ALL residuals (4 file-disjoint Sonnet)
+User: "fix and sort out all" — resolve every non-CRITICAL residual, not just log them:
+- H1-followup: restore navidrome/memos/uptime-kuma with REAL verified upstream sha256 (re-enable properly = security + function). registry.json only.
+- L-1: passkeys au12ConsumeSession deletes pending ceremony before userID-binding check → reorder (bind-check before consume). passkeys/ only.
+- L-2: /api/setup/join reachable post-setup → add setup-complete gate. routes_join.go/joinsync only.
+- D80: profiles.Store.Create UnixMilli ID collision → collision-free IDs (ULID/monotonic). profiles/ only.
+All file-disjoint; each must keep its SECAUDIT2/coverage tests green + add a regression test. Build+test gate per merge.
