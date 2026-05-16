@@ -157,8 +157,8 @@ func main() {
 	// System user management (maps Vula profiles → Linux users)
 	sysUserSvc := sysuser.New()
 
-	// Remote access config
-	netSvc := network.New()
+	// Remote access config — pass cfg so identity fields are populated from config/env.
+	netSvc := network.New(cfg)
 
 	// AI service
 	aiSvc := ai.New()
