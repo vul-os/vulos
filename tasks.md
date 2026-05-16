@@ -600,7 +600,7 @@ Scope: Shared `parseSubdomain(host,baseDomain)->(app,profile,ok)` split on `--` 
 AC: [ ] browser--work parses app+profile [ ] terminal. → default [ ] /app/cockpit/ resolves default [ ] unit test 2/1/none-part
 
 ### [NET-02] Namespace keying by `{profile}-{appId}`
-`todo` · P0 · M · dep: NET-01 · parallel: no — backend/services/appnet/namespace.go, launcher.go, gateway/gateway.go
+`done` · P0 · M · dep: NET-01 · parallel: no — backend/services/appnet/namespace.go, launcher.go, gateway/gateway.go
 Scope: Add profile dimension to namespace/launcher keying; GetForProfile; Launch accepts profile; backward-compat for `default`.
 AC: [ ] same app 2 profiles = 2 ns [ ] gateway routes per profile [ ] default still resolves [ ] Stop targets single profile
 
@@ -610,7 +610,7 @@ Scope: Shared regex `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (forbids `--`, leading/traili
 AC: [ ] appID w/ `--` fails [ ] username `--`/lead/trail rejected [ ] profile `--` rejected [ ] single-hyphen still ok
 
 ### [NET-04] DNS + frontend URLs use `{app}--{profile}`
-`todo` · P1 · M · dep: NET-01, NET-02 · parallel: no — backend/services/appnet/dns.go, src/shell/Launchpad.jsx, src/core/Portal.jsx
+`done` · P1 · M · dep: NET-01, NET-02 · parallel: no — backend/services/appnet/dns.go, src/shell/Launchpad.jsx, src/core/Portal.jsx
 Scope: /etc/hosts + Resolve use new format; Launchpad/Portal build {app}--{profile} URLs (default profile); keep path fallback.
 AC: [ ] /etc/hosts new format [ ] Resolve parses it [ ] Launchpad opens {app}--default [ ] path fallback unchanged
 
