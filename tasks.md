@@ -910,7 +910,7 @@ Scope: Persist unacked outbox, retry 1s/5s/30s/5m/1h then periodic, ACK removes,
 AC: [ ] unreachable stays+retried [ ] ACK removes [ ] online peer pulls missed
 
 ### [PEER-16] Media transfer: upload, hash ref, S2S fetch, thumbnails
-`todo` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
+`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
 Scope: media store ~/.vulos/peering/media/, upload→hash+signed URL, S2S fetch on inbound refs, image/video thumbnails.
 AC: [ ] upload→stable hash+signed URL [ ] recipient fetches own copy post-offline [ ] thumbnails [ ] signed URL rejects tamper/expire
 
