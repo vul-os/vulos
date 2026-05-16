@@ -283,6 +283,149 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
   padding:6px 0 4px;border-bottom:1px solid #131320;margin-bottom:6px;
 }
 .thread-root .status-card{border-color:#6366f1}
+
+/* ── FED-04: Photos tab ─────────────────────────────────── */
+.photo-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:3px;
+  padding:6px;
+}
+.photo-cell{
+  aspect-ratio:1;overflow:hidden;cursor:pointer;position:relative;
+  background:#111120;border-radius:4px;
+}
+.photo-cell img{
+  width:100%;height:100%;object-fit:cover;display:block;
+  transition:opacity .15s,transform .15s;
+}
+.photo-cell:hover img{opacity:.85;transform:scale(1.03)}
+.photo-cell .multi-badge{
+  position:absolute;top:6px;right:6px;
+  background:rgba(0,0,0,.6);border-radius:4px;
+  font-size:10px;color:#fff;padding:2px 5px;pointer-events:none;
+}
+.photo-cell .video-badge{
+  position:absolute;bottom:6px;left:6px;
+  font-size:18px;opacity:.85;pointer-events:none;
+}
+
+/* ── Fullscreen viewer / lightbox ────────────────────────── */
+.lightbox{
+  position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+.lightbox-top{
+  position:absolute;top:0;left:0;right:0;
+  display:flex;align-items:center;padding:10px 14px;gap:10px;
+  background:linear-gradient(rgba(0,0,0,.7),transparent);
+}
+.lightbox-top .lb-acct{font-size:13px;color:#ccc;flex:1}
+.lightbox-top .lb-close{
+  background:none;border:none;color:#ccc;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;
+}
+.lightbox-top .lb-close:hover{color:#fff}
+.lightbox-counter{
+  position:absolute;bottom:60px;left:50%;transform:translateX(-50%);
+  font-size:12px;color:#888;background:rgba(0,0,0,.5);border-radius:10px;
+  padding:3px 10px;pointer-events:none;
+}
+.lightbox-img{
+  max-width:min(96vw,1200px);max-height:calc(100vh - 110px);
+  object-fit:contain;border-radius:6px;user-select:none;
+}
+.lightbox-nav{
+  position:absolute;top:50%;transform:translateY(-50%);
+  background:rgba(0,0,0,.55);border:none;color:#ccc;font-size:24px;
+  padding:14px 10px;cursor:pointer;border-radius:6px;
+  transition:background .12s,color .12s;
+}
+.lightbox-nav:hover{background:rgba(255,255,255,.12);color:#fff}
+.lightbox-nav.prev{left:10px}
+.lightbox-nav.next{right:10px}
+.lightbox-dots{
+  position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+  display:flex;gap:6px;
+}
+.lightbox-dot{
+  width:7px;height:7px;border-radius:50%;background:#555;cursor:pointer;transition:background .15s;
+}
+.lightbox-dot.active{background:#6366f1}
+.lightbox-caption{
+  position:absolute;bottom:34px;left:0;right:0;text-align:center;
+  font-size:12px;color:#888;padding:0 20px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ── FED-04: Video tab ───────────────────────────────────── */
+.video-list{padding:10px 12px;max-width:800px;margin:0 auto;width:100%}
+.video-card{
+  background:#0e0e1a;border:1px solid #1e1e30;border-radius:12px;
+  margin-bottom:12px;overflow:hidden;
+}
+.video-card:hover{border-color:#2e2e50}
+.video-player-wrap{
+  position:relative;width:100%;background:#000;
+  aspect-ratio:16/9;cursor:pointer;
+}
+.video-player-wrap video{width:100%;height:100%;display:block;outline:none}
+.video-play-overlay{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.35);transition:background .15s;
+}
+.video-play-overlay:hover{background:rgba(0,0,0,.15)}
+.video-play-btn{
+  width:60px;height:60px;border-radius:50%;
+  background:rgba(99,102,241,.85);display:flex;align-items:center;justify-content:center;
+  font-size:24px;color:#fff;pointer-events:none;
+  transition:transform .12s,background .12s;
+}
+.video-player-wrap:hover .video-play-btn{background:#6366f1;transform:scale(1.08)}
+.video-info{padding:10px 14px 4px}
+.video-meta{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.video-meta .avatar{width:32px;height:32px}
+.video-meta .v-name{font-size:13px;font-weight:600;color:#e2e2f0}
+.video-meta .v-handle{font-size:11px;color:#666}
+.video-meta .v-time{font-size:11px;color:#555;margin-left:auto}
+.video-content{font-size:13px;color:#bbb;line-height:1.5;margin-bottom:8px}
+.video-content a{color:#6366f1;text-decoration:none}
+
+/* Comments section under video */
+.video-comments{
+  border-top:1px solid #1e1e30;padding:8px 14px 12px;
+}
+.video-comments-header{
+  font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.06em;
+  margin-bottom:8px;display:flex;align-items:center;gap:6px;cursor:pointer;
+  user-select:none;
+}
+.video-comments-header:hover{color:#888}
+.video-comments-body{display:none}
+.video-comments-body.open{display:block}
+.comment-card{
+  border-top:1px solid #131320;padding:8px 0;
+}
+.comment-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.comment-meta .c-avatar{
+  width:24px;height:24px;border-radius:50%;object-fit:cover;background:#1a1a2e;
+}
+.comment-meta .c-name{font-size:12px;font-weight:600;color:#ccc}
+.comment-meta .c-time{font-size:11px;color:#555;margin-left:auto}
+.comment-content{font-size:12px;color:#aaa;line-height:1.5}
+.comment-content a{color:#6366f1;text-decoration:none}
+
+/* Media-source selector pills on photos/video tabs */
+.media-source-bar{
+  display:flex;align-items:center;gap:6px;padding:8px 12px;
+  background:#0a0a18;border-bottom:1px solid #1e1e30;flex-shrink:0;flex-wrap:wrap;
+}
+.media-source-bar input{
+  flex:1;min-width:160px;max-width:320px;
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:6px 10px;color:#e2e2f0;font-size:13px;outline:none;
+}
+.media-source-bar input:focus{border-color:#6366f1}
+.media-source-label{font-size:12px;color:#555;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -321,6 +464,8 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
   <div class="tabs">
     <div class="tab active" id="tab-public" onclick="switchTab('public')">Public</div>
     <div class="tab"        id="tab-home"   onclick="switchTab('home')">Home</div>
+    <div class="tab"        id="tab-photos" onclick="switchTab('photos')">Photos</div>
+    <div class="tab"        id="tab-video"  onclick="switchTab('video')">Video</div>
   </div>
 
   <!-- ── Main content ──────────────────────────────────────── -->
@@ -392,6 +537,67 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
         <button class="btn-ghost" onclick="switchTab('public')">Browse public timelines without logging in</button>
       </div>
     </div>
+
+    <!-- FED-04: Photos view -->
+    <div id="view-photos" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <!-- Source bar: instance input shown when not authenticated -->
+      <div class="media-source-bar" id="photos-source-bar">
+        <span class="media-source-label">Instance:</span>
+        <input id="photos-host-input" type="text" placeholder="mastodon.social"
+               autocomplete="off" spellcheck="false" value="mastodon.social">
+        <button class="btn" onclick="loadPhotos(true)" style="flex-shrink:0">Load</button>
+      </div>
+      <div style="flex:1;overflow-y:auto" id="photos-scroll">
+        <div class="photo-grid" id="photo-grid">
+          <div class="state" style="grid-column:1/-1">
+            <div class="icon">&#x1F5BC;</div>
+            <p>Choose an instance and press <strong>Load</strong> to browse photos.</p>
+          </div>
+        </div>
+        <div class="load-more" id="photos-load-more" style="display:none">
+          <button onclick="loadPhotos(false)">Load more</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FED-04: Video view -->
+    <div id="view-video" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <!-- Source bar -->
+      <div class="media-source-bar" id="video-source-bar">
+        <span class="media-source-label">Instance:</span>
+        <input id="video-host-input" type="text" placeholder="mastodon.social"
+               autocomplete="off" spellcheck="false" value="mastodon.social">
+        <button class="btn" onclick="loadVideos(true)" style="flex-shrink:0">Load</button>
+      </div>
+      <div style="flex:1;overflow-y:auto" id="video-scroll">
+        <div class="video-list" id="video-list">
+          <div class="state">
+            <div class="icon">&#x25B6;</div>
+            <p>Choose an instance and press <strong>Load</strong> to browse videos.</p>
+          </div>
+        </div>
+        <div class="load-more" id="video-load-more" style="display:none">
+          <button onclick="loadVideos(false)">Load more</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FED-04: Fullscreen lightbox (photos) -->
+  <div class="lightbox" id="lightbox" style="display:none">
+    <div class="lightbox-top">
+      <span class="lb-acct" id="lb-acct"></span>
+      <button class="lb-close" onclick="closeLightbox()" title="Close (Esc)">&#x2715;</button>
+    </div>
+    <!-- Prev / Next navigation -->
+    <button class="lightbox-nav prev" id="lb-prev" onclick="lbNav(-1)">&#x2039;</button>
+    <img class="lightbox-img" id="lb-img" src="" alt="" draggable="false">
+    <button class="lightbox-nav next" id="lb-next" onclick="lbNav(1)">&#x203A;</button>
+    <!-- Carousel dots -->
+    <div class="lightbox-dots" id="lb-dots"></div>
+    <div class="lightbox-counter" id="lb-counter"></div>
+    <div class="lightbox-caption" id="lb-caption"></div>
   </div>
 
   <!-- Thread overlay (FED-03) -->
@@ -430,6 +636,22 @@ let cwVisible   = false;
 // Optimistic UI: track fav/boost/bookmark state per status id
 // { [id]: { favourited, reblogged, bookmarked, favourites_count, reblogs_count } }
 const statusState = {};
+
+// FED-04 state
+let photosStatuses  = [];
+let photosMaxId     = null;
+let photosLoading   = false;
+let videoStatuses   = [];
+let videoMaxId      = null;
+let videoLoading    = false;
+
+// Lightbox state
+let lbItems    = [];   // [{url, preview, alt, acct}]
+let lbIndex    = 0;    // current item index within lbItems (carousel)
+// Global photo statuses pool for cross-status navigation: [{sid, attachments}]
+let lbPool     = [];
+let lbPoolIdx  = 0;    // index into lbPool (which status)
+let lbAttIdx   = 0;    // index of attachment within that status
 
 // ── Boot ───────────────────────────────────────────────────
 (async function boot() {
@@ -542,6 +764,8 @@ function switchTab(tab) {
   document.getElementById('view-public').style.display = 'none';
   document.getElementById('view-home').style.display   = 'none';
   document.getElementById('view-login').style.display  = 'none';
+  document.getElementById('view-photos').style.display = 'none';
+  document.getElementById('view-video').style.display  = 'none';
 
   if (tab === 'public') {
     document.getElementById('view-public').style.display = 'flex';
@@ -552,6 +776,31 @@ function switchTab(tab) {
     } else {
       document.getElementById('view-login').style.display = 'flex';
     }
+  } else if (tab === 'photos') {
+    document.getElementById('view-photos').style.display = 'flex';
+    // Pre-fill instance from authenticated host or public host input
+    const hostInput = document.getElementById('photos-host-input');
+    if (authState.authenticated && authState.host) {
+      hostInput.value = authState.host;
+      document.getElementById('photos-source-bar').style.display = 'none';
+    } else {
+      document.getElementById('photos-source-bar').style.display = '';
+      const pubHost = document.getElementById('host-input').value.trim();
+      if (pubHost) hostInput.value = pubHost;
+    }
+    if (photosStatuses.length === 0) loadPhotos(true);
+  } else if (tab === 'video') {
+    document.getElementById('view-video').style.display = 'flex';
+    const hostInput = document.getElementById('video-host-input');
+    if (authState.authenticated && authState.host) {
+      hostInput.value = authState.host;
+      document.getElementById('video-source-bar').style.display = 'none';
+    } else {
+      document.getElementById('video-source-bar').style.display = '';
+      const pubHost = document.getElementById('host-input').value.trim();
+      if (pubHost) hostInput.value = pubHost;
+    }
+    if (videoStatuses.length === 0) loadVideos(true);
   }
 }
 
@@ -1117,6 +1366,476 @@ document.addEventListener('keydown', e => {
 // Ctrl+Enter submits post
 document.getElementById('compose-text').addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitPost();
+});
+
+// ═══════════════════════════════════════════════════════════
+// FED-04: Photos tab
+// ═══════════════════════════════════════════════════════════
+
+function photosHost() {
+  if (authState.authenticated && authState.host) return authState.host;
+  return document.getElementById('photos-host-input').value.trim() || 'mastodon.social';
+}
+
+async function loadPhotos(fresh) {
+  if (photosLoading) return;
+  photosLoading = true;
+  const grid     = document.getElementById('photo-grid');
+  const moreWrap = document.getElementById('photos-load-more');
+
+  if (fresh) {
+    photosStatuses = [];
+    photosMaxId    = null;
+    lbPool         = [];
+    grid.innerHTML = '<div class="state" style="grid-column:1/-1"><div class="spinner"></div><p>Loading photos…</p></div>';
+    moreWrap.style.display = 'none';
+  } else {
+    moreWrap.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
+  }
+
+  try {
+    const p = new URLSearchParams({ limit: '40' });
+    if (!authState.authenticated) p.set('host', photosHost());
+    if (photosMaxId) p.set('max_id', photosMaxId);
+
+    const res  = await fetch('/api/media/photos?' + p);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const items = data.statuses || [];
+    photosMaxId = data.next_max_id || null;
+
+    if (fresh && !items.length) {
+      grid.innerHTML = '<div class="state" style="grid-column:1/-1"><div class="icon">&#x1F5BC;</div><p>No image posts found.</p></div>';
+      moreWrap.style.display = 'none';
+      return;
+    }
+
+    photosStatuses.push(...items);
+
+    // Rebuild lbPool from all loaded statuses
+    lbPool = [];
+    for (const s of photosStatuses) {
+      const actual = s.reblog || s;
+      const imgs   = (actual.media_attachments || []).filter(
+        m => m.type === 'image' || m.type === 'gifv'
+      );
+      if (imgs.length) {
+        lbPool.push({
+          sid:  actual.id,
+          acct: actual.account.display_name || actual.account.acct,
+          atts: imgs,
+        });
+      }
+    }
+
+    if (fresh) grid.innerHTML = '';
+    renderPhotoGrid(items, fresh);
+
+    moreWrap.style.display = photosMaxId ? '' : 'none';
+    if (!fresh) {
+      moreWrap.innerHTML = '<button onclick="loadPhotos(false)">Load more</button>';
+    }
+  } catch(err) {
+    if (fresh) {
+      grid.innerHTML = `<div class="state" style="grid-column:1/-1">
+        <div class="error-box">${esc(err.message)}</div></div>`;
+    } else {
+      moreWrap.innerHTML = `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
+    }
+  } finally {
+    photosLoading = false;
+  }
+}
+
+function renderPhotoGrid(statuses, fresh) {
+  const grid = document.getElementById('photo-grid');
+
+  // Start from current pool length minus what we just added, so we can
+  // find correct lbPool indices for these new items.
+  const poolOffset = lbPool.length - statuses.reduce((n, s) => {
+    const actual = s.reblog || s;
+    const imgs   = (actual.media_attachments || []).filter(
+      m => m.type === 'image' || m.type === 'gifv'
+    );
+    return imgs.length ? n + 1 : n;
+  }, 0);
+
+  let poolIdx = poolOffset;
+  for (const s of statuses) {
+    const actual = s.reblog || s;
+    const imgs   = (actual.media_attachments || []).filter(
+      m => m.type === 'image' || m.type === 'gifv'
+    );
+    if (!imgs.length) continue;
+
+    const firstImg = imgs[0];
+    const multi    = imgs.length > 1;
+    const cell     = document.createElement('div');
+    cell.className = 'photo-cell';
+
+    const pIdx = poolIdx; // capture for closure
+    cell.addEventListener('click', () => openLightbox(pIdx, 0));
+
+    cell.innerHTML = `
+      <img src="${esc(firstImg.preview_url || firstImg.url)}"
+           alt="${esc(firstImg.description || '')}"
+           loading="lazy"
+           onerror="this.parentElement.style.display='none'">
+      ${multi ? `<span class="multi-badge">&#x2460; ${imgs.length}</span>` : ''}
+    `;
+    grid.appendChild(cell);
+    poolIdx++;
+  }
+}
+
+// ── Lightbox / fullscreen viewer ─────────────────────────────
+
+function openLightbox(poolIdx, attIdx) {
+  lbPoolIdx = poolIdx;
+  lbAttIdx  = attIdx;
+  renderLightbox();
+  document.getElementById('lightbox').style.display = 'flex';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+
+function renderLightbox() {
+  if (!lbPool.length) return;
+  const entry = lbPool[lbPoolIdx];
+  if (!entry) return;
+
+  const atts   = entry.atts;
+  lbAttIdx     = Math.max(0, Math.min(lbAttIdx, atts.length - 1));
+  const att    = atts[lbAttIdx];
+
+  document.getElementById('lb-img').src = att.url || att.preview_url || '';
+  document.getElementById('lb-img').alt = att.description || '';
+  document.getElementById('lb-acct').textContent = entry.acct || '';
+  document.getElementById('lb-caption').textContent = att.description || '';
+
+  // Prev / next arrows across statuses
+  document.getElementById('lb-prev').style.display =
+    (lbPoolIdx > 0 || lbAttIdx > 0) ? '' : 'none';
+  document.getElementById('lb-next').style.display =
+    (lbPoolIdx < lbPool.length - 1 || lbAttIdx < atts.length - 1) ? '' : 'none';
+
+  // Dots for multi-attachment carousel
+  const dotsEl = document.getElementById('lb-dots');
+  dotsEl.innerHTML = '';
+  if (atts.length > 1) {
+    atts.forEach((_, i) => {
+      const dot = document.createElement('span');
+      dot.className = 'lightbox-dot' + (i === lbAttIdx ? ' active' : '');
+      dot.onclick = () => { lbAttIdx = i; renderLightbox(); };
+      dotsEl.appendChild(dot);
+    });
+    document.getElementById('lb-counter').textContent =
+      `${lbAttIdx + 1} / ${atts.length}`;
+  } else {
+    document.getElementById('lb-counter').textContent = '';
+  }
+}
+
+function lbNav(dir) {
+  const entry = lbPool[lbPoolIdx];
+  if (!entry) return;
+  const atts = entry.atts;
+
+  if (dir === 1) {
+    if (lbAttIdx < atts.length - 1) {
+      lbAttIdx++;
+    } else if (lbPoolIdx < lbPool.length - 1) {
+      lbPoolIdx++;
+      lbAttIdx = 0;
+    }
+  } else {
+    if (lbAttIdx > 0) {
+      lbAttIdx--;
+    } else if (lbPoolIdx > 0) {
+      lbPoolIdx--;
+      lbAttIdx = lbPool[lbPoolIdx].atts.length - 1;
+    }
+  }
+  renderLightbox();
+}
+
+// Touch/swipe support for lightbox
+(function() {
+  let startX = 0;
+  const lb = document.getElementById('lightbox');
+  lb.addEventListener('touchstart', e => { startX = e.changedTouches[0].clientX; }, {passive:true});
+  lb.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 40) lbNav(dx < 0 ? 1 : -1);
+  }, {passive:true});
+})();
+
+// Keyboard navigation for lightbox
+document.addEventListener('keydown', e => {
+  const lb = document.getElementById('lightbox');
+  if (!lb || lb.style.display === 'none') return;
+  if (e.key === 'Escape')      closeLightbox();
+  else if (e.key === 'ArrowRight') lbNav(1);
+  else if (e.key === 'ArrowLeft')  lbNav(-1);
+});
+
+// Click backdrop to close lightbox
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target === document.getElementById('lightbox')) closeLightbox();
+});
+
+// ═══════════════════════════════════════════════════════════
+// FED-04: Video tab
+// ═══════════════════════════════════════════════════════════
+
+// Load hls.js lazily on first use
+let _hlsLoaded = false;
+let _hlsLoadingPromise = null;
+
+function loadHlsJs() {
+  if (_hlsLoaded) return Promise.resolve();
+  if (_hlsLoadingPromise) return _hlsLoadingPromise;
+  _hlsLoadingPromise = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = '/hls.js';
+    s.onload  = () => { _hlsLoaded = true; resolve(); };
+    s.onerror = () => { resolve(); /* graceful — native fallback */ };
+    document.head.appendChild(s);
+  });
+  return _hlsLoadingPromise;
+}
+
+function videoHost() {
+  if (authState.authenticated && authState.host) return authState.host;
+  return document.getElementById('video-host-input').value.trim() || 'mastodon.social';
+}
+
+async function loadVideos(fresh) {
+  if (videoLoading) return;
+  videoLoading = true;
+
+  const list     = document.getElementById('video-list');
+  const moreWrap = document.getElementById('video-load-more');
+
+  if (fresh) {
+    videoStatuses = [];
+    videoMaxId    = null;
+    list.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading videos…</p></div>';
+    moreWrap.style.display = 'none';
+  } else {
+    moreWrap.innerHTML = '<div class="spinner" style="margin:0 auto"></div>';
+  }
+
+  try {
+    const p = new URLSearchParams({ limit: '20' });
+    if (!authState.authenticated) p.set('host', videoHost());
+    if (videoMaxId) p.set('max_id', videoMaxId);
+
+    const res  = await fetch('/api/media/videos?' + p);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const items = data.statuses || [];
+    videoMaxId  = data.next_max_id || null;
+
+    if (fresh && !items.length) {
+      list.innerHTML = '<div class="state"><div class="icon">&#x25B6;</div><p>No video posts found on this instance.<br><small>Try an instance with more video content.</small></p></div>';
+      moreWrap.style.display = 'none';
+      return;
+    }
+
+    videoStatuses.push(...items);
+    if (fresh) list.innerHTML = '';
+    renderVideoList(items);
+
+    moreWrap.style.display = videoMaxId ? '' : 'none';
+    if (!fresh) {
+      moreWrap.innerHTML = '<button onclick="loadVideos(false)">Load more</button>';
+    }
+  } catch(err) {
+    if (fresh) {
+      list.innerHTML = `<div class="state"><div class="error-box">${esc(err.message)}</div></div>`;
+    } else {
+      moreWrap.innerHTML = `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
+    }
+  } finally {
+    videoLoading = false;
+  }
+}
+
+function renderVideoList(statuses) {
+  const list = document.getElementById('video-list');
+  for (const s of statuses) {
+    const actual = s.reblog || s;
+    const vids   = (actual.media_attachments || []).filter(
+      m => m.type === 'video' || m.type === 'audio'
+    );
+    if (!vids.length) continue;
+    const vid    = vids[0];
+    const card   = buildVideoCard(actual, vid);
+    list.appendChild(card);
+  }
+}
+
+function buildVideoCard(status, vid) {
+  const card = document.createElement('div');
+  card.className = 'video-card';
+  card.dataset.statusId = status.id;
+
+  const avatarUrl = status.account.avatar_static || status.account.avatar || '';
+  const avatarHtml = avatarUrl
+    ? `<img class="avatar video-meta" src="${esc(avatarUrl)}"
+           style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid #2a2a44"
+           alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<div style="width:32px;height:32px;border-radius:50%;background:#2a2a44;
+           display:flex;align-items:center;justify-content:center;font-size:14px;color:#888;flex-shrink:0">${
+         esc((status.account.display_name || '?')[0])}</div>`;
+
+  // Prefer remote_url (original) then url, with preview_url as poster
+  const videoSrc  = vid.remote_url || vid.url || '';
+  const posterSrc = vid.preview_url || '';
+  const isHls     = videoSrc.includes('.m3u8');
+
+  card.innerHTML = `
+    <div class="video-player-wrap" id="vp-${esc(status.id)}">
+      <video id="vid-${esc(status.id)}"
+             poster="${esc(posterSrc)}"
+             preload="none"
+             playsinline
+             controls
+             style="display:none"
+             data-src="${esc(videoSrc)}"
+             data-hls="${isHls ? '1' : '0'}">
+        ${!isHls ? `<source src="${esc(videoSrc)}">` : ''}
+      </video>
+      <div class="video-play-overlay" id="vpo-${esc(status.id)}"
+           onclick="playVideo('${esc(status.id)}')">
+        ${posterSrc
+          ? `<img src="${esc(posterSrc)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none" loading="lazy">`
+          : ''}
+        <div class="video-play-btn">&#x25B6;</div>
+      </div>
+    </div>
+    <div class="video-info">
+      <div class="video-meta">
+        ${avatarHtml}
+        <div style="flex:1;min-width:0">
+          <div class="v-name">${esc(status.account.display_name || status.account.username)}</div>
+          <div class="v-handle">@${esc(status.account.acct)}</div>
+        </div>
+        <span class="v-time">${relativeTime(status.created_at)}</span>
+      </div>
+      <div class="video-content">${status.content || ''}</div>
+    </div>
+    <div class="video-comments">
+      <div class="video-comments-header"
+           onclick="toggleVideoComments('${esc(status.id)}', this)">
+        <span>&#x1F4AC; Replies</span>
+        <span style="font-size:10px;color:#444" id="vc-count-${esc(status.id)}"></span>
+        <span style="margin-left:auto;font-size:10px">&#x25BC;</span>
+      </div>
+      <div class="video-comments-body" id="vc-body-${esc(status.id)}"></div>
+    </div>
+  `;
+  return card;
+}
+
+async function playVideo(sid) {
+  const overlay = document.getElementById('vpo-' + sid);
+  const videoEl = document.getElementById('vid-' + sid);
+  if (!videoEl) return;
+
+  // Hide overlay, show video element
+  if (overlay) overlay.style.display = 'none';
+  videoEl.style.display = 'block';
+
+  const src   = videoEl.dataset.src;
+  const isHls = videoEl.dataset.hls === '1';
+
+  if (isHls) {
+    await loadHlsJs();
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      const hls = new Hls({ startLevel: -1 });
+      hls.loadSource(src);
+      hls.attachMedia(videoEl);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => videoEl.play().catch(() => {}));
+    } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS (Safari / WebKit)
+      videoEl.src = src;
+      videoEl.play().catch(() => {});
+    } else {
+      // Neither Hls.js nor native — show error
+      videoEl.closest('.video-player-wrap').insertAdjacentHTML('beforeend',
+        '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:13px;background:rgba(0,0,0,.7)">HLS not supported in this browser.</div>');
+    }
+  } else {
+    videoEl.play().catch(() => {});
+  }
+}
+
+async function toggleVideoComments(sid, headerEl) {
+  const body     = document.getElementById('vc-body-' + sid);
+  const countEl  = document.getElementById('vc-count-' + sid);
+  const arrow    = headerEl.querySelector('span:last-child');
+
+  const isOpen = body.classList.contains('open');
+  if (isOpen) {
+    body.classList.remove('open');
+    arrow.textContent = '▼';
+    return;
+  }
+
+  body.classList.add('open');
+  arrow.textContent = '▲';
+
+  // Only fetch once
+  if (body.dataset.loaded) return;
+  body.dataset.loaded = '1';
+  body.innerHTML = '<div style="padding:8px 0;color:#555;font-size:12px">Loading replies…</div>';
+
+  try {
+    const host = authState.authenticated ? '' : ('&host=' + encodeURIComponent(videoHost()));
+    const res  = await fetch(`/api/v1/statuses/${sid}/context?${host}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const replies = [...(data.ancestors || []), ...(data.descendants || [])];
+
+    if (!replies.length) {
+      body.innerHTML = '<div style="padding:8px 0;color:#555;font-size:12px">No replies yet.</div>';
+      return;
+    }
+
+    countEl.textContent = `${replies.length}`;
+    body.innerHTML = replies.map(buildCommentHtml).join('');
+  } catch(err) {
+    body.innerHTML = `<div style="color:#f87171;font-size:12px;padding:6px 0">${esc(err.message)}</div>`;
+  }
+}
+
+function buildCommentHtml(status) {
+  const actual  = status.reblog || status;
+  const avatUrl = actual.account.avatar_static || actual.account.avatar || '';
+  const avatHtml = avatUrl
+    ? `<img class="c-avatar" src="${esc(avatUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<span class="c-avatar" style="background:#2a2a44;display:flex;align-items:center;justify-content:center;font-size:10px">${esc((actual.account.display_name||'?')[0])}</span>`;
+
+  return `<div class="comment-card">
+    <div class="comment-meta">
+      ${avatHtml}
+      <span class="c-name">${esc(actual.account.display_name || actual.account.username)}</span>
+      <span class="c-time">${relativeTime(actual.created_at)}</span>
+    </div>
+    <div class="comment-content">${actual.content || ''}</div>
+  </div>`;
+}
+
+// Enter in photos/video host inputs
+document.getElementById('photos-host-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadPhotos(true);
+});
+document.getElementById('video-host-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadVideos(true);
 });
 </script>
 </body>

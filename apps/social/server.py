@@ -7,6 +7,10 @@ FED-02: dynamic client registration, OAuth2 authorization-code flow,
         timeline, verify-credentials, logout.
 FED-03: feed interactions — compose (POST /api/v1/statuses), boost,
         favourite, reply (in-reply-to), bookmark, thread/context view.
+FED-04: Photos tab — paginated media-only timeline proxy (image/gifv
+        attachments); Video tab — paginated video-attachment timeline
+        proxy + thread/context reuse for comments; hls.js vendored
+        under apps/social/hls.js for HLS playback with native fallback.
 """
 import http.server
 import json
@@ -205,6 +209,11 @@ ALLOWED_PUBLIC_PATHS = {
     "/api/v1/instance",
 }
 
+# ── FED-04: media-type filters ────────────────────────────────
+
+MEDIA_IMAGE_TYPES = {"image", "gifv"}
+MEDIA_VIDEO_TYPES = {"video", "audio"}  # audio omitted in UI but keep broad
+
 
 def is_allowed_public_path(path):
     for allowed in ALLOWED_PUBLIC_PATHS:
@@ -259,6 +268,18 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         # FED-03: thread/conversation view
         elif path.startswith("/api/v1/statuses/") and path.endswith("/context"):
             self._handle_thread_context(path)
+
+        # FED-04: Photos — media-only (images) paginated timeline
+        elif path == "/api/media/photos":
+            self._handle_photos_timeline(params)
+
+        # FED-04: Video — video-only paginated timeline
+        elif path == "/api/media/videos":
+            self._handle_videos_timeline(params)
+
+        # FED-04: vendor hls.js (locally cached copy)
+        elif path == "/hls.js":
+            self.serve_file(os.path.join(APP_DIR, "hls.js"), "application/javascript")
 
         else:
             self.send_error(404)
@@ -643,6 +664,146 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    # ── FED-04: Photos timeline ───────────────────────────────
+
+    def _handle_photos_timeline(self, params):
+        """
+        Return a list of statuses that contain at least one image/gifv
+        attachment.  Works authenticated (home timeline) or unauthenticated
+        (public timeline for a given host).
+
+        Query params accepted:
+          host      — required when not authenticated
+          max_id    — pagination cursor (passed through to upstream)
+          limit     — how many results to return (default 40, max 80)
+          local     — 'true' for local-only on public timeline
+        """
+        def p(key, default=""):
+            return params.get(key, [default])[0]
+
+        tok   = load_token()
+        token = tok.get("access_token") if tok else None
+        host  = tok.get("host") if token else _sanitise_host(p("host"))
+
+        if not host or "." not in host:
+            self.send_json(400, {"error": "host required"})
+            return
+
+        want = min(int(p("limit", "40")), 80)
+        results = []
+        max_id  = p("max_id") or None
+        fetched = 0
+
+        # We over-fetch because not every status has image attachments.
+        # Stop after 5 pages or when we have enough.
+        for _ in range(5):
+            fwd = {"limit": "40"}
+            if max_id:
+                fwd["max_id"] = max_id
+            if p("local") == "true":
+                fwd["local"] = "true"
+            if token:
+                fwd["only_media"] = "true"
+
+            api_path = "/api/v1/timelines/home" if token else "/api/v1/timelines/public"
+            if not token:
+                fwd["only_media"] = "true"
+
+            status, body = mastodon_get(host, api_path, token=token, params=fwd)
+            if status != 200:
+                break
+            try:
+                page = json.loads(body)
+            except Exception:
+                break
+            if not page:
+                break
+
+            for s in page:
+                actual = s.get("reblog") or s
+                imgs = [m for m in (actual.get("media_attachments") or [])
+                        if m.get("type") in MEDIA_IMAGE_TYPES]
+                if imgs:
+                    results.append(s)
+                    if len(results) >= want:
+                        break
+
+            fetched += len(page)
+            max_id = page[-1]["id"] if page else None
+
+            if len(results) >= want or not max_id:
+                break
+
+        out = json.dumps({"statuses": results[:want], "next_max_id": max_id}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    # ── FED-04: Videos timeline ───────────────────────────────
+
+    def _handle_videos_timeline(self, params):
+        """
+        Return statuses with at least one video attachment.
+        Same host/auth/pagination logic as _handle_photos_timeline.
+        """
+        def p(key, default=""):
+            return params.get(key, [default])[0]
+
+        tok   = load_token()
+        token = tok.get("access_token") if tok else None
+        host  = tok.get("host") if token else _sanitise_host(p("host"))
+
+        if not host or "." not in host:
+            self.send_json(400, {"error": "host required"})
+            return
+
+        want   = min(int(p("limit", "20")), 60)
+        results = []
+        max_id  = p("max_id") or None
+
+        for _ in range(8):
+            fwd = {"limit": "40"}
+            if max_id:
+                fwd["max_id"] = max_id
+            if p("local") == "true":
+                fwd["local"] = "true"
+            fwd["only_media"] = "true"
+
+            api_path = "/api/v1/timelines/home" if token else "/api/v1/timelines/public"
+            status, body = mastodon_get(host, api_path, token=token, params=fwd)
+            if status != 200:
+                break
+            try:
+                page = json.loads(body)
+            except Exception:
+                break
+            if not page:
+                break
+
+            for s in page:
+                actual = s.get("reblog") or s
+                vids = [m for m in (actual.get("media_attachments") or [])
+                        if m.get("type") in MEDIA_VIDEO_TYPES]
+                if vids:
+                    results.append(s)
+                    if len(results) >= want:
+                        break
+
+            max_id = page[-1]["id"] if page else None
+            if len(results) >= want or not max_id:
+                break
+
+        out = json.dumps({"statuses": results[:want], "next_max_id": max_id}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
 
     # ── Shared utilities ──────────────────────────────────────
 
