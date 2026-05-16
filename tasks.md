@@ -557,17 +557,17 @@ Scope: Add 3 type:web entries (gitea single-binary pattern), correct ports, 0.0.
 AC: [ ] 3 entries valid [ ] each installs+serves UI [ ] registry.json valid JSON
 
 ### [APPSTORE-03] Static web apps: Excalidraw, draw.io, Hoppscotch
-`todo` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
+`done` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
 Scope: Add 3 static SPA entries via APPSTORE-01 recipe, pinned release+checksum, static file server cmd+port.
 AC: [ ] 3 static entries w/ checksums [ ] each serves SPA, zero ext net for shell [ ] valid JSON
 
 ### [APPSTORE-04] Vaultwarden + LibreTranslate registry entries
-`todo` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
+`done` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
 Scope: Vaultwarden single-binary; LibreTranslate pip + post_install model fetch (PostInstall recipe registry.go:234-253).
 AC: [ ] 2 entries [ ] vaultwarden serves vault; libretranslate post_install runs [ ] valid JSON
 
 ### [APPSTORE-05] Streamed apt apps: Shotcut/Ardour/LMMS/Darktable/OBS/QGIS/Octave/GnuCash
-`todo` · P2 · M · dep: none · parallel: no — registry.json
+`done` · P2 · M · dep: none · parallel: no — registry.json
 Scope: 8 type:desktop apt entries mirroring gimp/kdenlive (category/arch/homepage/license/icon/keywords). Data only.
 AC: [ ] 8 valid entries [ ] ≥2 install+launch via stream pool [ ] valid JSON
 
@@ -577,7 +577,7 @@ Scope: Wine/Lutris/Steam type:desktop entries + deps (gamemode/mangohud/winetric
 AC: [ ] 3 entries w/ deps [ ] gaming-category session gets elevated bitrate/fps/low-latency [ ] non-gaming unaffected, go test passes
 
 ### [APPSTORE-07] Matrix: Conduit homeserver + Cinny client (phase 1)
-`todo` · P3 · L · dep: APPSTORE-01 · parallel: no — registry.json, new apps/cinny/
+`done` · P3 · L · dep: APPSTORE-01 · parallel: no — registry.json, new apps/cinny/
 Scope: Conduit static-binary type:service homeserver (SQLite, localhost) + Cinny static web entry pointed at it. Defer bridges/wizard.
 AC: [ ] conduit runs localhost SQLite [ ] cinny loads, local register/login works [ ] E2EE local DM works
 
