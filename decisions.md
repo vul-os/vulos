@@ -382,3 +382,6 @@ Net cleanup gain: large. Future orchestration runs should periodically prune dea
 
 ## D42 (17:43) — Tick: dispatch D40-planned 5-worker wave
 Mem cleared to 1066 MB, 1m load 3.8 (idle), 0 unmerged, 72 min to wind-down. Dispatching the 5 file-disjoint tasks from D40: APPSTORE-05 (registry.json), INIT-05 (Setup.jsx wizard), INIT-01 (identity pkg + routes_identity.go), AI-07 (routes_aiapps_versions.go), CLUSTER-10 (routes_conflicts.go + Toasts.jsx + notify/). All use routes_<area>.go pattern. Conservative cap of 5 vs 10 given 72 min remaining — prioritize merge success rate over raw count.
+
+## D43 (17:46) — Tick: hold (4 wave-11 workers still in flight; mem 113<500)
+APPSTORE-05 already spliced @ e46b5f4. 4 workers (INIT-05, INIT-01, AI-07, CLUSTER-10) still running (no completions yet despite 1m load 2.88 = system idle — completion notifications presumably in-flight). Mem 113 MB. No dispatch this tick. Next tick handles completions.
