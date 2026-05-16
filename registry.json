@@ -674,6 +674,74 @@
           "singleton": true
         }
       }
+    },
+    "memos": {
+      "name": "Memos",
+      "vetted": true,
+      "type": "web",
+      "description": "Lightweight self-hosted memo and microblog \u2014 quick capture, tags, search, and personal feed",
+      "category": "productivity",
+      "author": "Memos Project",
+      "homepage": "https://www.usememos.com",
+      "icon": "memos",
+      "keywords": [
+        "notes",
+        "memo",
+        "self-hosted",
+        "markdown",
+        "tags",
+        "microblog"
+      ],
+      "license": "MIT",
+      "versions": {
+        "0.22.4": {
+          "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_0.22.4_linux_amd64.tar.gz",
+          "archive_strip": 0,
+          "command": "memos --mode production --port ${PORT} --addr 0.0.0.0 --data data/",
+          "port": 5230,
+          "post_install": "mkdir -p data",
+          "checksum": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "uptime-kuma": {
+      "name": "Uptime Kuma",
+      "vetted": true,
+      "type": "web",
+      "description": "Self-hosted monitoring and status pages \u2014 HTTP/TCP/DNS/ping checks with notifications and dashboards",
+      "category": "system",
+      "author": "Louis Lam",
+      "homepage": "https://github.com/louislam/uptime-kuma",
+      "icon": "uptime-kuma",
+      "keywords": [
+        "monitoring",
+        "uptime",
+        "status",
+        "alerts",
+        "ping",
+        "http"
+      ],
+      "license": "MIT",
+      "versions": {
+        "1.23.16": {
+          "download_url": "https://github.com/louislam/uptime-kuma/releases/download/1.23.16/uptime-kuma-1.23.16.tar.gz",
+          "archive_strip": 1,
+          "command": "node server/server.js --port ${PORT} --host 0.0.0.0 --data-dir data/",
+          "port": 3001,
+          "post_install": "mkdir -p data && npm install --production 2>/dev/null || true",
+          "checksum": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
     }
   }
 }
