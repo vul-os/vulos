@@ -199,29 +199,29 @@ func parseMeminfo(data string) map[string]uint64 {
 
 // SysInfo is the payload for the About page.
 type SysInfo struct {
-	Hostname     string `json:"hostname"`
-	Kernel       string `json:"kernel"`
-	Arch         string `json:"arch"`
-	CPUModel     string `json:"cpu_model"`
-	CPUCores     int    `json:"cpu_cores"`
-	MemTotalMB   int    `json:"mem_total_mb"`
-	MemUsedMB    int    `json:"mem_used_mb"`
-	MemPercent   float64 `json:"mem_percent"`
-	Uptime       string `json:"uptime"`
-	OSName       string `json:"os_name"`
-	OSVersion    string `json:"os_version"`
-	DeviceModel  string `json:"device_model"`
-	Battery      int    `json:"battery"`
-	Charging     bool   `json:"charging"`
-	StorageTotalMB int    `json:"storage_total_mb"`
-	StorageUsedMB  int    `json:"storage_used_mb"`
-	GPUVendor      string `json:"gpu_vendor"`
-	GPUDevice      string `json:"gpu_device"`
-	GPUTier        string `json:"gpu_tier"`
-	GPUEncoder     string `json:"gpu_encoder"`
-	GPUCodec       string `json:"gpu_codec"`
-	GPUAV1         bool   `json:"gpu_av1"`
-	GPUPipeWire    bool   `json:"gpu_pipewire"`
+	Hostname       string  `json:"hostname"`
+	Kernel         string  `json:"kernel"`
+	Arch           string  `json:"arch"`
+	CPUModel       string  `json:"cpu_model"`
+	CPUCores       int     `json:"cpu_cores"`
+	MemTotalMB     int     `json:"mem_total_mb"`
+	MemUsedMB      int     `json:"mem_used_mb"`
+	MemPercent     float64 `json:"mem_percent"`
+	Uptime         string  `json:"uptime"`
+	OSName         string  `json:"os_name"`
+	OSVersion      string  `json:"os_version"`
+	DeviceModel    string  `json:"device_model"`
+	Battery        int     `json:"battery"`
+	Charging       bool    `json:"charging"`
+	StorageTotalMB int     `json:"storage_total_mb"`
+	StorageUsedMB  int     `json:"storage_used_mb"`
+	GPUVendor      string  `json:"gpu_vendor"`
+	GPUDevice      string  `json:"gpu_device"`
+	GPUTier        string  `json:"gpu_tier"`
+	GPUEncoder     string  `json:"gpu_encoder"`
+	GPUCodec       string  `json:"gpu_codec"`
+	GPUAV1         bool    `json:"gpu_av1"`
+	GPUPipeWire    bool    `json:"gpu_pipewire"`
 }
 
 // SystemInfo returns a one-shot system info snapshot for the About page.
@@ -341,7 +341,7 @@ type ProcessInfo struct {
 	User    string  `json:"user"`
 	State   string  `json:"state"`
 	CPU     float64 `json:"cpu"`
-	MemRSS  uint64  `json:"mem_rss"`  // bytes
+	MemRSS  uint64  `json:"mem_rss"` // bytes
 	MemPct  float64 `json:"mem_pct"`
 	Threads int     `json:"threads"`
 	Command string  `json:"command"`
