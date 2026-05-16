@@ -68,6 +68,7 @@ func (s *Store) SetProfile(p *Profile) {
 	defer s.mu.Unlock()
 	p.UpdatedAt = time.Now()
 	s.profiles[p.UserID] = p
+	s.persistProfile(p)
 }
 
 // ListProfiles returns all user profiles.
@@ -89,6 +90,7 @@ func (s *Store) DeleteProfile(userID string) error {
 		return fmt.Errorf("profile not found")
 	}
 	delete(s.profiles, userID)
+	s.deleteProfile(userID)
 	return nil
 }
 
@@ -102,6 +104,7 @@ func (s *Store) SetRole(userID string, role Role) error {
 	}
 	p.Role = role
 	p.UpdatedAt = time.Now()
+	s.persistProfile(p)
 	return nil
 }
 
@@ -155,6 +158,7 @@ func (s *Store) SetPIN(userID, pin string) error {
 		p.PinHash = hashPIN(pin, generateSalt())
 	}
 	p.UpdatedAt = time.Now()
+	s.persistProfile(p)
 	return nil
 }
 
