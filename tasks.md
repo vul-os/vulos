@@ -880,7 +880,7 @@ Scope: QR of own full Vula address; Add-contact via paste or camera QR scan → 
 AC: [ ] own address QR scannable [ ] paste/scan triggers request [ ] malformed rejected
 
 ### [PEER-10] vulos.org email verification (send/confirm + token)
-`todo` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
+`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
 Scope: Call vulos.org verify/send+confirm (configurable base URL), store signed token, validate vulos.org sig; POST identity/verify+confirm, VerifiedEmail().
 AC: [ ] verify sends, confirm stores token [ ] token sig validated [ ] unverified still works [ ] base URL configurable
 
