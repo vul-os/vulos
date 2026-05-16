@@ -1059,7 +1059,7 @@ Scope: React list of accounts w/ rolling codes + 30s countdown, tap-to-copy, add
 AC: [ ] codes refresh 30s no reload [ ] click-copy w/ confirm [ ] add posts /totp/add [ ] in launcher
 
 ### [AUTH-04] Google Authenticator import/export for TOTP
-`todo` · P3 · M · dep: AUTH-01, AUTH-02 · parallel: yes — new authvault/migration.go
+`done` · P3 · M · dep: AUTH-01, AUTH-02 · parallel: yes — new authvault/migration.go
 Scope: decode otpauth-migration:// protobuf → entries; POST /import + /export (encrypted blob).
 AC: [ ] sample migration imports all [ ] export re-imports identical [ ] unit test protobuf parse
 
