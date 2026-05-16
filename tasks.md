@@ -1129,7 +1129,7 @@ Scope: compose (500 char + CW), thread view, boost/fav/reply/bookmark optimistic
 AC: [ ] post appears in home [ ] fav/boost persist server-side [ ] reply opens thread in-reply-to
 
 ### [FED-04] Photos + Video views (Pixelfed grid, PeerTube HLS)
-`todo` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
+`done` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
 Scope: photo grid + fullscreen viewer + carousel; video list inline HLS (hls.js) + reply comments.
 AC: [ ] photo grid + fullscreen [ ] multi-attachment carousel [ ] video plays inline HLS
 
