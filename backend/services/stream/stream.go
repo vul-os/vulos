@@ -34,15 +34,15 @@ import (
 
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Display string  `json:"display"`
-	Width   int     `json:"width"`
-	Height  int     `json:"height"`
-	FPS     int     `json:"fps"`
-	Running bool    `json:"running"`
-	Encoder string  `json:"encoder"`
-	Quality string  `json:"quality"` // current adaptive quality level
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	FPS     int    `json:"fps"`
+	Running bool   `json:"running"`
+	Encoder string `json:"encoder"`
+	Quality string `json:"quality"` // current adaptive quality level
 
 	mu         sync.Mutex
 	ctx        context.Context
@@ -188,6 +188,14 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 				s.handleGamepad(msg.Data)
 			})
+			// Forward FF_RUMBLE events from uinput back to the browser over
+			// the same gamepad channel (server→client direction).
+			dc.OnOpen(func() {
+				if s.injector == nil || s.injector.RumbleCh == nil {
+					return
+				}
+				go rumbleForwardLoop(s.injector.RumbleCh, dc, s.ctx)
+			})
 		}
 	})
 
@@ -283,7 +291,7 @@ func (s *Session) handleKeyboard(data []byte) {
 		return
 	}
 	var evt struct {
-		T    string `json:"t"`    // kd=keydown, ku=keyup
+		T    string `json:"t"` // kd=keydown, ku=keyup
 		Key  string `json:"key"`
 		Code string `json:"code"`
 		Mod  int    `json:"mod"` // modifier bitmask
@@ -338,6 +346,35 @@ func (s *Session) handleInput(data []byte) {
 		s.injector.KeyPress(evt.Key, evt.Code, true)
 	case "keyup":
 		s.injector.KeyPress(evt.Key, evt.Code, false)
+	}
+}
+
+// rumbleForwardLoop reads FF_RUMBLE events from the uinput channel and sends
+// them to the browser over the existing gamepad WebRTC data channel.
+// Message format: {"t":"rumble","strong":<0–65535>,"weak":<0–65535>}
+// The browser maps strong→leftActuator, weak→rightActuator for playEffect.
+func rumbleForwardLoop(ch <-chan input.RumbleEvent, dc *webrtc.DataChannel, ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			if dc.ReadyState() != webrtc.DataChannelStateOpen {
+				continue
+			}
+			b, err := json.Marshal(map[string]any{
+				"t":      "rumble",
+				"strong": evt.Strong,
+				"weak":   evt.Weak,
+			})
+			if err != nil {
+				continue
+			}
+			dc.SendText(string(b))
+		}
 	}
 }
 
