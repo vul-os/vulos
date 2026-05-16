@@ -1340,6 +1340,9 @@ func main() {
 	// Stream toolbar endpoints (FPS selector, MangoHud toggle — GAME-08)
 	registerStreamRoutes(mux, streamPool)
 
+	// AUTH-13: WebAuthn re-auth gate for input-injection sessions
+	registerStreamWebAuthnRoutes(mux, streamPool, authStore)
+
 	// Wine prefix management
 	wineSvc.RegisterHandlers(mux)
 	desktopSvc.RegisterHandlers(mux)

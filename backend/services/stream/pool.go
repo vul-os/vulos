@@ -31,11 +31,12 @@ var lookPath = exec.LookPath
 // Pool manages multiple concurrent streaming sessions.
 // Each session gets its own Xvfb display, GStreamer pipeline, and WebRTC tracks.
 type Pool struct {
-	mu              sync.Mutex
-	sessions        map[string]*Session
-	nextDisplay     int
-	nextPort        int
-	resolveUserHome func(r *http.Request) string // resolves user home from request context
+	mu               sync.Mutex
+	sessions         map[string]*Session
+	nextDisplay      int
+	nextPort         int
+	resolveUserHome  func(r *http.Request) string // resolves user home from request context
+	webAuthnVerifier A13_WebAuthnVerifier         // AUTH-13: verifier for input-injection re-auth
 }
 
 // NewPool creates a streaming session pool.
@@ -98,6 +99,23 @@ func waylandDisplay(id string) string {
 	return "wayland-" + id
 }
 
+// SetWebAuthnVerifier configures the WebAuthn verifier used for input-injection
+// re-auth (AUTH-13). Call this from main.go once the passkeys backend is wired.
+// If never called, RequireAssertion uses the stub verifier that always rejects.
+func (p *Pool) SetWebAuthnVerifier(v A13_WebAuthnVerifier) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.webAuthnVerifier = v
+}
+
+// WebAuthnVerifier returns the configured verifier (may be nil — caller should
+// fall back to the stub).
+func (p *Pool) WebAuthnVerifier() A13_WebAuthnVerifier {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.webAuthnVerifier
+}
+
 // LaunchOpts configures a streaming session.
 type LaunchOpts struct {
 	// ID is a unique identifier for this session. If empty, one is generated.
@@ -123,6 +141,8 @@ type LaunchOpts struct {
 	// Opus 10ms frames, and gaming bitrate tiers (6000–10000 kbps).
 	// When false (default): byte-identical to the pre-gaming-mode path.
 	Gaming bool
+	// UserID is the authenticated Vulos user ID. Used for WebAuthn re-auth (AUTH-13).
+	UserID string
 }
 
 // Launch starts a new streaming session: Xvfb + app + GStreamer + WebRTC.
@@ -662,6 +682,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 			Width: req.Width, Height: req.Height, FPS: req.FPS,
 			Restart: req.Restart, UserHome: userHome,
 			Gaming: req.Gaming,
+			UserID: r.Header.Get("X-User-ID"),
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 500)
