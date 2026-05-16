@@ -16,6 +16,7 @@ const sections = [
   { id: 'vault', label: 'Backup & Sync' },
   { id: 'recall', label: 'Search & Index' },
   { id: 'storage', label: 'Storage' },
+  { id: 'connmode', label: 'Connection Mode' },
   { id: 'network', label: 'Remote Access' },
   { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
@@ -57,6 +58,7 @@ export default function Settings() {
         {active === 'vault' && <VaultSettings />}
         {active === 'recall' && <RecallSettings />}
         {active === 'storage' && <StorageSettings />}
+        {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
@@ -580,6 +582,187 @@ function EnergySettings() {
 }
 
 // --- Remote Access ---
+// --- NET-09: Connection Mode ---
+// Additive section. Read/POST /api/network/mode. Matches the visual style of
+// the TURN section above. All identifiers are prefixed NET9_ or connmode-.
+const NET9_MODES = [
+  {
+    id: 'fabric',
+    label: 'Fabric',
+    desc: 'Route through the Vulos relay fabric (default; works behind NAT).',
+  },
+  {
+    id: 'direct',
+    label: 'Direct',
+    desc: 'Expose this node directly on the public internet (re-enrolls DNS).',
+  },
+  {
+    id: 'own',
+    label: 'Own Domain',
+    desc: 'Use your own domain + reverse proxy; bypasses Vulos DNS.',
+  },
+  {
+    id: 'local',
+    label: 'Local Only',
+    desc: 'LAN-only; external listeners are blocked. Useful for air-gapped use.',
+  },
+]
+
+function NET9_ConnectionModeSettings() {
+  const [current, setCurrent] = useState(null) // server-confirmed mode
+  const [pending, setPending] = useState(null) // user-selected mode (pre-apply)
+  const [blocked, setBlocked] = useState(false)
+  const [status, setStatus] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  const NET9_refresh = useCallback(() => {
+    setLoading(true)
+    fetch('/api/network/mode')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+      .then(d => {
+        setCurrent(d.mode)
+        setPending(d.mode)
+        setBlocked(!!d.external_listener_blocked)
+        setStatus(d.status || null)
+        setError('')
+      })
+      .catch(e => setError(e.message || 'failed to load'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { NET9_refresh() }, [NET9_refresh])
+
+  const NET9_apply = () => {
+    if (!pending || pending === current) return
+    setSaving(true)
+    setSaved(false)
+    setError('')
+    fetch('/api/network/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: pending }),
+    })
+      .then(async r => {
+        const body = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status))
+        return body
+      })
+      .then(d => {
+        setCurrent(d.mode)
+        setPending(d.mode)
+        setBlocked(!!d.external_listener_blocked)
+        setStatus(d.status || null)
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+      })
+      .catch(e => setError(e.message || 'failed to apply'))
+      .finally(() => setSaving(false))
+  }
+
+  const dirty = pending && pending !== current
+
+  return (
+    <Section title="Connection Mode">
+      <p className="text-xs text-neutral-600 mb-5">
+        Choose how this device reaches the outside world. The setting is persisted to
+        <code className="mx-1 text-neutral-400">~/.vulos/db/network-mode.json</code>
+        and survives reboots. Switching modes never changes this node's identity (ULID).
+      </p>
+
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-5">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">Active mode</span>
+          <span className={`text-sm font-medium ${current ? 'text-green-400' : 'text-neutral-500'}`}>
+            {loading ? '…' : (current || 'unknown')}
+          </span>
+        </div>
+        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">External listener</span>
+          <span className={`text-sm font-medium ${blocked ? 'text-yellow-400' : 'text-neutral-300'}`}>
+            {blocked ? 'blocked (local-only)' : 'enabled'}
+          </span>
+        </div>
+        {status?.domain && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Resolved domain</span>
+            <span className="text-sm text-neutral-300">{status.domain}</span>
+          </div>
+        )}
+        {status?.instance_id && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Instance ID</span>
+            <span className="text-sm text-neutral-300 font-mono truncate ml-3">{status.instance_id}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 mb-5">
+        {NET9_MODES.map(m => {
+          const selected = pending === m.id
+          return (
+            <label
+              key={m.id}
+              htmlFor={`connmode-${m.id}`}
+              className={`flex items-start gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                selected
+                  ? 'border-blue-600/60 bg-blue-600/10'
+                  : 'border-neutral-800/60 bg-neutral-900/30 hover:bg-neutral-900/60'
+              }`}
+            >
+              <input
+                id={`connmode-${m.id}`}
+                type="radio"
+                name="connmode-radio"
+                value={m.id}
+                checked={selected}
+                onChange={() => setPending(m.id)}
+                className="mt-1 accent-blue-500"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-neutral-200">{m.label}</span>
+                  {current === m.id && (
+                    <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-900/40 text-green-400">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-neutral-500 mt-0.5">{m.desc}</p>
+              </div>
+            </label>
+          )
+        })}
+      </div>
+
+      <div className="flex gap-3 items-center">
+        <button
+          onClick={NET9_apply}
+          disabled={!dirty || saving || loading}
+          className="btn text-sm"
+        >
+          {saving ? 'Applying…' : saved ? 'Applied' : 'Apply'}
+        </button>
+        <button
+          onClick={NET9_refresh}
+          disabled={loading || saving}
+          className="btn-ghost text-sm"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="mt-3 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">
+          {error}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 function NetworkSettings() {
   const [config, setConfig] = useState({ app_url: 'http://localhost:8080' })
   const [saving, setSaving] = useState(false)
