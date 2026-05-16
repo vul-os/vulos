@@ -55,7 +55,11 @@ func TestGamingEncoderArgs(t *testing.T) {
 
 			// Normal path must NOT contain gaming-specific tokens
 			normalJoined := strings.Join(normal, " ")
-			for _, gamingOnly := range []string{"low-latency-hp", "b-adapt=false", "rc-lookahead=0", "bframes=0", "tune=low-power", "max-bframes=0", "cpu-used=16"} {
+			// Genuinely gaming-EXCLUSIVE tokens. NOTE: zerolatency/b-adapt=false/
+			// rc-lookahead=0/tune=low-power are BASELINE low-latency tokens
+			// (STREAM-03/04 — remote desktop also wants low latency), so they
+			// legitimately appear in the normal path and are NOT gaming-only.
+			for _, gamingOnly := range []string{"low-latency-hp", "bframes=0", "max-bframes=0", "cpu-used=16"} {
 				if strings.Contains(normalJoined, gamingOnly) {
 					t.Errorf("normal EncoderArgs must not contain gaming token %q; got: %s", gamingOnly, normalJoined)
 				}
