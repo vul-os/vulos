@@ -845,7 +845,7 @@ Scope: Gen Ed25519 first boot (priv 0600), Vula ID vula:ed25519:<base58> encode/
 AC: [ ] first boot persists, reload same [ ] GET returns Vula ID+pubkey [ ] export→import same ID [ ] unit test encode/parse
 
 ### [PEER-03] Signed canonical-JSON envelope (sign+verify)
-`todo` · P0 · M · dep: PEER-02 · parallel: yes — backend/services/peering/envelope.go
+`done` · P0 · M · dep: PEER-02 · parallel: yes — backend/services/peering/envelope.go
 Scope: Deterministic canonical JSON (no sig field in signed bytes), Sign/Verify for message/contact-request/signaling/feed.
 AC: [ ] canonical byte-stable [ ] Verify rejects tamper+wrong key [ ] unit tests
 
