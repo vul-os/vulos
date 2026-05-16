@@ -109,6 +109,71 @@ const builtinRegistry = [
   },
 ]
 
+// Default web apps shipped under apps/ — surfaced as launcher entries.
+// Installed versions from /api/store/installed take priority (see getApps()).
+const defaultWebApps = [
+  {
+    id: 'calculator',
+    name: 'Calculator',
+    icon: '≛',
+    description: 'Standard and scientific calculator with history tape',
+    keywords: ['calculator', 'math', 'scientific', 'arithmetic'],
+    category: 'utilities',
+    url: '/app/calculator/',
+    port: 80,
+  },
+  {
+    id: 'calendar',
+    name: 'Calendar',
+    icon: '📅',
+    description: 'Month, week, and day planning with server-side persistent events',
+    keywords: ['calendar', 'schedule', 'events', 'reminders', 'ics'],
+    category: 'productivity',
+    url: '/app/calendar/',
+    port: 80,
+  },
+  {
+    id: 'clock',
+    name: 'Clock',
+    icon: '◷',
+    description: 'Time, world clocks, stopwatch, and timer',
+    keywords: ['clock', 'time', 'world clock', 'stopwatch', 'timer', 'alarm'],
+    category: 'utilities',
+    url: '/app/clock/',
+    port: 80,
+  },
+  {
+    id: 'pdf-viewer',
+    name: 'PDF Viewer',
+    icon: '▤',
+    description: 'Local PDF reader with notes and quick controls',
+    keywords: ['pdf', 'reader', 'document', 'annotations', 'notes'],
+    category: 'productivity',
+    url: '/app/pdf-viewer/',
+    port: 80,
+  },
+  {
+    id: 'text-editor',
+    name: 'Text Editor',
+    icon: '⌨',
+    description: 'Code & plain text editor with syntax highlighting, find/replace, and live collaboration',
+    keywords: ['text', 'editor', 'code', 'syntax', 'developer', 'collab'],
+    category: 'productivity',
+    url: '/app/text-editor/',
+    port: 80,
+  },
+  {
+    id: 'weather',
+    name: 'Weather',
+    icon: '☀',
+    description: 'Current conditions and 7-day forecast powered by Open-Meteo',
+    keywords: ['weather', 'forecast', 'temperature', 'climate'],
+    category: 'utilities',
+    url: '/app/weather/',
+    port: 80,
+  },
+]
+
 // Dynamic installed apps from backend
 let installedApps = []
 let fetchPromise = null
@@ -142,7 +207,10 @@ export function refreshInstalled() {
 refreshInstalled()
 
 export function getApps() {
-  return [...builtinRegistry, ...installedApps]
+  // Merge defaultWebApps: installed apps override them by id; builtinRegistry entries are unaffected.
+  const installedIds = new Set(installedApps.map(a => a.id))
+  const webAppsNotInstalled = defaultWebApps.filter(a => !installedIds.has(a.id))
+  return [...builtinRegistry, ...webAppsNotInstalled, ...installedApps]
 }
 
 export function getAppById(id) {
