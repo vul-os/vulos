@@ -1211,7 +1211,7 @@ Scope: registry.go ~:425 — make empty/missing checksum a HARD failure (not sil
 AC: [ ] empty checksum → install refused [ ] pipe-to-shell recipe rejected [ ] registry.json valid + every versioned entry has non-empty checksum [ ] go build + appnet tests
 
 ### [SEC-G] AppStore.Install: validate ID + contain extraction (M3)
-`todo` · P1 · M · dep: none · parallel: no — backend/services/appnet/store.go
+`done` · P1 · M · dep: none · parallel: no — backend/services/appnet/store.go
 Scope: store.go ~:153-193 — validate `entry.ID` charset (^[a-z0-9-]+$, reject `.`/`/`); use a safe tar extractor that rejects `..`/absolute paths and symlink escape; realpath-contain extraction to `<appsDir>/<id>`; add the checksum verification AppStore.Install currently lacks.
 AC: [ ] bad ID rejected [ ] malicious tar (../, absolute, symlink) cannot escape appsDir [ ] checksum enforced [ ] go build + appnet tests
 
