@@ -2,7 +2,7 @@
   "apps": {
     "wede": {
       "name": "Wede",
-      "vetted": true,
+      "vetted": false,
       "type": "web",
       "description": "Lightweight web-based code editor — edit files and projects from your browser with syntax highlighting",
       "category": "developer",
@@ -13,11 +13,13 @@
       "license": "MIT",
       "versions": {
         "latest": {
-          "install": "curl -fsSL https://raw.githubusercontent.com/webcrft/wede/main/install.sh | bash",
+          "_disabled": true,
+          "install": "",
           "command": "/root/.local/bin/wede -port ${PORT}",
           "port": 9090,
           "permissions": ["network", "filesystem"],
-          "singleton": true
+          "singleton": true,
+          "_note": "Disabled (SEC-H3): previous recipe used curl|bash with no pinned version or checksum. Re-enable once a pinned release artifact with sha256 is available."
         }
       }
     },
@@ -82,9 +84,10 @@
       ],
       "license": "MIT",
       "versions": {
-        "1": {
-          "install": "wget -qO /usr/local/bin/gitea https://dl.gitea.com/gitea/1.22/gitea-1.22.0-linux-amd64 && chmod +x /usr/local/bin/gitea",
-          "command": "gitea web --config data/app.ini",
+        "1.22.0": {
+          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 && echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - && chmod +x bin/gitea && ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
+          "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
+          "command": "bin/gitea web --config data/app.ini",
           "port": 3000,
           "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
           "permissions": [
