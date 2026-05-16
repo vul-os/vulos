@@ -11,8 +11,8 @@ import (
 
 // Device represents a detected hardware device.
 type Device struct {
-	Bus         string `json:"bus"`          // pci, usb, platform
-	ID          string `json:"id"`           // vendor:product
+	Bus         string `json:"bus"` // pci, usb, platform
+	ID          string `json:"id"`  // vendor:product
 	Vendor      string `json:"vendor"`
 	Name        string `json:"name"`
 	Class       string `json:"class"`        // display, network, sound, etc.
@@ -32,9 +32,9 @@ type Module struct {
 
 // Status is the full driver status payload.
 type Status struct {
-	Devices  []Device `json:"devices"`
-	Modules  []Module `json:"modules"`
-	Kernel   string   `json:"kernel"`
+	Devices []Device `json:"devices"`
+	Modules []Module `json:"modules"`
+	Kernel  string   `json:"kernel"`
 }
 
 // Detect scans the system for hardware and driver status.
