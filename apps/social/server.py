@@ -11,6 +11,19 @@ FED-04: Photos tab — paginated media-only timeline proxy (image/gifv
         attachments); Video tab — paginated video-attachment timeline
         proxy + thread/context reuse for comments; hls.js vendored
         under apps/social/hls.js for HLS playback with native fallback.
+FED-05: Forums tab — Lemmy communities browser.  Separate Lemmy JWT
+        login (username+password POST to /api/v3/user/login), stored in
+        ~/.vulos/data/social/lemmy_token.json.  Proxy endpoints:
+          GET  /api/lemmy/communities   — list communities (sort, page)
+          GET  /api/lemmy/posts         — posts for a community (sort, page)
+          GET  /api/lemmy/comments      — comment tree for a post
+          POST /api/lemmy/login         — Lemmy JWT login
+          POST /api/lemmy/logout        — clear stored JWT
+          POST /api/lemmy/vote          — upvote/downvote post or comment
+          POST /api/lemmy/subscribe     — subscribe/unsubscribe community
+          POST /api/lemmy/comment       — create a comment
+        All Lemmy calls are proxied through the local server to bypass CORS.
+        Read-only mode (no JWT) is fully supported for browsing.
 """
 import http.server
 import json
@@ -29,9 +42,10 @@ DATA_DIR = os.environ.get("SOCIAL_DATA_DIR",
                            os.path.expanduser("~/.vulos/data/social"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
-TOKEN_FILE = os.path.join(DATA_DIR, "token.json")   # { host, access_token, account }
-APP_FILE   = os.path.join(DATA_DIR, "apps.json")    # { host: { client_id, client_secret } }
-STATE_FILE = os.path.join(DATA_DIR, "oauth_state")  # ephemeral CSRF state ("rand|host")
+TOKEN_FILE   = os.path.join(DATA_DIR, "token.json")        # { host, access_token, account }
+APP_FILE     = os.path.join(DATA_DIR, "apps.json")         # { host: { client_id, client_secret } }
+STATE_FILE   = os.path.join(DATA_DIR, "oauth_state")       # ephemeral CSRF state ("rand|host")
+LEMMY_FILE   = os.path.join(DATA_DIR, "lemmy_token.json")  # { host, jwt, username }
 
 
 # ── Token / app-credential helpers ───────────────────────────
@@ -222,6 +236,92 @@ def is_allowed_public_path(path):
     return False
 
 
+# ── FED-05: Lemmy token helpers ───────────────────────────────
+
+def load_lemmy_token():
+    """Return stored Lemmy JWT dict or {}."""
+    try:
+        with open(LEMMY_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_lemmy_token(data):
+    with open(LEMMY_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def clear_lemmy_token():
+    if os.path.exists(LEMMY_FILE):
+        os.remove(LEMMY_FILE)
+
+
+# ── FED-05: Low-level Lemmy API helpers ───────────────────────
+
+def lemmy_get(host, path, params=None, jwt=None):
+    """GET from a Lemmy instance. Returns (http_status, body_bytes)."""
+    url = f"https://{host}{path}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    headers = {
+        "User-Agent": "VulaOS-Social/0.3 (+https://vulos.io)",
+        "Accept": "application/json",
+    }
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        resp = urllib.request.urlopen(req, timeout=15, context=_ssl_ctx())
+        return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b"{}"
+    except Exception as e:
+        return 502, json.dumps({"error": str(e)}).encode()
+
+
+def lemmy_post_json(host, path, payload, jwt=None):
+    """POST JSON to a Lemmy instance. Returns (http_status, body_bytes)."""
+    url = f"https://{host}{path}"
+    body = json.dumps(payload).encode()
+    headers = {
+        "User-Agent": "VulaOS-Social/0.3 (+https://vulos.io)",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15, context=_ssl_ctx())
+        return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b"{}"
+    except Exception as e:
+        return 502, json.dumps({"error": str(e)}).encode()
+
+
+def lemmy_put_json(host, path, payload, jwt=None):
+    """PUT JSON to a Lemmy instance. Returns (http_status, body_bytes)."""
+    url = f"https://{host}{path}"
+    body = json.dumps(payload).encode()
+    headers = {
+        "User-Agent": "VulaOS-Social/0.3 (+https://vulos.io)",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    req = urllib.request.Request(url, data=body, headers=headers, method="PUT")
+    try:
+        resp = urllib.request.urlopen(req, timeout=15, context=_ssl_ctx())
+        return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read() or b"{}"
+    except Exception as e:
+        return 502, json.dumps({"error": str(e)}).encode()
+
+
 # ── HTTP request handler ──────────────────────────────────────
 
 class SocialHandler(http.server.BaseHTTPRequestHandler):
@@ -281,6 +381,22 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/hls.js":
             self.serve_file(os.path.join(APP_DIR, "hls.js"), "application/javascript")
 
+        # FED-05: Lemmy — list communities
+        elif path == "/api/lemmy/communities":
+            self._handle_lemmy_communities(params)
+
+        # FED-05: Lemmy — posts for a community (or front page)
+        elif path == "/api/lemmy/posts":
+            self._handle_lemmy_posts(params)
+
+        # FED-05: Lemmy — comment tree for a post
+        elif path == "/api/lemmy/comments":
+            self._handle_lemmy_comments(params)
+
+        # FED-05: Lemmy — auth status
+        elif path == "/api/lemmy/auth/status":
+            self._handle_lemmy_auth_status()
+
         else:
             self.send_error(404)
 
@@ -304,6 +420,26 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
             )
         ):
             self._handle_status_action(path)
+
+        # FED-05: Lemmy — login (username + password → JWT)
+        elif path == "/api/lemmy/login":
+            self._handle_lemmy_login()
+
+        # FED-05: Lemmy — logout (clear stored JWT)
+        elif path == "/api/lemmy/logout":
+            self._handle_lemmy_logout()
+
+        # FED-05: Lemmy — upvote/downvote a post or comment
+        elif path == "/api/lemmy/vote":
+            self._handle_lemmy_vote()
+
+        # FED-05: Lemmy — subscribe / unsubscribe to a community
+        elif path == "/api/lemmy/subscribe":
+            self._handle_lemmy_subscribe()
+
+        # FED-05: Lemmy — create a comment on a post
+        elif path == "/api/lemmy/comment":
+            self._handle_lemmy_comment()
 
         else:
             self.send_error(404)
@@ -798,6 +934,382 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
                 break
 
         out = json.dumps({"statuses": results[:want], "next_max_id": max_id}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    # ══════════════════════════════════════════════════════════
+    # FED-05: Lemmy forum proxy handlers
+    # ══════════════════════════════════════════════════════════
+
+    def _read_json_body(self):
+        """Read and parse JSON request body. Returns (payload_dict, error_str)."""
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b""
+        content_type = self.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            try:
+                return json.loads(raw), None
+            except Exception:
+                return None, "invalid JSON body"
+        else:
+            return dict(urllib.parse.parse_qsl(raw.decode(errors="replace"))), None
+
+    def _handle_lemmy_auth_status(self):
+        """Return current Lemmy login status."""
+        tok = load_lemmy_token()
+        if tok.get("jwt"):
+            self.send_json(200, {
+                "authenticated": True,
+                "host":     tok.get("host", ""),
+                "username": tok.get("username", ""),
+            })
+        else:
+            self.send_json(200, {"authenticated": False})
+
+    def _handle_lemmy_login(self):
+        """
+        POST /api/lemmy/login
+        Body JSON: { host, username, password }
+        Calls POST https://<host>/api/v3/user/login and stores the JWT.
+        """
+        payload, err = self._read_json_body()
+        if err:
+            self.send_json(400, {"error": err})
+            return
+
+        host     = _sanitise_host(payload.get("host", ""))
+        username = (payload.get("username") or "").strip()
+        password = (payload.get("password") or "")
+
+        if not host or "." not in host:
+            self.send_json(400, {"error": "invalid Lemmy instance"})
+            return
+        if not username or not password:
+            self.send_json(400, {"error": "username and password required"})
+            return
+
+        status, body = lemmy_post_json(host, "/api/v3/user/login", {
+            "username_or_email": username,
+            "password": password,
+        })
+        try:
+            data = json.loads(body)
+        except Exception:
+            self.send_json(502, {"error": "invalid response from instance"})
+            return
+
+        if status not in (200, 201):
+            self.send_json(status, {"error": data.get("error", f"HTTP {status}")})
+            return
+
+        jwt = data.get("jwt", "")
+        if not jwt:
+            self.send_json(502, {"error": "No JWT in login response"})
+            return
+
+        save_lemmy_token({"host": host, "jwt": jwt, "username": username})
+        self.send_json(200, {"ok": True, "username": username, "host": host})
+
+    def _handle_lemmy_logout(self):
+        """POST /api/lemmy/logout — clear stored Lemmy JWT."""
+        # Consume body
+        length = int(self.headers.get("Content-Length", 0))
+        if length:
+            self.rfile.read(length)
+        clear_lemmy_token()
+        self.send_json(200, {"status": "logged_out"})
+
+    def _handle_lemmy_communities(self, params):
+        """
+        GET /api/lemmy/communities
+        Query params: host, sort (Active/Hot/New/TopAll/…), page, limit
+        Proxies GET https://<host>/api/v3/community/list
+        Works read-only (no JWT required).
+        """
+        def p(key, default=""):
+            return params.get(key, [default])[0]
+
+        tok  = load_lemmy_token()
+        jwt  = tok.get("jwt") if tok else None
+        host = tok.get("host") if jwt else _sanitise_host(p("host"))
+
+        if not host or "." not in host:
+            self.send_json(400, {"error": "host required"})
+            return
+
+        fwd = {
+            "type_":  "All",
+            "sort":   p("sort", "Active"),
+            "page":   p("page", "1"),
+            "limit":  p("limit", "40"),
+        }
+
+        status, body = lemmy_get(host, "/api/v3/community/list", params=fwd, jwt=jwt)
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {}
+
+        # Wrap with auth context
+        out = json.dumps({
+            "communities": data.get("communities", []),
+            "lemmy_host":  host,
+            "authenticated": bool(jwt),
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _handle_lemmy_posts(self, params):
+        """
+        GET /api/lemmy/posts
+        Query params: host, community_id, community_name, sort, page, limit
+        Proxies GET https://<host>/api/v3/post/list
+        Works read-only.
+        """
+        def p(key, default=""):
+            return params.get(key, [default])[0]
+
+        tok  = load_lemmy_token()
+        jwt  = tok.get("jwt") if tok else None
+        host = tok.get("host") if jwt else _sanitise_host(p("host"))
+
+        if not host or "." not in host:
+            self.send_json(400, {"error": "host required"})
+            return
+
+        fwd = {
+            "type_": "All",
+            "sort":  p("sort", "Active"),
+            "page":  p("page", "1"),
+            "limit": p("limit", "20"),
+        }
+        if p("community_id"):
+            fwd["community_id"] = p("community_id")
+        if p("community_name"):
+            fwd["community_name"] = p("community_name")
+
+        status, body = lemmy_get(host, "/api/v3/post/list", params=fwd, jwt=jwt)
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {}
+
+        out = json.dumps({
+            "posts":         data.get("posts", []),
+            "lemmy_host":    host,
+            "authenticated": bool(jwt),
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _handle_lemmy_comments(self, params):
+        """
+        GET /api/lemmy/comments
+        Query params: host, post_id, max_depth, page, limit, sort
+        Proxies GET https://<host>/api/v3/comment/list
+        Works read-only.
+        """
+        def p(key, default=""):
+            return params.get(key, [default])[0]
+
+        tok  = load_lemmy_token()
+        jwt  = tok.get("jwt") if tok else None
+        host = tok.get("host") if jwt else _sanitise_host(p("host"))
+
+        if not host or "." not in host:
+            self.send_json(400, {"error": "host required"})
+            return
+
+        post_id = p("post_id")
+        if not post_id:
+            self.send_json(400, {"error": "post_id required"})
+            return
+
+        fwd = {
+            "post_id":   post_id,
+            "sort":      p("sort", "Hot"),
+            "max_depth": p("max_depth", "6"),
+            "page":      p("page", "1"),
+            "limit":     p("limit", "50"),
+            "type_":     "All",
+        }
+
+        status, body = lemmy_get(host, "/api/v3/comment/list", params=fwd, jwt=jwt)
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {}
+
+        out = json.dumps({
+            "comments":      data.get("comments", []),
+            "lemmy_host":    host,
+            "authenticated": bool(jwt),
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _handle_lemmy_vote(self):
+        """
+        POST /api/lemmy/vote
+        Body JSON: { type: "post"|"comment", id: <int>, score: 1|0|-1 }
+        Requires Lemmy login.
+        Calls POST https://<host>/api/v3/post/like  or  /api/v3/comment/like
+        """
+        payload, err = self._read_json_body()
+        if err:
+            self.send_json(400, {"error": err})
+            return
+
+        tok = load_lemmy_token()
+        jwt = tok.get("jwt")
+        if not jwt:
+            self.send_json(401, {"error": "Lemmy login required to vote"})
+            return
+
+        host  = tok["host"]
+        kind  = payload.get("type", "post")
+        item_id = payload.get("id")
+        score   = payload.get("score", 1)
+
+        if item_id is None:
+            self.send_json(400, {"error": "id required"})
+            return
+        if score not in (1, 0, -1):
+            self.send_json(400, {"error": "score must be 1, 0, or -1"})
+            return
+
+        if kind == "comment":
+            api_path = "/api/v3/comment/like"
+            body_key = "comment_id"
+        else:
+            api_path = "/api/v3/post/like"
+            body_key = "post_id"
+
+        status, body = lemmy_post_json(
+            host, api_path,
+            {body_key: int(item_id), "score": int(score)},
+            jwt=jwt,
+        )
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {}
+
+        self.send_response(status if status in (200, 201) else 200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        out = json.dumps({"ok": status in (200, 201), "data": data}).encode()
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _handle_lemmy_subscribe(self):
+        """
+        POST /api/lemmy/subscribe
+        Body JSON: { community_id: <int>, subscribe: true|false }
+        Calls POST https://<host>/api/v3/community/follow
+        Requires Lemmy login.
+        """
+        payload, err = self._read_json_body()
+        if err:
+            self.send_json(400, {"error": err})
+            return
+
+        tok = load_lemmy_token()
+        jwt = tok.get("jwt")
+        if not jwt:
+            self.send_json(401, {"error": "Lemmy login required to subscribe"})
+            return
+
+        host         = tok["host"]
+        community_id = payload.get("community_id")
+        subscribe    = bool(payload.get("subscribe", True))
+
+        if community_id is None:
+            self.send_json(400, {"error": "community_id required"})
+            return
+
+        status, body = lemmy_post_json(
+            host, "/api/v3/community/follow",
+            {"community_id": int(community_id), "follow": subscribe},
+            jwt=jwt,
+        )
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {}
+
+        out = json.dumps({"ok": status in (200, 201), "data": data}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def _handle_lemmy_comment(self):
+        """
+        POST /api/lemmy/comment
+        Body JSON: { post_id: <int>, content: <str>, parent_id: <int|null> }
+        Calls POST https://<host>/api/v3/comment
+        Requires Lemmy login.
+        """
+        payload, err = self._read_json_body()
+        if err:
+            self.send_json(400, {"error": err})
+            return
+
+        tok = load_lemmy_token()
+        jwt = tok.get("jwt")
+        if not jwt:
+            self.send_json(401, {"error": "Lemmy login required to comment"})
+            return
+
+        host    = tok["host"]
+        post_id = payload.get("post_id")
+        content = (payload.get("content") or "").strip()
+
+        if not post_id:
+            self.send_json(400, {"error": "post_id required"})
+            return
+        if not content:
+            self.send_json(400, {"error": "content required"})
+            return
+        if len(content) > 10000:
+            self.send_json(400, {"error": "comment too long (max 10 000 chars)"})
+            return
+
+        body_data = {"post_id": int(post_id), "content": content}
+        if payload.get("parent_id"):
+            body_data["parent_id"] = int(payload["parent_id"])
+
+        status, body = lemmy_post_json(host, "/api/v3/comment", body_data, jwt=jwt)
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {}
+
+        if status not in (200, 201):
+            self.send_json(status, {"error": data.get("error", f"HTTP {status}")})
+            return
+
+        out = json.dumps({"ok": True, "comment_view": data.get("comment_view", {})}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")

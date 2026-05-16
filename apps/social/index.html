@@ -426,6 +426,200 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 }
 .media-source-bar input:focus{border-color:#6366f1}
 .media-source-label{font-size:12px;color:#555;white-space:nowrap}
+
+/* ══════════════════════════════════════════════════════════
+   FED-05: Forums (Lemmy) tab
+   ══════════════════════════════════════════════════════════ */
+
+.forums-bar{
+  display:flex;align-items:center;gap:6px;padding:8px 12px;
+  background:#0a0a18;border-bottom:1px solid #1e1e30;flex-shrink:0;flex-wrap:wrap;
+}
+.forums-bar input{
+  flex:1;min-width:140px;max-width:240px;
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:6px 10px;color:#e2e2f0;font-size:13px;outline:none;
+}
+.forums-bar input:focus{border-color:#f59e0b}
+.forums-sort-wrap{display:flex;gap:3px}
+.sort-pill{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:7px;
+  padding:5px 10px;color:#aaa;font-size:12px;cursor:pointer;white-space:nowrap;
+}
+.sort-pill.active{background:#f59e0b;border-color:#f59e0b;color:#000;font-weight:600}
+.forums-auth-btn{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:5px 12px;color:#aaa;font-size:12px;cursor:pointer;white-space:nowrap;
+  margin-left:auto;
+}
+.forums-auth-btn:hover{background:#1e1e30;color:#ccc}
+.forums-auth-btn.logged-in{border-color:#f59e0b;color:#f59e0b}
+
+.forums-layout{display:flex;flex:1;overflow:hidden;min-height:0}
+
+.communities-panel{
+  width:220px;flex-shrink:0;
+  border-right:1px solid #1e1e30;overflow-y:auto;background:#0a0a12;
+}
+.communities-panel::-webkit-scrollbar{width:3px}
+.communities-panel::-webkit-scrollbar-thumb{background:#1e1e30}
+.comm-panel-header{
+  font-size:10px;color:#444;text-transform:uppercase;letter-spacing:.07em;
+  padding:10px 12px 4px;
+}
+.community-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;cursor:pointer;
+  border-bottom:1px solid #111118;transition:background .12s;
+}
+.community-item:hover{background:#0e0e1a}
+.community-item.active{background:#131320;border-left:2px solid #f59e0b}
+.comm-icon{width:28px;height:28px;border-radius:6px;object-fit:cover;background:#1a1a2e;flex-shrink:0}
+.comm-icon-fallback{
+  width:28px;height:28px;border-radius:6px;
+  background:#2a2a44;display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:#888;flex-shrink:0;
+}
+.comm-info{flex:1;min-width:0}
+.comm-name{font-size:12px;font-weight:600;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.comm-subs{font-size:10px;color:#555;margin-top:1px}
+.comm-subscribed{font-size:9px;color:#f59e0b;margin-left:3px}
+
+.posts-panel{flex:1;overflow-y:auto;min-width:0}
+.posts-panel::-webkit-scrollbar{width:4px}
+.posts-panel::-webkit-scrollbar-thumb{background:#2a2a44;border-radius:2px}
+.posts-inner{max-width:760px;width:100%;margin:0 auto;padding:10px 14px}
+
+.post-card{
+  background:#0e0e1a;border:1px solid #1e1e30;border-radius:12px;
+  padding:12px 14px;margin-bottom:10px;transition:border-color .1s;cursor:pointer;
+}
+.post-card:hover{border-color:#2e2e50}
+.post-card.selected{border-color:#f59e0b}
+.post-header{display:flex;align-items:flex-start;gap:10px}
+.post-vote{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;min-width:28px}
+.vote-btn{
+  background:none;border:none;color:#555;font-size:14px;cursor:pointer;
+  padding:2px 4px;border-radius:4px;line-height:1;transition:color .12s,background .12s;
+}
+.vote-btn:hover{background:#1a1a2e;color:#aaa}
+.vote-btn.up.voted{color:#f59e0b}
+.vote-btn.down.voted{color:#6366f1}
+.vote-score{font-size:11px;color:#666;font-weight:600}
+.post-body{flex:1;min-width:0}
+.post-title{font-size:14px;font-weight:600;color:#e2e2f0;line-height:1.4;margin-bottom:5px;word-break:break-word}
+.post-title a{color:#e2e2f0;text-decoration:none}
+.post-title a:hover{color:#f59e0b;text-decoration:underline}
+.post-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;color:#555}
+.post-community{color:#f59e0b;font-weight:500;cursor:pointer}
+.post-community:hover{text-decoration:underline}
+.post-author{color:#888}
+.post-thumb{width:72px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#111120}
+.post-self-text{
+  font-size:12px;color:#999;line-height:1.5;margin-top:6px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+}
+.post-actions{display:flex;gap:0;margin-top:8px;padding-top:8px;border-top:1px solid #131320}
+.post-action-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:4px;
+  background:none;border:none;border-radius:6px;
+  padding:5px 2px;color:#555;font-size:11px;cursor:pointer;
+  transition:background .12s,color .12s;user-select:none;
+}
+.post-action-btn:hover{background:#1a1a2e;color:#aaa}
+.post-nsfw{font-size:9px;background:#7f1d1d;color:#fca5a5;border-radius:3px;padding:1px 5px;font-weight:600;flex-shrink:0}
+
+.forum-thread-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;
+  display:flex;align-items:stretch;justify-content:flex-end;
+}
+.forum-thread-panel{
+  width:min(600px,100%);height:100%;background:#090910;
+  border-left:1px solid #1e1e30;display:flex;flex-direction:column;
+  animation:slide-in .18s ease;
+}
+.forum-thread-header{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;background:#0e0e1a;border-bottom:1px solid #1e1e30;flex-shrink:0;
+}
+.forum-thread-header h3{font-size:14px;font-weight:600;color:#ccc;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.forum-thread-close{background:none;border:none;color:#555;cursor:pointer;font-size:20px;padding:0 4px;line-height:1}
+.forum-thread-close:hover{color:#aaa}
+.forum-thread-body{flex:1;overflow-y:auto;padding:0}
+.forum-thread-body::-webkit-scrollbar{width:4px}
+.forum-thread-body::-webkit-scrollbar-thumb{background:#2a2a44;border-radius:2px}
+
+.forum-post-detail{padding:12px 14px;border-bottom:1px solid #1e1e30;background:#0a0a15}
+.forum-post-detail .post-title{font-size:15px;margin-bottom:8px}
+.forum-post-detail .post-full-text{font-size:13px;color:#bbb;line-height:1.6;word-break:break-word;margin-bottom:8px}
+.forum-post-detail .post-full-text a{color:#f59e0b;text-decoration:none}
+.forum-post-detail .post-img{max-width:100%;border-radius:8px;margin:6px 0;display:block}
+.forum-post-detail .post-link{display:inline-block;font-size:12px;color:#6366f1;word-break:break-all;margin-top:4px}
+
+.comments-header{
+  font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.06em;
+  padding:8px 14px 6px;border-bottom:1px solid #111118;
+  display:flex;align-items:center;gap:6px;
+}
+.forum-compose{border-top:1px solid #1e1e30;padding:10px 14px;flex-shrink:0;background:#0a0a15}
+.forum-compose-inner{display:flex;flex-direction:column;gap:6px}
+.forum-compose textarea{
+  background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:8px 10px;color:#e2e2f0;font-size:13px;outline:none;
+  resize:none;min-height:60px;font-family:inherit;line-height:1.5;transition:border-color .15s;
+}
+.forum-compose textarea:focus{border-color:#f59e0b}
+.forum-compose textarea::placeholder{color:#444}
+.forum-compose-footer{display:flex;align-items:center;gap:8px}
+.forum-compose-footer .btn{background:#f59e0b;color:#000}
+.forum-compose-footer .btn:hover{background:#d97706}
+.forum-compose-footer .btn:disabled{background:#333;color:#666;cursor:default}
+
+.comment-tree{padding:6px 0}
+.ct-node{padding:0 14px}
+.ct-node+.ct-node{border-top:1px solid #0d0d1a}
+.ct-children{border-left:2px solid #1a1a2e;margin-left:16px;padding-left:0}
+.ct-card{padding:8px 0}
+.ct-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.ct-author{font-size:12px;font-weight:600;color:#ccc}
+.ct-time{font-size:10px;color:#555;margin-left:auto}
+.ct-score{font-size:10px;color:#888}
+.ct-content{font-size:12px;color:#bbb;line-height:1.5;word-break:break-word}
+.ct-content a{color:#f59e0b;text-decoration:none}
+.ct-actions{display:flex;gap:4px;margin-top:5px}
+.ct-action{background:none;border:none;color:#444;font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:color .12s,background .12s}
+.ct-action:hover{background:#1a1a2e;color:#888}
+.ct-action.voted-up{color:#f59e0b}
+.ct-action.voted-down{color:#6366f1}
+.ct-reply-form{margin-top:6px;display:none}
+.ct-reply-form textarea{
+  width:100%;background:#1a1a2e;border:1px solid #2a2a44;border-radius:6px;
+  padding:6px 8px;color:#e2e2f0;font-size:12px;outline:none;
+  resize:none;min-height:50px;font-family:inherit;line-height:1.4;
+}
+.ct-reply-form textarea:focus{border-color:#f59e0b}
+.ct-reply-form-footer{display:flex;gap:6px;margin-top:4px}
+
+.lemmy-login-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;
+  display:flex;align-items:center;justify-content:center;
+}
+.lemmy-login-box{
+  background:#0e0e1a;border:1px solid #1e1e30;border-radius:14px;
+  padding:24px;width:min(400px,90vw);display:flex;flex-direction:column;gap:12px;
+}
+.lemmy-login-box h2{font-size:16px;font-weight:700;color:#e2e2f0}
+.lemmy-login-box p{font-size:12px;color:#777;line-height:1.5}
+.lemmy-login-box label{font-size:11px;color:#666;display:block;margin-bottom:3px}
+.lemmy-login-box input{
+  width:100%;background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:8px 10px;color:#e2e2f0;font-size:13px;outline:none;transition:border-color .15s;
+}
+.lemmy-login-box input:focus{border-color:#f59e0b}
+.lemmy-login-row{display:flex;gap:8px}
+.lemmy-login-cancel{background:#1a1a2e;border:1px solid #2a2a44;border-radius:8px;
+  padding:7px 14px;color:#aaa;font-size:13px;cursor:pointer}
+.lemmy-login-cancel:hover{background:#1e1e30;color:#ccc}
 </style>
 </head>
 <body>
@@ -462,10 +656,11 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
 
   <!-- ── Tab bar ───────────────────────────────────────────── -->
   <div class="tabs">
-    <div class="tab active" id="tab-public" onclick="switchTab('public')">Public</div>
-    <div class="tab"        id="tab-home"   onclick="switchTab('home')">Home</div>
-    <div class="tab"        id="tab-photos" onclick="switchTab('photos')">Photos</div>
-    <div class="tab"        id="tab-video"  onclick="switchTab('video')">Video</div>
+    <div class="tab active" id="tab-public"  onclick="switchTab('public')">Public</div>
+    <div class="tab"        id="tab-home"    onclick="switchTab('home')">Home</div>
+    <div class="tab"        id="tab-photos"  onclick="switchTab('photos')">Photos</div>
+    <div class="tab"        id="tab-video"   onclick="switchTab('video')">Video</div>
+    <div class="tab"        id="tab-forums"  onclick="switchTab('forums')">Forums</div>
   </div>
 
   <!-- ── Main content ──────────────────────────────────────── -->
@@ -582,6 +777,108 @@ html,body{height:100%;background:#090910;color:#e2e2f0;font-family:system-ui,-ap
       </div>
     </div>
 
+    <!-- FED-05: Forums (Lemmy) view -->
+    <div id="view-forums" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <!-- Top bar: instance input + sort pills + auth button -->
+      <div class="forums-bar">
+        <span class="media-source-label">Lemmy:</span>
+        <input id="lemmy-host-input" type="text" placeholder="lemmy.world"
+               autocomplete="off" spellcheck="false" value="lemmy.world">
+        <button class="btn" onclick="loadForums(true)" style="flex-shrink:0;background:#f59e0b;color:#000">Load</button>
+        <div class="forums-sort-wrap">
+          <button class="sort-pill active" id="fsort-Active"  onclick="setForumsSort('Active')">Active</button>
+          <button class="sort-pill"        id="fsort-Hot"     onclick="setForumsSort('Hot')">Hot</button>
+          <button class="sort-pill"        id="fsort-New"     onclick="setForumsSort('New')">New</button>
+          <button class="sort-pill"        id="fsort-TopAll"  onclick="setForumsSort('TopAll')">Top</button>
+        </div>
+        <button class="forums-auth-btn" id="lemmy-auth-btn" onclick="openLemmyLogin()">Log in</button>
+      </div>
+      <!-- Two-column layout -->
+      <div class="forums-layout">
+        <!-- Left: communities list -->
+        <div class="communities-panel" id="communities-panel">
+          <div class="comm-panel-header">Communities</div>
+          <div id="communities-list">
+            <div class="state" style="padding:20px 10px;text-align:center;color:#555;font-size:12px">
+              Press Load to browse communities
+            </div>
+          </div>
+          <div id="comm-load-more" style="display:none;padding:8px 12px">
+            <button class="btn-ghost" style="width:100%;font-size:12px;padding:5px"
+                    onclick="loadMoreCommunities()">Load more</button>
+          </div>
+        </div>
+        <!-- Right: posts list -->
+        <div class="posts-panel" id="posts-panel">
+          <div class="posts-inner" id="posts-list">
+            <div class="state">
+              <div class="icon">&#x1F4AC;</div>
+              <p>Select a community to browse posts,<br>or press <strong>Load</strong> to see the front page.</p>
+            </div>
+          </div>
+          <div id="posts-load-more" style="display:none;padding:10px 14px">
+            <button class="btn-ghost"
+                    style="width:100%;max-width:760px;margin:0 auto;display:block;font-size:13px"
+                    onclick="loadMorePosts()">Load more posts</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FED-05: Forum thread (comments) side panel -->
+  <div class="forum-thread-overlay" id="forum-thread-overlay" style="display:none"
+       onclick="closeForumThread(event)">
+    <div class="forum-thread-panel" id="forum-thread-panel">
+      <div class="forum-thread-header">
+        <h3 id="forum-thread-title">Thread</h3>
+        <button class="forum-thread-close" onclick="closeForumThread(null)">&#x2715;</button>
+      </div>
+      <div class="forum-thread-body" id="forum-thread-body">
+        <div class="state"><div class="spinner"></div><p>Loading…</p></div>
+      </div>
+      <!-- Compose comment (shown only when Lemmy-authenticated) -->
+      <div class="forum-compose" id="forum-compose" style="display:none">
+        <div class="forum-compose-inner">
+          <div id="forum-reply-banner" style="display:none"></div>
+          <textarea id="forum-compose-text" placeholder="Write a comment… (Markdown supported)"
+                    oninput="onForumComposeInput()"></textarea>
+          <div class="forum-compose-footer">
+            <span style="font-size:11px;color:#555;flex:1">Markdown supported</span>
+            <button class="btn" id="forum-post-btn" onclick="submitForumComment()"
+                    disabled style="background:#f59e0b;color:#000">Comment</button>
+          </div>
+          <div id="forum-post-error" style="display:none;font-size:12px;color:#f87171;margin-top:2px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FED-05: Lemmy login modal -->
+  <div class="lemmy-login-modal" id="lemmy-login-modal" style="display:none">
+    <div class="lemmy-login-box">
+      <h2>Log in to Lemmy</h2>
+      <p>Enter your Lemmy instance and credentials to enable voting, commenting, and subscribing.</p>
+      <div id="lemmy-login-error" style="display:none" class="notice error"></div>
+      <div>
+        <label for="ll-host">Instance (e.g. lemmy.world)</label>
+        <input id="ll-host" type="text" placeholder="lemmy.world" autocomplete="off">
+      </div>
+      <div>
+        <label for="ll-user">Username or email</label>
+        <input id="ll-user" type="text" autocomplete="username">
+      </div>
+      <div>
+        <label for="ll-pass">Password</label>
+        <input id="ll-pass" type="password" autocomplete="current-password">
+      </div>
+      <div class="lemmy-login-row">
+        <button class="lemmy-login-cancel" onclick="closeLemmyLogin()">Cancel</button>
+        <button class="btn" id="ll-submit-btn"
+                style="flex:1;background:#f59e0b;color:#000" onclick="submitLemmyLogin()">Log in</button>
+      </div>
+    </div>
   </div>
 
   <!-- FED-04: Fullscreen lightbox (photos) -->
@@ -766,6 +1063,7 @@ function switchTab(tab) {
   document.getElementById('view-login').style.display  = 'none';
   document.getElementById('view-photos').style.display = 'none';
   document.getElementById('view-video').style.display  = 'none';
+  document.getElementById('view-forums').style.display = 'none';
 
   if (tab === 'public') {
     document.getElementById('view-public').style.display = 'flex';
@@ -801,6 +1099,9 @@ function switchTab(tab) {
       if (pubHost) hostInput.value = pubHost;
     }
     if (videoStatuses.length === 0) loadVideos(true);
+  } else if (tab === 'forums') {
+    document.getElementById('view-forums').style.display = 'flex';
+    refreshLemmyAuthUI();
   }
 }
 
@@ -1837,6 +2138,881 @@ document.getElementById('photos-host-input').addEventListener('keydown', e => {
 document.getElementById('video-host-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') loadVideos(true);
 });
+
+// ═══════════════════════════════════════════════════════════
+// FED-05: Forums (Lemmy) tab
+// ═══════════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────────
+let lemmyAuth       = { authenticated: false, host: '', username: '' };
+let forumsSort      = 'Active';
+let commPage        = 1;
+let commLoading     = false;
+let commList        = [];      // loaded community_view[]
+let postsPage       = 1;
+let postsLoading    = false;
+let postsList       = [];      // loaded post_view[]
+let activeCommunity = null;    // { id, name } or null (front page)
+let lemmyHost       = 'lemmy.world';
+
+// Current open forum post (for comments panel)
+let forumPostView  = null;   // post_view object
+let forumReplyId   = null;   // parent comment id for threaded reply
+
+// Optimistic vote state keyed by "post:<id>" or "comment:<id>"
+const lemmyVoteState = {};
+
+// ── Auth helpers ────────────────────────────────────────────
+
+async function refreshLemmyAuthState() {
+  try {
+    const res = await fetch('/api/lemmy/auth/status');
+    lemmyAuth = await res.json();
+  } catch(e) {
+    lemmyAuth = { authenticated: false };
+  }
+}
+
+function refreshLemmyAuthUI() {
+  const btn = document.getElementById('lemmy-auth-btn');
+  if (!btn) return;
+  if (lemmyAuth.authenticated) {
+    btn.textContent = lemmyAuth.username + ' (log out)';
+    btn.classList.add('logged-in');
+    btn.onclick = lemmyLogout;
+  } else {
+    btn.textContent = 'Log in';
+    btn.classList.remove('logged-in');
+    btn.onclick = openLemmyLogin;
+  }
+  // Show/hide compose box in open thread panel
+  const composeEl = document.getElementById('forum-compose');
+  if (composeEl) composeEl.style.display = lemmyAuth.authenticated ? '' : 'none';
+}
+
+// ── Lemmy Login modal ───────────────────────────────────────
+
+function openLemmyLogin() {
+  const modal = document.getElementById('lemmy-login-modal');
+  if (modal) modal.style.display = 'flex';
+  // Pre-fill host from current lemmy host input
+  const llHost = document.getElementById('ll-host');
+  if (llHost && !llHost.value) {
+    llHost.value = document.getElementById('lemmy-host-input').value.trim() || 'lemmy.world';
+  }
+  document.getElementById('lemmy-login-error').style.display = 'none';
+}
+
+function closeLemmyLogin() {
+  const modal = document.getElementById('lemmy-login-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitLemmyLogin() {
+  const btn  = document.getElementById('ll-submit-btn');
+  const errEl = document.getElementById('lemmy-login-error');
+  const host  = (document.getElementById('ll-host').value || '').trim();
+  const user  = (document.getElementById('ll-user').value || '').trim();
+  const pass  = document.getElementById('ll-pass').value;
+
+  errEl.style.display = 'none';
+  if (!host || !user || !pass) {
+    errEl.textContent = 'Instance, username, and password are all required.';
+    errEl.style.display = '';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    const res = await fetch('/api/lemmy/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, username: user, password: pass }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    // Success
+    lemmyAuth = { authenticated: true, host: data.host, username: data.username };
+    // Update host input to match logged-in host
+    document.getElementById('lemmy-host-input').value = data.host;
+    lemmyHost = data.host;
+    closeLemmyLogin();
+    refreshLemmyAuthUI();
+    // Reload communities/posts with authenticated session
+    loadForums(true);
+  } catch(err) {
+    errEl.textContent = 'Login failed: ' + err.message;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Log in';
+  }
+}
+
+async function lemmyLogout() {
+  await fetch('/api/lemmy/logout', { method: 'POST' });
+  lemmyAuth = { authenticated: false };
+  refreshLemmyAuthUI();
+}
+
+// Enter key inside login modal
+document.addEventListener('keydown', e => {
+  const modal = document.getElementById('lemmy-login-modal');
+  if (modal && modal.style.display !== 'none' && e.key === 'Enter') {
+    submitLemmyLogin();
+  }
+});
+
+// ── Sort ────────────────────────────────────────────────────
+
+function setForumsSort(sort) {
+  forumsSort = sort;
+  document.querySelectorAll('.sort-pill').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById('fsort-' + sort);
+  if (el) el.classList.add('active');
+  // Reload posts with new sort
+  if (postsList.length || activeCommunity !== null) {
+    loadPosts(true);
+  }
+}
+
+// ── Host helper ─────────────────────────────────────────────
+
+function getLemmyHost() {
+  if (lemmyAuth.authenticated && lemmyAuth.host) return lemmyAuth.host;
+  return document.getElementById('lemmy-host-input').value.trim() || 'lemmy.world';
+}
+
+// ── Communities ─────────────────────────────────────────────
+
+async function loadForums(fresh) {
+  lemmyHost = getLemmyHost();
+  if (fresh) {
+    commPage   = 1;
+    commList   = [];
+    activeCommunity = null;
+    document.getElementById('communities-list').innerHTML =
+      '<div class="state" style="padding:20px 10px;text-align:center"><div class="spinner"></div></div>';
+    document.getElementById('comm-load-more').style.display = 'none';
+    // Also reset posts panel
+    postsList  = [];
+    postsPage  = 1;
+    document.getElementById('posts-list').innerHTML =
+      '<div class="state"><div class="icon">&#x1F4AC;</div>' +
+      '<p>Select a community to browse posts,<br>or the front page loads automatically.</p></div>';
+    document.getElementById('posts-load-more').style.display = 'none';
+  }
+  await loadMoreCommunities();
+  // Auto-load front-page posts on fresh load
+  if (fresh) loadPosts(true);
+}
+
+async function loadMoreCommunities() {
+  if (commLoading) return;
+  commLoading = true;
+  const host = getLemmyHost();
+
+  try {
+    const p = new URLSearchParams({
+      sort: forumsSort === 'TopAll' ? 'TopAll' : 'Active',
+      page: String(commPage),
+      limit: '40',
+    });
+    if (!lemmyAuth.authenticated) p.set('host', host);
+
+    const res  = await fetch('/api/lemmy/communities?' + p);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const items = data.communities || [];
+
+    commList.push(...items);
+    renderCommunities(items, commPage === 1);
+    commPage++;
+
+    document.getElementById('comm-load-more').style.display =
+      items.length >= 40 ? '' : 'none';
+  } catch(err) {
+    if (commPage === 1) {
+      document.getElementById('communities-list').innerHTML =
+        `<div class="state" style="padding:16px 10px;text-align:center">
+          <div class="error-box" style="font-size:11px">${esc(err.message)}</div></div>`;
+    }
+  } finally {
+    commLoading = false;
+  }
+}
+
+function renderCommunities(items, fresh) {
+  const listEl = document.getElementById('communities-list');
+  if (fresh) listEl.innerHTML = '';
+
+  for (const cv of items) {
+    const c = cv.community;
+    const counts = cv.counts || {};
+    const sub = cv.subscribed || 'NotSubscribed';
+
+    const iconHtml = c.icon
+      ? `<img class="comm-icon" src="${esc(c.icon)}" alt="" loading="lazy"
+             onerror="this.style.display='none'">`
+      : `<div class="comm-icon-fallback">${esc((c.name||'?')[0].toUpperCase())}</div>`;
+
+    const subBadge = sub === 'Subscribed'
+      ? '<span class="comm-subscribed">&#x2713;</span>' : '';
+
+    const item = document.createElement('div');
+    item.className = 'community-item';
+    item.dataset.commId   = c.id;
+    item.dataset.commName = c.name;
+    item.innerHTML = `
+      ${iconHtml}
+      <div class="comm-info">
+        <div class="comm-name">${esc(c.title || c.name)}${subBadge}</div>
+        <div class="comm-subs">${fmtCount(counts.subscribers)} subscribers</div>
+      </div>`;
+    item.addEventListener('click', () => selectCommunity(c.id, c.name, item));
+    listEl.appendChild(item);
+  }
+}
+
+function selectCommunity(commId, commName, itemEl) {
+  // Highlight
+  document.querySelectorAll('.community-item').forEach(el => el.classList.remove('active'));
+  if (itemEl) itemEl.classList.add('active');
+  activeCommunity = { id: commId, name: commName };
+  loadPosts(true);
+}
+
+// ── Posts ────────────────────────────────────────────────────
+
+async function loadPosts(fresh) {
+  if (postsLoading) return;
+  postsLoading = true;
+  const host = getLemmyHost();
+
+  const listEl   = document.getElementById('posts-list');
+  const moreWrap = document.getElementById('posts-load-more');
+
+  if (fresh) {
+    postsPage  = 1;
+    postsList  = [];
+    listEl.innerHTML =
+      '<div class="state"><div class="spinner"></div><p>Loading posts…</p></div>';
+    moreWrap.style.display = 'none';
+  } else {
+    moreWrap.innerHTML =
+      '<div class="spinner" style="margin:0 auto;width:22px;height:22px"></div>';
+  }
+
+  try {
+    const p = new URLSearchParams({
+      sort:  forumsSort,
+      page:  String(postsPage),
+      limit: '20',
+    });
+    if (!lemmyAuth.authenticated) p.set('host', host);
+    if (activeCommunity) {
+      p.set('community_id', String(activeCommunity.id));
+    }
+
+    const res  = await fetch('/api/lemmy/posts?' + p);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const items = data.posts || [];
+
+    if (fresh && !items.length) {
+      listEl.innerHTML =
+        '<div class="state"><div class="icon">&#x1F4AC;</div><p>No posts found.</p></div>';
+      moreWrap.style.display = 'none';
+      return;
+    }
+
+    postsList.push(...items);
+    if (fresh) listEl.innerHTML = '';
+    renderPosts(items);
+    postsPage++;
+
+    moreWrap.style.display = items.length >= 20 ? '' : 'none';
+    if (!fresh) {
+      moreWrap.innerHTML =
+        '<button class="btn-ghost" style="width:100%;max-width:760px;margin:0 auto;display:block;font-size:13px"' +
+        ' onclick="loadMorePosts()">Load more posts</button>';
+    }
+  } catch(err) {
+    if (fresh) {
+      listEl.innerHTML =
+        `<div class="state"><div class="error-box">${esc(err.message)}</div></div>`;
+    } else {
+      moreWrap.innerHTML =
+        `<span style="color:#f87171;font-size:12px">${esc(err.message)}</span>`;
+    }
+  } finally {
+    postsLoading = false;
+  }
+}
+
+async function loadMorePosts() {
+  await loadPosts(false);
+}
+
+function renderPosts(items) {
+  const listEl = document.getElementById('posts-list');
+  const wrap   = document.createElement('div');
+  wrap.className = 'posts-inner';
+
+  for (const pv of items) {
+    const post   = pv.post;
+    const creator = pv.creator || {};
+    const counts = pv.counts || {};
+    const myVote = pv.my_vote || 0;
+
+    // Seed vote state
+    const vk = 'post:' + post.id;
+    if (!lemmyVoteState[vk]) {
+      lemmyVoteState[vk] = { score: counts.score || 0, my_vote: myVote };
+    }
+
+    const isNsfw = post.nsfw ? '<span class="post-nsfw">NSFW</span>' : '';
+
+    // Thumbnail
+    let thumbHtml = '';
+    if (post.thumbnail_url) {
+      thumbHtml = `<img class="post-thumb" src="${esc(post.thumbnail_url)}"
+        alt="" loading="lazy" onerror="this.style.display='none'">`;
+    }
+
+    // External link indicator
+    const isLink = post.url && !post.url.startsWith('/');
+    const linkLabel = isLink
+      ? `<a href="${esc(post.url)}" target="_blank" rel="noopener noreferrer"
+             onclick="event.stopPropagation()" style="color:#6366f1;font-size:11px">
+           &#x1F517; ${esc(new URL(post.url).hostname)}
+         </a>` : '';
+
+    // Score with vote buttons
+    const vs = lemmyVoteState[vk];
+    const upClass   = vs.my_vote === 1  ? ' voted' : '';
+    const downClass = vs.my_vote === -1 ? ' voted' : '';
+    const isAuth = lemmyAuth.authenticated;
+
+    const voteHtml = `
+      <div class="post-vote">
+        <button class="vote-btn up${upClass}" id="pvup-${post.id}"
+                onclick="votePost(event,${post.id},${vs.my_vote===1?0:1})"
+                ${isAuth ? '' : 'disabled title="Log in to vote"'}>&#x25B2;</button>
+        <span class="vote-score" id="pvscore-${post.id}">${fmtCount(vs.score)}</span>
+        <button class="vote-btn down${downClass}" id="pvdn-${post.id}"
+                onclick="votePost(event,${post.id},${vs.my_vote===-1?0:-1})"
+                ${isAuth ? '' : 'disabled title="Log in to vote"'}>&#x25BC;</button>
+      </div>`;
+
+    const subscribedState = pv.subscribed || 'NotSubscribed';
+    const subLabel = subscribedState === 'Subscribed' ? 'Unsubscribe' : 'Subscribe';
+
+    const subBtn = isAuth
+      ? `<button class="post-action-btn" id="psub-${post.id}"
+             onclick="event.stopPropagation();subscribeCommunity(${post.community_id},${subscribedState==='Subscribed'?'false':'true'},'${post.id}')">
+           &#x2605; ${subLabel}
+         </button>` : '';
+
+    const card = document.createElement('div');
+    card.className = 'post-card';
+    card.dataset.postId = post.id;
+    card.innerHTML = `
+      <div class="post-header">
+        ${voteHtml}
+        <div class="post-body">
+          <div class="post-title">
+            ${isNsfw}
+            ${esc(post.name)}
+            ${linkLabel}
+          </div>
+          <div class="post-meta">
+            <span class="post-community"
+                  onclick="event.stopPropagation();selectCommunity(${post.community_id},'${esc(post.community_name||'')}',null)">
+              c/${esc(post.community_name || '')}
+            </span>
+            <span class="post-author">by ${esc(creator.name || '?')}</span>
+            <span>${relativeTime(post.published)}</span>
+          </div>
+          ${post.body ? `<div class="post-self-text">${esc(post.body)}</div>` : ''}
+        </div>
+        ${thumbHtml}
+      </div>
+      <div class="post-actions">
+        <button class="post-action-btn" onclick="event.stopPropagation();openForumThread(${JSON.stringify(pv).replace(/"/g,'&quot;')})">
+          &#x1F4AC; ${fmtCount(counts.comments || 0)} comments
+        </button>
+        ${subBtn}
+      </div>`;
+
+    card.addEventListener('click', () => openForumThread(pv));
+    listEl.appendChild(card);
+  }
+}
+
+// ── Format helpers ──────────────────────────────────────────
+
+function fmtCount(n) {
+  n = parseInt(n) || 0;
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000)    return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+// ── Voting ──────────────────────────────────────────────────
+
+async function votePost(evt, postId, score) {
+  evt.stopPropagation();
+  if (!lemmyAuth.authenticated) return;
+
+  const vk  = 'post:' + postId;
+  const vs  = lemmyVoteState[vk] || { score: 0, my_vote: 0 };
+  const old = { ...vs };
+
+  // Optimistic update
+  const delta = score - (vs.my_vote || 0);
+  vs.my_vote  = score;
+  vs.score    = (vs.score || 0) + delta;
+  lemmyVoteState[vk] = vs;
+  updatePostVoteUI(postId, vs);
+
+  try {
+    const res = await fetch('/api/lemmy/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'post', id: postId, score }),
+    });
+    if (!res.ok) throw new Error('vote failed');
+    const data = await res.json();
+    const pv = data.data?.post_view;
+    if (pv && pv.counts) {
+      vs.score   = pv.counts.score;
+      vs.my_vote = pv.my_vote || score;
+      updatePostVoteUI(postId, vs);
+    }
+  } catch {
+    // Rollback
+    lemmyVoteState[vk] = old;
+    updatePostVoteUI(postId, old);
+  }
+}
+
+function updatePostVoteUI(postId, vs) {
+  const scoreEl = document.getElementById('pvscore-' + postId);
+  const upEl    = document.getElementById('pvup-' + postId);
+  const dnEl    = document.getElementById('pvdn-' + postId);
+  if (scoreEl) scoreEl.textContent = fmtCount(vs.score);
+  if (upEl)    upEl.classList.toggle('voted', vs.my_vote === 1);
+  if (dnEl)    dnEl.classList.toggle('voted', vs.my_vote === -1);
+}
+
+async function voteComment(evt, commentId, score, nodeEl) {
+  evt.stopPropagation();
+  if (!lemmyAuth.authenticated) return;
+
+  const vk  = 'comment:' + commentId;
+  const vs  = lemmyVoteState[vk] || { score: 0, my_vote: 0 };
+  const old = { ...vs };
+
+  const delta = score - (vs.my_vote || 0);
+  vs.my_vote  = score;
+  vs.score    = (vs.score || 0) + delta;
+  lemmyVoteState[vk] = vs;
+  updateCommentVoteUI(commentId, vs, nodeEl);
+
+  try {
+    const res = await fetch('/api/lemmy/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'comment', id: commentId, score }),
+    });
+    if (!res.ok) throw new Error('vote failed');
+    const data = await res.json();
+    const cv = data.data?.comment_view;
+    if (cv && cv.counts) {
+      vs.score   = cv.counts.score;
+      vs.my_vote = cv.my_vote || score;
+      updateCommentVoteUI(commentId, vs, nodeEl);
+    }
+  } catch {
+    lemmyVoteState[vk] = old;
+    updateCommentVoteUI(commentId, old, nodeEl);
+  }
+}
+
+function updateCommentVoteUI(commentId, vs, nodeEl) {
+  if (!nodeEl) return;
+  const scoreEl = nodeEl.querySelector('.ct-score-' + commentId);
+  const upEl    = nodeEl.querySelector('.ctvup-' + commentId);
+  const dnEl    = nodeEl.querySelector('.ctvdn-' + commentId);
+  if (scoreEl) scoreEl.textContent = fmtCount(vs.score);
+  if (upEl)    upEl.classList.toggle('voted-up', vs.my_vote === 1);
+  if (dnEl)    dnEl.classList.toggle('voted-down', vs.my_vote === -1);
+}
+
+// ── Subscribe ────────────────────────────────────────────────
+
+async function subscribeCommunity(communityId, subscribe, postId) {
+  if (!lemmyAuth.authenticated) return;
+  try {
+    const res = await fetch('/api/lemmy/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ community_id: communityId, subscribe }),
+    });
+    if (!res.ok) throw new Error('subscribe failed');
+    // Update button label
+    const btn = document.getElementById('psub-' + postId);
+    if (btn) btn.textContent = (subscribe ? '&#x2605; Unsubscribe' : '&#x2605; Subscribe');
+    // Reload communities to reflect updated subscription status
+    commPage = 1; commList = [];
+    loadMoreCommunities();
+  } catch(err) {
+    // silent
+  }
+}
+
+// ── Forum Thread (comments panel) ───────────────────────────
+
+async function openForumThread(postView) {
+  forumPostView = postView;
+  forumReplyId  = null;
+
+  const overlay = document.getElementById('forum-thread-overlay');
+  const body    = document.getElementById('forum-thread-body');
+  const title   = document.getElementById('forum-thread-title');
+  const compose = document.getElementById('forum-compose');
+
+  overlay.style.display = 'flex';
+  title.textContent = (postView.post || {}).name || 'Thread';
+  body.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading comments…</p></div>';
+
+  // Show compose if authenticated
+  if (compose) compose.style.display = lemmyAuth.authenticated ? '' : 'none';
+  if (lemmyAuth.authenticated) {
+    const ta = document.getElementById('forum-compose-text');
+    if (ta) { ta.value = ''; onForumComposeInput(); }
+    clearForumReply();
+  }
+
+  try {
+    const post   = postView.post;
+    const host   = getLemmyHost();
+    const p      = new URLSearchParams({ post_id: post.id, sort: 'Hot', max_depth: '6', limit: '50' });
+    if (!lemmyAuth.authenticated) p.set('host', host);
+
+    const res  = await fetch('/api/lemmy/comments?' + p);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const comments = data.comments || [];
+
+    let html = buildPostDetail(postView);
+    html += buildCommentTree(comments, post.id);
+
+    body.innerHTML = html;
+    body.scrollTop = 0;
+
+  } catch(err) {
+    body.innerHTML =
+      `<div class="state"><div class="error-box">${esc(err.message)}</div></div>`;
+  }
+}
+
+function buildPostDetail(pv) {
+  const post    = pv.post;
+  const creator = pv.creator || {};
+  const counts  = pv.counts || {};
+
+  const isLink   = post.url && !post.url.startsWith('/');
+  let bodyHtml = '';
+
+  if (post.body) {
+    // Render Markdown very minimally (escape HTML, convert newlines)
+    bodyHtml = `<div class="post-full-text">${esc(post.body).replace(/\n/g, '<br>')}</div>`;
+  }
+
+  let imgHtml = '';
+  if (post.thumbnail_url && !post.body) {
+    imgHtml = `<img class="post-img" src="${esc(post.thumbnail_url)}" alt="" loading="lazy"
+                    onerror="this.style.display='none'">`;
+  }
+
+  let linkHtml = '';
+  if (isLink) {
+    linkHtml = `<a class="post-link" href="${esc(post.url)}" target="_blank" rel="noopener noreferrer">
+      &#x1F517; ${esc(post.url)}</a>`;
+  }
+
+  return `<div class="forum-post-detail">
+    <div class="post-title">${esc(post.name)}</div>
+    <div class="post-meta" style="margin-bottom:6px">
+      <span class="post-community">c/${esc(post.community_name||'')}</span>
+      <span class="post-author">by ${esc(creator.name||'?')}</span>
+      <span>${relativeTime(post.published)}</span>
+      <span>&#x2B06; ${fmtCount(counts.score||0)}</span>
+      <span>&#x1F4AC; ${fmtCount(counts.comments||0)}</span>
+    </div>
+    ${imgHtml}${bodyHtml}${linkHtml}
+  </div>`;
+}
+
+function buildCommentTree(comments, postId) {
+  if (!comments.length) {
+    return '<div class="comments-header">No comments yet.</div>';
+  }
+
+  // Build parent->children map from path field
+  // Lemmy comment path looks like: "0.1234.5678" (root = "0")
+  const byId = {};
+  const roots = [];
+
+  for (const cv of comments) {
+    byId[cv.comment.id] = { cv, children: [] };
+  }
+
+  for (const cv of comments) {
+    const path   = (cv.comment.path || '').split('.');
+    // second-to-last element is the parent id (last is self)
+    const parentId = path.length >= 2 ? parseInt(path[path.length - 2]) : 0;
+    if (parentId && byId[parentId]) {
+      byId[parentId].children.push(cv.comment.id);
+    } else {
+      roots.push(cv.comment.id);
+    }
+  }
+
+  let html = `<div class="comments-header">&#x1F4AC; ${fmtCount(comments.length)} comments</div>`;
+  html += '<div class="comment-tree">';
+  for (const rid of roots) {
+    html += renderCommentNode(rid, byId, 0);
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderCommentNode(commentId, byId, depth) {
+  const entry = byId[commentId];
+  if (!entry) return '';
+  const cv      = entry.cv;
+  const comment = cv.comment;
+  const creator = cv.creator || {};
+  const counts  = cv.counts || {};
+  const myVote  = cv.my_vote || 0;
+
+  const vk = 'comment:' + comment.id;
+  if (!lemmyVoteState[vk]) {
+    lemmyVoteState[vk] = { score: counts.score || 0, my_vote: myVote };
+  }
+  const vs = lemmyVoteState[vk];
+
+  const isAuth = lemmyAuth.authenticated;
+  const upClass   = vs.my_vote === 1  ? ' voted-up' : '';
+  const downClass = vs.my_vote === -1 ? ' voted-down' : '';
+
+  const voteActions = isAuth
+    ? `<button class="ct-action ctvup-${comment.id}${upClass}"
+           onclick="voteComment(event,${comment.id},${vs.my_vote===1?0:1},this.closest('.ct-node'))">
+         &#x25B2; <span class="ct-score-${comment.id}">${fmtCount(vs.score)}</span>
+       </button>
+       <button class="ct-action ctvdn-${comment.id}${downClass}"
+           onclick="voteComment(event,${comment.id},${vs.my_vote===-1?0:-1},this.closest('.ct-node'))">
+         &#x25BC;
+       </button>
+       <button class="ct-action" onclick="toggleForumReplyForm(${comment.id},this)">Reply</button>`
+    : `<span class="ct-score">${fmtCount(vs.score)}</span>`;
+
+  // Limit depth rendering (collapse deep threads)
+  const children = entry.children;
+
+  let childHtml = '';
+  if (children.length && depth < 6) {
+    childHtml = '<div class="ct-children">';
+    for (const cid of children) {
+      childHtml += renderCommentNode(cid, byId, depth + 1);
+    }
+    childHtml += '</div>';
+  }
+
+  const replyForm = isAuth
+    ? `<div class="ct-reply-form" id="ctrf-${comment.id}">
+         <textarea placeholder="Write a reply… (Markdown supported)" rows="3"></textarea>
+         <div class="ct-reply-form-footer">
+           <button class="btn-ghost" style="font-size:11px;padding:3px 10px"
+                   onclick="cancelForumReplyForm(${comment.id})">Cancel</button>
+           <button class="btn" style="font-size:11px;padding:3px 10px;background:#f59e0b;color:#000"
+                   onclick="submitForumReply(${comment.id},this)">Reply</button>
+         </div>
+       </div>` : '';
+
+  return `<div class="ct-node">
+    <div class="ct-card">
+      <div class="ct-meta">
+        <span class="ct-author">${esc(creator.name || 'deleted')}</span>
+        <span class="ct-time">${relativeTime(comment.published)}</span>
+      </div>
+      <div class="ct-content">${esc(comment.content || '').replace(/\n/g,'<br>')}</div>
+      <div class="ct-actions">${voteActions}</div>
+      ${replyForm}
+    </div>
+    ${childHtml}
+  </div>`;
+}
+
+function toggleForumReplyForm(commentId, btn) {
+  const form = document.getElementById('ctrf-' + commentId);
+  if (!form) return;
+  const isOpen = form.style.display !== 'none' && form.style.display !== '';
+  // Close all open reply forms first
+  document.querySelectorAll('.ct-reply-form').forEach(f => { f.style.display = 'none'; });
+  form.style.display = isOpen ? 'none' : '';
+  if (!isOpen) {
+    const ta = form.querySelector('textarea');
+    if (ta) ta.focus();
+  }
+}
+
+function cancelForumReplyForm(commentId) {
+  const form = document.getElementById('ctrf-' + commentId);
+  if (form) form.style.display = 'none';
+}
+
+async function submitForumReply(parentCommentId, btn) {
+  if (!forumPostView) return;
+  const form    = document.getElementById('ctrf-' + parentCommentId);
+  const ta      = form ? form.querySelector('textarea') : null;
+  const content = ta ? ta.value.trim() : '';
+  if (!content) return;
+
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    const res = await fetch('/api/lemmy/comment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        post_id: forumPostView.post.id,
+        content,
+        parent_id: parentCommentId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    if (ta) ta.value = '';
+    if (form) form.style.display = 'none';
+    // Reload comments
+    openForumThread(forumPostView);
+  } catch(err) {
+    btn.disabled = false;
+    btn.textContent = 'Reply';
+    if (form) {
+      let errEl = form.querySelector('.reply-err');
+      if (!errEl) {
+        errEl = document.createElement('div');
+        errEl.className = 'reply-err';
+        errEl.style = 'color:#f87171;font-size:11px;margin-top:3px';
+        form.appendChild(errEl);
+      }
+      errEl.textContent = 'Error: ' + err.message;
+    }
+  }
+}
+
+// ── Top-level compose comment ────────────────────────────────
+
+function onForumComposeInput() {
+  const ta  = document.getElementById('forum-compose-text');
+  const btn = document.getElementById('forum-post-btn');
+  if (ta && btn) btn.disabled = ta.value.trim().length === 0;
+}
+
+function clearForumReply() {
+  forumReplyId = null;
+  const banner = document.getElementById('forum-reply-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+async function submitForumComment() {
+  if (!forumPostView) return;
+  const ta    = document.getElementById('forum-compose-text');
+  const btn   = document.getElementById('forum-post-btn');
+  const errEl = document.getElementById('forum-post-error');
+  const content = ta ? ta.value.trim() : '';
+  if (!content) return;
+
+  btn.disabled = true;
+  btn.textContent = '…';
+  if (errEl) errEl.style.display = 'none';
+
+  try {
+    const payload = { post_id: forumPostView.post.id, content };
+    if (forumReplyId) payload.parent_id = forumReplyId;
+
+    const res = await fetch('/api/lemmy/comment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    if (ta) ta.value = '';
+    clearForumReply();
+    onForumComposeInput();
+    // Reload thread
+    openForumThread(forumPostView);
+  } catch(err) {
+    if (errEl) {
+      errEl.textContent = 'Error: ' + err.message;
+      errEl.style.display = '';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Comment';
+  }
+}
+
+// ── Close forum thread panel ─────────────────────────────────
+
+function closeForumThread(evt) {
+  if (evt && evt.target !== document.getElementById('forum-thread-overlay')) return;
+  document.getElementById('forum-thread-overlay').style.display = 'none';
+  forumPostView = null;
+}
+
+// Escape key closes forum thread
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const fo = document.getElementById('forum-thread-overlay');
+    if (fo && fo.style.display !== 'none') {
+      fo.style.display = 'none';
+      forumPostView = null;
+    }
+    const lm = document.getElementById('lemmy-login-modal');
+    if (lm && lm.style.display !== 'none') closeLemmyLogin();
+  }
+});
+
+// Enter in lemmy host input
+document.getElementById('lemmy-host-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadForums(true);
+});
+
+// Ctrl+Enter submits forum comment
+document.getElementById('forum-compose-text').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitForumComment();
+});
+
+// Boot: fetch Lemmy auth status alongside Mastodon auth status
+(async () => {
+  await refreshLemmyAuthState();
+  refreshLemmyAuthUI();
+})();
 </script>
 </body>
 </html>
