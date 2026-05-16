@@ -630,7 +630,7 @@ Scope: Add labwc+cage to 3 apt blocks; rc.xml (browser bg layer) + vulos openbox
 AC: [ ] labwc+cage installed 3 places [ ] rc.xml+themerc in-repo+copied [ ] left close/min/max [ ] docker build
 
 ### [BMINIT-02] vulos-init cage→labwc, browser as background
-`todo` · P0 · M · dep: BMINIT-01 · parallel: no — backend/cmd/init/main.go
+`done` · P0 · M · dep: BMINIT-01 · parallel: no — backend/cmd/init/main.go
 Scope: Rework startKiosk(): display connected + labwc present → labwc + cog fullscreen (bg pin via rule); cage fallback; keep headless path; set WAYLAND_DISPLAY/XDG_RUNTIME_DIR.
 AC: [ ] display+labwc → labwc+cog bg [ ] no display → headless still serves [ ] labwc missing → cage [ ] GOOS=linux build
 
