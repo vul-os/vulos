@@ -1219,6 +1219,7 @@ func main() {
 		os.RemoveAll(filepath.Join(aiAppsDir, r.PathValue("id")))
 		writeJSON(w, map[string]string{"status": "deleted"})
 	})
+	registerAIAppsRoutes(mux, aiAppsDir, authStore)
 
 	// Native window management — spawn Cog/WPE instances as real compositor windows
 	// Cached at startup: detect if we're on baremetal (sole Cog instance) or native (compositor with multi-window)

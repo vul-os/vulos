@@ -73,7 +73,182 @@ export default function Portal({ mode = 'panel' }) {
     setSelectedIdx(0)
   }, [query])
 
+  // AI-06: Edit-with-AI — fetch current code, send AI chat with context, parse viewport,
+  // POST /api/ai-apps/{id}/update, reopen viewport with new content.
+  // Prefix: aiEdit_  (zero collision with existing identifiers)
+  // Declared BEFORE handleIntent so it can be referenced in that callback's deps.
+  const aiEdit_runEditWithAI = useCallback(async ({ id, title, changeRequest }) => {
+    if (!id || !changeRequest) return
+
+    addMessage('user', `Edit "${title || id}": ${changeRequest}`)
+    setThinking(true)
+
+    // Step 1: Fetch current html + python from the saved app
+    let currentHTML = ''
+    let currentPython = ''
+    try {
+      const [htmlRes, pyRes] = await Promise.allSettled([
+        fetch(`/api/ai-apps/${encodeURIComponent(id)}/html`),
+        fetch(`/api/ai-apps/${encodeURIComponent(id)}/python`),
+      ])
+      if (htmlRes.status === 'fulfilled' && htmlRes.value.ok) {
+        currentHTML = await htmlRes.value.text()
+      }
+      if (pyRes.status === 'fulfilled' && pyRes.value.ok) {
+        currentPython = await pyRes.value.text()
+      }
+    } catch {
+      addMessage('system', 'Could not fetch app source code.')
+      setThinking(false)
+      return
+    }
+
+    // Step 2: Build AI prompt with current code as context
+    const codeContext = [
+      currentHTML ? `Current index.html:\n\`\`\`html\n${currentHTML}\n\`\`\`` : '',
+      currentPython ? `Current server.py:\n\`\`\`python\n${currentPython}\n\`\`\`` : '',
+    ].filter(Boolean).join('\n\n')
+
+    const systemPrompt = `You are modifying an existing AI-generated app called "${title || id}".
+Return the complete updated app wrapped in a <viewport title="${title || id}"> block, exactly like you would when creating a new app.
+If the app has Python, include <script type="text/python"> inside the viewport.
+Only output the viewport block — no explanations outside it.`
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `${codeContext}\n\nChange request: ${changeRequest}` },
+    ]
+
+    // Step 3: Stream AI response, parse <viewport>
+    let full = ''
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, stream: true }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        addMessage('assistant', err.error || 'AI provider not available. Open /settings to configure.')
+        setThinking(false)
+        return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const text = decoder.decode(value)
+        for (const line of text.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const chunk = JSON.parse(line.slice(6))
+            if (chunk.content) full += chunk.content
+            if (chunk.done) break
+          } catch {}
+        }
+      }
+    } catch {
+      addMessage('assistant', 'Could not reach AI backend. Check /settings.')
+      setThinking(false)
+      return
+    }
+
+    if (!full) {
+      addMessage('assistant', 'No response from AI.')
+      setThinking(false)
+      return
+    }
+
+    // Step 4: Parse <viewport> from AI response to extract new html + python
+    const AI6_viewportRe = /<viewport\s+title="([^"]*)">([\s\S]*?)<\/viewport>/
+    const vpMatch = AI6_viewportRe.exec(full)
+    if (!vpMatch) {
+      // No viewport — fall back to normal processAIResponse so nothing is swallowed
+      processAIResponse(full)
+      setThinking(false)
+      return
+    }
+
+    const newTitle = vpMatch[1] || title || id
+    let vpContent = vpMatch[2].trim()
+    const AI6_pyRe = /<script\s+type="text\/python">([\s\S]*?)<\/script>/
+    const pyMatch = AI6_pyRe.exec(vpContent)
+    const newPython = pyMatch ? pyMatch[1].trim() : ''
+    const newHTML = pyMatch ? vpContent.replace(pyMatch[0], '').trim() : vpContent
+
+    // Step 5: POST /api/ai-apps/{id}/update to persist changes
+    try {
+      const updateRes = await fetch(`/api/ai-apps/${encodeURIComponent(id)}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: newHTML, python: newPython }),
+      })
+      if (!updateRes.ok) {
+        const errData = await updateRes.json().catch(() => ({}))
+        addMessage('system', `Failed to save update: ${errData.error || updateRes.status}`)
+        setThinking(false)
+        return
+      }
+    } catch {
+      addMessage('system', 'Could not save app update — backend unreachable.')
+      setThinking(false)
+      return
+    }
+
+    addMessage('system', `"${newTitle}" updated and reopened.`)
+
+    // Step 6: Reopen the viewport with the new content (mirrors processAIResponse logic)
+    let sandboxUrl = null
+    if (newPython) {
+      try {
+        const sbRes = await fetch('/api/sandbox/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: `vp-edit-${id}-${Date.now()}`, code: newPython }),
+        })
+        if (sbRes.ok) {
+          const sbData = await sbRes.json()
+          sandboxUrl = sbData.url
+          await new Promise(r => setTimeout(r, 500))
+        }
+      } catch {}
+    }
+
+    let finalHTML = newHTML
+    if (sandboxUrl) {
+      const inject = `<script>const VULOS_SANDBOX_URL="${sandboxUrl}";</script>`
+      finalHTML = finalHTML.includes('<head>')
+        ? finalHTML.replace('<head>', '<head>' + inject)
+        : inject + finalHTML
+    }
+
+    openWindow({
+      appId: `ai-viewport-edit-${id}-${Date.now()}`,
+      title: newTitle,
+      icon: '◬',
+      html: finalHTML,
+      _saveable: { title: newTitle, html: finalHTML, python: newPython },
+    })
+
+    setThinking(false)
+  // processAIResponse is used as fallback when AI returns no <viewport>
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addMessage, setThinking, openWindow, processAIResponse])
+
   const handleIntent = useCallback((input) => {
+    // AI-06: "edit <app-id>: <change request>" shorthand — triggers Edit-with-AI directly.
+    // Pattern: edit <id>[: <what to change>]
+    const AI6_editRe = /^edit\s+([a-z0-9_-]+)(?:[:\s]+(.+))?$/i
+    const AI6_editMatch = AI6_editRe.exec(input.trim())
+    if (AI6_editMatch) {
+      const AI6_appId = AI6_editMatch[1]
+      const AI6_changeReq = (AI6_editMatch[2] || '').trim() || 'Improve this app.'
+      aiEdit_runEditWithAI({ id: AI6_appId, title: AI6_appId, changeRequest: AI6_changeReq })
+      setQuery('')
+      return
+    }
+
     const intent = classifyIntent(input)
 
     switch (intent.type) {
@@ -174,7 +349,7 @@ export default function Portal({ mode = 'panel' }) {
         })
         break
     }
-  }, [addMessage, openWindow, setThinking, conversation])
+  }, [addMessage, openWindow, setThinking, conversation, aiEdit_runEditWithAI])
 
   // Listen for chat messages from launchpad
   useEffect(() => {
@@ -185,6 +360,17 @@ export default function Portal({ mode = 'panel' }) {
     window.addEventListener('vulos:chat', handler)
     return () => window.removeEventListener('vulos:chat', handler)
   }, [handleIntent])
+
+  // Listen for vulos:aiEdit events dispatched by other UI (e.g. App Hub)
+  // Event detail: { id, title, changeRequest }
+  useEffect(() => {
+    const AI6_handler = (e) => {
+      const { id, title, changeRequest } = e.detail || {}
+      if (id && changeRequest) aiEdit_runEditWithAI({ id, title, changeRequest })
+    }
+    window.addEventListener('vulos:aiEdit', AI6_handler)
+    return () => window.removeEventListener('vulos:aiEdit', AI6_handler)
+  }, [aiEdit_runEditWithAI])
 
   // Parse AI response for <viewport> blocks → open as windows
   // Supports optional <script type="text/python"> for backend code
