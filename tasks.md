@@ -1030,7 +1030,7 @@ Scope: relay exposes attestation doc; sender validates vs policy before deposit,
 AC: [ ] sender verifies attestation before deposit [ ] failed/absent rejects relay [ ] verifier interface extensible
 
 ### [PEER-40] Cluster anycast: multi-endpoint registry + failover
-`todo` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
+`done` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
 Scope: endpoint registry (register/list/remove/priority), include endpoints in well-known (extends PEER-12), outbound races cached endpoints w/ failover, UUIDv7 dedup inbound.
 AC: [ ] Vula ID advertises multi endpoints [ ] delivery succeeds via live one [ ] duplicate msg ID no-op
 
