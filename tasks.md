@@ -785,7 +785,7 @@ Scope: Extract shared useGamepad({send,deadzone,pollHz}), all pads (index in pay
 AC: [ ] StreamViewer gamepad channel [ ] multi-pad w/ index [ ] deadzone+poll params [ ] RemoteBrowser still works
 
 ### [GAME-05] Gamepad rumble (data channel + uinput FF)
-`todo` · P2 · L · dep: GAME-04 · parallel: no — backend/services/input/uinput.go, backend/services/stream/stream.go, src/core/useGamepad.js
+`done` · P2 · L · dep: GAME-04 · parallel: no — backend/services/input/uinput.go, backend/services/stream/stream.go, src/core/useGamepad.js
 Scope: Enable EV_FF/FF_RUMBLE on uinput pad, read FF uploads, forward server→client over gamepad channel, apply via vibrationActuator.playEffect.
 AC: [ ] uinput advertises FF_RUMBLE, captures FF [ ] rumble reaches browser playEffect [ ] go build
 
