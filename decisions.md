@@ -433,3 +433,7 @@ NET-09 worker's stale base had different Service struct than current main (NET-0
 ## D58 (18:32) — Tick hold: AUTH-12 in flight; tasks largely drained
 Mem 1882 cleared. AUTH-12 still working. Remaining actionable post-AUTH-12: APPSTORE-06 (gaming wiring — large sprawl across registry/stream/wine, parallel:no, defer-or-skip). Roadmap is ~90% done; rest is deferred/locked/blocked. No new dispatch this tick — wait AUTH-12, then likely wind-down rather than chase the sprawling APPSTORE-06.
 Brief remaining: 162 min. Cron expires in 23 min.
+
+## D59 (18:35) — AUTH-12 permanent-defer (devicekey API mismatch)
+AUTH-12 worker's passkeys.go calls `devicekey.New()` + `KeyStore.SealJSON()`/`UnsealJSON()` — its stale base predates AUTH-09's actual keystore.go API (which exports different methods). The new devicekey/devicekey.go it shipped redeclares KeyStore type. Same pattern as INIT-08/NET-09 stale-base structural defers. Cost to adapt passkeys.go to current API ≈ 30+ min surgical work; defer per discipline. Backend passkey code preserved in task/AUTH-12 branch; needs future hand-integration once devicekey API surface is documented.
+Session merges remain at 159.
