@@ -308,3 +308,24 @@ User: "span 5 sonnet agents... most relevant features." Selection criteria: alig
 
 ## D32 (16:51) — Triple-check security: 2 Opus auditors (OSS verify + cloud design)
 User: "double tripple check security principles of this os and how it works, also for cloud, and make sure no security holes." First audit (D24) was app-exposure scoped; remediation merged (SEC-A..K + C1-C4/H1-H6/M3/M4/L1-4). Now: (1) Opus-VERIFY — verify those fixes ACTUALLY hold at the file:line, then broaden beyond app-exposure to auth-core, gateway, peering crypto, stream/WebRTC, cluster sync, native-launch (BMINIT-04 in flight, audit current main as baseline). (2) Opus-CLOUD — vulos-cloud is mostly roadmap docs not code, so audit DESIGN: relay E2E posture, credential-custody invariants (burst-failover passphrase rule), OTA signing chain, SSH-broker (short-lived certs / off-default / arming / audit), gateway exposure model (C5/M2 routing), abuse posture. Both read-only; both produce structured report with severity + file:line/design-issue + "verified safe" list. Concurrent: agents in flight rises to ~9 of 15 cap; auditors don't go-build so CPU impact minimal.
+
+## D33 (17:08) — Cloud backend wave-10 (after main.go refactor)
+User: "Orchestrate 4h, ~10 sonnet agents... have agents setting up backend and frontend for cloud system, keep frontend as is, make backend folder in go with cmd for server migrations." Pivots wave focus from OSS roadmap to vulos-cloud backend bootstrap.
+
+Pre-work (inline, no agent cost):
+- vulos OSS main.go refactor @ 8476791: extracted /api/open → routes_open.go + ROUTES.md per-area pattern. main.go now sheds inline handlers; future workers add new endpoints to their own routes_<area>.go (one wiring line into main.go in a unique section). Eliminates the historical main.go contention.
+- vulos-cloud backend scaffold @ d0431d8: backend/cp/ + backend/relay/ Go modules. cp has cmd/server (healthz+mux+graceful) + cmd/migrate (stub) + internal/httpx (shared helpers) + migrations/ + ROUTES.md. relay has cmd/pop. Pure-Go SQLite (modernc) — NO CGO (preserves single-binary deploy, per D23 SQLite rule).
+
+10-worker file-disjoint dispatch (each owns its own internal/<pkg>/):
+1. ROUTE-02 internal/idents — ULID + canonical name regex
+2. ROUTE-03 internal/enrollment — account↔ULID↔device store (modernc/sqlite)
+3. ROUTE-04 internal/dnsadapter — authoritative DNS for vulos.org
+4. OTA-01 internal/ota/manifest — release manifest schema + canonical bytes
+5. SSH-01 internal/sshca — short-TTL SSH cert minting (≤15min)
+6. BILL-01 internal/billing + routes_billing.go — Stripe wrapper + webhook
+7. FLEET-01 internal/fleet/schema — device columns + migration
+8. SECX-01 internal/appown — app-ownership model
+9. RELAY-02 internal/popid (relay module) — PoP identity + enrollment client
+10. RELAY-03 internal/circuit (relay module) — stateless byte forwarder core
+
+Cron 44dbf100 (every 5 min) still armed for 2h. JSX-only rule preserved for vulos-cloud (no .tsx). Workers commit local, no push, per standing rule.
