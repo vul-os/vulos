@@ -865,7 +865,7 @@ Scope: in-mem + contacts.json: add/list/update/remove, state pending/approved/bl
 AC: [ ] persists across restart [ ] state graph enforced [ ] Can reflects grants [ ] unit tests
 
 ### [PEER-07] Contact request/approve/block + inbound endpoint
-`todo` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
+`done` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
 Scope: POST contacts/request (sign+send), inbound/request (store pending+notify), requests list, approve/block/delete; approve mutual+notify.
 AC: [ ] request creates pending on recipient [ ] inbound/request allowed w/o approval, others require [ ] approve→approved+notify [ ] block silent drop
 
