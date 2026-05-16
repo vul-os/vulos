@@ -940,7 +940,7 @@ Scope: GET /api/peering/ice → STUN list + TURN short-lived creds (reuse networ
 AC: [ ] STUN always, TURN creds when secret set [ ] short-lived HMAC [ ] no new TURN code
 
 ### [PEER-22] 1:1 voice call (browser↔browser WebRTC audio)
-`todo` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
+`done` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
 Scope: RTCPeerConnection audio, getUserMedia, offer/answer+ICE over signal channel w/ PEER-21 config, mute, hangup; wire call UI.
 AC: [ ] 2 browsers direct audio via signaling only [ ] mute/hangup, media not via servers [ ] ICE-restart on drop
 
