@@ -850,7 +850,7 @@ Scope: Deterministic canonical JSON (no sig field in signed bytes), Sign/Verify 
 AC: [ ] canonical byte-stable [ ] Verify rejects tamper+wrong key [ ] unit tests
 
 ### [PEER-04] S2S HTTP client + signature/allow-list inbound middleware
-`todo` · P0 · M · dep: PEER-03, PEER-06 · parallel: no — backend/services/peering/transport.go, inbound.go
+`done` · P0 · M · dep: PEER-03, PEER-06 · parallel: no — backend/services/peering/transport.go, inbound.go
 Scope: Outbound signed POST to peer /api/peering/inbound/* (TLS, timeout, SSRF guard reuse webproxy isPrivate); inbound mw verifies sig + allow list (except inbound/request) → 401/403.
 AC: [ ] mw rejects unsigned 401 [ ] non-approved 403 (except request) [ ] outbound refuses private+timeout [ ] table tests states
 
