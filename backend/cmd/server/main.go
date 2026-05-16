@@ -165,6 +165,13 @@ func main() {
 	// Remote access config — pass cfg so identity fields are populated from config/env.
 	netSvc := network.New(cfg)
 
+	// TURN/coturn persistent config store (NET-10)
+	turnStore, err := network.NewTURNStore(dbDir)
+	if err != nil {
+		log.Printf("[turn] store init warning: %v", err)
+		turnStore, _ = network.NewTURNStore(os.TempDir())
+	}
+
 	// AI service
 	aiSvc := ai.New()
 	aiCfg := ai.DefaultConfig()
@@ -1086,6 +1093,9 @@ func main() {
 		netSvc.Configure(cfg)
 		writeJSON(w, netSvc.Config())
 	})
+
+	// TURN/coturn settings routes (NET-10)
+	registerTURNRoutes(mux, turnStore)
 
 	// --- System Settings ---
 
