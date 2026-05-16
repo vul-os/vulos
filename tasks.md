@@ -935,7 +935,7 @@ Scope: periodic speed test (configurable endpoint) or traffic estimate, cache, G
 AC: [ ] returns up/down+latency periodic [ ] peer can request approved peer's [ ] non-blocking startup
 
 ### [PEER-21] STUN/TURN ICE config endpoint for peering calls
-`todo` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
+`done` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
 Scope: GET /api/peering/ice → STUN list + TURN short-lived creds (reuse network.TURNConfig.GenerateCredentials) when TURN_SECRET set.
 AC: [ ] STUN always, TURN creds when secret set [ ] short-lived HMAC [ ] no new TURN code
 
