@@ -790,7 +790,7 @@ Scope: Enable EV_FF/FF_RUMBLE on uinput pad, read FF uploads, forward server→c
 AC: [ ] uinput advertises FF_RUMBLE, captures FF [ ] rumble reaches browser playEffect [ ] go build
 
 ### [GAME-06] Process priority scheduling (game+encoder)
-`todo` · P2 · M · dep: GAME-02 · parallel: no — backend/services/stream/pool.go
+`done` · P2 · M · dep: GAME-02 · parallel: no — backend/services/stream/pool.go
 Scope: opts.Gaming → app nice -10 + try SCHED_FIFO (soft-fail nice on EPERM), raise encoder priority; degrade w/o SYS_NICE.
 AC: [ ] gaming elevated priority, non-gaming unchanged [ ] missing SYS_NICE warns no fail [ ] go build
 
