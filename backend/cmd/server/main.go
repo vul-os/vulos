@@ -427,6 +427,9 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
+	// NET-07: cluster health (data-dir writable, disk space, sync lag) — public
+	mux.HandleFunc("GET /api/health", handleClusterHealth(filepath.Join(home, ".vulos")))
+
 	// Setup status — public, no auth needed
 	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter, r *http.Request) {
 		_, err := os.Stat("/var/lib/vulos/.setup-complete")
