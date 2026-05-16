@@ -212,3 +212,13 @@ text-merge is clean, so on build failure `git merge --abort`/`git reset --hard H
 NOT undo it (HEAD == the bad merge). CORRECT revert after a clean-auto-merge that fails the
 build/test gate: `git reset --hard HEAD~1`. Build-gate still mandatory (it caught it).
 CLUSTER-09 deferred → re-task: rename presence.go const to leaseHeartbeatInterval.
+
+### D19 — 2026-05-16 12:59 — Loop resumed, fresh 4h15m window
+Prior 4h window (00:52→04:52) completed: 78 task-branch merges to main, build green,
+tasks.md ~76 done / 94 todo, 14 deferred branches. Machine slept ~04:07→12:59 so the old
+cron fired late; old job 026d80d9 was CronDeleted at wind-down. User requested continuation:
+new cron 3b9c595e (*/15), NEW HARD DEADLINE 2026-05-16 17:14 (12:59 + 4h15m). All prior
+playbooks (D14 main-guard, D16 if-go-build gate, D17 PEER serialize / new-files-only, D18
+reset-HEAD~1 on clean-merge-build-break, go.mod ours+tidy, app-dir take-theirs, perl-strip
+keep-both) remain in force. 93 stale worktree dirs exist (disk 505Gi free — harmless, leave;
+branch refs persist independently). Continue.
