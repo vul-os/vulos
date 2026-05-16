@@ -8,8 +8,8 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -109,14 +109,17 @@ func (g *Gateway) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var appID, appPath string
 
-		// Try subdomain: {appId}.lvh.me or {appId}.vula.example.com
-		host := r.Host
-		if idx := strings.Index(host, ":"); idx > 0 {
-			host = host[:idx]
-		}
-		if baseDomain := os.Getenv("VULOS_DOMAIN"); baseDomain != "" && strings.HasSuffix(host, "."+baseDomain) {
-			appID = strings.TrimSuffix(host, "."+baseDomain)
-			appPath = r.URL.Path
+		// Try subdomain: {app}--{profile}.{ulid}.{domain} or {app}.{ulid}.{domain}
+		// ParseSubdomain handles port stripping, case normalisation, and separator logic.
+		if baseDomain := os.Getenv("VULOS_DOMAIN"); baseDomain != "" {
+			if parsedApp, parsedProfile, ok := appnet.ParseSubdomain(r.Host, baseDomain); ok {
+				appID = parsedApp
+				appPath = r.URL.Path
+				if parsedProfile != "default" {
+					// Profile-dimensional routing is NET-02; log for observability only.
+					log.Printf("[gateway] subdomain profile=%q for app=%q (NET-02 pending)", parsedProfile, appID)
+				}
+			}
 		}
 
 		// Fallback: /app/{appId}/path
