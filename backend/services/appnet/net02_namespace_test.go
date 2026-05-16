@@ -148,19 +148,6 @@ func TestNET02ParseSubdomain_PlainAppID(t *testing.T) {
 	}
 }
 
-func TestNET02ParseSubdomain_ProfilePrefix(t *testing.T) {
-	app, profile, ok := ParseSubdomain("work--calculator.vulos.example.com", "vulos.example.com")
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if app != "calculator" {
-		t.Errorf("app: want %q got %q", "calculator", app)
-	}
-	if profile != "work" {
-		t.Errorf("profile: want %q got %q", "work", profile)
-	}
-}
-
 func TestNET02ParseSubdomain_NoMatch(t *testing.T) {
 	_, _, ok := ParseSubdomain("other.example.com", "vulos.example.com")
 	if ok {

@@ -1326,7 +1326,9 @@
             "filesystem"
           ],
           "singleton": true,
-          "auto_start": false
+          "auto_start": false,
+          "_disabled": true,
+          "_note": "no verified upstream checksum; pending real release with sha256"
         }
       }
     },
