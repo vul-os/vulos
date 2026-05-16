@@ -849,12 +849,24 @@ func main() {
 
 	// One-shot command exec (for Portal /commands)
 	mux.HandleFunc("POST /api/exec", func(w http.ResponseWriter, r *http.Request) {
+		// Kill-switch: set VULOS_DISABLE_EXEC=1 to disable entirely.
+		if os.Getenv("VULOS_DISABLE_EXEC") == "1" {
+			writeErr(w, 503, "exec endpoint disabled by configuration")
+			return
+		}
+		// Admin-only gate (mirrors the pattern used by /api/store/install et al.).
+		userID := r.Header.Get("X-User-ID")
+		if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct{ Command string `json:"command"` }
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
 			writeErr(w, 400, "invalid request")
 			return
 		}
 		result := ptyservice.Exec(r.Context(), req.Command)
+		logExecAudit(userID, req.Command, result.ExitCode)
 		writeJSON(w, result)
 	})
 
