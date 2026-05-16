@@ -219,7 +219,7 @@ decomposed by Opus agents and appended below as they complete.
 ## STREAM (roadmap/STREAMING-OPTIMIZATIONS.md)
 
 ### [STREAM-01] Add conditional Chromium GPU flags driven by gpu.Detect()
-- **Status:** todo
+- **Status:** done
 - **Priority:** P0
 - **Effort:** S
 - **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Chromium Browser (GPU-Specific)
