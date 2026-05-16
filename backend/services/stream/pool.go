@@ -19,6 +19,9 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// lookPath is exec.LookPath by default; swapped in tests to mock binary presence.
+var lookPath = exec.LookPath
+
 // Pool manages multiple concurrent streaming sessions.
 // Each session gets its own Xvfb display, GStreamer pipeline, and WebRTC tracks.
 type Pool struct {
@@ -42,6 +45,51 @@ func NewPool() *Pool {
 // SetUserHomeResolver sets a callback to resolve user home directories from HTTP requests.
 func (p *Pool) SetUserHomeResolver(fn func(r *http.Request) string) {
 	p.resolveUserHome = fn
+}
+
+// launchCageSession starts a headless wlroots compositor (cage) for a GPU-accelerated
+// session. It creates a per-session XDG_RUNTIME_DIR under os.TempDir(), launches cage
+// with an isolated WAYLAND_DISPLAY, and stores the runtime dir on sess so Stop() can
+// clean it up.
+//
+// The Wayland socket name is "wayland-<id>" and the socket file lives at:
+//
+//	<cageRTDir>/wayland-<id>
+//
+// Callers must set sess.cageRTDir before calling this function (it is done below in
+// Launch). On success sess.cage is populated.
+func launchCageSession(ctx context.Context, sess *Session, cageBin string, appEnv []string) error {
+	// cage needs a dummy command to run — it renders that command's window on the
+	// headless compositor. We pass a no-op sleep so that cage stays alive while the
+	// real app (started separately with WAYLAND_DISPLAY set) connects via XWayland or
+	// native Wayland. Using "sleep infinity" keeps cage resident without consuming CPU.
+	cageCmd := exec.CommandContext(ctx, cageBin, "--", "sleep", "infinity")
+	cageCmd.Env = appEnv
+	cageCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cageCmd.Stdout = os.Stdout
+	cageCmd.Stderr = os.Stderr
+	if err := cageCmd.Start(); err != nil {
+		return fmt.Errorf("cage: %w", err)
+	}
+	sess.cage = cageCmd
+
+	// Wait up to 2 s for the Wayland socket to appear
+	wayland := sess.cageRTDir + "/" + waylandDisplay(sess.ID)
+	for i := 0; i < 20; i++ {
+		if _, err := os.Stat(wayland); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	// Socket didn't appear — kill cage and return an error so caller falls back.
+	syscall.Kill(-cageCmd.Process.Pid, syscall.SIGKILL)
+	sess.cage = nil
+	return fmt.Errorf("cage: wayland socket %s not ready after 2s", wayland)
+}
+
+// waylandDisplay returns the per-session WAYLAND_DISPLAY name.
+func waylandDisplay(id string) string {
+	return "wayland-" + id
 }
 
 // LaunchOpts configures a streaming session.
@@ -97,6 +145,13 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	gpuInfo := gpu.Detect()
 
+	// Determine whether to use cage (headless Wayland) or fall back to Xvfb.
+	// We use cage only when:
+	//   (a) GPU tier is not software (VA-API or NVENC), AND
+	//   (b) the cage binary is present on PATH.
+	cageBin, cageErr := lookPath("cage")
+	useCage := gpuInfo.Tier != gpu.TierSoftware && cageErr == nil
+
 	sess := &Session{
 		ID:         opts.ID,
 		Name:       opts.Name,
@@ -113,47 +168,6 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		displayNum: displayNum,
 	}
 
-	// 1. Start Xvfb
-	// Start Xvfb with large max screen size so xrandr can resize freely
-	sess.xvfb = exec.CommandContext(ctx, "Xvfb", display,
-		"-screen", "0", "3840x2160x24",
-		"-ac", "+render", "+extension", "RANDR", "-noreset")
-	sess.xvfb.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	sess.xvfb.Stdout = os.Stdout
-	sess.xvfb.Stderr = os.Stderr
-	if err := sess.xvfb.Start(); err != nil {
-		cancel()
-		return nil, fmt.Errorf("xvfb: %w", err)
-	}
-
-	// Wait for display
-	xSock := fmt.Sprintf("/tmp/.X11-unix/X%d", displayNum)
-	ready := false
-	for i := 0; i < 20; i++ {
-		if _, err := os.Stat(xSock); err == nil {
-			ready = true
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	if !ready {
-		sess.Stop()
-		return nil, fmt.Errorf("display %s not ready", display)
-	}
-
-	// 1b. Resize Xvfb from max (3840x2160) to the actual requested resolution
-	resizeCmd := exec.CommandContext(ctx, "xrandr", "--fb", fmt.Sprintf("%dx%d", opts.Width, opts.Height))
-	resizeCmd.Env = append(os.Environ(), "DISPLAY="+display)
-	if err := resizeCmd.Run(); err != nil {
-		log.Printf("[stream] initial xrandr resize warning: %v", err)
-	}
-
-	// 1c. Create input injector (uinput or xdotool fallback)
-	sess.injector = input.NewInjector(display, opts.Width, opts.Height)
-
-	// Each session gets isolated runtime/config dirs so apps don't see each other's lock files
-	sessionHome := fmt.Sprintf("/tmp/stream-%s", opts.ID)
-	os.MkdirAll(sessionHome, 0755)
 	// Resolve user home — use provided UserHome, fall back to $HOME, then /root
 	home := opts.UserHome
 	if home == "" {
@@ -162,30 +176,104 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	if home == "" {
 		home = "/root"
 	}
-	appEnv := append(os.Environ(),
-		"DISPLAY="+display,
-		"HOME="+home,
-		"XDG_RUNTIME_DIR="+sessionHome,
-		"XDG_CONFIG_HOME="+sessionHome+"/.config",
-		"XDG_DATA_HOME="+sessionHome+"/.local/share",
-		"XDG_CACHE_HOME="+sessionHome+"/.cache",
-		"TMPDIR="+sessionHome+"/tmp",
-	)
+
+	// Each session gets isolated runtime/config dirs so apps don't see each other's lock files.
+	// For the cage path the runtime dir also hosts the Wayland socket.
+	sessionHome := fmt.Sprintf("/tmp/stream-%s", opts.ID)
+	os.MkdirAll(sessionHome, 0700)
 	os.MkdirAll(sessionHome+"/tmp", 0755)
 	os.MkdirAll(sessionHome+"/.config", 0755)
 	os.MkdirAll(sessionHome+"/.local/share", 0755)
 	os.MkdirAll(sessionHome+"/.cache", 0755)
-	appEnv = append(appEnv, opts.Env...)
 
-	// 1c. Launch matchbox window manager (auto-maximizes all windows, constrains dialogs)
-	if wmBin, err := exec.LookPath("matchbox-window-manager"); err == nil {
-		sess.wm = exec.CommandContext(ctx, wmBin, "-use_titlebar", "no", "-use_desktop", "no")
-		sess.wm.Env = appEnv
-		sess.wm.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		if err := sess.wm.Start(); err != nil {
-			log.Printf("[stream] matchbox-wm start warning: %v", err)
-		} else {
-			time.Sleep(300 * time.Millisecond) // Let WM initialize
+	var appEnv []string
+
+	if useCage {
+		// ── Cage / headless Wayland path ─────────────────────────────────────
+		// Per-session runtime dir that also holds the Wayland socket.
+		cageRTDir := fmt.Sprintf("%s/vulos-stream-%s", os.TempDir(), opts.ID)
+		os.MkdirAll(cageRTDir, 0700)
+		sess.cageRTDir = cageRTDir
+
+		wlDisp := waylandDisplay(opts.ID)
+		appEnv = append(os.Environ(),
+			"HOME="+home,
+			"XDG_RUNTIME_DIR="+cageRTDir,
+			"WAYLAND_DISPLAY="+wlDisp,
+			"XDG_CONFIG_HOME="+sessionHome+"/.config",
+			"XDG_DATA_HOME="+sessionHome+"/.local/share",
+			"XDG_CACHE_HOME="+sessionHome+"/.cache",
+			"TMPDIR="+sessionHome+"/tmp",
+		)
+		appEnv = append(appEnv, opts.Env...)
+
+		if err := launchCageSession(ctx, sess, cageBin, appEnv); err != nil {
+			log.Printf("[stream] cage launch failed (%v); falling back to Xvfb", err)
+			useCage = false
+		}
+	}
+
+	if !useCage {
+		// ── Xvfb / X11 path (unchanged) ──────────────────────────────────────
+		// 1. Start Xvfb
+		// Start Xvfb with large max screen size so xrandr can resize freely
+		sess.xvfb = exec.CommandContext(ctx, "Xvfb", display,
+			"-screen", "0", "3840x2160x24",
+			"-ac", "+render", "+extension", "RANDR", "-noreset")
+		sess.xvfb.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		sess.xvfb.Stdout = os.Stdout
+		sess.xvfb.Stderr = os.Stderr
+		if err := sess.xvfb.Start(); err != nil {
+			cancel()
+			return nil, fmt.Errorf("xvfb: %w", err)
+		}
+
+		// Wait for display
+		xSock := fmt.Sprintf("/tmp/.X11-unix/X%d", displayNum)
+		ready := false
+		for i := 0; i < 20; i++ {
+			if _, err := os.Stat(xSock); err == nil {
+				ready = true
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if !ready {
+			sess.Stop()
+			return nil, fmt.Errorf("display %s not ready", display)
+		}
+
+		// 1b. Resize Xvfb from max (3840x2160) to the actual requested resolution
+		resizeCmd := exec.CommandContext(ctx, "xrandr", "--fb", fmt.Sprintf("%dx%d", opts.Width, opts.Height))
+		resizeCmd.Env = append(os.Environ(), "DISPLAY="+display)
+		if err := resizeCmd.Run(); err != nil {
+			log.Printf("[stream] initial xrandr resize warning: %v", err)
+		}
+
+		// 1c. Create input injector (uinput or xdotool fallback)
+		sess.injector = input.NewInjector(display, opts.Width, opts.Height)
+
+		appEnv = append(os.Environ(),
+			"DISPLAY="+display,
+			"HOME="+home,
+			"XDG_RUNTIME_DIR="+sessionHome,
+			"XDG_CONFIG_HOME="+sessionHome+"/.config",
+			"XDG_DATA_HOME="+sessionHome+"/.local/share",
+			"XDG_CACHE_HOME="+sessionHome+"/.cache",
+			"TMPDIR="+sessionHome+"/tmp",
+		)
+		appEnv = append(appEnv, opts.Env...)
+
+		// 1c. Launch matchbox window manager (auto-maximizes all windows, constrains dialogs)
+		if wmBin, err := lookPath("matchbox-window-manager"); err == nil {
+			sess.wm = exec.CommandContext(ctx, wmBin, "-use_titlebar", "no", "-use_desktop", "no")
+			sess.wm.Env = appEnv
+			sess.wm.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			if err := sess.wm.Start(); err != nil {
+				log.Printf("[stream] matchbox-wm start warning: %v", err)
+			} else {
+				time.Sleep(300 * time.Millisecond) // Let WM initialize
+			}
 		}
 	}
 
@@ -220,9 +308,11 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	// 5. Wait for app to paint, then start GStreamer capture
 	time.Sleep(2 * time.Second)
 
-	gstBin, _ := exec.LookPath("gst-launch-1.0")
+	gstBin, _ := lookPath("gst-launch-1.0")
 	if gstBin != "" {
 		// Video pipeline
+		// For the cage path, pass the Wayland env so pipewiresrc picks up the right
+		// compositor socket; for the Xvfb path pass DISPLAY as before.
 		go runWithBackoff(ctx, sess.Name+"-video", func() *exec.Cmd {
 			args := []string{"-q"}
 			// Capture source: PipeWire DMA-BUF when available, ximagesrc fallback
@@ -240,7 +330,12 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 				"sync=false", "async=false",
 			)
 			cmd := exec.CommandContext(ctx, gstBin, args...)
-			cmd.Env = append(os.Environ(), "DISPLAY="+display)
+			if useCage {
+				// PipeWire captures from the Wayland compositor: supply the session env
+				cmd.Env = appEnv
+			} else {
+				cmd.Env = append(os.Environ(), "DISPLAY="+display)
+			}
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -259,7 +354,11 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 				"sync=false", "async=false",
 			}
 			cmd := exec.CommandContext(ctx, gstBin, args...)
-			cmd.Env = append(os.Environ(), "DISPLAY="+display)
+			if useCage {
+				cmd.Env = appEnv
+			} else {
+				cmd.Env = append(os.Environ(), "DISPLAY="+display)
+			}
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

@@ -34,21 +34,23 @@ import (
 
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Display string  `json:"display"`
-	Width   int     `json:"width"`
-	Height  int     `json:"height"`
-	FPS     int     `json:"fps"`
-	Running bool    `json:"running"`
-	Encoder string  `json:"encoder"`
-	Quality string  `json:"quality"` // current adaptive quality level
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	FPS     int    `json:"fps"`
+	Running bool   `json:"running"`
+	Encoder string `json:"encoder"`
+	Quality string `json:"quality"` // current adaptive quality level
 
 	mu         sync.Mutex
 	ctx        context.Context
 	cancel     context.CancelFunc
 	xvfb       *exec.Cmd
 	wm         *exec.Cmd
+	cage       *exec.Cmd // headless wlroots compositor (GPU path only)
+	cageRTDir  string    // per-session XDG_RUNTIME_DIR for cage/Wayland socket
 	app        *exec.Cmd
 	gstVideo   *exec.Cmd
 	gstAudio   *exec.Cmd
@@ -104,7 +106,7 @@ func (s *Session) Stop() {
 	if s.injector != nil {
 		s.injector.Close()
 	}
-	procs := []*exec.Cmd{s.gstAudio, s.gstVideo, s.app, s.wm, s.xvfb}
+	procs := []*exec.Cmd{s.gstAudio, s.gstVideo, s.app, s.wm, s.cage, s.xvfb}
 	for _, cmd := range procs {
 		if cmd != nil && cmd.Process != nil {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -116,9 +118,13 @@ func (s *Session) Stop() {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
 	}
-	// Clean up X11 socket
+	// Clean up X11 socket (Xvfb path)
 	os.Remove(fmt.Sprintf("/tmp/.X11-unix/X%d", s.displayNum))
 	os.Remove(fmt.Sprintf("/tmp/.X%d-lock", s.displayNum))
+	// Clean up cage per-session runtime dir (Wayland path)
+	if s.cageRTDir != "" {
+		os.RemoveAll(s.cageRTDir)
+	}
 	s.Running = false
 	log.Printf("[stream] session %s (%s) stopped", s.ID, s.Name)
 }
@@ -283,7 +289,7 @@ func (s *Session) handleKeyboard(data []byte) {
 		return
 	}
 	var evt struct {
-		T    string `json:"t"`    // kd=keydown, ku=keyup
+		T    string `json:"t"` // kd=keydown, ku=keyup
 		Key  string `json:"key"`
 		Code string `json:"code"`
 		Mod  int    `json:"mod"` // modifier bitmask
