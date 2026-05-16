@@ -1069,7 +1069,7 @@ Scope: AES-256-GCM vault.enc, Argon2id master key, lock/unlock state machine + a
 AC: [ ] vault opaque, wrong pwd fails [ ] lock clears key, inaccessible [ ] generator random+passphrase [ ] go test encrypt/decrypt round-trip
 
 ### [AUTH-06] Credential vault HTTP API
-`todo` · P2 · M · dep: AUTH-05 · parallel: no — backend/cmd/server/main.go
+`done` · P2 · M · dep: AUTH-05 · parallel: no — backend/cmd/server/main.go
 Scope: POST /api/auth/vault/unlock|lock, GET /entries (metadata), GET /entry/:id, POST/PUT/DELETE /entry, POST /generate; 423 when locked.
 AC: [ ] list metadata only, detail requires unlock [ ] locked → clear error [ ] go build
 
