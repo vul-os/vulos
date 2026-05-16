@@ -862,7 +862,7 @@ Scope: Add Type/Subtype/Priority/TTL/Body/UUIDv7 ID + SendNotification w/ defaul
 AC: [ ] new fields [ ] legacy callers compile, priority=normal [ ] critical→high non-call [ ] unit test, go build
 
 ### [NOTIF-02] Persistent notification storage
-`todo` · P0 · M · dep: NOTIF-01 · parallel: no — backend/services/notify/notify.go, new store.go, main.go
+`done` · P0 · M · dep: NOTIF-01 · parallel: no — backend/services/notify/notify.go, new store.go, main.go
 Scope: JSON store history(7d/1000)/queue(TTL,200)/settings; New(dataDir); atomic writes; load on start+flush.
 AC: [ ] survive restart [ ] prune age+count [ ] queue drains on WS connect [ ] main.go passes dir, go build, unit test
 
@@ -872,17 +872,17 @@ Scope: priority→UI (low=none, high=persistent, critical=fullscreen), chime nor
 AC: [ ] low no toast, high no auto-dismiss, normal sound [ ] click navigates [ ] legacy level renders
 
 ### [NOTIF-04] Notification Center pull-down + history grouping
-`todo` · P1 · L · dep: NOTIF-02 · parallel: no — new src/shell/NotificationCenter.jsx, DesktopCanvas.jsx, MobileStack.jsx, SystemPulse.jsx
+`done` · P1 · L · dep: NOTIF-02 · parallel: no — new src/shell/NotificationCenter.jsx, DesktopCanvas.jsx, MobileStack.jsx, SystemPulse.jsx
 Scope: Panel grouped Today/Earlier/Week, dismiss-one+clear-all, bell+unread badge in menu bar+mobile; wire existing list/unread/read/clear.
 AC: [ ] bell+badge desktop+mobile [ ] grouped+dismiss+clear [ ] badge clears on read, persists via /unread
 
 ### [NOTIF-05] Do Not Disturb (modes + schedule)
-`todo` · P1 · M · dep: NOTIF-02 · parallel: no — backend/services/notify/notify.go, store.go, main.go
+`done` · P1 · M · dep: NOTIF-02 · parallel: no — backend/services/notify/notify.go, store.go, main.go
 Scope: DND Off/On/Total + schedule; Send rules (low drop, normal queue+replay, high 2nd-attempt, critical always); GET/PUT /api/notifications/settings; ticker.
 AC: [ ] On: low drop, normal queue+replay [ ] critical always [ ] schedule auto-toggles [ ] settings round-trip, go build
 
 ### [NOTIF-06] Action notifications w/ inline buttons (local)
-`todo` · P2 · M · dep: NOTIF-01, NOTIF-03 · parallel: no — src/shell/Toasts.jsx, NotificationCenter.jsx, main.go, notify.go
+`done` · P2 · M · dep: NOTIF-01, NOTIF-03 · parallel: no — src/shell/Toasts.jsx, NotificationCenter.jsx, main.go, notify.go
 Scope: Render body.actions buttons; POST /api/notifications/action records choice+resolves; auto-resolve default at TTL.
 AC: [ ] buttons render+post [ ] auto-resolve at TTL [ ] resolved don't reappear
 
@@ -920,7 +920,7 @@ Scope: Large-card focusable home selected when profile=tv, from AppRegistry.
 AC: [ ] TV renders TVHome large focusable cards [ ] 10ft readable [ ] non-TV unaffected
 
 ### [DEVPROF-06] Car profile: driving mode (large targets + DND)
-`todo` · P2 · M · dep: DEVPROF-03, NOTIF-05 · parallel: yes — src/index.css, new src/core/useDrivingMode.js, src/App.jsx
+`done` · P2 · M · dep: DEVPROF-03, NOTIF-05 · parallel: yes — src/index.css, new src/core/useDrivingMode.js, src/App.jsx
 Scope: data-device-profile=car CSS enlarges targets, auto-enable DND via NOTIF-05 settings; useDrivingMode toggle default on car.
 AC: [ ] car enlarges targets scoped CSS [ ] car auto-enables DND [ ] no pc/tv effect
 
