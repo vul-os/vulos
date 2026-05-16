@@ -1,0 +1,17 @@
+{
+  "id": "phone",
+  "name": "Phone",
+  "icon": "📞",
+  "description": "Calls, SMS and modem management via ModemManager",
+  "version": "0.1.0",
+  "command": "",
+  "port": 0,
+  "category": "communication",
+  "keywords": ["phone", "calls", "sms", "modem", "telephony", "cellular"],
+  "deps": [],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": ["network"],
+  "author": "Vula OS",
+  "license": "MIT"
+}
