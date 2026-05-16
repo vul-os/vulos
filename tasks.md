@@ -526,7 +526,7 @@ Scope: Back auth.Store w/ SQLite, preserve public API, Flush()=no-op, one-time a
 AC: [ ] all methods work SQLite-backed [ ] auth.json imported once [ ] Flush no-op, sessions survive restart [ ] expired sessions not returned
 
 ### [CLUSTER-03] S3 cluster client (SSE-C, Argon2id)
-`todo` · P0 · M · dep: NET-06 · parallel: yes — new backend/services/cluster/s3.go, backend/go.mod (go.mod — serialize w/ CLUSTER-01)
+`done` · P0 · M · dep: NET-06 · parallel: yes — new backend/services/cluster/s3.go, backend/go.mod (go.mod — serialize w/ CLUSTER-01)
 Scope: minio-go wrapper putEncrypted/getEncrypted SSE-C, Argon2id key from passphrase+salt, salt at cluster/encryption-salt; VULOS_S3_* env.
 AC: [ ] encrypted PUT/GET round-trip [ ] Argon2id(3,64MiB,4,32) [ ] salt created/reused [ ] wrong passphrase fails
 
