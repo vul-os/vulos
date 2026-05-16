@@ -5,13 +5,22 @@
 # Optionally deploys to a remote machine via SSH with Caddy + wildcard TLS.
 #
 # Usage:
-#   sudo ./build.sh                                    # build to ./output/
-#   sudo ARCH=arm64 ./build.sh                         # ARM64
+#   sudo ./build.sh                                    # build to ./output/ (amd64)
+#   sudo ./build.sh --arm64                            # ARM64 generic rootfs
+#   sudo ./build.sh --arm64 --device rpi4              # RPi 4 image
+#   sudo ./build.sh --arm64 --device pinephone         # PinePhone image
+#   sudo ./build.sh --arm64 --device generic-arm64     # generic ARM64 (default with --arm64)
 #   ./build.sh --deploy 192.168.1.50                   # build + deploy via SSH
 #   ./build.sh --deploy-only 192.168.1.50              # skip packages, just push code
 #   ./build.sh --deploy 192.168.1.50 \
 #     --domain os.vulos.org \
 #     --dns-namecheap myuser APIKEY123                  # with Caddy wildcard TLS
+#
+# Image filenames:
+#   vulos-amd64.tar.gz                        (default, no flags)
+#   vulos-arm64-generic-arm64.tar.gz          (--arm64 or --arm64 --device generic-arm64)
+#   vulos-arm64-rpi4.tar.gz                   (--arm64 --device rpi4)
+#   vulos-arm64-pinephone.tar.gz              (--arm64 --device pinephone)
 #
 # Env vars (alternative to flags):
 #   NAMECHEAP_USER, NAMECHEAP_KEY, VULOS_DOMAIN
@@ -20,6 +29,7 @@
 #   - Go 1.21+, Node 18+, npm
 #   - SSH key access to target (for --deploy)
 #   - Namecheap API access + server IP whitelisted (for --dns-namecheap)
+#   - qemu-user-static (for --arm64 cross-debootstrap on amd64 hosts)
 
 set -e
 
@@ -45,9 +55,12 @@ DOMAIN="${VULOS_DOMAIN:-}"
 NC_USER="${NAMECHEAP_USER:-}"
 NC_KEY="${NAMECHEAP_KEY:-}"
 OUTDIR_ARG=""
+DEVICE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --arm64)       ARCH="arm64"; shift ;;
+    --device)      DEVICE="$2"; shift 2 ;;
     --deploy)      DEPLOY_HOST="$2"; shift 2 ;;
     --deploy-only) DEPLOY_HOST="$2"; DEPLOY_ONLY=true; shift 2 ;;
     --domain)      DOMAIN="$2"; shift 2 ;;
@@ -55,6 +68,44 @@ while [ $# -gt 0 ]; do
     *) OUTDIR_ARG="$1"; shift ;;
   esac
 done
+
+# Re-derive GOARCH after flags (--arm64 may have changed ARCH)
+GOARCH="$ARCH"
+[ "$ARCH" = "x86_64" ] && GOARCH="amd64" && ARCH="amd64"
+[ "$ARCH" = "aarch64" ] && GOARCH="arm64" && ARCH="arm64"
+
+# Default DEVICE
+if [ "$ARCH" = "arm64" ] && [ -z "$DEVICE" ]; then
+  DEVICE="generic-arm64"
+fi
+
+# Validate --device value when set
+if [ -n "$DEVICE" ]; then
+  case "$DEVICE" in
+    rpi4|pinephone|generic-arm64) ;;
+    *)
+      echo "${RED}Unknown --device '$DEVICE'. Valid values: rpi4, pinephone, generic-arm64${NC}"
+      exit 1
+      ;;
+  esac
+  if [ "$ARCH" != "arm64" ]; then
+    echo "${RED}--device requires --arm64${NC}"
+    exit 1
+  fi
+fi
+
+# Validate qemu-user-static for cross-debootstrap (arm64 on non-arm64 host)
+if [ "$ARCH" = "arm64" ]; then
+  HOST_ARCH="$(uname -m 2>/dev/null || true)"
+  if [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "arm64" ]; then
+    if ! command -v qemu-aarch64-static >/dev/null 2>&1; then
+      echo "${RED}Cross-building arm64 rootfs requires qemu-user-static.${NC}"
+      echo "${RED}Install with: apt-get install qemu-user-static${NC}"
+      # Only fatal if we're actually going to run debootstrap (checked later)
+      QEMU_MISSING=1
+    fi
+  fi
+fi
 
 # Validate
 if [ -n "$DOMAIN" ] && [ -z "$NC_USER" ]; then
@@ -78,6 +129,7 @@ echo "${BLUE}╔═════════════════════�
 echo "${BLUE}║      Vula OS — Image Builder     ║${NC}"
 echo "${BLUE}╠══════════════════════════════════╣${NC}"
 echo "${BLUE}║${NC} Arch:   $ARCH"
+[ -n "$DEVICE" ] && echo "${BLUE}║${NC} Device: $DEVICE"
 echo "${BLUE}║${NC} Suite:  $SUITE"
 echo "${BLUE}║${NC} Output: $OUTDIR"
 [ -n "$DEPLOY_HOST" ] && echo "${BLUE}║${NC} Deploy: $DEPLOY_HOST"
@@ -368,7 +420,16 @@ if ! command -v debootstrap >/dev/null 2>&1; then
     exit 0
 fi
 
-echo "${BLUE}▸ Building Debian rootfs with debootstrap...${NC}"
+# For arm64 cross-debootstrap on a non-arm64 host, qemu-user-static is required
+if [ "$ARCH" = "arm64" ] && [ "${QEMU_MISSING:-0}" = "1" ]; then
+    echo ""
+    echo "${RED}Cannot build arm64 rootfs: qemu-user-static is missing.${NC}"
+    echo "${RED}Install with: apt-get install qemu-user-static${NC}"
+    echo ""
+    exit 1
+fi
+
+echo "${BLUE}▸ Building Debian rootfs with debootstrap (arch=$ARCH)...${NC}"
 ROOTFS="$OUTDIR/rootfs"
 rm -rf "$ROOTFS"
 
@@ -392,6 +453,50 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     flatpak rsync systemd systemd-sysv
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
+
+# ── ARM device-specific packages and firmware ──
+if [ "$ARCH" = "arm64" ]; then
+  case "$DEVICE" in
+    rpi4)
+      echo "${BLUE}  ▸ Installing RPi 4 firmware and kernel...${NC}"
+      chroot "$ROOTFS" apt-get install -y --no-install-recommends \
+          raspi-firmware linux-image-arm64 || true
+
+      # ESP config: minimal RPi 4 config.txt and cmdline.txt
+      ESP="$OUTDIR/esp-rpi4"
+      mkdir -p "$ESP"
+      cat > "$ESP/config.txt" << 'RPI4_CONFIG'
+# Vula OS — Raspberry Pi 4 boot configuration
+arm_64bit=1
+enable_uart=1
+dtoverlay=disable-bt
+gpu_mem=64
+RPI4_CONFIG
+      cat > "$ESP/cmdline.txt" << 'RPI4_CMDLINE'
+console=serial0,115200 console=tty1 root=/dev/mmcblk0p2 rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait quiet
+RPI4_CMDLINE
+      echo "  ${GREEN}✓${NC} RPi 4 config.txt + cmdline.txt written to $ESP"
+      ;;
+    pinephone)
+      echo "${BLUE}  ▸ Installing PinePhone kernel...${NC}"
+      # Install generic arm64 kernel; pinephone-specific firmware if available
+      chroot "$ROOTFS" apt-get install -y --no-install-recommends \
+          linux-image-arm64 || true
+      # Attempt pinephone firmware package; degrade gracefully if unavailable
+      if chroot "$ROOTFS" apt-cache show firmware-pine64-pinephone >/dev/null 2>&1; then
+        chroot "$ROOTFS" apt-get install -y --no-install-recommends \
+            firmware-pine64-pinephone || true
+      else
+        echo "  ${DIM}firmware-pine64-pinephone not available in $SUITE — skipping${NC}"
+      fi
+      ;;
+    generic-arm64)
+      echo "${BLUE}  ▸ Installing generic ARM64 kernel...${NC}"
+      chroot "$ROOTFS" apt-get install -y --no-install-recommends \
+          linux-image-arm64 || true
+      ;;
+  esac
+fi
 
 chroot "$ROOTFS" apt-get clean
 rm -rf "$ROOTFS/var/lib/apt/lists/"*
@@ -454,8 +559,14 @@ touch "$ROOTFS/var/lib/vulos/.setup-complete"
 echo "  ${GREEN}✓${NC} rootfs built"
 
 echo "${BLUE}▸ Creating rootfs tarball...${NC}"
-tar czf "$OUTDIR/vulos-$ARCH.tar.gz" -C "$ROOTFS" .
-echo "  ${GREEN}✓${NC} vulos-$ARCH.tar.gz ($(du -h "$OUTDIR/vulos-$ARCH.tar.gz" | cut -f1))"
+# Compute image filename suffix: amd64 uses bare arch; arm64 appends device variant
+if [ -n "$DEVICE" ]; then
+  IMAGE_NAME="vulos-${ARCH}-${DEVICE}.tar.gz"
+else
+  IMAGE_NAME="vulos-${ARCH}.tar.gz"
+fi
+tar czf "$OUTDIR/$IMAGE_NAME" -C "$ROOTFS" .
+echo "  ${GREEN}✓${NC} $IMAGE_NAME ($(du -h "$OUTDIR/$IMAGE_NAME" | cut -f1))"
 
 echo ""
 echo "${GREEN}═══════════════════════════════════${NC}"
@@ -468,5 +579,11 @@ echo "  ./build.sh --deploy 192.168.1.50"
 echo "  ./build.sh --deploy 192.168.1.50 --domain os.vulos.org --dns-namecheap user key"
 echo ""
 echo "Or flash rootfs:"
-echo "  tar xzf $OUTDIR/vulos-$ARCH.tar.gz -C /mnt/target"
+echo "  tar xzf $OUTDIR/$IMAGE_NAME -C /mnt/target"
+if [ "$ARCH" = "arm64" ] && [ "$DEVICE" = "rpi4" ]; then
+  echo ""
+  echo "RPi 4 ESP files (copy to boot partition):"
+  echo "  $OUTDIR/esp-rpi4/config.txt"
+  echo "  $OUTDIR/esp-rpi4/cmdline.txt"
+fi
 echo "${GREEN}═══════════════════════════════════${NC}"
