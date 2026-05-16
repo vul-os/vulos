@@ -9,6 +9,7 @@ import Toasts from '../shell/Toasts'
 import DesktopContextMenu from '../shell/DesktopContextMenu'
 import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
 import { useTheme } from '../core/ThemeProvider'
+import PublicAppsManager from '../core/PublicAppsManager'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -225,6 +226,9 @@ export default function DesktopCanvas() {
 
       {/* Native window context menu (only renders on native mode) */}
       <DesktopContextMenu />
+
+      {/* Public apps manager popover — listens for vulos:open-public-apps */}
+      <PublicAppsManager />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { useTheme } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
+import { PamVisibilityControl } from './PublicAppsManager'
 
 const sections = [
   { id: 'ai', label: 'AI Assistant' },
@@ -546,26 +547,32 @@ function AccountSettings({ profile, updateProfile, logout }) {
 // --- AI Apps Gallery ---
 function AIAppsSettings() {
   const [apps, setApps] = useState([])
-  const refresh = () => fetch('/api/ai-apps').then(r => r.json()).then(setApps).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const [visRefreshKey, setVisRefreshKey] = useState(0)
+  const refresh = useCallback(() => fetch('/api/ai-apps').then(r => r.json()).then(setApps).catch(() => {}), [])
+  useEffect(() => { refresh() }, [refresh])
 
   const remove = async (id) => {
     await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
     refresh()
   }
 
+  const handleVisChanged = useCallback(() => {
+    setVisRefreshKey(k => k + 1)
+  }, [])
+
   return (
     <Section title="AI-Generated Apps">
       <p className="text-xs text-neutral-600 mb-4">Apps created by the AI assistant. Click to reopen.</p>
       {apps?.length === 0 && <p className="text-sm text-neutral-500">No saved apps yet. Ask the AI to build something visual.</p>}
       {apps?.map(app => (
-        <div key={app.id} className="flex items-center justify-between py-2 border-b border-neutral-800/30">
-          <div>
+        <div key={app.id} className="flex items-center justify-between py-2 border-b border-neutral-800/30 gap-2">
+          <div className="min-w-0">
             <span className="text-sm">{app.title || 'Untitled'}</span>
             <span className="text-xs text-neutral-600 ml-2">{app.created?.slice(0, 10)}</span>
             {app.has_python === 'true' && <span className="text-[10px] text-blue-400 ml-2">Python</span>}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <PamVisibilityControl key={`${app.id}-${visRefreshKey}`} appId={app.id} onChanged={handleVisChanged} />
             <button onClick={() => window.open(`/api/ai-apps/${app.id}/html`, '_blank')} className="text-xs text-blue-400">Open</button>
             <button onClick={() => remove(app.id)} className="text-xs text-red-400">Delete</button>
           </div>
