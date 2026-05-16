@@ -364,3 +364,9 @@ Cron 44dbf100 fire. Merged this tick: SEC-I (0f85d38, aiapps inline → security
 AUTH-13: 3-file conflict (main.go + stream pool.go + stream.go) collides with GAME-08's new Session fields (inputGated bool needs splicing alongside FPS/MangoHud/fpsC/mangoHudC/cage/cageRTDir). Mem at 60 MB after merge attempt — aborted to avoid OOM mid-conflict-resolve. Retry next tick with recovered mem.
 Top-off held: 15m load currently fine but mem trend through tick stayed mostly <500 MB. No new dispatches this tick.
 This-session OSS wave merge tally: BMINIT-06, BMINIT-09, INIT-11, APPSTORE-04 (spliced), NET-10, GAME-08, SEC-I, AI-06, INIT-03 = 9 merged. Pending: AUTH-13. Deferred: INIT-08.
+
+## D39 (17:32) — Wave-10 complete: 10/11 OSS user-impact tasks merged
+AUTH-13 merged @ 20ee7ef (H1 keep-both with injected `}` to close waylandDisplay between cage helpers and AUTH-13's WebAuthn accessors; H2/H4 keep-both LaunchOpts/Session fields; H3 drop stale-base Xvfb dup; main.go keep-ours superset).
+Wave-9 final tally (this 4h run): BMINIT-06, BMINIT-09, INIT-11, APPSTORE-04 (spliced), NET-10, GAME-08, SEC-I, AI-06, INIT-03, AUTH-13 = **10 merged**. INIT-08 permanent-deferred this run (D36 dep-mismatch, retry after adapt-to-current-storageprov/bootmode-API).
+Cron 44dbf100 still firing every 5 min; ~83 min to wind-down deadline 18:55.
+Top-off this tick: HOLD — mem trending in 100-300 MB band after merges/builds; want >500 MB sustained before adding workers.
