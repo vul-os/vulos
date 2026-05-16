@@ -493,6 +493,8 @@ func main() {
 		return filepath.Join(home, ".vulos", "auth", "vault", userID)
 	})
 	credVaultHandler.RegisterHandlers(mux)
+	// SSH key management (host key + authorized_keys)
+	registerSSHKeyRoutes(mux, authStore, home)
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
