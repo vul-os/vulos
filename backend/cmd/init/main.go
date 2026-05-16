@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -61,7 +62,7 @@ func mountAll() {
 		{"sysfs", "/sys", "sysfs", 0, ""},
 		{"devtmpfs", "/dev", "devtmpfs", 0, ""},
 		{"devpts", "/dev/pts", "devpts", 0, ""},
-		{"tmpfs", "/dev/shm", "tmpfs", 0, ""},
+		{"tmpfs", "/dev/shm", "tmpfs", 0, "size=2g"},
 		{"tmpfs", "/run", "tmpfs", 0, ""},
 		{"tmpfs", "/tmp", "tmpfs", 0, ""},
 		{"cgroup2", "/sys/fs/cgroup", "cgroup2", 0, ""},
@@ -74,6 +75,20 @@ func mountAll() {
 			log.Printf("mount %s: %v (may already be mounted)", m.target, err)
 		}
 	}
+
+	// efivarfs — only on UEFI systems; skip in containers/non-UEFI.
+	efiDir := "/sys/firmware/efi"
+	if _, err := os.Stat(efiDir); err == nil {
+		efivarsTarget := "/sys/firmware/efi/efivars"
+		os.MkdirAll(efivarsTarget, 0755)
+		if err := syscall.Mount("efivarfs", efivarsTarget, "efivarfs", 0, ""); err != nil {
+			log.Printf("mount %s: %v (may already be mounted)", efivarsTarget, err)
+		}
+	}
+
+	// Data partition — mount LABEL=vulos-data into ~/.vulos when present.
+	mountDataPartition()
+
 	log.Println("filesystems mounted")
 }
 
@@ -83,6 +98,38 @@ func mountAll() {
 func detectHardware() {
 	log.Println("phase 2: hardware detection")
 	hwdetect.Run()
+}
+
+// mountDataPartition finds a block device with LABEL=vulos-data and mounts it
+// into the home .vulos directory. Best-effort: logs on failure, never panics.
+func mountDataPartition() {
+	const label = "vulos-data"
+
+	// blkid resolves LABEL → device path without pulling in any library.
+	out, err := exec.Command("blkid", "-L", label).Output()
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		// Partition not present — normal on non-data-disk systems.
+		return
+	}
+	device := strings.TrimSpace(string(out))
+
+	// Determine mount point: use the running user's home directory.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/root"
+	}
+	target := filepath.Join(home, ".vulos")
+
+	if err := os.MkdirAll(target, 0755); err != nil {
+		log.Printf("data partition: mkdir %s: %v", target, err)
+		return
+	}
+
+	if err := syscall.Mount(device, target, "ext4", 0, ""); err != nil {
+		log.Printf("data partition: mount %s -> %s: %v", device, target, err)
+		return
+	}
+	log.Printf("data partition: %s mounted at %s", device, target)
 }
 
 func setHostname() {
