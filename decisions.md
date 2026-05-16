@@ -446,3 +446,6 @@ Mem 3232 cleared. Brief 152 min. Cron 13 min from expiry. APPSTORE-06's part-2 (
 
 ## D62 (18:44) — APPSTORE-06 spliced; roadmap effectively complete
 Wine + Lutris + Steam spliced onto current main; registry now 45 active apps. Session merges 164. Build green. Brief 148 min remaining but no more scheduled work to dispatch. After cron 44dbf100 expires at 18:55, will stay reactive to user prompts through brief expiry.
+
+## D63 (18:47) — Brief re-fire; rescue NET-09 via Opus (cleanest deferred)
+Tasks effectively drained; per brief "break down more roadmap with Opus when tasks run low" — but rather than speculative new tasks, more valuable to RESCUE a deferred one. Picked NET-09 (D57 defer): smallest structural mismatch (worker's network.Service struct doesn't match NET-06's current shape; needs ~30min of careful adapter work). One Opus agent doing it carefully should land it cleanly. Mem 2478 OK. 147 min on brief.
