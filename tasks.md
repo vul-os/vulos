@@ -875,7 +875,7 @@ Scope: Builtin Peering app: Vula ID/QR, contacts list w/ state+perm toggles, pen
 AC: [ ] app in launcher opens [ ] contacts+requests from API, approve/block [ ] perm toggles persist [ ] Settings section
 
 ### [PEER-09] Vula ID exchange: QR generate+scan, paste
-`todo` · P2 · S · dep: PEER-08 · parallel: yes — src/builtin/peering/AddContact.jsx, package.json (QR dep)
+`done` · P2 · S · dep: PEER-08 · parallel: yes — src/builtin/peering/AddContact.jsx, package.json (QR dep)
 Scope: QR of own full Vula address; Add-contact via paste or camera QR scan → POST contacts/request.
 AC: [ ] own address QR scannable [ ] paste/scan triggers request [ ] malformed rejected
 
