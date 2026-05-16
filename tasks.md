@@ -170,7 +170,7 @@ _Design doc: [`roadmap/AI.md`](../roadmap/AI.md)_  ·  _Prefix: `AI-*`_
 - **Key files:** `src/core/Portal.jsx`, `src/core/Settings.jsx`, `backend/cmd/server/main.go`.
 
 ### [AI-07] AI app version history and rollback
-- **Status:** todo
+- **Status:** done
 - **Priority:** P2
 - **Effort:** M
 - **Roadmap:** roadmap/AI.md § AI Apps → Versioning
@@ -595,7 +595,7 @@ _Design doc: [`roadmap/NETWORK.md`](../roadmap/NETWORK.md)_  ·  _Prefix: `NET-*
 > Why this matters: Where instances live on the internet: `{app}--{profile}.{ulid}.{domain}` naming, four connection modes (fabric / direct / own domain / local), cookie scoping, TURN configuration. Everything that makes an instance reachable from outside.
 
 ### [NET-01] Subdomain parser `{app}--{profile}.{ulid}.{domain}`
-`todo` · P0 · M · dep: none · parallel: no — backend/services/gateway/gateway.go, backend/cmd/server/main.go, backend/services/appnet/dns.go
+`done` · P0 · M · dep: none · parallel: no — backend/services/gateway/gateway.go, backend/cmd/server/main.go, backend/services/appnet/dns.go
 Scope: Shared `parseSubdomain(host,baseDomain)->(app,profile,ok)` split on `--` w/ `default` fallback; wire gateway + main.go router; keep /app/{id}/ fallback.
 AC: [ ] browser--work parses app+profile [ ] terminal. → default [ ] /app/cockpit/ resolves default [ ] unit test 2/1/none-part
 
@@ -678,7 +678,7 @@ Scope: Every VULOS_SYNC_INTERVAL: push crsql_changes>last_pushed encrypted to no
 AC: [ ] 2 DBs sync insert in 1 cycle [ ] concurrent writes merge (CRDT) [ ] cursors persisted, resume [ ] stops on ctx cancel
 
 ### [CLUSTER-06] MinIO registry entry + storage settings UI
-`todo` · P2 · M · dep: none · parallel: no — registry.json, src/core/Settings.jsx, main.go
+`done` · P2 · M · dep: none · parallel: no — registry.json, src/core/Settings.jsx, main.go
 Scope: minio type:service registry entry (per roadmap, ${PORT}/${VULOS_STORAGE_*}, singleton, auto_start); Storage settings panel + GET /api/storage/status + enable toggle via store install.
 AC: [ ] minio entry valid [ ] panel w/ toggle+status [ ] enable installs MinIO via /api/store [ ] JSON still parses
 
@@ -698,7 +698,7 @@ Scope: leases/{user}/{hash} 30s heartbeat/60s stale; AcquireLease/CheckLease/Rel
 AC: [ ] acquire writes+renews [ ] 2nd node sees fresh lease [ ] >60s stale non-blocking [ ] release removes
 
 ### [CLUSTER-10] Conflict notification toasts + resolver UI
-`todo` · P3 · M · dep: CLUSTER-08 · parallel: no — src/shell/Toasts.jsx, new viewer, backend/services/notify/, main.go
+`done` · P3 · M · dep: CLUSTER-08 · parallel: no — src/shell/Toasts.jsx, new viewer, backend/services/notify/, main.go
 Scope: Emit notify on conflict copy; conflict-resolution view lists *.conflict-* + GET /api/sync/conflicts + POST resolve (keep one).
 AC: [ ] conflict pushes toast [ ] view lists conflicts w/ node+ts [ ] resolve keeps chosen [ ] no-op when none
 
@@ -711,7 +711,7 @@ _Design doc: [`roadmap/INIT.md`](../roadmap/INIT.md)_  ·  _Prefix: `INIT-*`_
 > Why this matters: The wizard a brand-new instance runs once: identity (ULID, hostname), MinIO storage provisioning, SSH emergency key, the printable Recovery Kit (JSON + QR). "Join existing cluster" is the parallel sub-flow.
 
 ### [INIT-01] Instance ULID + auto hostname at first boot
-`todo` · P0 · M · dep: none · parallel: no — new backend/services/identity/, main.go, backend/go.mod (overlaps NET-06 — share identity pkg; coordinate)
+`done` · P0 · M · dep: none · parallel: no — new backend/services/identity/, main.go, backend/go.mod (overlaps NET-06 — share identity pkg; coordinate)
 Scope: First boot gen ULID (oklog/ulid/v2), default hostname {user}-{device}, persist ~/.vulos/db/instance.json + /etc/hostname; GET /api/identity, POST /api/identity/hostname.
 AC: [ ] first boot 26-char ULID persisted [ ] reused on 2nd boot [ ] GET /api/identity [ ] POST hostname updates [ ] go build, ulid in go.mod
 
@@ -731,7 +731,7 @@ Scope: POST /api/setup/storage{enable,size_gb,password,passphrase}: install MinI
 AC: [ ] enable starts MinIO+bucket [ ] returns keys, passphrase not persisted [ ] enable:false no-op [ ] storage.json written, go build
 
 ### [INIT-05] New-system wizard: Identity/Storage/SSH/RecoveryKit steps
-`todo` · P0 · L · dep: INIT-01, INIT-03, INIT-04 · parallel: no — src/auth/Setup.jsx
+`done` · P0 · L · dep: INIT-01, INIT-03, INIT-04 · parallel: no — src/auth/Setup.jsx
 Scope: Add 4 step components per roadmap order; Identity (GET /api/identity, edit hostname), Storage (toggle+slider+pwd+passphrase+skip), SSH (POST ssh-key, show once+copy).
 AC: [ ] STEPS reflects roadmap order [ ] Identity shows ULID+DNS, edits hostname [ ] Storage posts+skip [ ] SSH shows privkey once [ ] npm build
 
@@ -751,12 +751,12 @@ Scope: POST /api/setup/join validate bucket, write sync-state.json phased, bg sy
 AC: [ ] bad creds rejected, valid writes sync-state [ ] sync-status per-phase [ ] interrupted resumes [ ] sync-background flag, go build
 
 ### [INIT-09] Join flow UI: New/Join chooser, Connect Storage, Sync, PIN
-`todo` · P1 · L · dep: INIT-08 · parallel: no — src/auth/Setup.jsx, src/App.jsx
+`done` · P1 · L · dep: INIT-08 · parallel: no — src/auth/Setup.jsx, src/App.jsx
 Scope: New/Join chooser; Join sub-flow Connect Storage→/api/setup/join, Syncing screen polling sync-status + continue-in-bg, device PIN, Ready; driven by GET /api/setup/mode (jump to Syncing if mode=sync).
 AC: [ ] Welcome→New/Join [ ] Join posts creds→Syncing [ ] live phase progress+bg [ ] reload mid-sync resumes [ ] ends PIN→Ready, npm build
 
 ### [INIT-10] Join codes: generate/decode + short-code/QR
-`todo` · P2 · M · dep: INIT-08 · parallel: yes — new backend/services/joincode/, main.go (routes)
+`done` · P2 · M · dep: INIT-08 · parallel: yes — new backend/services/joincode/, main.go (routes)
 Scope: GET /api/cluster/join-code builds JoinCode (1h TTL) as base32 VULA-XXXX-XXXX-XXXX + QR payload; POST /api/setup/join-code decodes→INIT-08; scoped MinIO creds may stub.
 AC: [ ] returns short code+QR [ ] round-trips, rejects expired [ ] 1h expiry, go build
 
@@ -839,12 +839,12 @@ Scope: welcome→disk-select(visual map)→progress(WS)→success/reboot; shown 
 AC: [ ] app shown only live-USB [ ] disk select+install [ ] WS progress+reboot [ ] error recovery, npm build
 
 ### [BMINIT-14] squashfs + live USB build
-`todo` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
+`done` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
 Scope: build.sh --live: mksquashfs, GPT image (ESP+rootfs squashfs), initramfs overlay hook (squashfs RO + tmpfs upper → overlay → pivot_root); keep tarball path.
 AC: [ ] --live produces squashfs+bootable GPT [ ] vulos-live hook installed [ ] non-live unchanged [ ] sh -n build.sh
 
 ### [BMINIT-15] ARM device variants (RPi, PinePhone)
-`todo` · P3 · M · dep: none · parallel: no — build.sh
+`done` · P3 · M · dep: none · parallel: no — build.sh
 Scope: DEVICE=rpi|pinephone: rpi FAT32 boot (config.txt/kernel8.img/.dtb), pinephone U-Boot+dtb; emit vulos-arm64-{rpi,pinephone}.img.gz; reuse rootfs.
 AC: [ ] rpi bootable image [ ] pinephone image [ ] generic arm64 unchanged [ ] sh -n build.sh
 
