@@ -556,7 +556,7 @@ Scope: fsnotify watch ~/.vulos/data + db/browser-profiles (ignore apps/bin); upl
 AC: [ ] edit uploads file+meta [ ] pull overwrites unchanged [ ] divergent edit = conflict copy no loss [ ] apps/bin ignored
 
 ### [CLUSTER-09] Presence leases (advisory)
-`todo` · P3 · M · dep: CLUSTER-03, CLUSTER-08 · parallel: yes — new backend/services/cluster/presence.go, main.go
+`done` · P3 · M · dep: CLUSTER-03, CLUSTER-08 · parallel: yes — new backend/services/cluster/presence.go, main.go
 Scope: leases/{user}/{hash} 30s heartbeat/60s stale; AcquireLease/CheckLease/ReleaseLease; GET /api/presence/check, POST /api/presence/lease; advisory only.
 AC: [ ] acquire writes+renews [ ] 2nd node sees fresh lease [ ] >60s stale non-blocking [ ] release removes
 
