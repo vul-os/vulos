@@ -46,6 +46,7 @@ import (
 	"vulos/backend/services/network"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/wifi"
+	"vulos/backend/services/peering"
 )
 
 func main() {
@@ -323,6 +324,9 @@ func main() {
 
 	// HTTP routes
 	mux := http.NewServeMux()
+
+	// Peering: well-known identity endpoint + peer profile fetch (PEER-12).
+	peering.RegisterWellKnownHandlers(mux)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok"})
