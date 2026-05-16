@@ -920,7 +920,7 @@ Scope: Messages view: conversation list, thread, composer, drag media, live mess
 AC: [ ] conversations+threads from API [ ] text+media end-to-end [ ] incoming realtime no refresh
 
 ### [PEER-18] Groups/rooms: definition, membership, fan-out
-`todo` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
+`done` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
 Scope: group create/list/add-member, store ~/.vulos/peering/groups/, fan-out via PEER-14+PEER-15, signed+verified per recipient.
 AC: [ ] create distributes def to members [ ] group msg delivered each member [ ] add-member policy-gated propagates
 
