@@ -15,11 +15,33 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui;display:flex;height:
 .list .item{padding:10px 12px;border-bottom:1px solid #1a1a1a;cursor:pointer;font-size:13px}
 .list .item:hover{background:#111}
 .list .item.active{background:#1a1a1a;border-left:2px solid #3b82f6}
-.list .item .title{font-weight:500}
+.list .item .title{font-weight:500;display:flex;align-items:center;gap:6px}
 .list .item .preview{color:#666;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.editor{flex:1;display:flex;flex-direction:column}
-.editor textarea{flex:1;background:#0a0a0a;color:#e5e5e5;border:none;padding:16px;font-family:'SF Mono',monospace;font-size:14px;line-height:1.6;resize:none;outline:none}
-.editor .bar{padding:6px 12px;background:#111;border-top:1px solid #222;display:flex;justify-content:between;font-size:11px;color:#666}
+.editor{flex:1;display:flex;flex-direction:column;position:relative}
+.editor-wrap{flex:1;position:relative;display:flex;flex-direction:column}
+.editor textarea{flex:1;background:#0a0a0a;color:#e5e5e5;border:none;padding:16px;font-family:'SF Mono',monospace;font-size:14px;line-height:1.6;resize:none;outline:none;width:100%}
+.bar{padding:6px 12px;background:#111;border-top:1px solid #222;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#666;gap:8px;flex-shrink:0}
+.bar-left{display:flex;align-items:center;gap:8px}
+.bar-right{display:flex;align-items:center;gap:8px}
+
+/* Collab toolbar */
+.collab-bar{padding:4px 12px;background:#111;border-bottom:1px solid #222;display:flex;align-items:center;gap:8px;font-size:11px;color:#888;flex-shrink:0}
+.collab-badge{display:inline-flex;align-items:center;gap:4px;background:#1a2a1a;border:1px solid #2d4a2d;border-radius:10px;padding:2px 8px;font-size:10px;color:#4ade80}
+.collab-badge.offline{background:#2a1a1a;border-color:#4a2d2d;color:#f87171}
+.collab-badge.connecting{background:#1a1a2a;border-color:#2d2d4a;color:#93c5fd}
+.collab-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.collab-avatar{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#fff;margin-left:2px}
+.collab-bar-hidden{display:none}
+
+/* Share button */
+.btn-share{background:#1a2a3a;border:1px solid #2d4a5a;border-radius:6px;padding:3px 10px;color:#60a5fa;cursor:pointer;font-size:11px}
+.btn-share:hover{background:#1e3247}
+
+/* Shared badge on note list items */
+.shared-tag{font-size:9px;background:#1a2a1a;border:1px solid #2d4a2d;color:#4ade80;border-radius:4px;padding:0 4px}
+
+/* Presence avatars */
+#presence-list{display:flex;gap:4px;align-items:center}
 </style>
 </head>
 <body>
@@ -31,52 +53,194 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui;display:flex;height:
   <div class="list" id="list"></div>
 </div>
 <div class="editor">
-  <textarea id="editor" placeholder="Start writing..." oninput="autoSave()"></textarea>
-  <div class="bar"><span id="status">Ready</span></div>
+  <!-- Collaboration toolbar (hidden until a note is selected) -->
+  <div class="collab-bar collab-bar-hidden" id="collab-bar">
+    <div id="collab-badge" class="collab-badge offline"><span class="dot"></span><span id="collab-badge-text">Collab off</span></div>
+    <div id="presence-list"></div>
+    <div style="flex:1"></div>
+    <button class="btn-share" onclick="handleShare()" title="Share this note with a peer">Share</button>
+  </div>
+  <div class="editor-wrap">
+    <textarea id="editor" placeholder="Start writing..." oninput="autoSave()"></textarea>
+  </div>
+  <div class="bar">
+    <span class="bar-left"><span id="status">Ready</span></span>
+    <span class="bar-right" id="word-count"></span>
+  </div>
 </div>
-<script>
-let notes=[], currentId=null, saveTimer=null;
-const list=document.getElementById('list'), editor=document.getElementById('editor'), status=document.getElementById('status');
 
-async function loadNotes(){
-  const res=await fetch('/api/notes'); notes=await res.json();
+<script type="module">
+// ── Collab module (lazy-loaded from collab.js) ──────────────────────────────
+let collabMod = null;
+let collabSession = null;
+
+async function getCollabMod() {
+  if (!collabMod) collabMod = await import('./collab.js');
+  return collabMod;
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+let notes = [], currentId = null, saveTimer = null;
+const list     = document.getElementById('list');
+const editor   = document.getElementById('editor');
+const status   = document.getElementById('status');
+const collabBar     = document.getElementById('collab-bar');
+const collabBadge   = document.getElementById('collab-badge');
+const badgeText     = document.getElementById('collab-badge-text');
+const presenceList  = document.getElementById('presence-list');
+const wordCount     = document.getElementById('word-count');
+
+// ── Notes API ───────────────────────────────────────────────────────────────
+async function loadNotes() {
+  const res = await fetch('/api/notes');
+  notes = await res.json();
   renderList();
-  if(notes.length>0&&!currentId) selectNote(notes[0].id);
+  if (notes.length > 0 && !currentId) selectNote(notes[0].id);
 }
 
-function renderList(filter){
-  const filtered=filter?notes.filter(n=>n.title.toLowerCase().includes(filter)||n.preview.toLowerCase().includes(filter)):notes;
-  list.innerHTML=filtered.map(n=>`<div class="item ${n.id===currentId?'active':''}" onclick="selectNote('${n.id}')"><div class="title">${n.title||'Untitled'}</div><div class="preview">${n.preview}</div></div>`).join('');
+function renderList(filter) {
+  const filtered = filter
+    ? notes.filter(n => n.title.toLowerCase().includes(filter) || n.preview.toLowerCase().includes(filter))
+    : notes;
+  list.innerHTML = filtered.map(n => `
+    <div class="item ${n.id === currentId ? 'active' : ''}" onclick="window._selectNote('${n.id}')">
+      <div class="title">
+        ${n.title || 'Untitled'}
+        ${n.shared ? '<span class="shared-tag">Shared</span>' : ''}
+      </div>
+      <div class="preview">${escHtml(n.preview || '')}</div>
+    </div>`).join('');
 }
 
-async function selectNote(id){
-  currentId=id;
-  const res=await fetch('/api/notes/'+id); editor.value=await res.text();
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function selectNote(id) {
+  // Tear down previous collab session
+  await stopCollab();
+
+  currentId = id;
+  const res = await fetch('/api/notes/' + id);
+  editor.value = await res.text();
+  updateWordCount();
   renderList();
+
+  // Show collab toolbar and start session
+  collabBar.classList.remove('collab-bar-hidden');
+  setBadge('connecting', 'Connecting…');
+  presenceList.innerHTML = '';
+
+  try {
+    const mod = await getCollabMod();
+    // Resolve display name from profile if available
+    let displayName = 'Me';
+    try {
+      const prof = await fetch('/api/peering/profile').then(r => r.json());
+      if (prof && prof.display_name) displayName = prof.display_name;
+    } catch (_) {}
+
+    collabSession = await mod.startCollab(id, editor, status, displayName);
+
+    // Hook into provider's status events via the badge
+    // The startCollab function updates statusEl text; we mirror it with badge colour
+    const observer = new MutationObserver(() => {
+      const txt = status.textContent;
+      if (txt.includes('connected'))    setBadge('online', 'Live');
+      else if (txt.includes('offline')) setBadge('offline', 'Offline');
+      else if (txt.includes('connect')) setBadge('connecting', 'Connecting…');
+    });
+    observer.observe(status, { childList: true, characterData: true, subtree: true });
+    collabSession._observer = observer;
+
+  } catch (err) {
+    setBadge('offline', 'Collab unavail');
+    console.warn('[notes-collab] could not start collab session:', err);
+  }
 }
 
-function newNote(){
-  currentId=null; editor.value='# New Note\n\n';
-  editor.focus(); autoSave();
+async function stopCollab() {
+  if (collabSession) {
+    try {
+      if (collabSession._observer) collabSession._observer.disconnect();
+      collabSession.destroy();
+    } catch (_) {}
+    collabSession = null;
+  }
+  collabBar.classList.add('collab-bar-hidden');
+  setBadge('offline', 'Collab off');
 }
 
-function autoSave(){
+function setBadge(state, text) {
+  collabBadge.className = 'collab-badge';
+  if (state === 'online')      collabBadge.classList.add('');          // green (default)
+  if (state === 'offline')     collabBadge.classList.add('offline');
+  if (state === 'connecting')  collabBadge.classList.add('connecting');
+  badgeText.textContent = text;
+}
+
+window._selectNote = selectNote;
+
+function newNote() {
+  stopCollab();
+  currentId = null;
+  editor.value = '# New Note\n\n';
+  editor.focus();
+  autoSave();
+  collabBar.classList.add('collab-bar-hidden');
+}
+
+function autoSave() {
+  updateWordCount();
   clearTimeout(saveTimer);
-  status.textContent='Saving...';
-  saveTimer=setTimeout(async()=>{
-    const res=await fetch('/api/notes'+(currentId?'/'+currentId:''),{method:'POST',headers:{'Content-Type':'text/plain'},body:editor.value});
-    const data=await res.json();
-    if(!currentId) currentId=data.id;
-    status.textContent='Saved';
+  status.textContent = 'Saving…';
+  saveTimer = setTimeout(async () => {
+    const res = await fetch('/api/notes' + (currentId ? '/' + currentId : ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: editor.value,
+    });
+    const data = await res.json();
+    if (!currentId) {
+      currentId = data.id;
+      // Start collab on newly-created note
+      collabBar.classList.remove('collab-bar-hidden');
+      setBadge('connecting', 'Connecting…');
+      try {
+        const mod = await getCollabMod();
+        collabSession = await mod.startCollab(currentId, editor, status, 'Me');
+      } catch (_) {}
+    }
+    if (!status.textContent.startsWith('Collab')) status.textContent = 'Saved';
     loadNotes();
-  },500);
+  }, 500);
 }
 
-function searchNotes(){
-  const q=document.getElementById('search').value.toLowerCase();
-  renderList(q);
+function updateWordCount() {
+  const words = editor.value.trim().split(/\s+/).filter(Boolean).length;
+  const chars  = editor.value.length;
+  wordCount.textContent = `${words}w  ${chars}c`;
 }
 
+function searchNotes() {
+  const q = document.getElementById('search').value.toLowerCase();
+  renderList(q || undefined);
+}
+
+async function handleShare() {
+  if (!currentId) { alert('Select a note first.'); return; }
+  const note = notes.find(n => n.id === currentId);
+  const mod = await getCollabMod();
+  await mod.shareNote(currentId, note ? note.title : currentId);
+}
+
+// Expose globals for inline onclick attributes
+window.newNote       = newNote;
+window.autoSave      = autoSave;
+window.searchNotes   = searchNotes;
+window.handleShare   = handleShare;
+
+// ── Bootstrap ───────────────────────────────────────────────────────────────
 loadNotes();
 </script>
 </body>
