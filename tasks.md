@@ -860,7 +860,7 @@ Scope: WS /api/peering/stream (wsutil.Upgrader), per-user register, channel-tagg
 AC: [ ] browser opens stream, Push delivers [ ] channel discriminator, multi-sub [ ] hook reconnects backoff
 
 ### [PEER-06] Contacts store: allow list, permissions, persistence
-`todo` · P0 · M · dep: PEER-02 · parallel: yes — backend/services/peering/contacts.go
+`done` · P0 · M · dep: PEER-02 · parallel: yes — backend/services/peering/contacts.go
 Scope: in-mem + contacts.json: add/list/update/remove, state pending/approved/blocked, per-contact perms (message/media/call/video), IsApproved/Can predicates.
 AC: [ ] persists across restart [ ] state graph enforced [ ] Can reflects grants [ ] unit tests
 
