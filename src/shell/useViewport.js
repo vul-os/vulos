@@ -3,8 +3,10 @@ import { useState, useEffect } from 'react'
 const MOBILE_BREAKPOINT = 768
 
 export function useViewport() {
-  const [layout, setLayout] = useState(
-    window.innerWidth < MOBILE_BREAKPOINT ? 'mobile' : 'desktop'
+  const [layout, setLayout] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
+      ? 'mobile'
+      : 'desktop'
   )
 
   useEffect(() => {

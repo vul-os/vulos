@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback } from 'react'
 
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+const SpeechRecognition = typeof window !== 'undefined'
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+  : null
 
 export function useVoice(onResult) {
   const [listening, setListening] = useState(false)

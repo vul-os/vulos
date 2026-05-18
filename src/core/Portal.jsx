@@ -232,9 +232,17 @@ Only output the viewport block — no explanations outside it.`
     })
 
     setThinking(false)
-  // processAIResponse is used as fallback when AI returns no <viewport>
+  // processAIResponse is used as fallback when AI returns no <viewport>.
+  // It's intentionally NOT in the dep array: it's declared later in the
+  // component (line 387) and putting it here was a TDZ violation — React
+  // evaluates dep arrays synchronously during render, hitting the not-yet-
+  // initialized `const` and crashing the entire mount with "Cannot access
+  // processAIResponse before initialization" (silent black kiosk). The
+  // closure captures it from lexical scope at call time, which is always
+  // post-render and therefore initialized. Both functions are useCallback-
+  // stable so invalidation isn't needed anyway.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addMessage, setThinking, openWindow, processAIResponse])
+  }, [addMessage, setThinking, openWindow])
 
   const handleIntent = useCallback((input) => {
     // AI-06: "edit <app-id>: <change request>" shorthand — triggers Edit-with-AI directly.

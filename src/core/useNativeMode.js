@@ -2,7 +2,9 @@
 // Baremetal: running as sole Cog/WPE fullscreen instance (no compositor multi-window)
 // Native: running under a Wayland compositor (Sway, labwc, etc.) that supports multi-window
 
-const ua = navigator.userAgent
+import { useState, useEffect } from 'react'
+
+const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 
 // Embedded WebKit engines used on device
 const isEmbeddedWebKit = ua.includes('WPE') || ua.includes('Cog')
@@ -59,8 +61,6 @@ export function isOnDevice() {
 }
 
 // Hook for React components that need to react to mode
-import { useState, useEffect } from 'react'
-
 export function useNativeMode() {
   const [mode, setMode] = useState(_mode)
 
