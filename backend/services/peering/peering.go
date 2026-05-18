@@ -161,8 +161,9 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/peering/call/signal", s.stub("relay ICE/SDP"))
 	mux.HandleFunc("POST /api/peering/call/hangup", s.stub("end call"))
 
-	// --- Bandwidth (planned) ---
-	mux.HandleFunc("GET /api/peering/bandwidth", s.stub("bandwidth report"))
+	// --- Bandwidth: real handlers wired in main.go via
+	//     RegisterBandwidthHandlers (PEER-20b); stub removed so the
+	//     ServeMux pattern is not registered twice. ---
 
 	// --- Inbound server-to-server (planned) ---
 	mux.HandleFunc("POST /api/peering/inbound/request", s.stub("inbound contact request"))

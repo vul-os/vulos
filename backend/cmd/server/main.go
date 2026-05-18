@@ -1429,6 +1429,11 @@ func main() {
 
 	// Peering — direct Vula-to-Vula communication
 	peeringSvc.RegisterHandlers(mux)
+	// PEER-20b: real bandwidth meter + handlers (replaces the removed
+	// GET /api/peering/bandwidth stub; also serves /bandwidth/peer).
+	bwMeter := peering.NewBandwidthMeter(peering.BandwidthConfig{})
+	bwMeter.Start(context.Background())
+	peering.RegisterBandwidthHandlers(mux, bwMeter)
 	// App visibility (private|local|public)
 	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
 
