@@ -228,6 +228,8 @@ html, body, #root {
 [data-device-profile="tv"] [role="button"]:focus-visible {
   outline-width: 5px;
   outline-offset: 5px;
+}
+
 .btn-primary:hover { background: #2563eb; }
 
 /* ═══════════════════════════════════════
