@@ -83,16 +83,19 @@ export default function DesktopCanvas() {
 
   const bgSrc = wallpaper || DEFAULT_WALLPAPER
 
-  // First-boot background. The previous placeholder used opacity 0.12 over
-  // #0c0c0c — visually indistinguishable from "Chromium failed to render"
-  // (we burned hours chasing this as a phantom kiosk crash). Use a clear
-  // gradient + readable wordmark so a working desktop is unmistakable.
-  const placeholderBg = isDark
-    ? 'radial-gradient(ellipse at 30% 25%, #2d1758 0%, #14081e 45%, #050308 100%)'
-    : 'radial-gradient(ellipse at 30% 25%, #e9deff 0%, #c7b3f0 55%, #ffffff 100%)'
+  // First-boot background. Use a SOLID color (not a gradient) for the
+  // placeholder — Chromium under SwiftShader (the bare-metal software-GPU
+  // path) doesn't reliably composite radial-gradients to virtio-gpu's
+  // pixman framebuffer; they render transparent and the outer wrapper
+  // (bg-neutral-950 ≈ #0a0a0a) shows through, which is visually identical
+  // to a crashed kiosk. Solid colors always work.
+  const placeholderBg = isDark ? '#1f0e3d' : '#e9deff'
 
   return (
-    <div className="fixed inset-0 bg-neutral-950 overflow-hidden">
+    <div
+      className="fixed inset-0 overflow-hidden"
+      style={{ background: isDark ? '#1f0e3d' : '#e9deff' }}
+    >
       {/* Desktop wallpaper — always visible behind windows */}
       <div
         data-desktop-bg
@@ -104,7 +107,7 @@ export default function DesktopCanvas() {
         ) : (
           <div className="flex flex-col items-center gap-3 select-none">
             <img src={DEFAULT_WALLPAPER} alt="" className="w-24 h-24" style={{ opacity: isDark ? 0.85 : 0.55, filter: isDark ? 'brightness(1.6)' : 'none' }} />
-            <div style={{ opacity: isDark ? 0.92 : 0.7 }}>
+            <div style={{ opacity: isDark ? 0.95 : 0.85 }}>
               <div className="text-center text-3xl font-light tracking-[0.3em]" style={{ color: isDark ? '#fff' : '#1a1a1a' }}>Vulos</div>
               <div className="text-center text-[10px] tracking-[0.2em] mt-1" style={{ color: isDark ? '#c9b6ff' : '#5a3aa3' }}>alpha</div>
             </div>
