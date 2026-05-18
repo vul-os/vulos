@@ -543,6 +543,12 @@ func startKiosk() {
 		"XDG_RUNTIME_DIR=/run/user/0",
 		"LIBSEAT_BACKEND=builtin",
 		"WLR_RENDERER=pixman",
+		// wlroots' libinput backend aborts the whole compositor when there
+		// are zero input devices (common in a headless VM / before udev
+		// populates /dev/input) — "Unable to start the wlroots backend",
+		// nothing on screen. This makes the no-input-devices case non-fatal
+		// so the DRM output still comes up and the desktop is visible.
+		"WLR_LIBINPUT_NO_DEVICES=1",
 	)
 
 	// Wait for server to be ready before launching browser.
