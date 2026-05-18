@@ -64,13 +64,19 @@ if [ "$NO_BUILD" = "0" ]; then
   REUSE="--reuse-rootfs"
   [ "$REBUILD" = "1" ] && REUSE=""
   say "Building Vula OS bootable image (build.sh --arm64 --disk ${REUSE:-(full rebuild)})…"
+  # The rootfs/image MUST be built on a container-native filesystem: debootstrap
+  # tar-extracts device nodes / ownership / xattrs that OrbStack's virtiofs
+  # bind mount can't represent ("tar failed"). So build into the vulos-bm-work
+  # Docker volume (OUTDIR=/work/output, also persists rootfs for --reuse-rootfs)
+  # and copy only the finished disk image back to the bind-mounted /src/output.
   docker run --rm --privileged \
     -v "$REPO":/src -w /src \
+    -v vulos-bm-work:/work \
     -v vulos-bm-gocache:/root/.cache/go-build \
     -v vulos-bm-gomod:/go/pkg/mod \
     -v vulos-bm-npm:/root/.npm \
     "$BUILDER_IMG" \
-    bash -c "./build.sh --arm64 --device generic-arm64 --disk $REUSE"
+    bash -c "mkdir -p /work/output && ./build.sh --arm64 --device generic-arm64 --disk $REUSE /work/output && mkdir -p /src/output && cp -f /work/output/vulos-${ARCH}.img /src/output/vulos-${ARCH}.img"
 fi
 [ -f "$IMG" ] || die "image not produced: $IMG"
 ok "image: $IMG ($(du -h "$IMG" | cut -f1))"

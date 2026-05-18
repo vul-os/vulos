@@ -6,11 +6,30 @@ Works two ways simultaneously:
 1. **Remote** — access from any browser on the network (current system, unchanged)
 2. **Local** — user sits at the physical machine, interacts directly
 
-On bare metal, apps launch as real native windows on the Wayland compositor — not streamed via WebRTC. The browser (showing the Vula OS shell) sits in the background like a wallpaper. Native windows get the same traffic light UI as in-browser windows.
+The React shell is the window manager on **every** form factor (local seat, remote browser, phone, TV) — never two window systems. What varies is only the **transport** by which a native Linux app's pixels reach a JSX `<AppWindow>`: `stream` (headless + GStreamer/WebRTC into `<StreamViewer>`) or, on bare metal in future, `surface` (a real wlroots `xdg-toplevel` whose GPU buffer is scanned zero-copy into the window's screen rect). **v1 ships always-stream over `cage`**, including on bare metal — see "Window Model" below. (Decision: `decisions.md` D93.)
 
-> **Goal.** Boot the same image on USB / VM / cloud and reach a Vula desktop in seconds. labwc + cage compose the screen; the WebKit/Chromium browser is pinned to the background layer; native windows live above it.
+> **Goal.** Boot the same image on USB / VM / cloud and reach a Vula desktop in seconds. **v1:** `cage` runs the Cog/WPE browser fullscreen; the React shell is the sole window manager; native apps stream in (same pipeline as remote). **v2:** `labwc` adds a `surface` transport so heavy local apps render direct (zero-copy) while still framed by the React shell.
 > **Non-goals.** Replacing GNOME/KDE for general-purpose Linux. Building our own kernel. We use stock Debian + a few well-chosen pieces (labwc, cage, Plymouth, sd-boot).
 > **Status.** Mostly complete. Compositor + browser-as-background, Plymouth ↔ labwc handoff, init networking (DHCP / WiFi fallback / mDNS), and ARM device variants are all shipped. **Caveat:** `build.sh --disk` is the working UEFI path (systemd-boot + kernel + initrd via mtools; smoke-tested by `scripts/baremetal-smoke.sh`). `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or loader entry — the live-USB image is non-bootable. Live-USB ESP fix is outstanding (BMINIT-14 reopened; see SMOKE-02).
+
+---
+
+## Window Model (authoritative — supersedes the two-layer / "browser as background" / Phase 6 descriptions below, which describe the **v2** target only)
+
+A Wayland compositor stacks **surfaces**, not "windows". If the whole shell (chrome + every JSX window) is one fullscreen browser surface, it has exactly one z-position — so a native toplevel is *unconditionally* in front of every JSX window and the dock. You cannot interleave "pixels inside the wallpaper" with real windows; correct blending requires every interleavable window to be its own surface. Therefore:
+
+**The React shell is always the window manager.** Native-app pixels are a per-app **transport**, not a separate window system:
+
+| Transport | How | Used for |
+|---|---|---|
+| `stream` | app headless → GStreamer (NVENC/VAAPI/VP8) → WebRTC → JSX `<StreamViewer>` | all remote/browser/phone/TV; **bare-metal v1**; no-GPU/software fallback |
+| `surface` | app is a real wlroots `xdg-toplevel` (XWayland for X11); GPU buffer scanned zero-copy into the JSX window's screen rect | **bare-metal v2**, latency-critical local apps (games/Blender/video) |
+
+### v1 — ship now: always-stream over `cage`
+`cage` runs Cog/WPE fullscreen; the React shell is the only window manager (z-order/focus/dock/decorations all JSX, already built). Native apps stream in via the **existing, tested** Docker/remote pipeline. No labwc / wlr-layer-shell / `wlr-foreign-toplevel` / per-window webview needed. The shell is local-native (browser renders directly on the GPU via the compositor); only the *interior of heavy native-app windows* pays the encode tax. `detectNativeMode()` + native-launch (BMINIT-02/04/06) are an **opt-in v2 path, not the bare-metal default**. → **BMINIT-16**.
+
+### v2 — follow-up: `surface` transport on `labwc` (not a v1 blocker)
+labwc becomes the *sole* WM. Chrome moves to `wlr-layer-shell` (wallpaper on `background`; dock/menubar on `overlay` so chrome is always correctly foreground). Each JSX window becomes its own Cog/WPE `xdg-toplevel` webview, so JSX and native windows are **peers in one z-stack**. `wlr-foreign-toplevel-management-v1` unifies the dock/focus/z-order across both kinds; labwc SSD is the single decorator (the in-JSX traffic-light component is suppressed on bare metal). The React WM goes "thin": it stops positioning/stacking and instead mirrors labwc state. → **BMINIT-17** (surface transport / DMABUF passthrough), **BMINIT-18** (labwc unification: layer-shell chrome + per-window webview + foreign-toplevel).
 
 ---
 

@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 161 / 196 real tasks done (82%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added. The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 161 / 199 real tasks done (81%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **vulos-cloud boundary note (decisions.md D33/D25):** BILL-01, OTA-01, FLEET-01, SSH-01, SECX-01, ROUTE-02/03/04, and RELAY-02 live in the separate **vulos-cloud** repo. They are out of scope for this OSS repo's main branch. Agents working here must not re-implement them or treat their absence as a gap.
 
@@ -11,7 +11,7 @@
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
 | Peering | [PEERING.md](../roadmap/PEERING.md) | 9 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 14 / 15 | `[█████████░]` 93% — BMINIT-14 (--live ESP) todo |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 14 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
 | Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
@@ -849,6 +849,23 @@ AC: [ ] --live produces squashfs+bootable GPT (UEFI boots to initramfs pivot) [ 
 `done` · P3 · M · dep: none · parallel: no — build.sh
 Scope: DEVICE=rpi|pinephone: rpi FAT32 boot (config.txt/kernel8.img/.dtb), pinephone U-Boot+dtb; emit vulos-arm64-{rpi,pinephone}.img.gz; reuse rootfs.
 AC: [ ] rpi bootable image [ ] pinephone image [ ] generic arm64 unchanged [ ] sh -n build.sh
+
+> **Window model (decisions.md D93):** the React shell is always the WM; native-app pixels are a per-app *transport*. v1 = always-stream over `cage` (ship now); v2 = `surface` transport on `labwc`. BMINIT-02/04/06 (native-launch) are the v2 path, not the bare-metal default — see BMINIT-16.
+
+### [BMINIT-16] v1 bare-metal app model: always-stream over cage
+`todo` · P1 · M · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, src/providers/ShellProvider.jsx, src/shell/Launchpad.jsx, src/core/useNativeMode.js
+Scope: Bare-metal default = cage + Cog fullscreen, React shell as sole WM, native apps via the existing stream transport. Gate the detectNativeMode native-launch path (BMINIT-04/06) behind an explicit v2 opt-in (env/flag/device-profile), default OFF. cage is the supported v1 local compositor; labwc only when v2 surface enabled. Remote/stream path unchanged.
+AC: [ ] bare-metal default streams, no native-launch [ ] cage fullscreen + shell is sole WM [ ] native-launch only when v2 opt-in set [ ] remote unchanged [ ] go build + npm build
+
+### [BMINIT-17] v2 `surface` transport: zero-copy native window into JSX rect
+`todo` · P3 · XL · dep: BMINIT-18 · parallel: no — backend/services/appnet/, new surface bridge, src window layer
+Scope: When v2 enabled, launch native/XWayland app as a real wlroots xdg-toplevel and scan its GPU buffer (subsurface/DMABUF passthrough) into the JSX `<AppWindow>`'s screen rect; React still owns frame/decoration/z bookkeeping. Fall back to stream on no-GPU/unsupported.
+AC: [ ] native app renders zero-copy in the JSX window rect [ ] move/resize/z follow the JSX frame [ ] fallback to stream when unsupported [ ] remote/stream path unchanged
+
+### [BMINIT-18] v2 labwc unification: layer-shell chrome + per-window webview + foreign-toplevel
+`todo` · P3 · XL · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, assets/labwc/, backend/services/wltoplevel/, src shell native-mode
+Scope: labwc as sole WM. Wallpaper → `background` layer-shell; dock/menubar → `overlay` layer-shell (always foreground). One Cog/WPE xdg-toplevel webview per JSX window so JSX+native windows are z-stack peers. wlr-foreign-toplevel-management-v1 unifies dock/focus/z across both kinds; labwc SSD is the single decorator (suppress in-JSX traffic lights on bare metal). React WM goes "thin": mirrors labwc state, stops positioning/stacking.
+AC: [ ] chrome on overlay, always foreground [ ] each JSX window its own xdg-toplevel [ ] foreign-toplevel drives dock/focus/z for native+webview [ ] SSD decorates all uniformly [ ] thin React WM in native mode
 
 ---
 
