@@ -41,7 +41,7 @@ Vula OS is a **web-native window manager and operating system** built on Debian 
 1. **Web-native OS.** The shell is a real OS shell — windows, dock, file manager, terminal, settings — but it lives in a browser tab. Open it from your laptop, phone, or a TV at someone else's house and you get the same desktop.
 2. **Web-app sovereignty.** Self-host the apps you'd normally rent from a SaaS company. The bundled app store installs things like Memos, Navidrome, Uptime Kuma, and Vaultwarden as proper OS apps with their own subdomain and isolated network namespace — not embedded iframes, not browser bookmarks.
 3. **Peering, not federation.** Every Vula instance is a server with a stable identity (Ed25519 keypair, `vula:<id>` URI). Instances message, share files, and place WebRTC calls directly. No middleman, no account on someone else's server. See `roadmap/PEERING.md`.
-4. **Real baremetal.** Flash the same image to a USB stick and it boots into a Wayland (labwc/cage) compositor that renders the browser shell fullscreen. Native Linux app windows live alongside the browser as real compositor windows. See `roadmap/BAREMETAL-INIT.md`.
+4. **Real baremetal.** Flash the same image to a USB stick and it boots into `cage` running a fullscreen browser — and that browser **is** the Vulos shell. The OS *is* the React app. Native Linux apps (GIMP, Blender, Wine games) stream into windows of that desktop on demand via the same WebRTC pipeline used for remote access. See `roadmap/BAREMETAL-INIT.md`.
 
 ### How the pieces fit
 

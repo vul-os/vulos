@@ -641,7 +641,35 @@ mkdir -p "$ROOTFS/root/.vulos/data" "$ROOTFS/root/.vulos/db" \
     "$ROOTFS/tmp/xdg-runtime"
 
 mkdir -p "$ROOTFS/etc/chromium/policies/managed"
-printf '{"CommandLineFlagSecurityWarningsEnabled": false}\n' > "$ROOTFS/etc/chromium/policies/managed/vulos.json"
+# Real bare-metal Chromium policy: kiosk-correct defaults (no password-manager
+# prompts, no autofill, no translate, no signin/sync, no bookmark bar, no
+# safebrowsing/metrics/promotion popups). Stable across versions — these
+# enterprise policies are more durable than CLI flags. Must mirror the
+# --deploy path policy block above.
+cat > "$ROOTFS/etc/chromium/policies/managed/vulos.json" << 'POL'
+{
+  "CommandLineFlagSecurityWarningsEnabled": false,
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "TranslateEnabled": false,
+  "BookmarkBarEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "SearchSuggestEnabled": false,
+  "SafeBrowsingEnabled": false,
+  "MetricsReportingEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "PromotionalTabsEnabled": false,
+  "HardwareAccelerationModeEnabled": false,
+  "BackgroundModeEnabled": false,
+  "ImportBookmarks": false,
+  "ImportSavedPasswords": false,
+  "ImportSearchEngine": false,
+  "ImportHistory": false,
+  "PasswordLeakDetectionEnabled": false
+}
+POL
 
 # labwc compositor config (browser pinned to background, floating focus)
 mkdir -p "$ROOTFS/root/.config/labwc"
