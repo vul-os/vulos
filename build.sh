@@ -615,6 +615,13 @@ if [ -f "$OUTDIR/xdg-open" ]; then
 fi
 
 mkdir -p "$ROOTFS/opt/vulos"
+# Under --reuse-rootfs the destination dirs already exist from the previous
+# build. `cp -r src dst` semantics: when dst is an existing dir, cp creates
+# `dst/$(basename src)` instead of replacing — so new builds landed at
+# /opt/vulos/webroot/webroot/, while index.html at the top level stayed the
+# OLD one and the kiosk kept serving the previous bundle (a real bug we
+# hit: src fixes never reached the booted image). Clear first, then copy.
+rm -rf "$ROOTFS/opt/vulos/webroot" "$ROOTFS/opt/vulos/apps"
 cp -r "$OUTDIR/webroot" "$ROOTFS/opt/vulos/webroot"
 cp -r "$OUTDIR/apps" "$ROOTFS/opt/vulos/apps"
 cp "$OUTDIR/registry.json" "$ROOTFS/opt/vulos/registry.json"
