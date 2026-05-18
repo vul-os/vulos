@@ -322,9 +322,15 @@ func main() {
 	// Stream pool (generic X11 app streaming — Xvfb + GStreamer + WebRTC)
 	streamPool := stream.NewPool()
 
-	// Remote browser (Chromium via stream pool — one persistent instance, always ready)
+	// Remote browser (Chromium via stream pool — one persistent instance, always ready).
+	// Pre-warming spins up a second headless Chromium + Xvfb + GStreamer at boot;
+	// on a memory-constrained bare-metal first boot this lets the kernel OOM-kill
+	// the kiosk Chromium. VULOS_PREWARM_BROWSER=0 starts the browser lazily on the
+	// first stream request instead. Default = pre-warm (existing remote/dev behavior).
 	browserSvc := webbrowser.New(streamPool)
-	if err := browserSvc.Start(ctx, 0); err != nil {
+	if os.Getenv("VULOS_PREWARM_BROWSER") == "0" {
+		log.Printf("[browser] pre-warm disabled (VULOS_PREWARM_BROWSER=0); lazy on first request")
+	} else if err := browserSvc.Start(ctx, 0); err != nil {
 		log.Printf("[browser] start warning: %v", err)
 	} else {
 		browserSvc.WaitReady(30 * time.Second)

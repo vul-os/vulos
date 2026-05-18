@@ -98,7 +98,7 @@ DISPLAY_ARGS="-vnc 127.0.0.1:0"           # headless but screenshot-able
 
 say "Booting QEMU (arm64, HVF)…  serial → $SERIAL"
 qemu-system-aarch64 \
-  -machine virt,gic-version=3 -accel hvf -cpu host -smp 4 -m 4096 \
+  -machine virt,gic-version=3 -accel hvf -cpu host -smp 4 -m "${VM_MEM_MB:-12288}" \
   -drive if=pflash,format=raw,readonly=on,file="$EDK2_CODE" \
   -drive if=pflash,format=raw,file="$VARS" \
   -drive if=virtio,format=raw,file="$IMG" \
