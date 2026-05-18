@@ -27,11 +27,11 @@ var currentProfile hostProfile
 // to pre-warm the remote-browser stream pool. One image, one boot path, no
 // "VM build" vs "bare-metal build" — same artifact on QEMU and real metal.
 type hostProfile struct {
-	HasHWGPU      bool   // real GPU (DRI + a non-llvmpipe driver)
-	GPUTier       string // "nvenc"|"vaapi"|"software"
-	HasInputs     bool   // ≥1 /dev/input/event*
-	MemMB         int    // /proc/meminfo MemTotal
-	LowMem        bool   // < 6 GB → skip prewarm, software path
+	HasHWGPU       bool   // real GPU (DRI + a non-llvmpipe driver)
+	GPUTier        string // "nvenc"|"vaapi"|"software"
+	HasInputs      bool   // ≥1 /dev/input/event*
+	MemMB          int    // /proc/meminfo MemTotal
+	LowMem         bool   // < 6 GB → skip prewarm, software path
 	PrewarmBrowser bool
 }
 
