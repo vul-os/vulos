@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
+import { useAuth } from './AuthProvider'
 
 export default function LoginScreen() {
+  const { checkAuth } = useAuth()
   const [hasUsers, setHasUsers] = useState(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -41,7 +43,13 @@ export default function LoginScreen() {
       })
       const data = await res.json()
       if (res.ok) {
-        window.location.reload()
+        // Do NOT window.location.reload() — under cage + software-GL Chromium
+        // a full page reload re-spawns the GPU process and can stall the
+        // compositor commit, leaving a uniform-black framebuffer with no
+        // recovery (the post-create-profile black screen). Re-fetch the
+        // user via AuthProvider instead — React unmounts LoginScreen and
+        // mounts the Shell with no Chromium-side navigation.
+        await checkAuth()
       } else {
         setError(data.error || 'Login failed')
       }
