@@ -32,7 +32,7 @@ Every change is conditional. If the hardware or dependency is not present, the c
 
 ### Wayland compositor via cage (streaming, when GPU detected)
 
-cage for streaming (headless, one app per session). labwc for bare metal (real display, multi-window) — see `baremetal_init.md`. Both are wlroots-based, same DMA-BUF/PipeWire capture path. Combined install: <1MB.
+cage for streaming (headless, one app per session) and for bare-metal v1 (fullscreen kiosk — React shell is the WM, native apps stream in). labwc is reserved for v2 surface transport — see `BAREMETAL-INIT.md`. Both are wlroots-based, same DMA-BUF/PipeWire capture path. Combined install: <1MB.
 
 - [ ] Replace Xvfb with cage (single-app Wayland kiosk) for GPU streaming sessions
 - [ ] `WLR_BACKENDS=headless` — no physical display, PipeWire captures compositor output
@@ -195,7 +195,7 @@ One image ships everything. At startup, `gpu.Detect()` picks the right path. No 
 
 ### Additional packages for GPU path
 - [ ] `cage` — minimal wlroots Wayland compositor for streaming (76KB installed)
-- [ ] `labwc` — wlroots compositor for bare metal desktop (713KB installed) — see `baremetal_init.md`
+- [ ] `labwc` — wlroots compositor for bare metal v2 surface transport (713KB installed) — see `BAREMETAL-INIT.md`
 - [ ] `pipewire pipewire-pulse wireplumber` — PipeWire daemon + PulseAudio compat + session manager
 - [ ] `gstreamer1.0-pipewire` — GStreamer pipewiresrc element
 - [ ] `xdg-desktop-portal-wlr` — wlroots screen capture portal (PipeWire DMA-BUF)
@@ -218,7 +218,7 @@ One image ships everything. At startup, `gpu.Detect()` picks the right path. No 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # ... existing packages unchanged ...
     #
-    # Wayland compositors (GPU path — cage for streaming, labwc for bare metal)
+    # Wayland compositors (cage for streaming + bare-metal v1 kiosk; labwc for v2 surface transport)
     cage labwc \
     # PipeWire stack (GPU path — audio + screen capture)
     pipewire pipewire-pulse wireplumber \

@@ -8,13 +8,13 @@ Works two ways simultaneously:
 
 The React shell is the window manager on **every** form factor (local seat, remote browser, phone, TV) — never two window systems. What varies is only the **transport** by which a native Linux app's pixels reach a JSX `<AppWindow>`: `stream` (headless + GStreamer/WebRTC into `<StreamViewer>`) or, on bare metal in future, `surface` (a real wlroots `xdg-toplevel` whose GPU buffer is scanned zero-copy into the window's screen rect). **v1 ships always-stream over `cage`**, including on bare metal — see "Window Model" below. (Decision: `decisions.md` D93.)
 
-> **Goal.** Boot the same image on USB / VM / cloud and reach a Vula desktop in seconds. **v1:** `cage` runs the Cog/WPE browser fullscreen; the React shell is the sole window manager; native apps stream in (same pipeline as remote). **v2:** `labwc` adds a `surface` transport so heavy local apps render direct (zero-copy) while still framed by the React shell.
-> **Non-goals.** Replacing GNOME/KDE for general-purpose Linux. Building our own kernel. We use stock Debian + a few well-chosen pieces (labwc, cage, Plymouth, sd-boot).
-> **Status.** Mostly complete. Compositor + browser-as-background, Plymouth ↔ labwc handoff, init networking (DHCP / WiFi fallback / mDNS), and ARM device variants are all shipped. **Caveat:** `build.sh --disk` is the working UEFI path (systemd-boot + kernel + initrd via mtools; smoke-tested by `scripts/baremetal-smoke.sh`). `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or loader entry — the live-USB image is non-bootable. Live-USB ESP fix is outstanding (BMINIT-14 reopened; see SMOKE-02).
+> **Goal.** Boot the same image on USB / VM / cloud and reach a Vulos desktop in seconds. **v1:** `cage` runs the Cog/WPE browser fullscreen; the React shell is the sole window manager; native apps stream in (same pipeline as remote). **v2:** `labwc` adds a `surface` transport so heavy local apps render direct (zero-copy) while still framed by the React shell.
+> **Non-goals.** Replacing GNOME/KDE for general-purpose Linux. Building our own kernel. We use stock Debian + a few well-chosen pieces (cage, Plymouth, sd-boot; labwc reserved for v2).
+> **Status.** Mostly complete. Cage + browser-as-kiosk, Plymouth ↔ cage handoff, init networking (DHCP / WiFi fallback / mDNS), and ARM device variants are all shipped. **Caveat:** `build.sh --disk` is the working UEFI path (systemd-boot + kernel + initrd via mtools; smoke-tested by `scripts/baremetal-smoke.sh`). `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or loader entry — the live-USB image is non-bootable. Live-USB ESP fix is outstanding (BMINIT-14 reopened; see SMOKE-02).
 
 ---
 
-## Window Model (authoritative — supersedes the two-layer / "browser as background" / Phase 6 descriptions below, which describe the **v2** target only)
+## Window Model (authoritative — supersedes the "two-layer / browser as background / native app launching" sections below, which describe the **v2** target only)
 
 A Wayland compositor stacks **surfaces**, not "windows". If the whole shell (chrome + every JSX window) is one fullscreen browser surface, it has exactly one z-position — so a native toplevel is *unconditionally* in front of every JSX window and the dock. You cannot interleave "pixels inside the wallpaper" with real windows; correct blending requires every interleavable window to be its own surface. Therefore:
 
@@ -78,39 +78,44 @@ UEFI → GRUB → kernel → initramfs → systemd → vulos.service (headless, 
 ```
 vulos-init → mount filesystems → vulos-server → cage + Cog → http://localhost:8080
 ```
-- Single-window kiosk: cage runs one Cog/WPE instance fullscreen
-- No native windows, no app launching outside the browser
-- Native mode detection exists (`detectNativeMode()`) but only works with sway/labwc
-- Cog-based native windows exist (`POST /api/shell/native-window`) but untested on bare metal
+- Single-window kiosk: cage runs one Cog/WPE instance fullscreen — React shell is the sole WM
+- Native apps stream into the shell (same pipeline as remote/Docker) — **this is the v1 target**
+- `detectNativeMode()` / `POST /api/shell/native-window` exist but are opt-in v2 paths, not the bare-metal default
 
 ---
 
 ## Target Architecture
 
-### The two-layer model
+### v1: one compositor, always-stream
 
 ```
-Layer 1: Wayland compositor (labwc)
-  ├── Browser window (fullscreen, background, always behind everything)
-  │   └── Vula OS shell (React app: launchpad, dock, menu bar, chat)
-  ├── Native app window (GIMP, LibreOffice, terminal, Wine game...)
-  ├── Native app window
-  └── Native app window
-      ↑ each has Vula OS traffic light decorations via labwc SSD theme
+Layer 1: Wayland compositor (cage — fullscreen kiosk)
+  └── Browser window (Cog/WPE or Chromium — fullscreen, IS the desktop)
+        └── Vula OS React shell (launchpad, dock, menu bar, chat, all JSX windows)
+              └── Native app windows → stream transport: GStreamer/WebRTC → <StreamViewer>
 ```
 
-- **labwc** — lightweight wlroots compositor with server-side decorations (SSD)
-- The browser is a Wayland window pinned to the background (like a desktop wallpaper)
-- Apps launch as real Wayland windows on top of the browser
-- labwc draws the title bar + traffic light buttons around each window (configured via theme)
-- No WebRTC streaming needed on local bare metal — apps render directly to the compositor
-- Remote users still connect via browser and get the WebRTC-streamed experience
+- **cage** — single-app Wayland kiosk (76KB); no configuration needed; runs the browser fullscreen
+- The browser IS the desktop — React shell owns every pixel, every window, every z-position
+- Native Linux apps (GIMP, LibreOffice, Blender, games…) stream via the same WebRTC pipeline as remote
+- No labwc / wlr-layer-shell / `wlr-foreign-toplevel` / per-app webview needed
+- Remote users and local users use the same streaming transport — one code path, always tested
 
-### Why labwc for bare metal, cage for streaming
+See `STREAMING-OPTIMIZATIONS.md` for the full cage + PipeWire + GStreamer pipeline.
+
+```
+Bare metal local:     cage (fullscreen kiosk) + React shell + stream transport for native apps
+Streaming remote:     cage per session (headless, one app, PipeWire capture) — identical pipeline
+No GPU fallback:      Xvfb + ximagesrc (current system, unchanged)
+```
+
+### v2: surface transport on labwc (BMINIT-17/18 — not a v1 blocker)
+
+> **This section describes future work only.** Nothing below is in v1.
 
 Two compositors, each optimal for its job. Both wlroots-based, <1MB combined install (cage 76KB + labwc 713KB).
 
-**Bare metal (labwc)** — user sits at the machine, needs multiple windows on a real display:
+**Bare metal v2 (labwc)** — zero-copy `surface` transport; JSX and native windows peer in one z-stack:
 
 | | cage | sway | labwc |
 |---|---|---|---|
@@ -121,9 +126,9 @@ Two compositors, each optimal for its job. Both wlroots-based, <1MB combined ins
 | Window stacking | N/A | Tiling-focused | Floating (desktop-style) |
 | Custom themes | N/A | No SSD | Yes — openbox themes |
 
-labwc gives us floating windows with custom-themed title bars — exactly what we need to match the traffic light UI without modifying each app.
+labwc gives us floating windows with custom-themed title bars — exactly what we need to match the traffic light UI without modifying each app, and without requiring each window to be its own webview until v2.
 
-**Streaming (cage)** — one app per session, headless, captured via PipeWire for remote users:
+**Streaming (cage)** — one app per session, headless, captured via PipeWire (v1 and v2):
 
 | | cage | labwc |
 |---|---|---|
@@ -135,29 +140,21 @@ labwc gives us floating windows with custom-themed title bars — exactly what w
 | 10 concurrent sessions | ~50MB | ~150MB |
 | PipeWire/DMA-BUF path | wlroots (identical) | wlroots (identical) |
 
-cage is purpose-built for "one app, one output, nothing else" — exactly the streaming use case. See `STREAMING-OPTIMIZATIONS.md` for the full streaming pipeline.
-
-```
-Bare metal local:     labwc (one instance, real display, multi-window, traffic lights)
-Streaming remote:     cage per session (headless, one app, PipeWire capture)
-No GPU fallback:      Xvfb + ximagesrc (current system, unchanged)
-```
-
 ---
 
-## Boot Sequence (Target)
+## Boot Sequence (v1 — current target)
 
 ```
 UEFI → systemd-boot → Linux kernel + initramfs
-  → Plymouth splash (Vula logo on screen)
-  → systemd (or vulos-init as PID 1)
+  → Plymouth splash (Vulos logo on screen)
+  → vulos-init as PID 1
     → Phase 1: Filesystems
-    → Phase 2: Hardware detection (GPU, audio, input, network)
+    → Phase 2: Hardware detection (GPU, audio, input, network) — drives compositor env + Chromium flags
     → Phase 3: Networking (DHCP)
     → Phase 4: PipeWire (audio + screen capture for remote)
-    → Phase 5: labwc (Wayland compositor)
-    → Phase 6: vulos-server (Go backend)
-    → Phase 7: Browser (Cog/WPE, fullscreen background) → localhost:8080
+    → Phase 5: cage (Wayland kiosk compositor)
+    → Phase 6: vulos-server (Go backend) [supervised by superviseServer]
+    → Phase 7: Browser (Cog/WPE or Chromium, fullscreen kiosk) → localhost:8080 [supervised by superviseKiosk]
     → Plymouth quit (seamless handoff, no TTY flash)
 ```
 
@@ -196,9 +193,36 @@ Already implemented in `cmd/init/main.go`. Additions:
 
 ---
 
-## Phase 4: Compositor — labwc
+## Phase 4: Compositor — cage (v1)
 
-### Configuration
+`cage` runs the browser as a single fullscreen Wayland surface — no configuration needed.
+
+```bash
+cage -- chromium --kiosk --ozone-platform=wayland http://localhost:8080
+# or, if Cog/WPE is available:
+cage -- cog --platform=wl http://localhost:8080
+```
+
+- GPU detected: `WLR_RENDERER=vulkan` or `WLR_RENDERER=gles2` (set from host-profile probes)
+- No GPU: `WLR_RENDERER=pixman` (software, still works)
+- No display connected → skip cage, run headless (detect via `/sys/class/drm/card*/status`)
+- `vulos.kiosk=force` kernel cmdline overrides display detection (QEMU / CI use)
+
+### Browser choice
+
+**Chromium (current default)**
+- `chromium --kiosk --ozone-platform=wayland http://localhost:8080`
+- Already in the image, smoke-tested; GPU flags driven by host-profile detection
+
+**WPE WebKit via Cog (preferred when available)**
+- Lightweight, no browser chrome; ~150MB RAM vs ~400MB+ for Chromium
+- `cog --platform=wl http://localhost:8080`
+
+---
+
+## Phase 4 (v2 only): Compositor — labwc (BMINIT-18)
+
+> **v2 future work.** Nothing in this section ships in v1. See BMINIT-18.
 
 labwc uses openbox-style XML config in `~/.config/labwc/`:
 
@@ -229,7 +253,7 @@ labwc uses openbox-style XML config in `~/.config/labwc/`:
 </labwc_config>
 ```
 
-### Traffic Light Theme
+### Traffic Light Theme (v2)
 
 labwc supports openbox themes. Create `/usr/share/themes/vulos/openbox-3/themerc`:
 
@@ -261,89 +285,94 @@ padding.width: 8
 
 This gives every native window the same red/yellow/green traffic lights as the in-browser window system, without modifying any app.
 
-### GPU rendering
+---
 
-- [ ] GPU detected: `WLR_RENDERER=vulkan` or `WLR_RENDERER=gles2`
-- [ ] No GPU: `WLR_RENDERER=pixman` (software, still works)
-- [ ] Multi-monitor: labwc handles hotplug and multi-output natively
-- [ ] HiDPI: `WLR_OUTPUT_SCALE=2` for Retina-style displays
+## Phase 5: cage + Chromium Kiosk (v1)
 
-### Headless fallback
+The browser is the desktop. cage runs a single fullscreen Chromium/Cog window showing `http://localhost:8080`. The React shell inside it renders everything — dock, launchpad, menu bar, chat, and all native-app windows (as `<StreamViewer>` panes). There is no separate compositor layer; the browser IS the only surface.
 
-- [ ] No display connected → skip labwc, run headless (network access only)
-- [ ] Detect: check `/sys/class/drm/card*/status` for "connected"
+### How it works (v1)
+
+1. `cage` starts (single-app fullscreen Wayland compositor)
+2. Chromium or Cog/WPE launches inside cage → `http://localhost:8080`
+3. User sees the Vulos desktop — dock, menu bar, launchpad — all React
+4. User opens a native app → stream transport: app runs headless under cage, GStreamer/WebRTC into `<StreamViewer>` inside the shell
+5. `superviseKiosk` keeps cage + browser alive with exponential backoff (1 s → 30 s, reset on healthy run ≥ 30 s)
+
+### Host-profile detection drives kiosk behaviour
+
+`detectHost()` probes GPU, input devices, and RAM at boot via `services/hwdetect/` and `services/gpu/`, producing a `hostProfile`. The profile drives:
+- `WLR_RENDERER` env for cage (vulkan / gles2 / pixman)
+- Chromium GPU flags (`--enable-gpu`, `--use-gl=egl`, etc.)
+- Whether the remote-browser stream pool pre-warms (`PrewarmBrowser = HasHWGPU && !LowMem`)
+
+One image, one boot path — behaviour is derived from runtime probes, not separate build variants.
+
+### Supervision (vulos-init)
+
+`vulos-init` supervises two critical processes so the desktop never goes blank:
+
+- `superviseServer` — keeps `vulos-server` alive. Uses `cmd.Wait()` (no polling overhead). On exit, restarts with **exponential backoff 1 s → 30 s** (doubles each failed restart, resets to 1 s after any run that stays up ≥ 30 s).
+- `superviseKiosk` — keeps the `cage` + browser kiosk alive with the same backoff pattern and healthy-run reset.
+
+Both goroutines run forever; they are not restartable from outside. A healthy 30-second run is considered a clean start and resets the backoff counter to 1 s.
 
 ---
 
-## Phase 5: Browser as Desktop Background
+## Phase 5 (v2 only): labwc — browser as shell background (BMINIT-18)
 
-The browser renders the Vula OS shell (dock, launchpad, menu bar, wallpaper, chat). It sits behind all native windows like a desktop wallpaper.
-
-### How it works
+> **v2 future work.** The "browser pinned as background, native windows on top" model requires every interleavable JSX window to be its own `xdg-toplevel` surface — see the Window Model section. Nothing below ships in v1.
 
 1. labwc starts
 2. Cog (WPE WebKit) launches fullscreen → `http://localhost:8080`
 3. labwc window rule pins Cog to background layer (always behind)
-4. User sees the Vula OS desktop — dock at bottom, menu bar at top, wallpaper
-5. User clicks an app in launchpad → app launches as a real Wayland window on top
-6. labwc decorates the window with the Vula OS traffic light theme
-
-### Browser choice
-
-**WPE WebKit via Cog (preferred)**
-- Lightweight, no browser chrome (no URL bar, no tabs)
-- ~150MB RAM vs ~400MB+ for Chromium
-- Hardware-accelerated via EGL on Wayland
-- `cog --platform=wl http://localhost:8080`
-
-**Chromium (fallback)**
-- `chromium --kiosk --ozone-platform=wayland http://localhost:8080`
-- Already in the image, guaranteed to work
-
-### Frontend detection
-
-`useNativeMode.js` already detects this — when running under labwc, `detectNativeMode()` returns `"native"` and `canSpawnNativeWindow()` returns `true`.
+4. User sees the Vulos desktop — dock at bottom, menu bar at top
+5. User opens a desktop app → `surface` transport: app launches as a real `xdg-toplevel` Wayland window on top; labwc decorates it with the Vulos traffic-light theme
 
 ---
 
 ## Phase 6: Native App Launching
 
-### Current flow (remote/Docker — unchanged)
+### v1 flow — always-stream (bare metal and remote identical)
 ```
-User clicks app → POST /api/stream/launch → Xvfb + GStreamer + WebRTC → streamed in browser
-```
-
-### Bare metal flow (new)
-```
-User clicks app → detect native mode → launch app directly on Wayland → real window appears
+User clicks app → POST /api/stream/launch → cage (headless) + GStreamer + WebRTC → <StreamViewer> in React shell
 ```
 
-### Implementation
+This is the same pipeline used for remote/Docker access. On bare metal v1, the local user sees the same streamed window in the React shell as a remote user would. Trade-off: encode/decode overhead for heavy apps; payoff: one tested code path, no compositor complexity.
 
-When `isOnDevice()` is true, Launchpad changes launch behaviour:
+- **Built-in apps** (terminal, files, settings, etc.) — React components, no streaming needed
+- **Desktop apps** (GIMP, LibreOffice, Blender, etc.) — stream transport (cage per-session, PipeWire → GStreamer → WebRTC)
+- **Games / Wine** — stream transport (same path, with GPU encoder for NVENC/VAAPI when available)
 
-- [ ] **Built-in apps** (terminal, files, settings, etc.) — still React components inside the browser window (no change, they're already lightweight)
-- [ ] **Desktop apps** (GIMP, LibreOffice, Blender, etc.) — launch natively on the compositor instead of streaming
+---
+
+## Phase 6 (v2 only): Native App Launching — surface transport (BMINIT-17)
+
+> **v2 future work.** Requires labwc + `wlr-foreign-toplevel` + per-window webview (BMINIT-17/18). `detectNativeMode()` / `POST /api/shell/native-launch` (BMINIT-02/04/06) are opt-in v2 paths only.
+
+### v2 bare metal flow (future)
+```
+User clicks app → detect native mode → launch app as xdg-toplevel on labwc → surface transport → JSX window rect
+```
+
+### v2 implementation (future)
+
+When `isOnDevice()` is true and surface transport is active, Launchpad changes launch behaviour:
+
+- [ ] **Desktop apps** (GIMP, LibreOffice, Blender, etc.) — launch natively on labwc compositor
   - `POST /api/shell/native-launch` → `exec.Command(binary, args...)` with `WAYLAND_DISPLAY` set
-  - App appears as a real Wayland window, labwc decorates it with traffic light theme
-  - No Xvfb, no GStreamer, no WebRTC — direct GPU rendering to screen
+  - App appears as a real `xdg-toplevel` Wayland window; labwc decorates it with traffic-light theme
+  - No Xvfb, no GStreamer, no WebRTC — direct GPU rendering to screen (zero-copy DMABUF)
 - [ ] **Wine/Lutris games** — launch natively with `WAYLAND_DISPLAY` (or XWayland for X11 games)
-- [ ] **Browser tabs** — Cog spawns new windows (already implemented via `POST /api/shell/native-window`)
+- [ ] **Browser tabs** — Cog spawns new windows (`POST /api/shell/native-window`)
 
-### The dock on bare metal
+### v2: dock on bare metal (future)
 
 - [ ] Dock shows both in-browser windows AND native windows
 - [ ] Native windows tracked via `wlr-foreign-toplevel-management-v1` protocol (labwc supports this)
 - [ ] Backend: `GET /api/shell/windows` returns list of all Wayland windows (title, app_id, state)
 - [ ] Clicking a native window in the dock focuses it (via `wlr-foreign-toplevel` activate)
 - [ ] Minimise/close from dock works on native windows too
-
-### Remote users see the same thing
-
-When a remote user connects via browser:
-- Built-in apps: same React components (no change)
-- Desktop apps: streamed via WebRTC (current system, no change)
-- The local user sees real windows, the remote user sees streamed windows — same apps, different transport
 
 ---
 
@@ -355,11 +384,11 @@ Yes — install the browser first. The installer is just another Vula OS app.
 
 ```
 USB boot
-  → Plymouth splash (Vula logo)
+  → Plymouth splash (Vulos logo)
   → squashfs + tmpfs overlay (OS runs from RAM)
-  → systemd → PipeWire → labwc → Cog → http://localhost:8080
-  → Full Vula OS desktop appears
-  → "Install Vula OS" app pinned to dock
+  → vulos-init → PipeWire → cage → Chromium → http://localhost:8080
+  → Full Vulos desktop appears (React shell fullscreen in browser)
+  → "Install Vulos" app pinned to dock
   → User clicks it → installer React app opens
   → Partitions disk, copies files, installs bootloader
   → Reboot → boots from internal disk
@@ -374,14 +403,14 @@ Plymouth handles this. From power-on to browser-ready takes ~5-15 seconds:
 ```
 0s    UEFI POST
 2s    Bootloader → kernel loading
-3s    Plymouth splash appears (Vula logo + progress bar)
-5s    systemd starts services
-8s    labwc + Cog launch
+3s    Plymouth splash appears (Vulos logo + progress bar)
+5s    vulos-init starts, hardware probes run
+8s    cage + Chromium launch
 10s   Browser loads React app from localhost:8080
 12s   Plymouth fades out, desktop appears
 ```
 
-Plymouth draws directly to the kernel framebuffer (KMS/DRM). No display server needed. When labwc starts, it takes over the DRM master and Plymouth hands off seamlessly — `plymouth quit --retain-splash`.
+Plymouth draws directly to the kernel framebuffer (KMS/DRM). No display server needed. When cage starts, it takes over the DRM master and Plymouth hands off seamlessly — `plymouth quit --retain-splash`.
 
 ### Plymouth theme
 
@@ -397,8 +426,8 @@ Plymouth draws directly to the kernel framebuffer (KMS/DRM). No display server n
 ```ini
 # vulos.plymouth
 [Plymouth Theme]
-Name=Vula OS
-Description=Vula OS boot splash
+Name=Vulos
+Description=Vulos boot splash
 ModuleName=script
 
 [script]
@@ -439,10 +468,10 @@ Plymouth supports `plymouth --update=<message>` and `plymouth system-update --pr
 ```
  0%   Kernel loaded, initramfs running
 10%   Filesystems mounted
-20%   systemd started
+20%   vulos-init started, hardware probes complete
 30%   Networking up (DHCP acquired)
 45%   PipeWire started
-55%   labwc started (compositor ready)
+55%   cage started (compositor ready)
 65%   vulos-server started (HTTP 200 on /health)
 80%   Browser launched, loading React app
 95%   Desktop shell rendered
@@ -453,9 +482,9 @@ Implementation: each systemd unit and init script calls `plymouth update --statu
 
 ```bash
 # Example: in vulos.service ExecStartPre
-ExecStartPre=/usr/bin/plymouth update --status="Starting Vula OS" --progress=65
+ExecStartPre=/usr/bin/plymouth update --status="Starting Vulos" --progress=65
 
-# Example: in labwc.service ExecStartPost
+# Example: after cage starts (ExecStartPost in cage launch unit)
 ExecStartPost=/usr/bin/plymouth update --status="Display ready" --progress=55
 ```
 
@@ -468,10 +497,10 @@ Press `Ctrl+V` during boot → splash dissolves, reveals live systemd journal ou
 │ [  OK  ] Started systemd-networkd           │
 │ [  OK  ] Started PipeWire Media Session     │
 │ [  OK  ] Started WirePlumber                │
-│ [  OK  ] Started labwc Wayland compositor   │
-│ [  OK  ] Started Vula OS Server             │
-│          Starting Cog WebKit browser...     │
-│ [  OK  ] Started Cog WebKit browser         │
+│ [  OK  ] Started cage Wayland compositor    │
+│ [  OK  ] Started Vulos Server               │
+│          Starting Chromium kiosk...         │
+│ [  OK  ] Started Chromium kiosk             │
 │                                             │
 └─────────────────────────────────────────────┘
 ```
@@ -585,12 +614,12 @@ ARM boards use U-Boot or board firmware instead of UEFI/GRUB.
 - [ ] Boot firmware reads `config.txt` + `kernel8.img` from FAT32 partition
 - [ ] Device tree blob (`.dtb`) describes hardware
 - [ ] GPU: VideoCore VI, mesa V3D driver
-- [ ] labwc works on Pi 4/5 with mesa
+- [ ] cage + Chromium kiosk works on Pi 4/5 with mesa (v1); labwc + surface transport is v2
 
 ### PinePhone
 - [ ] U-Boot in SPI flash or SD card
-- [ ] Touch input via libinput (labwc handles touch natively)
-- [ ] Mobile display: labwc handles rotation + scaling
+- [ ] Touch input via libinput (cage passes touch events to the browser)
+- [ ] Mobile display: rotation + scaling handled by Chromium kiosk flags
 - [ ] postmarketOS kernel + device tree
 
 ### Build
@@ -602,22 +631,22 @@ ARM boards use U-Boot or board firmware instead of UEFI/GRUB.
 
 ## Docker vs Bare Metal
 
-| | Docker | Bare Metal (remote) | Bare Metal (local) |
-|---|---|---|---|
-| PID 1 | tini | vulos-init | vulos-init |
-| Display | Xvfb (virtual) | Xvfb (virtual) | labwc (real display) |
-| Apps | Streamed (WebRTC) | Streamed (WebRTC) | Native Wayland windows |
-| Window chrome | CSS (in-browser) | CSS (in-browser) | labwc SSD theme (traffic lights) |
-| GPU | `--gpus all` | Direct | Direct |
-| Input | `--device /dev/uinput` | uinput | libinput (real devices) |
-| Audio | PulseAudio (virtual) | PulseAudio (virtual) | PipeWire (real hardware) |
-| Boot | Instant | 5-15s | 5-15s |
+| | Docker | Bare Metal (remote) | Bare Metal (local, v1) | Bare Metal (local, v2) |
+|---|---|---|---|---|
+| PID 1 | tini | vulos-init | vulos-init | vulos-init |
+| Display | Xvfb (virtual) | Xvfb (virtual) | cage (fullscreen kiosk) | labwc (real display, multi-window) |
+| Apps | Streamed (WebRTC) | Streamed (WebRTC) | Streamed (WebRTC, same pipeline) | `surface` transport (zero-copy DMABUF) |
+| Window chrome | CSS (in-browser) | CSS (in-browser) | CSS (in-browser, React shell) | labwc SSD theme (traffic lights) |
+| GPU | `--gpus all` | Direct | Direct | Direct |
+| Input | `--device /dev/uinput` | uinput | libinput (real devices) | libinput (real devices) |
+| Audio | PulseAudio (virtual) | PulseAudio (virtual) | PipeWire (real hardware) | PipeWire (real hardware) |
+| Boot | Instant | 5-15s | 5-15s | 5-15s |
 
 ---
 
 ## TTY Fallback
 
-If labwc fails, drop to a text console:
+If cage or the browser fails (and superviseKiosk cannot recover), drop to a text console:
 
 ```
 ┌─────────────────────────────────────┐
@@ -647,13 +676,17 @@ Rendered via `getty` + bash script. No display server needed.
 
 ## Implementation Order
 
-1. labwc config + Vula OS traffic light theme (openbox themerc)
-2. Switch `vulos-init` from cage to labwc — browser as background window
-3. Native app launching from launchpad (skip streaming on bare metal)
-4. Dock integration with `wlr-foreign-toplevel` (show native windows in dock)
-5. Plymouth boot splash with Vula branding
-6. Seamless Plymouth → labwc handoff (no TTY flash)
-7. squashfs + live USB overlay
-8. Installer app (React UI + Go backend)
-9. Networking in init (DHCP, WiFi, mDNS)
-10. ARM device images (Raspberry Pi, PinePhone)
+### v1 (current)
+1. cage + Chromium kiosk (always-stream, React shell as sole WM) — **BMINIT-16**
+2. Plymouth boot splash with Vulos branding
+3. Seamless Plymouth → cage handoff (no TTY flash)
+4. squashfs + live USB overlay — **BMINIT-14** (ESP fix outstanding)
+5. Installer app (React UI + Go backend)
+6. Networking in init (DHCP, WiFi, mDNS)
+7. ARM device images (Raspberry Pi, PinePhone)
+
+### v2 (future — surface transport)
+8. surface transport / DMABUF passthrough — **BMINIT-17**
+9. labwc unification: layer-shell chrome + per-window webview + foreign-toplevel — **BMINIT-18**
+10. labwc config + Vulos traffic-light openbox theme
+11. Dock integration with `wlr-foreign-toplevel` (show native windows in dock)

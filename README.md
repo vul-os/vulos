@@ -69,7 +69,7 @@ The repo carries its own project-management docs. If you want to follow along or
 
 ### Bare Metal (flash to USB)
 
-Download, flash, boot — like Ubuntu. On bare metal, Vula OS boots into a WebKit browser that renders the desktop shell. Game windows and native apps render alongside the browser as real compositor windows.
+Download, flash, boot — like Ubuntu. On bare metal, Vulos boots a fullscreen browser via `cage`; the React shell is the desktop. Native Linux apps stream into windows of that desktop on demand — the same WebRTC pipeline used for remote access, so everything works out of the box on any hardware.
 
 | Platform | File | Devices |
 |----------|------|---------|
