@@ -130,8 +130,10 @@ PY
 }
 
 # ── 3. Poll readiness ───────────────────────────────────────────────────────
-say "Waiting up to ${TIMEOUT}s for http://127.0.0.1:${HOSTPORT}/api/health …"
-URL="http://127.0.0.1:${HOSTPORT}/api/health"
+# /api/health is auth-gated (returns 401) — use the public setup-status
+# endpoint as the "server is up and routing" readiness signal.
+say "Waiting up to ${TIMEOUT}s for http://127.0.0.1:${HOSTPORT}/api/setup/status …"
+URL="http://127.0.0.1:${HOSTPORT}/api/setup/status"
 deadline=$(( $(date +%s) + TIMEOUT ))
 PASS=0
 while [ "$(date +%s)" -lt "$deadline" ]; do

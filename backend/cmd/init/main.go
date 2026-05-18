@@ -76,6 +76,9 @@ func main() {
 	// Phase 4: Generate SSH host keys + start sshd
 	startSSH()
 
+	// Phase 5: D-Bus system bus (before the browser, best-effort)
+	startSystemBus()
+
 	// Phase 5: Start vulos server
 	startServices()
 
@@ -454,6 +457,33 @@ func startServices() {
 	startKiosk()
 }
 
+// startSystemBus brings up a D-Bus system bus (best-effort, non-fatal).
+// There is no systemd socket activation under vulos-init, so without this
+// Chromium/Cog and assorted desktop bits log "Failed to contact D-Bus" on
+// every launch. Ensures /etc/machine-id (dbus refuses to start without it)
+// and /run/dbus first.
+func startSystemBus() {
+	bin := findBinary("dbus-daemon", "/usr/bin/dbus-daemon")
+	if bin == "" {
+		return
+	}
+	if _, err := os.Stat("/run/dbus/system_bus_socket"); err == nil {
+		return // already running
+	}
+	// dbus-daemon aborts without a machine-id.
+	if b, _ := os.ReadFile("/etc/machine-id"); len(b) < 32 {
+		if uuidgen := findBinary("dbus-uuidgen", "/usr/bin/dbus-uuidgen"); uuidgen != "" {
+			_ = exec.Command(uuidgen, "--ensure=/etc/machine-id").Run()
+		}
+	}
+	os.MkdirAll("/run/dbus", 0o755)
+	if err := exec.Command(bin, "--system", "--fork", "--nopidfile").Run(); err != nil {
+		log.Printf("dbus-daemon start warning (non-fatal): %v", err)
+	} else {
+		log.Println("dbus system bus started")
+	}
+}
+
 // startSSH generates SSH host keys on first boot (idempotent) and starts sshd.
 func startSSH() {
 	// Generate all host key types if the ed25519 key is missing (first boot only).
@@ -467,6 +497,11 @@ func startSSH() {
 	} else {
 		log.Println("SSH host keys already present")
 	}
+
+	// sshd needs its privilege-separation directory; /run is a fresh tmpfs
+	// every boot, so create it or sshd exits 255 ("Missing privilege
+	// separation directory: /run/sshd").
+	os.MkdirAll("/run/sshd", 0o755)
 
 	// Start sshd in daemon mode (idempotent — sshd refuses to start if already running).
 	sshdBin := findBinary("/usr/sbin/sshd", "sshd")
@@ -496,10 +531,18 @@ func startKiosk() {
 
 	// Shared runtime dir for Wayland socket.
 	os.MkdirAll("/run/user/0", 0700)
+	// Bare-metal compositor env. Deliberately do NOT set WAYLAND_DISPLAY:
+	// the compositor *creates* that socket; presetting it forces wlroots into
+	// nested-Wayland mode ("Could not connect to remote display") instead of
+	// the DRM backend on the real GPU. LIBSEAT_BACKEND=builtin lets the
+	// compositor become DRM master directly as root — there is no
+	// seatd/logind/polkit under vulos-init (without it wlroots aborts: "a
+	// seat could not be created"). pixman renderer because QEMU virtio-gpu /
+	// software GPUs have no usable GL here.
 	baseEnv := append(os.Environ(),
 		"XDG_RUNTIME_DIR=/run/user/0",
-		"WAYLAND_DISPLAY=wayland-1",
-		"WLR_LIBINPUT_NO_DEVICES=1",
+		"LIBSEAT_BACKEND=builtin",
+		"WLR_RENDERER=pixman",
 	)
 
 	// Wait for server to be ready before launching browser.
@@ -508,34 +551,30 @@ func startKiosk() {
 	plymouthProgress(100)      // milestone: kiosk up
 	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
 
-	// Prefer labwc (multi-window, traffic-light SSD, browser-as-background).
-	labwcBin, err := exec.LookPath("labwc")
-	if err == nil {
-		startLabwcKiosk(labwcBin, baseEnv)
-		return
-	}
-
-	// labwc absent → cage fallback (single-window kiosk, existing behaviour).
-	log.Println("labwc not found, falling back to cage kiosk")
-	cage, err := exec.LookPath("cage")
+	// Single mode (decisions.md D93): the OS *is* the React shell at
+	// localhost:8080. cage runs the browser fullscreen — one window, no
+	// labwc / native-window / window-manager path. Native Linux apps stream
+	// into the React shell (same pipeline as remote). The installer is just
+	// another React app inside this shell.
+	cageBin, err := exec.LookPath("cage")
 	if err != nil {
-		log.Println("cage not found, skipping kiosk mode")
+		log.Println("cage not found, skipping kiosk")
 		return
 	}
-	wpe := findBinary("cog", "/usr/bin/cog", "/usr/bin/wpe-webkit-launcher")
-	if wpe == "" {
-		log.Println("WPE WebKit not found, skipping kiosk")
+	browserBin, browserArgs := findKioskBrowser()
+	if browserBin == "" {
+		log.Println("no browser (cog/chromium) found, skipping kiosk")
 		return
 	}
-	cmd := exec.Command(cage, "--", wpe, "http://localhost:8080")
+	cmd := exec.Command(cageBin, append([]string{"--", browserBin}, browserArgs...)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = baseEnv
 	if err := cmd.Start(); err != nil {
-		log.Printf("cage start error: %v", err)
+		log.Printf("cage kiosk start error: %v", err)
 		return
 	}
-	log.Printf("cage kiosk started (pid=%d)", cmd.Process.Pid)
+	log.Printf("cage kiosk started: %s (pid=%d)", browserBin, cmd.Process.Pid)
 }
 
 // kioskForced reports whether the kernel cmdline requested the compositor be
@@ -569,74 +608,13 @@ func displayConnected() bool {
 	return false
 }
 
-// startLabwcKiosk launches labwc with assets/labwc config then pins the
-// browser (Cog/WPE preferred, Chromium fallback) to the background layer.
-func startLabwcKiosk(labwcBin string, baseEnv []string) {
-	// Point labwc at the shipped config (BMINIT-01 assets/labwc/).
-	// XDG_CONFIG_DIRS tells labwc to look in assets/labwc for rc.xml etc.
-	labwcConfigDir := findLabwcConfigDir()
-	labwcEnv := append(baseEnv, "XDG_CONFIG_DIRS=/usr/share:/etc:/usr/local/share")
-	if labwcConfigDir != "" {
-		labwcEnv = append(labwcEnv, "LABWC_CONFIG_DIR="+labwcConfigDir)
-	}
-
-	labwcCmd := exec.Command(labwcBin)
-	labwcCmd.Stdout = os.Stdout
-	labwcCmd.Stderr = os.Stderr
-	labwcCmd.Env = labwcEnv
-
-	if err := labwcCmd.Start(); err != nil {
-		log.Printf("labwc start error: %v", err)
-		return
-	}
-	log.Printf("labwc started (pid=%d)", labwcCmd.Process.Pid)
-
-	// Give labwc a moment to create the Wayland socket.
-	time.Sleep(1 * time.Second)
-
-	// Browser: Cog/WPE preferred (lightweight, no chrome); Chromium as fallback.
-	browserBin, browserArgs := findKioskBrowser()
-	if browserBin == "" {
-		log.Println("no browser found (cog/chromium), labwc running without browser")
-		return
-	}
-
-	browserCmd := exec.Command(browserBin, browserArgs...)
-	browserCmd.Stdout = os.Stdout
-	browserCmd.Stderr = os.Stderr
-	browserCmd.Env = baseEnv
-
-	if err := browserCmd.Start(); err != nil {
-		log.Printf("browser start error: %v", err)
-		return
-	}
-	log.Printf("kiosk browser started under labwc (bin=%s pid=%d)", browserBin, browserCmd.Process.Pid)
-}
-
-// findLabwcConfigDir returns the assets/labwc config directory if it exists,
-// checking paths relative to the binary and well-known install locations.
-func findLabwcConfigDir() string {
-	candidates := []string{
-		"/usr/share/vulos/assets/labwc",
-		"/opt/vulos/assets/labwc",
-		"assets/labwc",
-	}
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
-}
-
-// findKioskBrowser returns the browser binary + args for labwc kiosk mode.
-// Cog (WPE WebKit) runs fullscreen on Wayland natively; the labwc window rule
-// in rc.xml pins it to the background layer (BMINIT-01 config).
+// findKioskBrowser returns the browser binary + args run (under cage)
+// fullscreen as the single kiosk window showing the React shell.
+// Cog (WPE WebKit) is preferred (lightweight, no browser chrome);
 // Chromium is the fallback with equivalent --kiosk flags.
 func findKioskBrowser() (string, []string) {
 	cogBin := findBinary("cog", "/usr/bin/cog")
 	if cogBin != "" {
-		// --platform=wl → native Wayland, no cage wrapper needed.
 		return cogBin, []string{"--platform=wl", "http://localhost:8080"}
 	}
 	chromiumBin := findBinary(

@@ -550,7 +550,12 @@ fi
 
 chroot "$ROOTFS" apt-get clean
 rm -rf "$ROOTFS/var/lib/apt/lists/"*
-chroot "$ROOTFS" flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+# Pre-register Flathub. Non-fatal: flatpak's ostree repo init can fail in a
+# chroot on some build filesystems ("linkat: No such file or directory");
+# the remote is a convenience and is re-addable at runtime — it must not
+# abort the image build under `set -e`.
+chroot "$ROOTFS" flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
+  || echo "  ${DIM}warn: flatpak remote-add skipped (non-fatal, re-addable at runtime)${NC}"
 fi  # end rootfs build / reuse guard
 
 # Hardened sshd configuration (rootfs)
@@ -868,7 +873,12 @@ if [ "$DISK_MODE" = "1" ]; then
 
   # ── Assemble GPT: p1=ESP, p2=root (offset dd, no loop device) ──
   DISK_IMG="$OUTDIR/vulos-${ARCH}.img"
-  ROOT_SZ_MB=$(( $(du -m "$ROOT_IMG" | cut -f1) ))
+  # The ext4 image is sparse: `du` reports ALLOCATED blocks, far less than the
+  # filesystem's logical size (ROOT_MB, what we passed to mkfs.ext4). Sizing
+  # the disk/partition from `du` makes parted's 100% root partition SMALLER
+  # than the ext4 it contains → the kernel sees "fs larger than device" and
+  # fails with `mount: Invalid argument`. Use the known logical size.
+  ROOT_SZ_MB="$ROOT_MB"
   IMG_MB=$(( 1 + ESP_MB + ROOT_SZ_MB + 5 ))
   rm -f "$DISK_IMG"
   dd if=/dev/zero of="$DISK_IMG" bs=1M count="$IMG_MB" status=none
