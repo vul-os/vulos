@@ -507,6 +507,11 @@ func main() {
 	} else {
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
 		registerPasskeysRoutes(mux, passkeysSvc, authStore)
+		// AUTH-10c: device identity / TPM status / seal-unseal HTTP API.
+		devicekey.RegisterHandlers(mux, deviceKS, func(r *http.Request) bool {
+			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+			return p != nil && p.Role == auth.RoleAdmin
+		})
 	}
 
 	// App gateway — /app/{appId}/* proxied with auth
