@@ -21,17 +21,17 @@ func TestSECI_IDRegex_RejectsTraversalAndEncoding(t *testing.T) {
 		"../etc",
 		"../../etc/passwd",
 		"a/../../b",
-		"%2e%2e%2f",       // url-encoded ../
-		"..%2fetc",        // mixed
-		"foo/bar",         // slash
-		"foo\\bar",        // backslash
-		"/abs",            // absolute
-		"CAPITALS",        // charset (uppercase not allowed)
-		"with space",      // charset
-		"x.y",             // dot not in charset
-		"-leadingdash",    // must start [a-z0-9]
-		"",                // empty
-		string(rune(0)),   // NUL
+		"%2e%2e%2f",     // url-encoded ../
+		"..%2fetc",      // mixed
+		"foo/bar",       // slash
+		"foo\\bar",      // backslash
+		"/abs",          // absolute
+		"CAPITALS",      // charset (uppercase not allowed)
+		"with space",    // charset
+		"x.y",           // dot not in charset
+		"-leadingdash",  // must start [a-z0-9]
+		"",              // empty
+		string(rune(0)), // NUL
 		"a" + string(rune(0)) + "b",
 	}
 	for _, id := range bad {

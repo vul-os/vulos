@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	scrollbackSize = 64 * 1024 // 64KB ring buffer
+	scrollbackSize = 64 * 1024             // 64KB ring buffer
 	coalesceDelay  = 16 * time.Millisecond // ~60fps frame coalescing
 )
 
