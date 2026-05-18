@@ -6,7 +6,7 @@ This spec depends on the peering system defined in [PEERING.md](PEERING.md). Not
 
 > **Goal.** A real notification system: structured priorities (low / normal / high / critical), persistent history with grouping, Do-Not-Disturb modes, action buttons on the notification itself, and — when peering lands — cross-instance push.
 > **Non-goals.** A push-notification service. We're a peer system; notifications travel the same trust path as messages.
-> **Status.** Notification model + toast UI are in. Outstanding: persistent storage (NOTIF-02 — currently blocked on stale-base merge, see decisions.md D21), notification center, DND, inline actions.
+> **Status.** Complete. All NOTIF tasks shipped. Persistent storage (NOTIF-02) landed via v3 (`notify_store.go`), notification center + DND (NOTIF-04/05), and inline action buttons (NOTIF-06) are all implemented and wired. The D21 stale-base block was resolved via the interface-first pattern (see decisions.md D74).
 
 ---
 

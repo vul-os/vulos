@@ -37,6 +37,9 @@ var subdirs = []string{
 
 // Service owns the ~/.vulos/peering/ storage tree and exposes the peering API.
 type Service struct {
+	// home is the user's home directory passed to New() (parent of .vulos).
+	home string
+
 	// root is the absolute path to ~/.vulos/peering/
 	root string
 
@@ -45,6 +48,28 @@ type Service struct {
 	pub    ed25519.PublicKey
 	vulaID string
 }
+
+// Home returns the user home directory the service was constructed with
+// (the parent of .vulos). Constructors that derive their own paths from a
+// home directory (NewContactStore, NewInboxStore, NewMediaStore, …) should be
+// passed this value so every peering sub-store shares the same tree.
+func (s *Service) Home() string { return s.home }
+
+// Root returns the absolute path to ~/.vulos/peering/ — the peering storage
+// root. Pass this to constructors that take the peering directory directly
+// (NewFeedStore, NewCollabStore, the profile store dir, …).
+func (s *Service) Root() string { return s.root }
+
+// PrivateKey returns the node's Ed25519 private key (used to sign outbound
+// envelopes / feed entries / signed media URLs). It is the same key the
+// identity endpoints expose the public half of.
+func (s *Service) PrivateKey() ed25519.PrivateKey { return s.priv }
+
+// PublicKey returns the node's Ed25519 public key.
+func (s *Service) PublicKey() ed25519.PublicKey { return s.pub }
+
+// VulaID returns the node's canonical Vula ID ("vula:ed25519:<base58>").
+func (s *Service) VulaID() string { return s.vulaID }
 
 // New creates a Service and ensures the full ~/.vulos/peering/ directory tree
 // exists. The tree is created idempotently — safe to call multiple times or
@@ -79,10 +104,10 @@ func New(home string) *Service {
 	}
 
 	log.Printf("[peering] storage root: %s", root)
-	return &Service{root: root, priv: priv, pub: pub, vulaID: vulaID}
+	return &Service{home: home, root: root, priv: priv, pub: pub, vulaID: vulaID}
 }
 
-// RegisterHandlers wires all peering API routes onto mux.
+// RegisterHandlers wires the node-identity peering routes onto mux.
 //
 // Implemented routes (PEER-01 + PEER-02):
 //
@@ -90,34 +115,14 @@ func New(home string) *Service {
 //	POST /api/peering/identity/export    → export encrypted keypair bundle
 //	POST /api/peering/identity/import    → import encrypted keypair bundle
 //
-// Planned routes (501 Not Implemented until the relevant wave ships):
-//
-//	POST /api/peering/identity/verify
-//	POST /api/peering/identity/confirm
-//	GET  /api/peering/profile
-//	PUT  /api/peering/profile
-//	POST /api/peering/profile/image
-//	GET  /api/peering/profile/image
-//	GET  /api/peering/contacts
-//	POST /api/peering/contacts/request
-//	GET  /api/peering/contacts/requests
-//	POST /api/peering/contacts/approve/{id}
-//	POST /api/peering/contacts/block/{id}
-//	DELETE /api/peering/contacts/{id}
-//	GET  /api/peering/conversations
-//	GET  /api/peering/conversations/{id}/messages
-//	POST /api/peering/conversations/{id}/send
-//	POST /api/peering/media/upload
-//	POST /api/peering/call/initiate
-//	POST /api/peering/call/answer
-//	POST /api/peering/call/reject
-//	POST /api/peering/call/signal
-//	POST /api/peering/call/hangup
-//	GET  /api/peering/bandwidth
-//	POST /api/peering/inbound/request
-//	POST /api/peering/inbound/message
-//	POST /api/peering/inbound/signal
-//	POST /api/peering/inbound/media
+// As of PEER-42 every other peering route (identity verify/confirm,
+// profile/*, contacts/*, conversations/*, media/*, call/*, groups/*,
+// feeds/*, relay/*, collab/*, drop/*, ice, discover, endpoints/*,
+// call/history, inbound/*, …) is served by its own dedicated Register*
+// handler set, wired in cmd/server/main.go onto a peering sub-mux (with
+// the /api/peering/inbound/ subtree wrapped in InboundMiddleware). Those
+// routes are no longer 501 stubs here — the stub registrations were
+// removed because http.ServeMux panics on a duplicate "METHOD /path".
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	// --- Identity (PEER-02: implemented) ---
 
@@ -130,50 +135,32 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	// POST /api/peering/identity/import — import an encrypted keypair bundle.
 	mux.HandleFunc("POST /api/peering/identity/import", s.handleImportIdentity)
 
-	// --- Identity (planned) ---
-	mux.HandleFunc("POST /api/peering/identity/verify", s.stub("email verification initiation"))
-	mux.HandleFunc("POST /api/peering/identity/confirm", s.stub("email verification confirmation"))
-
-	// --- Profile (planned) ---
-	mux.HandleFunc("GET /api/peering/profile", s.stub("own profile"))
-	mux.HandleFunc("PUT /api/peering/profile", s.stub("update profile"))
-	mux.HandleFunc("POST /api/peering/profile/image", s.stub("upload avatar"))
-	mux.HandleFunc("GET /api/peering/profile/image", s.stub("serve avatar"))
-
-	// --- Contacts (planned) ---
-	mux.HandleFunc("GET /api/peering/contacts", s.stub("contact list"))
-	mux.HandleFunc("POST /api/peering/contacts/request", s.stub("send contact request"))
-	mux.HandleFunc("GET /api/peering/contacts/requests", s.stub("pending requests"))
-	mux.HandleFunc("POST /api/peering/contacts/approve/{id}", s.stub("approve contact request"))
-	mux.HandleFunc("POST /api/peering/contacts/block/{id}", s.stub("block contact"))
-	mux.HandleFunc("DELETE /api/peering/contacts/{id}", s.stub("remove contact"))
-
-	// --- Messaging (planned) ---
-	mux.HandleFunc("GET /api/peering/conversations", s.stub("conversation list"))
-	mux.HandleFunc("GET /api/peering/conversations/{id}/messages", s.stub("messages in conversation"))
-	mux.HandleFunc("POST /api/peering/conversations/{id}/send", s.stub("send message"))
-	mux.HandleFunc("POST /api/peering/media/upload", s.stub("upload media attachment"))
-
-	// --- Calls / Signaling (planned) ---
-	mux.HandleFunc("POST /api/peering/call/initiate", s.stub("initiate call"))
-	mux.HandleFunc("POST /api/peering/call/answer", s.stub("answer call"))
-	mux.HandleFunc("POST /api/peering/call/reject", s.stub("reject call"))
-	mux.HandleFunc("POST /api/peering/call/signal", s.stub("relay ICE/SDP"))
-	mux.HandleFunc("POST /api/peering/call/hangup", s.stub("end call"))
-
-	// --- Bandwidth (planned) ---
-	mux.HandleFunc("GET /api/peering/bandwidth", s.stub("bandwidth report"))
-
-	// --- Inbound server-to-server (planned) ---
-	mux.HandleFunc("POST /api/peering/inbound/request", s.stub("inbound contact request"))
-	mux.HandleFunc("POST /api/peering/inbound/message", s.stub("inbound message"))
-	mux.HandleFunc("POST /api/peering/inbound/signal", s.stub("inbound call signal"))
-	mux.HandleFunc("POST /api/peering/inbound/media", s.stub("inbound media"))
+	// --- PEER-42: the identity/verify+confirm, profile/*, contacts/*,
+	//     conversations/*, media/upload, call/* and inbound/* routes that
+	//     were previously 501 stubs here are now served by the real
+	//     Register* handler sets wired in cmd/server/main.go (RegisterVerify
+	//     Handlers, RegisterProfileHandlers, RegisterContactHandlers,
+	//     RegisterMessageHandlers, RegisterMediaHandlers, RegisterCall
+	//     Handlers, …). The stub registrations were removed: Go's
+	//     http.ServeMux panics if the same "METHOD /path" is registered
+	//     twice, so a stub and its real handler cannot coexist (same
+	//     approach already used for the PEER-20b bandwidth stub above and
+	//     in commit 001192c). The Service now only owns the identity
+	//     get/export/import endpoints; every other peering route is owned
+	//     by a dedicated Register* handler set.
 }
 
 // stub returns a handler that replies 501 Not Implemented with a JSON body
 // describing the planned feature. Used to document and reserve routes before
 // the implementing wave ships.
+//
+// As of PEER-42 no peering route is stubbed (every route has a real handler),
+// so this helper currently has no callers. It is intentionally retained so a
+// future not-yet-implemented route can be reserved with a 501 without
+// re-deriving the JSON shape — and to keep the contract documented in one
+// place. Unused methods are valid Go and do not affect build/vet.
+//
+//nolint:unused
 func (s *Service) stub(feature string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

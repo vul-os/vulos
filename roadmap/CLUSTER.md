@@ -6,7 +6,7 @@ For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For 
 
 > **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. CRDT-backed (cr-sqlite) so two nodes editing concurrently merge cleanly. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
 > **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS.
-> **Status.** SQLite + cr-sqlite store, S3 client (SSE-C + Argon2id), node identity, change-set sync loop, file sync with conflict copies, and presence leases are in. Outstanding: SQLite-backed auth (CLUSTER-02), conflict-resolver UI, MinIO registry entry.
+> **Status.** Complete. All CLUSTER tasks shipped. SQLite-backed auth write-through (CLUSTER-02) landed inline via the D76 checkpoint — CGO-free (modernc), one-time auth.json import, all 5 regression tests pass. S3 client, node identity, cr-sqlite changeset sync, file sync with conflict copies, conflict-resolver UI, MinIO registry entry, and presence leases are all in.
 
 ---
 

@@ -12,7 +12,7 @@ import (
 // MediaMeta holds extracted metadata from images and videos.
 type MediaMeta struct {
 	Path     string    `json:"path"`
-	Type     string    `json:"type"`     // "image" or "video"
+	Type     string    `json:"type"` // "image" or "video"
 	Width    string    `json:"width"`
 	Height   string    `json:"height"`
 	Format   string    `json:"format"`   // "jpeg", "png", "mp4", etc.

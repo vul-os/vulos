@@ -1,20 +1,17 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 193 / 193 real tasks done (100%).** Reconciled from git merge history; current as of this commit. The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 161 / 196 real tasks done (82%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added. The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
-> Every roadmap area is fully implemented. Remaining design depth is tracked as
-> explicit later-phase notes in the roadmap docs themselves (see
-> `roadmap/CLUSTER.md` → cr-sqlite CRDT, `roadmap/NOTIFICATIONS.md` →
-> push-over-peering). The Ladybird browser track is **de-scoped** — the spike
-> (LADYBIRD-01) shipped feature-flagged, but the engine is not ready for us;
-> do not invest further until that changes.
+> **vulos-cloud boundary note (decisions.md D33/D25):** BILL-01, OTA-01, FLEET-01, SSH-01, SECX-01, ROUTE-02/03/04, and RELAY-02 live in the separate **vulos-cloud** repo. They are out of scope for this OSS repo's main branch. Agents working here must not re-implement them or treat their absence as a gap.
+
+> The Ladybird browser track is **de-scoped** — the spike (LADYBIRD-01) shipped feature-flagged, but the engine is not ready for us; do not invest further until that changes.
 
 ## At-a-glance
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 41 / 41 | `[██████████]` 100% |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 15 | `[██████████]` 100% |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 9 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 14 / 15 | `[█████████░]` 93% — BMINIT-14 (--live ESP) todo |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
 | Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
@@ -31,7 +28,7 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| **Total** |  | **193 / 193** | `[██████████]` 100% |
+| **Total** |  | **161 / 194** | `[████████░░]` 83% |
 
 ## How to read a task
 
@@ -844,9 +841,9 @@ Scope: welcome→disk-select(visual map)→progress(WS)→success/reboot; shown 
 AC: [ ] app shown only live-USB [ ] disk select+install [ ] WS progress+reboot [ ] error recovery, npm build
 
 ### [BMINIT-14] squashfs + live USB build
-`done` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
-Scope: build.sh --live: mksquashfs, GPT image (ESP+rootfs squashfs), initramfs overlay hook (squashfs RO + tmpfs upper → overlay → pivot_root); keep tarball path.
-AC: [ ] --live produces squashfs+bootable GPT [ ] vulos-live hook installed [ ] non-live unchanged [ ] sh -n build.sh
+`todo` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
+Scope: `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or systemd-boot loader entry — the image is non-bootable. The working UEFI path is `build.sh --disk` (systemd-boot + kernel + initrd via mtools, smoke-tested by `scripts/baremetal-smoke.sh`). Remaining work: give `--live` the same ESP treatment (copy systemd-boot EFI binary, kernel, initrd, and a loader entry into the ESP so UEFI firmware can boot it; then layer in the squashfs + overlay-root hook).
+AC: [ ] --live produces squashfs+bootable GPT (UEFI boots to initramfs pivot) [ ] vulos-live overlay hook installed [ ] --disk path (and non-live tarball) unchanged [ ] SMOKE-02 passes
 
 ### [BMINIT-15] ARM device variants (RPi, PinePhone)
 `done` · P3 · M · dep: none · parallel: no — build.sh
@@ -1000,8 +997,10 @@ AC: [ ] browser opens stream, Push delivers [ ] channel discriminator, multi-sub
 Scope: in-mem + contacts.json: add/list/update/remove, state pending/approved/blocked, per-contact perms (message/media/call/video), IsApproved/Can predicates.
 AC: [ ] persists across restart [ ] state graph enforced [ ] Can reflects grants [ ] unit tests
 
+> **PEERING WIRING GAP (PEER-07, PEER-10 through PEER-41 except PEER-20):** The handler logic for all tasks below exists and is tested in `backend/services/peering/` (contacts_api, verify, profile, discovery, messages, inbox, outbox, media, groups, call, ice, sfu, collab, drop, drop_ble, crypto, relay, relay_attest, endpoints, feeds). However, **none of these sub-handlers are wired into `backend/cmd/server` (main.go or peering.go)**. The live server returns 501 for all contacts/messaging/calls/media/groups/verify/relay/feeds/ice/discovery/drop/collab routes. These tasks are flipped to `todo` until PEER-42 (wiring) lands. PEER-20 (bandwidth) is genuinely wired and stays `done`.
+
 ### [PEER-07] Contact request/approve/block + inbound endpoint
-`done` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
+`todo` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
 Scope: POST contacts/request (sign+send), inbound/request (store pending+notify), requests list, approve/block/delete; approve mutual+notify.
 AC: [ ] request creates pending on recipient [ ] inbound/request allowed w/o approval, others require [ ] approve→approved+notify [ ] block silent drop
 
@@ -1016,52 +1015,52 @@ Scope: QR of own full Vula address; Add-contact via paste or camera QR scan → 
 AC: [ ] own address QR scannable [ ] paste/scan triggers request [ ] malformed rejected
 
 ### [PEER-10] vulos.org email verification (send/confirm + token)
-`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
+`todo` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
 Scope: Call vulos.org verify/send+confirm (configurable base URL), store signed token, validate vulos.org sig; POST identity/verify+confirm, VerifiedEmail().
 AC: [ ] verify sends, confirm stores token [ ] token sig validated [ ] unverified still works [ ] base URL configurable
 
 ### [PEER-11] Profile model: fields, avatar resize, visibility
-`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
+`todo` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
 Scope: Profile store + GET/PUT profile, POST profile/image (resize 256² WebP), GET profile/image (ETag, visibility-gated); visibility resolver.
 AC: [ ] avatar resized WebP at path [ ] image honors ETag+visibility [ ] fields persist w/ default visibility
 
 ### [PEER-12] Peer profile fetch/sync + well-known endpoint
-`done` · P1 · M · dep: PEER-11, PEER-07 · parallel: no — backend/services/peering/profile.go, new wellknown.go, main.go
+`todo` · P1 · M · dep: PEER-11, PEER-07 · parallel: no — backend/services/peering/profile.go, new wellknown.go, main.go
 Scope: Unauth GET /.well-known/vula-id (public fields+verified+endpoints placeholder) at root mux; GET /api/peering/profile/:vula_id fetch+cache; profile-changed push.
 AC: [ ] well-known no auth public only [ ] peer profile cached, respects visibility [ ] approve triggers fetch
 
 ### [PEER-13] Email/directory discovery lookup
-`done` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
+`todo` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
 Scope: GET /api/peering/discover?email/name proxy to vulos.org verify/lookup + optional directory → Vula ID+server; configurable.
 AC: [ ] email lookup resolves when opted-in [ ] name search returns matches [ ] graceful empty
 
 ### [PEER-14] S2S text message delivery (send+inbound+store)
-`done` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
+`todo` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
 Scope: create→sign→deliver peer inbound/message; inbound verify+store ~/.vulos/peering/inbox/<conv>/, push message frame; conversations list+history.
 AC: [ ] msg to approved peer stored their inbox [ ] inbound rejects non-approved/bad sig [ ] list+history persist [ ] recipient gets realtime frame
 
 ### [PEER-15] Offline queue: outbox, retry/backoff, ACK, reconnect sync
-`done` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
+`todo` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
 Scope: Persist unacked outbox, retry 1s/5s/30s/5m/1h then periodic, ACK removes, reconnect pull since last-seen.
 AC: [ ] unreachable stays+retried [ ] ACK removes [ ] online peer pulls missed
 
 ### [PEER-16] Media transfer: upload, hash ref, S2S fetch, thumbnails
-`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
+`todo` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
 Scope: media store ~/.vulos/peering/media/, upload→hash+signed URL, S2S fetch on inbound refs, image/video thumbnails.
 AC: [ ] upload→stable hash+signed URL [ ] recipient fetches own copy post-offline [ ] thumbnails [ ] signed URL rejects tamper/expire
 
 ### [PEER-17] Inbox UI: conversations, thread, composer, media
-`done` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
+`todo` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
 Scope: Messages view: conversation list, thread, composer, drag media, live message channel, contact profile.
 AC: [ ] conversations+threads from API [ ] text+media end-to-end [ ] incoming realtime no refresh
 
 ### [PEER-18] Groups/rooms: definition, membership, fan-out
-`done` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
+`todo` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
 Scope: group create/list/add-member, store ~/.vulos/peering/groups/, fan-out via PEER-14+PEER-15, signed+verified per recipient.
 AC: [ ] create distributes def to members [ ] group msg delivered each member [ ] add-member policy-gated propagates
 
 ### [PEER-19] Call signaling relay (S2S SDP/ICE)
-`done` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
+`todo` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
 Scope: call lifecycle relay: initiate→peer inbound/signal→callee frame; answer/reject/hangup; signal relays opaque SDP/ICE via signal channel; servers no media.
 AC: [ ] initiate → callee incoming-call frame [ ] SDP/ICE relay end-to-end [ ] reject/hangup terminates both [ ] rejected for non-call contacts
 
@@ -1071,109 +1070,124 @@ Scope: periodic speed test (configurable endpoint) or traffic estimate, cache, G
 AC: [ ] returns up/down+latency periodic [ ] peer can request approved peer's [ ] non-blocking startup
 
 ### [PEER-21] STUN/TURN ICE config endpoint for peering calls
-`done` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
+`todo` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
 Scope: GET /api/peering/ice → STUN list + TURN short-lived creds (reuse network.TURNConfig.GenerateCredentials) when TURN_SECRET set.
 AC: [ ] STUN always, TURN creds when secret set [ ] short-lived HMAC [ ] no new TURN code
 
 ### [PEER-22] 1:1 voice call (browser↔browser WebRTC audio)
-`done` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
+`todo` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
 Scope: RTCPeerConnection audio, getUserMedia, offer/answer+ICE over signal channel w/ PEER-21 config, mute, hangup; wire call UI.
 AC: [ ] 2 browsers direct audio via signaling only [ ] mute/hangup, media not via servers [ ] ICE-restart on drop
 
 ### [PEER-23] 1:1 video + screen sharing
-`done` · P1 · M · dep: PEER-22 · parallel: yes — src/builtin/peering/call/
+`todo` · P1 · M · dep: PEER-22 · parallel: yes — src/builtin/peering/call/
 Scope: video track 2-layer simulcast, camera on/off, getDisplayMedia screen-share swap, PiP, quality indicator (getStats).
 AC: [ ] video call toggleable camera [ ] screen share add/stop [ ] quality+PiP
 
 ### [PEER-24] Incoming-call UI, ring, call history
-`done` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
+`todo` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
 Scope: shell-wide incoming-call modal on signal call-request + ringtone; backend call-history + GET endpoint + UI panel.
 AC: [ ] modal regardless of focus [ ] accept/reject drives signaling [ ] completed/missed recorded+listed
 
 ### [PEER-25] Pre-call lobby: bandwidth, host select, capacity
-`done` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
+`todo` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
 Scope: collect bandwidth reports, table, volunteer SFU host, capacity estimate from host upload per formula.
 AC: [ ] lists ▲up▼down latency [ ] host dropdown defaults initiator, updates capacity [ ] estimate matches math
 
 ### [PEER-26] Mesh group calls (3–4 full-mesh)
-`done` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
+`todo` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
 Scope: multiple RTCPeerConnections full mesh, per-peer signaling, grid, SFU-recommend guard when low bandwidth.
 AC: [ ] 3–4 mesh A/V call [ ] join/leave updates mesh no drop [ ] low-bw triggers SFU prompt
 
 ### [PEER-27] Pion SFU on host (forward, simulcast, Last-N)
-`done` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
+`todo` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
 Scope: Pion SFU room: N PCs, accept 2-layer simulcast, forward selected layer per receiver, Last-N (4/6/9), join/leave; 5+ routes through host SFU.
 AC: [ ] 5+ routes through SFU [ ] simulcast received+forwarded per receiver [ ] Last-N limits [ ] no transcoding
 
 ### [PEER-28] SFU dominant speaker + audio mixing (top 3)
-`done` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
+`todo` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
 Scope: VAD/audio-level detection, dominant→high simulcast layer, mix top-3 audio per participant excl self.
 AC: [ ] dominant gets high layer [ ] ≤3 audio streams per participant [ ] never hears self
 
 ### [PEER-29] SFU host handoff + 50-participant cap
-`done` · P3 · M · dep: PEER-27, PEER-25 · parallel: no — new backend/services/peering/sfu/handoff.go, src/builtin/peering/call/useSFUCall.js
+`todo` · P3 · M · dep: PEER-27, PEER-25 · parallel: no — new backend/services/peering/sfu/handoff.go, src/builtin/peering/call/useSFUCall.js
 Scope: detect host loss, auto-select highest-upload new host (PEER-20/25 data), orchestrate browser reconnect, enforce cap 50.
 AC: [ ] kill host → failover best-bw [ ] resumes few sec no full drop [ ] 51st rejected
 
 ### [PEER-30] Yjs collab transport: sync WS + awareness
-`done` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
+`todo` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
 Scope: store Yjs doc binaries+meta, relay opaque CRDT blobs S2S, broadcast updates+awareness on collab channel; useYDoc(docId) hook.
 AC: [ ] 2 browsers same doc merge realtime [ ] awareness broadcasts+clears on disconnect [ ] yjs state persists
 
 ### [PEER-31] Document share/accept + per-peer permissions
-`done` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
+`todo` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
 Scope: doc-share invitation send/recv, accept adds w/ Shared badge, edit/view enforce (view recv-only), owner revoke, documents list/leave.
 AC: [ ] share→invitation, accept registers [ ] view-only sends rejected [ ] revoke stops updates
 
 ### [PEER-32] Collaboration in Docs (TipTap + y-tiptap)
-`done` · P3 · M · dep: PEER-30, PEER-31 · parallel: yes — Docs/Notes app (apps/notes/), src/core/useYDoc.js
+`todo` · P3 · M · dep: PEER-30, PEER-31 · parallel: yes — Docs/Notes app (apps/notes/), src/core/useYDoc.js
 Scope: wire Docs/Notes editor to useYDoc via y-tiptap, shared-doc badge, remote cursors from awareness, Share entry point.
 AC: [ ] 2 users co-edit live merge [ ] remote cursors name+color [ ] Share grants access
 
 ### [PEER-33] Collab in Sheets/Notes/Text Editor + offline state-vector
-`done` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
+`todo` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
 Scope: Sheets y-json, Notes, Text Editor CodeMirror/Monaco binding; reconnect catch-up via state vectors GET inbound/collab-sync.
 AC: [ ] Sheets+TextEditor live multi-user [ ] offline reconnect gets only diff [ ] time-travel from history
 
 ### [PEER-34] Drop: mDNS LAN discovery + nearby + send/accept
-`done` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
+`todo` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
 Scope: mDNS advertise/browse _vula-drop._tcp, nearby endpoint, discoverability everyone/peers/nobody, send (LAN else internet), inbound drop accept/decline+auto-accept-contact; Drop UI tiles+progress.
 AC: [ ] 2 LAN instances discover when discoverable [ ] discoverability filters ads [ ] drop transfers+accept/decline+progress
 
 ### [PEER-35] Drop: proximity code (gen/redeem + rendezvous)
-`done` · P3 · M · dep: PEER-34 · parallel: yes — backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
+`todo` · P3 · M · dep: PEER-34 · parallel: yes — backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
 Scope: 6-digit code TTL 5min/single-use, stateless vulos.org rendezvous fallback (configurable) when no mDNS, then normal transfer.
 AC: [ ] code 6-digit expires 5min/first use [ ] valid code connects+transfers [ ] works cross-network via rendezvous
 
 ### [PEER-36] Drop: BLE advertise/scan for bare-metal
-`done` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
+`todo` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
 Scope: BLE advertise service UUID + truncated Vula ID hash w/ rotation, scan to surface devices into nearby; clean no-op w/o BLE hw.
 AC: [ ] advertises vula-drop BLE when discoverable [ ] scan surfaces devices [ ] payload rotates, no hw=no-op
 
 ### [PEER-37] E2E encryption: X25519 + XChaCha20-Poly1305
-`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
+`todo` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
 Scope: X25519 from identity, per-conversation shared secret, encrypt/decrypt message bodies+CRDT payloads XChaCha20-Poly1305 transparently; servers store ciphertext only.
 AC: [ ] bodies ciphertext at rest+transit, only endpoints decrypt [ ] wrong key fails closed [ ] round-trip+key exchange tests
 
 ### [PEER-38] Relay peers: deposit/pickup/ack + config/store
-`done` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
+`todo` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
 Scope: relay role config (enabled/capacity/TTL/allowed), deposit (mutual-trust+limits), signed pickup, ack-delete; sender uses relay when recipient unreachable. Limits 100MB/recip, 72h, 25MB blob, 100/h.
 AC: [ ] deposit stores by recipient, relay never decrypts [ ] signed pickup returns, ack deletes [ ] limits enforced, mutual-trust only
 
 ### [PEER-39] Relay attestation: verify TEE before send
-`done` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
+`todo` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
 Scope: relay exposes attestation doc; sender validates vs policy before deposit, pluggable verifier (start AWS Nitro), strict reject-on-failure.
 AC: [ ] sender verifies attestation before deposit [ ] failed/absent rejects relay [ ] verifier interface extensible
 
 ### [PEER-40] Cluster anycast: multi-endpoint registry + failover
-`done` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
+`todo` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
 Scope: endpoint registry (register/list/remove/priority), include endpoints in well-known (extends PEER-12), outbound races cached endpoints w/ failover, UUIDv7 dedup inbound.
 AC: [ ] Vula ID advertises multi endpoints [ ] delivery succeeds via live one [ ] duplicate msg ID no-op
 
 ### [PEER-41] Signed feeds: append-only log, pub/sub, content-addr
-`done` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
+`todo` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
 Scope: feed create/list/publish/get/entries, hash-chained signed entries (prev_hash), access public/peers/link, subscriber pull by seq, push to approved, content hash sha256(canonical).
 AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] public/link no auth, peers gated [ ] subscribers since last seq
+
+### [PEER-42] Wire all peering sub-handlers into cmd/server
+`in progress` · P0 · L · dep: PEER-01 through PEER-41 · parallel: no — backend/cmd/server/main.go, backend/cmd/server/peering.go
+Scope: For each sub-handler in `backend/services/peering/` (contacts_api, verify, profile, discovery, messages/inbox/outbox, media, groups, call/callhistory, ice, sfu, collab, drop/drop_ble, crypto, relay/relay_attest, endpoints, feeds, bandwidth): construct the backing store, call the corresponding `Register*Handlers` function, and remove the matching 501 stub in peering.go. Ensure no duplicate ServeMux registrations trigger a panic at startup. Work is underway on a branch.
+AC: [ ] No peering route returns 501 [ ] Server starts without ServeMux dup-panic [ ] go test ./services/peering/... green [ ] go build ./... passes
+
+### [SMOKE-01] Smoke test: all peering routes return non-501
+`todo` · P0 · S · dep: PEER-42 · parallel: yes — new scripts/smoke-peering.sh or backend smoke test
+Scope: Regression guard so PEER-* tasks cannot be re-marked done without the routes actually serving. Script (or Go test) starts the server and asserts each previously-501 peering endpoint now returns a non-501 status code. Runs in CI.
+AC: [ ] All previously-501 routes return 2xx/4xx (not 501) [ ] Failure blocks CI merge [ ] Runs headless without external deps
+
+### [SMOKE-02] Smoke test: live-USB UEFI boot in QEMU
+`todo` · P1 · M · dep: BMINIT-14 · parallel: yes — new scripts/smoke-liveusb.sh
+Scope: QEMU UEFI boot test for the `--live` image produced by `build.sh --live`. Confirms the ESP contains a valid systemd-boot loader, kernel, and initrd. Blocks re-marking BMINIT-14 done without a bootable image.
+AC: [ ] QEMU boots --live image to login prompt (or first-boot wizard) under OVMF [ ] Fails if ESP is empty or missing loader entry [ ] Runs headless in CI
 
 ---
 

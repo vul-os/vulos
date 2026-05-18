@@ -507,6 +507,11 @@ func main() {
 	} else {
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
 		registerPasskeysRoutes(mux, passkeysSvc, authStore)
+		// AUTH-10c: device identity / TPM status / seal-unseal HTTP API.
+		devicekey.RegisterHandlers(mux, deviceKS, func(r *http.Request) bool {
+			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+			return p != nil && p.Role == auth.RoleAdmin
+		})
 	}
 
 	// App gateway — /app/{appId}/* proxied with auth
@@ -1429,6 +1434,170 @@ func main() {
 
 	// Peering — direct Vula-to-Vula communication
 	peeringSvc.RegisterHandlers(mux)
+	// PEER-20b: real bandwidth meter + handlers (replaces the removed
+	// GET /api/peering/bandwidth stub; also serves /bandwidth/peer).
+	bwMeter := peering.NewBandwidthMeter(peering.BandwidthConfig{})
+	bwMeter.Start(context.Background())
+	peering.RegisterBandwidthHandlers(mux, bwMeter)
+
+	// ── PEER-42: wire the fully-implemented-but-previously-dead peering
+	// handler sets. These were unit-tested but never called from
+	// cmd/server, so the social core (contacts/messaging/calls/media/
+	// groups/verify/relay/feeds/ice/discovery/drop/collab/endpoints/…)
+	// returned HTTP 501 via the now-removed peering.go stubs.
+	//
+	// All handler sets are registered onto a dedicated peeringMux. The
+	// /api/peering/inbound/ subtree is then mounted through
+	// InboundMiddleware (signature + allow-list verification — every
+	// inbound handler reads the verified envelope from the request
+	// context and 401s without it). Everything else dispatches straight
+	// to peeringMux. The handlers' specific patterns coexist with the
+	// already-registered identity/wellknown/bandwidth/stream patterns on
+	// the main mux because http.ServeMux always routes to the most
+	// specific match.
+	{
+		peeringMux := http.NewServeMux()
+
+		// Shared identity / transport reused from peeringSvc — no parallel
+		// state. ContactStore is the single contacts.json under
+		// ~/.vulos/peering/ that InboundMiddleware also gates on.
+		pHome := peeringSvc.Home()
+		pRoot := peeringSvc.Root()
+		pPriv := peeringSvc.PrivateKey()
+		pVulaID := peeringSvc.VulaID()
+		myServer := "localhost:" + cfg.Port // best-effort self-address
+
+		contactStore, csErr := peering.NewContactStore(pHome)
+		if csErr != nil {
+			log.Printf("[peering] PEER-42 contact store init: %v", csErr)
+		}
+		inboxStore, ibErr := peering.NewInboxStore(pHome)
+		if ibErr != nil {
+			log.Printf("[peering] PEER-42 inbox store init: %v", ibErr)
+		}
+		peerClient := peering.NewPeerClient()
+
+		// callerVulaID extracts the caller's Vula ID from an authenticated
+		// request; empty for unauthenticated callers (feeds public/link).
+		callerVulaID := func(r *http.Request) string {
+			if v := r.Header.Get("X-Vula-ID"); v != "" {
+				return v
+			}
+			return r.Header.Get("X-User-ID")
+		}
+
+		if contactStore != nil {
+			// Contacts (request/approve/block/remove/list + inbound/request).
+			contactAPI := peering.NewContactAPI(contactStore, peerClient, peeringHub, pPriv, pVulaID, myServer)
+			contactAPI.RegisterContactHandlers(peeringMux)
+
+			// Messaging (conversations + inbound/message).
+			if inboxStore != nil {
+				msgAPI := peering.NewMessageAPI(contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulaID)
+				msgAPI.RegisterMessageHandlers(peeringMux)
+
+				// Groups (group def/members/send + inbound group-*).
+				if groupStore, gErr := peering.NewGroupStore(pHome); gErr != nil {
+					log.Printf("[peering] PEER-42 group store init: %v", gErr)
+				} else {
+					groupAPI := peering.NewGroupAPI(groupStore, contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulaID)
+					peering.RegisterGroupHandlers(peeringMux, groupAPI)
+				}
+			}
+
+			// Relay store-and-forward (deposit/pickup/ack).
+			if relayStore, rErr := peering.NewRelayStore(pHome, contactStore); rErr != nil {
+				log.Printf("[peering] PEER-42 relay store init: %v", rErr)
+			} else {
+				peering.RegisterRelayHandlers(peeringMux, relayStore)
+			}
+
+			// Feeds (own append-only feeds; peers-gating uses contacts).
+			if feedStore, fErr := peering.NewFeedStore(pRoot, pPriv, pVulaID, contactStore); fErr != nil {
+				log.Printf("[peering] PEER-42 feed store init: %v", fErr)
+			} else {
+				peering.RegisterFeedHandlers(peeringMux, feedStore, callerVulaID)
+			}
+
+			// Drop (LAN mDNS file drop). media nil → drop send returns a
+			// graceful error (drop.go handles nil media sender).
+			dropSvc := peering.NewDropService(pVulaID, "", contactStore, nil)
+			dropSvc.Start(context.Background())
+			peering.RegisterDropHandlers(peeringMux, dropSvc)
+		}
+
+		// Media (upload/fetch/thumb + inbound/media). HMAC URL signing key
+		// is the node's Ed25519 private key seed.
+		if mediaStore, mErr := peering.NewMediaStore(pHome, pPriv, peerClient); mErr != nil {
+			log.Printf("[peering] PEER-42 media store init: %v", mErr)
+		} else {
+			mediaStore.RegisterMediaHandlers(peeringMux)
+		}
+
+		// Calls (initiate/answer/reject/signal/hangup + inbound/signal).
+		if contactStore != nil {
+			callRelay := peering.NewCallRelay(pVulaID, contactStore, peeringHub)
+			peering.RegisterCallHandlers(peeringMux, callRelay)
+		}
+
+		// Call history (list + record).
+		peering.RegisterCallHistoryHandlers(peeringMux, pRoot)
+
+		// Profile (get/put + avatar). contacts gates peer-visibility checks.
+		var profileContacts interface {
+			IsApproved(string) bool
+		}
+		if contactStore != nil {
+			profileContacts = contactStore
+		}
+		peering.RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), pVulaID, profileContacts)
+
+		// Email verification (initiate/confirm/status against vulos.org).
+		if vfySvc, vErr := peering.VerifyNewService(filepath.Join(pRoot, "identity")); vErr != nil {
+			log.Printf("[peering] PEER-42 verify service init: %v", vErr)
+		} else {
+			peering.RegisterVerifyHandlers(peeringMux, vfySvc)
+		}
+
+		// Directory discovery (lookup/search via vulos.org).
+		peering.RegisterDiscoveryHandlers(peeringMux, peering.DiscoveryNewService(nil))
+
+		// ICE / TURN config for WebRTC.
+		peering.RegisterICEHandlers(peeringMux)
+
+		// Endpoint registry (multi-address routing).
+		peering.RegisterEndpointHandlers(peeringMux)
+
+		// Relay attestation document (public evidence endpoint).
+		peering.RegisterAttestHandlers(peeringMux, peering.NewAttestStore())
+
+		// Proximity drop codes (generate/redeem).
+		peering.RegisterProximityHandlers(peeringMux, peering.NewProxService(pVulaID, myServer))
+
+		// Realtime collaboration: CRDT transport + REST + inbound sync.
+		// NOTE: RegisterCollabShareHandlers (collab_share.go) is
+		// deliberately NOT wired — it registers the same
+		// /api/peering/collab/* and /api/peering/inbound/collab-* patterns
+		// as RegisterCollabHandlers, which would panic the ServeMux. The
+		// CRDT transport set (incl. the /sync WebSocket) is the superset.
+		if collabStore, cErr := peering.NewCollabStore(filepath.Join(pRoot, "collab")); cErr != nil {
+			log.Printf("[peering] PEER-42 collab store init: %v", cErr)
+		} else {
+			peering.RegisterCollabHandlers(peeringMux, collabStore)
+		}
+
+		// Mount onto the main mux. Inbound goes through InboundMiddleware
+		// (verifies the signed envelope, sets it on the request context),
+		// then dispatches to peeringMux's inbound handlers. All other
+		// peering + feeds routes dispatch straight to peeringMux.
+		if contactStore != nil {
+			mux.Handle("/api/peering/inbound/", peering.InboundMiddleware(contactStore, peeringMux))
+		}
+		mux.Handle("/api/peering/", peeringMux)
+		mux.Handle("/api/feeds", peeringMux)
+		mux.Handle("/api/feeds/", peeringMux)
+	}
+
 	// App visibility (private|local|public)
 	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
 

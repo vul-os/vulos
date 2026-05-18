@@ -25,9 +25,9 @@ import (
 // Model: download .onnx file to ~/.vulos/models/
 
 type OnnxEmbedder struct {
-	modelPath string
+	modelPath  string
 	scriptPath string
-	dim       int
+	dim        int
 }
 
 // NewOnnxEmbedder creates an embedder using a local ONNX model.

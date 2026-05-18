@@ -23,12 +23,12 @@ var validPrefixName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$`)
 
 // Prefix is a Wine prefix (a self-contained Windows environment).
 type Prefix struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Arch      string `json:"arch"`      // win64 or win32
-	DXVK      bool   `json:"dxvk"`      // DXVK installed
-	Created   int64  `json:"created"`   // unix timestamp
-	SizeMB    int    `json:"size_mb"`   // approximate disk usage
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Arch       string `json:"arch"`        // win64 or win32
+	DXVK       bool   `json:"dxvk"`        // DXVK installed
+	Created    int64  `json:"created"`     // unix timestamp
+	SizeMB     int    `json:"size_mb"`     // approximate disk usage
 	WindowsVer string `json:"windows_ver"` // e.g. "win10", "win7"
 }
 
@@ -306,11 +306,11 @@ func dirSizeMB(path string) int {
 
 // g07GamingCommands is the set of executables that indicate a gaming session.
 var g07GamingCommands = map[string]bool{
-	"wine":           true,
-	"wine64":         true,
-	"lutris":         true,
-	"steam":          true,
-	"steam-runtime":  true,
+	"wine":          true,
+	"wine64":        true,
+	"lutris":        true,
+	"steam":         true,
+	"steam-runtime": true,
 }
 
 // IsGamingCommand reports whether cmd starts with a well-known gaming launcher.
@@ -404,9 +404,9 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"available":   hasBin,
-			"gpu_tier":    g.TierName,
-			"dxvk_auto":   g.Tier >= gpu.TierVAAPI,
+			"available":    hasBin,
+			"gpu_tier":     g.TierName,
+			"dxvk_auto":    g.Tier >= gpu.TierVAAPI,
 			"prefix_count": len(s.List()),
 		})
 	})

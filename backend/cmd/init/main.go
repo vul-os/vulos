@@ -483,9 +483,15 @@ func startSSH() {
 
 func startKiosk() {
 	// Headless path: no display connected → skip compositor entirely.
-	if !displayConnected() {
+	// vulos.kiosk=force on the kernel cmdline overrides this — QEMU's
+	// virtio-gpu reports no "connected" DRM output yet still renders a
+	// compositor, so the bare-metal smoke harness sets it to see the desktop.
+	if !displayConnected() && !kioskForced() {
 		log.Println("no display connected, skipping kiosk (headless mode)")
 		return
+	}
+	if !displayConnected() {
+		log.Println("vulos.kiosk=force set — starting compositor despite no connected DRM output")
 	}
 
 	// Shared runtime dir for Wayland socket.
@@ -530,6 +536,17 @@ func startKiosk() {
 		return
 	}
 	log.Printf("cage kiosk started (pid=%d)", cmd.Process.Pid)
+}
+
+// kioskForced reports whether the kernel cmdline requested the compositor be
+// started unconditionally (vulos.kiosk=force) — for VMs where DRM connector
+// status is unreliable (QEMU virtio-gpu).
+func kioskForced() bool {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "vulos.kiosk=force")
 }
 
 // displayConnected reports whether at least one DRM output is connected.

@@ -10,7 +10,7 @@ On bare metal, apps launch as real native windows on the Wayland compositor — 
 
 > **Goal.** Boot the same image on USB / VM / cloud and reach a Vula desktop in seconds. labwc + cage compose the screen; the WebKit/Chromium browser is pinned to the background layer; native windows live above it.
 > **Non-goals.** Replacing GNOME/KDE for general-purpose Linux. Building our own kernel. We use stock Debian + a few well-chosen pieces (labwc, cage, Plymouth, sd-boot).
-> **Status.** Compositor + browser-as-background works; live USB + installer work. Outstanding: ARM device variants (RPi, PinePhone), Plymouth ↔ labwc handoff polish, init networking (DHCP / WiFi fallback / mDNS).
+> **Status.** Mostly complete. Compositor + browser-as-background, Plymouth ↔ labwc handoff, init networking (DHCP / WiFi fallback / mDNS), and ARM device variants are all shipped. **Caveat:** `build.sh --disk` is the working UEFI path (systemd-boot + kernel + initrd via mtools; smoke-tested by `scripts/baremetal-smoke.sh`). `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or loader entry — the live-USB image is non-bootable. Live-USB ESP fix is outstanding (BMINIT-14 reopened; see SMOKE-02).
 
 ---
 

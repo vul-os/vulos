@@ -21,25 +21,25 @@ import (
 
 // Entry is a unified desktop entry — either from a .desktop file or a web app.
 type Entry struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Comment     string   `json:"comment"`
-	Exec        string   `json:"exec"`        // command to run (desktop apps)
-	Icon        string   `json:"icon"`         // icon name or path
-	Categories  []string `json:"categories"`
-	Type        string   `json:"type"`         // "desktop" or "web"
-	URL         string   `json:"url"`          // for web apps
-	Terminal    bool     `json:"terminal"`     // run in terminal
-	NoDisplay   bool     `json:"no_display"`   // hidden from menus
-	MimeTypes   []string `json:"mime_types"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Comment    string   `json:"comment"`
+	Exec       string   `json:"exec"` // command to run (desktop apps)
+	Icon       string   `json:"icon"` // icon name or path
+	Categories []string `json:"categories"`
+	Type       string   `json:"type"`       // "desktop" or "web"
+	URL        string   `json:"url"`        // for web apps
+	Terminal   bool     `json:"terminal"`   // run in terminal
+	NoDisplay  bool     `json:"no_display"` // hidden from menus
+	MimeTypes  []string `json:"mime_types"`
 }
 
 // Service manages desktop entry discovery and caching.
 type Service struct {
-	mu      sync.RWMutex
-	entries []Entry
+	mu       sync.RWMutex
+	entries  []Entry
 	lastScan time.Time
-	dirs    []string
+	dirs     []string
 }
 
 // New creates a desktop entry service scanning the given directories.

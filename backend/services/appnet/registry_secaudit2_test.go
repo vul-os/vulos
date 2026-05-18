@@ -35,11 +35,11 @@ func TestStaticDownloadRequiresChecksum(t *testing.T) {
 
 	err := validateRecipeSecurity(recipe)
 	if err == nil {
-		t.Fatalf("SECAUDIT2 FINDING H (HIGH) CONFIRMED: validateRecipeSecurity "+
-			"ACCEPTED a static DownloadURL recipe with an empty checksum. A "+
-			"registry entry can fetch an unverified archive/binary over the "+
-			"network and have it installed+run. requiresChecksum() must also "+
-			"inspect recipe.DownloadURL, not only recipe.Install. (registry.go: "+
+		t.Fatalf("SECAUDIT2 FINDING H (HIGH) CONFIRMED: validateRecipeSecurity " +
+			"ACCEPTED a static DownloadURL recipe with an empty checksum. A " +
+			"registry entry can fetch an unverified archive/binary over the " +
+			"network and have it installed+run. requiresChecksum() must also " +
+			"inspect recipe.DownloadURL, not only recipe.Install. (registry.go: " +
 			"requiresChecksum/validateRecipeSecurity)")
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "checksum") {

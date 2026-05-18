@@ -41,8 +41,8 @@ type SavedNetwork struct {
 
 // Service manages WiFi via iw/wpa_supplicant.
 type Service struct {
-	mu        sync.Mutex
-	iface     string
+	mu    sync.Mutex
+	iface string
 }
 
 func New() *Service {
@@ -174,7 +174,9 @@ func (s *Service) ForgetNetwork(ctx context.Context, ssid string) error {
 	networks := s.SavedNetworks(ctx)
 	out, _ := output(ctx, "wpa_cli", "-i", s.iface, "list_networks")
 	for i, line := range strings.Split(string(out), "\n") {
-		if i == 0 { continue }
+		if i == 0 {
+			continue
+		}
 		fields := strings.Split(line, "\t")
 		if len(fields) >= 2 && fields[1] == ssid {
 			run(ctx, "wpa_cli", "-i", s.iface, "remove_network", fields[0])
@@ -216,7 +218,9 @@ func parseIWScan(data string) []Network {
 				cur.BSSID = strings.TrimSuffix(parts[1], "(on")
 			}
 		}
-		if cur == nil { continue }
+		if cur == nil {
+			continue
+		}
 		if strings.HasPrefix(line, "SSID:") {
 			cur.SSID = strings.TrimSpace(strings.TrimPrefix(line, "SSID:"))
 		}
