@@ -5,7 +5,7 @@ uinput for all input injection when available, fallback to xdotool when not.
 
 > **Goal.** A streaming pipeline that's as fast as the box allows: NVENC/VA-API zerolatency tuning, dynamic bitrate that actually re-keys the running encoder, Wayland (cage) capture for GPU paths, PipeWire audio when available. Software path stays byte-identical for boxes without GPUs.
 > **Non-goals.** A new media stack. We compose existing pieces (GStreamer, pion WebRTC, Xvfb/cage, PulseAudio/PipeWire) and tune them.
-> **Status.** Nearly complete. Outstanding: cage headless compositor for GPU sessions (STREAM-08).
+> **Status.** Complete. All STREAM tasks shipped including cage headless compositor for GPU sessions (STREAM-08 — implemented in `backend/services/stream/pool.go`).
 
 ---
 

@@ -8,7 +8,7 @@ This is not a single app. It's an OS-level service that every Vula app uses when
 
 > **Goal.** Make a Vula instance a credible "possession factor" — TPM-sealed device identity, TOTP (with Google Authenticator import/export), a real encrypted password manager, FIDO2 server-side passkeys, mTLS client certs, and SMS-over-VoIP for the last-mile services that still demand it.
 > **Non-goals.** Becoming an identity provider for the open web. We're a local authenticator/vault, not Okta.
-> **Status.** TOTP (vault + UI + import), credential vault, TPM/software keystore abstraction, mTLS cert store, and SMS receive are all in. Outstanding: device-identity API surface (AUTH-10), FIDO2 finishing, WebAuthn bridge.
+> **Status.** Complete. All AUTH tasks shipped. TOTP (vault + UI + import), credential vault, TPM/software keystore abstraction, mTLS cert store, SMS receive, device-identity API (AUTH-10 — including the device API that landed in AUTH-10c), server-side FIDO2/passkeys (AUTH-12), and WebAuthn bridge data channel (AUTH-13/14) are all implemented and wired.
 
 ---
 
