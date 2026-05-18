@@ -276,7 +276,30 @@ mkdir -p /opt/vulos/webroot /opt/vulos/apps \
 
 # Chromium policy — suppress sandbox warning
 mkdir -p /etc/chromium/policies/managed
-printf '{"CommandLineFlagSecurityWarningsEnabled": false}\n' > /etc/chromium/policies/managed/vulos.json
+cat > /etc/chromium/policies/managed/vulos.json << 'POL'
+{
+  "CommandLineFlagSecurityWarningsEnabled": false,
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "TranslateEnabled": false,
+  "BookmarkBarEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "SearchSuggestEnabled": false,
+  "SafeBrowsingEnabled": false,
+  "MetricsReportingEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "PromotionalTabsEnabled": false,
+  "HardwareAccelerationModeEnabled": false,
+  "BackgroundModeEnabled": false,
+  "ImportBookmarks": false,
+  "ImportSavedPasswords": false,
+  "ImportSearchEngine": false,
+  "ImportHistory": false,
+  "PasswordLeakDetectionEnabled": false
+}
+POL
 
 # Hostname
 echo "vula" > /etc/hostname

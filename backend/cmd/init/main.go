@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +13,65 @@ import (
 	"syscall"
 	"time"
 
+	"vulos/backend/services/gpu"
 	"vulos/backend/services/hwdetect"
 )
+
+// currentProfile holds the live boot-time host decision. Populated once by
+// detectHost() before services/kiosk start; read by startKiosk + Chromium
+// flag selection so they don't re-probe.
+var currentProfile hostProfile
+
+// hostProfile is the runtime decision made once at boot from the live probes
+// (gpu/inputs/RAM). It picks compositor env + Chromium kiosk flags + whether
+// to pre-warm the remote-browser stream pool. One image, one boot path, no
+// "VM build" vs "bare-metal build" — same artifact on QEMU and real metal.
+type hostProfile struct {
+	HasHWGPU      bool   // real GPU (DRI + a non-llvmpipe driver)
+	GPUTier       string // "nvenc"|"vaapi"|"software"
+	HasInputs     bool   // ≥1 /dev/input/event*
+	MemMB         int    // /proc/meminfo MemTotal
+	LowMem        bool   // < 6 GB → skip prewarm, software path
+	PrewarmBrowser bool
+}
+
+// detectHost runs the live probes and produces the runtime decision.
+// Honors a one-shot kernel cmdline override (vulos.profile=software) for the
+// QEMU smoke harness; otherwise everything is derived from probes.
+func detectHost() hostProfile {
+	g := gpu.Detect()
+	hasHW := g.HasDRI && g.Tier != gpu.TierSoftware
+	if cmd, _ := os.ReadFile("/proc/cmdline"); strings.Contains(string(cmd), "vulos.profile=software") {
+		hasHW = false
+	}
+	// Input devices: count /dev/input/event*
+	inputs, _ := filepath.Glob("/dev/input/event*")
+	// Memory: parse MemTotal kB from /proc/meminfo
+	memMB := 0
+	if mb, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(mb), "\n") {
+			if strings.HasPrefix(line, "MemTotal:") {
+				var kB int
+				_, _ = fmt.Sscanf(line, "MemTotal: %d kB", &kB)
+				memMB = kB / 1024
+				break
+			}
+		}
+	}
+	p := hostProfile{
+		HasHWGPU:  hasHW,
+		GPUTier:   g.TierName,
+		HasInputs: len(inputs) > 0,
+		MemMB:     memMB,
+		LowMem:    memMB > 0 && memMB < 6000,
+	}
+	// Pre-warm the remote-browser stream only when we can afford it:
+	// real GPU + enough RAM. Low-RAM/software-GPU paths warm lazily.
+	p.PrewarmBrowser = p.HasHWGPU && !p.LowMem
+	log.Printf("[host] profile: gpu_hw=%v tier=%s inputs=%v mem=%dMB prewarm_browser=%v",
+		p.HasHWGPU, p.GPUTier, p.HasInputs, p.MemMB, p.PrewarmBrowser)
+	return p
+}
 
 // vulos-init: Custom PID 1 for Debian Linux.
 // Mounts filesystems, starts networking, launches systemd, then hands off to the vulos server.
@@ -60,6 +118,15 @@ func main() {
 	mountAll()
 	plymouthProgress(20) // milestone: mountAll done
 
+	// Phase 1.5: Load core kernel modules.
+	// Without systemd-udevd running yet (we're PID 1, udev isn't), nothing
+	// auto-loads modules on uevent. Real hardware AND QEMU both ship USB
+	// HID as modules in the Debian generic kernel, so without this the
+	// kernel never creates /dev/input/event* and the kiosk has no mouse
+	// or keyboard. Best-effort: missing modules are not fatal (a few
+	// arches/kernels build them in, in which case modprobe is a no-op).
+	loadCoreModules()
+
 	// Phase 2: Hardware detection (best-effort, non-fatal)
 	detectHardware()
 
@@ -78,6 +145,17 @@ func main() {
 
 	// Phase 5: D-Bus system bus (before the browser, best-effort)
 	startSystemBus()
+
+	// Host profile: gpu / inputs / RAM → one decision, used below for
+	// kiosk env, Chromium flags, and browser pre-warm.
+	currentProfile = detectHost()
+	if os.Getenv("VULOS_PREWARM_BROWSER") == "" {
+		if currentProfile.PrewarmBrowser {
+			os.Setenv("VULOS_PREWARM_BROWSER", "1")
+		} else {
+			os.Setenv("VULOS_PREWARM_BROWSER", "0")
+		}
+	}
 
 	// Phase 5: Start vulos server
 	startServices()
@@ -200,6 +278,20 @@ func startSystemd() {
 // BMINIT9_/initnet- phase.
 func phaseNetwork() {
 	log.Println("BMINIT9: starting network phase")
+
+	// Bring up the loopback interface FIRST. Without this, 127.0.0.1 is
+	// unroutable inside the VM — vulos-server binds fine (it's an INADDR_ANY
+	// :8080 bind that doesn't need loopback up) but the kiosk Chromium's
+	// http://localhost:8080 fetch and our wait-for-port both ECONNREFUSED.
+	// The browser shows its blank error state and never retries — the
+	// "white screen forever" symptom. `ip link set lo up` (or the syscall
+	// equivalent here) costs ~0ms and is the actual cure for that class
+	// of bug. We use `ip` if available, else fall back to `ifconfig`.
+	if err := bringUpLoopback(); err != nil {
+		log.Printf("BMINIT9: WARN bringing up loopback: %v (localhost may be unreachable)", err)
+	} else {
+		log.Println("BMINIT9: loopback (lo) up")
+	}
 
 	wiredOK := initnetWired()
 	if !wiredOK {
@@ -441,20 +533,66 @@ func startServices() {
 		return
 	}
 
-	// Start in background
-	cmd := exec.Command(serverBin, "-env", "main")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
+	// Supervise vulos-server: if it dies the whole OS goes blank (the kiosk
+	// Chromium starts getting ECONNREFUSED on every fetch). Same pattern as
+	// superviseKiosk — Wait() for efficient liveness, restart with backoff,
+	// reset on any healthy run.
+	go superviseServer(serverBin, "-env", "main")
 
-	if err := cmd.Start(); err != nil {
-		log.Printf("failed to start vulos-server: %v", err)
-		return
-	}
-	log.Printf("vulos-server started (pid=%d)", cmd.Process.Pid)
-
-	// Start Cage/WPE WebKit kiosk if available
+	// Start Cage/WPE WebKit kiosk if available (also supervised).
 	startKiosk()
+}
+
+// superviseServer keeps vulos-server alive. cmd.Wait() blocks until exit
+// (no polling overhead), then restart with exponential backoff 1s→30s,
+// reset after any run ≥ 30s so a one-off panic retries fast but a crash
+// loop doesn't burn CPU. Logs every transition for postmortem.
+func superviseServer(bin string, args ...string) {
+	const (
+		minBackoff = 1 * time.Second
+		maxBackoff = 30 * time.Second
+		healthyRun = 30 * time.Second
+	)
+	backoff := minBackoff
+	for attempt := 1; ; attempt++ {
+		cmd := exec.Command(bin, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		start := time.Now()
+		if err := cmd.Start(); err != nil {
+			log.Printf("[server] start error (attempt %d): %v — retrying in %s", attempt, err, backoff)
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
+		}
+		log.Printf("[server] vulos-server started (pid=%d, attempt=%d)", cmd.Process.Pid, attempt)
+		err := cmd.Wait()
+		dur := time.Since(start)
+		exit := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			exit = ee.ExitCode()
+		} else if err != nil {
+			exit = -1
+		}
+		log.Printf("[server] vulos-server exited after %s (exit=%d) — restarting", dur.Round(time.Millisecond), exit)
+		if dur >= healthyRun {
+			backoff = minBackoff // healthy run → reset
+		} else {
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
+	}
 }
 
 // startSystemBus brings up a D-Bus system bus (best-effort, non-fatal).
@@ -539,20 +677,63 @@ func startKiosk() {
 	// seatd/logind/polkit under vulos-init (without it wlroots aborts: "a
 	// seat could not be created"). pixman renderer because QEMU virtio-gpu /
 	// software GPUs have no usable GL here.
+	// Compositor env, derived from the live host profile. One artifact,
+	// detected at boot. LIBSEAT_BACKEND=builtin lets wlroots become DRM
+	// master without seatd/logind; the renderer + libinput knob are picked
+	// from the live probe.
 	baseEnv := append(os.Environ(),
 		"XDG_RUNTIME_DIR=/run/user/0",
 		"LIBSEAT_BACKEND=builtin",
-		"WLR_RENDERER=pixman",
-		// wlroots' libinput backend aborts the whole compositor when there
-		// are zero input devices (common in a headless VM / before udev
-		// populates /dev/input) — "Unable to start the wlroots backend",
-		// nothing on screen. This makes the no-input-devices case non-fatal
-		// so the DRM output still comes up and the desktop is visible.
-		"WLR_LIBINPUT_NO_DEVICES=1",
 	)
+	if currentProfile.HasHWGPU {
+		// Real GPU: let wlroots pick the GL renderer.
+		log.Println("[kiosk] hardware GPU detected — using GL renderer")
+	} else {
+		// No real GPU (QEMU virtio-gpu, llvmpipe, headless): software path.
+		// Three things wlroots' DRM backend can choke on under virtio-gpu
+		// without working GL, all required for cage to actually paint:
+		//   WLR_DRM_NO_ATOMIC=1       — fall back to legacy KMS modeset
+		//   WLR_DRM_NO_MODIFIERS=1    — don't require GBM modifier negotiation
+		//   WLR_RENDERER_ALLOW_SOFTWARE=1 — accept the pixman renderer
+		// Without these cage starts, opens /dev/dri/card0, but silently
+		// fails to put a framebuffer on screen (no logs, no exit) — the
+		// "QEMU window shows kernel console under its own chrome" symptom.
+		// DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null gives Chromium one
+		// "Connection refused" on the session bus and lets it proceed to
+		// navigation instead of looping on NameHasOwner.
+		baseEnv = append(baseEnv,
+			"WLR_RENDERER=pixman",
+			"WLR_RENDERER_ALLOW_SOFTWARE=1",
+			"WLR_DRM_NO_ATOMIC=1",
+			"WLR_DRM_NO_MODIFIERS=1",
+			"DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null",
+		)
+		log.Println("[kiosk] software path — pixman, DRM legacy/no-modifiers, dbus session bus disabled")
+	}
+	// Brief wait for udev's coldplug to surface /dev/input/event* (USB
+	// HID enumeration can take a second or two). Informational only —
+	// inputs that arrive later are picked up via libinput hotplug.
+	if waitForInputDevices(3 * time.Second) {
+		log.Println("[kiosk] input devices present (libinput will use hotplug)")
+	} else {
+		log.Println("[kiosk] no input devices yet — relying on libinput hotplug")
+	}
+	// ALWAYS set WLR_LIBINPUT_NO_DEVICES=1. This is "don't abort the
+	// compositor at init time if libinput sees zero devices right now"
+	// — NOT "disable inputs". With it unset, cage's libinput backend
+	// aborts startup ("Unable to start the wlroots backend") when udev
+	// coldplug hasn't finished, even on machines where inputs are about
+	// to appear. Hotplugged devices still arrive via libinput.
+	baseEnv = append(baseEnv, "WLR_LIBINPUT_NO_DEVICES=1")
 
-	// Wait for server to be ready before launching browser.
-	time.Sleep(2 * time.Second)
+	// Wait for vulos-server to actually be LISTENING on :8080 before
+	// launching the kiosk browser. A fixed 2-second sleep races: the
+	// server's full init (peering stores, sqlite migrations, etc.) takes
+	// 20-40s on a software-CPU VM, and a too-early browser launch hits
+	// ECONNREFUSED, paints its blank error state (looks white in kiosk
+	// mode with --noerrdialogs), and never retries — the "white screen
+	// forever" symptom. Poll the loopback socket instead, up to 2 minutes.
+	waitForLocalPort("127.0.0.1:8080", 120*time.Second)
 
 	plymouthProgress(100)      // milestone: kiosk up
 	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
@@ -572,15 +753,66 @@ func startKiosk() {
 		log.Println("no browser (cog/chromium) found, skipping kiosk")
 		return
 	}
-	cmd := exec.Command(cageBin, append([]string{"--", browserBin}, browserArgs...)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = baseEnv
-	if err := cmd.Start(); err != nil {
-		log.Printf("cage kiosk start error: %v", err)
-		return
+	// Chromium (under cage) IS the shell — if it dies, the user sees a
+	// dead screen. Supervise it: launch, Wait, on exit restart with
+	// exponential backoff (1s → 30s, capped). Runs forever in a goroutine.
+	go superviseKiosk(cageBin, browserBin, browserArgs, baseEnv)
+}
+
+// superviseKiosk is the keep-alive loop for the cage+browser kiosk. It is
+// efficient: there is no polling — Wait() blocks until the process exits,
+// at which point exit code + duration are logged and a backoff kicks in
+// only if the process died quickly (a fast-failing crash loop). A normal
+// long-lived run resets the backoff. Plymouth progress stays at 100 once
+// the first launch succeeds, so subsequent restarts are silent.
+func superviseKiosk(cageBin, browserBin string, browserArgs, baseEnv []string) {
+	const (
+		minBackoff = 1 * time.Second
+		maxBackoff = 30 * time.Second
+		// A run shorter than this is considered a "fast crash" and the
+		// backoff increases; longer runs are healthy and reset it.
+		healthyRun = 30 * time.Second
+	)
+	backoff := minBackoff
+	for attempt := 1; ; attempt++ {
+		cmd := exec.Command(cageBin, append([]string{"--", browserBin}, browserArgs...)...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = baseEnv
+		start := time.Now()
+		if err := cmd.Start(); err != nil {
+			log.Printf("[kiosk] start error (attempt %d): %v — retrying in %s", attempt, err, backoff)
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
+		}
+		log.Printf("[kiosk] cage kiosk started: %s (pid=%d, attempt=%d)", browserBin, cmd.Process.Pid, attempt)
+		err := cmd.Wait()
+		dur := time.Since(start)
+		exit := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			exit = ee.ExitCode()
+		} else if err != nil {
+			exit = -1
+		}
+		log.Printf("[kiosk] cage exited after %s (exit=%d) — restarting", dur.Round(time.Millisecond), exit)
+		if dur >= healthyRun {
+			backoff = minBackoff // healthy run → reset
+		} else {
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
 	}
-	log.Printf("cage kiosk started: %s (pid=%d)", browserBin, cmd.Process.Pid)
 }
 
 // kioskForced reports whether the kernel cmdline requested the compositor be
@@ -628,14 +860,214 @@ func findKioskBrowser() (string, []string) {
 		"/usr/bin/chromium", "/usr/bin/chromium-browser",
 	)
 	if chromiumBin != "" {
-		return chromiumBin, []string{
+		// Baseline kiosk flags (always-on, brand-correct first-run UX).
+		args := []string{
 			"--kiosk",
 			"--ozone-platform=wayland",
 			"--no-sandbox",
-			"http://localhost:8080",
+			"--no-first-run",
+			"--no-default-browser-check",
+			"--noerrdialogs",
+			"--password-store=basic",
+			"--disable-component-update",
+			"--disable-background-networking",
+			"--disable-sync",
+			"--disable-default-apps",
+			"--disable-extensions",
+			"--disable-notifications",
+			"--disable-translate",
 		}
+		if currentProfile.HasHWGPU {
+			// Hardware GPU: native GL + hardware video decode. Lets the
+			// shell + streamed app pixels render fast and correctly.
+			args = append(args,
+				"--use-gl=egl",
+				"--enable-features=VaapiVideoDecoder,UseOzonePlatform",
+			)
+		} else {
+			// Software path (QEMU virtio-gpu, llvmpipe, no GPU): Chromium
+			// otherwise stays pre-navigation for the entire boot — kiosk
+			// shows blank white because:
+			//   1) the session bus probe loops (handled via env above),
+			//   2) GCM (Google Cloud Messaging) tries to register against
+			//      Google's endpoint on first launch even with
+			//      --disable-background-networking, retries on QUOTA_*/
+			//      PHONE_REGISTRATION_ERROR, and blocks first navigation
+			//      on a VM without real internet. We disable GCM + push
+			//      + proxy-resolver outright, and point the proxy at
+			//      "direct" with bypass="*" so connection attempts fail
+			//      fast instead of retrying.
+			args = append(args,
+				"--disable-gpu",
+				"--use-gl=swiftshader",
+				"--enable-features=UseOzonePlatform",
+				"--disable-features=Translate,MediaRouter,InterestFeedContentSuggestions,DBus,GCMRegistration,PushMessaging,OptimizationHints",
+				"--proxy-server=direct://",
+				"--proxy-bypass-list=*",
+				"--disable-background-networking",
+				"--disable-dev-shm-usage",
+			)
+		}
+		args = append(args, "http://localhost:8080")
+		return chromiumBin, args
 	}
 	return "", nil
+}
+
+// loadCoreModules modprobes the kernel modules the Debian generic kernel
+// keeps as loadable: USB HID stack (keyboard/mouse/tablet), evdev (creates
+// /dev/input/event*), USB host controllers, and the virtio DRM driver
+// (required for cage's wlroots DRM backend to find /dev/dri/card*). Without
+// these and without udev running, the kernel never even *enumerates* the
+// devices QEMU/firmware exposes — so the screen comes up blank and the
+// kiosk has no inputs. Each modprobe is best-effort: built-in modules
+// fail-silent, and a missing module on one platform is fine on another.
+func loadCoreModules() {
+	modprobe := findBinary("modprobe", "/usr/sbin/modprobe", "/sbin/modprobe")
+	if modprobe == "" {
+		log.Println("[modules] modprobe not found, skipping (kernel may have everything built in)")
+	} else {
+		modules := []string{
+			// USB host controllers
+			"xhci_pci", "xhci_hcd", "ehci_pci", "ohci_pci",
+			// Input stack
+			"usbhid", "hid_generic", "evdev",
+			// virtio + DRM (QEMU + cloud)
+			"virtio_pci", "virtio_blk", "virtio_net", "virtio_gpu",
+		}
+		loaded := 0
+		for _, m := range modules {
+			if err := exec.Command(modprobe, "-q", m).Run(); err == nil {
+				loaded++
+			}
+		}
+		log.Printf("[modules] modprobed %d/%d core modules (best-effort)", loaded, len(modules))
+	}
+	startUdev()
+}
+
+// startUdev brings up systemd-udevd (or a udevd binary) and triggers
+// coldplug. Without this, the kernel creates devices in /sys but no
+// device-add uevents are processed → /dev/input/event* may exist but
+// wlroots' libinput backend uses libinput_udev_create_context() which
+// REQUIRES udev (it enumerates and watches via libudev). Without a
+// running udevd, libinput sees zero inputs even with event* files.
+// Best-effort: if no udevd is installed, callers must rely on
+// WLR_LIBINPUT_NO_DEVICES=1 so cage can still start.
+func startUdev() {
+	udevd := findBinary(
+		"systemd-udevd",
+		"/lib/systemd/systemd-udevd",
+		"/usr/lib/systemd/systemd-udevd",
+		"udevd",
+		"/sbin/udevd",
+		"/usr/sbin/udevd",
+	)
+	if udevd == "" {
+		log.Println("[udev] no udevd found — input/output devices will not be enumerated for libinput")
+		return
+	}
+	cmd := exec.Command(udevd, "--daemon")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		log.Printf("[udev] %s --daemon: %v (best-effort, continuing)", udevd, err)
+		return
+	}
+	log.Printf("[udev] %s started (pid=%d)", udevd, cmd.Process.Pid)
+	// Coldplug: replay add events for every device already in /sys so udev
+	// notices the modules we just loaded. settle waits for the queue to
+	// drain (bounded — never blocks forever).
+	udevadm := findBinary("udevadm", "/sbin/udevadm", "/usr/sbin/udevadm", "/bin/udevadm")
+	if udevadm == "" {
+		return
+	}
+	_ = exec.Command(udevadm, "trigger", "--action=add", "--type=devices").Run()
+	_ = exec.Command(udevadm, "trigger", "--action=add", "--type=subsystems").Run()
+	_ = exec.Command(udevadm, "settle", "--timeout=5").Run()
+	log.Println("[udev] coldplug complete")
+}
+
+// waitForInputDevices polls /dev/input/event* every 100ms until at least
+// one device exists or timeout elapses. Returns true if any device was
+// found. Boot-time `detectHost()` runs before udev finishes USB enum, so a
+// one-shot probe is a false negative on every real machine with USB
+// peripherals. This is the gate that prevents accidentally setting
+// WLR_LIBINPUT_NO_DEVICES on a real laptop.
+func waitForInputDevices(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if matches, _ := filepath.Glob("/dev/input/event*"); len(matches) > 0 {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	matches, _ := filepath.Glob("/dev/input/event*")
+	return len(matches) > 0
+}
+
+// bringUpLoopback brings the lo interface UP. Tries `ip link set lo up`
+// first (always present on Debian), falls back to `ifconfig lo up`. Either
+// is a fork+exec but it's a one-time syscall at boot — measured ~3-5ms.
+// Returns nil iff something marked lo as up successfully.
+func bringUpLoopback() error {
+	// Idempotent: if it's already UP, we're done.
+	if data, err := os.ReadFile("/sys/class/net/lo/operstate"); err == nil {
+		state := strings.TrimSpace(string(data))
+		// "unknown" is what Linux reports for loopback when it's up
+		// (loopback doesn't have a real carrier signal) — accept it.
+		if state == "up" || state == "unknown" {
+			// But also verify the IFF_UP flag is set, since operstate
+			// can be "unknown" before the admin brings it up too.
+			if flags, err := os.ReadFile("/sys/class/net/lo/flags"); err == nil {
+				var f uint64
+				_, _ = fmt.Sscanf(strings.TrimSpace(string(flags)), "0x%x", &f)
+				if f&0x1 != 0 { // IFF_UP
+					return nil
+				}
+			}
+		}
+	}
+	if ipBin, err := exec.LookPath("ip"); err == nil {
+		if out, err := exec.Command(ipBin, "link", "set", "lo", "up").CombinedOutput(); err == nil {
+			return nil
+		} else {
+			log.Printf("BMINIT9: ip link set lo up failed: %v: %s", err, out)
+		}
+	}
+	if ifcBin, err := exec.LookPath("ifconfig"); err == nil {
+		if out, err := exec.Command(ifcBin, "lo", "up").CombinedOutput(); err == nil {
+			return nil
+		} else {
+			log.Printf("BMINIT9: ifconfig lo up failed: %v: %s", err, out)
+		}
+	}
+	return fmt.Errorf("no ip/ifconfig tool found")
+}
+
+// waitForLocalPort blocks until something is listening on addr or timeout
+// elapses. Polls every 250ms; logs progress every 5s so a slow boot is
+// visible in the serial log. Returns true on success, false on timeout —
+// caller continues either way (the kiosk launches; if the server never
+// came up Chromium will at least show its standard error page).
+func waitForLocalPort(addr string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	lastLog := time.Now()
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+		if err == nil {
+			_ = c.Close()
+			log.Printf("[kiosk] %s is listening — launching browser", addr)
+			return true
+		}
+		if time.Since(lastLog) >= 5*time.Second {
+			log.Printf("[kiosk] waiting for %s (still not listening)…", addr)
+			lastLog = time.Now()
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	log.Printf("[kiosk] WARNING: %s not listening after %s — launching browser anyway", addr, timeout)
+	return false
 }
 
 // reapLoop harvests zombie processes — required duty for PID 1.
