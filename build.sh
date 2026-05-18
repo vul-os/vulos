@@ -659,34 +659,74 @@ echo "  ${GREEN}✓${NC} rootfs built"
 
 # ═══════════════════════════════════
 # 5. Live-USB image (--live only)
+#
+# Produces a genuinely UEFI-bootable GPT image:
+#   Partition 1: ESP  — FAT32, 220 MiB  (systemd-boot + kernel + initrd + loader entry)
+#   Partition 2: data — ext4             (contains image.squashfs as a plain file)
+#
+# The initramfs init-bottom hook (scripts/initramfs/vulos-live) is installed into
+# the rootfs before packing the squashfs; the hook mounts the data partition (set as
+# root= in the cmdline), finds /image.squashfs there, and overlays it with a tmpfs
+# upper layer so the live system is fully writable.
+#
+# Built without loop devices or privileged mounts (mke2fs -d + mtools), works in
+# Docker/CI.
 # ═══════════════════════════════════
 if [ "$LIVE_MODE" = "1" ]; then
   echo "${BLUE}▸ Building live-USB image...${NC}"
 
   # --- Guard: require host tools ---
   LIVE_MISSING=""
-  for _tool in mksquashfs parted mkfs.vfat dd; do
+  for _tool in mksquashfs parted mkfs.vfat mkfs.ext4 mmd mcopy dd; do
     if ! command -v "$_tool" >/dev/null 2>&1; then
       LIVE_MISSING="$LIVE_MISSING $_tool"
     fi
   done
   if [ -n "$LIVE_MISSING" ]; then
     echo "${RED}✗ Missing host tools required for --live:$LIVE_MISSING${NC}"
-    echo "  Install squashfs-tools parted dosfstools and retry."
+    echo "  Install squashfs-tools parted dosfstools e2fsprogs mtools and retry."
     exit 1
   fi
 
-  # --- Install squashfs-tools in the chroot (needed for mksquashfs inside if ever used) ---
+  # Check systemd-boot EFI stub (same logic as --disk)
+  case "$GOARCH" in
+    arm64) LIVE_EFI_NAME="BOOTAA64.EFI"; LIVE_SDBOOT="usr/lib/systemd/boot/efi/systemd-bootaa64.efi" ;;
+    amd64) LIVE_EFI_NAME="BOOTX64.EFI";  LIVE_SDBOOT="usr/lib/systemd/boot/efi/systemd-bootx64.efi" ;;
+    *)     echo "${RED}✗ --live: unsupported arch $GOARCH${NC}"; exit 1 ;;
+  esac
+  if [ ! -f "$ROOTFS/$LIVE_SDBOOT" ]; then
+    echo "${RED}✗ systemd-boot stub missing ($LIVE_SDBOOT) — is systemd-boot-efi installed?${NC}"
+    exit 1
+  fi
+
+  # --- Install squashfs-tools in the chroot ---
   chroot "$ROOTFS" apt-get install -y --no-install-recommends squashfs-tools
   chroot "$ROOTFS" apt-get clean
   rm -rf "$ROOTFS/var/lib/apt/lists/"*
 
-  # --- Install initramfs hook into rootfs ---
+  # --- Install initramfs hook into rootfs (before packing squashfs) ---
+  # The hook activates when 'vulos.live' is present in /proc/cmdline.
+  # It finds image.squashfs at ${rootmnt}/image.squashfs (ext4 data partition),
+  # mounts it read-only as the lower squashfs layer, adds a tmpfs upper layer,
+  # and presents the overlay as the real root via overlayfs.
   INITRAMFS_HOOK_DIR="$ROOTFS/etc/initramfs-tools/scripts/init-bottom"
   mkdir -p "$INITRAMFS_HOOK_DIR"
   cp "$ROOT_DIR/scripts/initramfs/vulos-live" "$INITRAMFS_HOOK_DIR/vulos-live"
   chmod 0755 "$INITRAMFS_HOOK_DIR/vulos-live"
   echo "  ${GREEN}✓${NC} initramfs hook installed in rootfs"
+
+  # Regenerate initramfs so the hook is baked in
+  chroot "$ROOTFS" sh -c 'command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all' \
+      || echo "  ${DIM}update-initramfs unavailable — hook will be absent${NC}"
+
+  # Locate kernel and initrd (needed for ESP population)
+  LIVE_KIMG="$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | sort -V | tail -1)"
+  LIVE_IIMG="$(ls -1 "$ROOTFS"/boot/initrd.img-* 2>/dev/null | sort -V | tail -1)"
+  if [ -z "$LIVE_KIMG" ] || [ -z "$LIVE_IIMG" ]; then
+    echo "${RED}✗ kernel/initrd missing in $ROOTFS/boot — is linux-image-$GOARCH installed?${NC}"
+    exit 1
+  fi
+  echo "  ${DIM}kernel: $(basename "$LIVE_KIMG")  initrd: $(basename "$LIVE_IIMG")${NC}"
 
   # --- Pack squashfs from the rootfs ---
   SQUASHFS="$OUTDIR/image.squashfs"
@@ -695,52 +735,67 @@ if [ "$LIVE_MODE" = "1" ]; then
   echo "  ${GREEN}✓${NC} image.squashfs ($(du -h "$SQUASHFS" | cut -f1))"
 
   # --- Build bootable GPT image ---
-  # Layout:
-  #   Partition 1: ESP  — FAT32, 64 MiB, GRUB bootloader stub + squashfs-less files
-  #   Partition 2: data — ext4-ish container holding image.squashfs
-  #
-  # We use raw dd + parted + mkfs.vfat to stay dependency-light.
-  # The initramfs will find image.squashfs on the data partition at /image.squashfs.
-
   LIVE_IMG="$OUTDIR/vulos-live-$ARCH.img"
-  ESP_MB=64
-  SQUASHFS_MB=$(( ($(du -m "$SQUASHFS" | cut -f1) + 32) ))   # add 32 MiB headroom
-  IMG_MB=$(( ESP_MB + SQUASHFS_MB + 4 ))                      # 4 MiB for alignment/GPT
+  LIVE_ESP_MB=220
+  SQUASHFS_MB=$(( $(du -m "$SQUASHFS" | cut -f1) + 32 ))   # squashfs + 32 MiB headroom
+  DATA_MB=$(( SQUASHFS_MB + 16 ))                           # ext4 overhead
+  IMG_MB=$(( 1 + LIVE_ESP_MB + DATA_MB + 5 ))               # 1 MiB GPT gap + 5 MiB spare
 
   echo "${BLUE}▸ Creating GPT image (${IMG_MB} MiB)...${NC}"
-  # Allocate the image file
+  rm -f "$LIVE_IMG"
   dd if=/dev/zero of="$LIVE_IMG" bs=1M count="$IMG_MB" status=none
 
-  # Partition table: GPT, ESP at 1 MiB, data after ESP
+  # Partition table: GPT, ESP at 1 MiB, data partition after ESP
   parted -s "$LIVE_IMG" \
     mklabel gpt \
-    mkpart ESP  fat32  1MiB  $(( ESP_MB + 1 ))MiB \
+    mkpart ESP  fat32 1MiB $(( 1 + LIVE_ESP_MB ))MiB \
     set 1 esp on \
-    mkpart data       $(( ESP_MB + 1 ))MiB 100%
+    mkpart data ext4  $(( 1 + LIVE_ESP_MB ))MiB 100%
 
-  # Format ESP partition via loop offset
-  ESP_START_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 1 /{print $2}' | tr -d 'B')
-  ESP_END_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 1 /{print $3}' | tr -d 'B')
-  ESP_SIZE_BYTES=$(( ESP_END_BYTES - ESP_START_BYTES ))
+  # ── FAT32 ESP: systemd-boot + kernel + initrd + loader entry (mtools, no loop) ──
+  LIVE_ESP_IMG="$OUTDIR/_live_esp.fat"
+  rm -f "$LIVE_ESP_IMG"
+  dd if=/dev/zero of="$LIVE_ESP_IMG" bs=1M count="$LIVE_ESP_MB" status=none
+  mkfs.vfat -F 32 -n "EFI" "$LIVE_ESP_IMG" >/dev/null
+  mmd  -i "$LIVE_ESP_IMG" ::/EFI ::/EFI/BOOT ::/loader ::/loader/entries
+  mcopy -i "$LIVE_ESP_IMG" "$ROOTFS/$LIVE_SDBOOT"  "::/EFI/BOOT/$LIVE_EFI_NAME"
+  mcopy -i "$LIVE_ESP_IMG" "$LIVE_KIMG"             "::/vmlinuz"
+  mcopy -i "$LIVE_ESP_IMG" "$LIVE_IIMG"             "::/initrd.img"
+  printf 'default vulos\ntimeout 5\nconsole-mode max\n' > "$OUTDIR/_live_loader.conf"
+  mcopy -i "$LIVE_ESP_IMG" "$OUTDIR/_live_loader.conf" "::/loader/loader.conf"
+  # root=LABEL=VULOS-LIVE-DATA: initramfs mounts the ext4 data partition, finds
+  # /image.squashfs there, and overlays it with a tmpfs upper layer (vulos-live hook).
+  # vulos.live: activates the hook. quiet splash plymouth.theme=vulos: branded splash.
+  printf 'title  Vula OS Live\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=VULOS-LIVE-DATA ro vulos.live quiet splash plymouth.theme=vulos console=tty1 console=ttyAMA0,115200\n' \
+    > "$OUTDIR/_live_entry.conf"
+  mcopy -i "$LIVE_ESP_IMG" "$OUTDIR/_live_entry.conf" "::/loader/entries/vulos.conf"
+  rm -f "$OUTDIR/_live_loader.conf" "$OUTDIR/_live_entry.conf"
+  echo "  ${GREEN}✓${NC} ESP (systemd-boot, ${LIVE_ESP_MB} MiB)"
 
-  DATA_START_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 2 /{print $2}' | tr -d 'B')
-  DATA_SIZE_BYTES=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 2 /{print $3 - $2}' | tr -d 'B')
+  # ── ext4 data partition: contains image.squashfs as a plain file (mke2fs -d) ──
+  # The vulos-live initramfs hook expects to find /image.squashfs as a file on a
+  # mounted filesystem (set as root= in the cmdline). Using ext4 with a -d staging
+  # directory keeps this loop-device-free, consistent with --disk.
+  LIVE_DATA_STAGING="$OUTDIR/_live_data_dir"
+  LIVE_DATA_IMG="$OUTDIR/_live_data.ext4"
+  rm -rf "$LIVE_DATA_STAGING"
+  mkdir -p "$LIVE_DATA_STAGING"
+  cp "$SQUASHFS" "$LIVE_DATA_STAGING/image.squashfs"
+  rm -f "$LIVE_DATA_IMG"
+  mkfs.ext4 -q -F -L "VULOS-LIVE-DATA" -d "$LIVE_DATA_STAGING" "$LIVE_DATA_IMG" "${DATA_MB}M"
+  rm -rf "$LIVE_DATA_STAGING"
+  echo "  ${GREEN}✓${NC} data ext4 (${DATA_MB} MiB, label VULOS-LIVE-DATA)"
 
-  # Write FAT32 ESP directly into the image at offset
-  dd if=/dev/zero bs=1 count="$ESP_SIZE_BYTES" | dd of="$LIVE_IMG" bs=1 seek="$ESP_START_BYTES" conv=notrunc status=none
-  # mkfs.vfat on offset via a temp file extract/merge approach (no loop device needed)
-  ESP_TMP="$OUTDIR/_esp.img"
-  dd if=/dev/zero of="$ESP_TMP" bs=1 count="$ESP_SIZE_BYTES" status=none
-  mkfs.vfat -F 32 -n "EFI" "$ESP_TMP" >/dev/null
-  dd if="$ESP_TMP" of="$LIVE_IMG" bs=1 seek="$ESP_START_BYTES" conv=notrunc status=none
-  rm -f "$ESP_TMP"
-
-  # Write the squashfs into the data partition (raw, no filesystem — initramfs reads squashfs directly)
-  dd if="$SQUASHFS" of="$LIVE_IMG" bs=1M seek=$(( DATA_START_BYTES / (1024 * 1024) )) conv=notrunc status=none
+  # ── Assemble GPT: ESP + data (offset dd, no loop device) ──
+  LIVE_ESP_OFF=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 1 /{print $2}' | tr -d 'B')
+  LIVE_DATA_OFF=$(parted -s "$LIVE_IMG" unit B print | awk '/^ 2 /{print $2}' | tr -d 'B')
+  dd if="$LIVE_ESP_IMG"  of="$LIVE_IMG" bs=1M seek=$(( LIVE_ESP_OFF  / 1048576 )) conv=notrunc status=none
+  dd if="$LIVE_DATA_IMG" of="$LIVE_IMG" bs=1M seek=$(( LIVE_DATA_OFF / 1048576 )) conv=notrunc status=none
+  rm -f "$LIVE_ESP_IMG" "$LIVE_DATA_IMG"
 
   echo "  ${GREEN}✓${NC} GPT image: vulos-live-$ARCH.img ($(du -h "$LIVE_IMG" | cut -f1))"
-  echo "  ${DIM}  Partition 1: ESP (FAT32, ${ESP_MB} MiB) — bootloader${NC}"
-  echo "  ${DIM}  Partition 2: data — image.squashfs${NC}"
+  echo "  ${DIM}  Partition 1: ESP (FAT32, ${LIVE_ESP_MB} MiB) — systemd-boot + kernel + initrd${NC}"
+  echo "  ${DIM}  Partition 2: data (ext4, LABEL=VULOS-LIVE-DATA) — image.squashfs${NC}"
   echo ""
   echo "${GREEN}Live-USB image ready:${NC} $LIVE_IMG"
   echo "${GREEN}Flash with:${NC} dd if=$LIVE_IMG of=/dev/sdX bs=4M status=progress"

@@ -7,8 +7,13 @@
 # combines them with overlayfs so the live system appears fully writable.
 #
 # Boot kernel cmdline must supply:
-#   root=/dev/sdXY  (the data partition holding image.squashfs)
-# The standard initramfs will have already set $rootmnt.
+#   root=LABEL=VULOS-LIVE-DATA  (the ext4 data partition holding image.squashfs)
+#   vulos.live                  (activates this hook)
+# The standard initramfs will have already mounted the data partition at $rootmnt
+# and set $rootmnt to that mount point.
+#
+# Layout expected on the data partition (LABEL=VULOS-LIVE-DATA):
+#   /image.squashfs   — squashfs archive of the full Vula OS rootfs
 
 PREREQ=""
 prereqs() { echo "$PREREQ"; }
@@ -35,7 +40,9 @@ log_begin_msg "Vula OS: setting up live overlayfs"
 # Ensure helper directories exist
 mkdir -p "$LOWER" "$UPPER" "$WORK" "$MERGED"
 
-# Mount the squashfs from the real rootmnt (data partition)
+# Mount the squashfs from $rootmnt (the ext4 data partition already mounted by
+# the standard initramfs via root=LABEL=VULOS-LIVE-DATA).
+# The file /image.squashfs lives at the root of that ext4 partition.
 if ! mount -t squashfs -o loop,ro "${rootmnt}${SQUASHFS_PATH}" "$LOWER"; then
     panic "vulos-live: failed to mount squashfs at ${rootmnt}${SQUASHFS_PATH}"
 fi
@@ -53,8 +60,8 @@ if ! mount -t overlay -o "lowerdir=$LOWER,upperdir=$UPPER,workdir=$WORK" overlay
     panic "vulos-live: failed to mount overlayfs"
 fi
 
-# Move the merged overlay to $rootmnt so the standard pivot_root works
-# We need to bind-mount /run into the new root so our mounts are visible
+# Move the merged overlay to $rootmnt so the standard pivot_root works.
+# Bind-mount /run/vulos into the new root so our sub-mounts remain visible.
 mkdir -p "${rootmnt}/run/vulos"
 mount --bind /run/vulos "${rootmnt}/run/vulos"
 
