@@ -20,6 +20,7 @@ const sections = [
   { id: 'network', label: 'Remote Access' },
   { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
+  { id: 'pin', label: 'Device PIN' },
   { id: 'account', label: 'Account' },
   { id: 'osupdate', label: 'OS Update' },
   { id: 'about', label: 'About' },
@@ -63,6 +64,7 @@ export default function Settings() {
         {active === 'network' && <NetworkSettings />}
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
+        {active === 'pin' && <DevicePINSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'about' && <AboutSettings />}
@@ -944,6 +946,206 @@ function AccountSettings({ profile, updateProfile, logout }) {
       <Field label="Timezone"><input value={tz} onChange={e => setTz(e.target.value)} placeholder="Africa/Johannesburg" className="input" /></Field>
       <button onClick={save} className="btn mt-3">Save</button>
       <button onClick={logout} className="btn-ghost mt-6 text-red-400">Log Out</button>
+    </Section>
+  )
+}
+
+// --- Device PIN (CLOGIN-06) ---
+//
+// Allows the user to set / change / disable the device-local PIN used for
+// lock-screen unlock. Requires a full-auth session to change the PIN
+// (enforced server-side; the UI shows an informational note).
+function DevicePINSettings() {
+  const [status, setStatus] = useState(null)       // lockout status from server
+  const [hasPIN, setHasPIN] = useState(null)       // whether a PIN is currently set
+  const [newPIN, setNewPIN] = useState('')
+  const [confirmPIN, setConfirmPIN] = useState('')
+  const [msg, setMsg] = useState(null)             // { type: 'ok'|'err', text }
+  const [busy, setBusy] = useState(false)
+
+  const loadStatus = () => {
+    fetch('/api/auth/pin/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setStatus(data)
+          setHasPIN(data.has_pin !== false)
+        }
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => { loadStatus() }, [])
+
+  const handleSet = async (e) => {
+    e.preventDefault()
+    setMsg(null)
+
+    if (newPIN.length < 4) {
+      setMsg({ type: 'err', text: 'PIN must be at least 4 digits' })
+      return
+    }
+    if (newPIN.length > 8) {
+      setMsg({ type: 'err', text: 'PIN must be at most 8 digits' })
+      return
+    }
+    if (newPIN !== confirmPIN) {
+      setMsg({ type: 'err', text: 'PINs do not match' })
+      return
+    }
+
+    setBusy(true)
+    try {
+      const res = await fetch('/api/auth/pin/device/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: newPIN }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'err', text: data.error || 'Failed to set PIN' })
+      } else {
+        setMsg({ type: 'ok', text: 'PIN set — takes effect on next lock' })
+        setNewPIN('')
+        setConfirmPIN('')
+        loadStatus()
+      }
+    } catch {
+      setMsg({ type: 'err', text: 'Could not reach server' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDisable = async () => {
+    if (!confirm('Remove the device PIN? The lock screen will allow entry without a PIN.')) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/auth/pin/device/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: '' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'err', text: data.error || 'Failed to remove PIN' })
+      } else {
+        setMsg({ type: 'ok', text: 'PIN removed' })
+        setHasPIN(false)
+        loadStatus()
+      }
+    } catch {
+      setMsg({ type: 'err', text: 'Could not reach server' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Section title="Device PIN">
+      {/* Current status */}
+      <div className="mb-6 rounded-xl border border-neutral-800/50 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">PIN status</span>
+          <span className={`text-sm font-medium ${hasPIN ? 'text-green-400' : 'text-neutral-500'}`}>
+            {hasPIN === null ? '—' : hasPIN ? 'Set' : 'Not set'}
+          </span>
+        </div>
+        {status && (
+          <>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Lockout state</span>
+              <span className={`text-sm ${
+                status.permanent_lock ? 'text-red-400' :
+                status.locked ? 'text-amber-400' :
+                'text-neutral-400'
+              }`}>
+                {status.permanent_lock ? 'Permanently locked — re-auth required' :
+                 status.locked ? 'Temporarily locked' :
+                 `${status.attempts_left ?? 5} attempts remaining`}
+              </span>
+            </div>
+            {status.locked && !status.permanent_lock && status.locked_until && (
+              <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+                <span className="text-xs text-neutral-500">Unlocks at</span>
+                <span className="text-sm text-neutral-400">
+                  {new Date(status.locked_until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Full-auth requirement note */}
+      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+        Setting or changing the PIN requires a full-auth (password) session. The PIN
+        never leaves this device — it is derived locally with argon2id and sealed via
+        the TPM where available.
+      </p>
+
+      {/* Set / change PIN form */}
+      <form onSubmit={handleSet} className="space-y-3 mb-6">
+        <h3 className="text-sm font-medium text-neutral-300">{hasPIN ? 'Change PIN' : 'Set PIN'}</h3>
+        <Field label="New PIN (4–8 digits)">
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={newPIN}
+            onChange={e => setNewPIN(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
+            placeholder="••••"
+            maxLength={8}
+            className="input w-40"
+            autoComplete="new-password"
+          />
+        </Field>
+        <Field label="Confirm PIN">
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={confirmPIN}
+            onChange={e => setConfirmPIN(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
+            placeholder="••••"
+            maxLength={8}
+            className="input w-40"
+            autoComplete="new-password"
+          />
+        </Field>
+        <button
+          type="submit"
+          disabled={busy || !newPIN}
+          className="btn disabled:opacity-50"
+        >
+          {busy ? 'Saving…' : hasPIN ? 'Change PIN' : 'Set PIN'}
+        </button>
+      </form>
+
+      {/* Remove PIN */}
+      {hasPIN && (
+        <div className="pt-4 border-t border-neutral-800/50">
+          <h3 className="text-sm font-medium text-neutral-300 mb-2">Remove PIN</h3>
+          <p className="text-xs text-neutral-600 mb-3">
+            Removes the PIN from this device. The lock screen will allow entry without a code.
+          </p>
+          <button
+            onClick={handleDisable}
+            disabled={busy}
+            className="btn-ghost text-red-400 disabled:opacity-50"
+          >
+            Remove PIN
+          </button>
+        </div>
+      )}
+
+      {/* Status message */}
+      {msg && (
+        <p className={`mt-4 text-sm ${msg.type === 'ok' ? 'text-green-400' : 'text-red-400'}`}>
+          {msg.text}
+        </p>
+      )}
     </Section>
   )
 }

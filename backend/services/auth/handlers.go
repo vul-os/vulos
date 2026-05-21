@@ -23,6 +23,8 @@ type Handler struct {
 	OnUserCreated func(username, password, role string) // called after a new user is registered
 	OnUserLogin   func(username, password, role string) // called on every successful login to sync credentials
 	OnRoleChanged func(username, role string)           // called when a user's role changes
+	// CLOGIN-06: device-local PIN service (nil if not configured).
+	DevicePIN *DevicePINService
 }
 
 func NewHandler(store *Store) *Handler {
@@ -58,6 +60,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/pin/set", h.handleSetPIN)
 	mux.HandleFunc("POST /api/auth/pin/validate", h.handleValidatePIN)
 
+	// CLOGIN-06: device-local PIN (TPM-wrapped / argon2id fallback).
+	mux.HandleFunc("POST /api/auth/pin/device/set", h.handleDevicePINSet)
+	mux.HandleFunc("POST /api/auth/pin/unlock", h.handleDevicePINUnlock)
+	mux.HandleFunc("GET /api/auth/pin/status", h.handleDevicePINStatus)
+
 	// Security portal
 	mux.HandleFunc("GET /api/auth/security/bans", h.handleListBans)
 	mux.HandleFunc("POST /api/auth/security/unban", h.handleUnban)
@@ -91,6 +98,8 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloudlogin":   true, // CLOGIN-01: unauthenticated cloud login
 	"/api/auth/cloud/status": true, // CLOGIN-01: enrollment status check (setup-time)
 	"/api/auth/cloud/signup": true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
+	"/api/auth/pin/unlock":   true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
+	"/api/auth/pin/status":   true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -924,4 +933,121 @@ func generateRandomPassword() string {
 	b := make([]byte, 24)
 	rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// ─── CLOGIN-06: device-local PIN handlers ────────────────────────────────────
+
+// handleDevicePINSet sets or clears the device-local PIN.
+// Requires a full-auth session (X-User-ID must be set).
+// Body: { "pin": "1234" }  — empty string removes the PIN.
+func (h *Handler) handleDevicePINSet(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "full-auth session required to set PIN")
+		return
+	}
+
+	if h.DevicePIN == nil {
+		writeErr(w, 503, "device PIN service not configured")
+		return
+	}
+
+	var req struct {
+		PIN string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request")
+		return
+	}
+
+	// Obtain the current session token so it can be wrapped by the PIN.
+	token := extractToken(r)
+	if req.PIN != "" && token == "" {
+		writeErr(w, 401, "no active session to wrap")
+		return
+	}
+
+	if err := h.DevicePIN.SetPIN(req.PIN, token); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+
+	log.Printf("[devicepin] PIN %s for user %s", map[bool]string{true: "cleared", false: "set"}[req.PIN == ""], userID)
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// handleDevicePINUnlock attempts to unlock using a device PIN.
+// This endpoint is PUBLIC — the user is on the lock screen and has no session.
+// On success it sets the session cookie and returns { "ok": true }.
+// On failure it returns a lockout sub-object describing the current state.
+func (h *Handler) handleDevicePINUnlock(w http.ResponseWriter, r *http.Request) {
+	ip := extractIP(r)
+	if h.limiter.IsBanned(ip) {
+		writeErr(w, 429, "too many attempts")
+		return
+	}
+
+	if h.DevicePIN == nil {
+		writeErr(w, 503, "device PIN service not configured")
+		return
+	}
+
+	var req struct {
+		PIN string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request")
+		return
+	}
+
+	sessionToken, err := h.DevicePIN.ValidatePIN(req.PIN)
+	if err != nil {
+		h.limiter.RecordFailure(ip)
+		st := h.DevicePIN.Status()
+		code := 401
+		switch err {
+		case ErrPINPermanentLocked:
+			code = 403
+		case ErrPINLocked:
+			code = 423
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		enc, _ := json.Marshal(map[string]any{
+			"error":   err.Error(),
+			"lockout": st,
+		})
+		w.Write(enc) //nolint:errcheck
+		return
+	}
+
+	// Verify the wrapped session token is still valid.
+	sess, ok := h.store.ValidateToken(sessionToken)
+	if !ok {
+		// Session expired — PIN is stale; force full re-auth.
+		writeErr(w, 401, "PIN session expired — please sign in with your password")
+		return
+	}
+
+	h.limiter.RecordSuccess(ip)
+	http.SetCookie(w, sessionCookie(r, sess.Token))
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleDevicePINStatus returns the current lockout status without modifying state.
+// PUBLIC — shown on the lock screen before the user has a session.
+func (h *Handler) handleDevicePINStatus(w http.ResponseWriter, r *http.Request) {
+	if h.DevicePIN == nil {
+		writeJSON(w, map[string]any{"has_pin": false})
+		return
+	}
+	st := h.DevicePIN.Status()
+	writeJSON(w, map[string]any{
+		"has_pin":        h.DevicePIN.HasPIN(),
+		"locked":         st.Locked,
+		"permanent_lock": st.PermanentLock,
+		"attempts_left":  st.AttemptsLeft,
+		"locked_until":   st.LockedUntil,
+		"lockout_count":  st.LockoutCount,
+	})
 }
