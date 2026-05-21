@@ -49,6 +49,90 @@ No central authority, no allow-list we control, no shared signing infrastructure
 
 ---
 
+## Fork Procedure (SEED-03)
+
+> **TL;DR.** Generate your own root keypair, stand up your own OS bucket, build the seed with `VULOS_TRUST_ANCHOR_PUBKEY=... VULOS_OS_BUCKET_URL=... ./build.sh`, flash. Done — trust is fully independent of the upstream.
+
+Everything the seed needs to establish trust is baked at build time.  Re-flashing the seed re-establishes trust end-to-end.  No central authority, no allow-list, no shared signing infrastructure.
+
+### Step 1 — Generate your root keypair
+
+The root key is the only secret in the system.  Generate it **offline** and keep the private half air-gapped.
+
+```sh
+# Using the vulos keygen tool (requires SIGN-03):
+backend/cmd/sign gen-key --out keys/my-fork.key --pub keys/my-fork.pub
+
+# Alternative: raw openssl (for bootstrapping before SIGN-03 lands):
+mkdir -p keys
+openssl genpkey -algorithm ed25519 -out keys/my-fork.key
+openssl pkey -in keys/my-fork.key -pubout -outform DER \
+  | tail -c 32 | base64 > keys/my-fork.pub
+```
+
+The public key (`my-fork.pub`) is a single-line Base64-encoded Ed25519 key (32 decoded bytes).  Keep the private key (`my-fork.key`) secret and offline — it is the root of trust for every OS image you ever sign.
+
+### Step 2 — Stand up your OS bucket
+
+The bucket must serve an update manifest at `os/stable.json` (see OS-DISTRIBUTION.md).  Any HTTPS host works: an S3 bucket, a Cloudflare R2 bucket, a static file server, etc.
+
+```sh
+# Example bucket root (accessible at https://os.my-fork.example.com):
+#   os/stable.json       — update manifest (version + squashfs URL + signature)
+#   os/vulos-amd64.squashfs  — OS image signed with your root key
+```
+
+Sign your images with the private key from Step 1.
+
+### Step 3 — Build the seed
+
+Pass both your public key and your bucket URL to `build.sh`.  They are baked together — the seed will only trust images signed by your key AND fetched from your bucket.
+
+```sh
+VULOS_TRUST_ANCHOR_PUBKEY=keys/my-fork.pub \
+VULOS_OS_BUCKET_URL=https://os.my-fork.example.com \
+  sudo ./build.sh
+```
+
+`build.sh` will fail loud if you provide a custom key without a bucket URL (or vice versa is unsafe — see the Invariant below).
+
+What gets baked into the seed:
+
+| File in seed | Content | Mutability |
+|---|---|---|
+| `/etc/vulos/trust-anchor.pub` | Your Ed25519 public key | Hard-baked, immutable |
+| `/etc/vulos/os-bucket-url` | `https://os.my-fork.example.com` | Soft / runtime config |
+
+Both files are also embedded into the initramfs so they are available before `pivot_root`.
+
+### Step 4 — Flash + verify
+
+```sh
+# Flash the seed to the target device (adjust /dev/sdX):
+dd if=output/vulos-amd64.tar.gz of=/dev/sdX bs=4M status=progress
+
+# Or use the disk image:
+dd if=output/vulos-amd64.img of=/dev/sdX bs=4M status=progress
+```
+
+After first boot the seed fetches `os/stable.json` from your bucket, verifies the squashfs signature against `/etc/vulos/trust-anchor.pub`, and pivots into your OS.  **Upstream-signed images are rejected** (wrong key).  **Upstream-bucket images are not fetched** (wrong URL).  The fork is fully independent.
+
+### Re-flashing re-establishes trust
+
+If a device is ever in doubt (key compromised, bucket moved, device handed to a new owner), re-flashing with a freshly built seed re-establishes trust end-to-end:
+
+1. Regenerate the keypair (or reuse if the key is still clean).
+2. Run `build.sh` with the new key + bucket.
+3. Flash the new seed.
+
+The old trust relationship is gone the moment the new seed is flashed.
+
+### Invariant: key + bucket must match
+
+A seed built with a fork key but pointing at the upstream bucket will boot, attempt to fetch the upstream manifest, fail to verify (wrong key), and never run.  `build.sh` prevents this configuration by requiring `VULOS_OS_BUCKET_URL` whenever `VULOS_TRUST_ANCHOR_PUBKEY` is set.  The two values are always written atomically in the same build — they cannot drift.
+
+---
+
 ## Relationship to Secure Boot
 
 When a machine has no one-time install stick and boots cold, the **Secure Boot shim** in the seed is the firmware-level anchor (see NETBOOT.md's two-layer safety). The shim chains to our signed bootloader, which chains to the signed kernel/initramfs, which verifies the squashfs — an unbroken signature chain rooted in the baked key. The forker's shim is signed with the forker's chain.
