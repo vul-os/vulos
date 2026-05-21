@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 194 / 234 real tasks done (83%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 194 / 236 real tasks done (82%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -36,9 +36,9 @@
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 5 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard (NEW) |
+| Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 7 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **194 / 234** | `[████████░░]` 83% |
+| **Total** |  | **194 / 236** | `[████████░░]` 82% |
 
 ## How to read a task
 
@@ -1681,4 +1681,15 @@ Scope: After signup or sign-in during first boot, walk the user through TWO step
 
 Render a QR code for the TOTP otpauth:// URI (use a tiny pure-JS QR generator OR plain `<canvas>` based renderer; no heavy deps). Recovery codes download = a `.txt` blob with the codes + a clear "store these somewhere safe" header. JSX only.
 AC: [ ] post-signup shows 2FA step with QR + recovery codes (copy + download) [ ] skip allowed for non-admin, blocked for fleet_admin [ ] email-verify nudge step with resend [ ] reaches desktop after both steps (or skips) [ ] npm run build passes
+
+
+### [CLOGIN-06] Device PIN login (TPM-wrapped, lockout, fall-back)
+`todo` · P1 · L · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/devicepin.go, src/auth/PinLogin.jsx (new), src/core/Settings.jsx
+Scope: After initial full login (password + 2FA), let the user set a **device-local PIN** (4-8 digits, configurable min). PIN unlocks a session credential wrapped by the TPM where available (sealed to PCR state), falls back to a sealed file under `~/.vulos/auth/pin.bin` (libsodium SecretBox keyed by argon2id(PIN, per-device salt)). Subsequent logins on the SAME device + profile accept the PIN. **Lockout**: 5 wrong PINs → temporary lockout (15 min); 3 lockouts → full re-auth required (password + 2FA). PIN never sent off-device, never to the cloud. Setting/changing the PIN requires the current session to have been opened by full auth (not by PIN). Settings UI to set/change/disable PIN.
+AC: [ ] set PIN from Settings (requires full-auth session) [ ] login with PIN succeeds [ ] 5 wrong → 15-min lockout [ ] 3 lockouts → full re-auth required [ ] PIN material never leaves device [ ] unit tests for argon2/TPM wrap
+
+### [CLOGIN-07] Fingerprint / platform-authenticator unlock (Linux fprintd via PAM)
+`todo` · P2 · L · dep: CLOGIN-06 · parallel: yes — new backend/services/auth/fingerprint.go, src/core/Settings.jsx
+Scope: Optional fingerprint unlock via `fprintd` (libfprint) on Linux. Enable in Settings → "Add fingerprint" enrolls the finger using fprintd's D-Bus API; subsequent logins on the lock screen accept a fingerprint match in place of the PIN. The fingerprint unlocks the same TPM-wrapped session credential CLOGIN-06 protects. Hardware-supported only — gracefully hide the feature if no fprintd-known device is present. Configurable per-profile. Falls back to PIN/password if fingerprint fails 3×. Document the hardware support matrix in Settings.
+AC: [ ] Settings shows "Add fingerprint" only when fprintd reports a supported device [ ] enrolled fingerprint unlocks the same credential as PIN [ ] 3× failed fingerprint → PIN/password [ ] disable fingerprint requires full-auth session [ ] no fingerprint data leaves the device
 
