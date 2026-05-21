@@ -3,6 +3,7 @@ import QRCanvas from './QRCanvas.jsx'
 import ContactCard from './ContactCard.jsx'
 import RequestQueue from './RequestQueue.jsx'
 import CallView from './call/CallView.jsx'
+import DropPanel from './Drop.jsx'
 import { usePeering } from '../../core/usePeering.js'
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'contacts', label: 'Contacts' },
   { id: 'requests', label: 'Requests' },
   { id: 'call',     label: 'Call' },
+  { id: 'drop',     label: 'Drop' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -318,6 +320,9 @@ export default function Peering() {
   // connection that drives message/presence/collab channels (PEER-05).
   const peeringWS = usePeering()
 
+  // Pending inbound Drop requests (shown as a badge on the Drop tab).
+  const [dropPending, setDropPending] = useState(0)
+
   // Quick-dial from contact card: switch to Call tab with pre-filled target.
   // CallView reads this via the dialTo prop and clears it on mount.
   const [callDialTo, setCallDialTo] = useState(null)
@@ -449,6 +454,11 @@ export default function Peering() {
                   {pendingCount > 9 ? '9+' : pendingCount}
                 </span>
               )}
+              {t.id === 'drop' && dropPending > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {dropPending > 9 ? '9+' : dropPending}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -493,6 +503,10 @@ export default function Peering() {
             dialTo={callDialTo}
             onDialToConsumed={() => setCallDialTo(null)}
           />
+        )}
+
+        {tab === 'drop' && (
+          <DropPanel onPendingCount={setDropPending} />
         )}
       </div>
     </div>
