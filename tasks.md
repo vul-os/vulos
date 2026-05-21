@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 209 / 236 real tasks done (89%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 212 / 236 real tasks done (90%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -11,7 +11,7 @@
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
 | Peering | [PEERING.md](../roadmap/PEERING.md) | 21 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 16 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
 | Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
@@ -30,15 +30,15 @@
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
 | OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 5 / 5 | `[██████████]` 100% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
-| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 4 / 5 | `[████████░░]` 80% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
+| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 5 / 5 | `[██████████]` 100% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
 | Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
-| Cloud Login (OS-side) | (this file § CLOGIN-*) | 6 / 7 | `[█████████░]` 86% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
+| Cloud Login (OS-side) | (this file § CLOGIN-*) | 7 / 7 | `[██████████]` 100% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **209 / 236** | `[█████████░]` 89% |
+| **Total** |  | **212 / 236** | `[█████████░]` 90% |
 
 ## How to read a task
 
@@ -863,7 +863,7 @@ AC: [ ] rpi bootable image [ ] pinephone image [ ] generic arm64 unchanged [ ] s
 > **Window model (decisions.md D93):** the React shell is always the WM; native-app pixels are a per-app *transport*. v1 = always-stream over `cage` (ship now); v2 = `surface` transport on `labwc`. BMINIT-02/04/06 (native-launch) are the v2 path, not the bare-metal default — see BMINIT-16.
 
 ### [BMINIT-16] v1 bare-metal app model: always-stream over cage
-`todo` · P1 · M · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, src/providers/ShellProvider.jsx, src/shell/Launchpad.jsx, src/core/useNativeMode.js
+`done` · P1 · M · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, src/providers/ShellProvider.jsx, src/shell/Launchpad.jsx, src/core/useNativeMode.js
 Scope: Bare-metal default = cage + Cog fullscreen, React shell as sole WM, native apps via the existing stream transport. Gate the detectNativeMode native-launch path (BMINIT-04/06) behind an explicit v2 opt-in (env/flag/device-profile), default OFF. cage is the supported v1 local compositor; labwc only when v2 surface enabled. Remote/stream path unchanged.
 AC: [ ] bare-metal default streams, no native-launch [ ] cage fullscreen + shell is sole WM [ ] native-launch only when v2 opt-in set [ ] remote unchanged [ ] go build + npm build
 
@@ -1518,7 +1518,7 @@ Scope: Boot the `--live` squashfs into RAM with writable overlay; let the user r
 AC: [ ] live-RAM session runs the real OS [ ] Install requires explicit disk choice + confirm, no auto-wipe [ ] reuses --live path [ ] npm build
 
 ### [NETB-05] Install-time account choice: Local-only vs connect a control plane
-`todo` · P2 · M · dep: NETB-04, INIT-05 · parallel: no — src/auth/Setup.jsx
+`done` · P2 · M · dep: NETB-04, INIT-05 · parallel: no — src/auth/Setup.jsx
 Scope: Post-live-session step. **Local-only** = create local OS account (username + full name + password; hostname autofilled), no external relationship, fully self-hosted. **Connect a control plane** = enroll with an optional control plane (email + password + 2FA) at a configurable URL, then optionally join an existing **data cluster** (cluster passphrase required, held only locally). Keep the two credentials DISTINCT (local OS account vs control-plane account). The data bucket here is NOT the public OS bucket.
 AC: [ ] local-only path creates an OS account, no external relationship [ ] connect path enrolls (email+pw+2FA) then offers cluster join [ ] credentials kept separate [ ] join requires passphrase held only locally [ ] npm build
 
@@ -1689,7 +1689,7 @@ Scope: After initial full login (password + 2FA), let the user set a **device-lo
 AC: [ ] set PIN from Settings (requires full-auth session) [ ] login with PIN succeeds [ ] 5 wrong → 15-min lockout [ ] 3 lockouts → full re-auth required [ ] PIN material never leaves device [ ] unit tests for argon2/TPM wrap
 
 ### [CLOGIN-07] Fingerprint / platform-authenticator unlock (Linux fprintd via PAM)
-`todo` · P2 · L · dep: CLOGIN-06 · parallel: yes — new backend/services/auth/fingerprint.go, src/core/Settings.jsx
+`done` · P2 · L · dep: CLOGIN-06 · parallel: yes — new backend/services/auth/fingerprint.go, src/core/Settings.jsx
 Scope: Optional fingerprint unlock via `fprintd` (libfprint) on Linux. Enable in Settings → "Add fingerprint" enrolls the finger using fprintd's D-Bus API; subsequent logins on the lock screen accept a fingerprint match in place of the PIN. The fingerprint unlocks the same TPM-wrapped session credential CLOGIN-06 protects. Hardware-supported only — gracefully hide the feature if no fprintd-known device is present. Configurable per-profile. Falls back to PIN/password if fingerprint fails 3×. Document the hardware support matrix in Settings.
 AC: [ ] Settings shows "Add fingerprint" only when fprintd reports a supported device [ ] enrolled fingerprint unlocks the same credential as PIN [ ] 3× failed fingerprint → PIN/password [ ] disable fingerprint requires full-auth session [ ] no fingerprint data leaves the device
 
