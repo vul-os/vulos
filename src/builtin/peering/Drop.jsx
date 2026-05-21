@@ -1,5 +1,5 @@
 /**
- * Drop.jsx — AirDrop-style LAN file drop UI (PEER-34).
+ * Drop.jsx — AirDrop-style LAN file drop UI (PEER-34 + PEER-35).
  *
  * Features:
  *   - Nearby peers tile grid (polling /api/peering/drop/nearby every 10 s)
@@ -8,6 +8,9 @@
  *   - Inbound accept / decline from /api/peering/drop/decide
  *   - Discoverability toggle (everyone / peers / nobody)
  *   - Pending-transfer badge on the tab (raised from parent via onPendingCount)
+ *   - [PEER-35] Proximity code: "My Code" (generate 6-digit TTL-5-min code) +
+ *     "Enter Code" (redeem a peer's code) for cross-network / no-mDNS scenarios
+ *     via POST /api/peering/drop/code/generate and /api/peering/drop/code/redeem
  *
  * Dependencies: React only — no external deps.
  */
@@ -75,6 +78,15 @@ const IconSettings = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+)
+
+const IconHash = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="16" height="16">
+    <line x1="4"  y1="9"  x2="20" y2="9"  strokeLinecap="round" />
+    <line x1="4"  y1="15" x2="20" y2="15" strokeLinecap="round" />
+    <line x1="10" y1="3"  x2="8"  y2="21" strokeLinecap="round" />
+    <line x1="16" y1="3"  x2="14" y2="21" strokeLinecap="round" />
   </svg>
 )
 
@@ -311,6 +323,239 @@ function InboundCard({ req, onDecide }) {
 }
 
 // ---------------------------------------------------------------------------
+// Proximity code panel (PEER-35)
+// ---------------------------------------------------------------------------
+
+const PROX_TABS = ['my-code', 'enter-code']
+
+/**
+ * ProximityCodePanel — two-tab UI for cross-network / no-mDNS pairing.
+ *
+ * My Code tab:   POST /api/peering/drop/code/generate → display 6-digit code
+ *                with countdown to expiry (5 min / single-use).
+ * Enter Code tab: type a 6-digit code → POST /api/peering/drop/code/redeem
+ *                 → connect to the peer.
+ */
+function ProximityCodePanel({ onPeerResolved }) {
+  const [tab, setTab]           = useState('my-code')
+
+  // My Code state
+  const [myCode, setMyCode]           = useState(null)   // { code, expires_at }
+  const [myCodeSecsLeft, setMyCodeSecsLeft] = useState(0)
+  const [generating, setGenerating]   = useState(false)
+  const [genError, setGenError]       = useState(null)
+  const timerRef                      = useRef(null)
+
+  // Enter Code state
+  const [inputCode, setInputCode]     = useState('')
+  const [redeeming, setRedeeming]     = useState(false)
+  const [redeemError, setRedeemError] = useState(null)
+  const [redeemResult, setRedeemResult] = useState(null)  // proxRedeemResponse
+
+  // ── My Code: countdown ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!myCode) return
+    const tick = () => {
+      const secs = Math.max(0, Math.round((new Date(myCode.expires_at) - Date.now()) / 1000))
+      setMyCodeSecsLeft(secs)
+      if (secs === 0) {
+        setMyCode(null)
+        clearInterval(timerRef.current)
+      }
+    }
+    tick()
+    timerRef.current = setInterval(tick, 1000)
+    return () => clearInterval(timerRef.current)
+  }, [myCode])
+
+  // ── My Code: generate ─────────────────────────────────────────────────────
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    setGenError(null)
+    setMyCode(null)
+    try {
+      const data = await apiFetch('/api/peering/drop/code/generate', { method: 'POST', body: '{}' })
+      setMyCode(data)  // { code, expires_at }
+    } catch (err) {
+      setGenError(err.message)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // ── Enter Code: redeem ────────────────────────────────────────────────────
+
+  const handleRedeem = async () => {
+    const code = inputCode.replace(/\D/g, '').slice(0, 6)
+    if (code.length !== 6) {
+      setRedeemError('Enter a 6-digit code')
+      return
+    }
+    setRedeeming(true)
+    setRedeemError(null)
+    setRedeemResult(null)
+    try {
+      const data = await apiFetch('/api/peering/drop/code/redeem', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      })
+      setRedeemResult(data)
+      setInputCode('')
+      onPeerResolved?.(data)
+    } catch (err) {
+      setRedeemError(err.message)
+    } finally {
+      setRedeeming(false)
+    }
+  }
+
+  // ── Format countdown ──────────────────────────────────────────────────────
+
+  const fmtCountdown = (secs) => {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return `${m}:${String(s).padStart(2, '0')}`
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="bg-neutral-900/60 border border-neutral-800/60 rounded-2xl overflow-hidden">
+      {/* Tab bar */}
+      <div className="flex border-b border-neutral-800/60">
+        {PROX_TABS.map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors
+              ${tab === t
+                ? 'text-blue-300 border-b-2 border-blue-500/60 bg-blue-600/5'
+                : 'text-neutral-500 hover:text-neutral-400'}`}
+          >
+            {t === 'my-code' ? 'My Code' : 'Enter Code'}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-4 space-y-4">
+        {tab === 'my-code' && (
+          <>
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              Generate a 6-digit code and read it to your peer. Valid for&nbsp;5&nbsp;minutes
+              or until first use — works across networks via vulos.org rendezvous.
+            </p>
+
+            {myCode ? (
+              <div className="space-y-3">
+                {/* Big code display */}
+                <div className="flex items-center justify-center gap-1.5 py-5">
+                  {myCode.code.split('').map((digit, i) => (
+                    <span
+                      key={i}
+                      className="w-10 h-12 flex items-center justify-center rounded-xl
+                        bg-neutral-800/80 border border-neutral-700/60
+                        text-2xl font-mono font-bold text-blue-200 tracking-widest"
+                    >
+                      {digit}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Countdown */}
+                <div className="flex items-center justify-between text-xs text-neutral-500">
+                  <span>Expires in</span>
+                  <span className={`font-mono font-medium ${myCodeSecsLeft < 60 ? 'text-amber-400' : 'text-neutral-400'}`}>
+                    {fmtCountdown(myCodeSecsLeft)}
+                  </span>
+                </div>
+
+                {/* Refresh */}
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="w-full py-2 rounded-lg text-xs font-medium transition-colors
+                    bg-neutral-800/50 border border-neutral-700/40 text-neutral-400
+                    hover:border-neutral-600/60 hover:text-neutral-300 disabled:opacity-40"
+                >
+                  Generate new code
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="w-full py-2.5 rounded-xl text-sm font-medium transition-colors
+                  bg-blue-600/15 border border-blue-500/30 text-blue-300
+                  hover:bg-blue-600/25 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {generating ? 'Generating…' : 'Generate Code'}
+              </button>
+            )}
+
+            {genError && <p className="text-xs text-red-400">{genError}</p>}
+          </>
+        )}
+
+        {tab === 'enter-code' && (
+          <>
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              Enter the 6-digit code shown on your peer&rsquo;s screen to connect
+              directly, even across networks.
+            </p>
+
+            {/* Code input */}
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={inputCode}
+              onChange={e => {
+                setRedeemError(null)
+                setRedeemResult(null)
+                setInputCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+              }}
+              onKeyDown={e => e.key === 'Enter' && handleRedeem()}
+              className="w-full px-4 py-3 rounded-xl bg-neutral-800/60 border border-neutral-700/50
+                text-center font-mono text-2xl font-bold tracking-[0.35em] text-blue-200
+                placeholder:text-neutral-700 placeholder:tracking-widest
+                focus:outline-none focus:border-blue-500/60 focus:bg-neutral-800/80 transition-colors"
+            />
+
+            <button
+              onClick={handleRedeem}
+              disabled={redeeming || inputCode.length !== 6}
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-colors
+                bg-blue-600/15 border border-blue-500/30 text-blue-300
+                hover:bg-blue-600/25 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {redeeming ? 'Connecting…' : 'Connect'}
+            </button>
+
+            {redeemError && <p className="text-xs text-red-400">{redeemError}</p>}
+
+            {redeemResult && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl
+                bg-emerald-500/8 border border-emerald-500/25 text-emerald-300">
+                <IconCheck />
+                <div className="text-xs leading-relaxed">
+                  <p className="font-medium">Peer found</p>
+                  <p className="text-emerald-500 font-mono mt-0.5 break-all">
+                    {redeemResult.vula_id || redeemResult.owner_addr}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main DropPanel
 // ---------------------------------------------------------------------------
 
@@ -322,6 +567,7 @@ export default function DropPanel({ onPendingCount }) {
   const [inbound, setInbound] = useState([])        // pending inbound requests
   const [loadingPeers, setLoadingPeers] = useState(true)
   const [error, setError] = useState(null)
+  const [showProximity, setShowProximity] = useState(false)  // PEER-35
   const fileInputRef = useRef(null)
   const pendingSendTarget = useRef(null)   // DropPeer we want to send to
   const pollRef = useRef(null)
@@ -570,6 +816,41 @@ export default function DropPanel({ onPendingCount }) {
           ))}
         </div>
       )}
+
+      {/* Proximity codes (PEER-35) */}
+      <div>
+        <button
+          onClick={() => setShowProximity(v => !v)}
+          className="flex items-center gap-1.5 text-xs font-medium text-neutral-500
+            hover:text-neutral-400 transition-colors select-none"
+          aria-expanded={showProximity}
+        >
+          <IconHash />
+          Proximity Code
+          <span className="ml-1 text-[10px] text-neutral-600">
+            {showProximity ? '▲' : '▼'}
+          </span>
+        </button>
+        {showProximity && (
+          <div className="mt-3">
+            <ProximityCodePanel
+              onPeerResolved={(peer) => {
+                // Add a synthetic nearby peer entry so the user can send a file.
+                if (!peer?.vula_id) return
+                setPeers(prev => {
+                  if (prev.some(p => p.vula_id === peer.vula_id)) return prev
+                  return [...prev, {
+                    vula_id: peer.vula_id,
+                    display_name: peer.vula_id,
+                    addr: peer.owner_addr || '',
+                    is_contact: false,
+                  }]
+                })
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
