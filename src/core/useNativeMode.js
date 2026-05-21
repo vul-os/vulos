@@ -1,6 +1,12 @@
 // Fast baremetal vs native detection — cached at module level, zero re-computation
 // Baremetal: running as sole Cog/WPE fullscreen instance (no compositor multi-window)
 // Native: running under a Wayland compositor (Sway, labwc, etc.) that supports multi-window
+//
+// D93 window model: v1 always streams apps over cage — no native-launch path.
+// The native-launch / labwc path (BMINIT-04/06) is v2 only, gated behind an
+// explicit opt-in: VULOS_NATIVE_MODE_V2=1 env on the server OR the backend
+// returning v2_enabled:true from /api/shell/native-mode.
+// Default (no opt-in) = 'baremetal' regardless of compositor env.
 
 import { useState, useEffect } from 'react'
 
@@ -17,11 +23,15 @@ let _mode = null // 'baremetal' | 'native' | 'browser'
 if (!isEmbeddedWebKit) {
   _mode = 'browser' // Standard browser (dev, remote access)
 } else {
-  // Default to baremetal for embedded — backend confirms if compositor supports multi-window
+  // v1 default: always baremetal/cage. The backend fetch below can only
+  // upgrade to 'native' when the server has v2 explicitly enabled.
   _mode = 'baremetal'
 }
 
-// Async detection: ask backend once if compositor supports native windows
+// Async detection: ask backend once. In v1 the response will have
+// v2_enabled:false (or be absent), so mode stays 'baremetal'.
+// Only when VULOS_NATIVE_MODE_V2=1 is set server-side will v2_enabled be
+// true and the mode promoted to 'native'.
 let _modePromise = null
 function detectMode() {
   if (_modePromise) return _modePromise
@@ -32,7 +42,13 @@ function detectMode() {
   _modePromise = fetch('/api/shell/native-mode')
     .then(r => r.json())
     .then(data => {
-      _mode = data.mode // 'baremetal' or 'native'
+      // v1: only accept 'native' when the server explicitly opts in to v2.
+      // Without v2_enabled the reported mode is always treated as 'baremetal'.
+      if (data.v2_enabled && data.mode === 'native') {
+        _mode = 'native'
+      } else {
+        _mode = 'baremetal'
+      }
       return _mode
     })
     .catch(() => {

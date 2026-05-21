@@ -313,6 +313,8 @@ export function ShellProvider({ children }) {
   const removeDesktop = useCallback((id) => dispatch({ type: 'REMOVE_DESKTOP', id }), [])
   const moveWindowToDesktop = useCallback((windowId, desktopId) => dispatch({ type: 'MOVE_WINDOW_TO_DESKTOP', windowId, desktopId }), [])
 
+  // v2 only (D93): openNativeWindow is a no-op in v1; canSpawnNativeWindow()
+  // returns false unless VULOS_NATIVE_MODE_V2 is enabled server-side.
   const openNativeWindow = useCallback(async (win) => {
     if (!canSpawnNativeWindow()) return
     try {

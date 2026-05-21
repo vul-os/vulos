@@ -57,7 +57,8 @@ async function gpuapiGetChromiumArgs() {
 
 export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
-  // BMINIT-06: detect native mode (baremetal compositor — labwc, Sway, etc.)
+  // v2 opt-in only: native-launch (labwc/Sway) is disabled in v1 (D93).
+  // canSpawnNativeWindow() returns false unless VULOS_NATIVE_MODE_V2 is set.
   const { isNative: bm6_isNative } = useNativeMode()
   const [search, setSearch] = useState('')
   const [chatInput, setChatInput] = useState('')
@@ -145,14 +146,11 @@ export default function Launchpad() {
       return
     }
 
-    // BMINIT-06: Native-launch branch — bare metal with a real Wayland compositor.
-    // Desktop entries and registry desktop-type apps spawn real native windows via labwc/Sway.
-    // Builtin apps (handled above) and browser (handled below) are excluded.
-    // Remote/browser mode falls through to the stream path unchanged.
+    // v2 native-launch branch (D93): only when VULOS_NATIVE_MODE_V2 is set server-side
+    // and a multi-window compositor (labwc/Sway) is running. In v1 (default) bm6_isNative
+    // is always false so this block never executes — all apps stream over cage.
     const bm6_isDesktopApp = app._desktop || app.type === 'desktop'
     if (bm6_isNative && bm6_isDesktopApp) {
-      // Resolve binary + args: prefer fields already on the app object; server resolves from
-      // manifest when binary === '' (BMINIT-04 backend behaviour).
       const bm6_binary = app._exec
         ? app._exec.split(' ')[0]
         : app.command?.split(' ')[0] || ''
@@ -172,7 +170,7 @@ export default function Launchpad() {
       return
     }
 
-    // Desktop/stream apps — launch via stream system
+    // Desktop/stream apps — launch via stream system (v1 bare-metal default path)
     // Includes: registry desktop apps, .desktop entries, and the browser
     const isStreamApp = app._desktop || app.type === 'desktop' || app.id === 'browser'
     if (isStreamApp) {

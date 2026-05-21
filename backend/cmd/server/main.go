@@ -1691,11 +1691,13 @@ func main() {
 
 	// Native window management — spawn Cog/WPE instances as real compositor windows
 	// Cached at startup: detect if we're on baremetal (sole Cog instance) or native (compositor with multi-window)
-	nativeMode := detectNativeMode()
-	log.Printf("[shell] native mode: %s", nativeMode)
+	// D93: v2 opt-in required for native-launch / labwc path. Default (v1) = baremetal/cage.
+	nativeModeV2 := os.Getenv("VULOS_NATIVE_MODE_V2") == "1"
+	nativeMode := detectNativeMode(nativeModeV2)
+	log.Printf("[shell] native mode: %s (v2_enabled=%v)", nativeMode, nativeModeV2)
 
 	mux.HandleFunc("GET /api/shell/native-mode", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]string{"mode": nativeMode})
+		writeJSON(w, map[string]interface{}{"mode": nativeMode, "v2_enabled": nativeModeV2})
 	})
 
 	mux.HandleFunc("POST /api/shell/native-window", func(w http.ResponseWriter, r *http.Request) {
@@ -2269,7 +2271,15 @@ func main() {
 // detectNativeMode checks if we're running on baremetal (sole fullscreen Cog/WPE)
 // or under a Wayland compositor that supports multiple windows.
 // Fast: just checks env vars and compositor presence, no subprocess.
-func detectNativeMode() string {
+//
+// D93 window model: v2 opt-in (v2Enabled=true) is required before this function
+// can return "native". Without the opt-in the result is always "baremetal",
+// ensuring v1 bare-metal boots never activate the native-launch / labwc path.
+func detectNativeMode(v2Enabled bool) string {
+	// v1 default: skip compositor detection entirely and stay on the cage/stream path.
+	if !v2Enabled {
+		return "baremetal"
+	}
 	// Not on device at all (Docker dev, remote browser access)
 	ua := os.Getenv("WPE_USER_AGENT")
 	waylandDisplay := os.Getenv("WAYLAND_DISPLAY")
