@@ -96,6 +96,7 @@ function MobileCard({ win }) {
             title={win.title}
             className="absolute inset-0 w-full h-full border-0"
             sandbox={win.html ? 'allow-scripts' : 'allow-scripts allow-same-origin allow-forms allow-popups'}
+            referrerPolicy="no-referrer"
           />
         )}
       </div>

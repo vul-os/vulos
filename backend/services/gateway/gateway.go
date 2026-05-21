@@ -246,6 +246,11 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		w.Header().Del("X-Frame-Options") // Allow embedding in Vula OS shell iframe
 		w.Header().Set("X-Vulos-App", appID)
 
+		// Security hardening headers applied to all proxied responses.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()")
+
 		// For HTML responses served via path prefix, inject <base> tag so
 		// the app's absolute paths resolve relative to /app/{appId}/
 		ct := resp.Header.Get("Content-Type")

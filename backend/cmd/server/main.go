@@ -2277,7 +2277,15 @@ func main() {
 	})
 
 	addr := ":" + cfg.Port
-	handler := authHandler.Middleware(mainHandler)
+	// SEC: wrap with security headers for all responses served by this process.
+	secHeadersMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			next.ServeHTTP(w, r)
+		})
+	}
+	handler := secHeadersMiddleware(authHandler.Middleware(mainHandler))
 	server := &http.Server{Addr: addr, Handler: handler}
 
 	go func() {

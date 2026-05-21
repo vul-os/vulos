@@ -44,6 +44,7 @@ export default function Popout() {
         title={popout.title}
         className="flex-1 w-full border-0"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        referrerPolicy="no-referrer"
       />
     </div>
   )
