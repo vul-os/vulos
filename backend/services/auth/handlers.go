@@ -25,6 +25,8 @@ type Handler struct {
 	OnRoleChanged func(username, role string)           // called when a user's role changes
 	// CLOGIN-06: device-local PIN service (nil if not configured).
 	DevicePIN *DevicePINService
+	// CLOGIN-07: fingerprint unlock service (nil if not configured).
+	Fingerprint *FingerprintService
 }
 
 func NewHandler(store *Store) *Handler {
@@ -77,29 +79,38 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// CLOGIN-04: cloud account creation proxy
 	mux.HandleFunc("POST /api/auth/cloud/signup", h.handleCloudSignup)
 
+	// CLOGIN-07: fingerprint unlock (fprintd / D-Bus).
+	mux.HandleFunc("GET /api/auth/fingerprint/status", h.handleFingerprintStatus)
+	mux.HandleFunc("POST /api/auth/fingerprint/enroll/start", h.handleFingerprintEnrollStart)
+	mux.HandleFunc("POST /api/auth/fingerprint/enroll/stop", h.handleFingerprintEnrollStop)
+	mux.HandleFunc("POST /api/auth/fingerprint/verify", h.handleFingerprintVerify)
+	mux.HandleFunc("POST /api/auth/fingerprint/remove", h.handleFingerprintRemove)
+
 	log.Printf("[auth] registered providers: %s", strings.Join(providerNames(h.providers), ", "))
 }
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                true,
-	"/api/auth/providers":    true,
-	"/api/auth/me":           true,
-	"/api/auth/logout":       true,
-	"/api/auth/register":     true,
-	"/api/auth/login":        true,
-	"/api/auth/status":       true,
-	"/api/setup/status":      true,
-	"/api/setup/join-code":   true, // INIT-10: unauthenticated join-code decode
-	"/api/setup/join":        true, // INIT-08: unauthenticated cluster join (setup-time)
-	"/api/setup/join/status": true, // INIT-08: unauthenticated join progress poll
-	"/api/browser/status":    true,
-	"/manifest.json":         true,
-	"/api/auth/cloudlogin":   true, // CLOGIN-01: unauthenticated cloud login
-	"/api/auth/cloud/status": true, // CLOGIN-01: enrollment status check (setup-time)
-	"/api/auth/cloud/signup": true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
-	"/api/auth/pin/unlock":   true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
-	"/api/auth/pin/status":   true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
+	"/health":                      true,
+	"/api/auth/providers":          true,
+	"/api/auth/me":                 true,
+	"/api/auth/logout":             true,
+	"/api/auth/register":           true,
+	"/api/auth/login":              true,
+	"/api/auth/status":             true,
+	"/api/setup/status":            true,
+	"/api/setup/join-code":         true, // INIT-10: unauthenticated join-code decode
+	"/api/setup/join":              true, // INIT-08: unauthenticated cluster join (setup-time)
+	"/api/setup/join/status":       true, // INIT-08: unauthenticated join progress poll
+	"/api/browser/status":          true,
+	"/manifest.json":               true,
+	"/api/auth/cloudlogin":         true, // CLOGIN-01: unauthenticated cloud login
+	"/api/auth/cloud/status":       true, // CLOGIN-01: enrollment status check (setup-time)
+	"/api/auth/cloud/signup":       true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
+	"/api/auth/pin/unlock":         true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
+	"/api/auth/pin/status":         true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/status": true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/verify": true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -1050,4 +1061,137 @@ func (h *Handler) handleDevicePINStatus(w http.ResponseWriter, r *http.Request) 
 		"locked_until":   st.LockedUntil,
 		"lockout_count":  st.LockoutCount,
 	})
+}
+
+// ─── CLOGIN-07: fingerprint handlers ─────────────────────────────────────────
+
+// handleFingerprintStatus returns the fingerprint capability/enrollment status.
+// PUBLIC — shown on the lock screen and in Settings before the user authenticates.
+func (h *Handler) handleFingerprintStatus(w http.ResponseWriter, r *http.Request) {
+	if h.Fingerprint == nil {
+		writeJSON(w, FingerprintStatus{Available: false})
+		return
+	}
+	profileID := r.URL.Query().Get("profile")
+	writeJSON(w, h.Fingerprint.Status(profileID))
+}
+
+// handleFingerprintEnrollStart initiates fprintd enrollment for the authenticated user.
+// Requires a full-auth session.
+func (h *Handler) handleFingerprintEnrollStart(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "full-auth session required to enroll fingerprint")
+		return
+	}
+	if h.Fingerprint == nil {
+		writeErr(w, 503, "fingerprint service not configured")
+		return
+	}
+	if err := h.Fingerprint.StartEnroll(userID); err != nil {
+		switch err {
+		case ErrFingerprintUnavailable:
+			writeErr(w, 503, err.Error())
+		default:
+			writeErr(w, 500, err.Error())
+		}
+		return
+	}
+	writeJSON(w, map[string]string{"status": "enroll_started"})
+}
+
+// handleFingerprintEnrollStop stops an ongoing enrollment and commits the result.
+// Requires a full-auth session.
+func (h *Handler) handleFingerprintEnrollStop(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "full-auth session required")
+		return
+	}
+	if h.Fingerprint == nil {
+		writeErr(w, 503, "fingerprint service not configured")
+		return
+	}
+	if err := h.Fingerprint.StopEnroll(userID); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, h.Fingerprint.Status(userID))
+}
+
+// handleFingerprintVerify performs a fingerprint verification for the given profile.
+// PUBLIC — the user is on the lock screen.  On success, sets the session cookie.
+func (h *Handler) handleFingerprintVerify(w http.ResponseWriter, r *http.Request) {
+	ip := extractIP(r)
+	if h.limiter.IsBanned(ip) {
+		writeErr(w, 429, "too many attempts")
+		return
+	}
+	if h.Fingerprint == nil {
+		writeErr(w, 503, "fingerprint service not configured")
+		return
+	}
+
+	var req struct {
+		ProfileID string `json:"profile_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request")
+		return
+	}
+
+	sessionToken, err := h.Fingerprint.Verify(req.ProfileID)
+	if err != nil {
+		h.limiter.RecordFailure(ip)
+		code := 401
+		switch err {
+		case ErrFingerprintUnavailable:
+			code = 503
+		case ErrFingerprintMaxFails:
+			code = 423
+		case ErrFingerprintNotEnrolled:
+			code = 404
+		case ErrFingerprintTimeout:
+			code = 504
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		enc, _ := json.Marshal(map[string]any{
+			"error":  err.Error(),
+			"status": h.Fingerprint.Status(req.ProfileID),
+		})
+		w.Write(enc) //nolint:errcheck
+		return
+	}
+
+	// Validate the wrapped session token.
+	sess, ok := h.store.ValidateToken(sessionToken)
+	if !ok {
+		writeErr(w, 401, "fingerprint session expired — please sign in with your password")
+		return
+	}
+
+	h.limiter.RecordSuccess(ip)
+	http.SetCookie(w, sessionCookie(r, sess.Token))
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleFingerprintRemove disables fingerprint unlock for the authenticated user.
+// Requires a full-auth session.
+func (h *Handler) handleFingerprintRemove(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "full-auth session required to remove fingerprint")
+		return
+	}
+	if h.Fingerprint == nil {
+		writeErr(w, 503, "fingerprint service not configured")
+		return
+	}
+	if err := h.Fingerprint.RemoveEnrollment(userID); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	log.Printf("[fingerprint] enrollment removed for user %s", userID)
+	writeJSON(w, map[string]string{"status": "removed"})
 }
