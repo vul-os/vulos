@@ -51,6 +51,13 @@ type Config struct {
 }
 
 func Load(env string) *Config {
+	// "prod" is the canonical production name; "main" is the legacy alias kept
+	// for backwards compatibility with the init binary and any scripts that
+	// still pass -env=main.
+	if env == "prod" {
+		env = "main"
+	}
+
 	envFiles := map[string]string{
 		"main":  filepath.Join(repoRoot, ".env.main"),
 		"dev":   filepath.Join(repoRoot, ".env.dev"),
@@ -113,7 +120,13 @@ func Load(env string) *Config {
 		instanceID = id
 	}
 
-	domainMode := DomainMode(get("VULOS_DOMAIN_MODE", string(DomainModeFabric)))
+	// Default DomainMode varies by env: local/dev default to "local" (no public
+	// domain required) so a developer can run without cloud accounts.
+	defaultDomainMode := DomainModeFabric
+	if env == "local" || env == "dev" {
+		defaultDomainMode = DomainModeLocal
+	}
+	domainMode := DomainMode(get("VULOS_DOMAIN_MODE", string(defaultDomainMode)))
 	switch domainMode {
 	case DomainModeFabric, DomainModeDirect, DomainModeOwn, DomainModeLocal:
 		// valid

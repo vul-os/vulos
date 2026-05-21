@@ -210,6 +210,27 @@ cd vulos
 ./dev.sh deploy layer   # Docker rebuild, reuses cached apt layer
 ```
 
+### Runtime environments (`--env`)
+
+The backend accepts an `--env` flag (or `VULOS_ENV` env var) that sets the
+security and behaviour profile for the process.  The default is `prod`.
+
+| Flag value | Who uses it | What changes |
+|---|---|---|
+| `local` | Developer laptop | Binds `127.0.0.1`, skips TPM/fingerprint checks, allows self-signed certs, relaxes cookie flags, enables `/debug/env` endpoint |
+| `dev` | CI / staging | Same as local but without debug endpoints; accepts staging cloud-broker pubkey alongside prod key |
+| `prod` | Bare-metal / cloud | Binds all interfaces, full Secure cookies, hardware checks active where hardware is present, no debug endpoints |
+
+```bash
+# run the backend in local mode without any extra config
+go run ./backend/cmd/server --env=local
+
+# or via environment variable
+VULOS_ENV=local go run ./backend/cmd/server
+```
+
+You do not need mkcert, a TPM, or a cloud account to run in `local` mode.
+
 ### Deploy to production
 
 ```bash
