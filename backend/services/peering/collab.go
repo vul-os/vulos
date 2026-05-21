@@ -5,6 +5,7 @@
 package peering
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
@@ -552,6 +553,79 @@ func (s *CollabStore) handleInboundSync(w http.ResponseWriter, r *http.Request) 
 	data, _ := json.Marshal(msg)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
+}
+
+// ─────────────────────────────────────────
+// Signed S2S inbound handler (envelope-aware)
+// ─────────────────────────────────────────
+
+// HandleInboundCollabUpdate implements POST /api/peering/inbound/collab-update
+// when the route is wrapped with InboundMiddleware.
+//
+// InboundMiddleware has already:
+//  1. Verified the envelope's Ed25519 signature (401 on failure).
+//  2. Confirmed the sender is in the approved contacts list (403 on failure).
+//
+// This handler:
+//  1. Reads the pre-verified *Envelope from the request context.
+//  2. Decodes the collab-update payload (doc_id + ops base64 blob).
+//  3. Persists the CRDT update blob to disk.
+//  4. Fans the update out to all locally connected browser clients for the doc.
+//
+// The method is exported so the orchestrator can register it on an
+// InboundMiddleware-wrapped sub-mux (same pattern as HandleInboundMessage in
+// messages.go) without touching inbound.go.
+func (s *CollabStore) HandleInboundCollabUpdate(w http.ResponseWriter, r *http.Request) {
+	env, ok := r.Context().Value(EnvelopeKey).(*Envelope)
+	if !ok || env == nil {
+		// Fallback: try the plain JSON path used by internal tests or when the
+		// route is called without InboundMiddleware.
+		s.handleInboundUpdate(w, r)
+		return
+	}
+
+	// Decode the payload embedded in the envelope.
+	var body struct {
+		DocID string `json:"doc_id"`
+		Ops   string `json:"ops,omitempty"` // base64-encoded CRDT ops blob
+	}
+	if err := json.Unmarshal(env.Payload, &body); err != nil {
+		writeCollabErr(w, http.StatusBadRequest, "invalid collab-update envelope payload: "+err.Error())
+		return
+	}
+	if body.DocID == "" {
+		writeCollabErr(w, http.StatusBadRequest, "doc_id is required in collab-update payload")
+		return
+	}
+
+	// Decode the base64 ops blob (may be absent for a sync-request-only message).
+	var opsBytes []byte
+	if body.Ops != "" {
+		var decErr error
+		opsBytes, decErr = base64.StdEncoding.DecodeString(body.Ops)
+		if decErr != nil {
+			writeCollabErr(w, http.StatusBadRequest, "invalid base64 in collab-update ops: "+decErr.Error())
+			return
+		}
+	}
+
+	// Persist then fan out to local WS clients.
+	if len(opsBytes) > 0 {
+		if err := s.persistUpdate(body.DocID, opsBytes); err != nil {
+			log.Printf("[peering/collab] inbound S2S persist error doc %s from %s: %v",
+				body.DocID, env.From, err)
+		}
+
+		// Re-encode as a collab:update frame for broadcast to local WS clients.
+		broadcastMsg := collabMsg{Type: msgTypeUpdate, DocID: body.DocID, Payload: opsBytes}
+		broadcastData, _ := json.Marshal(broadcastMsg)
+		room := s.room(body.DocID)
+		room.broadcast(nil, broadcastData)
+	}
+
+	log.Printf("[peering/collab] inbound S2S update for doc %s from %s (ops=%d bytes)",
+		body.DocID, env.From, len(opsBytes))
+	writeCollabJSON(w, map[string]string{"status": "ok", "doc_id": body.DocID})
 }
 
 // ─────────────────────────────────────────
