@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7"
+	"vulos/backend/services/lease"
 )
 
 const (
@@ -38,6 +39,13 @@ const (
 	// staleThreshold is the duration after which a peer is considered stale.
 	staleThreshold = 2 * time.Minute
 )
+
+// WellKnownLeaseScopes lists the always-present lease objects that must exist
+// before any CAS operation.  Add new scopes here as features require them.
+// EnsureLeases creates each of these in "free" state at cluster bootstrap.
+var WellKnownLeaseScopes = []string{
+	"cluster-init", // guards one-time cluster provisioning
+}
 
 // NodeMeta is the JSON structure written to S3 at nodes/{node_id}/meta.json.
 // All fields are exported so they round-trip cleanly through encoding/json.
@@ -60,6 +68,7 @@ type Node struct {
 // return empty/nil results without error (disabled mode).
 type Cluster struct {
 	client  *Client  // nil when disabled
+	cfg     S3Config // stored so InitLeases can build a plain lease.Manager
 	meta    NodeMeta // this node's identity
 	mu      sync.RWMutex
 	started bool
@@ -95,10 +104,52 @@ func New(cfg S3Config, passphrase string) (*Cluster, error) {
 		return nil, fmt.Errorf("cluster: init: %w", err)
 	}
 
-	return &Cluster{
+	c := &Cluster{
 		client: client,
+		cfg:    cfg,
 		meta:   meta,
-	}, nil
+	}
+
+	// Bootstrap: create the well-known lease objects in "free" state.
+	// Idempotent — safe to call on every startup; held leases are never clobbered.
+	if err := c.InitLeases(ctx); err != nil {
+		// Non-fatal: log and continue. The lease objects may already exist
+		// (most re-runs), or the bucket may not have lease support yet.
+		fmt.Fprintf(os.Stderr, "cluster: InitLeases (non-fatal): %v\n", err)
+	}
+
+	return c, nil
+}
+
+// InitLeases creates the well-known lease objects (WellKnownLeaseScopes) in
+// "free" state inside the cluster bucket if they do not already exist.
+// It is idempotent: calling it again when leases are already present (in any
+// state) is a no-op — a held lease is never clobbered.
+// If the cluster is disabled it returns nil immediately.
+func (c *Cluster) InitLeases(ctx context.Context) error {
+	if !c.Enabled() {
+		return nil
+	}
+
+	leaseCfg := lease.S3Config{
+		Endpoint:  c.cfg.Endpoint,
+		Bucket:    c.cfg.Bucket,
+		AccessKey: c.cfg.AccessKey,
+		SecretKey: c.cfg.SecretKey,
+		UseSSL:    c.cfg.UseSSL,
+	}
+
+	mgr, err := lease.New(leaseCfg)
+	if err != nil {
+		return fmt.Errorf("cluster: InitLeases: %w", err)
+	}
+
+	for _, scope := range WellKnownLeaseScopes {
+		if err := mgr.EnsureLease(ctx, scope); err != nil {
+			return fmt.Errorf("cluster: InitLeases %q: %w", scope, err)
+		}
+	}
+	return nil
 }
 
 // newDisabled returns a Cluster whose client is nil — all operations are no-ops.

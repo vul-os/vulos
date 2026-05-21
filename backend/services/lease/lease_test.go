@@ -69,6 +69,15 @@ func (m *mockBackend) getWithETag(ctx context.Context, key string) ([]byte, stri
 	return append([]byte(nil), obj.body...), obj.etag, nil
 }
 
+// putUnconditional stores the object without any ETag check.
+// Used only by EnsureLease for the initial bootstrap write.
+func (m *mockBackend) putUnconditional(ctx context.Context, key string, body []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.objects[key] = &mockObject{body: append([]byte(nil), body...), etag: computeETag(body)}
+	return nil
+}
+
 // putIfMatch performs a CAS update.
 // It asserts that matchETag is never the string "*" (no If-None-Match:* semantics).
 func (m *mockBackend) putIfMatch(ctx context.Context, key string, body []byte, matchETag string) (string, error) {
@@ -511,6 +520,114 @@ func TestMinIOIntegration(t *testing.T) {
 	}
 
 	t.Logf("MinIO integration: scope=%s final fence=%d", scope, held2.Fence)
+}
+
+// ── EnsureLease tests ─────────────────────────────────────────────────────────
+
+// TestEnsureLease_CreatesFreeObject verifies that EnsureLease writes a free
+// lease doc when the object does not yet exist.
+func TestEnsureLease_CreatesFreeObject(t *testing.T) {
+	b := newMockBackend() // nothing seeded
+	m := newTestManager(b)
+
+	if err := m.EnsureLease(context.Background(), "init-scope"); err != nil {
+		t.Fatalf("EnsureLease: unexpected error: %v", err)
+	}
+
+	body, _, err := b.getWithETag(context.Background(), objectKey("init-scope"))
+	if err != nil {
+		t.Fatalf("read after EnsureLease: %v", err)
+	}
+
+	var doc leaseDoc
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if doc.State != stateFree {
+		t.Errorf("state: want free, got %s", doc.State)
+	}
+	if doc.Fence != 0 {
+		t.Errorf("fence: want 0, got %d", doc.Fence)
+	}
+	if doc.Holder != "" {
+		t.Errorf("holder: want empty, got %q", doc.Holder)
+	}
+}
+
+// TestEnsureLease_IdempotentWhenFree verifies that calling EnsureLease on an
+// already-free object is a no-op (no error, state unchanged).
+func TestEnsureLease_IdempotentWhenFree(t *testing.T) {
+	b := newMockBackend()
+	seedFreeDoc(b, "idem-free-scope", 3)
+	m := newTestManager(b)
+
+	// Record etag before.
+	_, etagBefore, err := b.getWithETag(context.Background(), objectKey("idem-free-scope"))
+	if err != nil {
+		t.Fatalf("pre-read: %v", err)
+	}
+
+	if err := m.EnsureLease(context.Background(), "idem-free-scope"); err != nil {
+		t.Fatalf("EnsureLease on existing free: %v", err)
+	}
+
+	// Object must be unchanged.
+	body, etagAfter, err := b.getWithETag(context.Background(), objectKey("idem-free-scope"))
+	if err != nil {
+		t.Fatalf("post-read: %v", err)
+	}
+	if etagAfter != etagBefore {
+		t.Errorf("ETag changed after idempotent EnsureLease: want %q, got %q", etagBefore, etagAfter)
+	}
+	var doc leaseDoc
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if doc.Fence != 3 {
+		t.Errorf("fence tampered: want 3, got %d", doc.Fence)
+	}
+}
+
+// TestEnsureLease_NoClobberHeldLease verifies that EnsureLease does NOT overwrite
+// an existing held lease — a held lease must remain held after re-running init.
+func TestEnsureLease_NoClobberHeldLease(t *testing.T) {
+	b := newMockBackend()
+
+	// Seed a held lease.
+	heldDoc := leaseDoc{
+		State:     stateHeld,
+		Holder:    "node-X",
+		Fence:     42,
+		ExpiresAt: time.Now().Add(5 * time.Minute),
+	}
+	data, _ := json.Marshal(heldDoc)
+	b.seed(objectKey("held-scope"), data)
+
+	m := newTestManager(b)
+
+	// Re-running EnsureLease must be a no-op.
+	if err := m.EnsureLease(context.Background(), "held-scope"); err != nil {
+		t.Fatalf("EnsureLease on held lease: unexpected error: %v", err)
+	}
+
+	// Lease must still be held with the original values.
+	body, _, err := b.getWithETag(context.Background(), objectKey("held-scope"))
+	if err != nil {
+		t.Fatalf("post-read: %v", err)
+	}
+	var doc leaseDoc
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if doc.State != stateHeld {
+		t.Errorf("state clobbered: want held, got %s", doc.State)
+	}
+	if doc.Holder != "node-X" {
+		t.Errorf("holder clobbered: want node-X, got %q", doc.Holder)
+	}
+	if doc.Fence != 42 {
+		t.Errorf("fence clobbered: want 42, got %d", doc.Fence)
+	}
 }
 
 // ensure io.ReadAll is referenced to avoid unused-import in environments
