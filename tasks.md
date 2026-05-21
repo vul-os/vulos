@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 171 / 229 real tasks done (75%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 176 / 229 real tasks done (77%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -29,14 +29,14 @@
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
 | OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 2 / 5 | `[████░░░░░░]` 40% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
-| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 2 / 3 | `[███████░░░]` 67% — flashed seed + baked key, forkable (NEW, D94) |
+| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 3 / 6 | `[█████░░░░░]` 50% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
-| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 2 / 4 | `[█████░░░░░]` 50% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
-| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 1 / 3 | `[███░░░░░░░]` 33% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
-| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 1 / 4 | `[██░░░░░░░░]` 25% — manifest concurrency + run-lease + live collab (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 4 / 6 | `[███████░░░]` 67% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 3 / 4 | `[████████░░]` 75% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
+| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 2 / 3 | `[███████░░░]` 67% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
+| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 2 / 4 | `[█████░░░░░]` 50% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **171 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **176 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1478,7 +1478,7 @@ Scope: Bake the signing **public key** (trust anchor) into the seed image at bui
 AC: [ ] seed build embeds the trust-anchor pubkey at a known path [ ] initramfs can read it for verification [ ] key absent → build fails loudly [ ] sh -n build.sh
 
 ### [SEED-02] Soft/runtime OS-bucket URL config (mirror + failover)
-`todo` · P1 · S · dep: SEED-01 · parallel: yes — new backend/services/osdist/source.go
+`done` · P1 · S · dep: SEED-01 · parallel: yes — new backend/services/osdist/source.go
 Scope: OS bucket URL is **soft config** (env/file, with a baked default) supporting a mirror list + failover ordering. Trust is enforced by the baked key (SEED-01), so pointing at a different/poisoned bucket is harmless — verification fails closed. Used by the OSDIST-04 fetch loop.
 AC: [ ] URL overridable at runtime, baked default present [ ] failover to next mirror on fetch error [ ] no trust decision depends on URL [ ] unit test source selection
 
@@ -1554,7 +1554,7 @@ Scope: Air-gapped/HSM tooling: an offline **root key** (rarely used, the baked a
 AC: [ ] root signs a release cert offline [ ] device-side validates release cert against baked root [ ] release key signs image + manifest [ ] root-key path documented as air-gapped/HSM [ ] go build + tests
 
 ### [SIGN-04] Minimum-trusted-epoch counter (rotation/revocation + rollback protection)
-`todo` · P1 · M · dep: SIGN-02, AUTH-09 · parallel: no — new backend/services/signing/epoch.go
+`done` · P1 · M · dep: SIGN-02, AUTH-09 · parallel: no — new backend/services/signing/epoch.go
 Scope: Single monotonic integer `min_epoch` carried in the root-signed manifest. Device stores the **highest epoch ever seen** and refuses anything lower → rotation/revocation (bump epoch retires old key/release) AND free rollback/downgrade protection. No CRL, no OCSP, no clock dependence. Store the counter in **TPM** where available (reuse AUTH-09 devicekey/TPM keystore), **sealed file** otherwise.
 AC: [ ] lower epoch refused, equal/higher accepted + floor advanced [ ] TPM-backed when present, sealed-file fallback [ ] no clock used in the decision [ ] unit test monotonic floor + downgrade rejection
 
@@ -1582,7 +1582,7 @@ Scope: When the backend is Tigris, require **Single-region or Multi-region** buc
 AC: [ ] Tigris non-strong-consistency config detected + warned/refused [ ] AWS/MinIO unaffected [ ] requirement documented [ ] unit test config gate
 
 ### [LEASE-04] Singleton-job runner over the bucket lease (run-once-per-cluster)
-`todo` · P2 · M · dep: LEASE-01, LEASE-02 · parallel: yes — new backend/services/lease/job.go
+`done` · P2 · M · dep: LEASE-01, LEASE-02 · parallel: yes — new backend/services/lease/job.go
 Scope: Implement the **singleton job** use of the lease primitive (COORDINATION.md § What This One Primitive Serves — `leases/job/<job-id>.json`, per-job TTL): a small runner that lets cron-style / run-once-per-cluster jobs execute on exactly one instance at a time. `RunSingletonJob(jobID, fn)` acquires the per-job lease (LEASE-01) before running, renews while running, releases on completion, and passes the fencing token to the job so a stalled-then-resumed runner is rejected. No leader election — ownership is whoever holds the job lease this cycle. This is the third lease use alongside the run-lease (CONC-02) and snapshot/compaction lease (SYNC-02); reuse the same code path, do not add a parallel mechanism.
 AC: [ ] job runs on exactly one instance when N instances contend [ ] holder loss before completion → another instance acquires + runs [ ] fence handed to the job, stale fence rejected [ ] no `If-None-Match:*`, no leader election [ ] unit test single-execution under contention
 
@@ -1605,7 +1605,7 @@ Scope: Periodically write a compacted, encrypted (SSE-C, per CLUSTER.md) snapsho
 AC: [ ] snapshot written + latest.json points at it [ ] compaction guarded by fencing lease (single owner) [ ] sub-snapshot changesets pruned [ ] passphrase never persisted/sent to cloud [ ] unit test
 
 ### [SYNC-03] New-instance bootstrap from snapshot + short changeset tail
-`todo` · P1 · M · dep: SYNC-02 · parallel: no — backend/services/sync/, backend/services/joinsync/
+`done` · P1 · M · dep: SYNC-02 · parallel: no — backend/services/sync/, backend/services/joinsync/
 Scope: A new/recovering instance downloads `snapshot/latest` → applies the short changeset **tail** after the covered version → live. Bootstrap cost bounded by snapshot age, not cluster age. Wire into the join/sync flow (INIT-08 boot-mode=sync).
 AC: [ ] new instance bootstraps from snapshot + tail (not full log replay) [ ] state matches a peer after bootstrap [ ] integrates with join sync-state phases [ ] go build
 
@@ -1628,7 +1628,7 @@ Scope: For `concurrency: singleton` (the default), gate launch on a per-profile-
 AC: [ ] singleton app holds a run-lease, second instance does not launch a duplicate [ ] holder death → lease expiry → failover acquires [ ] fence prevents stalled-then-resumed double-run [ ] TTL 15–30s [ ] go build
 
 ### [CONC-03] Per-data-type conflict policy wiring (LWW / counter / sequence / lease)
-`todo` · P2 · M · dep: CONC-01, CLUSTER-05 · parallel: yes — new backend/services/concurrency/policy.go
+`done` · P2 · M · dep: CONC-01, CLUSTER-05 · parallel: yes — new backend/services/concurrency/policy.go
 Scope: Map data kinds to resolution: settings/most → LWW (field-level, already cr-sqlite); counters/quotas → CRDT counter; co-edited docs → sequence/collaborative CRDT; exclusive resources → lease (LEASE-01). Provide a policy registry the stores consult. Extends CLUSTER.md's per-data-type table to the concurrency dimension.
 AC: [ ] policy registry resolves each data kind to its strategy [ ] counters merge additively (no lost increments) [ ] exclusive resources route to a lease [ ] unit test per policy
 
