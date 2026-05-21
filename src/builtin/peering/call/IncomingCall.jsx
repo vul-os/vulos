@@ -3,12 +3,13 @@
  *
  * Shell-wide modal that surfaces when a remote peer initiates a call.
  *
- * Signal framing (received via the /api/notifications/stream WebSocket):
- *   { source: "peering", type: "call-request",  callId, peerId, peerDisplay, peerAvatar? }
- *   { source: "peering", type: "call-cancelled", callId }
+ * Signal framing (received via the /api/peering/stream WebSocket hub):
+ *   Outer frame:  { channel: "signal", from: "<peerVulaId>", payload: <SignalPayload> }
+ *   SignalPayload: { channel: "signal", type: "incoming-call", call_id, from_id, payload? }
+ *   Cancellation:  type === "hangup" | "reject"
  *
- * Accept path: POST /api/peering/call/answer  { callId }
- * Reject path: POST /api/peering/call/reject  { callId }
+ * Accept path: POST /api/peering/call/answer  { call_id }
+ * Reject path: POST /api/peering/call/reject  { call_id }
  * History:     GET  /api/peering/call/history
  *
  * The component is self-contained — mount it once near the root of the
@@ -20,7 +21,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 // ---------- helpers -------------------------------------------------------
 
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/notifications/stream`
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/peering/stream`
 
 /** Synthesise a short ringtone with the Web Audio API (no file dependency). */
 function useRingtone(ringing) {
@@ -333,20 +334,25 @@ export default function IncomingCall() {
 
       ws.onmessage = (e) => {
         try {
-          const msg = JSON.parse(e.data)
-          if (msg.source !== 'peering') return
+          const frame = JSON.parse(e.data)
+          // Peering hub wraps every message as { channel, from, payload }.
+          // Call signals arrive on the "signal" channel; the inner payload
+          // carries { type, call_id, from_id, ... }.
+          if (frame.channel !== 'signal') return
+          const sig = frame.payload || {}
 
-          if (msg.type === 'call-request') {
+          if (sig.type === 'incoming-call') {
             setIncomingCall({
-              callId:      msg.callId      || msg.call_id,
-              peerId:      msg.peerId      || msg.peer_id      || '',
-              peerDisplay: msg.peerDisplay || msg.peer_display || 'Unknown',
-              peerAvatar:  msg.peerAvatar  || msg.peer_avatar  || null,
+              callId:      sig.call_id  || '',
+              peerId:      sig.from_id  || frame.from || '',
+              peerDisplay: sig.from_id  || frame.from || 'Unknown',
+              peerAvatar:  null,
             })
-          } else if (msg.type === 'call-cancelled') {
-            // Remote peer hung up before we answered.
+          } else if (sig.type === 'hangup' || sig.type === 'reject') {
+            // Remote peer cancelled or we got a reject — dismiss the modal.
+            const cancelId = sig.call_id
             setIncomingCall((cur) =>
-              cur && (cur.callId === (msg.callId || msg.call_id)) ? null : cur
+              cur && cur.callId === cancelId ? null : cur
             )
           }
         } catch {
@@ -373,7 +379,7 @@ export default function IncomingCall() {
       await fetch('/api/peering/call/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callId }),
+        body: JSON.stringify({ call_id: callId }),
       })
     } catch {
       // Signalling error — backend will handle timeout/cleanup.
@@ -388,7 +394,7 @@ export default function IncomingCall() {
       await fetch('/api/peering/call/reject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callId }),
+        body: JSON.stringify({ call_id: callId }),
       })
     } catch {}
   }, [incomingCall])
