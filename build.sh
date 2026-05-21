@@ -638,10 +638,34 @@ chroot "$ROOTFS" plymouth-set-default-theme vulos 2>/dev/null || \
 # splash is shown from very early boot (before root pivot), not just late.
 mkdir -p "$ROOTFS/etc/initramfs-tools/conf.d"
 echo "FRAMEBUFFER=y" > "$ROOTFS/etc/initramfs-tools/conf.d/vulos-splash.conf"
-# Regenerate every installed initrd with the vulos theme + plymouth hook baked
-# in. Runs on both fresh and --reuse-rootfs builds (kernel already present).
+
+# ═══════════════════════════════════
+# SEED-01: Embed trust-anchor public key
+#
+# The signing public key (trust anchor) is baked into the seed at a well-known
+# path (/etc/vulos/trust-anchor.pub) so the early-boot verify step (VERITY-02)
+# can validate the fetched OS chain before pivot_root.  The key also lands
+# inside the initramfs cpio via the vulos-trust-anchor hook installed here.
+#
+# Key is resolved by scripts/seed/embed-anchor.sh in order:
+#   1. $VULOS_TRUST_ANCHOR_PUBKEY  — explicit path (production builds)
+#   2. keys/trust-anchor.pub       — dev fallback (build warns loudly)
+#   missing                        → build fails loudly; cannot produce an
+#                                    unverifiable image.
+#
+# Changing the trust anchor requires re-flashing the seed — it is immutable
+# once the image is produced.  See roadmap/SEED-TRUST.md and
+# scripts/seed/README.md for the full contract.
+# ═══════════════════════════════════
+echo "${BLUE}▸ Embedding trust-anchor public key (SEED-01)...${NC}"
+"$ROOT_DIR/scripts/seed/embed-anchor.sh" "$ROOTFS"
+
+# Regenerate every installed initrd with the vulos theme + plymouth hook +
+# trust-anchor hook baked in.  Runs on both fresh and --reuse-rootfs builds
+# (kernel already present).  Must run AFTER embed-anchor.sh so the
+# vulos-trust-anchor initramfs hook is in place before update-initramfs.
 chroot "$ROOTFS" sh -c 'command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all' \
-    || echo "  ${DIM}update-initramfs unavailable — splash will be late-stage only${NC}"
+    || echo "  ${DIM}update-initramfs unavailable — splash/trust-anchor will be late-stage only${NC}"
 
 mkdir -p "$ROOTFS/root/.vulos/data" "$ROOTFS/root/.vulos/db" \
     "$ROOTFS/root/.vulos/sandbox" "$ROOTFS/root/.vulos/browser/extensions" \
