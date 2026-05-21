@@ -557,6 +557,8 @@ Built as a React component in the Vula OS shell, backed by Go API endpoints.
 
 ## squashfs + Live USB
 
+> **The squashfs is also the OTA artifact.** The `build.sh --live` squashfs+overlay output is reused verbatim as the **signed, immutable OS image** that ships in the public OS bucket — see OS-DISTRIBUTION.md (artifact + A/B slots + auto-rollback), SIGNING.md (dm-verity + per-stage signature verification), and NETBOOT.md (the same `--live` image is the "Try Vulos" live-RAM session that boots over UEFI HTTP Boot / iPXE and then *installs to disk*). The local seed that bootstraps all of this (bootloader + verify-capable initramfs + baked trust anchor) is SEED-TRUST.md. BMINIT-14 (make `--live` bootable) is the prerequisite for that whole chain.
+
 ### Image layout (GPT)
 
 ```

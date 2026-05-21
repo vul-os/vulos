@@ -1,8 +1,8 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 161 / 199 real tasks done (81%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 160 / 227 real tasks done (70%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
-> **vulos-cloud boundary note (decisions.md D33/D25):** BILL-01, OTA-01, FLEET-01, SSH-01, SECX-01, ROUTE-02/03/04, and RELAY-02 live in the separate **vulos-cloud** repo. They are out of scope for this OSS repo's main branch. Agents working here must not re-implement them or treat their absence as a gap.
+> **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
 > The Ladybird browser track is **de-scoped** — the spike (LADYBIRD-01) shipped feature-flagged, but the engine is not ready for us; do not invest further until that changes.
 
@@ -28,7 +28,15 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| **Total** |  | **161 / 194** | `[████████░░]` 83% |
+| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
+| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — flashed seed + baked key, forkable (NEW, D94) |
+| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 0 / 6 | `[░░░░░░░░░░]` 0% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 0 / 4 | `[░░░░░░░░░░]` 0% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
+| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
+| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 0 / 4 | `[░░░░░░░░░░]` 0% — manifest concurrency + run-lease + live collab (NEW, D94) |
+| Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
+| **Total** |  | **160 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -762,9 +770,9 @@ AC: [ ] Welcome→New/Join [ ] Join posts creds→Syncing [ ] live phase progres
 Scope: GET /api/cluster/join-code builds JoinCode (1h TTL) as base32 VULA-XXXX-XXXX-XXXX + QR payload; POST /api/setup/join-code decodes→INIT-08; scoped MinIO creds may stub.
 AC: [ ] returns short code+QR [ ] round-trips, rejects expired [ ] 1h expiry, go build
 
-### [INIT-11] Cloud backup of recovery kit to vulos.org
+### [INIT-11] Optional recovery-kit backup to a control plane
 `done` · P3 · M · dep: INIT-06 · parallel: yes — new backend/services/kitbackup/, src/auth/Setup.jsx (one button)
-Scope: POST /api/setup/kit-backup{email,encrypted_kit} to VULOS_CLOUD_URL (default vulos.org); button in Recovery Kit; graceful if unset.
+Scope: POST /api/setup/kit-backup{email,encrypted_kit} to an optional, configurable control-plane URL (`VULOS_CLOUD_URL`, default vulos.org); button in Recovery Kit; graceful if unset.
 AC: [ ] posts encrypted blob [ ] unconfigured = graceful msg [ ] button works, go build+npm build
 
 ---
@@ -1377,7 +1385,7 @@ _Design doc: [`roadmap/future/LADYBIRD-BROWSER.md`](../roadmap/future/LADYBIRD-B
 
 _Origin: post-audit remediation; see [`decisions.md`](decisions.md) D24, D26, D27_  ·  _Prefix: `SEC-*`_
 
-> Why this matters: Post-audit hardening track. The unauthenticated-RCE chain (C1–C4 + H1/H2/H5) is closed; what's left is HIGH/MED/LOW items from the same Opus app-exposure audit. C5/M2 (visibility enforcement) moved to vulos-cloud's exposure model.
+> Why this matters: Post-audit hardening track. The unauthenticated-RCE chain (C1–C4 + H1/H2/H5) is closed; what's left is HIGH/MED/LOW items from the same Opus app-exposure audit. C5/M2 (visibility enforcement) is handled outside this repo and is out of scope here.
 
 ### [SEC-A] Strip spoofable identity headers (C1) + lock /api/profiles (C2)
 `done` · P0 · S · dep: none · parallel: yes — backend/services/auth/handlers.go (merged 9c289ed)
@@ -1422,6 +1430,212 @@ AC: [ ] password change revokes sessions [ ] min length raised, legacy hash path
 `done` · P3 · S · dep: none · parallel: yes — apps/gallery/server.py, apps/music/server.py
 Scope: containment check uses `startswith(realpath(root))` without trailing sep → sibling dir sharing prefix reachable. Append `os.sep` to the contained root in every check.
 AC: [ ] sibling-prefix dir not reachable [ ] normal media still served [ ] py_compile clean
+
+---
+
+## Area: OS Distribution & Image Updates
+
+_Design doc: [`roadmap/OS-DISTRIBUTION.md`](../roadmap/OS-DISTRIBUTION.md)_  ·  _Prefix: `OSDIST-*`_
+
+> Why this matters: The shift from flash-and-SSH to image-based OS distribution. The OS ships as signed, immutable, versioned squashfs artifacts in a **public** S3 bucket (security from signing, not access control), cached locally, run off A/B slots with boot-counter auto-rollback. The squashfs is the existing `build.sh --live` output.
+
+### [OSDIST-01] Public OS bucket layout + signed `stable.json` manifest schema
+`todo` · P0 · M · dep: SIGN-01 · parallel: yes — new backend/services/osdist/manifest.go
+Scope: Define `os/stable.json` schema (channel, latest, min_epoch, roothash, size, released_at, path) + canonical-byte serialization for signing; per-version folder layout `os/vNN/os-core.squashfs(.sig)`. Parse + signature-verify against the baked trust anchor (SIGN-02) and enforce `min_epoch >= highest-seen` (SIGN-04). Public-read bucket — no credentials, no access control on reads. Package + schema + verify only; no download yet.
+AC: [ ] stable.json round-trips canonical bytes [ ] signature verified against trust anchor, tamper rejected [ ] min_epoch below floor rejected [ ] unit test schema + verify
+
+### [OSDIST-02] A/B slot manager + atomic active-slot flip
+`todo` · P0 · L · dep: OSDIST-01 · parallel: yes — new backend/services/osdist/slots.go, boot-state.json
+Scope: Model the local cache partition with two slots (slot-a/slot-b) + `boot-state.json` (active slot, pending-active, boot counter, last-known-good). Download a new image into the inactive slot, set it pending-active, reset boot counter. Atomic flip via pointer swap (no in-place mutation). Do NOT touch the writable overlay/data partition. Borrow the RAUC/Mender/ostree/Android-A/B/Flatcar model — don't reinvent.
+AC: [ ] new image lands in inactive slot only [ ] flip is atomic + reversible [ ] data partition untouched by flip [ ] unit test slot state machine
+
+### [OSDIST-03] Boot-counter auto-rollback to last-known-good
+`todo` · P0 · M · dep: OSDIST-02 · parallel: no — backend/cmd/init/main.go, backend/services/osdist/slots.go
+Scope: Bootloader increments the persistent boot counter before handoff; vulos-init marks the boot **healthy** (reset counter, promote slot to last-known-good) only after desktop/services come up. If the counter exceeds threshold (e.g. 3) without a healthy mark, fall back to last-known-good slot. Wire the healthy-mark into the init success path.
+AC: [ ] healthy boot resets counter + promotes slot [ ] N failed boots auto-fall-back to last-good [ ] threshold configurable [ ] GOOS=linux build
+
+### [OSDIST-04] OS update fetch loop: download → verify verity+sig → stage
+`todo` · P1 · L · dep: OSDIST-01, OSDIST-02, VERITY-01 · parallel: yes — new backend/services/osdist/update.go
+Scope: Periodic loop: fetch `os/stable.json`, compare `latest` to the running slot, download `os/vNN/os-core.squashfs` to the inactive slot, verify the dm-verity root hash matches the manifest AND the detached `.sig` verifies, then stage pending-active (OSDIST-02) + reboot prompt. Bucket URL is soft/runtime config (SEED-02) with mirror failover; key, not URL, enforces trust. Never run live off S3 — source from S3, run local.
+AC: [ ] update detected + downloaded to inactive slot [ ] verity hash + signature both verified before staging [ ] poisoned/mirror image rejected [ ] mirror failover on fetch error [ ] go build
+
+### [OSDIST-05] OS-update status endpoint + minimal Settings surface
+`todo` · P2 · M · dep: OSDIST-04 · parallel: yes — new backend/services/osdist/handlers.go, backend/cmd/server/main.go (route reg only), src/core/Settings.jsx
+Scope: Surface the OSDIST-04 update state to the user so the "reboot prompt" referenced there is real. Add `GET /api/os/update/status` (running slot/version, staged/pending-active slot+version, last-known-good, channel, boot-counter, last check) and `POST /api/os/update/apply` (flip to the already-verified staged slot + signal reboot — never downloads or verifies here; that is OSDIST-04). Add a small read-only "System Update" panel in Settings showing current vs available version with an "Apply update & reboot" button enabled only when a verified image is staged. The headless OSDIST-04 loop remains correctness-complete on its own; this is the user-facing affordance only.
+AC: [ ] status endpoint reports running/staged/last-good slot + version + boot counter [ ] apply flips only an already-verified staged slot, no re-download [ ] Settings panel shows current vs available, button gated on staged+verified [ ] no trust decision moved into the UI/API layer [ ] go build + npm build
+
+---
+
+## Area: Local Seed & Trust Anchor
+
+_Design doc: [`roadmap/SEED-TRUST.md`](../roadmap/SEED-TRUST.md)_  ·  _Prefix: `SEED-*`_
+
+> Why this matters: The irreducible flashed seed = bootloader + verify-capable initramfs + OS bucket URL + the signing public key (trust anchor). Makes the whole image model **forkable**: rebuild the seed with your own key + bucket and run an independent Vulos. The key is hard-baked; the bucket URL is soft config because the key (not the URL) enforces trust.
+
+### [SEED-01] Embed trust anchor (signing public key) into the flashed seed
+`todo` · P0 · M · dep: none · parallel: no — build.sh, new scripts/seed/
+Scope: Bake the signing **public key** (trust anchor) into the seed image at build time so the initramfs verify path (VERITY-02) can validate the fetched OS chain. Key is immutable/hard-baked — changing it requires re-flashing. Wire into `build.sh` seed assembly. Companion: emit the bootloader + verify-capable initramfs as the irreducible seed (alongside BMINIT-14).
+AC: [ ] seed build embeds the trust-anchor pubkey at a known path [ ] initramfs can read it for verification [ ] key absent → build fails loudly [ ] sh -n build.sh
+
+### [SEED-02] Soft/runtime OS-bucket URL config (mirror + failover)
+`todo` · P1 · S · dep: SEED-01 · parallel: yes — new backend/services/osdist/source.go
+Scope: OS bucket URL is **soft config** (env/file, with a baked default) supporting a mirror list + failover ordering. Trust is enforced by the baked key (SEED-01), so pointing at a different/poisoned bucket is harmless — verification fails closed. Used by the OSDIST-04 fetch loop.
+AC: [ ] URL overridable at runtime, baked default present [ ] failover to next mirror on fetch error [ ] no trust decision depends on URL [ ] unit test source selection
+
+### [SEED-03] Forker rebuild path: own key + own bucket re-establishes trust
+`todo` · P2 · M · dep: SEED-01, SIGN-03 · parallel: no — build.sh, docs in roadmap/SEED-TRUST.md
+Scope: Make `build.sh` accept a forker's own root key + bucket URL so a rebuilt seed trusts the fork's bucket and rejects the upstream one (and vice versa). Location + trust travel together in the seed; re-flashing re-establishes trust end to end. No central allow-list. Document the fork procedure.
+AC: [ ] build with custom key+bucket produces a self-consistent seed [ ] fork seed rejects upstream-signed images, accepts fork-signed [ ] procedure documented [ ] sh -n build.sh
+
+---
+
+## Area: Netboot & First Boot
+
+_Design doc: [`roadmap/NETBOOT.md`](../roadmap/NETBOOT.md)_  ·  _Prefix: `NETB-*`_
+
+> Why this matters: "Any PC anywhere" with no per-machine disk flashing. UEFI HTTP Boot URL OR a ~1 MB one-time iPXE stick, both chainload a **configurable boot URL** (default `boot.vulos.org`, a forkable project default; any server that serves the signed artifacts works, self-hosted or otherwise) over HTTPS → kernel/initramfs/squashfs. Netboot-**to-install** (not diskless): live-RAM "Try Vulos" session first, Install is explicit, never surprise-wipes. Two-layer safety: TLS protects the pipe, signing protects the payload.
+
+### [NETB-01] iPXE chainload script + ~1 MB one-time stick image
+`todo` · P1 · M · dep: BMINIT-14 · parallel: yes — new scripts/netboot/, build.sh
+Scope: Produce a ~1 MB iPXE USB image whose script chainloads `boot.vulos.org` over HTTPS to fetch kernel + initramfs + squashfs. Stick is used once to bootstrap; installed machine never needs it again. Also document/produce the UEFI HTTP Boot URL form (no media) targeting the same endpoint.
+AC: [ ] iPXE image ≤~1 MB chainloads the HTTPS boot URL [ ] UEFI HTTP Boot URL path documented [ ] both converge on kernel+initramfs+squashfs fetch [ ] build target emits the stick image
+
+### [NETB-02] TLS / cert-pin the boot pipe (iPXE TLS + UEFI HTTPS validation)
+`todo` · P1 · M · dep: NETB-01 · parallel: yes — scripts/netboot/, new backend/services/osdist/bootpipe.go
+Scope: iPXE TLS with a **pinned** cert/CA for `boot.vulos.org`; UEFI HTTPS Boot validates the server cert. This is the "pipe" layer — independent of, and complementary to, code-signing of the payload (the "payload" layer = SIGN-02/VERITY-02). Secure Boot shim is the firmware anchor when no stick is present.
+AC: [ ] iPXE pins the boot-server cert/CA, MITM rejected [ ] UEFI HTTPS validates server cert [ ] pipe layer documented as distinct from signing layer [ ] sh -n scripts
+
+### [NETB-03] Netboot-to-install: write seed + first squashfs to local disk
+`todo` · P1 · L · dep: NETB-01, SEED-01, BMINIT-12 · parallel: no — backend/services/installer/, backend/cmd/init/main.go
+Scope: First boot runs from network/RAM; on Install, write the **seed** (bootloader + verify-capable initramfs + baked anchor + bucket URL, SEED-01) + the first OS squashfs to local disk via the existing installer (BMINIT-12). Steady state then boots **locally** with network OS updates (OSDIST-04). NOT diskless. Reuse `--live` for the RAM session.
+AC: [ ] netboot session can install seed + first squashfs to disk [ ] installed machine boots locally without network [ ] subsequent OS updates pull from bucket [ ] go build
+
+### [NETB-04] "Try Vulos" live-RAM session with explicit Install (Ubuntu-style)
+`todo` · P2 · M · dep: BMINIT-14, BMINIT-13 · parallel: yes — src/builtin/installer/, backend/services/installer/
+Scope: Boot the `--live` squashfs into RAM with writable overlay; let the user run the OS for real; **Install is an explicit, separate action** that never surprise-wipes a disk (installer presents disks, requires confirmation). Surface the post-live choice → Local-only vs connect an optional control plane (handoff to NETB-05).
+AC: [ ] live-RAM session runs the real OS [ ] Install requires explicit disk choice + confirm, no auto-wipe [ ] reuses --live path [ ] npm build
+
+### [NETB-05] Install-time account choice: Local-only vs connect a control plane
+`todo` · P2 · M · dep: NETB-04, INIT-05 · parallel: no — src/auth/Setup.jsx
+Scope: Post-live-session step. **Local-only** = create local OS account (username + full name + password; hostname autofilled), no external relationship, fully self-hosted. **Connect a control plane** = enroll with an optional control plane (email + password + 2FA) at a configurable URL, then optionally join an existing **data cluster** (cluster passphrase required, held only locally). Keep the two credentials DISTINCT (local OS account vs control-plane account). The data bucket here is NOT the public OS bucket.
+AC: [ ] local-only path creates an OS account, no external relationship [ ] connect path enrolls (email+pw+2FA) then offers cluster join [ ] credentials kept separate [ ] join requires passphrase held only locally [ ] npm build
+
+---
+
+## Area: Signing, Verity & Key Rotation
+
+_Design doc: [`roadmap/SIGNING.md`](../roadmap/SIGNING.md)_  ·  _Prefix: `SIGN-*` / `VERITY-*`_
+
+> Why this matters: The integrity backbone. dm-verity on the squashfs + per-boot-stage signature verification (shim → bootloader → kernel → initramfs → squashfs). Offline (air-gapped/HSM) signing with a root-signs-intermediate PKI. Key rotation + revocation via a single monotonic "minimum trusted epoch" — no CRL, no clock dependence — which also gives rollback/downgrade protection. All in **Go** (decisions.md J — no Rust).
+
+### [VERITY-01] dm-verity hashing of the squashfs in build.sh
+`todo` · P0 · M · dep: BMINIT-14 · parallel: no — build.sh, new scripts/verity/
+Scope: After `mksquashfs`, generate the dm-verity Merkle tree + root hash over `os-core.squashfs`; emit the root hash for inclusion in `stable.json` (OSDIST-01). The root hash is the image's content identity. Pure tooling step in the build.
+AC: [ ] build produces verity hash tree + root hash for the squashfs [ ] root hash matches on re-verify [ ] root hash surfaced for manifest signing [ ] sh -n build.sh
+
+### [VERITY-02] Per-boot-stage signature verification in initramfs (Go)
+`todo` · P0 · L · dep: VERITY-01, SEED-01 · parallel: no — new backend/cmd/verify/, backend/cmd/init/main.go
+Scope: Verify-capable initramfs (Go) checks the signature of each next stage before executing it: shim → bootloader → kernel → initramfs → squashfs, and verifies the squashfs dm-verity root hash + detached `.sig` against the release cert (which the baked root authorizes, SIGN-03). Halt boot / refuse update on mismatch. dm-verity then verifies every block on read at runtime.
+AC: [ ] each stage signature-verified before exec [ ] squashfs verity root hash + sig verified before pivot [ ] broken sig / hash mismatch halts boot [ ] GOOS=linux build, unit tests for the verifier
+
+### [SIGN-01] Canonical signing bytes + detached-signature format (Go)
+`todo` · P0 · M · dep: none · parallel: yes — new backend/services/signing/
+Scope: Define deterministic canonical bytes for `stable.json` and the `.sig` detached-signature format over artifacts; Sign/Verify helpers (Go, no Rust). Shared by OSDIST-01 (manifest) and the release-signing tooling (SIGN-03). No key custody here.
+AC: [ ] canonical bytes byte-stable [ ] Sign/Verify round-trip, tamper rejected [ ] format documented [ ] unit tests
+
+### [SIGN-02] Trust-anchor verification against baked root key
+`todo` · P0 · S · dep: SIGN-01, SEED-01 · parallel: yes — backend/services/signing/
+Scope: Verify a signature against the baked **root** trust anchor (SEED-01). Used by OSDIST-01 manifest verify and the boot chain (VERITY-02). Pure verification helper; fail closed on any error.
+AC: [ ] verifies against baked anchor, rejects wrong key [ ] fails closed on malformed input [ ] unit test valid/invalid/tampered
+
+### [SIGN-03] Offline root-signs-intermediate PKI tooling (release-key cert)
+`todo` · P1 · L · dep: SIGN-01 · parallel: yes — new backend/cmd/sign/
+Scope: Air-gapped/HSM tooling: an offline **root key** (rarely used, the baked anchor) signs a **release-key certificate**; the release key signs images/manifests per release. Device fetches the root-signed release cert and validates it against the baked root before trusting release-key signatures. Root key never online for routine releases. CLI for: issue release cert, sign image, sign manifest.
+AC: [ ] root signs a release cert offline [ ] device-side validates release cert against baked root [ ] release key signs image + manifest [ ] root-key path documented as air-gapped/HSM [ ] go build + tests
+
+### [SIGN-04] Minimum-trusted-epoch counter (rotation/revocation + rollback protection)
+`todo` · P1 · M · dep: SIGN-02, AUTH-09 · parallel: no — new backend/services/signing/epoch.go
+Scope: Single monotonic integer `min_epoch` carried in the root-signed manifest. Device stores the **highest epoch ever seen** and refuses anything lower → rotation/revocation (bump epoch retires old key/release) AND free rollback/downgrade protection. No CRL, no OCSP, no clock dependence. Store the counter in **TPM** where available (reuse AUTH-09 devicekey/TPM keystore), **sealed file** otherwise.
+AC: [ ] lower epoch refused, equal/higher accepted + floor advanced [ ] TPM-backed when present, sealed-file fallback [ ] no clock used in the decision [ ] unit test monotonic floor + downgrade rejection
+
+---
+
+## Area: Coordination (Bucket Leases)
+
+_Design doc: [`roadmap/COORDINATION.md`](../roadmap/COORDINATION.md)_  ·  _Prefix: `LEASE-*`_
+
+> Why this matters: Leaderless mutual exclusion across N equal instances using only the shared bucket — no leader election, correctness never depends on any external service. One primitive: a bucket-backed lease with a monotonic fencing token, an always-present object mutated via `If-Match <etag>` CAS. Serves run-leases (singleton apps), singleton jobs, and snapshot/compaction ownership. Two coordination mechanisms split by latency: bucket leases (coarse/durable) vs the peering/relay hot path (real-time presence — see COLLAB-*).
+
+### [LEASE-01] Bucket-backed lease primitive (`If-Match` CAS + fencing token)
+`todo` · P0 · L · dep: CLUSTER-03 · parallel: yes — new backend/services/lease/lease.go
+Scope: Always-present lease object `leases/<scope>.json` (state free|held, holder, fence, expires_at), created once at cluster init, mutated only via `If-Match <etag>` CAS: acquire (free→held), renew (held→held + fence bump), release (held→free). Hand the monotonic fence token to callers (stale-fence rejection). **Do NOT use `If-None-Match: *`** (MinIO #20346 wontfix) — pre-create + only `If-Match`. Works on AWS S3 (SigV4), MinIO, Tigris.
+AC: [ ] acquire/renew/release via If-Match CAS [ ] losing racer gets 412 + backs off [ ] fence increases monotonically, stale fence rejected [ ] no If-None-Match:* anywhere [ ] unit test against mock + (skippable) MinIO
+
+### [LEASE-02] Init the lease object once at cluster bootstrap
+`todo` · P0 · S · dep: LEASE-01, INIT-04 · parallel: no — backend/services/lease/, backend/services/cluster/
+Scope: At cluster init (storage provisioning / join), create the always-present lease object(s) in `free` state so subsequent ops are pure `If-Match` CAS (never create-if-absent). Idempotent.
+AC: [ ] lease object created once, free state [ ] re-running is idempotent (no clobber of held lease) [ ] unit test create + idempotency
+
+### [LEASE-03] Tigris strong-consistency guard (Single/Multi-region buckets)
+`todo` · P2 · S · dep: LEASE-01 · parallel: yes — backend/services/lease/, docs
+Scope: When the backend is Tigris, require **Single-region or Multi-region** buckets for strongly-consistent CAS; detect/warn (or refuse leases) on a non-strongly-consistent bucket config. Document the requirement. AWS S3 + MinIO unaffected.
+AC: [ ] Tigris non-strong-consistency config detected + warned/refused [ ] AWS/MinIO unaffected [ ] requirement documented [ ] unit test config gate
+
+### [LEASE-04] Singleton-job runner over the bucket lease (run-once-per-cluster)
+`todo` · P2 · M · dep: LEASE-01, LEASE-02 · parallel: yes — new backend/services/lease/job.go
+Scope: Implement the **singleton job** use of the lease primitive (COORDINATION.md § What This One Primitive Serves — `leases/job/<job-id>.json`, per-job TTL): a small runner that lets cron-style / run-once-per-cluster jobs execute on exactly one instance at a time. `RunSingletonJob(jobID, fn)` acquires the per-job lease (LEASE-01) before running, renews while running, releases on completion, and passes the fencing token to the job so a stalled-then-resumed runner is rejected. No leader election — ownership is whoever holds the job lease this cycle. This is the third lease use alongside the run-lease (CONC-02) and snapshot/compaction lease (SYNC-02); reuse the same code path, do not add a parallel mechanism.
+AC: [ ] job runs on exactly one instance when N instances contend [ ] holder loss before completion → another instance acquires + runs [ ] fence handed to the job, stale fence rejected [ ] no `If-None-Match:*`, no leader election [ ] unit test single-execution under contention
+
+---
+
+## Area: Multi-Instance Data Sync
+
+_Design doc: [`roadmap/SYNC.md`](../roadmap/SYNC.md)_  ·  _Prefix: `SYNC-*`_
+
+> Why this matters: Redundancy + load-balancing across locations. cr-sqlite is leaderless CRDT so redundancy is inherent (no failover election, no split-brain). Two-tier sync: hot path = instance↔instance changeset streaming over the peering mesh (relay fallback for NAT/cross-location); cold path = the existing periodic durable checkpoint to S3 (CLUSTER-05). New work: snapshot/compaction in the bucket so a new instance bootstraps from a recent snapshot + short changeset tail instead of replaying an unbounded log.
+
+### [SYNC-01] Instance↔instance changeset hot path over the peering mesh
+`todo` · P1 · L · dep: CLUSTER-05, PEER-14 · parallel: yes — new backend/services/sync/hotpath.go
+Scope: Stream `crsql_changes` directly between live instances over the **existing peering mesh** (PEERING.md) for near-real-time convergence, with **relay fallback** (same transport peering uses) for NAT / cross-location. Complements — does not replace — the durable S3 cold path (CLUSTER-05). Hot path is transient; the bucket stays the durable record.
+AC: [ ] two live instances converge via direct mesh in well under a sync interval [ ] relay fallback when direct blocked [ ] cold-path bucket sync still runs [ ] no split-brain (CRDT merge) [ ] unit/integration test
+
+### [SYNC-02] Bucket snapshot/compaction of merged DB state
+`todo` · P1 · L · dep: CLUSTER-05, LEASE-01 · parallel: yes — new backend/services/sync/snapshot.go
+Scope: Periodically write a compacted, encrypted (SSE-C, per CLUSTER.md) snapshot `cluster/snapshot/<version>.db.enc` + `cluster/snapshot/latest.json` (covers-up-to changeset version). Exactly one instance compacts at a time, guarded by the **snapshot ownership lease** (`leases/snapshot.json`, LEASE-01) with fencing so a stalled compactor can't clobber a newer snapshot. Prune per-node changesets below the snapshot's covered version.
+AC: [ ] snapshot written + latest.json points at it [ ] compaction guarded by fencing lease (single owner) [ ] sub-snapshot changesets pruned [ ] passphrase never persisted/sent to cloud [ ] unit test
+
+### [SYNC-03] New-instance bootstrap from snapshot + short changeset tail
+`todo` · P1 · M · dep: SYNC-02 · parallel: no — backend/services/sync/, backend/services/joinsync/
+Scope: A new/recovering instance downloads `snapshot/latest` → applies the short changeset **tail** after the covered version → live. Bootstrap cost bounded by snapshot age, not cluster age. Wire into the join/sync flow (INIT-08 boot-mode=sync).
+AC: [ ] new instance bootstraps from snapshot + tail (not full log replay) [ ] state matches a peer after bootstrap [ ] integrates with join sync-state phases [ ] go build
+
+---
+
+## Area: Concurrency Model
+
+_Design doc: [`roadmap/CONCURRENCY.md`](../roadmap/CONCURRENCY.md)_  ·  _Prefix: `CONC-*` / `COLLAB-*`_
+
+> Why this matters: One profile legitimately live in many locations at once. Conflict policy per data type (LWW / CRDT counter / sequence-CRDT / lease). Apps **opt INTO** concurrency via the manifest: `singleton` (default, safe — active-passive, infra-enforced run-lease, fails over), `replicated` (active-active CRDT merge), `collaborative` (active-active + presence/awareness on the peering/relay hot path). Live collaboration is IN SCOPE. App-manifest doc = APP-MANIFEST.md.
+
+### [CONC-01] Add `concurrency` field to app manifest (singleton|replicated|collaborative)
+`todo` · P0 · M · dep: none · parallel: no — backend/services/appnet/manifest.go
+Scope: Extend `AppManifest` with `Concurrency string` (`singleton`|`replicated`|`collaborative`; empty defaults to `singleton`). Validate (mirror the `visibility` validation). Signed with the manifest (integrity-protected — can't be flipped to active-active post-publish). Clarify in comments vs the legacy local `singleton` bool (per-machine instance constraint) vs cluster-wide active-passive policy.
+AC: [ ] field validated to 3 values, default singleton [ ] signed/validated alongside the rest of the manifest [ ] legacy `singleton` bool vs `concurrency` documented [ ] unit test default + validation + round-trip [ ] go build
+
+### [CONC-02] Infra-enforced run-lease for singleton apps (active-passive failover)
+`todo` · P0 · L · dep: CONC-01, LEASE-01 · parallel: no — backend/services/appnet/launcher.go, backend/services/lease/
+Scope: For `concurrency: singleton` (the default), gate launch on a per-profile-per-app **run-lease** (`leases/run/<profile>/<app>.json`, TTL ~15–30s, fencing token from LEASE-01). Exactly one instance runs the app for a profile; on holder loss the lease expires and another instance acquires it (clean failover, no split-brain). Renew while running, release on stop.
+AC: [ ] singleton app holds a run-lease, second instance does not launch a duplicate [ ] holder death → lease expiry → failover acquires [ ] fence prevents stalled-then-resumed double-run [ ] TTL 15–30s [ ] go build
+
+### [CONC-03] Per-data-type conflict policy wiring (LWW / counter / sequence / lease)
+`todo` · P2 · M · dep: CONC-01, CLUSTER-05 · parallel: yes — new backend/services/concurrency/policy.go
+Scope: Map data kinds to resolution: settings/most → LWW (field-level, already cr-sqlite); counters/quotas → CRDT counter; co-edited docs → sequence/collaborative CRDT; exclusive resources → lease (LEASE-01). Provide a policy registry the stores consult. Extends CLUSTER.md's per-data-type table to the concurrency dimension.
+AC: [ ] policy registry resolves each data kind to its strategy [ ] counters merge additively (no lost increments) [ ] exclusive resources route to a lease [ ] unit test per policy
+
+### [COLLAB-01] Presence/awareness channel on the peering/relay hot path
+`todo` · P2 · L · dep: CONC-01, PEER-30 · parallel: yes — new backend/services/peering/presence_awareness.go
+Scope: For `concurrency: collaborative` apps, provide an infra **presence/awareness** channel (who's here, cursors, selections) on the **peering/relay hot path** — ephemeral + fast, NOT the bucket. Keep the two coordination mechanisms separate: exclusion → bucket leases (LEASE-*); real-time presence → this hot path. Builds on the Yjs collab transport (PEER-30).
+AC: [ ] collaborative apps get a presence channel over peering (relay fallback) [ ] presence is ephemeral, never written to the bucket [ ] awareness clears on disconnect [ ] does not route through the lease primitive [ ] go build
 
 ---
 

@@ -111,6 +111,8 @@ Users should be able to make their apps (both AI-generated and normal installed 
 
 ### Implementation
 
+> The `visibility` field lives in the shared app manifest alongside the new `concurrency` field — see APP-MANIFEST.md (full field reference) and CONCURRENCY.md (the singleton/replicated/collaborative posture). Both are validated (and signed) in `backend/services/appnet/manifest.go`.
+
 - [ ] Add `visibility` field to app manifest: `private | local | public`
 - [ ] API endpoints to toggle visibility per app
 - [ ] Settings UI for each app: toggle visibility with clear explanation of what each level means

@@ -258,7 +258,7 @@ No mature open-source web-based video editors exist. Best approach: lightweight 
   - Local recording to mp4/mkv
   - Scene transitions, audio mixing, filters
   - Plugin ecosystem
-- **Note**: pairs well with the paid managed TURN service for users behind NAT
+- **Note**: pairs well with a TURN/coturn server for users behind NAT (self-hostable; configured in Settings, NET-10)
 
 ---
 

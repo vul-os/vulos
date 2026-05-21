@@ -4,6 +4,8 @@ How multiple Vula instances share state. Each node is a full, independent Vula i
 
 For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For bare metal boot see BAREMETAL-INIT.md.
 
+> **See also (new design extensions).** This doc covers the foundational cr-sqlite + S3 model. Three follow-on docs build on it: **SYNC.md** (two-tier sync — instance↔instance hot path over the peering mesh + the existing durable bucket cold path — and bucket-side snapshot/compaction so a new instance bootstraps from a snapshot + short tail instead of an unbounded changeset log); **COORDINATION.md** (bucket-backed leases with monotonic fencing tokens — generalizing the advisory presence lease below into the cluster's one exclusion/ownership primitive, no leader election); **CONCURRENCY.md** (per-data-type conflict policy + the manifest-declared `concurrency` posture). The **data bucket** here is distinct from the public read-only **OS bucket** (OS-DISTRIBUTION.md).
+
 > **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. CRDT-backed (cr-sqlite) so two nodes editing concurrently merge cleanly. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
 > **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS.
 > **Status.** Complete. All CLUSTER tasks shipped. SQLite-backed auth write-through (CLUSTER-02) landed inline via the D76 checkpoint — CGO-free (modernc), one-time auth.json import, all 5 regression tests pass. S3 client, node identity, cr-sqlite changeset sync, file sync with conflict copies, conflict-resolver UI, MinIO registry entry, and presence leases are all in.
@@ -219,6 +221,8 @@ Same user, two browser tabs hitting two different server nodes via tunnel load b
 Distributed locks across the internet are fragile, slow, and create single points of failure. If the lock holder dies, everyone waits. If the network partitions, deadlock.
 
 Instead: **local-first writes + async sync + conflict resolution.** Every write succeeds locally and immediately. Conflicts are resolved during sync, not prevented with locks.
+
+> **For genuine exclusion** (a singleton app that must run in exactly one place, a run-once job, ownership of the snapshot/compaction cycle) we *do* need a coordination primitive — but not a distributed *lock service*. COORDINATION.md defines a **bucket-backed lease with a monotonic fencing token** (an always-present object mutated via `If-Match` CAS): coarse, durable, crash-safe, leaderless, and correctness never depends on any external service. This complements (not replaces) the local-first model — leases guard exclusivity; CRDTs/conflict-copies handle everyday concurrent edits.
 
 ---
 

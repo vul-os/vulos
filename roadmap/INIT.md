@@ -4,9 +4,11 @@ The software-level setup wizard that runs after the OS boots for the first time.
 
 > **Goal.** Take a brand-new instance from "blank disk" to "running, identifiable, recoverable." Generate a stable ULID, pick a hostname, optionally provision MinIO for cluster sync, register an emergency SSH key, and walk the user through a printable Recovery Kit (JSON + QR). Joining an existing cluster is a parallel sub-flow: paste S3 creds → sync → done.
 > **Non-goals.** Re-running on every boot. We gate on `instance.json` so this fires once.
-> **Status.** Complete. All INIT tasks shipped. The full wizard UI — Identity, Storage, SSH, Recovery Kit (INIT-05/06), and the Join sub-flow with Syncing screen + PIN (INIT-09) — is implemented in `src/auth/Setup.jsx`. Join codes, cloud recovery-kit backup, and the boot-mode router are all in.
+> **Status.** Complete. All INIT tasks shipped. The full wizard UI — Identity, Storage, SSH, Recovery Kit (INIT-05/06), and the Join sub-flow with Syncing screen + PIN (INIT-09) — is implemented in `src/auth/Setup.jsx`. Join codes, optional recovery-kit backup, and the boot-mode router are all in.
 
 ---
+
+> **Boot vs setup, and two distinct accounts.** This wizard is the *software* setup that runs once the desktop is up. When a machine is provisioned via netboot (NETBOOT.md), the wizard is preceded by a post-live-session choice: **Local-only** (create a **local OS account** — username + full name + password; hostname autofilled) or **Connect a control plane** (optionally enroll with a control plane — email + password + 2FA — at a configurable URL, then optionally join an existing **data cluster**). The local OS account (machine login) and the control-plane account are **two separate credentials** — keep them distinct. The "bucket you sync to" below is the **data bucket** (CLUSTER.md); the read-only **OS bucket** that ships the OS image is a different thing entirely (OS-DISTRIBUTION.md). Joining a data cluster requires the **cluster passphrase, which is held only locally** (CLUSTER.md encryption-at-rest).
 
 ## New or Join
 
@@ -330,7 +332,7 @@ QR version 40 holds ~2,953 bytes. The recovery kit JSON (with Ed25519 key, which
 
 The QR is generated as a data URL and displayed inline. User scans with phone camera to save.
 
-**Cloud backup** — users can back up their recovery kit to `vulos.org` (see LANDING.md). The user authenticates with their email, and the encrypted kit is stored. They can restore it later from any device.
+**Optional control-plane backup** — users can *optionally* back up their (already-encrypted) recovery kit to a control plane at a configurable URL (default `vulos.org`). The user authenticates with their email; the kit is encrypted client-side before it ever leaves the device. They can restore it later from any device. This is entirely optional and the OS works without it.
 
 ### Confirmation Gate
 
@@ -539,7 +541,7 @@ GET  /api/cluster/join-code      → generate join code (from existing node)
 1. **Instance identity** — ULID generation at first boot, hostname auto-generation, mDNS setup, DNS registration on first internet connection
 2. **SSH server** — add `openssh-server` to Dockerfile and build.sh, hardened sshd config, key generation
 3. **Storage step** — MinIO install during init, S3 bucket creation, encryption setup
-4. **Recovery kit** — JSON download, QR code generation, confirmation gate, cloud backup to vulos.org
+4. **Recovery kit** — JSON download, QR code generation, confirmation gate, optional control-plane backup at a configurable URL
 5. **New system flow** — full wizard with all new steps integrated
 6. **Join flow** — connect storage, sync screen with progress UI, reentrant sync state
 7. **Join codes** — generation from existing nodes, QR + short code encoding, temporary credentials

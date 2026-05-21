@@ -228,8 +228,6 @@ If no `--profile` is present the router falls back to `default`.
 
 **Why `--`?** Single hyphens appear in app IDs and profile names. Double dash is an unambiguous separator — same convention Cloudflare Pages and Vercel use for branch deploys.
 
-**Vanity routing (paid):** `cognizance.vulos.org → 302 → 01h5t3e8k2qj7r9xmvn4p.vulos.org`. The vanity redirect lands on the instance root; the user's browser then navigates to the specific app URL. See VULOS_INTERNAL.md → Routing & Vanity Domains.
-
 ### App Visibility
 
 Each app-profile has a visibility setting:
@@ -298,9 +296,9 @@ Validation rule: `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (lowercase alphanumeric + single
 - `src/auth/Setup.jsx` — instance name validation in init wizard
 - Any hardcoded subdomain references
 
-**Vulos.org API:**
-- DNS records use the `--` separator in subdomains — no additional validation needed on the server side
-- Enrollment validates `--` restriction on ULIDs (not applicable — ULIDs are alphanumeric only)
+**Control-plane interaction (instance side):**
+- DNS records use the `--` separator in subdomains
+- Enrollment payloads carry the instance ULID (alphanumeric only, so the `--` restriction is moot)
 
 ---
 
@@ -347,6 +345,12 @@ func (c *Cluster) HealthHandler(w http.ResponseWriter, r *http.Request) {
     // Checks: DB writable, disk space, sync lag
 }
 ```
+
+### Geo-routing & session affinity (instance side)
+
+So that an **external router can route a user to the nearest healthy instance** of their cluster with **sticky-until-failure** affinity, the OSS/instance side provides exactly two hooks: it **exposes health** (the existing heartbeat + this `/api/health` endpoint) and it **supports session affinity** (sticky session, valid on every instance because sessions sync via cr-sqlite — CLUSTER.md). The routing decision itself is made by whatever router is in front of the cluster and is out of scope here; a self-hosted cluster with no router simply uses its configured connection mode above.
+
+> **Security caveat (do not flag multi-location as compromise).** A single profile being **legitimately live in many locations at once is INTENDED** (it's the whole point of the leaderless cluster — CONCURRENCY.md / SYNC.md). Therefore **impossible-travel / geo-velocity heuristics MUST NOT be used as a compromise signal** for Vulos accounts. The same profile answering from two continents simultaneously is normal, not an attack.
 
 ---
 
