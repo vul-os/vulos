@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 212 / 236 real tasks done (90%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 217 / 236 real tasks done (92%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,8 +10,8 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 21 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 16 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 25 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 17 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
 | Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
@@ -38,7 +38,7 @@
 | Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
 | Cloud Login (OS-side) | (this file § CLOGIN-*) | 7 / 7 | `[██████████]` 100% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **212 / 236** | `[█████████░]` 90% |
+| **Total** |  | **217 / 236** | `[█████████░]` 92% |
 
 ## How to read a task
 
@@ -868,7 +868,7 @@ Scope: Bare-metal default = cage + Cog fullscreen, React shell as sole WM, nativ
 AC: [ ] bare-metal default streams, no native-launch [ ] cage fullscreen + shell is sole WM [ ] native-launch only when v2 opt-in set [ ] remote unchanged [ ] go build + npm build
 
 ### [BMINIT-17] v2 `surface` transport: zero-copy native window into JSX rect
-`todo` · P3 · XL · dep: BMINIT-18 · parallel: no — backend/services/appnet/, new surface bridge, src window layer
+`done` · P3 · XL · dep: BMINIT-18 · parallel: no — backend/services/appnet/, new surface bridge, src window layer
 Scope: When v2 enabled, launch native/XWayland app as a real wlroots xdg-toplevel and scan its GPU buffer (subsurface/DMABUF passthrough) into the JSX `<AppWindow>`'s screen rect; React still owns frame/decoration/z bookkeeping. Fall back to stream on no-GPU/unsupported.
 AC: [ ] native app renders zero-copy in the JSX window rect [ ] move/resize/z follow the JSX frame [ ] fallback to stream when unsupported [ ] remote/stream path unchanged
 
@@ -1147,7 +1147,7 @@ Scope: store Yjs doc binaries+meta, relay opaque CRDT blobs S2S, broadcast updat
 AC: [ ] 2 browsers same doc merge realtime [ ] awareness broadcasts+clears on disconnect [ ] yjs state persists
 
 ### [PEER-31] Document share/accept + per-peer permissions
-`todo` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
+`done` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
 Scope: doc-share invitation send/recv, accept adds w/ Shared badge, edit/view enforce (view recv-only), owner revoke, documents list/leave.
 AC: [ ] share→invitation, accept registers [ ] view-only sends rejected [ ] revoke stops updates
 
@@ -1182,7 +1182,7 @@ Scope: X25519 from identity, per-conversation shared secret, encrypt/decrypt mes
 AC: [ ] bodies ciphertext at rest+transit, only endpoints decrypt [ ] wrong key fails closed [ ] round-trip+key exchange tests
 
 ### [PEER-38] Relay peers: deposit/pickup/ack + config/store
-`todo` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
+`done` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
 Scope: relay role config (enabled/capacity/TTL/allowed), deposit (mutual-trust+limits), signed pickup, ack-delete; sender uses relay when recipient unreachable. Limits 100MB/recip, 72h, 25MB blob, 100/h.
 AC: [ ] deposit stores by recipient, relay never decrypts [ ] signed pickup returns, ack deletes [ ] limits enforced, mutual-trust only
 
@@ -1192,12 +1192,12 @@ Scope: relay exposes attestation doc; sender validates vs policy before deposit,
 AC: [ ] sender verifies attestation before deposit [ ] failed/absent rejects relay [ ] verifier interface extensible
 
 ### [PEER-40] Cluster anycast: multi-endpoint registry + failover
-`todo` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
+`done` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
 Scope: endpoint registry (register/list/remove/priority), include endpoints in well-known (extends PEER-12), outbound races cached endpoints w/ failover, UUIDv7 dedup inbound.
 AC: [ ] Vula ID advertises multi endpoints [ ] delivery succeeds via live one [ ] duplicate msg ID no-op
 
 ### [PEER-41] Signed feeds: append-only log, pub/sub, content-addr
-`todo` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
+`done` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
 Scope: feed create/list/publish/get/entries, hash-chained signed entries (prev_hash), access public/peers/link, subscriber pull by seq, push to approved, content hash sha256(canonical).
 AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] public/link no auth, peers gated [ ] subscribers since last seq
 
