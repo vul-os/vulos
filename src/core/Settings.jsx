@@ -21,6 +21,7 @@ const sections = [
   { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
   { id: 'pin', label: 'Device PIN' },
+  { id: 'fingerprint', label: 'Fingerprint' },
   { id: 'account', label: 'Account' },
   { id: 'osupdate', label: 'OS Update' },
   { id: 'about', label: 'About' },
@@ -65,6 +66,7 @@ export default function Settings() {
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
         {active === 'pin' && <DevicePINSettings />}
+        {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'about' && <AboutSettings />}
@@ -1139,6 +1141,250 @@ function DevicePINSettings() {
           </button>
         </div>
       )}
+
+      {/* Status message */}
+      {msg && (
+        <p className={`mt-4 text-sm ${msg.type === 'ok' ? 'text-green-400' : 'text-red-400'}`}>
+          {msg.text}
+        </p>
+      )}
+    </Section>
+  )
+}
+
+// --- Fingerprint Unlock (CLOGIN-07) ---
+//
+// Shows "Add fingerprint" only when the backend reports a supported fprintd
+// device (available=true from GET /api/auth/fingerprint/status). Hidden when
+// no hardware is detected. Configurable per-profile; disabling requires a
+// full-auth session (enforced server-side).
+function FingerprintSettings() {
+  const [status, setStatus] = useState(null)   // FingerprintStatus from server
+  const [msg, setMsg] = useState(null)          // { type: 'ok'|'err', text }
+  const [busy, setBusy] = useState(false)
+  const [enrolling, setEnrolling] = useState(false)
+
+  const loadStatus = () => {
+    fetch('/api/auth/fingerprint/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStatus(data) })
+      .catch(() => {})
+  }
+
+  useEffect(() => { loadStatus() }, [])
+
+  const handleEnrollStart = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/auth/fingerprint/enroll/start', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'err', text: data.error || 'Could not start enrollment' })
+      } else {
+        setEnrolling(true)
+        setMsg({ type: 'ok', text: 'Scan your finger on the reader — then press Done.' })
+      }
+    } catch {
+      setMsg({ type: 'err', text: 'Could not reach server' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleEnrollStop = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/auth/fingerprint/enroll/stop', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'err', text: data.error || 'Enrollment did not complete' })
+      } else if (data.enrolled) {
+        setMsg({ type: 'ok', text: 'Fingerprint enrolled — you can now unlock with your finger.' })
+        setEnrolling(false)
+        loadStatus()
+      } else {
+        setMsg({ type: 'err', text: 'No finger was enrolled — please try again.' })
+        setEnrolling(false)
+      }
+    } catch {
+      setMsg({ type: 'err', text: 'Could not reach server' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRemove = async () => {
+    if (!confirm('Remove fingerprint unlock? You will need to use your PIN or password to unlock.')) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/auth/fingerprint/remove', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsg({ type: 'err', text: data.error || 'Could not remove fingerprint' })
+      } else {
+        setMsg({ type: 'ok', text: 'Fingerprint unlock removed.' })
+        loadStatus()
+      }
+    } catch {
+      setMsg({ type: 'err', text: 'Could not reach server' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Loading state
+  if (status === null) {
+    return (
+      <Section title="Fingerprint Unlock">
+        <p className="text-sm text-neutral-500">Checking hardware…</p>
+      </Section>
+    )
+  }
+
+  // No supported hardware — gate the entire UI
+  if (!status.available) {
+    return (
+      <Section title="Fingerprint Unlock">
+        <div className="rounded-xl border border-neutral-800/50 overflow-hidden mb-5">
+          <div className="flex items-center justify-between px-4 py-3 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Hardware status</span>
+            <span className="text-sm text-neutral-500">Not available</span>
+          </div>
+        </div>
+        <p className="text-xs text-neutral-600 mb-4 leading-relaxed">
+          No supported fingerprint reader was detected on this device.
+          Fingerprint unlock requires a libfprint-compatible reader registered with fprintd.
+        </p>
+        <div className="rounded-xl border border-neutral-800/30 overflow-hidden">
+          <div className="px-4 py-3 bg-neutral-900/20">
+            <p className="text-xs font-medium text-neutral-400 mb-2">Supported hardware (examples)</p>
+            <ul className="text-xs text-neutral-600 space-y-0.5">
+              <li>Synaptics (USB 06cb:xxxx)</li>
+              <li>Goodix (USB 27c6:xxxx)</li>
+              <li>ELAN (USB 04f3:xxxx)</li>
+              <li>AuthenTec (USB 08ff:xxxx)</li>
+              <li>DigitalPersona (USB 05ba:xxxx)</li>
+              <li>Validity Sensors (USB 138a:xxxx)</li>
+            </ul>
+            <p className="text-[11px] text-neutral-700 mt-2">
+              Virtual machines without USB passthrough and macOS/Windows are not supported.
+              Install fprintd and libfprint2 to enable this feature.
+            </p>
+          </div>
+        </div>
+      </Section>
+    )
+  }
+
+  return (
+    <Section title="Fingerprint Unlock">
+      {/* Status card */}
+      <div className="mb-5 rounded-xl border border-neutral-800/50 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">Status</span>
+          <span className={`text-sm font-medium ${status.enrolled ? 'text-green-400' : 'text-neutral-500'}`}>
+            {status.enrolled ? 'Enrolled' : 'Not enrolled'}
+          </span>
+        </div>
+        {status.hardware_note && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Reader</span>
+            <span className="text-sm text-neutral-400">{status.hardware_note}</span>
+          </div>
+        )}
+        {status.enrolled && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Unlock attempts left</span>
+            <span className={`text-sm ${status.failures_left <= 1 ? 'text-amber-400' : 'text-neutral-400'}`}>
+              {status.failures_left} of 3
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Info note */}
+      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+        Fingerprint unlock releases the same device-local credential as your PIN.
+        After 3 failed scans the lock screen falls back to PIN or password.
+        Disabling fingerprint unlock requires a full-auth (password) session.
+      </p>
+
+      {/* Enroll flow */}
+      {!status.enrolled && !enrolling && (
+        <button
+          onClick={handleEnrollStart}
+          disabled={busy}
+          className="btn disabled:opacity-50 mb-4"
+        >
+          {busy ? 'Starting…' : 'Add fingerprint'}
+        </button>
+      )}
+
+      {enrolling && (
+        <div className="mb-4 p-4 rounded-xl bg-blue-950/30 border border-blue-800/30">
+          <p className="text-sm text-blue-300 mb-3">
+            Place your finger on the reader and lift it several times as prompted.
+          </p>
+          <button
+            onClick={handleEnrollStop}
+            disabled={busy}
+            className="btn disabled:opacity-50"
+          >
+            {busy ? 'Saving…' : 'Done — save fingerprint'}
+          </button>
+        </div>
+      )}
+
+      {/* Re-enroll when already enrolled */}
+      {status.enrolled && !enrolling && (
+        <button
+          onClick={handleEnrollStart}
+          disabled={busy}
+          className="btn disabled:opacity-50 mb-4"
+        >
+          {busy ? 'Starting…' : 'Re-enroll fingerprint'}
+        </button>
+      )}
+
+      {/* Remove */}
+      {status.enrolled && (
+        <div className="pt-4 border-t border-neutral-800/50">
+          <h3 className="text-sm font-medium text-neutral-300 mb-2">Remove fingerprint</h3>
+          <p className="text-xs text-neutral-600 mb-3">
+            Removes fingerprint unlock from this device. The lock screen will
+            require your PIN or password.
+          </p>
+          <button
+            onClick={handleRemove}
+            disabled={busy}
+            className="btn-ghost text-red-400 disabled:opacity-50"
+          >
+            Remove fingerprint
+          </button>
+        </div>
+      )}
+
+      {/* Hardware support matrix */}
+      <div className="mt-6 rounded-xl border border-neutral-800/30 overflow-hidden">
+        <div className="px-4 py-3 bg-neutral-900/20">
+          <p className="text-xs font-medium text-neutral-400 mb-2">Supported hardware (examples)</p>
+          <ul className="text-xs text-neutral-600 space-y-0.5">
+            <li>Synaptics (USB 06cb:xxxx)</li>
+            <li>Goodix (USB 27c6:xxxx)</li>
+            <li>ELAN (USB 04f3:xxxx)</li>
+            <li>AuthenTec (USB 08ff:xxxx)</li>
+            <li>DigitalPersona (USB 05ba:xxxx)</li>
+            <li>Validity Sensors (USB 138a:xxxx)</li>
+          </ul>
+          <p className="text-[11px] text-neutral-700 mt-2">
+            Requires fprintd + libfprint2 on Linux.
+            Virtual machines without USB passthrough are not supported.
+          </p>
+        </div>
+      </div>
 
       {/* Status message */}
       {msg && (
