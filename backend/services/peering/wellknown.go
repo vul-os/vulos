@@ -452,6 +452,92 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 }
 
 // --------------------------------------------------------------------------
+// Periodic profile sync
+// --------------------------------------------------------------------------
+
+// WKApprovedPeer is a minimal record of an approved contact used by the
+// profile-sync loop.  Only VulaID and ServerAddr are required; everything
+// else is informational.
+type WKApprovedPeer struct {
+	VulaID     string
+	ServerAddr string
+}
+
+// wkSyncInterval is how often the background sync loop refreshes stale
+// approved-peer profiles.
+const wkSyncInterval = 15 * time.Minute
+
+// StartPeerProfileSync launches a background goroutine that periodically
+// refreshes the cached profiles of approved peers.
+//
+// listApproved must return the current set of approved contacts; it is
+// called on each tick so that newly-approved contacts are included
+// automatically.  The goroutine exits when ctx is cancelled.
+//
+// Typical wiring in cmd/server/main.go (inside the PEER-42 block):
+//
+//	peering.StartPeerProfileSync(ctx, func() []peering.WKApprovedPeer {
+//	    contacts := contactStore.ListByState(peering.StateApproved)
+//	    peers := make([]peering.WKApprovedPeer, 0, len(contacts))
+//	    for _, c := range contacts {
+//	        peers = append(peers, peering.WKApprovedPeer{c.VulaID, c.Server})
+//	    }
+//	    return peers
+//	})
+func StartPeerProfileSync(ctx context.Context, listApproved func() []WKApprovedPeer) {
+	go func() {
+		ticker := time.NewTicker(wkSyncInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				wkRefreshApprovedProfiles(ctx, listApproved())
+			}
+		}
+	}()
+}
+
+// FetchPeerProfileAsync triggers a non-blocking background fetch of a single
+// peer's profile.  It is a fire-and-forget convenience used by the approve
+// handler so that the contact's profile is cached immediately after approval
+// without blocking the HTTP response.
+func FetchPeerProfileAsync(vulaID, serverAddr string) {
+	if vulaID == "" || serverAddr == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := FetchPeerProfile(ctx, vulaID, serverAddr); err != nil {
+			fmt.Fprintf(os.Stderr, "[peering/wellknown] async profile fetch %s: %v\n", vulaID, err)
+		}
+	}()
+}
+
+// wkRefreshApprovedProfiles re-fetches profiles that are absent or stale in
+// the cache for the given set of approved peers.  Network errors are logged
+// and skipped so a single unreachable peer does not abort the refresh.
+func wkRefreshApprovedProfiles(ctx context.Context, peers []WKApprovedPeer) {
+	for _, p := range peers {
+		if p.VulaID == "" || p.ServerAddr == "" {
+			continue
+		}
+		// Skip if there is a still-fresh cache entry.
+		if _, ok := wkCacheGet(p.VulaID); ok {
+			continue
+		}
+		tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := FetchPeerProfile(tctx, p.VulaID, p.ServerAddr)
+		cancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[peering/wellknown] refresh %s: %v\n", p.VulaID, err)
+		}
+	}
+}
+
+// --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
 
