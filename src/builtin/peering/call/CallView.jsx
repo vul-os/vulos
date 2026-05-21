@@ -154,6 +154,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // Consume once so navigating back does not re-trigger.
   useEffect(() => {
     if (dialTo && call.state === 'idle') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDialTarget(dialTo)
       onDialToConsumed?.()
       // Small delay to ensure the input is rendered before calling
@@ -167,6 +168,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // Start/stop duration timer based on call state
   useEffect(() => {
     if (call.state === 'active') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDuration(0)
       timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
     } else {

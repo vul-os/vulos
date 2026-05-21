@@ -4,6 +4,7 @@ import { useState } from 'react'
 // Each icon is a 16x16 viewBox SVG rendered inline.
 
 // Logo URLs for installed apps (shared with AppHub)
+// eslint-disable-next-line react-refresh/only-export-components
 export const APP_LOGOS = {
   chrome: '/icons/chrome.svg',
   browser: '/icons/chrome.svg',
@@ -27,6 +28,7 @@ export const APP_LOGOS = {
   wede: 'https://raw.githubusercontent.com/webcrft/wede/main/public/icon.svg',
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const APP_COLORS = {
   // Builtins
   terminal: '#4EC9B0', activity: '#3B82F6', files: '#F59E0B', persona: '#8B5CF6',
@@ -47,6 +49,7 @@ export const APP_COLORS = {
   wede: '#6366F1', cockpit: '#0066CC',
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const APP_LETTERS = {
   'sqlite-web': 'S', ttyd: 'T', httpbin: 'H', keepassxc: 'K', obs: 'O',
   vlc: 'V', gimp: 'G', kicad: 'K', freecad: 'F',

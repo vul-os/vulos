@@ -24,7 +24,7 @@ export function useTelemetry() {
       ws.onmessage = (e) => {
         try {
           setStats(JSON.parse(e.data))
-        } catch {}
+        } catch { /* noop */ }
       }
 
       ws.onclose = () => {

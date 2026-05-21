@@ -102,6 +102,7 @@ export default function DiskUsage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (selectedMount) loadBreakdown(selectedMount.mount_point)
   }, [selectedMount])
 

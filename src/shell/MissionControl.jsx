@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 
@@ -14,6 +14,7 @@ function detectOS() {
  * Calculate grid positions for windows in Mission Control view.
  * Returns a map of windowId -> { x, y, scale }
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useMissionControlLayout(windows, isOpen) {
   return useMemo(() => {
     if (!isOpen || windows.length === 0) return {}
@@ -78,12 +79,11 @@ export function useMissionControlLayout(windows, isOpen) {
 export default function MissionControl() {
   const {
     desktops, activeDesktop, switchDesktop, addDesktop, removeDesktop,
-    windows, activeWindow,
-    focusWindow, minimizeWindow, closeWindow,
+    windows,
     missionControlOpen, toggleMissionControl, setMissionControl,
   } = useShell()
 
-  const os = useRef(detectOS()).current
+  const os = detectOS()
 
   // Keyboard shortcut: F3 (Windows/Linux), Ctrl+Up (mac fallback)
   useEffect(() => {

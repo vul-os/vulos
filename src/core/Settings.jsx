@@ -639,6 +639,7 @@ function NET9_ConnectionModeSettings() {
       .finally(() => setLoading(false))
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { NET9_refresh() }, [NET9_refresh])
 
   const NET9_apply = () => {

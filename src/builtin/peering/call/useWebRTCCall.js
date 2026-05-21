@@ -118,9 +118,9 @@ class InternalPeeringWS {
       try { frame = JSON.parse(event.data) } catch { return }
       if (!frame || !frame.channel) return
       const set = this._handlers.get(frame.channel)
-      if (set) for (const fn of set) { try { fn(frame) } catch {} }
+      if (set) for (const fn of set) { try { fn(frame) } catch { /* noop */ } }
       const all = this._handlers.get('*')
-      if (all) for (const fn of all) { try { fn(frame) } catch {} }
+      if (all) for (const fn of all) { try { fn(frame) } catch { /* noop */ } }
     }
 
     ws.onclose = () => {
@@ -146,7 +146,7 @@ class InternalPeeringWS {
   send(frame) {
     const ws = this._ws
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-    try { ws.send(JSON.stringify(frame)) } catch {}
+    try { ws.send(JSON.stringify(frame)) } catch { /* noop */ }
   }
 
   close() {
@@ -164,7 +164,7 @@ class InternalPeeringWS {
  * @param {string}  opts.myVulaId   - local user's Vula ID (used in signal frames)
  * @param {object} [opts.peeringWS] - optional usePeering() result: { send, subscribe }
  */
-export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
+export function useWebRTCCall({ myVulaId: _myVulaId, peeringWS = null } = {}) { // eslint-disable-line no-unused-vars
   // ── State ────────────────────────────────────────────────────────────────
   const [state, setState] = useState('idle')    // idle|calling|ringing|active|ended
   const [isMuted, setIsMuted] = useState(false)
@@ -199,10 +199,6 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
     return internalWSRef.current
   }, [peeringWS])
 
-  const sendFrame = useCallback((frame) => {
-    getWS().send(frame)
-  }, [getWS])
-
   // ── Relay SDP/ICE opaque payload to the server ────────────────────────────
   const relaySignal = useCallback(async (payload) => {
     try {
@@ -219,7 +215,7 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
   // ── Drain queued ICE candidates once remoteDescription is set ────────────
   const drainCandidates = useCallback(async (pc) => {
     for (const candidate of pendingCandidatesRef.current) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)) } catch {}
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)) } catch { /* noop */ }
     }
     pendingCandidatesRef.current = []
   }, [])
@@ -383,7 +379,7 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
       // ICE candidate
       if (payload.type === 'candidate' && payload.candidate) {
         if (pc.remoteDescription) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)) } catch {}
+          try { await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)) } catch { /* noop */ }
         } else {
           // Queue until remoteDescription is set
           pendingCandidatesRef.current.push(payload.candidate)
@@ -422,7 +418,7 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
         }
       }
     }
-  }, [cleanup, drainCandidates]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cleanup, drainCandidates])  
 
   // ── Subscribe to the signal channel ──────────────────────────────────────
   useEffect(() => {

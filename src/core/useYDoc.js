@@ -188,10 +188,12 @@ export function useYDoc(docId, opts = {}) {
   const [connected, setConnected] = useState(false)
 
   // Initialise doc + awareness lazily (or when docId changes).
+  /* eslint-disable react-hooks/refs */
   if (!docRef.current) {
     docRef.current = new Y.Doc()
     awarenessRef.current = new CollabAwareness(docRef.current)
   }
+  /* eslint-enable react-hooks/refs */
 
   // ── Send helpers ──────────────────────────────────────────────────────────
 
@@ -335,10 +337,12 @@ export function useYDoc(docId, opts = {}) {
     if (wsRef.current) wsRef.current.close()
   }, [])
 
+  /* eslint-disable react-hooks/refs */
   return {
     doc:       docRef.current,
     awareness: awarenessRef.current,
     connected,
     destroy,
   }
+  /* eslint-enable react-hooks/refs */
 }

@@ -227,10 +227,6 @@ function fmtSize(b) {
   return `${(b / 1073741824).toFixed(1)} G`
 }
 
-function fmtPerms(perms) {
-  return perms?.slice(0, 10) || ''
-}
-
 async function exec(command) {
   const res = await fetch('/api/exec', {
     method: 'POST',
@@ -258,7 +254,7 @@ export default function FileManager() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState(null)
-  const [searchMode, setSearchMode] = useState('name')
+  const [searchMode] = useState('name')
   const [sortCol, setSortCol] = useState('name')
   const [sortAsc, setSortAsc] = useState(true)
   const [history, setHistory] = useState(['~'])
@@ -325,6 +321,7 @@ export default function FileManager() {
     setLoading(false)
   }, [hidden, histIdx])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadDir('~', true) }, [])
 
   const navigate = (name) => {

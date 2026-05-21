@@ -224,7 +224,7 @@ function saveShellState(state) {
       }
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
-  } catch {}
+  } catch { /* noop */ }
 }
 function loadShellState() {
   try {
@@ -413,7 +413,7 @@ export function ShellProvider({ children }) {
       dispatch({ type: 'ADD_NATIVE_WINDOW', nwin: { pid: data.pid, title: win.title, appId: win.appId } })
       // If this was an embedded window, close it from the shell
       if (win.id) closeWindow(win.id)
-    } catch {}
+    } catch { /* noop */ }
   }, [closeWindow])
 
   const closeNativeWindow = useCallback(async (pid) => {
@@ -423,7 +423,7 @@ export function ShellProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pid }),
       })
-    } catch {}
+    } catch { /* noop */ }
     dispatch({ type: 'REMOVE_NATIVE_WINDOW', pid })
   }, [])
 
@@ -462,6 +462,7 @@ export function ShellProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useShell() {
   const ctx = useContext(ShellContext)
   if (!ctx) throw new Error('useShell must be used within ShellProvider')

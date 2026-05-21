@@ -102,7 +102,7 @@ function NC04_DndRow() {
         const data = await r.json()
         setDndState(data)
       }
-    } catch {}
+    } catch { /* noop */ }
   }
 
   return (
@@ -157,7 +157,7 @@ function NC04_Panel({ onClose }) {
       await fetch(`/api/notifications/${id}/read`, { method: 'POST' })
       setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
       setUnread(prev => Math.max(0, prev - 1))
-    } catch {}
+    } catch { /* noop */ }
   }, [])
 
   const NC04_markAllRead = useCallback(async () => {
@@ -165,7 +165,7 @@ function NC04_Panel({ onClose }) {
       await fetch('/api/notifications/read-all', { method: 'POST' })
       setNotifs(prev => prev.map(n => ({ ...n, read: true })))
       setUnread(0)
-    } catch {}
+    } catch { /* noop */ }
   }, [])
 
   const NC04_clear = useCallback(async () => {
@@ -173,7 +173,7 @@ function NC04_Panel({ onClose }) {
       await fetch('/api/notifications/clear', { method: 'POST' })
       setNotifs([])
       setUnread(0)
-    } catch {}
+    } catch { /* noop */ }
   }, [])
 
   const grouped = NC04_groupNotifs(notifs)
@@ -289,9 +289,10 @@ export default function NotificationCenter() {
         const data = await r.json()
         setUnread(typeof data?.count === 'number' ? data.count : 0)
       }
-    } catch {}
+    } catch { /* noop */ }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { NC04_fetchUnread() }, [NC04_fetchUnread])
 
   useEffect(() => {

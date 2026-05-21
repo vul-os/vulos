@@ -471,6 +471,7 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
   const { copied, copy } = useCopy()
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     fetch(`/api/auth/vault/entry/${entryMeta.id}`)
       .then(r => r.ok ? r.json() : null)
@@ -684,7 +685,7 @@ export default function Vault() {
     loadEntries()
   }, [loadEntries])
 
-  const handleSaveEntry = useCallback((savedEntry) => {
+  const handleSaveEntry = useCallback((_savedEntry) => { // eslint-disable-line no-unused-vars
     loadEntries()
     setView('list')
     setSelected(null)

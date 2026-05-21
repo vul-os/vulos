@@ -16,7 +16,7 @@ import IncomingCall from '../builtin/peering/call/IncomingCall'
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
 function DesktopIndicator() {
-  const { desktops, activeDesktop, switchDesktop, removeDesktop } = useShell()
+  const { desktops, activeDesktop, removeDesktop } = useShell()
   const list = Object.values(desktops)
   if (list.length <= 1) return null
   const idx = list.findIndex(d => d.id === activeDesktop)
@@ -43,6 +43,7 @@ export default function DesktopCanvas() {
 
   // xdg-open: listen for browser open events and focus/open browser window
   const windowsRef = useRef(windows)
+  // eslint-disable-next-line react-hooks/refs
   windowsRef.current = windows
   useEffect(() => {
     const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/notifications/stream`
@@ -73,7 +74,7 @@ export default function DesktopCanvas() {
               ),
             })
           }
-        } catch {}
+        } catch { /* noop */ }
       }
       ws.onclose = () => { if (alive) setTimeout(connect, 3000) }
       ws.onerror = () => ws.close()
@@ -81,8 +82,6 @@ export default function DesktopCanvas() {
     connect()
     return () => { alive = false }
   }, [focusWindow, openWindow])
-
-  const bgSrc = wallpaper || DEFAULT_WALLPAPER
 
   // First-boot background. Use a SOLID color (not a gradient) for the
   // placeholder — Chromium under SwiftShader (the bare-metal software-GPU

@@ -498,7 +498,6 @@ export function useSFUCall({
 
   useEffect(() => {
     return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       leave()
     }
   }, []) // intentionally only on unmount

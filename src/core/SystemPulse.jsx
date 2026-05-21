@@ -15,13 +15,6 @@ function useTime() {
   return now
 }
 
-function useClickOutside(ref, handler) {
-  useEffect(() => {
-    const listener = (e) => { if (ref.current && !ref.current.contains(e.target)) handler() }
-    document.addEventListener('mousedown', listener)
-    return () => document.removeEventListener('mousedown', listener)
-  }, [ref, handler])
-}
 
 function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -204,7 +197,7 @@ function ClockDropdown({ now }) {
 }
 
 // --- WiFi Dropdown ---
-function WifiDropdown({ connected }) {
+function WifiDropdown() {
   const [status, setStatus] = useState(null)
   const [networks, setNetworks] = useState(null)
   const [scanning, setScanning] = useState(false)
@@ -418,6 +411,9 @@ export default function LifePulse({ compact = false, className = '' }) {
   }, [])
   const closeDropdown = useCallback(() => setOpenDropdown(null), [])
 
+  // Full mode — used as topbar left-side system dropdown trigger
+  const { profile, logout } = useAuth()
+
   if (compact) {
     return (
       <div className={`flex items-center gap-0.5 ${className}`}>
@@ -481,9 +477,6 @@ export default function LifePulse({ compact = false, className = '' }) {
       </div>
     )
   }
-
-  // Full mode — used as topbar left-side system dropdown trigger
-  const { profile, logout } = useAuth()
 
   return (
     <div className={`relative ${className}`} ref={systemRef}>

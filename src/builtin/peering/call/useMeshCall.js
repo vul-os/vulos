@@ -563,7 +563,6 @@ export function useMeshCall({
 
   useEffect(() => {
     return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       leave()
     }
   }, []) // intentionally only on unmount; `leave` is stable

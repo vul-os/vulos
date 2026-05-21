@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 
 const visAPIPOLL_INTERVAL = 10_000 // 10 seconds
 
-function visUsePublicApps() {
+function useVisPublicApps() {
   const [visData, setVisData] = useState({ count: 0, hasPublic: false })
 
   useEffect(() => {
@@ -34,7 +34,7 @@ function visUsePublicApps() {
 }
 
 export default function PublicAppsWarning() {
-  const { count, hasPublic } = visUsePublicApps()
+  const { count, hasPublic } = useVisPublicApps()
 
   if (count === 0) return null
 
