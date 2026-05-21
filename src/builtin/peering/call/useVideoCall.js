@@ -377,11 +377,19 @@ export function useVideoCall(base) {
   }, [])
 
   // ---------------------------------------------------------------------------
+  // setRemoteVideoEl — callback ref for attaching the remote <video> element.
+  // Keeps remoteVideoRef.current in sync without external mutation.
+  // ---------------------------------------------------------------------------
+  const setRemoteVideoEl = useCallback((el) => {
+    remoteVideoRef.current = el
+  }, [])  // remoteVideoRef is stable
+
+  // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
   return {
     // --- refs (caller attaches to <video> elements) ---
-    localVideoRef,   // local camera preview
+    localVideoRef,   // local camera preview — use as ref on the <video> element
     remoteVideoRef,  // remote stream + PiP source
 
     // --- state ---
@@ -400,5 +408,6 @@ export function useVideoCall(base) {
     stopScreenShare,
     toggleScreenShare,
     requestPip,           // toggles PiP on the remote video element
+    setRemoteVideoEl,     // callback ref — attach to the remote <video> element
   }
 }

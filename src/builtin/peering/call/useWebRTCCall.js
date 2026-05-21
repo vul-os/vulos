@@ -175,6 +175,7 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
   const pcRef = useRef(null)               // RTCPeerConnection
   const localStreamRef = useRef(null)     // MediaStream (microphone)
   const remoteAudioRef = useRef(null)     // <audio> element — caller passes via setRemoteAudio
+  const remoteVideoRef = useRef(null)     // <video> element — caller passes via setRemoteVideo (PEER-23)
   const internalWSRef = useRef(null)      // InternalPeeringWS instance (if peeringWS not given)
   const unsubRef = useRef(null)           // cleanup fn for signal subscription
   const callIdRef = useRef(null)          // mirrors callId state (sync access in callbacks)
@@ -236,12 +237,18 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
       }
     }
 
-    // Remote audio track
+    // Remote tracks — audio + video (PEER-23 adds video path)
     pc.ontrack = ({ track, streams }) => {
-      if (track.kind === 'audio' && streams[0]) {
+      if (!streams[0]) return
+      if (track.kind === 'audio') {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = streams[0]
           remoteAudioRef.current.play().catch(() => {})
+        }
+      } else if (track.kind === 'video') {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = streams[0]
+          remoteVideoRef.current.play().catch(() => {})
         }
       }
     }
@@ -564,6 +571,11 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
     remoteAudioRef.current = audioEl
   }, [])
 
+  // PEER-23: allow CallView to attach a <video> element for remote video.
+  const setRemoteVideo = useCallback((videoEl) => {
+    remoteVideoRef.current = videoEl
+  }, [])
+
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -577,6 +589,10 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
     isMuted,
     remoteVulaId,
     callId,
+    connected: state === 'active',  // PEER-23: consumed by useVideoCall
+
+    // Refs — exposed for useVideoCall (PEER-23)
+    peerConnectionRef: pcRef,
 
     // Actions
     startCall,
@@ -585,5 +601,6 @@ export function useWebRTCCall({ myVulaId, peeringWS = null } = {}) {
     hangUp,
     toggleMute,
     setRemoteAudio,
+    setRemoteVideo,  // PEER-23
   }
 }
