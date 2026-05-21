@@ -1,16 +1,19 @@
-# Netboot — iPXE stick + UEFI HTTP Boot (NETB-01)
+# Netboot — iPXE stick + UEFI HTTP Boot (NETB-01/NETB-02)
 
-Two entry paths both converge on the same chainload: fetch a signed kernel +
-initramfs + squashfs over the network and boot it into a live-RAM session.
+Two entry paths both converge on the same signed-payload boot chain: fetch
+signature-verified kernel + initramfs + squashfs over the network and boot
+into a live-RAM session.
 
 ```
 UEFI HTTP Boot   ─┐
-                  ├──► chainload boot.vulos.org ──► kernel + initramfs + squashfs ──► live-RAM
+                  ├──► fetch + imgverify manifest ──► fetch + imgverify kernel/initramfs ──► live-RAM
 ~1 MB iPXE stick ─┘
 ```
 
 See [roadmap/NETBOOT.md](../../roadmap/NETBOOT.md) for the full boot pipeline,
-install flow, and two-layer safety model.
+install flow, and plain-HTTP safety model.
+
+For the Secure Boot shim signing path see [SHIM-SIGNING.md](./SHIM-SIGNING.md).
 
 ---
 
@@ -18,8 +21,9 @@ install flow, and two-layer safety model.
 
 | File | Purpose |
 |---|---|
-| `boot.ipxe` | iPXE script embedded into the stick image; does DHCP + chainload |
-| `build-ipxe-stick.sh` | Builds the ~1 MB USB stick image (tool-guarded) |
+| `boot.ipxe` | iPXE script — DHCP + fetch/imgverify manifest + fetch/imgverify each artifact |
+| `build-ipxe-stick.sh` | Builds the ~1 MB USB stick with `IMAGE_TRUST_CMD=1` + baked trust anchor |
+| `SHIM-SIGNING.md` | Secure Boot shim signing plan (Microsoft UEFI CA + self-enrolled key) |
 | `README.md` | This file |
 
 ---
@@ -72,17 +76,37 @@ Manual build (equivalent to what the script does):
 git clone --depth=1 https://github.com/ipxe/ipxe.git /tmp/ipxe
 cd /tmp/ipxe/src
 
-# Legacy BIOS USB stick (~1 MB):
-make bin/ipxe.usb EMBED=/path/to/scripts/netboot/boot.ipxe
+# Legacy BIOS USB stick (~1 MB) with imgverify + trust anchor:
+make bin/ipxe.usb \
+  EMBED=/path/to/scripts/netboot/boot.ipxe \
+  IMAGE_TRUST_CMD=1 \
+  DOWNLOAD_PROTO_HTTPS=1 \
+  TRUST=/path/to/keys/trust-anchor.pub
 
 # UEFI USB stick (x86_64):
-make bin-x86_64-efi/ipxe.usb EMBED=/path/to/scripts/netboot/boot.ipxe
+make bin-x86_64-efi/ipxe.usb \
+  EMBED=/path/to/scripts/netboot/boot.ipxe \
+  IMAGE_TRUST_CMD=1 \
+  DOWNLOAD_PROTO_HTTPS=1 \
+  TRUST=/path/to/keys/trust-anchor.pub
 
 cp bin/ipxe.usb output/vulos-netboot-stick.img
 ```
 
 Set `VULOS_IPXE_SRC=/path/to/ipxe/src` to use an existing source tree instead
 of letting the script clone a fresh copy.
+
+#### iPXE make flags (NETB-02)
+
+| Flag | Value | Purpose |
+|------|-------|---------|
+| `EMBED` | path to `boot.ipxe` | Embed the Vulos boot script as the built-in script |
+| `IMAGE_TRUST_CMD` | `1` | Compile in the `imgverify` command |
+| `DOWNLOAD_PROTO_HTTPS` | `1` | Enable HTTPS download support (opportunistic TLS) |
+| `TRUST` | path to `trust-anchor.pub` | Bake the trust-anchor public key so `imgverify` can authenticate artifacts |
+
+Without `TRUST`, `imgverify` falls back to iPXE's built-in CA bundle; production
+builds **must** embed the Vulos trust anchor.
 
 ---
 
@@ -138,32 +162,98 @@ qemu-system-x86_64 \
 
 ## Security model
 
-Both paths share the same two-layer safety design (roadmap/NETBOOT.md):
+Both paths share the same plain-HTTP safety design (roadmap/NETBOOT.md
+§"Plain-HTTP safety model"):
 
 | Layer | Protects | Mechanism |
 |---|---|---|
-| **Artifact signatures** | payload integrity (tampered images) | every fetched artifact is verified against the baked trust anchor (SEED-01/SIGNING.md) |
+| **Artifact signatures** | payload integrity (tampered images) | every fetched artifact is `imgverify`-checked against the baked trust anchor before execution |
 | **TLS (opportunistic)** | transport confidentiality / MITM | iPXE TLS used when available; plain HTTP accepted when not |
 
-**NETB-01** (this task) produces the stick + script.  
-**NETB-02** (future) adds `imgverify` + Secure Boot shim integration.
+Plain HTTP is acceptable **only because** every artifact is signature-verified
+before execution — a compromised CDN or MITM attacker cannot cause unsigned
+code to execute.
 
-Neither TLS alone nor signatures alone are sufficient; together they cover
-transport and content. Plain HTTP is acceptable *only because* every artifact
-is signature-verified before execution — a compromised CDN or MITM attacker
-cannot get unsigned code executed.
+### Signed-payload verification (NETB-02)
+
+`imgverify` is an iPXE built-in command that verifies a fetched image against
+a detached signature before the image is executed or handed off to the kernel.
+
+**How it works:**
+
+1. `imgfetch --name <name> <url>` downloads the artifact and registers it in
+   iPXE's image table under `<name>`.
+2. `imgverify <name> <sig-url>` downloads the detached `.sig` file and verifies
+   the signature against the trust-anchor public key **baked into the iPXE
+   binary** at build time (`TRUST=keys/trust-anchor.pub`).
+3. On signature mismatch the `imgverify` command returns a non-zero exit code
+   and the boot script halts (`:sig_failed` label → `shell`). **Fail closed.**
+4. On success the image is handed to `kernel` / `boot` normally.
+
+**Trust anchor:**
+
+The trust-anchor public key is compiled into the binary via the `TRUST` make
+flag. This is a PEM-encoded RSA-2048 or EC key. The Vulos trust anchor is the
+same key used by SIGN-01/SIGN-02 (`backend/services/signing/`); the Go side
+produces `.sig` files via `signing.MarshalSig` and iPXE verifies them via
+`imgverify`.
+
+**Artifact coverage:**
+
+| Artifact | Fetched as | Verified before |
+|----------|-----------|-----------------|
+| `boot-pipe.json` | `imgfetch --name manifest` | parsing the artifact list |
+| `kernel` | `kernel --name vulos-kernel` | `boot` |
+| `initramfs.img` | `initrd --name vulos-initramfs` | `boot` |
+
+**What an attacker without TLS can / cannot do:**
+
+- *Can:* observe artifact URLs (they are public), inject bytes into the
+  transport stream.
+- *Cannot:* cause arbitrary code execution — injected bytes fail `imgverify`
+  and the boot script halts.
+
+### Trust-anchor pubkey
+
+The `trust-anchor.pub` file must be in the format expected by iPXE's cross-signing
+mechanism (PEM-encoded RSA-2048 or EC key). This is separate from the raw
+32-byte Ed25519 key format used by `backend/services/signing/` (SIGN-01).
+In production, the release pipeline:
+
+1. Generates an Ed25519 key pair for the Vulos trust anchor (offline/HSM).
+2. Wraps the public key in a self-signed X.509 certificate for iPXE.
+3. Provides the certificate PEM as `keys/trust-anchor.pub` (or via
+   `VULOS_TRUST_ANCHOR_PUBKEY`).
+4. Signs `boot-pipe.json` + each artifact with the matching private key.
+
+The Go signing helpers (`signing.Sign`, `signing.MarshalSig`) produce the
+`.sig` files; iPXE's `imgverify` consumes them.
+
+See [SHIM-SIGNING.md](./SHIM-SIGNING.md) for the Secure Boot shim signing path.
 
 ---
 
 ## Self-hosted boot server
 
-The boot URL is configurable. Any server that serves the signed artifacts works:
+The boot base URL is configurable. Any server that serves the signed artifacts
+works — `boot.vulos.org` is the project default, not a requirement.
 
 ```sh
 # Override at boot.ipxe build time — edit boot.ipxe before embedding:
-set BOOT_URL_HTTPS https://boot.my-fork.example.com/boot.ipxe
-set BOOT_URL_HTTP  http://boot.my-fork.example.com/boot.ipxe
+set BOOT_BASE_HTTPS https://boot.my-fork.example.com
+set BOOT_BASE_HTTP  http://boot.my-fork.example.com
 ```
+
+The server must serve:
+
+| Path | Content |
+|------|---------|
+| `/boot-pipe.json` | Boot-pipe manifest (JSON, see `backend/services/osdist/bootpipe.go`) |
+| `/boot-pipe.json.sig` | Detached Ed25519 signature over the manifest |
+| `/v<N>/kernel` | Linux kernel |
+| `/v<N>/kernel.sig` | Detached signature |
+| `/v<N>/initramfs.img` | initramfs cpio archive |
+| `/v<N>/initramfs.img.sig` | Detached signature |
 
 The trust anchor baked into the image (SEED-01) must match the signing key
 used to sign the artifacts on your server. See [roadmap/SEED-TRUST.md](../../roadmap/SEED-TRUST.md)
