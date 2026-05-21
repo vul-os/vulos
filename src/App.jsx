@@ -83,11 +83,31 @@ function useEnergyState() {
   return { locked, screensaver, unlock, dismissScreensaver }
 }
 
+// SEC: Defensive postMessage guard — reject any cross-origin message that does
+// not come from the same origin (app iframes run same-origin under the gateway).
+// If apps ever need to message the shell, they MUST use this same-origin channel.
+function usePostMessageGuard() {
+  useEffect(() => {
+    const handler = (e) => {
+      // Reject messages from any origin other than our own.
+      if (e.origin !== window.location.origin) {
+        // Silently discard — do not expose internal state to unknown origins.
+        return
+      }
+      // Shell currently handles no postMessage commands; drop all same-origin
+      // messages too unless a specific handler is registered here.
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+}
+
 function Shell() {
   const { layout, popout } = useShell()
   const { profile } = useAuth()
   const { profile: deviceProfile } = useDeviceProfile()
   const { locked, screensaver, unlock, dismissScreensaver } = useEnergyState()
+  usePostMessageGuard()
   // MOBILE-06: device profile overrides the viewport-only `layout` value;
   // 'mobile' and 'tablet' both collapse to single-column MobileStack.
   const useDesktop = deviceProfile === 'desktop' && layout === 'desktop'

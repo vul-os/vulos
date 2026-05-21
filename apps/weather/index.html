@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self';">
   <title>Weather</title>
   <style>
     :root {
@@ -657,7 +658,8 @@
       setStatus("Detecting location via IP…", "info");
       try {
         // ip-api.com returns JSON with lat/lon for the current IP — no key needed
-        const res = await fetch("https://ip-api.com/json/?fields=status,lat,lon,city,regionName,country,timezone");
+        // Route through the host proxy to avoid direct cross-origin requests from app iframe.
+        const res = await fetch("/api/proxy/https://ip-api.com/json/?fields=status,lat,lon,city,regionName,country,timezone");
         if (!res.ok) throw new Error("IP geo failed");
         const data = await res.json();
         if (data.status !== "success") throw new Error("IP geo failed");
@@ -714,7 +716,8 @@
 
     async function searchCity(query) {
       if (!navigator.onLine) { showOffline(); return; }
-      const url = "https://geocoding-api.open-meteo.com/v1/search?name=" +
+      // Route through host proxy — avoids direct cross-origin fetch from app iframe.
+      const url = "/api/proxy/https://geocoding-api.open-meteo.com/v1/search?name=" +
         encodeURIComponent(query) + "&count=5&language=en&format=json";
       setStatus("Searching...");
       els.results.innerHTML = "";
@@ -809,7 +812,8 @@
       els.content.textContent = "Loading weather data.";
 
       try {
-        const res = await fetch("https://api.open-meteo.com/v1/forecast?" + params.toString());
+        // Route through host proxy — avoids direct cross-origin fetch from app iframe.
+        const res = await fetch("/api/proxy/https://api.open-meteo.com/v1/forecast?" + params.toString());
         if (!res.ok) throw new Error("Forecast failed");
         state.data = await res.json();
         render(location, state.data);
