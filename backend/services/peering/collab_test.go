@@ -275,10 +275,10 @@ func TestHandleShare_MissingDocID(t *testing.T) {
 func TestHandleShare_OK(t *testing.T) {
 	s := newTestCollabStore(t)
 	body := map[string]any{
-		"doc_id":  "shared-doc",
-		"title":   "Shared",
+		"doc_id":   "shared-doc",
+		"title":    "Shared",
 		"doc_type": "doc",
-		"owner":   "alice",
+		"owner":    "alice",
 	}
 	rr := doCollabReq(t, collabMux(s), http.MethodPost, "/api/peering/collab/share", body)
 	if rr.Code != http.StatusOK {
