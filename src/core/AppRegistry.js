@@ -14,6 +14,15 @@ const builtinRegistry = [
     builtin: true,
   },
   {
+    id: 'messages',
+    name: 'Messages',
+    icon: '✉',
+    description: 'Peer-to-peer encrypted messaging',
+    keywords: ['messages', 'chat', 'inbox', 'peering', 'dm', 'direct', 'messaging'],
+    category: 'internet',
+    builtin: true,
+  },
+  {
     id: 'activity',
     name: 'Activity Monitor',
     icon: '◉',
