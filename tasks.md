@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 194 / 229 real tasks done (85%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 194 / 232 real tasks done (84%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -35,9 +35,10 @@
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
-| Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards || Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 3 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync (NEW) |
+| Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
+| Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 3 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync (NEW) |
 
-| **Total** |  | **194 / 229** | `[████████░░]` 85% |
+| **Total** |  | **194 / 232** | `[████████░░]` 84% |
 
 ## How to read a task
 
