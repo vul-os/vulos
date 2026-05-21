@@ -6,7 +6,7 @@ import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import PostSignupWizard from './PostSignupWizard'
 
-const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
@@ -149,6 +149,9 @@ export default function Setup({ onComplete }) {
     CL04_createPassword: '',
     CL04_createConfirm: '',
     CL04_createFullName: '',
+    // NETB-05: install-time account choice
+    NETB05_choice: '', // 'local' | 'cloud'
+    NETB05_clusterPassphrase: '',
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -323,6 +326,19 @@ export default function Setup({ onComplete }) {
               {current === 'language' && <LanguageStep config={config} update={update} onNext={next} onPrev={prev} />}
               {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
               {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'NETB05_account_choice' && (
+                <NETB05_AccountChoiceStep
+                  config={config}
+                  update={update}
+                  onNext={next}
+                  onPrev={prev}
+                  onSignupComplete={(email, isAdmin) => {
+                    CL05_setWizardEmail(email)
+                    CL05_setWizardIsAdmin(isAdmin)
+                    CL05_setShowWizard(true)
+                  }}
+                />
+              )}
               {current === 'account' && (
                 <AccountStep
                   config={config}
@@ -1022,6 +1038,515 @@ function NetworkStep({ config, update, onNext, onPrev }) {
       )}
 
       <NavBar onPrev={onPrev} onNext={onNext} skipLabel={t('setup.network.skip_ethernet')} onSkip={onNext} />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// NETB-05: Install-time account choice — Local-only vs Connect Vulos Cloud
+// ═══════════════════════════════════
+
+function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComplete }) {
+  // 'pick' = top-level choice card; 'local' = local OS account form; 'cloud-login' | 'cloud-create' = cloud sub-forms
+  const [view, setView] = useState(() => {
+    if (config.NETB05_choice === 'local') return 'local'
+    if (config.NETB05_choice === 'cloud') {
+      return config.CL01_accountMode === 'create' ? 'cloud-create' : 'cloud-login'
+    }
+    return 'pick'
+  })
+
+  // Auto-fill hostname into displayName / username when entering local form
+  const [NB_hostnameLoaded, NB_setHostnameLoaded] = useState(false)
+  useEffect(() => {
+    if (view !== 'local' || NB_hostnameLoaded) return
+    // Use already-fetched IS05_hostname if present; otherwise fall back to /api/identity
+    if (config.IS05_hostname) {
+      // Suggest hostname as username if username is blank
+      if (!config.username) {
+        update('username', config.IS05_hostname.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32))
+      }
+      NB_setHostnameLoaded(true)
+      return
+    }
+    fetch('/api/identity')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.hostname && !config.username) {
+          update('username', data.hostname.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32))
+        }
+        if (data?.hostname) update('IS05_hostname', data.hostname)
+      })
+      .catch(() => {})
+      .finally(() => NB_setHostnameLoaded(true))
+  }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [error, setError] = useState('')
+  const [NB_cloudSubmitting, NB_setCloudSubmitting] = useState(false)
+  const [NB_serverHint, NB_setServerHint] = useState('')
+  const [NB_showClusterJoin, NB_setShowClusterJoin] = useState(false)
+
+  // ── choose local ──────────────────────────────────────────────────────────
+  const pickLocal = () => {
+    update('NETB05_choice', 'local')
+    update('CL01_accountMode', 'local')
+    setView('local')
+    setError('')
+  }
+
+  // ── choose cloud ──────────────────────────────────────────────────────────
+  const pickCloud = () => {
+    update('NETB05_choice', 'cloud')
+    update('CL01_accountMode', config.CL01_accountMode === 'local' ? 'cloud' : config.CL01_accountMode)
+    setView(config.CL01_accountMode === 'create' ? 'cloud-create' : 'cloud-login')
+    setError('')
+  }
+
+  // ── validate local OS account ─────────────────────────────────────────────
+  const validateLocal = () => {
+    if (!config.username || config.username.length < 2) {
+      setError('Username must be at least 2 characters')
+      return
+    }
+    if (!config.password || config.password.length < 4) {
+      setError('Password must be at least 4 characters')
+      return
+    }
+    setError('')
+    onNext()
+  }
+
+  // ── validate cloud sign-in ────────────────────────────────────────────────
+  const validateCloudLogin = () => {
+    if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
+      setError('Enter a valid email address')
+      return
+    }
+    if (!config.CL01_cloudPassword || config.CL01_cloudPassword.length < 4) {
+      setError('Password is required')
+      return
+    }
+    setError('')
+    onNext()
+  }
+
+  // ── create cloud account ──────────────────────────────────────────────────
+  const handleCloudCreate = async () => {
+    NB_setServerHint('')
+    setError('')
+    if (!config.CL04_createEmail || !config.CL04_createEmail.includes('@')) {
+      setError('Enter a valid email address')
+      return
+    }
+    if (config.CL04_createPassword.length < 12) {
+      setError('Password must be at least 12 characters')
+      return
+    }
+    if (config.CL04_createPassword !== config.CL04_createConfirm) {
+      setError('Passwords do not match')
+      return
+    }
+    if (!config.CL04_createFullName || config.CL04_createFullName.trim().length < 2) {
+      setError('Enter your full name')
+      return
+    }
+    NB_setCloudSubmitting(true)
+    try {
+      const res = await fetch('/api/auth/cloud/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: config.CL04_createEmail.trim().toLowerCase(),
+          password: config.CL04_createPassword,
+          full_name: config.CL04_createFullName.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok || res.status === 201) {
+        const email = config.CL04_createEmail.trim().toLowerCase()
+        const isAdmin = Boolean(data?.fleet_admin)
+        update('CL01_cloudEmail', email)
+        update('CL01_accountMode', 'cloud')
+        if (onSignupComplete) {
+          onSignupComplete(email, isAdmin)
+        } else {
+          onNext()
+        }
+        return
+      }
+      NB_setServerHint(data.hint || data.error || 'Sign-up failed — please try again')
+    } catch {
+      NB_setServerHint('Could not reach Vulos Cloud. Check your network and try again.')
+    } finally {
+      NB_setCloudSubmitting(false)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOP-LEVEL PICKER
+  // ─────────────────────────────────────────────────────────────────────────
+  if (view === 'pick') {
+    return (
+      <div>
+        <StepHeader
+          title="How do you want to manage this device?"
+          subtitle="You can always connect to Vulos Cloud later from Settings."
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {/* Local-only card */}
+          <button
+            onClick={pickLocal}
+            className="group flex flex-col items-start gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-blue-500/50 hover:bg-blue-600/5 transition-all"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-blue-600/15 flex items-center justify-center group-hover:bg-blue-600/25 transition-colors">
+              <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-base font-semibold text-neutral-100 mb-1">Local only</div>
+              <div className="text-sm text-neutral-500 leading-relaxed">
+                Create a local OS account. No external service required — works fully offline and self-hosted.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {['Offline', 'No account required', 'Full control'].map(tag => (
+                <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </button>
+
+          {/* Connect Vulos Cloud card */}
+          <button
+            onClick={pickCloud}
+            className="group flex flex-col items-start gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-violet-500/50 hover:bg-violet-600/5 transition-all"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-violet-600/15 flex items-center justify-center group-hover:bg-violet-600/25 transition-colors">
+              <svg viewBox="0 0 24 24" className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.5 19H9a7 7 0 110-14 7.5 7.5 0 017.5 7.5" />
+                <path d="M17 12h5M19 10l3 2-3 2" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-base font-semibold text-neutral-100 mb-1">Connect Vulos Cloud</div>
+              <div className="text-sm text-neutral-500 leading-relaxed">
+                Link this device to a Vulos Cloud account for remote access, 2FA, and optional cluster sync.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {['Remote access', 'Sync', '2FA'].map(tag => (
+                <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-violet-600/10 text-violet-400 border border-violet-500/20">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </button>
+        </div>
+
+        <div className="flex justify-start pt-4 border-t border-neutral-800/30">
+          <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+            ← Back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOCAL OS ACCOUNT FORM
+  // ─────────────────────────────────────────────────────────────────────────
+  if (view === 'local') {
+    return (
+      <div>
+        <StepHeader
+          title="Create your local account"
+          subtitle={config.IS05_hostname ? `This device: ${config.IS05_hostname}` : 'Set up your OS user — no external service required.'}
+        />
+
+        {/* Network name (hostname) — read-only autofill display */}
+        {config.IS05_hostname && (
+          <div className="flex items-center gap-3 bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-400 shrink-0">
+              <path fillRule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Network name (hostname)</div>
+              <div className="font-mono text-sm text-blue-300">{config.IS05_hostname}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Full name</label>
+            <input
+              value={config.displayName}
+              onChange={e => { update('displayName', e.target.value); setError('') }}
+              placeholder="Ada Lovelace"
+              autoFocus
+              autoComplete="name"
+              className="input text-base py-3"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Username</label>
+            <input
+              value={config.username}
+              onChange={e => { update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '')); setError('') }}
+              placeholder="ada"
+              autoComplete="username"
+              className="input text-base py-3 font-mono"
+            />
+            <p className="text-[11px] text-neutral-600 mt-1">Lowercase letters, numbers, underscore and hyphen</p>
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Password</label>
+            <input
+              type="password"
+              value={config.password}
+              onChange={e => { update('password', e.target.value); setError('') }}
+              placeholder="Choose a strong password"
+              autoComplete="new-password"
+              className="input text-base py-3"
+            />
+          </div>
+        </div>
+
+        {/* Credentials-separation note */}
+        <div className="mt-4 flex items-start gap-2 bg-neutral-900/40 border border-neutral-800/30 rounded-xl px-4 py-3">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-neutral-500 mt-0.5 shrink-0">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+          </svg>
+          <p className="text-xs text-neutral-500 leading-relaxed">
+            This is your <strong className="text-neutral-300">local OS account</strong> only. It is stored on-device and has no connection to any external service.
+          </p>
+        </div>
+
+        {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
+          <button onClick={() => { setView('pick'); setError('') }} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+            ← Back
+          </button>
+          <button onClick={validateLocal} className="btn-primary">
+            Continue →
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CLOUD FORMS — sub-tab bar: Sign in / Create account
+  // ─────────────────────────────────────────────────────────────────────────
+  const cloudTabs = [
+    { id: 'cloud-login', label: 'Sign in' },
+    { id: 'cloud-create', label: 'Create account' },
+  ]
+
+  return (
+    <div>
+      <StepHeader
+        title="Connect Vulos Cloud"
+        subtitle="Sign in to an existing account or create a new one."
+      />
+
+      {/* Sub-tab strip */}
+      <div className="flex rounded-xl bg-neutral-900/70 border border-neutral-800/60 p-1 gap-1 mb-5">
+        {cloudTabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setView(tab.id)
+              update('CL01_accountMode', tab.id === 'cloud-create' ? 'create' : 'cloud')
+              setError('')
+              NB_setServerHint('')
+            }}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all
+              ${view === tab.id
+                ? 'bg-neutral-800 text-neutral-100 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-300'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Sign-in form ── */}
+      {view === 'cloud-login' && (
+        <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Email</label>
+            <input
+              type="email"
+              value={config.CL01_cloudEmail}
+              onChange={e => { update('CL01_cloudEmail', e.target.value); setError('') }}
+              placeholder="you@example.com"
+              autoFocus
+              autoComplete="email"
+              className="input text-base py-3"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Password</label>
+            <input
+              type="password"
+              value={config.CL01_cloudPassword}
+              onChange={e => { update('CL01_cloudPassword', e.target.value); setError('') }}
+              placeholder="Password"
+              autoComplete="current-password"
+              className="input text-base py-3"
+            />
+          </div>
+          <p className="text-[11px] text-neutral-600">2FA will be requested after setup if enabled on your account.</p>
+        </div>
+      )}
+
+      {/* ── Create-account form ── */}
+      {view === 'cloud-create' && (
+        <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Full name</label>
+            <input
+              value={config.CL04_createFullName}
+              onChange={e => { update('CL04_createFullName', e.target.value); setError('') }}
+              placeholder="Ada Lovelace"
+              autoFocus
+              autoComplete="name"
+              className="input text-base py-3"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Email</label>
+            <input
+              type="email"
+              value={config.CL04_createEmail}
+              onChange={e => { update('CL04_createEmail', e.target.value); setError('') }}
+              placeholder="you@example.com"
+              autoComplete="email"
+              className="input text-base py-3"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">
+              Password
+              <span className="ml-1.5 text-neutral-600 font-normal">(12+ characters)</span>
+            </label>
+            <input
+              type="password"
+              value={config.CL04_createPassword}
+              onChange={e => { update('CL04_createPassword', e.target.value); setError(''); NB_setServerHint('') }}
+              placeholder="Choose a strong password"
+              autoComplete="new-password"
+              className="input text-base py-3"
+            />
+            <CL04_PasswordStrength password={config.CL04_createPassword} />
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Confirm password</label>
+            <input
+              type="password"
+              value={config.CL04_createConfirm}
+              onChange={e => { update('CL04_createConfirm', e.target.value); setError('') }}
+              placeholder="Re-enter password"
+              autoComplete="new-password"
+              className={`input text-base py-3 ${
+                config.CL04_createConfirm && config.CL04_createPassword !== config.CL04_createConfirm
+                  ? 'border-red-500/60'
+                  : config.CL04_createConfirm && config.CL04_createPassword === config.CL04_createConfirm
+                    ? 'border-green-500/40'
+                    : ''
+              }`}
+            />
+          </div>
+          {NB_serverHint && (
+            <div className="flex items-start gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 mt-0.5 shrink-0">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+              <p className="text-sm text-amber-300">{NB_serverHint}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Optional: join existing data cluster ── */}
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={() => NB_setShowClusterJoin(v => !v)}
+          className="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className={`w-3.5 h-3.5 transition-transform ${NB_showClusterJoin ? 'rotate-90' : ''}`}
+            fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M6 4l4 4-4 4" />
+          </svg>
+          Join an existing data cluster (optional)
+        </button>
+
+        {NB_showClusterJoin && (
+          <div className="mt-3 animate-[fadeIn_0.15s_ease-out]">
+            <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl p-4 space-y-3">
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Provide your cluster passphrase to join an existing data cluster. This passphrase is stored <strong className="text-neutral-400">only on this device</strong> — it is separate from your cloud account credentials.
+              </p>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1.5">Cluster passphrase</label>
+                <input
+                  type="password"
+                  value={config.NETB05_clusterPassphrase}
+                  onChange={e => update('NETB05_clusterPassphrase', e.target.value)}
+                  placeholder="Cluster encryption passphrase"
+                  autoComplete="off"
+                  className="input text-sm py-2.5 font-mono"
+                />
+              </div>
+              <p className="text-[11px] text-neutral-600">
+                Leave blank to skip — you can join a cluster later from Settings.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Credentials-separation note */}
+      <div className="mt-4 flex items-start gap-2 bg-neutral-900/40 border border-neutral-800/30 rounded-xl px-4 py-3">
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-neutral-500 mt-0.5 shrink-0">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+        </svg>
+        <p className="text-xs text-neutral-500 leading-relaxed">
+          Your <strong className="text-neutral-300">cloud account</strong> credentials are separate from your <strong className="text-neutral-300">local OS account</strong> and from any <strong className="text-neutral-300">cluster passphrase</strong>. Each is managed independently.
+        </p>
+      </div>
+
+      {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+
+      <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
+        <button onClick={() => { setView('pick'); setError('') }} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+          ← Back
+        </button>
+        <button
+          onClick={view === 'cloud-create' ? handleCloudCreate : validateCloudLogin}
+          disabled={NB_cloudSubmitting}
+          className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {NB_cloudSubmitting ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Creating account…
+            </>
+          ) : (
+            'Continue →'
+          )}
+        </button>
+      </div>
     </div>
   )
 }
