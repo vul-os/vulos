@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 166 / 229 real tasks done (72%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 171 / 229 real tasks done (75%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -28,15 +28,15 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 1 / 5 | `[██░░░░░░░░]` 20% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
-| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 1 / 3 | `[███░░░░░░░]` 33% — flashed seed + baked key, forkable (NEW, D94) |
+| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 2 / 5 | `[████░░░░░░]` 40% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
+| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 2 / 3 | `[███████░░░]` 67% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 2 / 6 | `[███░░░░░░░]` 33% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
-| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 1 / 4 | `[██░░░░░░░░]` 25% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
-| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 3 / 6 | `[█████░░░░░]` 50% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 2 / 4 | `[█████░░░░░]` 50% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
+| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 1 / 3 | `[███░░░░░░░]` 33% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 1 / 4 | `[██░░░░░░░░]` 25% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **166 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **171 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1445,7 +1445,7 @@ Scope: Define `os/stable.json` schema (channel, latest, min_epoch, roothash, siz
 AC: [ ] stable.json round-trips canonical bytes [ ] signature verified against trust anchor, tamper rejected [ ] min_epoch below floor rejected [ ] unit test schema + verify
 
 ### [OSDIST-02] A/B slot manager + atomic active-slot flip
-`todo` · P0 · L · dep: OSDIST-01 · parallel: yes — new backend/services/osdist/slots.go, boot-state.json
+`done` · P0 · L · dep: OSDIST-01 · parallel: yes — new backend/services/osdist/slots.go, boot-state.json
 Scope: Model the local cache partition with two slots (slot-a/slot-b) + `boot-state.json` (active slot, pending-active, boot counter, last-known-good). Download a new image into the inactive slot, set it pending-active, reset boot counter. Atomic flip via pointer swap (no in-place mutation). Do NOT touch the writable overlay/data partition. Borrow the RAUC/Mender/ostree/Android-A/B/Flatcar model — don't reinvent.
 AC: [ ] new image lands in inactive slot only [ ] flip is atomic + reversible [ ] data partition untouched by flip [ ] unit test slot state machine
 
@@ -1483,7 +1483,7 @@ Scope: OS bucket URL is **soft config** (env/file, with a baked default) support
 AC: [ ] URL overridable at runtime, baked default present [ ] failover to next mirror on fetch error [ ] no trust decision depends on URL [ ] unit test source selection
 
 ### [SEED-03] Forker rebuild path: own key + own bucket re-establishes trust
-`todo` · P2 · M · dep: SEED-01, SIGN-03 · parallel: no — build.sh, docs in roadmap/SEED-TRUST.md
+`done` · P2 · M · dep: SEED-01, SIGN-03 · parallel: no — build.sh, docs in roadmap/SEED-TRUST.md
 Scope: Make `build.sh` accept a forker's own root key + bucket URL so a rebuilt seed trusts the fork's bucket and rejects the upstream one (and vice versa). Location + trust travel together in the seed; re-flashing re-establishes trust end to end. No central allow-list. Document the fork procedure.
 AC: [ ] build with custom key+bucket produces a self-consistent seed [ ] fork seed rejects upstream-signed images, accepts fork-signed [ ] procedure documented [ ] sh -n build.sh
 
@@ -1544,7 +1544,7 @@ Scope: Define deterministic canonical bytes for `stable.json` and the `.sig` det
 AC: [ ] canonical bytes byte-stable [ ] Sign/Verify round-trip, tamper rejected [ ] format documented [ ] unit tests
 
 ### [SIGN-02] Trust-anchor verification against baked root key
-`todo` · P0 · S · dep: SIGN-01, SEED-01 · parallel: yes — backend/services/signing/
+`done` · P0 · S · dep: SIGN-01, SEED-01 · parallel: yes — backend/services/signing/
 Scope: Verify a signature against the baked **root** trust anchor (SEED-01). Used by OSDIST-01 manifest verify and the boot chain (VERITY-02). Pure verification helper; fail closed on any error.
 AC: [ ] verifies against baked anchor, rejects wrong key [ ] fails closed on malformed input [ ] unit test valid/invalid/tampered
 
@@ -1572,7 +1572,7 @@ Scope: Always-present lease object `leases/<scope>.json` (state free|held, holde
 AC: [ ] acquire/renew/release via If-Match CAS [ ] losing racer gets 412 + backs off [ ] fence increases monotonically, stale fence rejected [ ] no If-None-Match:* anywhere [ ] unit test against mock + (skippable) MinIO
 
 ### [LEASE-02] Init the lease object once at cluster bootstrap
-`todo` · P0 · S · dep: LEASE-01, INIT-04 · parallel: no — backend/services/lease/, backend/services/cluster/
+`done` · P0 · S · dep: LEASE-01, INIT-04 · parallel: no — backend/services/lease/, backend/services/cluster/
 Scope: At cluster init (storage provisioning / join), create the always-present lease object(s) in `free` state so subsequent ops are pure `If-Match` CAS (never create-if-absent). Idempotent.
 AC: [ ] lease object created once, free state [ ] re-running is idempotent (no clobber of held lease) [ ] unit test create + idempotency
 
@@ -1600,7 +1600,7 @@ Scope: Stream `crsql_changes` directly between live instances over the **existin
 AC: [ ] two live instances converge via direct mesh in well under a sync interval [ ] relay fallback when direct blocked [ ] cold-path bucket sync still runs [ ] no split-brain (CRDT merge) [ ] unit/integration test
 
 ### [SYNC-02] Bucket snapshot/compaction of merged DB state
-`todo` · P1 · L · dep: CLUSTER-05, LEASE-01 · parallel: yes — new backend/services/sync/snapshot.go
+`done` · P1 · L · dep: CLUSTER-05, LEASE-01 · parallel: yes — new backend/services/sync/snapshot.go
 Scope: Periodically write a compacted, encrypted (SSE-C, per CLUSTER.md) snapshot `cluster/snapshot/<version>.db.enc` + `cluster/snapshot/latest.json` (covers-up-to changeset version). Exactly one instance compacts at a time, guarded by the **snapshot ownership lease** (`leases/snapshot.json`, LEASE-01) with fencing so a stalled compactor can't clobber a newer snapshot. Prune per-node changesets below the snapshot's covered version.
 AC: [ ] snapshot written + latest.json points at it [ ] compaction guarded by fencing lease (single owner) [ ] sub-snapshot changesets pruned [ ] passphrase never persisted/sent to cloud [ ] unit test
 
