@@ -78,6 +78,18 @@ type S3Config struct {
 	AccessKey string
 	SecretKey string
 	UseSSL    bool
+
+	// BucketType declares the Tigris replication class when using a Tigris
+	// endpoint.  Valid values: "single-region", "multi-region", "global",
+	// "dual-region".  Leave empty if the backend is not Tigris.
+	// Global and Dual-region buckets are eventually consistent and unsafe for
+	// CAS leasing — see guard.go and roadmap/COORDINATION.md.
+	BucketType TigrisBucketType
+
+	// StrictConsistency controls what happens when an unsafe Tigris bucket type
+	// is detected.  false (default) = warn loudly but allow construction.
+	// true = return ErrUnsafeBucket and refuse to create the Manager.
+	StrictConsistency bool
 }
 
 // Configured returns true when credentials are present.
@@ -116,9 +128,22 @@ type Manager struct {
 }
 
 // New creates a Manager using a real MinIO/S3 client.
+//
+// When cfg.Endpoint resolves to a Tigris backend, New checks the bucket
+// consistency class via CheckConsistency.  If the bucket type is eventually
+// consistent (Global or Dual-region) and cfg.StrictConsistency is true, New
+// returns ErrUnsafeBucket and refuses to create the Manager.  With the default
+// (StrictConsistency=false) a loud warning is logged instead.
 func New(cfg S3Config) (*Manager, error) {
 	if !cfg.Configured() {
 		return nil, errors.New("lease: S3 not configured")
+	}
+	if err := CheckConsistency(ConsistencyConfig{
+		Endpoint:   cfg.Endpoint,
+		BucketType: cfg.BucketType,
+		StrictMode: cfg.StrictConsistency,
+	}); err != nil {
+		return nil, err
 	}
 	mc, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
