@@ -181,7 +181,7 @@ export default function Setup({ onComplete }) {
       })
       .catch(() => {}) // not enrolled or endpoint absent — stay local
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // INIT-09: On mount, check /api/setup/mode. If mode==="sync", jump straight to syncing.
   useEffect(() => {
@@ -254,7 +254,7 @@ export default function Setup({ onComplete }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'mkdir -p /var/lib/vulos && touch /var/lib/vulos/.setup-complete' }),
       }).catch(() => {})
-    } catch {}
+    } catch { /* best-effort finish — proceed to complete regardless */ }
     onComplete()
   }
 
@@ -533,7 +533,7 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
 // ═══════════════════════════════════
 // INIT-09: Join — Connect Storage
 // ═══════════════════════════════════
-function IS09_JoinConnectStorageStep({ config, update, onNext, onPrev }) {
+function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
   const [IS09_s3Bucket, IS09_setS3Bucket] = useState('')
   const [IS09_s3Region, IS09_setS3Region] = useState('')
   const [IS09_s3AccessKey, IS09_setS3AccessKey] = useState('')
@@ -2221,7 +2221,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enable: false }),
       })
-    } catch {}
+    } catch { /* storage disable is best-effort — proceed regardless */ }
     IS05_setSaving(false)
     update('IS05_storageSkipped', true)
     onNext()
@@ -2590,7 +2590,7 @@ function IK06_QRCanvas({ content }) {
   )
 }
 
-function IS05_RecoveryKitStep({ config, update, onNext, onPrev }) {
+function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
   const [IS05_confirmText, IS05_setConfirmText] = useState('')
   const [IS05_downloading, IS05_setDownloading] = useState(false)
   const [IS05_downloaded, IS05_setDownloaded] = useState(false)
