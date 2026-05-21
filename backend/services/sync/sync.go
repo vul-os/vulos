@@ -103,6 +103,17 @@ type Syncer struct {
 	lastHash map[string]string
 	// watchDirs lists the directories that are actively watched.
 	watchDirs []string
+	// lastSyncAt is the UTC timestamp of the most recent successful upload.
+	// Zero value means no sync has occurred yet.
+	lastSyncAt time.Time
+}
+
+// LastSyncTime returns the UTC time of the most recent successful file upload.
+// Returns the zero time if no sync has occurred since the Syncer started.
+func (s *Syncer) LastSyncTime() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastSyncAt
 }
 
 // New creates a Syncer. Call Start(ctx) to begin watching.
@@ -297,9 +308,11 @@ func (s *Syncer) upload(ctx context.Context, absPath string) error {
 		return fmt.Errorf("put meta: %w", err)
 	}
 
-	// Record hash as "local known state" for conflict detection on pull.
+	// Record hash as "local known state" for conflict detection on pull,
+	// and update the last-sync timestamp for the health endpoint.
 	s.mu.Lock()
 	s.lastHash[absPath] = hash
+	s.lastSyncAt = time.Now().UTC()
 	s.mu.Unlock()
 
 	log.Printf("[sync] uploaded %s (%s)", relPath, hash[:8])

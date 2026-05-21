@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -13,6 +14,48 @@ import (
 
 	"vulos/backend/services/lease"
 )
+
+// appLogMaxBytes is the per-app log file rotation threshold (10 MiB).
+const appLogMaxBytes = 10 * 1024 * 1024
+
+// openAppLog opens (or creates) the per-app log file at
+// ~/.vulos/logs/<appID>.log.  When the file already exceeds appLogMaxBytes it
+// is atomically renamed to <appID>.log.old before a fresh file is created,
+// so the old content is preserved and the new process gets a clean log.
+//
+// The returned *os.File must be closed by the caller when the app exits.
+// On any error a nil is returned so callers can fall back to os.Stdout.
+func openAppLog(appID string) *os.File {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	logsDir := filepath.Join(home, ".vulos", "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return nil
+	}
+
+	logPath := filepath.Join(logsDir, appID+".log")
+
+	// Rotate when the existing file is at or above the size threshold.
+	if fi, err := os.Stat(logPath); err == nil && fi.Size() >= appLogMaxBytes {
+		rotPath := logPath + ".old"
+		// Remove any previous .old before rename so os.Rename does not fail on
+		// systems that prohibit overwriting non-empty files.
+		os.Remove(rotPath)
+		if renameErr := os.Rename(logPath, rotPath); renameErr != nil {
+			log.Printf("[appnet] log rotate warning for %s: %v", appID, renameErr)
+			// Non-fatal: fall through; OpenFile below will truncate on O_TRUNC.
+		}
+	}
+
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("[appnet] cannot open log file for %s (%v) — falling back to server stdout", appID, err)
+		return nil
+	}
+	return f
+}
 
 // runLeaseTTL is the TTL for singleton run-leases (CONC-02).
 const runLeaseTTL = 20 * time.Second
@@ -178,8 +221,17 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 		"TMPDIR=/tmp",
 	}, env...)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", appPort))
-	cmd.Stdout = os.Stdout // TODO: capture to log file per app
-	cmd.Stderr = os.Stderr
+	// Route stdout and stderr to a per-app log file under ~/.vulos/logs/<app-id>.log.
+	// The file is rotated at appLogMaxBytes (10 MiB). Falls back to server stdout
+	// when the log file cannot be opened (e.g. read-only fs, missing home dir).
+	appLogFile := openAppLog(instanceID)
+	if appLogFile != nil {
+		cmd.Stdout = appLogFile
+		cmd.Stderr = appLogFile
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true, // own process group so we can kill cleanly
 	}
@@ -190,6 +242,9 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 		l.manager.Destroy(ctx, instanceID)
 		if rl != nil {
 			rl.Release(context.Background())
+		}
+		if appLogFile != nil {
+			appLogFile.Close()
 		}
 		return nil, fmt.Errorf("start %s: %w", command, err)
 	}
@@ -252,6 +307,11 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 		if rl != nil {
 			rl.Release(context.Background())
 			log.Printf("[appnet] run-lease released for %s", instanceID)
+		}
+
+		// Close the per-app log file now that the process has exited.
+		if appLogFile != nil {
+			appLogFile.Close()
 		}
 
 		log.Printf("[appnet] app %s exited (code=%d, err=%v)", instanceID, exitCode, err)

@@ -7,10 +7,16 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"vulos/backend/services/sync"
 )
 
 // minFreeDiskBytes is the threshold below which disk is considered degraded.
 const minFreeDiskBytes = 500 * 1024 * 1024 // 500 MiB
+
+// syncLagWarnThreshold is the duration after which a non-zero sync lag is
+// reported as degraded in the health check.
+const syncLagWarnThreshold = 10 * time.Minute
 
 // clusterHealthResponse is the JSON shape returned by GET /api/health.
 type clusterHealthResponse struct {
@@ -21,7 +27,8 @@ type clusterHealthResponse struct {
 
 // handleClusterHealth implements GET /api/health (public, no auth).
 // Returns 200 when healthy, 503 when any check is degraded.
-func handleClusterHealth(dataDir string) http.HandlerFunc {
+// syncer may be nil when S3 is not configured (cluster disabled).
+func handleClusterHealth(dataDir string, syncer *sync.Syncer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		checks := make(map[string]string)
 		degraded := false
@@ -51,9 +58,23 @@ func handleClusterHealth(dataDir string) http.HandlerFunc {
 			}
 		}
 
-		// --- check 3: sync-lag placeholder ---
-		// Will be wired to real cluster sync once that layer is implemented.
-		checks["sync_lag"] = "ok"
+		// --- check 3: sync lag (real value when syncer is running) ---
+		if syncer == nil {
+			checks["sync_lag"] = "ok: sync disabled (no S3 configured)"
+		} else {
+			last := syncer.LastSyncTime()
+			if last.IsZero() {
+				checks["sync_lag"] = "ok: no uploads yet"
+			} else {
+				lag := time.Since(last)
+				if lag > syncLagWarnThreshold {
+					checks["sync_lag"] = fmt.Sprintf("degraded: last sync %s ago", lag.Round(time.Second))
+					degraded = true
+				} else {
+					checks["sync_lag"] = fmt.Sprintf("ok: last sync %s ago", lag.Round(time.Second))
+				}
+			}
+		}
 
 		status := "ok"
 		if degraded {

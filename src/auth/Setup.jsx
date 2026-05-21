@@ -554,10 +554,10 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          s3_bucket: IS09_s3Bucket,
-          s3_region: IS09_s3Region || 'us-east-1',
-          s3_access_key: IS09_s3AccessKey,
-          s3_secret_key: IS09_s3SecretKey,
+          bucket: IS09_s3Bucket,
+          region: IS09_s3Region || 'us-east-1',
+          access: IS09_s3AccessKey,
+          secret: IS09_s3SecretKey,
           passphrase: IS09_passphrase,
         }),
       })
