@@ -429,7 +429,7 @@ func (s *Store) Login(username, password string) (*User, error) {
 				return nil, fmt.Errorf("account has no password set")
 			}
 			if !verifyPassword(u.PasswordHash, password) {
-				log.Printf("[auth] login failed for %q: password mismatch (hash_prefix=%s, pw_len=%d)", username, u.PasswordHash[:20], len(password))
+				log.Printf("[auth] login failed for %q: password mismatch", username)
 				return nil, fmt.Errorf("invalid username or password")
 			}
 			u.LastLogin = time.Now()

@@ -72,12 +72,12 @@ func registerAIAppsRoutes(mux *http.ServeMux, aiAppsDir string, authStore *auth.
 			return
 		}
 
-		// 5. Parse request body
+		// 5. Parse request body — limit to 10 MiB (HTML/Python should never be larger)
 		var req struct {
 			HTML   string `json:"html"`
 			Python string `json:"python"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 10<<20)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request body")
 			return
 		}

@@ -82,7 +82,7 @@ func registerSSHKeyRoutes(mux *http.ServeMux, authStore *auth.Store, home string
 			Comment string `json:"comment"`
 			PubKey  string `json:"pubkey"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.PubKey == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil || req.PubKey == "" {
 			writeErr(w, 400, "pubkey required")
 			return
 		}

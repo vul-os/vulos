@@ -54,7 +54,7 @@ func registerJoinCodeRoutes(mux *http.ServeMux, home string, authStore *auth.Sto
 		var req struct {
 			ShortCode string `json:"short_code"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ShortCode == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || req.ShortCode == "" {
 			rl.record(ip)
 			jcWriteErr(w, http.StatusBadRequest, "short_code required")
 			return
