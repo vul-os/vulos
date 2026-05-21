@@ -1,11 +1,17 @@
 // call_test.go — unit tests for the call signaling relay (PEER-19).
 //
-// Test doubles implement the callContactLookup and callWSHub interfaces
-// defined in call.go.  They never redeclare types from contacts.go or ws.go.
+// All server-to-server delivery uses the real PeerClient plumbing but with an
+// http.RoundTripper that redirects https:// → a local httptest.Server.  This
+// lets tests capture outbound signed Envelope objects without a network.
+//
+// Inbound tests inject a pre-verified *Envelope into the request context
+// (simulating InboundMiddleware), as done in messages_test.go.
 package peering
 
 import (
 	"bytes"
+	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -115,26 +121,36 @@ type callRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f callRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// callTestIdentity generates an Ed25519 key pair and a valid Vula ID.
+func callTestIdentity(t *testing.T) (ed25519.PrivateKey, string) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	return priv, encodeVulaID(pub)
+}
+
 // newCallRelay builds a CallRelay with a fake outbound HTTP server that
-// captures envelopes.  Returns the relay, a channel of captured callEnvelopes,
-// and the remote server's host:port.
+// captures inbound signed Envelopes.  Returns the relay, a channel of
+// captured *Envelope values, and the remote server's host:port.
 func newCallRelay(
 	t *testing.T,
 	selfID string,
 	contacts *callFakeContacts,
 	hub *callFakeHub,
-) (*CallRelay, chan callEnvelope, string) {
+) (*CallRelay, chan *Envelope, string) {
 	t.Helper()
 
-	captured := make(chan callEnvelope, 16)
+	captured := make(chan *Envelope, 16)
 
 	remoteServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var env callEnvelope
+		var env Envelope
 		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		captured <- env
+		captured <- &env
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, `{"status":"ok"}`) //nolint:errcheck
 	}))
@@ -142,9 +158,11 @@ func newCallRelay(
 
 	remoteAddr := strings.TrimPrefix(remoteServer.URL, "http://")
 
-	relay := NewCallRelay(selfID, contacts, hub)
-	// Override HTTP client to redirect https:// → fake test server.
-	relay.callHTTPClient = &http.Client{
+	priv, _ := callTestIdentity(t)
+	// selfID is a synthetic ID for tests; use a real Vula ID only where needed.
+	pc := NewPeerClient()
+	// Override transport to redirect https:// → fake test server.
+	pc.http = &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: callRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			req2 := req.Clone(req.Context())
@@ -154,13 +172,39 @@ func newCallRelay(
 		}),
 	}
 
+	relay := NewCallRelay(selfID, contacts, hub, pc, priv)
 	return relay, captured, remoteAddr
+}
+
+// callInboundRequest constructs an *http.Request whose context carries env
+// under EnvelopeKey, simulating what InboundMiddleware does for downstream
+// handlers.
+func callInboundRequest(env *Envelope) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/inbound/signal", nil)
+	ctx := context.WithValue(req.Context(), EnvelopeKey, env)
+	return req.WithContext(ctx)
+}
+
+// callMakeSignalingEnvelope builds an *Envelope carrying a SignalingPayload.
+// fromVulaID can be any string in tests that do not verify the signature.
+func callMakeSignalingEnvelope(
+	fromVulaID, toVulaID, kind, callID string,
+	data json.RawMessage,
+) *Envelope {
+	sp := SignalingPayload{
+		Kind:   kind,
+		CallID: callID,
+		Data:   data,
+	}
+	payload, _ := json.Marshal(sp)
+	env, _ := NewEnvelope("test-id", fromVulaID, toVulaID, TypeSignaling, json.RawMessage(payload))
+	return env
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 // TestCallInitiate_RelaysIncomingCall verifies that POST /call/initiate causes
-// an "incoming-call" envelope to reach the callee's server.
+// a signed TypeSignaling envelope to reach the callee's server.
 func TestCallInitiate_RelaysIncomingCall(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
@@ -179,14 +223,19 @@ func TestCallInitiate_RelaysIncomingCall(t *testing.T) {
 
 	select {
 	case env := <-captured:
-		if env.Type != "incoming-call" {
-			t.Errorf("type: got %q, want incoming-call", env.Type)
+		if env.Type != TypeSignaling {
+			t.Errorf("type: got %q, want %q", env.Type, TypeSignaling)
 		}
-		if env.CallID != "call-001" {
-			t.Errorf("call_id: got %q, want call-001", env.CallID)
+		// Decode SignalingPayload from envelope.
+		var sp SignalingPayload
+		if err := json.Unmarshal(env.Payload, &sp); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
 		}
-		if env.FromID != "vula:alice" {
-			t.Errorf("from_id: got %q, want vula:alice", env.FromID)
+		if sp.Kind != sigKindIncomingCall {
+			t.Errorf("kind: got %q, want %q", sp.Kind, sigKindIncomingCall)
+		}
+		if sp.CallID != "call-001" {
+			t.Errorf("call_id: got %q, want call-001", sp.CallID)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: no envelope received by callee server")
@@ -235,7 +284,7 @@ func TestCallInitiate_UnknownCallee(t *testing.T) {
 }
 
 // TestCallReject_TerminatesBothSides verifies that reject removes the session
-// and sends a "reject" envelope to the caller's server.
+// and sends a "reject" SignalingPayload to the caller's server.
 func TestCallReject_TerminatesBothSides(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
@@ -269,14 +318,18 @@ func TestCallReject_TerminatesBothSides(t *testing.T) {
 		t.Error("session should be gone after reject")
 	}
 
-	// Caller receives "reject" envelope.
+	// Caller receives a "reject" SignalingPayload inside a TypeSignaling envelope.
 	select {
 	case env := <-captured:
-		if env.Type != "reject" {
-			t.Errorf("type: got %q, want reject", env.Type)
+		var sp SignalingPayload
+		if err := json.Unmarshal(env.Payload, &sp); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
 		}
-		if env.CallID != "call-010" {
-			t.Errorf("call_id: got %q, want call-010", env.CallID)
+		if sp.Kind != sigKindReject {
+			t.Errorf("kind: got %q, want %q", sp.Kind, sigKindReject)
+		}
+		if sp.CallID != "call-010" {
+			t.Errorf("call_id: got %q, want call-010", sp.CallID)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: no reject envelope received")
@@ -317,11 +370,12 @@ func TestCallHangup_TerminatesBothSides(t *testing.T) {
 
 	select {
 	case env := <-captured:
-		if env.Type != "hangup" {
-			t.Errorf("type: got %q, want hangup", env.Type)
+		var sp SignalingPayload
+		if err := json.Unmarshal(env.Payload, &sp); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
 		}
-		if env.FromID != "vula:alice" {
-			t.Errorf("from_id: got %q, want vula:alice", env.FromID)
+		if sp.Kind != sigKindHangup {
+			t.Errorf("kind: got %q, want %q", sp.Kind, sigKindHangup)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: no hangup envelope received")
@@ -329,7 +383,7 @@ func TestCallHangup_TerminatesBothSides(t *testing.T) {
 }
 
 // TestCallSDPICERelay_EndToEnd verifies that SDP/ICE payloads travel end-to-end
-// without modification.
+// without modification inside the SignalingPayload.Data field.
 func TestCallSDPICERelay_EndToEnd(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
@@ -360,11 +414,18 @@ func TestCallSDPICERelay_EndToEnd(t *testing.T) {
 
 	select {
 	case env := <-captured:
-		if env.Type != "signal" {
-			t.Errorf("type: got %q, want signal", env.Type)
+		if env.Type != TypeSignaling {
+			t.Errorf("envelope type: got %q, want %q", env.Type, TypeSignaling)
 		}
-		if string(env.Payload) != string(sdp) {
-			t.Errorf("payload mismatch: got %s", env.Payload)
+		var sp SignalingPayload
+		if err := json.Unmarshal(env.Payload, &sp); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if sp.Kind != sigKindSignal {
+			t.Errorf("kind: got %q, want %q", sp.Kind, sigKindSignal)
+		}
+		if string(sp.Data) != string(sdp) {
+			t.Errorf("data mismatch: got %s", sp.Data)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: no signal envelope received")
@@ -372,25 +433,20 @@ func TestCallSDPICERelay_EndToEnd(t *testing.T) {
 }
 
 // TestCallInbound_PushesFrameToHub verifies that an inbound "incoming-call"
-// envelope is pushed to the local hub.
+// SignalingPayload is pushed to the local hub as a ChannelSignal frame.
 func TestCallInbound_PushesFrameToHub(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:bob", contacts, hub)
+	_, selfVulaID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfVulaID, contacts, hub)
 
 	// Alice is an approved contact with call permission.
 	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
 
-	env := callEnvelope{
-		Type:   "incoming-call",
-		CallID: "call-040",
-		FromID: "vula:alice",
-	}
-	body, _ := json.Marshal(env)
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	env := callMakeSignalingEnvelope("vula:alice", selfVulaID, sigKindIncomingCall, "call-040", nil)
+	req := callInboundRequest(env)
 	rr := httptest.NewRecorder()
-	relay.handleCallInbound(rr, req)
+	relay.HandleInboundCallSignal(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
@@ -409,7 +465,7 @@ func TestCallInbound_PushesFrameToHub(t *testing.T) {
 	if err := json.Unmarshal(f.Payload, &inner); err != nil {
 		t.Fatalf("unmarshal inner frame: %v", err)
 	}
-	if inner.Type != "incoming-call" {
+	if inner.Type != sigKindIncomingCall {
 		t.Errorf("inner.type: got %q, want incoming-call", inner.Type)
 	}
 	if inner.CallID != "call-040" {
@@ -421,19 +477,13 @@ func TestCallInbound_PushesFrameToHub(t *testing.T) {
 func TestCallInbound_UnknownSender(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:bob", contacts, hub)
+	_, selfID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
 	// "vula:stranger" is not in contacts.
-	env := callEnvelope{
-		Type:   "incoming-call",
-		CallID: "call-050",
-		FromID: "vula:stranger",
-	}
-	body, _ := json.Marshal(env)
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	env := callMakeSignalingEnvelope("vula:stranger", selfID, sigKindIncomingCall, "call-050", nil)
 	rr := httptest.NewRecorder()
-	relay.handleCallInbound(rr, req)
+	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rr.Code)
@@ -444,7 +494,8 @@ func TestCallInbound_UnknownSender(t *testing.T) {
 func TestCallInbound_NoCallPermission(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:bob", contacts, hub)
+	_, selfID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
 	contacts.add(&Contact{
 		VulaID:      "vula:charlie",
@@ -454,19 +505,29 @@ func TestCallInbound_NoCallPermission(t *testing.T) {
 		Permissions: []Perm{PermMessage}, // no PermCall
 	})
 
-	env := callEnvelope{
-		Type:   "incoming-call",
-		CallID: "call-060",
-		FromID: "vula:charlie",
-	}
-	body, _ := json.Marshal(env)
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	env := callMakeSignalingEnvelope("vula:charlie", selfID, sigKindIncomingCall, "call-060", nil)
 	rr := httptest.NewRecorder()
-	relay.handleCallInbound(rr, req)
+	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403 for non-call permission, got %d", rr.Code)
+	}
+}
+
+// TestCallInbound_MissingEnvelopeContext verifies 401 when the request
+// context does not carry a pre-verified envelope (InboundMiddleware absent).
+func TestCallInbound_MissingEnvelopeContext(t *testing.T) {
+	contacts := newCallFakeContacts()
+	hub := &callFakeHub{}
+	_, selfID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/inbound/signal", nil)
+	rr := httptest.NewRecorder()
+	relay.HandleInboundCallSignal(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rr.Code)
 	}
 }
 
@@ -531,7 +592,7 @@ func TestCallMissingVulaIDHeader(t *testing.T) {
 }
 
 // TestCallAnswer_TransitionsToActive verifies that answering a ringing session
-// moves it to active state and notifies the caller.
+// moves it to active state and notifies the caller via a signed envelope.
 func TestCallAnswer_TransitionsToActive(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
@@ -566,14 +627,15 @@ func TestCallAnswer_TransitionsToActive(t *testing.T) {
 		t.Errorf("state: got %q, want active", sess.state)
 	}
 
-	// Caller receives "answer" envelope.
+	// Caller receives "answer" SignalingPayload inside a TypeSignaling envelope.
 	select {
 	case env := <-captured:
-		if env.Type != "answer" {
-			t.Errorf("type: got %q, want answer", env.Type)
+		var sp SignalingPayload
+		if err := json.Unmarshal(env.Payload, &sp); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
 		}
-		if env.FromID != "vula:bob" {
-			t.Errorf("from_id: got %q, want vula:bob", env.FromID)
+		if sp.Kind != sigKindAnswer {
+			t.Errorf("kind: got %q, want %q", sp.Kind, sigKindAnswer)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: no answer envelope received")
@@ -585,20 +647,14 @@ func TestCallAnswer_TransitionsToActive(t *testing.T) {
 func TestCallInbound_RegistersSessionOnIncomingCall(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:bob", contacts, hub)
+	_, selfID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
 	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
 
-	env := callEnvelope{
-		Type:   "incoming-call",
-		CallID: "call-090",
-		FromID: "vula:alice",
-	}
-	body, _ := json.Marshal(env)
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	env := callMakeSignalingEnvelope("vula:alice", selfID, sigKindIncomingCall, "call-090", nil)
 	rr := httptest.NewRecorder()
-	relay.handleCallInbound(rr, req)
+	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
@@ -614,8 +670,8 @@ func TestCallInbound_RegistersSessionOnIncomingCall(t *testing.T) {
 	if sess.callerID != "vula:alice" {
 		t.Errorf("callerID: got %q, want vula:alice", sess.callerID)
 	}
-	if sess.calleeID != "vula:bob" {
-		t.Errorf("calleeID: got %q, want vula:bob", sess.calleeID)
+	if sess.calleeID != selfID {
+		t.Errorf("calleeID: got %q, want %q", sess.calleeID, selfID)
 	}
 	if sess.state != callStateRinging {
 		t.Errorf("state: got %q, want ringing", sess.state)
@@ -627,7 +683,8 @@ func TestCallInbound_RegistersSessionOnIncomingCall(t *testing.T) {
 func TestCallInbound_HangupRemovesSession(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:bob", contacts, hub)
+	_, selfID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
 	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
 
@@ -636,22 +693,15 @@ func TestCallInbound_HangupRemovesSession(t *testing.T) {
 	relay.sessions["call-100"] = &callSession{
 		id:        "call-100",
 		callerID:  "vula:alice",
-		calleeID:  "vula:bob",
+		calleeID:  selfID,
 		state:     callStateActive,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
-	env := callEnvelope{
-		Type:   "hangup",
-		CallID: "call-100",
-		FromID: "vula:alice",
-	}
-	body, _ := json.Marshal(env)
-	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	env := callMakeSignalingEnvelope("vula:alice", selfID, sigKindHangup, "call-100", nil)
 	rr := httptest.NewRecorder()
-	relay.handleCallInbound(rr, req)
+	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
@@ -665,8 +715,44 @@ func TestCallInbound_HangupRemovesSession(t *testing.T) {
 	}
 }
 
+// TestCallInbound_SDPPayloadPassthrough verifies that opaque SDP/ICE data
+// inside a "signal" kind envelope is passed through unchanged to the hub frame.
+func TestCallInbound_SDPPayloadPassthrough(t *testing.T) {
+	contacts := newCallFakeContacts()
+	hub := &callFakeHub{}
+	_, selfID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
+
+	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
+
+	sdp := json.RawMessage(`{"type":"offer","sdp":"v=0\r\n"}`)
+	env := callMakeSignalingEnvelope("vula:alice", selfID, sigKindSignal, "call-110", sdp)
+	rr := httptest.NewRecorder()
+	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
+	}
+
+	f, ok := hub.lastFrame()
+	if !ok {
+		t.Fatal("no hub frame pushed")
+	}
+
+	var inner callWSFrame
+	if err := json.Unmarshal(f.Payload, &inner); err != nil {
+		t.Fatalf("unmarshal frame: %v", err)
+	}
+	if inner.Type != sigKindSignal {
+		t.Errorf("type: got %q, want %q", inner.Type, sigKindSignal)
+	}
+	if string(inner.Payload) != string(sdp) {
+		t.Errorf("payload mismatch: got %s, want %s", inner.Payload, sdp)
+	}
+}
+
 // Verify that *ContactStore and *Hub structurally satisfy the narrow interfaces
-// used by CallRelay — compilation-only assertions.
+// used by CallRelay — compilation-only assertions (in call.go).
 var _ callContactLookup = (*ContactStore)(nil)
 var _ callWSHub = (*Hub)(nil)
 
