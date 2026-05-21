@@ -666,3 +666,100 @@ func TestRsyncProgressRE(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// LiveSessionInfo + GET /api/installer/live-session (NETB-04)
+// ---------------------------------------------------------------------------
+
+func TestLiveSessionInfo_LiveOverlay(t *testing.T) {
+	mc := newMockCmd()
+	mc.set("overlayfs / overlay rw 0 0\n", nil, "cat", "/proc/mounts")
+
+	svc := newWithCommander(mc)
+	info := svc.LiveSessionInfo(context.Background())
+	if !info.IsLive {
+		t.Error("IsLive = false, want true for overlay root")
+	}
+	if info.RootDev != "overlayfs" {
+		t.Errorf("RootDev = %q, want overlayfs", info.RootDev)
+	}
+}
+
+func TestLiveSessionInfo_LiveSquashfs(t *testing.T) {
+	mc := newMockCmd()
+	mc.set("/dev/loop0 / squashfs ro 0 0\n", nil, "cat", "/proc/mounts")
+
+	svc := newWithCommander(mc)
+	info := svc.LiveSessionInfo(context.Background())
+	if !info.IsLive {
+		t.Error("IsLive = false, want true for squashfs root")
+	}
+}
+
+func TestLiveSessionInfo_Installed(t *testing.T) {
+	mc := newMockCmd()
+	mc.set("/dev/sda2 / ext4 rw 0 0\n", nil, "cat", "/proc/mounts")
+
+	svc := newWithCommander(mc)
+	info := svc.LiveSessionInfo(context.Background())
+	if info.IsLive {
+		t.Error("IsLive = true, want false for installed ext4 root")
+	}
+}
+
+func TestHandleLiveSession_Live(t *testing.T) {
+	mc := newMockCmd()
+	mc.set("overlay / overlay rw 0 0\n", nil, "cat", "/proc/mounts")
+
+	svc := newWithCommander(mc)
+	mux := http.NewServeMux()
+	RegisterHandlers(mux, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/installer/live-session", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var resp LiveSession
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.IsLive {
+		t.Error("is_live = false, want true")
+	}
+}
+
+func TestHandleLiveSession_Installed(t *testing.T) {
+	mc := newMockCmd()
+	mc.set("/dev/nvme0n1p2 / ext4 rw 0 0\n", nil, "cat", "/proc/mounts")
+
+	svc := newWithCommander(mc)
+	mux := http.NewServeMux()
+	RegisterHandlers(mux, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/installer/live-session", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	var resp LiveSession
+	json.NewDecoder(rr.Body).Decode(&resp)
+	if resp.IsLive {
+		t.Error("is_live = true, want false for installed system")
+	}
+}
+
+func TestHandleLiveSession_MethodNotAllowed(t *testing.T) {
+	svc := newWithCommander(newMockCmd())
+	mux := http.NewServeMux()
+	RegisterHandlers(mux, svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/installer/live-session", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", rr.Code)
+	}
+}
