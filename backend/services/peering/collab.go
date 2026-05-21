@@ -249,6 +249,8 @@ func (s *CollabStore) ListDocs() ([]*DocMeta, error) {
 func (s *CollabStore) DeleteDoc(docID string) error {
 	os.Remove(filepath.Join(s.dir, docID+".yjs"))
 	os.Remove(filepath.Join(s.dir, docID+".meta.json"))
+	// Purge snapshot history (PEER-33).
+	s.DeleteDocHistory(docID)
 	// evict live room
 	s.mu.Lock()
 	delete(s.rooms, docID)
@@ -391,6 +393,8 @@ func (s *CollabStore) handleCollabWS(w http.ResponseWriter, r *http.Request) {
 			if err := s.persistUpdate(docID, msg.Payload); err != nil {
 				log.Printf("[peering/collab] persist error doc %s: %v", docID, err)
 			}
+			// Append to snapshot ring-buffer for time-travel history (PEER-33).
+			s.AppendSnapshot(docID, msg.Payload)
 			room.broadcast(client, raw)
 
 		case msgTypeAwareness:
@@ -527,6 +531,8 @@ func (s *CollabStore) handleInboundUpdate(w http.ResponseWriter, r *http.Request
 	if err := s.persistUpdate(msg.DocID, msg.Payload); err != nil {
 		log.Printf("[peering/collab] inbound persist error doc %s: %v", msg.DocID, err)
 	}
+	// Snapshot for time-travel history (PEER-33).
+	s.AppendSnapshot(msg.DocID, msg.Payload)
 
 	room := s.room(msg.DocID)
 	room.broadcast(nil, body)
@@ -615,6 +621,8 @@ func (s *CollabStore) HandleInboundCollabUpdate(w http.ResponseWriter, r *http.R
 			log.Printf("[peering/collab] inbound S2S persist error doc %s from %s: %v",
 				body.DocID, env.From, err)
 		}
+		// Snapshot for time-travel history (PEER-33).
+		s.AppendSnapshot(body.DocID, opsBytes)
 
 		// Re-encode as a collab:update frame for broadcast to local WS clients.
 		broadcastMsg := collabMsg{Type: msgTypeUpdate, DocID: body.DocID, Payload: opsBytes}
