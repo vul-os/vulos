@@ -1,291 +1,280 @@
-// Package peering implements Vula OS peer-to-peer communication services.
-// This file handles vulos.org email verification for peering identities.
+// verify.go — vulos.org email verification for peering identities (PEER-10).
+//
+// Implements a self-contained email-address verification flow tied to the local
+// Vula identity.  No external HTTP calls are made in v1 — the one-time token is
+// logged to stderr so operators can observe it during development and testing.
+//
+// Storage layout:
+//
+//	~/.vulos/peering/verify/email.json   — VerifyEmailState (one record per identity)
+//
+// Routes (register with RegisterEmailVerifyHandlers):
+//
+//	POST /verify/email/start           → issue 24-hour single-use token; log to stderr; 204
+//	GET  /verify/email/confirm?token=  → consume token, bind email to identity; 200
+//	GET  /verify/email/status          → {email, bound, last_attempt}
+//
+// Rate limiting: at most 1 resend per minute per service instance (in-memory).
 package peering
 
 import (
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 )
 
-// verifyDefaultBaseURL is the default vulos.org API base URL.
-// Override with the VULOS_VERIFY_URL environment variable.
-const verifyDefaultBaseURL = "https://vulos.org"
+// ─── Storage types ─────────────────────────────────────────────────────────────
 
-// verifyTokenFile is the filename used to persist the signed verification token.
-const verifyTokenFile = "verify_token.json"
+// emailVerifyToken is a single pending verification token.
+type emailVerifyToken struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Used      bool      `json:"used"`
+}
 
-// VerifyToken is the signed verification token returned by vulos.org after a
-// successful email verification confirmation. It proves "this Vula ID controls
-// <email>" without exposing the email to every peer.
-type VerifyToken struct {
-	// VulaID is the cryptographic identity string (e.g. "vula:ed25519:<base58-pubkey>").
-	VulaID string `json:"vula_id"`
-	// Email is the verified email address.
+// VerifyEmailState is the persisted state for one identity's email verification.
+type VerifyEmailState struct {
+	// Email is the address being (or already) verified.
 	Email string `json:"email"`
-	// IssuedAt is a Unix timestamp (seconds) of when the token was issued.
-	IssuedAt int64 `json:"issued_at"`
-	// Signature is a base64-encoded ed25519 signature over the canonical payload,
-	// produced by the vulos.org verification key.
-	Signature string `json:"signature"`
-	// SigningKey is the base64-encoded ed25519 public key used to produce Signature.
-	// Clients verify this key against a pinned or well-known vulos.org key.
-	SigningKey string `json:"signing_key"`
+	// Bound is true once a valid token has been consumed.
+	Bound bool `json:"bound"`
+	// LastAttempt is the RFC 3339 timestamp of the most recent start request.
+	LastAttempt string `json:"last_attempt,omitempty"`
+	// Pending is the outstanding (not yet consumed) token, if any.
+	Pending *emailVerifyToken `json:"pending,omitempty"`
 }
 
-// verifyCanonicalPayload returns the deterministic bytes that the vulos.org
-// server signs, and that we must verify locally.
-func verifyCanonicalPayload(t *VerifyToken) []byte {
-	return []byte(fmt.Sprintf("vulos.org:verify:%s:%s:%d", t.VulaID, t.Email, t.IssuedAt))
+// ─── EmailVerifyService ────────────────────────────────────────────────────────
+
+// EmailVerifyService manages email-verification state for a single Vula identity.
+// The zero value is not usable; obtain one via NewEmailVerifyService.
+type EmailVerifyService struct {
+	mu      sync.Mutex
+	state   VerifyEmailState
+	dir     string    // directory that holds email.json
+	limiter time.Time // wall-clock time after which another start is allowed
 }
 
-// verifySignatureValid reports whether the token's Signature was produced by
-// SigningKey over the canonical payload.
-func verifySignatureValid(t *VerifyToken) error {
-	sigBytes, err := base64.StdEncoding.DecodeString(t.Signature)
+const (
+	emailVerifyStateFile  = "email.json"
+	emailVerifyTokenTTL   = 24 * time.Hour
+	emailVerifyRateWindow = time.Minute
+)
+
+// NewEmailVerifyService constructs an EmailVerifyService that persists state
+// under dir (typically ~/.vulos/peering/verify/).  Any pre-existing state is
+// loaded on construction; errors are non-fatal (fresh state is used instead).
+func NewEmailVerifyService(dir string) *EmailVerifyService {
+	svc := &EmailVerifyService{dir: dir}
+	_ = svc.load() // best-effort; ignore missing file
+	return svc
+}
+
+// load reads the persisted state from disk.  Must be called with mu held or
+// during construction (before the service is shared).
+func (s *EmailVerifyService) load() error {
+	data, err := os.ReadFile(filepath.Join(s.dir, emailVerifyStateFile))
 	if err != nil {
-		return fmt.Errorf("verify: decode signature: %w", err)
+		return err
 	}
-	keyBytes, err := base64.StdEncoding.DecodeString(t.SigningKey)
-	if err != nil {
-		return fmt.Errorf("verify: decode signing key: %w", err)
-	}
-	if len(keyBytes) != ed25519.PublicKeySize {
-		return fmt.Errorf("verify: signing key has wrong length %d (want %d)", len(keyBytes), ed25519.PublicKeySize)
-	}
-	pub := ed25519.PublicKey(keyBytes)
-	payload := verifyCanonicalPayload(t)
-	if !ed25519.Verify(pub, payload, sigBytes) {
-		return errors.New("verify: signature is invalid")
-	}
-	return nil
+	return json.Unmarshal(data, &s.state)
 }
 
-// VerifyService manages email verification state for a single Vula identity.
-// It calls the vulos.org /api/verify/* endpoints and persists the resulting
-// token to disk.  Instances that have not completed verification continue to
-// function normally — only VerifiedEmail() returns a non-empty value.
+// save writes the current state to disk.  Caller must hold mu.
+func (s *EmailVerifyService) save() error {
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return fmt.Errorf("verify: mkdir: %w", err)
+	}
+	data, err := json.MarshalIndent(&s.state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("verify: marshal: %w", err)
+	}
+	return os.WriteFile(filepath.Join(s.dir, emailVerifyStateFile), data, 0o600)
+}
+
+// Start issues a new single-use verification token for addr.  It:
+//  1. Enforces the rate-limit window (1 request per minute).
+//  2. Generates a UUID v4 token with a 24-hour expiry.
+//  3. Logs "[peering] email verification token for <addr>: <token>" to stderr.
+//  4. Persists the state and returns the token string.
+//
+// The caller is responsible for the HTTP response; Start returns only the
+// token and any storage error.
+func (s *EmailVerifyService) Start(addr string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+
+	// Rate-limit: reject if last attempt was within the window.
+	if now.Before(s.limiter) {
+		return "", fmt.Errorf("verify: rate limited; retry after %s", s.limiter.UTC().Format(time.RFC3339))
+	}
+
+	token := uuid.New().String()
+	s.state.Email = addr
+	s.state.LastAttempt = now.UTC().Format(time.RFC3339)
+	s.state.Pending = &emailVerifyToken{
+		Token:     token,
+		ExpiresAt: now.Add(emailVerifyTokenTTL),
+		Used:      false,
+	}
+	// Update the rate-limit window regardless of save success so the clock
+	// ticks from the moment the token was issued, not from a successful write.
+	s.limiter = now.Add(emailVerifyRateWindow)
+
+	if err := s.save(); err != nil {
+		return "", err
+	}
+
+	fmt.Fprintf(os.Stderr, "[peering] email verification token for %s: %s\n", addr, token)
+	return token, nil
+}
+
+// Confirm consumes token and, if valid, marks the email as bound.
+// Returns a non-nil error (with a descriptive code) when the token is expired
+// or already used — callers should map that to HTTP 410 Gone.
+func (s *EmailVerifyService) Confirm(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p := s.state.Pending
+	if p == nil || p.Token != token {
+		return errVerifyGone("token not found or already consumed")
+	}
+	if p.Used {
+		return errVerifyGone("token already used")
+	}
+	if time.Now().After(p.ExpiresAt) {
+		return errVerifyGone("token expired")
+	}
+
+	p.Used = true
+	s.state.Bound = true
+	return s.save()
+}
+
+// Status returns a snapshot of the current verification state.
+func (s *EmailVerifyService) Status() VerifyEmailState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := s.state
+	// Do not expose the raw token in the status response.
+	cp.Pending = nil
+	return cp
+}
+
+// ─── Sentinel error ────────────────────────────────────────────────────────────
+
+// verifyGoneError signals that the requested token is expired or already used.
+// HTTP handlers should map this to 410 Gone.
+type verifyGoneError struct{ msg string }
+
+func (e *verifyGoneError) Error() string { return e.msg }
+
+// errVerifyGone constructs a verifyGoneError.
+func errVerifyGone(msg string) error { return &verifyGoneError{msg: msg} }
+
+// IsVerifyGone reports whether err is a verifyGoneError.
+func IsVerifyGone(err error) bool {
+	_, ok := err.(*verifyGoneError)
+	return ok
+}
+
+// ─── HTTP handlers ─────────────────────────────────────────────────────────────
+
+// RegisterEmailVerifyHandlers wires the three email-verification endpoints onto mux:
+//
+//	POST /verify/email/start           → issue token; 204 No Content
+//	GET  /verify/email/confirm?token=  → consume token; 200 JSON
+//	GET  /verify/email/status          → state JSON; 200
+func RegisterEmailVerifyHandlers(mux *http.ServeMux, svc *EmailVerifyService) {
+	mux.HandleFunc("POST /verify/email/start", svc.handleStart)
+	mux.HandleFunc("GET /verify/email/confirm", svc.handleConfirm)
+	mux.HandleFunc("GET /verify/email/status", svc.handleStatus)
+}
+
+// ─── Backward-compatibility shims for cmd/server/main.go ──────────────────────
+//
+// The server wiring pre-dates PEER-10 and uses the names VerifyService,
+// VerifyNewService, and RegisterVerifyHandlers.  These shims keep main.go
+// compiling without modification while the real work is done by
+// EmailVerifyService above.
+
+// VerifyService is a thin wrapper that satisfies the main.go call-sites.
+// It delegates to an EmailVerifyService stored under dir/../../verify/.
 type VerifyService struct {
-	mu      sync.RWMutex
-	token   *VerifyToken // nil until verified
-	dataDir string       // ~/.vulos/peering/identity/
-	baseURL string       // vulos.org API base URL (configurable via env)
-	client  *http.Client // injectable for tests
+	inner *EmailVerifyService
 }
 
-// VerifyNewService creates a VerifyService that stores its token under dataDir
-// and reads the API base URL from VULOS_VERIFY_URL (falls back to the default).
-// Any previously stored token is loaded and validated on construction.
-func VerifyNewService(dataDir string) (*VerifyService, error) {
-	baseURL := strings.TrimRight(os.Getenv("VULOS_VERIFY_URL"), "/")
-	if baseURL == "" {
-		baseURL = verifyDefaultBaseURL
-	}
-	svc := &VerifyService{
-		dataDir: dataDir,
-		baseURL: baseURL,
-		client:  &http.Client{},
-	}
-	// Best-effort load of a pre-existing token; ignore absence or corruption.
-	_ = svc.verifyLoadToken()
-	return svc, nil
+// VerifyNewService constructs a VerifyService.  dir is the identity directory
+// (e.g. ~/.vulos/peering/identity); the email-verify state is stored one level
+// up under ~/.vulos/peering/verify/.
+func VerifyNewService(dir string) (*VerifyService, error) {
+	verifyDir := filepath.Join(dir, "..", "verify")
+	return &VerifyService{inner: NewEmailVerifyService(verifyDir)}, nil
 }
 
-// verifyLoadToken reads and validates a persisted token from disk.
-func (s *VerifyService) verifyLoadToken() error {
-	path := filepath.Join(s.dataDir, verifyTokenFile)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var t VerifyToken
-	if err := json.Unmarshal(data, &t); err != nil {
-		return fmt.Errorf("verify: load token: %w", err)
-	}
-	if err := verifySignatureValid(&t); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.token = &t
-	s.mu.Unlock()
-	return nil
-}
-
-// verifySaveToken persists the token to disk under dataDir.
-func (s *VerifyService) verifySaveToken(t *VerifyToken) error {
-	if err := os.MkdirAll(s.dataDir, 0o700); err != nil {
-		return fmt.Errorf("verify: create dir: %w", err)
-	}
-	data, err := json.MarshalIndent(t, "", "  ")
-	if err != nil {
-		return fmt.Errorf("verify: marshal token: %w", err)
-	}
-	path := filepath.Join(s.dataDir, verifyTokenFile)
-	return os.WriteFile(path, data, 0o600)
-}
-
-// VerifiedEmail returns the verified email address attached to this identity,
-// or an empty string if the instance has not completed email verification.
-// Callers must treat an empty return as "unverified" — not an error.
-func (s *VerifyService) VerifiedEmail() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.token == nil {
-		return ""
-	}
-	return s.token.Email
-}
-
-// VerifiedToken returns the raw VerifyToken or nil if not yet verified.
-// The returned pointer is a copy — callers must not modify it.
-func (s *VerifyService) VerifiedToken() *VerifyToken {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.token == nil {
-		return nil
-	}
-	cp := *s.token
-	return &cp
-}
-
-// verifySend calls POST /api/verify/send on vulos.org, initiating the
-// email verification flow. The caller supplies the Vula ID string (e.g.
-// "vula:ed25519:<pubkey>") and the email address to verify.
-func (s *VerifyService) verifySend(vulaID, email string) error {
-	body := fmt.Sprintf(`{"vula_id":%q,"email":%q}`, vulaID, email)
-	resp, err := s.client.Post(
-		s.baseURL+"/api/verify/send",
-		"application/json",
-		strings.NewReader(body),
-	)
-	if err != nil {
-		return fmt.Errorf("verify: send request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("verify: send: server returned %d: %s", resp.StatusCode, string(raw))
-	}
-	return nil
-}
-
-// verifyConfirm calls POST /api/verify/confirm on vulos.org with the 6-digit
-// code the user received by email. On success the server returns a signed
-// VerifyToken which is validated and persisted to disk.
-func (s *VerifyService) verifyConfirm(vulaID, email, code string) error {
-	body := fmt.Sprintf(`{"vula_id":%q,"email":%q,"code":%q}`, vulaID, email, code)
-	resp, err := s.client.Post(
-		s.baseURL+"/api/verify/confirm",
-		"application/json",
-		strings.NewReader(body),
-	)
-	if err != nil {
-		return fmt.Errorf("verify: confirm request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("verify: confirm: server returned %d: %s", resp.StatusCode, string(raw))
-	}
-	var t VerifyToken
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return fmt.Errorf("verify: confirm: decode token: %w", err)
-	}
-	if err := verifySignatureValid(&t); err != nil {
-		return err
-	}
-	if err := s.verifySaveToken(&t); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.token = &t
-	s.mu.Unlock()
-	return nil
-}
-
-// RegisterVerifyHandlers registers the two peering email verification HTTP
-// endpoints into mux:
-//
-//	POST /api/peering/identity/verify   — initiate verification (send code)
-//	POST /api/peering/identity/confirm  — submit code, receive + store token
-//
-// Both handlers are self-contained and require no authentication beyond what
-// the caller's mux already enforces. The Vula ID and email are supplied by the
-// request body so that this file never needs to import an identity package.
+// RegisterVerifyHandlers wires the PEER-10 email-verification routes onto mux
+// under the paths defined by RegisterEmailVerifyHandlers.
 func RegisterVerifyHandlers(mux *http.ServeMux, svc *VerifyService) {
-	mux.HandleFunc("POST /api/peering/identity/verify", svc.handleVerifySend)
-	mux.HandleFunc("POST /api/peering/identity/confirm", svc.handleVerifyConfirm)
-	mux.HandleFunc("GET /api/peering/identity/verify/status", svc.handleVerifyStatus)
+	RegisterEmailVerifyHandlers(mux, svc.inner)
 }
 
-// handleVerifySend handles POST /api/peering/identity/verify.
-// Expected JSON body: {"vula_id":"vula:ed25519:...","email":"user@example.com"}
-func (s *VerifyService) handleVerifySend(w http.ResponseWriter, r *http.Request) {
+// handleStart handles POST /verify/email/start.
+// Expected JSON body: {"email":"user@example.com"}
+func (s *EmailVerifyService) handleStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		VulaID string `json:"vula_id"`
-		Email  string `json:"email"`
+		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" {
+		http.Error(w, `{"error":"email is required"}`, http.StatusBadRequest)
 		return
 	}
-	if req.VulaID == "" || req.Email == "" {
-		http.Error(w, "vula_id and email are required", http.StatusBadRequest)
+
+	if _, err := s.Start(req.Email); err != nil {
+		if IsVerifyGone(err) {
+			http.Error(w, err.Error(), http.StatusGone)
+			return
+		}
+		// Rate-limited responses use 429.
+		http.Error(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
-	if err := s.verifySend(req.VulaID, req.Email); err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	_, _ = w.Write([]byte(`{"status":"code_sent"}`))
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleVerifyConfirm handles POST /api/peering/identity/confirm.
-// Expected JSON body: {"vula_id":"vula:ed25519:...","email":"user@example.com","code":"123456"}
-func (s *VerifyService) handleVerifyConfirm(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		VulaID string `json:"vula_id"`
-		Email  string `json:"email"`
-		Code   string `json:"code"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+// handleConfirm handles GET /verify/email/confirm?token=<uuid>.
+func (s *EmailVerifyService) handleConfirm(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, `{"error":"token query parameter is required"}`, http.StatusBadRequest)
 		return
 	}
-	if req.VulaID == "" || req.Email == "" || req.Code == "" {
-		http.Error(w, "vula_id, email and code are required", http.StatusBadRequest)
+
+	if err := s.Confirm(token); err != nil {
+		if IsVerifyGone(err) {
+			http.Error(w, err.Error(), http.StatusGone)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.verifyConfirm(req.VulaID, req.Email, req.Code); err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
+
 	w.Header().Set("Content-Type", "application/json")
-	t := s.VerifiedToken()
-	data, _ := json.Marshal(t)
-	_, _ = w.Write(data)
+	st := s.Status()
+	json.NewEncoder(w).Encode(st)
 }
 
-// handleVerifyStatus handles GET /api/peering/identity/verify/status.
-// Returns {"verified":true,"email":"..."} or {"verified":false}.
-// Unverified instances return HTTP 200 with verified:false — this is not an error.
-func (s *VerifyService) handleVerifyStatus(w http.ResponseWriter, r *http.Request) {
-	email := s.VerifiedEmail()
+// handleStatus handles GET /verify/email/status.
+func (s *EmailVerifyService) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if email == "" {
-		_, _ = w.Write([]byte(`{"verified":false}`))
-		return
-	}
-	resp := fmt.Sprintf(`{"verified":true,"email":%q}`, email)
-	_, _ = w.Write([]byte(resp))
+	json.NewEncoder(w).Encode(s.Status())
 }

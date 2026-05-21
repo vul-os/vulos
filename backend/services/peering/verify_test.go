@@ -1,348 +1,84 @@
 package peering
 
 import (
-	"crypto/ed25519"
-	"encoding/base64"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-// testVerifyGenKey generates a fresh ed25519 keypair for test use.
-func testVerifyGenKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
-	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(nil)
+// captureStderr redirects os.Stderr to a buffer for the duration of f, then
+// restores it.  Returns the bytes written.
+func captureStderr(f func()) string {
+	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("generate key: %v", err)
+		panic(fmt.Sprintf("captureStderr: pipe: %v", err))
 	}
-	return pub, priv
+	old := os.Stderr
+	os.Stderr = w
+	f()
+	w.Close()
+	os.Stderr = old
+	out, _ := io.ReadAll(r)
+	r.Close()
+	return string(out)
 }
 
-// testVerifyMakeToken builds and signs a VerifyToken using the given private key.
-func testVerifyMakeToken(t *testing.T, vulaID, email string, issuedAt int64, priv ed25519.PrivateKey, pub ed25519.PublicKey) *VerifyToken {
+// newTestSvc creates an EmailVerifyService backed by a temp directory.
+func newTestSvc(t *testing.T) *EmailVerifyService {
 	t.Helper()
-	tok := &VerifyToken{
-		VulaID:     vulaID,
-		Email:      email,
-		IssuedAt:   issuedAt,
-		SigningKey: base64.StdEncoding.EncodeToString(pub),
-	}
-	sig := ed25519.Sign(priv, verifyCanonicalPayload(tok))
-	tok.Signature = base64.StdEncoding.EncodeToString(sig)
-	return tok
+	return NewEmailVerifyService(t.TempDir())
 }
 
-// testVerifyNewService creates a VerifyService wired to a custom HTTP client
-// (pointing at a test server) and a temp data directory.
-func testVerifyNewService(t *testing.T, serverURL string) *VerifyService {
-	t.Helper()
-	dir := t.TempDir()
-	svc := &VerifyService{
-		dataDir: filepath.Join(dir, "identity"),
-		baseURL: serverURL,
-		client:  &http.Client{},
-	}
-	return svc
-}
+// ─── Start ─────────────────────────────────────────────────────────────────────
 
-// ---------------------------------------------------------------------------
-// Unit tests
-// ---------------------------------------------------------------------------
-
-func TestVerifySignatureValid_OK(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	tok := testVerifyMakeToken(t, "vula:ed25519:abc", "alice@example.com", 1700000000, priv, pub)
-	if err := verifySignatureValid(tok); err != nil {
-		t.Fatalf("expected valid signature, got: %v", err)
-	}
-}
-
-func TestVerifySignatureValid_Tampered(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	tok := testVerifyMakeToken(t, "vula:ed25519:abc", "alice@example.com", 1700000000, priv, pub)
-	// Tamper with the email after signing.
-	tok.Email = "eve@evil.com"
-	if err := verifySignatureValid(tok); err == nil {
-		t.Fatal("expected invalid signature for tampered token")
-	}
-}
-
-func TestVerifySignatureValid_BadKey(t *testing.T) {
-	_, priv := testVerifyGenKey(t)
-	pub2, _ := testVerifyGenKey(t) // different key
-	tok := testVerifyMakeToken(t, "vula:ed25519:abc", "alice@example.com", 1700000000, priv, pub2)
-	// pub2 is used in SigningKey but was not used to sign — sig will be wrong.
-	tok.Signature = base64.StdEncoding.EncodeToString([]byte("bad"))
-	if err := verifySignatureValid(tok); err == nil {
-		t.Fatal("expected error for bad signature bytes")
-	}
-}
-
-func TestVerifySignatureValid_BadKeyLength(t *testing.T) {
-	_, priv := testVerifyGenKey(t)
-	pub, _ := testVerifyGenKey(t)
-	tok := testVerifyMakeToken(t, "vula:ed25519:abc", "alice@example.com", 1700000000, priv, pub)
-	tok.SigningKey = base64.StdEncoding.EncodeToString([]byte("tooshort"))
-	if err := verifySignatureValid(tok); err == nil {
-		t.Fatal("expected error for wrong-length signing key")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// VerifyService.VerifiedEmail — unverified state
-// ---------------------------------------------------------------------------
-
-func TestVerifyService_UnverifiedReturnsEmpty(t *testing.T) {
-	svc := &VerifyService{}
-	if got := svc.VerifiedEmail(); got != "" {
-		t.Fatalf("unverified instance should return empty string, got %q", got)
-	}
-}
-
-func TestVerifyService_UnverifiedTokenNil(t *testing.T) {
-	svc := &VerifyService{}
-	if tok := svc.VerifiedToken(); tok != nil {
-		t.Fatalf("unverified instance should return nil token, got %+v", tok)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Token persistence
-// ---------------------------------------------------------------------------
-
-func TestVerifySaveAndLoadToken(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	tok := testVerifyMakeToken(t, "vula:ed25519:xyz", "bob@example.com", 1700001000, priv, pub)
-
-	dir := t.TempDir()
-	svc := &VerifyService{dataDir: dir}
-
-	if err := svc.verifySaveToken(tok); err != nil {
-		t.Fatalf("save token: %v", err)
-	}
-
-	// Verify file permissions are restrictive.
-	info, err := os.Stat(filepath.Join(dir, verifyTokenFile))
-	if err != nil {
-		t.Fatalf("stat token file: %v", err)
-	}
-	if info.Mode()&0o077 != 0 {
-		t.Errorf("token file has group/other bits set: %v", info.Mode())
-	}
-
-	// Load it back.
-	svc2 := &VerifyService{dataDir: dir}
-	if err := svc2.verifyLoadToken(); err != nil {
-		t.Fatalf("load token: %v", err)
-	}
-	if svc2.VerifiedEmail() != "bob@example.com" {
-		t.Fatalf("loaded email mismatch: %q", svc2.VerifiedEmail())
-	}
-}
-
-func TestVerifyLoadToken_CorruptFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, verifyTokenFile)
-	if err := os.WriteFile(path, []byte("not-json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	svc := &VerifyService{dataDir: dir}
-	if err := svc.verifyLoadToken(); err == nil {
-		t.Fatal("expected error for corrupt token file")
-	}
-}
-
-func TestVerifyLoadToken_InvalidSignature(t *testing.T) {
-	pub, _ := testVerifyGenKey(t)
-	_, otherPriv := testVerifyGenKey(t)
-	// Sign with wrong key.
-	tok := testVerifyMakeToken(t, "vula:ed25519:xyz", "alice@example.com", 1700001000, otherPriv, pub)
-
-	dir := t.TempDir()
-	data, _ := json.Marshal(tok)
-	if err := os.WriteFile(filepath.Join(dir, verifyTokenFile), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	svc := &VerifyService{dataDir: dir}
-	if err := svc.verifyLoadToken(); err == nil {
-		t.Fatal("expected error loading token with invalid signature")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// HTTP mock server helpers
-// ---------------------------------------------------------------------------
-
-// testVerifyMockServer creates an httptest server that mimics the vulos.org
-// /api/verify/* endpoints.  It accepts any code "123456" as valid.
-func testVerifyMockServer(t *testing.T, pub ed25519.PublicKey, priv ed25519.PrivateKey) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-
-	// POST /api/verify/send — always succeeds.
-	mux.HandleFunc("POST /api/verify/send", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"status":"sent"}`))
+func TestEmailVerifyStart_LogsToken(t *testing.T) {
+	svc := newTestSvc(t)
+	var tok string
+	out := captureStderr(func() {
+		var err error
+		tok, err = svc.Start("alice@vulos.org")
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
 	})
-
-	// POST /api/verify/confirm — accepts code "123456", issues signed token.
-	mux.HandleFunc("POST /api/verify/confirm", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			VulaID string `json:"vula_id"`
-			Email  string `json:"email"`
-			Code   string `json:"code"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		if req.Code != "123456" {
-			http.Error(w, "invalid code", http.StatusUnprocessableEntity)
-			return
-		}
-		tok := testVerifyMakeToken(t, req.VulaID, req.Email, 1700000000, priv, pub)
-		w.Header().Set("Content-Type", "application/json")
-		data, _ := json.Marshal(tok)
-		_, _ = w.Write(data)
-	})
-
-	return httptest.NewServer(mux)
-}
-
-// ---------------------------------------------------------------------------
-// Integration: verifySend + verifyConfirm via mock server
-// ---------------------------------------------------------------------------
-
-func TestVerifySend_OK(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	srv := testVerifyMockServer(t, pub, priv)
-	defer srv.Close()
-
-	svc := testVerifyNewService(t, srv.URL)
-	if err := svc.verifySend("vula:ed25519:abc", "alice@example.com"); err != nil {
-		t.Fatalf("verifySend: %v", err)
+	if tok == "" {
+		t.Fatal("Start returned empty token")
+	}
+	want := fmt.Sprintf("[peering] email verification token for alice@vulos.org: %s", tok)
+	if !strings.Contains(out, want) {
+		t.Fatalf("stderr did not contain %q; got: %q", want, out)
 	}
 }
 
-func TestVerifySend_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-
-	svc := testVerifyNewService(t, srv.URL)
-	if err := svc.verifySend("vula:ed25519:abc", "alice@example.com"); err == nil {
-		t.Fatal("expected error from server 500")
-	}
-}
-
-func TestVerifyConfirm_OK(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	srv := testVerifyMockServer(t, pub, priv)
-	defer srv.Close()
-
-	svc := testVerifyNewService(t, srv.URL)
-	if err := svc.verifyConfirm("vula:ed25519:abc", "alice@example.com", "123456"); err != nil {
-		t.Fatalf("verifyConfirm: %v", err)
-	}
-	if svc.VerifiedEmail() != "alice@example.com" {
-		t.Fatalf("expected verified email, got %q", svc.VerifiedEmail())
-	}
-	// Token file must exist on disk.
-	if _, err := os.Stat(filepath.Join(svc.dataDir, verifyTokenFile)); err != nil {
-		t.Fatalf("token file not written: %v", err)
-	}
-}
-
-func TestVerifyConfirm_WrongCode(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	srv := testVerifyMockServer(t, pub, priv)
-	defer srv.Close()
-
-	svc := testVerifyNewService(t, srv.URL)
-	if err := svc.verifyConfirm("vula:ed25519:abc", "alice@example.com", "999999"); err == nil {
-		t.Fatal("expected error for wrong code")
-	}
-	// Service must remain unverified.
-	if email := svc.VerifiedEmail(); email != "" {
-		t.Fatalf("must remain unverified, got %q", email)
-	}
-}
-
-func TestVerifyConfirm_TamperedToken(t *testing.T) {
-	// Server signs with one key but reports a different public key — verification must fail.
-	pub, _ := testVerifyGenKey(t)
-	_, badPriv := testVerifyGenKey(t)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "confirm") {
-			w.WriteHeader(http.StatusAccepted)
-			return
-		}
-		var req struct {
-			VulaID string `json:"vula_id"`
-			Email  string `json:"email"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		// Sign with badPriv but advertise pub — signature mismatch.
-		tok := testVerifyMakeToken(t, req.VulaID, req.Email, 1700000000, badPriv, pub)
-		data, _ := json.Marshal(tok)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(data)
-	}))
-	defer srv.Close()
-
-	svc := testVerifyNewService(t, srv.URL)
-	if err := svc.verifyConfirm("vula:ed25519:abc", "alice@example.com", "123456"); err == nil {
-		t.Fatal("expected error for tampered token from server")
-	}
-	if svc.VerifiedEmail() != "" {
-		t.Fatal("must remain unverified after tampered token")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// HTTP handler tests via RegisterVerifyHandlers
-// ---------------------------------------------------------------------------
-
-func testVerifyMuxWithHandlers(t *testing.T, svc *VerifyService) *http.ServeMux {
-	t.Helper()
+func TestEmailVerifyStart_Returns204(t *testing.T) {
+	svc := newTestSvc(t)
 	mux := http.NewServeMux()
-	RegisterVerifyHandlers(mux, svc)
-	return mux
-}
+	RegisterEmailVerifyHandlers(mux, svc)
 
-func TestRegisterVerifyHandlers_Send(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	upstream := testVerifyMockServer(t, pub, priv)
-	defer upstream.Close()
-
-	svc := testVerifyNewService(t, upstream.URL)
-	mux := testVerifyMuxWithHandlers(t, svc)
-
-	body := `{"vula_id":"vula:ed25519:abc","email":"alice@example.com"}`
-	req := httptest.NewRequest("POST", "/api/peering/identity/verify", strings.NewReader(body))
+	body := bytes.NewBufferString(`{"email":"bob@vulos.org"}`)
+	req := httptest.NewRequest("POST", "/verify/email/start", body)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
-func TestRegisterVerifyHandlers_Send_MissingFields(t *testing.T) {
-	svc := &VerifyService{baseURL: "http://unused", client: &http.Client{}}
-	mux := testVerifyMuxWithHandlers(t, svc)
+func TestEmailVerifyStart_MissingEmail_400(t *testing.T) {
+	svc := newTestSvc(t)
+	mux := http.NewServeMux()
+	RegisterEmailVerifyHandlers(mux, svc)
 
-	req := httptest.NewRequest("POST", "/api/peering/identity/verify", strings.NewReader(`{"vula_id":""}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest("POST", "/verify/email/start", bytes.NewBufferString(`{}`))
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -351,142 +87,236 @@ func TestRegisterVerifyHandlers_Send_MissingFields(t *testing.T) {
 	}
 }
 
-func TestRegisterVerifyHandlers_Confirm(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	upstream := testVerifyMockServer(t, pub, priv)
-	defer upstream.Close()
+func TestEmailVerifyStart_RateLimit_429(t *testing.T) {
+	svc := newTestSvc(t)
+	mux := http.NewServeMux()
+	RegisterEmailVerifyHandlers(mux, svc)
 
-	svc := testVerifyNewService(t, upstream.URL)
-	mux := testVerifyMuxWithHandlers(t, svc)
+	send := func() int {
+		body := bytes.NewBufferString(`{"email":"carol@vulos.org"}`)
+		req := httptest.NewRequest("POST", "/verify/email/start", body)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		return rr.Code
+	}
 
-	body := `{"vula_id":"vula:ed25519:abc","email":"alice@example.com","code":"123456"}`
-	req := httptest.NewRequest("POST", "/api/peering/identity/confirm", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	// First request must succeed.
+	if code := send(); code != http.StatusNoContent {
+		t.Fatalf("first start: expected 204, got %d", code)
+	}
+	// Immediate second request must be rate-limited.
+	if code := send(); code != http.StatusTooManyRequests {
+		t.Fatalf("second start (rate-limited): expected 429, got %d", code)
+	}
+}
+
+// ─── Confirm ───────────────────────────────────────────────────────────────────
+
+func TestEmailVerifyConfirm_ConsumesToken(t *testing.T) {
+	svc := newTestSvc(t)
+	tok, err := svc.Start("dave@vulos.org")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	if err := svc.Confirm(tok); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	st := svc.Status()
+	if !st.Bound {
+		t.Fatal("expected bound=true after confirm")
+	}
+	if st.Email != "dave@vulos.org" {
+		t.Fatalf("expected email dave@vulos.org, got %q", st.Email)
+	}
+}
+
+func TestEmailVerifyConfirm_AlreadyUsed_410(t *testing.T) {
+	svc := newTestSvc(t)
+	tok, _ := svc.Start("eve@vulos.org")
+	if err := svc.Confirm(tok); err != nil {
+		t.Fatalf("first Confirm: %v", err)
+	}
+	err := svc.Confirm(tok)
+	if err == nil {
+		t.Fatal("expected error on second Confirm")
+	}
+	if !IsVerifyGone(err) {
+		t.Fatalf("expected verifyGoneError, got %T: %v", err, err)
+	}
+}
+
+func TestEmailVerifyConfirm_Expired_410(t *testing.T) {
+	svc := newTestSvc(t)
+	tok, _ := svc.Start("frank@vulos.org")
+
+	// Back-date the expiry.
+	svc.mu.Lock()
+	svc.state.Pending.ExpiresAt = time.Now().Add(-time.Second)
+	svc.mu.Unlock()
+
+	err := svc.Confirm(tok)
+	if err == nil {
+		t.Fatal("expected error for expired token")
+	}
+	if !IsVerifyGone(err) {
+		t.Fatalf("expected verifyGoneError for expired token, got %T: %v", err, err)
+	}
+}
+
+func TestEmailVerifyConfirm_WrongToken_410(t *testing.T) {
+	svc := newTestSvc(t)
+	_, _ = svc.Start("grace@vulos.org")
+	err := svc.Confirm("00000000-0000-0000-0000-000000000000")
+	if err == nil {
+		t.Fatal("expected error for wrong token")
+	}
+	if !IsVerifyGone(err) {
+		t.Fatalf("expected verifyGoneError for wrong token, got %T: %v", err, err)
+	}
+}
+
+func TestEmailVerifyConfirm_HTTP_200(t *testing.T) {
+	svc := newTestSvc(t)
+	tok, _ := svc.Start("henry@vulos.org")
+
+	mux := http.NewServeMux()
+	RegisterEmailVerifyHandlers(mux, svc)
+
+	req := httptest.NewRequest("GET", "/verify/email/confirm?token="+tok, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
-	var tok VerifyToken
-	if err := json.Unmarshal(rr.Body.Bytes(), &tok); err != nil {
-		t.Fatalf("response not a valid token: %v", err)
+	var st VerifyEmailState
+	if err := json.Unmarshal(rr.Body.Bytes(), &st); err != nil {
+		t.Fatalf("decode response: %v", err)
 	}
-	if tok.Email != "alice@example.com" {
-		t.Fatalf("unexpected email in returned token: %q", tok.Email)
-	}
-}
-
-func TestRegisterVerifyHandlers_Status_Unverified(t *testing.T) {
-	svc := &VerifyService{}
-	mux := testVerifyMuxWithHandlers(t, svc)
-
-	req := httptest.NewRequest("GET", "/api/peering/identity/verify/status", nil)
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	var resp map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("parse response: %v", err)
-	}
-	if v, _ := resp["verified"].(bool); v {
-		t.Fatal("expected verified=false for unverified service")
+	if !st.Bound {
+		t.Fatal("expected bound=true in response")
 	}
 }
 
-func TestRegisterVerifyHandlers_Status_Verified(t *testing.T) {
-	pub, priv := testVerifyGenKey(t)
-	tok := testVerifyMakeToken(t, "vula:ed25519:abc", "alice@example.com", 1700000000, priv, pub)
+func TestEmailVerifyConfirm_HTTP_410_ExpiredUsed(t *testing.T) {
+	svc := newTestSvc(t)
+	tok, _ := svc.Start("ivy@vulos.org")
 
-	svc := &VerifyService{token: tok}
-	mux := testVerifyMuxWithHandlers(t, svc)
-
-	req := httptest.NewRequest("GET", "/api/peering/identity/verify/status", nil)
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	var resp map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("parse response: %v", err)
-	}
-	if v, _ := resp["verified"].(bool); !v {
-		t.Fatal("expected verified=true")
-	}
-	if email, _ := resp["email"].(string); email != "alice@example.com" {
-		t.Fatalf("unexpected email %q", email)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Base URL configurable via env
-// ---------------------------------------------------------------------------
-
-func TestVerifyNewService_BaseURLFromEnv(t *testing.T) {
-	t.Setenv("VULOS_VERIFY_URL", "https://custom.example.com/")
-	dir := t.TempDir()
-	svc, err := VerifyNewService(dir)
-	if err != nil {
-		t.Fatalf("VerifyNewService: %v", err)
-	}
-	want := "https://custom.example.com"
-	if svc.baseURL != want {
-		t.Fatalf("baseURL = %q, want %q", svc.baseURL, want)
-	}
-}
-
-func TestVerifyNewService_BaseURLDefault(t *testing.T) {
-	t.Setenv("VULOS_VERIFY_URL", "")
-	dir := t.TempDir()
-	svc, err := VerifyNewService(dir)
-	if err != nil {
-		t.Fatalf("VerifyNewService: %v", err)
-	}
-	if svc.baseURL != verifyDefaultBaseURL {
-		t.Fatalf("baseURL = %q, want %q", svc.baseURL, verifyDefaultBaseURL)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Unverified instance still works (no panic, no error)
-// ---------------------------------------------------------------------------
-
-func TestVerifyService_UnverifiedWorksNormally(t *testing.T) {
-	// Create a service that has never been verified and confirm it doesn't panic
-	// and returns clean state for all public accessors.
-	svc := &VerifyService{}
-	email := svc.VerifiedEmail()
-	tok := svc.VerifiedToken()
-	if email != "" {
-		t.Errorf("VerifiedEmail on unverified should be empty, got %q", email)
-	}
-	if tok != nil {
-		t.Errorf("VerifiedToken on unverified should be nil")
+	// Use the token once.
+	if err := svc.Confirm(tok); err != nil {
+		t.Fatalf("first Confirm: %v", err)
 	}
 
-	// HTTP status endpoint must also work without panicking.
 	mux := http.NewServeMux()
-	RegisterVerifyHandlers(mux, svc)
-	req := httptest.NewRequest("GET", "/api/peering/identity/verify/status", nil)
+	RegisterEmailVerifyHandlers(mux, svc)
+
+	req := httptest.NewRequest("GET", "/verify/email/confirm?token="+tok, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusGone {
+		t.Fatalf("expected 410 for reused token, got %d", rr.Code)
+	}
+}
+
+func TestEmailVerifyConfirm_MissingToken_400(t *testing.T) {
+	svc := newTestSvc(t)
+	mux := http.NewServeMux()
+	RegisterEmailVerifyHandlers(mux, svc)
+
+	req := httptest.NewRequest("GET", "/verify/email/confirm", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+// ─── Status ────────────────────────────────────────────────────────────────────
+
+func TestEmailVerifyStatus_Unbound(t *testing.T) {
+	svc := newTestSvc(t)
+	st := svc.Status()
+	if st.Bound {
+		t.Fatal("fresh service must not be bound")
+	}
+}
+
+func TestEmailVerifyStatus_AfterStart(t *testing.T) {
+	svc := newTestSvc(t)
+	_, _ = svc.Start("jack@vulos.org")
+	st := svc.Status()
+	if st.Email != "jack@vulos.org" {
+		t.Fatalf("expected email jack@vulos.org, got %q", st.Email)
+	}
+	if st.Bound {
+		t.Fatal("must not be bound before confirm")
+	}
+	if st.LastAttempt == "" {
+		t.Fatal("last_attempt must be set after start")
+	}
+}
+
+func TestEmailVerifyStatus_HTTP(t *testing.T) {
+	svc := newTestSvc(t)
+	tok, _ := svc.Start("kate@vulos.org")
+	if err := svc.Confirm(tok); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterEmailVerifyHandlers(mux, svc)
+
+	req := httptest.NewRequest("GET", "/verify/email/status", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status handler returned %d on unverified service", rr.Code)
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var st VerifyEmailState
+	if err := json.Unmarshal(rr.Body.Bytes(), &st); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !st.Bound {
+		t.Fatal("expected bound=true")
+	}
+	if st.Email != "kate@vulos.org" {
+		t.Fatalf("expected kate@vulos.org, got %q", st.Email)
+	}
+	// Status must not expose the raw token.
+	if st.Pending != nil {
+		t.Fatal("status must not expose the pending token")
+	}
+}
+
+func TestEmailVerifyStatus_DoesNotExposeToken(t *testing.T) {
+	svc := newTestSvc(t)
+	_, _ = svc.Start("liam@vulos.org")
+	st := svc.Status()
+	if st.Pending != nil {
+		t.Fatal("Status() must not expose the pending token")
+	}
+}
+
+// ─── Persistence ───────────────────────────────────────────────────────────────
+
+func TestEmailVerifyPersistence(t *testing.T) {
+	dir := t.TempDir()
+	svc1 := NewEmailVerifyService(dir)
+	tok, err := svc1.Start("mia@vulos.org")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
 	}
 
-	var resp map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid JSON from status handler: %v", err)
+	// Reload from disk.
+	svc2 := NewEmailVerifyService(dir)
+	if err := svc2.Confirm(tok); err != nil {
+		t.Fatalf("Confirm after reload: %v", err)
 	}
-	if verified, _ := resp["verified"].(bool); verified {
-		t.Error("unverified service must report verified=false")
+	if st := svc2.Status(); !st.Bound {
+		t.Fatal("expected bound=true after reload + confirm")
 	}
-
-	// Dummy usage to silence the fmt import if linter complains.
-	_ = fmt.Sprintf("peering verify package unverified test ok")
 }
