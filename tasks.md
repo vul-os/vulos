@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 176 / 229 real tasks done (77%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 181 / 229 real tasks done (79%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,8 +10,8 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 9 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 14 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 11 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
 | Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
@@ -28,15 +28,15 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 2 / 5 | `[████░░░░░░]` 40% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
+| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 3 / 5 | `[██████░░░░]` 60% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
 | Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 4 / 6 | `[███████░░░]` 67% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 3 / 4 | `[████████░░]` 75% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 2 / 3 | `[███████░░░]` 67% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
-| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 2 / 4 | `[█████░░░░░]` 50% — manifest concurrency + run-lease + live collab (NEW, D94) |
+| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **176 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **181 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -849,7 +849,7 @@ Scope: welcome→disk-select(visual map)→progress(WS)→success/reboot; shown 
 AC: [ ] app shown only live-USB [ ] disk select+install [ ] WS progress+reboot [ ] error recovery, npm build
 
 ### [BMINIT-14] squashfs + live USB build
-`todo` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
+`done` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
 Scope: `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or systemd-boot loader entry — the image is non-bootable. The working UEFI path is `build.sh --disk` (systemd-boot + kernel + initrd via mtools, smoke-tested by `scripts/baremetal-smoke.sh`). Remaining work: give `--live` the same ESP treatment (copy systemd-boot EFI binary, kernel, initrd, and a loader entry into the ESP so UEFI firmware can boot it; then layer in the squashfs + overlay-root hook).
 AC: [ ] --live produces squashfs+bootable GPT (UEFI boots to initramfs pivot) [ ] vulos-live overlay hook installed [ ] --disk path (and non-live tarball) unchanged [ ] SMOKE-02 passes
 
@@ -1045,7 +1045,7 @@ Scope: Call vulos.org verify/send+confirm (configurable base URL), store signed 
 AC: [ ] verify sends, confirm stores token [ ] token sig validated [ ] unverified still works [ ] base URL configurable
 
 ### [PEER-11] Profile model: fields, avatar resize, visibility
-`todo` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
+`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
 Scope: Profile store + GET/PUT profile, POST profile/image (resize 256² WebP), GET profile/image (ETag, visibility-gated); visibility resolver.
 AC: [ ] avatar resized WebP at path [ ] image honors ETag+visibility [ ] fields persist w/ default visibility
 
@@ -1060,7 +1060,7 @@ Scope: GET /api/peering/discover?email/name proxy to vulos.org verify/lookup + o
 AC: [ ] email lookup resolves when opted-in [ ] name search returns matches [ ] graceful empty
 
 ### [PEER-14] S2S text message delivery (send+inbound+store)
-`todo` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
+`done` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
 Scope: create→sign→deliver peer inbound/message; inbound verify+store ~/.vulos/peering/inbox/<conv>/, push message frame; conversations list+history.
 AC: [ ] msg to approved peer stored their inbox [ ] inbound rejects non-approved/bad sig [ ] list+history persist [ ] recipient gets realtime frame
 
@@ -1450,7 +1450,7 @@ Scope: Model the local cache partition with two slots (slot-a/slot-b) + `boot-st
 AC: [ ] new image lands in inactive slot only [ ] flip is atomic + reversible [ ] data partition untouched by flip [ ] unit test slot state machine
 
 ### [OSDIST-03] Boot-counter auto-rollback to last-known-good
-`todo` · P0 · M · dep: OSDIST-02 · parallel: no — backend/cmd/init/main.go, backend/services/osdist/slots.go
+`done` · P0 · M · dep: OSDIST-02 · parallel: no — backend/cmd/init/main.go, backend/services/osdist/slots.go
 Scope: Bootloader increments the persistent boot counter before handoff; vulos-init marks the boot **healthy** (reset counter, promote slot to last-known-good) only after desktop/services come up. If the counter exceeds threshold (e.g. 3) without a healthy mark, fall back to last-known-good slot. Wire the healthy-mark into the init success path.
 AC: [ ] healthy boot resets counter + promotes slot [ ] N failed boots auto-fall-back to last-good [ ] threshold configurable [ ] GOOS=linux build
 
@@ -1623,7 +1623,7 @@ Scope: Extend `AppManifest` with `Concurrency string` (`singleton`|`replicated`|
 AC: [ ] field validated to 3 values, default singleton [ ] signed/validated alongside the rest of the manifest [ ] legacy `singleton` bool vs `concurrency` documented [ ] unit test default + validation + round-trip [ ] go build
 
 ### [CONC-02] Infra-enforced run-lease for singleton apps (active-passive failover)
-`todo` · P0 · L · dep: CONC-01, LEASE-01 · parallel: no — backend/services/appnet/launcher.go, backend/services/lease/
+`done` · P0 · L · dep: CONC-01, LEASE-01 · parallel: no — backend/services/appnet/launcher.go, backend/services/lease/
 Scope: For `concurrency: singleton` (the default), gate launch on a per-profile-per-app **run-lease** (`leases/run/<profile>/<app>.json`, TTL ~15–30s, fencing token from LEASE-01). Exactly one instance runs the app for a profile; on holder loss the lease expires and another instance acquires it (clean failover, no split-brain). Renew while running, release on stop.
 AC: [ ] singleton app holds a run-lease, second instance does not launch a duplicate [ ] holder death → lease expiry → failover acquires [ ] fence prevents stalled-then-resumed double-run [ ] TTL 15–30s [ ] go build
 
