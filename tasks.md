@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 186 / 229 real tasks done (81%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 189 / 229 real tasks done (83%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -28,15 +28,15 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 3 / 5 | `[██████░░░░]` 60% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
+| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 4 / 5 | `[████████░░]` 80% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 5 / 6 | `[████████░░]` 83% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 3 / 4 | `[████████░░]` 75% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
-| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 2 / 3 | `[███████░░░]` 67% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
+| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **186 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **189 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1455,7 +1455,7 @@ Scope: Bootloader increments the persistent boot counter before handoff; vulos-i
 AC: [ ] healthy boot resets counter + promotes slot [ ] N failed boots auto-fall-back to last-good [ ] threshold configurable [ ] GOOS=linux build
 
 ### [OSDIST-04] OS update fetch loop: download → verify verity+sig → stage
-`todo` · P1 · L · dep: OSDIST-01, OSDIST-02, VERITY-01 · parallel: yes — new backend/services/osdist/update.go
+`done` · P1 · L · dep: OSDIST-01, OSDIST-02, VERITY-01 · parallel: yes — new backend/services/osdist/update.go
 Scope: Periodic loop: fetch `os/stable.json`, compare `latest` to the running slot, download `os/vNN/os-core.squashfs` to the inactive slot, verify the dm-verity root hash matches the manifest AND the detached `.sig` verifies, then stage pending-active (OSDIST-02) + reboot prompt. Bucket URL is soft/runtime config (SEED-02) with mirror failover; key, not URL, enforces trust. Never run live off S3 — source from S3, run local.
 AC: [ ] update detected + downloaded to inactive slot [ ] verity hash + signature both verified before staging [ ] poisoned/mirror image rejected [ ] mirror failover on fetch error [ ] go build
 
@@ -1534,7 +1534,7 @@ Scope: After `mksquashfs`, generate the dm-verity Merkle tree + root hash over `
 AC: [ ] build produces verity hash tree + root hash for the squashfs [ ] root hash matches on re-verify [ ] root hash surfaced for manifest signing [ ] sh -n build.sh
 
 ### [VERITY-02] Per-boot-stage signature verification in initramfs (Go)
-`todo` · P0 · L · dep: VERITY-01, SEED-01 · parallel: no — new backend/cmd/verify/, backend/cmd/init/main.go
+`done` · P0 · L · dep: VERITY-01, SEED-01 · parallel: no — new backend/cmd/verify/, backend/cmd/init/main.go
 Scope: Verify-capable initramfs (Go) checks the signature of each next stage before executing it: shim → bootloader → kernel → initramfs → squashfs, and verifies the squashfs dm-verity root hash + detached `.sig` against the release cert (which the baked root authorizes, SIGN-03). Halt boot / refuse update on mismatch. dm-verity then verifies every block on read at runtime.
 AC: [ ] each stage signature-verified before exec [ ] squashfs verity root hash + sig verified before pivot [ ] broken sig / hash mismatch halts boot [ ] GOOS=linux build, unit tests for the verifier
 
@@ -1595,7 +1595,7 @@ _Design doc: [`roadmap/SYNC.md`](../roadmap/SYNC.md)_  ·  _Prefix: `SYNC-*`_
 > Why this matters: Redundancy + load-balancing across locations. cr-sqlite is leaderless CRDT so redundancy is inherent (no failover election, no split-brain). Two-tier sync: hot path = instance↔instance changeset streaming over the peering mesh (relay fallback for NAT/cross-location); cold path = the existing periodic durable checkpoint to S3 (CLUSTER-05). New work: snapshot/compaction in the bucket so a new instance bootstraps from a recent snapshot + short changeset tail instead of replaying an unbounded log.
 
 ### [SYNC-01] Instance↔instance changeset hot path over the peering mesh
-`todo` · P1 · L · dep: CLUSTER-05, PEER-14 · parallel: yes — new backend/services/sync/hotpath.go
+`done` · P1 · L · dep: CLUSTER-05, PEER-14 · parallel: yes — new backend/services/sync/hotpath.go
 Scope: Stream `crsql_changes` directly between live instances over the **existing peering mesh** (PEERING.md) for near-real-time convergence, with **relay fallback** (same transport peering uses) for NAT / cross-location. Complements — does not replace — the durable S3 cold path (CLUSTER-05). Hot path is transient; the bucket stays the durable record.
 AC: [ ] two live instances converge via direct mesh in well under a sync interval [ ] relay fallback when direct blocked [ ] cold-path bucket sync still runs [ ] no split-brain (CRDT merge) [ ] unit/integration test
 
