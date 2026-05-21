@@ -4,6 +4,7 @@ import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
+import PostSignupWizard from './PostSignupWizard'
 
 const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
@@ -151,6 +152,11 @@ export default function Setup({ onComplete }) {
   })
   const [transitioning, setTransitioning] = useState(false)
 
+  // CLOGIN-05: post-signup wizard state
+  const [CL05_showWizard, CL05_setShowWizard] = useState(false)
+  const [CL05_wizardEmail, CL05_setWizardEmail] = useState('')
+  const [CL05_wizardIsAdmin, CL05_setWizardIsAdmin] = useState(false)
+
   // INIT-09: flow type — 'new' (default) or 'join'
   const [IS09_flowType, IS09_setFlowType] = useState('new')
   // INIT-09: whether mode check is done
@@ -276,49 +282,77 @@ export default function Setup({ onComplete }) {
           <FullscreenHint />
         </div>
 
-        {/* Progress dots */}
-        <div className="absolute top-8 flex gap-2">
-          {IS09_activeSteps.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => i < step && goTo(i)}
-              className={`w-2 h-2 rounded-full transition-all duration-500
-                ${i === step ? 'bg-blue-500 w-6' : i < step ? 'bg-blue-500/50 cursor-pointer hover:bg-blue-400' : 'bg-neutral-800'}`}
-            />
-          ))}
-        </div>
+        {/* Progress dots — hidden during CLOGIN-05 wizard (wizard has its own dots) */}
+        {!CL05_showWizard && (
+          <div className="absolute top-8 flex gap-2">
+            {IS09_activeSteps.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => i < step && goTo(i)}
+                className={`w-2 h-2 rounded-full transition-all duration-500
+                  ${i === step ? 'bg-blue-500 w-6' : i < step ? 'bg-blue-500/50 cursor-pointer hover:bg-blue-400' : 'bg-neutral-800'}`}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Content */}
         <div className={`w-full max-w-xl transition-all duration-200 ${transitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
-          {current === 'welcome' && <WelcomeStep onNext={next} />}
-          {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'IS09_chooser' && (
-            <IS09_NewJoinChooserStep
-              onChooseNew={IS09_handleChooseNew}
-              onChooseJoin={IS09_handleChooseJoin}
-              onPrev={prev}
+          {/* CLOGIN-05: post-signup wizard — overlays the normal step flow */}
+          {CL05_showWizard ? (
+            <PostSignupWizard
+              email={CL05_wizardEmail}
+              isFleetAdmin={CL05_wizardIsAdmin}
+              onComplete={() => {
+                CL05_setShowWizard(false)
+                next()
+              }}
             />
+          ) : (
+            <>
+              {current === 'welcome' && <WelcomeStep onNext={next} />}
+              {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'IS09_chooser' && (
+                <IS09_NewJoinChooserStep
+                  onChooseNew={IS09_handleChooseNew}
+                  onChooseJoin={IS09_handleChooseJoin}
+                  onPrev={prev}
+                />
+              )}
+              {/* New-system flow steps */}
+              {current === 'language' && <LanguageStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'account' && (
+                <AccountStep
+                  config={config}
+                  update={update}
+                  onNext={next}
+                  onPrev={prev}
+                  onSignupComplete={(email, isAdmin) => {
+                    CL05_setWizardEmail(email)
+                    CL05_setWizardIsAdmin(isAdmin)
+                    CL05_setShowWizard(true)
+                  }}
+                />
+              )}
+              {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
+              {current === 'identity' && <IS05_IdentityStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'storage' && <IS05_StorageStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'ssh' && <IS05_SSHStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'recoverykit' && <IS05_RecoveryKitStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {/* Join-flow steps */}
+              {current === 'IS09_join_storage' && (
+                <IS09_JoinConnectStorageStep config={config} update={update} onNext={next} onPrev={prev} />
+              )}
+              {current === 'IS09_syncing' && (
+                <IS09_SyncingStep onNext={next} onComplete={onComplete} />
+              )}
+              {/* Shared steps (pin + ready used by both flows) */}
+              {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
+              {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
+            </>
           )}
-          {/* New-system flow steps */}
-          {current === 'language' && <LanguageStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'timezone' && <TimezoneStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'network' && <NetworkStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'account' && <AccountStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
-          {current === 'identity' && <IS05_IdentityStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'storage' && <IS05_StorageStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'ssh' && <IS05_SSHStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'recoverykit' && <IS05_RecoveryKitStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {/* Join-flow steps */}
-          {current === 'IS09_join_storage' && (
-            <IS09_JoinConnectStorageStep config={config} update={update} onNext={next} onPrev={prev} />
-          )}
-          {current === 'IS09_syncing' && (
-            <IS09_SyncingStep onNext={next} onComplete={onComplete} />
-          )}
-          {/* Shared steps (pin + ready used by both flows) */}
-          {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
-          {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
         </div>
       </div>
     </div>
@@ -1037,7 +1071,7 @@ function CL04_PasswordStrength({ password }) {
   )
 }
 
-function AccountStep({ config, update, onNext, onPrev }) {
+function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
   const { t } = useI18n()
   const [error, setError] = useState('')
   const [CL04_submitting, CL04_setSubmitting] = useState(false)
@@ -1109,13 +1143,16 @@ function AccountStep({ config, update, onNext, onPrev }) {
       const data = await res.json().catch(() => ({}))
 
       if (res.ok || res.status === 201) {
-        // Success — transition to CLOGIN-05 placeholder route
-        console.log('[CLOGIN-04] signup ok, handing off to CLOGIN-05', data)
-        // Store the email so CLOGIN-05 can pre-fill / display it
-        update('CL01_cloudEmail', config.CL04_createEmail.trim().toLowerCase())
+        // Success — hand off to CLOGIN-05 post-signup wizard
+        const email = config.CL04_createEmail.trim().toLowerCase()
+        const isAdmin = Boolean(data?.fleet_admin)
+        update('CL01_cloudEmail', email)
         update('CL01_accountMode', 'cloud')
-        // Transition: CLOGIN-05 is not yet implemented; advance the wizard
-        onNext()
+        if (onSignupComplete) {
+          onSignupComplete(email, isAdmin)
+        } else {
+          onNext()
+        }
         return
       }
 
