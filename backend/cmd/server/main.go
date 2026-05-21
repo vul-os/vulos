@@ -22,6 +22,7 @@ import (
 	"vulos/backend/services/ai"
 	"vulos/backend/services/appfs"
 	"vulos/backend/services/appnet"
+	"vulos/backend/services/osdist"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/authvault"
@@ -1901,6 +1902,13 @@ func main() {
 		energyMgr.SetMode(energy.Mode(req.Mode))
 		writeJSON(w, energyMgr.State())
 	})
+
+	// OS update status + apply (OSDIST-05)
+	if osdistSlotMgr, osdistErr := osdist.NewSlotManager(filepath.Join(home, ".vulos", "os-cache")); osdistErr == nil {
+		osdist.NewUpdateHandlers(osdistSlotMgr, os.Getenv("VULOS_OS_VERSION"), nil).RegisterHandlers(mux)
+	} else {
+		log.Printf("[osdist] slot manager init warning: %v", osdistErr)
+	}
 
 	// App store
 	mux.HandleFunc("GET /api/store/catalog", func(w http.ResponseWriter, r *http.Request) {
