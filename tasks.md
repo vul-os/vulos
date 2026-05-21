@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 227 / 236 real tasks done (96%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 231 / 236 real tasks done (98%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 33 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 37 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 18 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -38,7 +38,7 @@
 | Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
 | Cloud Login (OS-side) | (this file § CLOGIN-*) | 7 / 7 | `[██████████]` 100% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **227 / 236** | `[██████████]` 96% |
+| **Total** |  | **231 / 236** | `[██████████]` 98% |
 
 ## How to read a task
 
@@ -1132,7 +1132,7 @@ Scope: Pion SFU room: N PCs, accept 2-layer simulcast, forward selected layer pe
 AC: [ ] 5+ routes through SFU [ ] simulcast received+forwarded per receiver [ ] Last-N limits [ ] no transcoding
 
 ### [PEER-28] SFU dominant speaker + audio mixing (top 3)
-`todo` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
+`done` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
 Scope: VAD/audio-level detection, dominant→high simulcast layer, mix top-3 audio per participant excl self.
 AC: [ ] dominant gets high layer [ ] ≤3 audio streams per participant [ ] never hears self
 
@@ -1157,12 +1157,12 @@ Scope: wire Docs/Notes editor to useYDoc via y-tiptap, shared-doc badge, remote 
 AC: [ ] 2 users co-edit live merge [ ] remote cursors name+color [ ] Share grants access
 
 ### [PEER-33] Collab in Sheets/Notes/Text Editor + offline state-vector
-`todo` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
+`done` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
 Scope: Sheets y-json, Notes, Text Editor CodeMirror/Monaco binding; reconnect catch-up via state vectors GET inbound/collab-sync.
 AC: [ ] Sheets+TextEditor live multi-user [ ] offline reconnect gets only diff [ ] time-travel from history
 
 ### [PEER-34] Drop: mDNS LAN discovery + nearby + send/accept
-`todo` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
+`done` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
 Scope: mDNS advertise/browse _vula-drop._tcp, nearby endpoint, discoverability everyone/peers/nobody, send (LAN else internet), inbound drop accept/decline+auto-accept-contact; Drop UI tiles+progress.
 AC: [ ] 2 LAN instances discover when discoverable [ ] discoverability filters ads [ ] drop transfers+accept/decline+progress
 
@@ -1172,7 +1172,7 @@ Scope: 6-digit code TTL 5min/single-use, stateless vulos.org rendezvous fallback
 AC: [ ] code 6-digit expires 5min/first use [ ] valid code connects+transfers [ ] works cross-network via rendezvous
 
 ### [PEER-36] Drop: BLE advertise/scan for bare-metal
-`todo` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
+`done` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
 Scope: BLE advertise service UUID + truncated Vula ID hash w/ rotation, scan to surface devices into nearby; clean no-op w/o BLE hw.
 AC: [ ] advertises vula-drop BLE when discoverable [ ] scan surfaces devices [ ] payload rotates, no hw=no-op
 
