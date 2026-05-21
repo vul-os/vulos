@@ -176,6 +176,22 @@ func incrementBootCounter() (*osdist.SlotManager, *osdist.BootState) {
 	return sm, bs
 }
 
+// ─── NETB-03: live/netboot boot detection ────────────────────────────────────
+
+// isLiveBoot reports whether the system booted from a live/netboot medium
+// (kernel cmdline contains vulos.live=1).  In live-boot mode the root
+// filesystem is a squashfs+overlay loaded from the network; there is no
+// local stable.json manifest and no slot layout yet.  VERITY-02 verification
+// and OSDIST-03 boot-counter management are both skipped in this mode — they
+// apply only to a locally-installed system.
+func isLiveBoot() bool {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "vulos.live=1")
+}
+
 // ─── VERITY-02: OS image verification before services start ──────────────────
 
 // Well-known paths for the squashfs verification gate.
@@ -327,16 +343,23 @@ func main() {
 	mountAll()
 	plymouthProgress(20) // milestone: mountAll done
 
-	// OSDIST-03: Increment the persistent boot counter immediately after mounts
-	// (so /var/cache is accessible).  If the counter exceeds the threshold the
-	// rollback is written here; we note it and continue the current boot.  The
-	// healthy-mark is deferred to after the server is confirmed listening.
-	slotMgrGlobal, bootStateGlobal = incrementBootCounter()
+	// NETB-03: In a live/netboot session the root is an in-RAM overlay; there
+	// is no local slot layout and no stable.json manifest.  Skip the boot
+	// counter and OS verification — they only apply to a locally-installed system.
+	if isLiveBoot() {
+		log.Println("[netboot] live-boot mode detected (vulos.live=1) — skipping OSDIST-03 counter and VERITY-02 verification")
+	} else {
+		// OSDIST-03: Increment the persistent boot counter immediately after mounts
+		// (so /var/cache is accessible).  If the counter exceeds the threshold the
+		// rollback is written here; we note it and continue the current boot.  The
+		// healthy-mark is deferred to after the server is confirmed listening.
+		slotMgrGlobal, bootStateGlobal = incrementBootCounter()
 
-	// VERITY-02: Verify the OS image (squashfs + dm-verity root hash + release
-	// cert chain) before any services start.  Halts boot on any mismatch.
-	// This is the pivot gate: if verification fails we never reach startServices().
-	verifyOSBeforeBoot()
+		// VERITY-02: Verify the OS image (squashfs + dm-verity root hash + release
+		// cert chain) before any services start.  Halts boot on any mismatch.
+		// This is the pivot gate: if verification fails we never reach startServices().
+		verifyOSBeforeBoot()
+	}
 
 	// Phase 1.5: Load core kernel modules.
 	// Without systemd-udevd running yet (we're PID 1, udev isn't), nothing
