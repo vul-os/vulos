@@ -16,6 +16,7 @@ const DiskUsage = lazy(() => import('../builtin/disks/DiskUsage'))
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 const Authenticator = lazy(() => import('../apps/Authenticator/Authenticator'))
 const Vault = lazy(() => import('../apps/Vault/Vault'))
+const Messages = lazy(() => import('../builtin/peering/Messages'))
 
 const categoryLabels = {
   internet: 'Internet',
@@ -135,6 +136,7 @@ export default function Launchpad() {
       disks: () => createElement(Suspense, { fallback: loading }, createElement(DiskUsage)),
       authenticator: () => createElement(Suspense, { fallback: loading }, createElement(Authenticator)),
       vault: () => createElement(Suspense, { fallback: loading }, createElement(Vault)),
+      messages: () => createElement(Suspense, { fallback: loading }, createElement(Messages)),
     }
     const singletons = new Set(['persona', 'apphub'])
     if (builtins[app.id]) {

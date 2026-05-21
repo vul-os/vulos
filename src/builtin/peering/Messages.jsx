@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-
-// ── WebSocket URL for the peering `message` channel ───────────────────────────
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/peering/ws`
+import { usePeering, Channel } from '../../core/usePeering.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -462,60 +460,24 @@ const S = {
   },
 }
 
-// ── usePeeringWS — live WebSocket for `message` channel ──────────────────────
+// ── normalizeConversation — map backend ConversationSummary to UI shape ───────
 
-function usePeeringWS(onMessage) {
-  const wsRef = useRef(null)
-  const retryRef = useRef(0)
-  const [connected, setConnected] = useState(false)
-  const cbRef = useRef(onMessage)
-  cbRef.current = onMessage
-
-  useEffect(() => {
-    let alive = true
-
-    function connect() {
-      if (!alive) return
-      const ws = new WebSocket(WS_URL)
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        setConnected(true)
-        retryRef.current = 0
-        // Subscribe to the `message` channel
-        ws.send(JSON.stringify({ channel: 'message', action: 'subscribe' }))
-      }
-
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          if (data.channel === 'message' || data.type === 'message') {
-            cbRef.current(data)
-          }
-        } catch {}
-      }
-
-      ws.onclose = () => {
-        setConnected(false)
-        wsRef.current = null
-        if (alive) {
-          const delay = Math.min(1000 * 2 ** retryRef.current, 30_000)
-          retryRef.current++
-          setTimeout(connect, delay)
-        }
-      }
-
-      ws.onerror = () => ws.close()
-    }
-
-    connect()
-    return () => {
-      alive = false
-      wsRef.current?.close()
-    }
-  }, [])
-
-  return { connected }
+function normalizeConversation(raw) {
+  // Backend returns: { conv_id, last_activity, message_count }
+  // UI expects: { id, peer_id, peer_name, last_message, unread_count }
+  if (!raw) return raw
+  const id = raw.id || raw.conv_id
+  // Extract peer vula_id from conv_id: "<lower>_<higher>" where local node is one half.
+  // We surface the full conv_id as peer_id for display; contacts can provide display names.
+  const peerName = raw.peer_name || raw.peer_id || null
+  return {
+    ...raw,
+    id,
+    peer_id: raw.peer_id || id,
+    peer_name: peerName,
+    last_message: raw.last_message || (raw.last_activity ? { timestamp: raw.last_activity } : null),
+    unread_count: raw.unread_count || 0,
+  }
 }
 
 // ── ConversationList ──────────────────────────────────────────────────────────
@@ -544,7 +506,7 @@ function ConversationList({ conversations, activeId, onSelect, loading, wsConnec
         </div>
       ) : (
         <div style={S.convList}>
-          {conversations.map((conv, i) => {
+          {conversations.map((conv) => {
             const active = conv.id === activeId
             const name = conv.peer_name || conv.peer_id || 'Unknown'
             const seed = name.charCodeAt(0)
@@ -590,7 +552,11 @@ function ConversationList({ conversations, activeId, onSelect, loading, wsConnec
 
 function MediaThumb({ attachment }) {
   const isImage = attachment.mime_type?.startsWith('image/') || attachment.type === 'image'
-  const url = attachment.url || `/api/peering/media/${attachment.id}`
+  // PEER-16: hash is "sha256:<hex>"; use thumb endpoint for images, fetch (signed) for others
+  const hash = attachment.hash || attachment.id
+  const thumbUrl = hash ? `/api/peering/media/thumb/${hash}` : null
+  const fetchUrl = attachment.signed_url || (hash ? `/api/peering/media/fetch/${hash}` : null)
+  const url = isImage ? (thumbUrl || attachment.url) : (fetchUrl || attachment.url)
 
   if (isImage) {
     return (
@@ -599,14 +565,14 @@ function MediaThumb({ attachment }) {
           src={url}
           alt={attachment.filename || 'image'}
           style={S.mediaImg}
-          onClick={() => window.open(url, '_blank')}
+          onClick={() => window.open(fetchUrl || url, '_blank')}
         />
       </div>
     )
   }
 
   return (
-    <a href={url} target="_blank" rel="noreferrer" style={S.fileChip}>
+    <a href={fetchUrl || url} target="_blank" rel="noreferrer" style={S.fileChip}>
       <IconFile />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
@@ -673,8 +639,9 @@ function Composer({ convId, onSent, disabled }) {
       const res = await fetch('/api/peering/media/upload', { method: 'POST', body: fd })
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
       const data = await res.json()
+      // Backend (PEER-16) returns { hash: "sha256:<hex>", signed_url, size, mime_type }
       setAttachments(prev =>
-        prev.map(a => a.key === key ? { ...a, uploading: false, id: data.id || data.media_id } : a)
+        prev.map(a => a.key === key ? { ...a, uploading: false, id: data.hash, mimeType: data.mime_type, size: data.size } : a)
       )
     } catch (err) {
       setAttachments(prev =>
@@ -723,26 +690,40 @@ function Composer({ convId, onSent, disabled }) {
     setSending(true)
     setError(null)
 
-    const mediaIds = attachments.filter(a => a.id).map(a => a.id)
-
+    // PEER-14 backend only accepts { body } — no media_ids field.
+    // Send each uploaded media hash as a separate message body referencing the hash,
+    // then send the text body (if any).
     try {
-      const body = { body: text.trim() }
-      if (mediaIds.length) body.media_ids = mediaIds
+      const readyAttachments = attachments.filter(a => a.id && !a.uploading && !a.error)
 
-      const res = await fetch(`/api/peering/conversations/${convId}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(`Send failed: ${res.status}`)
-      const msg = await res.json()
+      const sendOne = async (bodyText) => {
+        const res = await fetch(`/api/peering/conversations/${convId}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: bodyText }),
+        })
+        if (!res.ok) throw new Error(`Send failed: ${res.status}`)
+        return res.json()
+      }
+
+      let lastMsg = null
+      // Send each media attachment as its own message with a hash reference
+      for (const att of readyAttachments) {
+        const label = att.file?.name ? `[media: ${att.file.name}] ${att.id}` : `[media] ${att.id}`
+        lastMsg = await sendOne(label)
+      }
+
+      // Send text body if present (or if there were no attachments)
+      if (text.trim() || readyAttachments.length === 0) {
+        lastMsg = await sendOne(text.trim() || ' ')
+      }
 
       // Cleanup objectUrls
       attachments.forEach(a => { if (a.objectUrl) URL.revokeObjectURL(a.objectUrl) })
       setAttachments([])
       setText('')
       textareaRef.current?.focus()
-      onSent(msg)
+      if (lastMsg) onSent(lastMsg)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -858,6 +839,10 @@ function Composer({ convId, onSent, disabled }) {
 
 // ── ThreadView ────────────────────────────────────────────────────────────────
 
+// incomingCallbackRef is a stable ref the root Messages component writes into,
+// so the WS subscriber can deliver inbound frames without mutating a component.
+const incomingCallbackRef = { current: null }
+
 function ThreadView({ conversation, myVulaId }) {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
@@ -865,9 +850,13 @@ function ThreadView({ conversation, myVulaId }) {
   const bottomRef = useRef(null)
   const convId = conversation?.id
 
-  // Load history
+  // Load history — clearing messages when convId is absent is intentional.
   useEffect(() => {
-    if (!convId) { setMessages([]); return }
+    if (!convId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMessages([])
+      return
+    }
     setLoading(true)
     setError(null)
     fetch(`/api/peering/conversations/${convId}/messages`)
@@ -903,8 +892,11 @@ function ThreadView({ conversation, myVulaId }) {
     })
   }, [convId])
 
-  // Expose handleIncoming so parent can call it
-  ThreadView._onIncoming = handleIncoming
+  // Register our callback so the parent WS subscriber can call it
+  useEffect(() => {
+    incomingCallbackRef.current = handleIncoming
+    return () => { incomingCallbackRef.current = null }
+  }, [handleIncoming])
 
   const peerName = conversation?.peer_name || conversation?.peer_id || 'Peer'
   const seed = peerName.charCodeAt(0) % 7
@@ -1026,45 +1018,52 @@ export default function Messages() {
     setLoadingConvs(true)
     fetch('/api/peering/conversations')
       .then(r => r.ok ? r.json() : [])
-      .then(data => setConversations(Array.isArray(data) ? data : data.conversations || []))
+      .then(data => {
+        const raw = Array.isArray(data) ? data : data.conversations || []
+        setConversations(raw.map(normalizeConversation))
+      })
       .catch(() => {})
       .finally(() => setLoadingConvs(false))
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
-  // Handle incoming realtime messages
-  const handleWsMessage = useCallback((data) => {
-    const msg = data.payload || data
+  // Realtime: subscribe to the WS `message` channel via usePeering (PEER-05)
+  const { connected: wsConnected, subscribe } = usePeering()
 
-    // Deliver to active thread if it matches
-    if (ThreadView._onIncoming) {
-      ThreadView._onIncoming(msg)
-    }
+  useEffect(() => {
+    const unsub = subscribe(Channel.MESSAGE, (frame) => {
+      const msg = frame.payload || frame
 
-    // Update conversation list: bump preview + unread
-    setConversations(prev => {
-      const convId = msg.conversation_id || msg.conv_id
-      if (!convId) return prev
-
-      const exists = prev.some(c => c.id === convId)
-      if (exists) {
-        return prev.map(c => {
-          if (c.id !== convId) return c
-          return {
-            ...c,
-            last_message: msg,
-            unread_count: activeConv?.id === convId ? 0 : (c.unread_count || 0) + 1,
-          }
-        })
+      // Deliver to active thread if it matches
+      if (incomingCallbackRef.current) {
+        incomingCallbackRef.current(msg)
       }
-      // Unknown conversation — refresh the list
-      fetchConversations()
-      return prev
-    })
-  }, [activeConv, fetchConversations])
 
-  const { connected: wsConnected } = usePeeringWS(handleWsMessage)
+      // Update conversation list: bump preview + unread
+      setConversations(prev => {
+        const convId = msg.conversation_id || msg.conv_id
+        if (!convId) return prev
+
+        const exists = prev.some(c => c.id === convId)
+        if (exists) {
+          return prev.map(c => {
+            if (c.id !== convId) return c
+            return {
+              ...c,
+              last_message: msg,
+              unread_count: activeConv?.id === convId ? 0 : (c.unread_count || 0) + 1,
+            }
+          })
+        }
+        // Unknown conversation — refresh the list
+        fetchConversations()
+        return prev
+      })
+    })
+    return unsub
+  }, [subscribe, activeConv, fetchConversations])
 
   const handleSelectConv = (conv) => {
     setActiveConv(conv)

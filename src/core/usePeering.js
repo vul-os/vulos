@@ -46,6 +46,10 @@ export function usePeering() {
   // ------------------------------------------------------------------
   // Connection lifecycle
   // ------------------------------------------------------------------
+  // connectRef lets the onclose handler schedule a reconnect without
+  // the linter flagging a "variable accessed before declaration" on `connect`.
+  const connectRef = useRef(null)
+
   const connect = useCallback(() => {
     if (!aliveRef.current) return
     if (wsRef.current && wsRef.current.readyState < WebSocket.CLOSING) return
@@ -95,11 +99,15 @@ export function usePeering() {
       // Exponential back-off: 1s, 2s, 4s … capped at MAX_BACKOFF_MS
       const delay = Math.min(1000 * 2 ** retryRef.current, MAX_BACKOFF_MS)
       retryRef.current = Math.min(retryRef.current + 1, 10)
-      setTimeout(connect, delay)
+      setTimeout(() => connectRef.current?.(), delay)
     }
 
     ws.onerror = () => ws.close()
   }, [])
+
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   useEffect(() => {
     aliveRef.current = true
