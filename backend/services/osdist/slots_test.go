@@ -667,6 +667,304 @@ func OSDIST02_TestSlotDir_Invalid(t *testing.T) {
 	}
 }
 
+// ─── OSDIST-03: boot-counter helpers ─────────────────────────────────────────
+
+// OSDIST03_TestIncrementBootCounter verifies that IncrementBootCounter adds 1
+// to the counter each call and persists the change atomically.
+func OSDIST03_TestIncrementBootCounter(t *testing.T) {
+	sm, cacheDir := newTestManager(t)
+	bs := initialState()
+	if err := sm.Save(bs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	for i := 1; i <= 5; i++ {
+		next, err := sm.IncrementBootCounter(bs)
+		if err != nil {
+			t.Fatalf("IncrementBootCounter (iter %d): %v", i, err)
+		}
+		if next.BootCounter != i {
+			t.Errorf("iter %d: BootCounter = %d, want %d", i, next.BootCounter, i)
+		}
+		stateFileIsValid(t, cacheDir)
+
+		// Reload from disk to confirm persistence.
+		loaded, err := sm.Load()
+		if err != nil {
+			t.Fatalf("iter %d: Load: %v", i, err)
+		}
+		if loaded.BootCounter != i {
+			t.Errorf("iter %d: persisted BootCounter = %d, want %d", i, loaded.BootCounter, i)
+		}
+		bs = next
+	}
+}
+
+// OSDIST03_TestIncrementBootCounter_PreservesOtherFields confirms that
+// IncrementBootCounter does not alter Active, Pending, or LastKnownGood.
+func OSDIST03_TestIncrementBootCounter_PreservesOtherFields(t *testing.T) {
+	sm, _ := newTestManager(t)
+	bs := &BootState{
+		Active:        SlotB,
+		Pending:       SlotNone,
+		BootCounter:   2,
+		LastKnownGood: SlotA,
+	}
+	if err := sm.Save(bs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	next, err := sm.IncrementBootCounter(bs)
+	if err != nil {
+		t.Fatalf("IncrementBootCounter: %v", err)
+	}
+	if next.Active != SlotB {
+		t.Errorf("Active changed: got %q want %q", next.Active, SlotB)
+	}
+	if next.Pending != SlotNone {
+		t.Errorf("Pending changed: got %q want %q", next.Pending, SlotNone)
+	}
+	if next.LastKnownGood != SlotA {
+		t.Errorf("LastKnownGood changed: got %q want %q", next.LastKnownGood, SlotA)
+	}
+	if next.BootCounter != 3 {
+		t.Errorf("BootCounter: got %d want 3", next.BootCounter)
+	}
+}
+
+// OSDIST03_TestShouldRollback_BelowThreshold verifies that ShouldRollback
+// returns false when the counter is below the threshold.
+func OSDIST03_TestShouldRollback_BelowThreshold(t *testing.T) {
+	bs := &BootState{
+		Active:        SlotB,
+		BootCounter:   2,
+		LastKnownGood: SlotA,
+	}
+	if ShouldRollback(bs, 3) {
+		t.Errorf("ShouldRollback should be false when counter(%d) < threshold(%d)", bs.BootCounter, 3)
+	}
+}
+
+// OSDIST03_TestShouldRollback_AtThreshold verifies that ShouldRollback returns
+// true when the counter equals the threshold.
+func OSDIST03_TestShouldRollback_AtThreshold(t *testing.T) {
+	bs := &BootState{
+		Active:        SlotB,
+		BootCounter:   3,
+		LastKnownGood: SlotA,
+	}
+	if !ShouldRollback(bs, 3) {
+		t.Errorf("ShouldRollback should be true when counter(%d) == threshold(%d)", bs.BootCounter, 3)
+	}
+}
+
+// OSDIST03_TestShouldRollback_AboveThreshold verifies that ShouldRollback
+// returns true when the counter exceeds the threshold.
+func OSDIST03_TestShouldRollback_AboveThreshold(t *testing.T) {
+	bs := &BootState{
+		Active:        SlotB,
+		BootCounter:   5,
+		LastKnownGood: SlotA,
+	}
+	if !ShouldRollback(bs, 3) {
+		t.Errorf("ShouldRollback should be true when counter(%d) > threshold(%d)", bs.BootCounter, 3)
+	}
+}
+
+// OSDIST03_TestShouldRollback_NoLastKnownGood verifies that ShouldRollback
+// returns false when there is no last-known-good slot, regardless of the
+// counter — there is nowhere safe to fall back to.
+func OSDIST03_TestShouldRollback_NoLastKnownGood(t *testing.T) {
+	bs := &BootState{
+		Active:        SlotA,
+		BootCounter:   10,
+		LastKnownGood: SlotNone,
+	}
+	if ShouldRollback(bs, 1) {
+		t.Errorf("ShouldRollback should be false when LastKnownGood is unset")
+	}
+}
+
+// OSDIST03_TestShouldRollback_DefaultThreshold verifies that a threshold ≤ 0
+// falls back to DefaultBootThreshold.
+func OSDIST03_TestShouldRollback_DefaultThreshold(t *testing.T) {
+	bs := &BootState{
+		Active:        SlotB,
+		BootCounter:   DefaultBootThreshold,
+		LastKnownGood: SlotA,
+	}
+	if !ShouldRollback(bs, 0) {
+		t.Errorf("ShouldRollback(threshold=0) should use DefaultBootThreshold=%d and return true for counter=%d",
+			DefaultBootThreshold, bs.BootCounter)
+	}
+	bsBelow := &BootState{
+		Active:        SlotB,
+		BootCounter:   DefaultBootThreshold - 1,
+		LastKnownGood: SlotA,
+	}
+	if ShouldRollback(bsBelow, -1) {
+		t.Errorf("ShouldRollback(threshold=-1) should use DefaultBootThreshold=%d and return false for counter=%d",
+			DefaultBootThreshold, bsBelow.BootCounter)
+	}
+}
+
+// OSDIST03_TestMarkHealthy_ResetsCounterAndPromotesSlot verifies that
+// MarkHealthy resets BootCounter to 0 and sets LastKnownGood = Active.
+func OSDIST03_TestMarkHealthy_ResetsCounterAndPromotesSlot(t *testing.T) {
+	sm, cacheDir := newTestManager(t)
+	bs := &BootState{
+		Active:        SlotB,
+		Pending:       SlotNone,
+		BootCounter:   2,
+		LastKnownGood: SlotA, // prior good slot
+	}
+	if err := sm.Save(bs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	next, err := sm.MarkHealthy(bs)
+	if err != nil {
+		t.Fatalf("MarkHealthy: %v", err)
+	}
+	stateFileIsValid(t, cacheDir)
+
+	if next.BootCounter != 0 {
+		t.Errorf("BootCounter after MarkHealthy: got %d want 0", next.BootCounter)
+	}
+	if next.LastKnownGood != SlotB {
+		t.Errorf("LastKnownGood after MarkHealthy: got %q want %q (active slot)", next.LastKnownGood, SlotB)
+	}
+	if next.Active != SlotB {
+		t.Errorf("Active changed unexpectedly: got %q want %q", next.Active, SlotB)
+	}
+	if next.Pending != SlotNone {
+		t.Errorf("Pending changed unexpectedly: got %q want %q", next.Pending, SlotNone)
+	}
+}
+
+// OSDIST03_TestMarkHealthy_Persisted verifies that the healthy state is
+// actually written to disk.
+func OSDIST03_TestMarkHealthy_Persisted(t *testing.T) {
+	sm, _ := newTestManager(t)
+	bs := &BootState{
+		Active:        SlotA,
+		Pending:       SlotNone,
+		BootCounter:   1,
+		LastKnownGood: SlotB,
+	}
+	if err := sm.Save(bs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if _, err := sm.MarkHealthy(bs); err != nil {
+		t.Fatalf("MarkHealthy: %v", err)
+	}
+
+	loaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load after MarkHealthy: %v", err)
+	}
+	if loaded.BootCounter != 0 {
+		t.Errorf("persisted BootCounter: got %d want 0", loaded.BootCounter)
+	}
+	if loaded.LastKnownGood != SlotA {
+		t.Errorf("persisted LastKnownGood: got %q want %q", loaded.LastKnownGood, SlotA)
+	}
+}
+
+// OSDIST03_TestBootCounterRollbackFlow exercises the full unhealthy-boot flow:
+// increment counter N times past threshold → ShouldRollback → Rollback.
+func OSDIST03_TestBootCounterRollbackFlow(t *testing.T) {
+	sm, cacheDir := newTestManager(t)
+
+	bs := &BootState{
+		Active:        SlotB,
+		Pending:       SlotNone,
+		BootCounter:   0,
+		LastKnownGood: SlotA,
+	}
+	if err := sm.Save(bs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	const threshold = 3
+
+	// Simulate 3 failed boots (counter reaches threshold).
+	for i := 1; i <= threshold; i++ {
+		next, err := sm.IncrementBootCounter(bs)
+		if err != nil {
+			t.Fatalf("IncrementBootCounter (boot %d): %v", i, err)
+		}
+		bs = next
+
+		if i < threshold && ShouldRollback(bs, threshold) {
+			t.Errorf("boot %d: ShouldRollback returned true before reaching threshold %d", i, threshold)
+		}
+	}
+
+	// Now the counter equals threshold → should rollback.
+	if !ShouldRollback(bs, threshold) {
+		t.Fatalf("ShouldRollback: expected true at counter=%d threshold=%d", bs.BootCounter, threshold)
+	}
+
+	rolled, err := sm.Rollback(bs)
+	if err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+	stateFileIsValid(t, cacheDir)
+
+	if rolled.Active != SlotA {
+		t.Errorf("Active after rollback: got %q want %q (last_known_good)", rolled.Active, SlotA)
+	}
+	if rolled.BootCounter != 0 {
+		t.Errorf("BootCounter after rollback: got %d want 0", rolled.BootCounter)
+	}
+}
+
+// OSDIST03_TestHealthyBootFlow exercises the full healthy-boot flow:
+// increment counter → server up → MarkHealthy → counter reset.
+func OSDIST03_TestHealthyBootFlow(t *testing.T) {
+	sm, cacheDir := newTestManager(t)
+
+	bs := &BootState{
+		Active:        SlotB,
+		Pending:       SlotNone,
+		BootCounter:   0,
+		LastKnownGood: SlotA,
+	}
+	if err := sm.Save(bs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Increment (simulate boot started).
+	bs, err := sm.IncrementBootCounter(bs)
+	if err != nil {
+		t.Fatalf("IncrementBootCounter: %v", err)
+	}
+	if bs.BootCounter != 1 {
+		t.Fatalf("expected BootCounter=1, got %d", bs.BootCounter)
+	}
+	stateFileIsValid(t, cacheDir)
+
+	// Services came up → mark healthy.
+	healthy, err := sm.MarkHealthy(bs)
+	if err != nil {
+		t.Fatalf("MarkHealthy: %v", err)
+	}
+	stateFileIsValid(t, cacheDir)
+
+	if healthy.BootCounter != 0 {
+		t.Errorf("BootCounter after MarkHealthy: got %d want 0", healthy.BootCounter)
+	}
+	if healthy.LastKnownGood != SlotB {
+		t.Errorf("LastKnownGood after MarkHealthy: got %q want %q", healthy.LastKnownGood, SlotB)
+	}
+	// ShouldRollback must now be false.
+	if ShouldRollback(healthy, DefaultBootThreshold) {
+		t.Errorf("ShouldRollback should be false after MarkHealthy")
+	}
+}
+
 // ─── Standard test entry points ──────────────────────────────────────────────
 
 func TestNewSlotManager_CreatesDirs(t *testing.T) { OSDIST02_TestNewSlotManager_CreatesDirs(t) }
@@ -699,6 +997,31 @@ func TestStateMachine_LoadAfterFlip(t *testing.T) {
 func TestStageInto_LargePayload(t *testing.T) { OSDIST02_TestStageInto_LargePayload(t) }
 func TestSlotDir_Valid(t *testing.T)          { OSDIST02_TestSlotDir_Valid(t) }
 func TestSlotDir_Invalid(t *testing.T)        { OSDIST02_TestSlotDir_Invalid(t) }
+
+// OSDIST-03 entry points
+func TestIncrementBootCounter(t *testing.T) { OSDIST03_TestIncrementBootCounter(t) }
+func TestIncrementBootCounter_PreservesOtherFields(t *testing.T) {
+	OSDIST03_TestIncrementBootCounter_PreservesOtherFields(t)
+}
+func TestShouldRollback_BelowThreshold(t *testing.T) {
+	OSDIST03_TestShouldRollback_BelowThreshold(t)
+}
+func TestShouldRollback_AtThreshold(t *testing.T) { OSDIST03_TestShouldRollback_AtThreshold(t) }
+func TestShouldRollback_AboveThreshold(t *testing.T) {
+	OSDIST03_TestShouldRollback_AboveThreshold(t)
+}
+func TestShouldRollback_NoLastKnownGood(t *testing.T) {
+	OSDIST03_TestShouldRollback_NoLastKnownGood(t)
+}
+func TestShouldRollback_DefaultThreshold(t *testing.T) {
+	OSDIST03_TestShouldRollback_DefaultThreshold(t)
+}
+func TestMarkHealthy_ResetsCounterAndPromotesSlot(t *testing.T) {
+	OSDIST03_TestMarkHealthy_ResetsCounterAndPromotesSlot(t)
+}
+func TestMarkHealthy_Persisted(t *testing.T)   { OSDIST03_TestMarkHealthy_Persisted(t) }
+func TestBootCounterRollbackFlow(t *testing.T) { OSDIST03_TestBootCounterRollbackFlow(t) }
+func TestHealthyBootFlow(t *testing.T)         { OSDIST03_TestHealthyBootFlow(t) }
 
 // ─── Unused import guard ──────────────────────────────────────────────────────
 // io is used by StageInto via io.Reader in the API; confirm it's importable.

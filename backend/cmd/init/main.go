@@ -9,12 +9,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/hwdetect"
+	"vulos/backend/services/osdist"
+)
+
+// slotMgrGlobal and bootStateGlobal hold the SlotManager and BootState after
+// incrementBootCounter() runs.  They are set once in main() before any
+// goroutines are launched, so no locking is needed.  markBootHealthy reads
+// them in startKiosk() once the server is confirmed listening.
+var (
+	slotMgrGlobal   *osdist.SlotManager
+	bootStateGlobal *osdist.BootState
 )
 
 // currentProfile holds the live boot-time host decision. Populated once by
@@ -79,6 +90,107 @@ func detectHost() hostProfile {
 // Build: GOOS=linux GOARCH=amd64 go build -o vulos-init ./cmd/init
 // Install: copy to /sbin/init (or set init=/sbin/vulos-init in kernel cmdline)
 
+// ─── Boot-counter / A-B slot rollback (OSDIST-03) ────────────────────────────
+
+// vulosCacheDir is where the A/B slot manager stores boot-state.json.
+// The cache partition is mounted at /var/cache/vulos by convention; fall back
+// to /run/vulos-cache (tmpfs) if the partition is not present — slots will not
+// persist across reboots in that case, but the counter still protects
+// against an immediate crash loop within a single session.
+const vulosCacheDir = "/var/cache/vulos"
+
+// slotManagerOrNil returns a SlotManager for vulosCacheDir, or nil with a
+// warning if the directory cannot be prepared.  All callers treat nil as
+// "slot management unavailable — continue without it".
+func slotManagerOrNil() *osdist.SlotManager {
+	sm, err := osdist.NewSlotManager(vulosCacheDir)
+	if err != nil {
+		log.Printf("[slots] slot manager unavailable (%v) — skipping boot-counter", err)
+		return nil
+	}
+	return sm
+}
+
+// bootThreshold returns the configured rollback threshold.
+// Reads VULOS_BOOT_THRESHOLD; defaults to osdist.DefaultBootThreshold (3).
+func bootThreshold() int {
+	if v := os.Getenv("VULOS_BOOT_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return osdist.DefaultBootThreshold
+}
+
+// incrementBootCounter increments the persistent boot counter early in the
+// init sequence.  If the counter now meets or exceeds the threshold, it
+// immediately rolls back to last-known-good so the bootloader uses the safe
+// slot on the next reboot, then continues the current boot (we are already
+// running; a reboot is triggered by the caller if desired).
+//
+// Returns the SlotManager and the (possibly updated) BootState so that
+// markBootHealthy can use them without re-reading the file.
+func incrementBootCounter() (*osdist.SlotManager, *osdist.BootState) {
+	sm := slotManagerOrNil()
+	if sm == nil {
+		return nil, nil
+	}
+
+	bs, err := sm.Load()
+	if err != nil {
+		// boot-state.json absent on first-ever boot — write a fresh one.
+		log.Printf("[slots] no boot-state found (%v) — initialising", err)
+		bs = &osdist.BootState{
+			Active:        osdist.SlotA,
+			Pending:       osdist.SlotNone,
+			BootCounter:   0,
+			LastKnownGood: osdist.SlotA,
+		}
+		if saveErr := sm.Save(bs); saveErr != nil {
+			log.Printf("[slots] could not write initial boot-state: %v", saveErr)
+			return nil, nil
+		}
+	}
+
+	bs, err = sm.IncrementBootCounter(bs)
+	if err != nil {
+		log.Printf("[slots] could not increment boot counter: %v", err)
+		return sm, nil
+	}
+	log.Printf("[slots] boot_counter=%d (threshold=%d, active=%s, last_known_good=%s)",
+		bs.BootCounter, bootThreshold(), bs.Active, bs.LastKnownGood)
+
+	if osdist.ShouldRollback(bs, bootThreshold()) {
+		log.Printf("[slots] boot counter exceeded threshold — rolling back to last-known-good slot %s", bs.LastKnownGood)
+		rolled, rbErr := sm.Rollback(bs)
+		if rbErr != nil {
+			log.Printf("[slots] rollback failed: %v", rbErr)
+		} else {
+			bs = rolled
+			log.Printf("[slots] rollback written: active will be %s on next boot", bs.Active)
+		}
+	}
+
+	return sm, bs
+}
+
+// markBootHealthy resets the boot counter to 0 and promotes the active slot to
+// last-known-good.  Call this after the OS services / desktop are confirmed
+// healthy (e.g. after vulos-server starts listening).
+func markBootHealthy(sm *osdist.SlotManager, bs *osdist.BootState) {
+	if sm == nil || bs == nil {
+		return
+	}
+	next, err := sm.MarkHealthy(bs)
+	if err != nil {
+		log.Printf("[slots] MarkHealthy failed: %v", err)
+		return
+	}
+	log.Printf("[slots] boot marked healthy: counter reset, last_known_good=%s", next.LastKnownGood)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // plymouthProgress sends a progress update to Plymouth (0–100).
 // No-ops silently when the plymouth binary is not found — safe in containers.
 func plymouthProgress(n int) {
@@ -117,6 +229,12 @@ func main() {
 	// Phase 1: Mount essential filesystems
 	mountAll()
 	plymouthProgress(20) // milestone: mountAll done
+
+	// OSDIST-03: Increment the persistent boot counter immediately after mounts
+	// (so /var/cache is accessible).  If the counter exceeds the threshold the
+	// rollback is written here; we note it and continue the current boot.  The
+	// healthy-mark is deferred to after the server is confirmed listening.
+	slotMgrGlobal, bootStateGlobal = incrementBootCounter()
 
 	// Phase 1.5: Load core kernel modules.
 	// Without systemd-udevd running yet (we're PID 1, udev isn't), nothing
@@ -734,6 +852,11 @@ func startKiosk() {
 	// mode with --noerrdialogs), and never retries — the "white screen
 	// forever" symptom. Poll the loopback socket instead, up to 2 minutes.
 	waitForLocalPort("127.0.0.1:8080", 120*time.Second)
+
+	// OSDIST-03: Server is confirmed listening → this is the healthy-boot
+	// point.  Reset the boot counter and promote the active slot to
+	// last-known-good so future failed boots can roll back to this one.
+	markBootHealthy(slotMgrGlobal, bootStateGlobal)
 
 	plymouthProgress(100)      // milestone: kiosk up
 	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
