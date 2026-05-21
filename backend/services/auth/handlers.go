@@ -99,6 +99,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/login":              true,
 	"/api/auth/status":             true,
 	"/api/setup/status":            true,
+	"/api/setup/mode":              true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
 	"/api/setup/join-code":         true, // INIT-10: unauthenticated join-code decode
 	"/api/setup/join":              true, // INIT-08: unauthenticated cluster join (setup-time)
 	"/api/setup/join/status":       true, // INIT-08: unauthenticated join progress poll
