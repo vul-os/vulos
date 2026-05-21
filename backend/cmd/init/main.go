@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"vulos/backend/cmd/verify"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/hwdetect"
+	"vulos/backend/services/labwc"
 	"vulos/backend/services/osdist"
 )
 
@@ -1021,6 +1023,20 @@ func startKiosk() {
 	plymouthProgress(100)      // milestone: kiosk up
 	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
 
+	browserBin, browserArgs := findKioskBrowser()
+	if browserBin == "" {
+		log.Println("no browser (cog/chromium) found, skipping kiosk")
+		return
+	}
+
+	// D93 BMINIT-17: v2 opt-in → labwc compositor path (native windows).
+	// v1 default → cage single-app kiosk path (always-stream, unchanged).
+	if isNativeModeV2() {
+		startLabwcKiosk(baseEnv, browserBin, browserArgs)
+		return
+	}
+
+	// v1 path: cage fullscreen kiosk — single window, no native-launch.
 	// Single mode (decisions.md D93): the OS *is* the React shell at
 	// localhost:8080. cage runs the browser fullscreen — one window, no
 	// labwc / native-window / window-manager path. Native Linux apps stream
@@ -1031,15 +1047,132 @@ func startKiosk() {
 		log.Println("cage not found, skipping kiosk")
 		return
 	}
-	browserBin, browserArgs := findKioskBrowser()
-	if browserBin == "" {
-		log.Println("no browser (cog/chromium) found, skipping kiosk")
-		return
-	}
 	// Chromium (under cage) IS the shell — if it dies, the user sees a
 	// dead screen. Supervise it: launch, Wait, on exit restart with
 	// exponential backoff (1s → 30s, capped). Runs forever in a goroutine.
 	go superviseKiosk(cageBin, browserBin, browserArgs, baseEnv)
+}
+
+// startLabwcKiosk implements the v2 bare-metal window model (D93 BMINIT-17).
+// It spawns labwc as the Wayland compositor, waits for the socket, then
+// supervises the shell browser as a normal xdg-toplevel window under it.
+// labwc's rc.xml pins the browser to the background layer; native app windows
+// open as xdg-toplevels in front of it.
+//
+// If labwc is not installed this function falls back to the v1 cage path so a
+// partially-configured system still boots.
+func startLabwcKiosk(baseEnv []string, browserBin string, browserArgs []string) {
+	// Locate the labwc config installed by the OS image.
+	cfgPath := findLabwcConfig()
+	if cfgPath != "" {
+		log.Printf("[labwc] using config: %s", cfgPath)
+	}
+
+	mgr, err := labwc.Start(baseEnv, cfgPath)
+	if err != nil {
+		if errors.Is(err, labwc.ErrNotFound) {
+			log.Println("[labwc] labwc binary not found — falling back to v1 cage path")
+			cageBin, lookErr := exec.LookPath("cage")
+			if lookErr != nil {
+				log.Println("[labwc] cage not found either, skipping kiosk")
+				return
+			}
+			go superviseKiosk(cageBin, browserBin, browserArgs, baseEnv)
+			return
+		}
+		log.Printf("[labwc] compositor failed to start: %v — skipping kiosk", err)
+		return
+	}
+	log.Printf("[labwc] compositor ready (pid=%d, display=%s)", mgr.Pid(), mgr.WaylandDisplay)
+
+	// Build the browser env: inherit baseEnv and point the browser at labwc's
+	// Wayland socket.  The browser opens as a normal xdg-toplevel; labwc's
+	// windowRules (rc.xml) maximises it and pins it to the background layer.
+	browserEnv := make([]string, 0, len(baseEnv)+2)
+	for _, e := range baseEnv {
+		browserEnv = append(browserEnv, e)
+	}
+	browserEnv = append(browserEnv,
+		"WAYLAND_DISPLAY="+mgr.WaylandDisplay,
+		"XDG_RUNTIME_DIR="+mgr.XDGRuntimeDir,
+	)
+
+	// Supervise the shell browser.  If it exits, restart it — the user should
+	// always see the React shell.  labwc itself is not supervised here; a
+	// compositor crash is rare and is handled by the PID 1 reap loop.
+	go superviseLabwcBrowser(mgr, browserBin, browserArgs, browserEnv)
+}
+
+// superviseLabwcBrowser keeps the shell browser alive under labwc.
+// On each exit the browser is restarted with exponential back-off (1 s → 30 s).
+// If labwc itself has died (socket gone) the loop exits and logs a fatal — the
+// compositor crash requires a full reboot at the init level.
+func superviseLabwcBrowser(mgr *labwc.Manager, browserBin string, browserArgs, browserEnv []string) {
+	const (
+		minBackoff = 1 * time.Second
+		maxBackoff = 30 * time.Second
+		healthyRun = 30 * time.Second
+	)
+	backoff := minBackoff
+	for attempt := 1; ; attempt++ {
+		cmd := exec.Command(browserBin, browserArgs...)
+		cmd.Env = browserEnv
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		start := time.Now()
+		if err := cmd.Start(); err != nil {
+			log.Printf("[labwc-browser] start error (attempt %d): %v — retrying in %s", attempt, err, backoff)
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
+		}
+		log.Printf("[labwc-browser] browser started under labwc (pid=%d, attempt=%d)", cmd.Process.Pid, attempt)
+
+		err := cmd.Wait()
+		dur := time.Since(start)
+		exit := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			exit = ee.ExitCode()
+		} else if err != nil {
+			exit = -1
+		}
+		log.Printf("[labwc-browser] browser exited after %s (exit=%d) — restarting", dur.Round(time.Millisecond), exit)
+
+		if dur >= healthyRun {
+			backoff = minBackoff
+		} else {
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
+	}
+}
+
+// findLabwcConfig returns the path to the Vulos OS labwc rc.xml if it is
+// present at one of the standard install locations; returns "" otherwise so
+// labwc uses its built-in defaults.
+func findLabwcConfig() string {
+	candidates := []string{
+		"/etc/vulos/labwc/rc.xml",
+		"/usr/share/vulos/labwc/rc.xml",
+		"/opt/vulos/labwc/rc.xml",
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 // superviseKiosk is the keep-alive loop for the cage+browser kiosk. It is
