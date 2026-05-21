@@ -139,6 +139,10 @@ export default function Setup({ onComplete }) {
     IS05_sshFingerprint: '',
     IS05_s3AccessKey: '',
     IS05_s3SecretKey: '',
+    // CLOGIN-01: account mode for this install
+    CL01_accountMode: 'local', // 'local' | 'cloud'
+    CL01_cloudEmail: '',
+    CL01_cloudPassword: '',
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -146,6 +150,24 @@ export default function Setup({ onComplete }) {
   const [IS09_flowType, IS09_setFlowType] = useState('new')
   // INIT-09: whether mode check is done
   const [IS09_modeChecked, IS09_setModeChecked] = useState(false)
+
+  // CLOGIN-01: On mount, check whether this device is cloud-enrolled. If so,
+  // default the account step to cloud mode so cloud-managed instances default to
+  // "Cloud account" in the install wizard without any user action.
+  // NOTE: update() is called inside a .then() callback, not synchronously in
+  // the effect body, so this does not violate react-hooks/set-state-in-effect.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/auth/cloud/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!cancelled && data?.enrolled) {
+          update('CL01_accountMode', 'cloud')
+        }
+      })
+      .catch(() => {}) // not enrolled or endpoint absent — stay local
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // INIT-09: On mount, check /api/setup/mode. If mode==="sync", jump straight to syncing.
   useEffect(() => {
@@ -966,13 +988,14 @@ function NetworkStep({ config, update, onNext, onPrev }) {
 }
 
 // ═══════════════════════════════════
-// Account
+// Account  (CLOGIN-01: Local / Cloud toggle)
 // ═══════════════════════════════════
 function AccountStep({ config, update, onNext, onPrev }) {
   const { t } = useI18n()
   const [error, setError] = useState('')
 
-  const validate = () => {
+  // ── Local path validation ─────────────────────────────────────────────────
+  const validateLocal = () => {
     if (!config.username || config.username.length < 2) {
       setError(t('setup.account.error_username'))
       return
@@ -985,47 +1008,141 @@ function AccountStep({ config, update, onNext, onPrev }) {
     onNext()
   }
 
+  // ── Cloud path validation ─────────────────────────────────────────────────
+  const validateCloud = () => {
+    if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
+      setError('Enter a valid email address')
+      return
+    }
+    if (!config.CL01_cloudPassword || config.CL01_cloudPassword.length < 4) {
+      setError('Cloud account password is required')
+      return
+    }
+    setError('')
+    onNext()
+  }
+
+  const handleNext = config.CL01_accountMode === 'cloud' ? validateCloud : validateLocal
+
   return (
     <div>
       <StepHeader title={t('setup.account.title')} subtitle={t('setup.account.subtitle')} />
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.name_label')}</label>
-          <input
-            value={config.displayName}
-            onChange={e => update('displayName', e.target.value)}
-            placeholder={t('setup.account.name_placeholder')}
-            autoFocus
-            className="input text-base py-3"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.username_label')}</label>
-          <input
-            value={config.username}
-            onChange={e => update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-            placeholder={t('setup.account.username_placeholder')}
-            className="input text-base py-3 font-mono"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.password_label')}</label>
-          <input
-            type="password"
-            value={config.password}
-            onChange={e => update('password', e.target.value)}
-            placeholder={t('setup.account.password_placeholder')}
-            className="input text-base py-3"
-          />
-        </div>
-
-        {error && <p className="text-sm text-red-400">{error}</p>}
+      {/* CLOGIN-01: account mode toggle */}
+      <div className="flex rounded-xl bg-neutral-900/70 border border-neutral-800/60 p-1 gap-1 mb-5">
+        <button
+          onClick={() => { update('CL01_accountMode', 'local'); setError('') }}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all
+            ${config.CL01_accountMode === 'local'
+              ? 'bg-neutral-800 text-neutral-100 shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-300'}`}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+            className={`w-4 h-4 ${config.CL01_accountMode === 'local' ? 'text-blue-400' : 'text-neutral-600'}`}>
+            <circle cx="8" cy="5.5" r="2.5" />
+            <path d="M2.5 13c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+          </svg>
+          Local account
+        </button>
+        <button
+          onClick={() => { update('CL01_accountMode', 'cloud'); setError('') }}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all
+            ${config.CL01_accountMode === 'cloud'
+              ? 'bg-neutral-800 text-neutral-100 shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-300'}`}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+            className={`w-4 h-4 ${config.CL01_accountMode === 'cloud' ? 'text-violet-400' : 'text-neutral-600'}`}>
+            <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
+          </svg>
+          Cloud account
+        </button>
       </div>
 
-      <NavBar onPrev={onPrev} onNext={validate} />
+      {/* ── Local account form ─────────────────────────────────────────── */}
+      {config.CL01_accountMode === 'local' && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.name_label')}</label>
+            <input
+              value={config.displayName}
+              onChange={e => update('displayName', e.target.value)}
+              placeholder={t('setup.account.name_placeholder')}
+              autoFocus
+              className="input text-base py-3"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.username_label')}</label>
+            <input
+              value={config.username}
+              onChange={e => update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+              placeholder={t('setup.account.username_placeholder')}
+              className="input text-base py-3 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.password_label')}</label>
+            <input
+              type="password"
+              value={config.password}
+              onChange={e => update('password', e.target.value)}
+              placeholder={t('setup.account.password_placeholder')}
+              className="input text-base py-3"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Cloud account form ─────────────────────────────────────────── */}
+      {config.CL01_accountMode === 'cloud' && (
+        <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
+          {/* Info banner */}
+          <div className="flex items-start gap-3 bg-violet-600/10 border border-violet-500/20 rounded-xl px-4 py-3">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-violet-400 mt-0.5 shrink-0">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+            </svg>
+            <p className="text-xs text-violet-300 leading-relaxed">
+              Sign in with your Vulos Cloud account. Your cloud credentials will be used for OS login; a local user will be created automatically.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Cloud email</label>
+            <input
+              type="email"
+              value={config.CL01_cloudEmail}
+              onChange={e => { update('CL01_cloudEmail', e.target.value); setError('') }}
+              placeholder="you@example.com"
+              autoFocus
+              autoComplete="email"
+              className="input text-base py-3"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Cloud account password</label>
+            <input
+              type="password"
+              value={config.CL01_cloudPassword}
+              onChange={e => { update('CL01_cloudPassword', e.target.value); setError('') }}
+              placeholder="Password"
+              autoComplete="current-password"
+              className="input text-base py-3"
+            />
+          </div>
+
+          <p className="text-[11px] text-neutral-600">
+            2FA will be requested after setup if enabled on your account.
+          </p>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
+
+      <NavBar onPrev={onPrev} onNext={handleNext} />
     </div>
   )
 }
