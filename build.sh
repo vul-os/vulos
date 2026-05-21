@@ -26,6 +26,30 @@
 # Env vars (alternative to flags):
 #   NAMECHEAP_USER, NAMECHEAP_KEY, VULOS_DOMAIN
 #
+#   SEED-01 / SEED-03 trust + bucket (apply to rootfs / seed builds only):
+#   VULOS_TRUST_ANCHOR_PUBKEY — path to the Ed25519 public key that becomes the
+#                               immutable trust anchor baked into the seed.
+#                               Required for fork builds (fails loud when absent).
+#                               Falls back to keys/trust-anchor.pub (dev, warns).
+#   VULOS_OS_BUCKET_URL       — HTTPS URL of the OS bucket that the seed will
+#                               fetch images from (e.g. https://os.example.com).
+#                               Embedded into /etc/vulos/os-bucket-url inside the
+#                               seed.  When omitted the Vulos upstream default is
+#                               used.  Key + bucket travel together: a seed built
+#                               with a fork's key+bucket trusts only that fork.
+#
+# Fork procedure (SEED-03):
+#   # 1. Generate your own root keypair (requires backend/cmd/sign — SIGN-03)
+#   backend/cmd/sign gen-key --out keys/my-fork.key --pub keys/my-fork.pub
+#   # 2. Stand up your own OS bucket (any HTTPS host serving the update manifest)
+#   # 3. Build the seed with your key + bucket
+#   VULOS_TRUST_ANCHOR_PUBKEY=keys/my-fork.pub \
+#   VULOS_OS_BUCKET_URL=https://os.my-fork.example.com \
+#     sudo ./build.sh
+#   # 4. Flash — the resulting seed trusts only your key and fetches from your
+#   #    bucket.  Upstream-signed images are rejected.  Re-flashing re-establishes
+#   #    trust end-to-end.  See roadmap/SEED-TRUST.md for the full procedure.
+#
 # Prerequisites:
 #   - Go 1.21+, Node 18+, npm
 #   - SSH key access to target (for --deploy)
@@ -659,6 +683,91 @@ echo "FRAMEBUFFER=y" > "$ROOTFS/etc/initramfs-tools/conf.d/vulos-splash.conf"
 # ═══════════════════════════════════
 echo "${BLUE}▸ Embedding trust-anchor public key (SEED-01)...${NC}"
 "$ROOT_DIR/scripts/seed/embed-anchor.sh" "$ROOTFS"
+
+# ═══════════════════════════════════
+# SEED-03: Embed OS bucket URL
+#
+# The OS bucket URL tells the seed *where* to fetch the OS image manifest
+# (os/stable.json) and squashfs images.  It is baked into the seed alongside
+# the trust anchor so that location + trust always travel together.
+#
+# Baked path: /etc/vulos/os-bucket-url
+#   - Read by the early-boot fetch stage (and later by the updater daemon).
+#   - Writable at runtime (it is "soft" config — mirrors/failover are safe).
+#     The key alone enforces trust; a different URL cannot serve a forged OS
+#     because the signature check is against the baked key, not the location.
+#
+# Resolution order:
+#   1. $VULOS_OS_BUCKET_URL  — explicit env var (fork builds + production)
+#   2. Upstream default      — https://os.vulos.org  (upstream / dev builds)
+#
+# Fork constraint: when VULOS_TRUST_ANCHOR_PUBKEY is set (i.e. this is
+# explicitly a non-upstream build) VULOS_OS_BUCKET_URL MUST also be set.
+# Allowing a fork key with the upstream bucket would produce a seed that rejects
+# upstream-signed images AND points at the wrong bucket — a broken build that
+# would silently never fetch anything.  We fail loud instead.
+# ═══════════════════════════════════
+echo "${BLUE}▸ Embedding OS bucket URL (SEED-03)...${NC}"
+
+# Detect fork build: explicit key env var means the caller is NOT the upstream.
+_IS_FORK_BUILD=0
+if [ -n "${VULOS_TRUST_ANCHOR_PUBKEY:-}" ]; then
+    _IS_FORK_BUILD=1
+fi
+
+# Resolve bucket URL
+_BUCKET_URL="${VULOS_OS_BUCKET_URL:-}"
+if [ -z "$_BUCKET_URL" ]; then
+    if [ "$_IS_FORK_BUILD" = "1" ]; then
+        echo "${RED}✗ SEED-03: VULOS_OS_BUCKET_URL must be set when building with a custom${NC}"
+        echo "${RED}   VULOS_TRUST_ANCHOR_PUBKEY.  A fork seed needs its own bucket URL so${NC}"
+        echo "${RED}   location + trust travel together.  Set VULOS_OS_BUCKET_URL to the${NC}"
+        echo "${RED}   HTTPS root of your OS bucket and re-run.${NC}"
+        echo "${RED}   See roadmap/SEED-TRUST.md — Fork Procedure.${NC}"
+        exit 1
+    fi
+    # Upstream / dev build: use the canonical upstream bucket
+    _BUCKET_URL="https://os.vulos.org"
+    echo "  ${DIM}VULOS_OS_BUCKET_URL not set — using upstream default: $_BUCKET_URL${NC}"
+fi
+
+# Write bucket URL into the seed rootfs
+BUCKET_URL_DEST="$ROOTFS/etc/vulos/os-bucket-url"
+# /etc/vulos already exists (created by embed-anchor.sh above)
+mkdir -p "$ROOTFS/etc/vulos"
+printf '%s\n' "$_BUCKET_URL" > "$BUCKET_URL_DEST"
+chmod 0644 "$BUCKET_URL_DEST"   # readable by all; writable by root (soft config)
+echo "  ${GREEN}✓${NC} OS bucket URL embedded → /etc/vulos/os-bucket-url ($_BUCKET_URL)"
+
+# Install initramfs hook so the bucket URL is also available before pivot_root
+_BUCKET_HOOK="$ROOTFS/etc/initramfs-tools/hooks/vulos-os-bucket-url"
+cat > "$_BUCKET_HOOK" << 'BUCKET_HOOK_BODY'
+#!/bin/sh
+# initramfs-tools hook — embed Vulos OS bucket URL into initramfs (SEED-03).
+# The URL at /etc/vulos/os-bucket-url is copied verbatim into the cpio archive
+# so the early-boot fetch stage can read it before pivot_root.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+URL_SRC="/etc/vulos/os-bucket-url"
+if [ ! -f "$URL_SRC" ]; then
+    echo "ERROR: vulos-os-bucket-url hook: $URL_SRC not found — aborting initramfs build" >&2
+    exit 1
+fi
+
+mkdir -p "${DESTDIR}/etc/vulos"
+cp "$URL_SRC" "${DESTDIR}/etc/vulos/os-bucket-url"
+chmod 0644 "${DESTDIR}/etc/vulos/os-bucket-url"
+BUCKET_HOOK_BODY
+
+chmod 0755 "$_BUCKET_HOOK"
+echo "  ${GREEN}✓${NC} OS bucket URL initramfs hook installed"
+unset _IS_FORK_BUILD _BUCKET_URL _BUCKET_HOOK
 
 # Regenerate every installed initrd with the vulos theme + plymouth hook +
 # trust-anchor hook baked in.  Runs on both fresh and --reuse-rootfs builds
