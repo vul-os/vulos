@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 	"testing"
@@ -341,6 +342,61 @@ func TestState_PersistsAcrossRestart(t *testing.T) {
 	st := svc2.Status()
 	if st.AttemptsLeft != pinMaxAttempts-2 {
 		t.Fatalf("expected %d attempts left after restart, got %d", pinMaxAttempts-2, st.AttemptsLeft)
+	}
+}
+
+// TestValidatePIN_TPMWrapped_NoKeyStore confirms that a pin.bin file whose
+// tpm_wrapped=true flag is set cannot be decrypted when no KeyStore is
+// available. This asserts the fail-closed behaviour of CLOGIN-06: a device
+// that loses its TPM (or is cloned without the TPM) cannot unseal the
+// wrapped credential.
+func TestValidatePIN_TPMWrapped_NoKeyStore(t *testing.T) {
+	dir := t.TempDir()
+	storeDir := t.TempDir()
+	store, err := NewStore(storeDir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	user, _ := store.Register("utpm", "pw123456", "Utpm")
+	sess := store.CreateSession(user, "d")
+
+	// Write a pin.bin with tpm_wrapped=true directly, simulating a file
+	// that was originally sealed on a device with a hardware TPM.
+	// The inner ciphertext is arbitrary — the point is that the service
+	// must refuse to proceed when tpm_wrapped=true but ks==nil.
+	svc, err := NewDevicePINService(dir, nil, 4, store)
+	if err != nil {
+		t.Fatalf("NewDevicePINService: %v", err)
+	}
+
+	// First set a PIN without TPM so the salt is created, then manually
+	// overwrite pin.bin to set tpm_wrapped=true.
+	if err := svc.SetPIN("1234", sess.Token); err != nil {
+		t.Fatalf("SetPIN: %v", err)
+	}
+
+	// Read back the envelope, flip tpm_wrapped to true, re-write.
+	data, err := os.ReadFile(svc.pinBinPath())
+	if err != nil {
+		t.Fatalf("read pin.bin: %v", err)
+	}
+	var env pinEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	env.TPMWrapped = true
+	out, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal modified envelope: %v", err)
+	}
+	if err := os.WriteFile(svc.pinBinPath(), out, 0600); err != nil {
+		t.Fatalf("write modified pin.bin: %v", err)
+	}
+
+	// ValidatePIN must fail because ks==nil but tpm_wrapped==true.
+	_, gotErr := svc.ValidatePIN("1234")
+	if gotErr == nil {
+		t.Fatal("ValidatePIN: expected error for TPM-wrapped blob without KeyStore, got nil (fail-open)")
 	}
 }
 

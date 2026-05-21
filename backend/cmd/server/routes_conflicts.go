@@ -91,7 +91,7 @@ func cl10ResolveConflict(dataDir string, notifySvc *notify.Service) http.Handler
 			Path string `json:"path"`
 			Keep string `json:"keep"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid JSON body")
 			return
 		}

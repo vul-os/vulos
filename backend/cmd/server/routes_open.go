@@ -57,7 +57,7 @@ func registerOpenRoutes(mux *http.ServeMux, browserSvc *webbrowser.Service, noti
 		var req struct {
 			URL string `json:"url"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil || req.URL == "" {
 			writeErr(w, 400, "url required")
 			return
 		}

@@ -475,7 +475,7 @@ func main() {
 		var req struct {
 			Profile string `json:"profile"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request")
 			return
 		}
@@ -532,7 +532,7 @@ func main() {
 			Messages []ai.Message `json:"messages"`
 			Stream   bool         `json:"stream"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request")
 			return
 		}
@@ -853,7 +853,7 @@ func main() {
 			WorkDir string   `json:"work_dir"`
 			Env     []string `json:"env"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request")
 			return
 		}
@@ -1085,7 +1085,7 @@ func main() {
 		var req struct {
 			Command string `json:"command"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil || req.Command == "" {
 			writeErr(w, 400, "invalid request")
 			return
 		}
@@ -1116,7 +1116,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/network/configure", func(w http.ResponseWriter, r *http.Request) {
 		var cfg network.Config
-		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&cfg); err != nil {
 			writeErr(w, 400, "invalid config")
 			return
 		}
@@ -1387,7 +1387,7 @@ func main() {
 			FPS     int      `json:"fps"`
 			Restart bool     `json:"restart"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request")
 			return
 		}

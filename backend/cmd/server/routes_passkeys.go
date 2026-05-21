@@ -92,7 +92,7 @@ func (h *au12PasskeysHandler) finishRegister(w http.ResponseWriter, r *http.Requ
 		SessionData         json.RawMessage `json:"session_data"`
 		AttestationResponse json.RawMessage `json:"attestation_response"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		writeErr(w, 400, "invalid request body")
 		return
 	}
@@ -148,7 +148,7 @@ func (h *au12PasskeysHandler) finishAssert(w http.ResponseWriter, r *http.Reques
 		SessionData       json.RawMessage `json:"session_data"`
 		AssertionResponse json.RawMessage `json:"assertion_response"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		writeErr(w, 400, "invalid request body")
 		return
 	}
