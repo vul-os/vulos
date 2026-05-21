@@ -1,51 +1,70 @@
 // call.go — call signaling relay (PEER-19).
 //
-// Architecture
+// # Architecture
 //
 //	Alice's browser → POST /api/peering/call/initiate
 //	  → CallRelay.handleCallInitiate
-//	    → HTTP POST to Bob's server /api/peering/inbound/signal  (server-to-server)
-//	      → Bob's server pushes { type:"incoming-call" } frame to Bob's WebSocket clients
+//	    → PeerClient.Post (signed TypeSignaling envelope) →
+//	        Bob's server /api/peering/inbound/signal
+//	          → InboundMiddleware verifies Ed25519 sig + allow-list
+//	            → CallRelay.HandleInboundCallSignal pushes frame to Bob's browser
 //
 //	SDP/ICE candidates travel the same path:
 //	  POST /api/peering/call/signal  →  POST /api/peering/inbound/signal
-//	  Servers never inspect the opaque payload.
+//	  Servers relay the opaque SDP/ICE payload; neither node inspects it.
 //
-//	answer / reject / hangup close or refuse the session locally, then relay a
-//	termination envelope to the remote server.
+//	answer / reject / hangup relay a typed SignalingPayload to the remote server
+//	and terminate the local session.
 //
-// Contact & permission checks
+// # Transport (PEER-03/PEER-04)
 //
-//	Every request verifies that the relevant Vula ID is an approved contact
-//	with PermCall (contacts.go PermCall constant).  The inbound endpoint
-//	performs the same check for the remote side.
+// Every server-to-server message is a signed Envelope (TypeSignaling) delivered
+// via PeerClient.  InboundMiddleware verifies the signature and allow-list
+// before calling HandleInboundCallSignal, which reads the pre-verified
+// *Envelope from the request context (EnvelopeKey).
 //
-// All new identifiers are prefixed call/Call to avoid clashing with the
-// types already defined in contacts.go (ContactStore, Contact, Perm, …)
-// and ws.go (Hub, Frame, …).
+// # Contact & permission checks
+//
+// Every outbound request verifies that the target Vula ID is an approved
+// contact with PermCall.  HandleInboundCallSignal performs the same gate on
+// inbound envelopes (the sender must have PermCall).
+//
+// # Routes registered by RegisterCallHandlers
+//
+//	POST /api/peering/call/initiate    — caller starts a new call
+//	POST /api/peering/call/answer      — callee accepts
+//	POST /api/peering/call/reject      — callee declines
+//	POST /api/peering/call/signal      — relay opaque SDP/ICE payload
+//	POST /api/peering/call/hangup      — either party ends the call
+//	POST /api/peering/inbound/signal   — S2S inbound (via InboundMiddleware)
+//
+// All identifiers are prefixed call/Call to avoid collisions with types in
+// contacts.go (Contact, Perm, …) and ws.go (Hub, Frame, …).
 package peering
 
 import (
-	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ─── Narrow interfaces (satisfied by *ContactStore and *Hub) ─────────────────
 
-// callContactLookup is the subset of *ContactStore that the call relay needs.
+// callContactLookup is the subset of *ContactStore that CallRelay needs.
 // *ContactStore satisfies this interface.
 type callContactLookup interface {
 	// Get returns a copy of the contact, or (nil, false) if unknown.
 	Get(vulaID string) (*Contact, bool)
 }
 
-// callWSHub is the subset of *Hub that the call relay needs.
+// callWSHub is the subset of *Hub that CallRelay needs.
 // *Hub satisfies this interface.
 type callWSHub interface {
 	// Push delivers frame to every open connection for userID.
@@ -72,30 +91,41 @@ type callSession struct {
 	createdAt time.Time
 }
 
-// ─── Wire types ───────────────────────────────────────────────────────────────
+// ─── SignalingPayload kinds ───────────────────────────────────────────────────
 
-// callInitiateReq is the body of POST /api/peering/call/initiate.
+// Signaling kind constants used inside SignalingPayload.Kind (envelope.go).
+const (
+	sigKindIncomingCall = "incoming-call"
+	sigKindAnswer       = "answer"
+	sigKindReject       = "reject"
+	sigKindHangup       = "hangup"
+	sigKindSignal       = "signal"
+)
+
+// ─── Wire types for local (browser → server) endpoints ───────────────────────
+
+// callInitiateReq is the JSON body of POST /api/peering/call/initiate.
 type callInitiateReq struct {
-	CallID   string `json:"call_id"`   // UUID chosen by caller's browser
+	CallID   string `json:"call_id"`   // UUID chosen by the caller's browser
 	CalleeID string `json:"callee_id"` // Vula ID of the intended callee
 }
 
-// callAnswerReq is the body of POST /api/peering/call/answer.
+// callAnswerReq is the JSON body of POST /api/peering/call/answer.
 type callAnswerReq struct {
 	CallID string `json:"call_id"`
 }
 
-// callRejectReq is the body of POST /api/peering/call/reject.
+// callRejectReq is the JSON body of POST /api/peering/call/reject.
 type callRejectReq struct {
 	CallID string `json:"call_id"`
 }
 
-// callHangupReq is the body of POST /api/peering/call/hangup.
+// callHangupReq is the JSON body of POST /api/peering/call/hangup.
 type callHangupReq struct {
 	CallID string `json:"call_id"`
 }
 
-// callSignalReq is the body of POST /api/peering/call/signal.
+// callSignalReq is the JSON body of POST /api/peering/call/signal.
 // Payload is opaque — servers never inspect SDP/ICE content.
 type callSignalReq struct {
 	CallID  string          `json:"call_id"`
@@ -103,19 +133,11 @@ type callSignalReq struct {
 	Payload json.RawMessage `json:"payload"` // opaque SDP offer/answer / ICE candidate
 }
 
-// callEnvelope is what one Vula server POSTs to another at
-// /api/peering/inbound/signal.
-type callEnvelope struct {
-	Type    string          `json:"type"` // "incoming-call"|"answer"|"reject"|"hangup"|"signal"
-	CallID  string          `json:"call_id"`
-	FromID  string          `json:"from_id"`           // sender's Vula ID
-	Payload json.RawMessage `json:"payload,omitempty"` // opaque; absent for control messages
-}
-
-// callWSFrame is the WebSocket frame pushed to the local browser.
+// callWSFrame is the WebSocket frame pushed to the local browser after an
+// inbound signaling envelope is received.
 type callWSFrame struct {
 	Channel string          `json:"channel"` // always ChannelSignal
-	Type    string          `json:"type"`    // mirrors callEnvelope.Type
+	Type    string          `json:"type"`    // mirrors SignalingPayload.Kind
 	CallID  string          `json:"call_id"`
 	FromID  string          `json:"from_id"`
 	Payload json.RawMessage `json:"payload,omitempty"`
@@ -131,30 +153,36 @@ type CallRelay struct {
 
 	contacts callContactLookup
 	hub      callWSHub
-
-	// callHTTPClient is used for outbound S2S requests; replaced in tests.
-	callHTTPClient *http.Client
-
-	// selfID is the Vula ID of this node, used to populate from_id in envelopes.
-	selfID string
+	client   *PeerClient        // outbound S2S transport (PEER-04)
+	priv     ed25519.PrivateKey // signing key for outbound envelopes (PEER-03)
+	selfID   string             // Vula ID of this node
 }
 
 // NewCallRelay constructs a CallRelay.
 //
-//   - selfID   – this node's Vula ID
-//   - contacts – contact lookup (pass *ContactStore)
-//   - hub      – WebSocket push (pass *Hub)
-func NewCallRelay(selfID string, contacts callContactLookup, hub callWSHub) *CallRelay {
+//   - selfID   – this node's Vula ID ("vula:ed25519:<base58>")
+//   - contacts – contact lookup and permission gate (pass *ContactStore)
+//   - hub      – WebSocket push (pass *Hub; may be nil in tests)
+//   - client   – outbound S2S client (pass peering.NewPeerClient())
+//   - priv     – local Ed25519 private key used to sign outbound envelopes
+func NewCallRelay(
+	selfID string,
+	contacts callContactLookup,
+	hub callWSHub,
+	client *PeerClient,
+	priv ed25519.PrivateKey,
+) *CallRelay {
 	return &CallRelay{
-		sessions:       make(map[string]*callSession),
-		contacts:       contacts,
-		hub:            hub,
-		callHTTPClient: &http.Client{Timeout: 10 * time.Second},
-		selfID:         selfID,
+		sessions: make(map[string]*callSession),
+		contacts: contacts,
+		hub:      hub,
+		client:   client,
+		priv:     priv,
+		selfID:   selfID,
 	}
 }
 
-// RegisterCallHandlers registers all call-related HTTP routes onto mux.
+// RegisterCallHandlers wires all call-related routes onto mux.
 //
 // Local (browser → server) routes:
 //
@@ -166,14 +194,14 @@ func NewCallRelay(selfID string, contacts callContactLookup, hub callWSHub) *Cal
 //
 // Inbound (remote server → this server) route:
 //
-//	POST /api/peering/inbound/signal
+//	POST /api/peering/inbound/signal   — must be wrapped with InboundMiddleware
 func RegisterCallHandlers(mux *http.ServeMux, relay *CallRelay) {
 	mux.HandleFunc("POST /api/peering/call/initiate", relay.handleCallInitiate)
 	mux.HandleFunc("POST /api/peering/call/answer", relay.handleCallAnswer)
 	mux.HandleFunc("POST /api/peering/call/reject", relay.handleCallReject)
 	mux.HandleFunc("POST /api/peering/call/signal", relay.handleCallSignal)
 	mux.HandleFunc("POST /api/peering/call/hangup", relay.handleCallHangup)
-	mux.HandleFunc("POST /api/peering/inbound/signal", relay.handleCallInbound)
+	mux.HandleFunc("POST /api/peering/inbound/signal", relay.HandleInboundCallSignal)
 }
 
 // ─── Local handlers (browser → server) ───────────────────────────────────────
@@ -181,10 +209,11 @@ func RegisterCallHandlers(mux *http.ServeMux, relay *CallRelay) {
 // handleCallInitiate processes POST /api/peering/call/initiate.
 //
 // The caller's browser posts { call_id, callee_id }.  The server:
-//  1. Authenticates the caller via X-Vula-ID header.
+//  1. Reads the caller's Vula ID from the X-Vula-ID header.
 //  2. Verifies the callee is an approved contact with PermCall.
 //  3. Records a ringing session.
-//  4. Relays an "incoming-call" envelope to the callee's server.
+//  4. Builds and signs a TypeSignaling envelope carrying { kind:"incoming-call", call_id }.
+//  5. Delivers the envelope to the callee's server via PeerClient.
 func (cr *CallRelay) handleCallInitiate(w http.ResponseWriter, r *http.Request) {
 	callerID := r.Header.Get("X-Vula-ID")
 	if callerID == "" {
@@ -227,12 +256,7 @@ func (cr *CallRelay) handleCallInitiate(w http.ResponseWriter, r *http.Request) 
 	}
 	cr.mu.Unlock()
 
-	env := callEnvelope{
-		Type:   "incoming-call",
-		CallID: req.CallID,
-		FromID: callerID,
-	}
-	if err := cr.callPostToServer(r.Context(), callee.Server, env); err != nil {
+	if err := cr.sendSignal(r.Context(), callee, sigKindIncomingCall, req.CallID, nil); err != nil {
 		log.Printf("[call] initiate: relay to %s failed: %v", callee.Server, err)
 		cr.mu.Lock()
 		delete(cr.sessions, req.CallID)
@@ -248,7 +272,7 @@ func (cr *CallRelay) handleCallInitiate(w http.ResponseWriter, r *http.Request) 
 // handleCallAnswer processes POST /api/peering/call/answer.
 //
 // The callee's browser posts { call_id }.  The server transitions the session
-// to active and notifies the caller's server.
+// to active and notifies the caller's server via a signed "answer" envelope.
 func (cr *CallRelay) handleCallAnswer(w http.ResponseWriter, r *http.Request) {
 	calleeID := r.Header.Get("X-Vula-ID")
 	if calleeID == "" {
@@ -289,8 +313,7 @@ func (cr *CallRelay) handleCallAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	env := callEnvelope{Type: "answer", CallID: req.CallID, FromID: calleeID}
-	if err := cr.callPostToServer(r.Context(), caller.Server, env); err != nil {
+	if err := cr.sendSignal(r.Context(), caller, sigKindAnswer, req.CallID, nil); err != nil {
 		log.Printf("[call] answer: relay to caller %s failed: %v", caller.Server, err)
 	}
 
@@ -301,7 +324,7 @@ func (cr *CallRelay) handleCallAnswer(w http.ResponseWriter, r *http.Request) {
 // handleCallReject processes POST /api/peering/call/reject.
 //
 // The callee declines the call.  The session is removed and the caller is
-// notified via their server.
+// notified via a signed "reject" envelope.
 func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
 	calleeID := r.Header.Get("X-Vula-ID")
 	if calleeID == "" {
@@ -333,8 +356,7 @@ func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
 	cr.mu.Unlock()
 
 	if caller, ok := cr.contacts.Get(callerID); ok {
-		env := callEnvelope{Type: "reject", CallID: req.CallID, FromID: calleeID}
-		if err := cr.callPostToServer(r.Context(), caller.Server, env); err != nil {
+		if err := cr.sendSignal(r.Context(), caller, sigKindReject, req.CallID, nil); err != nil {
 			log.Printf("[call] reject: relay to caller %s failed: %v", caller.Server, err)
 		}
 	}
@@ -345,8 +367,8 @@ func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
 
 // handleCallHangup processes POST /api/peering/call/hangup.
 //
-// Either party may hang up.  The session is removed and the other participant
-// is notified.
+// Either participant may hang up.  The session is removed and the other party
+// is notified via a signed "hangup" envelope.
 func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 	vulaID := r.Header.Get("X-Vula-ID")
 	if vulaID == "" {
@@ -381,8 +403,7 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 	cr.mu.Unlock()
 
 	if other, ok := cr.contacts.Get(otherID); ok {
-		env := callEnvelope{Type: "hangup", CallID: req.CallID, FromID: vulaID}
-		if err := cr.callPostToServer(r.Context(), other.Server, env); err != nil {
+		if err := cr.sendSignal(r.Context(), other, sigKindHangup, req.CallID, nil); err != nil {
 			log.Printf("[call] hangup: relay to %s failed: %v", other.Server, err)
 		}
 	}
@@ -394,7 +415,7 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 // handleCallSignal processes POST /api/peering/call/signal.
 //
 // Relays an opaque SDP offer/answer or ICE candidate payload to the peer's
-// server.  The server never inspects the payload contents.
+// server via a signed TypeSignaling envelope.  The payload is never inspected.
 func (cr *CallRelay) handleCallSignal(w http.ResponseWriter, r *http.Request) {
 	vulaID := r.Header.Get("X-Vula-ID")
 	if vulaID == "" {
@@ -430,13 +451,7 @@ func (cr *CallRelay) handleCallSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	env := callEnvelope{
-		Type:    "signal",
-		CallID:  req.CallID,
-		FromID:  vulaID,
-		Payload: req.Payload,
-	}
-	if err := cr.callPostToServer(r.Context(), peer.Server, env); err != nil {
+	if err := cr.sendSignal(r.Context(), peer, sigKindSignal, req.CallID, req.Payload); err != nil {
 		log.Printf("[call] signal: relay to %s failed: %v", peer.Server, err)
 		writeCallErr(w, http.StatusBadGateway, "could not reach peer server")
 		return
@@ -445,43 +460,64 @@ func (cr *CallRelay) handleCallSignal(w http.ResponseWriter, r *http.Request) {
 	writeCallOK(w, map[string]string{"status": "relayed"})
 }
 
-// ─── Inbound handler (remote server → this server) ────────────────────────────
+// ─── Inbound handler (remote server → this server, via InboundMiddleware) ────
 
-// handleCallInbound processes POST /api/peering/inbound/signal.
+// HandleInboundCallSignal processes POST /api/peering/inbound/signal.
 //
-// Receives a call envelope from a remote Vula server and delivers it to the
-// local user's WebSocket connections.  The sender must be an approved contact
-// with PermCall; non-call-permitted senders receive 403.
-func (cr *CallRelay) handleCallInbound(w http.ResponseWriter, r *http.Request) {
-	var env callEnvelope
-	if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
-		writeCallErr(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-	if env.Type == "" || env.CallID == "" || env.FromID == "" {
-		writeCallErr(w, http.StatusBadRequest, "type, call_id, and from_id are required")
+// InboundMiddleware has already:
+//  1. Verified the envelope's Ed25519 signature (401 on failure).
+//  2. Confirmed the sender is in the approved contacts list (403 on failure).
+//
+// This handler:
+//  1. Reads the pre-verified *Envelope from the request context (EnvelopeKey).
+//  2. Checks the sender has PermCall.
+//  3. Decodes the SignalingPayload from the envelope.
+//  4. Updates local session state (ringing / active / ended).
+//  5. Pushes a ChannelSignal WebSocket frame to the local user's browser tabs.
+//
+// The method is exported so the orchestrator can register it on the
+// InboundMiddleware-wrapped sub-mux (see RegisterCallHandlers).
+func (cr *CallRelay) HandleInboundCallSignal(w http.ResponseWriter, r *http.Request) {
+	env, ok := r.Context().Value(EnvelopeKey).(*Envelope)
+	if !ok || env == nil {
+		writeCallErr(w, http.StatusUnauthorized,
+			"envelope not found in context — ensure InboundMiddleware is applied")
 		return
 	}
 
-	// Sender must be an approved contact with call permission.
-	sender, ok := cr.contacts.Get(env.FromID)
-	if !ok || sender.State != StateApproved {
+	senderID := env.From
+
+	// Additional permission gate: sender must have PermCall.
+	sender, exists := cr.contacts.Get(senderID)
+	if !exists || sender.State != StateApproved {
 		writeCallErr(w, http.StatusForbidden, "sender is not an approved contact")
 		return
 	}
 	if !sender.hasPermission(PermCall) {
+		log.Printf("[call] inbound signal from %s denied: no call permission", senderID)
 		writeCallErr(w, http.StatusForbidden, "sender has not been granted call permission")
 		return
 	}
 
-	// Track session state on this (callee) side.
-	switch env.Type {
-	case "incoming-call":
+	// Decode the signaling payload.
+	var sp SignalingPayload
+	if err := json.Unmarshal(env.Payload, &sp); err != nil {
+		writeCallErr(w, http.StatusBadRequest, "invalid signaling payload: "+err.Error())
+		return
+	}
+	if sp.Kind == "" || sp.CallID == "" {
+		writeCallErr(w, http.StatusBadRequest, "signaling payload must include kind and call_id")
+		return
+	}
+
+	// Update local session state based on the signal kind.
+	switch sp.Kind {
+	case sigKindIncomingCall:
 		cr.mu.Lock()
-		if _, exists := cr.sessions[env.CallID]; !exists {
-			cr.sessions[env.CallID] = &callSession{
-				id:        env.CallID,
-				callerID:  env.FromID,
+		if _, exists := cr.sessions[sp.CallID]; !exists {
+			cr.sessions[sp.CallID] = &callSession{
+				id:        sp.CallID,
+				callerID:  senderID,
 				calleeID:  cr.selfID,
 				state:     callStateRinging,
 				createdAt: time.Now(),
@@ -489,65 +525,88 @@ func (cr *CallRelay) handleCallInbound(w http.ResponseWriter, r *http.Request) {
 		}
 		cr.mu.Unlock()
 
-	case "answer":
+	case sigKindAnswer:
 		cr.mu.Lock()
-		if sess, exists := cr.sessions[env.CallID]; exists {
+		if sess, exists := cr.sessions[sp.CallID]; exists {
 			sess.state = callStateActive
 		}
 		cr.mu.Unlock()
 
-	case "reject", "hangup":
+	case sigKindReject, sigKindHangup:
 		cr.mu.Lock()
-		if sess, exists := cr.sessions[env.CallID]; exists {
+		if sess, exists := cr.sessions[sp.CallID]; exists {
 			sess.state = callStateEnded
-			delete(cr.sessions, env.CallID)
+			delete(cr.sessions, sp.CallID)
 		}
 		cr.mu.Unlock()
 	}
 
-	// Push frame to all local WebSocket clients.
-	frame := Frame{
+	// Push a ChannelSignal frame to the local user's browser tabs.
+	framePayload, err := json.Marshal(callWSFrame{
 		Channel: ChannelSignal,
-		From:    env.FromID,
-		Payload: mustMarshalCallFrame(callWSFrame{
-			Channel: ChannelSignal,
-			Type:    env.Type,
-			CallID:  env.CallID,
-			FromID:  env.FromID,
-			Payload: env.Payload,
-		}),
+		Type:    sp.Kind,
+		CallID:  sp.CallID,
+		FromID:  senderID,
+		Payload: sp.Data,
+	})
+	if err != nil {
+		log.Printf("[call] inbound: marshal ws frame: %v", err)
+		writeCallErr(w, http.StatusInternalServerError, "internal error")
+		return
 	}
-	cr.hub.Push(cr.selfID, frame)
 
-	log.Printf("[call] inbound %s call=%s from=%s pushed to hub", env.Type, env.CallID, env.FromID)
+	cr.hub.Push(cr.selfID, Frame{
+		Channel: ChannelSignal,
+		From:    senderID,
+		Payload: json.RawMessage(framePayload),
+	})
+
+	log.Printf("[call] inbound %s call=%s from=%s pushed to hub", sp.Kind, sp.CallID, senderID)
 	writeCallOK(w, map[string]string{"status": "delivered"})
 }
 
-// ─── S2S HTTP relay ───────────────────────────────────────────────────────────
+// ─── S2S relay helper ─────────────────────────────────────────────────────────
 
-// callPostToServer POSTs a callEnvelope to a remote Vula server.
-// server is "host:port".
-func (cr *CallRelay) callPostToServer(ctx context.Context, server string, env callEnvelope) error {
-	body, err := json.Marshal(env)
-	if err != nil {
-		return fmt.Errorf("call/relay: marshal envelope: %w", err)
+// sendSignal builds, signs, and delivers a TypeSignaling envelope to the
+// contact's Vula server via PeerClient (PEER-04).
+//
+//   - ctx     — request context for cancellation/timeout
+//   - contact — the recipient; contact.Server is "host:port"
+//   - kind    — one of the sigKind* constants
+//   - callID  — identifies the call session
+//   - data    — opaque SDP/ICE payload; nil for control signals
+func (cr *CallRelay) sendSignal(
+	ctx context.Context,
+	contact *Contact,
+	kind, callID string,
+	data json.RawMessage,
+) error {
+	if contact.Server == "" {
+		return fmt.Errorf("call/sendSignal: contact %s has no server address", contact.VulaID)
 	}
 
-	url := fmt.Sprintf("https://%s/api/peering/inbound/signal", server)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("call/relay: build request: %w", err)
+	sp := SignalingPayload{
+		Kind:   kind,
+		CallID: callID,
+		Data:   data,
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := cr.callHTTPClient.Do(req)
+	payloadBytes, err := json.Marshal(sp)
 	if err != nil {
-		return fmt.Errorf("call/relay: http post: %w", err)
+		return fmt.Errorf("call/sendSignal: marshal payload: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("call/relay: remote %s returned %d", server, resp.StatusCode)
+	env, err := NewEnvelope(uuid.New().String(), cr.selfID, contact.VulaID,
+		TypeSignaling, json.RawMessage(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("call/sendSignal: create envelope: %w", err)
+	}
+	if err := env.Sign(cr.priv); err != nil {
+		return fmt.Errorf("call/sendSignal: sign envelope: %w", err)
+	}
+
+	baseURL := "https://" + contact.Server
+	if err := cr.client.Post(ctx, baseURL, "signal", env); err != nil {
+		return fmt.Errorf("call/sendSignal: deliver to %s: %w", contact.Server, err)
 	}
 	return nil
 }
@@ -568,12 +627,6 @@ func writeCallErr(w http.ResponseWriter, code int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
 }
 
-// mustMarshalCallFrame marshals v and panics if it fails.  Only used for
-// callWSFrame which has no non-serialisable fields.
-func mustMarshalCallFrame(v any) json.RawMessage {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(fmt.Sprintf("call/relay: mustMarshalCallFrame: %v", err))
-	}
-	return json.RawMessage(b)
-}
+// Compile-time interface assertions.
+var _ callContactLookup = (*ContactStore)(nil)
+var _ callWSHub = (*Hub)(nil)

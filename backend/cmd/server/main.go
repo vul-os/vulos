@@ -1556,7 +1556,7 @@ func main() {
 
 		// Calls (initiate/answer/reject/signal/hangup + inbound/signal).
 		if contactStore != nil {
-			callRelay := peering.NewCallRelay(pVulaID, contactStore, peeringHub)
+			callRelay := peering.NewCallRelay(pVulaID, contactStore, peeringHub, peerClient, pPriv)
 			peering.RegisterCallHandlers(peeringMux, callRelay)
 		}
 
