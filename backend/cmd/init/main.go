@@ -48,6 +48,26 @@ type hostProfile struct {
 	PrewarmBrowser bool
 }
 
+// isNativeModeV2 reports whether the v2 native-window path (labwc/surface) has
+// been explicitly opted into.  Checked once at boot; exported to child processes
+// via the VULOS_NATIVE_MODE_V2 env var so the vulos-server frontend endpoint
+// (/api/shell/native-mode) can report v2_enabled correctly.
+//
+// Opt-in mechanisms (any one is sufficient):
+//   - Env var:        VULOS_NATIVE_MODE_V2=1
+//   - Kernel cmdline: vulos.native-mode=v2
+//
+// Absent any opt-in, the v1 always-stream/cage path is used (D93 default).
+func isNativeModeV2() bool {
+	if os.Getenv("VULOS_NATIVE_MODE_V2") == "1" {
+		return true
+	}
+	if data, err := os.ReadFile("/proc/cmdline"); err == nil {
+		return strings.Contains(string(data), "vulos.native-mode=v2")
+	}
+	return false
+}
+
 // detectHost runs the live probes and produces the runtime decision.
 // Honors a one-shot kernel cmdline override (vulos.profile=software) for the
 // QEMU smoke harness; otherwise everything is derived from probes.
@@ -398,6 +418,21 @@ func main() {
 		} else {
 			os.Setenv("VULOS_PREWARM_BROWSER", "0")
 		}
+	}
+
+	// D93 window model: v1 always-stream over cage (bare-metal default).
+	// The native-launch / labwc path (BMINIT-04/06/17/18) is v2 only.
+	// Opt in via VULOS_NATIVE_MODE_V2=1 env OR kernel cmdline vulos.native-mode=v2.
+	// When v2 is NOT set, VULOS_NATIVE_MODE_V2 is forced to "0" so the server
+	// and frontend both stay in the cage/stream path.
+	if isNativeModeV2() {
+		if os.Getenv("VULOS_NATIVE_MODE_V2") == "" {
+			os.Setenv("VULOS_NATIVE_MODE_V2", "1")
+		}
+		log.Println("[init] native-mode v2 opt-in active — labwc/surface path enabled")
+	} else {
+		os.Setenv("VULOS_NATIVE_MODE_V2", "0")
+		log.Println("[init] native-mode v1 — always-stream over cage (native-launch disabled)")
 	}
 
 	// Phase 5: Start vulos server
