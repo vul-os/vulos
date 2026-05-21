@@ -1500,10 +1500,10 @@ _Design doc: [`roadmap/NETBOOT.md`](../roadmap/NETBOOT.md)_  ·  _Prefix: `NETB-
 Scope: Produce a ~1 MB iPXE USB image whose script chainloads `boot.vulos.org` over HTTPS to fetch kernel + initramfs + squashfs. Stick is used once to bootstrap; installed machine never needs it again. Also document/produce the UEFI HTTP Boot URL form (no media) targeting the same endpoint.
 AC: [ ] iPXE image ≤~1 MB chainloads the HTTPS boot URL [ ] UEFI HTTP Boot URL path documented [ ] both converge on kernel+initramfs+squashfs fetch [ ] build target emits the stick image
 
-### [NETB-02] TLS / cert-pin the boot pipe (iPXE TLS + UEFI HTTPS validation)
+### [NETB-02] Signed-payload boot chain (iPXE imgverify + Secure Boot shim plan)
 `todo` · P1 · M · dep: NETB-01 · parallel: yes — scripts/netboot/, new backend/services/osdist/bootpipe.go
-Scope: iPXE TLS with a **pinned** cert/CA for `boot.vulos.org`; UEFI HTTPS Boot validates the server cert. This is the "pipe" layer — independent of, and complementary to, code-signing of the payload (the "payload" layer = SIGN-02/VERITY-02). Secure Boot shim is the firmware anchor when no stick is present.
-AC: [ ] iPXE pins the boot-server cert/CA, MITM rejected [ ] UEFI HTTPS validates server cert [ ] pipe layer documented as distinct from signing layer [ ] sh -n scripts
+Scope: UEFI HTTP Boot is **plain HTTP** on most consumer/laptop hardware (UEFI 2.7 HTTPS Boot is server-class). Safety is signature verification at every step, NOT TLS. iPXE on the stick is built with `imgverify` enabled and our trust-anchor pubkey embedded; every fetched artifact (the .ipxe script, kernel, initramfs, manifest) carries a detached `.sig` that iPXE verifies before exec — fail closed on mismatch. Document the Secure Boot shim signing path (Microsoft UEFI CA OR self-enrolled key for managed fleets). TLS on the iPXE stick is opportunistic — used where supported, never required.
+AC: [ ] iPXE built with imgverify + embedded trust anchor [ ] every fetched artifact has a verifiable .sig [ ] verify-before-exec on every download (fail closed) [ ] Secure Boot shim signing path documented [ ] sh -n scripts; GOOS=linux go build
 
 ### [NETB-03] Netboot-to-install: write seed + first squashfs to local disk
 `todo` · P1 · L · dep: NETB-01, SEED-01, BMINIT-12 · parallel: no — backend/services/installer/, backend/cmd/init/main.go

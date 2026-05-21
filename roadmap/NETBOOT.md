@@ -80,3 +80,26 @@ The "bucket you sync to" at install/join time is the **data bucket** (CLUSTER.md
 ## Control-Plane Boundary
 
 The OSS side defines the *client* behavior only: HTTP-Boot/iPXE chainload of a **configurable boot URL**, TLS pin, signature verify, and netboot-to-install. It works against any server that serves the signed artifacts, self-hosted or the project default. Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap.
+
+
+## Plain-HTTP safety model — signatures, not TLS
+
+UEFI HTTP Boot on most consumer/laptop hardware is **plain HTTP only** (UEFI 2.7 HTTPS Boot is server-class). The netboot safety model is **signature verification at every step**, not TLS.
+
+**Trust anchors (one of):**
+- **UEFI Secure Boot** key in firmware DB (no-media path).
+- **iPXE binary on the one-time stick** the user flashed (USB path).
+
+**Signature chain (every step):**
+1. Local trust anchor (firmware Secure Boot OR iPXE-on-stick).
+2. iPXE fetches the `.ipxe` script over plain HTTP, runs `imgverify` against its embedded pubkey, fails closed on mismatch.
+3. iPXE fetches kernel + initramfs over plain HTTP, `imgverify` each before exec.
+4. initramfs verifies the squashfs root hash + detached `.sig` against the release cert (root-signed offline, SIGN-03).
+5. dm-verity enforces every block on read at runtime.
+6. Min-epoch counter (SIGN-04) blocks replay of old, validly-signed but vulnerable images.
+
+**What an attacker without TLS can/can't do:**
+- *Can*: observe download URLs (artifacts are public anyway), inject bytes (rejected by signature verification).
+- *Cannot*: cause arbitrary code execution.
+
+**TLS is opportunistic** — used by iPXE-on-stick where available, and by server-class UEFI HTTPS Boot — but is never required for safety.

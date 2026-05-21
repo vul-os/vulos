@@ -74,3 +74,7 @@ The highest-seen epoch must be **tamper-resistant and monotonic** on the device:
 ## Language
 
 Per decisions.md J, the entire boot/verification slice — verity hashing, signature checks, PKI tooling, epoch counter — is **Go**, consistent with the rest of the OS (CGO-free where it touches SQLite, per the modernc rule in CLUSTER.md/decisions.md D23). We do **not** introduce Rust for this slice.
+
+## Relationship to TLS
+
+The signature chain is the **primary** defense, not TLS. UEFI HTTP Boot is plain HTTP on most consumer hardware; signing is what makes that safe. TLS (iPXE-on-stick, server-class UEFI HTTPS Boot) is opportunistic — used where supported, never required. See roadmap/NETBOOT.md § Plain-HTTP safety model.
