@@ -92,3 +92,26 @@ export function useNativeMode() {
     canSpawnNativeWindow: mode === 'native',
   }
 }
+
+// useThinWM — returns true when the React WM should operate in "thin" mode
+// (D93 v2 labwc unification, BMINIT-18).
+//
+// In thin mode:
+//   - Window.jsx hides its traffic-light buttons (labwc SSD decorates all windows)
+//   - Window.jsx hides its drag title bar (labwc SSD moves windows)
+//   - ShellProvider mirrors labwc state via /api/shell/windows instead of
+//     owning positioning / stacking itself
+//
+// This is only true when the server has explicitly opted into v2 native mode
+// (VULOS_NATIVE_MODE_V2=1); false in v1 / baremetal / browser.
+export function useThinWM() {
+  const [thin, setThin] = useState(false)
+
+  useEffect(() => {
+    detectMode().then(m => {
+      setThin(m === 'native')
+    })
+  }, [])
+
+  return thin
+}

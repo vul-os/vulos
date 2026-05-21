@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
 import { useViewport } from '../shell/useViewport'
-import { canSpawnNativeWindow } from '../core/useNativeMode'
+import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 
 const ShellContext = createContext(null)
 
@@ -181,6 +181,25 @@ function shellReducer(state, action) {
       return { ...state, missionControlOpen: action.open }
     case 'RESTORE_STATE':
       return { ...state, ...action.saved, conversation: state.conversation }
+    // BMINIT-18: thin WM — sync wlr-foreign-toplevel state into JSX windows.
+    // Matches each toplevel (by app_id) to the corresponding JSX window and
+    // stores its handle as _wtHandle so focusWindow/minimizeWindow can call the
+    // wltoplevel API.  Toplevels that have no matching JSX window are ignored
+    // (they are native app windows whose position/z labwc owns entirely).
+    case 'SYNC_WLTOPLEVELS': {
+      const toplevels = action.toplevels // [{handle, title, app_id, state}]
+      const desktops = { ...state.desktops }
+      for (const [deskId, desk] of Object.entries(desktops)) {
+        const updated = desk.windows.map(w => {
+          const match = toplevels.find(t => t.app_id === w.appId || t.title === w.title)
+          if (!match) return w
+          const minimized = match.state && match.state.includes('minimized')
+          return { ...w, _wtHandle: match.handle, minimized: minimized || w.minimized }
+        })
+        desktops[deskId] = { ...desk, windows: updated }
+      }
+      return { ...state, desktops }
+    }
     default:
       return state
   }
@@ -302,10 +321,70 @@ export function ShellProvider({ children }) {
     }
     dispatch({ type: 'CLOSE_WINDOW', id })
   }, [allWindows])
-  const focusWindow = useCallback((id) => dispatch({ type: 'FOCUS_WINDOW', id }), [])
+  // BMINIT-18: in v2 labwc native mode the React WM is "thin" — it mirrors
+  // labwc's window state via wlr-foreign-toplevel-management-v1 instead of
+  // owning positioning/stacking.  focusWindow additionally calls
+  // POST /api/shell/windows/focus to activate the compositor-side window.
+  // minimizeWindow calls POST /api/shell/windows/minimize similarly.
+  // closeWindow already stops the app via /api/apps/stop; the compositor
+  // handles the actual window destruction via its foreign-toplevel close.
+  //
+  // The window handle used by the wltoplevel API is derived from the lswt
+  // enumeration index.  We store it on the JSX window as win._wtHandle when
+  // a foreign-toplevel sync refreshes the list.
+  const isNativeV2 = getNativeMode() === 'native'
+
+  // Poll /api/shell/windows every 2 s in v2 mode to keep JSX state in sync
+  // with labwc (e.g. the user dragged/minimized/closed via the compositor SSD).
+  useEffect(() => {
+    if (!isNativeV2) return
+    const refresh = () => {
+      fetch('/api/shell/windows')
+        .then(r => r.json())
+        .then(wins => {
+          if (!Array.isArray(wins)) return
+          // Update _wtHandle on each JSX window by matching appId to lswt app_id.
+          dispatch({ type: 'SYNC_WLTOPLEVELS', toplevels: wins })
+        })
+        .catch(() => {})
+    }
+    refresh()
+    const t = setInterval(refresh, 2000)
+    return () => clearInterval(t)
+  }, [isNativeV2])
+
+  const focusWindow = useCallback((id) => {
+    dispatch({ type: 'FOCUS_WINDOW', id })
+    if (isNativeV2) {
+      // Find the corresponding wltoplevel handle and activate it in labwc.
+      const win = allWindows.find(w => w.id === id)
+      if (win?._wtHandle != null) {
+        fetch('/api/shell/windows/focus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ handle: win._wtHandle }),
+        }).catch(() => {})
+      }
+    }
+  }, [allWindows, isNativeV2])
+
   const moveWindow = useCallback((id, position) => dispatch({ type: 'MOVE_WINDOW', id, position }), [])
   const resizeWindow = useCallback((id, size) => dispatch({ type: 'RESIZE_WINDOW', id, size }), [])
-  const minimizeWindow = useCallback((id) => dispatch({ type: 'MINIMIZE_WINDOW', id }), [])
+
+  const minimizeWindow = useCallback((id) => {
+    dispatch({ type: 'MINIMIZE_WINDOW', id })
+    if (isNativeV2) {
+      const win = allWindows.find(w => w.id === id)
+      if (win?._wtHandle != null) {
+        fetch('/api/shell/windows/minimize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ handle: win._wtHandle }),
+        }).catch(() => {})
+      }
+    }
+  }, [allWindows, isNativeV2])
+
   const maximizeWindow = useCallback((id) => dispatch({ type: 'MAXIMIZE_WINDOW', id }), [])
 
   const switchDesktop = useCallback((id) => dispatch({ type: 'SWITCH_DESKTOP', id }), [])

@@ -1,11 +1,14 @@
 import { useRef, useCallback, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
-import { canSpawnNativeWindow } from '../core/useNativeMode'
+import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
 
 export default function Window({ win, pointerBlock }) {
   const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, openNativeWindow, activeWindow } = useShell()
   const [dragging, setDragging] = useState(false)
+  // BMINIT-18: in v2 labwc native mode the compositor (labwc SSD) owns
+  // decoration, positioning, and stacking — React becomes a thin mirror.
+  const thinWM = useThinWM()
   const isActive = win._active !== undefined ? win._active : activeWindow === win.id
   const zBase = isActive ? 20 : 10
   const isBrowser = win.appId === 'browser'
@@ -102,8 +105,10 @@ export default function Window({ win, pointerBlock }) {
       }}
       onPointerDown={() => focusWindow(win.id)}
     >
-      {/* Title bar — hidden for browser, which has its own embedded controls */}
-      {!isBrowser && (
+      {/* Title bar — hidden for browser, and in thin WM mode (labwc SSD owns decoration).
+          In v2 labwc mode: traffic lights + drag handle are suppressed because the
+          compositor provides SSD (server-side decoration) for all windows. */}
+      {!isBrowser && !thinWM && (
         <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart}>
           {/* Traffic lights */}
           <div className="flex items-center gap-1.5" data-no-drag>
@@ -192,15 +197,17 @@ export default function Window({ win, pointerBlock }) {
         </div>
       )}
 
-      {/* Resize handle */}
-      <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart}>
-        <svg className="w-3 h-3 text-neutral-700 absolute bottom-0.5 right-0.5" viewBox="0 0 10 10">
-          <path d="M9 1L1 9M9 5L5 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
-        </svg>
-      </div>
+      {/* Resize handle — suppressed in thin WM mode (labwc SSD provides resize grips) */}
+      {!thinWM && (
+        <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart}>
+          <svg className="w-3 h-3 text-neutral-700 absolute bottom-0.5 right-0.5" viewBox="0 0 10 10">
+            <path d="M9 1L1 9M9 5L5 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          </svg>
+        </div>
+      )}
 
-      {/* Snap preview overlay */}
-      {snapZone && <SnapPreview zone={snapZone} />}
+      {/* Snap preview overlay — not applicable in thin WM mode */}
+      {!thinWM && snapZone && <SnapPreview zone={snapZone} />}
     </div>
   )
 }

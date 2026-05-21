@@ -1053,11 +1053,16 @@ func startKiosk() {
 	go superviseKiosk(cageBin, browserBin, browserArgs, baseEnv)
 }
 
-// startLabwcKiosk implements the v2 bare-metal window model (D93 BMINIT-17).
-// It spawns labwc as the Wayland compositor, waits for the socket, then
-// supervises the shell browser as a normal xdg-toplevel window under it.
-// labwc's rc.xml pins the browser to the background layer; native app windows
-// open as xdg-toplevels in front of it.
+// startLabwcKiosk implements the v2 bare-metal window model (D93 BMINIT-18).
+// It spawns labwc as the Wayland compositor, waits for the socket, then:
+//   - Supervises the React shell browser as a background-layer xdg-toplevel
+//     (app-id "vulos-shell" so rc.xml pins it to the background layer via SSD-off rule).
+//   - Optionally spawns the chrome overlay (app-id "vulos-chrome") as a
+//     layer-shell surface on the overlay layer so the dock/menubar is always
+//     in the foreground above all xdg-toplevels, including native app windows.
+//   - Exports WAYLAND_DISPLAY and XDG_RUNTIME_DIR to the environment so the
+//     vulos-server can use wlr-foreign-toplevel-management-v1 (via lswt/wlrctl)
+//     to enumerate and control every xdg-toplevel (native + webview).
 //
 // If labwc is not installed this function falls back to the v1 cage path so a
 // partially-configured system still boots.
@@ -1085,22 +1090,118 @@ func startLabwcKiosk(baseEnv []string, browserBin string, browserArgs []string) 
 	}
 	log.Printf("[labwc] compositor ready (pid=%d, display=%s)", mgr.Pid(), mgr.WaylandDisplay)
 
-	// Build the browser env: inherit baseEnv and point the browser at labwc's
-	// Wayland socket.  The browser opens as a normal xdg-toplevel; labwc's
-	// windowRules (rc.xml) maximises it and pins it to the background layer.
-	browserEnv := make([]string, 0, len(baseEnv)+2)
+	// Export the live Wayland socket into our own environment so the
+	// vulos-server child process (launched by startServices below) inherits
+	// WAYLAND_DISPLAY and XDG_RUNTIME_DIR.  This lets wltoplevel.Service use
+	// lswt/wlrctl to enumerate and control windows without any extra config.
+	os.Setenv("WAYLAND_DISPLAY", mgr.WaylandDisplay)
+	os.Setenv("XDG_RUNTIME_DIR", mgr.XDGRuntimeDir)
+
+	// Build the child environment: inherit the updated os.Environ() so that
+	// both the browser and any future children see the Wayland socket.
+	childEnv := make([]string, 0, len(baseEnv)+2)
 	for _, e := range baseEnv {
-		browserEnv = append(browserEnv, e)
+		// Skip any stale WAYLAND_DISPLAY / XDG_RUNTIME_DIR that were in
+		// baseEnv before labwc started — we are about to append the live ones.
+		if strings.HasPrefix(e, "WAYLAND_DISPLAY=") || strings.HasPrefix(e, "XDG_RUNTIME_DIR=") {
+			continue
+		}
+		childEnv = append(childEnv, e)
 	}
-	browserEnv = append(browserEnv,
+	childEnv = append(childEnv,
 		"WAYLAND_DISPLAY="+mgr.WaylandDisplay,
 		"XDG_RUNTIME_DIR="+mgr.XDGRuntimeDir,
 	)
 
+	// Shell browser env: add the app-id hint so labwc's windowRule for
+	// "vulos-shell" fires (background layer, SSD disabled, fullscreen).
+	// Cog supports --app-id; Chromium uses --class which labwc also reads.
+	shellArgs := buildShellBrowserArgs(browserBin, browserArgs)
+	shellEnv := childEnv // same Wayland env
+
+	// Chrome overlay: spawn an always-on-top layer-shell bar if the helper
+	// binary is available.  This is the dock + menubar in overlay mode so it
+	// is never occluded by any xdg-toplevel (native or webview).
+	// The helper is a small Cog instance pointing at a dedicated overlay URL;
+	// if it is absent the dock falls back to the in-shell approach.
+	go spawnChromeOverlay(childEnv)
+
 	// Supervise the shell browser.  If it exits, restart it — the user should
 	// always see the React shell.  labwc itself is not supervised here; a
 	// compositor crash is rare and is handled by the PID 1 reap loop.
-	go superviseLabwcBrowser(mgr, browserBin, browserArgs, browserEnv)
+	go superviseLabwcBrowser(mgr, browserBin, shellArgs, shellEnv)
+}
+
+// buildShellBrowserArgs appends the app-id / window-class hint to the browser
+// args so labwc's "vulos-shell" windowRule fires.  The hint lets rc.xml pin
+// the shell browser to the background layer and suppress SSD for it.
+func buildShellBrowserArgs(bin string, args []string) []string {
+	out := make([]string, len(args))
+	copy(out, args)
+
+	// Cog (WPE): --app-id sets the xdg-toplevel app-id directly.
+	if strings.HasSuffix(bin, "cog") || bin == "cog" {
+		// Insert --app-id=vulos-shell before the URL (last arg).
+		if len(out) > 0 {
+			url := out[len(out)-1]
+			out = append(out[:len(out)-1], "--app-id=vulos-shell", url)
+		} else {
+			out = append(out, "--app-id=vulos-shell")
+		}
+		return out
+	}
+
+	// Chromium/Chromium-browser: --class sets the WM_CLASS / app-id.
+	out = append(out, "--class=vulos-shell")
+	return out
+}
+
+// spawnChromeOverlay starts the dock/menubar overlay process if the Vulos
+// chrome helper is available.  This is an always-on-top layer-shell surface
+// that sits above all xdg-toplevels so the dock is never hidden by native
+// app windows.
+//
+// The helper is a Cog instance with app-id "vulos-chrome" pointing at the
+// chrome overlay URL (/chrome-overlay or similar).  labwc's rc.xml routes
+// this app-id to the overlay layer automatically.
+//
+// If the helper binary is not found this function logs and returns — the
+// dock remains in the React shell xdg-toplevel (functional, just not always
+// foreground).
+func spawnChromeOverlay(env []string) {
+	cogBin, err := exec.LookPath("cog")
+	if err != nil {
+		log.Println("[labwc-chrome] cog not found — dock/menubar will render inside shell xdg-toplevel (not overlay layer)")
+		return
+	}
+
+	// The chrome overlay URL is served by vulos-server; wait a moment for it
+	// to be ready (it was already confirmed listening before startKiosk ran,
+	// but we want the /shell/chrome path specifically to be registered).
+	// A short sleep is intentional here — this goroutine runs after the server
+	// is confirmed listening so the wait is bounded and short.
+	// We use a polling loop rather than time.Sleep to keep the wait proportional.
+	waitForLocalPort("127.0.0.1:8080", 10*time.Second)
+
+	args := []string{
+		"--app-id=vulos-chrome",
+		"--platform=wl",
+		"http://localhost:8080/shell/chrome-overlay",
+	}
+
+	cmd := exec.Command(cogBin, args...)
+	cmd.Env = env
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		log.Printf("[labwc-chrome] failed to start chrome overlay: %v", err)
+		return
+	}
+	log.Printf("[labwc-chrome] chrome overlay started (pid=%d, app-id=vulos-chrome)", cmd.Process.Pid)
+
+	if err := cmd.Wait(); err != nil {
+		log.Printf("[labwc-chrome] chrome overlay exited: %v (non-fatal — dock falls back to in-shell mode)", err)
+	}
 }
 
 // superviseLabwcBrowser keeps the shell browser alive under labwc.
