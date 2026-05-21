@@ -10,7 +10,7 @@ export default function RemoteBrowser() {
   const containerRef = useRef(null)
   const connectedRef = useRef(false)
   const lastMouseRef = useRef(0)
-  const lastScrollRef = useRef(0)
+
   const [status, setStatus] = useState('connecting')
   const [error, setError] = useState(null)
   const isEmbedded = navigator.userAgent.includes('WPE') || navigator.userAgent.includes('Cog')
@@ -137,6 +137,7 @@ export default function RemoteBrowser() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     connect()
     return () => { pcRef.current?.close(); wsRef.current?.close(); if (gpLoopRef.current) cancelAnimationFrame(gpLoopRef.current) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

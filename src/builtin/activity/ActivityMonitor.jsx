@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTelemetry } from '../../core/useTelemetry'
 
 const HISTORY_LEN = 120
@@ -11,15 +11,6 @@ function fmtBytes(b) {
   return `${v.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
-function fmtDuration(secs) {
-  if (!secs) return '—'
-  const d = Math.floor(secs / 86400)
-  const h = Math.floor((secs % 86400) / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  if (d > 0) return `${d}d ${h}h`
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
 
 export default function ActivityMonitor() {
   const { stats, connected } = useTelemetry()
@@ -34,6 +25,7 @@ export default function ActivityMonitor() {
 
   useEffect(() => {
     if (stats) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHistory(prev => {
         const next = [...prev, {
           cpu: stats.cpu || 0,

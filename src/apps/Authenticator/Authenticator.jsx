@@ -42,6 +42,7 @@ function AccountRow({ account, onDelete }) {
     const currentWindow = Math.floor(Date.now() / 1000 / 30)
     if (prevWindowRef.current === null || prevWindowRef.current !== currentWindow) {
       prevWindowRef.current = currentWindow
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchCode()
     }
   }, [secondsLeft, fetchCode])
@@ -70,7 +71,7 @@ function AccountRow({ account, onDelete }) {
     try {
       await fetch(`/api/auth/totp/${account.id}`, { method: 'DELETE' })
       onDelete(account.id)
-    } catch {}
+    } catch { /* noop */ }
   }
 
   // Format code with a space in the middle: "847 291"
@@ -265,7 +266,7 @@ function AddAccountForm({ onAdd, onCancel }) {
       }
       const added = await res.json()
       onAdd(added)
-    } catch (ex) {
+    } catch {
       setErr('Network error — could not reach the server.')
     }
     setSubmitting(false)
@@ -417,6 +418,7 @@ export default function Authenticator() {
     setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadAccounts() }, [loadAccounts])
 
   const handleAdded = (account) => {

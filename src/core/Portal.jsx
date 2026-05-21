@@ -5,6 +5,7 @@ import { searchApps } from './AppRegistry'
 import { useVoice } from './useVoice'
 import Settings from './Settings'
 
+// eslint-disable-next-line no-unused-vars
 export default function Portal({ mode = 'panel' }) {
   const {
     layout, conversation, thinking, addMessage, setThinking,
@@ -145,7 +146,7 @@ Only output the viewport block — no explanations outside it.`
             const chunk = JSON.parse(line.slice(6))
             if (chunk.content) full += chunk.content
             if (chunk.done) break
-          } catch {}
+          } catch { /* noop */ }
         }
       }
     } catch {
@@ -212,7 +213,7 @@ Only output the viewport block — no explanations outside it.`
           sandboxUrl = sbData.url
           await new Promise(r => setTimeout(r, 500))
         }
-      } catch {}
+      } catch { /* noop */ }
     }
 
     let finalHTML = newHTML
@@ -319,7 +320,7 @@ Only output the viewport block — no explanations outside it.`
         })
         break
       case 'mission':
-      default:
+      default: {
         addMessage('user', input)
         setThinking(true)
         // Build message history for context
@@ -344,7 +345,6 @@ Only output the viewport block — no explanations outside it.`
           const reader = res.body.getReader()
           const decoder = new TextDecoder()
           let full = ''
-          const msgId = Date.now() + Math.random()
 
           while (true) {
             const { done, value } = await reader.read()
@@ -356,7 +356,7 @@ Only output the viewport block — no explanations outside it.`
                 const chunk = JSON.parse(line.slice(6))
                 if (chunk.content) full += chunk.content
                 if (chunk.done) break
-              } catch {}
+              } catch { /* noop */ }
             }
           }
           processAIResponse(full || 'No response.')
@@ -366,6 +366,7 @@ Only output the viewport block — no explanations outside it.`
           setThinking(false)
         })
         break
+      }
     }
   }, [addMessage, openWindow, setThinking, conversation, aiEdit_runEditWithAI])
 
@@ -466,7 +467,7 @@ Only output the viewport block — no explanations outside it.`
             sandboxUrl = data.url
             await new Promise(r => setTimeout(r, 500))
           }
-        } catch {}
+        } catch { /* noop */ }
       }
 
       if (sandboxUrl) {

@@ -59,6 +59,7 @@ export default function DiskSelection({ onSelect, onBack }) {
       })
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadDisks() }, [])
 
   const handleChoose = (disk) => {

@@ -149,7 +149,7 @@ function loadPrefs() {
 function savePrefs(prefs) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
-  } catch {}
+  } catch { /* noop */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +315,7 @@ function TerminalView({ sessionID, prefs }) {
 
   // Keep ref up-to-date for the resize observer closure
   const currentPrefsRef = useRef(currentPrefs)
+  // eslint-disable-next-line react-hooks/refs
   currentPrefsRef.current = currentPrefs
 
   const handlePrefsChange = useCallback((newPrefs) => {
@@ -494,7 +495,7 @@ export default function Terminal() {
         setSessions(list)
         return
       }
-    } catch {}
+    } catch { /* noop */ }
     setMode('terminal')
   }
 

@@ -52,7 +52,7 @@ function useEnergyState() {
           if (!data.screen_on && !locked) setLocked(true)
           else if (data.screen_dimmed && !screensaver && !locked) setScreensaver(true)
         }
-      } catch {}
+      } catch { /* noop */ }
     }, 5000)
     return () => clearInterval(id)
   }, [locked, screensaver])

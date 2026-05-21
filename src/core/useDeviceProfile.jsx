@@ -39,6 +39,7 @@ export function DeviceProfileProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useDeviceProfile() {
   const ctx = useContext(DeviceProfileContext)
   if (!ctx) throw new Error('useDeviceProfile must be used within DeviceProfileProvider')

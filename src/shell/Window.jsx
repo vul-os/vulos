@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
@@ -56,6 +56,7 @@ export default function Window({ win, pointerBlock }) {
     }
   }
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const onDragStart = useCallback((e) => {
     if (e.target.closest('[data-no-drag]')) return
     e.preventDefault()

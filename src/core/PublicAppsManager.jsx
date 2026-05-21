@@ -117,7 +117,7 @@ function PamAppRow({ entry, onChanged }) {
     try {
       await pamSetVisibility(confirm.appId, confirm.nextVis)
       onChanged()
-    } catch {}
+    } catch { /* noop */ }
     finally { setSaving(false) }
   }, [confirm, onChanged])
 
@@ -188,6 +188,7 @@ function PamPopover({ onClose }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadEntries()
   }, [loadEntries])
 
@@ -313,7 +314,7 @@ export function PamVisibilityControl({ appId, onChanged }) {
       await pamSetVisibility(appId, nextVis)
       setVisibility(nextVis)
       onChanged?.()
-    } catch {}
+    } catch { /* noop */ }
     finally { setSaving(false) }
   }, [appId, visibility, onChanged])
 
@@ -325,7 +326,7 @@ export function PamVisibilityControl({ appId, onChanged }) {
       await pamSetVisibility(confirm.appId, confirm.nextVis)
       setVisibility(confirm.nextVis)
       onChanged?.()
-    } catch {}
+    } catch { /* noop */ }
     finally { setSaving(false) }
   }, [confirm, onChanged])
 

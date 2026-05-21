@@ -244,6 +244,7 @@ export function useVideoCall(base) {
       const [track] = stream.getVideoTracks()
 
       // When the user stops sharing via the browser's native UI, clean up.
+      // eslint-disable-next-line react-hooks/immutability
       track.addEventListener('ended', () => stopScreenShare(), { once: true })
 
       const sender = videoTransceiverRef.current?.sender

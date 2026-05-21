@@ -15,7 +15,7 @@ export function WallpaperProvider({ children }) {
     try {
       if (value) localStorage.setItem(STORAGE_KEY, value)
       else localStorage.removeItem(STORAGE_KEY)
-    } catch {}
+    } catch { /* noop */ }
   }, [])
 
   return (
@@ -25,6 +25,7 @@ export function WallpaperProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useWallpaper() {
   return useContext(WallpaperContext)
 }

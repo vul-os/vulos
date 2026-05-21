@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createElement, lazy, Suspense } from 'react'
 import { useShell } from '../providers/ShellProvider'
-import { getApps, searchApps, getAppsByCategory } from '../core/AppRegistry'
+import { getApps, searchApps } from '../core/AppRegistry'
 import Settings from '../core/Settings'
 import { AppIconTile } from '../core/AppIcons'
 import { useNativeMode } from '../core/useNativeMode'
@@ -222,7 +222,7 @@ export default function Launchpad() {
     }
 
     try {
-      const res = await fetch('/api/apps/launch', {
+      await fetch('/api/apps/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),

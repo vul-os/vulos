@@ -51,7 +51,7 @@ function playChime(priority) {
 }
 
 // Toast card component
-function ToastCard({ toast, onDismiss, onNavigate, soundEnabled }) {
+function ToastCard({ toast, onDismiss }) {
   const priority = effectivePriority(toast)
 
   const handleClick = useCallback(() => {
@@ -176,7 +176,7 @@ export default function Toasts() {
   // Keep ref in sync so WS callback always reads the latest value
   useEffect(() => {
     soundEnabledRef.current = soundEnabled
-    try { localStorage.setItem(SOUND_PREF_KEY, String(soundEnabled)) } catch {}
+    try { localStorage.setItem(SOUND_PREF_KEY, String(soundEnabled)) } catch { /* noop */ }
   }, [soundEnabled])
   // CLUSTER-10: show ConflictResolver when a sync-category deep-link notification arrives
   const [cl10ResolverOpen, setCl10ResolverOpen] = useState(false)
@@ -209,7 +209,7 @@ export default function Toasts() {
             setCl10ResolverOpen(true)
           }
           setToasts(prev => [...prev.slice(-4), { ...notif, _key: Date.now() + Math.random() }])
-        } catch {}
+        } catch { /* noop */ }
       }
       ws.onclose = () => { if (alive) setTimeout(connect, 3000) }
       ws.onerror = () => ws.close()
@@ -260,7 +260,6 @@ export default function Toasts() {
               key={t._key}
               toast={t}
               onDismiss={() => dismiss(t._key)}
-              soundEnabled={soundEnabled}
             />
           ))}
 

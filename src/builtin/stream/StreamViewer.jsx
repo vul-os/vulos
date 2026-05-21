@@ -272,6 +272,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       const sessions = await res.json()
       const session = sessions?.find(s => s.id === sessionId)
       if (!session || !session.running) {
+        // eslint-disable-next-line react-hooks/immutability
         setTimeout(() => connect(), 1000)
         return
       }

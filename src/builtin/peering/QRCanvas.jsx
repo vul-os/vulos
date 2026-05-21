@@ -168,10 +168,6 @@ function makeMatrix(ver) {
   return mat
 }
 
-function setModule(mat, row, col, dark) {
-  mat[row][col] = dark ? DARK : LIGHT
-}
-
 function addFinderPattern(mat, row, col) {
   for (let r = -1; r <= 7; r++) {
     for (let c = -1; c <= 7; c++) {
@@ -392,7 +388,7 @@ export default function QRCanvas({ value, size = 200, darkColor = '#fff', lightC
           }
         }
       }
-    } catch (e) {
+    } catch {
       // If QR generation fails, show a fallback
       const canvas = canvasRef.current
       if (!canvas) return
