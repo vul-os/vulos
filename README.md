@@ -151,7 +151,7 @@ The OS is a **signed, immutable squashfs** — never patched in place, always re
 
 - **Public bucket** — `os/stable.json` manifest (signed) + versioned squashfs artifacts; security enforced by signing key, not access control
 - **A/B slots with auto-rollback** — new image staged to the inactive slot; boot counter reset; if services don't come up clean within the threshold, the bootloader flips back to the last-known-good slot automatically
-- **dm-verity** — Merkle tree over the squashfs verifies every block on read at runtime, not just at download ([`roadmap/SIGNING.md`](roadmap/SIGNING.md))
+- **dm-verity** — Merkle tree over the squashfs verifies every block on read at runtime via `veritysetup open` in the initramfs; requires `os-core.hashtree` + `os-core.roothash` alongside the squashfs on the data partition ([`roadmap/SIGNING.md`](roadmap/SIGNING.md))
 - **Signed boot chain (NETB / SIGN / VERITY / SEED)** — Secure Boot shim → bootloader → kernel/initramfs → squashfs; each stage verified before execution; offline root-signs-intermediate PKI; monotonic min-epoch for revocation and rollback protection
 - **Forkable trust anchor** — baked Ed25519 public key + soft bucket URL in the seed; rebuild the seed with your own key and bucket for a fully independent fork ([`roadmap/SEED-TRUST.md`](roadmap/SEED-TRUST.md))
 
