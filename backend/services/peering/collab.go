@@ -281,8 +281,13 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 	mux.HandleFunc("DELETE /api/peering/collab/{doc_id}", store.handleDeleteDoc)
 	mux.HandleFunc("POST /api/peering/collab/share", store.handleShare)
 
-	// Server-to-server inbound
-	mux.HandleFunc("POST /api/peering/inbound/collab-update", store.handleInboundUpdate)
+	// Server-to-server inbound.
+	// HandleInboundCollabUpdate reads the verified envelope from the request
+	// context (set by InboundMiddleware) rather than from the request body,
+	// which InboundMiddleware has already consumed. handleInboundUpdate (the
+	// plain variant) is retained internally for direct HTTP calls that bypass
+	// the middleware (e.g. the non-signed catch-up path used in tests).
+	mux.HandleFunc("POST /api/peering/inbound/collab-update", store.HandleInboundCollabUpdate)
 	mux.HandleFunc("GET /api/peering/inbound/collab-sync", store.handleInboundSync)
 }
 
