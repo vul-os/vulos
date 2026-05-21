@@ -1564,6 +1564,10 @@ func main() {
 		// Call history (list + record).
 		peering.RegisterCallHistoryHandlers(peeringMux, pRoot)
 
+		// Pre-call lobby: bandwidth table, SFU host selection, capacity estimate (PEER-25).
+		lobbySvc := peering.NewLobbyService(bwMeter)
+		peering.RegisterLobbyHandlers(peeringMux, lobbySvc)
+
 		// Profile (get/put + avatar). contacts gates peer-visibility checks.
 		var profileContacts interface {
 			IsApproved(string) bool

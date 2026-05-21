@@ -83,14 +83,15 @@ export default function Lobby({ participants = [], initiatorId, onStart, onCance
             ? await fetchLocalBandwidth()
             : await fetchPeerBandwidth(p.server)
           setBw(p.id, { loading: false, error: null, ...data })
-        } catch (err) {
+        } catch {
           setBw(p.id, { loading: false, error: 'unavailable' })
         }
       }
 
       doFetch()
     })
-  }, []) // intentionally run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally run once on mount — participants/initiatorId are stable at lobby entry
 
   const hostEntry = bwMap[hostId] || {}
   const capacity = estimateCapacity(hostEntry.upload_mbps)
@@ -189,7 +190,7 @@ function BandwidthTable({ participants, bwMap, hostId, initiatorId }) {
         ))}
       </div>
       {/* Rows */}
-      {participants.map((p, idx) => {
+      {participants.map((p) => {
         const bw = bwMap[p.id] || {}
         const isHost = p.id === hostId
         const isInitiator = p.id === initiatorId
