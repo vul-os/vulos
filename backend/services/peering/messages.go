@@ -61,7 +61,8 @@ type MessageAPI struct {
 	client *PeerClient
 	hub    *Hub
 	priv   ed25519.PrivateKey
-	vulaID string // local node's Vula ID
+	vulaID string       // local node's Vula ID
+	outbox *OutboxQueue // optional; if set, failed deliveries are enqueued
 }
 
 // NewMessageAPI constructs a MessageAPI.
@@ -88,6 +89,18 @@ func NewMessageAPI(
 		priv:   priv,
 		vulaID: vulaID,
 	}
+}
+
+// WithOutbox attaches an OutboxQueue to the MessageAPI. When set, any message
+// that cannot be delivered immediately (network error or non-2xx response) is
+// persisted in the outbox for automatic retry rather than returning an error to
+// the caller.
+//
+// Call this once after NewMessageAPI, before registering handlers. It is safe
+// to omit — delivery remains synchronous when no outbox is configured.
+func (a *MessageAPI) WithOutbox(q *OutboxQueue) *MessageAPI {
+	a.outbox = q
+	return a
 }
 
 // RegisterMessageHandlers wires all message-related routes onto mux.
@@ -233,13 +246,23 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	// Deliver to the remote peer.
 	baseURL := "https://" + contact.Server
-	if err := a.client.Post(r.Context(), baseURL, "message", env); err != nil {
-		log.Printf("[peering/messages] delivery error to %s: %v", baseURL, err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{
-			"error":  "delivery failed",
-			"detail": err.Error(),
-		})
-		return
+	deliveryErr := a.client.Post(r.Context(), baseURL, "message", env)
+	if deliveryErr != nil {
+		log.Printf("[peering/messages] delivery error to %s: %v", baseURL, deliveryErr)
+		if a.outbox != nil {
+			// Enqueue for persistent retry rather than failing the request.
+			if qErr := a.outbox.Enqueue(peerVulaID, baseURL, env); qErr != nil {
+				log.Printf("[peering/messages] outbox enqueue error: %v", qErr)
+			} else {
+				log.Printf("[peering/messages] message %s queued for retry to %s", msgID, peerVulaID)
+			}
+		} else {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error":  "delivery failed",
+				"detail": deliveryErr.Error(),
+			})
+			return
+		}
 	}
 
 	// Store in local outbox.
@@ -261,10 +284,14 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 	// Push real-time frame to sender's own browser tabs.
 	a.pushMessageFrame(convID, stored)
 
+	status := "delivered"
+	if deliveryErr != nil {
+		status = "queued"
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":      msgID,
 		"conv_id": convID,
-		"status":  "delivered",
+		"status":  status,
 	})
 }
 
