@@ -21,6 +21,7 @@ const sections = [
   { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
   { id: 'account', label: 'Account' },
+  { id: 'osupdate', label: 'OS Update' },
   { id: 'about', label: 'About' },
 ]
 
@@ -63,6 +64,7 @@ export default function Settings() {
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
+        {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'about' && <AboutSettings />}
       </div>
     </div>
@@ -1403,6 +1405,127 @@ function UsersSettings({ profile }) {
         </div>
       ))}
       {!isAdmin && <p className="text-xs text-neutral-600 mt-2">Only admins can manage users.</p>}
+    </Section>
+  )
+}
+
+// --- OS Update (OSDIST-05) ---
+function OSUpdateSettings() {
+  const [status, setStatus] = useState(null)
+  const [applying, setApplying] = useState(false)
+  const [applyResult, setApplyResult] = useState(null)
+  const [error, setError] = useState('')
+
+  const refresh = () => {
+    fetch('/api/os/update/status')
+      .then(r => r.json())
+      .then(d => { setStatus(d); setError('') })
+      .catch(() => setError('Could not reach server'))
+  }
+
+  useEffect(() => { refresh() }, [])
+
+  const apply = async () => {
+    if (!confirm('Flip the staged update slot now?\n\nThe change will take effect after the next reboot.')) return
+    setApplying(true)
+    setApplyResult(null)
+    setError('')
+    try {
+      const r = await fetch('/api/os/update/apply', { method: 'POST' })
+      const d = await r.json().catch(() => ({}))
+      if (r.status === 202) {
+        setApplyResult(d.status || 'Slot flipped — reboot to apply')
+        refresh()
+      } else {
+        setError(d.error || ('HTTP ' + r.status))
+      }
+    } catch {
+      setError('Request failed')
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const hasPending = status?.slot_state?.pending && status.slot_state.pending !== ''
+
+  return (
+    <Section title="OS Update">
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-5">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">Running version</span>
+          <span className="text-sm font-mono text-neutral-300">
+            {status == null ? '…' : (status.running_version || '—')}
+          </span>
+        </div>
+        {status?.available_version && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Available version</span>
+            <span className="text-sm font-mono text-green-400">{status.available_version}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">Active slot</span>
+          <span className="text-sm font-mono text-neutral-300">
+            {status?.slot_state?.active || '—'}
+          </span>
+        </div>
+        {hasPending && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Staged slot</span>
+            <span className="text-sm font-mono text-amber-400">{status.slot_state.pending} (pending)</span>
+          </div>
+        )}
+        {status?.last_check && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+            <span className="text-xs text-neutral-500">Last check</span>
+            <span className="text-sm text-neutral-400">
+              {new Date(status.last_check).toLocaleString()}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {status?.last_error && (
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">
+          Last error: {status.last_error}
+        </div>
+      )}
+
+      {applyResult && (
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-green-900/30 text-green-400">
+          {applyResult}
+        </div>
+      )}
+
+      <div className="flex gap-3 items-center">
+        {hasPending ? (
+          <button
+            onClick={apply}
+            disabled={applying}
+            className="btn text-sm"
+          >
+            {applying ? 'Applying…' : 'Reboot to apply'}
+          </button>
+        ) : (
+          <button disabled className="btn text-sm opacity-40 cursor-not-allowed">
+            {status?.available_version ? 'Apply update' : 'Up to date'}
+          </button>
+        )}
+        <button onClick={refresh} className="btn-ghost text-sm">Refresh</button>
+      </div>
+
+      {!hasPending && status?.available_version && (
+        <p className="text-xs text-neutral-600 mt-3">
+          Version {status.available_version} is available but has not been staged yet.
+          The background update service will download and verify it automatically.
+        </p>
+      )}
+
+      {error && (
+        <div className="mt-3 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">
+          {error}
+        </div>
+      )}
     </Section>
   )
 }
