@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 217 / 236 real tasks done (92%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 223 / 236 real tasks done (94%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,8 +10,8 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 25 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 17 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 30 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 18 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
 | Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
@@ -38,7 +38,7 @@
 | Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
 | Cloud Login (OS-side) | (this file § CLOGIN-*) | 7 / 7 | `[██████████]` 100% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **217 / 236** | `[█████████░]` 92% |
+| **Total** |  | **223 / 236** | `[█████████░]` 94% |
 
 ## How to read a task
 
@@ -873,7 +873,7 @@ Scope: When v2 enabled, launch native/XWayland app as a real wlroots xdg-topleve
 AC: [ ] native app renders zero-copy in the JSX window rect [ ] move/resize/z follow the JSX frame [ ] fallback to stream when unsupported [ ] remote/stream path unchanged
 
 ### [BMINIT-18] v2 labwc unification: layer-shell chrome + per-window webview + foreign-toplevel
-`todo` · P3 · XL · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, assets/labwc/, backend/services/wltoplevel/, src shell native-mode
+`done` · P3 · XL · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, assets/labwc/, backend/services/wltoplevel/, src shell native-mode
 Scope: labwc as sole WM. Wallpaper → `background` layer-shell; dock/menubar → `overlay` layer-shell (always foreground). One Cog/WPE xdg-toplevel webview per JSX window so JSX+native windows are z-stack peers. wlr-foreign-toplevel-management-v1 unifies dock/focus/z across both kinds; labwc SSD is the single decorator (suppress in-JSX traffic lights on bare metal). React WM goes "thin": mirrors labwc state, stops positioning/stacking.
 AC: [ ] chrome on overlay, always foreground [ ] each JSX window its own xdg-toplevel [ ] foreign-toplevel drives dock/focus/z for native+webview [ ] SSD decorates all uniformly [ ] thin React WM in native mode
 
@@ -1097,12 +1097,12 @@ Scope: periodic speed test (configurable endpoint) or traffic estimate, cache, G
 AC: [ ] returns up/down+latency periodic [ ] peer can request approved peer's [ ] non-blocking startup
 
 ### [PEER-21] STUN/TURN ICE config endpoint for peering calls
-`todo` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
+`done` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
 Scope: GET /api/peering/ice → STUN list + TURN short-lived creds (reuse network.TURNConfig.GenerateCredentials) when TURN_SECRET set.
 AC: [ ] STUN always, TURN creds when secret set [ ] short-lived HMAC [ ] no new TURN code
 
 ### [PEER-22] 1:1 voice call (browser↔browser WebRTC audio)
-`todo` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
+`done` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
 Scope: RTCPeerConnection audio, getUserMedia, offer/answer+ICE over signal channel w/ PEER-21 config, mute, hangup; wire call UI.
 AC: [ ] 2 browsers direct audio via signaling only [ ] mute/hangup, media not via servers [ ] ICE-restart on drop
 
@@ -1112,7 +1112,7 @@ Scope: video track 2-layer simulcast, camera on/off, getDisplayMedia screen-shar
 AC: [ ] video call toggleable camera [ ] screen share add/stop [ ] quality+PiP
 
 ### [PEER-24] Incoming-call UI, ring, call history
-`todo` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
+`done` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
 Scope: shell-wide incoming-call modal on signal call-request + ringtone; backend call-history + GET endpoint + UI panel.
 AC: [ ] modal regardless of focus [ ] accept/reject drives signaling [ ] completed/missed recorded+listed
 
@@ -1142,7 +1142,7 @@ Scope: detect host loss, auto-select highest-upload new host (PEER-20/25 data), 
 AC: [ ] kill host → failover best-bw [ ] resumes few sec no full drop [ ] 51st rejected
 
 ### [PEER-30] Yjs collab transport: sync WS + awareness
-`todo` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
+`done` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
 Scope: store Yjs doc binaries+meta, relay opaque CRDT blobs S2S, broadcast updates+awareness on collab channel; useYDoc(docId) hook.
 AC: [ ] 2 browsers same doc merge realtime [ ] awareness broadcasts+clears on disconnect [ ] yjs state persists
 
@@ -1187,7 +1187,7 @@ Scope: relay role config (enabled/capacity/TTL/allowed), deposit (mutual-trust+l
 AC: [ ] deposit stores by recipient, relay never decrypts [ ] signed pickup returns, ack deletes [ ] limits enforced, mutual-trust only
 
 ### [PEER-39] Relay attestation: verify TEE before send
-`todo` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
+`done` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
 Scope: relay exposes attestation doc; sender validates vs policy before deposit, pluggable verifier (start AWS Nitro), strict reject-on-failure.
 AC: [ ] sender verifies attestation before deposit [ ] failed/absent rejects relay [ ] verifier interface extensible
 
