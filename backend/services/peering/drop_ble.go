@@ -13,6 +13,12 @@
 //
 // Naming: all exported identifiers are prefixed DropBLE*, all unexported dropBLE*.
 // Zero redeclaration with drop.go's drop*/Drop* names.
+//
+// Wire-in (PEER-42): DropBLEService has no HTTP routes — wire via:
+//
+//	bleSvc := peering.NewDropBLEService(vulaID, displayName, dropSvc)
+//	bleSvc.Start(ctx)
+//	defer bleSvc.Stop()
 package peering
 
 import (
