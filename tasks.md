@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 181 / 229 real tasks done (79%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 186 / 229 real tasks done (81%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 11 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 15 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -31,12 +31,12 @@
 | OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 3 / 5 | `[██████░░░░]` 60% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 4 / 6 | `[███████░░░]` 67% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 5 / 6 | `[████████░░]` 83% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 3 / 4 | `[████████░░]` 75% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 2 / 3 | `[███████░░░]` 67% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **181 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **186 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1065,12 +1065,12 @@ Scope: create→sign→deliver peer inbound/message; inbound verify+store ~/.vul
 AC: [ ] msg to approved peer stored their inbox [ ] inbound rejects non-approved/bad sig [ ] list+history persist [ ] recipient gets realtime frame
 
 ### [PEER-15] Offline queue: outbox, retry/backoff, ACK, reconnect sync
-`todo` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
+`done` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
 Scope: Persist unacked outbox, retry 1s/5s/30s/5m/1h then periodic, ACK removes, reconnect pull since last-seen.
 AC: [ ] unreachable stays+retried [ ] ACK removes [ ] online peer pulls missed
 
 ### [PEER-16] Media transfer: upload, hash ref, S2S fetch, thumbnails
-`todo` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
+`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
 Scope: media store ~/.vulos/peering/media/, upload→hash+signed URL, S2S fetch on inbound refs, image/video thumbnails.
 AC: [ ] upload→stable hash+signed URL [ ] recipient fetches own copy post-offline [ ] thumbnails [ ] signed URL rejects tamper/expire
 
@@ -1080,7 +1080,7 @@ Scope: Messages view: conversation list, thread, composer, drag media, live mess
 AC: [ ] conversations+threads from API [ ] text+media end-to-end [ ] incoming realtime no refresh
 
 ### [PEER-18] Groups/rooms: definition, membership, fan-out
-`todo` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
+`done` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
 Scope: group create/list/add-member, store ~/.vulos/peering/groups/, fan-out via PEER-14+PEER-15, signed+verified per recipient.
 AC: [ ] create distributes def to members [ ] group msg delivered each member [ ] add-member policy-gated propagates
 
@@ -1175,7 +1175,7 @@ Scope: BLE advertise service UUID + truncated Vula ID hash w/ rotation, scan to 
 AC: [ ] advertises vula-drop BLE when discoverable [ ] scan surfaces devices [ ] payload rotates, no hw=no-op
 
 ### [PEER-37] E2E encryption: X25519 + XChaCha20-Poly1305
-`todo` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
+`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
 Scope: X25519 from identity, per-conversation shared secret, encrypt/decrypt message bodies+CRDT payloads XChaCha20-Poly1305 transparently; servers store ciphertext only.
 AC: [ ] bodies ciphertext at rest+transit, only endpoints decrypt [ ] wrong key fails closed [ ] round-trip+key exchange tests
 
@@ -1529,7 +1529,7 @@ _Design doc: [`roadmap/SIGNING.md`](../roadmap/SIGNING.md)_  ·  _Prefix: `SIGN-
 > Why this matters: The integrity backbone. dm-verity on the squashfs + per-boot-stage signature verification (shim → bootloader → kernel → initramfs → squashfs). Offline (air-gapped/HSM) signing with a root-signs-intermediate PKI. Key rotation + revocation via a single monotonic "minimum trusted epoch" — no CRL, no clock dependence — which also gives rollback/downgrade protection. All in **Go** (decisions.md J — no Rust).
 
 ### [VERITY-01] dm-verity hashing of the squashfs in build.sh
-`todo` · P0 · M · dep: BMINIT-14 · parallel: no — build.sh, new scripts/verity/
+`done` · P0 · M · dep: BMINIT-14 · parallel: no — build.sh, new scripts/verity/
 Scope: After `mksquashfs`, generate the dm-verity Merkle tree + root hash over `os-core.squashfs`; emit the root hash for inclusion in `stable.json` (OSDIST-01). The root hash is the image's content identity. Pure tooling step in the build.
 AC: [ ] build produces verity hash tree + root hash for the squashfs [ ] root hash matches on re-verify [ ] root hash surfaced for manifest signing [ ] sh -n build.sh
 
