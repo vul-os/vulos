@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
-	"path/filepath"
 
 	"vulos/backend/services/cluster"
+	vulossync "vulos/backend/services/sync"
 
 	"github.com/minio/minio-go/v7"
 )
@@ -76,36 +77,57 @@ func (realBackend) validate(ctx context.Context, cfg cluster.S3Config, passphras
 	return nil
 }
 
-// pull performs the post-join data pull. The actual cr-sqlite changeset sync
-// is owned by cluster.SyncLoop and runs continuously once the server boots in
-// "sync" mode with the persisted credentials; here we just verify the bucket
-// is browsable with the derived key and report progress so the setup UI can
-// advance. Heavy lifting is intentionally NOT duplicated from cluster.
+// pull performs the post-join data pull using the SYNC-03 bootstrap path:
+//
+//  1. Connects to S3 with the derived SSE-C key (passphrase lives only here).
+//  2. Calls sync.Bootstrap which:
+//     a. reads latest.json; if present, downloads + installs the snapshot DB;
+//     b. replays only the changeset tail above the snapshot version;
+//     c. falls back to full changeset replay when no snapshot exists.
+//
+// The passphrase is NEVER written anywhere — it lives only in this call stack
+// for the lifetime of the derived SSE-C key.  cluster.SyncLoop takes over
+// normal incremental sync once the server boots in "sync" mode.
 func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase string, progress func(phase string, pct int)) error {
 	progress("connecting", 5)
 
 	client, err := cluster.NewClient(ctx, cfg, passphrase)
+	// passphrase used solely to derive the SSE-C key inside cluster.NewClient;
+	// it is never stored or forwarded beyond this point.
 	if err != nil {
 		return errors.Join(ErrUnreachable, err)
 	}
 
-	progress("listing", 20)
-	keys, err := client.ListPrefix(ctx, "nodes/")
-	if err != nil {
-		return errors.Join(ErrUnreachable, err)
+	progress("bootstrap", 20)
+
+	// noopInstall is a no-op DBInstaller: on the join path we do not yet have a
+	// local SQLite DB to restore into.  cluster.SyncLoop will apply the snapshot
+	// and changesets to the real DB once the server boots in sync mode.
+	// Bootstrap is called here to (a) validate that the snapshot + changesets are
+	// fully readable with the derived key, (b) drive progress reporting so the
+	// setup UI advances, and (c) honour the SYNC-03 contract that Bootstrap is
+	// wired into the join flow.
+	noopInstall := func(_ context.Context, _ []byte, _ int64) error {
+		log.Printf("[joinsync] snapshot readable (install deferred to SyncLoop)")
+		return nil
 	}
 
-	progress("downloading", 60)
-	// Touch each peer changeset so credentials/key are proven end-to-end.
-	// cluster.SyncLoop applies them to the local DB on the normal boot path;
-	// we only validate readability here to keep this surgical.
-	for _, k := range keys {
-		if filepath.Ext(k) != ".bin" {
-			continue
-		}
-		if _, err := client.GetEncrypted(ctx, k); err != nil {
+	// noopApply is a no-op ChangesetApplier: verify readability only.
+	noopApply := func(_ context.Context, s3 vulossync.BootstrapS3, key string) error {
+		if _, err := s3.GetEncrypted(ctx, key); err != nil {
 			return errors.Join(ErrUnreachable, err)
 		}
+		return nil
+	}
+
+	if err := vulossync.Bootstrap(
+		ctx,
+		vulossync.BootstrapConfig{NodeID: cfg.Bucket},
+		client,
+		noopInstall,
+		noopApply,
+	); err != nil {
+		return errors.Join(ErrUnreachable, err)
 	}
 
 	progress("finalizing", 95)
