@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 235 / 236 real tasks done (100%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 236 / 236 real tasks done (100%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 41 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 42 / 42 | `[██████████]` 100% — PEER-42 wiring landed; all peering routes serve, no 501s |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 18 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -1202,7 +1202,7 @@ Scope: feed create/list/publish/get/entries, hash-chained signed entries (prev_h
 AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] public/link no auth, peers gated [ ] subscribers since last seq
 
 ### [PEER-42] Wire all peering sub-handlers into cmd/server
-`in progress` · P0 · L · dep: PEER-01 through PEER-41 · parallel: no — backend/cmd/server/main.go, backend/cmd/server/peering.go
+`done` · P0 · L · dep: PEER-01 through PEER-41 · parallel: no — backend/cmd/server/main.go, backend/cmd/server/peering.go
 Scope: For each sub-handler in `backend/services/peering/` (contacts_api, verify, profile, discovery, messages/inbox/outbox, media, groups, call/callhistory, ice, sfu, collab, drop/drop_ble, crypto, relay/relay_attest, endpoints, feeds, bandwidth): construct the backing store, call the corresponding `Register*Handlers` function, and remove the matching 501 stub in peering.go. Ensure no duplicate ServeMux registrations trigger a panic at startup. Work is underway on a branch.
 AC: [ ] No peering route returns 501 [ ] Server starts without ServeMux dup-panic [ ] go test ./services/peering/... green [ ] go build ./... passes
 
