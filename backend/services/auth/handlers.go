@@ -63,6 +63,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/security/unban", h.handleUnban)
 	mux.HandleFunc("GET /api/auth/security/stats", h.handleSecurityStats)
 
+	// CLOGIN-01: cloud login endpoints
+	mux.HandleFunc("POST /api/auth/cloudlogin", h.handleCloudLogin)
+	mux.HandleFunc("GET /api/auth/cloud/status", h.handleCloudStatus)
+
 	log.Printf("[auth] registered providers: %s", strings.Join(providerNames(h.providers), ", "))
 }
 
@@ -81,6 +85,8 @@ var publicPaths = map[string]bool{
 	"/api/setup/join/status": true, // INIT-08: unauthenticated join progress poll
 	"/api/browser/status":    true,
 	"/manifest.json":         true,
+	"/api/auth/cloudlogin":   true, // CLOGIN-01: unauthenticated cloud login
+	"/api/auth/cloud/status": true, // CLOGIN-01: enrollment status check (setup-time)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -272,6 +278,81 @@ func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, sessionCookie(r, sess.Token))
 
 	writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
+}
+
+// ─── CLOGIN-01: Cloud login ───────────────────────────────────────────────────
+
+// handleCloudLogin validates a cloud-signed login token and issues an OS session.
+//
+// Request body (JSON):
+//
+//	{
+//	  "token":     <canonical JSON bytes, base64-encoded>,
+//	  "signature": <base64 Ed25519 signature>
+//	}
+//
+// On success: sets session cookie + returns CloudSessionInfo JSON.
+// On failure: 401 with error details.
+//
+// This handler does NOT make any outgoing network call — the cloud token is
+// validated locally against the baked broker pubkey.
+func (h *Handler) handleCloudLogin(w http.ResponseWriter, r *http.Request) {
+	ip := extractIP(r)
+	if h.limiter.IsBanned(ip) {
+		writeErr(w, 429, "too many attempts")
+		return
+	}
+
+	var req CloudLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request body")
+		return
+	}
+	if len(req.Token) == 0 || req.Signature == "" {
+		writeErr(w, 400, "token and signature are required")
+		return
+	}
+
+	pub, err := LoadBrokerPubkey()
+	if err != nil {
+		// Device is not enrolled — cloud login not available.
+		writeErr(w, 503, "cloud login not configured on this device")
+		return
+	}
+
+	verifier := NewCloudLoginVerifier(h.store, pub)
+	info, err := verifier.Login(req.Token, req.Signature)
+	if err != nil {
+		h.limiter.RecordFailure(ip)
+		switch err {
+		case ErrTokenExpired:
+			writeErr(w, 401, "cloud token has expired")
+		case ErrBadSignature:
+			writeErr(w, 401, "invalid cloud token signature")
+		case ErrNoBrokerPubkey:
+			writeErr(w, 503, "cloud login not configured on this device")
+		default:
+			writeErr(w, 401, err.Error())
+		}
+		return
+	}
+
+	h.limiter.RecordSuccess(ip)
+
+	// Set session cookie so the browser is authenticated from here on.
+	http.SetCookie(w, sessionCookie(r, info.SessionToken))
+
+	writeJSON(w, info)
+}
+
+// handleCloudStatus reports whether this device is enrolled with Vulos Cloud.
+// Used by the login screen and install wizard to decide whether to show the
+// cloud account option by default.
+func (h *Handler) handleCloudStatus(w http.ResponseWriter, r *http.Request) {
+	enrolled := IsCloudEnrolled()
+	writeJSON(w, map[string]any{
+		"enrolled": enrolled,
+	})
 }
 
 func (h *Handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
