@@ -120,6 +120,42 @@ func (c *PeerClient) Post(ctx context.Context, baseURL, envelopeType string, env
 	return nil
 }
 
+// PostToEndpoints delivers a signed Envelope to a peer using the multi-endpoint
+// failover strategy introduced in PEER-40.  It looks up all registered
+// endpoints for toVulaID in the local registry, converts them into an
+// EndpointDeliveryRequest, and delegates to EndpointFailoverDeliver.
+//
+// If no endpoints are registered for toVulaID it falls back to a direct Post
+// to baseURL (the same behaviour as before PEER-40).
+//
+// msgID should be the UUIDv7 message identifier for deduplication; pass an
+// empty string to skip dedup.
+func (c *PeerClient) PostToEndpoints(ctx context.Context, toVulaID, baseURL, msgID, envelopeType string, env *Envelope) error {
+	if env.Signature == "" {
+		return fmt.Errorf("peering/transport: envelope must be signed before sending")
+	}
+
+	eps := epRegistry.epList(toVulaID)
+	if len(eps) == 0 {
+		// No registered endpoints — fall back to single-address delivery.
+		return c.Post(ctx, baseURL, envelopeType, env)
+	}
+
+	payload, err := json.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("peering/transport: marshal envelope: %w", err)
+	}
+
+	req := EndpointDeliveryRequest{
+		MsgID:         msgID,
+		Endpoints:     eps,
+		Path:          "/api/peering/inbound/" + envelopeType,
+		Payload:       payload,
+		SortByLatency: true,
+	}
+	return EndpointFailoverDeliver(ctx, req)
+}
+
 // ─── SSRF guard transport ─────────────────────────────────────────────────────
 
 // ssrfGuardTransport wraps an inner http.RoundTripper and rejects requests

@@ -177,9 +177,14 @@ type WKIdentityResponse struct {
 	Image string `json:"image,omitempty"`
 	// Bio is included only when visibility == "public".
 	Bio string `json:"bio,omitempty"`
+	// Endpoints is the list of server addresses this node is reachable at,
+	// sorted by priority (lower = higher priority). Populated from the local
+	// endpoint registry (PEER-40). Empty when no endpoints are registered.
+	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
 }
 
-// wkBuildPublicResponse filters the own profile down to public-only fields.
+// wkBuildPublicResponse filters the own profile down to public-only fields
+// and embeds any registered endpoints from the endpoint registry (PEER-40).
 func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
 	resp := WKIdentityResponse{
 		VulaID:        p.VulaID,
@@ -192,6 +197,10 @@ func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
 	}
 	if p.Visibility.Bio == WKVisibilityPublic {
 		resp.Bio = p.Bio
+	}
+	// Embed registered endpoints so peers know all addresses for this node.
+	if eps := EPFromRegistry(p.VulaID); len(eps) > 0 {
+		resp.Endpoints = eps
 	}
 	return resp
 }
@@ -209,6 +218,10 @@ type WKPeerProfile struct {
 	VerifiedEmail bool   `json:"verified_email"`
 	Slug          string `json:"slug,omitempty"`
 	Image         string `json:"image,omitempty"`
+	// Endpoints lists the server addresses advertised by the peer in their
+	// well-known response, sorted by priority (PEER-40). May be empty when
+	// the peer has not registered any endpoints or is running an older version.
+	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
 	// CachedAt records when we last fetched this profile.
 	CachedAt time.Time `json:"cached_at"`
 	// ServerAddr is the address we fetched from.
@@ -319,6 +332,7 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 		VerifiedEmail: wk.VerifiedEmail,
 		Slug:          wk.Slug,
 		Image:         wk.Image,
+		Endpoints:     wk.Endpoints,
 		CachedAt:      time.Now(),
 		ServerAddr:    serverAddr,
 	}

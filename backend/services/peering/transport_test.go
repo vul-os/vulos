@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -471,6 +472,68 @@ func TestIsPrivateHostLoopbackResolution(t *testing.T) {
 
 	if !isPrivateHost("127.0.0.1") {
 		t.Error("isPrivateHost(127.0.0.1) = false, want true")
+	}
+}
+
+// ─── PostToEndpoints tests (PEER-40) ─────────────────────────────────────────
+
+// TestPeerClientPostToEndpoints_UsesRegistry verifies that PostToEndpoints
+// delivers to the TLS endpoint registered in the local registry for toVulaID.
+func TestPeerClientPostToEndpoints_UsesRegistry(t *testing.T) {
+	resetRegistry()
+	defer resetRegistry()
+
+	var hits int64
+	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tlsSrv.Close()
+
+	// Override the shared HTTP client so it trusts the test TLS cert.
+	origClient := epHTTPClient
+	epHTTPClient = tlsSrv.Client()
+	defer func() { epHTTPClient = origClient }()
+
+	const toVulaID = "vula:ed25519:postto-test"
+	tlsHost := strings.TrimPrefix(tlsSrv.URL, "https://")
+	epRegistry.epRegister(&epEndpoint{
+		ID:      "pte-ep1",
+		VulaID:  toVulaID,
+		Server:  tlsHost,
+		Healthy: true,
+	})
+
+	client := NewPeerClient()
+	priv, fromID := newTestKeypair(t)
+	env := signedEnvelope(t, priv, fromID, toVulaID, TypeMessage)
+
+	ctx := context.Background()
+	err := client.PostToEndpoints(ctx, toVulaID, "", "msg-pte-001", TypeMessage, env)
+	if err != nil {
+		t.Fatalf("PostToEndpoints: %v", err)
+	}
+	if hits == 0 {
+		t.Error("expected at least one hit on TLS endpoint via registry")
+	}
+}
+
+// TestPeerClientPostToEndpoints_FallbackToBaseURL verifies that PostToEndpoints
+// falls back to a direct Post when no endpoints are registered for the peer.
+func TestPeerClientPostToEndpoints_FallbackToBaseURL(t *testing.T) {
+	resetRegistry()
+	defer resetRegistry()
+
+	client := NewPeerClient()
+	priv, fromID := newTestKeypair(t)
+	_, toID := newTestKeypair(t)
+	env := signedEnvelope(t, priv, fromID, toID, TypeMessage)
+
+	ctx := context.Background()
+	// No endpoints registered → falls back to Post(baseURL) → SSRF guard refuses localhost.
+	err := client.PostToEndpoints(ctx, toID, "https://localhost:8080", "msg-fallback-001", TypeMessage, env)
+	if err == nil {
+		t.Error("expected SSRF error for localhost fallback, got nil")
 	}
 }
 
