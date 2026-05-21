@@ -59,6 +59,13 @@ type ContactAPI struct {
 	priv     ed25519.PrivateKey
 	vulaID   string // local node's Vula ID
 	myServer string // local node's publicly reachable "host:port"
+
+	// OnApprove is an optional hook called after a contact transitions to
+	// StateApproved.  It receives the approved contact's Vula ID and the
+	// server address stored in the contact record.  The hook is invoked
+	// synchronously before the HTTP response is written, but implementations
+	// should be non-blocking (e.g. use FetchPeerProfileAsync).
+	OnApprove func(vulaID, serverAddr string)
 }
 
 // NewContactAPI constructs a ContactAPI.
@@ -306,6 +313,12 @@ func (a *ContactAPI) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[peering/contacts] approved contact %s", vulaID)
+
+	// Trigger a profile fetch for the newly-approved peer so our cache is
+	// warm before the UI asks for it (PEER-12 AC: "approve triggers fetch").
+	if a.OnApprove != nil {
+		a.OnApprove(vulaID, c.Server)
+	}
 
 	// Push a real-time notification to browser tabs so the UI can update.
 	a.pushNotification("contact_approved", map[string]any{

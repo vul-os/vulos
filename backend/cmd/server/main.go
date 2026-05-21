@@ -1496,7 +1496,20 @@ func main() {
 		if contactStore != nil {
 			// Contacts (request/approve/block/remove/list + inbound/request).
 			contactAPI := peering.NewContactAPI(contactStore, peerClient, peeringHub, pPriv, pVulaID, myServer)
+			// PEER-12 AC: "approve triggers fetch" — immediately warm the
+			// peer profile cache when a contact is approved.
+			contactAPI.OnApprove = peering.FetchPeerProfileAsync
 			contactAPI.RegisterContactHandlers(peeringMux)
+
+			// PEER-12: periodic background refresh of approved peers' profiles.
+			peering.StartPeerProfileSync(ctx, func() []peering.WKApprovedPeer {
+				contacts := contactStore.ListByState(peering.StateApproved)
+				peers := make([]peering.WKApprovedPeer, 0, len(contacts))
+				for _, c := range contacts {
+					peers = append(peers, peering.WKApprovedPeer{VulaID: c.VulaID, ServerAddr: c.Server})
+				}
+				return peers
+			})
 
 			// Messaging (conversations + inbound/message).
 			if inboxStore != nil {
