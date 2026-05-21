@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 160 / 227 real tasks done (70%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 163 / 229 real tasks done (71%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -31,12 +31,12 @@
 | OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 0 / 6 | `[░░░░░░░░░░]` 0% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
-| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 0 / 4 | `[░░░░░░░░░░]` 0% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 1 / 6 | `[█░░░░░░░░░]` 17% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 1 / 4 | `[██░░░░░░░░]` 25% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
-| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 0 / 4 | `[░░░░░░░░░░]` 0% — manifest concurrency + run-lease + live collab (NEW, D94) |
+| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 1 / 4 | `[██░░░░░░░░]` 25% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **160 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **163 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1539,7 +1539,7 @@ Scope: Verify-capable initramfs (Go) checks the signature of each next stage bef
 AC: [ ] each stage signature-verified before exec [ ] squashfs verity root hash + sig verified before pivot [ ] broken sig / hash mismatch halts boot [ ] GOOS=linux build, unit tests for the verifier
 
 ### [SIGN-01] Canonical signing bytes + detached-signature format (Go)
-`todo` · P0 · M · dep: none · parallel: yes — new backend/services/signing/
+`done` · P0 · M · dep: none · parallel: yes — new backend/services/signing/
 Scope: Define deterministic canonical bytes for `stable.json` and the `.sig` detached-signature format over artifacts; Sign/Verify helpers (Go, no Rust). Shared by OSDIST-01 (manifest) and the release-signing tooling (SIGN-03). No key custody here.
 AC: [ ] canonical bytes byte-stable [ ] Sign/Verify round-trip, tamper rejected [ ] format documented [ ] unit tests
 
@@ -1567,7 +1567,7 @@ _Design doc: [`roadmap/COORDINATION.md`](../roadmap/COORDINATION.md)_  ·  _Pref
 > Why this matters: Leaderless mutual exclusion across N equal instances using only the shared bucket — no leader election, correctness never depends on any external service. One primitive: a bucket-backed lease with a monotonic fencing token, an always-present object mutated via `If-Match <etag>` CAS. Serves run-leases (singleton apps), singleton jobs, and snapshot/compaction ownership. Two coordination mechanisms split by latency: bucket leases (coarse/durable) vs the peering/relay hot path (real-time presence — see COLLAB-*).
 
 ### [LEASE-01] Bucket-backed lease primitive (`If-Match` CAS + fencing token)
-`todo` · P0 · L · dep: CLUSTER-03 · parallel: yes — new backend/services/lease/lease.go
+`done` · P0 · L · dep: CLUSTER-03 · parallel: yes — new backend/services/lease/lease.go
 Scope: Always-present lease object `leases/<scope>.json` (state free|held, holder, fence, expires_at), created once at cluster init, mutated only via `If-Match <etag>` CAS: acquire (free→held), renew (held→held + fence bump), release (held→free). Hand the monotonic fence token to callers (stale-fence rejection). **Do NOT use `If-None-Match: *`** (MinIO #20346 wontfix) — pre-create + only `If-Match`. Works on AWS S3 (SigV4), MinIO, Tigris.
 AC: [ ] acquire/renew/release via If-Match CAS [ ] losing racer gets 412 + backs off [ ] fence increases monotonically, stale fence rejected [ ] no If-None-Match:* anywhere [ ] unit test against mock + (skippable) MinIO
 
@@ -1618,7 +1618,7 @@ _Design doc: [`roadmap/CONCURRENCY.md`](../roadmap/CONCURRENCY.md)_  ·  _Prefix
 > Why this matters: One profile legitimately live in many locations at once. Conflict policy per data type (LWW / CRDT counter / sequence-CRDT / lease). Apps **opt INTO** concurrency via the manifest: `singleton` (default, safe — active-passive, infra-enforced run-lease, fails over), `replicated` (active-active CRDT merge), `collaborative` (active-active + presence/awareness on the peering/relay hot path). Live collaboration is IN SCOPE. App-manifest doc = APP-MANIFEST.md.
 
 ### [CONC-01] Add `concurrency` field to app manifest (singleton|replicated|collaborative)
-`todo` · P0 · M · dep: none · parallel: no — backend/services/appnet/manifest.go
+`done` · P0 · M · dep: none · parallel: no — backend/services/appnet/manifest.go
 Scope: Extend `AppManifest` with `Concurrency string` (`singleton`|`replicated`|`collaborative`; empty defaults to `singleton`). Validate (mirror the `visibility` validation). Signed with the manifest (integrity-protected — can't be flipped to active-active post-publish). Clarify in comments vs the legacy local `singleton` bool (per-machine instance constraint) vs cluster-wide active-passive policy.
 AC: [ ] field validated to 3 values, default singleton [ ] signed/validated alongside the rest of the manifest [ ] legacy `singleton` bool vs `concurrency` documented [ ] unit test default + validation + round-trip [ ] go build
 
