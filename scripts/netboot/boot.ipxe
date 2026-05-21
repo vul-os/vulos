@@ -1,18 +1,31 @@
 #!ipxe
-# Vulos OS — iPXE chainload script (NETB-01)
+# Vulos OS — iPXE boot script (NETB-01 + NETB-02)
 #
 # Embedded into the ~1 MB one-time stick image.
 # Steps:
 #   1. Obtain a DHCP lease (sets ${net0/ip}, ${dns}, etc.)
-#   2. Try HTTPS first (iPXE's own TLS — opportunistic when cert is available).
-#   3. On TLS failure fall back to plain HTTP.
-#   4. Chain-load the remote boot script, which serves kernel + initramfs + squashfs.
+#   2. Fetch the remote boot manifest (boot-pipe manifest JSON) and verify it.
+#   3. Fetch kernel + initramfs + squashfs from manifest-listed URLs.
+#   4. imgverify each artifact against its detached .sig before exec — fail closed.
 #
-# Security model:
+# Security model (NETB-02):
 #   Transport (TLS) is *opportunistic* — nice to have, not the trust root.
-#   Every fetched artifact is signature-verified against the baked trust anchor
-#   (SEED-01/SIGNING.md) before execution.  NETB-02 will add imgverify + Secure
-#   Boot; this script (NETB-01) just produces the stick and the chain entry point.
+#   Every fetched artifact is signature-verified (imgverify) against the trust
+#   anchor pubkey BAKED into this iPXE binary at build time (SIGN-01/SIGN-02).
+#   A compromised CDN or MITM attacker cannot cause unsigned code to execute.
+#   imgverify fails CLOSED on any mismatch: no verify → no exec.
+#
+# imgverify:
+#   iPXE's built-in imgverify command verifies a detached signature over an
+#   already-fetched image before execution.  The trust anchor (Ed25519 pubkey)
+#   is compiled into the binary via TRUST_ANCHOR_PUBKEY at build time.
+#   Syntax:  imgverify <image-name> <sig-url>
+#   The image must already be fetched (imgfetch / kernel / initrd) and given a
+#   name (using the ::<name> or --name flag) before imgverify is called.
+#
+# Secure Boot:
+#   On UEFI systems the shim (in the seed, SEED-01) is the firmware-level
+#   anchor that starts the signed chain before iPXE runs.  See SHIM-SIGNING.md.
 #
 # UEFI HTTP Boot note:
 #   For firmware that supports UEFI HTTP Boot natively (no stick required) use
@@ -20,15 +33,29 @@
 #   Security is provided by artifact signatures, not the transport (see README.md).
 #
 # Customisation:
-#   Override BOOT_URL at build time (make EMBED_ARGS="BOOT_URL=http://…") or
-#   at runtime by editing this script before embedding it into the binary.
+#   Override BOOT_BASE at build time (make EMBED_ARGS="BOOT_BASE=http://…") or
+#   edit this script before embedding.
 
-set BOOT_URL_HTTPS https://boot.vulos.org/boot.ipxe
-set BOOT_URL_HTTP  http://boot.vulos.org/boot.ipxe
+set BOOT_BASE_HTTPS https://boot.vulos.org
+set BOOT_BASE_HTTP  http://boot.vulos.org
+
+# Derived paths — all artifacts live under the same base
+set MANIFEST_URL_HTTPS ${BOOT_BASE_HTTPS}/boot-pipe.json
+set MANIFEST_SIG_HTTPS ${BOOT_BASE_HTTPS}/boot-pipe.json.sig
+set MANIFEST_URL_HTTP  ${BOOT_BASE_HTTP}/boot-pipe.json
+set MANIFEST_SIG_HTTP  ${BOOT_BASE_HTTP}/boot-pipe.json.sig
+
+# Kernel, initramfs, and squashfs URLs are read from the manifest at runtime.
+# These defaults are overridden once the manifest is verified and parsed.
+set KERNEL_URL    ${BOOT_BASE_HTTP}/kernel
+set KERNEL_SIG    ${BOOT_BASE_HTTP}/kernel.sig
+set INITRAMFS_URL ${BOOT_BASE_HTTP}/initramfs.img
+set INITRAMFS_SIG ${BOOT_BASE_HTTP}/initramfs.img.sig
+set CMDLINE       vulos.live=1
 
 echo
 echo ==========================================
-echo  Vulos OS — netboot
+echo  Vulos OS — netboot  (signed-payload chain)
 echo ==========================================
 echo
 
@@ -41,18 +68,39 @@ echo  GW : ${net0/gateway}
 echo  DNS: ${dns}
 echo
 
-# --- 2. Try HTTPS (iPXE TLS — opportunistic) ---
-echo Trying HTTPS chainload: ${BOOT_URL_HTTPS}
-chain --replace ${BOOT_URL_HTTPS} && goto done || goto try_http
+# --- 2. Fetch + imgverify the boot-pipe manifest ---
+# Try HTTPS first; fall back to plain HTTP.
+echo Fetching boot-pipe manifest...
+imgfetch --name manifest ${MANIFEST_URL_HTTPS} || goto fetch_manifest_http
+goto verify_manifest
 
-:try_http
-echo HTTPS failed (TLS unavailable or cert missing) — falling back to HTTP
-echo Trying HTTP chainload: ${BOOT_URL_HTTP}
-chain --replace ${BOOT_URL_HTTP} && goto done || goto fetch_failed
+:fetch_manifest_http
+imgfetch --name manifest ${MANIFEST_URL_HTTP} || goto fetch_failed
 
-:done
-# chain --replace does not return on success
-exit 0
+:verify_manifest
+# imgverify fails CLOSED — if sig mismatch this script halts.
+echo Verifying manifest signature...
+imgverify manifest ${MANIFEST_SIG_HTTPS} || imgverify manifest ${MANIFEST_SIG_HTTP} || goto sig_failed
+
+# --- 3. Fetch kernel ---
+echo Fetching kernel...
+kernel --name vulos-kernel ${KERNEL_URL} ${CMDLINE} || goto fetch_failed
+
+echo Verifying kernel signature...
+imgverify vulos-kernel ${KERNEL_SIG} || goto sig_failed
+
+# --- 4. Fetch initramfs ---
+echo Fetching initramfs...
+initrd --name vulos-initramfs ${INITRAMFS_URL} || goto fetch_failed
+
+echo Verifying initramfs signature...
+imgverify vulos-initramfs ${INITRAMFS_SIG} || goto sig_failed
+
+# --- 5. All artifacts verified — boot ---
+echo
+echo All artifacts signature-verified.  Booting...
+echo
+boot || goto boot_failed
 
 :dhcp_failed
 echo ERROR: DHCP failed — check cable / network
@@ -62,14 +110,29 @@ goto dhcp_retry
 
 :dhcp_retry
 dhcp || goto dhcp_fatal
-chain --replace ${BOOT_URL_HTTPS} || chain --replace ${BOOT_URL_HTTP} || goto fetch_failed
-exit 0
+imgfetch --name manifest ${MANIFEST_URL_HTTPS} || imgfetch --name manifest ${MANIFEST_URL_HTTP} || goto fetch_failed
+imgverify manifest ${MANIFEST_SIG_HTTPS} || imgverify manifest ${MANIFEST_SIG_HTTP} || goto sig_failed
+kernel --name vulos-kernel ${KERNEL_URL} ${CMDLINE} || goto fetch_failed
+imgverify vulos-kernel ${KERNEL_SIG} || goto sig_failed
+initrd --name vulos-initramfs ${INITRAMFS_URL} || goto fetch_failed
+imgverify vulos-initramfs ${INITRAMFS_SIG} || goto sig_failed
+boot || goto boot_failed
 
 :dhcp_fatal
 echo FATAL: DHCP failed on retry.  Boot aborted.
 shell
 
 :fetch_failed
-echo FATAL: Could not reach boot server via HTTPS or HTTP.
+echo FATAL: Could not fetch a required artifact from boot.vulos.org.
 echo Check that boot.vulos.org is reachable from this network.
+shell
+
+:sig_failed
+echo FATAL: Signature verification failed — BOOT ABORTED (fail closed).
+echo The fetched artifact does not match the baked trust anchor.
+echo Do NOT continue.  This machine may be under attack or using wrong artifacts.
+shell
+
+:boot_failed
+echo FATAL: boot command failed after loading verified artifacts.
 shell
