@@ -1561,6 +1561,9 @@ func main() {
 			peering.RegisterCallHandlers(peeringMux, callRelay)
 		}
 
+		// Mesh group call signaling (PEER-26): WebSocket room for 3–4 peer full-mesh.
+		peering.RegisterMeshCallHandlers(peeringMux, peering.NewMeshSignalingHub())
+
 		// Call history (list + record).
 		peering.RegisterCallHistoryHandlers(peeringMux, pRoot)
 
