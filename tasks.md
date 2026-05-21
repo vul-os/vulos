@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 223 / 236 real tasks done (94%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 227 / 236 real tasks done (96%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 30 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 33 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 18 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -34,11 +34,11 @@
 | Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
-| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
+| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 4 / 4 | `[██████████]` 100% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
 | Cloud Login (OS-side) | (this file § CLOGIN-*) | 7 / 7 | `[██████████]` 100% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **223 / 236** | `[█████████░]` 94% |
+| **Total** |  | **227 / 236** | `[██████████]` 96% |
 
 ## How to read a task
 
@@ -1117,17 +1117,17 @@ Scope: shell-wide incoming-call modal on signal call-request + ringtone; backend
 AC: [ ] modal regardless of focus [ ] accept/reject drives signaling [ ] completed/missed recorded+listed
 
 ### [PEER-25] Pre-call lobby: bandwidth, host select, capacity
-`todo` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
+`done` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
 Scope: collect bandwidth reports, table, volunteer SFU host, capacity estimate from host upload per formula.
 AC: [ ] lists ▲up▼down latency [ ] host dropdown defaults initiator, updates capacity [ ] estimate matches math
 
 ### [PEER-26] Mesh group calls (3–4 full-mesh)
-`todo` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
+`done` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
 Scope: multiple RTCPeerConnections full mesh, per-peer signaling, grid, SFU-recommend guard when low bandwidth.
 AC: [ ] 3–4 mesh A/V call [ ] join/leave updates mesh no drop [ ] low-bw triggers SFU prompt
 
 ### [PEER-27] Pion SFU on host (forward, simulcast, Last-N)
-`todo` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
+`done` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
 Scope: Pion SFU room: N PCs, accept 2-layer simulcast, forward selected layer per receiver, Last-N (4/6/9), join/leave; 5+ routes through host SFU.
 AC: [ ] 5+ routes through SFU [ ] simulcast received+forwarded per receiver [ ] Last-N limits [ ] no transcoding
 
@@ -1635,7 +1635,7 @@ Scope: Map data kinds to resolution: settings/most → LWW (field-level, already
 AC: [ ] policy registry resolves each data kind to its strategy [ ] counters merge additively (no lost increments) [ ] exclusive resources route to a lease [ ] unit test per policy
 
 ### [COLLAB-01] Presence/awareness channel on the peering/relay hot path
-`todo` · P2 · L · dep: CONC-01, PEER-30 · parallel: yes — new backend/services/peering/presence_awareness.go
+`done` · P2 · L · dep: CONC-01, PEER-30 · parallel: yes — new backend/services/peering/presence_awareness.go
 Scope: For `concurrency: collaborative` apps, provide an infra **presence/awareness** channel (who's here, cursors, selections) on the **peering/relay hot path** — ephemeral + fast, NOT the bucket. Keep the two coordination mechanisms separate: exclusion → bucket leases (LEASE-*); real-time presence → this hot path. Builds on the Yjs collab transport (PEER-30).
 AC: [ ] collaborative apps get a presence channel over peering (relay fallback) [ ] presence is ephemeral, never written to the bucket [ ] awareness clears on disconnect [ ] does not route through the lease primitive [ ] go build
 
