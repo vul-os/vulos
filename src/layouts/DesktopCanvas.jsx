@@ -11,6 +11,7 @@ import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
 import { useTheme } from '../core/ThemeProvider'
 import AIFirstRun from '../core/AIFirstRun'
 import PublicAppsManager from '../core/PublicAppsManager'
+import IncomingCall from '../builtin/peering/call/IncomingCall'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -243,6 +244,8 @@ export default function DesktopCanvas() {
       <AIFirstRun />
       {/* Public apps manager popover — listens for vulos:open-public-apps */}
       <PublicAppsManager />
+      {/* Incoming call modal + call history — shell-wide, z-[300] (PEER-24) */}
+      <IncomingCall />
     </div>
   )
 }
