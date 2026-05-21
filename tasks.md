@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 194 / 236 real tasks done (82%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 199 / 236 real tasks done (84%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 17 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 19 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -30,15 +30,15 @@
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
 | OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 5 / 5 | `[██████████]` 100% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
-| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 1 / 5 | `[██░░░░░░░░]` 20% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
+| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 2 / 5 | `[████░░░░░░]` 40% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
 | Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
-| Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 7 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
+| Smoke Tests / CI | (decisions.md D93/D94) | 1 / 2 | `[█████░░░░░]` 50% — peering-routes + live-USB QEMU regression guards |
+| Cloud Login (OS-side) | (this file § CLOGIN-*) | 1 / 7 | `[█░░░░░░░░░]` 14% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **194 / 236** | `[████████░░]` 82% |
+| **Total** |  | **199 / 236** | `[████████░░]` 84% |
 
 ## How to read a task
 
@@ -1027,7 +1027,7 @@ AC: [ ] persists across restart [ ] state graph enforced [ ] Can reflects grants
 > **PEERING WIRING GAP (PEER-07, PEER-10 through PEER-41 except PEER-20):** The handler logic for all tasks below exists and is tested in `backend/services/peering/` (contacts_api, verify, profile, discovery, messages, inbox, outbox, media, groups, call, ice, sfu, collab, drop, drop_ble, crypto, relay, relay_attest, endpoints, feeds). However, **none of these sub-handlers are wired into `backend/cmd/server` (main.go or peering.go)**. The live server returns 501 for all contacts/messaging/calls/media/groups/verify/relay/feeds/ice/discovery/drop/collab routes. These tasks are flipped to `todo` until PEER-42 (wiring) lands. PEER-20 (bandwidth) is genuinely wired and stays `done`.
 
 ### [PEER-07] Contact request/approve/block + inbound endpoint
-`todo` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
+`done` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
 Scope: POST contacts/request (sign+send), inbound/request (store pending+notify), requests list, approve/block/delete; approve mutual+notify.
 AC: [ ] request creates pending on recipient [ ] inbound/request allowed w/o approval, others require [ ] approve→approved+notify [ ] block silent drop
 
@@ -1057,7 +1057,7 @@ Scope: Unauth GET /.well-known/vula-id (public fields+verified+endpoints placeho
 AC: [ ] well-known no auth public only [ ] peer profile cached, respects visibility [ ] approve triggers fetch
 
 ### [PEER-13] Email/directory discovery lookup
-`todo` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
+`done` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
 Scope: GET /api/peering/discover?email/name proxy to vulos.org verify/lookup + optional directory → Vula ID+server; configurable.
 AC: [ ] email lookup resolves when opted-in [ ] name search returns matches [ ] graceful empty
 
@@ -1207,7 +1207,7 @@ Scope: For each sub-handler in `backend/services/peering/` (contacts_api, verify
 AC: [ ] No peering route returns 501 [ ] Server starts without ServeMux dup-panic [ ] go test ./services/peering/... green [ ] go build ./... passes
 
 ### [SMOKE-01] Smoke test: all peering routes return non-501
-`todo` · P0 · S · dep: PEER-42 · parallel: yes — new scripts/smoke-peering.sh or backend smoke test
+`done` · P0 · S · dep: PEER-42 · parallel: yes — new scripts/smoke-peering.sh or backend smoke test
 Scope: Regression guard so PEER-* tasks cannot be re-marked done without the routes actually serving. Script (or Go test) starts the server and asserts each previously-501 peering endpoint now returns a non-501 status code. Runs in CI.
 AC: [ ] All previously-501 routes return 2xx/4xx (not 501) [ ] Failure blocks CI merge [ ] Runs headless without external deps
 
@@ -1503,7 +1503,7 @@ Scope: Produce a ~1 MB iPXE USB image whose script chainloads `boot.vulos.org` o
 AC: [ ] iPXE image ≤~1 MB chainloads the HTTPS boot URL [ ] UEFI HTTP Boot URL path documented [ ] both converge on kernel+initramfs+squashfs fetch [ ] build target emits the stick image
 
 ### [NETB-02] Signed-payload boot chain (iPXE imgverify + Secure Boot shim plan)
-`todo` · P1 · M · dep: NETB-01 · parallel: yes — scripts/netboot/, new backend/services/osdist/bootpipe.go
+`done` · P1 · M · dep: NETB-01 · parallel: yes — scripts/netboot/, new backend/services/osdist/bootpipe.go
 Scope: UEFI HTTP Boot is **plain HTTP** on most consumer/laptop hardware (UEFI 2.7 HTTPS Boot is server-class). Safety is signature verification at every step, NOT TLS. iPXE on the stick is built with `imgverify` enabled and our trust-anchor pubkey embedded; every fetched artifact (the .ipxe script, kernel, initramfs, manifest) carries a detached `.sig` that iPXE verifies before exec — fail closed on mismatch. Document the Secure Boot shim signing path (Microsoft UEFI CA OR self-enrolled key for managed fleets). TLS on the iPXE stick is opportunistic — used where supported, never required.
 AC: [ ] iPXE built with imgverify + embedded trust anchor [ ] every fetched artifact has a verifiable .sig [ ] verify-before-exec on every download (fail closed) [ ] Secure Boot shim signing path documented [ ] sh -n scripts; GOOS=linux go build
 
@@ -1651,7 +1651,7 @@ _Design doc: cross-instance cloud account → OS login + cloud-managed profiles_
 > When a user enrolls an instance with Vulos Cloud, the OS gains a **second login mode** alongside the local username/password: a "Cloud account" mode that takes email + password + 2FA and produces an OS session by validating a cloud-signed login token. The cloud is NOT a runtime dependency for login — tokens are validated locally against a baked cloud pubkey, with an offline grace-period cache for "log in when the network is down." Cloud-managed instances treat the cloud as source of truth for the local OS profile (username/password/full name); changes pushed from the cloud apply locally via signed management messages.
 
 ### [CLOGIN-01] OS login screen — Cloud account mode (alongside local)
-`todo` · P0 · L · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, src/auth/Login.jsx (new), backend/services/auth/cloudlogin.go (new)
+`done` · P0 · L · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, src/auth/Login.jsx (new), backend/services/auth/cloudlogin.go (new)
 Scope: Add a "Cloud account" path to the OS login screen alongside the existing local username/password. Cloud mode: prompt for cloud email + password + 2FA (or open a local browser to a cloud activation URL — the device-code style flow). On success the OS receives a short-lived cloud-signed login token (account_id + ulid + expires_at, signed by the cloud's login-broker key the OS has baked at enrollment). Validate locally and create an OS session. Local mode is unchanged. Add a toggle in the install wizard so users on cloud-managed instances default to cloud mode (already-enrolled instances detect cloud enrollment at boot).
 AC: [ ] login screen has Cloud/Local toggle [ ] cloud mode validates a cloud-signed token (no live cloud call required if cached creds valid) [ ] local mode unchanged [ ] cloud-enrolled instances default to cloud at install [ ] go build + npm build
 
