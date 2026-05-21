@@ -1,11 +1,11 @@
 /**
- * CallView — 1-on-1 voice call UI (PEER-22).
+ * CallView — 1-on-1 voice + vc call UI (PEER-22 + PEER-23).
  *
  * Renders three distinct layouts based on call state:
  *   idle     — "Start a call" form (enter peer Vula ID)
  *   calling  — outgoing ring screen (waiting for answer)
  *   ringing  — incoming call screen (accept / reject)
- *   active   — in-call HUD (mute / hang up / duration)
+ *   active   — in-call HUD (mute / hang up / duration + vc/screen/PiP)
  *   ended    — brief "Call ended" flash before returning to idle
  *
  * Props:
@@ -17,9 +17,11 @@
  *
  * The hidden <audio> element for remote audio playback is wired via the
  * setRemoteAudio callback from useWebRTCCall.
+ * The <vc> elements for local/remote vc are wired via useVideoCall refs.
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useWebRTCCall } from './useWebRTCCall'
+import { useVideoCall } from './useVideoCall'
 
 // ---------------------------------------------------------------------------
 // Tiny helpers
@@ -80,12 +82,43 @@ function CallBtn({ onClick, label, icon, color = 'bg-neutral-700 hover:bg-neutra
   )
 }
 
+// PEER-23: quality indicator badge
+function QualityBadge({ quality }) {
+  if (!quality) return null
+  const colors = { good: 'text-green-400', fair: 'text-yellow-400', poor: 'text-red-400', unknown: 'text-neutral-500' }
+  const labels = { good: 'Good', fair: 'Fair', poor: 'Poor', unknown: '—' }
+  const c = colors[quality.quality] ?? colors.unknown
+  const rtt = quality.rttMs != null ? `${quality.rttMs}ms` : ''
+  const loss = quality.lossPercent != null ? ` ${quality.lossPercent}%loss` : ''
+  return (
+    <span className={`text-xs font-mono ${c}`} title={`RTT${rtt}${loss}`}>
+      {labels[quality.quality] ?? '—'}{rtt ? ` · ${rtt}` : ''}
+    </span>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export default function CallView({ myVulaId = '', peeringWS = null, onClose, dialTo = null, onDialToConsumed }) {
   const call = useWebRTCCall({ myVulaId, peeringWS })
+
+  // PEER-23: video layer on top of the base voice call — destructure to avoid
+  // react-hooks/refs false-positives on property access from hook return value.
+  const {
+    localVideoRef,
+    cameraOn,
+    screenSharing,
+    pipActive,
+    quality: videoQuality,
+    videoError,
+    addVideoTransceiver,
+    toggleCamera,
+    toggleScreenShare,
+    requestPip,
+    setRemoteVideoEl,
+  } = useVideoCall(call)
 
   // Remote <audio> element ref
   const audioRef = useRef(null)
@@ -103,6 +136,19 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
     audioRef.current = el
     call.setRemoteAudio(el)
   }, [call])
+
+  // PEER-23: wire remote <video> into both useVideoCall (PiP) and useWebRTCCall (ontrack)
+  const setRemoteVideoRef = useCallback((el) => {
+    setRemoteVideoEl(el)
+    call.setRemoteVideo(el)
+  }, [call, setRemoteVideoEl])
+
+  // PEER-23: add video transceiver once the call becomes active
+  useEffect(() => {
+    if (call.state === 'active') {
+      addVideoTransceiver()
+    }
+  }, [call.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-dial when dialTo prop is set (quick-dial from ContactCard).
   // Consume once so navigating back does not re-trigger.
@@ -287,47 +333,125 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   }
 
   // ---------------------------------------------------------------------------
-  // Layout: active — in-call HUD
+  // Layout: active — in-call HUD (PEER-22 voice + PEER-23 vc layer)
   // ---------------------------------------------------------------------------
   if (call.state === 'active') {
     return (
       <div className="flex flex-col h-full bg-neutral-900 text-white select-none">
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <h2 className="text-sm font-semibold text-neutral-200">In Call</h2>
           </div>
-          <span className="text-xs text-neutral-500 font-mono">{formatDuration(duration)}</span>
+          <div className="flex items-center gap-3">
+            <QualityBadge quality={videoQuality} />
+            <span className="text-xs text-neutral-500 font-mono">{formatDuration(duration)}</span>
+          </div>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
-          <Avatar label={shortId(call.remoteVulaId)} size="lg" />
+        {/* Video area — shown when camera or screen share is active */}
+        <div className="relative flex-1 flex flex-col items-center justify-center gap-4 px-4 overflow-hidden">
+          {/* Remote video */}
+          <video
+            ref={setRemoteVideoRef}
+            autoPlay
+            playsInline
+            className={`w-full rounded-xl object-cover bg-neutral-800 ${cameraOn || screenSharing ? 'max-h-56' : 'hidden'}`}
+          />
 
-          <div className="text-center space-y-1">
-            <p className="text-neutral-100 font-medium">{shortId(call.remoteVulaId)}</p>
-            <p className="text-neutral-500 text-sm">
-              {call.isMuted ? '🔇 Muted' : '🎙 Speaking'}
-            </p>
-          </div>
+          {/* Local camera preview (PiP-style corner) */}
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`absolute bottom-2 right-2 w-24 rounded-lg object-cover bg-neutral-800 border border-neutral-700 shadow-lg ${cameraOn ? 'block' : 'hidden'}`}
+          />
 
-          <div className="flex gap-6">
+          {/* Avatar fallback when no video */}
+          {!cameraOn && !screenSharing && (
+            <div className="flex flex-col items-center gap-3">
+              <Avatar label={shortId(call.remoteVulaId)} size="lg" />
+              <div className="text-center space-y-1">
+                <p className="text-neutral-100 font-medium">{shortId(call.remoteVulaId)}</p>
+                <p className="text-neutral-500 text-sm">
+                  {call.isMuted ? '🔇 Muted' : '🎙 Speaking'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Screen-share label */}
+          {screenSharing && (
+            <p className="text-xs text-blue-400 font-medium">Sharing screen</p>
+          )}
+
+          {/* Video error */}
+          {videoError && (
+            <p className="text-xs text-red-400 text-center px-2">{videoError}</p>
+          )}
+        </div>
+
+        {/* Control bar */}
+        <div className="shrink-0 flex flex-wrap items-center justify-center gap-3 px-4 py-3 border-t border-neutral-800">
+          {/* Mute (from PEER-22) */}
+          <CallBtn
+            onClick={call.toggleMute}
+            label={call.isMuted ? 'Unmute' : 'Mute'}
+            icon={call.isMuted ? '🔇' : '🎙'}
+            color={
+              call.isMuted
+                ? 'bg-yellow-700 hover:bg-yellow-600'
+                : 'bg-neutral-700 hover:bg-neutral-600'
+            }
+          />
+
+          {/* Camera toggle (PEER-23) */}
+          <CallBtn
+            onClick={toggleCamera}
+            label={cameraOn ? 'Cam Off' : 'Cam On'}
+            icon={cameraOn ? '📹' : '📷'}
+            color={
+              cameraOn
+                ? 'bg-blue-700 hover:bg-blue-600'
+                : 'bg-neutral-700 hover:bg-neutral-600'
+            }
+          />
+
+          {/* Screen share toggle (PEER-23) */}
+          <CallBtn
+            onClick={toggleScreenShare}
+            label={screenSharing ? 'Stop Share' : 'Share'}
+            icon={screenSharing ? '🖥️' : '📤'}
+            color={
+              screenSharing
+                ? 'bg-blue-700 hover:bg-blue-600'
+                : 'bg-neutral-700 hover:bg-neutral-600'
+            }
+          />
+
+          {/* PiP (PEER-23) — only shown when video is active */}
+          {(cameraOn || screenSharing) && (
             <CallBtn
-              onClick={call.toggleMute}
-              label={call.isMuted ? 'Unmute' : 'Mute'}
-              icon={call.isMuted ? '🔇' : '🎙'}
+              onClick={requestPip}
+              label={pipActive ? 'Exit PiP' : 'PiP'}
+              icon="⧉"
               color={
-                call.isMuted
-                  ? 'bg-yellow-700 hover:bg-yellow-600'
+                pipActive
+                  ? 'bg-blue-700 hover:bg-blue-600'
                   : 'bg-neutral-700 hover:bg-neutral-600'
               }
             />
-            <CallBtn
-              onClick={call.hangUp}
-              label="Hang Up"
-              icon="📵"
-              color="bg-red-700 hover:bg-red-600"
-            />
-          </div>
+          )}
+
+          {/* Hang up (from PEER-22) */}
+          <CallBtn
+            onClick={call.hangUp}
+            label="Hang Up"
+            icon="📵"
+            color="bg-red-700 hover:bg-red-600"
+          />
         </div>
 
         <audio ref={setAudioRef} autoPlay playsInline className="hidden" />
