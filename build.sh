@@ -16,6 +16,7 @@
 #     --domain os.vulos.org \
 #     --dns-namecheap myuser APIKEY123                  # with Caddy wildcard TLS
 #   sudo ./build.sh --live                             # produce bootable live-USB image
+#   ./build.sh --netboot-stick                        # build ~1 MB iPXE netboot USB stick image
 #
 # Image filenames:
 #   vulos-amd64.tar.gz                        (default, no flags)
@@ -84,6 +85,7 @@ LIVE_MODE=0
 DISK_MODE=0
 REUSE_ROOTFS=0
 DEVICE=""
+NETBOOT_STICK=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -96,6 +98,7 @@ while [ $# -gt 0 ]; do
     --live)        LIVE_MODE=1; shift ;;
     --disk)        DISK_MODE=1; shift ;;
     --reuse-rootfs) REUSE_ROOTFS=1; shift ;;
+    --netboot-stick) NETBOOT_STICK=1; shift ;;
     *) OUTDIR_ARG="$1"; shift ;;
   esac
 done
@@ -164,6 +167,7 @@ echo "${BLUE}║${NC} Arch:   $ARCH"
 echo "${BLUE}║${NC} Suite:  $SUITE"
 echo "${BLUE}║${NC} Output: $OUTDIR"
 [ "$LIVE_MODE" = "1" ] && echo "${BLUE}║${NC} Mode:   live-USB (squashfs + overlayfs)"
+[ "$NETBOOT_STICK" = "1" ] && echo "${BLUE}║${NC} Mode:   netboot-stick (~1 MB iPXE USB)"
 [ -n "$DEPLOY_HOST" ] && echo "${BLUE}║${NC} Deploy: $DEPLOY_HOST"
 [ -n "$DOMAIN" ] && echo "${BLUE}║${NC} Domain: $DOMAIN (+ *.$DOMAIN)"
 [ -n "$NC_USER" ] && echo "${BLUE}║${NC} DNS:    Namecheap ($NC_USER)"
@@ -1115,6 +1119,24 @@ if [ "$DISK_MODE" = "1" ]; then
   rm -f "$ESP_IMG" "$ROOT_IMG"
   echo "  ${GREEN}✓${NC} bootable image: vulos-${ARCH}.img ($(du -h "$DISK_IMG" | cut -f1))"
   echo "${GREEN}Boot it:${NC} scripts/baremetal-smoke.sh --show"
+  echo ""
+fi
+
+# ═══════════════════════════════════
+# 5c. Netboot iPXE stick (--netboot-stick)
+#
+# Produces a ~1 MB iPXE USB stick image that chainloads boot.vulos.org to
+# fetch kernel + initramfs + squashfs for a live-RAM session.  The stick is
+# a one-time bootstrap tool; the installed machine never needs it again.
+#
+# Does NOT require the rootfs build above: it is purely an iPXE binary with
+# an embedded script.  Delegated entirely to scripts/netboot/build-ipxe-stick.sh
+# which tool-guards the iPXE toolchain and prints manual instructions when
+# the toolchain is absent.
+# ═══════════════════════════════════
+if [ "$NETBOOT_STICK" = "1" ]; then
+  echo "${BLUE}▸ Building netboot iPXE stick image (NETB-01)...${NC}"
+  "$ROOT_DIR/scripts/netboot/build-ipxe-stick.sh" --outdir "$OUTDIR"
   echo ""
 fi
 

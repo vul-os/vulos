@@ -1,0 +1,75 @@
+#!ipxe
+# Vulos OS — iPXE chainload script (NETB-01)
+#
+# Embedded into the ~1 MB one-time stick image.
+# Steps:
+#   1. Obtain a DHCP lease (sets ${net0/ip}, ${dns}, etc.)
+#   2. Try HTTPS first (iPXE's own TLS — opportunistic when cert is available).
+#   3. On TLS failure fall back to plain HTTP.
+#   4. Chain-load the remote boot script, which serves kernel + initramfs + squashfs.
+#
+# Security model:
+#   Transport (TLS) is *opportunistic* — nice to have, not the trust root.
+#   Every fetched artifact is signature-verified against the baked trust anchor
+#   (SEED-01/SIGNING.md) before execution.  NETB-02 will add imgverify + Secure
+#   Boot; this script (NETB-01) just produces the stick and the chain entry point.
+#
+# UEFI HTTP Boot note:
+#   For firmware that supports UEFI HTTP Boot natively (no stick required) use
+#   plain HTTP:  http://boot.vulos.org/boot.ipxe
+#   Security is provided by artifact signatures, not the transport (see README.md).
+#
+# Customisation:
+#   Override BOOT_URL at build time (make EMBED_ARGS="BOOT_URL=http://…") or
+#   at runtime by editing this script before embedding it into the binary.
+
+set BOOT_URL_HTTPS https://boot.vulos.org/boot.ipxe
+set BOOT_URL_HTTP  http://boot.vulos.org/boot.ipxe
+
+echo
+echo ==========================================
+echo  Vulos OS — netboot
+echo ==========================================
+echo
+
+# --- 1. DHCP ---
+echo Requesting DHCP lease...
+dhcp || goto dhcp_failed
+
+echo  IP : ${net0/ip}
+echo  GW : ${net0/gateway}
+echo  DNS: ${dns}
+echo
+
+# --- 2. Try HTTPS (iPXE TLS — opportunistic) ---
+echo Trying HTTPS chainload: ${BOOT_URL_HTTPS}
+chain --replace ${BOOT_URL_HTTPS} && goto done || goto try_http
+
+:try_http
+echo HTTPS failed (TLS unavailable or cert missing) — falling back to HTTP
+echo Trying HTTP chainload: ${BOOT_URL_HTTP}
+chain --replace ${BOOT_URL_HTTP} && goto done || goto fetch_failed
+
+:done
+# chain --replace does not return on success
+exit 0
+
+:dhcp_failed
+echo ERROR: DHCP failed — check cable / network
+echo Sleeping 5 s then retrying...
+sleep 5
+goto dhcp_retry
+
+:dhcp_retry
+dhcp || goto dhcp_fatal
+chain --replace ${BOOT_URL_HTTPS} || chain --replace ${BOOT_URL_HTTP} || goto fetch_failed
+exit 0
+
+:dhcp_fatal
+echo FATAL: DHCP failed on retry.  Boot aborted.
+shell
+
+:fetch_failed
+echo FATAL: Could not reach boot server via HTTPS or HTTP.
+echo Check that boot.vulos.org is reachable from this network.
+shell
