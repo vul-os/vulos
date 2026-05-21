@@ -67,6 +67,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/cloudlogin", h.handleCloudLogin)
 	mux.HandleFunc("GET /api/auth/cloud/status", h.handleCloudStatus)
 
+	// CLOGIN-04: cloud account creation proxy
+	mux.HandleFunc("POST /api/auth/cloud/signup", h.handleCloudSignup)
+
 	log.Printf("[auth] registered providers: %s", strings.Join(providerNames(h.providers), ", "))
 }
 
@@ -87,6 +90,7 @@ var publicPaths = map[string]bool{
 	"/manifest.json":         true,
 	"/api/auth/cloudlogin":   true, // CLOGIN-01: unauthenticated cloud login
 	"/api/auth/cloud/status": true, // CLOGIN-01: enrollment status check (setup-time)
+	"/api/auth/cloud/signup": true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

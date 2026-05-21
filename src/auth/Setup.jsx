@@ -139,10 +139,15 @@ export default function Setup({ onComplete }) {
     IS05_sshFingerprint: '',
     IS05_s3AccessKey: '',
     IS05_s3SecretKey: '',
-    // CLOGIN-01: account mode for this install
-    CL01_accountMode: 'local', // 'local' | 'cloud'
+    // CLOGIN-01/04: account mode for this install
+    CL01_accountMode: 'local', // 'local' | 'cloud' | 'create'
     CL01_cloudEmail: '',
     CL01_cloudPassword: '',
+    // CLOGIN-04: create-cloud-account fields
+    CL04_createEmail: '',
+    CL04_createPassword: '',
+    CL04_createConfirm: '',
+    CL04_createFullName: '',
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -988,11 +993,57 @@ function NetworkStep({ config, update, onNext, onPrev }) {
 }
 
 // ═══════════════════════════════════
-// Account  (CLOGIN-01: Local / Cloud toggle)
+// Account  (CLOGIN-01/04: Local / Sign in / Create)
 // ═══════════════════════════════════
+
+// CL04_PasswordStrength evaluates password strength for NIST length-first hints.
+function CL04_PasswordStrength({ password }) {
+  if (!password) return null
+  const len = password.length
+  const hasUpper = /[A-Z]/.test(password)
+  const hasDigit = /\d/.test(password)
+  const hasSymbol = /[^A-Za-z0-9]/.test(password)
+  const varietyBonus = (hasUpper ? 1 : 0) + (hasDigit ? 1 : 0) + (hasSymbol ? 1 : 0)
+
+  let level = 0
+  let label = ''
+  let colour = ''
+
+  if (len < 12) {
+    level = 1; label = 'Too short — needs 12+ characters'; colour = 'bg-red-500'
+  } else if (len < 16 && varietyBonus < 2) {
+    level = 2; label = 'Weak'; colour = 'bg-orange-500'
+  } else if (len < 20) {
+    level = 3; label = 'Fair'; colour = 'bg-yellow-500'
+  } else {
+    level = 4; label = 'Strong'; colour = 'bg-green-500'
+  }
+
+  const bars = [1, 2, 3, 4]
+  return (
+    <div className="mt-1.5">
+      <div className="flex gap-1 mb-1">
+        {bars.map(b => (
+          <div
+            key={b}
+            className={`h-1 flex-1 rounded-full transition-all duration-300 ${b <= level ? colour : 'bg-neutral-800'}`}
+          />
+        ))}
+      </div>
+      <p className={`text-[11px] ${level <= 1 ? 'text-red-400' : level === 2 ? 'text-orange-400' : level === 3 ? 'text-yellow-400' : 'text-green-400'}`}>
+        {label}
+      </p>
+    </div>
+  )
+}
+
 function AccountStep({ config, update, onNext, onPrev }) {
   const { t } = useI18n()
   const [error, setError] = useState('')
+  const [CL04_submitting, CL04_setSubmitting] = useState(false)
+  const [CL04_serverHint, CL04_setServerHint] = useState('')
+
+  const mode = config.CL01_accountMode // 'local' | 'cloud' | 'create'
 
   // ── Local path validation ─────────────────────────────────────────────────
   const validateLocal = () => {
@@ -1008,7 +1059,7 @@ function AccountStep({ config, update, onNext, onPrev }) {
     onNext()
   }
 
-  // ── Cloud path validation ─────────────────────────────────────────────────
+  // ── Cloud sign-in path validation ─────────────────────────────────────────
   const validateCloud = () => {
     if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
       setError('Enter a valid email address')
@@ -1022,45 +1073,127 @@ function AccountStep({ config, update, onNext, onPrev }) {
     onNext()
   }
 
-  const handleNext = config.CL01_accountMode === 'cloud' ? validateCloud : validateLocal
+  // ── Create cloud account ──────────────────────────────────────────────────
+  const handleCreate = async () => {
+    CL04_setServerHint('')
+    setError('')
+
+    if (!config.CL04_createEmail || !config.CL04_createEmail.includes('@')) {
+      setError('Enter a valid email address')
+      return
+    }
+    if (config.CL04_createPassword.length < 12) {
+      setError('Password must be at least 12 characters')
+      return
+    }
+    if (config.CL04_createPassword !== config.CL04_createConfirm) {
+      setError('Passwords do not match')
+      return
+    }
+    if (!config.CL04_createFullName || config.CL04_createFullName.trim().length < 2) {
+      setError('Enter your full name')
+      return
+    }
+
+    CL04_setSubmitting(true)
+    try {
+      const res = await fetch('/api/auth/cloud/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: config.CL04_createEmail.trim().toLowerCase(),
+          password: config.CL04_createPassword,
+          full_name: config.CL04_createFullName.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (res.ok || res.status === 201) {
+        // Success — transition to CLOGIN-05 placeholder route
+        console.log('[CLOGIN-04] signup ok, handing off to CLOGIN-05', data)
+        // Store the email so CLOGIN-05 can pre-fill / display it
+        update('CL01_cloudEmail', config.CL04_createEmail.trim().toLowerCase())
+        update('CL01_accountMode', 'cloud')
+        // Transition: CLOGIN-05 is not yet implemented; advance the wizard
+        onNext()
+        return
+      }
+
+      // Surface specific server guidance
+      const hint = data.hint || data.error || 'Sign-up failed — please try again'
+      CL04_setServerHint(hint)
+    } catch {
+      CL04_setServerHint('Could not reach Vulos Cloud. Check your network and try again.')
+    } finally {
+      CL04_setSubmitting(false)
+    }
+  }
+
+  const handleNext =
+    mode === 'create' ? handleCreate :
+    mode === 'cloud'  ? validateCloud :
+    validateLocal
+
+  const tabs = [
+    {
+      id: 'local',
+      label: 'Local only',
+      icon: (
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+          <circle cx="8" cy="5.5" r="2.5" />
+          <path d="M2.5 13c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+        </svg>
+      ),
+      activeColour: 'text-blue-400',
+    },
+    {
+      id: 'create',
+      label: 'Create account',
+      icon: (
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+          <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
+          <path d="M8 10v4M6 12h4" />
+        </svg>
+      ),
+      activeColour: 'text-emerald-400',
+    },
+    {
+      id: 'cloud',
+      label: 'Sign in',
+      icon: (
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+          <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
+        </svg>
+      ),
+      activeColour: 'text-violet-400',
+    },
+  ]
 
   return (
     <div>
       <StepHeader title={t('setup.account.title')} subtitle={t('setup.account.subtitle')} />
 
-      {/* CLOGIN-01: account mode toggle */}
+      {/* CLOGIN-01/04: three-mode tab strip */}
       <div className="flex rounded-xl bg-neutral-900/70 border border-neutral-800/60 p-1 gap-1 mb-5">
-        <button
-          onClick={() => { update('CL01_accountMode', 'local'); setError('') }}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all
-            ${config.CL01_accountMode === 'local'
-              ? 'bg-neutral-800 text-neutral-100 shadow-sm'
-              : 'text-neutral-500 hover:text-neutral-300'}`}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
-            className={`w-4 h-4 ${config.CL01_accountMode === 'local' ? 'text-blue-400' : 'text-neutral-600'}`}>
-            <circle cx="8" cy="5.5" r="2.5" />
-            <path d="M2.5 13c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
-          </svg>
-          Local account
-        </button>
-        <button
-          onClick={() => { update('CL01_accountMode', 'cloud'); setError('') }}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all
-            ${config.CL01_accountMode === 'cloud'
-              ? 'bg-neutral-800 text-neutral-100 shadow-sm'
-              : 'text-neutral-500 hover:text-neutral-300'}`}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
-            className={`w-4 h-4 ${config.CL01_accountMode === 'cloud' ? 'text-violet-400' : 'text-neutral-600'}`}>
-            <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
-          </svg>
-          Cloud account
-        </button>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => { update('CL01_accountMode', tab.id); setError(''); CL04_setServerHint('') }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all
+              ${mode === tab.id
+                ? 'bg-neutral-800 text-neutral-100 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-300'}`}
+          >
+            <span className={mode === tab.id ? tab.activeColour : 'text-neutral-600'}>
+              {tab.icon}
+            </span>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* ── Local account form ─────────────────────────────────────────── */}
-      {config.CL01_accountMode === 'local' && (
+      {mode === 'local' && (
         <div className="space-y-4">
           <div>
             <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.name_label')}</label>
@@ -1072,7 +1205,6 @@ function AccountStep({ config, update, onNext, onPrev }) {
               className="input text-base py-3"
             />
           </div>
-
           <div>
             <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.username_label')}</label>
             <input
@@ -1082,7 +1214,6 @@ function AccountStep({ config, update, onNext, onPrev }) {
               className="input text-base py-3 font-mono"
             />
           </div>
-
           <div>
             <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.password_label')}</label>
             <input
@@ -1096,8 +1227,91 @@ function AccountStep({ config, update, onNext, onPrev }) {
         </div>
       )}
 
-      {/* ── Cloud account form ─────────────────────────────────────────── */}
-      {config.CL01_accountMode === 'cloud' && (
+      {/* ── CLOGIN-04: Create Cloud Account form ──────────────────────── */}
+      {mode === 'create' && (
+        <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
+          {/* Info banner */}
+          <div className="flex items-start gap-3 bg-emerald-600/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+            </svg>
+            <p className="text-xs text-emerald-300 leading-relaxed">
+              Create a free Vulos Cloud account. Enables remote access, sync, and 2FA across your devices.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Full name</label>
+            <input
+              value={config.CL04_createFullName}
+              onChange={e => { update('CL04_createFullName', e.target.value); setError('') }}
+              placeholder="Ada Lovelace"
+              autoFocus
+              autoComplete="name"
+              className="input text-base py-3"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Email</label>
+            <input
+              type="email"
+              value={config.CL04_createEmail}
+              onChange={e => { update('CL04_createEmail', e.target.value); setError('') }}
+              placeholder="you@example.com"
+              autoComplete="email"
+              className="input text-base py-3"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">
+              Password
+              <span className="ml-1.5 text-neutral-600 font-normal">(12+ characters)</span>
+            </label>
+            <input
+              type="password"
+              value={config.CL04_createPassword}
+              onChange={e => { update('CL04_createPassword', e.target.value); setError(''); CL04_setServerHint('') }}
+              placeholder="Choose a strong password"
+              autoComplete="new-password"
+              className="input text-base py-3"
+            />
+            <CL04_PasswordStrength password={config.CL04_createPassword} />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1.5">Confirm password</label>
+            <input
+              type="password"
+              value={config.CL04_createConfirm}
+              onChange={e => { update('CL04_createConfirm', e.target.value); setError('') }}
+              placeholder="Re-enter password"
+              autoComplete="new-password"
+              className={`input text-base py-3 ${
+                config.CL04_createConfirm && config.CL04_createPassword !== config.CL04_createConfirm
+                  ? 'border-red-500/60'
+                  : config.CL04_createConfirm && config.CL04_createPassword === config.CL04_createConfirm
+                    ? 'border-green-500/40'
+                    : ''
+              }`}
+            />
+          </div>
+
+          {/* Server hint (breach / taken / etc.) */}
+          {CL04_serverHint && (
+            <div className="flex items-start gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 mt-0.5 shrink-0">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+              <p className="text-sm text-amber-300">{CL04_serverHint}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Cloud sign-in form ─────────────────────────────────────────── */}
+      {mode === 'cloud' && (
         <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
           {/* Info banner */}
           <div className="flex items-start gap-3 bg-violet-600/10 border border-violet-500/20 rounded-xl px-4 py-3">
@@ -1105,7 +1319,7 @@ function AccountStep({ config, update, onNext, onPrev }) {
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
             </svg>
             <p className="text-xs text-violet-300 leading-relaxed">
-              Sign in with your Vulos Cloud account. Your cloud credentials will be used for OS login; a local user will be created automatically.
+              Sign in with your existing Vulos Cloud account. Your cloud credentials will be used for OS login; a local user will be created automatically.
             </p>
           </div>
 
@@ -1142,7 +1356,12 @@ function AccountStep({ config, update, onNext, onPrev }) {
 
       {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
 
-      <NavBar onPrev={onPrev} onNext={handleNext} />
+      <NavBar
+        onPrev={onPrev}
+        onNext={handleNext}
+        nextLabel={mode === 'create' && CL04_submitting ? 'Creating account…' : undefined}
+        nextDisabled={mode === 'create' && CL04_submitting}
+      />
     </div>
   )
 }
