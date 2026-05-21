@@ -1603,16 +1603,44 @@ func main() {
 		// Proximity drop codes (generate/redeem).
 		peering.RegisterProximityHandlers(peeringMux, peering.NewProxService(pVulaID, myServer))
 
-		// Realtime collaboration: CRDT transport + REST + inbound sync.
+		// Realtime collaboration: CRDT transport + REST + inbound sync + time-travel.
 		// NOTE: RegisterCollabShareHandlers (collab_share.go) is
 		// deliberately NOT wired — it registers the same
 		// /api/peering/collab/* and /api/peering/inbound/collab-* patterns
 		// as RegisterCollabHandlers, which would panic the ServeMux. The
 		// CRDT transport set (incl. the /sync WebSocket) is the superset.
+		// The collab-invite inbound route (from collab_share/shares) does NOT
+		// conflict and is wired separately via a lightweight SharesService below.
 		if collabStore, cErr := peering.NewCollabStore(filepath.Join(pRoot, "collab")); cErr != nil {
 			log.Printf("[peering] PEER-42 collab store init: %v", cErr)
 		} else {
 			peering.RegisterCollabHandlers(peeringMux, collabStore)
+			// Collab history (time-travel snapshots): GET /api/peering/collab/{doc_id}/history[/{seq}]
+			// and GET /api/peering/collab-sync-v2. Routes are non-overlapping with
+			// RegisterCollabHandlers so they coexist safely on the same mux.
+			peering.RegisterCollabHistoryHandlers(peeringMux, collabStore)
+		}
+
+		// Presence awareness: WebSocket /api/peering/presence/{app_id},
+		// GET /api/peering/presence/{app_id}/peers, and
+		// POST /api/peering/inbound/presence. None of these routes overlap
+		// with other registered patterns.
+		peering.RegisterPresenceHandlers(peeringMux, peering.NewPresenceService())
+
+		// Collab-invite inbound route: POST /api/peering/inbound/collab-invite.
+		// This is the only route from shares.go / collab_share.go that does not
+		// conflict with RegisterCollabHandlers. We wire it via a minimal
+		// SharesService (in-memory ShareStore, no outbound deps needed for the
+		// inbound-only path).
+		if contactStore != nil {
+			sharesSvc := peering.NewSharesService(
+				contactStore,
+				peering.NewShareStore(),
+				peerClient,
+				pPriv,
+				pVulaID,
+			)
+			peeringMux.HandleFunc("POST /api/peering/inbound/collab-invite", sharesSvc.HandleInboundShare)
 		}
 
 		// Mount onto the main mux. Inbound goes through InboundMiddleware
