@@ -56,6 +56,7 @@ import (
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
 	"vulos/backend/services/wine"
+	"vulos/backend/services/wltoplevel"
 )
 
 func main() {
@@ -1791,6 +1792,13 @@ func main() {
 		proc.Signal(syscall.SIGTERM)
 		writeJSON(w, map[string]string{"status": "killed"})
 	})
+
+	// BMINIT-18: wlr-foreign-toplevel-management-v1 window enumeration + control.
+	// Registers GET /api/shell/windows, POST /api/shell/windows/focus,
+	// POST /api/shell/windows/minimize, POST /api/shell/windows/close.
+	// Only meaningful when running under labwc (v2 native mode); when lswt/wlrctl
+	// are absent every call degrades gracefully (empty list / 503).
+	wltoplevel.New().RegisterHandlers(mux)
 
 	// BMINIT-04: native-launch — spawn an arbitrary binary as a Wayland/X11 native window.
 	// Admin-gated; only available when nativeMode == "native".

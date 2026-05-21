@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- labwc rc.xml — Vula OS compositor config
-     Browser (Cog) pinned to background layer; all other windows float on top.
+<!-- labwc rc.xml — Vulos OS compositor config (D93 v2 window model, BMINIT-18)
+     Architecture:
+       background  — wallpaper surface (wl-background or swaybg)
+       overlay     — chrome bar (dock + menubar, always foreground)
+       xdg-toplevel — one Cog/WPE webview per JSX window; SSD decorates all
+     wlr-foreign-toplevel-management-v1 lets the React dock/taskbar track every
+     xdg-toplevel (native + webview) for focus / minimize / close.
 -->
 <labwc_config>
   <theme>
@@ -11,16 +16,59 @@
     </titlebar>
   </theme>
 
-  <!-- Pin the browser window to the background layer -->
+  <!-- Shell browser — spans the full screen as the background surface.
+       The React shell is rendered here; its content IS the desktop.
+       skipTaskbar keeps it out of the wlr-foreign-toplevel list so the
+       dock does not show a "shell" entry.
+       SSD is disabled for this window (the shell supplies its own chrome). -->
   <windowRules>
-    <windowRule identifier="cog" type="full_maximise" skipTaskbar="yes">
+    <windowRule identifier="vulos-shell" type="full_maximise" skipTaskbar="yes" serverDecoration="no">
+      <action name="MoveToLayer" layer="background" />
+    </windowRule>
+
+    <!-- Fallback: any cog window that is NOT the chrome overlay is treated
+         as a per-JSX-window webview; labwc SSD decorates it so the React
+         traffic-light component can be hidden in v2 mode. -->
+    <windowRule identifier="cog" serverDecoration="yes">
+      <!-- Windows open into the normal stacking layer. -->
+    </windowRule>
+
+    <!-- Chrome overlay: the dock / menu-bar process that React mounts as an
+         always-on-top layer-shell surface.  Spawned by vulos-init with
+         app-id "vulos-chrome".  Lives on the overlay layer so it is always
+         above every xdg-toplevel. -->
+    <windowRule identifier="vulos-chrome" skipTaskbar="yes" serverDecoration="no">
+      <action name="MoveToLayer" layer="overlay" />
+    </windowRule>
+
+    <!-- Wallpaper process: swaybg or wl-paste background image.
+         Pinned to the bottom-most layer. -->
+    <windowRule identifier="swaybg" skipTaskbar="yes" serverDecoration="no">
+      <action name="MoveToLayer" layer="background" />
+    </windowRule>
+    <windowRule identifier="wl-background" skipTaskbar="yes" serverDecoration="no">
       <action name="MoveToLayer" layer="background" />
     </windowRule>
   </windowRules>
 
-  <!-- Floating focus: click to focus, no mouse-follow -->
+  <!-- Floating focus: click to focus, raise on focus so the active xdg-toplevel
+       (native or webview) comes to the front within the stacking layer. -->
   <focus>
     <followMouse>no</followMouse>
     <raiseOnFocus>yes</raiseOnFocus>
   </focus>
+
+  <!-- Key bindings: pass-through to the shell for common desktop actions.
+       The shell (React) handles Cmd+K / Cmd+Space; labwc only intercepts
+       compositor-level operations so as not to conflict. -->
+  <keyboard>
+    <!-- Alt+F4 closes the focused window (standard desktop shortcut). -->
+    <keybind key="A-F4">
+      <action name="Close" />
+    </keybind>
+    <!-- Super+D shows/hides the desktop (minimises all non-shell windows). -->
+    <keybind key="W-d">
+      <action name="ToggleShowDesktop" />
+    </keybind>
+  </keyboard>
 </labwc_config>
