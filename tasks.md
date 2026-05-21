@@ -35,8 +35,9 @@
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
-| Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **194 / 229** | `[███████░░░]` 70% |
+| Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards || Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 3 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync (NEW) |
+
+| **Total** |  | **194 / 229** | `[████████░░]` 85% |
 
 ## How to read a task
 
@@ -1640,3 +1641,26 @@ AC: [ ] collaborative apps get a presence channel over peering (relay fallback) 
 ---
 
 <!-- END-BACKLOG -->
+---
+
+## Area: Cloud Login (OS-side)
+
+_Design doc: cross-instance cloud account → OS login + cloud-managed profiles_  ·  _Prefix: `CLOGIN-*`_
+
+> When a user enrolls an instance with Vulos Cloud, the OS gains a **second login mode** alongside the local username/password: a "Cloud account" mode that takes email + password + 2FA and produces an OS session by validating a cloud-signed login token. The cloud is NOT a runtime dependency for login — tokens are validated locally against a baked cloud pubkey, with an offline grace-period cache for "log in when the network is down." Cloud-managed instances treat the cloud as source of truth for the local OS profile (username/password/full name); changes pushed from the cloud apply locally via signed management messages.
+
+### [CLOGIN-01] OS login screen — Cloud account mode (alongside local)
+`todo` · P0 · L · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, src/auth/Login.jsx (new), backend/services/auth/cloudlogin.go (new)
+Scope: Add a "Cloud account" path to the OS login screen alongside the existing local username/password. Cloud mode: prompt for cloud email + password + 2FA (or open a local browser to a cloud activation URL — the device-code style flow). On success the OS receives a short-lived cloud-signed login token (account_id + ulid + expires_at, signed by the cloud's login-broker key the OS has baked at enrollment). Validate locally and create an OS session. Local mode is unchanged. Add a toggle in the install wizard so users on cloud-managed instances default to cloud mode (already-enrolled instances detect cloud enrollment at boot).
+AC: [ ] login screen has Cloud/Local toggle [ ] cloud mode validates a cloud-signed token (no live cloud call required if cached creds valid) [ ] local mode unchanged [ ] cloud-enrolled instances default to cloud at install [ ] go build + npm build
+
+### [CLOGIN-02] Cloud-token signature verification + offline grace-period cache
+`todo` · P0 · M · dep: CLOGIN-01, SIGN-02 · parallel: yes — new backend/services/auth/cloudtoken.go
+Scope: Library that verifies a cloud-issued login token (Ed25519 signed by the cloud's login-broker pubkey embedded at enrollment) and caches the last successful validation for an offline grace period (default 72h, configurable). When offline + within grace, allow login with the cached token credentials. When offline + past grace, fall back to local username/password or refuse. Fail closed on bad signatures. Reuse `services/signing` Verify primitives.
+AC: [ ] valid signed token → ok [ ] tampered token → reject [ ] expired token → reject [ ] offline + within grace → login allowed via cache [ ] offline + past grace → blocked or local fallback [ ] unit tests
+
+### [CLOGIN-03] Apply cloud-pushed profile updates (username/password/name)
+`todo` · P1 · M · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/profile_sync.go
+Scope: Accept signed profile-update messages from the cloud over the existing enrollment/management channel and apply them to the local OS profile (PAM/shadow/passwd; full name; locale). On cloud-managed instances the cloud is the source of truth — local edits get overwritten on the next sync. The message envelope is signed; verify before applying; fail closed. Audit each applied change to a local log.
+AC: [ ] signed profile update applies locally (passwd/shadow updated) [ ] unsigned/tampered message rejected [ ] applied changes audited [ ] cloud disabled → local edits sticky [ ] unit tests
+
