@@ -27,6 +27,7 @@ import (
 	"vulos/backend/services/authvault"
 	"vulos/backend/services/bluetooth"
 	"vulos/backend/services/bootmode"
+	"vulos/backend/services/cluster"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
 	"vulos/backend/services/devicekey"
@@ -48,9 +49,11 @@ import (
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
+	"vulos/backend/services/signing"
 	"vulos/backend/services/storageprov"
 	"vulos/backend/services/stream"
 	"vulos/backend/services/sysuser"
+	"vulos/backend/services/sync"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/webbrowser"
@@ -458,7 +461,12 @@ func main() {
 	})
 
 	// NET-07: cluster health (data-dir writable, disk space, sync lag) — public
-	mux.HandleFunc("GET /api/health", handleClusterHealth(filepath.Join(home, ".vulos")))
+	// syncer is wired below after cluster init; use a pointer so the handler
+	// always reads the current value. nilSyncer is replaced once cluster is ready.
+	var clusterSyncer *sync.Syncer
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		handleClusterHealth(filepath.Join(home, ".vulos"), clusterSyncer)(w, r)
+	})
 
 	// Setup status — public, no auth needed
 	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter, r *http.Request) {
@@ -1943,11 +1951,65 @@ func main() {
 		writeJSON(w, energyMgr.State())
 	})
 
-	// OS update status + apply (OSDIST-05)
+	// OS update status + apply (OSDIST-04 + OSDIST-05)
 	if osdistSlotMgr, osdistErr := osdist.NewSlotManager(filepath.Join(home, ".vulos", "os-cache")); osdistErr == nil {
-		osdist.NewUpdateHandlers(osdistSlotMgr, os.Getenv("VULOS_OS_VERSION"), nil).RegisterHandlers(mux)
+		osdistStore := osdist.NewStatusStore()
+		osdist.NewUpdateHandlers(osdistSlotMgr, os.Getenv("VULOS_OS_VERSION"), osdistStore).RegisterHandlers(mux)
+
+		// OSDIST-04: start the 4-hour background update-fetch loop.
+		// Trust anchor is optional — skip updater when key is absent (dev/CI).
+		if anchorPub, anchorErr := signing.LoadAnchor(signing.DefaultAnchorPath); anchorErr == nil {
+			osdistSrc := osdist.NewSource()
+			updaterCfg := osdist.UpdaterConfig{
+				Source:         osdistSrc,
+				SlotManager:    osdistSlotMgr,
+				AnchorPub:      anchorPub,
+				RunningVersion: os.Getenv("VULOS_OS_VERSION"),
+			}
+			if updater, updErr := osdist.NewUpdater(updaterCfg); updErr == nil {
+				go updater.Run(ctx)
+				log.Printf("[osdist] update loop started (version=%s)", os.Getenv("VULOS_OS_VERSION"))
+			} else {
+				log.Printf("[osdist] updater init warning: %v", updErr)
+			}
+		} else {
+			log.Printf("[osdist] trust anchor not found (%v) — update loop disabled", anchorErr)
+		}
 	} else {
 		log.Printf("[osdist] slot manager init warning: %v", osdistErr)
+	}
+
+	// Cluster heartbeat + peer discovery (services/cluster).
+	// Conditional on S3 being configured and VULOS_CLUSTER_PASSPHRASE being set.
+	clusterPassphrase := os.Getenv("VULOS_CLUSTER_PASSPHRASE")
+	clusterS3Cfg := cluster.LoadS3Config()
+	if clusterS3Cfg.Configured() && clusterPassphrase != "" {
+		if clusterInst, clusterErr := cluster.New(clusterS3Cfg, clusterPassphrase); clusterErr == nil {
+			go clusterInst.Start(ctx)
+			log.Printf("[cluster] heartbeat loop started (node_id=%s, enabled=%v)",
+				clusterInst.Health()["node_id"], clusterInst.Enabled())
+
+			// CRDT sync engine (services/sync): watch data dirs, upload changes.
+			if clusterInst.Enabled() {
+				if s3c := clusterInst.S3Client(); s3c != nil {
+					if syncer, syncErr := sync.NewFromCluster(sync.Config{}, s3c); syncErr == nil {
+						clusterSyncer = syncer
+						go func() {
+							if err := syncer.Start(ctx); err != nil {
+								log.Printf("[sync] syncer exited: %v", err)
+							}
+						}()
+						log.Printf("[sync] file sync loop started")
+					} else {
+						log.Printf("[sync] init warning: %v", syncErr)
+					}
+				}
+			}
+		} else {
+			log.Printf("[cluster] init warning: %v", clusterErr)
+		}
+	} else {
+		log.Printf("[cluster] disabled (VULOS_S3_ACCESS_KEY or VULOS_CLUSTER_PASSPHRASE not set)")
 	}
 
 	// App store

@@ -168,6 +168,13 @@ func (c *Cluster) Enabled() bool {
 	return c.client != nil
 }
 
+// S3Client returns the underlying encrypted S3 client.
+// Returns nil when the cluster is disabled (not configured).
+// Callers should check Enabled() before use.
+func (c *Cluster) S3Client() *Client {
+	return c.client
+}
+
 // Register writes this node's metadata to S3 at nodes/{node_id}/meta.json,
 // refreshing LastSeen to now.  It is safe to call concurrently.
 // If the cluster is disabled it returns nil immediately.
