@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 189 / 229 real tasks done (83%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 194 / 229 real tasks done (85%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 15 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 17 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -28,15 +28,15 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 4 / 5 | `[████████░░]` 80% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
+| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 5 / 5 | `[██████████]` 100% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
-| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
+| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 1 / 5 | `[██░░░░░░░░]` 20% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
 | Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
-| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 3 / 4 | `[████████░░]` 75% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
+| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **189 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **194 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1040,7 +1040,7 @@ Scope: QR of own full Vula address; Add-contact via paste or camera QR scan → 
 AC: [ ] own address QR scannable [ ] paste/scan triggers request [ ] malformed rejected
 
 ### [PEER-10] vulos.org email verification (send/confirm + token)
-`todo` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
+`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
 Scope: Call vulos.org verify/send+confirm (configurable base URL), store signed token, validate vulos.org sig; POST identity/verify+confirm, VerifiedEmail().
 AC: [ ] verify sends, confirm stores token [ ] token sig validated [ ] unverified still works [ ] base URL configurable
 
@@ -1075,7 +1075,7 @@ Scope: media store ~/.vulos/peering/media/, upload→hash+signed URL, S2S fetch 
 AC: [ ] upload→stable hash+signed URL [ ] recipient fetches own copy post-offline [ ] thumbnails [ ] signed URL rejects tamper/expire
 
 ### [PEER-17] Inbox UI: conversations, thread, composer, media
-`todo` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
+`done` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
 Scope: Messages view: conversation list, thread, composer, drag media, live message channel, contact profile.
 AC: [ ] conversations+threads from API [ ] text+media end-to-end [ ] incoming realtime no refresh
 
@@ -1460,7 +1460,7 @@ Scope: Periodic loop: fetch `os/stable.json`, compare `latest` to the running sl
 AC: [ ] update detected + downloaded to inactive slot [ ] verity hash + signature both verified before staging [ ] poisoned/mirror image rejected [ ] mirror failover on fetch error [ ] go build
 
 ### [OSDIST-05] OS-update status endpoint + minimal Settings surface
-`todo` · P2 · M · dep: OSDIST-04 · parallel: yes — new backend/services/osdist/handlers.go, backend/cmd/server/main.go (route reg only), src/core/Settings.jsx
+`done` · P2 · M · dep: OSDIST-04 · parallel: yes — new backend/services/osdist/handlers.go, backend/cmd/server/main.go (route reg only), src/core/Settings.jsx
 Scope: Surface the OSDIST-04 update state to the user so the "reboot prompt" referenced there is real. Add `GET /api/os/update/status` (running slot/version, staged/pending-active slot+version, last-known-good, channel, boot-counter, last check) and `POST /api/os/update/apply` (flip to the already-verified staged slot + signal reboot — never downloads or verifies here; that is OSDIST-04). Add a small read-only "System Update" panel in Settings showing current vs available version with an "Apply update & reboot" button enabled only when a verified image is staged. The headless OSDIST-04 loop remains correctness-complete on its own; this is the user-facing affordance only.
 AC: [ ] status endpoint reports running/staged/last-good slot + version + boot counter [ ] apply flips only an already-verified staged slot, no re-download [ ] Settings panel shows current vs available, button gated on staged+verified [ ] no trust decision moved into the UI/API layer [ ] go build + npm build
 
@@ -1496,7 +1496,7 @@ _Design doc: [`roadmap/NETBOOT.md`](../roadmap/NETBOOT.md)_  ·  _Prefix: `NETB-
 > Why this matters: "Any PC anywhere" with no per-machine disk flashing. UEFI HTTP Boot URL OR a ~1 MB one-time iPXE stick, both chainload a **configurable boot URL** (default `boot.vulos.org`, a forkable project default; any server that serves the signed artifacts works, self-hosted or otherwise) over HTTPS → kernel/initramfs/squashfs. Netboot-**to-install** (not diskless): live-RAM "Try Vulos" session first, Install is explicit, never surprise-wipes. Two-layer safety: TLS protects the pipe, signing protects the payload.
 
 ### [NETB-01] iPXE chainload script + ~1 MB one-time stick image
-`todo` · P1 · M · dep: BMINIT-14 · parallel: yes — new scripts/netboot/, build.sh
+`done` · P1 · M · dep: BMINIT-14 · parallel: yes — new scripts/netboot/, build.sh
 Scope: Produce a ~1 MB iPXE USB image whose script chainloads `boot.vulos.org` over HTTPS to fetch kernel + initramfs + squashfs. Stick is used once to bootstrap; installed machine never needs it again. Also document/produce the UEFI HTTP Boot URL form (no media) targeting the same endpoint.
 AC: [ ] iPXE image ≤~1 MB chainloads the HTTPS boot URL [ ] UEFI HTTP Boot URL path documented [ ] both converge on kernel+initramfs+squashfs fetch [ ] build target emits the stick image
 
@@ -1577,7 +1577,7 @@ Scope: At cluster init (storage provisioning / join), create the always-present 
 AC: [ ] lease object created once, free state [ ] re-running is idempotent (no clobber of held lease) [ ] unit test create + idempotency
 
 ### [LEASE-03] Tigris strong-consistency guard (Single/Multi-region buckets)
-`todo` · P2 · S · dep: LEASE-01 · parallel: yes — backend/services/lease/, docs
+`done` · P2 · S · dep: LEASE-01 · parallel: yes — backend/services/lease/, docs
 Scope: When the backend is Tigris, require **Single-region or Multi-region** buckets for strongly-consistent CAS; detect/warn (or refuse leases) on a non-strongly-consistent bucket config. Document the requirement. AWS S3 + MinIO unaffected.
 AC: [ ] Tigris non-strong-consistency config detected + warned/refused [ ] AWS/MinIO unaffected [ ] requirement documented [ ] unit test config gate
 
