@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 194 / 232 real tasks done (84%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 194 / 234 real tasks done (83%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -36,9 +36,9 @@
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 3 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync (NEW) |
+| Cloud Login (OS-side) | (this file § CLOGIN-*) | 0 / 5 | `[░░░░░░░░░░]` 0% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard (NEW) |
 
-| **Total** |  | **194 / 232** | `[████████░░]` 84% |
+| **Total** |  | **194 / 234** | `[████████░░]` 83% |
 
 ## How to read a task
 
@@ -1664,4 +1664,21 @@ AC: [ ] valid signed token → ok [ ] tampered token → reject [ ] expired toke
 `todo` · P1 · M · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/profile_sync.go
 Scope: Accept signed profile-update messages from the cloud over the existing enrollment/management channel and apply them to the local OS profile (PAM/shadow/passwd; full name; locale). On cloud-managed instances the cloud is the source of truth — local edits get overwritten on the next sync. The message envelope is signed; verify before applying; fail closed. Audit each applied change to a local log.
 AC: [ ] signed profile update applies locally (passwd/shadow updated) [ ] unsigned/tampered message rejected [ ] applied changes audited [ ] cloud disabled → local edits sticky [ ] unit tests
+
+
+### [CLOGIN-04] First-boot — Create Cloud Account flow
+`todo` · P0 · L · dep: CLOGIN-01 · parallel: no — src/auth/Setup.jsx, backend/services/auth/cloudsignup.go (new)
+Scope: In the OS install wizard, add a **Create Cloud Account** path alongside "Sign in to Cloud" and "Local only". The form takes email + password (NIST length-first ≥12 chars, breach-checked via HIBP — AUTH-03/06 on the cloud side handle this; show client-side hints), confirm password, and full name. On submit, POST to the cloud `/api/auth/signup`. On success, hand off to CLOGIN-05 (post-signup wizard). On failure (breach, weak, taken), show specific guidance. Local-only mode unchanged. Match Ubuntu's install-flow aesthetic.
+AC: [ ] Install wizard offers Create/Login/Local-only [ ] Create form enforces password requirements client-side + surfaces server errors [ ] Successful signup hands off to CLOGIN-05 [ ] Local-only path unchanged [ ] npm run build passes
+
+### [CLOGIN-05] First-boot — post-signup wizard (2FA setup + email-verify nudge)
+`todo` · P0 · L · dep: CLOGIN-04 · parallel: yes — src/auth/Setup.jsx, src/auth/PostSignupWizard.jsx (new)
+Scope: After signup or sign-in during first boot, walk the user through TWO steps before reaching the desktop:
+
+1. **2FA setup (skippable, default-on).** Show "Set up 2FA now (recommended)" with a QR code (rendered from the cloud's `POST /api/auth/totp/enroll` provisioning URI), the 10 recovery codes shown ONCE with a "Copy all" button AND a "Download as .txt" button. Require the user to confirm with a TOTP code before continuing. **Skip** button leaves 2FA disabled (a banner on the desktop nudges them to enable later). Fleet-admin accounts cannot skip (AUTH-09 enforces server-side).
+
+2. **Email verification nudge.** Show "Check your email — enter the code or click the link". A "Resend" link (POST /api/auth/verify-email/resend, rate-limited). User can continue without verifying, but the desktop shows the LAND-07-style banner until they do.
+
+Render a QR code for the TOTP otpauth:// URI (use a tiny pure-JS QR generator OR plain `<canvas>` based renderer; no heavy deps). Recovery codes download = a `.txt` blob with the codes + a clear "store these somewhere safe" header. JSX only.
+AC: [ ] post-signup shows 2FA step with QR + recovery codes (copy + download) [ ] skip allowed for non-admin, blocked for fleet_admin [ ] email-verify nudge step with resend [ ] reaches desktop after both steps (or skips) [ ] npm run build passes
 
