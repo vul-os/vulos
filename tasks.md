@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 204 / 236 real tasks done (86%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 209 / 236 real tasks done (89%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -10,7 +10,7 @@
 
 | Area | Roadmap | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 20 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
+| Peering | [PEERING.md](../roadmap/PEERING.md) | 21 / 42 | `[██░░░░░░░░]` 21% — 32 tasks unwired (handler logic exists, not served); PEER-42 in-progress |
 | Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 15 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
 | Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
 | AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
@@ -30,15 +30,15 @@
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
 | OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 5 / 5 | `[██████████]` 100% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
 | Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
-| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 3 / 5 | `[██████░░░░]` 60% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
+| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 4 / 5 | `[████████░░]` 80% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
 | Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 3 / 4 | `[████████░░]` 75% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
-| Cloud Login (OS-side) | (this file § CLOGIN-*) | 3 / 7 | `[████░░░░░░]` 43% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
+| Cloud Login (OS-side) | (this file § CLOGIN-*) | 6 / 7 | `[█████████░]` 86% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
 
-| **Total** |  | **204 / 236** | `[█████████░]` 86% |
+| **Total** |  | **209 / 236** | `[█████████░]` 89% |
 
 ## How to read a task
 
@@ -1087,7 +1087,7 @@ Scope: group create/list/add-member, store ~/.vulos/peering/groups/, fan-out via
 AC: [ ] create distributes def to members [ ] group msg delivered each member [ ] add-member policy-gated propagates
 
 ### [PEER-19] Call signaling relay (S2S SDP/ICE)
-`todo` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
+`done` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
 Scope: call lifecycle relay: initiate→peer inbound/signal→callee frame; answer/reject/hangup; signal relays opaque SDP/ICE via signal channel; servers no media.
 AC: [ ] initiate → callee incoming-call frame [ ] SDP/ICE relay end-to-end [ ] reject/hangup terminates both [ ] rejected for non-call contacts
 
@@ -1508,7 +1508,7 @@ Scope: UEFI HTTP Boot is **plain HTTP** on most consumer/laptop hardware (UEFI 2
 AC: [ ] iPXE built with imgverify + embedded trust anchor [ ] every fetched artifact has a verifiable .sig [ ] verify-before-exec on every download (fail closed) [ ] Secure Boot shim signing path documented [ ] sh -n scripts; GOOS=linux go build
 
 ### [NETB-03] Netboot-to-install: write seed + first squashfs to local disk
-`todo` · P1 · L · dep: NETB-01, SEED-01, BMINIT-12 · parallel: no — backend/services/installer/, backend/cmd/init/main.go
+`done` · P1 · L · dep: NETB-01, SEED-01, BMINIT-12 · parallel: no — backend/services/installer/, backend/cmd/init/main.go
 Scope: First boot runs from network/RAM; on Install, write the **seed** (bootloader + verify-capable initramfs + baked anchor + bucket URL, SEED-01) + the first OS squashfs to local disk via the existing installer (BMINIT-12). Steady state then boots **locally** with network OS updates (OSDIST-04). NOT diskless. Reuse `--live` for the RAM session.
 AC: [ ] netboot session can install seed + first squashfs to disk [ ] installed machine boots locally without network [ ] subsequent OS updates pull from bucket [ ] go build
 
@@ -1661,7 +1661,7 @@ Scope: Library that verifies a cloud-issued login token (Ed25519 signed by the c
 AC: [ ] valid signed token → ok [ ] tampered token → reject [ ] expired token → reject [ ] offline + within grace → login allowed via cache [ ] offline + past grace → blocked or local fallback [ ] unit tests
 
 ### [CLOGIN-03] Apply cloud-pushed profile updates (username/password/name)
-`todo` · P1 · M · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/profile_sync.go
+`done` · P1 · M · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/profile_sync.go
 Scope: Accept signed profile-update messages from the cloud over the existing enrollment/management channel and apply them to the local OS profile (PAM/shadow/passwd; full name; locale). On cloud-managed instances the cloud is the source of truth — local edits get overwritten on the next sync. The message envelope is signed; verify before applying; fail closed. Audit each applied change to a local log.
 AC: [ ] signed profile update applies locally (passwd/shadow updated) [ ] unsigned/tampered message rejected [ ] applied changes audited [ ] cloud disabled → local edits sticky [ ] unit tests
 
@@ -1672,7 +1672,7 @@ Scope: In the OS install wizard, add a **Create Cloud Account** path alongside "
 AC: [ ] Install wizard offers Create/Login/Local-only [ ] Create form enforces password requirements client-side + surfaces server errors [ ] Successful signup hands off to CLOGIN-05 [ ] Local-only path unchanged [ ] npm run build passes
 
 ### [CLOGIN-05] First-boot — post-signup wizard (2FA setup + email-verify nudge)
-`todo` · P0 · L · dep: CLOGIN-04 · parallel: yes — src/auth/Setup.jsx, src/auth/PostSignupWizard.jsx (new)
+`done` · P0 · L · dep: CLOGIN-04 · parallel: yes — src/auth/Setup.jsx, src/auth/PostSignupWizard.jsx (new)
 Scope: After signup or sign-in during first boot, walk the user through TWO steps before reaching the desktop:
 
 1. **2FA setup (skippable, default-on).** Show "Set up 2FA now (recommended)" with a QR code (rendered from the cloud's `POST /api/auth/totp/enroll` provisioning URI), the 10 recovery codes shown ONCE with a "Copy all" button AND a "Download as .txt" button. Require the user to confirm with a TOTP code before continuing. **Skip** button leaves 2FA disabled (a banner on the desktop nudges them to enable later). Fleet-admin accounts cannot skip (AUTH-09 enforces server-side).
@@ -1684,7 +1684,7 @@ AC: [ ] post-signup shows 2FA step with QR + recovery codes (copy + download) [ 
 
 
 ### [CLOGIN-06] Device PIN login (TPM-wrapped, lockout, fall-back)
-`todo` · P1 · L · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/devicepin.go, src/auth/PinLogin.jsx (new), src/core/Settings.jsx
+`done` · P1 · L · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/devicepin.go, src/auth/PinLogin.jsx (new), src/core/Settings.jsx
 Scope: After initial full login (password + 2FA), let the user set a **device-local PIN** (4-8 digits, configurable min). PIN unlocks a session credential wrapped by the TPM where available (sealed to PCR state), falls back to a sealed file under `~/.vulos/auth/pin.bin` (libsodium SecretBox keyed by argon2id(PIN, per-device salt)). Subsequent logins on the SAME device + profile accept the PIN. **Lockout**: 5 wrong PINs → temporary lockout (15 min); 3 lockouts → full re-auth required (password + 2FA). PIN never sent off-device, never to the cloud. Setting/changing the PIN requires the current session to have been opened by full auth (not by PIN). Settings UI to set/change/disable PIN.
 AC: [ ] set PIN from Settings (requires full-auth session) [ ] login with PIN succeeds [ ] 5 wrong → 15-min lockout [ ] 3 lockouts → full re-auth required [ ] PIN material never leaves device [ ] unit tests for argon2/TPM wrap
 
