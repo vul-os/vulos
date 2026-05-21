@@ -1,6 +1,6 @@
 # Vula OS — Roadmap Tasks
 
-**Status: 163 / 229 real tasks done (71%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 166 / 229 real tasks done (72%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
 
 > **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
 
@@ -28,15 +28,15 @@
 | Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
 | Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
 | Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
-| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — flashed seed + baked key, forkable (NEW, D94) |
+| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 1 / 5 | `[██░░░░░░░░]` 20% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
+| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 1 / 3 | `[███░░░░░░░]` 33% — flashed seed + baked key, forkable (NEW, D94) |
 | Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 0 / 5 | `[░░░░░░░░░░]` 0% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 1 / 6 | `[█░░░░░░░░░]` 17% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
+| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 2 / 6 | `[███░░░░░░░]` 33% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
 | Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 1 / 4 | `[██░░░░░░░░]` 25% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
 | Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 0 / 3 | `[░░░░░░░░░░]` 0% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
 | Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 1 / 4 | `[██░░░░░░░░]` 25% — manifest concurrency + run-lease + live collab (NEW, D94) |
 | Smoke Tests / CI | (decisions.md D93/D94) | 0 / 2 | `[░░░░░░░░░░]` 0% — peering-routes + live-USB QEMU regression guards |
-| **Total** |  | **163 / 229** | `[███████░░░]` 70% |
+| **Total** |  | **166 / 229** | `[███████░░░]` 70% |
 
 ## How to read a task
 
@@ -1440,7 +1440,7 @@ _Design doc: [`roadmap/OS-DISTRIBUTION.md`](../roadmap/OS-DISTRIBUTION.md)_  · 
 > Why this matters: The shift from flash-and-SSH to image-based OS distribution. The OS ships as signed, immutable, versioned squashfs artifacts in a **public** S3 bucket (security from signing, not access control), cached locally, run off A/B slots with boot-counter auto-rollback. The squashfs is the existing `build.sh --live` output.
 
 ### [OSDIST-01] Public OS bucket layout + signed `stable.json` manifest schema
-`todo` · P0 · M · dep: SIGN-01 · parallel: yes — new backend/services/osdist/manifest.go
+`done` · P0 · M · dep: SIGN-01 · parallel: yes — new backend/services/osdist/manifest.go
 Scope: Define `os/stable.json` schema (channel, latest, min_epoch, roothash, size, released_at, path) + canonical-byte serialization for signing; per-version folder layout `os/vNN/os-core.squashfs(.sig)`. Parse + signature-verify against the baked trust anchor (SIGN-02) and enforce `min_epoch >= highest-seen` (SIGN-04). Public-read bucket — no credentials, no access control on reads. Package + schema + verify only; no download yet.
 AC: [ ] stable.json round-trips canonical bytes [ ] signature verified against trust anchor, tamper rejected [ ] min_epoch below floor rejected [ ] unit test schema + verify
 
@@ -1473,7 +1473,7 @@ _Design doc: [`roadmap/SEED-TRUST.md`](../roadmap/SEED-TRUST.md)_  ·  _Prefix: 
 > Why this matters: The irreducible flashed seed = bootloader + verify-capable initramfs + OS bucket URL + the signing public key (trust anchor). Makes the whole image model **forkable**: rebuild the seed with your own key + bucket and run an independent Vulos. The key is hard-baked; the bucket URL is soft config because the key (not the URL) enforces trust.
 
 ### [SEED-01] Embed trust anchor (signing public key) into the flashed seed
-`todo` · P0 · M · dep: none · parallel: no — build.sh, new scripts/seed/
+`done` · P0 · M · dep: none · parallel: no — build.sh, new scripts/seed/
 Scope: Bake the signing **public key** (trust anchor) into the seed image at build time so the initramfs verify path (VERITY-02) can validate the fetched OS chain. Key is immutable/hard-baked — changing it requires re-flashing. Wire into `build.sh` seed assembly. Companion: emit the bootloader + verify-capable initramfs as the irreducible seed (alongside BMINIT-14).
 AC: [ ] seed build embeds the trust-anchor pubkey at a known path [ ] initramfs can read it for verification [ ] key absent → build fails loudly [ ] sh -n build.sh
 
@@ -1549,7 +1549,7 @@ Scope: Verify a signature against the baked **root** trust anchor (SEED-01). Use
 AC: [ ] verifies against baked anchor, rejects wrong key [ ] fails closed on malformed input [ ] unit test valid/invalid/tampered
 
 ### [SIGN-03] Offline root-signs-intermediate PKI tooling (release-key cert)
-`todo` · P1 · L · dep: SIGN-01 · parallel: yes — new backend/cmd/sign/
+`done` · P1 · L · dep: SIGN-01 · parallel: yes — new backend/cmd/sign/
 Scope: Air-gapped/HSM tooling: an offline **root key** (rarely used, the baked anchor) signs a **release-key certificate**; the release key signs images/manifests per release. Device fetches the root-signed release cert and validates it against the baked root before trusting release-key signatures. Root key never online for routine releases. CLI for: issue release cert, sign image, sign manifest.
 AC: [ ] root signs a release cert offline [ ] device-side validates release cert against baked root [ ] release key signs image + manifest [ ] root-key path documented as air-gapped/HSM [ ] go build + tests
 
