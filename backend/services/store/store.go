@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // CGo SQLite driver with extension support
+	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo — D23)
 )
 
 //go:embed schema.sql
@@ -127,14 +127,14 @@ func Open(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("store: cannot create database directory: %w", err)
 	}
 
-	// ── Open SQLite (with extension loading enabled) ───────────────────────────
-	// The _loc=UTC DSN parameter keeps all timestamps in UTC.
-	// _journal_mode=WAL gives better concurrent read performance.
+	// ── Open SQLite (pure-Go modernc driver — no CGo, D23) ───────────────────
+	// _pragma= style DSN parameters are required by modernc.org/sqlite.
+	// WAL mode for better concurrent reads; busy timeout guards writers.
 	dsn := fmt.Sprintf(
-		"file:%s?_journal_mode=WAL&_busy_timeout=5000&_loc=UTC&_foreign_keys=on",
+		"file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
 		dbPath,
 	)
-	raw, err := sql.Open("sqlite3", dsn)
+	raw, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: sql.Open: %w", err)
 	}
@@ -194,8 +194,11 @@ func loadCRSQLite(db *sql.DB) (string, error) {
 			continue
 		}
 
-		// sqlite3_load_extension via the go-sqlite3 hook.
-		// The entry point "sqlite3_crsqlite_init" is the standard cr-sqlite init func.
+		// Attempt to load the cr-sqlite extension via SQLite's load_extension.
+		// modernc.org/sqlite supports load_extension when the shared library
+		// is a valid SQLite extension; the init symbol is sqlite3_crsqlite_init.
+		// This call will fail gracefully (logged above) on platforms where
+		// cr-sqlite is unavailable — CRDT sync is simply disabled, not fatal.
 		_, err := db.Exec(`SELECT load_extension(?, 'sqlite3_crsqlite_init')`, p)
 		if err != nil {
 			tried = append(tried, fmt.Sprintf("%s (load failed: %v)", p, err))

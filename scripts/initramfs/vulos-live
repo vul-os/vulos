@@ -1,10 +1,11 @@
 #!/bin/sh
-# Vula OS — initramfs-tools init-bottom hook
+# Vulos — initramfs-tools init-bottom hook
 # Location in rootfs: /etc/initramfs-tools/scripts/init-bottom/vulos-live
 #
 # Executed by initramfs at init-bottom stage (just before pivot_root to real root).
-# Mounts the squashfs read-only layer, an in-RAM tmpfs writable layer, and
-# combines them with overlayfs so the live system appears fully writable.
+# Mounts the squashfs through a dm-verity device (block-level runtime integrity),
+# adds an in-RAM tmpfs writable layer, and combines them with overlayfs so the
+# live system appears fully writable.
 #
 # Boot kernel cmdline must supply:
 #   root=LABEL=VULOS-LIVE-DATA  (the ext4 data partition holding image.squashfs)
@@ -13,7 +14,24 @@
 # and set $rootmnt to that mount point.
 #
 # Layout expected on the data partition (LABEL=VULOS-LIVE-DATA):
-#   /image.squashfs   — squashfs archive of the full Vula OS rootfs
+#   /image.squashfs      — squashfs archive of the full Vulos rootfs
+#   /os-core.hashtree    — dm-verity Merkle hash tree (from gen-verity.sh)
+#   /os-core.roothash    — single-line hex root hash (from gen-verity.sh)
+#
+# dm-verity activation (M3 fix):
+#   When veritysetup and the companion .hashtree + .roothash files are present,
+#   the squashfs is opened as a dm-verity device (/dev/mapper/vulos-root) before
+#   the overlayfs lower mount — activating the kernel's block-level Merkle tree
+#   verification on every read.
+#
+#   If veritysetup is absent (non-live-USB CI builds, rescue shells) or the
+#   hash/tree files are missing, the script falls back to a direct loop mount
+#   with a clear warning. This ensures the live-boot chain never silently breaks
+#   on older images that pre-date verity support.
+#
+#   To include veritysetup in the initramfs, add it to the COPY list in the
+#   baremetal-builder.Dockerfile (copy_exec /sbin/veritysetup) and ensure
+#   libcryptsetup is pulled in via the cryptsetup-bin package.
 
 PREREQ=""
 prereqs() { echo "$PREREQ"; }
@@ -25,6 +43,9 @@ esac
 . /scripts/functions
 
 SQUASHFS_PATH="/image.squashfs"
+HASHTREE_PATH="/os-core.hashtree"
+ROOTHASH_PATH="/os-core.roothash"
+VERITY_NAME="vulos-root"
 LOWER="/run/vulos/lower"
 UPPER="/run/vulos/upper"
 WORK="/run/vulos/work"
@@ -35,16 +56,70 @@ if ! grep -q "vulos.live" /proc/cmdline; then
     exit 0
 fi
 
-log_begin_msg "Vula OS: setting up live overlayfs"
+log_begin_msg "Vulos: setting up live overlayfs"
 
 # Ensure helper directories exist
 mkdir -p "$LOWER" "$UPPER" "$WORK" "$MERGED"
 
-# Mount the squashfs from $rootmnt (the ext4 data partition already mounted by
-# the standard initramfs via root=LABEL=VULOS-LIVE-DATA).
-# The file /image.squashfs lives at the root of that ext4 partition.
-if ! mount -t squashfs -o loop,ro "${rootmnt}${SQUASHFS_PATH}" "$LOWER"; then
-    panic "vulos-live: failed to mount squashfs at ${rootmnt}${SQUASHFS_PATH}"
+# ── dm-verity activation ──────────────────────────────────────────────────────
+#
+# Attempt to open the squashfs through the kernel's dm-verity driver so that
+# every block is verified on read at runtime (not just once at download).
+#
+# Requirements:
+#   1. veritysetup binary in the initramfs (from cryptsetup-bin)
+#   2. os-core.hashtree alongside image.squashfs on the data partition
+#   3. os-core.roothash alongside image.squashfs on the data partition
+#
+# On success, LOWER_DEV is /dev/mapper/vulos-root (the verity device).
+# On failure (missing tool or files), we fall back to a direct loop mount and
+# print a prominent warning so the operator knows verity is not active.
+
+SQUASHFS_ABS="${rootmnt}${SQUASHFS_PATH}"
+HASHTREE_ABS="${rootmnt}${HASHTREE_PATH}"
+ROOTHASH_ABS="${rootmnt}${ROOTHASH_PATH}"
+LOWER_DEV=""
+
+if command -v veritysetup >/dev/null 2>&1 \
+        && [ -f "$HASHTREE_ABS" ] \
+        && [ -f "$ROOTHASH_ABS" ]; then
+
+    ROOTHASH="$(cat "$ROOTHASH_ABS")"
+    if [ -z "$ROOTHASH" ]; then
+        log_warning_msg "vulos-live: os-core.roothash is empty — falling back to loop mount (verity inactive)"
+    else
+        log_begin_msg "vulos-live: opening dm-verity device (verity-root)..."
+        if veritysetup open "$SQUASHFS_ABS" "$VERITY_NAME" "$HASHTREE_ABS" "$ROOTHASH"; then
+            LOWER_DEV="/dev/mapper/${VERITY_NAME}"
+            log_end_msg "vulos-live: dm-verity device active → $LOWER_DEV"
+        else
+            # veritysetup open failed: root hash mismatch or kernel module absent.
+            # This is a security-relevant failure — panic rather than silently boot
+            # an unverified image.
+            panic "vulos-live: veritysetup open FAILED — root hash mismatch or dm-verity kernel module absent. Boot halted."
+        fi
+    fi
+else
+    # Missing tool or companion files — warn clearly but continue.
+    # This path is expected on images built without verity support (pre-SIGN-01).
+    log_warning_msg "vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity (block-level verification inactive)"
+    log_warning_msg "vulos-live:   veritysetup: $(command -v veritysetup 2>/dev/null || echo 'not found')"
+    log_warning_msg "vulos-live:   hashtree:    ${HASHTREE_ABS} $([ -f "$HASHTREE_ABS" ] && echo 'found' || echo 'MISSING')"
+    log_warning_msg "vulos-live:   roothash:    ${ROOTHASH_ABS} $([ -f "$ROOTHASH_ABS" ] && echo 'found' || echo 'MISSING')"
+fi
+
+# ── Mount lower layer (dm-verity device or plain loop) ───────────────────────
+if [ -n "$LOWER_DEV" ]; then
+    # Mount the dm-verity block device read-only as the overlayfs lower layer.
+    # The kernel verifies every 4096-byte block against the Merkle tree on read.
+    if ! mount -t squashfs -o ro "$LOWER_DEV" "$LOWER"; then
+        panic "vulos-live: failed to mount dm-verity device $LOWER_DEV as squashfs"
+    fi
+else
+    # Fallback: direct loop mount (no block-level verity).
+    if ! mount -t squashfs -o loop,ro "$SQUASHFS_ABS" "$LOWER"; then
+        panic "vulos-live: failed to mount squashfs at $SQUASHFS_ABS"
+    fi
 fi
 
 # Writable tmpfs upper layer (in RAM)
@@ -55,7 +130,7 @@ fi
 # Work directory must be on same fs as upper
 mkdir -p "$UPPER" "$WORK"
 
-# Overlay: lower=squashfs(ro), upper=tmpfs(rw)
+# Overlay: lower=squashfs/verity(ro), upper=tmpfs(rw)
 if ! mount -t overlay -o "lowerdir=$LOWER,upperdir=$UPPER,workdir=$WORK" overlay "$MERGED"; then
     panic "vulos-live: failed to mount overlayfs"
 fi
@@ -68,6 +143,10 @@ mount --bind /run/vulos "${rootmnt}/run/vulos"
 # Rebind $rootmnt to the merged overlay view
 mount --bind "$MERGED" "$rootmnt"
 
-log_end_msg "Vula OS: live overlayfs active (squashfs ro + tmpfs rw)"
+if [ -n "$LOWER_DEV" ]; then
+    log_end_msg "Vulos: live overlayfs active (dm-verity ro + tmpfs rw)"
+else
+    log_end_msg "Vulos: live overlayfs active (squashfs loop ro + tmpfs rw — verity inactive)"
+fi
 
 exit 0

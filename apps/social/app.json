@@ -14,7 +14,7 @@
   "auto_start": false,
   "singleton": true,
   "permissions": ["network"],
-  "author": "Vula OS",
+  "author": "Vulos",
   "license": "MIT",
   "homepage": "https://activitypub.rocks"
 }

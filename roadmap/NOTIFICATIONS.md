@@ -1,6 +1,6 @@
 # NOTIFICATIONS
 
-System-level notifications for Vula OS, delivered through the peering layer. Only whitelisted (approved) contacts can push notifications to your instance. Same trust gate as messaging — unknown peers are rejected at the door.
+System-level notifications for Vulos, delivered through the peering layer. Only whitelisted (approved) contacts can push notifications to your instance. Same trust gate as messaging — unknown peers are rejected at the door.
 
 This spec depends on the peering system defined in [PEERING.md](PEERING.md). Notifications use the same identity, trust model, server-to-server delivery, and cryptographic guarantees. Read PEERING.md first.
 

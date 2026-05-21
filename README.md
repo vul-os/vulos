@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/icon-128.png" width="80" alt="Vula OS" />
+  <img src="public/icon-128.png" width="80" alt="Vulos" />
 </p>
 
-<h1 align="center">Vula OS</h1>
+<h1 align="center">Vulos</h1>
 
 <p align="center">
   <strong>A web-native operating system built on Debian Linux.</strong><br/>
@@ -27,14 +27,14 @@
 > **Alpha Software** — Under active development.
 
 <p align="center">
-  <img src="landing/docs/desktop.png" width="720" alt="Vula OS Desktop" />
+  <img src="landing/docs/desktop.png" width="720" alt="Vulos Desktop" />
 </p>
 
 ---
 
-## What is Vula OS?
+## What is Vulos?
 
-Vula OS is a **web-native window manager and operating system** built on Debian Linux. Instead of streaming an entire remote desktop, Vula streams individual application windows on demand — web apps run as first-class citizens in the browser, and native Linux GUI apps (GIMP, LibreOffice, Blender, games via Wine/Lutris) stream via WebRTC only when you open them.
+Vulos is a **web-native window manager and operating system** built on Debian Linux. Instead of streaming an entire remote desktop, Vula streams individual application windows on demand — web apps run as first-class citizens in the browser, and native Linux GUI apps (GIMP, LibreOffice, Blender, games via Wine/Lutris) stream via WebRTC only when you open them.
 
 ### The five ideas
 
@@ -108,7 +108,7 @@ Open **https://lvh.me:8080** (requires [mkcert](https://github.com/FiloSottile/m
 
 ### GPU-Accelerated Streaming
 
-Vula OS auto-detects GPU hardware and selects the best encoder for streaming desktop apps and games.
+Vulos auto-detects GPU hardware and selects the best encoder for streaming desktop apps and games.
 
 | Tier | GPU | Encoder | FPS | Latency | Setup |
 |------|-----|---------|-----|---------|-------|
@@ -151,7 +151,7 @@ The OS is a **signed, immutable squashfs** — never patched in place, always re
 
 - **Public bucket** — `os/stable.json` manifest (signed) + versioned squashfs artifacts; security enforced by signing key, not access control
 - **A/B slots with auto-rollback** — new image staged to the inactive slot; boot counter reset; if services don't come up clean within the threshold, the bootloader flips back to the last-known-good slot automatically
-- **dm-verity** — Merkle tree over the squashfs verifies every block on read at runtime, not just at download ([`roadmap/SIGNING.md`](roadmap/SIGNING.md))
+- **dm-verity** — Merkle tree over the squashfs verifies every block on read at runtime via `veritysetup open` in the initramfs; requires `os-core.hashtree` + `os-core.roothash` alongside the squashfs on the data partition ([`roadmap/SIGNING.md`](roadmap/SIGNING.md))
 - **Signed boot chain (NETB / SIGN / VERITY / SEED)** — Secure Boot shim → bootloader → kernel/initramfs → squashfs; each stage verified before execution; offline root-signs-intermediate PKI; monotonic min-epoch for revocation and rollback protection
 - **Forkable trust anchor** — baked Ed25519 public key + soft bucket URL in the seed; rebuild the seed with your own key and bucket for a fully independent fork ([`roadmap/SEED-TRUST.md`](roadmap/SEED-TRUST.md))
 

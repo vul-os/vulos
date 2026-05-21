@@ -1,5 +1,5 @@
 #!/bin/sh
-# Vula OS — System Image Builder & Deployer
+# Vulos — System Image Builder & Deployer
 #
 # Builds a bare-metal Debian 13 (trixie) system image.
 # Optionally deploys to a remote machine via SSH with Caddy + wildcard TLS.
@@ -160,7 +160,7 @@ OUTDIR="$(cd "$OUTDIR" && pwd)"
 
 echo ""
 echo "${BLUE}╔══════════════════════════════════╗${NC}"
-echo "${BLUE}║      Vula OS — Image Builder     ║${NC}"
+echo "${BLUE}║      Vulos — Image Builder     ║${NC}"
 echo "${BLUE}╠══════════════════════════════════╣${NC}"
 echo "${BLUE}║${NC} Arch:   $ARCH"
 [ -n "$DEVICE" ] && echo "${BLUE}║${NC} Device: $DEVICE"
@@ -269,7 +269,7 @@ rm -rf /var/lib/apt/lists/*
 # Hardened sshd configuration
 mkdir -p /etc/ssh/sshd_config.d
 cat > /etc/ssh/sshd_config.d/vulos.conf << 'SSHD_CONF'
-# Vula OS — hardened sshd config
+# Vulos — hardened sshd config
 # Key-only auth — no passwords
 PasswordAuthentication no
 ChallengeResponseAuthentication no
@@ -422,7 +422,7 @@ CADDY_SVC_EOF
   [ -n "$DOMAIN" ] && VULOS_ENV_DOMAIN="Environment=VULOS_DOMAIN=$DOMAIN"
   ssh "$DEPLOY_HOST" "cat > /etc/systemd/system/vulos.service << SVC
 [Unit]
-Description=Vula OS Server
+Description=Vulos Server
 After=network.target
 
 [Service]
@@ -567,7 +567,7 @@ if [ "$ARCH" = "arm64" ]; then
       ESP="$OUTDIR/esp-rpi4"
       mkdir -p "$ESP"
       cat > "$ESP/config.txt" << 'RPI4_CONFIG'
-# Vula OS — Raspberry Pi 4 boot configuration
+# Vulos — Raspberry Pi 4 boot configuration
 arm_64bit=1
 enable_uart=1
 dtoverlay=disable-bt
@@ -612,7 +612,7 @@ fi  # end rootfs build / reuse guard
 # Hardened sshd configuration (rootfs)
 mkdir -p "$ROOTFS/etc/ssh/sshd_config.d"
 cat > "$ROOTFS/etc/ssh/sshd_config.d/vulos.conf" << 'SSHD_CONF'
-# Vula OS — hardened sshd config
+# Vulos — hardened sshd config
 # Key-only auth — no passwords
 PasswordAuthentication no
 ChallengeResponseAuthentication no
@@ -819,7 +819,7 @@ POL
 mkdir -p "$ROOTFS/root/.config/labwc"
 cp -r assets/labwc/. "$ROOTFS/root/.config/labwc/"
 
-# Vula OS traffic-light openbox theme for labwc SSD
+# Vulos traffic-light openbox theme for labwc SSD
 mkdir -p "$ROOTFS/usr/share/themes/vulos/openbox-3"
 cp -r assets/themes/vulos/. "$ROOTFS/usr/share/themes/vulos/"
 
@@ -829,7 +829,7 @@ chmod 440 "$ROOTFS/etc/sudoers.d/sudo-group"
 
 cat > "$ROOTFS/etc/systemd/system/vulos.service" << 'EOF'
 [Unit]
-Description=Vula OS Server
+Description=Vulos Server
 After=network.target
 
 [Service]
@@ -996,7 +996,7 @@ if [ "$LIVE_MODE" = "1" ]; then
   # root=LABEL=VULOS-LIVE-DATA: initramfs mounts the ext4 data partition, finds
   # /image.squashfs there, and overlays it with a tmpfs upper layer (vulos-live hook).
   # vulos.live: activates the hook. quiet splash plymouth.theme=vulos: branded splash.
-  printf 'title  Vula OS Live\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=VULOS-LIVE-DATA ro vulos.live quiet splash plymouth.theme=vulos console=tty1 console=ttyAMA0,115200\n' \
+  printf 'title  Vulos Live\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=VULOS-LIVE-DATA ro vulos.live quiet splash plymouth.theme=vulos console=tty1 console=ttyAMA0,115200\n' \
     > "$OUTDIR/_live_entry.conf"
   mcopy -i "$LIVE_ESP_IMG" "$OUTDIR/_live_entry.conf" "::/loader/entries/vulos.conf"
   rm -f "$OUTDIR/_live_loader.conf" "$OUTDIR/_live_entry.conf"
@@ -1091,7 +1091,7 @@ if [ "$DISK_MODE" = "1" ]; then
   # root=LABEL avoids dependence on disk enumeration order. vulos.kiosk=force
   # makes vulos-init start the compositor even when DRM reports no connected
   # output (QEMU virtio-gpu). splash + plymouth.theme=vulos → branded splash.
-  printf 'title  Vula OS\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=vulos-root rw init=/sbin/vulos-init quiet splash plymouth.theme=vulos vulos.kiosk=force console=tty1 console=ttyAMA0,115200\n' > "$OUTDIR/_entry.conf"
+  printf 'title  Vulos\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=vulos-root rw init=/sbin/vulos-init quiet splash plymouth.theme=vulos vulos.kiosk=force console=tty1 console=ttyAMA0,115200\n' > "$OUTDIR/_entry.conf"
   mcopy -i "$ESP_IMG" "$OUTDIR/_entry.conf" "::/loader/entries/vulos.conf"
   rm -f "$OUTDIR/_loader.conf" "$OUTDIR/_entry.conf"
   echo "  ${GREEN}✓${NC} ESP (systemd-boot, ${ESP_MB} MiB)"

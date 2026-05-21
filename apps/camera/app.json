@@ -13,6 +13,6 @@
   "auto_start": false,
   "singleton": true,
   "permissions": ["camera", "microphone"],
-  "author": "Vula OS",
+  "author": "Vulos",
   "license": "MIT"
 }
