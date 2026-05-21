@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"vulos/backend/cmd/verify"
+	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/hwdetect"
 	"vulos/backend/services/labwc"
@@ -31,6 +33,11 @@ var (
 	slotMgrGlobal   *osdist.SlotManager
 	bootStateGlobal *osdist.BootState
 )
+
+// activeEnvGlobal is the runtime environment chosen at startup via --env or
+// VULOS_ENV.  Set once in main() before any goroutines launch; read by
+// startServices() to pass --env through to vulos-server.
+var activeEnvGlobal vulenv.Env
 
 // currentProfile holds the live boot-time host decision. Populated once by
 // detectHost() before services/kiosk start; read by startKiosk + Chromium
@@ -350,6 +357,16 @@ func plymouthQuitRetainSplash() {
 }
 
 func main() {
+	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
+	flag.Parse()
+
+	var err error
+	activeEnvGlobal, err = vulenv.Parse(*envFlag)
+	if err != nil {
+		log.Fatalf("[env] %v", err)
+	}
+	log.Printf("[env] vulos-init starting in %q mode", activeEnvGlobal)
+
 	if os.Getpid() != 1 {
 		fmt.Println("vulos-init: not running as PID 1, starting in service mode")
 		startSSH()
@@ -817,7 +834,7 @@ func startServices() {
 	// Chromium starts getting ECONNREFUSED on every fetch). Same pattern as
 	// superviseKiosk — Wait() for efficient liveness, restart with backoff,
 	// reset on any healthy run.
-	go superviseServer(serverBin, "-env", "main")
+	go superviseServer(serverBin, "-env", activeEnvGlobal.String())
 
 	// Start Cage/WPE WebKit kiosk if available (also supervised).
 	startKiosk()

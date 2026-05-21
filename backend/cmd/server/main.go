@@ -36,6 +36,7 @@ import (
 	"vulos/backend/services/drivers"
 	"vulos/backend/services/embeddings"
 	"vulos/backend/services/energy"
+	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/network"
@@ -64,10 +65,27 @@ import (
 )
 
 func main() {
-	env := flag.String("env", "local", "Environment: local, dev, main")
+	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
 	flag.Parse()
 
-	cfg := config.Load(*env)
+	// Resolve and validate the environment.  An unrecognised value is fatal so
+	// operators get immediate feedback instead of a silent misconfig.
+	activeEnv, err := vulenv.Parse(*envFlag)
+	if err != nil {
+		log.Fatalf("[env] %v", err)
+	}
+	envDefaults := vulenv.DefaultsFor(activeEnv)
+
+	log.Printf("[env] starting in %q mode (bind=%q skip_hw=%v debug_endpoints=%v)",
+		activeEnv, envDefaults.BindHost, envDefaults.SkipHardwareChecks, envDefaults.DebugEndpoints)
+
+	// Safety guard: abort if an obviously non-production shortcut has been
+	// forced on while the runtime environment claims to be production.
+	if activeEnv.IsProd() && envDefaults.DebugEndpoints {
+		log.Fatal("[env] ABORT: debug endpoints are enabled but env=prod — this is a misconfiguration")
+	}
+
+	cfg := config.Load(activeEnv.String())
 
 	// Ensure system state directory exists
 	os.MkdirAll("/var/lib/vulos", 0755)
@@ -2338,7 +2356,26 @@ func main() {
 		mux.ServeHTTP(w, r)
 	})
 
-	addr := ":" + cfg.Port
+	// Register debug endpoints when running in local mode.
+	// These are never compiled out — they are gated purely by the env flag so
+	// that a local developer can access them without a rebuild.
+	if envDefaults.DebugEndpoints {
+		log.Printf("[env] debug endpoints enabled at /debug/env and /debug/pprof/")
+		mux.HandleFunc("GET /debug/env", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]any{
+				"env":                     activeEnv.String(),
+				"bind_host":               envDefaults.BindHost,
+				"skip_hardware_checks":    envDefaults.SkipHardwareChecks,
+				"allow_self_signed_certs": envDefaults.AllowSelfSignedCerts,
+				"strict_cookies":          envDefaults.StrictCookies,
+				"debug_endpoints":         envDefaults.DebugEndpoints,
+				"allow_staging_broker_key": envDefaults.AllowStagingBrokerKey,
+			})
+		})
+	}
+
+	bindHost := envDefaults.BindHost
+	addr := bindHost + ":" + cfg.Port
 	// SEC: wrap with security headers for all responses served by this process.
 	secHeadersMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2379,12 +2416,12 @@ func main() {
 	}
 
 	if tlsCert != "" {
-		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, *env, tlsCert)
+		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, activeEnv, tlsCert)
 		if err := server.ListenAndServeTLS(tlsCert, tlsKey); err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
 	} else {
-		log.Printf("vulos server listening on %s (env=%s, no TLS)", addr, *env)
+		log.Printf("vulos server listening on %s (env=%s, no TLS)", addr, activeEnv)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
