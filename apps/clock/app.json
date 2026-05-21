@@ -13,6 +13,6 @@
   "auto_start": false,
   "singleton": true,
   "permissions": ["notifications"],
-  "author": "Vula OS",
+  "author": "Vulos",
   "license": "MIT"
 }

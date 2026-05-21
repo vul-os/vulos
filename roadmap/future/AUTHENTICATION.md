@@ -1,6 +1,6 @@
 # AUTHENTICATION
 
-System-level authentication infrastructure for Vula OS. Replaces the need for a mobile phone across banking, government, healthcare, enterprise, and every service that currently demands SMS OTP or a phone app.
+System-level authentication infrastructure for Vulos. Replaces the need for a mobile phone across banking, government, healthcare, enterprise, and every service that currently demands SMS OTP or a phone app.
 
 The core insight: a Vula instance with a TPM is a better "possession factor" than a phone. It's always on, doesn't get lost, doesn't change every 2 years, and has equivalent secure storage. The phone was never the point — proof of possession of a private key was.
 
@@ -363,7 +363,7 @@ UEFI Secure Boot
   → signed bootloader (GRUB/systemd-boot)
     → signed kernel (Alpine/postmarketOS)
       → dm-verity root filesystem (hash-verified, read-only)
-        → Vula OS services start
+        → Vulos services start
           → TPM PCRs contain measurements of entire chain
 ```
 
@@ -378,7 +378,7 @@ Each stage measures (hashes) the next stage into TPM PCR registers before execut
 - Kernel: Alpine/postmarketOS with `CONFIG_IMA=y` (Integrity Measurement Architecture)
 - Root filesystem: dm-verity with signed root hash
 - Boot: UEFI Secure Boot with Vula-signed bootloader and kernel
-- Signing key: Vula OS release key (users can also enroll their own keys for custom builds)
+- Signing key: Vulos release key (users can also enroll their own keys for custom builds)
 
 **For bare metal only.** Cloud instances rely on the cloud provider's Secure Boot (Shielded VM, Nitro). Docker dev environments skip this entirely.
 
@@ -393,7 +393,7 @@ Each stage measures (hashes) the next stage into TPM PCR registers before execut
 
 ```
 "This request comes from:
-  - a genuine Vula OS instance (verified boot chain)
+  - a genuine Vulos instance (verified boot chain)
   - running version X.Y.Z (signed, unmodified)
   - with a hardware TPM (not emulated)
   - that has been continuously running since [timestamp]

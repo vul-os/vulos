@@ -420,14 +420,14 @@ Unified messaging app with bridges to WhatsApp, Telegram, Signal, and more. Buil
 
 | Client | Tech | License | Stars | Notes |
 |--------|------|---------|-------|-------|
-| [Cinny](https://github.com/cinnyapp/cinny) | React | AGPLv3 | 4k+ | Clean, Discord-like UI. Lightweight. **Best candidate** — modern React, easy to theme for Vula OS |
+| [Cinny](https://github.com/cinnyapp/cinny) | React | AGPLv3 | 4k+ | Clean, Discord-like UI. Lightweight. **Best candidate** — modern React, easy to theme for Vulos |
 | [Hydrogen](https://github.com/nicoleahmed/hydrogen-web) | Vanilla JS | Apache-2.0 | 3k+ | Ultra-lightweight, designed for low-end devices and embedded use. Minimal dependencies |
 | [Element Web](https://github.com/element-hq/element-web) | React | AGPLv3 | 11k+ | Most feature-complete but heavy (Electron heritage). Reference implementation |
 | [FluffyChat](https://github.com/krille-chan/fluffychat) | Flutter | AGPLv3 | 1k+ | Cross-platform (mobile + web). Lighter than Element |
 
 ### Recommendation
 
-**Cinny** as the base — React (matches our stack), lightweight, clean UI, easy to restyle for Vula OS. Hydrogen as fallback for extremely constrained devices.
+**Cinny** as the base — React (matches our stack), lightweight, clean UI, easy to restyle for Vulos. Hydrogen as fallback for extremely constrained devices.
 
 ### Bridges (run as services)
 
@@ -475,14 +475,14 @@ Matrix bridges let users receive messages from proprietary networks inside the M
 
 | Server | Language | Notes |
 |--------|----------|-------|
-| [Conduit](https://gitlab.com/famedly/conduit) | Rust | Single binary, SQLite, very lightweight. Best for Vula OS |
+| [Conduit](https://gitlab.com/famedly/conduit) | Rust | Single binary, SQLite, very lightweight. Best for Vulos |
 | [Dendrite](https://github.com/matrix-org/dendrite) | Go | Next-gen official server, lighter than Synapse |
 | [Synapse](https://github.com/element-hq/synapse) | Python | Reference server, heavy, not ideal for mobile/embedded |
 
 ### Install plan
 
-- [ ] Bundle Conduit as a Vula OS service (single Rust binary, ~10MB)
-- [ ] Cinny as the web UI, themed to match Vula OS
+- [ ] Bundle Conduit as a Vulos service (single Rust binary, ~10MB)
+- [ ] Cinny as the web UI, themed to match Vulos
 - [ ] Bridge installer in settings: "Connect WhatsApp", "Connect Telegram", etc.
 - [ ] First-run wizard: create local Matrix account, optionally connect bridges
 - [ ] E2E encryption enabled by default

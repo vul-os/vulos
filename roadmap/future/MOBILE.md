@@ -210,7 +210,7 @@ libcamera is the modern camera stack replacing V4L2, supporting mobile SoC ISPs 
 - WebRTC camera access from browsers works where libcamera works
 - Each SoC needs specific libcamera pipeline support, most aren't upstreamed
 
-**For Vula OS:**
+**For Vulos:**
 - Web-first approach means camera access via WebRTC/getUserMedia — works where libcamera works
 - Target devices with upstream libcamera support
 - Camera quality will improve as libcamera matures
@@ -259,7 +259,7 @@ QR-code scan-to-pay dominates in China (Alipay, WeChat Pay) and India (UPI), pro
 - A web browser
 - Internet connection
 
-No secure element, no NFC chip, no bank certification, no proprietary firmware. A web app on Vula OS can integrate with QR payment systems. This is the path forward.
+No secure element, no NFC chip, no bank certification, no proprietary firmware. A web app on Vulos can integrate with QR payment systems. This is the path forward.
 
 ---
 

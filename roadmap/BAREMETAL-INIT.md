@@ -1,6 +1,6 @@
 # Bare Metal Init
 
-How Vula OS boots on real hardware — from power-on to the desktop.
+How Vulos boots on real hardware — from power-on to the desktop.
 
 Works two ways simultaneously:
 1. **Remote** — access from any browser on the network (current system, unchanged)
@@ -65,7 +65,7 @@ For a **live USB**: the kernel loads a **squashfs** (compressed read-only filesy
 
 ---
 
-## Where Vula OS Is Today
+## Where Vulos Is Today
 
 ### Current bare metal boot
 ```
@@ -91,7 +91,7 @@ vulos-init → mount filesystems → vulos-server → cage + Cog → http://loca
 ```
 Layer 1: Wayland compositor (cage — fullscreen kiosk)
   └── Browser window (Cog/WPE or Chromium — fullscreen, IS the desktop)
-        └── Vula OS React shell (launchpad, dock, menu bar, chat, all JSX windows)
+        └── Vulos React shell (launchpad, dock, menu bar, chat, all JSX windows)
               └── Native app windows → stream transport: GStreamer/WebRTC → <StreamViewer>
 ```
 
@@ -380,7 +380,7 @@ When `isOnDevice()` is true and surface transport is active, Launchpad changes l
 
 ### The easiest path: browser-based installer
 
-Yes — install the browser first. The installer is just another Vula OS app.
+Yes — install the browser first. The installer is just another Vulos app.
 
 ```
 USB boot
@@ -522,13 +522,13 @@ Plymouth.SetKey("v", Plymouth.ToggleVerbose);
 | Windows | Logo + spinning dots | None | Indeterminate |
 | ChromeOS | Chrome logo | None | Indeterminate |
 | Ubuntu | Logo + dot animation | Esc | Indeterminate |
-| **Vula OS** | **Logo + progress bar + %** | **Ctrl+V** | **Determinate (real milestones)** |
+| **Vulos** | **Logo + progress bar + %** | **Ctrl+V** | **Determinate (real milestones)** |
 
 We're the only one with a genuinely determinate progress bar tied to real boot phases. macOS fakes it with a timer. Ubuntu doesn't even try. We show actual progress because we control the entire boot chain.
 
 ### Installer app
 
-Built as a React component in the Vula OS shell, backed by Go API endpoints.
+Built as a React component in the Vulos shell, backed by Go API endpoints.
 
 **Backend endpoints:**
 - [ ] `GET /api/installer/disks` — list internal drives (lsblk, size, model, existing partitions)
@@ -572,7 +572,7 @@ USB drive
 1. systemd-boot loads kernel with: `root=LABEL=vulos-live init=/sbin/vulos-init quiet splash`
 2. initramfs detects squashfs on the partition
 3. Mounts squashfs as read-only lower + tmpfs as upper → overlay root
-4. pivot_root to overlay → full Vula OS running from RAM
+4. pivot_root to overlay → full Vulos running from RAM
 5. USB can be removed after boot (if enough RAM, ~4GB minimum)
 
 ### Build changes
@@ -590,7 +590,7 @@ USB drive
 ```
 /dev/nvme0n1 (or /dev/sda)
   ├── p1  ESP     512MB   FAT32   /boot/efi   (bootloader, kernel, initramfs)
-  ├── p2  root    rest    ext4    /            (Vula OS)
+  ├── p2  root    rest    ext4    /            (Vulos)
   └── (optional) p3  home         ext4    /home
 ```
 
@@ -652,7 +652,7 @@ If cage or the browser fails (and superviseKiosk cannot recover), drop to a text
 
 ```
 ┌─────────────────────────────────────┐
-│          Vula OS v0.1.0             │
+│          Vulos v0.1.0             │
 │                                     │
 │  Open in browser:                   │
 │    http://192.168.1.42:8080         │

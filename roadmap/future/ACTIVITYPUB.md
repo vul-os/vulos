@@ -104,14 +104,14 @@ Alternatively, build from scratch in React (matches our stack) using the Mastodo
 
 | Server | Language | License | Notes |
 |--------|----------|---------|-------|
-| [GoToSocial](https://github.com/superseriousbusiness/gotosocial) | Go | AGPLv3 | **Best fit** — single binary, SQLite, lightweight, designed for single-user/small instances. Ideal for Vula OS |
+| [GoToSocial](https://github.com/superseriousbusiness/gotosocial) | Go | AGPLv3 | **Best fit** — single binary, SQLite, lightweight, designed for single-user/small instances. Ideal for Vulos |
 | [Mastodon](https://github.com/mastodon/mastodon) | Ruby | AGPLv3 | Reference implementation but heavy (Ruby, PostgreSQL, Redis, Sidekiq) |
 | [Pleroma](https://git.pleroma.social/pleroma/pleroma) | Elixir | AGPLv3 | Lightweight, single binary possible. Good alternative to GoToSocial |
 | [Akkoma](https://akkoma.dev/AkkomaGang/akkoma) | Elixir | AGPLv3 | Pleroma fork, more active development |
 
 ### Recommendation
 
-**GoToSocial** — written in Go (matches our backend), single binary, SQLite, designed to be lightweight. Can run as a Vula OS service alongside Conduit (Matrix). Users get their own Fediverse identity: `@user@their-vula-device.local`
+**GoToSocial** — written in Go (matches our backend), single binary, SQLite, designed to be lightweight. Can run as a Vulos service alongside Conduit (Matrix). Users get their own Fediverse identity: `@user@their-vula-device.local`
 
 ---
 
@@ -130,7 +130,7 @@ Alternatively, build from scratch in React (matches our stack) using the Mastodo
 - No local server needed
 
 ### 3. Self-hosted identity (GoToSocial)
-- Run GoToSocial as a Vula OS service
+- Run GoToSocial as a Vulos service
 - Own your identity: `@you@your-domain`
 - Federate with the entire Fediverse
 - Full control over your data
@@ -157,10 +157,10 @@ Streaming via WebSocket: `wss://instance/api/v1/streaming`
 
 ---
 
-## Integration with Vula OS
+## Integration with Vulos
 
 - [ ] Ship as a default app: `social.vulos` in the app launcher
-- [ ] Push notifications via the Vula OS notification system (WebSocket from streaming API)
+- [ ] Push notifications via the Vulos notification system (WebSocket from streaming API)
 - [ ] Share to social from any app (file manager, browser, photos → share → post to Fediverse)
 - [ ] AI integration: "summarize my feed", "draft a reply to this thread"
 - [ ] Profile links in contacts app (Fediverse handle as a contact field)
@@ -175,8 +175,8 @@ Streaming via WebSocket: `wss://instance/api/v1/streaming`
 3. [ ] Photos view — grid, full-screen viewer, upload
 4. [ ] Video view — PeerTube feed, HLS playback
 5. [ ] Forums view — Lemmy communities, upvote/downvote, posting
-6. [ ] GoToSocial as optional Vula OS service
+6. [ ] GoToSocial as optional Vulos service
 7. [ ] OAuth2 login for existing Mastodon/Pixelfed accounts
 8. [ ] Push notifications integration
-9. [ ] Share-to-social from other Vula OS apps
+9. [ ] Share-to-social from other Vulos apps
 10. [ ] Offline support — feed caching, queued posts

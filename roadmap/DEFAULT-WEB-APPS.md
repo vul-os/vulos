@@ -1,6 +1,6 @@
 # Default Web Apps
 
-Built-in web apps that ship with Vula OS. These are lightweight, built with HTML/CSS/JS, run inside the desktop shell — no apt packages, no Flatpak, no streaming. They open instantly like native apps because they ARE part of the OS.
+Built-in web apps that ship with Vulos. These are lightweight, built with HTML/CSS/JS, run inside the desktop shell — no apt packages, no Flatpak, no streaming. They open instantly like native apps because they ARE part of the OS.
 
 Each app lives in `/apps/<id>/` with an `app.json` manifest + a small Python/Go server or static files.
 
@@ -277,7 +277,7 @@ Each app follows the same pattern as existing apps:
   "auto_start": false,
   "singleton": true,
   "permissions": [],
-  "author": "Vula OS",
+  "author": "Vulos",
   "license": "MIT"
 }
 ```
@@ -288,7 +288,7 @@ Apps that are pure frontend (calculator, clock, PDF viewer) can skip the server 
 
 ## AI Integration
 
-Every default app can integrate with the Vula OS AI assistant:
+Every default app can integrate with the Vulos AI assistant:
 
 - **Docs**: "Summarise this document", "Rewrite this paragraph", "Translate to French"
 - **Sheets**: "Create a formula for...", "Generate sample data", "Explain this formula"

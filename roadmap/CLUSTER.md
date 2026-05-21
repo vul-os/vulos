@@ -39,7 +39,7 @@ For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For 
 | **MinIO Storage Node** | Optional | Optional |
 | **Display** | Xvfb (virtual) | Physical display |
 
-Both modes run the exact same Vula OS. The only difference is whether a tunnel runs and whether the display is physical or virtual.
+Both modes run the exact same Vulos. The only difference is whether a tunnel runs and whether the display is physical or virtual.
 
 ```
 VULOS_MODE=server     # or "local"

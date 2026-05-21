@@ -1,6 +1,6 @@
-# Vula OS Roadmap
+# Vulos Roadmap
 
-This directory holds the design documents — one per system area. Each document explains *what* a part of Vula OS is meant to do and *how* it's structured, but **not** the day-to-day "what's left to ship" view. That lives in [`../tasks.md`](../tasks.md), with one task per `### [ID]` entry pointing back here.
+This directory holds the design documents — one per system area. Each document explains *what* a part of Vulos is meant to do and *how* it's structured, but **not** the day-to-day "what's left to ship" view. That lives in [`../tasks.md`](../tasks.md), with one task per `### [ID]` entry pointing back here.
 
 Read it like this:
 
