@@ -232,6 +232,7 @@ function ScanTab({ onDetected }) {
   const streamRef = useRef(null)
   const rafRef    = useRef(null)
   const foundRef  = useRef(false)
+  const tickRef   = useRef(null)
 
   const [camError, setCamError] = useState(null)
   const [scanning, setScanning] = useState(false)
@@ -251,7 +252,7 @@ function ScanTab({ onDetected }) {
     if (!video || !canvas || foundRef.current) return
 
     if (video.readyState < 2) {
-      rafRef.current = requestAnimationFrame(tick)
+      rafRef.current = requestAnimationFrame(tickRef.current)
       return
     }
 
@@ -277,8 +278,12 @@ function ScanTab({ onDetected }) {
       }
     }
 
-    rafRef.current = requestAnimationFrame(tick)
+    rafRef.current = requestAnimationFrame(tickRef.current)
   }, [onDetected, stopStream])
+
+  useEffect(() => {
+    tickRef.current = tick
+  }, [tick])
 
   useEffect(() => {
     let mounted = true
@@ -295,7 +300,7 @@ function ScanTab({ onDetected }) {
         }
         setScanning(true)
         setHint('Point camera at a Vula QR code…')
-        rafRef.current = requestAnimationFrame(tick)
+        rafRef.current = requestAnimationFrame(tickRef.current)
       })
       .catch(err => {
         if (!mounted) return
