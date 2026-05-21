@@ -43,6 +43,7 @@ import (
 	"vulos/backend/services/packages"
 	"vulos/backend/services/passkeys"
 	"vulos/backend/services/peering"
+	"vulos/backend/services/peering/sfu"
 	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/recall"
@@ -1618,6 +1619,15 @@ func main() {
 		mux.Handle("/api/feeds", peeringMux)
 		mux.Handle("/api/feeds/", peeringMux)
 	}
+
+	// PEER-27: Pion SFU — host-side selective-forwarding unit.
+	// Registers 5 routes under /api/sfu/:
+	//   POST   /api/sfu/rooms
+	//   DELETE /api/sfu/rooms/{room_id}
+	//   POST   /api/sfu/rooms/{room_id}/join
+	//   POST   /api/sfu/rooms/{room_id}/ice
+	sfuSvc := sfu.New()
+	sfu.RegisterSFUHandlers(mux, sfuSvc)
 
 	// App visibility (private|local|public)
 	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
