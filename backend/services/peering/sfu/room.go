@@ -101,6 +101,10 @@ type Room struct {
 	// dominantSpeaker is the participant ID of the current active speaker.
 	dominantSpeaker string
 
+	// mixer is the audio VAD/mixing component.  Set by NewRoom; drives
+	// dominant-speaker election and per-participant top-3 audio mix.
+	mixer *AudioMixer
+
 	done chan struct{}
 	once sync.Once
 }
@@ -120,13 +124,15 @@ func NewRoom(lastN int) *Room {
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
 
-	return &Room{
+	r := &Room{
 		ID:           uuid.NewString(),
 		LastN:        lastN,
 		api:          api,
 		participants: make(map[string]*Participant),
 		done:         make(chan struct{}),
 	}
+	r.mixer = AudioStartMixer(r)
+	return r
 }
 
 // Join adds a new participant PeerConnection to the room. It negotiates
@@ -268,6 +274,10 @@ func (r *Room) Leave(participantID string) {
 	}
 	r.mu.Unlock()
 
+	// Prune VAD state so the leaver's audio level doesn't affect future
+	// dominant-speaker elections.
+	AudioRemoveParticipant(r.mixer, participantID)
+
 	log.Printf("[sfu] room=%s participant=%s left (remaining=%d)", r.ID, participantID, len(remaining))
 }
 
@@ -302,6 +312,10 @@ func (r *Room) Close() {
 		r.mu.Unlock()
 		for _, id := range pids {
 			r.Leave(id)
+		}
+		// Stop the audio mixer's background goroutine.
+		if r.mixer != nil {
+			r.mixer.Stop()
 		}
 		log.Printf("[sfu] room=%s closed", r.ID)
 	})
@@ -342,7 +356,11 @@ func (r *Room) onTrack(p *Participant, remote *webrtc.TrackRemote, receiver *web
 		}
 
 		if kind == "audio" {
-			r.forwardAudio(p, pkt)
+			// Route through the AudioMixer: VAD tracking, dominant-speaker
+			// election, and top-3 mixing (excl. self) are all handled there.
+			// Pass 128 as the RFC 6464 level sentinel — real deployments should
+			// extract the header extension before calling AudioProcessPacket.
+			r.mixer.AudioProcessPacket(p, pkt, 128)
 		} else {
 			r.forwardVideo(p, pkt, rid)
 		}
