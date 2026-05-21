@@ -349,3 +349,60 @@ func (sm *SlotManager) Rollback(bs *BootState) (*BootState, error) {
 	}
 	return next, nil
 }
+
+// ─── Boot-counter helpers (OSDIST-03) ────────────────────────────────────────
+
+// DefaultBootThreshold is the number of consecutive unconfirmed boot attempts
+// before ShouldRollback signals that the system should fall back to
+// last-known-good.  Override at runtime via VULOS_BOOT_THRESHOLD env var or
+// pass an explicit value to ShouldRollback.
+const DefaultBootThreshold = 3
+
+// IncrementBootCounter increments BootState.BootCounter by one and atomically
+// persists the updated state.  Call this as early as possible in the init
+// sequence — before services are started — so that a crash/reboot before
+// MarkHealthy is called registers as a failed attempt.
+func (sm *SlotManager) IncrementBootCounter(bs *BootState) (*BootState, error) {
+	next := &BootState{
+		Active:        bs.Active,
+		Pending:       bs.Pending,
+		BootCounter:   bs.BootCounter + 1,
+		LastKnownGood: bs.LastKnownGood,
+	}
+	if err := sm.Save(next); err != nil {
+		return nil, fmt.Errorf("osdist/slots: increment boot counter: %w", err)
+	}
+	return next, nil
+}
+
+// ShouldRollback reports whether the boot counter has reached or exceeded
+// threshold without a healthy mark, meaning the system should revert to
+// last-known-good.  A threshold ≤ 0 is treated as DefaultBootThreshold.
+//
+// It also returns false when LastKnownGood is unset — there is nowhere to roll
+// back to, so the caller must continue with the current slot regardless.
+func ShouldRollback(bs *BootState, threshold int) bool {
+	if threshold <= 0 {
+		threshold = DefaultBootThreshold
+	}
+	if bs.LastKnownGood == SlotNone {
+		return false // no safe fallback exists
+	}
+	return bs.BootCounter >= threshold
+}
+
+// MarkHealthy records a clean boot: resets BootCounter to 0 and promotes the
+// active slot to LastKnownGood.  Call this after the OS services / desktop are
+// confirmed healthy so that subsequent boots know this slot is safe.
+func (sm *SlotManager) MarkHealthy(bs *BootState) (*BootState, error) {
+	next := &BootState{
+		Active:        bs.Active,
+		Pending:       bs.Pending,
+		BootCounter:   0,
+		LastKnownGood: bs.Active, // active is now the confirmed-good slot
+	}
+	if err := sm.Save(next); err != nil {
+		return nil, fmt.Errorf("osdist/slots: mark healthy: %w", err)
+	}
+	return next, nil
+}
