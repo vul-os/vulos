@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import QRCanvas from './QRCanvas.jsx'
 import ContactCard from './ContactCard.jsx'
 import RequestQueue from './RequestQueue.jsx'
+import CallView from './call/CallView.jsx'
+import { usePeering } from '../../core/usePeering.js'
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -25,6 +27,7 @@ const TABS = [
   { id: 'identity', label: 'Identity' },
   { id: 'contacts', label: 'Contacts' },
   { id: 'requests', label: 'Requests' },
+  { id: 'call',     label: 'Call' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -137,7 +140,7 @@ function IdentityPanel({ identity, onRefresh }) {
 // ---------------------------------------------------------------------------
 // Contacts panel
 // ---------------------------------------------------------------------------
-function ContactsPanel({ contacts, onUpdatePerms, onRemove, loading }) {
+function ContactsPanel({ contacts, onUpdatePerms, onRemove, onCall, loading }) {
   const [search, setSearch] = useState('')
 
   const filtered = (contacts || []).filter(c => {
@@ -187,6 +190,7 @@ function ContactsPanel({ contacts, onUpdatePerms, onRemove, loading }) {
               contact={c}
               onUpdatePerms={onUpdatePerms}
               onRemove={onRemove}
+              onCall={onCall}
             />
           ))}
         </div>
@@ -309,6 +313,18 @@ export default function Peering() {
   const [loadingRequests, setLoadingRequests] = useState(true)
   const [error, setError] = useState(null)
   const pollRef = useRef(null)
+
+  // Peering WebSocket — shared with CallView so signaling reuses the same
+  // connection that drives message/presence/collab channels (PEER-05).
+  const peeringWS = usePeering()
+
+  // Quick-dial from contact card: switch to Call tab with pre-filled target.
+  // CallView reads this via the dialTo prop and clears it on mount.
+  const [callDialTo, setCallDialTo] = useState(null)
+  const handleCallContact = useCallback((vulaId) => {
+    setCallDialTo(vulaId)
+    setTab('call')
+  }, [])
 
   // Fetch identity
   const fetchIdentity = useCallback(async () => {
@@ -455,6 +471,7 @@ export default function Peering() {
             contacts={contacts}
             onUpdatePerms={handleUpdatePerms}
             onRemove={handleRemove}
+            onCall={handleCallContact}
             loading={loadingContacts}
           />
         )}
@@ -466,6 +483,15 @@ export default function Peering() {
             onBlock={handleBlock}
             loading={loadingRequests}
             onSent={fetchRequests}
+          />
+        )}
+
+        {tab === 'call' && (
+          <CallView
+            myVulaId={identity?.vula_id || ''}
+            peeringWS={peeringWS}
+            dialTo={callDialTo}
+            onDialToConsumed={() => setCallDialTo(null)}
           />
         )}
       </div>

@@ -9,9 +9,11 @@
  *   ended    — brief "Call ended" flash before returning to idle
  *
  * Props:
- *   myVulaId  {string}          — local user's Vula ID (passed straight through)
- *   peeringWS {object|null}     — optional usePeering() { send, subscribe }
- *   onClose   {function}        — called when the user dismisses the view
+ *   myVulaId          {string}          — local user's Vula ID (passed straight through)
+ *   peeringWS         {object|null}     — optional usePeering() { send, subscribe }
+ *   onClose           {function}        — called when the user dismisses the view
+ *   dialTo            {string|null}     — pre-fill the dial field and auto-start (quick-dial from contact card)
+ *   onDialToConsumed  {function}        — called after dialTo has been consumed so parent can clear it
  *
  * The hidden <audio> element for remote audio playback is wired via the
  * setRemoteAudio callback from useWebRTCCall.
@@ -82,7 +84,7 @@ function CallBtn({ onClick, label, icon, color = 'bg-neutral-700 hover:bg-neutra
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function CallView({ myVulaId = '', peeringWS = null, onClose }) {
+export default function CallView({ myVulaId = '', peeringWS = null, onClose, dialTo = null, onDialToConsumed }) {
   const call = useWebRTCCall({ myVulaId, peeringWS })
 
   // Remote <audio> element ref
@@ -101,6 +103,20 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose }) {
     audioRef.current = el
     call.setRemoteAudio(el)
   }, [call])
+
+  // Auto-dial when dialTo prop is set (quick-dial from ContactCard).
+  // Consume once so navigating back does not re-trigger.
+  useEffect(() => {
+    if (dialTo && call.state === 'idle') {
+      setDialTarget(dialTo)
+      onDialToConsumed?.()
+      // Small delay to ensure the input is rendered before calling
+      const t = setTimeout(() => {
+        call.startCall(dialTo)
+      }, 50)
+      return () => clearTimeout(t)
+    }
+  }, [dialTo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start/stop duration timer based on call state
   useEffect(() => {
