@@ -98,6 +98,12 @@ type backend interface {
 	// Returns ErrLost on 412 Precondition Failed.
 	// MUST NOT use If-None-Match:* anywhere.
 	putIfMatch(ctx context.Context, key string, body []byte, matchETag string) (newETag string, err error)
+
+	// putUnconditional writes the object without any If-Match / If-None-Match
+	// condition.  Used only by EnsureLease for the initial bootstrap PUT.
+	// Callers must check for existence first; this is NOT safe for concurrent
+	// lease mutation — use putIfMatch for that.
+	putUnconditional(ctx context.Context, key string, body []byte) error
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -270,6 +276,53 @@ func (m *Manager) Release(ctx context.Context, held *Held) error {
 	return err
 }
 
+// ── Bootstrap helper ──────────────────────────────────────────────────────────
+
+// EnsureLease creates the lease object for scope in the "free" state if it does
+// not already exist.  It is safe to call multiple times (idempotent):
+//
+//   - If the object is absent (404 / NoSuchKey) it writes the initial free doc.
+//   - If the object already exists in any state it does nothing — a held lease
+//     is never clobbered.
+//
+// This intentionally avoids If-None-Match:* (MinIO #20346 wontfix) and instead
+// uses a GET-then-conditional-PUT pattern.  The tiny race window at first bootstrap
+// (two nodes both see 404 and both PUT) is harmless: both write an identical free
+// doc, leaving the object in the correct state.
+//
+// EnsureLease must be called once at cluster init / storage provisioning before any
+// Acquire / Renew / Release operation on scope.
+func (m *Manager) EnsureLease(ctx context.Context, scope string) error {
+	key := objectKey(scope)
+
+	// Step 1: check whether the object already exists.
+	_, _, err := m.b.getWithETag(ctx, key)
+	if err == nil {
+		// Object exists (in any state) — nothing to do.
+		return nil
+	}
+	if !errors.Is(err, ErrLeaseMissing) {
+		return fmt.Errorf("lease.EnsureLease: probe %q: %w", key, err)
+	}
+
+	// Step 2: object is absent — write the initial free doc unconditionally.
+	initDoc := leaseDoc{
+		State:     stateFree,
+		Holder:    "",
+		Fence:     0,
+		ExpiresAt: time.Time{},
+	}
+	body, err := json.Marshal(initDoc)
+	if err != nil {
+		return fmt.Errorf("lease.EnsureLease: marshal: %w", err)
+	}
+
+	if err := m.b.putUnconditional(ctx, key, body); err != nil {
+		return fmt.Errorf("lease.EnsureLease: create %q: %w", key, err)
+	}
+	return nil
+}
+
 // ── Fencing helper ────────────────────────────────────────────────────────────
 
 // ValidateFence checks that fence is not stale relative to lastSeen.
@@ -322,6 +375,15 @@ func (b *minioBackend) getWithETag(ctx context.Context, key string) ([]byte, str
 	// minio returns ETags with surrounding quotes; strip them for consistency.
 	etag := strings.Trim(info.ETag, "\"")
 	return body, etag, nil
+}
+
+func (b *minioBackend) putUnconditional(ctx context.Context, key string, body []byte) error {
+	_, err := b.mc.PutObject(ctx, b.bucket, key, bytes.NewReader(body), int64(len(body)),
+		minio.PutObjectOptions{ContentType: "application/json"})
+	if err != nil {
+		return fmt.Errorf("lease: unconditional put %q: %w", key, err)
+	}
+	return nil
 }
 
 func (b *minioBackend) putIfMatch(ctx context.Context, key string, body []byte, matchETag string) (string, error) {
