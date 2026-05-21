@@ -60,6 +60,7 @@ import (
 	"vulos/backend/services/webbrowser"
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
+	"vulos/backend/services/installer"
 	"vulos/backend/services/wine"
 	"vulos/backend/services/wltoplevel"
 )
@@ -1863,6 +1864,12 @@ func main() {
 		proc.Signal(syscall.SIGTERM)
 		writeJSON(w, map[string]string{"status": "killed"})
 	})
+
+	// BMINIT-12/13: installer + live-session endpoints (Try Vulos → Install flow, NETB-04).
+	// Routes are always registered; destructive operations are self-guarded by
+	// the install handler (requires confirm:true) and by installer.IsLiveSession
+	// which reports mode:live only when the root is a squashfs+overlay.
+	installer.RegisterHandlers(mux, installer.New())
 
 	// BMINIT-18: wlr-foreign-toplevel-management-v1 window enumeration + control.
 	// Registers GET /api/shell/windows, POST /api/shell/windows/focus,
