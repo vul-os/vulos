@@ -55,7 +55,7 @@ function PermToggle({ perm, active, onChange, disabled }) {
   )
 }
 
-export default function ContactCard({ contact, onUpdatePerms, onRemove }) {
+export default function ContactCard({ contact, onUpdatePerms, onRemove, onCall }) {
   const [expanded, setExpanded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [perms, setPerms] = useState(contact.permissions || [])
@@ -143,7 +143,15 @@ export default function ContactCard({ contact, onUpdatePerms, onRemove }) {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-2 pt-1 flex-wrap">
+            {onCall && perms.includes('call') && (
+              <button
+                onClick={() => onCall(contact.vula_id)}
+                className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                <span>📞</span> Voice call
+              </button>
+            )}
             <button
               onClick={() => onRemove(contact.vula_id)}
               className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
