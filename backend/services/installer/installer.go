@@ -185,6 +185,7 @@ func RegisterHandlers(mux *http.ServeMux, svc *Service) {
 	mux.HandleFunc("/api/installer/status", svc.handleStatus)
 	mux.HandleFunc("/api/installer/install", svc.handleInstall)
 	mux.HandleFunc("/api/installer/progress", svc.handleProgress)
+	mux.HandleFunc("/api/installer/live-session", svc.handleLiveSession)
 }
 
 // ---------------------------------------------------------------------------
