@@ -930,6 +930,36 @@ if [ "$LIVE_MODE" = "1" ]; then
   mksquashfs "$ROOTFS" "$SQUASHFS" -comp xz -noappend -quiet
   echo "  ${GREEN}✓${NC} image.squashfs ($(du -h "$SQUASHFS" | cut -f1))"
 
+  # ═══════════════════════════════════
+  # VERITY-01: dm-verity Merkle tree + root hash (os-core.squashfs)
+  #
+  # Generate a dm-verity Merkle hash tree + root hash over the squashfs
+  # so every block is verifiable at runtime.  The root hash is the image's
+  # content identity (SIGNING.md) and is what stable.json pins in its
+  # `roothash` field (OSDIST-01).
+  #
+  # Output files:
+  #   os-core.hashtree  — binary Merkle hash tree (uploaded to OS bucket
+  #                       alongside the squashfs; read by dm-verity at boot)
+  #   os-core.roothash  — single hex line: the verity root hash, consumed
+  #                       by the stable.json signing step (OSDIST-01)
+  # ═══════════════════════════════════
+  VERITY_HASHTREE="$OUTDIR/os-core.hashtree"
+  VERITY_ROOTHASH_FILE="$OUTDIR/os-core.roothash"
+  echo "${BLUE}▸ Generating dm-verity hash tree + root hash (VERITY-01)...${NC}"
+  VERITY_ROOT_HASH="$("$ROOT_DIR/scripts/verity/gen-verity.sh" \
+      "$SQUASHFS" "$VERITY_HASHTREE" "$VERITY_ROOTHASH_FILE")" || {
+    echo "${RED}✗ gen-verity.sh failed — aborting live build${NC}"
+    exit 1
+  }
+  if [ -n "$VERITY_ROOT_HASH" ]; then
+    echo "  ${GREEN}✓${NC} dm-verity root hash: $VERITY_ROOT_HASH"
+    echo "  ${GREEN}✓${NC} hash tree  → os-core.hashtree"
+    echo "  ${GREEN}✓${NC} root hash  → os-core.roothash  (surfaced for stable.json signing)"
+  else
+    echo "  ${DIM}veritysetup unavailable — root hash not produced (install cryptsetup-bin for production builds)${NC}"
+  fi
+
   # --- Build bootable GPT image ---
   LIVE_IMG="$OUTDIR/vulos-live-$ARCH.img"
   LIVE_ESP_MB=220
