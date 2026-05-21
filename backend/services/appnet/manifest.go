@@ -32,6 +32,52 @@ var ValidPermissions = []string{
 // appIDMaxLen is the maximum length of an app ID (63 chars to fit in a DNS label).
 const appIDMaxLen = 63
 
+// Concurrency constants for cluster-wide app scheduling policy.
+// These declare how the app behaves when the owning profile is live in multiple
+// locations simultaneously (see CONCURRENCY.md).
+//
+// NOTE — legacy Singleton bool vs. Concurrency string:
+//
+//	AppManifest.Singleton (bool, json:"singleton") is a per-machine constraint: the
+//	local launcher will refuse to start a second instance of the app on the same
+//	node.  It is about local process multiplicity.
+//
+//	AppManifest.Concurrency (string, json:"concurrency") is a cluster-wide scheduling
+//	policy: it tells the orchestration layer how to handle the app when the same
+//	profile is active on several nodes at once.
+//	  - ConcurrencySingleton (default): active-passive; exactly one instance holds a
+//	    run-lease (COORDINATION.md) at a time.  If the leaseholder fails, another
+//	    node picks up the lease — clean failover, no split-brain.
+//	  - ConcurrencyReplicated: active-active; all live instances run concurrently and
+//	    their state is merged via CRDT (cr-sqlite field-level LWW, SYNC.md).
+//	  - ConcurrencyCollaborative: active-active with real-time co-editing; same as
+//	    replicated plus an infra-provided presence/awareness channel carried on the
+//	    peering/relay hot path (PEERING.md).
+//
+// The Concurrency value is part of the signed/validated app.json bundle: it is
+// integrity-protected alongside the rest of the manifest and cannot be silently
+// flipped to an active-active mode after the bundle has been published.
+const (
+	ConcurrencySingleton     = "singleton"     // active-passive, run-lease enforced (default)
+	ConcurrencyReplicated    = "replicated"    // active-active, CRDT merge
+	ConcurrencyCollaborative = "collaborative" // active-active + presence/awareness channel
+)
+
+// ValidConcurrencies lists the accepted concurrency values.
+var ValidConcurrencies = []string{ConcurrencySingleton, ConcurrencyReplicated, ConcurrencyCollaborative}
+
+// ValidateConcurrency returns an error when v is not a recognised value.
+// An empty string is NOT accepted here; callers that want the empty→singleton
+// defaulting behaviour should apply it before calling this function.
+func ValidateConcurrency(v string) error {
+	for _, valid := range ValidConcurrencies {
+		if v == valid {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid concurrency %q (valid: singleton, replicated, collaborative)", v)
+}
+
 // AppManifest describes an installable app.
 // Stored as app.json in each app's directory under /opt/vulos/apps/<id>/.
 //
@@ -60,12 +106,13 @@ type AppManifest struct {
 	Deps        []string          `json:"deps"`        // OS packages needed
 	WorkDir     string            `json:"work_dir"`    // defaults to app directory
 	AutoStart   bool              `json:"auto_start"`  // start on boot
-	Singleton   bool              `json:"singleton"`   // only one instance allowed
+	Singleton   bool              `json:"singleton"`   // only one instance on this machine (local constraint; see Concurrency for cluster policy)
 	Permissions []string          `json:"permissions"` // requested permissions: "network", "filesystem", etc.
 	Author      string            `json:"author"`      // app author/publisher
 	License     string            `json:"license"`     // SPDX license identifier
 	Homepage    string            `json:"homepage"`    // upstream project URL
 	Visibility  string            `json:"visibility"`  // "private" | "local" | "public"; default "private"
+	Concurrency string            `json:"concurrency"` // "singleton" | "replicated" | "collaborative"; default "singleton"
 }
 
 // Validate checks that the manifest has all required fields and conforms
@@ -139,6 +186,16 @@ func (m *AppManifest) Validate(appDir string) error {
 		m.Visibility = VisibilityPrivate
 	}
 	if err := ValidateVisibility(m.Visibility); err != nil {
+		return fmt.Errorf("app %s: %w", m.ID, err)
+	}
+
+	// Default empty concurrency to "singleton" and validate.
+	// The concurrency declaration is part of the signed app.json bundle and is
+	// validated on every load — it cannot be silently changed post-publish.
+	if m.Concurrency == "" {
+		m.Concurrency = ConcurrencySingleton
+	}
+	if err := ValidateConcurrency(m.Concurrency); err != nil {
 		return fmt.Errorf("app %s: %w", m.ID, err)
 	}
 
