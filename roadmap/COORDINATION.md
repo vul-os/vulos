@@ -47,6 +47,28 @@ The monotonic `fence` integer is handed to whatever the lease guards. A stalled-
 
 **Tigris note:** strongly-consistent CAS on Tigris requires **Single-region or Multi-region** buckets — configure accordingly, or CAS guarantees don't hold.
 
+#### Tigris bucket consistency guard (LEASE-03)
+
+Tigris distinguishes four bucket replication classes:
+
+| Class | Consistency | Safe for leasing? |
+|---|---|---|
+| Single-region | Strong | Yes |
+| Multi-region | Strong | Yes |
+| Global | Eventual | **No** |
+| Dual-region | Eventual | **No** |
+
+Global and Dual-region buckets replicate asynchronously.  Two nodes can each see stale ETags, both believe their CAS succeeded, and both think they hold the lease simultaneously — mutual exclusion is violated.
+
+The lease package enforces this at `Manager` construction time via `CheckConsistency` (see `backend/services/lease/guard.go`):
+
+- **Default (warn mode, `StrictConsistency=false`):** a loud `log.Printf` warning is emitted; the Manager is created and operations continue.  Use during initial migration when you cannot immediately change the bucket type.
+- **Strict mode (`StrictConsistency=true`):** `New()` returns `ErrUnsafeBucket` and refuses to create the Manager.  Recommended for all production deployments.
+
+Detection is endpoint-based: any endpoint containing `tigris.dev` triggers the check.  AWS S3, MinIO, and other S3-compatible backends are always considered safe (their CAS semantics are strongly consistent by default).
+
+Set `S3Config.BucketType` to `"single-region"` or `"multi-region"` (from the `TIGRIS_BUCKET_TYPE` environment variable or equivalent) to declare a safe Tigris bucket explicitly and suppress the unknown-type warning.
+
 ---
 
 ## What This One Primitive Serves
