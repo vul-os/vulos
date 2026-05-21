@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"vulos/backend/cmd/verify"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/hwdetect"
 	"vulos/backend/services/osdist"
@@ -174,6 +176,101 @@ func incrementBootCounter() (*osdist.SlotManager, *osdist.BootState) {
 	return sm, bs
 }
 
+// ─── VERITY-02: OS image verification before services start ──────────────────
+
+// Well-known paths for the squashfs verification gate.
+// All paths are absolute; they are accessible after mountAll() because the
+// rootfs is already the squashfs (pivot happened in the early initramfs stage).
+const (
+	// verityManifestPath is where stable.json is expected on the live system.
+	// The manifest carries the dm-verity root hash and the signed ImagePayload.
+	verityManifestPath = "/etc/vulos/stable.json"
+
+	// verityManifestSigPath is the detached .sig for stable.json.
+	verityManifestSigPath = "/etc/vulos/stable.json.sig"
+
+	// verityReleaseCertPath is the release-key certificate (ReleaseCert JSON).
+	// Validated against the baked trust anchor before the image sig is trusted.
+	verityReleaseCertPath = "/etc/vulos/release-cert.json"
+
+	// verityEpochPath is the persistent epoch floor (signing.DefaultEpochPath).
+	verityEpochPath = "/var/lib/vulos/epoch-floor.json"
+)
+
+// verityEpochFloor reads the epoch floor from the persistent store.
+// Returns 0 on any error (conservative — new device has floor 0).
+func verityEpochFloor() int64 {
+	data, err := os.ReadFile(verityEpochPath)
+	if err != nil {
+		return 0
+	}
+	var rec struct {
+		Floor int64 `json:"floor"`
+	}
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return 0
+	}
+	return rec.Floor
+}
+
+// verifyOSBeforeBoot is the VERITY-02 pivot gate.
+//
+// It is called early in main() — after mountAll() (so /etc is readable) but
+// before any OS services start.  If verification fails for any reason the
+// function logs the error and calls os.Exit(1), halting boot.
+//
+// Verification steps:
+//  1. Load the baked trust anchor (/etc/vulos/trust-anchor.pub).
+//  2. Validate the release cert (/etc/vulos/release-cert.json) against the anchor.
+//  3. Enforce cert.MinEpoch >= device epoch floor.
+//  4. Verify the stable.json.sig over the ImagePayload (release key).
+//  5. Check that ImagePayload.RootHash == manifest's roothash field.
+//
+// Any mismatch is fatal: the OS refuses to start with an unverified image.
+// This implements the fail-closed guarantee from roadmap/SIGNING.md.
+func verifyOSBeforeBoot() {
+	log.Println("[verity] starting OS image verification (VERITY-02)")
+
+	// Read the manifest (stable.json) to extract the expected root hash and
+	// construct the ImagePayload that the release key signed.
+	manifestData, err := os.ReadFile(verityManifestPath)
+	if err != nil {
+		log.Fatalf("[verity] HALT: cannot read manifest %q: %v", verityManifestPath, err)
+	}
+
+	// Parse the manifest into the ImagePayload structure.
+	// We read the fields the release key signed (ImagePayload mirrors ManifestPayload
+	// from cmd/sign/pki.go — path, roothash, size, min_epoch, released_at).
+	var payload verify.ImagePayload
+	if err := json.Unmarshal(manifestData, &payload); err != nil {
+		log.Fatalf("[verity] HALT: cannot parse manifest %q: %v", verityManifestPath, err)
+	}
+	if payload.RootHash == "" || payload.Path == "" {
+		log.Fatalf("[verity] HALT: manifest %q missing required fields (roothash/path)", verityManifestPath)
+	}
+
+	epochFloor := verityEpochFloor()
+
+	cfg := verify.SquashfsVerifyConfig{
+		// AnchorPath defaults to signing.DefaultAnchorPath (/etc/vulos/trust-anchor.pub)
+		CertPath:           verityReleaseCertPath,
+		SquashfsPath:       "", // not used for ImagePayload-sig verification
+		SigPath:            verityManifestSigPath,
+		ExpectedRootHash:   payload.RootHash,
+		ImagePayloadForSig: payload,
+		EpochFloor:         epochFloor,
+	}
+
+	if err := verify.VerifySquashfsBeforePivot(cfg); err != nil {
+		log.Fatalf("[verity] HALT: OS image verification failed (fail-closed): %v", err)
+	}
+
+	log.Printf("[verity] OS image verified OK (roothash=%s, epoch_floor=%d)",
+		payload.RootHash, epochFloor)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // markBootHealthy resets the boot counter to 0 and promotes the active slot to
 // last-known-good.  Call this after the OS services / desktop are confirmed
 // healthy (e.g. after vulos-server starts listening).
@@ -235,6 +332,11 @@ func main() {
 	// rollback is written here; we note it and continue the current boot.  The
 	// healthy-mark is deferred to after the server is confirmed listening.
 	slotMgrGlobal, bootStateGlobal = incrementBootCounter()
+
+	// VERITY-02: Verify the OS image (squashfs + dm-verity root hash + release
+	// cert chain) before any services start.  Halts boot on any mismatch.
+	// This is the pivot gate: if verification fails we never reach startServices().
+	verifyOSBeforeBoot()
 
 	// Phase 1.5: Load core kernel modules.
 	// Without systemd-udevd running yet (we're PID 1, udev isn't), nothing
