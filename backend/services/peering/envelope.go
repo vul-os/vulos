@@ -325,12 +325,12 @@ type ContactRequestPayload struct {
 	DisplayName string `json:"display_name"`
 	Message     string `json:"message,omitempty"` // optional intro message
 	ServerAddr  string `json:"server_addr"`       // <host>:<port> for reply
-	// VumailAddress is the sender's Vulos identity ("user@vulos.org" or
+	// VulosAddress is the sender's Vulos identity ("user@vulos.org" or
 	// "user@custom-domain").  Including it in the signed contact card means
 	// the recipient automatically populates the identity address field on the new
 	// contact entry without a separate relay lookup.  Optional — peers that
 	// have not yet claimed a Vulos identity omit this field.
-	VumailAddress string `json:"vumail_address,omitempty"`
+	VulosAddress string `json:"vulos_address,omitempty"`
 }
 
 // SignalingPayload is the body of a TypeSignaling envelope.

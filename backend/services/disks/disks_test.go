@@ -9,6 +9,57 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// ValidatePath — path-traversal rejection tests (Critical #3)
+// ---------------------------------------------------------------------------
+
+func TestValidatePath_TraversalRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"empty", ""},
+		{"dotdot literal", "../../etc/passwd"},
+		{"dotdot absolute", "/home/alice/../../etc/passwd"},
+		{"dotdot segment", "/home/../etc"},
+		{"relative path", "home/alice"},
+		{"outside allowlist", "/etc/passwd"},
+		{"outside allowlist root-adjacent", "/root"},
+		{"outside allowlist var", "/var/log"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ValidatePath(tc.path); err == nil {
+				t.Errorf("ValidatePath(%q): expected error (traversal rejection), got nil", tc.path)
+			}
+		})
+	}
+}
+
+func TestValidatePath_ValidPathAccepted(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"root slash", "/"},
+		{"home prefix", "/home"},
+		{"home subdirectory", "/home/alice"},
+		{"home nested", "/home/alice/documents"},
+		{"var/data", "/var/data"},
+		{"srv", "/srv"},
+		{"media", "/media"},
+		{"mnt", "/mnt"},
+		{"data", "/data"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ValidatePath(tc.path); err != nil {
+				t.Errorf("ValidatePath(%q): unexpected error: %v", tc.path, err)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Pure-logic helpers extracted from disks.go for fixture-based testing.
 // These mirror the real implementations without calling exec or syscall.
 // ---------------------------------------------------------------------------

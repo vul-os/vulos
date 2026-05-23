@@ -1625,7 +1625,7 @@ func main() {
 		netMgr:    netMgr,
 		visStore:  visStore,
 		authStore: authStore,
-	})
+	}, ctx)
 
 	// MinIO storage provisioning
 	storageprov.RegisterHandlers(mux, home)
@@ -2137,6 +2137,10 @@ func main() {
 		path := r.URL.Query().Get("path")
 		if path == "" {
 			path = "/"
+		}
+		if err := disks.ValidatePath(path); err != nil {
+			writeErr(w, 400, "invalid path: path must be an absolute path under an allowed directory (e.g. /home, /var/data, /srv) without '..' components")
+			return
 		}
 		writeJSON(w, disks.DirBreakdown(r.Context(), path))
 	})

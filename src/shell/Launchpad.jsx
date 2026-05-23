@@ -19,10 +19,10 @@ const Vault = lazy(() => import('../apps/Vault/Vault'))
 const Messages = lazy(() => import('../builtin/peering/Messages'))
 const MailApp = lazy(() => import('../apps/mail/App'))
 const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
-const OfficeApp   = lazy(() => import('../apps/office/src/OfficeApp.jsx'))
-const SpacesApp   = lazy(() => import('../apps/spaces/src/SpacesApp.jsx'))
-const CalendarApp = lazy(() => import('../apps/calendar/src/CalendarApp.jsx'))
-const MeetApp     = lazy(() => import('../apps/meet/src/MeetApp.jsx'))
+const OfficeApp   = lazy(() => import('../../apps/office/src/OfficeApp.jsx'))
+const SpacesApp   = lazy(() => import('../../apps/spaces/src/SpacesApp.jsx'))
+const CalendarApp = lazy(() => import('../../apps/calendar/src/CalendarApp.jsx'))
+const MeetApp     = lazy(() => import('../../apps/meet/src/MeetApp.jsx'))
 
 const categoryLabels = {
   internet: 'Internet',

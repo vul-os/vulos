@@ -107,7 +107,7 @@ function MessageCard({ msg, initialExpanded, onMarkRead, onAction }) {
     if (!expanded && !body) {
       setLoadingBody(true)
       try {
-        const res = await fetch(`/api/vumail/mailbox/${msg.id}`)
+        const res = await fetch(`/api/identity/mailbox/${msg.id}`)
         if (res.ok) {
           const data = await res.json()
           setBody(data.body || data.body_text || '(empty)')
@@ -235,7 +235,7 @@ export default function ThreadView({ thread, onBack, onMarkRead, onAction, onRep
     }
     const status = action === 'archive' ? 'archived' : 'deleted'
     try {
-      await fetch(`/api/vumail/mailbox/${msg.id}`, {
+      await fetch(`/api/identity/mailbox/${msg.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),

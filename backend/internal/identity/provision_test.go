@@ -148,6 +148,39 @@ func TestProvisionHandleTaken(t *testing.T) {
 	}
 }
 
+// ─── Test 4a: Reserved handle rejection ──────────────────────────────────────
+//
+// Claiming "vumail" (or any other reserved system handle) must return
+// ErrHandleReserved so that no regular user can squat on system identities.
+
+func TestProvisionReservedHandle(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(filepath.Join(dir, "identity.db"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+
+	_, err = Provision(ctx, store, "acct-99", "vumail", "vulos.org", "pass", nil)
+	if err == nil {
+		t.Fatal("expected ErrHandleReserved for 'vumail', got nil")
+	}
+	if err != ErrHandleReserved {
+		t.Errorf("error = %v, want ErrHandleReserved", err)
+	}
+
+	// Other reserved handles should also be rejected.
+	reserved := []string{"admin", "root", "system", "support", "vulos", "noreply"}
+	for _, h := range reserved {
+		_, err := Provision(ctx, store, "acct-99", h, "vulos.org", "pass", nil)
+		if err == nil {
+			t.Errorf("Provision(handle=%q): expected ErrHandleReserved, got nil", h)
+		}
+	}
+}
+
 // ─── Test 4: Wizard-cannot-be-skipped invariant ───────────────────────────────
 //
 // The frozen invariant is: a Vulos identity is mandatory.  This test asserts

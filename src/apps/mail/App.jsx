@@ -177,6 +177,9 @@ export default function MailApp() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [identity, setIdentity] = useState(null)
+  // identityChecked: false until the /api/identity/identity fetch resolves.
+  // Lets us distinguish "not yet checked" from "checked and no identity".
+  const [identityChecked, setIdentityChecked] = useState(false)
   const [selectedThreadIdx, setSelectedThreadIdx] = useState(null)
   const [view, setView] = useState('inbox') // 'inbox' | 'thread' | 'compose'
   const [composeProps, setComposeProps] = useState({})
@@ -185,8 +188,8 @@ export default function MailApp() {
   useEffect(() => {
     fetch('/api/identity/identity')
       .then(r => r.ok ? r.json() : null)
-      .then(data => setIdentity(data))
-      .catch(() => setIdentity(null))
+      .then(data => { setIdentity(data); setIdentityChecked(true) })
+      .catch(() => { setIdentity(null); setIdentityChecked(true) })
   }, [])
 
   const loadMessages = useCallback(async (f) => {
@@ -283,6 +286,88 @@ export default function MailApp() {
 
   const selectedThread = selectedThreadIdx !== null ? allThreads[selectedThreadIdx] : null
   const selectedId = selectedThread ? threadRep(selectedThread).id : null
+
+  // No-identity empty state — rendered after the identity check completes and
+  // no identity is configured.  Do NOT auto-redirect; show a friendly CTA
+  // instead so local-only users understand what is needed.
+  if (identityChecked && !identity?.address) {
+    return (
+      <div
+        data-testid="mail-no-identity"
+        style={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0d0d0f',
+          color: '#f5f5f5',
+          fontFamily: "-apple-system, 'Inter', 'Segoe UI', sans-serif",
+          gap: 16,
+          padding: 32,
+          textAlign: 'center',
+        }}
+      >
+        <span style={{ fontSize: 48 }}>✉</span>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Set up your Vulos Mail</div>
+        {identity === null ? (
+          // No cloud session at all — local-only install
+          <>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', maxWidth: 360, lineHeight: 1.6, margin: 0 }}>
+              Local-only install — Vulos Mail requires a Vulos Cloud account.
+              Sign up to enable end-to-end encrypted messaging with your Vulos identity.
+            </p>
+            <a
+              href="/settings/cloud"
+              data-testid="mail-setup-cta"
+              style={{
+                marginTop: 8,
+                padding: '10px 24px',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: 'rgba(99,102,241,0.3)',
+                border: '1px solid rgba(99,102,241,0.4)',
+                color: '#a5b4fc',
+                textDecoration: 'none',
+                display: 'inline-block',
+              }}
+            >
+              Sign up for Vulos Cloud →
+            </a>
+          </>
+        ) : (
+          // Cloud session exists but no identity address claimed yet
+          <>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', maxWidth: 360, lineHeight: 1.6, margin: 0 }}>
+              You do not have a Vulos Mail identity yet.
+              Complete the account setup to claim your <strong>@vulos.org</strong> address.
+            </p>
+            <a
+              href="/settings/identity"
+              data-testid="mail-setup-cta"
+              style={{
+                marginTop: 8,
+                padding: '10px 24px',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: 'rgba(99,102,241,0.3)',
+                border: '1px solid rgba(99,102,241,0.4)',
+                color: '#a5b4fc',
+                textDecoration: 'none',
+                display: 'inline-block',
+              }}
+            >
+              Set up mail →
+            </a>
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div style={{

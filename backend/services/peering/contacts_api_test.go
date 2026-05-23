@@ -290,17 +290,17 @@ func TestHandleInboundRequest_Idempotent(t *testing.T) {
 
 // ─── Vulos address in peering contact card ──────────────────────────────────────
 
-// TestHandleInboundRequest_VumailAddressPopulated verifies that when a contact
-// request arrives with a vumail_address in the payload (vumail_address JSON key kept for wire compat), the store entry is
+// TestHandleInboundRequest_VulosAddressPopulated verifies that when a contact
+// request arrives with a vulos_address in the payload (vulos_address JSON key kept for wire compat), the store entry is
 // updated with that address so the contact is immediately reachable by mail.
-func TestHandleInboundRequest_VumailAddressPopulated(t *testing.T) {
+func TestHandleInboundRequest_VulosAddressPopulated(t *testing.T) {
 	api, store := newTestAPI(t)
 	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
 		DisplayName:   "Alice",
 		ServerAddr:    "alice.vulos.org:8080",
-		VumailAddress: "alice@vulos.org",
+		VulosAddress: "alice@vulos.org",
 	}
 	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
 
@@ -315,22 +315,22 @@ func TestHandleInboundRequest_VumailAddressPopulated(t *testing.T) {
 	if !exists {
 		t.Fatal("contact not added to store after inbound request")
 	}
-	if c.VumailAddress != "alice@vulos.org" {
-		t.Errorf("vumail_address: got %q want %q", c.VumailAddress, "alice@vulos.org")
+	if c.VulosAddress != "alice@vulos.org" {
+		t.Errorf("vulos_address: got %q want %q", c.VulosAddress, "alice@vulos.org")
 	}
 }
 
-// TestHandleInboundRequest_VumailAddressAbsent verifies that a contact request
-// without a vumail_address leaves the contact's VumailAddress empty — so the
+// TestHandleInboundRequest_VulosAddressAbsent verifies that a contact request
+// without a vulos_address leaves the contact's VulosAddress empty — so the
 // field is truly optional and backwards-compatible.
-func TestHandleInboundRequest_VumailAddressAbsent(t *testing.T) {
+func TestHandleInboundRequest_VulosAddressAbsent(t *testing.T) {
 	api, store := newTestAPI(t)
 	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
 		DisplayName: "Bob",
 		ServerAddr:  "bob.vulos.org:8080",
-		// VumailAddress deliberately omitted.
+		// VulosAddress deliberately omitted.
 	}
 	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
 
@@ -345,17 +345,17 @@ func TestHandleInboundRequest_VumailAddressAbsent(t *testing.T) {
 	if !exists {
 		t.Fatal("contact not found")
 	}
-	if c.VumailAddress != "" {
-		t.Errorf("vumail_address should be empty when not sent, got %q", c.VumailAddress)
+	if c.VulosAddress != "" {
+		t.Errorf("vulos_address should be empty when not sent, got %q", c.VulosAddress)
 	}
 }
 
-// TestHandleSendRequest_IncludesVumailAddress verifies that when the caller
-// provides a vumail_address (Vulos identity address) in the outbound request body, it is included in
+// TestHandleSendRequest_IncludesVulosAddress verifies that when the caller
+// provides a vulos_address (Vulos identity address) in the outbound request body, it is included in
 // the signed ContactRequestPayload.  We test this by inspecting the store
 // entry (which mirrors what the recipient would see) rather than the network
 // wire, since the PeerClient is SSRF-blocked in the test environment.
-func TestHandleSendRequest_IncludesVumailAddress(t *testing.T) {
+func TestHandleSendRequest_IncludesVulosAddress(t *testing.T) {
 	api, store := newTestAPI(t)
 	_, _, remoteVulaID := generateTestKeyPair(t)
 
@@ -363,7 +363,7 @@ func TestHandleSendRequest_IncludesVumailAddress(t *testing.T) {
 		"target_vula_id": remoteVulaID,
 		"target_server":  "127.0.0.1:9999", // SSRF-blocked but contact added first
 		"display_name":   "Me",
-		"vumail_address": "me@vulos.org",
+		"vulos_address": "me@vulos.org",
 	})
 
 	// The contact should have been added before the (failing) delivery attempt.

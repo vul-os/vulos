@@ -50,7 +50,14 @@ type newFeatureDeps struct {
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
 // onto mux.  Must be called after RegisterVisibilityHandlers (appnet) because
 // RegisterSubdomainHandlers adds routes that extend the visibility surface.
-func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
+func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) {
+	// Resolve the server shutdown context.  A variadic parameter lets existing
+	// call-sites compile without change; pass serverCtx explicitly to bind
+	// background goroutines to the server lifecycle.
+	bgCtx := context.Background()
+	if len(serverCtx) > 0 && serverCtx[0] != nil {
+		bgCtx = serverCtx[0]
+	}
 	// ── 1. AI Router (internal/airouter) ─────────────────────────────────────
 	//
 	// Routes registered:
@@ -317,7 +324,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 			log.Printf("[cgroups/alerter] governor fallback error: %v — alerts route disabled", cgErr)
 		} else {
 			alerter := cgroups.NewAlerter(gov)
-			go alerter.Start(context.Background())
+			go alerter.Start(bgCtx)
 			alerter.RegisterRoutes(mux)
 			log.Printf("[cgroups/alerter] registered GET /api/cgroups/alerts/status")
 		}
@@ -364,7 +371,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 		}
 		if reg != nil {
 			fanout := multiinstance.NewNotifyFanout(reg)
-			go fanout.RunBatcher(context.Background())
+			go fanout.RunBatcher(bgCtx)
 			multiinstance.RegisterNotifyHandlers(mux, fanout)
 			log.Printf("[multiinstance/notify] registered POST /api/notify/fanout, POST /api/notify/receive")
 		} else {

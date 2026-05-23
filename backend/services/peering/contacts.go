@@ -137,13 +137,13 @@ type Contact struct {
 	// via an inbound request before their server address is known.
 	Server string `json:"server,omitempty"`
 
-	// VumailAddress is the peer's Vulos identity address ("user@vulos.org"
+	// VulosAddress is the peer's Vulos identity address ("user@vulos.org"
 	// or "user@custom-domain").  It is populated from the signed contact-card
 	// JSON exchanged during peering invitation and serves as a first-class
 	// identity for composing mail to this contact.  May be empty for contacts
 	// added before IDENTITY-07 or peers that have not yet claimed a Vulos
 	// identity.
-	VumailAddress string `json:"vumail_address,omitempty"`
+	VulosAddress string `json:"vulos_address,omitempty"`
 
 	// State is the current trust state.
 	State State `json:"state"`
@@ -463,14 +463,14 @@ func (cs *ContactStore) UpdateServer(vulaID, server string) error {
 	return cs.persist()
 }
 
-// UpdateVumailAddress sets or updates the Vulos identity address for an
+// UpdateVulosAddress sets or updates the Vulos identity address for an
 // existing contact.  address may be empty to clear a previously-set value.
 // This is called when a peering invitation card arrives carrying a
-// vumail_address field (kept for wire compat), or when a relay key-directory lookup populates the
+// vulos_address field, or when a relay key-directory lookup populates the
 // address retroactively.
-func (cs *ContactStore) UpdateVumailAddress(vulaID, address string) error {
+func (cs *ContactStore) UpdateVulosAddress(vulaID, address string) error {
 	if vulaID == "" {
-		return errors.New("peering/contacts: UpdateVumailAddress: vulaID must not be empty")
+		return errors.New("peering/contacts: UpdateVulosAddress: vulaID must not be empty")
 	}
 
 	cs.mu.Lock()
@@ -478,19 +478,19 @@ func (cs *ContactStore) UpdateVumailAddress(vulaID, address string) error {
 
 	c, exists := cs.byID[vulaID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: UpdateVumailAddress: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: UpdateVulosAddress: contact %q not found", vulaID)
 	}
 
-	c.VumailAddress = address
+	c.VulosAddress = address
 
 	return cs.persist()
 }
 
-// LookupByVumailAddress returns the contact whose VumailAddress matches
+// LookupByVulosAddress returns the contact whose VulosAddress matches
 // address (case-insensitive), or (nil, false) if no such contact exists.
 // This allows the mail compose UI to resolve a Vulos address to a contact
 // without requiring the caller to iterate the full list.
-func (cs *ContactStore) LookupByVumailAddress(address string) (*Contact, bool) {
+func (cs *ContactStore) LookupByVulosAddress(address string) (*Contact, bool) {
 	if address == "" {
 		return nil, false
 	}
@@ -502,7 +502,7 @@ func (cs *ContactStore) LookupByVumailAddress(address string) (*Contact, bool) {
 	defer cs.mu.RUnlock()
 
 	for _, c := range cs.byID {
-		if toLower(c.VumailAddress) == lower {
+		if toLower(c.VulosAddress) == lower {
 			dup := *c
 			if len(c.Permissions) > 0 {
 				dup.Permissions = make([]Perm, len(c.Permissions))

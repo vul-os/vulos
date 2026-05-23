@@ -216,7 +216,14 @@ export default function Setup({ onComplete }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // INIT-09: choose active step list based on flow type
-  const IS09_activeSteps = IS09_flowType === 'join' ? IS09_JOIN_STEPS : STEPS
+  const IS09_baseSteps = IS09_flowType === 'join' ? IS09_JOIN_STEPS : STEPS
+
+  // NETB05 / IDENTITY-01: for local-only installs, cloudAccount and intent are
+  // not applicable (no Vulos Cloud account will be created at setup time).
+  // Compute effectiveSteps at render time — never mutate the STEPS constant.
+  const IS09_activeSteps = (IS09_flowType !== 'join' && config.NETB05_choice === 'local')
+    ? IS09_baseSteps.filter(s => s !== 'cloudAccount' && s !== 'intent')
+    : IS09_baseSteps
 
   const current = IS09_activeSteps[step]
   const update = (key, val) => setConfig(c => ({ ...c, [key]: val }))

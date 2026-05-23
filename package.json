@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
+    "@vulos/mail-client": "file:../vulos-mail/webmail-vulos",
+    "@vulos/office-client": "file:../vulos-office",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "react": "^19.2.4",

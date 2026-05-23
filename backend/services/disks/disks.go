@@ -3,6 +3,7 @@ package disks
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -10,6 +11,55 @@ import (
 	"strings"
 	"syscall"
 )
+
+// safePathPrefixes is the allowlist of root directories that DirBreakdown is
+// permitted to inspect.  Only absolute paths that begin with one of these
+// prefixes (after cleaning) are accepted.
+var safePathPrefixes = []string{
+	"/home",
+	"/var/data",
+	"/srv",
+	"/media",
+	"/mnt",
+	"/data",
+	"/tmp",
+}
+
+// ErrPathTraversal is returned when the requested path fails the traversal check.
+var ErrPathTraversal = errors.New("disks: path rejected: must be an absolute path under an allowed prefix without '..' components")
+
+// ValidatePath checks that p is a safe absolute path for disk-usage inspection.
+// It rejects empty paths, paths containing ".." components, and paths that do
+// not resolve under one of the safePathPrefixes after filepath.Clean.
+// "/" itself is always allowed (it is the natural root for full breakdowns).
+func ValidatePath(p string) error {
+	if p == "" {
+		return ErrPathTraversal
+	}
+	// Reject any literal ".." component before cleaning (defence-in-depth).
+	for _, part := range strings.Split(p, "/") {
+		if part == ".." {
+			return ErrPathTraversal
+		}
+	}
+	clean := filepath.Clean(p)
+	// Must be absolute.
+	if !filepath.IsAbs(clean) {
+		return ErrPathTraversal
+	}
+	// "/" is always a safe root.
+	if clean == "/" {
+		return nil
+	}
+	// Must be rooted under an allowed prefix.
+	for _, prefix := range safePathPrefixes {
+		// Ensure the path is exactly prefix or a sub-path of prefix.
+		if clean == prefix || strings.HasPrefix(clean, prefix+"/") {
+			return nil
+		}
+	}
+	return ErrPathTraversal
+}
 
 // Mount represents a mounted filesystem.
 type Mount struct {

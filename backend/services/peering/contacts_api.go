@@ -144,11 +144,11 @@ type sendRequestBody struct {
 	// Message is an optional intro message (visible to recipient).
 	Message string `json:"message,omitempty"`
 
-	// VumailAddress is the local node's Vulos identity address
+	// VulosAddress is the local node's Vulos identity address
 	// ("user@vulos.org").  When present it is embedded in the signed
 	// contact-card payload so the recipient can populate their copy of
 	// this contact with our mail address immediately.
-	VumailAddress string `json:"vumail_address,omitempty"`
+	VulosAddress string `json:"vulos_address,omitempty"`
 }
 
 // handleSendRequest implements POST /api/peering/contacts/request.
@@ -212,7 +212,7 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 		DisplayName:   body.DisplayName,
 		Message:       body.Message,
 		ServerAddr:    a.myServer,
-		VumailAddress: body.VumailAddress,
+		VulosAddress: body.VulosAddress,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -504,10 +504,10 @@ func (a *ContactAPI) HandleInboundRequest(w http.ResponseWriter, r *http.Request
 
 	// Populate the Vulos identity address from the signed contact-card payload so the
 	// recipient has the sender's mail address without a separate relay lookup.
-	if payload.VumailAddress != "" {
-		if err := a.store.UpdateVumailAddress(senderID, payload.VumailAddress); err != nil {
+	if payload.VulosAddress != "" {
+		if err := a.store.UpdateVulosAddress(senderID, payload.VulosAddress); err != nil {
 			// Non-fatal: log and continue — the contact is already stored.
-			log.Printf("[peering/contacts] UpdateVumailAddress for %s: %v", senderID, err)
+			log.Printf("[peering/contacts] UpdateVulosAddress for %s: %v", senderID, err)
 		}
 	}
 
@@ -519,7 +519,7 @@ func (a *ContactAPI) HandleInboundRequest(w http.ResponseWriter, r *http.Request
 		"display_name":   displayName,
 		"message":        payload.Message,
 		"server":         payload.ServerAddr,
-		"vumail_address": payload.VumailAddress,
+		"vulos_address": payload.VulosAddress,
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "received"})

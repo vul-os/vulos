@@ -1,8 +1,10 @@
-// VulosAccountStep.jsx — Create your Vulos cloud account (optional cloud step).
+// VulosAccountStep.jsx — Claim your Vulos identity address (@vulos.org handle).
 //
-// This step appears in the first-boot wizard after the user account step and
-// before the cluster-join / recovery steps.  It is MANDATORY — there is no
-// This step is SKIPPED when config.NETB05_choice === 'local' (local-only mode).
+// This step appears in the first-boot wizard after the account step and before
+// the intent/appearance steps.  It is shown only for cloud and create-cloud
+// install modes; the parent Setup component filters it out of the step list
+// entirely when config.NETB05_choice === 'local', so this component is never
+// rendered in local-only mode.
 //
 // UX flow:
 //  1. User types the handle part only — the @vulos.org suffix is shown as

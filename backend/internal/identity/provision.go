@@ -51,6 +51,25 @@ const (
 	handleMaxLen = 32
 )
 
+// reservedHandles is the set of handle names that may not be claimed by any
+// user.  These are system-level identities or names that would be confusing if
+// owned by a regular account.
+var reservedHandles = map[string]struct{}{
+	"vumail":  {},
+	"admin":   {},
+	"root":    {},
+	"system":  {},
+	"support": {},
+	"vulos":   {},
+	"noreply": {},
+	"postmaster": {},
+	"abuse":   {},
+	"security": {},
+}
+
+// ErrHandleReserved is returned when the requested handle is on the reserved list.
+var ErrHandleReserved = errors.New("identity: handle reserved: this username is not available")
+
 // handlePattern is the allowed charset for the local-part of a Vulos account address:
 // lowercase ASCII letters, digits, hyphens, and underscores.
 var handlePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$|^[a-z0-9]{3}$`)
@@ -164,7 +183,8 @@ var ErrProvisionFailed = errors.New("identity: cloud provisioning failed")
 
 // ─── Input validation ─────────────────────────────────────────────────────────
 
-// validateHandle checks that handle is 3–32 chars matching handlePattern.
+// validateHandle checks that handle is 3–32 chars matching handlePattern and
+// is not in the reserved-handle list.
 func validateHandle(handle string) error {
 	l := len(handle)
 	if l < handleMinLen || l > handleMaxLen {
@@ -172,6 +192,9 @@ func validateHandle(handle string) error {
 	}
 	if !handlePattern.MatchString(handle) {
 		return ErrHandleInvalid
+	}
+	if _, reserved := reservedHandles[handle]; reserved {
+		return ErrHandleReserved
 	}
 	return nil
 }
