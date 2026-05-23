@@ -33,11 +33,13 @@ func visWriteErr(w http.ResponseWriter, code int, msg string) {
 
 // RegisterVisibilityHandlers registers the app-visibility API endpoints onto mux.
 //
-//	GET  /api/apps/visibility         — list all apps with their visibility (default private)
-//	POST /api/apps/{id}/visibility    — set visibility for one app
+//	GET   /api/apps/visibility         — list all apps with their visibility (default private)
+//	POST  /api/apps/{id}/visibility    — set visibility for one app
+//	PATCH /api/apps/{id}/visibility    — same as POST; preferred for partial updates
 //
-// Both routes share the same auth as all other /api/* endpoints (enforced by
-// the global auth middleware in main.go).
+// System apps (settings, files, terminal) reject any non-private visibility.
+// Both write routes share the same auth as all other /api/* endpoints
+// (enforced by the global auth middleware in main.go).
 func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *VisibilityStore) {
 	// GET /api/apps/visibility — returns every known app id + current visibility.
 	// Apps with no explicit setting are listed as "private" (the default).
@@ -91,8 +93,8 @@ func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *Visibi
 		visWriteJSON(w, entries)
 	})
 
-	// POST /api/apps/{id}/visibility — validate and persist visibility for one app.
-	mux.HandleFunc("POST /api/apps/{id}/visibility", func(w http.ResponseWriter, r *http.Request) {
+	// setVisibilityHandler is shared by POST and PATCH.
+	setVisibilityHandler := func(w http.ResponseWriter, r *http.Request) {
 		appID := r.PathValue("id")
 		if appID == "" {
 			visWriteErr(w, http.StatusBadRequest, "app id required")
@@ -110,6 +112,12 @@ func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *Visibi
 			return
 		}
 
+		// System apps (settings, files, terminal) may never be published.
+		if IsSystemApp(appID) && req.Visibility != VisibilityPrivate {
+			visWriteErr(w, http.StatusForbidden, "system apps cannot be published")
+			return
+		}
+
 		if err := vis.Set(appID, req.Visibility); err != nil {
 			visWriteErr(w, http.StatusInternalServerError, "failed to persist visibility: "+err.Error())
 			return
@@ -119,7 +127,13 @@ func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *Visibi
 			AppID:      appID,
 			Visibility: req.Visibility,
 		})
-	})
+	}
+
+	// POST /api/apps/{id}/visibility — set visibility for one app.
+	mux.HandleFunc("POST /api/apps/{id}/visibility", setVisibilityHandler)
+
+	// PATCH /api/apps/{id}/visibility — preferred partial-update form (PUBWEB-01).
+	mux.HandleFunc("PATCH /api/apps/{id}/visibility", setVisibilityHandler)
 }
 
 // aiAppsDir returns the AI-generated apps directory, which lives alongside appsDir.

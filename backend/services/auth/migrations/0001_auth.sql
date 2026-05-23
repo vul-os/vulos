@@ -24,3 +24,9 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+
+-- VUMAIL-06: encrypted recovery-kit blobs (one per user).
+CREATE TABLE IF NOT EXISTS recovery_blobs (
+    user_id TEXT PRIMARY KEY,
+    blob    BLOB NOT NULL
+);

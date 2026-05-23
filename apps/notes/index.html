@@ -41,6 +41,10 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui;display:flex;height:
 /* Shared badge on note list items */
 .shared-tag{font-size:9px;background:#1a2a1a;border:1px solid #2d4a2d;color:#4ade80;border-radius:4px;padding:0 4px}
 
+/* AI semantic search badge */
+.ai-tag{font-size:9px;background:#1a1a2a;border:1px solid #3b3b6a;color:#93c5fd;border-radius:4px;padding:0 4px;margin-left:2px}
+.ai-tag-degraded{font-size:9px;color:#555;margin-left:4px}
+
 /* Presence avatars */
 #presence-list{display:flex;gap:4px;align-items:center}
 </style>
@@ -71,6 +75,10 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui;display:flex;height:
 </div>
 
 <script type="module">
+// ── AI indexing + semantic search (AIROT-04) ────────────────────────────────
+import { enqueueIndex, cancelIndex, removeIndex } from './src/lib/aiIndex.js';
+import { semanticSearch, mergeResults } from './src/components/SearchBar.js';
+
 // ── Collab module (lazy-loaded from collab.js) ──────────────────────────────
 let collabMod = null;
 let collabSession = null;
@@ -81,7 +89,7 @@ async function getCollabMod() {
 }
 
 // ── State ───────────────────────────────────────────────────────────────────
-let notes = [], currentId = null, saveTimer = null;
+let notes = [], currentId = null, saveTimer = null, searchTimer = null;
 const list     = document.getElementById('list');
 const editor   = document.getElementById('editor');
 const status   = document.getElementById('status');
@@ -95,19 +103,19 @@ const wordCount     = document.getElementById('word-count');
 async function loadNotes() {
   const res = await fetch('/api/notes');
   notes = await res.json();
-  renderList();
+  renderList();  // no args = show all notes
   if (notes.length > 0 && !currentId) selectNote(notes[0].id);
 }
 
-function renderList(filter) {
-  const filtered = filter
-    ? notes.filter(n => n.title.toLowerCase().includes(filter) || n.preview.toLowerCase().includes(filter))
-    : notes;
-  list.innerHTML = filtered.map(n => `
+// renderList renders notes; items may carry { aiMatch, aiScore } from semantic search.
+function renderList(displayNotes) {
+  const items = displayNotes !== undefined ? displayNotes : notes;
+  list.innerHTML = items.map(n => `
     <div class="item ${n.id === currentId ? 'active' : ''}" onclick="window._selectNote('${n.id}')">
       <div class="title">
         ${escHtml(n.title || 'Untitled')}
         ${n.shared ? '<span class="shared-tag">Shared</span>' : ''}
+        ${n.aiMatch ? '<span class="ai-tag" title="AI semantic match">AI</span>' : ''}
       </div>
       <div class="preview">${escHtml(n.preview || '')}</div>
     </div>`).join('');
@@ -213,6 +221,8 @@ function autoSave() {
       } catch (_) {}
     }
     if (!status.textContent.startsWith('Collab')) status.textContent = 'Saved';
+    // Enqueue background AI embedding for the saved note (AIROT-04).
+    enqueueIndex(currentId, editor.value);
     loadNotes();
   }, 500);
 }
@@ -223,9 +233,35 @@ function updateWordCount() {
   wordCount.textContent = `${words}w  ${chars}c`;
 }
 
+// searchNotes: merges full-text filter with semantic search results.
+// Semantic search is debounced 300 ms; full-text filter applies immediately.
 function searchNotes() {
-  const q = document.getElementById('search').value.toLowerCase();
-  renderList(q || undefined);
+  const raw = document.getElementById('search').value;
+  const q = raw.toLowerCase();
+
+  // Immediate full-text render (existing behaviour as baseline).
+  if (!q) {
+    renderList();
+    return;
+  }
+  const ftFiltered = notes.filter(
+    n => n.title.toLowerCase().includes(q) || n.preview.toLowerCase().includes(q)
+  );
+  renderList(ftFiltered);
+
+  // Debounced semantic search (300 ms).
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const { hits, degraded } = await semanticSearch(raw);
+    const merged = mergeResults(notes, hits, q);
+    // Only re-render if the search input hasn't changed.
+    if (document.getElementById('search').value === raw) {
+      renderList(merged);
+      // Show a subtle degraded indicator in the search box placeholder if needed.
+      const searchEl = document.getElementById('search');
+      searchEl.title = degraded ? 'AI search unavailable — showing text results only' : '';
+    }
+  }, 300);
 }
 
 async function handleShare() {

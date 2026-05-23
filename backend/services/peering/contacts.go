@@ -137,6 +137,14 @@ type Contact struct {
 	// via an inbound request before their server address is known.
 	Server string `json:"server,omitempty"`
 
+	// VumailAddress is the peer's vumail identity address ("user@vumail.org"
+	// or "user@custom-domain").  It is populated from the signed contact-card
+	// JSON exchanged during peering invitation and serves as a first-class
+	// identity for composing mail to this contact.  May be empty for contacts
+	// added before VUMAIL-07 or peers that have not yet claimed a vumail
+	// identity.
+	VumailAddress string `json:"vumail_address,omitempty"`
+
 	// State is the current trust state.
 	State State `json:"state"`
 
@@ -453,6 +461,72 @@ func (cs *ContactStore) UpdateServer(vulaID, server string) error {
 	c.Server = server
 
 	return cs.persist()
+}
+
+// UpdateVumailAddress sets or updates the vumail identity address for an
+// existing contact.  address may be empty to clear a previously-set value.
+// This is called when a peering invitation card arrives carrying a
+// vumail_address field, or when a relay key-directory lookup populates the
+// address retroactively.
+func (cs *ContactStore) UpdateVumailAddress(vulaID, address string) error {
+	if vulaID == "" {
+		return errors.New("peering/contacts: UpdateVumailAddress: vulaID must not be empty")
+	}
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	c, exists := cs.byID[vulaID]
+	if !exists {
+		return fmt.Errorf("peering/contacts: UpdateVumailAddress: contact %q not found", vulaID)
+	}
+
+	c.VumailAddress = address
+
+	return cs.persist()
+}
+
+// LookupByVumailAddress returns the contact whose VumailAddress matches
+// address (case-insensitive), or (nil, false) if no such contact exists.
+// This allows the mail compose UI to resolve a vumail address to a contact
+// without requiring the caller to iterate the full list.
+func (cs *ContactStore) LookupByVumailAddress(address string) (*Contact, bool) {
+	if address == "" {
+		return nil, false
+	}
+
+	// Normalise to lower-case for a case-insensitive match.
+	lower := toLower(address)
+
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	for _, c := range cs.byID {
+		if toLower(c.VumailAddress) == lower {
+			dup := *c
+			if len(c.Permissions) > 0 {
+				dup.Permissions = make([]Perm, len(c.Permissions))
+				copy(dup.Permissions, c.Permissions)
+			}
+			return &dup, true
+		}
+	}
+	return nil, false
+}
+
+// toLower is a minimal ASCII-only lower-case helper used for vumail address
+// normalisation.  Vumail addresses are ASCII by spec; using strings.ToLower
+// would require importing "strings" which the rest of this file does not need.
+func toLower(s string) string {
+	b := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b[i] = c
+	}
+	return string(b)
 }
 
 // UpdatePermissions replaces the permission set for an approved contact.

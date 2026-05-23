@@ -18,6 +18,22 @@ const (
 // ValidVisibilities lists the accepted visibility values.
 var ValidVisibilities = []string{VisibilityPrivate, VisibilityLocal, VisibilityPublic}
 
+// SystemAppIDs contains the IDs of built-in OS apps that must never be
+// published to the public web.  Attempting to set their visibility to
+// anything other than "private" returns an error.
+var SystemAppIDs = map[string]struct{}{
+	"settings": {},
+	"files":    {},
+	"terminal": {},
+}
+
+// IsSystemApp reports whether appID belongs to the set of protected system
+// apps that may not be published.
+func IsSystemApp(appID string) bool {
+	_, ok := SystemAppIDs[appID]
+	return ok
+}
+
 // ValidateVisibility returns an error when v is not a recognised value.
 // An empty string is NOT accepted here; callers that want the empty→private
 // defaulting behaviour should apply it before calling this function.

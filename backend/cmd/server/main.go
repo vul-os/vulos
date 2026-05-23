@@ -553,101 +553,6 @@ func main() {
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
 
-	// AI chat
-	mux.HandleFunc("POST /api/ai/chat", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Messages []ai.Message `json:"messages"`
-			Stream   bool         `json:"stream"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
-			writeErr(w, 400, "invalid request")
-			return
-		}
-		// Use per-user config if available, else default
-		userCfg := aiCfg
-		userID := r.Header.Get("X-User-ID")
-		if userID != "" {
-			if profile, ok := authStore.GetProfile(userID); ok && profile.AIAPIKey != "" {
-				userCfg.Provider = ai.Provider(profile.AIProvider)
-				userCfg.APIKey = profile.AIAPIKey
-				if profile.AIModel != "" {
-					userCfg.Model = profile.AIModel
-				}
-			}
-		}
-
-		// Enrich with Recall context if available
-		if recallSvc != nil && len(req.Messages) > 0 {
-			lastMsg := req.Messages[len(req.Messages)-1].Content
-			if results, err := recallSvc.Search(r.Context(), lastMsg, 3); err == nil && len(results) > 0 {
-				var ctx string
-				for _, res := range results {
-					if res.Score > 0.5 {
-						path := res.Metadata["path"]
-						ctx += fmt.Sprintf("[File: %s]\n%s\n\n", path, res.Content)
-					}
-				}
-				if ctx != "" {
-					// Prepend context as a system message
-					req.Messages = append([]ai.Message{
-						{Role: "system", Content: "Relevant files from the user's system:\n" + ctx},
-					}, req.Messages...)
-				}
-			}
-		}
-
-		cr := ai.CompletionRequest{Messages: req.Messages, Stream: req.Stream}
-
-		// Save user messages to history
-		if userID != "" {
-			chatHistory.Save(userID, req.Messages)
-		}
-
-		if req.Stream {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			flusher, ok := w.(http.Flusher)
-			if !ok {
-				writeErr(w, 500, "streaming not supported")
-				return
-			}
-			var fullResp string
-			aiSvc.Stream(r.Context(), userCfg, cr, func(chunk ai.StreamChunk) {
-				data, _ := json.Marshal(chunk)
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
-				fullResp += chunk.Content
-			})
-			// Save assistant response
-			if userID != "" && fullResp != "" {
-				chatHistory.Save(userID, []ai.Message{{Role: "assistant", Content: fullResp}})
-				chatHistory.Flush()
-			}
-			return
-		}
-
-		resp, err := aiSvc.Complete(r.Context(), userCfg, cr)
-		if err != nil {
-			writeErr(w, 500, err.Error())
-			return
-		}
-		// Save assistant response
-		if userID != "" {
-			chatHistory.Save(userID, []ai.Message{{Role: "assistant", Content: resp}})
-			chatHistory.Flush()
-		}
-		writeJSON(w, map[string]string{"content": resp})
-	})
-	mux.HandleFunc("GET /api/ai/status", func(w http.ResponseWriter, r *http.Request) {
-		err := aiSvc.HealthCheck(r.Context(), aiCfg)
-		writeJSON(w, map[string]any{
-			"provider":  aiCfg.Provider,
-			"model":     aiCfg.Model,
-			"available": err == nil,
-			"error":     errStr(err),
-		})
-	})
-
 	// Chat history
 	mux.HandleFunc("GET /api/ai/history", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
@@ -1693,6 +1598,16 @@ func main() {
 
 	// App visibility (private|local|public)
 	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
+
+	// New-feature routes: airouter, vumail, multiinstance, appnet subdomain
+	// provisioning, recovery handlers, cloud-sync, edge-cache.
+	// Must be called AFTER RegisterVisibilityHandlers.
+	registerNewFeatureRoutes(mux, newFeatureDeps{
+		dbDir:     dbDir,
+		netMgr:    netMgr,
+		visStore:  visStore,
+		authStore: authStore,
+	})
 
 	// MinIO storage provisioning
 	storageprov.RegisterHandlers(mux, home)

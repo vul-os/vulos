@@ -1,5 +1,208 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
+// ---------------------------------------------------------------------------
+// SmartBar — AIROT-05: Smart Summarise via the AI Router
+// ---------------------------------------------------------------------------
+
+const SUMMARISE_SYSTEM_PROMPT =
+  'You are a helpful web-page summariser. Summarise the supplied page text ' +
+  'in 3–5 concise bullet points. Use plain text, no markdown headers.'
+
+function SmartBar({ pageText, pageUrl, onSaveToNotes, aiStatus }) {
+  const [open, setOpen] = useState(false)
+  const [streaming, setStreaming] = useState(false)
+  const [summaryText, setSummaryText] = useState('')
+  const [error, setError] = useState('')
+  const abortRef = useRef(null)
+
+  const configured =
+    aiStatus !== null &&
+    aiStatus !== false &&
+    Boolean(aiStatus?.active_model || aiStatus?.mode)
+
+  const cancel = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    setStreaming(false)
+  }, [])
+
+  const summarise = useCallback(async () => {
+    if (!configured || !pageText) return
+    cancel()
+    setOpen(true)
+    setStreaming(true)
+    setSummaryText('')
+    setError('')
+
+    const ac = new AbortController()
+    abortRef.current = ac
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: aiStatus?.active_model || '',
+          messages: [
+            { role: 'system', content: SUMMARISE_SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: `Page URL: ${pageUrl || 'unknown'}\n\n${(pageText || '').slice(0, 8000)}`,
+            },
+          ],
+          stream: true,
+        }),
+        signal: ac.signal,
+      })
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || `HTTP ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6)
+          if (payload === '[DONE]') break
+          try {
+            const ev = JSON.parse(payload)
+            const delta = ev.choices?.[0]?.delta?.content ?? ev.content ?? ''
+            if (delta) setSummaryText(prev => prev + delta)
+          } catch { /* skip malformed chunk */ }
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Summarisation failed')
+      }
+    } finally {
+      abortRef.current = null
+      setStreaming(false)
+    }
+  }, [configured, pageText, pageUrl, aiStatus, cancel])
+
+  const copyToClipboard = useCallback(() => {
+    if (summaryText) navigator.clipboard.writeText(summaryText).catch(() => {})
+  }, [summaryText])
+
+  const share = useCallback(() => {
+    if (navigator.share && summaryText) {
+      navigator.share({ title: 'Page Summary', text: summaryText }).catch(() => {})
+    } else {
+      copyToClipboard()
+    }
+  }, [summaryText, copyToClipboard])
+
+  const saveToNotes = useCallback(() => {
+    if (onSaveToNotes && summaryText) {
+      onSaveToNotes({ title: `Summary: ${pageUrl || 'Web page'}`, body: summaryText })
+    }
+  }, [onSaveToNotes, summaryText, pageUrl])
+
+  return (
+    <div className="relative">
+      {/* Summarise button */}
+      <button
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150
+          ${!configured || !pageText
+            ? 'bg-neutral-800/40 text-neutral-600 cursor-not-allowed'
+            : streaming
+              ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30 cursor-wait'
+              : 'bg-violet-500/15 text-violet-300 border border-violet-500/25 hover:bg-violet-500/25 cursor-pointer'
+          }`}
+        onClick={summarise}
+        disabled={!configured || !pageText || streaming}
+        title={
+          !configured
+            ? 'Configure AI Router in Settings to enable Smart Summarise'
+            : !pageText
+              ? 'No page loaded'
+              : 'Summarise this page with AI'
+        }
+      >
+        {streaming ? 'Summarising…' : 'Summarise'}
+      </button>
+
+      {/* Slide-up summary panel */}
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-96 max-w-[90vw] rounded-xl border border-neutral-700/60 bg-neutral-900/95 backdrop-blur shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-800/60">
+            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">
+              AI Summary
+            </span>
+            <button
+              className="text-neutral-500 hover:text-neutral-300 text-lg leading-none transition-colors"
+              onClick={() => { cancel(); setOpen(false) }}
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="px-4 py-3 min-h-[60px] max-h-60 overflow-y-auto text-sm text-neutral-200 leading-relaxed">
+            {error
+              ? <span className="text-red-400">{error}</span>
+              : summaryText
+                ? <p className="whitespace-pre-wrap">{summaryText}</p>
+                : streaming
+                  ? <span className="text-neutral-500 animate-pulse">Generating summary…</span>
+                  : <span className="text-neutral-600">No summary yet.</span>
+            }
+          </div>
+
+          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-neutral-800/60">
+            <button
+              className="text-xs px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={copyToClipboard}
+              disabled={!summaryText}
+              title="Copy summary to clipboard"
+            >
+              Copy
+            </button>
+            <button
+              className="text-xs px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={share}
+              disabled={!summaryText}
+              title="Share summary"
+            >
+              Share
+            </button>
+            <button
+              className="text-xs px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={saveToNotes}
+              disabled={!summaryText || !onSaveToNotes}
+              title="Save summary to Notes"
+            >
+              Save to Notes
+            </button>
+            {streaming && (
+              <button
+                className="text-xs px-2.5 py-1 rounded-md bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-700/40 transition-colors ml-auto"
+                onClick={cancel}
+                title="Cancel summarisation"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RemoteBrowser() {
   const videoRef = useRef(null)
   const wsRef = useRef(null)
@@ -424,6 +627,41 @@ export default function RemoteBrowser() {
 
 function LocalBrowser() {
   const [url, setUrl] = useState('https://google.com')
+  const [pageText, setPageText] = useState('')
+  const [aiStatus, setAiStatus] = useState(null)
+
+  // Fetch AI Router status once so SmartBar knows if it's configured.
+  useEffect(() => {
+    fetch('/api/ai/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setAiStatus(data || false))
+      .catch(() => setAiStatus(false))
+  }, [])
+
+  // Attempt to extract text from the current page via selection API.
+  const extractPageText = useCallback(() => {
+    try {
+      const sel = window.getSelection()
+      if (sel && sel.toString().trim().length > 50) {
+        setPageText(sel.toString().trim())
+        return
+      }
+      // Fall back to document body text (works when LocalBrowser renders content directly).
+      const bodyText = document.body?.innerText?.trim() || ''
+      setPageText(bodyText.slice(0, 10000))
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleSaveToNotes = useCallback(async ({ title, body }) => {
+    try {
+      await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content: body }),
+      })
+    } catch { /* best-effort */ }
+  }, [])
+
   return (
     <div className="flex flex-col h-full bg-neutral-950">
       <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 border-b border-neutral-800/50">
@@ -434,6 +672,21 @@ function LocalBrowser() {
           className="flex-1 bg-neutral-800/60 border border-neutral-700/50 rounded-lg px-3 py-2 text-sm text-white outline-none"
         />
         <button onClick={() => window.open(url, '_blank')} className="btn">Open</button>
+        <SmartBar
+          pageText={pageText}
+          pageUrl={url}
+          onSaveToNotes={handleSaveToNotes}
+          aiStatus={aiStatus}
+        />
+        {!pageText && aiStatus && (
+          <button
+            className="text-xs px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-400 transition-colors"
+            onClick={extractPageText}
+            title="Extract page text for summarisation"
+          >
+            Extract text
+          </button>
+        )}
       </div>
       <div className="flex-1 flex items-center justify-center text-neutral-600 text-sm">
         URLs open in the system browser (WebKit)

@@ -17,6 +17,8 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui; }
 .content iframe { width: 100%; height: calc(100vh - 52px); border: none; background: white; border-radius: 4px; }
 .summary { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 14px; line-height: 1.5; }
 .summary h3 { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+.summary-footer { display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #222; }
+.bar button:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -41,25 +43,148 @@ function go() {
   frame.src = '/browse?url=' + encodeURIComponent(url);
 }
 
+// Active AbortController for the running stream (null when idle).
+let activeAbort = null;
+
 async function summarize() {
-  summaryDiv.innerHTML = '<div class="summary"><h3>AI Summary</h3>Loading...</div>';
+  // Cancel any in-flight request first.
+  if (activeAbort) { activeAbort.abort(); activeAbort = null; }
+
   const url = urlInput.value.trim();
+  if (!url) return;
+
+  // Show streaming panel.
+  renderSummary('', true);
+
+  // Extract visible page text from the iframe if same-origin, else fall back.
+  let pageText = '';
   try {
-    const res = await fetch('/summarize?url=' + encodeURIComponent(url));
-    const data = await res.json();
-    // H5: use textContent to prevent XSS — do NOT use innerHTML with untrusted data.summary
-    const wrapper = document.createElement('div');
-    wrapper.className = 'summary';
-    const heading = document.createElement('h3');
-    heading.textContent = 'AI Summary';
-    wrapper.appendChild(heading);
-    const body = document.createElement('p');
-    body.textContent = data.summary || '';
-    wrapper.appendChild(body);
-    summaryDiv.replaceChildren(wrapper);
+    pageText = frame.contentDocument?.body?.innerText?.trim() || '';
+  } catch (_) { /* cross-origin iframe — no access */ }
+  if (!pageText) pageText = 'Please summarise the web page at: ' + url;
+
+  const ac = new AbortController();
+  activeAbort = ac;
+
+  try {
+    // Check AI Router status first to get the active model.
+    let activeModel = '';
+    try {
+      const stRes = await fetch('/api/ai/status', { signal: ac.signal });
+      if (stRes.ok) { const st = await stRes.json(); activeModel = st.active_model || ''; }
+    } catch (_) { /* proceed without model — router will pick default */ }
+
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: activeModel,
+        messages: [
+          { role: 'system', content: 'You are a helpful web-page summariser. Summarise the supplied page text in 3–5 concise bullet points. Use plain text, no markdown headers.' },
+          { role: 'user', content: 'Page URL: ' + url + '\n\n' + pageText.slice(0, 8000) }
+        ],
+        stream: true,
+      }),
+      signal: ac.signal,
+    });
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error || 'HTTP ' + res.status);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop(); // keep incomplete last line
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') break;
+        try {
+          const ev = JSON.parse(payload);
+          const delta = (ev.choices && ev.choices[0] && ev.choices[0].delta && ev.choices[0].delta.content) || ev.content || '';
+          if (delta) { fullText += delta; renderSummary(fullText, true); }
+        } catch (_) { /* skip malformed chunk */ }
+      }
+    }
+
+    renderSummary(fullText, false);
   } catch(e) {
-    summaryDiv.innerHTML = '<div class="summary"><h3>Error</h3>Could not summarize.</div>';
+    if (e.name === 'AbortError') { renderSummary('', false); return; }
+    renderSummaryError(e.message || 'Could not summarize.');
+  } finally {
+    if (activeAbort === ac) activeAbort = null;
   }
+}
+
+function renderSummary(text, streaming) {
+  summaryDiv.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.className = 'summary';
+
+  const heading = document.createElement('h3');
+  heading.textContent = 'AI Summary';
+  wrapper.appendChild(heading);
+
+  if (text) {
+    const body = document.createElement('p');
+    body.textContent = text; // textContent prevents XSS
+    wrapper.appendChild(body);
+  } else if (streaming) {
+    const loading = document.createElement('p');
+    loading.style.color = '#666';
+    loading.textContent = 'Generating summary…';
+    wrapper.appendChild(loading);
+  }
+
+  if (!streaming && text) {
+    const footer = document.createElement('div');
+    footer.className = 'summary-footer';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy';
+    copyBtn.onclick = () => navigator.clipboard.writeText(text).catch(() => {});
+    footer.appendChild(copyBtn);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Close';
+    cancelBtn.onclick = () => { summaryDiv.innerHTML = ''; };
+    footer.appendChild(cancelBtn);
+
+    wrapper.appendChild(footer);
+  } else if (streaming) {
+    const footer = document.createElement('div');
+    footer.className = 'summary-footer';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => { if (activeAbort) { activeAbort.abort(); activeAbort = null; } summaryDiv.innerHTML = ''; };
+    footer.appendChild(cancelBtn);
+    wrapper.appendChild(footer);
+  }
+
+  summaryDiv.appendChild(wrapper);
+}
+
+function renderSummaryError(msg) {
+  summaryDiv.innerHTML = '';
+  const wrapper = document.createElement('div');
+  wrapper.className = 'summary';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Error';
+  wrapper.appendChild(heading);
+  const body = document.createElement('p');
+  body.style.color = '#f87171';
+  body.textContent = msg;
+  wrapper.appendChild(body);
+  summaryDiv.appendChild(wrapper);
 }
 </script>
 </body>

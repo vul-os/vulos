@@ -12,6 +12,7 @@ import { useTheme } from '../core/ThemeProvider'
 import AIFirstRun from '../core/AIFirstRun'
 import PublicAppsManager from '../core/PublicAppsManager'
 import IncomingCall from '../builtin/peering/call/IncomingCall'
+import PublicAppBanner from '../shell/PublicAppBanner'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -179,6 +180,9 @@ export default function DesktopCanvas() {
           <LifePulse compact />
         </div>
       </div>
+
+      {/* PUBWEB-06: amber banner when focused app is publicly visible */}
+      <PublicAppBanner />
 
       {/* Windows area — render ALL windows persistently, hide inactive desktops via CSS */}
       <div className="absolute inset-0 pt-8">

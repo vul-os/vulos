@@ -1,6 +1,10 @@
 package appnet
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -226,5 +230,102 @@ func TestManifestValidate_VisibilityInvalid(t *testing.T) {
 	m := minimalManifest("test-app", "internet")
 	if err := m.Validate("/tmp"); err == nil {
 		t.Error("Validate with invalid visibility expected error, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// IsSystemApp (PUBWEB-01)
+// ---------------------------------------------------------------------------
+
+func TestIsSystemApp(t *testing.T) {
+	systemApps := []string{"settings", "files", "terminal"}
+	for _, id := range systemApps {
+		if !IsSystemApp(id) {
+			t.Errorf("IsSystemApp(%q) = false, want true", id)
+		}
+	}
+	userApps := []string{"notes", "browser", "my-app", ""}
+	for _, id := range userApps {
+		if IsSystemApp(id) {
+			t.Errorf("IsSystemApp(%q) = true, want false", id)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /api/apps/{id}/visibility — system-app guard (PUBWEB-01)
+// ---------------------------------------------------------------------------
+
+// newVisAPITestEnv creates a mux with RegisterVisibilityHandlers wired up,
+// backed by a temp-dir VisibilityStore and a minimal AppStore.
+func newVisAPITestEnv(t *testing.T) (*http.ServeMux, *VisibilityStore) {
+	t.Helper()
+	dir := t.TempDir()
+	vis, err := NewVisibilityStoreAt(filepath.Join(dir, "visibility.json"))
+	if err != nil {
+		t.Fatalf("NewVisibilityStoreAt: %v", err)
+	}
+	appStore := &AppStore{appsDir: filepath.Join(dir, "apps")}
+	mux := http.NewServeMux()
+	RegisterVisibilityHandlers(mux, appStore, vis)
+	return mux, vis
+}
+
+func doVisRequest(t *testing.T, mux *http.ServeMux, method, path string, body map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(method, path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestVisibilityAPI_PATCHSetsVisibility(t *testing.T) {
+	mux, vis := newVisAPITestEnv(t)
+
+	rr := doVisRequest(t, mux, http.MethodPatch, "/api/apps/my-app/visibility",
+		map[string]string{"visibility": "public"})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("PATCH returned %d, want 200; body: %s", rr.Code, rr.Body)
+	}
+	if got := vis.Get("my-app"); got != VisibilityPublic {
+		t.Errorf("store has %q after PATCH, want %q", got, VisibilityPublic)
+	}
+}
+
+func TestVisibilityAPI_PATCHSystemAppForbidden(t *testing.T) {
+	mux, _ := newVisAPITestEnv(t)
+
+	for _, sysApp := range []string{"settings", "files", "terminal"} {
+		rr := doVisRequest(t, mux, http.MethodPatch, "/api/apps/"+sysApp+"/visibility",
+			map[string]string{"visibility": "public"})
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("PATCH %s returned %d, want 403", sysApp, rr.Code)
+		}
+	}
+}
+
+func TestVisibilityAPI_POSTSystemAppForbidden(t *testing.T) {
+	mux, _ := newVisAPITestEnv(t)
+
+	rr := doVisRequest(t, mux, http.MethodPost, "/api/apps/settings/visibility",
+		map[string]string{"visibility": "local"})
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("POST settings returned %d, want 403; body: %s", rr.Code, rr.Body)
+	}
+}
+
+func TestVisibilityAPI_PATCHSystemAppPrivateOK(t *testing.T) {
+	mux, vis := newVisAPITestEnv(t)
+
+	// Setting a system app to "private" (the only allowed value) must succeed.
+	rr := doVisRequest(t, mux, http.MethodPatch, "/api/apps/settings/visibility",
+		map[string]string{"visibility": "private"})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("PATCH settings→private returned %d, want 200; body: %s", rr.Code, rr.Body)
+	}
+	if got := vis.Get("settings"); got != VisibilityPrivate {
+		t.Errorf("store has %q, want %q", got, VisibilityPrivate)
 	}
 }

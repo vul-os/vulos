@@ -1,0 +1,63 @@
+# Vulos auto-generated — do not edit manually.
+# App: {{.AppID}}  Profile: {{.Profile}}
+
+# Declare a per-app micro-cache zone (10 MB key-zone, 5-minute TTL on disk).
+proxy_cache_path {{.CachePath}} levels=1:2 keys_zone={{.CacheZone}}:1m
+                 max_size=50m inactive=5m use_temp_path=off;
+
+server {
+    listen 443 ssl;
+    server_name {{.FQDN}};
+
+    # TLS — managed externally (ACME / Let's Encrypt).
+    ssl_certificate     /etc/ssl/vulos/{{.FQDN}}.crt;
+    ssl_certificate_key /etc/ssl/vulos/{{.FQDN}}.key;
+
+    # -----------------------------------------------------------------------
+    # Pass-through: API routes and authenticated requests are never cached.
+    # -----------------------------------------------------------------------
+    location /api/ {
+        proxy_pass http://{{.Upstream}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # -----------------------------------------------------------------------
+    # Micro-cache: static assets (JS/CSS/images/fonts).
+    # Cache only public, unauthenticated GET responses.
+    # -----------------------------------------------------------------------
+    location / {
+        # Skip cache when the request carries an Authorization header.
+        proxy_no_cache $http_authorization;
+        proxy_cache_bypass $http_authorization;
+
+        proxy_cache {{.CacheZone}};
+        proxy_cache_methods GET;
+        proxy_cache_valid 200 5m;
+
+        # Cache only responses that carry Cache-Control: public.
+        proxy_cache_valid any 0;
+        proxy_ignore_headers Cache-Control;
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+
+        proxy_pass http://{{.Upstream}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Expose cache outcome to the client.
+        add_header X-Cache $upstream_cache_status always;
+    }
+
+    # -----------------------------------------------------------------------
+    # Stub-status for hit-rate reporting (bound to loopback only).
+    # -----------------------------------------------------------------------
+    location /nginx-status {
+        stub_status;
+        allow 127.0.0.1;
+        deny all;
+    }
+}

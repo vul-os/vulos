@@ -1,1695 +1,255 @@
-# Vula OS — Roadmap Tasks
+# Vulos OS — Task Backlog
 
-**Status: 236 / 236 real tasks done (100%).** Peering HTTP wiring (PEER-07, PEER-10 through PEER-41 minus PEER-20) and BMINIT-14 reopened as todo; PEER-42 added as in-progress; SMOKE-01/02 added; BMINIT-16/17/18 added (D93 bare-metal window model — v1 always-stream/cage, v2 surface/labwc). **New image-distribution track (D94): 30 `todo` tasks across OS Distribution (OSDIST-), Seed/Trust (SEED-), Netboot (NETB-), Signing/Verity (SIGN-/VERITY-), Coordination leases (LEASE-), Sync (SYNC-), and Concurrency (CONC-/COLLAB-).** The two `### [EXAMPLE-*]` entries inside the "How to read a task" section are documentation templates, not tasks — they are not counted.
+**Status: 1 legacy task open + 0 new tasks started (new tracks: AIROT, VUMAIL, PUBWEB, MINST).**
 
-> **Control-plane note:** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. The OSS image-distribution track below (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-, see decisions.md D94) is fully self-hostable and must work correctly without any external control plane — any control plane is an optional accelerator only, reached at a configurable URL.
+One legacy item re-opened: BMINIT-14 (live-USB ESP non-bootable). All other 235 prior tasks are `done`.
+Four new feature tracks added below — see ROADMAP.md §§ 1–3, 7 for full context.
 
-> The Ladybird browser track is **de-scoped** — the spike (LADYBIRD-01) shipped feature-flagged, but the engine is not ready for us; do not invest further until that changes.
+> **Stack invariants (FROZEN):** Go backend; pure-Go `modernc.org/sqlite` (never CGO);
+> JSX-only frontend (NEVER `.tsx`); cage v1 / labwc v2 (D93); no Rust. Auth: email+password
+> + TOTP; no Google OAuth. Cloud control-plane lives in the separate vulos-cloud repo; all
+> OSS tracks below must work without it (cloud is an optional accelerator).
+
+---
 
 ## At-a-glance
 
-| Area | Roadmap | Done / Total | Progress |
+| Area | Roadmap section | Done / Total | Progress |
 |---|---|---:|:---|
-| Peering | [PEERING.md](../roadmap/PEERING.md) | 42 / 42 | `[██████████]` 100% — PEER-42 wiring landed; all peering routes serve, no 501s |
-| Bare-metal Init | [BAREMETAL-INIT.md](../roadmap/BAREMETAL-INIT.md) | 18 / 18 | `[████████░░]` 78% — BMINIT-14 (--live ESP) todo; BMINIT-16 v1 always-stream/cage; 17/18 v2 surface/labwc (D93) |
-| Default Web Apps | [DEFAULT-WEB-APPS.md](../roadmap/DEFAULT-WEB-APPS.md) | 15 / 15 | `[██████████]` 100% |
-| AI Assistant | [AI.md](../roadmap/AI.md) | 13 / 13 | `[██████████]` 100% |
-| Network & Remote Access | [NETWORK.md](../roadmap/NETWORK.md) | 10 / 10 | `[██████████]` 100% |
-| Cluster & Storage | [CLUSTER.md](../roadmap/CLUSTER.md) | 10 / 10 | `[██████████]` 100% |
-| First-boot Setup | [INIT.md](../roadmap/INIT.md) | 11 / 11 | `[██████████]` 100% |
-| Streaming | [STREAMING-OPTIMIZATIONS.md](../roadmap/STREAMING-OPTIMIZATIONS.md) | 8 / 8 | `[██████████]` 100% |
-| Gaming | [GAMING.md](../roadmap/GAMING.md) | 8 / 8 | `[██████████]` 100% |
-| App Store | [APP-STORE.md](../roadmap/APP-STORE.md) | 8 / 8 | `[██████████]` 100% |
-| Notifications | [NOTIFICATIONS.md](../roadmap/NOTIFICATIONS.md) | 6 / 6 | `[██████████]` 100% |
-| Authentication | [future/AUTHENTICATION.md](../roadmap/future/AUTHENTICATION.md) | 14 / 14 | `[██████████]` 100% |
-| Security | (decisions.md D24-D27) | 10 / 10 | `[██████████]` 100% |
-| Device Profiles | [DEVICE-PROFILES.md](../roadmap/DEVICE-PROFILES.md) | 6 / 6 | `[██████████]` 100% |
-| Fediverse Client | [future/ACTIVITYPUB.md](../roadmap/future/ACTIVITYPUB.md) | 6 / 6 | `[██████████]` 100% |
-| Telephony/Mobile | [future/MOBILE.md](../roadmap/future/MOBILE.md) | 6 / 6 | `[██████████]` 100% |
-| Theming/i18n/CI | [OTHER.md](../roadmap/OTHER.md) | 5 / 5 | `[██████████]` 100% |
-| Ladybird Spike | [future/LADYBIRD-BROWSER.md](../roadmap/future/LADYBIRD-BROWSER.md) | 1 / 1 | `[██████████]` 100% — **DE-SCOPED, do not extend** (spike only; engine not ready) |
-| OS Distribution | [OS-DISTRIBUTION.md](../roadmap/OS-DISTRIBUTION.md) | 5 / 5 | `[██████████]` 100% — image-based OS, public bucket, A/B + auto-rollback (NEW, D94) |
-| Seed & Trust Anchor | [SEED-TRUST.md](../roadmap/SEED-TRUST.md) | 3 / 3 | `[██████████]` 100% — flashed seed + baked key, forkable (NEW, D94) |
-| Netboot & First Boot | [NETBOOT.md](../roadmap/NETBOOT.md) | 5 / 5 | `[██████████]` 100% — HTTP Boot / iPXE → Try Vulos → install (NEW, D94) |
-| Signing / Verity | [SIGNING.md](../roadmap/SIGNING.md) | 6 / 6 | `[██████████]` 100% — dm-verity, offline PKI, min-epoch revocation (NEW, D94) |
-| Coordination Leases | [COORDINATION.md](../roadmap/COORDINATION.md) | 4 / 4 | `[██████████]` 100% — bucket leases + fencing, `If-Match` CAS, run-once jobs (NEW, D94) |
-| Multi-Instance Sync | [SYNC.md](../roadmap/SYNC.md) | 3 / 3 | `[██████████]` 100% — hot/cold two-tier + snapshot/compaction (NEW, D94) |
-| Concurrency Model | [CONCURRENCY.md](../roadmap/CONCURRENCY.md) | 4 / 4 | `[██████████]` 100% — manifest concurrency + run-lease + live collab (NEW, D94) |
-| Smoke Tests / CI | (decisions.md D93/D94) | 2 / 2 | `[██████████]` 100% — peering-routes + live-USB QEMU regression guards |
-| Cloud Login (OS-side) | (this file § CLOGIN-*) | 7 / 7 | `[██████████]` 100% — cloud-signed login, offline grace, profile sync, first-boot signup/2FA wizard, PIN + fingerprint (NEW) |
+| BMINIT legacy | ROADMAP.md § Boot, Init & Bare Metal | 0 / 1 | `[──────────]` 0% — BMINIT-14 re-open |
+| AI Router | ROADMAP.md § AI Router | 0 / 8 | `[──────────]` 0% |
+| Vulos Mail Identity | ROADMAP.md § Identity — Vumail | 0 / 7 | `[──────────]` 0% |
+| Public Webapps | ROADMAP.md § Public Webapps | 0 / 8 | `[──────────]` 0% |
+| Multi-Instance Routing | ROADMAP.md § Multi-Instance | 0 / 7 | `[──────────]` 0% |
 
-| **Total** |  | **235 / 236** | `[██████████]` 100% |
+| **Open total** | | **0 / 31** | `[──────────]` 0% |
+
+---
 
 ## How to read a task
 
-Each task is a self-contained chunk of work: one ID, one title, a status token, then a scope description and acceptance criteria. Two formats are in use; both are equally valid and equally machine-parseable. Don't change the format of an existing task.
-
-**Compact form** — one-line metadata + Scope + AC:
-
 ```
-### [EXAMPLE-1] short title
-`todo` · P1 · M · dep: none · parallel: yes — path/to/file.go
-Scope: one paragraph describing what to do, file:line references where useful.
-AC: [ ] first measurable outcome [ ] second outcome [ ] build/test passes
+### [ID] short title
+`todo` · P0|P1|P2|P3 · S|M|L · dep: <IDs or none> · parallel: yes|no — owned file path(s)
+Scope: one paragraph; enough for an autonomous agent.
+AC: [ ] verifiable outcome 1 [ ] outcome 2 [ ] go build / go test / npm run build as appropriate
 ```
 
-**Verbose form** — one bullet per field:
-
-```
-### [EXAMPLE-2] longer title with more context up top
-- **Status:** todo
-- **Priority:** P1
-- **Effort:** M
-- **Roadmap:** roadmap/<AREA>.md § Section
-- **Depends on:** none
-- **Parallel-safe:** no — modifies src/core/AppRegistry.js …
-- **Context:** …
-- **Scope:** …
-- **Acceptance criteria:**
-  - [ ] …
-- **Key files:** …
-```
-
-**Status token.** The line *immediately after* the `### [ID]` header carries the status — `` `todo` `` / `` `done` `` (compact) or `- **Status:** todo` / `- **Status:** done` (verbose). Orchestration tooling reads this line. Don't move it.
-
-**Priority + effort.** `P0` highest → `P3` lowest. `S` / `M` / `L` is a rough size hint, not a contract.
-
-**`parallel: no`** means the task touches a hot shared file (`backend/cmd/server/main.go`, `src/core/AppRegistry.js`, `backend/services/stream/pool.go`, etc.) — left over from the autonomous-orchestrator era where parallel worktrees needed to avoid file overlap. For a human contributor, the practical reading is: rebase on `main` before opening your PR, and don't be surprised if another in-flight PR is touching the same file.
-
-**Picking a task.** Any `todo` whose `dep:` / `Depends on` entries are all `done` is fair game. P0/P1 items are usually load-bearing for later work; P2/P3 are good for warming up.
-
-**Working a task.** Branch `task/<ID>`, implement Scope, tick AC, run `go build ./...` (backend) and/or `npm run build` (frontend), open a PR. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full flow.
+**Status token** — `` `todo` `` or `` `done` ``.
+**Priority** — `P0` highest → `P3` lowest.
+**Effort** — `S` / `M` / `L` rough size.
+**`parallel: no`** — touches a hot shared file; rebase before opening PR.
+**Picking a task** — any `todo` whose `dep:` entries are all `done` is fair game.
 
 ---
 
-## Area: AI Assistant
+## Area: Legacy re-open
 
-_Design doc: [`roadmap/AI.md`](../roadmap/AI.md)_  ·  _Prefix: `AI-*`_
+_Prefix: `BMINIT-*`_
 
-> Why this matters: Cmd+K chat, AI-generated mini-apps, and surfacing the assistant everywhere it could help — context menus, empty states, the dock. Public-app visibility lives here too because AI-generated apps are the easiest to accidentally expose.
-
-### [AI-01] Add visibility field to app manifest and persistent visibility store
-- **Status:** done
-- **Priority:** P0
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Public Apps
-- **Depends on:** none
-- **Parallel-safe:** no — modifies `backend/services/appnet/manifest.go` and `store.go` (both already locally modified — coordinate).
-- **Context:** `AppManifest` (`backend/services/appnet/manifest.go:43`) has no `visibility` field; valid values must be `private | local | public` with `private` default. No API or persistence for per-app visibility. AI apps live separately in `~/.vulos/ai-apps/<id>/meta.json` (`main.go:1160`).
-- **Scope:** Add a `Visibility string` field (`private`/`local`/`public`, default `private`) to `AppManifest` with validation. Add a small persistent visibility store (JSON under `~/.vulos/db/`) keyed by app id that also covers AI apps. Provide getter/setter methods. No HTTP endpoints in this task.
-- **Acceptance criteria:**
-  - [ ] `AppManifest.Visibility` validated to one of three values; empty defaults to `private`.
-  - [ ] A `VisibilityStore` persists/loads per-app visibility for manifest apps and AI apps.
-  - [ ] Unit test covers default + validation + round-trip persistence.
-  - [ ] `go build ./...` passes.
-- **Key files:** `backend/services/appnet/manifest.go`, `backend/services/appnet/store.go`, new `backend/services/appnet/visibility.go`, `backend/cmd/server/main.go`.
-
-### [AI-02] API endpoints to get/set per-app visibility
-- **Status:** done
-- **Priority:** P0
-- **Effort:** S
-- **Roadmap:** roadmap/AI.md § Public Apps
-- **Depends on:** AI-01
-- **Parallel-safe:** no — adds handlers in `backend/cmd/server/main.go`.
-- **Context:** No endpoints exist to toggle visibility. AI-apps endpoints registered around `main.go:1160-1221` use `mux.HandleFunc` + `writeJSON`/`writeErr`.
-- **Scope:** Add `GET /api/apps/visibility` (list all apps incl. AI apps with current visibility) and `POST /api/apps/{id}/visibility` (body `{"visibility":"private|local|public"}`) backed by the AI-01 store. Validate; return updated state.
-- **Acceptance criteria:**
-  - [ ] `GET /api/apps/visibility` returns each known app id + visibility (defaults private).
-  - [ ] `POST /api/apps/{id}/visibility` updates/persists; rejects invalid values 400.
-  - [ ] Endpoints require same auth as other `/api/*` endpoints.
-- **Key files:** `backend/cmd/server/main.go`, `backend/services/appnet/visibility.go`.
-
-### [AI-03] Topbar always-visible public-app warning indicator
-- **Status:** done
-- **Priority:** P0
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Public Apps → Topbar warning
-- **Depends on:** AI-02
-- **Parallel-safe:** yes — adds a component in `src/core/`, mounts in topbar; coordinate with AI-04 on popover.
-- **Context:** Topbar rendered via `src/core/SystemPulse.jsx` (compact mode line 395) + `src/shell/Dock.jsx`. No public-app warning exists. Needs non-dismissable indicator, color-coded yellow (local) / red (public).
-- **Scope:** `PublicAppsWarning` component polls `GET /api/apps/visibility`, counts `local`/`public`, renders a persistent topbar badge only when any non-private app exists. Red if any public, else yellow. No dismiss. Click opens AI-04 manager.
-- **Acceptance criteria:**
-  - [ ] Badge appears whenever ≥1 app local/public; hidden when all private.
-  - [ ] Color: red if any public, yellow if only local.
-  - [ ] No dismiss; disappears only when no non-private apps remain.
-  - [ ] Count text reflects actual number; refreshes on changes.
-- **Key files:** `src/core/SystemPulse.jsx`, new `src/core/PublicAppsWarning.jsx`.
-
-### [AI-04] Public apps manager popover + first-time confirmation dialog
-- **Status:** done
-- **Priority:** P1
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Public Apps → Topbar warning / Settings UI
-- **Depends on:** AI-02, AI-03
-- **Parallel-safe:** yes — new component + a section in `src/core/Settings.jsx`.
-- **Context:** `Settings.jsx` has an `aiapps` tab (`Settings.jsx:8,547`) listing AI apps with delete. No per-app visibility toggle UI exists.
-- **Scope:** Popover (from AI-03 badge) listing non-private apps with one-click "Make private" + visibility selector. Same control in Settings AI Apps + general apps. Confirmation dialog first time an app is made public.
-- **Acceptance criteria:**
-  - [ ] Topbar badge click opens list of local/public apps with toggles calling `POST /api/apps/{id}/visibility`.
-  - [ ] First-time set-to-public triggers confirmation; cancel aborts.
-  - [ ] Settings exposes per-app visibility; list refreshes after change.
-- **Key files:** new `src/core/PublicAppsManager.jsx`, `src/core/Settings.jsx`, `src/core/PublicAppsWarning.jsx`.
-
-### [AI-05] Make saved AI apps appear in the app launcher with icons and categories
-- **Status:** done
-- **Priority:** P1
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § AI Apps (persistence, icons, categories)
-- **Depends on:** none
-- **Parallel-safe:** no — modifies `src/core/AppRegistry.js` (locally modified) and `backend/cmd/server/main.go` ai-apps handlers.
-- **Context:** Saved AI apps persist to `~/.vulos/ai-apps/<id>/{meta.json,index.html,server.py}` (`main.go:1160-1221`), only surfaced in Settings → AI Apps. `AppRegistry.js` merges builtins + `/api/store/installed` (`AppRegistry.js:119-149`) but never fetches `/api/ai-apps`. `meta.json` lacks icon/category.
-- **Scope:** Store `icon` (emoji heuristic ok) + `category` in `meta.json`; extend `GET /api/ai-apps` to return them. Add `refreshAIApps()` in `AppRegistry.js` merging `/api/ai-apps` into `getApps()` as launchable apps opening `/api/ai-apps/{id}/html`.
-- **Acceptance criteria:**
-  - [ ] Saved AI apps appear in Launchpad + Cmd+K after reload.
-  - [ ] Each AI app has icon + category in `meta.json` and registry merge.
-  - [ ] Launching opens saved HTML (starts Python backend if present).
-  - [ ] AI apps persist/reappear after server restart.
-- **Key files:** `src/core/AppRegistry.js`, `backend/cmd/server/main.go`, `src/shell/Launchpad.jsx`.
-
-### [AI-06] AI app editing/iteration workflow ("make the button bigger")
-- **Status:** done
-- **Priority:** P1
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § AI Apps → Editing
-- **Depends on:** none
-- **Parallel-safe:** no — touches `src/core/Portal.jsx` and ai-apps backend handlers in `main.go`.
-- **Context:** AI apps generated once via `<viewport>` parsing in `Portal.jsx:191-288`, saved via `Window.jsx:137`. No way to reopen + ask AI to modify; no endpoint to fetch current HTML/Python back into chat as edit context.
-- **Scope:** "Edit with AI" action loads app's current `index.html`/`server.py` (existing `GET /api/ai-apps/{id}/html|python`) into a chat turn as context, sends change request, overwrites saved app via new `POST /api/ai-apps/{id}/update`. Viewport reopens with new version.
-- **Acceptance criteria:**
-  - [ ] User opens saved AI app, submits modification request including current code as context.
-  - [ ] AI response replaces saved HTML/Python on disk via update endpoint.
-  - [ ] Updated app reopens reflecting the change.
-- **Key files:** `src/core/Portal.jsx`, `src/core/Settings.jsx`, `backend/cmd/server/main.go`.
-
-### [AI-07] AI app version history and rollback
-- **Status:** done
-- **Priority:** P2
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § AI Apps → Versioning
-- **Depends on:** AI-06
-- **Parallel-safe:** no — extends ai-apps backend handlers in `main.go` (same area as AI-06).
-- **Context:** Save handler (`main.go:1162`) overwrites in place — no history; AI-06 edit destroys prior versions.
-- **Scope:** On save/update snapshot prior files into `versions/<timestamp>/` + `versions.json`. Add `GET /api/ai-apps/{id}/versions`, `POST /api/ai-apps/{id}/rollback`, minimal Settings UI.
-- **Acceptance criteria:**
-  - [ ] Each save/update creates a versioned snapshot (cap last 20).
-  - [ ] `versions` lists; `rollback` restores chosen one.
-  - [ ] Settings AI Apps shows version history + rollback button.
-- **Key files:** `backend/cmd/server/main.go`, `src/core/Settings.jsx`.
-
-### [AI-08] Pre-warmed Python process pool for sandbox startup
-- **Status:** done
-- **Priority:** P2
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § AI Apps → Performance
-- **Depends on:** none
-- **Parallel-safe:** yes — isolated to `backend/services/sandbox/`.
-- **Context:** `Sandbox.Run` (`backend/services/sandbox/sandbox.go:52`) cold-starts `python3` per request; `Portal.jsx:263` adds blind 500ms wait. No pre-warming/readiness probe.
-- **Scope:** Warm pool of pre-spawned Python processes reused by `Run`; real readiness probe (poll port) replacing the 500ms wait. Keep `containsDangerousCode` checks + timeout. Pool size env-configurable.
-- **Acceptance criteria:**
-  - [ ] Configurable warm pool; `Run` measurably faster than cold start.
-  - [ ] Readiness check confirms port listening before returning URL.
-  - [ ] Dangerous-code filtering + 5-min timeout still enforced.
-  - [ ] Pool cleaned up on `StopAll`/shutdown (no leaks).
-- **Key files:** `backend/services/sandbox/sandbox.go`, `backend/cmd/server/main.go`.
-
-### [AI-09] First-run experience that introduces the AI chat
-- **Status:** done
-- **Priority:** P1
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Desktop & Apps Must Lead to Chat
-- **Depends on:** none
-- **Parallel-safe:** yes — new component + a mount in `src/App.jsx`/desktop layout.
-- **Context:** Setup wizard `src/auth/Setup.jsx` never introduces AI chat. Chat opens via Cmd+K / `setChat(true)` (`Portal.jsx:46-56`). No first-run chat prompt/flag.
-- **Scope:** One-time dismissable first-run overlay (persisted flag) that on first desktop load opens chat + short explainer (build apps, control OS, search files). Never reappears once dismissed.
-- **Acceptance criteria:**
-  - [ ] First desktop load opens chat with intro explainer.
-  - [ ] Persisted flag prevents re-show.
-  - [ ] Doesn't interfere with Setup wizard.
-- **Key files:** new `src/core/AIFirstRun.jsx`, `src/App.jsx` or `src/layouts/DesktopCanvas.jsx`, `src/providers/ShellProvider.jsx`.
-
-### [AI-10] Persistent dock/taskbar AI chat entry point
-- **Status:** done
-- **Priority:** P1
-- **Effort:** S
-- **Roadmap:** roadmap/AI.md § Desktop & Apps Must Lead to Chat → Dock/taskbar
-- **Depends on:** none
-- **Parallel-safe:** yes — touches only `src/shell/Dock.jsx`.
-- **Context:** Chat reachable via Cmd+K and `vulos:chat` events (`Portal.jsx:46,180`). `src/shell/Dock.jsx` has no always-visible AI button.
-- **Scope:** Persistent AI icon in Dock opening chat (`setChat(true)` via `useShell`). Pinned, always visible on desktop + mobile layouts.
-- **Acceptance criteria:**
-  - [ ] Persistent AI icon always present in Dock.
-  - [ ] Click/tap opens AI chat panel.
-  - [ ] Works in desktop + mobile dock rendering.
-- **Key files:** `src/shell/Dock.jsx`, `src/providers/ShellProvider.jsx`.
-
-### [AI-11] Context menu "Ask AI about this" for files and selected text
-- **Status:** done
-- **Priority:** P2
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Desktop & Apps Must Lead to Chat → Context menu
-- **Depends on:** none
-- **Parallel-safe:** yes — touches `src/shell/DesktopContextMenu.jsx` and file manager context menu.
-- **Context:** `DesktopContextMenu.jsx` only handles desktop-background right-click; `FileManager.jsx` has no AI hook. Chat accepts external input via `vulos:chat` window event (`Portal.jsx:180-187`).
-- **Scope:** Add "Ask AI about this" entry to desktop/file context menu opening chat pre-filled with context (file path/name or selected text) via `vulos:chat` event.
-- **Acceptance criteria:**
-  - [ ] Right-click file (and/or selected text) shows "Ask AI about this".
-  - [ ] Selecting opens chat with prompt containing the context.
-  - [ ] Existing native-window context menu behavior preserved.
-- **Key files:** `src/shell/DesktopContextMenu.jsx`, `src/builtin/files/FileManager.jsx`.
-
-### [AI-12] App empty-state and error-state "Ask AI" affordances
-- **Status:** done
-- **Priority:** P2
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Desktop & Apps Must Lead to Chat → empty/error states
-- **Depends on:** none
-- **Parallel-safe:** yes — small additive changes across a few builtin apps + a shared helper.
-- **Context:** Builtin apps have empty/error states with no AI funnel. Portal exposes `vulos:chat`. No shared "Ask AI" helper.
-- **Scope:** Reusable `<AskAIButton context="...">` dispatching `vulos:chat`; wire into 2-3 representative states (File Explorer empty folder, a failed terminal/exec output).
-- **Acceptance criteria:**
-  - [ ] Reusable AskAI helper opens chat with context.
-  - [ ] Wired into ≥ File Explorer empty state + one error state.
-  - [ ] Click opens chat pre-filled with relevant context.
-- **Key files:** new `src/core/AskAIButton.jsx`, `src/builtin/files/FileManager.jsx`, one error-state location (e.g. `src/builtin/terminal/Terminal.jsx`).
-
-### [AI-13] Expand proactive agent system checks (memory, disk, thermal)
-- **Status:** done
-- **Priority:** P2
-- **Effort:** M
-- **Roadmap:** roadmap/AI.md § Current Stack (Proactive agent)
-- **Depends on:** none
-- **Parallel-safe:** no — registers checks in `backend/cmd/server/main.go` near line 173.
-- **Context:** `ProactiveAgent` (`backend/services/ai/proactive.go`) supports many checks but only low-battery registered (`main.go:173-182`).
-- **Scope:** Register memory-pressure, low-disk, high-CPU-temp checks using existing telemetry/energy/disks services. Thresholds via constants/env.
-- **Acceptance criteria:**
-  - [ ] ≥3 new checks registered using existing service data.
-  - [ ] Each fires only above thresholds, dedupes via notify path.
-  - [ ] No regression to battery check; `go build ./...` passes.
-- **Key files:** `backend/cmd/server/main.go`, `backend/services/ai/proactive.go`.
+### [BMINIT-14] Fix live-USB installer: write bootable ESP to the USB target
+`done` · P0 · M · dep: none · parallel: no — cmd/installer/live.go, internal/installer/esp.go
+Scope: The `--live` flag currently produces a raw squashfs image that cannot boot from USB because no EFI System Partition is written. The installer must partition the target block device (GPT: 512 MiB FAT32 ESP + remainder ext4 or squashfs data), write the signed `bootx64.efi` into `EFI/BOOT/`, embed the GRUB/systemd-boot stub that loads the live squashfs via `toram` or direct mount, and sign the ESP contents with the offline key so dm-verity chains through. Mirror the netboot iPXE path (NETB-*) but writing to a physical block device instead of serving over HTTP.
+AC: [ ] `vulos-install --live /dev/sdX` writes a GPT with a valid ESP [ ] the resulting USB device boots in a QEMU OVMF VM and reaches the Vulos desktop [ ] sha256sum of squashfs matches the published manifest [ ] `go build ./cmd/installer/...` passes
 
 ---
 
-## Area: Streaming
+## Area: AI Router
 
-_Design doc: [`roadmap/STREAMING-OPTIMIZATIONS.md`](../roadmap/STREAMING-OPTIMIZATIONS.md)_  ·  _Prefix: `STREAM-*`_
+_Roadmap: ROADMAP.md § AI Router (OS-Level)_  ·  _Prefix: `AIROT-*`_
 
-> Why this matters: How a Linux app gets to your browser as low-latency video + audio. NVENC/VA-API tuning, adaptive bitrate, PipeWire vs PulseAudio, Wayland (cage) capture. The plumbing under every "open this app" click for non-web apps.
+> OS-level model-API router. Two supply modes: (a) BYO provider keys stored in
+> OS settings; (b) cloud zero-setup — OS authenticates with the Vulos account
+> session, keys held server-side, usage billed through the Vulos account. LiteLLM
+> as provider-abstraction layer; Vercel AI SDK for UI streaming. Model choice is
+> preserved in both modes. All AI features in the OS (Notes indexing, Smart Browser
+> summaries, assistant, inline suggestions) call the router — never individual
+> provider SDKs directly.
 
-### [STREAM-01] Add conditional Chromium GPU flags driven by gpu.Detect()
-- **Status:** done
-- **Priority:** P0
-- **Effort:** S
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Chromium Browser (GPU-Specific)
-- **Depends on:** none
-- **Parallel-safe:** yes — touches Chromium launch arg construction (`src/shell/Launchpad.jsx:119` area / backend webbrowser launcher); coordinate with STREAM-08.
-- **Context:** Chromium launched with hardcoded software flags (`src/shell/Launchpad.jsx:119`). `gpu.Detect()` exists (`backend/services/gpu/gpu.go:179`) but not consulted for browser flags.
-- **Scope:** Expose `gpu.Detect()` via endpoint (reuse or add `GET /api/gpu/info`); build Chromium flags conditionally — GPU flags when tier != software, current software flags otherwise.
-- **Acceptance criteria:**
-  - [ ] Backend handler returns `gpu.Detect()` JSON.
-  - [ ] GPU tier → GPU flag set, no `--disable-gpu`.
-  - [ ] Software tier → exact current flags unchanged.
-  - [ ] Flag selection isolated/pure-tested.
-- **Key files:** `backend/services/gpu/gpu.go`, `backend/cmd/server/main.go`, `src/shell/Launchpad.jsx`, `src/builtin/webbrowser/RemoteBrowser.jsx`.
+### [AIROT-01] AI Router package: provider abstraction + config store
+`done` · P0 · M · dep: none · parallel: no — internal/airouter/router.go, internal/airouter/config.go, internal/airouter/migrations/0001_airouter.sql
+Scope: Create `internal/airouter` package. `Config` struct: mode (`byo | cloud`), active model slug, list of configured providers (OpenAI-compatible base URL, API key encrypted at rest with OS keyring, display name). SQLite migration for `airouter_config` and `airouter_providers` tables. In `byo` mode the router selects the right provider for the requested model from the local table. In `cloud` mode it calls `POST /api/ai/proxy` on the Vulos cloud control plane, forwarding the OS device cert for auth. Expose `airouter.Route(ctx, req ChatRequest) (stream io.ReadCloser, err error)` — callers receive a Server-Sent Events stream regardless of mode.
+AC: [ ] `byo` mode round-trips to a stubbed OpenAI-compatible endpoint [ ] `cloud` mode sends device-cert header and streams the proxy response [ ] config survives restart (SQLite round-trip) [ ] `go build ./internal/airouter/...` passes
 
-### [STREAM-02] Add NVENC/VA-API low-latency encoder tuning flags
-- **Status:** done
-- **Priority:** P0
-- **Effort:** S
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Video Encoding
-- **Depends on:** none
-- **Parallel-safe:** yes — touches only `backend/services/gpu/gpu.go` `EncoderArgs()`.
-- **Context:** `gpu.EncoderArgs()` (`gpu.go:105`) returns minimal args; roadmap wants low-latency flags. `vp8enc` (line 136) must stay unchanged.
-- **Scope:** NVENC: `zerolatency=true`, `b-adapt=false`, `rc-lookahead=0`, `aud=true`. VA-API: `tune=low-power`, `cabac-entropy-coding=true` where applicable. Guard property names. Leave `vp8enc` untouched.
-- **Acceptance criteria:**
-  - [ ] NVENC args include the four properties.
-  - [ ] VA-API args include the two properties.
-  - [ ] Software (`vp8enc`) args byte-for-byte unchanged.
-  - [ ] `go build ./...` passes.
-- **Key files:** `backend/services/gpu/gpu.go`.
+### [AIROT-02] AI Router HTTP handler + SSE streaming endpoint
+`done` · P0 · M · dep: AIROT-01 · parallel: yes — cmd/server/routes_airouter.go
+Scope: Register `POST /api/ai/chat` on the OS local server. Handler validates the JSON body (`{model, messages[], stream:bool}`), calls `airouter.Route`, and pipes the SSE stream back to the caller. Include `POST /api/ai/models` (list available models from current config), `GET /api/ai/status` (current mode + active model), `PUT /api/ai/config` (update mode/model/provider, requires local auth session). Rate-limit: 10 concurrent in-flight requests; queue remainder.
+AC: [ ] `/api/ai/chat` returns `text/event-stream` with `data: {...}` chunks [ ] unknown model → 422 with `{"error":"model_not_found"}` [ ] `/api/ai/models` lists models from config [ ] `go test ./cmd/server/...` covers handler
 
-### [STREAM-03] Expose GStreamer video encoder as a named element
-- **Status:** done
-- **Priority:** P0
-- **Effort:** M
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Adaptive Bitrate — Wire It Up
-- **Depends on:** none
-- **Parallel-safe:** no — modifies `backend/services/stream/pool.go` + `gpu.go` `EncoderArgs()`; conflicts STREAM-02/04.
-- **Context:** Video pipeline built `pool.go:226-248` via `gst-launch-1.0`, encoder has no `name=`. `bitrate.go` computes quality but `stream.go:160` only stores it.
-- **Scope:** Add stable `name=venc` to encoder element; store encoder element name + gst process handle on `Session`. Enabling refactor for STREAM-04; no behavior change.
-- **Acceptance criteria:**
-  - [ ] Pipeline includes `name=venc` for all tiers incl. `vp8enc`.
-  - [ ] `Session` exposes encoder element name + bitrate-change stub.
-  - [ ] Streaming works, no element-name parse errors.
-- **Key files:** `backend/services/gpu/gpu.go`, `backend/services/stream/pool.go`, `backend/services/stream/stream.go`.
+### [AIROT-03] Settings UI: AI Router config panel
+`done` · P0 · M · dep: AIROT-02 · parallel: yes — apps/settings/src/components/AIRouterPanel.jsx
+Scope: Add an "AI" section to the OS Settings app. Panel shows current mode (`BYO Keys` / `Vulos Cloud`). BYO mode: form to add/edit/delete providers (name, base URL, API key — key shown as masked on save). Cloud mode: shows logged-in Vulos account, estimated usage for current billing cycle (fetched from `/api/ai/status`), link to cloud dashboard. Model selector dropdown populated from `/api/ai/models`. All state via existing settings React store. JSX only (no `.tsx`).
+AC: [ ] mode toggle persists via `PUT /api/ai/config` [ ] provider add/edit/delete round-trips correctly [ ] model selector updates active model [ ] `npm run build` from apps/settings passes
 
-### [STREAM-04] Apply adaptive bitrate changes to the running encoder
-- **Status:** done
-- **Priority:** P0
-- **Effort:** M
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Adaptive Bitrate — Wire It Up
-- **Depends on:** STREAM-03
-- **Parallel-safe:** no — modifies `backend/services/stream/stream.go` + `pool.go`.
-- **Context:** `newBitrateController` (`stream.go:160`) `onChange` only updates fields; encoder bitrate never changed. Quality levels in `bitrate.go:22`.
-- **Scope:** In `onChange`, change live encoder bitrate by tearing down/restarting video gst segment via `runWithBackoff` with new bitrate; map kbps→correct per-element units; debounce.
-- **Acceptance criteria:**
-  - [ ] Quality change restarts/updates encoder with new bitrate (sw/NVENC/VA-API).
-  - [ ] Correct units per element (bps vp8enc, kbps h264/av1).
-  - [ ] Debounced (≥5s) and logged.
-  - [ ] No goroutine/process leak.
-- **Key files:** `backend/services/stream/stream.go`, `backend/services/stream/pool.go`, `backend/services/stream/bitrate.go`.
+### [AIROT-04] Notes app: AI indexing + semantic search via router
+`done` · P1 · M · dep: AIROT-01 · parallel: yes — apps/notes/src/lib/aiIndex.js, apps/notes/src/components/SearchBar.jsx
+Scope: When a note is saved, enqueue an embedding request to `/api/ai/embed` (new endpoint on the router: single string → float32 vector). Store embeddings in a `note_embeddings` SQLite table (note_id, model_slug, vector BLOB). Semantic search: on query, embed the query string, compute cosine similarity over stored vectors, surface top-5 results above threshold 0.75 alongside the existing full-text results. Show an "AI search" badge on semantic hits. Gracefully degrade (fall back to full-text only) when AI Router is unconfigured.
+AC: [ ] saving a note triggers background embedding (non-blocking) [ ] semantic search surfaces correct notes [ ] graceful fallback when AIROT unconfigured [ ] `npm run build` passes for notes app
 
-### [STREAM-05] Add gamepad data channel to StreamViewer client
-- **Status:** done
-- **Priority:** P1
-- **Effort:** S
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Input Injection
-- **Depends on:** none
-- **Parallel-safe:** yes — touches only `src/builtin/stream/StreamViewer.jsx`.
-- **Context:** Backend handles `gamepad` data channel (`stream.go:188,345`). `RemoteBrowser.jsx` creates it (lines 106,334) but `StreamViewer.jsx` only creates `mouse`/`keyboard` (lines 93-98).
-- **Scope:** Port gamepad channel + polling loop from `RemoteBrowser.jsx` into `StreamViewer.jsx`; payload matches `handleGamepad` struct.
-- **Acceptance criteria:**
-  - [ ] StreamViewer opens `gamepad` channel, sends snapshots when gamepad connected.
-  - [ ] Payload matches `buttons[]bool, axes[]float64, triggers[]float64`.
-  - [ ] No polling when no gamepad; loop cleaned on unmount.
-- **Key files:** `src/builtin/stream/StreamViewer.jsx` (reference `src/builtin/webbrowser/RemoteBrowser.jsx`).
+### [AIROT-05] Browser app: Smart Summarise via router
+`done` · P1 · M · dep: AIROT-02 · parallel: yes — apps/browser/src/components/SmartBar.jsx
+Scope: Add a "Summarise" button to the browser address/toolbar. On click: extract the visible page text (via `window.getSelection()` or `document.body.innerText` from the WebKit content script), POST to `/api/ai/chat` with a system prompt instructing summarisation, stream the response into a slide-up panel below the toolbar. "Copy", "Share", and "Save to Notes" actions in the panel footer. Cancel button aborts the stream. Disable button when AI Router not configured; show config nudge instead.
+AC: [ ] button fires summarisation and streams result [ ] panel shows streaming text incrementally [ ] cancel aborts the fetch [ ] "Save to Notes" creates a note [ ] `npm run build` passes for browser app
 
-### [STREAM-06] Add PipeWire/PulseAudio backend detection to the audio capture pipeline
-- **Status:** done
-- **Priority:** P1
-- **Effort:** M
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Audio
-- **Depends on:** none
-- **Parallel-safe:** no — modifies audio gst pipeline in `backend/services/stream/pool.go`.
-- **Context:** Audio hardcoded `pulsesrc device=virtual_speaker.monitor` + `opusenc` (`pool.go:251-267`). `audio.go:200 detectBackend()` exists but ignored.
-- **Scope:** Conditional source on detected backend (PipeWire path when available; identical PulseAudio fallback). Optional gaming-mode `opusenc frame-size=10`.
-- **Acceptance criteria:**
-  - [ ] PipeWire capture when available; PulseAudio path identical to current otherwise.
-  - [ ] Gaming-mode option → `frame-size=10`; default `20`.
-  - [ ] Software/PulseAudio path no regression.
-- **Key files:** `backend/services/stream/pool.go`, `backend/services/gpu/gpu.go`, `backend/services/audio/audio.go`.
+### [AIROT-06] AI assistant app: wire to router, replace direct provider calls
+`done` · P1 · S · dep: AIROT-02 · parallel: yes — apps/assistant/src/lib/api.js
+Scope: The existing AI assistant app currently calls provider APIs directly (hardcoded keys). Replace all direct provider calls with calls to `POST /api/ai/chat` on the local OS server. Remove all provider-specific SDK imports. Ensure the conversation history format is preserved. The assistant must work in both `byo` and `cloud` router modes transparently.
+AC: [ ] assistant app has zero direct provider API calls [ ] conversations continue normally in both router modes [ ] `npm run build` passes
 
-### [STREAM-07] Add GPU streaming packages to the Dockerfile
-- **Status:** done
-- **Priority:** P1
-- **Effort:** S
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Dockerfile — GPU Support
-- **Depends on:** none
-- **Parallel-safe:** yes — touches only `Dockerfile`.
-- **Context:** Dockerfile lacks Wayland/PipeWire stack; already sets `WLR_BACKENDS=headless`/`WLR_RENDERER=pixman` (lines 89-90).
-- **Scope:** Add cage, labwc, pipewire, pipewire-pulse, wireplumber, gstreamer1.0-pipewire, xdg-desktop-portal-wlr, libgbm1, libegl1; add env vars (`XDG_SESSION_TYPE=wayland`, `MOZ_ENABLE_WAYLAND=1`, keep `DISPLAY=:99`); keep existing packages.
-- **Acceptance criteria:**
-  - [ ] Dockerfile installs the listed packages.
-  - [ ] New env vars added; existing X11 defaults retained.
-  - [ ] `docker build` resolves on trixie-slim; no removed packages.
-- **Key files:** `Dockerfile`.
+### [AIROT-07] Cloud AI proxy endpoint (OS-side client)
+`done` · P1 · M · dep: AIROT-01 · parallel: yes — internal/airouter/cloudproxy.go
+Scope: Implement the `cloud` mode transport in the router. When `mode=cloud`, requests to `/api/ai/chat` or `/api/ai/embed` are proxied to `POST https://api.vulos.org/ai/proxy` using the OS device cert (mTLS or `Authorization: VulosDevice <cert>` header). The cloud proxy authenticates the device cert against the enrolled account and bills usage to that account. Implement exponential back-off on 429/503 from the proxy. Expose `VULOS_AI_PROXY_URL` env override for dev/self-hosted.
+AC: [ ] cloud mode sends device cert and receives streamed response [ ] 429 triggers back-off with retry [ ] env override redirects to local stub [ ] `go test ./internal/airouter/...`
 
-### [STREAM-08] Add cage headless Wayland compositor path for GPU streaming sessions
-- **Status:** done
-- **Priority:** P2
-- **Effort:** L
-- **Roadmap:** roadmap/STREAMING-OPTIMIZATIONS.md § Display Server / Screen Capture
-- **Depends on:** STREAM-07
-- **Parallel-safe:** no — heavily modifies `backend/services/stream/pool.go` session startup.
-- **Context:** `pool.go:118` always starts Xvfb + matchbox; `gpu.CaptureArgs()` returns `pipewiresrc` when capable but nothing produces PipeWire frames.
-- **Scope:** When `gpu.Detect().Tier != software` and cage present, run per-session `cage` (headless wlroots) with per-session Wayland socket isolation (partly at `pool.go:155-177`); keep Xvfb path unchanged otherwise; teardown kills cage + cleans socket.
-- **Acceptance criteria:**
-  - [ ] GPU+cage → session runs cage (no Xvfb) with socket isolation.
-  - [ ] No GPU/cage missing → Xvfb+matchbox unchanged, works.
-  - [ ] `Stop()` kills cage + removes socket/runtime dir.
-  - [ ] Capture feeds WebRTC track both modes.
-- **Key files:** `backend/services/stream/pool.go`, `backend/services/stream/stream.go`, `backend/services/gpu/gpu.go`.
+### [AIROT-08] AI Router: embed endpoint + vector store
+`done` · P2 · M · dep: AIROT-01 · parallel: yes — cmd/server/routes_airouter.go, internal/airouter/embed.go
+Scope: Add `POST /api/ai/embed` endpoint: body `{input: string, model?: string}`, returns `{embedding: [float32...], model: string}`. In `byo` mode, route to the provider's embeddings API (OpenAI `/v1/embeddings` or compatible). In `cloud` mode, proxy to `POST https://api.vulos.org/ai/embed`. Cache embeddings in SQLite keyed by `SHA256(model+input)` with a 30-day TTL to avoid redundant calls. Expose `GET /api/ai/embed/stats` (cache hit rate, total stored).
+AC: [ ] embed endpoint returns valid float32 vector [ ] cache hit skips provider call [ ] cache eviction honours TTL [ ] `go test ./internal/airouter/...`
 
 ---
 
-## Area: Gaming
+## Area: Vulos Mail Identity (vumail)
 
-_Design doc: [`roadmap/GAMING.md`](../roadmap/GAMING.md)_  ·  _Prefix: `GAME-*`_
+_Roadmap: ROADMAP.md § Identity — Mandatory Vulos Mail (vumail)_  ·  _Prefix: `VUMAIL-*`_
 
-> Why this matters: Per-session knobs for Wine/Lutris/Steam streams: higher FPS, zerolatency encoder, pointer-lock, multi-pad gamepad, rumble, process priority. Normal streaming is unchanged when these are off.
+> Every Vulos instance has a mandatory mail identity created at install/first-boot.
+> The identity is a `user@vumail.org` address (or `user@custom-domain` for self-hosted).
+> The mail server is vulos-mail (OSS, separate repo). Delivery relay is vulos-relay.
+> No external email provider. Vumail is the identity backbone for account recovery,
+> inter-instance peering contact cards, and notification delivery.
 
-### [GAME-01] Configurable FPS: default 60 + per-session
-`done` · P0 · S · dep: none · parallel: no — backend/services/stream/pool.go
-Scope: Default FPS 60 in Launch, clamp to 30/60/90/120/144 (0=60); keep fps request field.
-AC: [ ] new sessions 60, explicit honored+clamped [ ] existing callers unaffected [ ] go build
+### [VUMAIL-01] First-boot wizard: vumail identity creation step
+`todo` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VumailStep.jsx, internal/vumail/identity.go
+Scope: Add a mandatory "Create your mail identity" step to the first-boot wizard (after the user-account step, before cluster-join). The user picks a username; the wizard checks availability against `https://vumail.org/api/check?user=<name>` (GET, returns `{available: bool}`). On confirm, `POST /api/vumail/claim` on the local OS server: stores the chosen identity locally (`vumail_identity` table: address, ed25519_public_key, ed25519_private_key_encrypted), and registers the keypair with vulos-relay for delivery routing. The step is skippable only if `VUMAIL_SKIP=1` is set in the boot environment (for dev/testing). JSX only.
+AC: [ ] wizard shows vumail step [ ] availability check calls the check endpoint [ ] confirmed identity is stored in SQLite and survives reboot [ ] skip flag works in dev [ ] `npm run build` passes for setup-wizard
 
-### [GAME-02] Gaming-mode flag + encoder profiles + bitrate tiers
-`done` · P0 · L · dep: GAME-01 · parallel: no — backend/services/stream/pool.go, bitrate.go, backend/services/gpu/gpu.go
-Scope: LaunchOpts.Gaming; gaming encoder args per tier (zerolatency/no-Bframe/no-lookahead), 10ms Opus, QualityGaming=6000/Max=10000, GamingEncoderArgs().
-AC: [ ] gaming:true uses zerolatency args+gaming tiers [ ] non-gaming byte-identical [ ] 10ms Opus [ ] go build, table test
+### [VUMAIL-02] vumail package: keypair, identity store, send/receive primitives
+`done` · P0 · L · dep: VUMAIL-01 · parallel: yes — internal/vumail/vumail.go, internal/vumail/store.go, internal/vumail/migrations/0001_vumail.sql
+Scope: Create `internal/vumail` package. `Identity` struct: address, Ed25519 keypair (private key encrypted under OS keyring). SQLite migration: `vumail_identity`, `vumail_mailbox` (id, from_address, subject, body_encrypted, received_at, read), `vumail_outbox` (id, to_address, subject, body_encrypted, queued_at, sent_at, status). `Send(ctx, to, subject, body string) error` — encrypts body to recipient's published public key (fetched from vulos-relay key directory), signs with sender key, POSTs to relay `/api/mail/deliver`. `Receive` — relay pushes inbound mail via WebSocket; decrypt + store in mailbox. Wire `go build ./internal/vumail/...`.
+AC: [ ] keypair generation, encryption round-trip [ ] send constructs signed+encrypted envelope [ ] receive decrypts and stores in mailbox [ ] `go test ./internal/vumail/...` passes
 
-### [GAME-03] Pointer lock + relative-mouse passthrough
-`done` · P0 · M · dep: none · parallel: no — src/builtin/stream/StreamViewer.jsx, backend/services/stream/stream.go
-Scope: requestPointerLock on click (gaming), send raw movementX/Y (`mr`) uncoalesced while locked, Esc exits; backend relative-move branch in handleMouse → MouseMoveRel.
-AC: [ ] click acquires lock, Esc releases [ ] raw deltas move cursor [ ] non-gaming unchanged
+### [VUMAIL-03] Mail app: inbox, compose, send, thread view
+`done` · P0 · L · dep: VUMAIL-02 · parallel: yes — apps/mail/src/App.jsx, apps/mail/src/components/
+Scope: Default Mail app (replaces placeholder). Inbox list (subject, from, date, read/unread). Thread view: expand chain of messages. Compose: to (address picker backed by contacts + vumail directory lookup), subject, body. Send via `POST /api/vumail/send`. Mark-read, archive, delete. Unread badge on the launcher icon via the OS notification count API. The app must load and be useful with zero mail (empty state). JSX only; style consistent with existing apps.
+AC: [ ] inbox renders messages from local mailbox [ ] compose → send round-trips through vumail package [ ] thread view groups by subject+participants [ ] unread count propagates to launcher [ ] `npm run build` passes
 
-### [GAME-04] Shared useGamepad hook → StreamViewer (multi-pad, deadzone)
-`done` · P1 · M · dep: none · parallel: no — new src/core/useGamepad.js, src/builtin/stream/StreamViewer.jsx, src/builtin/webbrowser/RemoteBrowser.jsx
-Scope: Extract shared useGamepad({send,deadzone,pollHz}), all pads (index in payload), 120Hz; wire StreamViewer gamepad channel; refactor RemoteBrowser. (NOTE: STREAM-05 already added basic StreamViewer gamepad — reconcile/extend, don't duplicate)
-AC: [ ] StreamViewer gamepad channel [ ] multi-pad w/ index [ ] deadzone+poll params [ ] RemoteBrowser still works
+### [VUMAIL-04] vumail HTTP handlers: send, mailbox, identity
+`done` · P0 · M · dep: VUMAIL-02 · parallel: yes — cmd/server/routes_vumail.go
+Scope: Register: `POST /api/vumail/send` (body, envelope validated, calls vumail.Send), `GET /api/vumail/mailbox` (paginated, returns messages with decrypted subjects, encrypted body IDs), `GET /api/vumail/mailbox/:id` (fetch + decrypt single message body), `PATCH /api/vumail/mailbox/:id` (mark read/archived/deleted), `GET /api/vumail/identity` (returns current address + public key), `POST /api/vumail/identity/rotate` (re-generate keypair, publish new key to relay, old key kept for 30 days for pending decryption). All routes require local OS session.
+AC: [ ] send → delivery to stub relay works end-to-end [ ] mailbox pagination tested [ ] identity rotate publishes new key [ ] `go test ./cmd/server/...` covers handlers
 
-### [GAME-05] Gamepad rumble (data channel + uinput FF)
-`done` · P2 · L · dep: GAME-04 · parallel: no — backend/services/input/uinput.go, backend/services/stream/stream.go, src/core/useGamepad.js
-Scope: Enable EV_FF/FF_RUMBLE on uinput pad, read FF uploads, forward server→client over gamepad channel, apply via vibrationActuator.playEffect.
-AC: [ ] uinput advertises FF_RUMBLE, captures FF [ ] rumble reaches browser playEffect [ ] go build
+### [VUMAIL-05] Relay integration: delivery routing, key directory
+`done` · P1 · M · dep: VUMAIL-02 · parallel: yes — internal/vumail/relay.go
+Scope: Implement the relay client used by vumail.Send and the inbound WebSocket subscriber. `RelayClient.PublishKey(ctx, address, pubKey)` — registers/updates the Ed25519 public key for this instance's address in the vulos-relay key directory (`PUT https://relay.vulos.org/keys/<address>`). `RelayClient.LookupKey(ctx, address) (ed25519.PublicKey, error)` — resolves a recipient's public key (cached locally for 1 h). `RelayClient.Subscribe(ctx)` — WebSocket subscription to `wss://relay.vulos.org/ws/mail/<address>`; dispatches inbound encrypted messages to vumail.Receive. VULOS_RELAY_URL env override for self-hosted relay.
+AC: [ ] PublishKey round-trip against a local stub relay [ ] LookupKey returns cached key on second call [ ] Subscribe receives and dispatches test message [ ] `go test ./internal/vumail/...`
 
-### [GAME-06] Process priority scheduling (game+encoder)
-`done` · P2 · M · dep: GAME-02 · parallel: no — backend/services/stream/pool.go
-Scope: opts.Gaming → app nice -10 + try SCHED_FIFO (soft-fail nice on EPERM), raise encoder priority; degrade w/o SYS_NICE.
-AC: [ ] gaming elevated priority, non-gaming unchanged [ ] missing SYS_NICE warns no fail [ ] go build
+### [VUMAIL-06] Account recovery via vumail address
+`done` · P1 · M · dep: VUMAIL-01 · parallel: yes — internal/auth/recovery.go, apps/setup-wizard/src/steps/RecoveryStep.jsx
+Scope: During first-boot, after vumail identity is created, generate a recovery kit: a 24-word BIP39 mnemonic that can re-derive the Ed25519 keypair + OS keyring root key. Store the mnemonic encrypted under the user's login password. On the Recovery screen (accessible from boot menu): user enters mnemonic → keyring is re-derived → local data is decryptable without cloud. Cloud-assisted recovery (optional): user can escrow an encrypted copy of the recovery kit to their Vulos cloud account — cloud never holds the plaintext. Update the first-boot wizard recovery step to reference the vumail address as the human-readable identifier.
+AC: [ ] mnemonic generated and displayed once at setup [ ] re-entry of mnemonic restores keyring [ ] cloud escrow stores encrypted-only blob [ ] `go test ./internal/auth/...` passes
 
-### [GAME-07] Auto gaming-mode for Wine/Lutris/Steam/gaming-category
-`done` · P1 · M · dep: GAME-02 · parallel: no — backend/services/appnet/manifest.go, backend/services/wine/wine.go, main.go
-Scope: Add `gaming` to ValidCategories; set Gaming:true when cmd is wine/lutris/steam or manifest category=gaming. (manifest.go LOCKED dirty — coordinate)
-AC: [ ] gaming valid category [ ] wine/lutris/steam/gaming-cat sets Gaming:true [ ] non-gaming unaffected, go build
-
-### [GAME-08] Stream toolbar: FPS/latency/quality/fullscreen/MangoHud
-`done` · P2 · L · dep: GAME-01, GAME-02 · parallel: no — src/builtin/stream/StreamViewer.jsx, main.go, backend/services/stream/pool.go
-Scope: Overlay toolbar (gaming): FPS selector→new POST /api/stream/fps (restart capture), RTT from getStats, quality tier, fullscreen+pointer-lock, MangoHud toggle (MANGOHUD=1 env relaunch).
-AC: [ ] toolbar FPS changes framerate [ ] RTT+quality live [ ] fullscreen+MangoHud toggle [ ] go build
-
----
-
-## Area: Default Web Apps
-
-_Design doc: [`roadmap/DEFAULT-WEB-APPS.md`](../roadmap/DEFAULT-WEB-APPS.md)_  ·  _Prefix: `WEBAPP-*`_
-
-> Why this matters: The bundled apps that ship in `apps/`: calculator, calendar, clock, weather, text editor, PDF viewer, music, video, gallery, maps, camera, voice recorder, screenshot, system info. Lightweight, no streaming, open instantly.
-
-### [WEBAPP-01] Fix invalid `notifications` permission in calendar+clock manifests
-`done` · P0 · S · dep: none · parallel: no — apps/calendar/app.json, apps/clock/app.json, backend/services/appnet/manifest.go
-Scope: Add `notifications` to `ValidPermissions` (manifest.go:18-27) with a comment (or remove from both manifests). Calendar/clock currently fail `ScanAndValidateApps`.
-AC: [ ] calendar+clock pass validation [ ] `notifications` in ValidPermissions w/ comment [ ] `/api/store/validate` lists them not errors
-
-### [WEBAPP-02] Implement PDF.js rendering in PDF Viewer
-`done` · P0 · M · dep: none · parallel: yes — apps/pdf-viewer/ only
-Scope: Vendor PDF.js locally (no CDN) into apps/pdf-viewer/, render to canvas w/ page nav, zoom, fit-to-width; update server.py to serve assets.
-AC: [ ] local PDF renders on canvas [ ] prev/next/zoom/fit work [ ] no external network [ ] server.py serves assets
-
-### [WEBAPP-03] Add CodeMirror editing to Text Editor
-`done` · P0 · M · dep: none · parallel: yes — apps/text-editor/ only
-Scope: Vendor CodeMirror 6 locally; highlighting (JS/Py/Go/HTML/CSS/JSON/MD/Bash), line numbers, wrap toggle, find/replace, theme, font-size; keep localStorage persistence; server.py serves assets.
-AC: [ ] CM editor w/ 8-lang highlight [ ] linenums/wrap/find/theme/font work [ ] no ext network [ ] localStorage docs still work
-
-### [WEBAPP-04] Filesystem persistence API for default apps
-`done` · P0 · M · dep: none · parallel: no — new backend/services/appfs/, backend/cmd/server/main.go
-Scope: Sandboxed `GET/PUT/DELETE /api/appdata/{app}/{path}` + list under `~/.vulos/<app>/` w/ path-traversal protection (realpath prefix like apps/calculator/server.py:19-22).
-AC: [ ] PUT then GET round-trips [ ] `../`/abs rejected 400 [ ] list scoped to app subdir [ ] go test passes; route registered
-
-### [WEBAPP-05] Wire default web apps into AppRegistry builtinRegistry
-`done` · P1 · S · dep: WEBAPP-01 · parallel: no — src/core/AppRegistry.js (LOCKED dirty — defer until resolved)
-Scope: Curated registry entries/aliases for calculator/calendar/clock/pdf-viewer/text-editor/weather (icon/name/category/keywords), pattern of library/gallery entries.
-AC: [ ] getApps() returns the 6 w/ metadata [ ] no dupes vs /api/store/installed [ ] searchApps finds them
-
-### [WEBAPP-06] Server-side persistence to Calendar app
-`done` · P1 · S · dep: WEBAPP-04 · parallel: yes — apps/calendar/ only
-Scope: Replace localStorage events with WEBAPP-04 appdata API persisting under `~/.vulos/calendar/`; keep views/recurrence/.ics.
-AC: [ ] events survive restart [ ] views/recurrence/.ics still work [ ] no CRUD UI regression
-
-### [WEBAPP-07] Complete Weather app: hourly + geolocation + UV
-`done` · P2 · S · dep: none · parallel: yes — apps/weather/ only
-Scope: Add Open-Meteo hourly strip, browser geolocation w/ IP/manual fallback, UV index in current conditions.
-AC: [ ] hourly strip renders [ ] geolocation auto-detect w/ fallback [ ] UV shown [ ] manual search still works
-
-### [WEBAPP-08] Music Player default app
-`done` · P2 · M · dep: WEBAPP-04 · parallel: yes — new apps/music/
-Scope: New app (app.json+server.py+index.html+icon.svg): play `~/.vulos/music/`, playlists, ID3 art, transport, shuffle/repeat, library, kbd shortcuts; valid permissions only.
-AC: [ ] passes ScanAndValidateApps [ ] plays mp3/ogg/wav/m4a [ ] playlist/shuffle/seek/volume [ ] space/arrows
-
-### [WEBAPP-09] Video Player default app
-`done` · P2 · M · dep: WEBAPP-04 · parallel: yes — new apps/video/
-Scope: New app: mp4/webm/mkv playback, transport/volume/fullscreen/speed, srt/vtt drag-drop subtitles, PiP, queue, kbd.
-AC: [ ] passes validation [ ] plays mp4/webm, PiP+fullscreen [ ] srt/vtt loads [ ] queue+space/arrows/F
-
-### [WEBAPP-10] Image Editor default app
-`done` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/image-editor/
-Scope: Canvas editor: crop/rotate/flip/resize, adjust sliders, ≥5 filters, annotate, undo/redo, export jpg/png/webp to `~/.vulos/pictures/`.
-AC: [ ] passes validation [ ] crop/rotate/flip/resize+sliders [ ] ≥5 filters+undo/redo [ ] export works
-
-### [WEBAPP-11] Screenshot/Screen Capture app
-`done` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/screenshot/
-Scope: getDisplayMedia screenshot + MediaRecorder .webm, annotate (arrow/text/blur), region crop, save `~/.vulos/screenshots/`, clipboard copy.
-AC: [ ] passes validation [ ] screenshot+webm [ ] annotate+crop [ ] save+clipboard
-
-### [WEBAPP-12] Voice Recorder app
-`done` · P3 · S · dep: WEBAPP-04 · parallel: yes — new apps/voice-recorder/
-Scope: MediaRecorder mic capture, live waveform, playback, trim, save via WEBAPP-04, timestamped list; `microphone` permission.
-AC: [ ] passes validation w/ microphone [ ] record+waveform+playback [ ] trim+timestamped list
-
-### [WEBAPP-13] Camera app
-`done` · P3 · S · dep: WEBAPP-04 · parallel: yes — new apps/camera/
-Scope: getUserMedia photo+video, front/back flip, optional filters, save to pictures/videos; camera+microphone perms.
-AC: [ ] passes validation w/ perms [ ] photo+video saved [ ] camera switch
-
-### [WEBAPP-14] Maps app (Leaflet+OSM)
-`done` · P3 · M · dep: WEBAPP-04 · parallel: yes — new apps/maps/
-Scope: Vendored Leaflet, OSM tiles, Nominatim search, OSRM routing, geolocation, favourites via WEBAPP-04; `network` perm.
-AC: [ ] passes validation [ ] map+search recenters [ ] directions route [ ] favourites persist
-
-### [WEBAPP-15] System Info app
-`done` · P3 · S · dep: none · parallel: yes — new apps/system-info/
-Scope: Read-only dashboard from existing backend endpoints (OS/kernel/arch, CPU/RAM/storage, GPU, net, uptime); add thin /api/system/info aggregator only if missing.
-AC: [ ] passes validation [ ] shows live hw data [ ] no mock values
+### [VUMAIL-07] Contact cards: vumail address as peering contact field
+`done` · P2 · S · dep: VUMAIL-01 · parallel: yes — apps/contacts/src/components/ContactCard.jsx, internal/peering/contact.go
+Scope: Add `vumail_address` field to the `contacts` SQLite table (migration). Display the vumail address on the contact card. "Send mail" button opens the Mail compose view pre-populated with the contact's address. Peering invitation exchange includes the vumail address in the signed contact card JSON so peers automatically populate each other's mail address field. Lookup via relay key directory is triggered when a contact card arrives without a locally-cached key.
+AC: [ ] contacts table migration adds vumail_address [ ] contact card shows mail address + send button [ ] peering exchange populates vumail field [ ] `go test ./internal/peering/...` passes
 
 ---
 
-## Area: App Store
+## Area: Public Webapps & Resource Governance
 
-_Design doc: [`roadmap/APP-STORE.md`](../roadmap/APP-STORE.md)_  ·  _Prefix: `APPSTORE-*`_
+_Roadmap: ROADMAP.md § Public Webapps & Resource Governance_  ·  _Prefix: `PUBWEB-*`_
 
-> Why this matters: The registry + installer plumbing that turns "I want Memos" into a running app with its own subdomain. Recipe types (apt, Flatpak, static binary, download+extract), curated entries, auto gaming-mode for known gaming apps.
+> Any installed Vulos webapp can be published to a public subdomain.
+> Subdomain scheme: `{app}--{profile}.{ulid}.vulos.net` (or custom domain).
+> cgroup v2 reservation: OS system services (sync, mail) get a protected CPU+RAM
+> slice that no published webapp can starve. Edge cache (Nginx micro-cache or CDN
+> push) for static assets. Dashboard publish toggle with resource usage.
 
-### [APPSTORE-01] Static (download) install path in registry
-`done` · P0 · M · dep: none · parallel: no — backend/services/appnet/registry.go, registry.json
-Scope: Add Static/DownloadURL recipe to VersionRecipe (registry.go:61-73): download+extract+manifest+port, checksum-verified; reuse store.go:178-183 tar logic; keep apt/Flatpak.
-AC: [ ] static recipe w/ checksum [ ] installs end-to-end [ ] apt/flatpak unchanged, go test passes [ ] 1 real static entry works
+### [PUBWEB-01] App manifest: `visibility` field + publish toggle
+`done` · P0 · S · dep: none · parallel: yes — internal/apps/manifest.go, apps/launcher/src/components/AppMenu.jsx
+Scope: Add `"visibility": "private" | "public"` to `app.json` schema (default `"private"`). Validate on app install. In the launcher context menu, add a "Publish to web" toggle that calls `PATCH /api/apps/:id/visibility`. Published apps get a public subdomain provisioned via PUBWEB-02. Show a "Public" badge on published apps in the launcher. The toggle must be disabled for system apps (settings, files, terminal).
+AC: [ ] `app.json` with `visibility` field passes schema validation [ ] toggle calls API and updates badge [ ] system apps cannot be published [ ] `go test ./internal/apps/...`
 
-### [APPSTORE-02] Single-binary web apps: Navidrome, Memos, Uptime Kuma
-`done` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
-Scope: Add 3 type:web entries (gitea single-binary pattern), correct ports, 0.0.0.0:${PORT}, data dir, perms network+filesystem.
-AC: [ ] 3 entries valid [ ] each installs+serves UI [ ] registry.json valid JSON
+### [PUBWEB-02] Subdomain provisioning for published apps
+`done` · P0 · M · dep: PUBWEB-01 · parallel: yes — internal/network/subdomain.go, cmd/server/routes_apps.go
+Scope: When an app's visibility is set to `public`, provision a subdomain `{app}--{profile}.{ulid}.vulos.net` via the Vulos cloud DNS API (`POST https://api.vulos.org/dns/provision`). Store the provisioned FQDN in `app_deployments` SQLite table. The OS reverse proxy (Caddy or Nginx config generator) adds a virtual host entry for the subdomain, TLS via ACME (Let's Encrypt). PUBWEB-04 (cgroup) must be applied before the subdomain goes live. Self-hosted: emit a Caddy Caddyfile snippet so users can point their own domain.
+AC: [ ] `PATCH /api/apps/:id/visibility` provisions subdomain on publish [ ] reverse proxy config is regenerated and reloaded [ ] TLS certificate is obtained [ ] FQDN stored in DB and returned in API response [ ] `go test ./cmd/server/...`
 
-### [APPSTORE-03] Static web apps: Excalidraw, draw.io, Hoppscotch
-`done` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
-Scope: Add 3 static SPA entries via APPSTORE-01 recipe, pinned release+checksum, static file server cmd+port.
-AC: [ ] 3 static entries w/ checksums [ ] each serves SPA, zero ext net for shell [ ] valid JSON
+### [PUBWEB-04] cgroup v2 resource governance: system reservation + per-app limits
+`done` · P0 · L · dep: none · parallel: no — internal/cgroups/governor.go, internal/cgroups/migrations/0001_cgroups.sql
+Scope: Create `internal/cgroups` package. At OS startup, write cgroup v2 hierarchy under `/sys/fs/cgroup/vulos/`. System slice `vulos-system.slice`: 30% CPU weight + 512 MiB memory.min guarantee (no webapp can take this). Per-app slice `vulos-apps-{ulid}.slice`: default 10% CPU weight, 256 MiB memory.high (soft limit), 512 MiB memory.max (hard OOM). Published apps (public visibility) get a tighter default: 15% CPU weight, 128 MiB memory.high. Expose `GET /api/cgroups/status` (current usage per app + system slice). On app crash/OOM, emit a structured notification. All Go, no shell scripts.
+AC: [ ] system slice has memory.min >= 512 MiB written [ ] published app slice has correct limits [ ] OOM kills app process (not OS services) [ ] status endpoint returns live cgroup stats [ ] `go test ./internal/cgroups/...`
 
-### [APPSTORE-04] Vaultwarden + LibreTranslate registry entries
-`done` · P1 · M · dep: APPSTORE-01 · parallel: no — registry.json
-Scope: Vaultwarden single-binary; LibreTranslate pip + post_install model fetch (PostInstall recipe registry.go:234-253).
-AC: [ ] 2 entries [ ] vaultwarden serves vault; libretranslate post_install runs [ ] valid JSON
+### [PUBWEB-03] Edge cache: Nginx micro-cache for published app static assets
+`done` · P1 · M · dep: PUBWEB-02 · parallel: yes — internal/network/edgecache.go, config/nginx/pubweb.conf.tmpl
+Scope: Generate an Nginx `proxy_cache` config for each published app subdomain: cache `GET` responses for static assets (JS/CSS/images — `Cache-Control: public`) for up to 5 minutes. Pass-through for API routes and authenticated requests. Include `X-Cache: HIT|MISS` header. Provide `POST /api/apps/:id/cache/purge` endpoint to flush the Nginx cache for an app (calls `nginx -s reload` or uses the Nginx Purge module if available). Dashboard shows cache hit rate from Nginx stub_status.
+AC: [ ] static asset request served from cache on second hit [ ] `X-Cache: HIT` header present [ ] cache purge reloads Nginx config [ ] `go build ./internal/network/...`
 
-### [APPSTORE-05] Streamed apt apps: Shotcut/Ardour/LMMS/Darktable/OBS/QGIS/Octave/GnuCash
-`done` · P2 · M · dep: none · parallel: no — registry.json
-Scope: 8 type:desktop apt entries mirroring gimp/kdenlive (category/arch/homepage/license/icon/keywords). Data only.
-AC: [ ] 8 valid entries [ ] ≥2 install+launch via stream pool [ ] valid JSON
+### [PUBWEB-05] Dashboard: publish toggle + resource usage per app
+`done` · P1 · M · dep: PUBWEB-01, PUBWEB-04 · parallel: yes — apps/dashboard/src/components/AppPublishCard.jsx
+Scope: In the OS Dashboard app, add a "Web" section listing all installed apps with a publish toggle, their current public URL (if published), and a live resource usage bar (CPU %, RAM MiB, from `/api/cgroups/status`). Show a warning banner when an app is approaching its memory.high limit. Published apps show a "copy link" button for the public URL and a "purge cache" button (PUBWEB-03). JSX only.
+AC: [ ] publish toggle works from dashboard [ ] resource bars update every 5 s via polling [ ] memory warning appears at >=80% of memory.high [ ] `npm run build` passes for dashboard app
 
-### [APPSTORE-06] Gaming apps + auto gaming-mode (Steam/Lutris/Wine)
-`done` · P2 · L · dep: APPSTORE-05, GAME-02 · parallel: no — registry.json, backend/services/stream/, backend/services/wine/wine.go
-Scope: Wine/Lutris/Steam type:desktop entries + deps (gamemode/mangohud/winetricks); flag gaming-category sessions for gaming mode (wire to stream LaunchOpts/bitrate).
-AC: [ ] 3 entries w/ deps [ ] gaming-category session gets elevated bitrate/fps/low-latency [ ] non-gaming unaffected, go test passes
+### [PUBWEB-06] Top-bar public-app warning banner
+`done` · P1 · S · dep: PUBWEB-01 · parallel: yes — apps/shell/src/components/TopBar.jsx
+Scope: When the user is currently viewing a published (public) app, show a persistent amber banner at the top of the OS shell: "This app is publicly accessible — anyone on the internet can view it." Include a "Make private" quick-action that calls `PATCH /api/apps/:id/visibility` with `private`. The banner must not appear for private apps or system apps. Align with the existing topbar warning design pattern if one exists.
+AC: [ ] banner appears when current app has `visibility: public` [ ] "Make private" hides banner and updates app [ ] banner absent for private/system apps [ ] `npm run build` passes for shell app
 
-### [APPSTORE-07] Matrix: Conduit homeserver + Cinny client (phase 1)
-`done` · P3 · L · dep: APPSTORE-01 · parallel: no — registry.json, new apps/cinny/
-Scope: Conduit static-binary type:service homeserver (SQLite, localhost) + Cinny static web entry pointed at it. Defer bridges/wizard.
-AC: [ ] conduit runs localhost SQLite [ ] cinny loads, local register/login works [ ] E2EE local DM works
+### [PUBWEB-07] Custom domain support for published apps
+`done` · P2 · M · dep: PUBWEB-02 · parallel: yes — internal/network/customdomain.go, cmd/server/routes_apps.go
+Scope: Allow users to attach a custom domain to a published app. `POST /api/apps/:id/domain` body `{domain: "mysite.example.com"}`: verify ownership via a DNS TXT record `_vulos-verify.mysite.example.com = <challenge-token>`, provision TLS via ACME for the custom domain, add virtual host to Nginx config, store in `app_deployments`. `DELETE /api/apps/:id/domain` removes the custom domain (reverts to default subdomain). Show domain verification status in the dashboard.
+AC: [ ] TXT challenge issued and checked [ ] verified domain added to Nginx config + ACME [ ] unverified domain shows pending status [ ] `go test ./cmd/server/...`
 
-### [APPSTORE-08] Surface streamed vs web-native type in App Hub UI
-`done` · P2 · S · dep: none · parallel: yes — src/builtin/apphub/AppHub.jsx
-Scope: Show Web vs Streamed badge from existing `type` field; add type filter alongside category.
-AC: [ ] badge per app from type [ ] type filter toggles list [ ] no backend change, category/search still work
-
----
-
-## Area: Network & Remote Access
-
-_Design doc: [`roadmap/NETWORK.md`](../roadmap/NETWORK.md)_  ·  _Prefix: `NET-*`_
-
-> Why this matters: Where instances live on the internet: `{app}--{profile}.{ulid}.{domain}` naming, four connection modes (fabric / direct / own domain / local), cookie scoping, TURN configuration. Everything that makes an instance reachable from outside.
-
-### [NET-01] Subdomain parser `{app}--{profile}.{ulid}.{domain}`
-`done` · P0 · M · dep: none · parallel: no — backend/services/gateway/gateway.go, backend/cmd/server/main.go, backend/services/appnet/dns.go
-Scope: Shared `parseSubdomain(host,baseDomain)->(app,profile,ok)` split on `--` w/ `default` fallback; wire gateway + main.go router; keep /app/{id}/ fallback.
-AC: [ ] browser--work parses app+profile [ ] terminal. → default [ ] /app/cockpit/ resolves default [ ] unit test 2/1/none-part
-
-### [NET-02] Namespace keying by `{profile}-{appId}`
-`done` · P0 · M · dep: NET-01 · parallel: no — backend/services/appnet/namespace.go, launcher.go, gateway/gateway.go
-Scope: Add profile dimension to namespace/launcher keying; GetForProfile; Launch accepts profile; backward-compat for `default`.
-AC: [ ] same app 2 profiles = 2 ns [ ] gateway routes per profile [ ] default still resolves [ ] Stop targets single profile
-
-### [NET-03] `--` naming validation (usernames/profiles/appIDs)
-`done` · P0 · S · dep: none · parallel: no — backend/services/appnet/manifest.go, backend/services/auth/auth.go, backend/services/profiles/browser.go
-Scope: Shared regex `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (forbids `--`, leading/trailing `-`); apply to app id, username Register, profile Create/Update.
-AC: [ ] appID w/ `--` fails [ ] username `--`/lead/trail rejected [ ] profile `--` rejected [ ] single-hyphen still ok
-
-### [NET-04] DNS + frontend URLs use `{app}--{profile}`
-`done` · P1 · M · dep: NET-01, NET-02 · parallel: no — backend/services/appnet/dns.go, src/shell/Launchpad.jsx, src/core/Portal.jsx
-Scope: /etc/hosts + Resolve use new format; Launchpad/Portal build {app}--{profile} URLs (default profile); keep path fallback.
-AC: [ ] /etc/hosts new format [ ] Resolve parses it [ ] Launchpad opens {app}--default [ ] path fallback unchanged
-
-### [NET-05] Cookie domain across `{app}--{profile}.{ulid}.{domain}`
-`done` · P1 · S · dep: NET-01 · parallel: yes — backend/services/auth/handlers.go
-Scope: cookieDomain = per-instance base (strip {app}--{profile} label) so session shared across instance apps not instances.
-AC: [ ] cookie = .{ulid}.vulos.org [ ] IP/localhost dev still ok [ ] unit test subdomain/IP/localhost
-
-### [NET-06] Node/instance identity config (ULID/hostname/domain mode)
-`done` · P0 · M · dep: none · parallel: no — backend/internal/config/config.go, backend/services/network/network.go, main.go
-Scope: Load VULOS_INSTANCE_ID/HOSTNAME/DOMAIN_MODE/NODE_ID/MODE; persist ULID to ~/.vulos/instance-id first boot (no net call); Domain() derives {ulid}.vulos.org; expose /api/network/status. (overlaps INIT-01 — coordinate, prefer shared identity)
-AC: [ ] ULID persisted stable [ ] Domain() = {ulid}.vulos.org fabric/direct [ ] /api/network/status has fields [ ] no net call
-
-### [NET-07] `/api/health` cluster health endpoint
-`done` · P1 · S · dep: none · parallel: yes — backend/cmd/server/main.go (new handler)
-Scope: Public GET /api/health: data-dir writable + disk threshold + sync-lag placeholder; 200 healthy / 503 degraded JSON.
-AC: [ ] 200+JSON healthy [ ] 503 when not writable/low disk [ ] no auth
-
-### [NET-08] Direct mode (Mode B) enrollment + acme-dns
-`done` · P1 · L · dep: NET-06 · parallel: no — new backend/services/network/enroll.go, main.go
-Scope: Detect public IP, POST control API /api/enroll/direct {ulid,ip,email}, persist acme-dns creds, PUT /api/dns/update on IP change; local trigger route. Ziti/cert issuance out of scope.
-AC: [ ] public IP detected [ ] enroll stores creds [ ] IP-change triggers DNS update [ ] control URL configurable
-
-### [NET-09] Connection-mode switching API + Settings UI
-`done` · P2 · M · dep: NET-06, NET-08 · parallel: no — src/core/Settings.jsx, main.go, backend/services/network/network.go
-Scope: Mode field + POST /api/network/mode (fabric/direct/own/local), never regen ULID; radio-group UI w/ status.
-AC: [ ] UI 4 modes w/ active+status [ ] local-only stops ext listener [ ] direct triggers NET-08 [ ] ULID never regen
-
-### [NET-10] TURN/coturn Settings UI + test endpoint
-`done` · P2 · S · dep: none · parallel: yes — src/core/Settings.jsx, backend/services/network/turn.go, main.go (new TURN routes)
-Scope: GET/POST /api/turn/config (host, write-only secret) + POST /api/turn/test reachability; Network settings section.
-AC: [ ] host+secret save/reload (secret never returned) [ ] test reports success/fail [ ] creds use configured host
+### [PUBWEB-08] Resource alerts: notification + auto-throttle on sustained overuse
+`done` · P2 · M · dep: PUBWEB-04 · parallel: yes — internal/cgroups/alerter.go
+Scope: Background goroutine polls cgroup stats every 10 s. If a published app sustains >90% of its CPU weight for >60 s, emit a structured OS notification (priority: warning, action: "Review in Dashboard"). If memory.current > memory.high for >30 s, throttle the app by reducing its CPU weight by 50% and notify. Auto-restore to normal limits after the app drops below 70% usage for 120 s. Log all throttle events to `cgroup_events` SQLite table for dashboard history view.
+AC: [ ] alert fires after 60 s sustained CPU overuse [ ] CPU throttle is applied and logged [ ] auto-restore after cooldown [ ] `go test ./internal/cgroups/...`
 
 ---
 
-## Area: Cluster & Storage
-
-_Design doc: [`roadmap/CLUSTER.md`](../roadmap/CLUSTER.md)_  ·  _Prefix: `CLUSTER-*`_
-
-> Why this matters: Multi-node sync via S3 (MinIO) + cr-sqlite CRDT replication. No primary node — every instance is equal. Encrypted at rest (SSE-C + Argon2id), conflict-resolving, file sync with `*.conflict-*` copies.
-
-### [CLUSTER-01] SQLite store package w/ cr-sqlite extension
-`done` · P0 · L · dep: none · parallel: yes — new backend/services/store/, backend/go.mod (GO.MOD OWNER)
-Scope: SQLite opener loading cr-sqlite ext, migration runner, crsql_as_crr helpers, schema (users/sessions/profiles/settings/installed_apps). Package+schema+tests only.
-AC: [ ] opens ~/.vulos/db/vulos.db + migrations [ ] cr-sqlite loads, crsql_as_crr ok (graceful if absent) [ ] idempotent migrations [ ] unit test CRUD
-
-### [CLUSTER-02] Migrate auth.Store to SQLite
-`done` · P0 · L · dep: CLUSTER-01 · parallel: no — backend/services/auth/auth.go, profiles.go
-Scope: Back auth.Store w/ SQLite, preserve public API, Flush()=no-op, one-time auth.json→SQLite import.
-AC: [ ] all methods work SQLite-backed [ ] auth.json imported once [ ] Flush no-op, sessions survive restart [ ] expired sessions not returned
-
-### [CLUSTER-03] S3 cluster client (SSE-C, Argon2id)
-`done` · P0 · M · dep: NET-06 · parallel: yes — new backend/services/cluster/s3.go, backend/go.mod (go.mod — serialize w/ CLUSTER-01)
-Scope: minio-go wrapper putEncrypted/getEncrypted SSE-C, Argon2id key from passphrase+salt, salt at cluster/encryption-salt; VULOS_S3_* env.
-AC: [ ] encrypted PUT/GET round-trip [ ] Argon2id(3,64MiB,4,32) [ ] salt created/reused [ ] wrong passphrase fails
-
-### [CLUSTER-04] cluster package: Node identity/Register/Peers
-`done` · P1 · M · dep: NET-06, CLUSTER-03 · parallel: yes — new backend/services/cluster/cluster.go, main.go
-Scope: Node/Cluster types; Register() writes nodes/{id}/meta.json heartbeat; Peers() lists; Health() reuses NET-07; wire heartbeat at startup when S3 configured.
-AC: [ ] Register writes+refreshes last_seen [ ] Peers returns all incl stale [ ] disabled cleanly w/o S3 [ ] unit test mock S3
-
-### [CLUSTER-05] cr-sqlite changeset sync loop to S3
-`done` · P1 · L · dep: CLUSTER-01, CLUSTER-03, CLUSTER-04 · parallel: yes — new backend/services/cluster/sync.go
-Scope: Every VULOS_SYNC_INTERVAL: push crsql_changes>last_pushed encrypted to nodes/{id}/changes/{ver}.bin; pull+apply peers; per-peer cursors.
-AC: [ ] 2 DBs sync insert in 1 cycle [ ] concurrent writes merge (CRDT) [ ] cursors persisted, resume [ ] stops on ctx cancel
-
-### [CLUSTER-06] MinIO registry entry + storage settings UI
-`done` · P2 · M · dep: none · parallel: no — registry.json, src/core/Settings.jsx, main.go
-Scope: minio type:service registry entry (per roadmap, ${PORT}/${VULOS_STORAGE_*}, singleton, auto_start); Storage settings panel + GET /api/storage/status + enable toggle via store install.
-AC: [ ] minio entry valid [ ] panel w/ toggle+status [ ] enable installs MinIO via /api/store [ ] JSON still parses
-
-### [CLUSTER-07] App registry sync: installed_apps reconciler
-`done` · P2 · L · dep: CLUSTER-01, CLUSTER-05 · parallel: no — new backend/services/cluster/reconcile.go, backend/services/appnet/store.go
-Scope: installed_apps (CRR) + local_app_status (local) tables; write desired-state on install/uninstall; ReconcileApps() diffs DB vs Installed() w/ backoff.
-AC: [ ] install records row [ ] reconciler installs missing [ ] uninstalls status=removed [ ] failures recorded+retried
-
-### [CLUSTER-08] File sync (fsnotify→S3) w/ conflict copies
-`done` · P2 · L · dep: CLUSTER-03, CLUSTER-04 · parallel: yes — new backend/services/sync/, backend/go.mod
-Scope: fsnotify watch ~/.vulos/data + db/browser-profiles (ignore apps/bin); upload encrypted files/{rel}+.meta; pull overwrite-if-unchanged else name.conflict-{node}-{ts}.
-AC: [ ] edit uploads file+meta [ ] pull overwrites unchanged [ ] divergent edit = conflict copy no loss [ ] apps/bin ignored
-
-### [CLUSTER-09] Presence leases (advisory)
-`done` · P3 · M · dep: CLUSTER-03, CLUSTER-08 · parallel: yes — new backend/services/cluster/presence.go, main.go
-Scope: leases/{user}/{hash} 30s heartbeat/60s stale; AcquireLease/CheckLease/ReleaseLease; GET /api/presence/check, POST /api/presence/lease; advisory only.
-AC: [ ] acquire writes+renews [ ] 2nd node sees fresh lease [ ] >60s stale non-blocking [ ] release removes
-
-### [CLUSTER-10] Conflict notification toasts + resolver UI
-`done` · P3 · M · dep: CLUSTER-08 · parallel: no — src/shell/Toasts.jsx, new viewer, backend/services/notify/, main.go
-Scope: Emit notify on conflict copy; conflict-resolution view lists *.conflict-* + GET /api/sync/conflicts + POST resolve (keep one).
-AC: [ ] conflict pushes toast [ ] view lists conflicts w/ node+ts [ ] resolve keeps chosen [ ] no-op when none
-
----
-
-## Area: First-boot Setup
-
-_Design doc: [`roadmap/INIT.md`](../roadmap/INIT.md)_  ·  _Prefix: `INIT-*`_
-
-> Why this matters: The wizard a brand-new instance runs once: identity (ULID, hostname), MinIO storage provisioning, SSH emergency key, the printable Recovery Kit (JSON + QR). "Join existing cluster" is the parallel sub-flow.
-
-### [INIT-01] Instance ULID + auto hostname at first boot
-`done` · P0 · M · dep: none · parallel: no — new backend/services/identity/, main.go, backend/go.mod (overlaps NET-06 — share identity pkg; coordinate)
-Scope: First boot gen ULID (oklog/ulid/v2), default hostname {user}-{device}, persist ~/.vulos/db/instance.json + /etc/hostname; GET /api/identity, POST /api/identity/hostname.
-AC: [ ] first boot 26-char ULID persisted [ ] reused on 2nd boot [ ] GET /api/identity [ ] POST hostname updates [ ] go build, ulid in go.mod
-
-### [INIT-02] Hardened OpenSSH in image + first-boot host keys
-`done` · P0 · M · dep: none · parallel: no — Dockerfile, build.sh, backend/cmd/init/main.go
-Scope: openssh-server in 3 apt blocks; sshd_config.d/vulos.conf hardened; init gen host keys + start sshd idempotent; EXPOSE 22.
-AC: [ ] openssh in Dockerfile+2 build.sh blocks [ ] vulos.conf no-password/prohibit-password [ ] init gens keys+sshd idempotent [ ] docker build ok
-
-### [INIT-03] SSH emergency-key endpoint (return-once)
-`done` · P0 · M · dep: INIT-02 · parallel: yes — new backend/services/sshkey/, main.go (route reg only)
-Scope: POST /api/setup/ssh-key: gen Ed25519, append pub to /root/.ssh/authorized_keys (0700/0600), return privkey once, never persist.
-AC: [ ] returns valid ed25519 pair [ ] pub appended no dupe [ ] privkey never written [ ] go build
-
-### [INIT-04] MinIO storage provisioning endpoint
-`done` · P0 · L · dep: none · parallel: yes — new backend/services/storageprov/, registry.json, main.go (route reg only)
-Scope: POST /api/setup/storage{enable,size_gb,password,passphrase}: install MinIO, gen keys, bucket vulos-cluster, SSE-C, persist storage.json (not passphrase); skip case.
-AC: [ ] enable starts MinIO+bucket [ ] returns keys, passphrase not persisted [ ] enable:false no-op [ ] storage.json written, go build
-
-### [INIT-05] New-system wizard: Identity/Storage/SSH/RecoveryKit steps
-`done` · P0 · L · dep: INIT-01, INIT-03, INIT-04 · parallel: no — src/auth/Setup.jsx
-Scope: Add 4 step components per roadmap order; Identity (GET /api/identity, edit hostname), Storage (toggle+slider+pwd+passphrase+skip), SSH (POST ssh-key, show once+copy).
-AC: [ ] STEPS reflects roadmap order [ ] Identity shows ULID+DNS, edits hostname [ ] Storage posts+skip [ ] SSH shows privkey once [ ] npm build
-
-### [INIT-06] Recovery Kit step: JSON download + QR + confirm-gate
-`done` · P0 · M · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, package.json
-Scope: RecoveryKitStep shows all creds w/ copy; build versioned JSON download (vula-recovery-kit.json), inline QR (add qrcode dep), Next disabled until typed `confirm`.
-AC: [ ] creds+copy [ ] JSON matches schema v1 [ ] QR renders [ ] gated until `confirm` [ ] storage-skipped variant works, npm build
-
-### [INIT-07] Server boot-mode router (setup/sync/normal)
-`done` · P0 · M · dep: none · parallel: yes — new backend/services/bootmode/, main.go (one call+route)
-Scope: Detect(home)->{mode,syncState} per db-dir + sync-state.json rules; GET /api/setup/mode; decouple from pre-touched .setup-complete (gate on instance.json).
-AC: [ ] fresh→setup [ ] sync-state syncing→sync [ ] db no sync-state→normal [ ] GET /api/setup/mode, go build
-
-### [INIT-08] Join flow backend: validate S3 + sync-state + bg sync
-`done` · P1 · L · dep: INIT-07 · parallel: yes — new backend/services/joinsync/, main.go (route reg)
-Scope: POST /api/setup/join validate bucket, write sync-state.json phased, bg sync goroutine; GET sync-status; POST sync-background; resume on boot if mode=sync.
-AC: [ ] bad creds rejected, valid writes sync-state [ ] sync-status per-phase [ ] interrupted resumes [ ] sync-background flag, go build
-
-### [INIT-09] Join flow UI: New/Join chooser, Connect Storage, Sync, PIN
-`done` · P1 · L · dep: INIT-08 · parallel: no — src/auth/Setup.jsx, src/App.jsx
-Scope: New/Join chooser; Join sub-flow Connect Storage→/api/setup/join, Syncing screen polling sync-status + continue-in-bg, device PIN, Ready; driven by GET /api/setup/mode (jump to Syncing if mode=sync).
-AC: [ ] Welcome→New/Join [ ] Join posts creds→Syncing [ ] live phase progress+bg [ ] reload mid-sync resumes [ ] ends PIN→Ready, npm build
-
-### [INIT-10] Join codes: generate/decode + short-code/QR
-`done` · P2 · M · dep: INIT-08 · parallel: yes — new backend/services/joincode/, main.go (routes)
-Scope: GET /api/cluster/join-code builds JoinCode (1h TTL) as base32 VULA-XXXX-XXXX-XXXX + QR payload; POST /api/setup/join-code decodes→INIT-08; scoped MinIO creds may stub.
-AC: [ ] returns short code+QR [ ] round-trips, rejects expired [ ] 1h expiry, go build
-
-### [INIT-11] Optional recovery-kit backup to a control plane
-`done` · P3 · M · dep: INIT-06 · parallel: yes — new backend/services/kitbackup/, src/auth/Setup.jsx (one button)
-Scope: POST /api/setup/kit-backup{email,encrypted_kit} to an optional, configurable control-plane URL (`VULOS_CLOUD_URL`, default vulos.org); button in Recovery Kit; graceful if unset.
-AC: [ ] posts encrypted blob [ ] unconfigured = graceful msg [ ] button works, go build+npm build
-
----
-
-## Area: Bare-metal Init
-
-_Design doc: [`roadmap/BAREMETAL-INIT.md`](../roadmap/BAREMETAL-INIT.md)_  ·  _Prefix: `BMINIT-*`_
-
-> Why this matters: Power-on → labwc + cage compositor → browser shell pinned to the background layer → native windows on top. Live USB, installer, Plymouth boot splash, ARM device variants. The path from `dd` to desktop.
-
-### [BMINIT-01] labwc config + Vula traffic-light openbox theme
-`done` · P0 · M · dep: none · parallel: yes — new assets/labwc/, assets/themes/, Dockerfile, build.sh
-Scope: Add labwc+cage to 3 apt blocks; rc.xml (browser bg layer) + vulos openbox-3 themerc (button.layout CMI) in-repo, copied to image paths.
-AC: [ ] labwc+cage installed 3 places [ ] rc.xml+themerc in-repo+copied [ ] left close/min/max [ ] docker build
-
-### [BMINIT-02] vulos-init cage→labwc, browser as background
-`done` · P0 · M · dep: BMINIT-01 · parallel: no — backend/cmd/init/main.go
-Scope: Rework startKiosk(): display connected + labwc present → labwc + cog fullscreen (bg pin via rule); cage fallback; keep headless path; set WAYLAND_DISPLAY/XDG_RUNTIME_DIR.
-AC: [ ] display+labwc → labwc+cog bg [ ] no display → headless still serves [ ] labwc missing → cage [ ] GOOS=linux build
-
-### [BMINIT-03] `GET /api/shell/native-mode` endpoint
-`done` · P0 · S · dep: none · parallel: yes — backend/cmd/server/main.go (one route)
-Scope: Register GET /api/shell/native-mode → {mode:detectNativeMode()} (main.go:1696-1749 exists); frontend useNativeMode.js:30 depends on it.
-AC: [ ] returns {mode:...} [ ] useNativeMode resolves not catch [ ] go build
-
-### [BMINIT-04] Native app launch endpoint (skip streaming)
-`done` · P1 · M · dep: BMINIT-02, BMINIT-03 · parallel: yes — main.go (new route), backend/services/appnet/launcher.go
-Scope: POST /api/shell/native-launch{binary,args,app_id} guarded nativeMode==native; exec w/ WAYLAND_DISPLAY, track PID, return {pid}.
-AC: [ ] spawns w/ WAYLAND_DISPLAY, returns pid [ ] 400 when not native [ ] PID reaped+logged [ ] go build
-
-### [BMINIT-05] Dock: list/focus/close native windows (wlr-foreign-toplevel)
-`done` · P1 · L · dep: BMINIT-04 · parallel: yes — new backend/services/wltoplevel/, main.go (routes)
-Scope: Enumerate Wayland toplevels (lswt-style/minimal client); GET /api/shell/windows + focus/minimize/close; empty list outside labwc; add helper to apt if used.
-AC: [ ] /api/shell/windows under labwc [ ] focus/min/close act on handle [ ] empty outside native [ ] go build
-
-### [BMINIT-06] Launchpad: native launch vs stream by mode
-`done` · P1 · M · dep: BMINIT-04 · parallel: no — src/shell/Launchpad.jsx, src/providers/ShellProvider.jsx
-Scope: Branch on useNativeMode(): builtin unchanged; desktop/registry app + canSpawnNativeWindow → /api/shell/native-launch else stream; remote unchanged.
-AC: [ ] native mode → native-launch no stream [ ] remote → stream unchanged [ ] builtin identical [ ] npm build
-
-### [BMINIT-07] Plymouth boot splash + determinate progress
-`done` · P2 · M · dep: none · parallel: yes — new assets/plymouth/, Dockerfile, build.sh
-Scope: assets/plymouth/themes/vulos (vulos.plymouth, vulos.script w/ determinate bar+Ctrl+V verbose, placeholder PNGs); install plymouth, set default, kernel cmdline `quiet splash plymouth.theme=vulos`.
-AC: [ ] theme dir in-repo [ ] plymouth installed+default [ ] script has bar+Ctrl+V [ ] build ok
-
-### [BMINIT-08] Plymouth→labwc handoff + per-phase progress
-`done` · P2 · M · dep: BMINIT-02, BMINIT-07 · parallel: no — backend/cmd/init/main.go, build.sh (systemd units)
-Scope: init shells `plymouth update --progress=N` at roadmap milestones (no-op if absent); `plymouth quit --retain-splash` at compositor up; systemd ExecStart hooks.
-AC: [ ] progress at milestones [ ] quit --retain-splash at ready [ ] no-op w/o plymouth [ ] units updated, GOOS=linux build
-
-### [BMINIT-09] Init networking: DHCP, WiFi fallback, mDNS/Avahi
-`done` · P2 · M · dep: none · parallel: no — backend/cmd/init/main.go, Dockerfile, build.sh
-Scope: Networking phase: wired DHCP, WiFi fallback from saved creds (reuse wifi.SavedNetworks/Connect), resolv.conf; install+enable avahi-daemon; localhost-only must still work.
-AC: [ ] wired DHCP [ ] WiFi fallback [ ] avahi installed, hostname.local resolvable [ ] no-net still serves, GOOS=linux build
-
-### [BMINIT-10] Phase-1 fs: efivars, /dev/shm size, data partition
-`done` · P2 · S · dep: none · parallel: no — backend/cmd/init/main.go
-Scope: /dev/shm size=2g; mount efivarfs if /sys/firmware/efi exists; mount labeled vulos-data partition into ~/.vulos; best-effort.
-AC: [ ] /dev/shm size=2g [ ] efivarfs only when present [ ] data partition mounted when present [ ] GOOS=linux build
-
-### [BMINIT-11] Hardware detection phase + /var/log/vulos-boot.log
-`done` · P2 · M · dep: none · parallel: yes — new backend/services/hwdetect/, backend/cmd/init/main.go (one call)
-Scope: Probe GPU(reuse gpu)/audio/input/network/storage/battery; write /var/log/vulos-boot.log; new init phase best-effort non-fatal.
-AC: [ ] returns hw info [ ] boot.log written [ ] failures non-fatal [ ] GOOS=linux build
-
-### [BMINIT-12] Installer backend: disks/status/install/progress
-`done` · P2 · L · dep: none · parallel: yes — new backend/services/installer/, main.go (routes)
-Scope: GET /api/installer/disks (lsblk -J), /status (live vs installed), POST /install (ESP+root part/format/rsync/bootctl), GET /progress WS (wsutil); guard destructive.
-AC: [ ] disks lists drives [ ] status live vs installed [ ] install does part→format→rsync→bootctl [ ] progress WS % [ ] go build
-
-### [BMINIT-13] Installer React app (live-USB)
-`done` · P3 · L · dep: BMINIT-12 · parallel: yes — new src/builtin/installer/, src/core/AppRegistry.js (LOCKED dirty — defer reg until resolved)
-Scope: welcome→disk-select(visual map)→progress(WS)→success/reboot; shown only when status=live-USB.
-AC: [ ] app shown only live-USB [ ] disk select+install [ ] WS progress+reboot [ ] error recovery, npm build
-
-### [BMINIT-14] squashfs + live USB build
-`done` · P3 · L · dep: none · parallel: no — build.sh, new scripts/initramfs/vulos-live
-Scope: `build.sh --live` currently formats an ESP but installs no bootloader, kernel, initrd, or systemd-boot loader entry — the image is non-bootable. The working UEFI path is `build.sh --disk` (systemd-boot + kernel + initrd via mtools, smoke-tested by `scripts/baremetal-smoke.sh`). Remaining work: give `--live` the same ESP treatment (copy systemd-boot EFI binary, kernel, initrd, and a loader entry into the ESP so UEFI firmware can boot it; then layer in the squashfs + overlay-root hook).
-AC: [ ] --live produces squashfs+bootable GPT (UEFI boots to initramfs pivot) [ ] vulos-live overlay hook installed [ ] --disk path (and non-live tarball) unchanged [ ] SMOKE-02 passes
-
-### [BMINIT-15] ARM device variants (RPi, PinePhone)
-`done` · P3 · M · dep: none · parallel: no — build.sh
-Scope: DEVICE=rpi|pinephone: rpi FAT32 boot (config.txt/kernel8.img/.dtb), pinephone U-Boot+dtb; emit vulos-arm64-{rpi,pinephone}.img.gz; reuse rootfs.
-AC: [ ] rpi bootable image [ ] pinephone image [ ] generic arm64 unchanged [ ] sh -n build.sh
-
-> **Window model (decisions.md D93):** the React shell is always the WM; native-app pixels are a per-app *transport*. v1 = always-stream over `cage` (ship now); v2 = `surface` transport on `labwc`. BMINIT-02/04/06 (native-launch) are the v2 path, not the bare-metal default — see BMINIT-16.
-
-### [BMINIT-16] v1 bare-metal app model: always-stream over cage
-`done` · P1 · M · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, src/providers/ShellProvider.jsx, src/shell/Launchpad.jsx, src/core/useNativeMode.js
-Scope: Bare-metal default = cage + Cog fullscreen, React shell as sole WM, native apps via the existing stream transport. Gate the detectNativeMode native-launch path (BMINIT-04/06) behind an explicit v2 opt-in (env/flag/device-profile), default OFF. cage is the supported v1 local compositor; labwc only when v2 surface enabled. Remote/stream path unchanged.
-AC: [ ] bare-metal default streams, no native-launch [ ] cage fullscreen + shell is sole WM [ ] native-launch only when v2 opt-in set [ ] remote unchanged [ ] go build + npm build
-
-### [BMINIT-17] v2 `surface` transport: zero-copy native window into JSX rect
-`done` · P3 · XL · dep: BMINIT-18 · parallel: no — backend/services/appnet/, new surface bridge, src window layer
-Scope: When v2 enabled, launch native/XWayland app as a real wlroots xdg-toplevel and scan its GPU buffer (subsurface/DMABUF passthrough) into the JSX `<AppWindow>`'s screen rect; React still owns frame/decoration/z bookkeeping. Fall back to stream on no-GPU/unsupported.
-AC: [ ] native app renders zero-copy in the JSX window rect [ ] move/resize/z follow the JSX frame [ ] fallback to stream when unsupported [ ] remote/stream path unchanged
-
-### [BMINIT-18] v2 labwc unification: layer-shell chrome + per-window webview + foreign-toplevel
-`done` · P3 · XL · dep: BMINIT-02 · parallel: no — backend/cmd/init/main.go, assets/labwc/, backend/services/wltoplevel/, src shell native-mode
-Scope: labwc as sole WM. Wallpaper → `background` layer-shell; dock/menubar → `overlay` layer-shell (always foreground). One Cog/WPE xdg-toplevel webview per JSX window so JSX+native windows are z-stack peers. wlr-foreign-toplevel-management-v1 unifies dock/focus/z across both kinds; labwc SSD is the single decorator (suppress in-JSX traffic lights on bare metal). React WM goes "thin": mirrors labwc state, stops positioning/stacking.
-AC: [ ] chrome on overlay, always foreground [ ] each JSX window its own xdg-toplevel [ ] foreign-toplevel drives dock/focus/z for native+webview [ ] SSD decorates all uniformly [ ] thin React WM in native mode
-
----
-
-## Area: Notifications
-
-_Design doc: [`roadmap/NOTIFICATIONS.md`](../roadmap/NOTIFICATIONS.md)_  ·  _Prefix: `NOTIF-*`_
-
-> Why this matters: A real notification system: structured priorities, persistent history, Do-Not-Disturb, inline action buttons. Plays nicely with peering so contacts can push you notifications over the same trust gate as messages.
-
-### [NOTIF-01] Structured notification model (type/subtype/priority/TTL)
-`done` · P0 · M · dep: none · parallel: no — backend/services/notify/notify.go
-Scope: Add Type/Subtype/Priority/TTL/Body/UUIDv7 ID + SendNotification w/ defaults; Send/SendWithAction wrappers map Level→Priority; clamp critical→high non-call; IsExpired.
-AC: [ ] new fields [ ] legacy callers compile, priority=normal [ ] critical→high non-call [ ] unit test, go build
-
-### [NOTIF-02] Persistent notification storage
-`done` · P0 · M · dep: NOTIF-01 · parallel: no — backend/services/notify/notify.go, new store.go, main.go
-Scope: JSON store history(7d/1000)/queue(TTL,200)/settings; New(dataDir); atomic writes; load on start+flush.
-AC: [ ] survive restart [ ] prune age+count [ ] queue drains on WS connect [ ] main.go passes dir, go build, unit test
-
-### [NOTIF-03] Priority-aware toast UI + sound + click-to-context
-`done` · P0 · M · dep: NOTIF-01 · parallel: yes — src/shell/Toasts.jsx (+audio asset)
-Scope: priority→UI (low=none, high=persistent, critical=fullscreen), chime normal+ (settings gate), click opens action URL via IntentRouter; keep level compat.
-AC: [ ] low no toast, high no auto-dismiss, normal sound [ ] click navigates [ ] legacy level renders
-
-### [NOTIF-04] Notification Center pull-down + history grouping
-`done` · P1 · L · dep: NOTIF-02 · parallel: no — new src/shell/NotificationCenter.jsx, DesktopCanvas.jsx, MobileStack.jsx, SystemPulse.jsx
-Scope: Panel grouped Today/Earlier/Week, dismiss-one+clear-all, bell+unread badge in menu bar+mobile; wire existing list/unread/read/clear.
-AC: [ ] bell+badge desktop+mobile [ ] grouped+dismiss+clear [ ] badge clears on read, persists via /unread
-
-### [NOTIF-05] Do Not Disturb (modes + schedule)
-`done` · P1 · M · dep: NOTIF-02 · parallel: no — backend/services/notify/notify.go, store.go, main.go
-Scope: DND Off/On/Total + schedule; Send rules (low drop, normal queue+replay, high 2nd-attempt, critical always); GET/PUT /api/notifications/settings; ticker.
-AC: [ ] On: low drop, normal queue+replay [ ] critical always [ ] schedule auto-toggles [ ] settings round-trip, go build
-
-### [NOTIF-06] Action notifications w/ inline buttons (local)
-`done` · P2 · M · dep: NOTIF-01, NOTIF-03 · parallel: no — src/shell/Toasts.jsx, NotificationCenter.jsx, main.go, notify.go
-Scope: Render body.actions buttons; POST /api/notifications/action records choice+resolves; auto-resolve default at TTL.
-AC: [ ] buttons render+post [ ] auto-resolve at TTL [ ] resolved don't reappear
-
----
-
-## Area: Device Profiles
-
-_Design doc: [`roadmap/DEVICE-PROFILES.md`](../roadmap/DEVICE-PROFILES.md)_  ·  _Prefix: `DEVPROF-*`_
-
-> Why this matters: One codebase, four UIs: `pc`, `tv`, `car`, `watch`. Profile is auto-detected, overridable. Drives layout, focus model (D-pad spatial nav on TV), and behavior (auto-DND in car).
-
-### [DEVPROF-01] Profile model + form-factor detection backend
-`done` · P0 · M · dep: none · parallel: no — new backend/services/profiles/device.go, main.go
-Scope: DeviceProfile store pc|tv|car|watch → ~/.vulos/db/device-profile.json; detection heuristic (DMI/screen); GET/PUT /api/device-profile.
-AC: [ ] GET returns {profile,suggested} default pc [ ] PUT persists+restart [ ] detection no crash w/o DMI [ ] go build, unit test
-
-### [DEVPROF-02] Profile selection step in setup wizard
-`done` · P0 · M · dep: DEVPROF-01 · parallel: yes — src/auth/Setup.jsx
-Scope: Insert `device` step (after welcome) PC/TV/Car/Watch cards, detected preselected (GET /api/device-profile), PUT on finish.
-AC: [ ] device step w/ 4 cards [ ] detected preselected [ ] persisted via PUT
-
-### [DEVPROF-03] Profile context provider + responsive root class
-`done` · P1 · S · dep: DEVPROF-01 · parallel: no — new src/core/useDeviceProfile.jsx, src/App.jsx, src/providers/
-Scope: DeviceProfileProvider/useDeviceProfile fetch once; data-device-profile attr on root; no visual change.
-AC: [ ] hook returns profile app-wide [ ] root has data-device-profile [ ] pc unchanged
-
-### [DEVPROF-04] TV profile: D-pad spatial navigation
-`done` · P1 · L · dep: DEVPROF-03 · parallel: yes — new src/core/useSpatialNav.js, src/index.css
-Scope: Arrow-key nearest-focus traversal + Enter, gated TV profile; high-contrast focus outline scoped [data-device-profile=tv].
-AC: [ ] TV arrows move focus ring, Enter activates [ ] no-op non-TV [ ] outline visible at distance
-
-### [DEVPROF-05] TV profile: 10-foot home layout
-`done` · P2 · M · dep: DEVPROF-03, DEVPROF-04 · parallel: yes — new src/layouts/TVHome.jsx, src/App.jsx
-Scope: Large-card focusable home selected when profile=tv, from AppRegistry.
-AC: [ ] TV renders TVHome large focusable cards [ ] 10ft readable [ ] non-TV unaffected
-
-### [DEVPROF-06] Car profile: driving mode (large targets + DND)
-`done` · P2 · M · dep: DEVPROF-03, NOTIF-05 · parallel: yes — src/index.css, new src/core/useDrivingMode.js, src/App.jsx
-Scope: data-device-profile=car CSS enlarges targets, auto-enable DND via NOTIF-05 settings; useDrivingMode toggle default on car.
-AC: [ ] car enlarges targets scoped CSS [ ] car auto-enables DND [ ] no pc/tv effect
-
----
-
-## Area: Theming, i18n, CI
-
-_Design doc: [`roadmap/OTHER.md`](../roadmap/OTHER.md)_  ·  _Prefix: `MISC-*`_
-
-> Why this matters: Catch-all for cross-cutting items: accent color picker, terminal theme/font, i18n scaffold, dependency + container CVE scanning in CI. Small, useful, easy to overlook.
-
-### [MISC-01] Accent colour picker (system CSS var)
-`done` · P1 · M · dep: none · parallel: no — src/core/ThemeProvider.jsx, src/core/Settings.jsx, src/index.css
-Scope: Accent in ThemeProvider→localStorage→--accent root var; swatch picker in Settings Appearance; .btn-primary/focus use --accent, blue default.
-AC: [ ] picker persists+live --accent [ ] primary follows --accent, default blue [ ] reload preserves
-
-### [MISC-02] Terminal theme + font config
-`done` · P2 · M · dep: none · parallel: yes — src/builtin/terminal/Terminal.jsx (+localStorage)
-Scope: In-terminal settings: color theme (Default/Solarized/Dracula/Light) + font family/size, localStorage, applied to xterm; default = current exactly.
-AC: [ ] theme+font controls apply immediately [ ] persist [ ] default byte-identical
-
-### [MISC-03] Harden /api/exec (restrict + audit)
-`done` · P0 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
-Scope: Require admin role for /api/exec, structured audit log (user/cmd/ts/exit), env kill-switch; keep setup flows working (admin-gated or server-side).
-AC: [ ] non-admin 403 [ ] every call audit-logged [ ] env flag disables [ ] setup completes, go build
-
-### [MISC-04] Dependency + container CVE scanning in CI
-`done` · P1 · S · dep: none · parallel: yes — new .github/workflows/security-scan.yml
-Scope: CI govulncheck + npm audit --audit-level=high + Trivy container scan; fail on high/critical w/ documented ignore.
-AC: [ ] CI runs 3 scans on PRs [ ] fails high/critical, ignore documented [ ] workflow valid
-
-### [MISC-05] i18n scaffold (provider + locale wiring)
-`done` · P2 · L · dep: none · parallel: no — new src/core/i18n.jsx, src/locales/{en,af}.json, src/App.jsx, src/auth/Setup.jsx, src/core/Settings.jsx
-Scope: Lightweight i18n provider t()+locale ctx, JSON catalogs en+af, init from profile locale, migrate Setup wizard strings; pattern only, not whole app.
-AC: [ ] t() app-wide, locale from profile [ ] Setup renders via catalog en+af [ ] locale switch updates w/o reload
-
----
-
-## Area: Peering
-
-_Design doc: [`roadmap/PEERING.md`](../roadmap/PEERING.md)_  ·  _Prefix: `PEER-*`_
-
-> Why this matters: The big one. Ed25519 identity, signed canonical-JSON envelopes, S2S HTTP, WebSocket fan-out — and then on top of that: contacts, messaging, media, voice/video calls, Pion SFU, Yjs collaboration, AirDrop-style Drop, encrypted relays, signed content feeds.
-
-### [PEER-01] Scaffold peering service: package, storage, routes
-`done` · P0 · M · dep: none · parallel: no — new backend/services/peering/peering.go, main.go
-Scope: peering.Service owning ~/.vulos/peering/ tree (identity/profile/inbox/outbox/media/groups/contacts.json), RegisterHandlers stub (501), wire in main.go.
-AC: [ ] New(home) creates tree idempotent [ ] RegisterHandlers wired, GET /api/peering/identity 200 stub [ ] go build
-
-### [PEER-02] Ed25519 identity: keypair, Vula ID, import/export
-`done` · P0 · M · dep: PEER-01 · parallel: yes — backend/services/peering/identity.go
-Scope: Gen Ed25519 first boot (priv 0600), Vula ID vula:ed25519:<base58> encode/decode, parse <id>@<server>:<port>; GET identity, POST identity/export(enc)/import.
-AC: [ ] first boot persists, reload same [ ] GET returns Vula ID+pubkey [ ] export→import same ID [ ] unit test encode/parse
-
-### [PEER-03] Signed canonical-JSON envelope (sign+verify)
-`done` · P0 · M · dep: PEER-02 · parallel: yes — backend/services/peering/envelope.go
-Scope: Deterministic canonical JSON (no sig field in signed bytes), Sign/Verify for message/contact-request/signaling/feed.
-AC: [ ] canonical byte-stable [ ] Verify rejects tamper+wrong key [ ] unit tests
-
-### [PEER-04] S2S HTTP client + signature/allow-list inbound middleware
-`done` · P0 · M · dep: PEER-03, PEER-06 · parallel: no — backend/services/peering/transport.go, inbound.go
-Scope: Outbound signed POST to peer /api/peering/inbound/* (TLS, timeout, SSRF guard reuse webproxy isPrivate); inbound mw verifies sig + allow list (except inbound/request) → 401/403.
-AC: [ ] mw rejects unsigned 401 [ ] non-approved 403 (except request) [ ] outbound refuses private+timeout [ ] table tests states
-
-### [PEER-05] Peering WS multiplex channel (browser↔own server)
-`done` · P0 · M · dep: PEER-01 · parallel: yes — new backend/services/peering/ws.go, src/core/usePeering.js
-Scope: WS /api/peering/stream (wsutil.Upgrader), per-user register, channel-tagged frames (message/signal/collab/notification/presence), server Push(); frontend usePeering() reconnect.
-AC: [ ] browser opens stream, Push delivers [ ] channel discriminator, multi-sub [ ] hook reconnects backoff
-
-### [PEER-06] Contacts store: allow list, permissions, persistence
-`done` · P0 · M · dep: PEER-02 · parallel: yes — backend/services/peering/contacts.go
-Scope: in-mem + contacts.json: add/list/update/remove, state pending/approved/blocked, per-contact perms (message/media/call/video), IsApproved/Can predicates.
-AC: [ ] persists across restart [ ] state graph enforced [ ] Can reflects grants [ ] unit tests
-
-> **PEERING WIRING GAP (PEER-07, PEER-10 through PEER-41 except PEER-20):** The handler logic for all tasks below exists and is tested in `backend/services/peering/` (contacts_api, verify, profile, discovery, messages, inbox, outbox, media, groups, call, ice, sfu, collab, drop, drop_ble, crypto, relay, relay_attest, endpoints, feeds). However, **none of these sub-handlers are wired into `backend/cmd/server` (main.go or peering.go)**. The live server returns 501 for all contacts/messaging/calls/media/groups/verify/relay/feeds/ice/discovery/drop/collab routes. These tasks are flipped to `todo` until PEER-42 (wiring) lands. PEER-20 (bandwidth) is genuinely wired and stays `done`.
-
-### [PEER-07] Contact request/approve/block + inbound endpoint
-`done` · P0 · M · dep: PEER-04, PEER-06 · parallel: no — backend/services/peering/contacts_api.go, inbound.go
-Scope: POST contacts/request (sign+send), inbound/request (store pending+notify), requests list, approve/block/delete; approve mutual+notify.
-AC: [ ] request creates pending on recipient [ ] inbound/request allowed w/o approval, others require [ ] approve→approved+notify [ ] block silent drop
-
-### [PEER-08] Peering settings + contacts/requests UI
-`done` · P1 · L · dep: PEER-07 · parallel: yes — new src/builtin/peering/Peering.jsx, src/core/AppRegistry.js (LOCKED dirty — defer reg), src/App.jsx, src/core/Settings.jsx
-Scope: Builtin Peering app: Vula ID/QR, contacts list w/ state+perm toggles, pending-requests approve/block; Settings Peering section.
-AC: [ ] app in launcher opens [ ] contacts+requests from API, approve/block [ ] perm toggles persist [ ] Settings section
-
-### [PEER-09] Vula ID exchange: QR generate+scan, paste
-`done` · P2 · S · dep: PEER-08 · parallel: yes — src/builtin/peering/AddContact.jsx, package.json (QR dep)
-Scope: QR of own full Vula address; Add-contact via paste or camera QR scan → POST contacts/request.
-AC: [ ] own address QR scannable [ ] paste/scan triggers request [ ] malformed rejected
-
-### [PEER-10] vulos.org email verification (send/confirm + token)
-`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/verify.go
-Scope: Call vulos.org verify/send+confirm (configurable base URL), store signed token, validate vulos.org sig; POST identity/verify+confirm, VerifiedEmail().
-AC: [ ] verify sends, confirm stores token [ ] token sig validated [ ] unverified still works [ ] base URL configurable
-
-### [PEER-11] Profile model: fields, avatar resize, visibility
-`done` · P1 · M · dep: PEER-02 · parallel: yes — backend/services/peering/profile.go
-Scope: Profile store + GET/PUT profile, POST profile/image (resize 256² WebP), GET profile/image (ETag, visibility-gated); visibility resolver.
-AC: [ ] avatar resized WebP at path [ ] image honors ETag+visibility [ ] fields persist w/ default visibility
-
-### [PEER-12] Peer profile fetch/sync + well-known endpoint
-`done` · P1 · M · dep: PEER-11, PEER-07 · parallel: no — backend/services/peering/profile.go, new wellknown.go, main.go
-Scope: Unauth GET /.well-known/vula-id (public fields+verified+endpoints placeholder) at root mux; GET /api/peering/profile/:vula_id fetch+cache; profile-changed push.
-AC: [ ] well-known no auth public only [ ] peer profile cached, respects visibility [ ] approve triggers fetch
-
-### [PEER-13] Email/directory discovery lookup
-`done` · P3 · S · dep: PEER-10 · parallel: yes — new backend/services/peering/discovery.go, src/builtin/peering/AddContact.jsx
-Scope: GET /api/peering/discover?email/name proxy to vulos.org verify/lookup + optional directory → Vula ID+server; configurable.
-AC: [ ] email lookup resolves when opted-in [ ] name search returns matches [ ] graceful empty
-
-### [PEER-14] S2S text message delivery (send+inbound+store)
-`done` · P0 · L · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/messages.go, inbox.go, inbound.go
-Scope: create→sign→deliver peer inbound/message; inbound verify+store ~/.vulos/peering/inbox/<conv>/, push message frame; conversations list+history.
-AC: [ ] msg to approved peer stored their inbox [ ] inbound rejects non-approved/bad sig [ ] list+history persist [ ] recipient gets realtime frame
-
-### [PEER-15] Offline queue: outbox, retry/backoff, ACK, reconnect sync
-`done` · P1 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/outbox.go
-Scope: Persist unacked outbox, retry 1s/5s/30s/5m/1h then periodic, ACK removes, reconnect pull since last-seen.
-AC: [ ] unreachable stays+retried [ ] ACK removes [ ] online peer pulls missed
-
-### [PEER-16] Media transfer: upload, hash ref, S2S fetch, thumbnails
-`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/media.go
-Scope: media store ~/.vulos/peering/media/, upload→hash+signed URL, S2S fetch on inbound refs, image/video thumbnails.
-AC: [ ] upload→stable hash+signed URL [ ] recipient fetches own copy post-offline [ ] thumbnails [ ] signed URL rejects tamper/expire
-
-### [PEER-17] Inbox UI: conversations, thread, composer, media
-`done` · P1 · L · dep: PEER-14, PEER-16, PEER-08 · parallel: yes — new src/builtin/peering/Messages.jsx, src/core/usePeering.js
-Scope: Messages view: conversation list, thread, composer, drag media, live message channel, contact profile.
-AC: [ ] conversations+threads from API [ ] text+media end-to-end [ ] incoming realtime no refresh
-
-### [PEER-18] Groups/rooms: definition, membership, fan-out
-`done` · P2 · M · dep: PEER-14 · parallel: yes — new backend/services/peering/groups.go
-Scope: group create/list/add-member, store ~/.vulos/peering/groups/, fan-out via PEER-14+PEER-15, signed+verified per recipient.
-AC: [ ] create distributes def to members [ ] group msg delivered each member [ ] add-member policy-gated propagates
-
-### [PEER-19] Call signaling relay (S2S SDP/ICE)
-`done` · P0 · M · dep: PEER-04, PEER-05 · parallel: no — new backend/services/peering/call.go, inbound.go
-Scope: call lifecycle relay: initiate→peer inbound/signal→callee frame; answer/reject/hangup; signal relays opaque SDP/ICE via signal channel; servers no media.
-AC: [ ] initiate → callee incoming-call frame [ ] SDP/ICE relay end-to-end [ ] reject/hangup terminates both [ ] rejected for non-call contacts
-
-### [PEER-20] Bandwidth measurement + /api/peering/bandwidth
-`done` · P1 · M · dep: PEER-01 · parallel: yes — new backend/services/peering/bandwidth.go
-Scope: periodic speed test (configurable endpoint) or traffic estimate, cache, GET bandwidth, peer-query path.
-AC: [ ] returns up/down+latency periodic [ ] peer can request approved peer's [ ] non-blocking startup
-
-### [PEER-21] STUN/TURN ICE config endpoint for peering calls
-`done` · P0 · S · dep: PEER-19 · parallel: yes — new backend/services/peering/ice.go (reuse network/turn.go)
-Scope: GET /api/peering/ice → STUN list + TURN short-lived creds (reuse network.TURNConfig.GenerateCredentials) when TURN_SECRET set.
-AC: [ ] STUN always, TURN creds when secret set [ ] short-lived HMAC [ ] no new TURN code
-
-### [PEER-22] 1:1 voice call (browser↔browser WebRTC audio)
-`done` · P0 · L · dep: PEER-19, PEER-21, PEER-05 · parallel: yes — new src/builtin/peering/call/useWebRTCCall.js, CallView.jsx
-Scope: RTCPeerConnection audio, getUserMedia, offer/answer+ICE over signal channel w/ PEER-21 config, mute, hangup; wire call UI.
-AC: [ ] 2 browsers direct audio via signaling only [ ] mute/hangup, media not via servers [ ] ICE-restart on drop
-
-### [PEER-23] 1:1 video + screen sharing
-`done` · P1 · M · dep: PEER-22 · parallel: yes — src/builtin/peering/call/
-Scope: video track 2-layer simulcast, camera on/off, getDisplayMedia screen-share swap, PiP, quality indicator (getStats).
-AC: [ ] video call toggleable camera [ ] screen share add/stop [ ] quality+PiP
-
-### [PEER-24] Incoming-call UI, ring, call history
-`done` · P1 · M · dep: PEER-22, PEER-08 · parallel: yes — new src/builtin/peering/call/IncomingCall.jsx, backend/services/peering/callhistory.go
-Scope: shell-wide incoming-call modal on signal call-request + ringtone; backend call-history + GET endpoint + UI panel.
-AC: [ ] modal regardless of focus [ ] accept/reject drives signaling [ ] completed/missed recorded+listed
-
-### [PEER-25] Pre-call lobby: bandwidth, host select, capacity
-`done` · P2 · M · dep: PEER-20, PEER-22 · parallel: yes — new src/builtin/peering/call/Lobby.jsx, backend/services/peering/call.go
-Scope: collect bandwidth reports, table, volunteer SFU host, capacity estimate from host upload per formula.
-AC: [ ] lists ▲up▼down latency [ ] host dropdown defaults initiator, updates capacity [ ] estimate matches math
-
-### [PEER-26] Mesh group calls (3–4 full-mesh)
-`done` · P2 · L · dep: PEER-22, PEER-25 · parallel: yes — new src/builtin/peering/call/useMeshCall.js, CallView.jsx
-Scope: multiple RTCPeerConnections full mesh, per-peer signaling, grid, SFU-recommend guard when low bandwidth.
-AC: [ ] 3–4 mesh A/V call [ ] join/leave updates mesh no drop [ ] low-bw triggers SFU prompt
-
-### [PEER-27] Pion SFU on host (forward, simulcast, Last-N)
-`done` · P2 · L · dep: PEER-19, PEER-21 · parallel: no — new backend/services/peering/sfu/room.go, sfu.go
-Scope: Pion SFU room: N PCs, accept 2-layer simulcast, forward selected layer per receiver, Last-N (4/6/9), join/leave; 5+ routes through host SFU.
-AC: [ ] 5+ routes through SFU [ ] simulcast received+forwarded per receiver [ ] Last-N limits [ ] no transcoding
-
-### [PEER-28] SFU dominant speaker + audio mixing (top 3)
-`done` · P3 · M · dep: PEER-27 · parallel: yes — new backend/services/peering/sfu/audio.go, room.go
-Scope: VAD/audio-level detection, dominant→high simulcast layer, mix top-3 audio per participant excl self.
-AC: [ ] dominant gets high layer [ ] ≤3 audio streams per participant [ ] never hears self
-
-### [PEER-29] SFU host handoff + 50-participant cap
-`done` · P3 · M · dep: PEER-27, PEER-25 · parallel: no — new backend/services/peering/sfu/handoff.go, src/builtin/peering/call/useSFUCall.js
-Scope: detect host loss, auto-select highest-upload new host (PEER-20/25 data), orchestrate browser reconnect, enforce cap 50.
-AC: [ ] kill host → failover best-bw [ ] resumes few sec no full drop [ ] 51st rejected
-
-### [PEER-30] Yjs collab transport: sync WS + awareness
-`done` · P2 · L · dep: PEER-05, PEER-14 · parallel: no — new backend/services/peering/collab.go, inbound.go, src/core/useYDoc.js, package.json (yjs)
-Scope: store Yjs doc binaries+meta, relay opaque CRDT blobs S2S, broadcast updates+awareness on collab channel; useYDoc(docId) hook.
-AC: [ ] 2 browsers same doc merge realtime [ ] awareness broadcasts+clears on disconnect [ ] yjs state persists
-
-### [PEER-31] Document share/accept + per-peer permissions
-`done` · P2 · M · dep: PEER-30 · parallel: yes — backend/services/peering/collab.go, new src/builtin/peering/ShareDialog.jsx
-Scope: doc-share invitation send/recv, accept adds w/ Shared badge, edit/view enforce (view recv-only), owner revoke, documents list/leave.
-AC: [ ] share→invitation, accept registers [ ] view-only sends rejected [ ] revoke stops updates
-
-### [PEER-32] Collaboration in Docs (TipTap + y-tiptap)
-`done` · P3 · M · dep: PEER-30, PEER-31 · parallel: yes — Docs/Notes app (apps/notes/), src/core/useYDoc.js
-Scope: wire Docs/Notes editor to useYDoc via y-tiptap, shared-doc badge, remote cursors from awareness, Share entry point.
-AC: [ ] 2 users co-edit live merge [ ] remote cursors name+color [ ] Share grants access
-
-### [PEER-33] Collab in Sheets/Notes/Text Editor + offline state-vector
-`done` · P3 · L · dep: PEER-32 · parallel: yes — apps/text-editor/, Sheets app, backend/services/peering/collab.go
-Scope: Sheets y-json, Notes, Text Editor CodeMirror/Monaco binding; reconnect catch-up via state vectors GET inbound/collab-sync.
-AC: [ ] Sheets+TextEditor live multi-user [ ] offline reconnect gets only diff [ ] time-travel from history
-
-### [PEER-34] Drop: mDNS LAN discovery + nearby + send/accept
-`done` · P2 · L · dep: PEER-07, PEER-16 · parallel: no — new backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
-Scope: mDNS advertise/browse _vula-drop._tcp, nearby endpoint, discoverability everyone/peers/nobody, send (LAN else internet), inbound drop accept/decline+auto-accept-contact; Drop UI tiles+progress.
-AC: [ ] 2 LAN instances discover when discoverable [ ] discoverability filters ads [ ] drop transfers+accept/decline+progress
-
-### [PEER-35] Drop: proximity code (gen/redeem + rendezvous)
-`done` · P3 · M · dep: PEER-34 · parallel: yes — backend/services/peering/drop.go, src/builtin/peering/Drop.jsx
-Scope: 6-digit code TTL 5min/single-use, stateless vulos.org rendezvous fallback (configurable) when no mDNS, then normal transfer.
-AC: [ ] code 6-digit expires 5min/first use [ ] valid code connects+transfers [ ] works cross-network via rendezvous
-
-### [PEER-36] Drop: BLE advertise/scan for bare-metal
-`done` · P3 · M · dep: PEER-34 · parallel: yes — new backend/services/peering/drop_ble.go, backend/go.mod
-Scope: BLE advertise service UUID + truncated Vula ID hash w/ rotation, scan to surface devices into nearby; clean no-op w/o BLE hw.
-AC: [ ] advertises vula-drop BLE when discoverable [ ] scan surfaces devices [ ] payload rotates, no hw=no-op
-
-### [PEER-37] E2E encryption: X25519 + XChaCha20-Poly1305
-`done` · P1 · L · dep: PEER-14 · parallel: yes — new backend/services/peering/crypto.go
-Scope: X25519 from identity, per-conversation shared secret, encrypt/decrypt message bodies+CRDT payloads XChaCha20-Poly1305 transparently; servers store ciphertext only.
-AC: [ ] bodies ciphertext at rest+transit, only endpoints decrypt [ ] wrong key fails closed [ ] round-trip+key exchange tests
-
-### [PEER-38] Relay peers: deposit/pickup/ack + config/store
-`done` · P3 · L · dep: PEER-37, PEER-15 · parallel: yes — new backend/services/peering/relay.go
-Scope: relay role config (enabled/capacity/TTL/allowed), deposit (mutual-trust+limits), signed pickup, ack-delete; sender uses relay when recipient unreachable. Limits 100MB/recip, 72h, 25MB blob, 100/h.
-AC: [ ] deposit stores by recipient, relay never decrypts [ ] signed pickup returns, ack deletes [ ] limits enforced, mutual-trust only
-
-### [PEER-39] Relay attestation: verify TEE before send
-`done` · P3 · M · dep: PEER-38 · parallel: yes — new backend/services/peering/relay_attest.go
-Scope: relay exposes attestation doc; sender validates vs policy before deposit, pluggable verifier (start AWS Nitro), strict reject-on-failure.
-AC: [ ] sender verifies attestation before deposit [ ] failed/absent rejects relay [ ] verifier interface extensible
-
-### [PEER-40] Cluster anycast: multi-endpoint registry + failover
-`done` · P3 · M · dep: PEER-12, PEER-14 · parallel: no — new backend/services/peering/endpoints.go, wellknown.go, transport.go
-Scope: endpoint registry (register/list/remove/priority), include endpoints in well-known (extends PEER-12), outbound races cached endpoints w/ failover, UUIDv7 dedup inbound.
-AC: [ ] Vula ID advertises multi endpoints [ ] delivery succeeds via live one [ ] duplicate msg ID no-op
-
-### [PEER-41] Signed feeds: append-only log, pub/sub, content-addr
-`done` · P3 · L · dep: PEER-03, PEER-12 · parallel: yes — new backend/services/peering/feeds.go
-Scope: feed create/list/publish/get/entries, hash-chained signed entries (prev_hash), access public/peers/link, subscriber pull by seq, push to approved, content hash sha256(canonical).
-AC: [ ] publish appends chained signed entry [ ] tamper breaks chain verify [ ] public/link no auth, peers gated [ ] subscribers since last seq
-
-### [PEER-42] Wire all peering sub-handlers into cmd/server
-`done` · P0 · L · dep: PEER-01 through PEER-41 · parallel: no — backend/cmd/server/main.go, backend/cmd/server/peering.go
-Scope: For each sub-handler in `backend/services/peering/` (contacts_api, verify, profile, discovery, messages/inbox/outbox, media, groups, call/callhistory, ice, sfu, collab, drop/drop_ble, crypto, relay/relay_attest, endpoints, feeds, bandwidth): construct the backing store, call the corresponding `Register*Handlers` function, and remove the matching 501 stub in peering.go. Ensure no duplicate ServeMux registrations trigger a panic at startup. Work is underway on a branch.
-AC: [ ] No peering route returns 501 [ ] Server starts without ServeMux dup-panic [ ] go test ./services/peering/... green [ ] go build ./... passes
-
-### [SMOKE-01] Smoke test: all peering routes return non-501
-`done` · P0 · S · dep: PEER-42 · parallel: yes — new scripts/smoke-peering.sh or backend smoke test
-Scope: Regression guard so PEER-* tasks cannot be re-marked done without the routes actually serving. Script (or Go test) starts the server and asserts each previously-501 peering endpoint now returns a non-501 status code. Runs in CI.
-AC: [ ] All previously-501 routes return 2xx/4xx (not 501) [ ] Failure blocks CI merge [ ] Runs headless without external deps
-
-### [SMOKE-02] Smoke test: live-USB UEFI boot in QEMU
-`done` · P1 · M · dep: BMINIT-14 · parallel: yes — new scripts/smoke-liveusb.sh
-Scope: QEMU UEFI boot test for the `--live` image produced by `build.sh --live`. Confirms the ESP contains a valid systemd-boot loader, kernel, and initrd. Blocks re-marking BMINIT-14 done without a bootable image.
-AC: [ ] QEMU boots --live image to login prompt (or first-boot wizard) under OVMF [ ] Fails if ESP is empty or missing loader entry [ ] Runs headless in CI
-
----
-
-## Area: Authentication
-
-_Design doc: [`roadmap/future/AUTHENTICATION.md`](../roadmap/future/AUTHENTICATION.md)_  ·  _Prefix: `AUTH-*`_
-
-> Why this matters: Make a Vula instance a credible "possession factor." TPM-sealed device identity, TOTP (with Google Authenticator import/export), encrypted password vault, FIDO2 server-side passkeys, mTLS client certs, SMS-over-VoIP for the last-mile.
-
-### [AUTH-01] TOTP secret store and code generation backend
-`done` · P2 · M · dep: none · parallel: yes — new backend/services/authvault/ (go.mod: pquerna/otp)
-Scope: RFC6238 TOTP; AES-256-GCM secrets at ~/.vulos/auth/totp/keychain.enc + accounts.json; otpauth:// parse; add/list/code/delete struct methods (no HTTP).
-AC: [x] merged 43d65d3 (11 tests incl RFC6238 vectors pass)
-
-### [AUTH-02] TOTP HTTP API endpoints
-`done` · P2 · S · dep: AUTH-01 · parallel: no — backend/cmd/server/main.go, new authvault/handlers.go
-Scope: POST /api/auth/totp/add, GET /list, GET /code/:id, DELETE /:id; scoped per X-User-ID; wire in main.go.
-AC: [ ] 4 endpoints, auth-required, correct JSON [ ] add-then-code returns valid 6-digit [ ] go build
-
-### [AUTH-03] TOTP UI panel (authenticator overlay)
-`done` · P2 · M · dep: AUTH-02 · parallel: yes — new src/apps/Authenticator/, src/core/AppRegistry.js
-Scope: React list of accounts w/ rolling codes + 30s countdown, tap-to-copy, add-account (paste otpauth URI / manual). Register in AppRegistry.
-AC: [ ] codes refresh 30s no reload [ ] click-copy w/ confirm [ ] add posts /totp/add [ ] in launcher
-
-### [AUTH-04] Google Authenticator import/export for TOTP
-`done` · P3 · M · dep: AUTH-01, AUTH-02 · parallel: yes — new authvault/migration.go
-Scope: decode otpauth-migration:// protobuf → entries; POST /import + /export (encrypted blob).
-AC: [ ] sample migration imports all [ ] export re-imports identical [ ] unit test protobuf parse
-
-### [AUTH-05] Credential vault store (encrypted password manager backend)
-`done` · P2 · L · dep: none · parallel: yes — new backend/services/credvault/
-Scope: AES-256-GCM vault.enc, Argon2id master key, lock/unlock state machine + auto-lock, entry CRUD (url/user/pass/notes/totp-id), password generator. Library only.
-AC: [ ] vault opaque, wrong pwd fails [ ] lock clears key, inaccessible [ ] generator random+passphrase [ ] go test encrypt/decrypt round-trip
-
-### [AUTH-06] Credential vault HTTP API
-`done` · P2 · M · dep: AUTH-05 · parallel: no — backend/cmd/server/main.go
-Scope: POST /api/auth/vault/unlock|lock, GET /entries (metadata), GET /entry/:id, POST/PUT/DELETE /entry, POST /generate; 423 when locked.
-AC: [ ] list metadata only, detail requires unlock [ ] locked → clear error [ ] go build
-
-### [AUTH-07] Password manager UI
-`done` · P3 · M · dep: AUTH-06 · parallel: yes — new src/apps/Vault/, src/core/AppRegistry.js
-Scope: master-pwd unlock screen, entry list/search, detail reveal/copy, add/edit, generator, auto-relock.
-AC: [ ] unlock gates list [ ] copy user/pass w/ confirm [ ] CRUD persists [ ] generator inserts into form
-
-### [AUTH-08] Credential vault import (Bitwarden/1Password/KeePass/Chrome)
-`done` · P3 · M · dep: AUTH-05, AUTH-06 · parallel: yes — new credvault/import.go
-Scope: parsers for 4 formats → vault entries; POST /import + /export; dedupe url+username.
-AC: [ ] 4 formats import in unit tests [ ] export re-imports equivalent [ ] dupes merged
-
-### [AUTH-09] TPM/software-keystore abstraction for key sealing
-`done` · P1 · L · dep: none · parallel: yes — new backend/services/devicekey/ (go.mod: go-tpm)
-Scope: KeyStore iface Seal/Unseal/Sign/DeviceIdentity; go-tpm tpm2 vs /dev/tpmrm0, software-encrypted fallback ~/.vulos/auth/tpm/; report backend type.
-AC: [ ] software fallback round-trips w/o TPM [ ] tpm/status reports type [ ] stable device identity [ ] builds+tests w/o hw TPM
-
-### [AUTH-10] Device identity & TPM status API
-`done` · P2 · S · dep: AUTH-09 · parallel: no — backend/cmd/server/main.go
-Scope: GET /api/auth/device/identity, /tpm/status, POST /seal, /unseal (admin-only seal/unseal).
-AC: [ ] tpm/status returns backend type [ ] seal→unseal returns original [ ] go build
-
-### [AUTH-11] Client certificate (mTLS) store + management API
-`done` · P2 · M · dep: AUTH-09 · parallel: yes — new backend/services/clientcerts/
-Scope: per-domain X.509 cert+key under ~/.vulos/auth/certificates/<domain>/ (key sealed via AUTH-09), CSR gen; install/list/delete/status/generate-csr endpoints.
-AC: [ ] install+list shows issuer/expiry [ ] CSR valid PEM w/ CN/SAN [ ] key sealed not plaintext [ ] unit test install+status
-
-### [AUTH-12] Server-side passkey (FIDO2) authenticator + API
-`done` · P2 · L · dep: AUTH-09 · parallel: yes — new backend/services/passkeys/
-Scope: server-resident FIDO2 (go-webauthn): create/store credentials per RP sealed via AUTH-09, assertions, list/delete; passkeys endpoints.
-AC: [ ] register persists sealed, listed [ ] reg+assertion verifies in test [ ] delete removes [ ] go build
-
-### [AUTH-13] WebAuthn bridge data channel (server side)
-`done` · P3 · M · dep: none · parallel: no — backend/services/stream/stream.go, new webauthn.go
-Scope: add `case "webauthn"` to OnDataChannel switch routing challenge/assertion to per-session relay + Go hook. Browser-side out of scope.
-AC: [ ] webauthn channel accepted bidirectional [ ] round-trips via relay in test [ ] input channels unaffected, go build
-
-### [AUTH-14] SMS receive via VoIP provider webhook
-`done` · P3 · M · dep: none · parallel: yes — new backend/services/smsotp/
-Scope: POST /api/auth/sms/webhook (Twilio form) extract OTP regex, store ~/.vulos/auth/sms/history.json 24h, notify; recent/number/settings endpoints.
-AC: [ ] Twilio payload stores+notifies [ ] OTP regex on real samples in test [ ] >24h pruned
-
----
-
-## Area: Fediverse Client
-
-_Design doc: [`roadmap/future/ACTIVITYPUB.md`](../roadmap/future/ACTIVITYPUB.md)_  ·  _Prefix: `FED-*`_
-
-> Why this matters: One bundled app speaking ActivityPub: Mastodon, Pixelfed (photos), PeerTube (video), Lemmy (forums). OAuth2 against the user's existing server — we don't run one.
-
-### [FED-01] ActivityPub social app scaffold (read-only public timeline)
-`done` · P3 · M · dep: none · parallel: yes — new apps/social/, src/core/AppRegistry.js (defer reg if AppRegistry contended)
-Scope: social app (manifest+server+UI), read-only: enter instance host, GET /api/v1/timelines/public, render statuses. No auth/posting.
-AC: [ ] app.json validates [ ] public host renders timeline [ ] launches
-
-### [FED-02] OAuth2 login to existing Mastodon/Pixelfed
-`done` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
-Scope: dynamic client reg /api/v1/apps, OAuth2 code flow, token store, home timeline, verify-credentials.
-AC: [ ] login real instance returns token [ ] home timeline renders [ ] token persists, logout clears
-
-### [FED-03] Feed interactions — post/boost/favourite/reply
-`done` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
-Scope: compose (500 char + CW), thread view, boost/fav/reply/bookmark optimistic UI vs Mastodon API.
-AC: [ ] post appears in home [ ] fav/boost persist server-side [ ] reply opens thread in-reply-to
-
-### [FED-04] Photos + Video views (Pixelfed grid, PeerTube HLS)
-`done` · P3 · M · dep: FED-02 · parallel: yes — apps/social/
-Scope: photo grid + fullscreen viewer + carousel; video list inline HLS (hls.js) + reply comments.
-AC: [ ] photo grid + fullscreen [ ] multi-attachment carousel [ ] video plays inline HLS
-
-### [FED-05] Forums view — Lemmy communities
-`done` · P3 · M · dep: FED-01 · parallel: yes — apps/social/
-Scope: Lemmy API client: communities, post listing w/ sort, comment trees, vote/subscribe (JWT), read-only fallback.
-AC: [ ] browse public Lemmy communities/posts [ ] sort hot/new/top/active [ ] logged-in vote+comment
-
-### [FED-06] Push notifications + share-to-Fediverse
-`done` · P3 · S · dep: FED-02, FED-03 · parallel: yes — apps/social/, one notifySvc call
-Scope: Mastodon streaming WS → POST /api/notifications/send on mention; share target → compose prefilled.
-AC: [ ] new mention triggers Vula notification [ ] share opens compose prefilled
-
----
-
-## Area: Telephony
-
-_Design doc: [`roadmap/future/MOBILE.md`](../roadmap/future/MOBILE.md)_  ·  _Prefix: `MOBILE-*`_
-
-> Why this matters: ModemManager (D-Bus) for SMS + voice + signal, lpac for eSIM, a `phone` app for Messages + Dialer. Treat the modem as another OS service.
-
-### [MOBILE-01] Telephony service scaffold (Go + WS + D-Bus ModemManager)
-`done` · P3 · M · dep: none · parallel: yes — new backend/services/telephony/, apps/phone/app.json, main.go
-Scope: HTTP server + WS hub + ModemManager D-Bus client enumerate modems/signal/SIM; graceful no-modem fallback.
-AC: [ ] status endpoint lists modems (empty when none) [ ] WS connects/stays open [ ] no panic w/o D-Bus [ ] go build
-
-### [MOBILE-02] ModemManager SMS send/receive + SQLite history
-`done` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
-Scope: SMS send/list/delete via D-Bus Messaging, incoming-signal listener → WS push, SQLite thread-grouped history, search; mockable D-Bus.
-AC: [ ] send/list/delete exposed [ ] incoming (mocked) persisted+pushed [ ] thread-grouped query
-
-### [MOBILE-03] ModemManager voice calls (dial/answer/hangup/DTMF)
-`done` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/
-Scope: voice control via D-Bus Voice, call-state listener → WS; audio path excluded.
-AC: [ ] dial/answer/hangup/DTMF exposed [ ] call-state (mocked) pushes WS [ ] no hw to build/test
-
-### [MOBILE-04] Messages + Dialer React UI
-`done` · P3 · L · dep: MOBILE-02, MOBILE-03 · parallel: yes — apps/phone/
-Scope: Messages (thread list/compose/search/status) + Dialer (T9, history, in-call screen, incoming banner) consuming MOBILE WS.
-AC: [ ] Messages lists threads, send/recv WS [ ] Dialer places call + in-call screen [ ] incoming surfaces realtime
-
-### [MOBILE-05] eSIM profile management via lpac
-`done` · P3 · M · dep: MOBILE-01 · parallel: yes — backend/services/telephony/, apps/phone/
-Scope: lpac CLI wrapper list/enable/disable/delete/add-by-code, endpoints, eSIM manager UI; graceful w/o lpac.
-AC: [ ] list/enable/disable/delete (mock lpac) [ ] add-by-activation-code [ ] UI lists+toggles [ ] missing lpac clear error
-
-### [MOBILE-06] Responsive / device-profile-aware UI shell
-`done` · P3 · M · dep: none · parallel: no — src/ shell/layout (overlaps DEVPROF-03)
-Scope: useDeviceProfile hook (viewport+override), responsive breakpoints collapse desktop→mobile single-column, notification behavior stub per profile. (coordinate w/ DEVPROF-03 — share hook)
-AC: [ ] useDeviceProfile updates on resize [ ] mobile single-column at narrow [ ] profile overridable
-
----
-
-## Area: Ladybird Browser Spike
-
-_Design doc: [`roadmap/future/LADYBIRD-BROWSER.md`](../roadmap/future/LADYBIRD-BROWSER.md)_  ·  _Prefix: `LADYBIRD-*`_
-
-> Why this matters: An experimental, feature-flagged second remote-browser engine using Ladybird's headless WebContent — promises a zero-copy capture path. Chromium stays default.
-
-### [LADYBIRD-01] Ladybird headless engine spike — REMOVED
-`done` · the spike package was deleted; Chromium is the sole browser engine. Streaming optimizations (NVENC/VA-API/cage/ABR) are Chromium-targeted. Do NOT reintroduce Ladybird. See roadmap/future/LADYBIRD-BROWSER.md.
-
----
-
-## Area: Security
-
-_Origin: post-audit remediation; see [`decisions.md`](decisions.md) D24, D26, D27_  ·  _Prefix: `SEC-*`_
-
-> Why this matters: Post-audit hardening track. The unauthenticated-RCE chain (C1–C4 + H1/H2/H5) is closed; what's left is HIGH/MED/LOW items from the same Opus app-exposure audit. C5/M2 (visibility enforcement) is handled outside this repo and is out of scope here.
-
-### [SEC-A] Strip spoofable identity headers (C1) + lock /api/profiles (C2)
-`done` · P0 · S · dep: none · parallel: yes — backend/services/auth/handlers.go (merged 9c289ed)
-
-### [SEC-B] Manifest-resolve + admin-gate /api/apps/launch & /api/sandbox/run, scrub env (C3,C4)
-`done` · P0 · M · dep: none · parallel: no — backend/cmd/server/main.go, appnet/launcher.go, sandbox/sandbox.go (merged e491b6b; both cold-start+warm-pool env scrubbed)
-
-### [SEC-D] notes path-traversal + browser SSRF + CSP/XSS (H1,H2,H5)
-`done` · P1 · M · dep: none · parallel: yes — apps/notes/server.py, apps/browser/server.py, apps/browser/index.html (merged 6881e78)
-
-### [SEC-E] webproxy DNS-rebinding + TLS-verify (H4)
-`done` · P1 · M · dep: none · parallel: yes — backend/services/webproxy/proxy.go
-Scope: resolve host ONCE and dial the validated pinned IP (kill TOCTOU between isPrivate check ~:147 and client.Do ~:99); fail CLOSED on resolution error (~:160); remove `InsecureSkipVerify:true` (~:33), enable TLS verification; normalize/parse decimal/hex/octal/IPv4-mapped IP literals before the private/loopback/link-local check.
-AC: [ ] single-resolution dial, no rebinding window [ ] fail-closed on bad resolve [ ] TLS verified [ ] encoded-IP literals blocked [ ] go build + webproxy tests
-
-### [SEC-F] registry recipes: forbid curl|bash, hard-fail empty checksum (H3)
-`done` · P1 · M · dep: none · parallel: no — registry.json, backend/services/appnet/registry.go
-Scope: registry.go ~:425 — make empty/missing checksum a HARD failure (not silent skip); reject install/post_install recipes that pipe-to-shell (`curl|bash`, `wget|sh`) — require pinned artifact + checksum (or signature). registry.json — populate pinned checksums; rewrite any `curl|bash` install entries to verified-artifact form.
-AC: [ ] empty checksum → install refused [ ] pipe-to-shell recipe rejected [ ] registry.json valid + every versioned entry has non-empty checksum [ ] go build + appnet tests
-
-### [SEC-G] AppStore.Install: validate ID + contain extraction (M3)
-`done` · P1 · M · dep: none · parallel: no — backend/services/appnet/store.go
-Scope: store.go ~:153-193 — validate `entry.ID` charset (^[a-z0-9-]+$, reject `.`/`/`); use a safe tar extractor that rejects `..`/absolute paths and symlink escape; realpath-contain extraction to `<appsDir>/<id>`; add the checksum verification AppStore.Install currently lacks.
-AC: [ ] bad ID rejected [ ] malicious tar (../, absolute, symlink) cannot escape appsDir [ ] checksum enforced [ ] go build + appnet tests
-
-### [SEC-H] /api/open public SSRF + X-Forwarded-Proto trust (H6,M4)
-`done` · P1 · M · dep: none · parallel: no — backend/cmd/server/main.go, backend/services/auth/handlers.go
-Scope: remove `/api/open` from publicPaths (handlers.go ~:80) OR strictly validate scheme∈{http,https} + reject private/loopback/link-local + cap concurrent tabs (main.go ~:701-716); encode the CDP `/json/new?<url>` param. M4: gate `X-Forwarded-Proto` trust to loopback like `extractIP` already does (handlers.go ~:431). SOLE owner of main.go+handlers.go this area.
-AC: [ ] /api/open not unauth-reachable / strictly validated + tab cap [ ] X-Forwarded-Proto only trusted from loopback [ ] go build + auth tests
-
-### [SEC-I] AI-apps path-traversal + admin-gate save (M1)
-`done` · P2 · M · dep: SEC-H · parallel: no — backend/cmd/server/main.go (ai-apps handlers)
-Scope: main.go ~:1370/1414-1437 — validate `r.PathValue("id")` charset + realpath-contain under aiAppsDir before read/RemoveAll; admin-gate `POST /api/ai-apps/save` (mirror /api/exec gate); never execute saved server.py without the SEC-B sandbox/isolation path. (Serialized after SEC-H — same file.)
-AC: [ ] encoded/`..` id cannot escape aiAppsDir [ ] save admin-gated [ ] saved python only runs via gated sandbox [ ] go build
-
-### [SEC-J] auth hygiene: revoke-on-pw-change, password policy, log scrub (L2,L3,L4)
-`done` · P3 · S · dep: none · parallel: yes — backend/services/auth/auth.go
-Scope: auth.go — call RevokeAllSessions on ChangePassword (~:472); raise min password length from 4 (~:369) and tighten/remove legacy salted-SHA256 fallback gating (~:341-354); stop logging hash_prefix + password length (~:420).
-AC: [ ] password change revokes sessions [ ] min length raised, legacy hash path constrained [ ] no credential-shaped data in logs [ ] go build + auth tests
-
-### [SEC-K] gallery/music traversal prefix separator (L1)
-`done` · P3 · S · dep: none · parallel: yes — apps/gallery/server.py, apps/music/server.py
-Scope: containment check uses `startswith(realpath(root))` without trailing sep → sibling dir sharing prefix reachable. Append `os.sep` to the contained root in every check.
-AC: [ ] sibling-prefix dir not reachable [ ] normal media still served [ ] py_compile clean
-
----
-
-## Area: OS Distribution & Image Updates
-
-_Design doc: [`roadmap/OS-DISTRIBUTION.md`](../roadmap/OS-DISTRIBUTION.md)_  ·  _Prefix: `OSDIST-*`_
-
-> Why this matters: The shift from flash-and-SSH to image-based OS distribution. The OS ships as signed, immutable, versioned squashfs artifacts in a **public** S3 bucket (security from signing, not access control), cached locally, run off A/B slots with boot-counter auto-rollback. The squashfs is the existing `build.sh --live` output.
-
-### [OSDIST-01] Public OS bucket layout + signed `stable.json` manifest schema
-`done` · P0 · M · dep: SIGN-01 · parallel: yes — new backend/services/osdist/manifest.go
-Scope: Define `os/stable.json` schema (channel, latest, min_epoch, roothash, size, released_at, path) + canonical-byte serialization for signing; per-version folder layout `os/vNN/os-core.squashfs(.sig)`. Parse + signature-verify against the baked trust anchor (SIGN-02) and enforce `min_epoch >= highest-seen` (SIGN-04). Public-read bucket — no credentials, no access control on reads. Package + schema + verify only; no download yet.
-AC: [ ] stable.json round-trips canonical bytes [ ] signature verified against trust anchor, tamper rejected [ ] min_epoch below floor rejected [ ] unit test schema + verify
-
-### [OSDIST-02] A/B slot manager + atomic active-slot flip
-`done` · P0 · L · dep: OSDIST-01 · parallel: yes — new backend/services/osdist/slots.go, boot-state.json
-Scope: Model the local cache partition with two slots (slot-a/slot-b) + `boot-state.json` (active slot, pending-active, boot counter, last-known-good). Download a new image into the inactive slot, set it pending-active, reset boot counter. Atomic flip via pointer swap (no in-place mutation). Do NOT touch the writable overlay/data partition. Borrow the RAUC/Mender/ostree/Android-A/B/Flatcar model — don't reinvent.
-AC: [ ] new image lands in inactive slot only [ ] flip is atomic + reversible [ ] data partition untouched by flip [ ] unit test slot state machine
-
-### [OSDIST-03] Boot-counter auto-rollback to last-known-good
-`done` · P0 · M · dep: OSDIST-02 · parallel: no — backend/cmd/init/main.go, backend/services/osdist/slots.go
-Scope: Bootloader increments the persistent boot counter before handoff; vulos-init marks the boot **healthy** (reset counter, promote slot to last-known-good) only after desktop/services come up. If the counter exceeds threshold (e.g. 3) without a healthy mark, fall back to last-known-good slot. Wire the healthy-mark into the init success path.
-AC: [ ] healthy boot resets counter + promotes slot [ ] N failed boots auto-fall-back to last-good [ ] threshold configurable [ ] GOOS=linux build
-
-### [OSDIST-04] OS update fetch loop: download → verify verity+sig → stage
-`done` · P1 · L · dep: OSDIST-01, OSDIST-02, VERITY-01 · parallel: yes — new backend/services/osdist/update.go
-Scope: Periodic loop: fetch `os/stable.json`, compare `latest` to the running slot, download `os/vNN/os-core.squashfs` to the inactive slot, verify the dm-verity root hash matches the manifest AND the detached `.sig` verifies, then stage pending-active (OSDIST-02) + reboot prompt. Bucket URL is soft/runtime config (SEED-02) with mirror failover; key, not URL, enforces trust. Never run live off S3 — source from S3, run local.
-AC: [ ] update detected + downloaded to inactive slot [ ] verity hash + signature both verified before staging [ ] poisoned/mirror image rejected [ ] mirror failover on fetch error [ ] go build
-
-### [OSDIST-05] OS-update status endpoint + minimal Settings surface
-`done` · P2 · M · dep: OSDIST-04 · parallel: yes — new backend/services/osdist/handlers.go, backend/cmd/server/main.go (route reg only), src/core/Settings.jsx
-Scope: Surface the OSDIST-04 update state to the user so the "reboot prompt" referenced there is real. Add `GET /api/os/update/status` (running slot/version, staged/pending-active slot+version, last-known-good, channel, boot-counter, last check) and `POST /api/os/update/apply` (flip to the already-verified staged slot + signal reboot — never downloads or verifies here; that is OSDIST-04). Add a small read-only "System Update" panel in Settings showing current vs available version with an "Apply update & reboot" button enabled only when a verified image is staged. The headless OSDIST-04 loop remains correctness-complete on its own; this is the user-facing affordance only.
-AC: [ ] status endpoint reports running/staged/last-good slot + version + boot counter [ ] apply flips only an already-verified staged slot, no re-download [ ] Settings panel shows current vs available, button gated on staged+verified [ ] no trust decision moved into the UI/API layer [ ] go build + npm build
-
----
-
-## Area: Local Seed & Trust Anchor
-
-_Design doc: [`roadmap/SEED-TRUST.md`](../roadmap/SEED-TRUST.md)_  ·  _Prefix: `SEED-*`_
-
-> Why this matters: The irreducible flashed seed = bootloader + verify-capable initramfs + OS bucket URL + the signing public key (trust anchor). Makes the whole image model **forkable**: rebuild the seed with your own key + bucket and run an independent Vulos. The key is hard-baked; the bucket URL is soft config because the key (not the URL) enforces trust.
-
-### [SEED-01] Embed trust anchor (signing public key) into the flashed seed
-`done` · P0 · M · dep: none · parallel: no — build.sh, new scripts/seed/
-Scope: Bake the signing **public key** (trust anchor) into the seed image at build time so the initramfs verify path (VERITY-02) can validate the fetched OS chain. Key is immutable/hard-baked — changing it requires re-flashing. Wire into `build.sh` seed assembly. Companion: emit the bootloader + verify-capable initramfs as the irreducible seed (alongside BMINIT-14).
-AC: [ ] seed build embeds the trust-anchor pubkey at a known path [ ] initramfs can read it for verification [ ] key absent → build fails loudly [ ] sh -n build.sh
-
-### [SEED-02] Soft/runtime OS-bucket URL config (mirror + failover)
-`done` · P1 · S · dep: SEED-01 · parallel: yes — new backend/services/osdist/source.go
-Scope: OS bucket URL is **soft config** (env/file, with a baked default) supporting a mirror list + failover ordering. Trust is enforced by the baked key (SEED-01), so pointing at a different/poisoned bucket is harmless — verification fails closed. Used by the OSDIST-04 fetch loop.
-AC: [ ] URL overridable at runtime, baked default present [ ] failover to next mirror on fetch error [ ] no trust decision depends on URL [ ] unit test source selection
-
-### [SEED-03] Forker rebuild path: own key + own bucket re-establishes trust
-`done` · P2 · M · dep: SEED-01, SIGN-03 · parallel: no — build.sh, docs in roadmap/SEED-TRUST.md
-Scope: Make `build.sh` accept a forker's own root key + bucket URL so a rebuilt seed trusts the fork's bucket and rejects the upstream one (and vice versa). Location + trust travel together in the seed; re-flashing re-establishes trust end to end. No central allow-list. Document the fork procedure.
-AC: [ ] build with custom key+bucket produces a self-consistent seed [ ] fork seed rejects upstream-signed images, accepts fork-signed [ ] procedure documented [ ] sh -n build.sh
-
----
-
-## Area: Netboot & First Boot
-
-_Design doc: [`roadmap/NETBOOT.md`](../roadmap/NETBOOT.md)_  ·  _Prefix: `NETB-*`_
-
-> Why this matters: "Any PC anywhere" with no per-machine disk flashing. UEFI HTTP Boot URL OR a ~1 MB one-time iPXE stick, both chainload a **configurable boot URL** (default `boot.vulos.org`, a forkable project default; any server that serves the signed artifacts works, self-hosted or otherwise) over HTTPS → kernel/initramfs/squashfs. Netboot-**to-install** (not diskless): live-RAM "Try Vulos" session first, Install is explicit, never surprise-wipes. Two-layer safety: TLS protects the pipe, signing protects the payload.
-
-### [NETB-01] iPXE chainload script + ~1 MB one-time stick image
-`done` · P1 · M · dep: BMINIT-14 · parallel: yes — new scripts/netboot/, build.sh
-Scope: Produce a ~1 MB iPXE USB image whose script chainloads `boot.vulos.org` over HTTPS to fetch kernel + initramfs + squashfs. Stick is used once to bootstrap; installed machine never needs it again. Also document/produce the UEFI HTTP Boot URL form (no media) targeting the same endpoint.
-AC: [ ] iPXE image ≤~1 MB chainloads the HTTPS boot URL [ ] UEFI HTTP Boot URL path documented [ ] both converge on kernel+initramfs+squashfs fetch [ ] build target emits the stick image
-
-### [NETB-02] Signed-payload boot chain (iPXE imgverify + Secure Boot shim plan)
-`done` · P1 · M · dep: NETB-01 · parallel: yes — scripts/netboot/, new backend/services/osdist/bootpipe.go
-Scope: UEFI HTTP Boot is **plain HTTP** on most consumer/laptop hardware (UEFI 2.7 HTTPS Boot is server-class). Safety is signature verification at every step, NOT TLS. iPXE on the stick is built with `imgverify` enabled and our trust-anchor pubkey embedded; every fetched artifact (the .ipxe script, kernel, initramfs, manifest) carries a detached `.sig` that iPXE verifies before exec — fail closed on mismatch. Document the Secure Boot shim signing path (Microsoft UEFI CA OR self-enrolled key for managed fleets). TLS on the iPXE stick is opportunistic — used where supported, never required.
-AC: [ ] iPXE built with imgverify + embedded trust anchor [ ] every fetched artifact has a verifiable .sig [ ] verify-before-exec on every download (fail closed) [ ] Secure Boot shim signing path documented [ ] sh -n scripts; GOOS=linux go build
-
-### [NETB-03] Netboot-to-install: write seed + first squashfs to local disk
-`done` · P1 · L · dep: NETB-01, SEED-01, BMINIT-12 · parallel: no — backend/services/installer/, backend/cmd/init/main.go
-Scope: First boot runs from network/RAM; on Install, write the **seed** (bootloader + verify-capable initramfs + baked anchor + bucket URL, SEED-01) + the first OS squashfs to local disk via the existing installer (BMINIT-12). Steady state then boots **locally** with network OS updates (OSDIST-04). NOT diskless. Reuse `--live` for the RAM session.
-AC: [ ] netboot session can install seed + first squashfs to disk [ ] installed machine boots locally without network [ ] subsequent OS updates pull from bucket [ ] go build
-
-### [NETB-04] "Try Vulos" live-RAM session with explicit Install (Ubuntu-style)
-`done` · P2 · M · dep: BMINIT-14, BMINIT-13 · parallel: yes — src/builtin/installer/, backend/services/installer/
-Scope: Boot the `--live` squashfs into RAM with writable overlay; let the user run the OS for real; **Install is an explicit, separate action** that never surprise-wipes a disk (installer presents disks, requires confirmation). Surface the post-live choice → Local-only vs connect an optional control plane (handoff to NETB-05).
-AC: [ ] live-RAM session runs the real OS [ ] Install requires explicit disk choice + confirm, no auto-wipe [ ] reuses --live path [ ] npm build
-
-### [NETB-05] Install-time account choice: Local-only vs connect a control plane
-`done` · P2 · M · dep: NETB-04, INIT-05 · parallel: no — src/auth/Setup.jsx
-Scope: Post-live-session step. **Local-only** = create local OS account (username + full name + password; hostname autofilled), no external relationship, fully self-hosted. **Connect a control plane** = enroll with an optional control plane (email + password + 2FA) at a configurable URL, then optionally join an existing **data cluster** (cluster passphrase required, held only locally). Keep the two credentials DISTINCT (local OS account vs control-plane account). The data bucket here is NOT the public OS bucket.
-AC: [ ] local-only path creates an OS account, no external relationship [ ] connect path enrolls (email+pw+2FA) then offers cluster join [ ] credentials kept separate [ ] join requires passphrase held only locally [ ] npm build
-
----
-
-## Area: Signing, Verity & Key Rotation
-
-_Design doc: [`roadmap/SIGNING.md`](../roadmap/SIGNING.md)_  ·  _Prefix: `SIGN-*` / `VERITY-*`_
-
-> Why this matters: The integrity backbone. dm-verity on the squashfs + per-boot-stage signature verification (shim → bootloader → kernel → initramfs → squashfs). Offline (air-gapped/HSM) signing with a root-signs-intermediate PKI. Key rotation + revocation via a single monotonic "minimum trusted epoch" — no CRL, no clock dependence — which also gives rollback/downgrade protection. All in **Go** (decisions.md J — no Rust).
-
-### [VERITY-01] dm-verity hashing of the squashfs in build.sh
-`done` · P0 · M · dep: BMINIT-14 · parallel: no — build.sh, new scripts/verity/
-Scope: After `mksquashfs`, generate the dm-verity Merkle tree + root hash over `os-core.squashfs`; emit the root hash for inclusion in `stable.json` (OSDIST-01). The root hash is the image's content identity. Pure tooling step in the build.
-AC: [ ] build produces verity hash tree + root hash for the squashfs [ ] root hash matches on re-verify [ ] root hash surfaced for manifest signing [ ] sh -n build.sh
-
-### [VERITY-02] Per-boot-stage signature verification in initramfs (Go)
-`done` · P0 · L · dep: VERITY-01, SEED-01 · parallel: no — new backend/cmd/verify/, backend/cmd/init/main.go
-Scope: Verify-capable initramfs (Go) checks the signature of each next stage before executing it: shim → bootloader → kernel → initramfs → squashfs, and verifies the squashfs dm-verity root hash + detached `.sig` against the release cert (which the baked root authorizes, SIGN-03). Halt boot / refuse update on mismatch. dm-verity then verifies every block on read at runtime.
-AC: [ ] each stage signature-verified before exec [ ] squashfs verity root hash + sig verified before pivot [ ] broken sig / hash mismatch halts boot [ ] GOOS=linux build, unit tests for the verifier
-
-### [SIGN-01] Canonical signing bytes + detached-signature format (Go)
-`done` · P0 · M · dep: none · parallel: yes — new backend/services/signing/
-Scope: Define deterministic canonical bytes for `stable.json` and the `.sig` detached-signature format over artifacts; Sign/Verify helpers (Go, no Rust). Shared by OSDIST-01 (manifest) and the release-signing tooling (SIGN-03). No key custody here.
-AC: [ ] canonical bytes byte-stable [ ] Sign/Verify round-trip, tamper rejected [ ] format documented [ ] unit tests
-
-### [SIGN-02] Trust-anchor verification against baked root key
-`done` · P0 · S · dep: SIGN-01, SEED-01 · parallel: yes — backend/services/signing/
-Scope: Verify a signature against the baked **root** trust anchor (SEED-01). Used by OSDIST-01 manifest verify and the boot chain (VERITY-02). Pure verification helper; fail closed on any error.
-AC: [ ] verifies against baked anchor, rejects wrong key [ ] fails closed on malformed input [ ] unit test valid/invalid/tampered
-
-### [SIGN-03] Offline root-signs-intermediate PKI tooling (release-key cert)
-`done` · P1 · L · dep: SIGN-01 · parallel: yes — new backend/cmd/sign/
-Scope: Air-gapped/HSM tooling: an offline **root key** (rarely used, the baked anchor) signs a **release-key certificate**; the release key signs images/manifests per release. Device fetches the root-signed release cert and validates it against the baked root before trusting release-key signatures. Root key never online for routine releases. CLI for: issue release cert, sign image, sign manifest.
-AC: [ ] root signs a release cert offline [ ] device-side validates release cert against baked root [ ] release key signs image + manifest [ ] root-key path documented as air-gapped/HSM [ ] go build + tests
-
-### [SIGN-04] Minimum-trusted-epoch counter (rotation/revocation + rollback protection)
-`done` · P1 · M · dep: SIGN-02, AUTH-09 · parallel: no — new backend/services/signing/epoch.go
-Scope: Single monotonic integer `min_epoch` carried in the root-signed manifest. Device stores the **highest epoch ever seen** and refuses anything lower → rotation/revocation (bump epoch retires old key/release) AND free rollback/downgrade protection. No CRL, no OCSP, no clock dependence. Store the counter in **TPM** where available (reuse AUTH-09 devicekey/TPM keystore), **sealed file** otherwise.
-AC: [ ] lower epoch refused, equal/higher accepted + floor advanced [ ] TPM-backed when present, sealed-file fallback [ ] no clock used in the decision [ ] unit test monotonic floor + downgrade rejection
-
----
-
-## Area: Coordination (Bucket Leases)
-
-_Design doc: [`roadmap/COORDINATION.md`](../roadmap/COORDINATION.md)_  ·  _Prefix: `LEASE-*`_
-
-> Why this matters: Leaderless mutual exclusion across N equal instances using only the shared bucket — no leader election, correctness never depends on any external service. One primitive: a bucket-backed lease with a monotonic fencing token, an always-present object mutated via `If-Match <etag>` CAS. Serves run-leases (singleton apps), singleton jobs, and snapshot/compaction ownership. Two coordination mechanisms split by latency: bucket leases (coarse/durable) vs the peering/relay hot path (real-time presence — see COLLAB-*).
-
-### [LEASE-01] Bucket-backed lease primitive (`If-Match` CAS + fencing token)
-`done` · P0 · L · dep: CLUSTER-03 · parallel: yes — new backend/services/lease/lease.go
-Scope: Always-present lease object `leases/<scope>.json` (state free|held, holder, fence, expires_at), created once at cluster init, mutated only via `If-Match <etag>` CAS: acquire (free→held), renew (held→held + fence bump), release (held→free). Hand the monotonic fence token to callers (stale-fence rejection). **Do NOT use `If-None-Match: *`** (MinIO #20346 wontfix) — pre-create + only `If-Match`. Works on AWS S3 (SigV4), MinIO, Tigris.
-AC: [ ] acquire/renew/release via If-Match CAS [ ] losing racer gets 412 + backs off [ ] fence increases monotonically, stale fence rejected [ ] no If-None-Match:* anywhere [ ] unit test against mock + (skippable) MinIO
-
-### [LEASE-02] Init the lease object once at cluster bootstrap
-`done` · P0 · S · dep: LEASE-01, INIT-04 · parallel: no — backend/services/lease/, backend/services/cluster/
-Scope: At cluster init (storage provisioning / join), create the always-present lease object(s) in `free` state so subsequent ops are pure `If-Match` CAS (never create-if-absent). Idempotent.
-AC: [ ] lease object created once, free state [ ] re-running is idempotent (no clobber of held lease) [ ] unit test create + idempotency
-
-### [LEASE-03] Tigris strong-consistency guard (Single/Multi-region buckets)
-`done` · P2 · S · dep: LEASE-01 · parallel: yes — backend/services/lease/, docs
-Scope: When the backend is Tigris, require **Single-region or Multi-region** buckets for strongly-consistent CAS; detect/warn (or refuse leases) on a non-strongly-consistent bucket config. Document the requirement. AWS S3 + MinIO unaffected.
-AC: [ ] Tigris non-strong-consistency config detected + warned/refused [ ] AWS/MinIO unaffected [ ] requirement documented [ ] unit test config gate
-
-### [LEASE-04] Singleton-job runner over the bucket lease (run-once-per-cluster)
-`done` · P2 · M · dep: LEASE-01, LEASE-02 · parallel: yes — new backend/services/lease/job.go
-Scope: Implement the **singleton job** use of the lease primitive (COORDINATION.md § What This One Primitive Serves — `leases/job/<job-id>.json`, per-job TTL): a small runner that lets cron-style / run-once-per-cluster jobs execute on exactly one instance at a time. `RunSingletonJob(jobID, fn)` acquires the per-job lease (LEASE-01) before running, renews while running, releases on completion, and passes the fencing token to the job so a stalled-then-resumed runner is rejected. No leader election — ownership is whoever holds the job lease this cycle. This is the third lease use alongside the run-lease (CONC-02) and snapshot/compaction lease (SYNC-02); reuse the same code path, do not add a parallel mechanism.
-AC: [ ] job runs on exactly one instance when N instances contend [ ] holder loss before completion → another instance acquires + runs [ ] fence handed to the job, stale fence rejected [ ] no `If-None-Match:*`, no leader election [ ] unit test single-execution under contention
-
----
-
-## Area: Multi-Instance Data Sync
-
-_Design doc: [`roadmap/SYNC.md`](../roadmap/SYNC.md)_  ·  _Prefix: `SYNC-*`_
-
-> Why this matters: Redundancy + load-balancing across locations. cr-sqlite is leaderless CRDT so redundancy is inherent (no failover election, no split-brain). Two-tier sync: hot path = instance↔instance changeset streaming over the peering mesh (relay fallback for NAT/cross-location); cold path = the existing periodic durable checkpoint to S3 (CLUSTER-05). New work: snapshot/compaction in the bucket so a new instance bootstraps from a recent snapshot + short changeset tail instead of replaying an unbounded log.
-
-### [SYNC-01] Instance↔instance changeset hot path over the peering mesh
-`done` · P1 · L · dep: CLUSTER-05, PEER-14 · parallel: yes — new backend/services/sync/hotpath.go
-Scope: Stream `crsql_changes` directly between live instances over the **existing peering mesh** (PEERING.md) for near-real-time convergence, with **relay fallback** (same transport peering uses) for NAT / cross-location. Complements — does not replace — the durable S3 cold path (CLUSTER-05). Hot path is transient; the bucket stays the durable record.
-AC: [ ] two live instances converge via direct mesh in well under a sync interval [ ] relay fallback when direct blocked [ ] cold-path bucket sync still runs [ ] no split-brain (CRDT merge) [ ] unit/integration test
-
-### [SYNC-02] Bucket snapshot/compaction of merged DB state
-`done` · P1 · L · dep: CLUSTER-05, LEASE-01 · parallel: yes — new backend/services/sync/snapshot.go
-Scope: Periodically write a compacted, encrypted (SSE-C, per CLUSTER.md) snapshot `cluster/snapshot/<version>.db.enc` + `cluster/snapshot/latest.json` (covers-up-to changeset version). Exactly one instance compacts at a time, guarded by the **snapshot ownership lease** (`leases/snapshot.json`, LEASE-01) with fencing so a stalled compactor can't clobber a newer snapshot. Prune per-node changesets below the snapshot's covered version.
-AC: [ ] snapshot written + latest.json points at it [ ] compaction guarded by fencing lease (single owner) [ ] sub-snapshot changesets pruned [ ] passphrase never persisted/sent to cloud [ ] unit test
-
-### [SYNC-03] New-instance bootstrap from snapshot + short changeset tail
-`done` · P1 · M · dep: SYNC-02 · parallel: no — backend/services/sync/, backend/services/joinsync/
-Scope: A new/recovering instance downloads `snapshot/latest` → applies the short changeset **tail** after the covered version → live. Bootstrap cost bounded by snapshot age, not cluster age. Wire into the join/sync flow (INIT-08 boot-mode=sync).
-AC: [ ] new instance bootstraps from snapshot + tail (not full log replay) [ ] state matches a peer after bootstrap [ ] integrates with join sync-state phases [ ] go build
-
----
-
-## Area: Concurrency Model
-
-_Design doc: [`roadmap/CONCURRENCY.md`](../roadmap/CONCURRENCY.md)_  ·  _Prefix: `CONC-*` / `COLLAB-*`_
-
-> Why this matters: One profile legitimately live in many locations at once. Conflict policy per data type (LWW / CRDT counter / sequence-CRDT / lease). Apps **opt INTO** concurrency via the manifest: `singleton` (default, safe — active-passive, infra-enforced run-lease, fails over), `replicated` (active-active CRDT merge), `collaborative` (active-active + presence/awareness on the peering/relay hot path). Live collaboration is IN SCOPE. App-manifest doc = APP-MANIFEST.md.
-
-### [CONC-01] Add `concurrency` field to app manifest (singleton|replicated|collaborative)
-`done` · P0 · M · dep: none · parallel: no — backend/services/appnet/manifest.go
-Scope: Extend `AppManifest` with `Concurrency string` (`singleton`|`replicated`|`collaborative`; empty defaults to `singleton`). Validate (mirror the `visibility` validation). Signed with the manifest (integrity-protected — can't be flipped to active-active post-publish). Clarify in comments vs the legacy local `singleton` bool (per-machine instance constraint) vs cluster-wide active-passive policy.
-AC: [ ] field validated to 3 values, default singleton [ ] signed/validated alongside the rest of the manifest [ ] legacy `singleton` bool vs `concurrency` documented [ ] unit test default + validation + round-trip [ ] go build
-
-### [CONC-02] Infra-enforced run-lease for singleton apps (active-passive failover)
-`done` · P0 · L · dep: CONC-01, LEASE-01 · parallel: no — backend/services/appnet/launcher.go, backend/services/lease/
-Scope: For `concurrency: singleton` (the default), gate launch on a per-profile-per-app **run-lease** (`leases/run/<profile>/<app>.json`, TTL ~15–30s, fencing token from LEASE-01). Exactly one instance runs the app for a profile; on holder loss the lease expires and another instance acquires it (clean failover, no split-brain). Renew while running, release on stop.
-AC: [ ] singleton app holds a run-lease, second instance does not launch a duplicate [ ] holder death → lease expiry → failover acquires [ ] fence prevents stalled-then-resumed double-run [ ] TTL 15–30s [ ] go build
-
-### [CONC-03] Per-data-type conflict policy wiring (LWW / counter / sequence / lease)
-`done` · P2 · M · dep: CONC-01, CLUSTER-05 · parallel: yes — new backend/services/concurrency/policy.go
-Scope: Map data kinds to resolution: settings/most → LWW (field-level, already cr-sqlite); counters/quotas → CRDT counter; co-edited docs → sequence/collaborative CRDT; exclusive resources → lease (LEASE-01). Provide a policy registry the stores consult. Extends CLUSTER.md's per-data-type table to the concurrency dimension.
-AC: [ ] policy registry resolves each data kind to its strategy [ ] counters merge additively (no lost increments) [ ] exclusive resources route to a lease [ ] unit test per policy
-
-### [COLLAB-01] Presence/awareness channel on the peering/relay hot path
-`done` · P2 · L · dep: CONC-01, PEER-30 · parallel: yes — new backend/services/peering/presence_awareness.go
-Scope: For `concurrency: collaborative` apps, provide an infra **presence/awareness** channel (who's here, cursors, selections) on the **peering/relay hot path** — ephemeral + fast, NOT the bucket. Keep the two coordination mechanisms separate: exclusion → bucket leases (LEASE-*); real-time presence → this hot path. Builds on the Yjs collab transport (PEER-30).
-AC: [ ] collaborative apps get a presence channel over peering (relay fallback) [ ] presence is ephemeral, never written to the bucket [ ] awareness clears on disconnect [ ] does not route through the lease primitive [ ] go build
-
----
-
-<!-- END-BACKLOG -->
----
-
-## Area: Cloud Login (OS-side)
-
-_Design doc: cross-instance cloud account → OS login + cloud-managed profiles_  ·  _Prefix: `CLOGIN-*`_
-
-> When a user enrolls an instance with Vulos Cloud, the OS gains a **second login mode** alongside the local username/password: a "Cloud account" mode that takes email + password + 2FA and produces an OS session by validating a cloud-signed login token. The cloud is NOT a runtime dependency for login — tokens are validated locally against a baked cloud pubkey, with an offline grace-period cache for "log in when the network is down." Cloud-managed instances treat the cloud as source of truth for the local OS profile (username/password/full name); changes pushed from the cloud apply locally via signed management messages.
-
-### [CLOGIN-01] OS login screen — Cloud account mode (alongside local)
-`done` · P0 · L · dep: INIT-05 · parallel: no — src/auth/Setup.jsx, src/auth/Login.jsx (new), backend/services/auth/cloudlogin.go (new)
-Scope: Add a "Cloud account" path to the OS login screen alongside the existing local username/password. Cloud mode: prompt for cloud email + password + 2FA (or open a local browser to a cloud activation URL — the device-code style flow). On success the OS receives a short-lived cloud-signed login token (account_id + ulid + expires_at, signed by the cloud's login-broker key the OS has baked at enrollment). Validate locally and create an OS session. Local mode is unchanged. Add a toggle in the install wizard so users on cloud-managed instances default to cloud mode (already-enrolled instances detect cloud enrollment at boot).
-AC: [ ] login screen has Cloud/Local toggle [ ] cloud mode validates a cloud-signed token (no live cloud call required if cached creds valid) [ ] local mode unchanged [ ] cloud-enrolled instances default to cloud at install [ ] go build + npm build
-
-### [CLOGIN-02] Cloud-token signature verification + offline grace-period cache
-`done` · P0 · M · dep: CLOGIN-01, SIGN-02 · parallel: yes — new backend/services/auth/cloudtoken.go
-Scope: Library that verifies a cloud-issued login token (Ed25519 signed by the cloud's login-broker pubkey embedded at enrollment) and caches the last successful validation for an offline grace period (default 72h, configurable). When offline + within grace, allow login with the cached token credentials. When offline + past grace, fall back to local username/password or refuse. Fail closed on bad signatures. Reuse `services/signing` Verify primitives.
-AC: [ ] valid signed token → ok [ ] tampered token → reject [ ] expired token → reject [ ] offline + within grace → login allowed via cache [ ] offline + past grace → blocked or local fallback [ ] unit tests
-
-### [CLOGIN-03] Apply cloud-pushed profile updates (username/password/name)
-`done` · P1 · M · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/profile_sync.go
-Scope: Accept signed profile-update messages from the cloud over the existing enrollment/management channel and apply them to the local OS profile (PAM/shadow/passwd; full name; locale). On cloud-managed instances the cloud is the source of truth — local edits get overwritten on the next sync. The message envelope is signed; verify before applying; fail closed. Audit each applied change to a local log.
-AC: [ ] signed profile update applies locally (passwd/shadow updated) [ ] unsigned/tampered message rejected [ ] applied changes audited [ ] cloud disabled → local edits sticky [ ] unit tests
-
-
-### [CLOGIN-04] First-boot — Create Cloud Account flow
-`done` · P0 · L · dep: CLOGIN-01 · parallel: no — src/auth/Setup.jsx, backend/services/auth/cloudsignup.go (new)
-Scope: In the OS install wizard, add a **Create Cloud Account** path alongside "Sign in to Cloud" and "Local only". The form takes email + password (NIST length-first ≥12 chars, breach-checked via HIBP — AUTH-03/06 on the cloud side handle this; show client-side hints), confirm password, and full name. On submit, POST to the cloud `/api/auth/signup`. On success, hand off to CLOGIN-05 (post-signup wizard). On failure (breach, weak, taken), show specific guidance. Local-only mode unchanged. Match Ubuntu's install-flow aesthetic.
-AC: [ ] Install wizard offers Create/Login/Local-only [ ] Create form enforces password requirements client-side + surfaces server errors [ ] Successful signup hands off to CLOGIN-05 [ ] Local-only path unchanged [ ] npm run build passes
-
-### [CLOGIN-05] First-boot — post-signup wizard (2FA setup + email-verify nudge)
-`done` · P0 · L · dep: CLOGIN-04 · parallel: yes — src/auth/Setup.jsx, src/auth/PostSignupWizard.jsx (new)
-Scope: After signup or sign-in during first boot, walk the user through TWO steps before reaching the desktop:
-
-1. **2FA setup (skippable, default-on).** Show "Set up 2FA now (recommended)" with a QR code (rendered from the cloud's `POST /api/auth/totp/enroll` provisioning URI), the 10 recovery codes shown ONCE with a "Copy all" button AND a "Download as .txt" button. Require the user to confirm with a TOTP code before continuing. **Skip** button leaves 2FA disabled (a banner on the desktop nudges them to enable later). Fleet-admin accounts cannot skip (AUTH-09 enforces server-side).
-
-2. **Email verification nudge.** Show "Check your email — enter the code or click the link". A "Resend" link (POST /api/auth/verify-email/resend, rate-limited). User can continue without verifying, but the desktop shows the LAND-07-style banner until they do.
-
-Render a QR code for the TOTP otpauth:// URI (use a tiny pure-JS QR generator OR plain `<canvas>` based renderer; no heavy deps). Recovery codes download = a `.txt` blob with the codes + a clear "store these somewhere safe" header. JSX only.
-AC: [ ] post-signup shows 2FA step with QR + recovery codes (copy + download) [ ] skip allowed for non-admin, blocked for fleet_admin [ ] email-verify nudge step with resend [ ] reaches desktop after both steps (or skips) [ ] npm run build passes
-
-
-### [CLOGIN-06] Device PIN login (TPM-wrapped, lockout, fall-back)
-`done` · P1 · L · dep: CLOGIN-02 · parallel: yes — new backend/services/auth/devicepin.go, src/auth/PinLogin.jsx (new), src/core/Settings.jsx
-Scope: After initial full login (password + 2FA), let the user set a **device-local PIN** (4-8 digits, configurable min). PIN unlocks a session credential wrapped by the TPM where available (sealed to PCR state), falls back to a sealed file under `~/.vulos/auth/pin.bin` (libsodium SecretBox keyed by argon2id(PIN, per-device salt)). Subsequent logins on the SAME device + profile accept the PIN. **Lockout**: 5 wrong PINs → temporary lockout (15 min); 3 lockouts → full re-auth required (password + 2FA). PIN never sent off-device, never to the cloud. Setting/changing the PIN requires the current session to have been opened by full auth (not by PIN). Settings UI to set/change/disable PIN.
-AC: [ ] set PIN from Settings (requires full-auth session) [ ] login with PIN succeeds [ ] 5 wrong → 15-min lockout [ ] 3 lockouts → full re-auth required [ ] PIN material never leaves device [ ] unit tests for argon2/TPM wrap
-
-### [CLOGIN-07] Fingerprint / platform-authenticator unlock (Linux fprintd via PAM)
-`done` · P2 · L · dep: CLOGIN-06 · parallel: yes — new backend/services/auth/fingerprint.go, src/core/Settings.jsx
-Scope: Optional fingerprint unlock via `fprintd` (libfprint) on Linux. Enable in Settings → "Add fingerprint" enrolls the finger using fprintd's D-Bus API; subsequent logins on the lock screen accept a fingerprint match in place of the PIN. The fingerprint unlocks the same TPM-wrapped session credential CLOGIN-06 protects. Hardware-supported only — gracefully hide the feature if no fprintd-known device is present. Configurable per-profile. Falls back to PIN/password if fingerprint fails 3×. Document the hardware support matrix in Settings.
-AC: [ ] Settings shows "Add fingerprint" only when fprintd reports a supported device [ ] enrolled fingerprint unlocks the same credential as PIN [ ] 3× failed fingerprint → PIN/password [ ] disable fingerprint requires full-auth session [ ] no fingerprint data leaves the device
+## Area: Multi-Instance Routing
+
+_Roadmap: ROADMAP.md § Multi-Instance & Account Routing_  ·  _Prefix: `MINST-*`_
+
+> One Vulos account routes and federates many instances: BYO physical devices +
+> optionally Vulos-provisioned cloud instances (fly.io). The cloud control plane
+> knows which instances belong to an account and routes the `{app}--{profile}.{ulid}`
+> subdomain to the right live instance. Vulos's core OS-side value is the networking
+> and data-routing between instances — leaderless cr-sqlite CRDT sync, shared
+> app-registry, coordinated leases.
+
+### [MINST-01] Instance registry: local manifest of all account instances
+`done` · P0 · M · dep: none · parallel: no — internal/multiinstance/registry.go, internal/multiinstance/migrations/0001_instances.sql
+Scope: Create `internal/multiinstance` package. SQLite migration: `instances` table (ulid, display_name, last_seen_at, endpoint_url, ed25519_public_key, role enum(`owner|peer`), status enum(`online|offline|unknown`)). `Registry.Upsert`, `Registry.List`, `Registry.Get`, `Registry.MarkSeen`. Instances are discovered from: (a) the vulos-relay presence feed, (b) manual `POST /api/instances/add` with peer exchange QR code / link, (c) cloud account sync on login. The registry is the source of truth for routing decisions and the CRDT sync peer list.
+AC: [ ] registry CRUD survives restart [ ] Upsert deduplicates by ULID [ ] `go test ./internal/multiinstance/...` passes
+
+### [MINST-02] Cloud-sync: pull instance list from Vulos account on login
+`done` · P0 · M · dep: MINST-01 · parallel: yes — internal/multiinstance/cloudsync.go
+Scope: After the OS device authenticates with the Vulos cloud control plane (CLOGIN-* done), pull the list of instances enrolled under the same account: `GET https://api.vulos.org/api/instances` (auth: device cert). Upsert each instance into the local registry. Subscribe to `wss://api.vulos.org/ws/instances` for real-time presence updates (instance comes online / goes offline). Re-sync on cloud reconnect. Expose `GET /api/instances` on the local OS server returning the merged list.
+AC: [ ] instance list pulled on login and stored in registry [ ] WebSocket presence updates are applied [ ] `GET /api/instances` returns current list [ ] offline mode: uses last-known registry [ ] `go test ./internal/multiinstance/...`
+
+### [MINST-03] App routing: `{app}--{profile}.{ulid}.vulos.net` per instance
+`done` · P0 · M · dep: MINST-01, PUBWEB-02 · parallel: yes — internal/multiinstance/router.go
+Scope: Each instance has a unique ULID. The OS reverse proxy config generator (PUBWEB-02) already handles the current instance's subdomains. Extend it to generate `{app}--{profile}.{ulid}` subdomains for every instance in the registry that has the given app published. The cloud DNS plane routes these to the correct instance's WireGuard/relay endpoint. Locally, `GET /api/routing/apps` returns a table of `{app, ulid, fqdn, instance_display_name}` for all reachable published apps across all account instances.
+AC: [ ] routing table lists apps across all account instances [ ] subdomains resolve to correct instance endpoints (tested with stub DNS) [ ] `go test ./internal/multiinstance/...`
+
+### [MINST-04] App registry sync: cr-sqlite CRDT replication across instances
+`done` · P1 · L · dep: MINST-01 · parallel: no — internal/multiinstance/appsync.go
+Scope: Extend the existing cr-sqlite cluster sync (CLUSTER.md / SYNC.md — already `done`) to include the `app_registry` table in the replicated set. When an app is installed, updated, or uninstalled on any instance, the change propagates via cr-sqlite changesets over the existing sync channel. Conflict resolution: last-write-wins on `app_version` field; `installed` flag merges as boolean OR (install wins over uninstall — uninstall requires quorum of 2 if more than 2 instances). Expose `GET /api/instances/:ulid/apps` for per-instance app inventory.
+AC: [ ] app install on instance A appears in instance B's registry within 5 s (test with two in-process stores) [ ] uninstall conflict resolved by quorum [ ] `go test ./internal/multiinstance/...`
+
+### [MINST-05] Vulos-provisioned cloud instance: fly.io launch from OS dashboard
+`done` · P1 · L · dep: MINST-01, MINST-02 · parallel: yes — apps/dashboard/src/components/NewInstancePanel.jsx, internal/multiinstance/provision.go
+Scope: "New Instance" panel in the Dashboard lets the user spin up a Vulos-provisioned instance on fly.io, billed to their Vulos account. The OS calls `POST https://api.vulos.org/api/instances/provision` (auth: device cert, body: `{region, plan}`). The cloud side launches the fly.io machine, enrolls it under the account, and returns the new instance ULID + endpoint. The new instance appears in the local registry (MINST-01) and is immediately available for app routing (MINST-03). Show provisioning progress (polling `GET /api/instances/:ulid/status`).
+AC: [ ] panel shows region + plan selector [ ] provision call returns ULID within 30 s (stub) [ ] new instance appears in registry [ ] `npm run build` passes for dashboard app
+
+### [MINST-06] Multi-instance notifications: fan-out + dedup
+`done` · P2 · M · dep: MINST-02 · parallel: yes — internal/multiinstance/notifyfanout.go
+Scope: When the OS emits a notification (OS notification system — NOTIFICATIONS.md `done`), fan it out to all online instances via the vulos-relay S2S messaging channel so the user sees it on all their devices. Dedup by `notification_id` (stored in `seen_notifications` SQLite table with 7-day TTL) — each instance delivers the notification to the local UI at most once. Priority mapping: OS P0/P1 notifications fan out immediately; P2/P3 are batched (30-second window, deduplicated before send).
+AC: [ ] notification sent on instance A appears on instance B within 2 s [ ] duplicate delivery prevented by seen table [ ] P2/P3 batching tested [ ] `go test ./internal/multiinstance/...`
+
+### [MINST-07] Instance dashboard: unified view of all account instances
+`done` · P2 · M · dep: MINST-02, MINST-03 · parallel: yes — apps/dashboard/src/components/InstancesPanel.jsx
+Scope: Add an "Instances" section to the OS Dashboard. Shows a card per instance: display name, ULID (truncated), online/offline badge, list of published apps, resource summary (CPU %, RAM — fetched lazily when instance is online). Actions: "Open app on this instance" (navigates to the FQDN), "Rename", "Remove from account" (with confirmation). "Add existing device" flow: generates a QR code / link containing a signed invite token; scanning on the other device adds it to the registry. JSX only.
+AC: [ ] instances list populated from `/api/instances` [ ] online/offline badges update on presence change [ ] "open app" link navigates to correct FQDN [ ] `npm run build` passes for dashboard
 

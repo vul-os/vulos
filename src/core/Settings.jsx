@@ -3,9 +3,11 @@ import { useAuth } from '../auth/AuthProvider'
 import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 import { PamVisibilityControl } from './PublicAppsManager'
+import AIRouterPanel from './settings/AIRouterPanel.jsx'
 
 const sections = [
   { id: 'ai', label: 'AI Assistant' },
+  { id: 'airouter', label: 'AI Router' },
   { id: 'aiapps', label: 'AI Apps' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'wifi', label: 'WiFi' },
@@ -51,6 +53,7 @@ export default function Settings() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6 max-w-2xl">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
+        {active === 'airouter' && <AIRouterPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
         {active === 'appearance' && <AppearanceSettings />}
         {active === 'wifi' && <WiFiSettings />}

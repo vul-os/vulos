@@ -17,6 +17,8 @@ const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 const Authenticator = lazy(() => import('../apps/Authenticator/Authenticator'))
 const Vault = lazy(() => import('../apps/Vault/Vault'))
 const Messages = lazy(() => import('../builtin/peering/Messages'))
+const MailApp = lazy(() => import('../apps/mail/App'))
+const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
 
 const categoryLabels = {
   internet: 'Internet',
@@ -138,8 +140,10 @@ export default function Launchpad() {
       authenticator: () => createElement(Suspense, { fallback: loading }, createElement(Authenticator)),
       vault: () => createElement(Suspense, { fallback: loading }, createElement(Vault)),
       messages: () => createElement(Suspense, { fallback: loading }, createElement(Messages)),
+      mail: () => createElement(Suspense, { fallback: loading }, createElement(MailApp)),
+      dashboard: () => createElement(Suspense, { fallback: loading }, createElement(DashboardApp)),
     }
-    const singletons = new Set(['persona', 'apphub'])
+    const singletons = new Set(['persona', 'apphub', 'dashboard'])
     if (builtins[app.id]) {
       openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtins[app.id](), singleton: singletons.has(app.id) })
       close()

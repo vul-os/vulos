@@ -227,8 +227,13 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
             self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
         elif self.path.startswith("/browse?url="):
             self.handle_browse()
-        elif self.path.startswith("/summarize?url="):
-            self.handle_summarize()
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        # Proxy /api/ai/* to the Vulos OS backend (AIROT-05).
+        if self.path.startswith("/api/ai/"):
+            self.handle_ai_proxy()
         else:
             self.send_error(404)
 
@@ -245,35 +250,53 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_html(f"<html><body style='background:#0a0a0a;color:#e5e5e5;padding:20px'><h2>Error</h2><p>{e}</p></body></html>")
 
-    def handle_summarize(self):
-        url = urllib.parse.unquote(self.path.split("url=", 1)[1])
+    def handle_ai_proxy(self):
+        """Proxy /api/ai/* to the Vulos OS backend and stream the SSE response.
+
+        AIROT-05: The browser frontend POSTs directly to /api/ai/chat on this
+        server; we forward to VULOS_API (the OS backend) and pipe the SSE
+        stream back so the client receives live chunks.
+        """
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b""
+
+        target_url = VULOS_API + self.path
         try:
-            html = _safe_fetch(url, timeout=10)
-            text = re.sub(r"<[^>]+>", " ", html)
-            text = re.sub(r"\s+", " ", text).strip()[:3000]
-
-            ai_req = urllib.request.Request(
-                VULOS_API + "/api/ai/chat",
-                data=json.dumps({"messages": [{"role": "user", "content": f"Summarize this web page in 3 bullet points:\n\n{text}"}], "stream": False}).encode(),
+            req = urllib.request.Request(
+                target_url,
+                data=body if body else None,
                 headers={"Content-Type": "application/json"},
+                method="POST",
             )
-            ai_resp = urllib.request.urlopen(ai_req, timeout=30)
-            ai_data = json.loads(ai_resp.read())
-            summary = ai_data.get("content", "No summary available.")
+            resp = urllib.request.urlopen(req, timeout=120)
 
-            self.send_response(200)
+            self.send_response(resp.status)
+            # Forward relevant headers from the backend response.
+            for key in ("Content-Type", "Cache-Control", "X-Accel-Buffering"):
+                val = resp.headers.get(key)
+                if val:
+                    self.send_header(key, val)
+            self.send_header("Content-Security-Policy", CSP)
+            self.end_headers()
+
+            # Stream response body in 4 KiB chunks.
+            chunk_size = 4096
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                self.wfile.flush()
+
+        except urllib.error.HTTPError as e:
+            body_err = e.read(4096)
+            self.send_response(e.code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Security-Policy", CSP)
             self.end_headers()
-            self.wfile.write(json.dumps({"summary": summary}).encode())
-        except ValueError as e:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Security-Policy", CSP)
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode())
+            self.wfile.write(body_err)
         except Exception as e:
-            self.send_response(500)
+            self.send_response(502)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Security-Policy", CSP)
             self.end_headers()

@@ -1,0 +1,13 @@
+{
+  "id": "assistant",
+  "name": "Assistant",
+  "icon": "◈",
+  "description": "AI assistant — powered by the OS AI Router",
+  "version": "0.1.0",
+  "category": "productivity",
+  "keywords": ["ai", "assistant", "chat", "help"],
+  "author": "Vulos",
+  "license": "MIT",
+  "singleton": true,
+  "permissions": []
+}

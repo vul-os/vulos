@@ -87,6 +87,15 @@ const builtinRegistry = [
     builtin: true,
   },
   {
+    id: 'dashboard',
+    name: 'Dashboard',
+    icon: '◈',
+    description: 'Web publishing toggle and per-app resource usage',
+    keywords: ['dashboard', 'publish', 'web', 'visibility', 'cgroups', 'resources', 'cpu', 'ram', 'public', 'instances', 'devices', 'cloud', 'online', 'offline', 'multiinstance'],
+    category: 'system',
+    builtin: true,
+  },
+  {
     id: 'authenticator',
     name: 'Authenticator',
     icon: '⊛',
@@ -103,6 +112,16 @@ const builtinRegistry = [
     description: 'Password manager & credential store',
     keywords: ['vault', 'password', 'passwords', 'credentials', 'secrets', 'login', 'keychain', 'manager', 'security'],
     category: 'system',
+    builtin: true,
+  },
+
+  {
+    id: 'mail',
+    name: 'Mail',
+    icon: '✉',
+    description: 'Vulos mail — inbox, compose, send, and thread view',
+    keywords: ['mail', 'email', 'inbox', 'compose', 'send', 'vumail', 'messages', 'thread'],
+    category: 'internet',
     builtin: true,
   },
 

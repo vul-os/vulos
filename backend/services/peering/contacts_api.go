@@ -143,6 +143,12 @@ type sendRequestBody struct {
 
 	// Message is an optional intro message (visible to recipient).
 	Message string `json:"message,omitempty"`
+
+	// VumailAddress is the local node's vumail identity address
+	// ("user@vumail.org").  When present it is embedded in the signed
+	// contact-card payload so the recipient can populate their copy of
+	// this contact with our mail address immediately.
+	VumailAddress string `json:"vumail_address,omitempty"`
 }
 
 // handleSendRequest implements POST /api/peering/contacts/request.
@@ -203,9 +209,10 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Build the signed envelope.
 	payload, err := json.Marshal(ContactRequestPayload{
-		DisplayName: body.DisplayName,
-		Message:     body.Message,
-		ServerAddr:  a.myServer,
+		DisplayName:   body.DisplayName,
+		Message:       body.Message,
+		ServerAddr:    a.myServer,
+		VumailAddress: body.VumailAddress,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -495,14 +502,24 @@ func (a *ContactAPI) HandleInboundRequest(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// Populate the vumail address from the signed contact-card payload so the
+	// recipient has the sender's mail address without a separate relay lookup.
+	if payload.VumailAddress != "" {
+		if err := a.store.UpdateVumailAddress(senderID, payload.VumailAddress); err != nil {
+			// Non-fatal: log and continue — the contact is already stored.
+			log.Printf("[peering/contacts] UpdateVumailAddress for %s: %v", senderID, err)
+		}
+	}
+
 	log.Printf("[peering/contacts] inbound contact request from %s (%s)", senderID, payload.ServerAddr)
 
 	// Push a real-time notification to connected browser tabs.
 	a.pushNotification("contact_request", map[string]any{
-		"vula_id":      senderID,
-		"display_name": displayName,
-		"message":      payload.Message,
-		"server":       payload.ServerAddr,
+		"vula_id":        senderID,
+		"display_name":   displayName,
+		"message":        payload.Message,
+		"server":         payload.ServerAddr,
+		"vumail_address": payload.VumailAddress,
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "received"})
