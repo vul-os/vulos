@@ -7,7 +7,7 @@
 //   - signEnvelope / verifyEnvelope.
 //   - Send constructs a signed+encrypted envelope (stub relay server).
 //   - Receive decrypts and stores in mailbox (in-memory store).
-package vumail
+package identity
 
 import (
 	"context"
@@ -24,12 +24,12 @@ import (
 // ─── Keypair generation ───────────────────────────────────────────────────────
 
 func TestGenerateIdentity(t *testing.T) {
-	id, err := GenerateIdentity("alice@vumail.org", "passphrase1")
+	id, err := GenerateIdentity("alice@vulos.org", "passphrase1")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
-	if id.Address != "alice@vumail.org" {
-		t.Errorf("address = %q, want %q", id.Address, "alice@vumail.org")
+	if id.Address != "alice@vulos.org" {
+		t.Errorf("address = %q, want %q", id.Address, "alice@vulos.org")
 	}
 	if id.PublicKeyB64 == "" {
 		t.Error("PublicKeyB64 is empty")
@@ -53,7 +53,7 @@ func TestGenerateIdentity(t *testing.T) {
 
 func TestIdentityEncryptionRoundTrip(t *testing.T) {
 	const pass = "super-secret-passphrase"
-	id, err := GenerateIdentity("bob@vumail.org", pass)
+	id, err := GenerateIdentity("bob@vulos.org", pass)
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestIdentityEncryptionRoundTrip(t *testing.T) {
 }
 
 func TestIdentityUnlockWrongPassphrase(t *testing.T) {
-	id, err := GenerateIdentity("carol@vumail.org", "correct")
+	id, err := GenerateIdentity("carol@vulos.org", "correct")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestIdentityUnlockWrongPassphrase(t *testing.T) {
 // ─── encryptBody / decryptBody round-trip ────────────────────────────────────
 
 func TestBodyEncryptionRoundTrip(t *testing.T) {
-	id, err := GenerateIdentity("dave@vumail.org", "pw")
+	id, err := GenerateIdentity("dave@vulos.org", "pw")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestBodyEncryptionRoundTrip(t *testing.T) {
 }
 
 func TestBodyEncryptionDifferentNonceEachTime(t *testing.T) {
-	id, _ := GenerateIdentity("eve@vumail.org", "pw")
+	id, _ := GenerateIdentity("eve@vulos.org", "pw")
 	pub, _ := id.PublicKey()
 	plain := []byte("same message")
 
@@ -141,7 +141,7 @@ func TestBodyEncryptionDifferentNonceEachTime(t *testing.T) {
 // ─── Sign / Verify envelope ───────────────────────────────────────────────────
 
 func TestEnvelopeSignVerify(t *testing.T) {
-	sender, err := GenerateIdentity("sender@vumail.org", "pw")
+	sender, err := GenerateIdentity("sender@vulos.org", "pw")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestEnvelopeSignVerify(t *testing.T) {
 	env := &mailEnvelope{
 		Version:   1,
 		From:      sender.Address,
-		To:        "recipient@vumail.org",
+		To:        "recipient@vulos.org",
 		Subject:   "Test",
 		Timestamp: "2026-01-01T00:00:00Z",
 	}
@@ -168,11 +168,11 @@ func TestEnvelopeSignVerify(t *testing.T) {
 }
 
 func TestEnvelopeVerifyTampered(t *testing.T) {
-	sender, _ := GenerateIdentity("s@vumail.org", "pw")
+	sender, _ := GenerateIdentity("s@vulos.org", "pw")
 	env := &mailEnvelope{
 		Version:   1,
 		From:      sender.Address,
-		To:        "r@vumail.org",
+		To:        "r@vulos.org",
 		Subject:   "Original",
 		Timestamp: "2026-01-01T00:00:00Z",
 	}
@@ -204,20 +204,20 @@ func TestSend(t *testing.T) {
 	}))
 	defer relay.Close()
 
-	sender, err := GenerateIdentity("alice@vumail.org", "pw")
+	sender, err := GenerateIdentity("alice@vulos.org", "pw")
 	if err != nil {
 		t.Fatalf("GenerateIdentity sender: %v", err)
 	}
-	recipient, err := GenerateIdentity("bob@vumail.org", "pw2")
+	recipient, err := GenerateIdentity("bob@vulos.org", "pw2")
 	if err != nil {
 		t.Fatalf("GenerateIdentity recipient: %v", err)
 	}
 	recipientPub, _ := recipient.PublicKey()
 
 	svc := New(sender, &Store{}, relay.URL)
-	keys := StaticKeyResolver{"bob@vumail.org": recipientPub}
+	keys := StaticKeyResolver{"bob@vulos.org": recipientPub}
 
-	if err := svc.Send(context.Background(), "bob@vumail.org", "Hello", "Test body", keys); err != nil {
+	if err := svc.Send(context.Background(), "bob@vulos.org", "Hello", "Test body", keys); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 
@@ -228,11 +228,11 @@ func TestSend(t *testing.T) {
 	if err := json.Unmarshal(received, &env); err != nil {
 		t.Fatalf("unmarshal relay envelope: %v", err)
 	}
-	if env.From != "alice@vumail.org" {
-		t.Errorf("From = %q, want alice@vumail.org", env.From)
+	if env.From != "alice@vulos.org" {
+		t.Errorf("From = %q, want alice@vulos.org", env.From)
 	}
-	if env.To != "bob@vumail.org" {
-		t.Errorf("To = %q, want bob@vumail.org", env.To)
+	if env.To != "bob@vulos.org" {
+		t.Errorf("To = %q, want bob@vulos.org", env.To)
 	}
 	if env.Signature == "" {
 		t.Error("envelope Signature is empty")
@@ -252,14 +252,14 @@ func TestSendRelayError(t *testing.T) {
 	}))
 	defer relay.Close()
 
-	sender, _ := GenerateIdentity("alice@vumail.org", "pw")
-	recipient, _ := GenerateIdentity("bob@vumail.org", "pw2")
+	sender, _ := GenerateIdentity("alice@vulos.org", "pw")
+	recipient, _ := GenerateIdentity("bob@vulos.org", "pw2")
 	recipientPub, _ := recipient.PublicKey()
 
 	svc := New(sender, &Store{}, relay.URL)
-	keys := StaticKeyResolver{"bob@vumail.org": recipientPub}
+	keys := StaticKeyResolver{"bob@vulos.org": recipientPub}
 
-	if err := svc.Send(context.Background(), "bob@vumail.org", "Hi", "body", keys); err == nil {
+	if err := svc.Send(context.Background(), "bob@vulos.org", "Hi", "body", keys); err == nil {
 		t.Fatal("expected error from relay 500, got nil")
 	}
 }
@@ -267,11 +267,11 @@ func TestSendRelayError(t *testing.T) {
 // ─── Receive primitive ────────────────────────────────────────────────────────
 
 func TestReceive(t *testing.T) {
-	sender, err := GenerateIdentity("alice@vumail.org", "pw")
+	sender, err := GenerateIdentity("alice@vulos.org", "pw")
 	if err != nil {
 		t.Fatalf("GenerateIdentity sender: %v", err)
 	}
-	recipient, err := GenerateIdentity("bob@vumail.org", "pw2")
+	recipient, err := GenerateIdentity("bob@vulos.org", "pw2")
 	if err != nil {
 		t.Fatalf("GenerateIdentity recipient: %v", err)
 	}
@@ -310,8 +310,8 @@ func TestReceive(t *testing.T) {
 }
 
 func TestReceiveTamperedEnvelope(t *testing.T) {
-	sender, _ := GenerateIdentity("a@vumail.org", "pw")
-	recipient, _ := GenerateIdentity("b@vumail.org", "pw2")
+	sender, _ := GenerateIdentity("a@vulos.org", "pw")
+	recipient, _ := GenerateIdentity("b@vulos.org", "pw2")
 	recipientPub, _ := recipient.PublicKey()
 
 	nonce, ct, _ := encryptBody([]byte("secret"), recipientPub)
@@ -339,7 +339,7 @@ func TestReceiveTamperedEnvelope(t *testing.T) {
 
 func TestStoreSQLiteRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "vumail.db")
+	dbPath := filepath.Join(dir, "identity.db")
 
 	store, err := NewStore(dbPath)
 	if err != nil {
@@ -348,7 +348,7 @@ func TestStoreSQLiteRoundTrip(t *testing.T) {
 	defer store.Close()
 
 	// Persist identity.
-	id, err := GenerateIdentity("test@vumail.org", "pw")
+	id, err := GenerateIdentity("test@vulos.org", "pw")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestStoreSQLiteRoundTrip(t *testing.T) {
 	// Persist mail message.
 	msg := &MailMessage{
 		ID:            "test-msg-1",
-		FromAddress:   "other@vumail.org",
+		FromAddress:   "other@vulos.org",
 		Subject:       "Test subject",
 		BodyEncrypted: []byte("encrypted-body"),
 		ReceivedAt:    time.Now().UTC().Truncate(time.Second),
@@ -398,7 +398,7 @@ func TestStoreSQLiteRoundTrip(t *testing.T) {
 	// Persist outbox message.
 	out := &OutboxMessage{
 		ID:            "outbox-1",
-		ToAddress:     "other@vumail.org",
+		ToAddress:     "other@vulos.org",
 		Subject:       "Outgoing",
 		BodyEncrypted: []byte("enc"),
 		QueuedAt:      time.Now().UTC().Truncate(time.Second),

@@ -5,11 +5,13 @@ import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import PostSignupWizard from './PostSignupWizard'
-import VumailStep from '../../apps/setup-wizard/src/steps/VumailStep'
+import VulosAccountStep from '../../apps/setup-wizard/src/steps/VulosAccountStep'
+import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 
-// VUMAIL-01: 'vumail' step is inserted after 'account' and before 'pin'.
-// The step is mandatory — no skip option in production (frozen invariant).
-const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'vumail', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+// IDENTITY-01: 'cloudAccount' step ("Pick your Vulos username") is inserted after 'account' and before 'pin'.
+// 'intent' step ("How will you use Vulos?") is inserted after 'pin' and before 'appearance'.
+// The cloudAccount step is mandatory — no skip option in production (frozen invariant).
+const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'cloudAccount', 'pin', 'intent', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
@@ -155,8 +157,10 @@ export default function Setup({ onComplete }) {
     // NETB-05: install-time account choice
     NETB05_choice: '', // 'local' | 'cloud'
     NETB05_clusterPassphrase: '',
-    // VUMAIL-01: claimed vumail address (populated by VumailStep)
-    vumailAddress: '',
+    // IDENTITY-01: claimed Vulos account address (populated by VulosAccountStep)
+    cloudAccountAddress: '',
+    // INTENT: how the user intends to use Vulos — 'none' | 'personal' | 'business'
+    intent: 'none',
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -357,14 +361,23 @@ export default function Setup({ onComplete }) {
                   }}
                 />
               )}
-              {/* VUMAIL-01: mandatory vumail identity step — no skip in production */}
-              {current === 'vumail' && (
-                <VumailStep
+              {/* IDENTITY-01: mandatory Vulos account username step — no skip in production */}
+              {current === 'cloudAccount' && (
+                <VulosAccountStep
                   config={config}
                   update={update}
                   onNext={next}
                   onPrev={prev}
                   customDomain={config.NETB05_choice === 'cloud' ? undefined : undefined}
+                />
+              )}
+              {/* INTENT: Business / Personal intent + Vulos Cloud add-on pitch */}
+              {current === 'intent' && (
+                <IntentStep
+                  config={config}
+                  update={update}
+                  onNext={next}
+                  onPrev={prev}
                 />
               )}
               {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}

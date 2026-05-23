@@ -64,7 +64,7 @@ function Sidebar({ folder, onFolder, onCompose, unreadCount, identity }) {
         flexShrink: 0,
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#f5f5f5', letterSpacing: '-0.01em' }}>
-          Vumail
+          Vulos Mail
         </div>
         {identity?.address ? (
           <div style={{
@@ -183,7 +183,7 @@ export default function MailApp() {
 
   // Fetch identity once
   useEffect(() => {
-    fetch('/api/vumail/identity')
+    fetch('/api/identity/identity')
       .then(r => r.ok ? r.json() : null)
       .then(data => setIdentity(data))
       .catch(() => setIdentity(null))
@@ -194,7 +194,7 @@ export default function MailApp() {
     setError(null)
     try {
       const params = new URLSearchParams({ folder: f, limit: 200 })
-      const res = await fetch(`/api/vumail/mailbox?${params}`)
+      const res = await fetch(`/api/identity/mailbox?${params}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       const msgs = Array.isArray(data) ? data : (data.messages || [])
@@ -245,7 +245,7 @@ export default function MailApp() {
 
   const handleMarkRead = async (msgId) => {
     try {
-      await fetch(`/api/vumail/mailbox/${msgId}`, {
+      await fetch(`/api/identity/mailbox/${msgId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'read' }),

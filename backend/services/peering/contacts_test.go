@@ -387,20 +387,20 @@ func TestUpdateVumailAddress_Happy(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "") //nolint:errcheck
 
-	if err := cs.UpdateVumailAddress(aliceID, "alice@vumail.org"); err != nil {
+	if err := cs.UpdateVumailAddress(aliceID, "alice@vulos.org"); err != nil {
 		t.Fatalf("UpdateVumailAddress: %v", err)
 	}
 
 	c, _ := cs.Get(aliceID)
-	if c.VumailAddress != "alice@vumail.org" {
-		t.Errorf("vumail_address: got %q want %q", c.VumailAddress, "alice@vumail.org")
+	if c.VumailAddress != "alice@vulos.org" {
+		t.Errorf("vumail_address: got %q want %q", c.VumailAddress, "alice@vulos.org")
 	}
 }
 
 func TestUpdateVumailAddress_Clear(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "")                    //nolint:errcheck
-	cs.UpdateVumailAddress(aliceID, "alice@vumail.org") //nolint:errcheck
+	cs.UpdateVumailAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	// Clearing the address with an empty string should be allowed.
 	if err := cs.UpdateVumailAddress(aliceID, ""); err != nil {
@@ -415,14 +415,14 @@ func TestUpdateVumailAddress_Clear(t *testing.T) {
 
 func TestUpdateVumailAddress_NotFound(t *testing.T) {
 	cs := newTempStore(t)
-	if err := cs.UpdateVumailAddress(aliceID, "alice@vumail.org"); err == nil {
-		t.Fatal("expected error updating vumail address for non-existent contact")
+	if err := cs.UpdateVumailAddress(aliceID, "alice@vulos.org"); err == nil {
+		t.Fatal("expected error updating Vulos identity address for non-existent contact")
 	}
 }
 
 func TestUpdateVumailAddress_EmptyID(t *testing.T) {
 	cs := newTempStore(t)
-	if err := cs.UpdateVumailAddress("", "alice@vumail.org"); err == nil {
+	if err := cs.UpdateVumailAddress("", "alice@vulos.org"); err == nil {
 		t.Fatal("expected error for empty vulaID")
 	}
 }
@@ -431,7 +431,7 @@ func TestUpdateVumailAddress_Persistence(t *testing.T) {
 	dir := t.TempDir()
 	cs, _ := NewContactStore(dir)
 	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
-	cs.UpdateVumailAddress(aliceID, "alice@vumail.org") //nolint:errcheck
+	cs.UpdateVumailAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	cs2, err := NewContactStore(dir)
 	if err != nil {
@@ -441,8 +441,8 @@ func TestUpdateVumailAddress_Persistence(t *testing.T) {
 	if !ok {
 		t.Fatal("Alice not found after reload")
 	}
-	if c.VumailAddress != "alice@vumail.org" {
-		t.Errorf("vumail_address after reload: got %q want %q", c.VumailAddress, "alice@vumail.org")
+	if c.VumailAddress != "alice@vulos.org" {
+		t.Errorf("vumail_address after reload: got %q want %q", c.VumailAddress, "alice@vulos.org")
 	}
 }
 
@@ -451,9 +451,9 @@ func TestUpdateVumailAddress_Persistence(t *testing.T) {
 func TestLookupByVumailAddress_Found(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
-	cs.UpdateVumailAddress(aliceID, "alice@vumail.org") //nolint:errcheck
+	cs.UpdateVumailAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
-	c, ok := cs.LookupByVumailAddress("alice@vumail.org")
+	c, ok := cs.LookupByVumailAddress("alice@vulos.org")
 	if !ok {
 		t.Fatal("LookupByVumailAddress: expected to find alice")
 	}
@@ -465,9 +465,9 @@ func TestLookupByVumailAddress_Found(t *testing.T) {
 func TestLookupByVumailAddress_CaseInsensitive(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
-	cs.UpdateVumailAddress(aliceID, "alice@vumail.org") //nolint:errcheck
+	cs.UpdateVumailAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
-	c, ok := cs.LookupByVumailAddress("Alice@VUMAIL.ORG")
+	c, ok := cs.LookupByVumailAddress("Alice@VULOS.ORG")
 	if !ok {
 		t.Fatal("LookupByVumailAddress: case-insensitive lookup failed")
 	}
@@ -479,18 +479,18 @@ func TestLookupByVumailAddress_CaseInsensitive(t *testing.T) {
 func TestLookupByVumailAddress_NotFound(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "") //nolint:errcheck
-	// No vumail address set.
+	// No Vulos identity address set.
 
-	_, ok := cs.LookupByVumailAddress("alice@vumail.org")
+	_, ok := cs.LookupByVumailAddress("alice@vulos.org")
 	if ok {
-		t.Error("expected not found for contact with no vumail address")
+		t.Error("expected not found for contact with no Vulos identity address")
 	}
 }
 
 func TestLookupByVumailAddress_EmptyAddress(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
-	cs.UpdateVumailAddress(aliceID, "alice@vumail.org") //nolint:errcheck
+	cs.UpdateVumailAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	_, ok := cs.LookupByVumailAddress("")
 	if ok {
@@ -502,9 +502,9 @@ func TestLookupByVumailAddress_ReturnsSnapshot(t *testing.T) {
 	cs := newTempStore(t)
 	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
 	cs.Approve(aliceID, DefaultPerms())                 //nolint:errcheck
-	cs.UpdateVumailAddress(aliceID, "alice@vumail.org") //nolint:errcheck
+	cs.UpdateVumailAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
-	c, ok := cs.LookupByVumailAddress("alice@vumail.org")
+	c, ok := cs.LookupByVumailAddress("alice@vulos.org")
 	if !ok {
 		t.Fatal("not found")
 	}
@@ -513,7 +513,7 @@ func TestLookupByVumailAddress_ReturnsSnapshot(t *testing.T) {
 	c.Permissions = nil
 
 	c2, _ := cs.Get(aliceID)
-	if c2.VumailAddress != "alice@vumail.org" {
+	if c2.VumailAddress != "alice@vulos.org" {
 		t.Errorf("store mutated via snapshot: vumail_address=%q", c2.VumailAddress)
 	}
 	if len(c2.Permissions) == 0 {

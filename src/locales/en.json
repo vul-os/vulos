@@ -20,7 +20,7 @@
   "setup.network.change": "Change",
   "setup.network.skip_ethernet": "Skip — use Ethernet",
 
-  "setup.account.title": "Create your account",
+  "setup.account.title": "Your Vulos account",
   "setup.account.subtitle": "This will be the administrator account",
   "setup.account.name_label": "Your name",
   "setup.account.name_placeholder": "What should we call you?",

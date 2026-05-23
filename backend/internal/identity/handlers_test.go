@@ -1,5 +1,5 @@
-// handlers_test.go — unit tests for the VUMAIL-04 HTTP handlers.
-package vumail
+// handlers_test.go — unit tests for the IDENTITY-04 HTTP handlers.
+package identity
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 // newTestService creates an in-memory Service with a generated identity.
 func newTestService(t *testing.T) *Service {
 	t.Helper()
-	id, err := GenerateIdentity("handler-test@vumail.org", "testpass")
+	id, err := GenerateIdentity("handler-test@vulos.org", "testpass")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -29,11 +29,11 @@ func newTestService(t *testing.T) *Service {
 // newTestServiceWithDB creates a Service backed by a real SQLite DB.
 func newTestServiceWithDB(t *testing.T) *Service {
 	t.Helper()
-	id, err := GenerateIdentity("db-test@vumail.org", "testpass")
+	id, err := GenerateIdentity("db-test@vulos.org", "testpass")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
-	store, err := NewStore(filepath.Join(t.TempDir(), "vumail.db"))
+	store, err := NewStore(filepath.Join(t.TempDir(), "identity.db"))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -55,13 +55,13 @@ func newMux(svc *Service, resolver KeyResolver) *http.ServeMux {
 	return mux
 }
 
-// ─── GET /api/vumail/identity ─────────────────────────────────────────────────
+// ─── GET /api/identity/identity ─────────────────────────────────────────────────
 
 func TestHandleGetIdentity(t *testing.T) {
 	svc := newTestService(t)
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := session(httptest.NewRequest("GET", "/api/vumail/identity", nil))
+	req := session(httptest.NewRequest("GET", "/api/identity/identity", nil))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -72,7 +72,7 @@ func TestHandleGetIdentity(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Address != "handler-test@vumail.org" {
+	if resp.Address != "handler-test@vulos.org" {
 		t.Errorf("address = %q", resp.Address)
 	}
 	if resp.PublicKeyB64 == "" {
@@ -84,7 +84,7 @@ func TestHandleGetIdentityNoSession(t *testing.T) {
 	svc := newTestService(t)
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := httptest.NewRequest("GET", "/api/vumail/identity", nil)
+	req := httptest.NewRequest("GET", "/api/identity/identity", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -93,7 +93,7 @@ func TestHandleGetIdentityNoSession(t *testing.T) {
 	}
 }
 
-// ─── POST /api/vumail/send ────────────────────────────────────────────────────
+// ─── POST /api/identity/send ────────────────────────────────────────────────────
 
 func TestHandleSend(t *testing.T) {
 	// Stub relay.
@@ -106,16 +106,16 @@ func TestHandleSend(t *testing.T) {
 	}))
 	defer relay.Close()
 
-	sender, _ := GenerateIdentity("sender@vumail.org", "pw")
-	recipient, _ := GenerateIdentity("recipient@vumail.org", "pw2")
+	sender, _ := GenerateIdentity("sender@vulos.org", "pw")
+	recipient, _ := GenerateIdentity("recipient@vulos.org", "pw2")
 	recipientPub, _ := recipient.PublicKey()
 
 	svc := New(sender, &Store{}, relay.URL)
-	resolver := StaticKeyResolver{"recipient@vumail.org": recipientPub}
+	resolver := StaticKeyResolver{"recipient@vulos.org": recipientPub}
 	mux := newMux(svc, resolver)
 
-	body, _ := json.Marshal(sendRequest{To: "recipient@vumail.org", Subject: "Hi", Body: "Hello there"})
-	req := session(httptest.NewRequest("POST", "/api/vumail/send", bytes.NewReader(body)))
+	body, _ := json.Marshal(sendRequest{To: "recipient@vulos.org", Subject: "Hi", Body: "Hello there"})
+	req := session(httptest.NewRequest("POST", "/api/identity/send", bytes.NewReader(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -130,7 +130,7 @@ func TestHandleSendMissingFields(t *testing.T) {
 	mux := newMux(svc, StaticKeyResolver{})
 
 	body := `{"to":"x@y.z"}` // missing subject + body
-	req := session(httptest.NewRequest("POST", "/api/vumail/send", strings.NewReader(body)))
+	req := session(httptest.NewRequest("POST", "/api/identity/send", strings.NewReader(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -140,13 +140,13 @@ func TestHandleSendMissingFields(t *testing.T) {
 	}
 }
 
-// ─── GET /api/vumail/mailbox ──────────────────────────────────────────────────
+// ─── GET /api/identity/mailbox ──────────────────────────────────────────────────
 
 func TestHandleListMailboxEmpty(t *testing.T) {
 	svc := newTestServiceWithDB(t)
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := session(httptest.NewRequest("GET", "/api/vumail/mailbox", nil))
+	req := session(httptest.NewRequest("GET", "/api/identity/mailbox", nil))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -173,7 +173,7 @@ func TestHandleListMailboxPagination(t *testing.T) {
 		id, _ := newULID()
 		msg := &MailMessage{
 			ID:            id,
-			FromAddress:   "a@vumail.org",
+			FromAddress:   "a@vulos.org",
 			Subject:       "msg",
 			BodyEncrypted: []byte("encrypted"),
 		}
@@ -184,7 +184,7 @@ func TestHandleListMailboxPagination(t *testing.T) {
 
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := session(httptest.NewRequest("GET", "/api/vumail/mailbox?limit=2&offset=0", nil))
+	req := session(httptest.NewRequest("GET", "/api/identity/mailbox?limit=2&offset=0", nil))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -201,13 +201,13 @@ func TestHandleListMailboxPagination(t *testing.T) {
 	}
 }
 
-// ─── GET /api/vumail/mailbox/{id} ─────────────────────────────────────────────
+// ─── GET /api/identity/mailbox/{id} ─────────────────────────────────────────────
 
 func TestHandleGetMessageNotFound(t *testing.T) {
 	svc := newTestServiceWithDB(t)
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := session(httptest.NewRequest("GET", "/api/vumail/mailbox/no-such-id", nil))
+	req := session(httptest.NewRequest("GET", "/api/identity/mailbox/no-such-id", nil))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -222,7 +222,7 @@ func TestHandleGetMessageFound(t *testing.T) {
 	id, _ := newULID()
 	msg := &MailMessage{
 		ID:            id,
-		FromAddress:   "x@vumail.org",
+		FromAddress:   "x@vulos.org",
 		Subject:       "test",
 		BodyEncrypted: []byte("short"), // < 40 bytes → body returned as ""
 	}
@@ -232,7 +232,7 @@ func TestHandleGetMessageFound(t *testing.T) {
 
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := session(httptest.NewRequest("GET", "/api/vumail/mailbox/"+id, nil))
+	req := session(httptest.NewRequest("GET", "/api/identity/mailbox/"+id, nil))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -246,13 +246,13 @@ func TestHandleGetMessageFound(t *testing.T) {
 	}
 }
 
-// ─── PATCH /api/vumail/mailbox/{id} ───────────────────────────────────────────
+// ─── PATCH /api/identity/mailbox/{id} ───────────────────────────────────────────
 
 func TestHandlePatchMessage(t *testing.T) {
 	svc := newTestServiceWithDB(t)
 
 	id, _ := newULID()
-	if err := svc.store.saveMailMessage(&MailMessage{ID: id, FromAddress: "y@vumail.org", Subject: "s", BodyEncrypted: []byte("e")}); err != nil {
+	if err := svc.store.saveMailMessage(&MailMessage{ID: id, FromAddress: "y@vulos.org", Subject: "s", BodyEncrypted: []byte("e")}); err != nil {
 		t.Fatalf("seed saveMailMessage: %v", err)
 	}
 
@@ -260,7 +260,7 @@ func TestHandlePatchMessage(t *testing.T) {
 
 	readTrue := true
 	body, _ := json.Marshal(patchMessageRequest{Read: &readTrue})
-	req := session(httptest.NewRequest("PATCH", "/api/vumail/mailbox/"+id, bytes.NewReader(body)))
+	req := session(httptest.NewRequest("PATCH", "/api/identity/mailbox/"+id, bytes.NewReader(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -279,13 +279,13 @@ func TestHandlePatchMessage(t *testing.T) {
 func TestHandlePatchMessageNoFields(t *testing.T) {
 	svc := newTestServiceWithDB(t)
 	id, _ := newULID()
-	if err := svc.store.saveMailMessage(&MailMessage{ID: id, FromAddress: "z@vumail.org", Subject: "s", BodyEncrypted: []byte("e")}); err != nil {
+	if err := svc.store.saveMailMessage(&MailMessage{ID: id, FromAddress: "z@vulos.org", Subject: "s", BodyEncrypted: []byte("e")}); err != nil {
 		t.Fatalf("seed saveMailMessage: %v", err)
 	}
 
 	mux := newMux(svc, StaticKeyResolver{})
 
-	req := session(httptest.NewRequest("PATCH", "/api/vumail/mailbox/"+id, strings.NewReader("{}")))
+	req := session(httptest.NewRequest("PATCH", "/api/identity/mailbox/"+id, strings.NewReader("{}")))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -303,7 +303,7 @@ func seedMessage(t *testing.T, store *Store, id, from, subject string) {
 	}
 }
 
-// ─── POST /api/vumail/identity/rotate ────────────────────────────────────────
+// ─── POST /api/identity/identity/rotate ────────────────────────────────────────
 
 func TestHandleRotateIdentity(t *testing.T) {
 	// Stub relay that accepts PUT /keys/:address.
@@ -312,8 +312,8 @@ func TestHandleRotateIdentity(t *testing.T) {
 	}))
 	defer relay.Close()
 
-	id, _ := GenerateIdentity("rotate-test@vumail.org", "pw")
-	store, _ := NewStore(filepath.Join(t.TempDir(), "vumail.db"))
+	id, _ := GenerateIdentity("rotate-test@vulos.org", "pw")
+	store, _ := NewStore(filepath.Join(t.TempDir(), "identity.db"))
 	defer store.Close()
 	svc := New(id, store, relay.URL)
 
@@ -321,7 +321,7 @@ func TestHandleRotateIdentity(t *testing.T) {
 
 	mux := newMux(svc, StaticKeyResolver{})
 	body, _ := json.Marshal(rotateRequest{Passphrase: "newpass"})
-	req := session(httptest.NewRequest("POST", "/api/vumail/identity/rotate", bytes.NewReader(body)))
+	req := session(httptest.NewRequest("POST", "/api/identity/identity/rotate", bytes.NewReader(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -334,7 +334,7 @@ func TestHandleRotateIdentity(t *testing.T) {
 	if resp.PublicKeyB64 == origPub {
 		t.Error("public key unchanged after rotate")
 	}
-	if resp.Address != "rotate-test@vumail.org" {
+	if resp.Address != "rotate-test@vulos.org" {
 		t.Errorf("address = %q", resp.Address)
 	}
 }
@@ -449,12 +449,12 @@ func TestHandleSend_RateLimit_HTTP(t *testing.T) {
 	}))
 	defer relay.Close()
 
-	sender, _ := GenerateIdentity("rl-sender@vumail.org", "pw")
-	recipient, _ := GenerateIdentity("rl-recipient@vumail.org", "pw2")
+	sender, _ := GenerateIdentity("rl-sender@vulos.org", "pw")
+	recipient, _ := GenerateIdentity("rl-recipient@vulos.org", "pw2")
 	recipientPub, _ := recipient.PublicKey()
 
 	svc := New(sender, &Store{}, relay.URL)
-	resolver := StaticKeyResolver{"rl-recipient@vumail.org": recipientPub}
+	resolver := StaticKeyResolver{"rl-recipient@vulos.org": recipientPub}
 
 	mux := http.NewServeMux()
 	h := &Handlers{
@@ -466,15 +466,15 @@ func TestHandleSend_RateLimit_HTTP(t *testing.T) {
 			buckets: make(map[string]*sendBucket),
 		},
 	}
-	mux.HandleFunc("POST /api/vumail/send", h.handleSend)
+	mux.HandleFunc("POST /api/identity/send", h.handleSend)
 
 	sendOnce := func() int {
 		body, _ := json.Marshal(sendRequest{
-			To:      "rl-recipient@vumail.org",
+			To:      "rl-recipient@vulos.org",
 			Subject: "Hi",
 			Body:    "Hello",
 		})
-		req := session(httptest.NewRequest("POST", "/api/vumail/send", bytes.NewReader(body)))
+		req := session(httptest.NewRequest("POST", "/api/identity/send", bytes.NewReader(body)))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 		mux.ServeHTTP(rr, req)
@@ -490,11 +490,11 @@ func TestHandleSend_RateLimit_HTTP(t *testing.T) {
 
 	// 3rd request must be rate-limited.
 	body, _ := json.Marshal(sendRequest{
-		To:      "rl-recipient@vumail.org",
+		To:      "rl-recipient@vulos.org",
 		Subject: "Hi",
 		Body:    "Hello",
 	})
-	req := session(httptest.NewRequest("POST", "/api/vumail/send", bytes.NewReader(body)))
+	req := session(httptest.NewRequest("POST", "/api/identity/send", bytes.NewReader(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)

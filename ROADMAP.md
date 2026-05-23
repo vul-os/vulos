@@ -18,17 +18,17 @@ The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert
 
 ---
 
-## 2. Identity — Mandatory Vulos Mail (vumail)
+## 2. Identity — Vulos Mail Identity
 
-At install/onboarding every user creates or claims a **Vulos mail identity (vumail)**. There is no external email provider connected at OS level. The vumail identity is the account's persistent, portable address across the Vulos ecosystem.
+At install/onboarding every user creates or claims a **Vulos mail identity**. There is no external email provider connected at OS level. The Vulos mail identity is the account's persistent, portable address across the Vulos ecosystem.
 
 The mail identity cross-references:
 - **vulos-mail** (OSS mail server) — the SMTP/IMAP backend that handles actual mail delivery, peering authentication, and notification routing.
-- **vulos-relay** — handles relay and peering for instances behind NAT; the relay server is the transport layer for vumail delivery when direct instance-to-instance is blocked.
+- **vulos-relay** — handles relay and peering for instances behind NAT; the relay server is the transport layer for Vulos Mail delivery when direct instance-to-instance is blocked.
 
-The vumail identity also anchors the Ed25519 peering keypair (PEERING.md), so one identity covers messaging, notifications, mail, and peer trust — no separate accounts.
+The Vulos mail identity also anchors the Ed25519 peering keypair (PEERING.md), so one identity covers messaging, notifications, mail, and peer trust — no separate accounts.
 
-**Outstanding:** vumail provisioning in the first-boot wizard; tie the peering identity email-verification flow to vumail rather than external addresses; document the vulos-mail/vulos-relay boundary.
+**Outstanding:** Vulos account provisioning in the first-boot wizard; tie the peering identity email-verification flow to Vulos Mail rather than external addresses; document the vulos-mail/vulos-relay boundary.
 
 ---
 
@@ -109,7 +109,7 @@ Multiple instances share state via cr-sqlite CRDTs over S3/MinIO. No primary nod
 
 Users can publish apps to a public domain from their instance. The visibility system (`private | local | public`) lives in the app manifest and is enforced by the reverse proxy.
 
-**Resource governance:** OS sync, vumail, and core system services hold a protected cgroup reservation that no webapp can starve. Published webapps receive a fair share of the remaining headroom. The reservation is enforced by cgroups at the OS level — not by app cooperation.
+**Resource governance:** OS sync, Vulos Mail, and core system services hold a protected cgroup reservation that no webapp can starve. Published webapps receive a fair share of the remaining headroom. The reservation is enforced by cgroups at the OS level — not by app cooperation.
 
 **Edge cache:** published apps are served through an edge cache. The cache is transparent to the app; invalidation is triggered by the app's publish toggle. Bandwidth monitoring and auto-disable on low-power/mobile-data conditions protect users from accidental overuse.
 
@@ -135,7 +135,7 @@ Every Vulos instance is a server. Direct communication between instances uses Ed
 
 **Extensions (advanced, designed):** relay peers (offline delivery via trusted mutual contacts or TEE-backed relays); cluster anycast (multiple endpoints per identity for HA); signed feeds (append-only public/link publishing); gossip protocol (O(log N) fan-out for large groups); MLS group encryption (RFC 9420, O(1) encrypt for N-member groups); ring signatures (anonymous group participation); ZK discovery (find peers by domain/location without revealing identity); compliance extensions (threshold key escrow, ZK audit proofs, legal hold).
 
-**Notifications:** structured, prioritized (low/normal/high/critical), signed, TTL-based. Per-contact permission granularity. DND with schedule and per-contact overrides. Inline action buttons. The notification system feeds vumail alerts, peering events, and system alerts through one pipe.
+**Notifications:** structured, prioritized (low/normal/high/critical), signed, TTL-based. Per-contact permission granularity. DND with schedule and per-contact overrides. Inline action buttons. The notification system feeds Vulos Mail alerts, peering events, and system alerts through one pipe.
 
 ---
 
@@ -145,7 +145,7 @@ Built-in apps that ship with the OS — no streaming, no apt packages. They open
 
 **Shipped:** Notes (knowledge base + Recall indexing), Gallery (photos/video organized by Recall), Smart Browser (ad-free + AI summaries), Calculator, Calendar, Weather, Clock, Text Editor (CodeMirror 6), PDF Viewer (PDF.js), Music Player, Video Player, Image Editor, Screenshot/Screen Capture, Voice Recorder, Camera, Maps (Leaflet + OSM).
 
-**Outstanding:** Docs (TipTap rich-text word processor), Sheets (spreadsheet), Slides (presentation), Email client (IMAP/SMTP, or integrate with vumail), Contacts (vCard + CardDAV).
+**Outstanding:** Docs (TipTap rich-text word processor), Sheets (spreadsheet), Slides (presentation), Email client (IMAP/SMTP, or integrate with Vulos Mail), Contacts (vCard + CardDAV).
 
 Every default app can integrate with the AI router: Docs gets summarize/rewrite/translate, Sheets gets formula generation, Email gets draft/summarize, Calendar gets scheduling inference, Text Editor gets code explanation/refactor.
 
@@ -224,7 +224,7 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 
 **Shipped:** full security audit of backend services, sandbox isolation review, auth middleware hardening, rate limiting, dependency scanning CI, container image scanning.
 
-**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, vumail); ZK audit proofs for compliance extensions.
+**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, Vulos Mail); ZK audit proofs for compliance extensions.
 
 ---
 
@@ -245,3 +245,31 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 - **AI providers:** pluggable (Ollama default, Claude, OpenAI, any OpenAI-compatible endpoint). No vendor lock-in.
 - **Trust:** security from signing, not access control. Public bucket + hard-baked key. Forkable.
 - **Self-hostable:** every service has a self-hosted path. Cloud is an optional convenience, never a correctness requirement.
+
+---
+
+## Future work
+
+### OS app wrappers for office / spaces / calendar / meet
+Add installable OS app wrappers for `vulos-office` surfaces (docs, sheets, slides, spaces,
+calendar, meet) following the existing `vulos/apps/mail/` pattern. Each app wrapper registers
+with the OS launcher, gets a `{app}--{profile}.{ulid}.vulos.org` subdomain, and integrates
+with the OS notification and session system. Wrappers are thin JSX shells — the app logic
+lives in the respective repos.
+
+### airouter mail-specific endpoints
+`airouter` already ships smart-compose, summarize, reply-suggestions, and extract-actions for
+mail. Confirm these endpoints are reflected in ROADMAP.md §3 (AI Router) and that the mail
+app wrapper calls them via the standard router path. No new implementation needed if already
+shipped — verify and update the roadmap status marker.
+
+### LLM phishing classifier endpoint via airouter
+Add a phishing / malicious-link classification endpoint to `airouter`. Mail and browser call
+this endpoint before rendering external links or attachments. The classifier runs on a small
+local model (Ollama) with a fallback to the cloud-billed path. Returns a risk score +
+confidence + suggested action (show/warn/block). Feeds the URL safety feeds in `vulos-mail`.
+
+### vumail → identity package rename (completed)
+The `vumail` package has been renamed to `identity` (`apps/mail/`, `backend/internal/identity/`).
+`vulos` identity. Update all `@vulos.org` references visible to the OS user to `@vulos.org`.
+Coordinate with vulos-cloud and vulos-mail repo renames.

@@ -1,6 +1,6 @@
-// Package vumail implements the OS-side Vulos mail identity primitives (VUMAIL-02).
+// Package identity implements the OS-side Vulos mail identity primitives (IDENTITY-02).
 //
-// Every Vulos instance has exactly one vumail identity: a `user@vumail.org`
+// Every Vulos instance has exactly one Vulos identity: a `user@vulos.org`
 // address (or `user@custom-domain` for self-hosted) backed by an Ed25519
 // keypair. The private key is encrypted at rest using XChaCha20-Poly1305
 // with a key derived from the OS keyring passphrase via Argon2id.
@@ -14,9 +14,9 @@
 //
 // What this package does NOT do:
 //   - It does not run the mail server (that is vulos-mail, a separate repo).
-//   - It does not open HTTP routes (that is VUMAIL-04, routes_vumail.go).
-//   - It does not maintain the relay WebSocket subscription (that is VUMAIL-05).
-package vumail
+//   - It does not open HTTP routes (that is IDENTITY-04, handlers.go).
+//   - It does not maintain the relay WebSocket subscription (that is IDENTITY-05).
+package identity
 
 import (
 	"bytes"
@@ -51,11 +51,11 @@ const (
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
-// Identity holds the vumail address and the Ed25519 keypair.
+// Identity holds the Vulos account address and the Ed25519 keypair.
 // The private key is stored encrypted (PrivateKeyEnc); Unlock() decrypts it
 // into priv for in-memory use.
 type Identity struct {
-	// Address is the vumail address, e.g. "alice@vumail.org".
+	// Address is the Vulos account address, e.g. "alice@vulos.org".
 	Address string `json:"address"`
 
 	// PublicKeyB64 is the base64-standard-encoded 32-byte Ed25519 public key.
@@ -73,10 +73,10 @@ type Identity struct {
 func (id *Identity) PublicKey() (ed25519.PublicKey, error) {
 	b, err := base64.StdEncoding.DecodeString(id.PublicKeyB64)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: decode public key: %w", err)
+		return nil, fmt.Errorf("identity: decode public key: %w", err)
 	}
 	if len(b) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("vumail: public key length %d, want %d", len(b), ed25519.PublicKeySize)
+		return nil, fmt.Errorf("identity: public key length %d, want %d", len(b), ed25519.PublicKeySize)
 	}
 	return ed25519.PublicKey(b), nil
 }
@@ -86,7 +86,7 @@ func (id *Identity) PublicKey() (ed25519.PublicKey, error) {
 func (id *Identity) Unlock(passphrase string) error {
 	priv, err := decryptPrivKey(id.PrivateKeyEnc, passphrase)
 	if err != nil {
-		return fmt.Errorf("vumail: unlock identity: %w", err)
+		return fmt.Errorf("identity: unlock identity: %w", err)
 	}
 	id.priv = priv
 	return nil
@@ -120,10 +120,10 @@ type mailEnvelope struct {
 	// Version identifies the envelope format.
 	Version int `json:"version"`
 
-	// From is the sender's vumail address.
+	// From is the sender's Vulos account address.
 	From string `json:"from"`
 
-	// To is the recipient's vumail address.
+	// To is the recipient's Vulos account address.
 	To string `json:"to"`
 
 	// Subject is the plaintext subject line (not sensitive).
@@ -146,7 +146,7 @@ type mailEnvelope struct {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
-// Service is the vumail service: it holds the active identity and store,
+// Service is the identity service: it holds the active identity and store,
 // and exposes Send and Receive primitives.
 type Service struct {
 	identity *Identity
@@ -179,17 +179,17 @@ func New(identity *Identity, store *Store, relayURL string) *Service {
 // Store.saveIdentity and unlocked later with Identity.Unlock(passphrase).
 func GenerateIdentity(address, passphrase string) (*Identity, error) {
 	if address == "" {
-		return nil, errors.New("vumail: address must not be empty")
+		return nil, errors.New("identity: address must not be empty")
 	}
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: generate key: %w", err)
+		return nil, fmt.Errorf("identity: generate key: %w", err)
 	}
 
 	enc, err := encryptPrivKey(priv, passphrase)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: encrypt private key: %w", err)
+		return nil, fmt.Errorf("identity: encrypt private key: %w", err)
 	}
 
 	id := &Identity{
@@ -211,22 +211,22 @@ func GenerateIdentity(address, passphrase string) (*Identity, error) {
 // for production use, or a stub in tests.
 func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResolver KeyResolver) error {
 	if svc.identity == nil {
-		return errors.New("vumail: no identity configured")
+		return errors.New("identity: no identity configured")
 	}
 	if svc.identity.priv == nil {
-		return errors.New("vumail: identity is locked — call Unlock first")
+		return errors.New("identity: identity is locked — call Unlock first")
 	}
 
 	// 1. Resolve recipient's public key.
 	recipientPub, err := keyResolver.LookupKey(ctx, to)
 	if err != nil {
-		return fmt.Errorf("vumail: resolve recipient key for %q: %w", to, err)
+		return fmt.Errorf("identity: resolve recipient key for %q: %w", to, err)
 	}
 
 	// 2. Encrypt body to recipient.
 	nonce, ciphertext, err := encryptBody([]byte(body), recipientPub)
 	if err != nil {
-		return fmt.Errorf("vumail: encrypt body: %w", err)
+		return fmt.Errorf("identity: encrypt body: %w", err)
 	}
 
 	// 3. Build envelope.
@@ -242,13 +242,13 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 
 	// 4. Sign envelope.
 	if err := signEnvelope(&env, svc.identity.priv); err != nil {
-		return fmt.Errorf("vumail: sign envelope: %w", err)
+		return fmt.Errorf("identity: sign envelope: %w", err)
 	}
 
 	// 5. Persist sender copy to outbox.
 	msgID, err := newULID()
 	if err != nil {
-		return fmt.Errorf("vumail: generate outbox id: %w", err)
+		return fmt.Errorf("identity: generate outbox id: %w", err)
 	}
 	// Store an encrypted copy for the sender (using sender's own key for the copy).
 	senderPub, err := svc.identity.PublicKey()
@@ -257,7 +257,7 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 	}
 	_, senderCipher, err := encryptBody([]byte(body), senderPub)
 	if err != nil {
-		return fmt.Errorf("vumail: encrypt sender copy: %w", err)
+		return fmt.Errorf("identity: encrypt sender copy: %w", err)
 	}
 	outMsg := &OutboxMessage{
 		ID:            msgID,
@@ -268,19 +268,19 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 		Status:        "queued",
 	}
 	if err := svc.store.saveOutboxMessage(outMsg); err != nil {
-		log.Printf("[vumail] send: save outbox: %v", err)
+		log.Printf("[identity] send: save outbox: %v", err)
 	}
 
 	// 6. POST to relay.
 	payload, err := json.Marshal(env)
 	if err != nil {
-		return fmt.Errorf("vumail: marshal envelope: %w", err)
+		return fmt.Errorf("identity: marshal envelope: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		svc.relayURL+"/api/mail/deliver", bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("vumail: build relay request: %w", err)
+		return fmt.Errorf("identity: build relay request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -289,7 +289,7 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 		// Update status to failed.
 		outMsg.Status = "failed"
 		_ = svc.store.saveOutboxMessage(outMsg)
-		return fmt.Errorf("vumail: relay deliver: %w", err)
+		return fmt.Errorf("identity: relay deliver: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -297,7 +297,7 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 		body2, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		outMsg.Status = "failed"
 		_ = svc.store.saveOutboxMessage(outMsg)
-		return fmt.Errorf("vumail: relay returned %d: %s", resp.StatusCode, body2)
+		return fmt.Errorf("identity: relay returned %d: %s", resp.StatusCode, body2)
 	}
 
 	// Mark sent.
@@ -305,7 +305,7 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 	outMsg.SentAt = time.Now().UTC()
 	_ = svc.store.saveOutboxMessage(outMsg)
 
-	log.Printf("[vumail] sent message from %s to %s", svc.identity.Address, to)
+	log.Printf("[identity] sent message from %s to %s", svc.identity.Address, to)
 	return nil
 }
 
@@ -321,33 +321,33 @@ func (svc *Service) Send(ctx context.Context, to, subject, body string, keyResol
 // signature verification). Pass nil to skip verification (testing only).
 func (svc *Service) Receive(ctx context.Context, envelopeJSON []byte, senderPubKey ed25519.PublicKey) error {
 	if svc.identity == nil {
-		return errors.New("vumail: no identity configured")
+		return errors.New("identity: no identity configured")
 	}
 	if svc.identity.priv == nil {
-		return errors.New("vumail: identity is locked — call Unlock first")
+		return errors.New("identity: identity is locked — call Unlock first")
 	}
 
 	// 1. Parse envelope.
 	var env mailEnvelope
 	if err := json.Unmarshal(envelopeJSON, &env); err != nil {
-		return fmt.Errorf("vumail: parse inbound envelope: %w", err)
+		return fmt.Errorf("identity: parse inbound envelope: %w", err)
 	}
 
 	// 2. Verify signature (when public key is provided).
 	if senderPubKey != nil {
 		if err := verifyEnvelope(&env, senderPubKey); err != nil {
-			return fmt.Errorf("vumail: envelope signature invalid: %w", err)
+			return fmt.Errorf("identity: envelope signature invalid: %w", err)
 		}
 	}
 
 	// 3. Decode ciphertext and nonce.
 	ciphertext, err := base64.StdEncoding.DecodeString(env.BodyCiphertext)
 	if err != nil {
-		return fmt.Errorf("vumail: decode body ciphertext: %w", err)
+		return fmt.Errorf("identity: decode body ciphertext: %w", err)
 	}
 	nonce, err := base64.StdEncoding.DecodeString(env.SenderNonce)
 	if err != nil {
-		return fmt.Errorf("vumail: decode nonce: %w", err)
+		return fmt.Errorf("identity: decode nonce: %w", err)
 	}
 
 	// 4. Derive symmetric key from recipient's private key and decrypt.
@@ -357,7 +357,7 @@ func (svc *Service) Receive(ctx context.Context, envelopeJSON []byte, senderPubK
 	}
 	plaintext, err := decryptBody(ciphertext, nonce, recipientPub, svc.identity.priv)
 	if err != nil {
-		return fmt.Errorf("vumail: decrypt body: %w", err)
+		return fmt.Errorf("identity: decrypt body: %w", err)
 	}
 
 	// 5. Re-encrypt with recipient key for storage (same key — just persist
@@ -367,7 +367,7 @@ func (svc *Service) Receive(ctx context.Context, envelopeJSON []byte, senderPubK
 	// 6. Persist to mailbox.
 	msgID, err := newULID()
 	if err != nil {
-		return fmt.Errorf("vumail: generate mailbox id: %w", err)
+		return fmt.Errorf("identity: generate mailbox id: %w", err)
 	}
 	msg := &MailMessage{
 		ID:            msgID,
@@ -378,10 +378,10 @@ func (svc *Service) Receive(ctx context.Context, envelopeJSON []byte, senderPubK
 		Read:          false,
 	}
 	if err := svc.store.saveMailMessage(msg); err != nil {
-		return fmt.Errorf("vumail: store inbound message: %w", err)
+		return fmt.Errorf("identity: store inbound message: %w", err)
 	}
 
-	log.Printf("[vumail] received message from %s (id=%s)", env.From, msgID)
+	log.Printf("[identity] received message from %s (id=%s)", env.From, msgID)
 	return nil
 }
 
@@ -389,10 +389,10 @@ func (svc *Service) Receive(ctx context.Context, envelopeJSON []byte, senderPubK
 // private key. This is the counterpart to the encryption performed in Send/Receive.
 func (svc *Service) DecryptMessageBody(bodyEncrypted, nonce []byte) ([]byte, error) {
 	if svc.identity == nil {
-		return nil, errors.New("vumail: no identity configured")
+		return nil, errors.New("identity: no identity configured")
 	}
 	if svc.identity.priv == nil {
-		return nil, errors.New("vumail: identity is locked — call Unlock first")
+		return nil, errors.New("identity: identity is locked — call Unlock first")
 	}
 	recipientPub, err := svc.identity.PublicKey()
 	if err != nil {
@@ -403,7 +403,7 @@ func (svc *Service) DecryptMessageBody(bodyEncrypted, nonce []byte) ([]byte, err
 
 // ─── KeyResolver interface ────────────────────────────────────────────────────
 
-// KeyResolver resolves a vumail address to an Ed25519 public key.
+// KeyResolver resolves a Vulos account address to an Ed25519 public key.
 type KeyResolver interface {
 	LookupKey(ctx context.Context, address string) (ed25519.PublicKey, error)
 }
@@ -415,7 +415,7 @@ type StaticKeyResolver map[string]ed25519.PublicKey
 func (m StaticKeyResolver) LookupKey(_ context.Context, address string) (ed25519.PublicKey, error) {
 	k, ok := m[address]
 	if !ok {
-		return nil, fmt.Errorf("vumail: key not found for %q", address)
+		return nil, fmt.Errorf("identity: key not found for %q", address)
 	}
 	return k, nil
 }
@@ -459,7 +459,7 @@ func encryptPrivKey(priv ed25519.PrivateKey, passphrase string) (string, error) 
 func decryptPrivKey(enc, passphrase string) (ed25519.PrivateKey, error) {
 	raw, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: decode priv blob: %w", err)
+		return nil, fmt.Errorf("identity: decode priv blob: %w", err)
 	}
 	type blob struct {
 		Salt       []byte `json:"salt"`
@@ -468,7 +468,7 @@ func decryptPrivKey(enc, passphrase string) (ed25519.PrivateKey, error) {
 	}
 	var b blob
 	if err := json.Unmarshal(raw, &b); err != nil {
-		return nil, fmt.Errorf("vumail: unmarshal priv blob: %w", err)
+		return nil, fmt.Errorf("identity: unmarshal priv blob: %w", err)
 	}
 
 	key := argon2.IDKey([]byte(passphrase), b.Salt, argon2Time, argon2Memory, argon2Threads, argon2KeyLen)
@@ -479,10 +479,10 @@ func decryptPrivKey(enc, passphrase string) (ed25519.PrivateKey, error) {
 	}
 	plain, err := aead.Open(nil, b.Nonce, b.Ciphertext, nil)
 	if err != nil {
-		return nil, errors.New("vumail: decrypt private key failed (wrong passphrase?)")
+		return nil, errors.New("identity: decrypt private key failed (wrong passphrase?)")
 	}
 	if len(plain) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("vumail: decrypted key length %d, want %d", len(plain), ed25519.PrivateKeySize)
+		return nil, fmt.Errorf("identity: decrypted key length %d, want %d", len(plain), ed25519.PrivateKeySize)
 	}
 	return ed25519.PrivateKey(plain), nil
 }
@@ -526,7 +526,7 @@ func encryptBody(plaintext []byte, recipientPub ed25519.PublicKey) (nonce, ciphe
 // X25519 DH; currently we use pub directly as the KDF input for simplicity).
 func decryptBody(ciphertext, packedNonce []byte, recipientPub ed25519.PublicKey, _ ed25519.PrivateKey) ([]byte, error) {
 	if len(packedNonce) < 16+24 {
-		return nil, fmt.Errorf("vumail: packed nonce too short (%d)", len(packedNonce))
+		return nil, fmt.Errorf("identity: packed nonce too short (%d)", len(packedNonce))
 	}
 	salt := packedNonce[:16]
 	xcNonce := packedNonce[16:]
@@ -540,7 +540,7 @@ func decryptBody(ciphertext, packedNonce []byte, recipientPub ed25519.PublicKey,
 
 	plain, err := aead.Open(nil, xcNonce, ciphertext, nil)
 	if err != nil {
-		return nil, errors.New("vumail: decrypt body failed")
+		return nil, errors.New("identity: decrypt body failed")
 	}
 	return plain, nil
 }
@@ -564,7 +564,7 @@ func signEnvelope(env *mailEnvelope, priv ed25519.PrivateKey) error {
 func verifyEnvelope(env *mailEnvelope, senderPub ed25519.PublicKey) error {
 	sig := env.Signature
 	if sig == "" {
-		return errors.New("vumail: envelope signature absent")
+		return errors.New("identity: envelope signature absent")
 	}
 	env.Signature = ""
 	canonical, err := json.Marshal(env)
@@ -575,10 +575,10 @@ func verifyEnvelope(env *mailEnvelope, senderPub ed25519.PublicKey) error {
 
 	sigBytes, err := base64.RawURLEncoding.DecodeString(sig)
 	if err != nil {
-		return fmt.Errorf("vumail: decode signature: %w", err)
+		return fmt.Errorf("identity: decode signature: %w", err)
 	}
 	if !ed25519.Verify(senderPub, canonical, sigBytes) {
-		return errors.New("vumail: signature mismatch")
+		return errors.New("identity: signature mismatch")
 	}
 	return nil
 }

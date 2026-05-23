@@ -13,7 +13,7 @@ STRIDE pass. Last updated: 2026-05-23.
 [Vulos Frontend (JSX SPA)] <--- TLS ---> [Backend API (Go)]
         |                                       |
         v                                       v
-[App Sandbox]                         [vumail Identity Store]
+[App Sandbox]                         [Vulos Identity Store]
         |                                       |
         v                                       v
 [OS Shell / init / firstboot]         [Signed squashfs / dm-verity]
@@ -52,7 +52,7 @@ Trust boundaries:
 
 ---
 
-## Component 2: vumail Identity Management
+## Component 2: Vulos Mail Identity Management
 
 ### Trust boundaries
 - Identity data (email address, keys) stored in local SQLite, accessed only by backend API.

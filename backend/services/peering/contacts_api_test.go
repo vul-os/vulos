@@ -288,10 +288,10 @@ func TestHandleInboundRequest_Idempotent(t *testing.T) {
 	}
 }
 
-// ─── Vumail address in peering contact card ───────────────────────────────────
+// ─── Vulos address in peering contact card ──────────────────────────────────────
 
 // TestHandleInboundRequest_VumailAddressPopulated verifies that when a contact
-// request arrives with a vumail_address in the payload, the store entry is
+// request arrives with a vumail_address in the payload (vumail_address JSON key kept for wire compat), the store entry is
 // updated with that address so the contact is immediately reachable by mail.
 func TestHandleInboundRequest_VumailAddressPopulated(t *testing.T) {
 	api, store := newTestAPI(t)
@@ -300,7 +300,7 @@ func TestHandleInboundRequest_VumailAddressPopulated(t *testing.T) {
 	payload := ContactRequestPayload{
 		DisplayName:   "Alice",
 		ServerAddr:    "alice.vulos.org:8080",
-		VumailAddress: "alice@vumail.org",
+		VumailAddress: "alice@vulos.org",
 	}
 	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
 
@@ -315,8 +315,8 @@ func TestHandleInboundRequest_VumailAddressPopulated(t *testing.T) {
 	if !exists {
 		t.Fatal("contact not added to store after inbound request")
 	}
-	if c.VumailAddress != "alice@vumail.org" {
-		t.Errorf("vumail_address: got %q want %q", c.VumailAddress, "alice@vumail.org")
+	if c.VumailAddress != "alice@vulos.org" {
+		t.Errorf("vumail_address: got %q want %q", c.VumailAddress, "alice@vulos.org")
 	}
 }
 
@@ -351,7 +351,7 @@ func TestHandleInboundRequest_VumailAddressAbsent(t *testing.T) {
 }
 
 // TestHandleSendRequest_IncludesVumailAddress verifies that when the caller
-// provides a vumail_address in the outbound request body, it is included in
+// provides a vumail_address (Vulos identity address) in the outbound request body, it is included in
 // the signed ContactRequestPayload.  We test this by inspecting the store
 // entry (which mirrors what the recipient would see) rather than the network
 // wire, since the PeerClient is SSRF-blocked in the test environment.
@@ -363,7 +363,7 @@ func TestHandleSendRequest_IncludesVumailAddress(t *testing.T) {
 		"target_vula_id": remoteVulaID,
 		"target_server":  "127.0.0.1:9999", // SSRF-blocked but contact added first
 		"display_name":   "Me",
-		"vumail_address": "me@vumail.org",
+		"vumail_address": "me@vulos.org",
 	})
 
 	// The contact should have been added before the (failing) delivery attempt.
@@ -374,9 +374,9 @@ func TestHandleSendRequest_IncludesVumailAddress(t *testing.T) {
 	if c.State != StatePending {
 		t.Errorf("state: got %q want pending", c.State)
 	}
-	// The vumail address is carried in the signed payload sent to the peer;
+	// The Vulos identity address is carried in the signed payload sent to the peer;
 	// it is NOT stored on the local side's copy of the remote contact (we don't
-	// know the remote's vumail address from the outbound request).
+	// know the remote's Vulos identity address from the outbound request).
 	// What we can verify is that the request body parses the field correctly —
 	// no error, no panic — and the contact was added.
 	_ = c

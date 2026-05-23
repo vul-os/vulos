@@ -2,7 +2,7 @@ package auth
 
 // recovery_store.go — implements internal/auth.RecoveryStore on the auth.Store.
 //
-// VUMAIL-06: encrypted recovery-kit blobs are persisted in the `recovery_blobs`
+// IDENTITY-06: encrypted recovery-kit blobs are persisted in the `recovery_blobs`
 // SQLite table (one row per user_id).  The blob is the opaque, client-encrypted
 // value — the auth store never holds plaintext.
 //

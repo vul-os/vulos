@@ -2,7 +2,7 @@
 
 **Status: All 31 tasks in this file are `done`. 235 legacy tasks also `done`.**
 
-BMINIT-14 resolved. Four feature tracks (AIROT, VUMAIL, PUBWEB, MINST) added and 30/31 complete.
+BMINIT-14 resolved. Four feature tracks (AIROT, IDENTITY, PUBWEB, MINST) added and 30/31 complete.
 See ROADMAP.md §§ 1–3, 7 for full context.
 
 > **Stack invariants (FROZEN):** Go backend; pure-Go `modernc.org/sqlite` (never CGO);
@@ -18,7 +18,7 @@ See ROADMAP.md §§ 1–3, 7 for full context.
 |---|---|---:|:---|
 | BMINIT legacy | ROADMAP.md § Boot, Init & Bare Metal | 1 / 1 | `[██████████]` 100% |
 | AI Router | ROADMAP.md § AI Router | 8 / 8 | `[██████████]` 100% |
-| Vulos Mail Identity | ROADMAP.md § Identity — Vumail | 7 / 7 | `[██████████]` 100% |
+| Vulos Mail Identity | ROADMAP.md § Identity — Vulos Mail | 7 / 7 | `[██████████]` 100% |
 | Public Webapps | ROADMAP.md § Public Webapps | 8 / 8 | `[██████████]` 100% |
 | Multi-Instance Routing | ROADMAP.md § Multi-Instance | 7 / 7 | `[██████████]` 100% |
 
@@ -108,50 +108,50 @@ AC: [ ] embed endpoint returns valid float32 vector [ ] cache hit skips provider
 
 ---
 
-## Area: Vulos Mail Identity (vumail)
+## Area: Vulos Mail Identity
 
-_Roadmap: ROADMAP.md § Identity — Mandatory Vulos Mail (vumail)_  ·  _Prefix: `VUMAIL-*`_
+_Roadmap: ROADMAP.md § Identity_  ·  _Prefix: `IDENTITY-*`_
 
 > Every Vulos instance has a mandatory mail identity created at install/first-boot.
-> The identity is a `user@vumail.org` address (or `user@custom-domain` for self-hosted).
+> The identity is a `user@vulos.org` address (or `user@custom-domain` for self-hosted).
 > The mail server is vulos-mail (OSS, separate repo). Delivery relay is vulos-relay.
-> No external email provider. Vumail is the identity backbone for account recovery,
+> No external email provider. Vulos Mail is the identity backbone for account recovery,
 > inter-instance peering contact cards, and notification delivery.
 
-### [VUMAIL-01] First-boot wizard: vumail identity creation step
-`done` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VumailStep.jsx, backend/internal/vumail/identity.go
-Scope: Add a mandatory "Create your mail identity" step to the first-boot wizard (after the user-account step, before cluster-join). The user picks a username; the wizard checks availability against `https://vumail.org/api/check?user=<name>` (GET, returns `{available: bool}`). On confirm, `POST /api/vumail/claim` on the local OS server: stores the chosen identity locally (`vumail_identity` table: address, ed25519_public_key, ed25519_private_key_encrypted), and registers the keypair with vulos-relay for delivery routing. The step is skippable only if `VUMAIL_SKIP=1` is set in the boot environment (for dev/testing). JSX only.
-AC: [ ] wizard shows vumail step [ ] availability check calls the check endpoint [ ] confirmed identity is stored in SQLite and survives reboot [ ] skip flag works in dev [ ] `npm run build` passes for setup-wizard
+### [IDENTITY-01] First-boot wizard: Vulos account creation step
+`done` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VulosAccountStep.jsx, backend/internal/identity/identity.go
+Scope: Add a mandatory "Create your mail identity" step to the first-boot wizard (after the user-account step, before cluster-join). The user picks a username; the wizard checks availability against `https://vulos.org/api/check?user=<name>` (GET, returns `{available: bool}`). On confirm, `POST /api/identity/claim` on the local OS server: stores the chosen identity locally (`identity` table: address, ed25519_public_key, ed25519_private_key_encrypted), and registers the keypair with vulos-relay for delivery routing. The step is skippable only if `VULOS_CLOUD_SKIP=1` is set in the boot environment (for dev/testing). JSX only.
+AC: [ ] wizard shows cloudAccount step [ ] availability check calls the check endpoint [ ] confirmed identity is stored in SQLite and survives reboot [ ] skip flag works in dev [ ] `npm run build` passes for setup-wizard
 
-### [VUMAIL-02] vumail package: keypair, identity store, send/receive primitives
-`done` · P0 · L · dep: VUMAIL-01 · parallel: yes — backend/internal/vumail/vumail.go, backend/internal/vumail/store.go, backend/internal/vumail/migrations/0001_vumail.sql
-Scope: Create `internal/vumail` package. `Identity` struct: address, Ed25519 keypair (private key encrypted under OS keyring). SQLite migration: `vumail_identity`, `vumail_mailbox` (id, from_address, subject, body_encrypted, received_at, read), `vumail_outbox` (id, to_address, subject, body_encrypted, queued_at, sent_at, status). `Send(ctx, to, subject, body string) error` — encrypts body to recipient's published public key (fetched from vulos-relay key directory), signs with sender key, POSTs to relay `/api/mail/deliver`. `Receive` — relay pushes inbound mail via WebSocket; decrypt + store in mailbox. Wire `go build ./internal/vumail/...`.
-AC: [ ] keypair generation, encryption round-trip [ ] send constructs signed+encrypted envelope [ ] receive decrypts and stores in mailbox [ ] `go test ./internal/vumail/...` passes
+### [IDENTITY-02] identity package: keypair, identity store, send/receive primitives
+`done` · P0 · L · dep: IDENTITY-01 · parallel: yes — backend/internal/identity/identity.go, backend/internal/identity/store.go, backend/internal/identity/migrations/0001_identity.sql
+Scope: Create `internal/identity` package. `Identity` struct: address, Ed25519 keypair (private key encrypted under OS keyring). SQLite migration: `identity_store`, `identity_mailbox` (id, from_address, subject, body_encrypted, received_at, read), `identity_outbox` (id, to_address, subject, body_encrypted, queued_at, sent_at, status). `Send(ctx, to, subject, body string) error` — encrypts body to recipient's published public key (fetched from vulos-relay key directory), signs with sender key, POSTs to relay `/api/mail/deliver`. `Receive` — relay pushes inbound mail via WebSocket; decrypt + store in mailbox. Wire `go build ./internal/identity/...`.
+AC: [ ] keypair generation, encryption round-trip [ ] send constructs signed+encrypted envelope [ ] receive decrypts and stores in mailbox [ ] `go test ./internal/identity/...` passes
 
-### [VUMAIL-03] Mail app: inbox, compose, send, thread view
-`done` · P0 · L · dep: VUMAIL-02 · parallel: yes — apps/mail/src/App.jsx, apps/mail/src/components/
-Scope: Default Mail app (replaces placeholder). Inbox list (subject, from, date, read/unread). Thread view: expand chain of messages. Compose: to (address picker backed by contacts + vumail directory lookup), subject, body. Send via `POST /api/vumail/send`. Mark-read, archive, delete. Unread badge on the launcher icon via the OS notification count API. The app must load and be useful with zero mail (empty state). JSX only; style consistent with existing apps.
-AC: [ ] inbox renders messages from local mailbox [ ] compose → send round-trips through vumail package [ ] thread view groups by subject+participants [ ] unread count propagates to launcher [ ] `npm run build` passes
+### [IDENTITY-03] Mail app: inbox, compose, send, thread view
+`done` · P0 · L · dep: IDENTITY-02 · parallel: yes — apps/mail/src/App.jsx, apps/mail/src/components/
+Scope: Default Mail app (replaces placeholder). Inbox list (subject, from, date, read/unread). Thread view: expand chain of messages. Compose: to (address picker backed by contacts + Vulos identity directory lookup), subject, body. Send via `POST /api/identity/send`. Mark-read, archive, delete. Unread badge on the launcher icon via the OS notification count API. The app must load and be useful with zero mail (empty state). JSX only; style consistent with existing apps.
+AC: [ ] inbox renders messages from local mailbox [ ] compose → send round-trips through identity package [ ] thread view groups by subject+participants [ ] unread count propagates to launcher [ ] `npm run build` passes
 
-### [VUMAIL-04] vumail HTTP handlers: send, mailbox, identity
-`done` · P0 · M · dep: VUMAIL-02 · parallel: yes — backend/cmd/server/routes_vumail.go
-Scope: Register: `POST /api/vumail/send` (body, envelope validated, calls vumail.Send), `GET /api/vumail/mailbox` (paginated, returns messages with decrypted subjects, encrypted body IDs), `GET /api/vumail/mailbox/:id` (fetch + decrypt single message body), `PATCH /api/vumail/mailbox/:id` (mark read/archived/deleted), `GET /api/vumail/identity` (returns current address + public key), `POST /api/vumail/identity/rotate` (re-generate keypair, publish new key to relay, old key kept for 30 days for pending decryption). All routes require local OS session.
+### [IDENTITY-04] identity HTTP handlers: send, mailbox, identity
+`done` · P0 · M · dep: IDENTITY-02 · parallel: yes — backend/cmd/server/routes_identity.go
+Scope: Register: `POST /api/identity/send` (body, envelope validated, calls identity.Send), `GET /api/identity/mailbox` (paginated, returns messages with decrypted subjects, encrypted body IDs), `GET /api/identity/mailbox/:id` (fetch + decrypt single message body), `PATCH /api/identity/mailbox/:id` (mark read/archived/deleted), `GET /api/identity/identity` (returns current address + public key), `POST /api/identity/identity/rotate` (re-generate keypair, publish new key to relay, old key kept for 30 days for pending decryption). All routes require local OS session.
 AC: [ ] send → delivery to stub relay works end-to-end [ ] mailbox pagination tested [ ] identity rotate publishes new key [ ] `go test ./cmd/server/...` covers handlers
 
-### [VUMAIL-05] Relay integration: delivery routing, key directory
-`done` · P1 · M · dep: VUMAIL-02 · parallel: yes — backend/internal/vumail/relay.go
-Scope: Implement the relay client used by vumail.Send and the inbound WebSocket subscriber. `RelayClient.PublishKey(ctx, address, pubKey)` — registers/updates the Ed25519 public key for this instance's address in the vulos-relay key directory (`PUT https://relay.vulos.org/keys/<address>`). `RelayClient.LookupKey(ctx, address) (ed25519.PublicKey, error)` — resolves a recipient's public key (cached locally for 1 h). `RelayClient.Subscribe(ctx)` — WebSocket subscription to `wss://relay.vulos.org/ws/mail/<address>`; dispatches inbound encrypted messages to vumail.Receive. VULOS_RELAY_URL env override for self-hosted relay.
-AC: [ ] PublishKey round-trip against a local stub relay [ ] LookupKey returns cached key on second call [ ] Subscribe receives and dispatches test message [ ] `go test ./internal/vumail/...`
+### [IDENTITY-05] Relay integration: delivery routing, key directory
+`done` · P1 · M · dep: IDENTITY-02 · parallel: yes — backend/internal/identity/relay.go
+Scope: Implement the relay client used by identity.Send and the inbound WebSocket subscriber. `RelayClient.PublishKey(ctx, address, pubKey)` — registers/updates the Ed25519 public key for this instance's address in the vulos-relay key directory (`PUT https://relay.vulos.org/keys/<address>`). `RelayClient.LookupKey(ctx, address) (ed25519.PublicKey, error)` — resolves a recipient's public key (cached locally for 1 h). `RelayClient.Subscribe(ctx)` — WebSocket subscription to `wss://relay.vulos.org/ws/mail/<address>`; dispatches inbound encrypted messages to identity.Receive. VULOS_RELAY_URL env override for self-hosted relay.
+AC: [ ] PublishKey round-trip against a local stub relay [ ] LookupKey returns cached key on second call [ ] Subscribe receives and dispatches test message [ ] `go test ./internal/identity/...`
 
-### [VUMAIL-06] Account recovery via vumail address
-`done` · P1 · M · dep: VUMAIL-01 · parallel: yes — backend/internal/auth/recovery.go, apps/setup-wizard/src/steps/RecoveryStep.jsx
-Scope: During first-boot, after vumail identity is created, generate a recovery kit: a 24-word BIP39 mnemonic that can re-derive the Ed25519 keypair + OS keyring root key. Store the mnemonic encrypted under the user's login password. On the Recovery screen (accessible from boot menu): user enters mnemonic → keyring is re-derived → local data is decryptable without cloud. Cloud-assisted recovery (optional): user can escrow an encrypted copy of the recovery kit to their Vulos cloud account — cloud never holds the plaintext. Update the first-boot wizard recovery step to reference the vumail address as the human-readable identifier.
+### [IDENTITY-06] Account recovery via Vulos account address
+`done` · P1 · M · dep: IDENTITY-01 · parallel: yes — backend/internal/auth/recovery.go, apps/setup-wizard/src/steps/RecoveryStep.jsx
+Scope: During first-boot, after Vulos account identity is created, generate a recovery kit: a 24-word BIP39 mnemonic that can re-derive the Ed25519 keypair + OS keyring root key. Store the mnemonic encrypted under the user's login password. On the Recovery screen (accessible from boot menu): user enters mnemonic → keyring is re-derived → local data is decryptable without cloud. Cloud-assisted recovery (optional): user can escrow an encrypted copy of the recovery kit to their Vulos cloud account — cloud never holds the plaintext. Update the first-boot wizard recovery step to reference the Vulos account address as the human-readable identifier.
 AC: [ ] mnemonic generated and displayed once at setup [ ] re-entry of mnemonic restores keyring [ ] cloud escrow stores encrypted-only blob [ ] `go test ./internal/auth/...` passes
 
-### [VUMAIL-07] Contact cards: vumail address as peering contact field
-`done` · P2 · S · dep: VUMAIL-01 · parallel: yes — apps/contacts/src/components/ContactCard.jsx, backend/internal/peering/contact.go
-Scope: Add `vumail_address` field to the `contacts` SQLite table (migration). Display the vumail address on the contact card. "Send mail" button opens the Mail compose view pre-populated with the contact's address. Peering invitation exchange includes the vumail address in the signed contact card JSON so peers automatically populate each other's mail address field. Lookup via relay key directory is triggered when a contact card arrives without a locally-cached key.
-AC: [ ] contacts table migration adds vumail_address [ ] contact card shows mail address + send button [ ] peering exchange populates vumail field [ ] `go test ./internal/peering/...` passes
+### [IDENTITY-07] Contact cards: Vulos account address as peering contact field
+`done` · P2 · S · dep: IDENTITY-01 · parallel: yes — apps/contacts/src/components/ContactCard.jsx, backend/internal/peering/contact.go
+Scope: Add `vulos_address` field to the `contacts` SQLite table (migration). Display the Vulos account address on the contact card. "Send mail" button opens the Mail compose view pre-populated with the contact's address. Peering invitation exchange includes the Vulos account address in the signed contact card JSON so peers automatically populate each other's mail address field. Lookup via relay key directory is triggered when a contact card arrives without a locally-cached key.
+AC: [ ] contacts table migration adds vulos_address [ ] contact card shows mail address + send button [ ] peering exchange populates vulos_address field [ ] `go test ./internal/peering/...` passes
 
 ---
 
@@ -250,6 +250,27 @@ AC: [ ] notification sent on instance A appears on instance B within 2 s [ ] dup
 
 ### [MINST-07] Instance dashboard: unified view of all account instances
 `done` · P2 · M · dep: MINST-02, MINST-03 · parallel: yes — apps/dashboard/src/components/InstancesPanel.jsx
+
 Scope: Add an "Instances" section to the OS Dashboard. Shows a card per instance: display name, ULID (truncated), online/offline badge, list of published apps, resource summary (CPU %, RAM — fetched lazily when instance is online). Actions: "Open app on this instance" (navigates to the FQDN), "Rename", "Remove from account" (with confirmation). "Add existing device" flow: generates a QR code / link containing a signed invite token; scanning on the other device adds it to the registry. JSX only.
 AC: [ ] instances list populated from `/api/instances` [ ] online/offline badges update on presence change [ ] "open app" link navigates to correct FQDN [ ] `npm run build` passes for dashboard
+
+---
+
+## Area: Future
+
+### OS app wrappers for office / spaces / calendar / meet
+`todo` · P2 · M · dep: none · parallel: yes — apps/ (new dirs)
+Add installable OS app wrappers for `vulos-office` surfaces (docs, sheets, slides, spaces, calendar, meet) following the `apps/mail/` pattern. Each wrapper registers with the OS launcher, gets its own subdomain, and integrates with OS notifications and session management. Wrappers are thin JSX shells only — do not touch `vulos-office/src/apps/*/lib.jsx`.
+
+### airouter mail-specific endpoints — verify shipped
+`todo` · P3 · S · dep: none · parallel: yes — apps/mail/, backend/internal/airouter/
+Verify that smart-compose, summarize, reply-suggestions, and extract-actions endpoints are wired in `airouter` and called by the mail app. Update ROADMAP.md §3 status if confirmed shipped. No new implementation unless a gap is found.
+
+### LLM phishing classifier endpoint via airouter
+`todo` · P2 · M · dep: none · parallel: yes — backend/internal/airouter/
+Add `POST /api/ai/classify/phishing` to `airouter`. Input: URL or attachment metadata. Output: risk score, confidence, action (show/warn/block). Uses local Ollama model (small) with cloud-billed fallback. Called by `vulos-mail` inbound filter and OS browser before rendering external links.
+
+### identity package rename (completed 2026-05)
+`todo` · P3 · S · dep: none · parallel: yes — apps/mail/, backend/internal/identity/
+Completed: renamed the `vumail` package to `identity`; all `@vulos.org` user-visible strings updated. Coordinated across vulos, vulos-cloud, vulos-mail, vulos-relay, vulos-office.
 

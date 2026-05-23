@@ -7,12 +7,12 @@ package main
 //   - internal/airouter     — AI model router (BYO + cloud mode) replacing the
 //                             inline /api/ai/chat and /api/ai/status handlers
 //                             that have been removed from main.go.
-//   - internal/vumail       — E2E-encrypted OS mail identity + mailbox.
+//   - internal/identity     — E2E-encrypted OS mail identity + mailbox.
 //   - internal/multiinstance — per-instance app routing table.
 //   - services/appnet       — subdomain provisioning (PUBWEB-02).
 //
 // Also wired here (second wave):
-//   - internal/auth.RegisterRecoveryHandlers — BIP39 account recovery (VUMAIL-06).
+//   - internal/auth.RegisterRecoveryHandlers — BIP39 account recovery (IDENTITY-06).
 //   - internal/multiinstance.RegisterSyncHandlers — cloud sync (MINST-02).
 //   - services/appnet.RegisterEdgeCacheHandlers — edge-cache purge/stats (PUBWEB-03).
 //
@@ -33,7 +33,7 @@ import (
 	"vulos/backend/internal/airouter"
 	"vulos/backend/internal/cgroups"
 	"vulos/backend/internal/multiinstance"
-	"vulos/backend/internal/vumail"
+	"vulos/backend/internal/identity"
 	svcauth "vulos/backend/services/auth"
 	"vulos/backend/services/appnet"
 )
@@ -44,7 +44,7 @@ type newFeatureDeps struct {
 	dbDir     string
 	netMgr    *appnet.Manager
 	visStore  *appnet.VisibilityStore
-	authStore *svcauth.Store // for VUMAIL-06 recovery handlers
+	authStore *svcauth.Store // for IDENTITY-06 recovery handlers
 }
 
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
@@ -80,42 +80,42 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 		log.Printf("[airouter] registered POST /api/ai/chat, POST /api/ai/models, GET /api/ai/status, PUT /api/ai/config")
 	}
 
-	// ── 2. Vumail (internal/vumail) ───────────────────────────────────────────
+	// ── 2. Identity (internal/identity) ─────────────────────────────────────
 	//
 	// Routes registered:
-	//   POST  /api/vumail/send
-	//   GET   /api/vumail/mailbox
-	//   GET   /api/vumail/mailbox/{id}
-	//   PATCH /api/vumail/mailbox/{id}
-	//   GET   /api/vumail/identity
-	//   POST  /api/vumail/identity/rotate
+	//   POST  /api/identity/send
+	//   GET   /api/identity/mailbox
+	//   GET   /api/identity/mailbox/{id}
+	//   PATCH /api/identity/mailbox/{id}
+	//   GET   /api/identity/identity
+	//   POST  /api/identity/identity/rotate
 	//
 	// Identity is nil on first boot (no keypair generated yet); the handlers
 	// return 404/412 gracefully.  The relay key resolver returns a "not
-	// implemented" error for Send until VUMAIL-05 ships the full relay client.
+	// implemented" error for Send until the relay client is complete.
 	{
 		vmailDBPath := ""
 		if deps.dbDir != "" {
-			vmailDBPath = filepath.Join(deps.dbDir, "vumail.db")
+			vmailDBPath = filepath.Join(deps.dbDir, "identity.db")
 		}
-		vmailStore, _ := vumail.NewStore(vmailDBPath) // degraded mode on error
+		vmailStore, _ := identity.NewStore(vmailDBPath) // degraded mode on error
 
 		relayURL := os.Getenv("VULOS_RELAY_URL") // empty → DefaultRelayURL
-		vmailSvc := vumail.New(nil, vmailStore, relayURL)
+		vmailSvc := identity.New(nil, vmailStore, relayURL)
 
-		// Real relay-backed KeyResolver (VUMAIL-05).
-		relayClient := vumail.NewRelayClient(relayURL)
+		// Real relay-backed KeyResolver (IDENTITY-05).
+		relayClient := identity.NewRelayClient(relayURL)
 
 		// SessionValidator: resolve X-OS-Session against the auth Store so
-		// vumail no longer accepts an arbitrary non-empty header as proof of
+		// the identity handler no longer accepts an arbitrary non-empty header as proof of
 		// identity. When authStore is nil (degraded mode), pass nil — the
-		// vumail handler is fail-closed in prod and dev-permissive otherwise.
-		var sessVal vumail.SessionValidator
+		// identity handler is fail-closed in prod and dev-permissive otherwise.
+		var sessVal identity.SessionValidator
 		if deps.authStore != nil {
-			sessVal = vumailSessionAdapter{store: deps.authStore}
+			sessVal = identitySessionAdapter{store: deps.authStore}
 		}
-		vumail.RegisterHandlersWithSession(mux, vmailSvc, relayClient, sessVal)
-		log.Printf("[vumail] registered /api/vumail/* routes")
+		identity.RegisterHandlersWithSession(mux, vmailSvc, relayClient, sessVal)
+		log.Printf("[identity] registered /api/identity/* routes")
 	}
 
 	// ── 3. Multi-instance app router (internal/multiinstance) ────────────────
@@ -253,7 +253,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 		}
 	}
 
-	// ── 5. BIP39 account recovery (internal/auth, VUMAIL-06) ─────────────────────
+	// ── 5. BIP39 account recovery (internal/auth, IDENTITY-06) ───────────────────
 	//
 	// Routes registered:
 	//   POST /api/auth/recovery/generate — generate + store recovery kit (session required)
@@ -373,14 +373,14 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 	}
 }
 
-// vumailSessionAdapter bridges svcauth.Store.ValidateToken into the
-// vumail.SessionValidator interface so vumail can resolve X-OS-Session tokens
+// identitySessionAdapter bridges svcauth.Store.ValidateToken into the
+// identity.SessionValidator interface so the identity package can resolve X-OS-Session tokens
 // to a live, unrevoked user without importing services/auth directly.
-type vumailSessionAdapter struct {
+type identitySessionAdapter struct {
 	store *svcauth.Store
 }
 
-func (a vumailSessionAdapter) ValidateOSSession(token string) (string, bool) {
+func (a identitySessionAdapter) ValidateOSSession(token string) (string, bool) {
 	if a.store == nil {
 		return "", false
 	}

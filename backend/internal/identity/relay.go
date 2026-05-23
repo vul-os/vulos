@@ -1,4 +1,4 @@
-// relay.go — Relay integration layer for vumail (VUMAIL-05).
+// relay.go — Relay integration layer for identity (IDENTITY-05).
 //
 // RelayClient implements KeyResolver and provides:
 //   - PublishKey  — PUT /keys/<address> on the relay key directory.
@@ -7,7 +7,7 @@
 //
 // The relay base URL defaults to DefaultRelayURL and is overridden by the
 // VULOS_RELAY_URL environment variable (resolved by New / NewRelayClient).
-package vumail
+package identity
 
 import (
 	"bytes"
@@ -203,7 +203,7 @@ func (rc *RelayClient) Subscribe(ctx context.Context, svc *Service) {
 		address = svc.identity.Address
 	}
 	if address == "" {
-		log.Printf("[vumail/relay] Subscribe: no identity address — aborting")
+		log.Printf("[identity/relay] Subscribe: no identity address — aborting")
 		return
 	}
 
@@ -215,15 +215,15 @@ func (rc *RelayClient) Subscribe(ctx context.Context, svc *Service) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("[vumail/relay] Subscribe: context done — stopping")
+			log.Printf("[identity/relay] Subscribe: context done — stopping")
 			return
 		default:
 		}
 
-		log.Printf("[vumail/relay] connecting to %s", wsURL)
+		log.Printf("[identity/relay] connecting to %s", wsURL)
 		conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
 		if err != nil {
-			log.Printf("[vumail/relay] dial error: %v (retry in %s)", err, backoff)
+			log.Printf("[identity/relay] dial error: %v (retry in %s)", err, backoff)
 			select {
 			case <-ctx.Done():
 				return
@@ -234,11 +234,11 @@ func (rc *RelayClient) Subscribe(ctx context.Context, svc *Service) {
 		}
 		backoff = time.Second // reset on successful connect
 
-		log.Printf("[vumail/relay] subscribed for %s", address)
+		log.Printf("[identity/relay] subscribed for %s", address)
 		rc.readLoop(ctx, conn, svc)
 		conn.Close()
 
-		log.Printf("[vumail/relay] connection closed — reconnecting")
+		log.Printf("[identity/relay] connection closed — reconnecting")
 	}
 }
 
@@ -258,7 +258,7 @@ func (rc *RelayClient) readLoop(ctx context.Context, conn *websocket.Conn, svc *
 
 		var frame wsInboundMessage
 		if err := json.Unmarshal(raw, &frame); err != nil {
-			log.Printf("[vumail/relay] malformed frame: %v", err)
+			log.Printf("[identity/relay] malformed frame: %v", err)
 			continue
 		}
 		if frame.Type != "mail" {
@@ -275,7 +275,7 @@ func (rc *RelayClient) readLoop(ctx context.Context, conn *websocket.Conn, svc *
 		}
 
 		if err := svc.Receive(ctx, []byte(frame.Envelope), senderPub); err != nil {
-			log.Printf("[vumail/relay] Receive error: %v", err)
+			log.Printf("[identity/relay] Receive error: %v", err)
 		}
 	}
 }

@@ -144,8 +144,8 @@ type sendRequestBody struct {
 	// Message is an optional intro message (visible to recipient).
 	Message string `json:"message,omitempty"`
 
-	// VumailAddress is the local node's vumail identity address
-	// ("user@vumail.org").  When present it is embedded in the signed
+	// VumailAddress is the local node's Vulos identity address
+	// ("user@vulos.org").  When present it is embedded in the signed
 	// contact-card payload so the recipient can populate their copy of
 	// this contact with our mail address immediately.
 	VumailAddress string `json:"vumail_address,omitempty"`
@@ -502,7 +502,7 @@ func (a *ContactAPI) HandleInboundRequest(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Populate the vumail address from the signed contact-card payload so the
+	// Populate the Vulos identity address from the signed contact-card payload so the
 	// recipient has the sender's mail address without a separate relay lookup.
 	if payload.VumailAddress != "" {
 		if err := a.store.UpdateVumailAddress(senderID, payload.VumailAddress); err != nil {

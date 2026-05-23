@@ -1,8 +1,10 @@
-// store.go — SQLite-backed persistence for the vumail package (VUMAIL-02).
+// store.go — SQLite-backed persistence for the identity package (IDENTITY-02).
+// Note: SQL table names retain the "vumail_" prefix for schema compatibility
+// with existing deployed databases; only the Go package has been renamed.
 //
 // Uses pure-Go modernc.org/sqlite (never CGO mattn/go-sqlite3).
 // The database is opened in WAL mode with a single writer connection.
-package vumail
+package identity
 
 import (
 	"database/sql"
@@ -14,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/0001_vumail.sql
+//go:embed migrations/0001_identity.sql
 var migrationsFS embed.FS
 
 // openDB opens (or creates) the SQLite database at path, applies migrations,
@@ -23,17 +25,17 @@ func openDB(path string) (*sql.DB, error) {
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: open db: %w", err)
+		return nil, fmt.Errorf("identity: open db: %w", err)
 	}
 	// Single writer — modernc sqlite is not safe for concurrent writers.
 	db.SetMaxOpenConns(1)
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("vumail: ping db: %w", err)
+		return nil, fmt.Errorf("identity: ping db: %w", err)
 	}
 	if err := migrateDB(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("vumail: migrate: %w", err)
+		return nil, fmt.Errorf("identity: migrate: %w", err)
 	}
 	return db, nil
 }
@@ -41,7 +43,7 @@ func openDB(path string) (*sql.DB, error) {
 // migrateDB applies the embedded SQL migration. Every statement uses
 // IF NOT EXISTS so repeated calls are safe.
 func migrateDB(db *sql.DB) error {
-	sqlBytes, err := migrationsFS.ReadFile("migrations/0001_vumail.sql")
+	sqlBytes, err := migrationsFS.ReadFile("migrations/0001_identity.sql")
 	if err != nil {
 		return err
 	}
@@ -68,7 +70,7 @@ func (s *Store) saveIdentity(id *Identity) error {
 		id.Address, id.PublicKeyB64, id.PrivateKeyEnc, now, now,
 	)
 	if err != nil {
-		return fmt.Errorf("vumail: save identity: %w", err)
+		return fmt.Errorf("identity: save identity: %w", err)
 	}
 	return nil
 }
@@ -87,7 +89,7 @@ func (s *Store) loadIdentity() (*Identity, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("vumail: load identity: %w", err)
+		return nil, fmt.Errorf("identity: load identity: %w", err)
 	}
 	return &id, nil
 }
@@ -107,7 +109,7 @@ func (s *Store) saveMailMessage(m *MailMessage) error {
 		m.ReceivedAt.UTC().Format(time.RFC3339), boolToInt(m.Read),
 	)
 	if err != nil {
-		return fmt.Errorf("vumail: save mail message: %w", err)
+		return fmt.Errorf("identity: save mail message: %w", err)
 	}
 	return nil
 }
@@ -122,7 +124,7 @@ func (s *Store) listMailbox() ([]*MailMessage, error) {
 		FROM vumail_mailbox
 		ORDER BY received_at DESC`)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: list mailbox: %w", err)
+		return nil, fmt.Errorf("identity: list mailbox: %w", err)
 	}
 	defer rows.Close()
 
@@ -132,7 +134,7 @@ func (s *Store) listMailbox() ([]*MailMessage, error) {
 		var receivedStr string
 		var readInt int
 		if err := rows.Scan(&m.ID, &m.FromAddress, &m.Subject, &m.BodyEncrypted, &receivedStr, &readInt); err != nil {
-			return nil, fmt.Errorf("vumail: scan mailbox row: %w", err)
+			return nil, fmt.Errorf("identity: scan mailbox row: %w", err)
 		}
 		m.ReceivedAt, _ = time.Parse(time.RFC3339, receivedStr)
 		m.Read = readInt != 0
@@ -158,7 +160,7 @@ func (s *Store) getMailMessage(id string) (*MailMessage, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("vumail: get mail message: %w", err)
+		return nil, fmt.Errorf("identity: get mail message: %w", err)
 	}
 	m.ReceivedAt, _ = time.Parse(time.RFC3339, receivedStr)
 	m.Read = readInt != 0
@@ -173,7 +175,7 @@ func (s *Store) listMailboxPaged(limit, offset int) ([]*MailMessage, int, error)
 	}
 	var total int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM vumail_mailbox`).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("vumail: count mailbox: %w", err)
+		return nil, 0, fmt.Errorf("identity: count mailbox: %w", err)
 	}
 	q := `SELECT id, from_address, subject, body_encrypted, received_at, read
 		FROM vumail_mailbox ORDER BY received_at DESC`
@@ -184,7 +186,7 @@ func (s *Store) listMailboxPaged(limit, offset int) ([]*MailMessage, int, error)
 	}
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("vumail: list mailbox paged: %w", err)
+		return nil, 0, fmt.Errorf("identity: list mailbox paged: %w", err)
 	}
 	defer rows.Close()
 	var msgs []*MailMessage
@@ -193,7 +195,7 @@ func (s *Store) listMailboxPaged(limit, offset int) ([]*MailMessage, int, error)
 		var receivedStr string
 		var readInt int
 		if err := rows.Scan(&m.ID, &m.FromAddress, &m.Subject, &m.BodyEncrypted, &receivedStr, &readInt); err != nil {
-			return nil, 0, fmt.Errorf("vumail: scan mailbox row: %w", err)
+			return nil, 0, fmt.Errorf("identity: scan mailbox row: %w", err)
 		}
 		m.ReceivedAt, _ = time.Parse(time.RFC3339, receivedStr)
 		m.Read = readInt != 0
@@ -236,7 +238,7 @@ func (s *Store) patchMailMessage(id string, fields map[string]interface{}) error
 	args = append(args, id)
 	_, err := s.db.Exec("UPDATE vumail_mailbox SET "+setClauses+" WHERE id=?", args...)
 	if err != nil {
-		return fmt.Errorf("vumail: patch mail message: %w", err)
+		return fmt.Errorf("identity: patch mail message: %w", err)
 	}
 	return nil
 }
@@ -262,7 +264,7 @@ func (s *Store) saveOutboxMessage(m *OutboxMessage) error {
 		m.QueuedAt.UTC().Format(time.RFC3339), sentStr, m.Status,
 	)
 	if err != nil {
-		return fmt.Errorf("vumail: save outbox message: %w", err)
+		return fmt.Errorf("identity: save outbox message: %w", err)
 	}
 	return nil
 }
@@ -277,7 +279,7 @@ func (s *Store) listOutbox() ([]*OutboxMessage, error) {
 		FROM vumail_outbox
 		ORDER BY queued_at DESC`)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: list outbox: %w", err)
+		return nil, fmt.Errorf("identity: list outbox: %w", err)
 	}
 	defer rows.Close()
 
@@ -287,7 +289,7 @@ func (s *Store) listOutbox() ([]*OutboxMessage, error) {
 		var queuedStr string
 		var sentStr sql.NullString
 		if err := rows.Scan(&m.ID, &m.ToAddress, &m.Subject, &m.BodyEncrypted, &queuedStr, &sentStr, &m.Status); err != nil {
-			return nil, fmt.Errorf("vumail: scan outbox row: %w", err)
+			return nil, fmt.Errorf("identity: scan outbox row: %w", err)
 		}
 		m.QueuedAt, _ = time.Parse(time.RFC3339, queuedStr)
 		if sentStr.Valid {
@@ -312,11 +314,12 @@ func (s *Store) Close() error {
 	if s.db == nil {
 		return nil
 	}
-	log.Printf("[vumail] closing database")
+	log.Printf("[identity] closing database")
 	return s.db.Close()
 }
 
-// Store wraps a SQLite database and provides typed access to vumail tables.
+// Store wraps a SQLite database and provides typed access to identity tables
+// (SQL table names use the legacy "vumail_" prefix for schema compatibility).
 type Store struct {
 	db *sql.DB
 }
@@ -325,13 +328,13 @@ type Store struct {
 // Pass an empty string to run in degraded (in-memory-only) mode.
 func NewStore(dbPath string) (*Store, error) {
 	if dbPath == "" {
-		log.Printf("[vumail] no db path — running in degraded (in-memory) mode")
+		log.Printf("[identity] no db path — running in degraded (in-memory) mode")
 		return &Store{}, nil
 	}
 	db, err := openDB(dbPath)
 	if err != nil {
 		// Degraded mode: log and continue without persistence.
-		log.Printf("[vumail] store: open failed (%v) — degraded mode", err)
+		log.Printf("[identity] store: open failed (%v) — degraded mode", err)
 		return &Store{}, nil
 	}
 	return &Store{db: db}, nil

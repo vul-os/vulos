@@ -1,8 +1,8 @@
-// Package auth provides account recovery primitives for Vulos (VUMAIL-06).
+// Package auth provides account recovery primitives for Vulos (IDENTITY-06).
 //
 // Recovery kit design:
 //   - A 24-word BIP39-compatible mnemonic is derived from 256 bits of entropy.
-//   - The mnemonic encodes a recovery seed from which both the Ed25519 vumail
+//   - The mnemonic encodes a recovery seed from which both the Ed25519 Vulos
 //     keypair and an OS keyring root key can be re-derived (HKDF-SHA256).
 //   - The mnemonic is encrypted at rest using XChaCha20-Poly1305 under a key
 //     derived from the user's login password (Argon2id).
@@ -114,7 +114,7 @@ func (kit *RecoveryKit) EscrowBlob() []byte {
 
 // RestoredKeys contains the re-derived cryptographic material.
 type RestoredKeys struct {
-	// Ed25519PrivKey is the 64-byte Ed25519 private key for the vumail identity.
+	// Ed25519PrivKey is the 64-byte Ed25519 private key for the Vulos identity.
 	Ed25519PrivKey ed25519.PrivateKey
 
 	// Ed25519PubKey is the corresponding 32-byte Ed25519 public key.

@@ -1,10 +1,10 @@
-// relay_test.go — unit tests for VUMAIL-05 RelayClient.
+// relay_test.go — unit tests for IDENTITY-05 RelayClient.
 //
 // Tests:
 //   - PublishKey round-trip against a local stub relay.
 //   - LookupKey returns cached key on second call (no second HTTP hit).
 //   - Subscribe receives and dispatches a test mail frame.
-package vumail
+package identity
 
 import (
 	"context"
@@ -91,7 +91,7 @@ func TestRelayClientPublishKey(t *testing.T) {
 	srv, sr := newStubRelayServer(t)
 	defer srv.Close()
 
-	id, err := GenerateIdentity("publish-test@vumail.org", "pw")
+	id, err := GenerateIdentity("publish-test@vulos.org", "pw")
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestRelayClientPublishKeyWarmsCache(t *testing.T) {
 	srv, _ := newStubRelayServer(t)
 	defer srv.Close()
 
-	id, _ := GenerateIdentity("cache-warm@vumail.org", "pw")
+	id, _ := GenerateIdentity("cache-warm@vulos.org", "pw")
 	rc := NewRelayClient(srv.URL)
 
 	if err := rc.PublishKey(context.Background(), id.Address, id.PublicKeyB64); err != nil {
@@ -142,7 +142,7 @@ func TestRelayClientLookupKey(t *testing.T) {
 	srv, sr := newStubRelayServer(t)
 	defer srv.Close()
 
-	id, _ := GenerateIdentity("lookup-test@vumail.org", "pw")
+	id, _ := GenerateIdentity("lookup-test@vulos.org", "pw")
 
 	// Seed the relay directly.
 	sr.mu.Lock()
@@ -166,7 +166,7 @@ func TestRelayClientLookupKeyCache(t *testing.T) {
 	srv, sr := newStubRelayServer(t)
 	defer srv.Close()
 
-	id, _ := GenerateIdentity("cache-test@vumail.org", "pw")
+	id, _ := GenerateIdentity("cache-test@vulos.org", "pw")
 	sr.mu.Lock()
 	sr.keys[id.Address] = id.PublicKeyB64
 	sr.mu.Unlock()
@@ -216,7 +216,7 @@ func TestRelayClientLookupKeyNotFound(t *testing.T) {
 	defer srv.Close()
 
 	rc := NewRelayClient(srv.URL)
-	_, err := rc.LookupKey(context.Background(), "nobody@vumail.org")
+	_, err := rc.LookupKey(context.Background(), "nobody@vulos.org")
 	if err == nil {
 		t.Fatal("expected error for unknown address, got nil")
 	}
@@ -228,9 +228,9 @@ func TestRelayWSURL(t *testing.T) {
 	cases := []struct {
 		base, addr, want string
 	}{
-		{"https://relay.vulos.org", "alice@vumail.org", "wss://relay.vulos.org/ws/mail/alice@vumail.org"},
-		{"http://localhost:9000", "bob@vumail.org", "ws://localhost:9000/ws/mail/bob@vumail.org"},
-		{"http://localhost:9000/", "bob@vumail.org", "ws://localhost:9000/ws/mail/bob@vumail.org"},
+		{"https://relay.vulos.org", "alice@vulos.org", "wss://relay.vulos.org/ws/mail/alice@vulos.org"},
+		{"http://localhost:9000", "bob@vulos.org", "ws://localhost:9000/ws/mail/bob@vulos.org"},
+		{"http://localhost:9000/", "bob@vulos.org", "ws://localhost:9000/ws/mail/bob@vulos.org"},
 	}
 	for _, c := range cases {
 		got := relayWSURL(c.base, c.addr)
@@ -244,8 +244,8 @@ func TestRelayWSURL(t *testing.T) {
 
 func TestRelayClientSubscribeDispatch(t *testing.T) {
 	// Build a stub relay that immediately pushes one mail frame then stays open.
-	sender, _ := GenerateIdentity("ws-sender@vumail.org", "pw")
-	recipient, _ := GenerateIdentity("ws-recipient@vumail.org", "pw2")
+	sender, _ := GenerateIdentity("ws-sender@vulos.org", "pw")
+	recipient, _ := GenerateIdentity("ws-recipient@vulos.org", "pw2")
 	recipientPub, _ := recipient.PublicKey()
 
 	// Encrypt a body for the recipient.

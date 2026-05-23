@@ -126,6 +126,46 @@ const builtinRegistry = [
   },
 
   {
+    id: 'office',
+    name: 'Office',
+    icon: '⊟',
+    description: 'Docs, Sheets, Slides, and PDF — collaborative editing',
+    keywords: ['docs', 'sheets', 'slides', 'pdf', 'word', 'excel', 'spreadsheet', 'presentation', 'document', 'office'],
+    category: 'productivity',
+    builtin: true,
+  },
+
+  {
+    id: 'spaces',
+    name: 'Spaces',
+    icon: '⊞',
+    description: 'Channels, DMs, threads, and video calls',
+    keywords: ['spaces', 'chat', 'channels', 'dm', 'direct', 'calls', 'video', 'meetings', 'talk'],
+    category: 'internet',
+    builtin: true,
+  },
+
+  {
+    id: 'calendar',
+    name: 'Calendar',
+    icon: '⊡',
+    description: 'CalDAV calendar and CardDAV contacts',
+    keywords: ['calendar', 'contacts', 'events', 'schedule', 'caldav', 'carddav'],
+    category: 'productivity',
+    builtin: true,
+  },
+
+  {
+    id: 'meet',
+    name: 'Meet',
+    icon: '◉',
+    description: 'Join a video meeting by link or code',
+    keywords: ['meet', 'video', 'call', 'meeting', 'join', 'conference'],
+    category: 'internet',
+    builtin: true,
+  },
+
+  {
     id: 'browser',
     name: 'Chrome',
     icon: 'chrome',

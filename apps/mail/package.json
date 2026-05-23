@@ -1,0 +1,21 @@
+{
+  "name": "@vulos/os-mail-app",
+  "version": "0.1.0",
+  "description": "Vulos OS mail app — wraps the @vulos/mail-client library",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@vulos/mail-client": "file:../../vulos-mail/webmail-vulos",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.1"
+  }
+}

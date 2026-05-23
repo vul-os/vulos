@@ -49,7 +49,7 @@ export default function ComposeView({ identity, onClose, onSent, prefillTo, pref
 
     setSending(true)
     try {
-      const res = await fetch('/api/vumail/send', {
+      const res = await fetch('/api/identity/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -139,7 +139,7 @@ export default function ComposeView({ identity, onClose, onSent, prefillTo, pref
             style={inputStyle}
             value={to}
             onChange={e => setTo(e.target.value)}
-            placeholder="user@vumail.org"
+            placeholder="user@vulos.org"
             type="text"
             autoComplete="off"
             spellCheck={false}

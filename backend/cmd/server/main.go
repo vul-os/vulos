@@ -1617,7 +1617,7 @@ func main() {
 	// App visibility (private|local|public)
 	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
 
-	// New-feature routes: airouter, vumail, multiinstance, appnet subdomain
+	// New-feature routes: airouter, identity, multiinstance, appnet subdomain
 	// provisioning, recovery handlers, cloud-sync, edge-cache.
 	// Must be called AFTER RegisterVisibilityHandlers.
 	registerNewFeatureRoutes(mux, newFeatureDeps{

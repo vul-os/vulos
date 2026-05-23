@@ -1,9 +1,9 @@
-// identity.go — cloud-provisioning bridge for the vumail identity step (VUMAIL-01).
+// provision.go — cloud-provisioning bridge for the Vulos identity step (IDENTITY-01).
 //
 // Provision is called by the first-boot wizard after the user picks a handle.
 // It:
 //  1. Validates the handle charset (lowercase alphanumeric + hyphen/underscore,
-//     3–32 chars) and, for non-vumail.org domains, asserts the caller has already
+//     3–32 chars) and, for non-vulos.org domains, asserts the caller has already
 //     completed domain-ownership verification via the cloud control plane.
 //  2. Calls the cloud control plane API to claim the address (idempotent — a
 //     second call with the same accountID + address is a no-op that returns the
@@ -13,7 +13,7 @@
 //
 // The cloud control plane endpoint is:
 //
-//	POST https://api.vulos.cloud/v1/vumail/claim
+//	POST https://api.vulos.cloud/v1/identity/claim
 //	  {"account_id": "…", "address": "…", "public_key_b64": "…"}
 //	  → 200 {"address": "…", "public_key_b64": "…", "jmap_session_url": "…"}
 //	  → 409 {"error": "handle_taken"}
@@ -21,7 +21,7 @@
 // VULOS_CLOUD_API env var overrides the base URL (for tests / self-hosted).
 // VULOS_KEYRING_PASSPHRASE env var is used to encrypt the private key at rest;
 // in production the OS keyring injects this at boot time.
-package vumail
+package identity
 
 import (
 	"bytes"
@@ -44,14 +44,14 @@ const (
 	DefaultCloudAPI = "https://api.vulos.cloud"
 
 	// FreeIdentityDomain is the only domain available on the Free tier.
-	FreeIdentityDomain = "vumail.org"
+	FreeIdentityDomain = "vulos.org"
 
 	// handleMinLen / handleMaxLen define the allowed handle length range.
 	handleMinLen = 3
 	handleMaxLen = 32
 )
 
-// handlePattern is the allowed charset for the local-part of a vumail address:
+// handlePattern is the allowed charset for the local-part of a Vulos account address:
 // lowercase ASCII letters, digits, hyphens, and underscores.
 var handlePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$|^[a-z0-9]{3}$`)
 
@@ -68,7 +68,7 @@ type ProvisionedIdentity struct {
 
 // ─── Provision ───────────────────────────────────────────────────────────────
 
-// Provision claims a vumail identity for accountID and returns the populated
+// Provision claims a Vulos identity for accountID and returns the populated
 // ProvisionedIdentity, persisted to store.
 //
 // Parameters:
@@ -76,7 +76,7 @@ type ProvisionedIdentity struct {
 //   - store      — local SQLite store; must not be nil.
 //   - accountID  — opaque identifier for the local OS account (e.g., ULID).
 //   - handle     — the desired username part (e.g. "alice").
-//   - domain     — "vumail.org" for Free tier, or a custom domain for paid tiers.
+//   - domain     — "vulos.org" for Free tier, or a custom domain for paid tiers.
 //   - passphrase — used to encrypt the Ed25519 private key at rest.
 //   - httpClient — overridable for tests; nil uses a default 30 s client.
 //
@@ -108,7 +108,7 @@ func Provision(
 	// ── 2. Idempotency check — return existing identity if already provisioned ─
 	existing, err := store.loadIdentity()
 	if err != nil {
-		return nil, fmt.Errorf("vumail: provision: load existing identity: %w", err)
+		return nil, fmt.Errorf("identity: provision: load existing identity: %w", err)
 	}
 	if existing != nil && existing.Address == address {
 		return &ProvisionedIdentity{Identity: existing}, nil
@@ -117,7 +117,7 @@ func Provision(
 	// ── 3. Generate local Ed25519 keypair ─────────────────────────────────────
 	id, err := GenerateIdentity(address, passphrase)
 	if err != nil {
-		return nil, fmt.Errorf("vumail: provision: generate identity: %w", err)
+		return nil, fmt.Errorf("identity: provision: generate identity: %w", err)
 	}
 
 	// ── 4. Call cloud control plane to claim the address ─────────────────────
@@ -128,7 +128,7 @@ func Provision(
 
 	// ── 5. Persist identity locally ───────────────────────────────────────────
 	if err := store.saveIdentity(id); err != nil {
-		return nil, fmt.Errorf("vumail: provision: persist identity: %w", err)
+		return nil, fmt.Errorf("identity: provision: persist identity: %w", err)
 	}
 
 	// ── 6. Write JMAP credentials stub ───────────────────────────────────────
@@ -149,18 +149,18 @@ func Provision(
 // ─── Sentinel errors ─────────────────────────────────────────────────────────
 
 // ErrHandleInvalid is returned when the handle fails charset or length checks.
-var ErrHandleInvalid = errors.New("vumail: handle invalid: must be 3–32 lowercase alphanumeric characters (hyphens/underscores allowed, not at start/end)")
+var ErrHandleInvalid = errors.New("identity: handle invalid: must be 3–32 lowercase alphanumeric characters (hyphens/underscores allowed, not at start/end)")
 
-// ErrDomainNotAllowed is returned when a non-vumail.org domain is supplied
+// ErrDomainNotAllowed is returned when a non-vulos.org domain is supplied
 // without the domain-ownership flag being set (custom domains require a paid tier).
-var ErrDomainNotAllowed = errors.New("vumail: custom domain not allowed: verify domain ownership via the cloud dashboard before provisioning")
+var ErrDomainNotAllowed = errors.New("identity: custom domain not allowed: verify domain ownership via the cloud dashboard before provisioning")
 
 // ErrHandleTaken is returned when the cloud API reports that the handle is
 // already claimed by another account.
-var ErrHandleTaken = errors.New("vumail: handle already taken")
+var ErrHandleTaken = errors.New("identity: handle already taken")
 
 // ErrProvisionFailed is returned when the cloud API returns an unexpected error.
-var ErrProvisionFailed = errors.New("vumail: cloud provisioning failed")
+var ErrProvisionFailed = errors.New("identity: cloud provisioning failed")
 
 // ─── Input validation ─────────────────────────────────────────────────────────
 
@@ -177,7 +177,7 @@ func validateHandle(handle string) error {
 }
 
 // validateDomain checks the domain is non-empty. Custom domains (anything
-// other than vumail.org) require out-of-band DNS verification; we accept them
+// other than vulos.org) require out-of-band DNS verification; we accept them
 // here and defer the enforcement to the cloud API which gates on its own
 // verification state.
 func validateDomain(domain string) error {
@@ -224,19 +224,19 @@ func claimWithCloudAPI(ctx context.Context, client *http.Client, accountID strin
 		PublicKeyB64: id.PublicKeyB64,
 	})
 	if err != nil {
-		return "", fmt.Errorf("vumail: provision: marshal claim request: %w", err)
+		return "", fmt.Errorf("identity: provision: marshal claim request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		cloudBase+"/v1/vumail/claim", bytes.NewReader(body))
+		cloudBase+"/v1/identity/claim", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("vumail: provision: build request: %w", err)
+		return "", fmt.Errorf("identity: provision: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("vumail: provision: cloud API unreachable: %w", err)
+		return "", fmt.Errorf("identity: provision: cloud API unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -246,7 +246,7 @@ func claimWithCloudAPI(ctx context.Context, client *http.Client, accountID strin
 	case http.StatusOK, http.StatusCreated:
 		var cr claimResponse
 		if err := json.Unmarshal(raw, &cr); err != nil {
-			return "", fmt.Errorf("vumail: provision: parse cloud response: %w", err)
+			return "", fmt.Errorf("identity: provision: parse cloud response: %w", err)
 		}
 		return cr.JMAPSessionURL, nil
 
@@ -262,6 +262,85 @@ func claimWithCloudAPI(ctx context.Context, client *http.Client, accountID strin
 		}
 		return "", fmt.Errorf("%w: %s", ErrProvisionFailed, detail)
 	}
+}
+
+// ─── CheckAvailability ────────────────────────────────────────────────────────
+
+// AvailabilityResult is the response payload returned by CheckAvailability.
+type AvailabilityResult struct {
+	Available   bool     `json:"available"`
+	Suggestions []string `json:"suggestions,omitempty"`
+	// Offline is true when the cloud control plane could not be reached.
+	// The caller should present a soft warning and let Provision re-check atomically.
+	Offline bool `json:"offline,omitempty"`
+}
+
+// CheckAvailability probes the cloud control plane to determine whether
+// <handle>@<domain> is available.  It is a read-only call — it does NOT
+// reserve the handle; that happens atomically inside Provision.
+//
+// Parameters:
+//   - ctx        — request context (caller should set a short deadline, e.g. 5 s).
+//   - handle     — the username part to check (e.g. "alice").
+//   - httpClient — overridable for tests; nil uses a default 10 s client.
+//
+// Returns:
+//   - (result, nil)   on a successful cloud response.
+//   - (offline, nil)  when the cloud endpoint is unreachable — Offline=true,
+//                     Available=false, so the UI can fail-open with a warning.
+//   - (nil, err)      on a programming error (bad handle charset etc.).
+//
+// The existing Provision validates handle charset before calling the cloud;
+// here we do the same lightweight check so the UI receives a typed error
+// before wasting a network round-trip.
+func CheckAvailability(ctx context.Context, handle string, httpClient *http.Client) (*AvailabilityResult, error) {
+	if err := validateHandle(handle); err != nil {
+		return nil, err
+	}
+
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	cloudBase := os.Getenv("VULOS_CLOUD_API")
+	if cloudBase == "" {
+		cloudBase = DefaultCloudAPI
+	}
+
+	url := cloudBase + "/api/auth/handle-available?handle=" + handle
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		// Should never happen for a well-formed URL.
+		return &AvailabilityResult{Offline: true}, nil
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		// Cloud unreachable — fail-open.
+		return &AvailabilityResult{Offline: true}, nil
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+
+	if resp.StatusCode != http.StatusOK {
+		// Non-200 from cloud (rate limit, server error, etc.) — fail-open.
+		return &AvailabilityResult{Offline: true}, nil
+	}
+
+	var body struct {
+		Available   bool     `json:"available"`
+		Suggestions []string `json:"suggestions"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return &AvailabilityResult{Offline: true}, nil
+	}
+
+	return &AvailabilityResult{
+		Available:   body.Available,
+		Suggestions: body.Suggestions,
+	}, nil
 }
 
 // ─── JMAP credentials stub ────────────────────────────────────────────────────
@@ -287,14 +366,14 @@ func writeJMAPCredentials(address, sessionURL string) error {
 	}
 	raw, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
-		return fmt.Errorf("vumail: jmap creds: marshal: %w", err)
+		return fmt.Errorf("identity: jmap creds: marshal: %w", err)
 	}
 	// Ensure the parent directory exists.
 	if err := os.MkdirAll(strings.TrimSuffix(jmapCredsPath, "/jmap_credentials.json"), 0700); err != nil {
-		return fmt.Errorf("vumail: jmap creds: mkdir: %w", err)
+		return fmt.Errorf("identity: jmap creds: mkdir: %w", err)
 	}
 	if err := os.WriteFile(jmapCredsPath, raw, 0600); err != nil {
-		return fmt.Errorf("vumail: jmap creds: write: %w", err)
+		return fmt.Errorf("identity: jmap creds: write: %w", err)
 	}
 	return nil
 }

@@ -1,4 +1,4 @@
-// handlers.go — HTTP handlers for the vumail routes (VUMAIL-04).
+// handlers.go — HTTP handlers for the identity routes (IDENTITY-04).
 //
 // Registration follows the repo convention: expose a top-level
 // RegisterHandlers(mux, svc, resolver) function so the calling
@@ -7,22 +7,22 @@
 //
 // Routes registered:
 //
-//	POST  /api/vumail/send                  – send a mail message
-//	GET   /api/vumail/mailbox               – paginated mailbox list
-//	GET   /api/vumail/mailbox/{id}          – fetch + decrypt single message
-//	PATCH /api/vumail/mailbox/{id}          – mark read / archived / deleted
-//	GET   /api/vumail/identity              – current address + public key
-//	POST  /api/vumail/identity/rotate       – re-generate keypair
+//	POST  /api/identity/send                  – send a mail message
+//	GET   /api/identity/mailbox               – paginated mailbox list
+//	GET   /api/identity/mailbox/{id}          – fetch + decrypt single message
+//	PATCH /api/identity/mailbox/{id}          – mark read / archived / deleted
+//	GET   /api/identity/identity              – current address + public key
+//	POST  /api/identity/identity/rotate       – re-generate keypair
 //
 // All routes require a local OS session.  In this implementation the
 // session check is a stub that accepts a non-empty X-OS-Session header;
 // the real auth middleware is wired by cmd/server/main.go in a later pass.
 //
-// Rate limiting: POST /api/vumail/send is protected by a per-account
+// Rate limiting: POST /api/identity/send is protected by a per-account
 // token-bucket rate limiter.  Defaults: 20 sends/minute, 200 sends/day.
-// Configurable via VUMAIL_RATE_PER_MIN and VUMAIL_RATE_PER_DAY env vars.
+// Configurable via IDENTITY_RATE_PER_MIN and IDENTITY_RATE_PER_DAY env vars.
 // Returns 429 Too Many Requests with a Retry-After header when exceeded.
-package vumail
+package identity
 
 import (
 	"context"
@@ -52,8 +52,8 @@ type sendBucket struct {
 // per-day: capacity/86400s).  When either bucket is empty the request is
 // rejected with 429 and a Retry-After header.
 //
-// Defaults are read from VUMAIL_RATE_PER_MIN (default 20) and
-// VUMAIL_RATE_PER_DAY (default 200) at first use; they may be overridden
+// Defaults are read from IDENTITY_RATE_PER_MIN (default 20) and
+// IDENTITY_RATE_PER_DAY (default 200) at first use; they may be overridden
 // in tests by setting the fields directly.
 //
 // A background goroutine (started by newSendRateLimiter) sweeps the buckets
@@ -80,8 +80,8 @@ type sendRateLimiter struct {
 // starts the background eviction goroutine.  The goroutine exits when ctx is
 // cancelled.
 func newSendRateLimiter(ctx context.Context) *sendRateLimiter {
-	perMin := envInt("VUMAIL_RATE_PER_MIN", 20)
-	perDay := envInt("VUMAIL_RATE_PER_DAY", 200)
+	perMin := envInt("IDENTITY_RATE_PER_MIN", 20)
+	perDay := envInt("IDENTITY_RATE_PER_DAY", 200)
 	rl := &sendRateLimiter{
 		perMin:        perMin,
 		perDay:        perDay,
@@ -207,25 +207,25 @@ func envInt(key string, fallback int) int {
 // header) to a live, unrevoked user identity.  Implementations should return
 // ok=false on any lookup failure so callers fail closed with HTTP 401.
 //
-// The vumail package keeps this as a small interface so it does not have to
+// The identity package keeps this as a small interface so it does not have to
 // import services/auth directly (which would create a layering inversion);
 // cmd/server wires a thin adapter around auth.Store.ValidateToken.
 type SessionValidator interface {
 	ValidateOSSession(token string) (userID string, ok bool)
 }
 
-// Handlers groups the vumail HTTP handler dependencies.
+// Handlers groups the identity HTTP handler dependencies.
 type Handlers struct {
 	svc       *Service
 	resolver  KeyResolver
 	validator SessionValidator // optional; see requireSession for fail-closed semantics
-	sendRL    *sendRateLimiter // rate limiter for POST /api/vumail/send
+	sendRL    *sendRateLimiter // rate limiter for POST /api/identity/send
 }
 
-// RegisterHandlers mounts all vumail HTTP routes on mux.
+// RegisterHandlers mounts all identity HTTP routes on mux.
 //
 //	mux      – the *http.ServeMux to register routes on
-//	svc      – the vumail Service (must have a non-nil identity)
+//	svc      – the identity Service (must have a non-nil identity)
 //	resolver – KeyResolver used by the send handler to look up recipient keys
 //
 // This entry point is preserved for legacy callers and tests.  It registers a
@@ -237,21 +237,22 @@ func RegisterHandlers(mux *http.ServeMux, svc *Service, resolver KeyResolver) {
 }
 
 // RegisterHandlersWithSession is the production-grade entry point.  validator
-// is consulted by every vumail handler before performing any work; in
+// is consulted by every identity handler before performing any work; in
 // VULOS_ENV=prod a nil validator is fatal-on-request (401), so callers must
 // supply one.
 func RegisterHandlersWithSession(mux *http.ServeMux, svc *Service, resolver KeyResolver, validator SessionValidator) {
 	if validator == nil && os.Getenv("VULOS_ENV") == "prod" {
-		log.Printf("[vumail] WARNING: RegisterHandlersWithSession called with a nil SessionValidator in VULOS_ENV=prod — every request will be rejected with 401")
+		log.Printf("[identity] WARNING: RegisterHandlersWithSession called with a nil SessionValidator in VULOS_ENV=prod — every request will be rejected with 401")
 	}
 	h := &Handlers{svc: svc, resolver: resolver, validator: validator, sendRL: defaultSendRateLimiter()}
 
-	mux.HandleFunc("POST /api/vumail/send", h.handleSend)
-	mux.HandleFunc("GET /api/vumail/mailbox", h.handleListMailbox)
-	mux.HandleFunc("GET /api/vumail/mailbox/{id}", h.handleGetMessage)
-	mux.HandleFunc("PATCH /api/vumail/mailbox/{id}", h.handlePatchMessage)
-	mux.HandleFunc("GET /api/vumail/identity", h.handleGetIdentity)
-	mux.HandleFunc("POST /api/vumail/identity/rotate", h.handleRotateIdentity)
+	mux.HandleFunc("GET /api/identity/check", h.handleCheckAvailability)
+	mux.HandleFunc("POST /api/identity/send", h.handleSend)
+	mux.HandleFunc("GET /api/identity/mailbox", h.handleListMailbox)
+	mux.HandleFunc("GET /api/identity/mailbox/{id}", h.handleGetMessage)
+	mux.HandleFunc("PATCH /api/identity/mailbox/{id}", h.handlePatchMessage)
+	mux.HandleFunc("GET /api/identity/identity", h.handleGetIdentity)
+	mux.HandleFunc("POST /api/identity/identity/rotate", h.handleRotateIdentity)
 }
 
 // ─── Session guard ────────────────────────────────────────────────────────────
@@ -285,14 +286,45 @@ func (h *Handlers) requireSession(w http.ResponseWriter, r *http.Request) bool {
 	}
 	// No validator: header-presence-only is unsafe in prod.
 	if os.Getenv("VULOS_ENV") == "prod" {
-		log.Printf("[vumail] denied request: no SessionValidator wired in VULOS_ENV=prod")
+		log.Printf("[identity] denied request: no SessionValidator wired in VULOS_ENV=prod")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
 		return false
 	}
 	return true
 }
 
-// ─── POST /api/vumail/send ────────────────────────────────────────────────────
+// ─── GET /api/identity/check ──────────────────────────────────────────────────
+//
+// Proxies to the cloud control plane CheckAvailability call.
+// No session is required — this is called during first-boot before any session
+// exists.  The cloud is the authoritative source; if unreachable, returns
+// {"offline":true} so the UI can fail-open with a soft warning.
+//
+// Query params:
+//   handle — the username part to check (required, e.g. "alice")
+//
+// Response 200 {"available":true|false, "suggestions":["alice1","alice2"], "offline":false|true}
+// Response 400 {"error":"handle invalid: …"} — bad charset
+
+func (h *Handlers) handleCheckAvailability(w http.ResponseWriter, r *http.Request) {
+	handle := r.URL.Query().Get("handle")
+	if handle == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "handle query param is required"})
+		return
+	}
+
+	ctx := r.Context()
+	result, err := CheckAvailability(ctx, handle, h.svc.client)
+	if err != nil {
+		// ErrHandleInvalid — bad charset from the client
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// ─── POST /api/identity/send ──────────────────────────────────────────────────
 
 type sendRequest struct {
 	To      string `json:"to"`
@@ -330,7 +362,7 @@ func (h *Handlers) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.Send(r.Context(), req.To, req.Subject, req.Body, h.resolver); err != nil {
-		log.Printf("[vumail] handleSend error: %v", err)
+		log.Printf("[identity] handleSend error: %v", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -338,7 +370,7 @@ func (h *Handlers) handleSend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }
 
-// ─── GET /api/vumail/mailbox ──────────────────────────────────────────────────
+// ─── GET /api/identity/mailbox ────────────────────────────────────────────────
 
 type mailboxItem struct {
 	ID          string `json:"id"`
@@ -367,7 +399,7 @@ func (h *Handlers) handleListMailbox(w http.ResponseWriter, r *http.Request) {
 
 	msgs, total, err := h.svc.store.listMailboxPaged(limit, offset)
 	if err != nil {
-		log.Printf("[vumail] handleListMailbox error: %v", err)
+		log.Printf("[identity] handleListMailbox error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store error"})
 		return
 	}
@@ -391,7 +423,7 @@ func (h *Handlers) handleListMailbox(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─── GET /api/vumail/mailbox/{id} ─────────────────────────────────────────────
+// ─── GET /api/identity/mailbox/{id} ───────────────────────────────────────────
 
 type messageResponse struct {
 	ID          string `json:"id"`
@@ -406,7 +438,7 @@ func (h *Handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 	if !h.requireSession(w, r) {
 		return
 	}
-	id := pathID(r, "/api/vumail/mailbox/")
+	id := pathID(r, "/api/identity/mailbox/")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing message id"})
 		return
@@ -414,7 +446,7 @@ func (h *Handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 
 	msg, err := h.svc.store.getMailMessage(id)
 	if err != nil {
-		log.Printf("[vumail] handleGetMessage store error: %v", err)
+		log.Printf("[identity] handleGetMessage store error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store error"})
 		return
 	}
@@ -423,7 +455,7 @@ func (h *Handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The nonce is packed as the first 40 bytes of BodyEncrypted per vumail.go.
+	// The nonce is packed as the first 40 bytes of BodyEncrypted per identity.go.
 	// In the Receive path the original envelope nonce was stored; use
 	// DecryptMessageBody only if the identity is unlocked.
 	body := ""
@@ -435,7 +467,7 @@ func (h *Handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// If we can't decrypt (locked identity), return body as empty rather
 			// than a hard error — the client can retry after unlock.
-			log.Printf("[vumail] handleGetMessage decrypt: %v", err)
+			log.Printf("[identity] handleGetMessage decrypt: %v", err)
 		} else {
 			body = string(plain)
 		}
@@ -451,7 +483,7 @@ func (h *Handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─── PATCH /api/vumail/mailbox/{id} ───────────────────────────────────────────
+// ─── PATCH /api/identity/mailbox/{id} ─────────────────────────────────────────
 
 type patchMessageRequest struct {
 	Read     *bool `json:"read"`
@@ -463,7 +495,7 @@ func (h *Handlers) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 	if !h.requireSession(w, r) {
 		return
 	}
-	id := pathID(r, "/api/vumail/mailbox/")
+	id := pathID(r, "/api/identity/mailbox/")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing message id"})
 		return
@@ -491,7 +523,7 @@ func (h *Handlers) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.store.patchMailMessage(id, fields); err != nil {
-		log.Printf("[vumail] handlePatchMessage error: %v", err)
+		log.Printf("[identity] handlePatchMessage error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store error"})
 		return
 	}
@@ -499,7 +531,7 @@ func (h *Handlers) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
-// ─── GET /api/vumail/identity ─────────────────────────────────────────────────
+// ─── GET /api/identity/identity ───────────────────────────────────────────────
 
 type identityResponse struct {
 	Address      string `json:"address"`
@@ -520,7 +552,7 @@ func (h *Handlers) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─── POST /api/vumail/identity/rotate ────────────────────────────────────────
+// ─── POST /api/identity/identity/rotate ──────────────────────────────────────
 
 type rotateRequest struct {
 	// Passphrase is used to encrypt the new private key.
@@ -549,14 +581,14 @@ func (h *Handlers) handleRotateIdentity(w http.ResponseWriter, r *http.Request) 
 	address := h.svc.identity.Address
 	newID, err := GenerateIdentity(address, req.Passphrase)
 	if err != nil {
-		log.Printf("[vumail] handleRotateIdentity GenerateIdentity error: %v", err)
+		log.Printf("[identity] handleRotateIdentity GenerateIdentity error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "key generation failed"})
 		return
 	}
 
 	// Persist the new keypair.
 	if err := h.svc.store.saveIdentity(newID); err != nil {
-		log.Printf("[vumail] handleRotateIdentity saveIdentity error: %v", err)
+		log.Printf("[identity] handleRotateIdentity saveIdentity error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "persist failed"})
 		return
 	}
@@ -564,13 +596,13 @@ func (h *Handlers) handleRotateIdentity(w http.ResponseWriter, r *http.Request) 
 	// Swap active identity in the service.
 	h.svc.identity = newID
 
-	// Publish new key to relay (best-effort; failure is non-fatal — VUMAIL-05
+	// Publish new key to relay (best-effort; failure is non-fatal — IDENTITY-05
 	// implements the full relay client; here we log and continue).
 	if err := publishKeyToRelay(r.Context(), h.svc.relayURL, h.svc.client, address, newID.PublicKeyB64); err != nil {
-		log.Printf("[vumail] rotate: publish key to relay: %v (non-fatal)", err)
+		log.Printf("[identity] rotate: publish key to relay: %v (non-fatal)", err)
 	}
 
-	log.Printf("[vumail] rotated identity for %s", address)
+	log.Printf("[identity] rotated identity for %s", address)
 	writeJSON(w, http.StatusOK, identityResponse{
 		Address:      newID.Address,
 		PublicKeyB64: newID.PublicKeyB64,
@@ -580,8 +612,8 @@ func (h *Handlers) handleRotateIdentity(w http.ResponseWriter, r *http.Request) 
 // ─── Relay publish helper ─────────────────────────────────────────────────────
 
 // publishKeyToRelay does a best-effort PUT to the relay key directory.
-// Implements the same call as VUMAIL-05 RelayClient.PublishKey but inline
-// so VUMAIL-04 has no dep on the (not-yet-implemented) relay package.
+// Implements the same call as IDENTITY-05 RelayClient.PublishKey but inline
+// so IDENTITY-04 has no dep on the (not-yet-implemented) relay package.
 func publishKeyToRelay(ctx context.Context, relayURL string, client *http.Client, address, pubKeyB64 string) error {
 	url := relayURL + "/keys/" + address
 	body := strings.NewReader(`{"public_key_b64":"` + pubKeyB64 + `"}`)
@@ -608,12 +640,12 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("[vumail] writeJSON encode error: %v", err)
+		log.Printf("[identity] writeJSON encode error: %v", err)
 	}
 }
 
 // pathID extracts the trailing path component after prefix.
-// e.g. pathID(r, "/api/vumail/mailbox/") with URL "/api/vumail/mailbox/abc123" → "abc123".
+// e.g. pathID(r, "/api/identity/mailbox/") with URL "/api/identity/mailbox/abc123" → "abc123".
 func pathID(r *http.Request, prefix string) string {
 	path := r.URL.Path
 	if !strings.HasPrefix(path, prefix) {

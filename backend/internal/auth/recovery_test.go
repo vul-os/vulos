@@ -1,4 +1,4 @@
-// recovery_test.go — unit tests for VUMAIL-06 account recovery.
+// recovery_test.go — unit tests for IDENTITY-06 account recovery.
 package auth
 
 import (

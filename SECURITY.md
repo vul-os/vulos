@@ -4,7 +4,7 @@
 
 ### In scope
 - Vulos OS shell and firstboot flow
-- vumail identity management and credential handling
+- Vulos Mail identity management and credential handling
 - App sandbox and privilege separation
 - Backend API and authentication
 - Build and update pipeline (signed images, dm-verity)
