@@ -248,6 +248,31 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 
 ---
 
+## BYO Mail support (in progress — parallel implementation)
+
+The Vulos OS first-boot wizard gains a new optional step: install `vulos-mail` as a built-in
+service on the same hardware as the OS user. This closes the loop on "OS-level self-hosting" —
+you install Vulos OS, the wizard asks if you want mail service on this instance, and a single
+setup flow provisions both the OS identity and the vulos-mail BYO setup.
+
+**OS integration points:**
+
+- **Installer step:** After the "Networking" step in the first-boot wizard, add an optional
+  "Mail service" step. If selected: runs `vulos-mail byo setup` (see `vulos-mail` MAIL-BYO-04),
+  registers the instance as a BYO Mail server, and uploads the X25519 public key.
+- **Dashboard surface:** The OS dashboard shows vulos-mail service status (running/stopped/offline)
+  alongside other Vulos OS services. Health from the cloud BYO health-check (BYO-CP-04) is
+  reflected here.
+- **Notification routing:** The cloud's offline->30-min alert (BYO-CP-04) routes to the OS
+  notification system if the OS is online at another node (e.g., mobile companion).
+
+**Self-host distribution:** The bash installer and GHCR Docker image (MAIL-BYO-04) are the
+primary distribution channels for vulos-mail outside of the OS installer flow.
+
+Cross-repo: see `vulos-mail/ROADMAP.md §BYO Mail support` and `vulos-cloud/ROADMAP.md §BYO Mail support`.
+
+---
+
 ## Future work
 
 ### OS app wrappers for office / spaces / calendar / meet

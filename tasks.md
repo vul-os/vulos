@@ -274,3 +274,46 @@ Add `POST /api/ai/classify/phishing` to `airouter`. Input: URL or attachment met
 `todo` · P3 · S · dep: none · parallel: yes — apps/mail/, backend/internal/identity/
 Completed: renamed the `vumail` package to `identity`; all `@vulos.org` user-visible strings updated. Coordinated across vulos, vulos-cloud, vulos-mail, vulos-relay, vulos-office.
 
+---
+
+## Area: BYO Mail — OS integration
+
+_Spec: [`ROADMAP.md §BYO Mail support`](ROADMAP.md)_  ·  _Prefix: `OS-BYO-*`_
+_Cross-repo: [`vulos-mail`](https://github.com/vul-os/vulos-mail) (MAIL-BYO-04) · [`vulos-cloud`](https://github.com/vul-os/vulos-cloud) (BYO-CP-*)_
+
+> The OS first-boot wizard gains a "Mail service" step that installs vulos-mail as a built-in
+> service. These tasks cover the OS-side integration: the wizard step, dashboard status surface,
+> and notification routing for BYO offline alerts.
+
+### [OS-BYO-01] First-boot wizard "Mail service" optional step
+`in-progress` · P2 · M · dep: none · parallel: yes — apps/firstboot/src/steps/MailService.jsx (new), backend/internal/installer/
+Scope: Add an optional "Mail service" step to the first-boot wizard (after the "Networking" step).
+Presents two choices: (a) set up vulos-mail on this instance (BYO mode — calls MAIL-BYO-04 bash
+installer integration), or (b) use hosted Vulos Mail (redirects to signup). If (a) is selected,
+calls `vulos-mail byo setup` as a sub-process and waits for pubkey upload confirmation.
+JSX only — no new .tsx; no changes to existing wizard step components.
+AC: [ ] "Mail service" step renders in wizard (skippable) [ ] BYO choice triggers installer integration [ ] hosted choice routes to signup [ ] wizard advances on success [ ] npm run build
+
+### [OS-BYO-02] Dashboard: vulos-mail service status card
+`in-progress` · P3 · S · dep: OS-BYO-01 · parallel: yes — apps/dashboard/src/components/MailServiceCard.jsx (new)
+Scope: Add a "Mail service" card to the OS Dashboard showing vulos-mail service status
+(running / stopped / offline — fetched from local service health endpoint and the cloud "last
+seen" signal). Shows: service state, last seen timestamp, key fingerprint (from cloud identity
+store), and an "Alerts" toggle for the offline >30-min notification. JSX only.
+AC: [ ] card renders service state [ ] "last seen" shown when cloud signal available [ ] key fingerprint displayed [ ] alerts toggle works [ ] npm run build
+
+### [OS-BYO-03] BYO offline alert routing to OS notification system
+`in-progress` · P3 · S · dep: OS-BYO-02 · parallel: yes — backend/internal/notify/byo_alert.go (new)
+Scope: When the cloud BYO health-check (BYO-CP-04) emits an offline >30-min alert, route it to
+the OS notification system on any online instance in the account (via MINST-06 fan-out). Priority:
+`high`. Body: "Your Vulos Mail instance has been offline for 30+ minutes. Inbound mail is queued
+for up to 5 days." Action button: "View mail dashboard."
+AC: [ ] alert delivered to OS notification system on online instance [ ] not repeated more than once per 4h [ ] action button links to mail dashboard [ ] go build ./...
+
+### [OS-BYO-04] "Install vulos-mail" entry in OS App Store
+`in-progress` · P3 · S · dep: none · parallel: yes — registry.json
+Scope: Add a `vulos-mail` entry to `registry.json` so the OS App Store shows "Mail Server" as an
+installable service. Recipe type: `bash-installer` with the `curl ... | bash` URL. Tier gate: visible
+to all paid tiers (Vulos Mail+); greyed out on Free with "Requires Vulos Mail tier" note.
+AC: [ ] registry.json entry added for vulos-mail [ ] App Store renders it [ ] tier gate applied [ ] no .go or .jsx changes beyond registry.json [ ] npm run build
+
