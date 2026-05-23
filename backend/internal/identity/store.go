@@ -9,15 +9,31 @@ package identity
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/0001_identity.sql
+//go:embed migrations/0002_add_account_id.sql
 var migrationsFS embed.FS
+
+// ErrInvalidPatchField is returned by patchMailMessage when the caller tries
+// to update a column that is not in the allowedPatchColumns whitelist.
+var ErrInvalidPatchField = errors.New("identity: invalid patch field")
+
+// allowedPatchColumns is the exhaustive whitelist of columns that may be
+// updated via patchMailMessage. Any key outside this set is rejected to
+// prevent SQL-injection via dynamic column names.
+var allowedPatchColumns = map[string]bool{
+	"read":     true,
+	"archived": true,
+	"deleted":  true,
+}
 
 // openDB opens (or creates) the SQLite database at path, applies migrations,
 // and returns a ready-to-use *sql.DB. Returns an error on any failure.
@@ -40,15 +56,65 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-// migrateDB applies the embedded SQL migration. Every statement uses
-// IF NOT EXISTS so repeated calls are safe.
+// migrateDB applies embedded SQL migrations in order. Statements within each
+// file are split on ';' and executed individually so that "duplicate column
+// name" errors from idempotent ALTER TABLE calls can be silently ignored.
 func migrateDB(db *sql.DB) error {
-	sqlBytes, err := migrationsFS.ReadFile("migrations/0001_identity.sql")
-	if err != nil {
-		return err
+	for _, name := range []string{
+		"migrations/0001_identity.sql",
+		"migrations/0002_add_account_id.sql",
+	} {
+		sqlBytes, err := migrationsFS.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("identity: read migration %s: %w", name, err)
+		}
+		for _, stmt := range splitStatements(string(sqlBytes)) {
+			if _, err := db.Exec(stmt); err != nil {
+				// Ignore "duplicate column name" — ALTER TABLE already applied.
+				if strings.Contains(err.Error(), "duplicate column name") {
+					continue
+				}
+				return fmt.Errorf("identity: apply migration %s (stmt=%q): %w", name, abbrev(stmt, 60), err)
+			}
+		}
 	}
-	_, err = db.Exec(string(sqlBytes))
-	return err
+	return nil
+}
+
+// splitStatements splits a SQL script into individual statements on ';'.
+// SQL line comments (-- ...) are stripped before splitting so that a comment
+// preceding a statement does not cause the statement to be skipped.
+// Blank statements are discarded.
+func splitStatements(script string) []string {
+	// Strip line comments.
+	var lines []string
+	for _, line := range strings.Split(script, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "--") {
+			continue // drop comment lines
+		}
+		lines = append(lines, line)
+	}
+	clean := strings.Join(lines, "\n")
+
+	var out []string
+	for _, part := range strings.Split(clean, ";") {
+		s := strings.TrimSpace(part)
+		if s == "" {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// abbrev truncates s to maxLen runes for use in error messages.
+func abbrev(s string, maxLen int) string {
+	r := []rune(s)
+	if len(r) <= maxLen {
+		return s
+	}
+	return string(r[:maxLen]) + "…"
 }
 
 // ─── Identity persistence ─────────────────────────────────────────────────────
@@ -96,17 +162,29 @@ func (s *Store) loadIdentity() (*Identity, error) {
 
 // ─── Mailbox persistence ──────────────────────────────────────────────────────
 
-// saveMailMessage stores a received message in the mailbox.
+// saveMailMessage stores a received message in the mailbox without an owner account.
+// Rows inserted by this path have account_id=NULL and will be matched by the
+// "account_id IS NULL OR account_id = ?" rollover clause in patchMailMessage.
 func (s *Store) saveMailMessage(m *MailMessage) error {
+	return s.saveMailMessageForAccount(m, "")
+}
+
+// saveMailMessageForAccount stores a received message bound to accountID.
+// Pass accountID="" to store without an owner (account_id=NULL).
+func (s *Store) saveMailMessageForAccount(m *MailMessage, accountID string) error {
 	if s.db == nil {
 		return nil
 	}
+	var aid interface{}
+	if accountID != "" {
+		aid = accountID
+	}
 	_, err := s.db.Exec(`
-		INSERT INTO vumail_mailbox(id, from_address, subject, body_encrypted, received_at, read)
-		VALUES(?, ?, ?, ?, ?, ?)
+		INSERT INTO vumail_mailbox(id, from_address, subject, body_encrypted, received_at, read, account_id)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING`,
 		m.ID, m.FromAddress, m.Subject, m.BodyEncrypted,
-		m.ReceivedAt.UTC().Format(time.RFC3339), boolToInt(m.Read),
+		m.ReceivedAt.UTC().Format(time.RFC3339), boolToInt(m.Read), aid,
 	)
 	if err != nil {
 		return fmt.Errorf("identity: save mail message: %w", err)
@@ -209,34 +287,41 @@ func (s *Store) listMailboxPaged(limit, offset int) ([]*MailMessage, int, error)
 // fields in the patch are applied.
 //
 // Supported patch keys: "read" (bool), "archived" (bool), "deleted" (bool).
-// For archived/deleted the schema uses additional columns added here if absent
-// (via ALTER TABLE IF NOT EXISTS pattern). For simplicity the handler controls
-// which SQL is run; this method accepts an explicit map.
-func (s *Store) patchMailMessage(id string, fields map[string]interface{}) error {
-	if s.db == nil {
-		return nil
-	}
-	// Ensure optional columns exist (idempotent).
-	for _, col := range []string{
-		"ALTER TABLE vumail_mailbox ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-		"ALTER TABLE vumail_mailbox ADD COLUMN deleted  INTEGER NOT NULL DEFAULT 0",
-	} {
-		_, _ = s.db.Exec(col) // ignore "duplicate column" errors
-	}
+// Keys outside allowedPatchColumns are rejected with ErrInvalidPatchField to
+// prevent SQL-injection via dynamic column names (Critical fix #1).
+//
+// accountID scopes the UPDATE to the owning account (High fix #5): messages
+// belonging to a different account return no error but update 0 rows, causing
+// the caller to treat the row as not-found (404).
+func (s *Store) patchMailMessage(id, accountID string, fields map[string]interface{}) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	setClauses := ""
+	// Whitelist check runs even in degraded mode so callers always get a
+	// correct error for invalid inputs (Critical #1 — SQL-injection seam).
+	for k := range fields {
+		if !allowedPatchColumns[k] {
+			return fmt.Errorf("%w: %q", ErrInvalidPatchField, k)
+		}
+	}
+	if s.db == nil {
+		return nil
+	}
+	// Build SET clause from whitelisted keys only.
+	var setClauses []string
 	args := []interface{}{}
 	for k, v := range fields {
-		if setClauses != "" {
-			setClauses += ", "
-		}
-		setClauses += k + "=?"
+		setClauses = append(setClauses, k+"=?")
 		args = append(args, v)
 	}
-	args = append(args, id)
-	_, err := s.db.Exec("UPDATE vumail_mailbox SET "+setClauses+" WHERE id=?", args...)
+	// WHERE id=? AND (account_id=? OR account_id IS NULL)
+	// account_id IS NULL covers rows inserted before migration 0002 (safe rollover).
+	args = append(args, id, accountID)
+	_, err := s.db.Exec(
+		"UPDATE vumail_mailbox SET "+strings.Join(setClauses, ", ")+
+			" WHERE id=? AND (account_id=? OR account_id IS NULL)",
+		args...,
+	)
 	if err != nil {
 		return fmt.Errorf("identity: patch mail message: %w", err)
 	}

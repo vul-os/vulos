@@ -361,6 +361,9 @@ func (h *Handlers) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit log: record BEFORE the mutation (Critical fix #4).
+	log.Printf("[audit] actor=%q action=identity.send target=%q", accountKey, req.To)
+
 	if err := h.svc.Send(r.Context(), req.To, req.Subject, req.Body, h.resolver); err != nil {
 		log.Printf("[identity] handleSend error: %v", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
@@ -501,6 +504,13 @@ func (h *Handlers) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// accountID is set by requireSession via the validator; fall back to session
+	// token in dev/no-validator mode (rate-limiter convention).
+	accountID := r.Header.Get("X-User-ID")
+	if accountID == "" {
+		accountID = r.Header.Get("X-OS-Session")
+	}
+
 	var req patchMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
@@ -522,7 +532,10 @@ func (h *Handlers) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.store.patchMailMessage(id, fields); err != nil {
+	// Audit log: record BEFORE the mutation (Critical fix #4).
+	log.Printf("[audit] actor=%q action=identity.message.patch target=%q", accountID, id)
+
+	if err := h.svc.store.patchMailMessage(id, accountID, fields); err != nil {
 		log.Printf("[identity] handlePatchMessage error: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store error"})
 		return

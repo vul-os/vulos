@@ -280,6 +280,9 @@ func TestRegisterBandwidthHandlers_PeerBandwidth_ProxiesResponse(t *testing.T) {
 		Interval:    10 * time.Minute,
 		HTTPTimeout: 5 * time.Second,
 	})
+	// httptest.Server uses 127.0.0.1 which is blocked by SSRF in production;
+	// skip the check in this unit test only.
+	meter.skipSSRFCheck = true
 
 	mux := http.NewServeMux()
 	RegisterBandwidthHandlers(mux, meter)
@@ -303,6 +306,9 @@ func TestRegisterBandwidthHandlers_PeerBandwidth_PeerUnreachable(t *testing.T) {
 		Interval:    10 * time.Minute,
 		HTTPTimeout: 50 * time.Millisecond,
 	})
+	// 127.0.0.1:1 is loopback (SSRF blocked in prod); skip check to test the
+	// unreachable-peer path directly.
+	meter.skipSSRFCheck = true
 
 	mux := http.NewServeMux()
 	RegisterBandwidthHandlers(mux, meter)
@@ -384,5 +390,113 @@ func TestSplitLines(t *testing.T) {
 	empty := splitLines("")
 	if len(empty) != 0 {
 		t.Errorf("expected 0 lines for empty string, got %d", len(empty))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Critical fix #3: SSRF protections on handlePeerBandwidth
+// ---------------------------------------------------------------------------
+
+// TestCheckSSRF_PrivateIPRejected verifies that private IP addresses are
+// blocked by checkSSRF. We use loopback (127.0.0.1) which always resolves.
+func TestCheckSSRF_PrivateIPRejected(t *testing.T) {
+	err := checkSSRF("http://127.0.0.1:8080/api/peering/bandwidth")
+	if err == nil {
+		t.Error("expected SSRF check to reject 127.0.0.1, got nil error")
+	}
+}
+
+// TestCheckSSRF_LocalhostRejected verifies that the literal "localhost"
+// hostname is rejected without DNS resolution.
+func TestCheckSSRF_LocalhostRejected(t *testing.T) {
+	err := checkSSRF("http://localhost:8080/api/peering/bandwidth")
+	if err == nil {
+		t.Error("expected SSRF check to reject 'localhost', got nil error")
+	}
+}
+
+// TestCheckSSRF_DotLocalRejected verifies that .local TLD is rejected.
+func TestCheckSSRF_DotLocalRejected(t *testing.T) {
+	err := checkSSRF("http://mydevice.local/api/peering/bandwidth")
+	if err == nil {
+		t.Error("expected SSRF check to reject .local hostname, got nil error")
+	}
+}
+
+// TestPeerBandwidth_RedirectNotFollowed verifies that the peer-bandwidth proxy
+// does not follow HTTP redirects.
+func TestPeerBandwidth_RedirectNotFollowed(t *testing.T) {
+	// Stand up a server that returns a redirect.
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This would be an internal server — not reached because redirect is blocked.
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"upload_mbps":1}`)) //nolint:errcheck
+	}))
+	defer redirectTarget.Close()
+
+	redirectSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL+"/api/peering/bandwidth", http.StatusFound)
+	}))
+	defer redirectSrv.Close()
+
+	meter := NewBandwidthMeter(BandwidthConfig{Interval: 10 * time.Minute})
+	// httptest servers use 127.0.0.1; skip SSRF check so we can test redirect behaviour.
+	meter.skipSSRFCheck = true
+	mux := http.NewServeMux()
+	RegisterBandwidthHandlers(mux, meter)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/bandwidth/peer?server="+redirectSrv.URL, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	// Should get a 302 forwarded back (redirect not followed), NOT a 200 from the target.
+	// The response code will be 302 because we forward the peer's response verbatim.
+	if w.Code == http.StatusOK {
+		t.Error("expected redirect to NOT be followed (should not get 200 from redirect target)")
+	}
+}
+
+// TestPeerBandwidth_OversizeBodyCapped verifies that the response body is
+// capped at 10 KB even when the peer returns more.
+func TestPeerBandwidth_OversizeBodyCapped(t *testing.T) {
+	const oversize = 20 * 1024 // 20 KB — larger than the 10 KB cap
+	large := make([]byte, oversize)
+	for i := range large {
+		large[i] = 'x'
+	}
+
+	largeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(large) //nolint:errcheck
+	}))
+	defer largeSrv.Close()
+
+	meter := NewBandwidthMeter(BandwidthConfig{Interval: 10 * time.Minute})
+	// httptest server uses 127.0.0.1; skip SSRF check to test body-cap logic.
+	meter.skipSSRFCheck = true
+	mux := http.NewServeMux()
+	RegisterBandwidthHandlers(mux, meter)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/bandwidth/peer?server="+largeSrv.URL, nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Body.Len() > 10*1024 {
+		t.Errorf("response body %d bytes exceeds 10 KB cap", w.Body.Len())
+	}
+}
+
+// TestCheckSSRF_PublicIPAccepted verifies that a publicly-routable hostname
+// (or a loopback URL that won't be reached) is accepted by the SSRF check
+// itself — the acceptance logic should not reject non-private addresses.
+// We test with a synthetic non-private IP URL (DNS lookup will fail which is
+// a different error, not an SSRF block error).
+func TestCheckSSRF_PublicIPAccepted(t *testing.T) {
+	// Use a clearly-public DNS name. DNS may fail in CI but the error must NOT
+	// be an SSRF error — it should be a DNS lookup failure.
+	err := checkSSRF("http://203.0.113.1/api/peering/bandwidth") // TEST-NET-3 (non-routable but not blocked by our rules)
+	// We accept either: nil error (if DNS resolves) or a DNS-failure error (not SSRF).
+	if err != nil && strings.Contains(err.Error(), "SSRF") {
+		t.Errorf("public IP should not trigger SSRF block, got: %v", err)
 	}
 }

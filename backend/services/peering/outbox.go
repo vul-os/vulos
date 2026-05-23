@@ -57,6 +57,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -116,9 +117,10 @@ type QueuedEnvelope struct {
 //
 // Obtain one via NewOutboxQueue; the zero value is not usable.
 type OutboxQueue struct {
-	root   string      // absolute path to ~/.vulos/peering/outbox/
-	client *PeerClient // outbound HTTP client (shared with messages.go)
-	mu     sync.Mutex  // guards in-memory NextAttempt updates
+	root     string      // absolute path to ~/.vulos/peering/outbox/
+	client   *PeerClient // outbound HTTP client (shared with messages.go)
+	mu       sync.Mutex  // guards in-memory NextAttempt updates
+	workerID uint64      // atomic counter; each retryPeerDir call gets a unique ID
 }
 
 // NewOutboxQueue creates an OutboxQueue backed by
@@ -343,7 +345,16 @@ func (q *OutboxQueue) runRetryPass(ctx context.Context) {
 }
 
 // retryPeerDir processes all queued items for a single peer directory.
+//
+// Concurrent-worker safety (Medium fix #9): before reading + delivering an
+// item, this method atomically renames the file to
+// <file>.processing.<workerID>.  If the rename fails (another worker already
+// grabbed it), the item is skipped.  On successful delivery the processing
+// file is removed.  On failure it is renamed back to its original name so the
+// next pass will retry it.
 func (q *OutboxQueue) retryPeerDir(ctx context.Context, peerDir string) {
+	wid := atomic.AddUint64(&q.workerID, 1)
+
 	entries, err := os.ReadDir(peerDir)
 	if err != nil {
 		return
@@ -355,50 +366,70 @@ func (q *OutboxQueue) retryPeerDir(ctx context.Context, peerDir string) {
 		if ctx.Err() != nil {
 			return
 		}
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
 			continue
 		}
-		if strings.HasPrefix(entry.Name(), ".") {
+		// Skip files that are already being processed (or temp files).
+		if strings.HasPrefix(name, ".") || strings.Contains(name, ".processing.") {
 			continue
 		}
 
-		path := filepath.Join(peerDir, entry.Name())
-		item, err := q.readItem(path)
+		path := filepath.Join(peerDir, name)
+		processingPath := fmt.Sprintf("%s.processing.%d", path, wid)
+
+		// Atomic claim: rename original → processing.<wid>.
+		// If another worker already claimed it, os.Rename fails and we skip.
+		if err := os.Rename(path, processingPath); err != nil {
+			// Either grabbed by another worker or already delivered.
+			continue
+		}
+
+		item, err := q.readItem(processingPath)
 		if err != nil {
-			log.Printf("[peering/outbox] read item %s: %v", path, err)
+			log.Printf("[peering/outbox] read item %s: %v", processingPath, err)
+			// Restore so the next pass can retry.
+			_ = os.Rename(processingPath, path)
 			continue
 		}
 
 		if now.Before(item.NextAttempt) {
-			continue // not due yet
+			// Not due yet — restore original filename.
+			_ = os.Rename(processingPath, path)
+			continue
 		}
 
 		if item.PeerServer == "" {
-			// Cannot deliver without a server address; bump the schedule.
+			// Cannot deliver without a server address; bump and restore.
 			item = q.bumpAttempt(item)
-			_ = q.overwriteItem(path, item)
+			if werr := q.overwriteItem(processingPath, item); werr != nil {
+				log.Printf("[peering/outbox] update item %s: %v", processingPath, werr)
+			}
+			_ = os.Rename(processingPath, path)
 			continue
 		}
 
 		baseURL := item.PeerServer
-		err = q.client.Post(ctx, baseURL, item.Envelope.Type, item.Envelope)
-		if err == nil {
-			// Delivered successfully — remove from queue.
-			if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
-				log.Printf("[peering/outbox] remove delivered item %s: %v", path, rerr)
+		deliverErr := q.client.Post(ctx, baseURL, item.Envelope.Type, item.Envelope)
+		if deliverErr == nil {
+			// Delivered successfully — remove the processing file.
+			if rerr := os.Remove(processingPath); rerr != nil && !os.IsNotExist(rerr) {
+				log.Printf("[peering/outbox] remove delivered item %s: %v", processingPath, rerr)
 			}
 			log.Printf("[peering/outbox] delivered %s to %s (after %d attempt(s))",
 				item.Envelope.ID, item.PeerVulaID, item.Attempts+1)
 			continue
 		}
 
-		// Delivery failed — update attempt count and schedule next retry.
+		// Delivery failed — bump attempt count, persist, then restore to pending name.
 		log.Printf("[peering/outbox] delivery attempt %d for %s to %s failed: %v",
-			item.Attempts+1, item.Envelope.ID, baseURL, err)
+			item.Attempts+1, item.Envelope.ID, baseURL, deliverErr)
 		item = q.bumpAttempt(item)
-		if werr := q.overwriteItem(path, item); werr != nil {
-			log.Printf("[peering/outbox] update item %s: %v", path, werr)
+		if werr := q.overwriteItem(processingPath, item); werr != nil {
+			log.Printf("[peering/outbox] update item %s: %v", processingPath, werr)
 		}
+		// Restore to original name so subsequent passes will retry.
+		_ = os.Rename(processingPath, path)
 	}
 }
 

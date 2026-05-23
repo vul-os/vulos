@@ -3,7 +3,7 @@ package network
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -45,12 +45,16 @@ type TURNCredentials struct {
 }
 
 // GenerateCredentials creates time-limited TURN credentials.
+// Credential = base64(HMAC-SHA256(secret, username)) where username = "<expiry>:<userID>".
+// Both ends (this server + the TURN server) must use the same algorithm.
+// Coturn supports use-auth-secret with SHA-256 via the --sha256 flag; ensure the
+// turnserver.conf includes "sha256" when consuming these credentials.
 func (tc TURNConfig) GenerateCredentials(userID string) TURNCredentials {
 	ttl := 24 * 3600 // 24 hours
 	expiry := time.Now().Unix() + int64(ttl)
 	username := fmt.Sprintf("%d:%s", expiry, userID)
 
-	mac := hmac.New(sha1.New, []byte(tc.Secret))
+	mac := hmac.New(sha256.New, []byte(tc.Secret))
 	mac.Write([]byte(username))
 	credential := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
@@ -68,11 +72,13 @@ func (tc TURNConfig) GenerateCredentials(userID string) TURNCredentials {
 // WriteCoturnConfig writes a turnserver.conf for Coturn.
 func (tc TURNConfig) WriteCoturnConfig(dataDir string) (string, error) {
 	cfgPath := filepath.Join(dataDir, "turnserver.conf")
-	cfg := fmt.Sprintf(`# Vula OS — Coturn TURN server config
+	cfg := fmt.Sprintf(`# Vulos — Coturn TURN server config
 listening-port=%d
 realm=%s
 use-auth-secret
 static-auth-secret=%s
+# sha256 selects HMAC-SHA256 for time-limited credentials (matches GenerateCredentials).
+sha256
 no-cli
 no-tls
 fingerprint

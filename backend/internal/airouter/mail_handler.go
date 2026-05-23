@@ -26,6 +26,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	_ "embed"
 	"fmt"
 	"io"
@@ -34,6 +35,15 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrUnauthenticated is returned by requireSession when no valid session exists.
+var ErrUnauthenticated = errors.New("airouter: unauthenticated")
+
+// MailSessionValidator validates an OS session token and resolves the account ID.
+// Implementations must fail closed — an unknown or expired token must return ("", false).
+type MailSessionValidator interface {
+	ValidateOSSession(token string) (accountID string, ok bool)
+}
 
 //go:embed prompts/mail_compose.txt
 var mailComposePrompt string
@@ -49,13 +59,55 @@ var mailExtractActionsPrompt string
 
 // MailHandler serves the /api/airouter/mail/* endpoints.
 type MailHandler struct {
-	router *Router
-	store  *Store
+	router    *Router
+	store     *Store
+	validator MailSessionValidator // optional; nil = header-presence fallback (dev only)
 }
 
-// NewMailHandler creates a MailHandler.
+// NewMailHandler creates a MailHandler with no session validator (dev/test mode).
+// Production callers should use NewMailHandlerWithSession.
 func NewMailHandler(router *Router, store *Store) *MailHandler {
 	return &MailHandler{router: router, store: store}
+}
+
+// NewMailHandlerWithSession creates a MailHandler that validates every request
+// against a real session store via validator.
+func NewMailHandlerWithSession(router *Router, store *Store, validator MailSessionValidator) *MailHandler {
+	return &MailHandler{router: router, store: store, validator: validator}
+}
+
+// requireSession extracts and validates the session from the request.
+// It reads X-OS-Session and validates it against the MailSessionValidator if
+// one is configured.  On success it returns the verified account_id.
+//
+// Security contract:
+//   - If no X-OS-Session header: 401 immediately.
+//   - If a validator is configured: token must resolve to an account or 401.
+//   - If no validator (dev/test): accept non-empty X-User-ID header or the
+//     session token itself as the account ID.  The RemoteAddr fallback present
+//     in the old accountKey() function has been removed — it was exploitable.
+//
+// This replaces the old accountKey(r) function (Critical fix #2).
+func (h *MailHandler) requireSession(w http.ResponseWriter, r *http.Request) (string, error) {
+	token := r.Header.Get("X-OS-Session")
+	if token == "" {
+		jsonError(w, "unauthenticated", http.StatusUnauthorized)
+		return "", ErrUnauthenticated
+	}
+	if h.validator != nil {
+		accountID, ok := h.validator.ValidateOSSession(token)
+		if !ok {
+			jsonError(w, "unauthenticated", http.StatusUnauthorized)
+			return "", ErrUnauthenticated
+		}
+		return accountID, nil
+	}
+	// No validator configured (dev/test): trust X-User-ID if set, else use
+	// the session token as account key.  Never fall back to RemoteAddr.
+	if uid := r.Header.Get("X-User-ID"); uid != "" {
+		return uid, nil
+	}
+	return token, nil
 }
 
 // RegisterMailHandlers mounts the mail AI routes onto mux. Call once at startup
@@ -217,7 +269,10 @@ type smartComposeRequest struct {
 }
 
 func (h *MailHandler) handleSmartCompose(w http.ResponseWriter, r *http.Request) {
-	accountID := accountKey(r)
+	accountID, err := h.requireSession(w, r)
+	if err != nil {
+		return
+	}
 	if !h.checkOptIn(w, accountID) {
 		return
 	}
@@ -230,16 +285,19 @@ func (h *MailHandler) handleSmartCompose(w http.ResponseWriter, r *http.Request)
 		req.Instruction = "continue"
 	}
 
+	// We use simple text replacement, not a template engine; escape user input
+	// to prevent prompt-injection via {{...}} markers (Medium fix #8).
 	prompt := strings.NewReplacer(
-		"{{CONTEXT}}", req.Context,
-		"{{DRAFT}}", req.DraftSoFar,
-		"{{INSTRUCTION}}", req.Instruction,
+		"{{CONTEXT}}", escapeForPrompt(req.Context),
+		"{{DRAFT}}", escapeForPrompt(req.DraftSoFar),
+		"{{INSTRUCTION}}", escapeForPrompt(req.Instruction),
 	).Replace(mailComposePrompt)
 
 	model := h.activeModel()
-	completion, tokens, err := h.callLLM(r.Context(), model, prompt, "")
-	if err != nil {
-		jsonError(w, "llm_error: "+err.Error(), http.StatusBadGateway)
+	completion, tokens, callErr := h.callLLM(r.Context(), model, prompt, "")
+	if callErr != nil {
+		log.Printf("[mail_ai] smart-compose llm error: %v", callErr)
+		jsonError(w, "service_unavailable", http.StatusBadGateway)
 		return
 	}
 	go h.logTokenUsage(accountID, "smart-compose", model, tokens)
@@ -261,7 +319,10 @@ type summarizeResponse struct {
 }
 
 func (h *MailHandler) handleSummarize(w http.ResponseWriter, r *http.Request) {
-	accountID := accountKey(r)
+	accountID, err := h.requireSession(w, r)
+	if err != nil {
+		return
+	}
 	if !h.checkOptIn(w, accountID) {
 		return
 	}
@@ -271,11 +332,14 @@ func (h *MailHandler) handleSummarize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	prompt := strings.ReplaceAll(mailSummarizePrompt, "{{THREAD}}", req.Thread)
+	// We use simple text replacement, not a template engine; escape user input
+	// to prevent prompt-injection via {{...}} markers (Medium fix #8).
+	prompt := strings.ReplaceAll(mailSummarizePrompt, "{{THREAD}}", escapeForPrompt(req.Thread))
 	model := h.activeModel()
-	raw, tokens, err := h.callLLM(r.Context(), model, prompt, "")
-	if err != nil {
-		jsonError(w, "llm_error: "+err.Error(), http.StatusBadGateway)
+	raw, tokens, callErr := h.callLLM(r.Context(), model, prompt, "")
+	if callErr != nil {
+		log.Printf("[mail_ai] summarize llm error: %v", callErr)
+		jsonError(w, "service_unavailable", http.StatusBadGateway)
 		return
 	}
 	go h.logTokenUsage(accountID, "summarize", model, tokens)
@@ -312,7 +376,10 @@ type replyResponse struct {
 }
 
 func (h *MailHandler) handleReplySuggestions(w http.ResponseWriter, r *http.Request) {
-	accountID := accountKey(r)
+	accountID, err := h.requireSession(w, r)
+	if err != nil {
+		return
+	}
 	if !h.checkOptIn(w, accountID) {
 		return
 	}
@@ -324,11 +391,14 @@ func (h *MailHandler) handleReplySuggestions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	prompt := strings.ReplaceAll(mailReplyPrompt, "{{THREAD}}", req.Thread)
+	// We use simple text replacement, not a template engine; escape user input
+	// to prevent prompt-injection via {{...}} markers (Medium fix #8).
+	prompt := strings.ReplaceAll(mailReplyPrompt, "{{THREAD}}", escapeForPrompt(req.Thread))
 	model := h.activeModel()
-	raw, tokens, err := h.callLLM(r.Context(), model, prompt, "")
-	if err != nil {
-		jsonError(w, "llm_error: "+err.Error(), http.StatusBadGateway)
+	raw, tokens, callErr := h.callLLM(r.Context(), model, prompt, "")
+	if callErr != nil {
+		log.Printf("[mail_ai] reply-suggestions llm error: %v", callErr)
+		jsonError(w, "service_unavailable", http.StatusBadGateway)
 		return
 	}
 	go h.logTokenUsage(accountID, "reply-suggestions", model, tokens)
@@ -362,7 +432,10 @@ type extractActionsResponse struct {
 }
 
 func (h *MailHandler) handleExtractActions(w http.ResponseWriter, r *http.Request) {
-	accountID := accountKey(r)
+	accountID, err := h.requireSession(w, r)
+	if err != nil {
+		return
+	}
 	if !h.checkOptIn(w, accountID) {
 		return
 	}
@@ -374,11 +447,14 @@ func (h *MailHandler) handleExtractActions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	prompt := strings.ReplaceAll(mailExtractActionsPrompt, "{{THREAD}}", req.Thread)
+	// We use simple text replacement, not a template engine; escape user input
+	// to prevent prompt-injection via {{...}} markers (Medium fix #8).
+	prompt := strings.ReplaceAll(mailExtractActionsPrompt, "{{THREAD}}", escapeForPrompt(req.Thread))
 	model := h.activeModel()
-	raw, tokens, err := h.callLLM(r.Context(), model, prompt, "")
-	if err != nil {
-		jsonError(w, "llm_error: "+err.Error(), http.StatusBadGateway)
+	raw, tokens, callErr := h.callLLM(r.Context(), model, prompt, "")
+	if callErr != nil {
+		log.Printf("[mail_ai] extract-actions llm error: %v", callErr)
+		jsonError(w, "service_unavailable", http.StatusBadGateway)
 		return
 	}
 	go h.logTokenUsage(accountID, "extract-actions", model, tokens)
@@ -398,7 +474,10 @@ func (h *MailHandler) handleExtractActions(w http.ResponseWriter, r *http.Reques
 // ---------------------------------------------------------------------------
 
 func (h *MailHandler) handleMailStatus(w http.ResponseWriter, r *http.Request) {
-	accountID := accountKey(r)
+	accountID, err := h.requireSession(w, r)
+	if err != nil {
+		return
+	}
 	enabled, err := h.ensureAccount(accountID)
 	if err != nil {
 		jsonError(w, "store_error: "+err.Error(), http.StatusInternalServerError)
@@ -433,8 +512,18 @@ func (h *MailHandler) handleMailDisable(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MailHandler) setMailEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
-	accountID := accountKey(r)
+	accountID, sessErr := h.requireSession(w, r)
+	if sessErr != nil {
+		return
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Audit log: record BEFORE the mutation (Critical fix #4).
+	action := "disable"
+	if enabled {
+		action = "enable"
+	}
+	log.Printf("[audit] actor=%q action=mail.ai.%s", accountID, action)
 
 	// Upsert account row.
 	_, err := h.store.db.Exec(
@@ -448,11 +537,8 @@ func (h *MailHandler) setMailEnabled(w http.ResponseWriter, r *http.Request, ena
 		return
 	}
 
-	// Audit log.
-	action := "disable"
-	if enabled {
-		action = "enable"
-	}
+	// Persist audit record in the ai_mail_audit table (in addition to the
+	// structured log emitted above).
 	if _, err := h.store.db.Exec(
 		`INSERT INTO ai_mail_audit(account_id, action, created_at) VALUES(?,?,?)`,
 		accountID, action, now,
@@ -508,6 +594,20 @@ func boolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// escapeForPrompt neutralises {{...}} marker syntax in user-supplied strings
+// before they are substituted into LLM prompt templates.  We use simple text
+// replacement (not a template engine), so breaking the marker syntax is
+// sufficient to prevent prompt-injection.  Normal content that contains no
+// braces passes through unchanged.
+//
+// Strategy: replace "{{" → "{ {" and "}}" → "} }" so the resulting text no
+// longer forms a valid {{KEY}} marker.
+func escapeForPrompt(s string) string {
+	s = strings.ReplaceAll(s, "{{", "{ {")
+	s = strings.ReplaceAll(s, "}}", "} }")
+	return s
 }
 
 // AppendTokenUsage adds delta tokens to the monthly counter for accountID.

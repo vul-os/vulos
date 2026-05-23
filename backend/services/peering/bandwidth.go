@@ -15,10 +15,14 @@ package peering
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -83,6 +87,10 @@ type BandwidthMeter struct {
 	mu     sync.RWMutex
 	latest BandwidthResult
 	ready  bool // true once at least one measurement (or estimate) is available
+
+	// skipSSRFCheck disables the SSRF hostname check in handlePeerBandwidth.
+	// For testing only — never set in production code.
+	skipSSRFCheck bool
 }
 
 // NewBandwidthMeter creates a meter using cfg. Call Start to begin measuring.
@@ -359,11 +367,88 @@ func (m *BandwidthMeter) handleOwnBandwidth() http.HandlerFunc {
 	}
 }
 
+// ssrfBlockedCIDRs lists the private/link-local/loopback IP ranges that
+// handlePeerBandwidth must never connect to.  This mirrors the BYO-mailgw
+// agent's blocklist for consistency (Critical fix #3).
+var ssrfBlockedCIDRs []*net.IPNet
+
+func init() {
+	for _, cidr := range []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16", // link-local
+		"127.0.0.0/8",    // loopback v4
+		"::1/128",        // loopback v6
+		"fc00::/7",       // ULA
+		"fe80::/10",      // link-local v6
+	} {
+		_, block, _ := net.ParseCIDR(cidr)
+		if block != nil {
+			ssrfBlockedCIDRs = append(ssrfBlockedCIDRs, block)
+		}
+	}
+}
+
+// isPrivateIP returns true if ip falls within any of the SSRF-blocked ranges.
+func isPrivateIP(ip net.IP) bool {
+	for _, block := range ssrfBlockedCIDRs {
+		if block.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkSSRF resolves the host in rawURL and returns an error if any resolved
+// address is in a private/reserved range, or if the hostname ends with
+// .local, .internal, or equals "localhost".
+func checkSSRF(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	host := u.Hostname()
+	lower := strings.ToLower(host)
+	if lower == "localhost" ||
+		strings.HasSuffix(lower, ".local") ||
+		strings.HasSuffix(lower, ".internal") {
+		return fmt.Errorf("SSRF: hostname %q is disallowed", host)
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("DNS lookup failed for %q: %w", host, err)
+	}
+	for _, addr := range addrs {
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			continue
+		}
+		if isPrivateIP(ip) {
+			return fmt.Errorf("SSRF: resolved address %s for %q is in a private range", ip, host)
+		}
+	}
+	return nil
+}
+
 // handlePeerBandwidth fetches bandwidth info from a peer's Vula server.
 // Query params:
 //
 //	server — required — peer's base URL, e.g. "https://bob.vulos.org:8080"
+//
+// SSRF mitigations (Critical fix #3):
+//   - Hostname/IP resolved; private ranges rejected.
+//   - Redirect following disabled.
+//   - Response body capped at 10 KB.
+//   - 5 s request timeout.
 func (m *BandwidthMeter) handlePeerBandwidth() http.HandlerFunc {
+	// Build a dedicated client for peer-proxy: no redirects, 5 s timeout.
+	peerClient := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // disable redirect following
+		},
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		peerBase := r.URL.Query().Get("server")
 		if peerBase == "" {
@@ -372,7 +457,18 @@ func (m *BandwidthMeter) handlePeerBandwidth() http.HandlerFunc {
 		}
 
 		target := peerBase + "/api/peering/bandwidth"
-		reqCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+
+		// SSRF check: resolve hostname and reject private addresses.
+		// Skipped only in test mode via m.skipSSRFCheck.
+		if !m.skipSSRFCheck {
+			if err := checkSSRF(target); err != nil {
+				log.Printf("[peering/bandwidth] SSRF check rejected %q: %v", target, err)
+				http.Error(w, `{"error":"invalid peer URL"}`, http.StatusBadRequest)
+				return
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, target, nil)
@@ -382,17 +478,17 @@ func (m *BandwidthMeter) handlePeerBandwidth() http.HandlerFunc {
 		}
 		req.Header.Set("Accept", "application/json")
 
-		resp, err := m.client.Do(req)
+		resp, err := peerClient.Do(req)
 		if err != nil {
 			http.Error(w, `{"error":"peer unreachable"}`, http.StatusBadGateway)
 			return
 		}
 		defer resp.Body.Close()
 
-		// Forward the peer's response verbatim.
+		// Forward the peer's response, capped at 10 KB (Critical fix #3 + Medium fix #10).
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		io.Copy(w, io.LimitReader(resp.Body, 10*1024)) //nolint:errcheck
 	}
 }
 
