@@ -1,9 +1,9 @@
 # Vulos OS — Task Backlog
 
-**Status: 1 legacy task open + 0 new tasks started (new tracks: AIROT, VUMAIL, PUBWEB, MINST).**
+**Status: 1 task open (VUMAIL-01). All other 30 tasks in this file are `done`. 235 legacy tasks also `done`.**
 
-One legacy item re-opened: BMINIT-14 (live-USB ESP non-bootable). All other 235 prior tasks are `done`.
-Four new feature tracks added below — see ROADMAP.md §§ 1–3, 7 for full context.
+BMINIT-14 resolved. Four feature tracks (AIROT, VUMAIL, PUBWEB, MINST) added and 30/31 complete.
+See ROADMAP.md §§ 1–3, 7 for full context.
 
 > **Stack invariants (FROZEN):** Go backend; pure-Go `modernc.org/sqlite` (never CGO);
 > JSX-only frontend (NEVER `.tsx`); cage v1 / labwc v2 (D93); no Rust. Auth: email+password
@@ -16,13 +16,13 @@ Four new feature tracks added below — see ROADMAP.md §§ 1–3, 7 for full co
 
 | Area | Roadmap section | Done / Total | Progress |
 |---|---|---:|:---|
-| BMINIT legacy | ROADMAP.md § Boot, Init & Bare Metal | 0 / 1 | `[──────────]` 0% — BMINIT-14 re-open |
-| AI Router | ROADMAP.md § AI Router | 0 / 8 | `[──────────]` 0% |
-| Vulos Mail Identity | ROADMAP.md § Identity — Vumail | 0 / 7 | `[──────────]` 0% |
-| Public Webapps | ROADMAP.md § Public Webapps | 0 / 8 | `[──────────]` 0% |
-| Multi-Instance Routing | ROADMAP.md § Multi-Instance | 0 / 7 | `[──────────]` 0% |
+| BMINIT legacy | ROADMAP.md § Boot, Init & Bare Metal | 1 / 1 | `[██████████]` 100% |
+| AI Router | ROADMAP.md § AI Router | 8 / 8 | `[██████████]` 100% |
+| Vulos Mail Identity | ROADMAP.md § Identity — Vumail | 6 / 7 | `[█████████─]` 86% — VUMAIL-01 open |
+| Public Webapps | ROADMAP.md § Public Webapps | 8 / 8 | `[██████████]` 100% |
+| Multi-Instance Routing | ROADMAP.md § Multi-Instance | 7 / 7 | `[██████████]` 100% |
 
-| **Open total** | | **0 / 31** | `[──────────]` 0% |
+| **Open total** | | **1 / 31** | `[█████████─]` 97% |
 
 ---
 
@@ -48,7 +48,7 @@ AC: [ ] verifiable outcome 1 [ ] outcome 2 [ ] go build / go test / npm run buil
 _Prefix: `BMINIT-*`_
 
 ### [BMINIT-14] Fix live-USB installer: write bootable ESP to the USB target
-`done` · P0 · M · dep: none · parallel: no — cmd/installer/live.go, internal/installer/esp.go
+`done` · P0 · M · dep: none · parallel: no — backend/cmd/installer/live.go, backend/internal/installer/esp.go
 Scope: The `--live` flag currently produces a raw squashfs image that cannot boot from USB because no EFI System Partition is written. The installer must partition the target block device (GPT: 512 MiB FAT32 ESP + remainder ext4 or squashfs data), write the signed `bootx64.efi` into `EFI/BOOT/`, embed the GRUB/systemd-boot stub that loads the live squashfs via `toram` or direct mount, and sign the ESP contents with the offline key so dm-verity chains through. Mirror the netboot iPXE path (NETB-*) but writing to a physical block device instead of serving over HTTP.
 AC: [ ] `vulos-install --live /dev/sdX` writes a GPT with a valid ESP [ ] the resulting USB device boots in a QEMU OVMF VM and reaches the Vulos desktop [ ] sha256sum of squashfs matches the published manifest [ ] `go build ./cmd/installer/...` passes
 
@@ -67,12 +67,12 @@ _Roadmap: ROADMAP.md § AI Router (OS-Level)_  ·  _Prefix: `AIROT-*`_
 > provider SDKs directly.
 
 ### [AIROT-01] AI Router package: provider abstraction + config store
-`done` · P0 · M · dep: none · parallel: no — internal/airouter/router.go, internal/airouter/config.go, internal/airouter/migrations/0001_airouter.sql
+`done` · P0 · M · dep: none · parallel: no — backend/internal/airouter/router.go, backend/internal/airouter/config.go, backend/internal/airouter/migrations/0001_airouter.sql
 Scope: Create `internal/airouter` package. `Config` struct: mode (`byo | cloud`), active model slug, list of configured providers (OpenAI-compatible base URL, API key encrypted at rest with OS keyring, display name). SQLite migration for `airouter_config` and `airouter_providers` tables. In `byo` mode the router selects the right provider for the requested model from the local table. In `cloud` mode it calls `POST /api/ai/proxy` on the Vulos cloud control plane, forwarding the OS device cert for auth. Expose `airouter.Route(ctx, req ChatRequest) (stream io.ReadCloser, err error)` — callers receive a Server-Sent Events stream regardless of mode.
 AC: [ ] `byo` mode round-trips to a stubbed OpenAI-compatible endpoint [ ] `cloud` mode sends device-cert header and streams the proxy response [ ] config survives restart (SQLite round-trip) [ ] `go build ./internal/airouter/...` passes
 
 ### [AIROT-02] AI Router HTTP handler + SSE streaming endpoint
-`done` · P0 · M · dep: AIROT-01 · parallel: yes — cmd/server/routes_airouter.go
+`done` · P0 · M · dep: AIROT-01 · parallel: yes — backend/cmd/server/routes_airouter.go
 Scope: Register `POST /api/ai/chat` on the OS local server. Handler validates the JSON body (`{model, messages[], stream:bool}`), calls `airouter.Route`, and pipes the SSE stream back to the caller. Include `POST /api/ai/models` (list available models from current config), `GET /api/ai/status` (current mode + active model), `PUT /api/ai/config` (update mode/model/provider, requires local auth session). Rate-limit: 10 concurrent in-flight requests; queue remainder.
 AC: [ ] `/api/ai/chat` returns `text/event-stream` with `data: {...}` chunks [ ] unknown model → 422 with `{"error":"model_not_found"}` [ ] `/api/ai/models` lists models from config [ ] `go test ./cmd/server/...` covers handler
 
@@ -97,12 +97,12 @@ Scope: The existing AI assistant app currently calls provider APIs directly (har
 AC: [ ] assistant app has zero direct provider API calls [ ] conversations continue normally in both router modes [ ] `npm run build` passes
 
 ### [AIROT-07] Cloud AI proxy endpoint (OS-side client)
-`done` · P1 · M · dep: AIROT-01 · parallel: yes — internal/airouter/cloudproxy.go
+`done` · P1 · M · dep: AIROT-01 · parallel: yes — backend/internal/airouter/cloudproxy.go
 Scope: Implement the `cloud` mode transport in the router. When `mode=cloud`, requests to `/api/ai/chat` or `/api/ai/embed` are proxied to `POST https://api.vulos.org/ai/proxy` using the OS device cert (mTLS or `Authorization: VulosDevice <cert>` header). The cloud proxy authenticates the device cert against the enrolled account and bills usage to that account. Implement exponential back-off on 429/503 from the proxy. Expose `VULOS_AI_PROXY_URL` env override for dev/self-hosted.
 AC: [ ] cloud mode sends device cert and receives streamed response [ ] 429 triggers back-off with retry [ ] env override redirects to local stub [ ] `go test ./internal/airouter/...`
 
 ### [AIROT-08] AI Router: embed endpoint + vector store
-`done` · P2 · M · dep: AIROT-01 · parallel: yes — cmd/server/routes_airouter.go, internal/airouter/embed.go
+`done` · P2 · M · dep: AIROT-01 · parallel: yes — backend/cmd/server/routes_airouter.go, backend/internal/airouter/embed.go
 Scope: Add `POST /api/ai/embed` endpoint: body `{input: string, model?: string}`, returns `{embedding: [float32...], model: string}`. In `byo` mode, route to the provider's embeddings API (OpenAI `/v1/embeddings` or compatible). In `cloud` mode, proxy to `POST https://api.vulos.org/ai/embed`. Cache embeddings in SQLite keyed by `SHA256(model+input)` with a 30-day TTL to avoid redundant calls. Expose `GET /api/ai/embed/stats` (cache hit rate, total stored).
 AC: [ ] embed endpoint returns valid float32 vector [ ] cache hit skips provider call [ ] cache eviction honours TTL [ ] `go test ./internal/airouter/...`
 
@@ -119,12 +119,12 @@ _Roadmap: ROADMAP.md § Identity — Mandatory Vulos Mail (vumail)_  ·  _Prefix
 > inter-instance peering contact cards, and notification delivery.
 
 ### [VUMAIL-01] First-boot wizard: vumail identity creation step
-`todo` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VumailStep.jsx, internal/vumail/identity.go
+`todo` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VumailStep.jsx, backend/internal/vumail/identity.go
 Scope: Add a mandatory "Create your mail identity" step to the first-boot wizard (after the user-account step, before cluster-join). The user picks a username; the wizard checks availability against `https://vumail.org/api/check?user=<name>` (GET, returns `{available: bool}`). On confirm, `POST /api/vumail/claim` on the local OS server: stores the chosen identity locally (`vumail_identity` table: address, ed25519_public_key, ed25519_private_key_encrypted), and registers the keypair with vulos-relay for delivery routing. The step is skippable only if `VUMAIL_SKIP=1` is set in the boot environment (for dev/testing). JSX only.
 AC: [ ] wizard shows vumail step [ ] availability check calls the check endpoint [ ] confirmed identity is stored in SQLite and survives reboot [ ] skip flag works in dev [ ] `npm run build` passes for setup-wizard
 
 ### [VUMAIL-02] vumail package: keypair, identity store, send/receive primitives
-`done` · P0 · L · dep: VUMAIL-01 · parallel: yes — internal/vumail/vumail.go, internal/vumail/store.go, internal/vumail/migrations/0001_vumail.sql
+`done` · P0 · L · dep: VUMAIL-01 · parallel: yes — backend/internal/vumail/vumail.go, backend/internal/vumail/store.go, backend/internal/vumail/migrations/0001_vumail.sql
 Scope: Create `internal/vumail` package. `Identity` struct: address, Ed25519 keypair (private key encrypted under OS keyring). SQLite migration: `vumail_identity`, `vumail_mailbox` (id, from_address, subject, body_encrypted, received_at, read), `vumail_outbox` (id, to_address, subject, body_encrypted, queued_at, sent_at, status). `Send(ctx, to, subject, body string) error` — encrypts body to recipient's published public key (fetched from vulos-relay key directory), signs with sender key, POSTs to relay `/api/mail/deliver`. `Receive` — relay pushes inbound mail via WebSocket; decrypt + store in mailbox. Wire `go build ./internal/vumail/...`.
 AC: [ ] keypair generation, encryption round-trip [ ] send constructs signed+encrypted envelope [ ] receive decrypts and stores in mailbox [ ] `go test ./internal/vumail/...` passes
 
@@ -134,22 +134,22 @@ Scope: Default Mail app (replaces placeholder). Inbox list (subject, from, date,
 AC: [ ] inbox renders messages from local mailbox [ ] compose → send round-trips through vumail package [ ] thread view groups by subject+participants [ ] unread count propagates to launcher [ ] `npm run build` passes
 
 ### [VUMAIL-04] vumail HTTP handlers: send, mailbox, identity
-`done` · P0 · M · dep: VUMAIL-02 · parallel: yes — cmd/server/routes_vumail.go
+`done` · P0 · M · dep: VUMAIL-02 · parallel: yes — backend/cmd/server/routes_vumail.go
 Scope: Register: `POST /api/vumail/send` (body, envelope validated, calls vumail.Send), `GET /api/vumail/mailbox` (paginated, returns messages with decrypted subjects, encrypted body IDs), `GET /api/vumail/mailbox/:id` (fetch + decrypt single message body), `PATCH /api/vumail/mailbox/:id` (mark read/archived/deleted), `GET /api/vumail/identity` (returns current address + public key), `POST /api/vumail/identity/rotate` (re-generate keypair, publish new key to relay, old key kept for 30 days for pending decryption). All routes require local OS session.
 AC: [ ] send → delivery to stub relay works end-to-end [ ] mailbox pagination tested [ ] identity rotate publishes new key [ ] `go test ./cmd/server/...` covers handlers
 
 ### [VUMAIL-05] Relay integration: delivery routing, key directory
-`done` · P1 · M · dep: VUMAIL-02 · parallel: yes — internal/vumail/relay.go
+`done` · P1 · M · dep: VUMAIL-02 · parallel: yes — backend/internal/vumail/relay.go
 Scope: Implement the relay client used by vumail.Send and the inbound WebSocket subscriber. `RelayClient.PublishKey(ctx, address, pubKey)` — registers/updates the Ed25519 public key for this instance's address in the vulos-relay key directory (`PUT https://relay.vulos.org/keys/<address>`). `RelayClient.LookupKey(ctx, address) (ed25519.PublicKey, error)` — resolves a recipient's public key (cached locally for 1 h). `RelayClient.Subscribe(ctx)` — WebSocket subscription to `wss://relay.vulos.org/ws/mail/<address>`; dispatches inbound encrypted messages to vumail.Receive. VULOS_RELAY_URL env override for self-hosted relay.
 AC: [ ] PublishKey round-trip against a local stub relay [ ] LookupKey returns cached key on second call [ ] Subscribe receives and dispatches test message [ ] `go test ./internal/vumail/...`
 
 ### [VUMAIL-06] Account recovery via vumail address
-`done` · P1 · M · dep: VUMAIL-01 · parallel: yes — internal/auth/recovery.go, apps/setup-wizard/src/steps/RecoveryStep.jsx
+`done` · P1 · M · dep: VUMAIL-01 · parallel: yes — backend/internal/auth/recovery.go, apps/setup-wizard/src/steps/RecoveryStep.jsx
 Scope: During first-boot, after vumail identity is created, generate a recovery kit: a 24-word BIP39 mnemonic that can re-derive the Ed25519 keypair + OS keyring root key. Store the mnemonic encrypted under the user's login password. On the Recovery screen (accessible from boot menu): user enters mnemonic → keyring is re-derived → local data is decryptable without cloud. Cloud-assisted recovery (optional): user can escrow an encrypted copy of the recovery kit to their Vulos cloud account — cloud never holds the plaintext. Update the first-boot wizard recovery step to reference the vumail address as the human-readable identifier.
 AC: [ ] mnemonic generated and displayed once at setup [ ] re-entry of mnemonic restores keyring [ ] cloud escrow stores encrypted-only blob [ ] `go test ./internal/auth/...` passes
 
 ### [VUMAIL-07] Contact cards: vumail address as peering contact field
-`done` · P2 · S · dep: VUMAIL-01 · parallel: yes — apps/contacts/src/components/ContactCard.jsx, internal/peering/contact.go
+`done` · P2 · S · dep: VUMAIL-01 · parallel: yes — apps/contacts/src/components/ContactCard.jsx, backend/internal/peering/contact.go
 Scope: Add `vumail_address` field to the `contacts` SQLite table (migration). Display the vumail address on the contact card. "Send mail" button opens the Mail compose view pre-populated with the contact's address. Peering invitation exchange includes the vumail address in the signed contact card JSON so peers automatically populate each other's mail address field. Lookup via relay key directory is triggered when a contact card arrives without a locally-cached key.
 AC: [ ] contacts table migration adds vumail_address [ ] contact card shows mail address + send button [ ] peering exchange populates vumail field [ ] `go test ./internal/peering/...` passes
 
@@ -166,22 +166,22 @@ _Roadmap: ROADMAP.md § Public Webapps & Resource Governance_  ·  _Prefix: `PUB
 > push) for static assets. Dashboard publish toggle with resource usage.
 
 ### [PUBWEB-01] App manifest: `visibility` field + publish toggle
-`done` · P0 · S · dep: none · parallel: yes — internal/apps/manifest.go, apps/launcher/src/components/AppMenu.jsx
+`done` · P0 · S · dep: none · parallel: yes — backend/services/appnet/manifest.go, apps/launcher/src/components/AppMenu.jsx
 Scope: Add `"visibility": "private" | "public"` to `app.json` schema (default `"private"`). Validate on app install. In the launcher context menu, add a "Publish to web" toggle that calls `PATCH /api/apps/:id/visibility`. Published apps get a public subdomain provisioned via PUBWEB-02. Show a "Public" badge on published apps in the launcher. The toggle must be disabled for system apps (settings, files, terminal).
 AC: [ ] `app.json` with `visibility` field passes schema validation [ ] toggle calls API and updates badge [ ] system apps cannot be published [ ] `go test ./internal/apps/...`
 
 ### [PUBWEB-02] Subdomain provisioning for published apps
-`done` · P0 · M · dep: PUBWEB-01 · parallel: yes — internal/network/subdomain.go, cmd/server/routes_apps.go
+`done` · P0 · M · dep: PUBWEB-01 · parallel: yes — backend/services/appnet/subdomain.go, backend/cmd/server/routes_apps.go
 Scope: When an app's visibility is set to `public`, provision a subdomain `{app}--{profile}.{ulid}.vulos.net` via the Vulos cloud DNS API (`POST https://api.vulos.org/dns/provision`). Store the provisioned FQDN in `app_deployments` SQLite table. The OS reverse proxy (Caddy or Nginx config generator) adds a virtual host entry for the subdomain, TLS via ACME (Let's Encrypt). PUBWEB-04 (cgroup) must be applied before the subdomain goes live. Self-hosted: emit a Caddy Caddyfile snippet so users can point their own domain.
 AC: [ ] `PATCH /api/apps/:id/visibility` provisions subdomain on publish [ ] reverse proxy config is regenerated and reloaded [ ] TLS certificate is obtained [ ] FQDN stored in DB and returned in API response [ ] `go test ./cmd/server/...`
 
 ### [PUBWEB-04] cgroup v2 resource governance: system reservation + per-app limits
-`done` · P0 · L · dep: none · parallel: no — internal/cgroups/governor.go, internal/cgroups/migrations/0001_cgroups.sql
+`done` · P0 · L · dep: none · parallel: no — backend/internal/cgroups/governor.go, backend/internal/cgroups/migrations/0001_cgroups.sql
 Scope: Create `internal/cgroups` package. At OS startup, write cgroup v2 hierarchy under `/sys/fs/cgroup/vulos/`. System slice `vulos-system.slice`: 30% CPU weight + 512 MiB memory.min guarantee (no webapp can take this). Per-app slice `vulos-apps-{ulid}.slice`: default 10% CPU weight, 256 MiB memory.high (soft limit), 512 MiB memory.max (hard OOM). Published apps (public visibility) get a tighter default: 15% CPU weight, 128 MiB memory.high. Expose `GET /api/cgroups/status` (current usage per app + system slice). On app crash/OOM, emit a structured notification. All Go, no shell scripts.
 AC: [ ] system slice has memory.min >= 512 MiB written [ ] published app slice has correct limits [ ] OOM kills app process (not OS services) [ ] status endpoint returns live cgroup stats [ ] `go test ./internal/cgroups/...`
 
 ### [PUBWEB-03] Edge cache: Nginx micro-cache for published app static assets
-`done` · P1 · M · dep: PUBWEB-02 · parallel: yes — internal/network/edgecache.go, config/nginx/pubweb.conf.tmpl
+`done` · P1 · M · dep: PUBWEB-02 · parallel: yes — backend/internal/network/edgecache.go, config/nginx/pubweb.conf.tmpl
 Scope: Generate an Nginx `proxy_cache` config for each published app subdomain: cache `GET` responses for static assets (JS/CSS/images — `Cache-Control: public`) for up to 5 minutes. Pass-through for API routes and authenticated requests. Include `X-Cache: HIT|MISS` header. Provide `POST /api/apps/:id/cache/purge` endpoint to flush the Nginx cache for an app (calls `nginx -s reload` or uses the Nginx Purge module if available). Dashboard shows cache hit rate from Nginx stub_status.
 AC: [ ] static asset request served from cache on second hit [ ] `X-Cache: HIT` header present [ ] cache purge reloads Nginx config [ ] `go build ./internal/network/...`
 
@@ -196,12 +196,12 @@ Scope: When the user is currently viewing a published (public) app, show a persi
 AC: [ ] banner appears when current app has `visibility: public` [ ] "Make private" hides banner and updates app [ ] banner absent for private/system apps [ ] `npm run build` passes for shell app
 
 ### [PUBWEB-07] Custom domain support for published apps
-`done` · P2 · M · dep: PUBWEB-02 · parallel: yes — internal/network/customdomain.go, cmd/server/routes_apps.go
+`done` · P2 · M · dep: PUBWEB-02 · parallel: yes — backend/internal/network/customdomain.go, backend/cmd/server/routes_apps.go
 Scope: Allow users to attach a custom domain to a published app. `POST /api/apps/:id/domain` body `{domain: "mysite.example.com"}`: verify ownership via a DNS TXT record `_vulos-verify.mysite.example.com = <challenge-token>`, provision TLS via ACME for the custom domain, add virtual host to Nginx config, store in `app_deployments`. `DELETE /api/apps/:id/domain` removes the custom domain (reverts to default subdomain). Show domain verification status in the dashboard.
 AC: [ ] TXT challenge issued and checked [ ] verified domain added to Nginx config + ACME [ ] unverified domain shows pending status [ ] `go test ./cmd/server/...`
 
 ### [PUBWEB-08] Resource alerts: notification + auto-throttle on sustained overuse
-`done` · P2 · M · dep: PUBWEB-04 · parallel: yes — internal/cgroups/alerter.go
+`done` · P2 · M · dep: PUBWEB-04 · parallel: yes — backend/internal/cgroups/alerter.go
 Scope: Background goroutine polls cgroup stats every 10 s. If a published app sustains >90% of its CPU weight for >60 s, emit a structured OS notification (priority: warning, action: "Review in Dashboard"). If memory.current > memory.high for >30 s, throttle the app by reducing its CPU weight by 50% and notify. Auto-restore to normal limits after the app drops below 70% usage for 120 s. Log all throttle events to `cgroup_events` SQLite table for dashboard history view.
 AC: [ ] alert fires after 60 s sustained CPU overuse [ ] CPU throttle is applied and logged [ ] auto-restore after cooldown [ ] `go test ./internal/cgroups/...`
 
@@ -219,32 +219,32 @@ _Roadmap: ROADMAP.md § Multi-Instance & Account Routing_  ·  _Prefix: `MINST-*
 > app-registry, coordinated leases.
 
 ### [MINST-01] Instance registry: local manifest of all account instances
-`done` · P0 · M · dep: none · parallel: no — internal/multiinstance/registry.go, internal/multiinstance/migrations/0001_instances.sql
+`done` · P0 · M · dep: none · parallel: no — backend/internal/multiinstance/registry.go, backend/internal/multiinstance/migrations/0001_instances.sql
 Scope: Create `internal/multiinstance` package. SQLite migration: `instances` table (ulid, display_name, last_seen_at, endpoint_url, ed25519_public_key, role enum(`owner|peer`), status enum(`online|offline|unknown`)). `Registry.Upsert`, `Registry.List`, `Registry.Get`, `Registry.MarkSeen`. Instances are discovered from: (a) the vulos-relay presence feed, (b) manual `POST /api/instances/add` with peer exchange QR code / link, (c) cloud account sync on login. The registry is the source of truth for routing decisions and the CRDT sync peer list.
 AC: [ ] registry CRUD survives restart [ ] Upsert deduplicates by ULID [ ] `go test ./internal/multiinstance/...` passes
 
 ### [MINST-02] Cloud-sync: pull instance list from Vulos account on login
-`done` · P0 · M · dep: MINST-01 · parallel: yes — internal/multiinstance/cloudsync.go
+`done` · P0 · M · dep: MINST-01 · parallel: yes — backend/internal/multiinstance/cloudsync.go
 Scope: After the OS device authenticates with the Vulos cloud control plane (CLOGIN-* done), pull the list of instances enrolled under the same account: `GET https://api.vulos.org/api/instances` (auth: device cert). Upsert each instance into the local registry. Subscribe to `wss://api.vulos.org/ws/instances` for real-time presence updates (instance comes online / goes offline). Re-sync on cloud reconnect. Expose `GET /api/instances` on the local OS server returning the merged list.
 AC: [ ] instance list pulled on login and stored in registry [ ] WebSocket presence updates are applied [ ] `GET /api/instances` returns current list [ ] offline mode: uses last-known registry [ ] `go test ./internal/multiinstance/...`
 
 ### [MINST-03] App routing: `{app}--{profile}.{ulid}.vulos.net` per instance
-`done` · P0 · M · dep: MINST-01, PUBWEB-02 · parallel: yes — internal/multiinstance/router.go
+`done` · P0 · M · dep: MINST-01, PUBWEB-02 · parallel: yes — backend/internal/multiinstance/router.go
 Scope: Each instance has a unique ULID. The OS reverse proxy config generator (PUBWEB-02) already handles the current instance's subdomains. Extend it to generate `{app}--{profile}.{ulid}` subdomains for every instance in the registry that has the given app published. The cloud DNS plane routes these to the correct instance's WireGuard/relay endpoint. Locally, `GET /api/routing/apps` returns a table of `{app, ulid, fqdn, instance_display_name}` for all reachable published apps across all account instances.
 AC: [ ] routing table lists apps across all account instances [ ] subdomains resolve to correct instance endpoints (tested with stub DNS) [ ] `go test ./internal/multiinstance/...`
 
 ### [MINST-04] App registry sync: cr-sqlite CRDT replication across instances
-`done` · P1 · L · dep: MINST-01 · parallel: no — internal/multiinstance/appsync.go
+`done` · P1 · L · dep: MINST-01 · parallel: no — backend/internal/multiinstance/appsync.go
 Scope: Extend the existing cr-sqlite cluster sync (CLUSTER.md / SYNC.md — already `done`) to include the `app_registry` table in the replicated set. When an app is installed, updated, or uninstalled on any instance, the change propagates via cr-sqlite changesets over the existing sync channel. Conflict resolution: last-write-wins on `app_version` field; `installed` flag merges as boolean OR (install wins over uninstall — uninstall requires quorum of 2 if more than 2 instances). Expose `GET /api/instances/:ulid/apps` for per-instance app inventory.
 AC: [ ] app install on instance A appears in instance B's registry within 5 s (test with two in-process stores) [ ] uninstall conflict resolved by quorum [ ] `go test ./internal/multiinstance/...`
 
 ### [MINST-05] Vulos-provisioned cloud instance: fly.io launch from OS dashboard
-`done` · P1 · L · dep: MINST-01, MINST-02 · parallel: yes — apps/dashboard/src/components/NewInstancePanel.jsx, internal/multiinstance/provision.go
+`done` · P1 · L · dep: MINST-01, MINST-02 · parallel: yes — apps/dashboard/src/components/NewInstancePanel.jsx, backend/internal/multiinstance/provision.go
 Scope: "New Instance" panel in the Dashboard lets the user spin up a Vulos-provisioned instance on fly.io, billed to their Vulos account. The OS calls `POST https://api.vulos.org/api/instances/provision` (auth: device cert, body: `{region, plan}`). The cloud side launches the fly.io machine, enrolls it under the account, and returns the new instance ULID + endpoint. The new instance appears in the local registry (MINST-01) and is immediately available for app routing (MINST-03). Show provisioning progress (polling `GET /api/instances/:ulid/status`).
 AC: [ ] panel shows region + plan selector [ ] provision call returns ULID within 30 s (stub) [ ] new instance appears in registry [ ] `npm run build` passes for dashboard app
 
 ### [MINST-06] Multi-instance notifications: fan-out + dedup
-`done` · P2 · M · dep: MINST-02 · parallel: yes — internal/multiinstance/notifyfanout.go
+`done` · P2 · M · dep: MINST-02 · parallel: yes — backend/internal/multiinstance/notifyfanout.go
 Scope: When the OS emits a notification (OS notification system — NOTIFICATIONS.md `done`), fan it out to all online instances via the vulos-relay S2S messaging channel so the user sees it on all their devices. Dedup by `notification_id` (stored in `seen_notifications` SQLite table with 7-day TTL) — each instance delivers the notification to the local UI at most once. Priority mapping: OS P0/P1 notifications fan out immediately; P2/P3 are batched (30-second window, deduplicated before send).
 AC: [ ] notification sent on instance A appears on instance B within 2 s [ ] duplicate delivery prevented by seen table [ ] P2/P3 batching tested [ ] `go test ./internal/multiinstance/...`
 

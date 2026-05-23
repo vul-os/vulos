@@ -75,8 +75,14 @@ func NewStore(path string, encryptKey []byte) (*Store, error) {
 }
 
 // NewStoreFromEnv opens the store using AIROUTER_DB (default: airouter.db)
-// and derives the encrypt key from AIROUTER_KEY_HEX (or falls back to a
-// deterministic dev key — never use in production without setting the env var).
+// and derives the encrypt key from AIROUTER_KEY_HEX.
+//
+// Production fail-closed behaviour: when VULOS_ENV=prod and AIROUTER_KEY_HEX is
+// unset, this function returns an error and refuses to initialise the Store so
+// the deterministic dev key can never silently encrypt operator API keys in a
+// production deployment. In dev / local (or when VULOS_ENV is unset and the
+// process is clearly non-prod), it logs a loud warning and falls back to the
+// dev key so tests and developer workflows continue to work.
 func NewStoreFromEnv() (*Store, error) {
 	dbPath := getenv("AIROUTER_DB", "airouter.db")
 	keyHex := os.Getenv("AIROUTER_KEY_HEX")
@@ -88,8 +94,13 @@ func NewStoreFromEnv() (*Store, error) {
 			return nil, fmt.Errorf("airouter: AIROUTER_KEY_HEX must be 64 hex chars (32 bytes)")
 		}
 	} else {
+		if os.Getenv("VULOS_ENV") == "prod" {
+			return nil, fmt.Errorf("airouter: AIROUTER_KEY_HEX is unset in VULOS_ENV=prod — refusing to initialise with the dev key (set AIROUTER_KEY_HEX to a 64-hex-char value)")
+		}
 		// Dev fallback: derive from a constant string — insecure, but allows
-		// tests and dev builds to run without env setup.
+		// tests and dev builds to run without env setup. Log loudly so operators
+		// who accidentally land here in a staging-like environment notice.
+		log.Printf("[airouter] WARNING: AIROUTER_KEY_HEX unset — using deterministic dev key (NEVER use in production; set VULOS_ENV=prod to enforce)")
 		h := sha256.Sum256([]byte("vulos-airouter-dev-key-do-not-use-in-prod"))
 		key = h[:]
 	}

@@ -15,4 +15,6 @@ worktrees/
 __pycache__/
 *.pyc
 backend/init
+backend/server
 backend/vulos-server
+/results.csv

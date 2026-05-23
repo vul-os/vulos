@@ -4,11 +4,13 @@ package vumail
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ─── test helpers ─────────────────────────────────────────────────────────────
@@ -334,5 +336,233 @@ func TestHandleRotateIdentity(t *testing.T) {
 	}
 	if resp.Address != "rotate-test@vumail.org" {
 		t.Errorf("address = %q", resp.Address)
+	}
+}
+
+// ─── Rate limiter unit tests ──────────────────────────────────────────────────
+
+// TestSendRateLimiter_MinuteBucket verifies that rapid-fire requests are
+// rejected after the per-minute cap is exhausted, and that advancing the
+// clock allows new requests.
+func TestSendRateLimiter_MinuteBucket(t *testing.T) {
+	now := time.Now()
+	rl := &sendRateLimiter{
+		perMin:  3,
+		perDay:  1000,
+		buckets: make(map[string]*sendBucket),
+		now:     func() time.Time { return now },
+	}
+
+	// First 3 requests succeed.
+	for i := range 3 {
+		ok, _ := rl.allow("user-a")
+		if !ok {
+			t.Errorf("request %d should be allowed, got rejected", i+1)
+		}
+	}
+
+	// 4th request must be rejected (minute bucket empty).
+	ok, retryAfter := rl.allow("user-a")
+	if ok {
+		t.Error("4th request should be rejected (minute cap reached)")
+	}
+	if retryAfter <= 0 {
+		t.Errorf("retryAfter should be > 0, got %d", retryAfter)
+	}
+
+	// Advance clock by 1 full minute — bucket should fully refill.
+	now = now.Add(time.Minute)
+	ok, _ = rl.allow("user-a")
+	if !ok {
+		t.Error("request after clock advance (1 min) should be allowed")
+	}
+}
+
+// TestSendRateLimiter_DayBucket verifies that the per-day cap is enforced.
+func TestSendRateLimiter_DayBucket(t *testing.T) {
+	now := time.Now()
+	rl := &sendRateLimiter{
+		perMin:  1000, // high minute cap so only day bucket triggers
+		perDay:  2,
+		buckets: make(map[string]*sendBucket),
+		now:     func() time.Time { return now },
+	}
+
+	for i := range 2 {
+		ok, _ := rl.allow("user-b")
+		if !ok {
+			t.Errorf("request %d should be allowed, got rejected", i+1)
+		}
+	}
+
+	// 3rd request must fail (day bucket empty).
+	ok, retryAfter := rl.allow("user-b")
+	if ok {
+		t.Error("3rd request should be rejected (day cap reached)")
+	}
+	if retryAfter <= 0 {
+		t.Errorf("retryAfter should be > 0, got %d", retryAfter)
+	}
+
+	// Advance clock by 1 full day — day bucket refills.
+	now = now.Add(24 * time.Hour)
+	ok, _ = rl.allow("user-b")
+	if !ok {
+		t.Error("request after clock advance (24h) should be allowed")
+	}
+}
+
+// TestSendRateLimiter_Isolation verifies that different accounts have
+// independent buckets.
+func TestSendRateLimiter_Isolation(t *testing.T) {
+	now := time.Now()
+	rl := &sendRateLimiter{
+		perMin:  1,
+		perDay:  1000,
+		buckets: make(map[string]*sendBucket),
+		now:     func() time.Time { return now },
+	}
+
+	// user-x exhausts their minute bucket.
+	ok, _ := rl.allow("user-x")
+	if !ok {
+		t.Fatal("first request for user-x should be allowed")
+	}
+	ok, _ = rl.allow("user-x")
+	if ok {
+		t.Fatal("second request for user-x should be rejected")
+	}
+
+	// user-y's bucket is unaffected.
+	ok, _ = rl.allow("user-y")
+	if !ok {
+		t.Error("first request for user-y should be allowed (independent bucket)")
+	}
+}
+
+// TestHandleSend_RateLimit_HTTP verifies that the HTTP handler returns 429
+// after the per-minute cap is exhausted, and includes Retry-After.
+func TestHandleSend_RateLimit_HTTP(t *testing.T) {
+	// Stub relay that always accepts.
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer relay.Close()
+
+	sender, _ := GenerateIdentity("rl-sender@vumail.org", "pw")
+	recipient, _ := GenerateIdentity("rl-recipient@vumail.org", "pw2")
+	recipientPub, _ := recipient.PublicKey()
+
+	svc := New(sender, &Store{}, relay.URL)
+	resolver := StaticKeyResolver{"rl-recipient@vumail.org": recipientPub}
+
+	mux := http.NewServeMux()
+	h := &Handlers{
+		svc:      svc,
+		resolver: resolver,
+		sendRL: &sendRateLimiter{
+			perMin:  2,
+			perDay:  1000,
+			buckets: make(map[string]*sendBucket),
+		},
+	}
+	mux.HandleFunc("POST /api/vumail/send", h.handleSend)
+
+	sendOnce := func() int {
+		body, _ := json.Marshal(sendRequest{
+			To:      "rl-recipient@vumail.org",
+			Subject: "Hi",
+			Body:    "Hello",
+		})
+		req := session(httptest.NewRequest("POST", "/api/vumail/send", bytes.NewReader(body)))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	// First 2 requests should succeed.
+	for i := range 2 {
+		if code := sendOnce(); code != http.StatusOK {
+			t.Errorf("request %d: got %d, want 200", i+1, code)
+		}
+	}
+
+	// 3rd request must be rate-limited.
+	body, _ := json.Marshal(sendRequest{
+		To:      "rl-recipient@vumail.org",
+		Subject: "Hi",
+		Body:    "Hello",
+	})
+	req := session(httptest.NewRequest("POST", "/api/vumail/send", bytes.NewReader(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("3rd request: got %d, want 429", rr.Code)
+	}
+	if rr.Header().Get("Retry-After") == "" {
+		t.Error("Retry-After header missing on 429 response")
+	}
+}
+
+// TestSendRateLimiter_SweepEvictsIdleEntries verifies that the bucket sweep
+// evicts entries idle for >24h and leaves recently-active entries intact.
+//
+// The test inserts 1000 buckets, advances the mock clock by 24h+5min so they
+// are all idle, then calls sweep directly. After the sweep the map must be
+// empty. A second pass inserts 1000 buckets but immediately touches one of
+// them; after the sweep only that entry should survive.
+func TestSendRateLimiter_SweepEvictsIdleEntries(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mockNow := base
+
+	rl := &sendRateLimiter{
+		perMin:        100,
+		perDay:        10000,
+		buckets:       make(map[string]*sendBucket),
+		now:           func() time.Time { return mockNow },
+		sweepInterval: 5 * time.Minute,
+		idleThreshold: 24 * time.Hour,
+	}
+
+	// Insert 1000 buckets, all with lastAccess = base.
+	for i := 0; i < 1000; i++ {
+		key := fmt.Sprintf("account-%04d", i)
+		rl.allow(key) // creates bucket with lastAccess = mockNow (base)
+	}
+	if got := len(rl.buckets); got != 1000 {
+		t.Fatalf("expected 1000 buckets before sweep, got %d", got)
+	}
+
+	// Advance mock clock beyond idle threshold.
+	mockNow = base.Add(24*time.Hour + 5*time.Minute + 1*time.Second)
+
+	// Run sweep directly.
+	rl.sweep(mockNow)
+
+	if got := len(rl.buckets); got != 0 {
+		t.Errorf("expected 0 buckets after sweep (all idle >24h), got %d", got)
+	}
+
+	// Second pass: 1000 buckets, one touched after the clock advance.
+	mockNow = base
+	for i := 0; i < 1000; i++ {
+		key := fmt.Sprintf("account2-%04d", i)
+		rl.allow(key)
+	}
+	// Advance clock past idle threshold.
+	mockNow = base.Add(24*time.Hour + 5*time.Minute + 1*time.Second)
+	// Touch just one bucket at the new "now" time so it won't be evicted.
+	rl.allow("account2-0000")
+
+	rl.sweep(mockNow)
+
+	if got := len(rl.buckets); got != 1 {
+		t.Errorf("expected 1 bucket after sweep (only active entry survives), got %d", got)
+	}
+	if _, ok := rl.buckets["account2-0000"]; !ok {
+		t.Error("expected account2-0000 to survive the sweep")
 	}
 }

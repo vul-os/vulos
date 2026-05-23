@@ -1301,7 +1301,20 @@ func main() {
 	// Stream toolbar endpoints (FPS selector, MangoHud toggle — GAME-08)
 	registerStreamRoutes(mux, streamPool)
 
-	// AUTH-13: WebAuthn re-auth gate for input-injection sessions
+	// AUTH-13: WebAuthn re-auth gate for input-injection sessions.
+	//
+	// Pool.SetWebAuthnVerifier is intentionally never called here yet — there is
+	// no production WebAuthn verifier in tree, so RequireAssertion falls back to
+	// A13_stubVerifier which always rejects.  In prod that means input
+	// injection can never be unlocked, which is the safe failure mode, but the
+	// system is also non-functional for legitimate users.  Refuse to start in
+	// prod so the misconfiguration is loud rather than silent.
+	if streamPool.WebAuthnVerifier() == nil && activeEnv.IsProd() {
+		log.Fatal("[stream/webauthn] ABORT: no WebAuthn verifier wired (Pool.SetWebAuthnVerifier was never called) and env=prod — input-injection re-auth would be permanently broken. Wire a real verifier before starting in prod.")
+	}
+	if streamPool.WebAuthnVerifier() == nil {
+		log.Printf("[stream/webauthn] WARNING: no WebAuthn verifier wired — input injection will remain gated (stub rejects all assertions). Acceptable in dev/local; fatal in prod.")
+	}
 	registerStreamWebAuthnRoutes(mux, streamPool, authStore)
 
 	// GAME-07: manifest-aware stream launch — detects gaming sessions automatically.

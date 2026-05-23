@@ -38,13 +38,29 @@ type Snapshot struct {
 	Paths    []string  `json:"paths"`
 }
 
+// defaultResticPassword is the well-known dev fallback. Using this in
+// production silently encrypts every backup with a value an attacker can guess
+// from the source tree, so prod paths refuse to run with it (see usingDefaultPassword).
+const defaultResticPassword = "vulos-default-key"
+
 func New(s3 *storage.S3Config, dataDir string) *Vault {
 	return &Vault{
 		s3:       s3,
-		password: getenv("RESTIC_PASSWORD", "vulos-default-key"),
+		password: getenv("RESTIC_PASSWORD", defaultResticPassword),
 		dataDir:  dataDir,
 	}
 }
+
+// usingDefaultPassword reports whether the vault is configured with the
+// well-known dev fallback password. The fail-closed checks in Init / Backup
+// consult this so RESTIC_PASSWORD can be left blank in dev without crashing.
+func (v *Vault) usingDefaultPassword() bool {
+	return v.password == defaultResticPassword
+}
+
+// errDefaultPasswordInProd is returned by Init/Backup when VULOS_ENV=prod and
+// the vault would otherwise encrypt backups with the dev fallback key.
+var errDefaultPasswordInProd = fmt.Errorf("vault: RESTIC_PASSWORD is unset in VULOS_ENV=prod — refusing to encrypt backups with the default dev key")
 
 // Init initializes the Restic repository if not already done.
 func (v *Vault) Init(ctx context.Context) error {
@@ -53,6 +69,13 @@ func (v *Vault) Init(ctx context.Context) error {
 
 	if !v.s3.Configured() {
 		return fmt.Errorf("s3 storage not configured")
+	}
+
+	if v.usingDefaultPassword() {
+		if os.Getenv("VULOS_ENV") == "prod" {
+			return errDefaultPasswordInProd
+		}
+		log.Printf("[vault] WARNING: RESTIC_PASSWORD unset — encrypting backups with the deterministic dev key (NEVER use in production; set VULOS_ENV=prod to enforce)")
 	}
 
 	// Check if repo exists
@@ -82,6 +105,14 @@ func (v *Vault) Backup(ctx context.Context) error {
 
 	if !v.status.Initialized {
 		return fmt.Errorf("vault not initialized")
+	}
+
+	// Defence in depth: even if Init() succeeded in a non-prod environment, a
+	// later switch to VULOS_ENV=prod (or a process restart in prod that never
+	// hits Init because the repo already exists) must not silently encrypt new
+	// snapshots with the dev key.
+	if v.usingDefaultPassword() && os.Getenv("VULOS_ENV") == "prod" {
+		return errDefaultPasswordInProd
 	}
 
 	v.status.Running = true

@@ -17,23 +17,209 @@
 // All routes require a local OS session.  In this implementation the
 // session check is a stub that accepts a non-empty X-OS-Session header;
 // the real auth middleware is wired by cmd/server/main.go in a later pass.
+//
+// Rate limiting: POST /api/vumail/send is protected by a per-account
+// token-bucket rate limiter.  Defaults: 20 sends/minute, 200 sends/day.
+// Configurable via VUMAIL_RATE_PER_MIN and VUMAIL_RATE_PER_DAY env vars.
+// Returns 429 Too Many Requests with a Retry-After header when exceeded.
 package vumail
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+// sendBucket holds per-account token state for sendRateLimiter.
+type sendBucket struct {
+	tokens      [3]int64  // [minTokens, dayTokens, lastRefillNano]
+	lastAccess  time.Time // wall-clock time of last allow() call
+}
+
+// sendRateLimiter implements a dual token-bucket rate limiter for the send
+// endpoint: one per-minute bucket and one per-day bucket.
+//
+// The buckets refill at a constant rate (per-minute: capacity/60s,
+// per-day: capacity/86400s).  When either bucket is empty the request is
+// rejected with 429 and a Retry-After header.
+//
+// Defaults are read from VUMAIL_RATE_PER_MIN (default 20) and
+// VUMAIL_RATE_PER_DAY (default 200) at first use; they may be overridden
+// in tests by setting the fields directly.
+//
+// A background goroutine (started by newSendRateLimiter) sweeps the buckets
+// map every 5 minutes and evicts entries idle for more than 24 hours.
+// The goroutine terminates when the supplied context is cancelled.
+type sendRateLimiter struct {
+	mu sync.Mutex
+
+	perMin int // token capacity per minute per account (default 20)
+	perDay int // token capacity per day per account   (default 200)
+
+	// buckets maps accountKey → per-account token state.
+	buckets map[string]*sendBucket
+
+	// now is a clock override used in tests; nil means time.Now.
+	now func() time.Time
+
+	// sweepInterval and idleThreshold can be overridden in tests.
+	sweepInterval time.Duration
+	idleThreshold time.Duration
+}
+
+// newSendRateLimiter builds a limiter whose capacity is read from env vars and
+// starts the background eviction goroutine.  The goroutine exits when ctx is
+// cancelled.
+func newSendRateLimiter(ctx context.Context) *sendRateLimiter {
+	perMin := envInt("VUMAIL_RATE_PER_MIN", 20)
+	perDay := envInt("VUMAIL_RATE_PER_DAY", 200)
+	rl := &sendRateLimiter{
+		perMin:        perMin,
+		perDay:        perDay,
+		buckets:       make(map[string]*sendBucket),
+		sweepInterval: 5 * time.Minute,
+		idleThreshold: 24 * time.Hour,
+	}
+	go rl.sweepLoop(ctx)
+	return rl
+}
+
+// defaultSendRateLimiter builds a limiter using a background context.
+// Preserved for callers (RegisterHandlersWithSession) that have no context.
+func defaultSendRateLimiter() *sendRateLimiter {
+	return newSendRateLimiter(context.Background())
+}
+
+// sweepLoop runs in a goroutine and periodically evicts idle buckets.
+func (rl *sendRateLimiter) sweepLoop(ctx context.Context) {
+	nowFn := rl.now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	ticker := time.NewTicker(rl.sweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rl.sweep(nowFn())
+		}
+	}
+}
+
+// sweep deletes bucket entries that have been idle for longer than idleThreshold.
+func (rl *sendRateLimiter) sweep(now time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	for key, b := range rl.buckets {
+		if now.Sub(b.lastAccess) > rl.idleThreshold {
+			delete(rl.buckets, key)
+		}
+	}
+}
+
+// allow returns (allowed, retryAfterSeconds).  It is safe for concurrent use.
+func (rl *sendRateLimiter) allow(accountKey string) (bool, int) {
+	nowFn := rl.now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	now := nowFn()
+	nowNano := now.UnixNano()
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	b, ok := rl.buckets[accountKey]
+	if !ok {
+		b = &sendBucket{
+			tokens:     [3]int64{int64(rl.perMin), int64(rl.perDay), nowNano},
+			lastAccess: now,
+		}
+		rl.buckets[accountKey] = b
+	}
+
+	b.lastAccess = now
+
+	// Refill tokens based on elapsed time.
+	elapsed := time.Duration(nowNano - b.tokens[2])
+	if elapsed > 0 {
+		// Per-minute bucket: refills at perMin tokens per 60s.
+		minRefill := int64(float64(elapsed) / float64(time.Minute) * float64(rl.perMin))
+		b.tokens[0] += minRefill
+		if b.tokens[0] > int64(rl.perMin) {
+			b.tokens[0] = int64(rl.perMin)
+		}
+		// Per-day bucket: refills at perDay tokens per 24h.
+		dayRefill := int64(float64(elapsed) / float64(24*time.Hour) * float64(rl.perDay))
+		b.tokens[1] += dayRefill
+		if b.tokens[1] > int64(rl.perDay) {
+			b.tokens[1] = int64(rl.perDay)
+		}
+		b.tokens[2] = nowNano
+	}
+
+	if b.tokens[0] <= 0 {
+		// Minute bucket empty: compute seconds until one token refills.
+		secsPerToken := int(time.Minute/time.Second) / rl.perMin
+		if secsPerToken < 1 {
+			secsPerToken = 1
+		}
+		return false, secsPerToken
+	}
+	if b.tokens[1] <= 0 {
+		// Day bucket empty: compute seconds until one token refills.
+		secsPerToken := int((24 * time.Hour) / time.Second / time.Duration(rl.perDay))
+		if secsPerToken < 1 {
+			secsPerToken = 1
+		}
+		return false, secsPerToken
+	}
+
+	b.tokens[0]--
+	b.tokens[1]--
+	return true, 0
+}
+
+// envInt reads an integer environment variable, returning fallback on error or absence.
+func envInt(key string, fallback int) int {
+	if s := os.Getenv(key); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			return v
+		}
+	}
+	return fallback
+}
 
 // ─── Handler set ─────────────────────────────────────────────────────────────
 
+// SessionValidator resolves a session token (the value of the X-OS-Session
+// header) to a live, unrevoked user identity.  Implementations should return
+// ok=false on any lookup failure so callers fail closed with HTTP 401.
+//
+// The vumail package keeps this as a small interface so it does not have to
+// import services/auth directly (which would create a layering inversion);
+// cmd/server wires a thin adapter around auth.Store.ValidateToken.
+type SessionValidator interface {
+	ValidateOSSession(token string) (userID string, ok bool)
+}
+
 // Handlers groups the vumail HTTP handler dependencies.
 type Handlers struct {
-	svc      *Service
-	resolver KeyResolver
+	svc       *Service
+	resolver  KeyResolver
+	validator SessionValidator // optional; see requireSession for fail-closed semantics
+	sendRL    *sendRateLimiter // rate limiter for POST /api/vumail/send
 }
 
 // RegisterHandlers mounts all vumail HTTP routes on mux.
@@ -41,8 +227,24 @@ type Handlers struct {
 //	mux      – the *http.ServeMux to register routes on
 //	svc      – the vumail Service (must have a non-nil identity)
 //	resolver – KeyResolver used by the send handler to look up recipient keys
+//
+// This entry point is preserved for legacy callers and tests.  It registers a
+// nil SessionValidator, which in VULOS_ENV=prod causes every request to be
+// rejected with 401 (fail-closed).  Production callers MUST use
+// RegisterHandlersWithSession and pass a real validator.
 func RegisterHandlers(mux *http.ServeMux, svc *Service, resolver KeyResolver) {
-	h := &Handlers{svc: svc, resolver: resolver}
+	RegisterHandlersWithSession(mux, svc, resolver, nil)
+}
+
+// RegisterHandlersWithSession is the production-grade entry point.  validator
+// is consulted by every vumail handler before performing any work; in
+// VULOS_ENV=prod a nil validator is fatal-on-request (401), so callers must
+// supply one.
+func RegisterHandlersWithSession(mux *http.ServeMux, svc *Service, resolver KeyResolver, validator SessionValidator) {
+	if validator == nil && os.Getenv("VULOS_ENV") == "prod" {
+		log.Printf("[vumail] WARNING: RegisterHandlersWithSession called with a nil SessionValidator in VULOS_ENV=prod — every request will be rejected with 401")
+	}
+	h := &Handlers{svc: svc, resolver: resolver, validator: validator, sendRL: defaultSendRateLimiter()}
 
 	mux.HandleFunc("POST /api/vumail/send", h.handleSend)
 	mux.HandleFunc("GET /api/vumail/mailbox", h.handleListMailbox)
@@ -54,11 +256,36 @@ func RegisterHandlers(mux *http.ServeMux, svc *Service, resolver KeyResolver) {
 
 // ─── Session guard ────────────────────────────────────────────────────────────
 
-// requireSession is a thin session guard.  It returns false and writes a 401
-// if the request lacks an X-OS-Session header.  The full auth middleware is
-// provided by the cmd/server integration pass.
-func requireSession(w http.ResponseWriter, r *http.Request) bool {
-	if r.Header.Get("X-OS-Session") == "" {
+// requireSession is the per-request session guard.
+//
+// Behaviour:
+//
+//	1. If the X-OS-Session header is empty, 401 immediately.
+//	2. If a SessionValidator is configured, look up the token; on any failure
+//	   (unknown, revoked, expired) 401 with no detail.  On success, attach the
+//	   resolved user ID to the request as X-User-ID so downstream handlers can
+//	   key off it without re-resolving.
+//	3. If no validator is configured: in VULOS_ENV=prod fail closed (401) — the
+//	   header alone is not a credential.  In dev/local accept a non-empty
+//	   header so existing developer workflows and unit tests keep working.
+func (h *Handlers) requireSession(w http.ResponseWriter, r *http.Request) bool {
+	token := r.Header.Get("X-OS-Session")
+	if token == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+		return false
+	}
+	if h.validator != nil {
+		userID, ok := h.validator.ValidateOSSession(token)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
+			return false
+		}
+		r.Header.Set("X-User-ID", userID)
+		return true
+	}
+	// No validator: header-presence-only is unsafe in prod.
+	if os.Getenv("VULOS_ENV") == "prod" {
+		log.Printf("[vumail] denied request: no SessionValidator wired in VULOS_ENV=prod")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
 		return false
 	}
@@ -74,9 +301,24 @@ type sendRequest struct {
 }
 
 func (h *Handlers) handleSend(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
+	if !h.requireSession(w, r) {
 		return
 	}
+
+	// Per-account rate limit (always on; bucket size configurable via env vars).
+	accountKey := r.Header.Get("X-User-ID")
+	if accountKey == "" {
+		accountKey = r.Header.Get("X-OS-Session") // fallback when no validator wired
+	}
+	if ok, retryAfter := h.sendRL.allow(accountKey); !ok {
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{
+			"error":       "rate_limit_exceeded",
+			"retry_after": fmt.Sprintf("%d", retryAfter),
+		})
+		return
+	}
+
 	var req sendRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
@@ -116,7 +358,7 @@ type mailboxResponse struct {
 }
 
 func (h *Handlers) handleListMailbox(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
+	if !h.requireSession(w, r) {
 		return
 	}
 	q := r.URL.Query()
@@ -161,7 +403,7 @@ type messageResponse struct {
 }
 
 func (h *Handlers) handleGetMessage(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
+	if !h.requireSession(w, r) {
 		return
 	}
 	id := pathID(r, "/api/vumail/mailbox/")
@@ -218,7 +460,7 @@ type patchMessageRequest struct {
 }
 
 func (h *Handlers) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
+	if !h.requireSession(w, r) {
 		return
 	}
 	id := pathID(r, "/api/vumail/mailbox/")
@@ -265,7 +507,7 @@ type identityResponse struct {
 }
 
 func (h *Handlers) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
+	if !h.requireSession(w, r) {
 		return
 	}
 	if h.svc.identity == nil {
@@ -286,7 +528,7 @@ type rotateRequest struct {
 }
 
 func (h *Handlers) handleRotateIdentity(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
+	if !h.requireSession(w, r) {
 		return
 	}
 	if h.svc.identity == nil {

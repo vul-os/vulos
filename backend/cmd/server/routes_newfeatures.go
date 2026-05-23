@@ -69,7 +69,11 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 	}
 	airStore, err := airouter.NewStoreFromEnv()
 	if err != nil {
-		log.Printf("[airouter] store init warning: %v — AI router routes disabled", err)
+		// In VULOS_ENV=prod with AIROUTER_KEY_HEX unset the store refuses to
+		// initialise (fail-closed). Disable the AI router routes with a clear
+		// message rather than crashing the whole server so other features stay
+		// available.
+		log.Printf("[airouter] store init refused: %v — /api/ai/* routes DISABLED (set AIROUTER_KEY_HEX to a 64-hex-char value)", err)
 	} else {
 		airRouter := airouter.NewRouter(airStore)
 		airouter.RegisterHandlers(mux, airRouter)
@@ -101,7 +105,16 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 
 		// Real relay-backed KeyResolver (VUMAIL-05).
 		relayClient := vumail.NewRelayClient(relayURL)
-		vumail.RegisterHandlers(mux, vmailSvc, relayClient)
+
+		// SessionValidator: resolve X-OS-Session against the auth Store so
+		// vumail no longer accepts an arbitrary non-empty header as proof of
+		// identity. When authStore is nil (degraded mode), pass nil — the
+		// vumail handler is fail-closed in prod and dev-permissive otherwise.
+		var sessVal vumail.SessionValidator
+		if deps.authStore != nil {
+			sessVal = vumailSessionAdapter{store: deps.authStore}
+		}
+		vumail.RegisterHandlersWithSession(mux, vmailSvc, relayClient, sessVal)
 		log.Printf("[vumail] registered /api/vumail/* routes")
 	}
 
@@ -140,15 +153,32 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 	//
 	// VULOS_DNS_API=noop   — skips the real cloud DNS call (dev/CI safe).
 	// VULOS_CADDY_DIR=noop — skips Caddyfile snippet writes.
-	// Both are defaulted to "noop" here only when not already set by the
-	// operator, so production values are not overridden.
+	//
+	// In dev/local we default both to "noop" (with a warning) so a fresh
+	// checkout boots.  In VULOS_ENV=prod a noop default would silently lie to
+	// customers (their domain is "provisioned" but no DNS/Caddy work happens),
+	// so we refuse to register the subdomain routes when either is unset.
+	prodMode := os.Getenv("VULOS_ENV") == "prod"
+	provisioningMisconfigured := false
 	if os.Getenv("VULOS_DNS_API") == "" {
-		os.Setenv("VULOS_DNS_API", "noop")
+		if prodMode {
+			log.Printf("[appnet/subdomain] DNS provisioning DISABLED in prod: VULOS_DNS_API is unset — refusing to register routes so customers are not falsely told their domain is being provisioned")
+			provisioningMisconfigured = true
+		} else {
+			log.Printf("[appnet/subdomain] WARNING: VULOS_DNS_API unset — defaulting to noop (dev/CI only)")
+			os.Setenv("VULOS_DNS_API", "noop")
+		}
 	}
 	if os.Getenv("VULOS_CADDY_DIR") == "" {
-		os.Setenv("VULOS_CADDY_DIR", "noop")
+		if prodMode {
+			log.Printf("[appnet/subdomain] Caddy snippet writes DISABLED in prod: VULOS_CADDY_DIR is unset — refusing to register routes")
+			provisioningMisconfigured = true
+		} else {
+			log.Printf("[appnet/subdomain] WARNING: VULOS_CADDY_DIR unset — defaulting to noop (dev/CI only)")
+			os.Setenv("VULOS_CADDY_DIR", "noop")
+		}
 	}
-	{
+	if !provisioningMisconfigured {
 		deployStore, dsErr := appnet.NewDeploymentStore()
 		if dsErr != nil {
 			log.Printf("[appnet/subdomain] deployment store init warning: %v — trying temp path", dsErr)
@@ -174,12 +204,24 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 		//                         already set.
 		// The same provisioner constructed above is reused so both sets of routes
 		// share the same DeploymentStore.
+		//
+		// In VULOS_ENV=prod an unset value must NOT silently default to noop —
+		// purge requests would be acked while leaving the edge cache stale.
+		edgeCacheMisconfigured := false
 		if os.Getenv("VULOS_NGINX_DIR") == "" {
-			os.Setenv("VULOS_NGINX_DIR", "noop")
+			if prodMode {
+				log.Printf("[appnet/edgecache] DISABLED in prod: VULOS_NGINX_DIR is unset — refusing to register cache purge/stats routes")
+				edgeCacheMisconfigured = true
+			} else {
+				log.Printf("[appnet/edgecache] WARNING: VULOS_NGINX_DIR unset — defaulting to noop (dev/CI only)")
+				os.Setenv("VULOS_NGINX_DIR", "noop")
+			}
 		}
-		ecm := appnet.NewEdgeCacheManager()
-		appnet.RegisterEdgeCacheHandlers(mux, ecm, provisioner)
-		log.Printf("[appnet/edgecache] registered POST /api/apps/{id}/cache/purge, GET /api/apps/{id}/cache/stats")
+		if !edgeCacheMisconfigured {
+			ecm := appnet.NewEdgeCacheManager()
+			appnet.RegisterEdgeCacheHandlers(mux, ecm, provisioner)
+			log.Printf("[appnet/edgecache] registered POST /api/apps/{id}/cache/purge, GET /api/apps/{id}/cache/stats")
+		}
 
 		// ── 4b. Custom domain support (services/appnet, PUBWEB-07) ──────────────────
 		//
@@ -329,5 +371,23 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps) {
 			log.Printf("[multiinstance/notify] registry unavailable (%v) — notify routes disabled", regErr)
 		}
 	}
+}
+
+// vumailSessionAdapter bridges svcauth.Store.ValidateToken into the
+// vumail.SessionValidator interface so vumail can resolve X-OS-Session tokens
+// to a live, unrevoked user without importing services/auth directly.
+type vumailSessionAdapter struct {
+	store *svcauth.Store
+}
+
+func (a vumailSessionAdapter) ValidateOSSession(token string) (string, bool) {
+	if a.store == nil {
+		return "", false
+	}
+	sess, ok := a.store.ValidateToken(token)
+	if !ok || sess == nil {
+		return "", false
+	}
+	return sess.UserID, true
 }
 

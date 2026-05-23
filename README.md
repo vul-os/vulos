@@ -245,6 +245,9 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup, GPU configuration, and 
 vulos/
 ├── src/                  # React frontend (shell, apps, auth)
 ├── backend/              # Go backend (24 services, 110+ endpoints)
+│   ├── internal/         # Domain packages: airouter, vumail, cgroups,
+│   │                     #   multiinstance, installer, auth, storage, …
+│   └── cmd/server/       # HTTP server + all route handlers
 ├── apps/                 # Bundled app manifests
 ├── registry.json         # App store registry (apt + web apps)
 ├── landing/              # Landing page
