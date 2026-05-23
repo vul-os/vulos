@@ -63,9 +63,13 @@ import (
 	"vulos/backend/services/installer"
 	"vulos/backend/services/wine"
 	"vulos/backend/services/wltoplevel"
+
+	"vulos/backend/internal/obs"
 )
 
 func main() {
+	obs.Init()
+
 	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
 	flag.Parse()
 
@@ -478,6 +482,7 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
+	mux.Handle("GET /metrics", obs.Handler())
 
 	// NET-07: cluster health (data-dir writable, disk space, sync lag) — public
 	// syncer is wired below after cluster init; use a pointer so the handler

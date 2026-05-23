@@ -157,3 +157,49 @@ For context, the `SEC-*` tasks in `tasks.md` and decisions `D24`–`D29` documen
 The project is open by design — that's literally what *vula* means in isiZulu. We try to keep PRs and issues short, specific, and friendly. If a review comment feels harsh, it's almost certainly tiredness rather than judgement; ask for clarification and we'll rephrase.
 
 Welcome aboard.
+
+---
+
+## Frozen invariants
+
+These are hard constraints. PRs that violate them will not be merged regardless of quality:
+
+- **No CGO** in any OSS Go code. Pure Go only.
+- **No .tsx** files. Frontend is JSX only (`*.jsx`).
+- **No Google SSO / OAuth** login flows.
+- **No Stripe billing** integration — billing lives in vulos-cloud only.
+- **No Rust rewrites** — Go throughout (see decisions.md / D-language).
+- Features requiring closed-source cloud infrastructure belong in `vulos-cloud`, not here.
+- No new external runtime dependencies without prior discussion in a GitHub issue.
+
+## Code of Conduct
+
+We follow the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
+
+## Commit Message Style
+
+[Conventional Commits](https://www.conventionalcommits.org/) format is welcome but not required. Examples:
+
+```
+feat(sandbox): restrict syscalls via seccomp
+fix(firstboot): handle missing /etc/hostname
+chore: bump Go 1.22 → 1.23
+```
+
+## Testing Expectations
+
+Before opening a PR:
+
+```bash
+go test ./...          # backend
+go vet ./...
+npm run lint           # frontend
+npm test
+make smoke             # if you touched firstboot/installer
+```
+
+All existing tests must pass. Security-relevant changes must include tests.
+
+## Licensing
+
+Vulos is MIT-licensed. By submitting a PR you agree your contribution is released under the MIT License. No CLA is required. You retain copyright on your contributions.

@@ -1,6 +1,6 @@
 # Vulos OS — Task Backlog
 
-**Status: 1 task open (VUMAIL-01). All other 30 tasks in this file are `done`. 235 legacy tasks also `done`.**
+**Status: All 31 tasks in this file are `done`. 235 legacy tasks also `done`.**
 
 BMINIT-14 resolved. Four feature tracks (AIROT, VUMAIL, PUBWEB, MINST) added and 30/31 complete.
 See ROADMAP.md §§ 1–3, 7 for full context.
@@ -18,11 +18,11 @@ See ROADMAP.md §§ 1–3, 7 for full context.
 |---|---|---:|:---|
 | BMINIT legacy | ROADMAP.md § Boot, Init & Bare Metal | 1 / 1 | `[██████████]` 100% |
 | AI Router | ROADMAP.md § AI Router | 8 / 8 | `[██████████]` 100% |
-| Vulos Mail Identity | ROADMAP.md § Identity — Vumail | 6 / 7 | `[█████████─]` 86% — VUMAIL-01 open |
+| Vulos Mail Identity | ROADMAP.md § Identity — Vumail | 7 / 7 | `[██████████]` 100% |
 | Public Webapps | ROADMAP.md § Public Webapps | 8 / 8 | `[██████████]` 100% |
 | Multi-Instance Routing | ROADMAP.md § Multi-Instance | 7 / 7 | `[██████████]` 100% |
 
-| **Open total** | | **1 / 31** | `[█████████─]` 97% |
+| **Open total** | | **0 / 31** | `[██████████]` 100% |
 
 ---
 
@@ -119,7 +119,7 @@ _Roadmap: ROADMAP.md § Identity — Mandatory Vulos Mail (vumail)_  ·  _Prefix
 > inter-instance peering contact cards, and notification delivery.
 
 ### [VUMAIL-01] First-boot wizard: vumail identity creation step
-`todo` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VumailStep.jsx, backend/internal/vumail/identity.go
+`done` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VumailStep.jsx, backend/internal/vumail/identity.go
 Scope: Add a mandatory "Create your mail identity" step to the first-boot wizard (after the user-account step, before cluster-join). The user picks a username; the wizard checks availability against `https://vumail.org/api/check?user=<name>` (GET, returns `{available: bool}`). On confirm, `POST /api/vumail/claim` on the local OS server: stores the chosen identity locally (`vumail_identity` table: address, ed25519_public_key, ed25519_private_key_encrypted), and registers the keypair with vulos-relay for delivery routing. The step is skippable only if `VUMAIL_SKIP=1` is set in the boot environment (for dev/testing). JSX only.
 AC: [ ] wizard shows vumail step [ ] availability check calls the check endpoint [ ] confirmed identity is stored in SQLite and survives reboot [ ] skip flag works in dev [ ] `npm run build` passes for setup-wizard
 

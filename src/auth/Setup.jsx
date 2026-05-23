@@ -5,8 +5,11 @@ import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import PostSignupWizard from './PostSignupWizard'
+import VumailStep from '../../apps/setup-wizard/src/steps/VumailStep'
 
-const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+// VUMAIL-01: 'vumail' step is inserted after 'account' and before 'pin'.
+// The step is mandatory — no skip option in production (frozen invariant).
+const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'vumail', 'pin', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
@@ -152,6 +155,8 @@ export default function Setup({ onComplete }) {
     // NETB-05: install-time account choice
     NETB05_choice: '', // 'local' | 'cloud'
     NETB05_clusterPassphrase: '',
+    // VUMAIL-01: claimed vumail address (populated by VumailStep)
+    vumailAddress: '',
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -350,6 +355,16 @@ export default function Setup({ onComplete }) {
                     CL05_setWizardIsAdmin(isAdmin)
                     CL05_setShowWizard(true)
                   }}
+                />
+              )}
+              {/* VUMAIL-01: mandatory vumail identity step — no skip in production */}
+              {current === 'vumail' && (
+                <VumailStep
+                  config={config}
+                  update={update}
+                  onNext={next}
+                  onPrev={prev}
+                  customDomain={config.NETB05_choice === 'cloud' ? undefined : undefined}
                 />
               )}
               {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
