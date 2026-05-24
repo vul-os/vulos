@@ -1,0 +1,242 @@
+package lan
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+)
+
+// mdnsHostname is the zero-config name the box advertises over multicast DNS.
+// Clients on the same LAN can reach the box at this name with no configuration.
+const mdnsHostname = "vulos.local"
+
+// lanDomainSuffix is the suffix the local DNS responder is authoritative for.
+// The full name is box.<id>.lan.vulos.org — resolvable even with public DNS
+// down because the box answers it directly on the LAN.
+const lanDomainSuffix = "lan.vulos.org"
+
+// BoxHostname returns the LAN hostname for a box with the given instance id,
+// e.g. box.01h.....lan.vulos.org. The id is lower-cased; an empty id yields a
+// stable fallback so the name is always well-formed.
+func BoxHostname(instanceID string) string {
+	id := strings.ToLower(strings.TrimSpace(instanceID))
+	if id == "" {
+		id = "unknown"
+	}
+	return fmt.Sprintf("box.%s.%s", id, lanDomainSuffix)
+}
+
+// Config configures the LAN reachability Service.
+type Config struct {
+	// InstanceID is the box's stable ULID; it forms the box.<id>.lan.vulos.org name.
+	InstanceID string
+
+	// CertSource supplies the TLS cert+key for the HTTPS listener. Required.
+	CertSource CertSource
+
+	// Handler is the OS HTTP handler served over HTTPS on the LAN. Required.
+	Handler http.Handler
+
+	// LANIP overrides the auto-detected LAN IP advertised over mDNS and returned
+	// by the DNS responder. Leave nil to auto-detect.
+	LANIP net.IP
+
+	// HTTPSAddr is the listen address for the LAN HTTPS server.
+	// Defaults to ":443"; tests inject an ephemeral address like "127.0.0.1:0".
+	HTTPSAddr string
+
+	// DNSAddr is the listen address for the UDP DNS responder.
+	// Defaults to ":53"; tests inject "127.0.0.1:0".
+	DNSAddr string
+
+	// DisableMDNS skips mDNS advertisement (e.g. in CI where multicast is unavailable).
+	DisableMDNS bool
+}
+
+// Service is the box-side LAN reachability layer: mDNS advertisement, a local
+// DNS responder, and an HTTPS listener — all working without any cloud round-trip.
+type Service struct {
+	cfg      Config
+	hostname string // box.<id>.lan.vulos.org
+	lanIP    net.IP
+
+	mu      sync.Mutex
+	mdns    *mdnsAdvertiser
+	dns     *dnsResponder
+	httpSrv *http.Server
+	httpLn  net.Listener
+	started bool
+}
+
+// New builds a LAN Service from cfg. It resolves the box hostname and LAN IP up
+// front (so they are observable before Start) but binds no sockets.
+func New(cfg Config) (*Service, error) {
+	if cfg.CertSource == nil {
+		return nil, errors.New("lan: CertSource is required")
+	}
+	if cfg.Handler == nil {
+		return nil, errors.New("lan: Handler is required")
+	}
+	if cfg.HTTPSAddr == "" {
+		cfg.HTTPSAddr = ":443"
+	}
+	if cfg.DNSAddr == "" {
+		cfg.DNSAddr = ":53"
+	}
+
+	lanIP := cfg.LANIP
+	if lanIP == nil {
+		lanIP = detectLANIP()
+	}
+
+	return &Service{
+		cfg:      cfg,
+		hostname: BoxHostname(cfg.InstanceID),
+		lanIP:    lanIP,
+	}, nil
+}
+
+// Hostname returns the box's LAN hostname (box.<id>.lan.vulos.org).
+func (s *Service) Hostname() string { return s.hostname }
+
+// LANIP returns the LAN IP the service advertises and resolves to.
+func (s *Service) LANIP() net.IP { return s.lanIP }
+
+// HTTPSAddr returns the actual address the HTTPS listener is bound to. This is
+// only meaningful after Start (and is how tests learn the ephemeral port).
+func (s *Service) HTTPSAddr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.httpLn != nil {
+		return s.httpLn.Addr().String()
+	}
+	return s.cfg.HTTPSAddr
+}
+
+// DNSAddr returns the actual UDP address the DNS responder is bound to.
+func (s *Service) DNSAddr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dns != nil {
+		return s.dns.Addr()
+	}
+	return s.cfg.DNSAddr
+}
+
+// Start binds all sockets and begins serving. It returns the first hard error
+// encountered while binding the HTTPS listener (the box's primary reachability
+// surface). mDNS and DNS bind failures are logged but non-fatal: a box that can
+// still be reached by IP is better than no box at all.
+func (s *Service) Start(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started {
+		return errors.New("lan: already started")
+	}
+
+	// HTTPS listener — the hard requirement.
+	ln, err := net.Listen("tcp", s.cfg.HTTPSAddr)
+	if err != nil {
+		return fmt.Errorf("lan: https listen on %s: %w", s.cfg.HTTPSAddr, err)
+	}
+	s.httpLn = ln
+	tlsLn := tls.NewListener(ln, TLSConfig(s.cfg.CertSource))
+	s.httpSrv = &http.Server{Handler: s.cfg.Handler}
+	go func() {
+		if err := s.httpSrv.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("[lan] https serve error: %v", err)
+		}
+	}()
+	log.Printf("[lan] serving OS over HTTPS on %s (host=%s ip=%v)", ln.Addr(), s.hostname, s.lanIP)
+
+	// Local DNS responder — answers box.<id>.lan.vulos.org offline.
+	dns, err := newDNSResponder(s.cfg.DNSAddr, s.hostname, s.lanIP)
+	if err != nil {
+		log.Printf("[lan] dns responder disabled: %v", err)
+	} else {
+		s.dns = dns
+		dns.Start(ctx)
+		log.Printf("[lan] DNS responder on %s answering %s -> %v", dns.Addr(), s.hostname, s.lanIP)
+	}
+
+	// mDNS advertisement — vulos.local on the LAN.
+	if !s.cfg.DisableMDNS {
+		m, err := newMDNSAdvertiser(s.lanIP, mdnsHostname)
+		if err != nil {
+			log.Printf("[lan] mDNS disabled: %v", err)
+		} else {
+			s.mdns = m
+			log.Printf("[lan] advertising %s over mDNS", mdnsHostname)
+		}
+	}
+
+	s.started = true
+	return nil
+}
+
+// Stop shuts down all listeners. It is safe to call even if Start failed partway.
+func (s *Service) Stop(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var errs []error
+	if s.mdns != nil {
+		if err := s.mdns.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		s.mdns = nil
+	}
+	if s.dns != nil {
+		if err := s.dns.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		s.dns = nil
+	}
+	if s.httpSrv != nil {
+		if err := s.httpSrv.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		s.httpSrv = nil
+	}
+	s.started = false
+	return errors.Join(errs...)
+}
+
+// detectLANIP returns the box's primary non-loopback IPv4 LAN address, falling
+// back to 127.0.0.1 when nothing routable is found (so the service is still
+// well-formed in an isolated/CI environment).
+func detectLANIP() net.IP {
+	// Prefer the address used to reach a well-known off-box target; this picks
+	// the interface the kernel would route LAN/WAN traffic through without
+	// actually sending anything (UDP "connect" is local-only).
+	if conn, err := net.Dial("udp", "192.168.1.1:9"); err == nil {
+		defer conn.Close()
+		if ua, ok := conn.LocalAddr().(*net.UDPAddr); ok && ua.IP != nil {
+			if v4 := ua.IP.To4(); v4 != nil && !v4.IsLoopback() {
+				return v4
+			}
+		}
+	}
+
+	// Fallback: first private IPv4 found across interfaces.
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		v4 := ipNet.IP.To4()
+		if v4 == nil || v4.IsLoopback() {
+			continue
+		}
+		if v4.IsPrivate() {
+			return v4
+		}
+	}
+	return net.IPv4(127, 0, 0, 1)
+}

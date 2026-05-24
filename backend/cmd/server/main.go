@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/config"
+	"vulos/backend/internal/lan"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/appfs"
@@ -39,6 +40,7 @@ import (
 	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
+	"vulos/backend/services/installer"
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/osdist"
@@ -53,14 +55,13 @@ import (
 	"vulos/backend/services/signing"
 	"vulos/backend/services/storageprov"
 	"vulos/backend/services/stream"
-	"vulos/backend/services/sysuser"
 	"vulos/backend/services/sync"
+	"vulos/backend/services/sysuser"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/webbrowser"
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
-	"vulos/backend/services/installer"
 	"vulos/backend/services/wine"
 	"vulos/backend/services/wltoplevel"
 
@@ -2307,12 +2308,12 @@ func main() {
 		log.Printf("[env] debug endpoints enabled at /debug/env and /debug/pprof/")
 		mux.HandleFunc("GET /debug/env", func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, map[string]any{
-				"env":                     activeEnv.String(),
-				"bind_host":               envDefaults.BindHost,
-				"skip_hardware_checks":    envDefaults.SkipHardwareChecks,
-				"allow_self_signed_certs": envDefaults.AllowSelfSignedCerts,
-				"strict_cookies":          envDefaults.StrictCookies,
-				"debug_endpoints":         envDefaults.DebugEndpoints,
+				"env":                      activeEnv.String(),
+				"bind_host":                envDefaults.BindHost,
+				"skip_hardware_checks":     envDefaults.SkipHardwareChecks,
+				"allow_self_signed_certs":  envDefaults.AllowSelfSignedCerts,
+				"strict_cookies":           envDefaults.StrictCookies,
+				"debug_endpoints":          envDefaults.DebugEndpoints,
 				"allow_staging_broker_key": envDefaults.AllowStagingBrokerKey,
 			})
 		})
@@ -2331,6 +2332,10 @@ func main() {
 	handler := secHeadersMiddleware(authHandler.Middleware(mainHandler))
 	server := &http.Server{Addr: addr, Handler: handler}
 
+	// lanSvc holds the opt-in OFFLINE-01 LAN reachability service (started below,
+	// after TLS cert paths are resolved). Declared here so shutdown can stop it.
+	var lanSvc *lan.Service
+
 	go func() {
 		<-ctx.Done()
 		log.Println("shutting down...")
@@ -2341,6 +2346,9 @@ func main() {
 		ptySvc.DestroyAll()
 		launcher.StopAll(context.Background())
 		netMgr.DestroyAll(context.Background())
+		if lanSvc != nil {
+			lanSvc.Stop(context.Background())
+		}
 		server.Shutdown(context.Background())
 	}()
 
@@ -2356,6 +2364,43 @@ func main() {
 				tlsCert, tlsKey = p.cert, p.key
 				break
 			}
+		}
+	}
+
+	// OFFLINE-01: opt-in box LAN reachability. When enabled, the box advertises
+	// vulos.local over mDNS, runs a tiny DNS responder for box.<id>.lan.vulos.org,
+	// and serves the OS over HTTPS on the LAN — all without any cloud round-trip,
+	// so a co-located client keeps working with the internet/cloud down.
+	// Disabled by default (NOT every install wants extra listeners); set
+	// VULOS_LAN_ENABLE=1 to turn on. The HTTPS/DNS ports default to the
+	// privileged 443/53 and can be overridden for non-root runs.
+	if os.Getenv("VULOS_LAN_ENABLE") == "1" {
+		lanHost := lan.BoxHostname(cfg.InstanceID)
+		// Prefer an externally-issued cert on disk (LANCERT-01 ACME DNS-01); fall
+		// back to a self-signed dev cert so the LAN HTTPS path always has material.
+		certSrc := lan.LoadCertSource(tlsCert, tlsKey, []string{"vulos.local", lanHost}, nil)
+		httpsAddr := ":443"
+		if v := os.Getenv("VULOS_LAN_HTTPS_ADDR"); v != "" {
+			httpsAddr = v
+		}
+		dnsAddr := ":53"
+		if v := os.Getenv("VULOS_LAN_DNS_ADDR"); v != "" {
+			dnsAddr = v
+		}
+		lanCfg := lan.Config{
+			InstanceID: cfg.InstanceID,
+			CertSource: certSrc,
+			Handler:    handler,
+			HTTPSAddr:  httpsAddr,
+			DNSAddr:    dnsAddr,
+		}
+		if s, err := lan.New(lanCfg); err != nil {
+			log.Printf("[lan] disabled: %v", err)
+		} else if err := s.Start(ctx); err != nil {
+			log.Printf("[lan] failed to start: %v", err)
+		} else {
+			lanSvc = s
+			log.Printf("[lan] reachable at https://%s and %s (mDNS vulos.local)", lanHost, s.HTTPSAddr())
 		}
 	}
 

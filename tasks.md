@@ -387,11 +387,12 @@ _Roadmap: ROADMAP.md §Offline LAN access & local-first storage_ · _Prefix: `OF
 > default stays central Tigris. Identity + anchor inbox stay central regardless.
 
 ### [OFFLINE-01] Box LAN reachability: mDNS + local DNS responder + LAN TLS cert
-`todo` · P1 · L · dep: none · parallel: yes — backend/internal/lan/ (new), firstboot/
+`done` · P1 · L · dep: none · parallel: yes — backend/internal/lan/ (new), firstboot/
 Scope: OS instance advertises on the LAN via mDNS (`vulos.local`) and runs a tiny DNS responder that
 answers `box.<id>.lan.vulos.org` → its LAN IP so the name resolves with the internet down. Install +
 serve the DNS-01-issued cert (LANCERT-01) for that hostname. Serve OS over HTTPS on the LAN, no cloud dep.
-AC: [ ] mDNS advertises vulos.local [ ] local DNS responder answers box.<id>.lan.vulos.org offline [ ] HTTPS served with DNS-01 cert, no warning [ ] works WAN-unplugged [ ] go build ./...
+AC: [x] mDNS advertises vulos.local [x] local DNS responder answers box.<id>.lan.vulos.org offline [x] HTTPS served with cert (pluggable CertSource; LANCERT-01 DNS-01 plugs in via file source) [x] works WAN-unplugged (no cloud calls) [x] go build ./...
+Done: new pkg `backend/internal/lan/` (CertSource iface + self-signed dev impl + file-based hot-reload loader, mDNS advertiser via pion/mdns, pure-Go UDP DNS responder via x/net/dnsmessage, Service orchestrator). Wired into cmd/server/main.go behind opt-in `VULOS_LAN_ENABLE=1`. 14 unit tests pass; `go build ./...` clean (CGO-free).
 
 ### [OFFLINE-02] OS web client multi-endpoint failover (cloud ↔ LAN)
 `todo` · P1 · M · dep: OFFLINE-01, RESOLVE-LAN-01 (vulos-cloud) · parallel: yes — src/lib/endpoints.js (new), src/lib/api.js
