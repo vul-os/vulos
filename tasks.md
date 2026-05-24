@@ -422,3 +422,67 @@ compatible) and register with the fabric for NAT-traversal/signaling. Media P2P;
 + thin fallback. Not a flat-rate hosted game service.
 AC: [ ] streaming server starts on GPU box [ ] registers with fabric [ ] P2P media path [ ] relay only on P2P failure [ ] go build ./...
 
+---
+
+## Area: Audit-fix wave A (from #125 verification audit — 2026-05-24)
+
+### [FIX-LANCERT-PULL-01] OS-side LANCERT cert puller (critical — closes offline-LAN loop)
+`todo` · P0 · M · dep: none · parallel: yes — backend/internal/lan/lancert_puller.go (new)
+Scope: Cloud LANCERT-01 issues a DNS-01 cert and exposes `POST /api/lancert/report-ip` + `GET /api/lancert/cert`,
+but the OS has no puller — `LoadCertSource` mtime-watches a path nothing ever writes to, so LAN HTTPS always
+falls back to self-signed. Add a background goroutine that POSTs the LAN IP at startup + on change, polls the
+cert endpoint with backoff (202 while pending, 200 with PEMs when ready), and writes the PEMs atomically to
+the path `LoadCertSource` watches. Auth via `X-Device-Auth` + `CP_SHARED_SECRET`. Opt-in `VULOS_LANCERT_ENABLE`.
+AC: [ ] puller posts LAN IP at startup [ ] polls cert with backoff [ ] atomic write (tmp+rename) at default path [ ] hot-reload picked up [ ] mock-cloud test [ ] go build ./...
+
+### [FIX-GPUHOST-WIRE-01] Wire backend/internal/gpuhost into OS server bootstrap
+`todo` · P0 · S · dep: none · parallel: yes — backend/cmd/server/main.go
+Scope: STREAM-BYO-01 shipped `internal/gpuhost/` (Service + Supervisor + fabric registration + PathChooser)
+but the OS server never instantiates it. Add a `// GPUHOST_WIRE BEGIN/END` block that constructs the Service
+when `gpuhost.Enabled()` returns true (env `VULOS_GPU_HOST`), passes the OS peering identity
+(`peering.Service.VulaID()` + `PublicKey()` — one key per box across all slices), runs on shutdownCtx.
+AC: [ ] gpuhost.Service constructed when VULOS_GPU_HOST=1 [ ] uses shared peering identity [ ] no-op when env unset [ ] go build ./...
+
+### [FIX-LAN-PATH-CONST-01] Shared LAN cert-path constants
+`todo` · P1 · S · dep: none · parallel: yes — backend/internal/lan/
+Scope: Cloud `lancert/contract.go` declares `/var/lib/vulos/tls/lan.{crt,key}`; OS accepts arbitrary paths
+from main config (drift hazard). Export `lan.DefaultCertPath` + `lan.DefaultKeyPath`; main.go uses them;
+FIX-LANCERT-PULL-01 writes to them; `lan/doc.go` documents the contract.
+AC: [ ] constants exported [ ] main.go uses them [ ] doc comment in lan/ refs cross-repo contract [ ] go build ./...
+
+### [FIX-STORE-LOCAL-LOG-01] Startup log when storagemode store fails
+`todo` · P2 · S · dep: none · parallel: yes — backend/cmd/server/routes_storagemode.go
+Scope: `routes_storagemode.go` silently returns `Defaults()` if the SQLite store fails to open. Add a
+structured-log line on open-error + on the PUT 500 path. Soft-degrade is correct; just make it visible.
+AC: [ ] open-error logged at startup [ ] PUT 500 logs underlying error [ ] go build ./...
+
+### [FIX-SW-CACHE-COORD-01] Coordinated service-worker cache version registry
+`todo` · P2 · S · dep: none · parallel: yes — docs/SW-CACHE-VERSIONS.md (new)
+Scope: Each of vulos/office/mail-webmail has its own SW with its own `CACHE_NAME` (all currently `*-v1`).
+A bump in one without a coordinated bump in others can leave stale shells. Document the cross-repo registry
++ the rule "when you bump your CACHE_NAME, update this file and notify the other surfaces."
+AC: [ ] docs/SW-CACHE-VERSIONS.md created [ ] all 3 surfaces listed + current version [ ] no code changes
+
+---
+
+## Area: Video meetings (LiveKit integration — Wave B — 2026-05-24)
+
+_Roadmap: ROADMAP.md §Video meetings (LiveKit)_  ·  _Prefix: `MEET-*`_
+> Target: Google-Meet-class 500-participant rooms for Pro tier. Current Spaces calling (fabric.js mesh +
+> relay TURN fallback) is right for ≤5; an SFU is needed past ~15. OSS-aligned choice: LiveKit (MIT, Go).
+> New `vulos-meet` MIT repo wraps LiveKit Server. See [MEET-CORE-01] in vulos-relay's tasks for the entry point.
+
+### [MEET-OS-01] OS Spaces app wraps the LiveKit-based office Spaces client
+`todo` · P3 · M · dep: MEET-SPACES-01 (vulos-office) · parallel: yes — apps/spaces/
+Scope: After office Spaces is rebuilt on the LiveKit client SDK (MEET-SPACES-01), update `apps/spaces/` to
+surface large-room controls (speaker grid, raise-hand, breakout, recording toggle) and respect the Pro-tier
+gate. Preserve the existing fabric.js mesh path for ≤5-participant calls (legacy/fallback).
+AC: [ ] LiveKit calling surface in apps/spaces [ ] Pro-gate respected [ ] mesh fallback for ≤5 [ ] npm run build
+
+### [MEET-TRANSCRIPT-01] airouter → Whisper transcription for video meetings
+`todo` · P3 · M · dep: MEET-OS-01 · parallel: yes — backend/internal/airouter/
+Scope: Route per-room LiveKit audio frames through the existing airouter to a Whisper provider (hosted
+Whisper API or self-hosted whisper.cpp via airouter's existing backend abstraction). Stream the transcript
+to office Spaces UI. Opt-in per meeting; Pro default-on, self-host default-off.
+AC: [ ] airouter Whisper provider [ ] per-room transcript stream [ ] opt-in gate per meeting [ ] go build ./...
+

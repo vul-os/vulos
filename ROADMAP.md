@@ -408,3 +408,20 @@ LAN endpoints automatically. An opt-in `local-minio-sync` storage mode makes a l
 truth (offline-capable), syncing its CRDT index + blobs via a central Tigris rendezvous (v1) and direct
 fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; `@vulos.org` identity
 + anchor inbox stay central. Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
+
+---
+
+## Audit-fix wave A + video-meet (v7.1 — 2026-05-24)
+
+**Audit-fix wave A** addresses the 5 findings from the #125 verification pass: the missing OS-side LANCERT
+cert puller (offline-LAN HTTPS was stuck on self-signed because the cert never reached disk), the missing
+`gpuhost` wire (STREAM-BYO-01 shipped a package the server never instantiated), shared LAN cert-path
+constants, a startup log for the storagemode store, and a cross-repo SW-cache-version registry.
+Tasks: `FIX-LANCERT-PULL-01`, `FIX-GPUHOST-WIRE-01`, `FIX-LAN-PATH-CONST-01`, `FIX-STORE-LOCAL-LOG-01`, `FIX-SW-CACHE-COORD-01`.
+
+**Video meetings (LiveKit, Wave B)** — target Google-Meet-class 500-participant rooms on Pro tier. The current
+Spaces calling stack is mesh + opaque relay fallback (correct for ≤5, fails past ~15); 500 needs an SFU with
+simulcast/SVC/active-speaker. OSS choice: LiveKit (MIT, Go) in a new sibling `vulos-meet` repo. Spaces becomes a
+LiveKit client (preserving the mesh fallback for intimate calls); transcription rides the existing airouter via a
+Whisper provider. Tasks (OS side): `MEET-OS-01`, `MEET-TRANSCRIPT-01`. See sibling repos for the SFU core (vulos-relay
+`MEET-CORE-01`), the cloud Pro-gate (`MEET-CP-01`/`MEET-RECORDING-01`), and the office UI (`MEET-SPACES-01`).
