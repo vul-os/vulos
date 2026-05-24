@@ -58,6 +58,16 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	if len(serverCtx) > 0 && serverCtx[0] != nil {
 		bgCtx = serverCtx[0]
 	}
+
+	// ── Shared multi-instance registry ───────────────────────────────────────
+	//
+	// FIX (audit P1-4): the multiinstance registry is a single-writer SQLite
+	// file (SetMaxOpenConns(1)). Previously sections 3/6/8/9 each called
+	// multiinstance.Open() on the SAME path, producing four independent *sql.DB
+	// handles to one file — concurrent writers across those handles race for the
+	// single writer lock and surface SQLITE_BUSY. Open it ONCE here and share the
+	// one *Registry (hence one *sql.DB) across every section below.
+	sharedReg := openSharedRegistry(deps.dbDir)
 	// ── 1. AI Router (internal/airouter) ─────────────────────────────────────
 	//
 	// Routes registered:
@@ -130,18 +140,10 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	// Routes registered:
 	//   GET /api/routing/apps — cross-instance app routing table
 	//
-	// The registry SQLite DB sits in dbDir.  On open failure we fall back to a
-	// temp-dir path so the route still registers (returns an empty table).
+	// The registry SQLite DB sits in dbDir.  The shared handle opened above is
+	// reused so all multiinstance sections write through one *sql.DB.
 	{
-		regPath := filepath.Join(deps.dbDir, "multiinstance.db")
-		reg, regErr := multiinstance.Open(regPath)
-		if regErr != nil {
-			log.Printf("[multiinstance] registry open warning: %v — trying temp dir", regErr)
-			reg, regErr = multiinstance.Open(filepath.Join(os.TempDir(), "vulos-multiinstance.db"))
-			if regErr != nil {
-				log.Printf("[multiinstance] registry fallback open error: %v — routing disabled", regErr)
-			}
-		}
+		reg := sharedReg
 		if reg != nil {
 			appRouter := multiinstance.NewAppRouter(reg, "")
 			// Stub AppProvider: returns nil so the handler returns [] not null.
@@ -149,6 +151,8 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			appRouter.WithAppProvider(func() []multiinstance.PublishedApp { return nil })
 			multiinstance.RegisterHandlers(mux, appRouter)
 			log.Printf("[multiinstance] registered GET /api/routing/apps")
+		} else {
+			log.Printf("[multiinstance] registry unavailable — /api/routing/apps disabled")
 		}
 	}
 
@@ -283,21 +287,16 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//
 	// CloudSyncer contacts VULOS_CLOUD_URL (default https://api.vulos.org).  When
 	// the cloud is unreachable it returns the last-known local registry state.
-	// The registry opened above (section 3) is shared; if it was not opened we
-	// open a fresh one here so the route still registers.
+	// FIX (audit P1-4): reuse the single shared registry handle opened above.
 	{
-		regPath := filepath.Join(deps.dbDir, "multiinstance.db")
-		reg, regErr := multiinstance.Open(regPath)
-		if regErr != nil {
-			reg, regErr = multiinstance.Open(filepath.Join(os.TempDir(), "vulos-multiinstance-sync.db"))
-		}
+		reg := sharedReg
 		if reg != nil {
 			// deviceToken is empty at startup; it is updated on successful cloud login.
 			syncer := multiinstance.NewCloudSyncer(reg, "")
 			multiinstance.RegisterSyncHandlers(mux, syncer)
 			log.Printf("[multiinstance/sync] registered GET /api/instances (cloud_url=%s)", multiinstance.DefaultCloudBaseURL)
 		} else {
-			log.Printf("[multiinstance/sync] registry unavailable (%v) — /api/instances disabled", regErr)
+			log.Printf("[multiinstance/sync] registry unavailable — /api/instances disabled")
 		}
 	}
 
@@ -336,21 +335,16 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//   POST /api/instances/provision      — request a new Fly Machine
 	//   GET  /api/instances/{ulid}/status  — poll provisioning status
 	//
-	// Reuses a fresh registry handle (parallel to sections 3/6).  deviceToken is
-	// empty until cloud login; the provisioner degrades to 503 in that case.
+	// FIX (audit P1-4): reuse the single shared registry handle opened above.
+	// deviceToken is empty until cloud login; the provisioner degrades to 503.
 	{
-		regPath := filepath.Join(deps.dbDir, "multiinstance.db")
-		reg, regErr := multiinstance.Open(regPath)
-		if regErr != nil {
-			reg, regErr = multiinstance.Open(
-				filepath.Join(os.TempDir(), "vulos-multiinstance-provision.db"))
-		}
+		reg := sharedReg
 		if reg != nil {
 			provisioner := multiinstance.NewProvisioner(reg, "")
 			multiinstance.RegisterProvisionHandlers(mux, provisioner)
 			log.Printf("[multiinstance/provision] registered POST /api/instances/provision, GET /api/instances/{ulid}/status")
 		} else {
-			log.Printf("[multiinstance/provision] registry unavailable (%v) — provision routes disabled", regErr)
+			log.Printf("[multiinstance/provision] registry unavailable — provision routes disabled")
 		}
 	}
 
@@ -360,24 +354,57 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//   POST /api/notify/fanout   — fan out notification to all online instances
 	//   POST /api/notify/receive  — inbound notification from relay (dedup + deliver)
 	//
-	// The batcher goroutine runs for the lifetime of the process.  Reuses a fresh
-	// registry handle (parallel to sections 3/6/8).
+	// The batcher goroutine runs for the lifetime of the process.
+	// FIX (audit P1-4): reuse the single shared registry handle opened above.
 	{
-		regPath := filepath.Join(deps.dbDir, "multiinstance.db")
-		reg, regErr := multiinstance.Open(regPath)
-		if regErr != nil {
-			reg, regErr = multiinstance.Open(
-				filepath.Join(os.TempDir(), "vulos-multiinstance-notify.db"))
-		}
+		reg := sharedReg
 		if reg != nil {
 			fanout := multiinstance.NewNotifyFanout(reg)
 			go fanout.RunBatcher(bgCtx)
 			multiinstance.RegisterNotifyHandlers(mux, fanout)
 			log.Printf("[multiinstance/notify] registered POST /api/notify/fanout, POST /api/notify/receive")
 		} else {
-			log.Printf("[multiinstance/notify] registry unavailable (%v) — notify routes disabled", regErr)
+			log.Printf("[multiinstance/notify] registry unavailable — notify routes disabled")
 		}
 	}
+
+	// ── 10. CRDT app-registry sync (internal/multiinstance, MINST-04) ────────────
+	//
+	// FIX (audit P2-7): RegisterAppSyncHandlers was implemented but never wired.
+	// Wire it on the shared registry so the per-instance app inventory surface
+	// (GET /api/instances/{ulid}/apps) is actually reachable.
+	{
+		reg := sharedReg
+		if reg != nil {
+			if appSync, asErr := multiinstance.OpenAppSync(reg); asErr != nil {
+				log.Printf("[multiinstance/appsync] open warning: %v — app-sync routes disabled", asErr)
+			} else {
+				multiinstance.RegisterAppSyncHandlers(mux, appSync)
+				log.Printf("[multiinstance/appsync] registered GET /api/instances/{ulid}/apps")
+			}
+		} else {
+			log.Printf("[multiinstance/appsync] registry unavailable — app-sync routes disabled")
+		}
+	}
+}
+
+// openSharedRegistry opens the single multiinstance registry handle shared by
+// all multiinstance route sections. It mirrors the previous per-section
+// fallback behaviour (temp-dir on primary open failure) but produces ONE
+// *sql.DB so the single-writer SQLite file is never contended by independent
+// handles (audit P1-4).
+func openSharedRegistry(dbDir string) *multiinstance.Registry {
+	regPath := filepath.Join(dbDir, "multiinstance.db")
+	reg, err := multiinstance.Open(regPath)
+	if err != nil {
+		log.Printf("[multiinstance] registry open warning: %v — trying temp dir", err)
+		reg, err = multiinstance.Open(filepath.Join(os.TempDir(), "vulos-multiinstance.db"))
+		if err != nil {
+			log.Printf("[multiinstance] registry fallback open error: %v — multiinstance routes disabled", err)
+			return nil
+		}
+	}
+	return reg
 }
 
 // identitySessionAdapter bridges svcauth.Store.ValidateToken into the

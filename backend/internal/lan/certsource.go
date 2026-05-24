@@ -107,12 +107,20 @@ func (s *SelfSignedCertSource) generate() (*tls.Certificate, error) {
 		Subject:      pkix.Name{CommonName: "Vulos LAN (self-signed)", Organization: []string{"Vulos"}},
 		NotBefore:    now.Add(-1 * time.Hour),
 		NotAfter:     now.Add(s.ttl),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		// Self-signed leaf used directly; mark it as a CA so it can be added to a
-		// trust store in dev if desired.
+		// SECURITY (audit P0-1): this is a self-signed TLS *leaf* served directly
+		// by the LAN HTTPS listener — it is NOT a certificate authority. It must
+		// therefore carry only the key usages a server leaf needs (digital
+		// signature for the TLS handshake signature, key encipherment for RSA
+		// kex; harmless for ECDSA) plus the serverAuth ext-key-usage. It must
+		// NEVER carry KeyUsageCertSign / IsCA: a CA-capable cert added to a trust
+		// store could sign arbitrary certificates for any name.
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		// Mark BasicConstraints as present-and-not-a-CA so the IsCA:false is
+		// explicit and authoritative on the wire (a missing extension is
+		// ambiguous; an explicit CA:FALSE is not).
 		BasicConstraintsValid: true,
-		IsCA:                  true,
+		IsCA:                  false,
 		DNSNames:              s.hosts,
 		IPAddresses:           s.ips,
 	}

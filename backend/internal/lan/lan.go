@@ -141,9 +141,15 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 
 	// HTTPS listener — the hard requirement.
-	ln, err := net.Listen("tcp", s.cfg.HTTPSAddr)
+	//
+	// SECURITY (audit P1-5): like the DNS responder, the LAN HTTPS listener is
+	// pinned to the detected LAN IP rather than 0.0.0.0/all interfaces when the
+	// configured address uses a wildcard host. On a multi-homed/public box a
+	// wildcard bind would expose the OS surface on the public interface too.
+	httpsAddr := lanBindAddr(s.cfg.HTTPSAddr, s.lanIP)
+	ln, err := net.Listen("tcp", httpsAddr)
 	if err != nil {
-		return fmt.Errorf("lan: https listen on %s: %w", s.cfg.HTTPSAddr, err)
+		return fmt.Errorf("lan: https listen on %s: %w", httpsAddr, err)
 	}
 	s.httpLn = ln
 	tlsLn := tls.NewListener(ln, TLSConfig(s.cfg.CertSource))
@@ -156,7 +162,14 @@ func (s *Service) Start(ctx context.Context) error {
 	log.Printf("[lan] serving OS over HTTPS on %s (host=%s ip=%v)", ln.Addr(), s.hostname, s.lanIP)
 
 	// Local DNS responder — answers box.<id>.lan.vulos.org offline.
-	dns, err := newDNSResponder(s.cfg.DNSAddr, s.hostname, s.lanIP)
+	//
+	// SECURITY (audit P1-5): bind the DNS responder to the detected LAN IP only,
+	// never to 0.0.0.0/all interfaces. On a multi-homed or public box a wildcard
+	// bind exposes an authoritative responder to the internet. lanBindAddr keeps
+	// the configured port but pins the host to s.lanIP (unless the caller already
+	// supplied an explicit host, e.g. tests using 127.0.0.1:0).
+	dnsAddr := lanBindAddr(s.cfg.DNSAddr, s.lanIP)
+	dns, err := newDNSResponder(dnsAddr, s.hostname, s.lanIP)
 	if err != nil {
 		log.Printf("[lan] dns responder disabled: %v", err)
 	} else {
@@ -205,6 +218,47 @@ func (s *Service) Stop(ctx context.Context) error {
 	}
 	s.started = false
 	return errors.Join(errs...)
+}
+
+// lanBindAddr returns the address a LAN listener (HTTPS or the DNS responder)
+// should bind to. It keeps the port from cfgAddr but, when cfgAddr names a
+// wildcard host (empty, "0.0.0.0", or "::"), it pins the host to lanIP so the
+// listener is never exposed on all interfaces (audit P1-5). An explicit
+// non-wildcard host in cfgAddr (e.g. "127.0.0.1:0" from tests) is preserved
+// unchanged.
+//
+// If lanIP is nil/unusable the original cfgAddr is returned untouched so the
+// caller's existing best-effort behaviour (and any error logging) is preserved.
+func lanBindAddr(cfgAddr string, lanIP net.IP) string {
+	host, port, err := net.SplitHostPort(cfgAddr)
+	if err != nil {
+		// cfgAddr had no port (or was malformed); leave it for the resolver to
+		// report. Don't silently rewrite something we can't parse.
+		return cfgAddr
+	}
+	if !isWildcardHost(host) {
+		return cfgAddr // explicit host (e.g. test loopback) — respect it
+	}
+	if lanIP == nil {
+		return cfgAddr
+	}
+	bindIP := lanIP
+	if v4 := lanIP.To4(); v4 != nil {
+		bindIP = v4
+	}
+	// Refuse to "pin" to loopback as if it were a LAN IP in production — but a
+	// loopback lanIP only happens in isolated/CI environments where binding
+	// loopback is the safest possible choice anyway, so allow it.
+	return net.JoinHostPort(bindIP.String(), port)
+}
+
+// isWildcardHost reports whether host names "all interfaces".
+func isWildcardHost(host string) bool {
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		return true
+	}
+	return false
 }
 
 // detectLANIP returns the box's primary non-loopback IPv4 LAN address, falling

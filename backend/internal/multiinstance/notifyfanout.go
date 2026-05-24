@@ -56,6 +56,14 @@ const seenTTL = 7 * 24 * time.Hour
 // batchWindow is the accumulation period for P2/P3 notifications.
 const batchWindow = 30 * time.Second
 
+// fanoutConcurrency caps the number of in-flight relay POSTs during a fan-out.
+// A bounded worker pool means one slow/stalled peer cannot serialise the whole
+// batch behind it (audit P1-6): with N online instances × M notifications the
+// previous nested loop blocked on each POST in turn, so a single peer at the
+// httpClient timeout (10s) stalled every other delivery. 16 is a sane default
+// for the expected handful-to-dozens of instances; it can be tuned later.
+const fanoutConcurrency = 16
+
 // Notification is the cross-instance notification payload.
 // Priority 0/1 are fanned out immediately; 2/3 are batched.
 type Notification struct {
@@ -206,21 +214,65 @@ func (nf *NotifyFanout) fanOutNow(ctx context.Context, notifications []Notificat
 		return fmt.Errorf("fanout: list instances: %w", err)
 	}
 
-	var lastErr error
+	// Build the (instance, notification) job list up front so we know the work
+	// size and can size the pool against it.
+	type job struct {
+		inst Instance
+		n    Notification
+	}
+	var jobs []job
 	for _, inst := range instances {
-		if inst.Status != StatusOnline {
-			continue
-		}
-		if inst.EndpointURL == "" {
+		if inst.Status != StatusOnline || inst.EndpointURL == "" {
 			continue
 		}
 		for _, n := range notifications {
-			if relayErr := nf.sendToRelay(ctx, inst, n); relayErr != nil {
-				log.Printf("[notifyfanout] relay to %s: %v", inst.ULID, relayErr)
-				lastErr = relayErr
-			}
+			jobs = append(jobs, job{inst: inst, n: n})
 		}
 	}
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	// Bounded-concurrency fan-out (audit P1-6): a semaphore caps in-flight relay
+	// POSTs so one slow peer can't stall the batch, while still bounding total
+	// goroutines. We collect the first error under a mutex; per-POST failures are
+	// best-effort and logged.
+	concurrency := fanoutConcurrency
+	if len(jobs) < concurrency {
+		concurrency = len(jobs)
+	}
+	sem := make(chan struct{}, concurrency)
+	var (
+		wg      sync.WaitGroup
+		errMu   sync.Mutex
+		lastErr error
+	)
+	for _, j := range jobs {
+		// Respect ctx cancellation: stop scheduling new work promptly.
+		select {
+		case <-ctx.Done():
+			errMu.Lock()
+			if lastErr == nil {
+				lastErr = ctx.Err()
+			}
+			errMu.Unlock()
+			wg.Wait()
+			return lastErr
+		case sem <- struct{}{}:
+		}
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if relayErr := nf.sendToRelay(ctx, j.inst, j.n); relayErr != nil {
+				log.Printf("[notifyfanout] relay to %s: %v", j.inst.ULID, relayErr)
+				errMu.Lock()
+				lastErr = relayErr
+				errMu.Unlock()
+			}
+		}(j)
+	}
+	wg.Wait()
 	return lastErr
 }
 

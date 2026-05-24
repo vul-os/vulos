@@ -21,6 +21,10 @@ package lan
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,10 +76,38 @@ type PullerConfig struct {
 	// renewals come from the cloud side; this is a slow check, not a hot loop.
 	RenewCheckInterval time.Duration
 
-	// HTTPClient overrides the http.Client used for cloud calls. Defaults to
-	// a client with a 15s timeout. Tests inject a transport pointed at a
-	// httptest.Server.
+	// HTTPClient overrides the http.Client used for cloud calls. When supplied
+	// the caller is fully responsible for the transport's TLS configuration
+	// (this is the injection point tests use to point at an httptest.Server).
+	// When nil, [NewLANCertPuller] builds a hardened client that requires HTTPS
+	// and applies the pin in PinnedCACertPEM / PinnedSPKISHA256 (see below).
 	HTTPClient *http.Client
+
+	// PinnedCACertPEM, when non-empty, is a PEM bundle of one or more CA
+	// certificates that is used as the *only* root set when validating the
+	// control-plane's TLS certificate. This defends a first-boot box against a
+	// DNS/transparent-proxy MITM that would otherwise present a cert chaining to
+	// a publicly-trusted (but attacker-controlled, e.g. via a rogue ACME issuance
+	// or a compromised intermediate) root and harvest the shared secret. Sourced
+	// by default from the VULOS_LANCERT_CA_PEM / VULOS_LANCERT_CA_FILE env vars.
+	PinnedCACertPEM string
+
+	// PinnedSPKISHA256, when non-empty, is a set of base64-encoded SHA-256
+	// SubjectPublicKeyInfo (SPKI) pins. At least one certificate in the verified
+	// chain (leaf or any intermediate/root) must match one of these pins or the
+	// handshake is rejected. This is an additional, key-continuity pin layered on
+	// top of normal chain validation — it survives CA-root churn better than a
+	// full cert pin. Sourced by default from VULOS_LANCERT_SPKI_PINS (comma- or
+	// space-separated). The accepted format matches the `openssl ... | openssl
+	// dgst -sha256 -binary | base64` SPKI-pin convention.
+	PinnedSPKISHA256 []string
+
+	// AllowInsecure, when true, downgrades the hardened defaults: it permits a
+	// plaintext (http://) CloudBaseURL and skips pinning. This exists ONLY for
+	// local dev / tests against an httptest.Server and is gated on the
+	// VULOS_LANCERT_ALLOW_INSECURE env var when not set programmatically. It is
+	// refused in production paths. Never set this against a real control-plane.
+	AllowInsecure bool
 }
 
 // LANCertPuller is the background goroutine that bridges cloud LANCERT-01
@@ -96,7 +128,16 @@ func PullerEnabled() bool {
 }
 
 // NewLANCertPuller returns a LANCertPuller with defaults filled in. It does
-// NOT do any I/O; call [LANCertPuller.Run] to start the background loop.
+// NOT do any network I/O; call [LANCertPuller.Run] to start the background
+// loop.
+//
+// SECURITY (audit P0-2): the puller sends CP_SHARED_SECRET on every request, so
+// the transport MUST be authenticated. Unless AllowInsecure is set (dev/test
+// only), this constructor refuses a plaintext CloudBaseURL and, when it builds
+// the http.Client itself, pins the control-plane's TLS chain to either a
+// configured CA bundle or a set of SPKI pins. A caller that injects its own
+// HTTPClient owns its TLS config (that is the test seam); we still refuse a
+// plaintext base URL in that case unless AllowInsecure is set.
 func NewLANCertPuller(cfg PullerConfig) (*LANCertPuller, error) {
 	if strings.TrimSpace(cfg.BoxID) == "" {
 		return nil, errors.New("lan: PullerConfig.BoxID is required")
@@ -125,10 +166,142 @@ func NewLANCertPuller(cfg PullerConfig) (*LANCertPuller, error) {
 	if cfg.RenewCheckInterval <= 0 {
 		cfg.RenewCheckInterval = 6 * time.Hour
 	}
+
+	// Resolve the insecure escape hatch (env opt-in only).
+	if !cfg.AllowInsecure {
+		switch strings.ToLower(strings.TrimSpace(os.Getenv("VULOS_LANCERT_ALLOW_INSECURE"))) {
+		case "1", "true", "yes":
+			cfg.AllowInsecure = true
+		}
+	}
+
+	// Source pins from the environment when not set programmatically.
+	if cfg.PinnedCACertPEM == "" {
+		cfg.PinnedCACertPEM = lancertCAPEMFromEnv()
+	}
+	if len(cfg.PinnedSPKISHA256) == 0 {
+		cfg.PinnedSPKISHA256 = splitPins(os.Getenv("VULOS_LANCERT_SPKI_PINS"))
+	}
+
+	// Refuse plaintext: the shared secret travels on this transport, so a
+	// plaintext base URL would let a network attacker harvest it. Allowed only
+	// behind the explicit insecure escape hatch.
+	base, err := url.Parse(cfg.CloudBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("lan: PullerConfig.CloudBaseURL %q: %w", cfg.CloudBaseURL, err)
+	}
+	if base.Scheme != "https" && !cfg.AllowInsecure {
+		return nil, fmt.Errorf("lan: PullerConfig.CloudBaseURL must be https (got %q); "+
+			"set AllowInsecure / VULOS_LANCERT_ALLOW_INSECURE=1 only for local dev", base.Scheme)
+	}
+
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: 15 * time.Second}
+		client, cErr := newPinnedHTTPClient(cfg)
+		if cErr != nil {
+			return nil, cErr
+		}
+		cfg.HTTPClient = client
 	}
 	return &LANCertPuller{cfg: cfg}, nil
+}
+
+// lancertCAPEMFromEnv returns the pinned CA PEM from VULOS_LANCERT_CA_PEM (raw
+// PEM) or VULOS_LANCERT_CA_FILE (path to a PEM file), whichever is set. A
+// missing file is treated as "no pin" (logged by the caller path); we do not
+// fail construction here so the env can be set on hosts that lack the file yet.
+func lancertCAPEMFromEnv() string {
+	if v := strings.TrimSpace(os.Getenv("VULOS_LANCERT_CA_PEM")); v != "" {
+		return v
+	}
+	if path := strings.TrimSpace(os.Getenv("VULOS_LANCERT_CA_FILE")); path != "" {
+		if b, err := os.ReadFile(path); err == nil {
+			return string(b)
+		}
+		log.Printf("[lancert-puller] VULOS_LANCERT_CA_FILE=%s unreadable — ignoring", path)
+	}
+	return ""
+}
+
+// splitPins parses a comma/space/newline-separated list of base64 SPKI pins.
+func splitPins(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == '\r'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// newPinnedHTTPClient builds the hardened http.Client used when the caller did
+// not inject one. It enforces:
+//   - TLS 1.2+ with full chain verification (never InsecureSkipVerify);
+//   - when PinnedCACertPEM is set, that bundle is the ONLY accepted root pool
+//     (system roots are not consulted), so a publicly-trusted-but-rogue chain
+//     is rejected;
+//   - when PinnedSPKISHA256 is set, at least one cert in the verified chain
+//     must match one of the SPKI pins.
+func newPinnedHTTPClient(cfg PullerConfig) (*http.Client, error) {
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	if cfg.PinnedCACertPEM != "" {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM([]byte(cfg.PinnedCACertPEM)) {
+			return nil, errors.New("lan: PinnedCACertPEM contained no usable certificates")
+		}
+		tlsCfg.RootCAs = pool
+	}
+
+	if len(cfg.PinnedSPKISHA256) > 0 {
+		pins, err := decodeSPKIPins(cfg.PinnedSPKISHA256)
+		if err != nil {
+			return nil, err
+		}
+		// VerifyConnection runs AFTER normal chain verification (because
+		// InsecureSkipVerify is false), so we can trust verifiedChains.
+		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			for _, chain := range cs.VerifiedChains {
+				for _, cert := range chain {
+					sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+					if _, ok := pins[sum]; ok {
+						return nil
+					}
+				}
+			}
+			return errors.New("lan: control-plane TLS chain did not match any configured SPKI pin")
+		}
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig:       tlsCfg,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	return &http.Client{Timeout: 15 * time.Second, Transport: transport}, nil
+}
+
+// decodeSPKIPins decodes base64 SPKI pins into a set of 32-byte SHA-256 sums.
+func decodeSPKIPins(pins []string) (map[[32]byte]struct{}, error) {
+	out := make(map[[32]byte]struct{}, len(pins))
+	for _, p := range pins {
+		raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(p))
+		if err != nil {
+			return nil, fmt.Errorf("lan: SPKI pin %q is not valid base64: %w", p, err)
+		}
+		if len(raw) != sha256.Size {
+			return nil, fmt.Errorf("lan: SPKI pin %q decodes to %d bytes, want %d", p, len(raw), sha256.Size)
+		}
+		var sum [32]byte
+		copy(sum[:], raw)
+		out[sum] = struct{}{}
+	}
+	return out, nil
 }
 
 // certResponse mirrors the JSON body returned by GET /api/lancert/cert on 200.

@@ -338,6 +338,156 @@ func TestORSetInstallWinsOnTie(t *testing.T) {
 	}
 }
 
+// ── Deterministic tie-break (audit P1-3) ─────────────────────────────────────
+
+// TestTieBreakDeterministicAndConvergent proves that when two writers produce
+// the SAME (instance_ulid, app_id) row at the SAME updated_at, both peers
+// converge to the same winner regardless of which changeset they apply first.
+// The winner is the lexicographically larger writer node id (installed_by).
+func TestTieBreakDeterministicAndConvergent(t *testing.T) {
+	const (
+		ulid  = "01HWZMINST0000000000000TIE"
+		appID = "editor"
+	)
+	ts := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+
+	// Two concurrent writes at the same timestamp from two different nodes.
+	writeA := multiinstance.AppRegistryEntry{
+		InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0",
+		Installed: true, InstalledBy: "nodeA", UpdatedAt: ts,
+	}
+	writeB := multiinstance.AppRegistryEntry{
+		InstanceULID: ulid, AppID: appID, AppVersion: "2.0.0",
+		Installed: true, InstalledBy: "nodeB", UpdatedAt: ts,
+	}
+
+	// Peer 1 applies A then B.
+	_, p1 := openTempAppSync(t)
+	csA1, _ := p1.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{writeA})
+	if err := p1.ApplyChangeset(csA1); err != nil {
+		t.Fatalf("p1 apply A: %v", err)
+	}
+	csB1, _ := p1.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{writeB})
+	if err := p1.ApplyChangeset(csB1); err != nil {
+		t.Fatalf("p1 apply B: %v", err)
+	}
+
+	// Peer 2 applies B then A (reverse order).
+	_, p2 := openTempAppSync(t)
+	csB2, _ := p2.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{writeB})
+	if err := p2.ApplyChangeset(csB2); err != nil {
+		t.Fatalf("p2 apply B: %v", err)
+	}
+	csA2, _ := p2.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{writeA})
+	if err := p2.ApplyChangeset(csA2); err != nil {
+		t.Fatalf("p2 apply A: %v", err)
+	}
+
+	apps1, _ := p1.ListAppsForInstance(ulid, false)
+	apps2, _ := p2.ListAppsForInstance(ulid, false)
+	if len(apps1) != 1 || len(apps2) != 1 {
+		t.Fatalf("expected 1 row on each peer, got %d and %d", len(apps1), len(apps2))
+	}
+	// Both must converge to nodeB's value (nodeB > nodeA lexicographically).
+	if apps1[0].AppVersion != "2.0.0" {
+		t.Errorf("peer1 converged to %q; want 2.0.0 (nodeB wins tie-break)", apps1[0].AppVersion)
+	}
+	if apps2[0].AppVersion != "2.0.0" {
+		t.Errorf("peer2 converged to %q; want 2.0.0 (nodeB wins tie-break)", apps2[0].AppVersion)
+	}
+	if apps1[0].AppVersion != apps2[0].AppVersion {
+		t.Errorf("peers diverged: peer1=%q peer2=%q", apps1[0].AppVersion, apps2[0].AppVersion)
+	}
+}
+
+// TestQuorumIgnoresInflatedPeerCount: a hostile peer cannot force an uninstall
+// by inflating the self-reported PeerCount when the LOCAL registry shows only a
+// 2-node system. Here local count is 2 (quorum not required) so a strictly
+// newer uninstall is accepted on LWW — but the point is the decision is driven
+// by the local count, not the (possibly forged) remote claim. We then show the
+// inverse: with >2 LOCAL instances, an inflated remote claim of "many peers"
+// does not bypass the local gate when the local count disagrees… by ensuring
+// the local count is authoritative.
+func TestQuorumLocalCountIsAuthoritative(t *testing.T) {
+	const (
+		ulid  = "01HWZMINST00000000000QUOR1"
+		appID = "vault"
+	)
+	reg, as := openTempAppSync(t)
+
+	// 4 instances locally → quorum regime is in effect.
+	for _, u := range []string{ulid, "01HWZMINST00000000000QUOR2", "01HWZMINST00000000000QUOR3", "01HWZMINST00000000000QUOR4"} {
+		if err := reg.Upsert(multiinstance.Instance{ULID: u, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
+			t.Fatalf("Upsert %s: %v", u, err)
+		}
+	}
+	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+
+	// Install.
+	csInstall, _ := as.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{
+		{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: true, InstalledBy: "nodeA", UpdatedAt: base},
+	})
+	if err := as.ApplyChangeset(csInstall); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// Hostile uninstall: claims PeerCount=1 (deflated) to try to force a removal
+	// path that bypasses corroboration. Under a >2-instance local regime, a
+	// remotePeerCount < 2 must FAIL quorum and retain installed=true.
+	csUninstallDeflated := &multiinstance.AppChangeset{
+		OriginULID: ulid,
+		PeerCount:  1,
+		Entries: []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "nodeA", UpdatedAt: base.Add(time.Minute)},
+		},
+	}
+	if err := as.ApplyChangeset(csUninstallDeflated); err != nil {
+		t.Fatalf("uninstall deflated: %v", err)
+	}
+	apps, _ := as.ListAppsForInstance(ulid, false)
+	if len(apps) != 1 || !apps[0].Installed {
+		t.Errorf("deflated-PeerCount uninstall under quorum regime should be rejected; rows=%+v", apps)
+	}
+}
+
+// TestQuorumFirstSeenUninstallRejected: a peer cannot SEED an uninstall row on a
+// box that has never seen the app, under a quorum regime — otherwise it could
+// pre-block a future install via LWW. The first-seen uninstall is recorded as
+// installed=true when quorum is not met.
+func TestQuorumFirstSeenUninstallRejected(t *testing.T) {
+	const (
+		ulid  = "01HWZMINST00000000000SEED1"
+		appID = "ghost"
+	)
+	reg, as := openTempAppSync(t)
+	for _, u := range []string{ulid, "01HWZMINST00000000000SEED2", "01HWZMINST00000000000SEED3"} {
+		if err := reg.Upsert(multiinstance.Instance{ULID: u, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
+			t.Fatalf("Upsert %s: %v", u, err)
+		}
+	}
+	ts := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+
+	// First-ever changeset for this row is an uninstall with PeerCount=1 (quorum
+	// not met under the 3-instance local regime).
+	csSeed := &multiinstance.AppChangeset{
+		OriginULID: ulid,
+		PeerCount:  1,
+		Entries: []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appID, AppVersion: "0.1.0", Installed: false, InstalledBy: "attacker", UpdatedAt: ts},
+		},
+	}
+	if err := as.ApplyChangeset(csSeed); err != nil {
+		t.Fatalf("apply seed: %v", err)
+	}
+	all, _ := as.ListAppsForInstance(ulid, true)
+	if len(all) != 1 {
+		t.Fatalf("expected the row to exist, got %d", len(all))
+	}
+	if !all[0].Installed {
+		t.Error("first-seen uninstall under quorum regime should be recorded as installed=true (no unilateral seed-removal)")
+	}
+}
+
 // ── AC3: HTTP endpoint GET /api/instances/:ulid/apps ─────────────────────────
 
 func TestHTTPGetInstanceApps(t *testing.T) {

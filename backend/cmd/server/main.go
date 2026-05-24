@@ -2435,6 +2435,12 @@ func main() {
 		// the paths LoadCertSource above mtime-watches, so a renewal is picked up
 		// on the next handshake with no listener restart.
 		if lan.PullerEnabled() {
+			// SECURITY (audit P0-2): the puller refuses a plaintext CloudBaseURL
+			// and pins the control-plane TLS chain. Pins are sourced from
+			// VULOS_LANCERT_CA_PEM / VULOS_LANCERT_CA_FILE (CA bundle) and/or
+			// VULOS_LANCERT_SPKI_PINS (SPKI pins) inside NewLANCertPuller. A
+			// plaintext base URL is rejected unless VULOS_LANCERT_ALLOW_INSECURE=1
+			// (local dev only).
 			puller, err := lan.NewLANCertPuller(lan.PullerConfig{
 				CloudBaseURL: os.Getenv("VULOS_CLOUD_BASE_URL"),
 				SharedSecret: os.Getenv("CP_SHARED_SECRET"),

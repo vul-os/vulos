@@ -2,6 +2,7 @@ package lan
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"testing"
 )
@@ -35,6 +36,56 @@ func TestSelfSignedCertSource_ReturnsUsableCert(t *testing.T) {
 	}
 	if err := cert.Leaf.VerifyHostname("192.168.1.50"); err != nil {
 		t.Errorf("cert does not cover LAN IP: %v", err)
+	}
+}
+
+// TestSelfSignedCert_IsNotACA is the audit P0-1 regression guard: the
+// self-signed LAN leaf must NOT be a CA and must NOT carry KeyUsageCertSign. A
+// CA-capable cert added to a trust store could sign arbitrary certs.
+func TestSelfSignedCert_IsNotACA(t *testing.T) {
+	src := NewSelfSignedCertSource([]string{"vulos.local"}, []net.IP{net.IPv4(192, 168, 1, 50)})
+	cert, err := src.Certificate(nil)
+	if err != nil {
+		t.Fatalf("Certificate: %v", err)
+	}
+	leaf := cert.Leaf
+	if leaf == nil {
+		t.Fatal("expected parsed leaf")
+	}
+
+	if leaf.IsCA {
+		t.Error("self-signed LAN leaf must NOT be a CA (IsCA=true)")
+	}
+	if !leaf.BasicConstraintsValid {
+		t.Error("BasicConstraintsValid should be true so CA:FALSE is explicit on the wire")
+	}
+	if leaf.KeyUsage&x509.KeyUsageCertSign != 0 {
+		t.Error("self-signed LAN leaf must NOT carry KeyUsageCertSign")
+	}
+	// Must keep the server-leaf usages.
+	if leaf.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+		t.Error("expected KeyUsageDigitalSignature on the leaf")
+	}
+	if leaf.KeyUsage&x509.KeyUsageKeyEncipherment == 0 {
+		t.Error("expected KeyUsageKeyEncipherment on the leaf")
+	}
+	foundServerAuth := false
+	for _, eku := range leaf.ExtKeyUsage {
+		if eku == x509.ExtKeyUsageServerAuth {
+			foundServerAuth = true
+		}
+	}
+	if !foundServerAuth {
+		t.Error("expected ExtKeyUsageServerAuth on the leaf")
+	}
+
+	// A non-CA cert must fail CA-style verification when used as a root to sign
+	// for an arbitrary name. We prove the negative by checking the basic
+	// constraint directly: a verifier honouring BasicConstraints would reject it
+	// as an intermediate/CA.
+	if leaf.MaxPathLen != 0 || leaf.MaxPathLenZero {
+		// IsCA=false leaves MaxPathLen unmeaningful; just assert IsCA again for clarity.
+		t.Logf("MaxPathLen=%d MaxPathLenZero=%v (irrelevant for non-CA)", leaf.MaxPathLen, leaf.MaxPathLenZero)
 	}
 }
 

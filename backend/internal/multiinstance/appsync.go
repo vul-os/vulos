@@ -6,15 +6,29 @@
 // Conflict resolution strategy
 //
 //   - app_version field:  Last-Write-Wins (LWW) — the row with the higher
-//     updated_at timestamp wins.  On a tie, the lexicographically larger
-//     instance_ulid wins (deterministic tie-breaking).
+//     updated_at timestamp wins.  On a tie, the deterministic tie-break is the
+//     lexicographically larger writer node id (installed_by).  Comparing the
+//     writer node — not the row's instance_ulid, which is identical on both
+//     sides of a merge for the same (instance_ulid, app_id) key — is what makes
+//     two peers that observe the same pair of concurrent writes converge to the
+//     SAME winner regardless of which side applies first.  (Audit P1-3.)
 //   - installed flag:     OR-set semantics — install wins over uninstall
 //     when the timestamps are equal.  A true uninstall (status=0) only
 //     propagates when its updated_at is strictly newer than the local row.
 //     Exception: when more than 2 instances exist in the registry, an
-//     uninstall is only accepted when the changeset carries a quorum=true
-//     flag (set by the originator after receiving acknowledgements from at
-//     least 1 other peer — i.e. ≥ 2 instances have confirmed the remove).
+//     uninstall is only accepted when quorum is met.
+//
+// Quorum hardening (audit P1-3)
+//
+//	The uninstall quorum is governed by the LOCALLY-OBSERVED peer count from the
+//	registry, never by the self-reported AppChangeset.PeerCount alone.  A
+//	malicious or buggy peer therefore cannot:
+//	  (a) force a removal by inflating PeerCount — the local registry must also
+//	      corroborate ≥ 2 peers before a >2-instance uninstall is accepted; nor
+//	  (b) unilaterally block a removal by deflating PeerCount — when the local
+//	      registry shows ≤ 2 instances quorum is not required at all.
+//	The self-reported PeerCount is treated only as a non-authoritative hint that
+//	can tighten (never loosen) the locally-derived decision.
 //
 // Wire format
 //
@@ -168,14 +182,16 @@ func (as *AppSync) ApplyChangeset(cs *AppChangeset) error {
 
 // mergeEntry merges one AppRegistryEntry into the local table using the rules:
 //
-//  1. If no local row exists → insert unconditionally.
+//  1. If no local row exists → insert unconditionally (but still subject to the
+//     uninstall-quorum guard below: a first-seen uninstall under a quorum
+//     regime is recorded as installed=true so a peer cannot seed a removal).
 //  2. LWW on updated_at: remote row wins only when it is strictly newer.
-//     Tie-break: larger InstanceULID wins (deterministic).
+//     Tie-break: lexicographically larger writer node id (installed_by) wins —
+//     deterministic and symmetric across peers.
 //  3. OR-set installed flag: if timestamps are equal, true wins over false.
-//  4. Uninstall quorum: if local registry has >2 instances AND remote
-//     peerCount also indicates >2 instances, accept an uninstall (installed=0)
-//     only when the remote changeset's peer count implies quorum (originator
-//     knew of at least 2 peers — i.e. peerCount ≥ 2).
+//  4. Uninstall quorum: governed by the locally-observed peer count (see
+//     quorumOK); the self-reported remotePeerCount can only tighten the
+//     decision, never loosen it.
 func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCount, remotePeerCount int) error {
 	row := tx.QueryRow(`
 		SELECT app_version, installed, installed_by, updated_at
@@ -192,7 +208,15 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 
 	err := row.Scan(&localVersion, &localInstalled, &localInstalledBy, &localUpdatedRaw)
 	if err == sql.ErrNoRows {
-		// No local row — insert remote unconditionally.
+		// No local row. Insert remote — but never let a peer seed an *uninstall*
+		// row under a quorum regime, otherwise (a) it would block a later install
+		// via LWW and (b) it is exactly the unilateral-removal a hostile peer
+		// would attempt.
+		if !remote.Installed && !as.quorumOK(localPeerCount, remotePeerCount) {
+			log.Printf("[appsync] quorum not met for first-seen uninstall of %s/%s — recording installed=true",
+				remote.InstanceULID, remote.AppID)
+			remote.Installed = true
+		}
 		return as.upsertEntry(tx, remote)
 	}
 	if err != nil {
@@ -210,7 +234,7 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 	case remote.UpdatedAt.After(localUpdatedAt):
 		// Remote is strictly newer → accept.
 		// Quorum check for uninstalls:
-		if !remote.Installed && !as.quorumOK(remote, localPeerCount, remotePeerCount) {
+		if !remote.Installed && !as.quorumOK(localPeerCount, remotePeerCount) {
 			log.Printf("[appsync] quorum not met for uninstall of %s/%s — retaining installed=true",
 				remote.InstanceULID, remote.AppID)
 			// Keep installed=true from the local row; still update version if newer.
@@ -219,9 +243,11 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 		return as.upsertEntry(tx, remote)
 
 	case remote.UpdatedAt.Equal(localUpdatedAt):
-		// Tie: apply OR-set on installed; tie-break on instance_ulid.
+		// Tie: apply OR-set on installed; deterministic tie-break on the writer
+		// node id (installed_by), NOT the row's instance_ulid (which is identical
+		// on both sides for this (instance_ulid, app_id) key).
 		mergedInstalled := localInstalled == 1 || remote.Installed // OR-set
-		if remote.InstanceULID > localInstalledBy {
+		if remote.InstalledBy > localInstalledBy {
 			// Remote wins tie-break — use remote's data but OR the installed flag.
 			e := remote
 			e.Installed = mergedInstalled
@@ -247,14 +273,26 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 	}
 }
 
-// quorumOK returns true when the uninstall can be accepted.
-// Quorum requires ≥ 2 peer instances known to the originator AND ≥ 2 known locally.
-func (as *AppSync) quorumOK(remote AppRegistryEntry, localPeerCount, remotePeerCount int) bool {
-	// Quorum only applies when there are more than 2 instances total.
-	if localPeerCount <= 2 && remotePeerCount <= 2 {
-		return true // quorum not required
+// quorumOK reports whether an uninstall may be accepted given the LOCALLY
+// observed peer count (authoritative) and the self-reported remote peer count
+// (a non-authoritative hint).
+//
+// Rules (audit P1-3 — do not trust self-reported counts):
+//   - When the local registry shows ≤ 2 instances, quorum is NOT required: a
+//     two-node system cannot form a majority, so a strictly-newer uninstall is
+//     accepted on LWW alone. (A peer cannot block this by lying about its own
+//     count because we ignore remotePeerCount in this branch.)
+//   - When the local registry shows > 2 instances, quorum IS required AND the
+//     self-reported remotePeerCount must independently corroborate ≥ 2 peers.
+//     A peer therefore cannot force a removal by inflating its count (the local
+//     registry must agree there are >2 instances) and cannot bypass the
+//     corroboration requirement by deflating it (deflation only fails quorum).
+func (as *AppSync) quorumOK(localPeerCount, remotePeerCount int) bool {
+	if localPeerCount <= 2 {
+		return true // quorum not required in a ≤2-node system
 	}
-	// Require the originator to have been aware of at least 2 peers.
+	// >2 local instances: require the originator to have independently observed
+	// at least 2 peers. The local count is the gate; the remote count must agree.
 	return remotePeerCount >= 2
 }
 

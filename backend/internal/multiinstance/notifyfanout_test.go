@@ -6,11 +6,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"vulos/backend/internal/multiinstance"
 )
@@ -308,6 +311,120 @@ func TestNotify_OfflineInstanceSkipped(t *testing.T) {
 	mu.Unlock()
 	if count != 0 {
 		t.Errorf("expected 0 relay calls for offline instance, got %d", count)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Bounded-concurrency fan-out (audit P1-6)
+// ---------------------------------------------------------------------------
+
+// TestFanOut_ConcurrentNotSerial proves the fan-out is concurrent, not a serial
+// blocking loop: with many online instances each backed by a relay that sleeps,
+// the total wall-clock time is far below N×delay. A serial loop would take
+// roughly N×delay; a bounded pool finishes in about ceil(N/concurrency)×delay.
+func TestFanOut_ConcurrentNotSerial(t *testing.T) {
+	reg := openTempRegistry(t)
+
+	const numInstances = 24
+	for i := 0; i < numInstances; i++ {
+		if err := reg.Upsert(multiinstance.Instance{
+			ULID:        fmt.Sprintf("01HWZFANOUT%015d", i),
+			Kind:        multiinstance.KindCloud,
+			Status:      multiinstance.StatusOnline,
+			EndpointURL: "https://instance.vulos.net",
+		}); err != nil {
+			t.Fatalf("Upsert %d: %v", i, err)
+		}
+	}
+
+	const perCallDelay = 100 * time.Millisecond
+	var inFlight, maxInFlight int32
+	var mu sync.Mutex
+	var received int
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		for {
+			old := atomic.LoadInt32(&maxInFlight)
+			if cur <= old || atomic.CompareAndSwapInt32(&maxInFlight, old, cur) {
+				break
+			}
+		}
+		time.Sleep(perCallDelay)
+		atomic.AddInt32(&inFlight, -1)
+		mu.Lock()
+		received++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer relay.Close()
+	t.Setenv("VULOS_RELAY_URL", relay.URL)
+
+	nf := multiinstance.NewNotifyFanout(reg)
+
+	start := time.Now()
+	if err := nf.Notify(context.Background(), multiinstance.Notification{
+		ID:       "fanout-concurrency-001",
+		Priority: 0, // immediate fan-out
+	}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	mu.Lock()
+	gotReceived := received
+	mu.Unlock()
+	if gotReceived != numInstances {
+		t.Errorf("relay received %d POSTs; want %d", gotReceived, numInstances)
+	}
+
+	// A fully serial loop would take >= numInstances * perCallDelay (~2.4s).
+	// With bounded concurrency it must finish much faster.
+	serialBound := time.Duration(numInstances) * perCallDelay
+	if elapsed >= serialBound {
+		t.Errorf("fan-out took %s (>= serial bound %s) — not concurrent", elapsed, serialBound)
+	}
+
+	// And it must actually have run multiple POSTs in parallel.
+	if peak := atomic.LoadInt32(&maxInFlight); peak < 2 {
+		t.Errorf("peak in-flight = %d; expected concurrent dispatch (>1)", peak)
+	}
+}
+
+// TestFanOut_ContextCancelStopsScheduling proves a cancelled context aborts
+// further scheduling promptly instead of marching through every peer.
+func TestFanOut_ContextCancelStopsScheduling(t *testing.T) {
+	reg := openTempRegistry(t)
+	for i := 0; i < 8; i++ {
+		if err := reg.Upsert(multiinstance.Instance{
+			ULID:        fmt.Sprintf("01HWZFANCAN%015d", i),
+			Kind:        multiinstance.KindCloud,
+			Status:      multiinstance.StatusOnline,
+			EndpointURL: "https://instance.vulos.net",
+		}); err != nil {
+			t.Fatalf("Upsert %d: %v", i, err)
+		}
+	}
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer relay.Close()
+	t.Setenv("VULOS_RELAY_URL", relay.URL)
+
+	nf := multiinstance.NewNotifyFanout(reg)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	// Should return promptly without panicking; error is best-effort.
+	done := make(chan struct{})
+	go func() {
+		_ = nf.Notify(ctx, multiinstance.Notification{ID: "fanout-cancel-001", Priority: 0})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("fan-out did not return promptly after context cancellation")
 	}
 }
 

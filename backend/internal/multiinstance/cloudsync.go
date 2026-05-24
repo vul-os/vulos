@@ -120,74 +120,47 @@ func (cs *CloudSyncer) Sync(ctx context.Context) error {
 	return nil
 }
 
-// SubscribePresence connects to the cloud WebSocket presence feed and applies
-// updates to the local registry until ctx is cancelled.  It reconnects
-// automatically with a short back-off when the connection drops.
+// SubscribePresence keeps the local registry current with the cloud's view of
+// the account's instances until ctx is cancelled.
+//
+// HONEST STATUS (audit P2-7): there is NO live WebSocket transport yet. The
+// cloud /ws/instances endpoint is not implemented on either side, so this
+// method runs a 30-second full-resync poll loop — it does not open a socket and
+// does not stream PresenceEvents. The previous code routed through a
+// connectAndReceive "WebSocket" wrapper that immediately fell back to the same
+// poll, which produced misleading "presence feed disconnected; reconnecting"
+// logs for a feed that never connected. That dead branch has been removed; the
+// poll loop is now called directly and logged honestly. ApplyPresenceEvent
+// remains exported for when the real streaming transport lands and for tests.
 //
 // Call this in a goroutine after a successful Sync:
 //
 //	go cs.SubscribePresence(ctx)
 //
-// If the cloud WebSocket endpoint is unavailable, this function returns
-// without error — presence updates are simply skipped (graceful degradation).
+// It returns when ctx is cancelled (graceful shutdown).
 func (cs *CloudSyncer) SubscribePresence(ctx context.Context) {
-	wsURL := wsBaseURL() + "/ws/instances"
-
-	for {
-		if err := ctx.Err(); err != nil {
-			return
-		}
-		if err := cs.connectAndReceive(ctx, wsURL); err != nil {
-			log.Printf("[cloudsync] presence feed disconnected: %v; reconnecting in 5s", err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-		} else {
-			// Clean shutdown (ctx cancelled inside connectAndReceive).
-			return
-		}
-	}
+	log.Printf("[cloudsync] presence: no live feed implemented — using %s full-resync poll", presencePollInterval)
+	cs.pollPresence(ctx)
 }
 
-// connectAndReceive dials the WebSocket and reads presence events until the
-// connection closes or ctx is cancelled.  It returns an error only when the
-// connection drops unexpectedly; a ctx cancellation returns nil.
-//
-// The implementation uses the net/http Upgrade path via a minimal inline
-// WebSocket framing reader so that the package stays pure-Go with no
-// extra dependencies (gorilla/websocket is already in go.mod but the
-// server package imports it — we use the standard HTTP upgrade approach
-// here via a plain HTTP GET with Upgrade:websocket).
-//
-// For the purposes of MINST-02 the cloud control plane is a documented
-// client call; the real WebSocket transport will be wired when the cloud
-// server is live.  Until then we use HTTP long-polling fallback via
-// presencePollFallback.
-func (cs *CloudSyncer) connectAndReceive(ctx context.Context, wsURL string) error {
-	// The gorilla/websocket package is already a transitive dependency but to
-	// keep this package's import set minimal we use the HTTP polling fallback.
-	// When the real WebSocket endpoint is available, swap this call for a
-	// proper gorilla Dial.
-	return cs.presencePollFallback(ctx)
-}
+// presencePollInterval is the cadence of the full-resync presence poll used in
+// lieu of a live streaming feed.
+const presencePollInterval = 30 * time.Second
 
-// presencePollFallback polls GET /api/instances/presence (an SSE or JSON
-// endpoint) once every 30 seconds as a degraded substitute for the WebSocket
-// subscription.  It re-syncs the full instance list so the registry stays
-// current even without a live WebSocket.
-func (cs *CloudSyncer) presencePollFallback(ctx context.Context) error {
-	ticker := time.NewTicker(30 * time.Second)
+// pollPresence re-syncs the full instance list every presencePollInterval so
+// the registry stays current without a live WebSocket. It returns when ctx is
+// cancelled. Resync errors are logged and the loop continues (graceful
+// degradation — the OS keeps operating on last-known state).
+func (cs *CloudSyncer) pollPresence(ctx context.Context) {
+	ticker := time.NewTicker(presencePollInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case <-ticker.C:
 			if err := cs.Sync(ctx); err != nil {
-				// Log and continue — graceful degradation.
-				log.Printf("[cloudsync] poll resync: %v", err)
+				log.Printf("[cloudsync] presence poll resync: %v", err)
 			}
 		}
 	}
@@ -317,20 +290,6 @@ func (cs *CloudSyncer) LastSyncErr() error {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	return cs.lastSyncErr
-}
-
-// wsBaseURL returns the WebSocket-scheme base URL derived from the HTTP base.
-func wsBaseURL() string {
-	base := cloudBaseURL()
-	// Replace https:// → wss:// and http:// → ws://.
-	switch {
-	case len(base) >= 8 && base[:8] == "https://":
-		return "wss://" + base[8:]
-	case len(base) >= 7 && base[:7] == "http://":
-		return "ws://" + base[7:]
-	default:
-		return "wss://" + base
-	}
 }
 
 // RegisterSyncHandlers wires GET /api/instances into mux.
