@@ -1,6 +1,6 @@
 package multiinstance_test
 
-// MINST-05 tests: fly.io provisioning client + registry integration.
+// MINST-05 tests: Koyeb provisioning client + registry integration.
 
 import (
 	"context"
@@ -50,14 +50,14 @@ func TestProvision_ReturnsRequestAndUpserts(t *testing.T) {
 		"request_id":    "req-001",
 		"instance_ulid": "01HWZPROV0000000000000001",
 		"status":        "provisioning",
-		"endpoint_url":  "https://fly-instance.vulos.net",
+		"endpoint_url":  "https://koyeb-instance.vulos.net",
 	}
 	url, cleanup := startProvisionStub(t, cloudResp, nil)
 	defer cleanup()
 	t.Setenv("VULOS_CLOUD_URL", url)
 
 	p := multiinstance.NewProvisioner(reg, "test-device-cert")
-	req, err := p.Provision(context.Background(), "ams", "shared-cpu-1x")
+	req, err := p.Provision(context.Background(), "ams", "small")
 	if err != nil {
 		t.Fatalf("Provision: %v", err)
 	}
@@ -70,8 +70,8 @@ func TestProvision_ReturnsRequestAndUpserts(t *testing.T) {
 	if req.Region != "ams" {
 		t.Errorf("Region: got %q want %q", req.Region, "ams")
 	}
-	if req.Plan != "shared-cpu-1x" {
-		t.Errorf("Plan: got %q want %q", req.Plan, "shared-cpu-1x")
+	if req.Plan != "small" {
+		t.Errorf("Plan: got %q want %q", req.Plan, "small")
 	}
 
 	// The new instance must appear in the registry immediately.
@@ -89,7 +89,7 @@ func TestProvision_UnreachableCloudReturnsError(t *testing.T) {
 	t.Setenv("VULOS_CLOUD_URL", "http://127.0.0.1:0")
 
 	p := multiinstance.NewProvisioner(reg, "token")
-	_, err := p.Provision(context.Background(), "jnb", "shared-cpu-1x")
+	_, err := p.Provision(context.Background(), "jnb", "small")
 	if err == nil {
 		t.Fatal("expected error for unreachable cloud, got nil")
 	}
@@ -98,7 +98,7 @@ func TestProvision_UnreachableCloudReturnsError(t *testing.T) {
 func TestProvision_EmptyRegionErrors(t *testing.T) {
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "token")
-	_, err := p.Provision(context.Background(), "", "shared-cpu-1x")
+	_, err := p.Provision(context.Background(), "", "small")
 	if err == nil {
 		t.Fatal("expected error for empty region")
 	}
@@ -122,7 +122,7 @@ func TestProvision_Non200ResponseErrors(t *testing.T) {
 
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "bad-token")
-	_, err := p.Provision(context.Background(), "ams", "shared-cpu-1x")
+	_, err := p.Provision(context.Background(), "ams", "small")
 	if err == nil {
 		t.Fatal("expected error for 401 response")
 	}
@@ -145,7 +145,7 @@ func TestProvision_SendsAuthHeader(t *testing.T) {
 
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "my-device-cert")
-	_, err := p.Provision(context.Background(), "ams", "shared-cpu-1x")
+	_, err := p.Provision(context.Background(), "ams", "small")
 	if err != nil {
 		t.Fatalf("Provision: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestRegisterProvisionHandlers_ProvisionEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	multiinstance.RegisterProvisionHandlers(mux, p)
 
-	body, _ := json.Marshal(map[string]string{"region": "lhr", "plan": "shared-cpu-1x"})
+	body, _ := json.Marshal(map[string]string{"region": "lhr", "plan": "small"})
 	req := httptest.NewRequest(http.MethodPost, "/api/instances/provision", jsonReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -297,7 +297,7 @@ func TestRegisterProvisionHandlers_MissingRegionReturns422(t *testing.T) {
 	mux := http.NewServeMux()
 	multiinstance.RegisterProvisionHandlers(mux, p)
 
-	body, _ := json.Marshal(map[string]string{"plan": "shared-cpu-1x"})
+	body, _ := json.Marshal(map[string]string{"plan": "small"})
 	req := httptest.NewRequest(http.MethodPost, "/api/instances/provision", jsonReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

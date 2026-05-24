@@ -333,7 +333,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	// ── 8. Cloud instance provisioning (internal/multiinstance, MINST-05) ────────
 	//
 	// Routes registered:
-	//   POST /api/instances/provision      — request a new fly.io instance
+	//   POST /api/instances/provision      — request a new Koyeb instance
 	//   GET  /api/instances/{ulid}/status  — poll provisioning status
 	//
 	// Reuses a fresh registry handle (parallel to sections 3/6).  deviceToken is
