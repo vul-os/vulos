@@ -10,7 +10,10 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // CGo SQLite driver
+	// FIX-CGO-TEST-RESIDUE-01: use pure-Go modernc.org/sqlite (never CGo
+	// mattn/go-sqlite3) so `CGO_ENABLED=0 go test ./...` passes the
+	// pure-Go invariant. Driver name is "sqlite" (not "sqlite3").
+	_ "modernc.org/sqlite"
 )
 
 // ── in-memory S3 stub ─────────────────────────────────────────────────────────
@@ -74,7 +77,7 @@ func newTestSyncNode(t *testing.T, nodeID string, store *memS3) *testSyncNode {
 	t.Helper()
 
 	// Open an in-memory SQLite database.
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", nodeID))
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", nodeID))
 	if err != nil {
 		t.Fatalf("open db for %s: %v", nodeID, err)
 	}
@@ -357,7 +360,7 @@ func TestDeserialisationRejectsBadMagic(t *testing.T) {
 
 // TestCursorPersistence verifies that read/write cursor round-trips correctly.
 func TestCursorPersistence(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -533,7 +536,7 @@ func TestStopsOnCtxCancel(t *testing.T) {
 	// We need a disabled cluster so Run() exits immediately without S3.
 	// Here we test context cancellation with a fast mock interval.
 
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -573,7 +576,7 @@ func TestStopsOnCtxCancel(t *testing.T) {
 
 // TestNewSyncLoopRespectsInterval checks that VULOS_SYNC_INTERVAL is parsed.
 func TestNewSyncLoopRespectsInterval(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -633,14 +636,14 @@ func TestIntegrationSyncTwoNodes(t *testing.T) {
 	os.Unsetenv("VULOS_NODE_ID")
 
 	// Use in-memory DBs for both nodes.
-	dbA, err := sql.Open("sqlite3", "file:sync-int-a?mode=memory&cache=shared")
+	dbA, err := sql.Open("sqlite", "file:sync-int-a?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("open dbA: %v", err)
 	}
 	defer dbA.Close()
 	dbA.SetMaxOpenConns(1)
 
-	dbB, err := sql.Open("sqlite3", "file:sync-int-b?mode=memory&cache=shared")
+	dbB, err := sql.Open("sqlite", "file:sync-int-b?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("open dbB: %v", err)
 	}

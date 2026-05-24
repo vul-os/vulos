@@ -15,7 +15,10 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	// FIX-CGO-TEST-RESIDUE-01: use pure-Go modernc.org/sqlite (never CGo
+	// mattn/go-sqlite3) so `CGO_ENABLED=0 go test ./...` passes the
+	// pure-Go invariant. Driver name is "sqlite" (not "sqlite3").
+	_ "modernc.org/sqlite"
 )
 
 // ── in-memory mock implementations ───────────────────────────────────────────
@@ -98,7 +101,7 @@ func (r *mockRelayClient) depositCount(vulaID string) int {
 // is used — the transport tests only need the INSERT/SELECT contract.
 func openMemDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

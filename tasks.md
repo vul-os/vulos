@@ -500,3 +500,17 @@ copies. KEEP anything OS-specific the shared package doesn't cover (the Pro-tier
 MEET-OS-01 may need to stay as a thin OS shim over the shared `offlineBootstrap`). Run full build+test.
 AC: [x] file: dep added [x] shared local files deleted/migrated [x] OS-specific shims preserved (Pro-tier hint) [x] imports swapped [x] grep proves no stale refs [x] npm run build + npm test green
 
+---
+
+## Area: Audit-2 fix wave (2026-05-24)
+
+### [FIX-CGO-TEST-RESIDUE-01] Drop mattn/go-sqlite3 from test files (pure-Go invariant)
+`done` · P2 · S · dep: none · parallel: yes — backend/services/sync/hotpath_test.go, backend/services/cluster/sync_test.go, backend/go.mod
+Scope: The OS audit caught two pre-existing test files importing `_ "github.com/mattn/go-sqlite3"`,
+which violated the "pure-Go sqlite (no CGO)" invariant under `CGO_ENABLED=0 go test ./...`. Production
+builds were fine (no production code imported mattn), but the test gate failed CGO-off. Ported both tests
+to `modernc.org/sqlite` (driver name `sqlite3` → `sqlite`); the existing `file:NAME?mode=memory&cache=shared`
+DSNs work unchanged since modernc parses standard SQLite URI syntax. Dropped `github.com/mattn/go-sqlite3`
+from `backend/go.mod` (no remaining consumers; `go mod tidy` removed transitive indirects).
+AC: [x] both test files use modernc driver [x] go.mod no longer requires mattn [x] go build + go vet [x] CGO_ENABLED=0 go build [x] CGO_ENABLED=0 go test ./... green [x] npm run build + npm test green
+
