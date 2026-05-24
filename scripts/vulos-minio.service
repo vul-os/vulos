@@ -1,0 +1,46 @@
+# /etc/systemd/system/vulos-minio.service
+# Vulos local MinIO object storage (BYO / complete-self-hosted mode).
+# Only installed when --storage=minio is passed to install-vulos.sh.
+# Binds to 127.0.0.1:9000 (API) and 127.0.0.1:9001 (console).
+#
+# Install path:  /etc/systemd/system/vulos-minio.service
+# Written by:    scripts/install-vulos.sh
+
+[Unit]
+Description=Vulos — local MinIO object storage
+Documentation=https://min.io/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vulos
+Group=vulos
+
+# Load root password from the installer-generated secret file.
+# Override by setting MINIO_ROOT_PASSWORD in /etc/default/vulos-minio.
+EnvironmentFile=-/etc/default/vulos-minio
+ExecStartPre=/bin/sh -c 'test -f /var/lib/vulos/minio/.minio_secret || (echo "MinIO secret missing" >&2; exit 1)'
+ExecStartPre=/bin/sh -c 'export MINIO_ROOT_PASSWORD=$(cat /var/lib/vulos/minio/.minio_secret)'
+ExecStart=/usr/local/bin/minio server /var/lib/vulos/minio \
+  --address 127.0.0.1:9000 \
+  --console-address 127.0.0.1:9001
+
+Environment=MINIO_ROOT_USER=vulos
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=20s
+
+# Hardening — MinIO does not need any elevated capabilities on loopback
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vulos/minio
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

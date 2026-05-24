@@ -1,0 +1,36 @@
+# /etc/systemd/system/vulos-office.service
+# vulos-office — collaborative office suite backend.
+# Listens on port 8445. No raw network capabilities required.
+#
+# Install path:  /etc/systemd/system/vulos-office.service
+# Written by:    scripts/install-vulos.sh
+
+[Unit]
+Description=Vulos — collaborative office suite backend
+Documentation=https://docs.vulos.org/self-host/bundle
+After=network-online.target vulos-fabric.service vulos.service
+Wants=network-online.target
+Requires=vulos-fabric.service
+
+[Service]
+Type=simple
+User=vulos
+Group=vulos
+ExecStart=/usr/local/bin/vulos-office serve --config /etc/vulos/office.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=60s
+TimeoutStopSec=30s
+
+# Hardening — no raw network capabilities (listens on 8445, no port < 1024)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vulos/office
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target vulos-bundle.target

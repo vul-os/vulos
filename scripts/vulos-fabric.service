@@ -1,0 +1,38 @@
+# /etc/systemd/system/vulos-fabric.service
+# Vulos shared fabric identity initialisation (oneshot).
+# Run once at startup to validate config and generate keypairs if absent.
+# All three application services (vulos, vulos-mail, vulos-office) depend on
+# this completing before they start.
+#
+# Install path:  /etc/systemd/system/vulos-fabric.service
+# Written by:    scripts/install-vulos.sh
+
+[Unit]
+Description=Vulos — shared fabric identity initialisation
+Documentation=https://docs.vulos.org/self-host/bundle#fabric
+After=network-online.target
+Wants=network-online.target
+# Uncomment if using local MinIO:
+# After=vulos-minio.service
+# Wants=vulos-minio.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=vulos
+Group=vulos
+ExecStart=/usr/local/bin/vulos fabric --init --config /etc/vulos/fabric.yaml
+TimeoutStartSec=30s
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vulos
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

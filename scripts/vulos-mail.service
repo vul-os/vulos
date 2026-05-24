@@ -1,0 +1,37 @@
+# /etc/systemd/system/vulos-mail.service
+# vulos-mail — self-hosted encrypted mail server.
+# Requires CAP_NET_BIND_SERVICE to bind ports 25 (SMTP) and 587 (submission).
+# All other hardening follows the same pattern as the other bundle services.
+#
+# Install path:  /etc/systemd/system/vulos-mail.service
+# Written by:    scripts/install-vulos.sh
+
+[Unit]
+Description=Vulos — self-hosted encrypted mail server
+Documentation=https://docs.vulos.org/self-host/bundle
+After=network-online.target vulos-fabric.service vulos.service
+Wants=network-online.target
+Requires=vulos-fabric.service
+
+[Service]
+Type=simple
+User=vulos
+Group=vulos
+ExecStart=/usr/local/bin/vulos-mail serve --config /etc/vulos/mail.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=60s
+TimeoutStopSec=30s
+
+# Hardening — CAP_NET_BIND_SERVICE only (required for ports 25 + 587)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vulos/mail
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target vulos-bundle.target

@@ -1,0 +1,31 @@
+# /etc/systemd/system/vulos-bundle.target
+# Vulos Bundle — all-up sentinel target for the co-located OS + Mail + Office stack.
+#
+# This target is reached when all three application services are running.
+# Use it to start, stop, or check the entire bundle atomically:
+#
+#   systemctl start   vulos-bundle.target
+#   systemctl stop    vulos-bundle.target
+#   systemctl status  vulos-bundle.target
+#
+# Service ordering:
+#
+#   network-online.target
+#     └─> [vulos-minio.service]     (optional — BYO/local MinIO only)
+#           └─> vulos-fabric.service  (shared fabric identity init — oneshot)
+#                 ├─> vulos.service         (OS backend, port 8443)
+#                 ├─> vulos-mail.service    (mail server, ports 25/587/8444)
+#                 └─> vulos-office.service  (office backend, port 8445)
+#                       └─> vulos-bundle.target  ← YOU ARE HERE
+#
+# Install path:  /etc/systemd/system/vulos-bundle.target
+# Written by:    scripts/install-vulos.sh
+
+[Unit]
+Description=Vulos Bundle — OS + Mail + Office (all-up sentinel)
+Documentation=https://docs.vulos.org/self-host/bundle
+Wants=vulos.service vulos-mail.service vulos-office.service
+After=vulos.service vulos-mail.service vulos-office.service
+
+[Install]
+WantedBy=multi-user.target
