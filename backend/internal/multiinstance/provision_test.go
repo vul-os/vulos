@@ -1,6 +1,6 @@
 package multiinstance_test
 
-// MINST-05 tests: Koyeb provisioning client + registry integration.
+// MINST-05 tests: Fly Machine provisioning client + registry integration.
 
 import (
 	"context"
@@ -50,7 +50,7 @@ func TestProvision_ReturnsRequestAndUpserts(t *testing.T) {
 		"request_id":    "req-001",
 		"instance_ulid": "01HWZPROV0000000000000001",
 		"status":        "provisioning",
-		"endpoint_url":  "https://koyeb-instance.vulos.net",
+		"endpoint_url":  "https://fly-instance.vulos.net",
 	}
 	url, cleanup := startProvisionStub(t, cloudResp, nil)
 	defer cleanup()

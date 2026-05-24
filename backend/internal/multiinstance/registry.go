@@ -1,7 +1,7 @@
 // Package multiinstance implements the local instance registry for MINST-01.
 //
 // The registry is a SQLite-backed manifest of every Vulos instance belonging
-// to the current account (BYO devices and Vulos-provisioned Koyeb instances).
+// to the current account (BYO devices and Vulos-provisioned Fly instances).
 // It is the source of truth for routing decisions and CRDT sync peer lists.
 //
 // Only the registry itself is implemented here. Cloud sync (MINST-02), app
@@ -28,7 +28,7 @@ type Kind string
 
 const (
 	KindDevice Kind = "device" // BYO physical / self-hosted instance
-	KindCloud  Kind = "cloud"  // Vulos-provisioned Koyeb instance
+	KindCloud  Kind = "cloud"  // Vulos-provisioned Fly instance
 )
 
 // Role describes this instance's relationship to the local account.

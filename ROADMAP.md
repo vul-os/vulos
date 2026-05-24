@@ -14,7 +14,7 @@ Sessions sync via cr-sqlite CRDTs, so any instance in your cluster can serve any
 
 The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert covers all apps on an instance. Each profile gets isolated network namespaces and session-scoped cookies.
 
-**Outstanding:** optional Vulos-provisioned cloud instances (Fly.io primary; provider is abstracted so Koyeb is selectable too — users can add managed cloud nodes alongside their BYO hardware); geo-routing control-plane advisor; fleet dashboard for multiple instances per account.
+**Outstanding:** optional Vulos-provisioned cloud instances (Fly.io — users can add managed cloud nodes alongside their BYO hardware); geo-routing control-plane advisor; fleet dashboard for multiple instances per account.
 
 ---
 

@@ -1,14 +1,15 @@
-// MINST-05: Vulos-provisioned cloud instance — Koyeb launch from OS dashboard.
+// MINST-05: Vulos-provisioned cloud instance — Fly Machine launch from OS dashboard.
 //
 // Provisioner allows the OS to request the Vulos cloud control plane to spin up
-// a new Koyeb instance, enroll it under the current account, and register it in
+// a new Fly Machine, enroll it under the current account, and register it in
 // the local instance Registry.
 //
-// Note: the OS never talks to the Koyeb API directly. It forwards provision
+// Note: the OS never talks to the Fly API directly. It forwards provision
 // requests to the Vulos cloud control plane (api.vulos.org), which owns the
-// KOYEB_API_TOKEN and performs the actual POST /v1/services call against
-// https://app.koyeb.com/v1. This keeps the cloud-provider credential out of the
-// OS and avoids any Go-module dependency from vulos OS on vulos-cloud.
+// FLY_API_TOKEN and performs the actual POST /v1/apps/{app}/machines call
+// against https://api.machines.dev. This keeps the cloud-provider credential
+// out of the OS and avoids any Go-module dependency from vulos OS on
+// vulos-cloud.
 //
 // Flow:
 //
@@ -45,7 +46,7 @@ import (
 	"time"
 )
 
-// ProvisionRequest describes one pending or completed Koyeb provisioning job.
+// ProvisionRequest describes one pending or completed Fly Machine provisioning job.
 type ProvisionRequest struct {
 	ID           string    `json:"id"`
 	Region       string    `json:"region"`
@@ -77,7 +78,7 @@ type cloudStatusResponse struct {
 	Error        string `json:"error,omitempty"`
 }
 
-// Provisioner manages Koyeb cloud instance provisioning requests.
+// Provisioner manages Fly Machine cloud instance provisioning requests.
 // It is safe for concurrent use.
 type Provisioner struct {
 	reg         *Registry
@@ -97,7 +98,7 @@ func NewProvisioner(reg *Registry, deviceToken string) *Provisioner {
 	}
 }
 
-// Provision requests the cloud control plane to create a new Koyeb instance
+// Provision requests the cloud control plane to create a new Fly Machine
 // in the given region with the given plan.  It stores the provision request
 // locally and upserts the new instance into the Registry immediately so it is
 // visible to routing — even before the machine is fully ready.
@@ -349,7 +350,7 @@ func (p *Provisioner) GetProvisionRequest(id string) (*ProvisionRequest, bool) {
 //
 // Routes registered:
 //
-//	POST /api/instances/provision       — request a new Koyeb instance
+//	POST /api/instances/provision       — request a new Fly Machine
 //	GET  /api/instances/{ulid}/status   — poll provisioning status
 //
 // Usage (from a routes_*.go in cmd/server — never from main.go):
