@@ -10,6 +10,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"path/filepath"
 
@@ -28,14 +29,19 @@ func registerStorageModeRoutes(mux *http.ServeMux, home string, authStore *auth.
 	dbPath := filepath.Join(home, ".vulos", "db", "storagemode.db")
 	store, err := storagemode.Open(dbPath)
 	if err != nil {
-		// Hard-fail at registration time would prevent the server from
-		// starting on a misconfigured host. Fall back to a tigris-only
-		// response surface — reads work, writes fail with 500 — so the OS
-		// keeps booting on the default path even if SQLite can't open.
+		// FIX-STORE-LOCAL-LOG-01: surface the open failure. Soft-degrade
+		// behaviour (reads return Defaults(), writes 500) is intentional so
+		// the server still boots on a misconfigured host — but the operator
+		// needs to see WHY they're stuck on tigris-only.
+		log.Printf("[storagemode] store unavailable at %s: %v — soft-degrading to defaults (writes will 500)", dbPath, err)
 		mux.HandleFunc("GET /api/storagemode", func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, storagemode.Defaults())
 		})
 		mux.HandleFunc("PUT /api/storagemode", func(w http.ResponseWriter, r *http.Request) {
+			// FIX-STORE-LOCAL-LOG-01: also log on the 500 path so each rejected
+			// write produces a server-side breadcrumb (the client sees the
+			// generic error message; the log line has the underlying detail).
+			log.Printf("[storagemode] PUT rejected — store unavailable at %s: %v", dbPath, err)
 			writeErr(w, 500, "storagemode store unavailable: "+err.Error())
 		})
 		return

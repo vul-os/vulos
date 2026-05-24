@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/config"
+	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
@@ -2342,6 +2344,9 @@ func main() {
 	// lanSvc holds the opt-in OFFLINE-01 LAN reachability service (started below,
 	// after TLS cert paths are resolved). Declared here so shutdown can stop it.
 	var lanSvc *lan.Service
+	// gpuHostSvc holds the opt-in STREAM-BYO-01 GPU streaming-host service
+	// (FIX-GPUHOST-WIRE-01). Declared here so shutdown can stop it.
+	var gpuHostSvc *gpuhost.Service
 
 	go func() {
 		<-ctx.Done()
@@ -2355,6 +2360,9 @@ func main() {
 		netMgr.DestroyAll(context.Background())
 		if lanSvc != nil {
 			lanSvc.Stop(context.Background())
+		}
+		if gpuHostSvc != nil {
+			gpuHostSvc.Stop(context.Background())
 		}
 		server.Shutdown(context.Background())
 	}()
@@ -2383,9 +2391,19 @@ func main() {
 	// privileged 443/53 and can be overridden for non-root runs.
 	if os.Getenv("VULOS_LAN_ENABLE") == "1" {
 		lanHost := lan.BoxHostname(cfg.InstanceID)
-		// Prefer an externally-issued cert on disk (LANCERT-01 ACME DNS-01); fall
-		// back to a self-signed dev cert so the LAN HTTPS path always has material.
-		certSrc := lan.LoadCertSource(tlsCert, tlsKey, []string{"vulos.local", lanHost}, nil)
+		// Prefer the LANCERT-01 externally-issued cert at the documented cross-repo
+		// path (lan.DefaultCertPath / lan.DefaultKeyPath — kept in sync with
+		// vulos-cloud's lancert/contract.go). LoadCertSource silently falls back to
+		// the self-signed dev cert when the files are not yet present, so the LAN
+		// HTTPS path always has TLS material even before the puller has run.
+		lanCertPath, lanKeyPath := lan.DefaultCertPath, lan.DefaultKeyPath
+		if v := os.Getenv("VULOS_LAN_CERT"); v != "" {
+			lanCertPath = v
+		}
+		if v := os.Getenv("VULOS_LAN_KEY"); v != "" {
+			lanKeyPath = v
+		}
+		certSrc := lan.LoadCertSource(lanCertPath, lanKeyPath, []string{"vulos.local", lanHost}, nil)
 		httpsAddr := ":443"
 		if v := os.Getenv("VULOS_LAN_HTTPS_ADDR"); v != "" {
 			httpsAddr = v
@@ -2409,7 +2427,68 @@ func main() {
 			lanSvc = s
 			log.Printf("[lan] reachable at https://%s and %s (mDNS vulos.local)", lanHost, s.HTTPSAddr())
 		}
+
+		// FIX-LANCERT-PULL-01: opt-in cloud LAN-cert puller. When enabled, this
+		// background goroutine reports the box's LAN IP to the cloud control-plane
+		// and pulls the ACME DNS-01 cert+key into lanCertPath/lanKeyPath — exactly
+		// the paths LoadCertSource above mtime-watches, so a renewal is picked up
+		// on the next handshake with no listener restart.
+		if lan.PullerEnabled() {
+			puller, err := lan.NewLANCertPuller(lan.PullerConfig{
+				CloudBaseURL: os.Getenv("VULOS_CLOUD_BASE_URL"),
+				SharedSecret: os.Getenv("CP_SHARED_SECRET"),
+				BoxID:        cfg.InstanceID,
+				CertPath:     lanCertPath,
+				KeyPath:      lanKeyPath,
+			})
+			if err != nil {
+				log.Printf("[lancert-puller] disabled: %v", err)
+			} else {
+				go puller.Run(ctx)
+			}
+		}
 	}
+
+	// GPUHOST_WIRE BEGIN — FIX-GPUHOST-WIRE-01
+	//
+	// On a box opted-in via VULOS_GPU_HOST, start the BYO GPU streaming-host
+	// service (STREAM-BYO-01). The service runs the external WebRTC+NVENC
+	// streamer under a supervisor and registers the box with the relay's
+	// fabric so a remote client can discover + dial it.
+	//
+	// The fabric identity is the OS's existing peering identity: there is
+	// exactly one Ed25519 keypair per box across all slices (peering / LAN
+	// reachability / gpuhost), so the relay sees the same VulaID we already
+	// advertise on the peering well-known endpoint.
+	//
+	// No-op when VULOS_GPU_HOST is unset; most boxes have no GPU and never
+	// instantiate the service.
+	if gpuhost.Enabled() {
+		identity := gpuhost.FabricIdentity{
+			HostID:       peeringSvc.VulaID(),
+			PublicKeyB64: base64.StdEncoding.EncodeToString(peeringSvc.PublicKey()),
+			Domain:       cfg.Domain,
+		}
+		gpuCfg := gpuhost.Config{
+			Enabled:           true,
+			Identity:          identity,
+			RelayBaseURL:      os.Getenv("VULOS_RELAY_BASE_URL"),
+			StreamerBinary:    os.Getenv("VULOS_STREAMER_BINARY"),
+			AdvertiseHostname: os.Getenv("VULOS_GPU_ADVERTISE_HOST"),
+			GPUVendor:         os.Getenv("VULOS_GPU_VENDOR"),
+		}
+		if svc, err := gpuhost.New(gpuCfg); err != nil {
+			log.Printf("[gpuhost] disabled: %v", err)
+		} else if err := svc.Start(ctx); err != nil {
+			log.Printf("[gpuhost] start failed: %v", err)
+		} else {
+			gpuHostSvc = svc
+			log.Printf("[gpuhost] streaming host registered (host_id=%s state=%s)",
+				identity.HostID, svc.State())
+			mux.Handle("/api/gpuhost/status", svc.StatusHandler())
+		}
+	}
+	// GPUHOST_WIRE END
 
 	if tlsCert != "" {
 		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, activeEnv, tlsCert)

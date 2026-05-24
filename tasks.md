@@ -427,41 +427,41 @@ AC: [ ] streaming server starts on GPU box [ ] registers with fabric [ ] P2P med
 ## Area: Audit-fix wave A (from #125 verification audit — 2026-05-24)
 
 ### [FIX-LANCERT-PULL-01] OS-side LANCERT cert puller (critical — closes offline-LAN loop)
-`todo` · P0 · M · dep: none · parallel: yes — backend/internal/lan/lancert_puller.go (new)
+`done` · P0 · M · dep: none · parallel: yes — backend/internal/lan/lancert_puller.go (new)
 Scope: Cloud LANCERT-01 issues a DNS-01 cert and exposes `POST /api/lancert/report-ip` + `GET /api/lancert/cert`,
 but the OS has no puller — `LoadCertSource` mtime-watches a path nothing ever writes to, so LAN HTTPS always
 falls back to self-signed. Add a background goroutine that POSTs the LAN IP at startup + on change, polls the
 cert endpoint with backoff (202 while pending, 200 with PEMs when ready), and writes the PEMs atomically to
 the path `LoadCertSource` watches. Auth via `X-Device-Auth` + `CP_SHARED_SECRET`. Opt-in `VULOS_LANCERT_ENABLE`.
-AC: [ ] puller posts LAN IP at startup [ ] polls cert with backoff [ ] atomic write (tmp+rename) at default path [ ] hot-reload picked up [ ] mock-cloud test [ ] go build ./...
+AC: [x] puller posts LAN IP at startup [x] polls cert with backoff [x] atomic write (tmp+rename) at default path [x] hot-reload picked up [x] mock-cloud test [x] go build ./...
 
 ### [FIX-GPUHOST-WIRE-01] Wire backend/internal/gpuhost into OS server bootstrap
-`todo` · P0 · S · dep: none · parallel: yes — backend/cmd/server/main.go
+`done` · P0 · S · dep: none · parallel: yes — backend/cmd/server/main.go
 Scope: STREAM-BYO-01 shipped `internal/gpuhost/` (Service + Supervisor + fabric registration + PathChooser)
 but the OS server never instantiates it. Add a `// GPUHOST_WIRE BEGIN/END` block that constructs the Service
 when `gpuhost.Enabled()` returns true (env `VULOS_GPU_HOST`), passes the OS peering identity
 (`peering.Service.VulaID()` + `PublicKey()` — one key per box across all slices), runs on shutdownCtx.
-AC: [ ] gpuhost.Service constructed when VULOS_GPU_HOST=1 [ ] uses shared peering identity [ ] no-op when env unset [ ] go build ./...
+AC: [x] gpuhost.Service constructed when VULOS_GPU_HOST=1 [x] uses shared peering identity [x] no-op when env unset [x] go build ./...
 
 ### [FIX-LAN-PATH-CONST-01] Shared LAN cert-path constants
-`todo` · P1 · S · dep: none · parallel: yes — backend/internal/lan/
+`done` · P1 · S · dep: none · parallel: yes — backend/internal/lan/
 Scope: Cloud `lancert/contract.go` declares `/var/lib/vulos/tls/lan.{crt,key}`; OS accepts arbitrary paths
 from main config (drift hazard). Export `lan.DefaultCertPath` + `lan.DefaultKeyPath`; main.go uses them;
 FIX-LANCERT-PULL-01 writes to them; `lan/doc.go` documents the contract.
-AC: [ ] constants exported [ ] main.go uses them [ ] doc comment in lan/ refs cross-repo contract [ ] go build ./...
+AC: [x] constants exported [x] main.go uses them [x] doc comment in lan/ refs cross-repo contract [x] go build ./...
 
 ### [FIX-STORE-LOCAL-LOG-01] Startup log when storagemode store fails
-`todo` · P2 · S · dep: none · parallel: yes — backend/cmd/server/routes_storagemode.go
+`done` · P2 · S · dep: none · parallel: yes — backend/cmd/server/routes_storagemode.go
 Scope: `routes_storagemode.go` silently returns `Defaults()` if the SQLite store fails to open. Add a
 structured-log line on open-error + on the PUT 500 path. Soft-degrade is correct; just make it visible.
-AC: [ ] open-error logged at startup [ ] PUT 500 logs underlying error [ ] go build ./...
+AC: [x] open-error logged at startup [x] PUT 500 logs underlying error [x] go build ./...
 
 ### [FIX-SW-CACHE-COORD-01] Coordinated service-worker cache version registry
-`todo` · P2 · S · dep: none · parallel: yes — docs/SW-CACHE-VERSIONS.md (new)
+`done` · P2 · S · dep: none · parallel: yes — docs/SW-CACHE-VERSIONS.md (new)
 Scope: Each of vulos/office/mail-webmail has its own SW with its own `CACHE_NAME` (all currently `*-v1`).
 A bump in one without a coordinated bump in others can leave stale shells. Document the cross-repo registry
 + the rule "when you bump your CACHE_NAME, update this file and notify the other surfaces."
-AC: [ ] docs/SW-CACHE-VERSIONS.md created [ ] all 3 surfaces listed + current version [ ] no code changes
+AC: [x] docs/SW-CACHE-VERSIONS.md created [x] all 3 surfaces listed + current version [x] no code changes
 
 ---
 

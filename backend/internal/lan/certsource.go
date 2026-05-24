@@ -1,12 +1,8 @@
-// Package lan provides box-side LAN reachability for a Vulos box: zero-config
-// mDNS advertisement (vulos.local), a tiny authoritative DNS responder for
-// box.<id>.lan.vulos.org, and an HTTPS listener that serves the OS over the LAN
-// using a pluggable certificate source.
-//
-// The point of the package is offline resilience: when the internet (and public
-// DNS) is down, a client on the same LAN can still reach the box by name and
-// over TLS without any cloud round-trip.
 package lan
+
+// Package documentation now lives in doc.go (FIX-LAN-PATH-CONST-01) — it
+// covers both the LAN reachability rationale and the cross-repo cert delivery
+// contract with vulos-cloud's lancert package.
 
 import (
 	"crypto/ecdsa"
