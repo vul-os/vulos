@@ -137,8 +137,8 @@ sudo nano /etc/vulos/storage.yaml
 # → Set access_key, secret_key, and bucket
 ```
 
-Create a bucket at [fly.io storage console](https://fly.io/dashboard) (Tigris
-is integrated with Fly.io) or directly at [storage.tigris.dev](https://storage.tigris.dev).
+Create a bucket directly at [storage.tigris.dev](https://storage.tigris.dev).
+Tigris is S3-compatible and works from anywhere over the public network ($0 egress).
 
 ### Local MinIO (complete BYO / air-gap)
 

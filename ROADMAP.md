@@ -14,7 +14,7 @@ Sessions sync via cr-sqlite CRDTs, so any instance in your cluster can serve any
 
 The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert covers all apps on an instance. Each profile gets isolated network namespaces and session-scoped cookies.
 
-**Outstanding:** optional Vulos-provisioned fly.io instances (users can add managed cloud nodes alongside their BYO hardware); geo-routing control-plane advisor; fleet dashboard for multiple instances per account.
+**Outstanding:** optional Vulos-provisioned Koyeb instances (users can add managed cloud nodes alongside their BYO hardware); geo-routing control-plane advisor; fleet dashboard for multiple instances per account.
 
 ---
 
@@ -319,7 +319,7 @@ minimum. You run OS + office + mail; Vulos provides identity, relay, MX gateway,
 filtering, and reputation management. Your data never touches Vulos storage (except the anchor
 inbox and encrypted-in-transit relay). See below for Tigris vs MinIO choice within Self-Host.
 
-**Track B — Hosted (Vulos Fly.io + Tigris, per-org bucket, durable):**
+**Track B — Hosted (Vulos Koyeb + Tigris, per-org bucket, durable):**
 
 | Tier | R/active user/mo | Includes |
 |---|---|---|
