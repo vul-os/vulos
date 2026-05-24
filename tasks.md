@@ -414,7 +414,7 @@ dashboard. local-minio-sync provisions local MinIO as source of truth + enables 
 AC: [ ] mode selectable, defaults central-tigris [ ] local-minio-sync provisions MinIO + enables sync [ ] mode/endpoints passed to mail/office [ ] default path unchanged [ ] go build ./... && npm run build
 
 ### [STREAM-BYO-01] BYO GPU host: self-host streaming server + fabric registration
-`todo` · P3 · L · dep: STREAM-RELAY-01 (vulos-relay) · parallel: yes — backend/internal/gpuhost/ (new)
+`done` · P3 · L · dep: STREAM-RELAY-01 (vulos-relay) · parallel: yes — backend/internal/gpuhost/ (new)
 Scope: On a self-host GPU box, run a low-latency streaming server (WebRTC+NVENC, Moonlight/Sunshine
 compatible) and register with the fabric for NAT-traversal/signaling. Media P2P; relay only for signaling
 + thin fallback. Not a flat-rate hosted game service.
