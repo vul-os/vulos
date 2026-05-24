@@ -74,6 +74,48 @@ jobs:
             exit 1
           fi
 
+  # ── Office Suite (merged from vulos-office → office/) ────────────────────────
+  # The office subtree is a self-contained nested Go module (module vulos-office,
+  # rooted at office/go.mod with main.go + backend/) plus a React/Vite frontend.
+  # main.go embeds office/dist via //go:embed, so the frontend is built before Go.
+  office:
+    name: Office Suite Build, Vet & Test
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@v4
+
+      # Frontend first — the Go binary embeds office/dist.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: office/package-lock.json
+
+      - name: Install office frontend deps
+        run: cd office && npm ci
+
+      - name: Build office frontend (all targets)
+        run: cd office && npm run build:all
+
+      - name: Test office frontend
+        run: cd office && npm test
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: office/go.mod
+          cache-dependency-path: office/go.sum
+
+      - name: Build office Go module
+        run: cd office && go build ./...
+
+      - name: Vet office Go module
+        run: cd office && go vet ./...
+
+      - name: Test office Go module (short)
+        run: cd office && go test -short ./...
+
   smoke-peering:
     name: SMOKE-01 — Peering Route Regression
     runs-on: ubuntu-latest

@@ -1,0 +1,262 @@
+/* ============================================================================
+ * Vulos Office — Design Tokens
+ * ----------------------------------------------------------------------------
+ * Single source of truth for colour, type, space, radii, motion, elevation.
+ * Tailwind reads these via tailwind.config.js theme.extend so utilities like
+ * `bg-paper`, `text-ink`, `border-line`, `bg-accent` resolve through here.
+ *
+ * Aesthetic direction:
+ *   - Warm neutral base (oat / paper / clay)  — NOT cool grey
+ *   - One deliberate accent: deep teal (committed; no second tech-blue)
+ *   - Typographic pair: ui-sans-serif chrome + ui-serif document body
+ *   - Generous whitespace, subtle elevation, ease-out 200–300ms motion
+ *
+ * Dark mode is first-class — every token has a dark counterpart. Switch via
+ * either OS preference or `[data-theme="dark"]` on <html>.
+ * ========================================================================= */
+
+:root {
+  /* ── Warm neutrals (oat → ink) ────────────────────────────────────────── */
+  --oat-50:  #fbf9f5;   /* page background, warmest */
+  --oat-100: #f5f1ea;   /* sidebar / panel surfaces */
+  --oat-200: #ece5da;   /* hairline dividers, hover tints */
+  --oat-300: #d8cebd;   /* stronger borders, input borders */
+  --oat-400: #b8ab93;   /* muted icons, placeholders */
+  --oat-500: #8e8470;   /* secondary text */
+  --oat-600: #6b6457;   /* tertiary text */
+  --oat-700: #4d4940;   /* primary muted text */
+  --oat-800: #2d2b26;   /* near-ink, headings on light */
+  --oat-900: #1a1916;   /* ink — primary text on light */
+
+  /* ── Paper & clay (surfaces) ──────────────────────────────────────────── */
+  --paper:   #ffffff;
+  --paper-2: #fbf9f5;   /* alias for --oat-50 */
+  --paper-3: #f5f1ea;   /* alias for --oat-100 */
+  --clay:    #ece5da;   /* warmer panel */
+
+  /* ── Accent: deep teal — committed ──────────────────────────────────── */
+  /* Chosen over terracotta to read calm + trustworthy for a Docs/Signing app.
+   * Aim is "British Racing Teal" — desaturated, deep, document-friendly.   */
+  --teal-50:  #effaf8;
+  --teal-100: #d6f1ec;
+  --teal-200: #ade1d8;
+  --teal-300: #7accbe;
+  --teal-400: #3fad9b;
+  --teal-500: #1e8d7a;
+  --teal-600: #0f6a6c;   /* primary accent — buttons, focus, links       */
+  --teal-700: #0c585b;
+  --teal-800: #0a4548;
+  --teal-900: #08393b;
+
+  /* ── Signal colours (warm-leaning, not generic) ──────────────────────── */
+  --signal-warning: #c08436;   /* honey / amber, less aggressive than yellow */
+  --signal-warning-bg: #fbf2e2;
+  --signal-error:   #b8453a;   /* persimmon — softer than #ef4444             */
+  --signal-error-bg: #fbece9;
+  --signal-success: #4f7a4d;   /* sage — calmer than emerald                  */
+  --signal-success-bg: #ecf2e8;
+  --signal-info:    #4a6b8a;   /* dusty navy — only signal that is "blue"     */
+  --signal-info-bg: #ecf0f5;
+
+  /* ── Semantic aliases (light theme) ──────────────────────────────────── */
+  --bg:        var(--oat-50);
+  --bg-elev-1: var(--paper);
+  --bg-elev-2: var(--oat-100);
+  --bg-sunk:   var(--oat-200);
+
+  --ink:       var(--oat-900);
+  --ink-muted: var(--oat-700);
+  --ink-faint: var(--oat-500);
+  --ink-on-accent: #ffffff;
+
+  --line:        var(--oat-200);
+  --line-strong: var(--oat-300);
+
+  --accent:           var(--teal-600);
+  --accent-hover:     var(--teal-700);
+  --accent-press:     var(--teal-800);
+  --accent-tint:      var(--teal-50);
+  --accent-tint-2:    var(--teal-100);
+  --accent-on-ink:    var(--teal-300);   /* legible on dark surfaces */
+
+  --selection-bg: var(--teal-100);
+  --selection-fg: var(--teal-900);
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  /* Chrome / UI: a grotesque from the OS — characterful, no Inter sameness.
+   * Documents: ui-serif — the OS's editorial serif (Iowan/Charter/Cambria).
+   * Mono: ui-monospace stack — never default Courier.                       */
+  --font-sans: ui-sans-serif, "Inter Display", "SF Pro Display",
+               "Segoe UI Variable", "Segoe UI", Roboto, system-ui,
+               -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-serif: ui-serif, "Iowan Old Style", "Charter", "Source Serif Pro",
+                Cambria, "Hoefler Text", "Times New Roman", Georgia, serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+
+  /* Type scale — minor-third (1.2) ratio, anchored 14px */
+  --text-2xs: 0.6875rem; /* 11px — micro-labels, metadata           */
+  --text-xs:  0.75rem;   /* 12px — secondary chrome                 */
+  --text-sm:  0.8125rem; /* 13px — buttons, default UI              */
+  --text-md:  0.875rem;  /* 14px — body chrome                      */
+  --text-base:1rem;      /* 16px — document body when chrome=14     */
+  --text-lg:  1.125rem;  /* 18px — section titles                   */
+  --text-xl:  1.375rem;  /* 22px — page titles                      */
+  --text-2xl: 1.75rem;   /* 28px — display                          */
+  --text-3xl: 2.25rem;   /* 36px — hero                             */
+
+  /* Tracking — tight by default for chrome */
+  --tracking-tight:   -0.014em;
+  --tracking-normal:   0em;
+  --tracking-wide:     0.04em;
+  --tracking-wider:    0.08em;   /* uppercase eyebrows */
+
+  /* Leading */
+  --leading-tight: 1.2;
+  --leading-snug:  1.35;
+  --leading-body:  1.55;
+  --leading-doc:   1.7;          /* serif document body */
+
+  /* ── Spacing (4px base) ─────────────────────────────────────────────── */
+  --space-1:  0.25rem;   /* 4  */
+  --space-2:  0.5rem;    /* 8  */
+  --space-3:  0.75rem;   /* 12 */
+  --space-4:  1rem;      /* 16 */
+  --space-5:  1.5rem;    /* 24 */
+  --space-6:  2rem;      /* 32 */
+  --space-7:  3rem;      /* 48 */
+  --space-8:  4rem;      /* 64 */
+
+  /* ── Radii — restrained ─────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* ── Elevation — paper-like, never material-like ────────────────────── */
+  /* Shadows have a slight warm tint and ride low so the UI looks printed,
+   * not floating. Drop-shadow alphas are tiny.                            */
+  --elev-0: none;
+  --elev-1: 0 1px 0 rgba(36, 28, 16, 0.04),
+            0 1px 2px rgba(36, 28, 16, 0.04);
+  --elev-2: 0 1px 0 rgba(36, 28, 16, 0.04),
+            0 4px 12px -4px rgba(36, 28, 16, 0.08);
+  --elev-3: 0 2px 0 rgba(36, 28, 16, 0.04),
+            0 12px 28px -8px rgba(36, 28, 16, 0.14);
+  --elev-focus: 0 0 0 3px var(--teal-200);
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --ease-out:   cubic-bezier(0.22, 0.61, 0.36, 1);   /* default UI ease     */
+  --ease-spring: cubic-bezier(0.16, 1.0, 0.3, 1);     /* soft spring (open) */
+  --ease-in:    cubic-bezier(0.4, 0, 1, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+
+  color-scheme: light;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Dark mode — warm dark, NOT inverted greys.  Coffee / charcoal not slate.
+ * Active when:
+ *   - <html data-theme="dark">  (explicit, app toggle)
+ *   - or @media (prefers-color-scheme: dark) without data-theme=light
+ * ────────────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        #131110;
+    --bg-elev-1: #1c1a17;
+    --bg-elev-2: #25221d;
+    --bg-sunk:   #0e0d0b;
+
+    --ink:       #f1ece2;
+    --ink-muted: #c8c0b0;
+    --ink-faint: #8e8674;
+    --ink-on-accent: #fbf9f5;
+
+    --line:        #2a2622;
+    --line-strong: #3a352e;
+
+    --accent:        var(--teal-400);
+    --accent-hover:  var(--teal-300);
+    --accent-press:  var(--teal-200);
+    --accent-tint:   rgba(63, 173, 155, 0.10);
+    --accent-tint-2: rgba(63, 173, 155, 0.18);
+
+    --selection-bg: rgba(63, 173, 155, 0.28);
+    --selection-fg: #effaf8;
+
+    --signal-warning-bg: rgba(192, 132, 54, 0.14);
+    --signal-error-bg:   rgba(184, 69, 58, 0.14);
+    --signal-success-bg: rgba(79, 122, 77, 0.14);
+    --signal-info-bg:    rgba(74, 107, 138, 0.14);
+
+    --elev-1: 0 1px 0 rgba(0, 0, 0, 0.4),
+              0 1px 2px rgba(0, 0, 0, 0.5);
+    --elev-2: 0 1px 0 rgba(0, 0, 0, 0.4),
+              0 6px 16px -4px rgba(0, 0, 0, 0.55);
+    --elev-3: 0 2px 0 rgba(0, 0, 0, 0.4),
+              0 16px 32px -8px rgba(0, 0, 0, 0.65);
+    --elev-focus: 0 0 0 3px rgba(63, 173, 155, 0.35);
+
+    color-scheme: dark;
+  }
+}
+
+/* Explicit override (toggle from app settings) — same set */
+:root[data-theme="dark"] {
+  --bg:        #131110;
+  --bg-elev-1: #1c1a17;
+  --bg-elev-2: #25221d;
+  --bg-sunk:   #0e0d0b;
+
+  --ink:       #f1ece2;
+  --ink-muted: #c8c0b0;
+  --ink-faint: #8e8674;
+  --ink-on-accent: #fbf9f5;
+
+  --line:        #2a2622;
+  --line-strong: #3a352e;
+
+  --accent:        var(--teal-400);
+  --accent-hover:  var(--teal-300);
+  --accent-press:  var(--teal-200);
+  --accent-tint:   rgba(63, 173, 155, 0.10);
+  --accent-tint-2: rgba(63, 173, 155, 0.18);
+
+  --selection-bg: rgba(63, 173, 155, 0.28);
+  --selection-fg: #effaf8;
+
+  --signal-warning-bg: rgba(192, 132, 54, 0.14);
+  --signal-error-bg:   rgba(184, 69, 58, 0.14);
+  --signal-success-bg: rgba(79, 122, 77, 0.14);
+  --signal-info-bg:    rgba(74, 107, 138, 0.14);
+
+  --elev-1: 0 1px 0 rgba(0, 0, 0, 0.4),
+            0 1px 2px rgba(0, 0, 0, 0.5);
+  --elev-2: 0 1px 0 rgba(0, 0, 0, 0.4),
+            0 6px 16px -4px rgba(0, 0, 0, 0.55);
+  --elev-3: 0 2px 0 rgba(0, 0, 0, 0.4),
+            0 16px 32px -8px rgba(0, 0, 0, 0.65);
+  --elev-focus: 0 0 0 3px rgba(63, 173, 155, 0.35);
+
+  color-scheme: dark;
+}
+
+/* Reduced-motion: still animate transforms below 100ms; cancel slow easings. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Global selection — accent tint, not the browser blue.
+ * ──────────────────────────────────────────────────────────────────── */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-fg);
+}

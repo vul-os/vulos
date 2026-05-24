@@ -9,15 +9,15 @@ export default defineConfig({
       // Allow apps/mail/ to import @vulos/mail-client from the local source tree
       '@vulos/mail-client': resolve(import.meta.dirname, '../vulos-mail/webmail-vulos/src/lib.jsx'),
       // Allow office/spaces/calendar/meet OS wrappers to import @vulos/office-client
-      // sub-path exports from the local vulos-office source tree
-      '@vulos/office-client/docs':     resolve(import.meta.dirname, '../vulos-office/src/apps/docs/lib.jsx'),
-      '@vulos/office-client/sheets':   resolve(import.meta.dirname, '../vulos-office/src/apps/sheets/lib.jsx'),
-      '@vulos/office-client/slides':   resolve(import.meta.dirname, '../vulos-office/src/apps/slides/lib.jsx'),
-      '@vulos/office-client/pdf':      resolve(import.meta.dirname, '../vulos-office/src/apps/pdf/lib.jsx'),
-      '@vulos/office-client/spaces':   resolve(import.meta.dirname, '../vulos-office/src/apps/spaces/lib.jsx'),
-      '@vulos/office-client/calendar': resolve(import.meta.dirname, '../vulos-office/src/apps/calendar/lib.jsx'),
-      '@vulos/office-client/contacts': resolve(import.meta.dirname, '../vulos-office/src/apps/contacts/lib.jsx'),
-      '@vulos/office-client':          resolve(import.meta.dirname, '../vulos-office/src/lib/index.js'),
+      // sub-path exports from the in-repo office/ source tree
+      '@vulos/office-client/docs':     resolve(import.meta.dirname, './office/src/apps/docs/lib.jsx'),
+      '@vulos/office-client/sheets':   resolve(import.meta.dirname, './office/src/apps/sheets/lib.jsx'),
+      '@vulos/office-client/slides':   resolve(import.meta.dirname, './office/src/apps/slides/lib.jsx'),
+      '@vulos/office-client/pdf':      resolve(import.meta.dirname, './office/src/apps/pdf/lib.jsx'),
+      '@vulos/office-client/spaces':   resolve(import.meta.dirname, './office/src/apps/spaces/lib.jsx'),
+      '@vulos/office-client/calendar': resolve(import.meta.dirname, './office/src/apps/calendar/lib.jsx'),
+      '@vulos/office-client/contacts': resolve(import.meta.dirname, './office/src/apps/contacts/lib.jsx'),
+      '@vulos/office-client':          resolve(import.meta.dirname, './office/src/lib/index.js'),
       // Force a single React instance so apps/* don't get their own copy
       react: resolve(import.meta.dirname, 'node_modules/react'),
       'react-dom': resolve(import.meta.dirname, 'node_modules/react-dom'),

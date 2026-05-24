@@ -1,0 +1,24 @@
+# Vulos Office Configuration
+
+server:
+  addr: ":8080"
+  data_dir: "./data"
+  uploads_dir: "./uploads"
+
+auth:
+  enabled: false          # Set to true to require login
+  password: "changeme"    # Password for login (only used if enabled: true)
+  max_attempts: 5         # Lockout after N failed attempts
+  lockout_minutes: 15     # Lock duration in minutes
+  session_hours: 24       # Session expiry in hours
+
+storage:
+  type: "local"           # "local" or "postgres"
+  # PostgreSQL connection (only used if type: "postgres")
+  postgres:
+    host: "localhost"
+    port: 5432
+    user: "postgres"
+    password: ""
+    database: "vulos_office"
+    sslmode: "disable"

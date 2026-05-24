@@ -21,8 +21,9 @@ See ROADMAP.md §§ 1–3, 7 for full context.
 | Vulos Mail Identity | ROADMAP.md § Identity — Vulos Mail | 7 / 7 | `[██████████]` 100% |
 | Public Webapps | ROADMAP.md § Public Webapps | 8 / 8 | `[██████████]` 100% |
 | Multi-Instance Routing | ROADMAP.md § Multi-Instance | 7 / 7 | `[██████████]` 100% |
+| Office Suite (merged) | ROADMAP.md § Office Suite | 35 / 35 | `[██████████]` 100% |
 
-| **Open total** | | **0 / 31** | `[██████████]` 100% |
+| **Open total** | | **0 / 31** (+ 35 Office Suite done; 6 Office Suite future/open) | `[██████████]` 100% |
 
 ---
 
@@ -313,6 +314,96 @@ inbox so the user can never be locked out even when their local MinIO or compute
 Surface the anchor inbox status and usage in the OS Dashboard mail card and in the cloud billing
 dashboard. Document the anchor inbox in the recovery ladder.
 AC: [ ] anchor inbox bucket prefix provisioned on Tigris at account creation [ ] MinIO-backend accounts also have an anchor inbox on Tigris [ ] anchor inbox capped at ~1 GB (configurable; overage → soft warning) [ ] inbox accessible via standard JMAP/IMAP endpoints [ ] `go build ./...`
+
+---
+
+## Area: Office Suite (merged from vulos-office → `office/`)
+
+_Roadmap: ROADMAP.md §Office Suite_  ·  _Prefix: `OFFICE-`_  ·  _Subtree: `office/` (nested Go module `vulos-office`)_
+
+> Merged from the standalone vulos-office repo. **Status: 35 / 35 office tasks `done`** —
+> Office Core, Real-time Collaboration (CRDT + fabric), PDF Auto-Sign, and Vulos Spaces are all
+> shipped. All paths below are relative to the `office/` subtree. The frontend embeds into the
+> Go binary; `cd office && go build ./... && npm run build` is the universal gate.
+> Storage-backend / co-location / bundling for the suite is governed by the OS-wide
+> §"Storage backend, multi-location & co-location" area above (STORE-*, BUNDLE-01, ANCHOR-01);
+> the two office-side tasks `OFFICE-STORE-01/02` below are the office counterparts referenced
+> by `BUNDLE-01` — they are kept once here (not re-documented in the OS storage area).
+
+### Office Core (OFFICE-01…11)
+- **[OFFICE-01]** `done` — Documents editor (TipTap rich text) — `office/src/apps/docs/`
+- **[OFFICE-02]** `done` — Sheets editor (Fortune Sheet grid) — `office/src/apps/sheets/`
+- **[OFFICE-03]** `done` — Slides editor (Reveal.js) — `office/src/apps/slides/`
+- **[OFFICE-04]** `done` — PDF annotate + sign canvas (single-user) — `office/src/apps/pdf/PDFEditor.jsx`
+- **[OFFICE-05]** `done` — Import/Export pipeline (docx/xlsx/pptx/pdf/md) — `office/src/lib/importFile.js`, `office/src/apps/*/`*Export.js`
+- **[OFFICE-06]** `done` — Storage backends (local JSON + PostgreSQL) + file CRUD API — `office/backend/storage/`, `office/backend/handlers/files.go`
+- **[OFFICE-07]** `done` — Optional password auth (JWT) + single-binary embed — `office/backend/handlers/auth.go`, `office/main.go`
+- **[OFFICE-08]** `done` — Local document version history + snapshots — `office/backend/storage/`, `office/backend/handlers/files.go`
+- **[OFFICE-09]** `done` — Crash-safe autosave + offline write recovery — `office/src/store/filesStore.js`, `office/src/lib/api.js`
+- **[OFFICE-10]** `done` — PDF page operations (reorder/insert/delete/rotate) — `office/src/apps/pdf/PDFEditor.jsx`
+- **[OFFICE-11]** `done` — Import/export fidelity hardening — `office/src/lib/`, `office/src/apps/*/`*Export.js`
+
+### Real-time Collaboration (OFFICE-20…28) — CRDT over the Vulos fabric
+- **[OFFICE-20]** `done` — Fabric client adapter (P2P data channel + relay/TURN fallback) — `office/src/lib/fabric.js`, `office/src/lib/signaling.js`
+- **[OFFICE-21]** `done` — CRDT document core + bucket sync (text/grid/tree) — `office/src/lib/crdt/`
+- **[OFFICE-22]** `done` — Wire Docs editor to CRDT collaborative session — `office/src/apps/docs/DocsEditor.jsx`, `office/src/lib/crdt/text.js`
+- **[OFFICE-23]** `done` — Wire Sheets + Slides editors to CRDT sessions — `office/src/apps/sheets/`, `office/src/apps/slides/`, `office/src/lib/crdt/`
+- **[OFFICE-24]** `done` — Presence roster (who's here) — `office/src/lib/presence.js`, `office/src/components/PresenceBar.jsx`
+- **[OFFICE-25]** `done` — Live cursors + selections — `office/src/apps/docs/DocsEditor.jsx`, `office/src/apps/sheets/SheetsEditor.jsx`
+- **[OFFICE-26]** `done` — Comments (anchored, threaded, resolvable) — `office/src/lib/crdt/comments.js`, `office/src/components/CommentsPanel.jsx`
+- **[OFFICE-27]** `done` — Suggestion (track-changes) mode — `office/src/apps/docs/DocsEditor.jsx`, `office/src/lib/crdt/suggestions.js`
+- **[OFFICE-28]** `done` — Document activity feed + named snapshots from op-log — `office/src/lib/crdt/index.js`, `office/src/components/HistoryPanel.jsx`
+
+### PDF Auto-Sign (OFFICE-40…47) — e-signature + cryptographic audit trail
+- **[OFFICE-40]** `done` — Signing data model + backend store — `office/backend/models/signing.go`, `office/backend/storage/`
+- **[OFFICE-41]** `done` — Field-placement editor (assign fields to signers) — `office/src/apps/pdf/PDFEditor.jsx`, `office/src/apps/pdf/SigningSetup.jsx`
+- **[OFFICE-42]** `done` — Signing-link generation + scoped signer view — `office/backend/handlers/signing.go`, `office/src/apps/pdf/SignView.jsx`
+- **[OFFICE-43]** `done` — Signer ceremony (draw/type/upload + submit) — `office/src/apps/pdf/SignView.jsx`
+- **[OFFICE-44]** `done` — Cryptographic token + tamper-evident audit trail (Ed25519, hash-chained) — `office/backend/signing/crypto.go`, `office/backend/handlers/signing.go`
+- **[OFFICE-45]** `done` — Multi-signer orchestration + reminders — `office/backend/handlers/signing.go`
+- **[OFFICE-46]** `done` — Completion certificate + sealed PDF — `office/backend/handlers/signing.go`, `office/src/apps/pdf/SignView.jsx`
+- **[OFFICE-47]** `done` — Signature + audit verification tool — `office/backend/signing/crypto.go`, `office/src/components/VerifyView.jsx`
+
+### Vulos Spaces (OFFICE-60…66) — Slack + Meet equivalent on the fabric
+- **[OFFICE-60]** `done` — Spaces data model + message store (CRDT-synced) — `office/backend/models/spaces.go`, `office/src/lib/crdt/messages.js`
+- **[OFFICE-61]** `done` — Channels + DMs + threads UI — `office/src/apps/spaces/`
+- **[OFFICE-62]** `done` — Presence + status for Vulos Spaces — `office/src/lib/presence.js`, `office/src/apps/spaces/ChannelView.jsx`
+- **[OFFICE-63]** `done` — 1:1 + group voice/video calling (WebRTC P2P + relay/TURN fallback) — `office/src/lib/call/rtc.js`, `office/src/apps/spaces/CallView.jsx`
+- **[OFFICE-64]** `done` — Screen-share in calls — `office/src/lib/call/rtc.js`, `office/src/apps/spaces/CallView.jsx`
+- **[OFFICE-65]** `done` — Scheduled meetings + meeting rooms — `office/backend/handlers/meetings.go`, `office/src/apps/spaces/Meetings.jsx`, `office/src/apps/spaces/Room.jsx`
+- **[OFFICE-66]** `done` — In-call chat tied to channel/thread — `office/src/apps/spaces/CallView.jsx`, `office/src/lib/crdt/messages.js`
+
+### Office Suite — Future / open
+
+### [OFFICE-MULTI-01] Multi-target builds (web subdomain + OS-embed library) for all app surfaces
+`todo` · P2 · L · dep: none · parallel: no — office/vite.config.*, office/package.json, office/src/apps/*/lib.jsx
+Scope: Vite multi-entry config builds each app (docs, sheets, slides, spaces, calendar, meet) as both a standalone web bundle (subdomain serving) and an embeddable `lib.jsx` export (OS shell wrapper). The multi-target build (`build:all`) already produces dist/dist-lib/dist-office/dist-talk/dist-calendar/dist-meet; extend coverage and coordinate with the vulos-cloud subdomain routing pipeline. The OS-embed library exports a single React component per app.
+AC: [ ] `cd office && npm run build:all` produces both web and lib outputs [ ] lib.jsx exports a single component per app [ ] web output deployable to app-specific subdomain [ ] no .tsx files introduced
+
+### [OFFICE-DEEPLINK-01] Deep-link routing per app surface
+`todo` · P2 · M · dep: none · parallel: yes — office/src/App.jsx
+Scope: Canonical deep-link routes for each app surface: `vulos-office://docs/{id}`, `vulos-office://meet/{roomId}`, `vulos-office://calendar/{eventId}`, etc. `office/src/App.jsx` router handles both web-subdomain URL patterns and the OS deep-link scheme. Coordinate with OFFICE-MULTI-01 and the OS app-wrapper tasks.
+AC: [ ] deep-link URLs for docs/sheets/slides/spaces/calendar/meet defined [ ] App.jsx routes resolve them [ ] OS launcher links tested against the routing table [ ] `cd office && npm run build`
+
+### [OFFICE-STORE-01] Storage-backend config injection: accept Tigris or MinIO endpoint
+`todo` · P1 · S · dep: OFFICE-06 · parallel: yes — office/backend/config/config.go, office/backend/storage/storage.go
+Scope: Ensure the office backend accepts the storage backend endpoint + credentials from its startup configuration (env vars or config file) and passes them to the storage interface at init. No logic in office selects between Tigris or MinIO — it receives the endpoint (consistent with the OS-wide STORE-BYO-01 selector and BUNDLE-01 installer). Document the two config shapes (Tigris vs MinIO-local) in `office/docs/INSTALL.md`. Add a startup log line confirming the endpoint in use.
+AC: [ ] Tigris endpoint config accepted + logged at startup [ ] MinIO-local endpoint accepted + logged [ ] storage interface uses injected endpoint [ ] no endpoint-selection logic in office source [ ] `cd office && go build ./...`
+
+### [OFFICE-STORE-02] Co-location documentation: running with OS + mail on one box
+`todo` · P3 · S · dep: none · parallel: yes — office/docs/INSTALL.md
+Scope: Document co-located deployment: office running alongside OS and vulos-mail on a single instance, sharing one bucket endpoint. Include shared config variables, systemd unit ordering (office after vulos-mail), and a note that the meta-bundle installer (`BUNDLE-01` above) automates this setup. Markdown only; no code changes.
+AC: [ ] `office/docs/INSTALL.md` covers co-location with OS + mail [ ] shared storage config documented [ ] reference to BUNDLE-01 included [ ] `cd office && go build ./...` unaffected
+
+### [OFFICE-BYO-01] OS installer hook: install office alongside vulos-mail for Starter+
+`in-progress` · P2 · M · dep: none · parallel: yes — office/docs/INSTALL.md
+Scope: Document the OS install-wizard integration point: when a Vulos OS user selects Starter or higher, the wizard installs office (Docs, Sheets, Slides, Spaces, Calendar) as a built-in service alongside vulos-mail. Doc + install-script integration only; no office source change. Coordinate with the vulos-mail MAIL-BYO-04 bash installer and the OS-side BUNDLE-01.
+AC: [ ] INSTALL.md documents office install alongside vulos-mail for Starter+ [ ] install hook point documented for OS wizard team [ ] no .go or .jsx changes [ ] `cd office && npm run build` passes unmodified
+
+### [OFFICE-BYO-02] Pricing copy verification: Office bundled from Starter
+`in-progress` · P3 · S · dep: none · parallel: yes — office/ (doc only)
+Scope: Verify all user-facing copy in `office/README.md`, ROADMAP.md, and `office/docs/` reflects that Office is bundled from Starter and up — no standalone Office tier. Fix any copy that implies a standalone Office tier.
+AC: [ ] copy mentions bundling from Starter [ ] ROADMAP §Office Suite present [ ] no copy implies standalone Office tier [ ] `cd office && npm run build` passes unmodified
 
 ---
 
