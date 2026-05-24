@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"vulos/backend/internal/airouter"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
@@ -2489,6 +2490,36 @@ func main() {
 		}
 	}
 	// GPUHOST_WIRE END
+
+	// MEET_TRANSCRIPT_WIRE BEGIN — MEET-TRANSCRIPT-01
+	//
+	// Per-room Whisper transcription endpoints (POST /api/meet/transcribe/start,
+	// /audio, /stop and GET /api/meet/transcribe/stream/{room_id}). The same
+	// WhisperProvider wraps a hosted Whisper API (VULOS_WHISPER_URL pointed at
+	// api.openai.com or similar) AND a self-hosted whisper.cpp HTTP server
+	// (VULOS_WHISPER_URL pointed at localhost). Both speak the OpenAI-compatible
+	// /v1/audio/transcriptions multipart shape.
+	//
+	// Privacy gate:
+	//   - cloud / Pro tier: VULOS_MEET_TRANSCRIBE_ENABLE flipped on by tier hint
+	//     (see meetTranscribeEnvFromTier).
+	//   - self-host / Free: default-off unless the operator sets
+	//     VULOS_MEET_TRANSCRIBE_ENABLE=1 explicitly.
+	//
+	// Routes are still registered when the provider/env is absent — they reply
+	// 503 so the office UI can render the toggle as disabled cleanly rather
+	// than getting 404s.
+	meetTranscribeEnvFromTier(os.Getenv("VULOS_TIER"))
+	if whisper, werr := airouter.NewWhisperProviderFromEnv(); werr == nil {
+		registerMeetTranscriptRoutes(mux, whisper, authStore)
+		log.Printf("[meet/transcribe] registered POST /api/meet/transcribe/{start,audio,stop}, GET /api/meet/transcribe/stream/{room_id} (provider=%s)", whisper.Name())
+	} else {
+		// Register with a nil provider so the endpoints exist and return 503;
+		// keeps the office UI well-defined when transcription is off.
+		registerMeetTranscriptRoutes(mux, nil, authStore)
+		log.Printf("[meet/transcribe] provider unavailable: %v — routes return 503 (set VULOS_WHISPER_URL to enable)", werr)
+	}
+	// MEET_TRANSCRIPT_WIRE END
 
 	if tlsCert != "" {
 		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, activeEnv, tlsCert)

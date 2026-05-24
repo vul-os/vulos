@@ -473,16 +473,30 @@ _Roadmap: ROADMAP.md §Video meetings (LiveKit)_  ·  _Prefix: `MEET-*`_
 > New `vulos-meet` MIT repo wraps LiveKit Server. See [MEET-CORE-01] in vulos-relay's tasks for the entry point.
 
 ### [MEET-OS-01] OS Spaces app wraps the LiveKit-based office Spaces client
-`todo` · P3 · M · dep: MEET-SPACES-01 (vulos-office) · parallel: yes — apps/spaces/
+`done` · P3 · M · dep: MEET-SPACES-01 (vulos-office) · parallel: yes — apps/spaces/
 Scope: After office Spaces is rebuilt on the LiveKit client SDK (MEET-SPACES-01), update `apps/spaces/` to
 surface large-room controls (speaker grid, raise-hand, breakout, recording toggle) and respect the Pro-tier
 gate. Preserve the existing fabric.js mesh path for ≤5-participant calls (legacy/fallback).
-AC: [ ] LiveKit calling surface in apps/spaces [ ] Pro-gate respected [ ] mesh fallback for ≤5 [ ] npm run build
+AC: [x] LiveKit calling surface in apps/spaces [x] Pro-gate respected [x] mesh fallback for ≤5 [x] npm run build
 
 ### [MEET-TRANSCRIPT-01] airouter → Whisper transcription for video meetings
-`todo` · P3 · M · dep: MEET-OS-01 · parallel: yes — backend/internal/airouter/
+`done` · P3 · M · dep: MEET-OS-01 · parallel: yes — backend/internal/airouter/
 Scope: Route per-room LiveKit audio frames through the existing airouter to a Whisper provider (hosted
 Whisper API or self-hosted whisper.cpp via airouter's existing backend abstraction). Stream the transcript
 to office Spaces UI. Opt-in per meeting; Pro default-on, self-host default-off.
-AC: [ ] airouter Whisper provider [ ] per-room transcript stream [ ] opt-in gate per meeting [ ] go build ./...
+AC: [x] airouter Whisper provider [x] per-room transcript stream [x] opt-in gate per meeting [x] go build ./...
+
+---
+
+## Area: Relay-client adoption (Wave C — 2026-05-24)
+
+### [RELAY-CLIENT-04] Migrate vulos OS to consume @vulos/relay-client
+`todo` · P1 · M · dep: RELAY-CLIENT-01 (vulos-relay) · parallel: yes — package.json, src/lib/
+Scope: vulos OS has local `endpoints.js` (282 LOC — most complete of the 3 copies), `offlineBootstrap.js`
+(127 LOC — has OS-specific Pro-tier hint injection from MEET-OS-01), and may use signaling/fabric primitives
+indirectly via apps. After RELAY-CLIENT-01 ships, add `"@vulos/relay-client": "file:../vulos-relay/client"`
+to vulos/package.json. Swap shared-primitive imports to `@vulos/relay-client/*`. Delete the now-unused local
+copies. KEEP anything OS-specific the shared package doesn't cover (the Pro-tier hint injection logic from
+MEET-OS-01 may need to stay as a thin OS shim over the shared `offlineBootstrap`). Run full build+test.
+AC: [ ] file: dep added [ ] shared local files deleted/migrated [ ] OS-specific shims preserved (Pro-tier hint) [ ] imports swapped [ ] grep proves no stale refs [ ] npm run build + npm test green
 
