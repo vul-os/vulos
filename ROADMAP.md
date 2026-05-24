@@ -248,12 +248,109 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 
 ---
 
-## BYO Mail support (in progress — parallel implementation)
+## Storage Backend, Multi-Location, Co-location & Identity (finalized 2026-05-24)
+
+### A. Storage-backend choice (per account)
+
+The S3-compatible blob store that underpins all Vulos data (mail, office, OS sync) supports
+two backends — customer's choice at account setup:
+
+| Backend | Who it suits | How it works |
+|---|---|---|
+| **Tigris (default)** | Hosted + self-host customers who want managed storage | Per-org bucket prefix on our Tigris tenant; durable, replicated, geo-selectable |
+| **MinIO local (complete BYO)** | Complete-BYO customers with their own hardware | Customer runs MinIO; data never touches Vulos storage (except the anchor inbox — see §D) |
+
+Both backends expose the same S3-compatible API surface. The only code-level difference is
+endpoint + credentials. The OS, mail server, and office suite all consume this unified interface.
+A per-account storage-backend selector is needed (see TASKS item `STORE-BYO-01`).
+
+### B. Multi-location topology — central bucket (v1 default)
+
+A BYO org can connect multiple boxes and locations as a single logical deployment:
+
+**v1 (default): central bucket.** All compute instances for the org point at ONE shared bucket
+(Tigris for hosted; or one MinIO instance for complete-BYO, at the customer's most-reliable site
+or VPS). CRDT + bucket-lease coordinator handle concurrent writes. The per-location local cache
+(`serving/cache.go`, already built) provides read-latency reduction. Compute instances at multiple
+locations give redundancy and HA — any location can serve any session.
+
+**Future work (NOT v1): replicated peer-sync.** Each location runs its own MinIO with
+peer-to-peer CRDT sync over the Vulos fabric. Designed for strict per-site data sovereignty or
+offline-must-work requirements. Explicitly out of v1 scope. See TASKS `STORE-MULTLOC-01`.
+
+Multi-location implementation requires: enrollment flow for joining box #2 and #3 to an org
+(`STORE-MULTLOC-02`) and cross-location inbound-mail routing that picks a healthy site
+(`MAIL-MULTLOC-01`).
+
+### C. Co-located single-instance bundle
+
+OS + office + mail share one bucket, one CRDT/peering fabric, and one identity. They can all
+run on ONE instance. The BYO story is: **"one box = your whole Vulos."**
+
+Roadmap item: a `vulos` meta-bundle/installer that installs and supervises all three co-located
+services (OS, vulos-mail, vulos-office). Today's installer is mail-only. A unified installer
+(`BUNDLE-01`) removes the multi-step setup currently required. Hosted multi-tenant co-locates
+small tenants on shared infrastructure and splits per-service at scale.
+
+### D. @vulos.org centralized identity + anchor inbox
+
+Identity is always cloud-held regardless of storage or compute choice:
+
+- `@vulos.org` handle, login credential, and account recovery live in the Vulos cloud control
+  plane (keydir/identity service). This applies to both hosted and complete-BYO accounts.
+- Every account (including complete-BYO) receives a small (~1 GB) **always-on central anchor
+  inbox** on Vulos Tigris. This means you can never be fully locked out or unreachable, even if
+  your MinIO goes offline or your compute instances are down.
+- **Recovery ladder:** (1) password reset via email, (2) TOTP + recovery codes, (3) 14-day
+  ID-verified recovery as the ultimate backstop. No account can become permanently inaccessible.
+- A compute instance going offline is never data loss: Tigris is durable; for complete-BYO,
+  customers must back up their MinIO (their responsibility — documented at onboarding).
+
+**The "never lose your @vulos.org account" guarantee:** As long as the Vulos control plane is
+reachable, your identity, your handle, and your anchor inbox are intact — independent of
+what happens to your local hardware.
+
+### E. 2-track billing model (finalized)
+
+**Per active user. One switch: Self-Host or Hosted.**
+
+**Track A — Self-Host (your hardware + your MinIO or Tigris):** R3/active-user/mo, R9/mo account
+minimum. You run OS + office + mail; Vulos provides identity, relay, MX gateway, peering, spam
+filtering, and reputation management. Your data never touches Vulos storage (except the anchor
+inbox and encrypted-in-transit relay). See below for Tigris vs MinIO choice within Self-Host.
+
+**Track B — Hosted (Vulos Fly.io + Tigris, per-org bucket, durable):**
+
+| Tier | R/active user/mo | Includes |
+|---|---|---|
+| Free | R0 (1 user) | @vulos.org, relay, hosted |
+| Mail | R19 | Hosted mail only |
+| Suite (Starter) | R39 | Mail + office + spaces + calendar + OS |
+| Pro | R99 | + AI, custom domain, more storage |
+| Team | R139 | + admin console, SCIM |
+| Enterprise | R1,500 base + R149/user | Dedicated infra, SLA, compliance |
+
+Relay, peering, identity, and deliverability fabric are always Vulos-operated — this is the
+product in both tracks. Self-Host saves hosting cost; Hosted saves hardware and ops overhead.
+
+**Storage-backend note within Track A (Self-Host):** Self-Host customers may choose either
+Tigris (simpler, managed) or MinIO local (complete BYO, strongest data sovereignty) as their
+storage backend. The billing tier is the same; the only difference is the endpoint configuration.
+
+---
+
+## Self-Host Mail support (in progress — parallel implementation)
 
 The Vulos OS first-boot wizard gains a new optional step: install `vulos-mail` as a built-in
 service on the same hardware as the OS user. This closes the loop on "OS-level self-hosting" —
 you install Vulos OS, the wizard asks if you want mail service on this instance, and a single
-setup flow provisions both the OS identity and the vulos-mail BYO setup.
+setup flow provisions both the OS identity and the Vulos Mail Self-Host setup.
+
+**Pricing context:** Vulos Mail Self-Host (R3/user/mo + R9/mo account floor) is the cloud tier
+that corresponds to running vulos-mail on your own hardware. Vulos provides the deliverability
+stack (MX gateway, warm-up relay, spam, reputation, encrypted queue, health monitoring).
+No static IP or port forwarding required. See `vulos-cloud/billingmodel/TIERS.md` for the
+full tier specification.
 
 **OS integration points:**
 

@@ -256,6 +256,66 @@ AC: [ ] instances list populated from `/api/instances` [ ] online/offline badges
 
 ---
 
+## Area: Storage backend, multi-location & co-location
+
+_Roadmap: ROADMAP.md §Storage Backend, Multi-Location, Co-location & Identity_  ·  _Prefix: `STORE-*`, `BUNDLE-*`_
+
+> Storage-backend selector (Tigris vs MinIO), multi-location enrollment, cross-location mail
+> routing, co-located installer bundle, and anchor-inbox provisioning.
+> See decisions A–E in ROADMAP.md.
+
+### [STORE-BYO-01] Per-account storage-backend selector (Tigris vs MinIO)
+`todo` · P1 · M · dep: none · parallel: yes — backend/internal/storage/config.go, apps/settings/src/components/StoragePanel.jsx
+Scope: Add a per-account `storage_backend` field (`tigris | minio_local`) to the account settings
+store. Tigris is the default. MinIO-local requires the customer to provide endpoint + credentials.
+The bucket interface is unchanged — only the connection bootstrapping differs. Expose a "Storage"
+settings panel (JSX only) that lets the account owner view and update their storage backend.
+Propagate the chosen endpoint/creds to the CRDT sync, mail, and file store layers via a shared
+`StorageConfig` struct. Document the anchor-inbox exception: anchor inbox always uses Tigris
+regardless of the selected backend.
+AC: [ ] `storage_backend` persists in account settings [ ] StoragePanel renders backend selector [ ] MinIO endpoint + creds injected into all S3 clients [ ] Tigris remains the default [ ] anchor inbox is always Tigris regardless of backend choice [ ] `go build ./... && npm run build`
+
+### [STORE-MULTLOC-02] Multi-location enrollment: join a second or third box to an org
+`todo` · P2 · L · dep: STORE-BYO-01 · parallel: yes — backend/internal/multiinstance/, apps/dashboard/src/components/LocationsPanel.jsx
+Scope: Extend the instance registry and the Vulos cloud enrollment API to support multiple compute
+locations for a single org, all sharing one bucket (v1 central-bucket model). A new "Join this
+box to an existing org" flow: the new box authenticates with the org's enrollment token, registers
+in the instance registry with a location label, and receives the bucket endpoint/credentials from
+the cloud control plane. The existing bucket-lease coordinator handles concurrent writes. The
+dashboard shows all enrolled locations with online/offline status.
+AC: [ ] second box joins org via enrollment token [ ] both boxes share the same bucket endpoint [ ] instance registry shows multi-location topology [ ] bucket-lease coordinator tested with two concurrent instances [ ] `go build ./... && npm run build`
+
+### [STORE-MULTLOC-01] Multi-location replicated peer-sync — document as future work, out of v1 scope
+`todo` · P3 · S · dep: none · parallel: yes — docs/ (markdown only)
+Scope: Document the deferred v2 multi-location topology (each location runs its own MinIO with
+peer-to-peer CRDT sync over the Vulos fabric). This is for strict per-site data sovereignty or
+offline-must-work requirements only. Write a short design note in `docs/MULTI-LOCATION-FUTURE.md`
+marking it explicitly out of v1 scope. No code changes.
+AC: [ ] `docs/MULTI-LOCATION-FUTURE.md` created [ ] document states v1 default is central bucket [ ] replicated-peer-sync labelled "future work, not v1" [ ] `npm run build` unaffected
+
+### [BUNDLE-01] Co-located meta-installer: OS + vulos-mail + vulos-office on one box
+`todo` · P2 · L · dep: none · parallel: yes — scripts/bundle-install.sh (new), apps/firstboot/src/steps/BundleStep.jsx (new)
+Scope: Create a `vulos` meta-bundle bash installer and a first-boot wizard step that installs
+and supervises all three co-located services — OS, vulos-mail, and vulos-office — on a single
+instance. They share one bucket endpoint, one CRDT/peering fabric, and one identity. The wizard
+step presents: "Install everything on this box (recommended for BYO single-box)" vs "Mail only"
+vs "OS only". Service supervision: systemd units for vulos-mail and vulos-office alongside the
+existing OS services. Today's installer is mail-only; this extends it. JSX wizard step only; bash
+script is the install glue. No changes to vulos-mail or vulos-office source code.
+AC: [ ] bash installer provisions OS + mail + office on a fresh VM [ ] wizard step presents bundle/mail-only/OS-only choice [ ] all three services start under systemd [ ] single bucket endpoint shared by all three [ ] `npm run build` passes for firstboot app
+
+### [ANCHOR-01] Anchor inbox provisioning: always-on ~1 GB Tigris inbox per account
+`todo` · P1 · M · dep: STORE-BYO-01 · parallel: yes — backend/internal/identity/anchor.go (new)
+Scope: Ensure every account (including complete-BYO/MinIO accounts) has a small (~1 GB) always-on
+anchor inbox on Vulos Tigris. This inbox is provisioned at account creation and is independent of
+the account's main storage-backend choice. It serves as the account's always-reachable fallback
+inbox so the user can never be locked out even when their local MinIO or compute is offline.
+Surface the anchor inbox status and usage in the OS Dashboard mail card and in the cloud billing
+dashboard. Document the anchor inbox in the recovery ladder.
+AC: [ ] anchor inbox bucket prefix provisioned on Tigris at account creation [ ] MinIO-backend accounts also have an anchor inbox on Tigris [ ] anchor inbox capped at ~1 GB (configurable; overage → soft warning) [ ] inbox accessible via standard JMAP/IMAP endpoints [ ] `go build ./...`
+
+---
+
 ## Area: Future
 
 ### OS app wrappers for office / spaces / calendar / meet
