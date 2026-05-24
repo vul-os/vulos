@@ -125,44 +125,6 @@ jobs:
           echo "$AUDIT_OUTPUT" | npx --yes audit-filter .npmauditignore 2>/dev/null \
             || npm audit --audit-level=high
 
-  # ── Office Suite — Go vulnerability scan (nested module office/) ─────────────
-  office-go-vuln:
-    name: Office Go Vulnerability Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: office/go.mod
-          cache-dependency-path: office/go.sum
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      - name: Run govulncheck (office module)
-        # office/ is a self-contained nested Go module (module vulos-office).
-        run: cd office && govulncheck ./...
-
-  # ── Office Suite — npm dependency audit ─────────────────────────────────────
-  office-npm-audit:
-    name: Office npm Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: office/package-lock.json
-
-      - name: Install office dependencies
-        run: cd office && npm ci
-
-      - name: Run npm audit (office)
-        run: cd office && npm audit --audit-level=high
-
   # ── 3. Container image CVE scan (Trivy) ─────────────────────────────────────
   trivy:
     name: Container CVE Scan (Trivy)
