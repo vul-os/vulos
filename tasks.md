@@ -395,10 +395,11 @@ AC: [x] mDNS advertises vulos.local [x] local DNS responder answers box.<id>.lan
 Done: new pkg `backend/internal/lan/` (CertSource iface + self-signed dev impl + file-based hot-reload loader, mDNS advertiser via pion/mdns, pure-Go UDP DNS responder via x/net/dnsmessage, Service orchestrator). Wired into cmd/server/main.go behind opt-in `VULOS_LAN_ENABLE=1`. 14 unit tests pass; `go build ./...` clean (CGO-free).
 
 ### [OFFLINE-02] OS web client multi-endpoint failover (cloud ↔ LAN)
-`todo` · P1 · M · dep: OFFLINE-01, RESOLVE-LAN-01 (vulos-cloud) · parallel: yes — src/lib/endpoints.js (new), src/lib/api.js
+`done` · P1 · M · dep: OFFLINE-01, RESOLVE-LAN-01 (vulos-cloud) · parallel: yes — src/lib/endpoints.js (new), src/lib/api.js
 Scope: Cache both cloud + LAN endpoints from ResolveBackend; health-check; prefer reachable (LAN-direct
 for latency). Cloud-routing failure → transparently fall back to cached LAN endpoint. No user action.
-AC: [ ] both endpoints cached [ ] reachable chosen automatically [ ] cloud-down → LAN [ ] LAN-down → cloud [ ] npm run build
+AC: [x] both endpoints cached [x] reachable chosen automatically [x] cloud-down → LAN [x] LAN-down → cloud [x] npm run build
+Done: new `src/lib/endpoints.js` (frozen contract mirrored from vulos-office/vulos-mail — discovery via window.__VULOS_ENDPOINTS__ → VITE_CLOUD/LAN_ENDPOINT → localStorage('vulos.os.endpoints.v1') → same-origin; concurrent probe of /api/auth/status; LAN→cloud→same-origin preference; re-probe on online/offline; seedFromResolveBackend(BackendTarget) for callers that have a fresh resolver response). New `src/lib/api.js` routes every request through selectEndpoint() and retries once against the failed-over endpoint on a network error. New `src/components/OfflineIndicator.jsx` wired into App.jsx (consistent with vulos-mail). 13 new vitest tests (10 endpoints + 3 api); full suite 50 pass; `npm run build` clean.
 
 ### [OFFLINE-03] OS shell offline-first PWA (service worker + write queue)
 `todo` · P2 · M · dep: OFFLINE-02 · parallel: yes — src/sw.js (new), src/lib/offlineQueue.js (new)

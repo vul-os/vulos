@@ -15,6 +15,7 @@ import MobileStack from './layouts/MobileStack'
 import TVHome from './layouts/TVHome'
 import Popout from './shell/Popout'
 import Screensaver from './shell/Screensaver'
+import OfflineIndicator from './components/OfflineIndicator'
 
 function DesktopShortcuts() {
   const { desktops, switchDesktop, addDesktop } = useShell()
@@ -170,6 +171,7 @@ export default function App() {
         <WallpaperProvider>
           <AuthProvider>
             <AuthGate />
+            <OfflineIndicator />
           </AuthProvider>
         </WallpaperProvider>
       </ThemeProvider>
