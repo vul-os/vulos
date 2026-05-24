@@ -141,6 +141,13 @@ export default function Setup({ onComplete }) {
     IS05_storageSizeGb: 20,
     IS05_storagePassword: '',
     IS05_storagePassphrase: '',
+    // STORE-LOCAL-01: bundle storage mode. Defaults to central-tigris.
+    // 'local-minio-sync' opts the bundle into the local-MinIO-with-sync path.
+    IS05_storageMode: 'central-tigris',
+    IS05_storageMinioEndpoint: 'http://127.0.0.1:9000',
+    IS05_storageMinioRegion: 'auto',
+    IS05_storageMinioBucket: 'vulos-bundle',
+    IS05_storageMinioCredsRef: '/var/lib/vulos/minio/.minio_secret',
     IS05_sshPubkey: '',
     IS05_sshFingerprint: '',
     IS05_s3AccessKey: '',
@@ -2240,6 +2247,25 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
     } catch {
       // degrade gracefully
     }
+    // STORE-LOCAL-01: persist the bundle storage mode. Default (central-tigris)
+    // is still POSTed so the row is materialised and the dashboard reflects it
+    // — the env contract for the default mode is just VULOS_STORAGE_MODE.
+    try {
+      const modeBody = config.IS05_storageMode === 'local-minio-sync'
+        ? {
+            mode: 'local-minio-sync',
+            minio_endpoint: config.IS05_storageMinioEndpoint,
+            minio_region: config.IS05_storageMinioRegion,
+            minio_bucket: config.IS05_storageMinioBucket,
+            minio_creds_ref: config.IS05_storageMinioCredsRef,
+          }
+        : { mode: 'central-tigris' }
+      await fetch('/api/storagemode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modeBody),
+      })
+    } catch { /* mode is best-effort during setup — admin can change later */ }
     IS05_setSaving(false)
     // Record that storage was not enabled (skipped via Continue with toggle off)
     if (!config.IS05_storageEnabled) {
@@ -2283,6 +2309,67 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${config.IS05_storageEnabled ? 'left-5' : 'left-0.5'}`} />
           </button>
         </div>
+      </div>
+
+      {/* STORE-LOCAL-01: bundle storage-mode selector. Always visible so the
+          operator chooses a backend even when cluster-sync is off. */}
+      <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
+        <div className="text-sm text-neutral-200 mb-2">{t('Bundle Storage Mode')}</div>
+        <div className="text-[11px] text-neutral-600 mb-2">
+          {t('Central Tigris is the default — direct hosted S3. Local MinIO + sync runs a local source-of-truth and replicates between Vulos nodes via the CRDT layer.')}
+        </div>
+        <select
+          value={config.IS05_storageMode}
+          onChange={e => update('IS05_storageMode', e.target.value)}
+          className="input text-sm py-2"
+        >
+          <option value="central-tigris">{t('Central Tigris (default — direct hosted S3)')}</option>
+          <option value="local-minio-sync">{t('Local MinIO + CRDT sync (opt-in)')}</option>
+        </select>
+
+        {config.IS05_storageMode === 'local-minio-sync' && (
+          <div className="space-y-2 mt-3 animate-[fadeIn_0.2s_ease-out]">
+            <div>
+              <label className="block text-[11px] text-neutral-500 mb-1">{t('MinIO endpoint')}</label>
+              <input
+                value={config.IS05_storageMinioEndpoint}
+                onChange={e => update('IS05_storageMinioEndpoint', e.target.value)}
+                placeholder="http://127.0.0.1:9000"
+                className="input text-sm py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-neutral-500 mb-1">{t('Region')}</label>
+              <input
+                value={config.IS05_storageMinioRegion}
+                onChange={e => update('IS05_storageMinioRegion', e.target.value)}
+                placeholder="auto"
+                className="input text-sm py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-neutral-500 mb-1">{t('Bucket')}</label>
+              <input
+                value={config.IS05_storageMinioBucket}
+                onChange={e => update('IS05_storageMinioBucket', e.target.value)}
+                placeholder="vulos-bundle"
+                className="input text-sm py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-neutral-500 mb-1">{t('Credentials reference (file path or secret-store key)')}</label>
+              <input
+                value={config.IS05_storageMinioCredsRef}
+                onChange={e => update('IS05_storageMinioCredsRef', e.target.value)}
+                placeholder="/var/lib/vulos/minio/.minio_secret"
+                className="input text-sm py-2"
+              />
+            </div>
+            <p className="text-[10px] text-neutral-600">
+              {t('The installer writes /var/lib/vulos/minio/.minio_secret when run with --storage=minio.')}
+            </p>
+          </div>
+        )}
       </div>
 
       {config.IS05_storageEnabled && (

@@ -2130,6 +2130,13 @@ func main() {
 	// Storage status (CLUSTER-06) — reads ~/.vulos/db/storage.json, no creds leaked
 	registerStorageRoutes(mux, home)
 
+	// STORE-LOCAL-01: bundle storage-mode selector (central-tigris default vs
+	// local-minio-sync opt-in). Coordinated with scripts/install-vulos.sh —
+	// when MinIO is installed the installer writes storage.yaml and creates
+	// /var/lib/vulos/minio/.minio_secret, and this endpoint flips the bundle
+	// to consume it. The default path remains untouched.
+	registerStorageModeRoutes(mux, home, authStore)
+
 	// Disk usage
 	mux.HandleFunc("GET /api/disks", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, disks.GetStatus())

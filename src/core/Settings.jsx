@@ -18,6 +18,7 @@ const sections = [
   { id: 'vault', label: 'Backup & Sync' },
   { id: 'recall', label: 'Search & Index' },
   { id: 'storage', label: 'Storage' },
+  { id: 'storagemode', label: 'Storage Mode' },
   { id: 'connmode', label: 'Connection Mode' },
   { id: 'network', label: 'Remote Access' },
   { id: 'turnSettings', label: 'TURN / WebRTC' },
@@ -64,6 +65,7 @@ export default function Settings() {
         {active === 'vault' && <VaultSettings />}
         {active === 'recall' && <RecallSettings />}
         {active === 'storage' && <StorageSettings />}
+        {active === 'storagemode' && <StorageModeSettings />}
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
         {active === 'turnSettings' && <TURNSettingsSection />}
@@ -1715,6 +1717,161 @@ function StorageSettings() {
           </div>
         </div>
       )}
+    </Section>
+  )
+}
+
+// --- Storage Mode (STORE-LOCAL-01) ---
+// Bundle-wide selector between central Tigris (default) and a local
+// MinIO-with-sync source-of-truth. Toggling to local-minio-sync passes the
+// endpoint + bucket + creds-ref to the co-located vulos-mail and vulos-office
+// services via VULOS_STORAGE_MODE / VULOS_MINIO_* env vars. The CRDT sync
+// layer (STORE-SYNC-01 / OFFICE-SYNC-01 / SYNC-P2P-01) lives in the sibling
+// repos and is engaged purely by the mode flip — no UI plumbing required.
+function StorageModeSettings() {
+  const [cfg, setCfg] = useState(null)
+  const [draft, setDraft] = useState({
+    mode: 'central-tigris',
+    minio_endpoint: 'http://127.0.0.1:9000',
+    minio_region: 'auto',
+    minio_bucket: 'vulos-bundle',
+    minio_creds_ref: '/var/lib/vulos/minio/.minio_secret',
+  })
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    fetch('/api/storagemode')
+      .then(r => r.json())
+      .then(d => {
+        setCfg(d)
+        // Seed the draft from the current config so the form is in sync.
+        setDraft(prev => ({
+          ...prev,
+          mode: d.mode || 'central-tigris',
+          minio_endpoint: d.minio_endpoint || prev.minio_endpoint,
+          minio_region: d.minio_region || prev.minio_region,
+          minio_bucket: d.minio_bucket || prev.minio_bucket,
+          minio_creds_ref: d.minio_creds_ref || prev.minio_creds_ref,
+        }))
+      })
+      .catch(() => {})
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setMsg('')
+    try {
+      const body = draft.mode === 'local-minio-sync' ? draft : { mode: 'central-tigris' }
+      const res = await fetch('/api/storagemode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        setCfg(d)
+        setMsg('Saved — restart vulos-bundle.target to apply')
+        setTimeout(() => setMsg(''), 4000)
+      } else {
+        const e = await res.json().catch(() => ({}))
+        setMsg(e.error || 'Failed to save')
+      }
+    } catch {
+      setMsg('Could not reach server')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Section title="Storage Mode">
+      <p className="text-xs text-neutral-600 mb-4">
+        Where the bundle (mail, office, OS) reads and writes its objects. The default sends every read and write
+        directly to hosted Tigris. Switch to local-MinIO-with-sync to make a co-located MinIO the source of truth and
+        let the CRDT sync layer replicate to peer Vulos nodes (mirrors what scripts/install-vulos.sh --storage=minio
+        provisions: a local /usr/local/bin/minio service plus /etc/vulos/storage.yaml).
+      </p>
+
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-4">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+          <span className="text-xs text-neutral-500">Current mode</span>
+          <span className="text-sm font-medium text-neutral-200">
+            {cfg == null ? '…' : cfg.mode === 'local-minio-sync' ? 'Local MinIO + sync' : 'Central Tigris (default)'}
+          </span>
+        </div>
+        {cfg?.mode === 'local-minio-sync' && (
+          <>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">MinIO endpoint</span>
+              <span className="text-sm text-neutral-300">{cfg.minio_endpoint || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
+              <span className="text-xs text-neutral-500">Bucket</span>
+              <span className="text-sm text-neutral-300">{cfg.minio_bucket || '—'}</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <Field label="Mode">
+        <select
+          value={draft.mode}
+          onChange={e => setDraft(d => ({ ...d, mode: e.target.value }))}
+          className="input"
+        >
+          <option value="central-tigris">Central Tigris (default — direct hosted S3)</option>
+          <option value="local-minio-sync">Local MinIO + CRDT sync (opt-in)</option>
+        </select>
+      </Field>
+
+      {draft.mode === 'local-minio-sync' && (
+        <div className="space-y-3 mt-3 animate-[fadeIn_0.2s_ease-out]">
+          <Field label="MinIO endpoint">
+            <input
+              value={draft.minio_endpoint}
+              onChange={e => setDraft(d => ({ ...d, minio_endpoint: e.target.value }))}
+              placeholder="http://127.0.0.1:9000"
+              className="input"
+            />
+          </Field>
+          <Field label="Region">
+            <input
+              value={draft.minio_region}
+              onChange={e => setDraft(d => ({ ...d, minio_region: e.target.value }))}
+              placeholder="auto"
+              className="input"
+            />
+          </Field>
+          <Field label="Bucket">
+            <input
+              value={draft.minio_bucket}
+              onChange={e => setDraft(d => ({ ...d, minio_bucket: e.target.value }))}
+              placeholder="vulos-bundle"
+              className="input"
+            />
+          </Field>
+          <Field label="Credentials reference">
+            <input
+              value={draft.minio_creds_ref}
+              onChange={e => setDraft(d => ({ ...d, minio_creds_ref: e.target.value }))}
+              placeholder="/var/lib/vulos/minio/.minio_secret"
+              className="input"
+            />
+            <p className="text-[11px] text-neutral-600 mt-1">
+              Path or secret-store key — the secret itself is never stored here. The installer writes
+              /var/lib/vulos/minio/.minio_secret when run with --storage=minio.
+            </p>
+          </Field>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 mt-4">
+        <button onClick={save} disabled={saving} className="btn">
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {msg && <span className="text-xs text-neutral-400">{msg}</span>}
+      </div>
     </Section>
   )
 }

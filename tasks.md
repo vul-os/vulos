@@ -407,7 +407,7 @@ locally + replay on reconnect. Visible offline indicator.
 AC: [ ] shell loads offline [ ] reads from cache offline [ ] writes queue + replay [ ] offline indicator [ ] npm run build
 
 ### [STORE-LOCAL-01] Storage-mode config: central-tigris (default) | local-minio-sync (opt-in)
-`todo` · P1 · M · dep: none · parallel: yes — backend/internal/storagemode/ (new), firstboot/
+`done` · P1 · M · dep: none · parallel: yes — backend/internal/storagemode/ (new), firstboot/
 Scope: Storage-mode setting (default `central-tigris`; opt-in `local-minio-sync`) in the install wizard +
 dashboard. local-minio-sync provisions local MinIO as source of truth + enables the CRDT sync layer
 (STORE-SYNC-01 / SYNC-P2P-01) and passes the mode + endpoints to co-located mail + office. Default unchanged.
