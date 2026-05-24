@@ -377,3 +377,45 @@ installable service. Recipe type: `bash-installer` with the `curl ... | bash` UR
 to all paid tiers (Vulos Mail+); greyed out on Free with "Requires Vulos Mail tier" note.
 AC: [ ] registry.json entry added for vulos-mail [ ] App Store renders it [ ] tier gate applied [ ] no .go or .jsx changes beyond registry.json [ ] npm run build
 
+---
+
+## Area: Offline LAN access + local-first storage (Decisions F+G, v6 — 2026-05-24)
+
+_Roadmap: ROADMAP.md §Offline LAN access & local-first storage_ · _Prefix: `OFFLINE-` / `STORE-LOCAL-` / `STREAM-BYO-`_
+> Opt-in (NOT default). When the internet/cloud is down but the client is on the box's LAN, OS + office +
+> mail keep working by talking to the box directly. Local MinIO + CRDT sync is an extra config option;
+> default stays central Tigris. Identity + anchor inbox stay central regardless.
+
+### [OFFLINE-01] Box LAN reachability: mDNS + local DNS responder + LAN TLS cert
+`todo` · P1 · L · dep: none · parallel: yes — backend/internal/lan/ (new), firstboot/
+Scope: OS instance advertises on the LAN via mDNS (`vulos.local`) and runs a tiny DNS responder that
+answers `box.<id>.lan.vulos.org` → its LAN IP so the name resolves with the internet down. Install +
+serve the DNS-01-issued cert (LANCERT-01) for that hostname. Serve OS over HTTPS on the LAN, no cloud dep.
+AC: [ ] mDNS advertises vulos.local [ ] local DNS responder answers box.<id>.lan.vulos.org offline [ ] HTTPS served with DNS-01 cert, no warning [ ] works WAN-unplugged [ ] go build ./...
+
+### [OFFLINE-02] OS web client multi-endpoint failover (cloud ↔ LAN)
+`todo` · P1 · M · dep: OFFLINE-01, RESOLVE-LAN-01 (vulos-cloud) · parallel: yes — src/lib/endpoints.js (new), src/lib/api.js
+Scope: Cache both cloud + LAN endpoints from ResolveBackend; health-check; prefer reachable (LAN-direct
+for latency). Cloud-routing failure → transparently fall back to cached LAN endpoint. No user action.
+AC: [ ] both endpoints cached [ ] reachable chosen automatically [ ] cloud-down → LAN [ ] LAN-down → cloud [ ] npm run build
+
+### [OFFLINE-03] OS shell offline-first PWA (service worker + write queue)
+`todo` · P2 · M · dep: OFFLINE-02 · parallel: yes — src/sw.js (new), src/lib/offlineQueue.js (new)
+Scope: Service worker caches the OS app shell; local data cache for read-while-offline; writes queue
+locally + replay on reconnect. Visible offline indicator.
+AC: [ ] shell loads offline [ ] reads from cache offline [ ] writes queue + replay [ ] offline indicator [ ] npm run build
+
+### [STORE-LOCAL-01] Storage-mode config: central-tigris (default) | local-minio-sync (opt-in)
+`todo` · P1 · M · dep: none · parallel: yes — backend/internal/storagemode/ (new), firstboot/
+Scope: Storage-mode setting (default `central-tigris`; opt-in `local-minio-sync`) in the install wizard +
+dashboard. local-minio-sync provisions local MinIO as source of truth + enables the CRDT sync layer
+(STORE-SYNC-01 / SYNC-P2P-01) and passes the mode + endpoints to co-located mail + office. Default unchanged.
+AC: [ ] mode selectable, defaults central-tigris [ ] local-minio-sync provisions MinIO + enables sync [ ] mode/endpoints passed to mail/office [ ] default path unchanged [ ] go build ./... && npm run build
+
+### [STREAM-BYO-01] BYO GPU host: self-host streaming server + fabric registration
+`todo` · P3 · L · dep: STREAM-RELAY-01 (vulos-relay) · parallel: yes — backend/internal/gpuhost/ (new)
+Scope: On a self-host GPU box, run a low-latency streaming server (WebRTC+NVENC, Moonlight/Sunshine
+compatible) and register with the fabric for NAT-traversal/signaling. Media P2P; relay only for signaling
++ thin fallback. Not a flat-rate hosted game service.
+AC: [ ] streaming server starts on GPU box [ ] registers with fabric [ ] P2P media path [ ] relay only on P2P failure [ ] go build ./...
+

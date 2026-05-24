@@ -395,3 +395,16 @@ confidence + suggested action (show/warn/block). Feeds the URL safety feeds in `
 The `vumail` package has been renamed to `identity` (`apps/mail/`, `backend/internal/identity/`).
 `vulos` identity. Update all `@vulos.org` references visible to the OS user to `@vulos.org`.
 Coordinate with vulos-cloud and vulos-mail repo renames.
+
+---
+
+## Offline LAN access & local-first storage (v6 — Decisions F+G)
+
+Opt-in (not default). When the internet/cloud is down but the client is on the box's LAN, the OS, office,
+and mail keep working by talking to the box directly over the LAN. The box advertises via mDNS
+(`vulos.local`) + a local DNS responder for `box.<id>.lan.vulos.org`, serves a publicly-trusted DNS-01
+cert (issued by the control plane, key lives on the box), and the web clients fail over between cloud and
+LAN endpoints automatically. An opt-in `local-minio-sync` storage mode makes a local MinIO the source of
+truth (offline-capable), syncing its CRDT index + blobs via a central Tigris rendezvous (v1) and direct
+fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; `@vulos.org` identity
++ anchor inbox stay central. Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
