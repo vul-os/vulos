@@ -1,48 +1,65 @@
 /**
- * OfflineIndicator.jsx — visible offline banner for Vulos OS (OFFLINE-02).
+ * OfflineIndicator.jsx — visible offline banner for Vulos OS (OFFLINE-02 / -03).
  *
  * Consistent with vulos-mail's OfflineIndicator (MAIL-OFFLINE-01) and the
  * office suite's offline UX so the user sees the same chrome wherever the
  * outage hits:
  *
- *   • navigator offline           → "Offline — local box only"
+ *   • navigator offline           → "Offline — using local box"
  *   • online but selected endpoint
  *     dropped to same-origin      → "Cloud unreachable — using local box"
- *   • online + cloud or LAN live  → renders nothing (no UI noise)
+ *   • online + cloud or LAN live + queue empty → renders nothing (no noise)
+ *   • online + queue non-empty    → "N queued — sending…"   (OFFLINE-03)
+ *   • offline + queue non-empty   → "Offline — N queued to send"
  *
- * Pure visual; the failover itself is owned by lib/endpoints.js.
+ * Pure visual; failover is owned by lib/endpoints.js and replay is owned by
+ * lib/offlineQueue.js.
  */
 
 import { useEffect, useState } from 'react'
 import { currentEndpoint, onEndpointChange } from '../lib/endpoints.js'
+import { onQueueChange, readAll } from '../lib/offlineQueue.js'
 
 export default function OfflineIndicator() {
   const [online, setOnline] = useState(
     typeof navigator === 'undefined' ? true : navigator.onLine !== false
   )
   const [endpoint, setEndpoint] = useState(() => currentEndpoint())
+  const [queueLen, setQueueLen] = useState(() => readAll().length)
 
   useEffect(() => {
     const up = () => setOnline(true)
     const down = () => setOnline(false)
     window.addEventListener('online', up)
     window.addEventListener('offline', down)
-    const unsub = onEndpointChange((sel) => setEndpoint(sel))
+    const unsubEndpoint = onEndpointChange((sel) => setEndpoint(sel))
+    const unsubQueue = onQueueChange((items) => setQueueLen(items.length))
     return () => {
       window.removeEventListener('online', up)
       window.removeEventListener('offline', down)
-      unsub()
+      unsubEndpoint()
+      unsubQueue()
     }
   }, [])
 
-  // The "all good" case: online, and either we're on same-origin from the
-  // start (no failover layer engaged) or a remote endpoint was picked.
-  if (online && endpoint !== '') return null
-  if (online && endpoint === '' && !hasConfiguredRemote()) return null
+  // The "all good" case: online, a remote endpoint is healthy (or same-origin
+  // is sufficient), and nothing is queued.
+  const endpointOk = online && (endpoint !== '' || !hasConfiguredRemote())
+  if (endpointOk && queueLen === 0) return null
 
-  const msg = !online
-    ? 'Offline — using local box'
-    : 'Cloud unreachable — using local box'
+  let msg
+  if (!online) {
+    msg = queueLen > 0
+      ? `Offline — ${queueLen} queued to send when online`
+      : 'Offline — using local box'
+  } else if (endpoint === '' && hasConfiguredRemote()) {
+    msg = queueLen > 0
+      ? `Cloud unreachable — ${queueLen} queued, will send`
+      : 'Cloud unreachable — using local box'
+  } else {
+    // Online + endpoint OK + queue non-empty → flushing.
+    msg = `${queueLen} ${queueLen === 1 ? 'change' : 'changes'} queued — sending…`
+  }
 
   return (
     <div

@@ -2,6 +2,12 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { bootstrapOffline } from './lib/offlineBootstrap.js'
+
+// OFFLINE-03: register the service worker, prime cloud↔LAN endpoint selection,
+// and start the write-queue flush loop. Idempotent — safe under StrictMode's
+// double-invoke.
+bootstrapOffline()
 
 // Diagnostic surface: if React fails to mount (or any unhandled error fires
 // before/during render), paint a *visible* error directly to the document

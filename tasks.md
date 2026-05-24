@@ -402,10 +402,11 @@ AC: [x] both endpoints cached [x] reachable chosen automatically [x] cloud-down 
 Done: new `src/lib/endpoints.js` (frozen contract mirrored from vulos-office/vulos-mail — discovery via window.__VULOS_ENDPOINTS__ → VITE_CLOUD/LAN_ENDPOINT → localStorage('vulos.os.endpoints.v1') → same-origin; concurrent probe of /api/auth/status; LAN→cloud→same-origin preference; re-probe on online/offline; seedFromResolveBackend(BackendTarget) for callers that have a fresh resolver response). New `src/lib/api.js` routes every request through selectEndpoint() and retries once against the failed-over endpoint on a network error. New `src/components/OfflineIndicator.jsx` wired into App.jsx (consistent with vulos-mail). 13 new vitest tests (10 endpoints + 3 api); full suite 50 pass; `npm run build` clean.
 
 ### [OFFLINE-03] OS shell offline-first PWA (service worker + write queue)
-`todo` · P2 · M · dep: OFFLINE-02 · parallel: yes — src/sw.js (new), src/lib/offlineQueue.js (new)
+`done` · P2 · M · dep: OFFLINE-02 · parallel: yes — public/sw.js (new), src/lib/offlineBootstrap.js (new), src/lib/offlineQueue.js (new)
 Scope: Service worker caches the OS app shell; local data cache for read-while-offline; writes queue
 locally + replay on reconnect. Visible offline indicator.
-AC: [ ] shell loads offline [ ] reads from cache offline [ ] writes queue + replay [ ] offline indicator [ ] npm run build
+AC: [x] shell loads offline [x] reads from cache offline [x] writes queue + replay [x] offline indicator [x] npm run build
+Done: new `public/sw.js` (cache-first for shell — index.html/JS/CSS/fonts/icons; network-only for /api/**, /collab/**, /jmap/**, /dav/**, /auth/**; navigation fallback to cached /index.html; activate-and-claim; skipWaiting opt-in via postMessage). New `src/lib/offlineBootstrap.js` (idempotent SW register + primes selectEndpoint + starts queue flush loop + onUpdateAvailable/applyUpdate channel). New `src/lib/offlineQueue.js` (localStorage `vulos.os.offlineQueue.v1` — record shape `{id,kind,body:{method,path,headers,body},queuedAt,attempts,lastError}`, MAX_ATTEMPTS=5, flush on `online` + 30s ticker, default replay routes through api.js failover). `src/main.jsx` calls `bootstrapOffline()`. `OfflineIndicator.jsx` extended to surface queued-changes count alongside endpoint state. 28 new vitest tests (9 sw + 10 queue + 4 bootstrap + 5 indicator = 28); full suite 78 pass; `npm run build` clean (sw.js shipped under dist/).
 
 ### [STORE-LOCAL-01] Storage-mode config: central-tigris (default) | local-minio-sync (opt-in)
 `done` · P1 · M · dep: none · parallel: yes — backend/internal/storagemode/ (new), firstboot/
