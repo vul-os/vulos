@@ -2,12 +2,36 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
-import { bootstrapOffline } from './lib/offlineBootstrap.js'
+// RELAY-CLIENT-04: relay-client shared package, with OS-specific seams.
+// configure() MUST run before any other relay-client import touches localStorage
+// so existing OS user state under 'vulos.os.endpoints.v1' survives the migration
+// (do NOT change the key — that would wipe the cached cloud↔LAN endpoint pair).
+import { configure } from '@vulos/relay-client/endpoints'
+configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status' })
+import { bootstrapOffline } from '@vulos/relay-client/offlineBootstrap'
+import { startOfflineQueueFlushLoop } from './lib/offlineQueue.js'
 
-// OFFLINE-03: register the service worker, prime cloud↔LAN endpoint selection,
-// and start the write-queue flush loop. Idempotent — safe under StrictMode's
-// double-invoke.
-bootstrapOffline()
+// MEET-OS-01: synchronous OS tier resolver. Reads window.__VULOS_TIER (set by
+// the OS bootstrap / Setup state). Returns 'free' as a safe default — the
+// SpacesApp still re-resolves the tier from /api/auth/status asynchronously
+// and writes window.__VULOS_MEET_LIVEKIT on its own (that path is unchanged
+// and byte-equivalent). The shared package treats the returned value as
+// opaque and exposes it via currentTierHint() for any other OS code that
+// wants a synchronous tier read at boot.
+function osTierHint() {
+  if (typeof window !== 'undefined' && typeof window.__VULOS_TIER === 'string') {
+    return window.__VULOS_TIER.toLowerCase()
+  }
+  return 'free'
+}
+
+// OFFLINE-03 / RELAY-CLIENT-04: register the service worker, prime cloud↔LAN
+// endpoint selection, capture the OS tier hint, and start the write-queue
+// flush loop. Idempotent — safe under StrictMode's double-invoke.
+bootstrapOffline({
+  tierHint: osTierHint,
+  onBoot: () => { startOfflineQueueFlushLoop() },
+})
 
 // Diagnostic surface: if React fails to mount (or any unhandled error fires
 // before/during render), paint a *visible* error directly to the document

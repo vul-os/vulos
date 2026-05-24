@@ -491,12 +491,12 @@ AC: [x] airouter Whisper provider [x] per-room transcript stream [x] opt-in gate
 ## Area: Relay-client adoption (Wave C — 2026-05-24)
 
 ### [RELAY-CLIENT-04] Migrate vulos OS to consume @vulos/relay-client
-`todo` · P1 · M · dep: RELAY-CLIENT-01 (vulos-relay) · parallel: yes — package.json, src/lib/
+`done` · P1 · M · dep: RELAY-CLIENT-01 (vulos-relay) · parallel: yes — package.json, src/lib/
 Scope: vulos OS has local `endpoints.js` (282 LOC — most complete of the 3 copies), `offlineBootstrap.js`
 (127 LOC — has OS-specific Pro-tier hint injection from MEET-OS-01), and may use signaling/fabric primitives
 indirectly via apps. After RELAY-CLIENT-01 ships, add `"@vulos/relay-client": "file:../vulos-relay/client"`
 to vulos/package.json. Swap shared-primitive imports to `@vulos/relay-client/*`. Delete the now-unused local
 copies. KEEP anything OS-specific the shared package doesn't cover (the Pro-tier hint injection logic from
 MEET-OS-01 may need to stay as a thin OS shim over the shared `offlineBootstrap`). Run full build+test.
-AC: [ ] file: dep added [ ] shared local files deleted/migrated [ ] OS-specific shims preserved (Pro-tier hint) [ ] imports swapped [ ] grep proves no stale refs [ ] npm run build + npm test green
+AC: [x] file: dep added [x] shared local files deleted/migrated [x] OS-specific shims preserved (Pro-tier hint) [x] imports swapped [x] grep proves no stale refs [x] npm run build + npm test green
 

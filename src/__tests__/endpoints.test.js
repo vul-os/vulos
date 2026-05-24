@@ -1,12 +1,15 @@
 /**
  * endpoints.test.js — cloud↔LAN failover (OS OFFLINE-02 contract).
  *
- * Mirrors vulos-office/src/__tests__/endpoints.test.js (6 cases) and
- * vulos-mail/webmail-vulos/src/__tests__/endpoints.test.js (8 cases) so all
- * three OS surfaces behave identically from the user's perspective.
+ * RELAY-CLIENT-04: the implementation lives in @vulos/relay-client/endpoints
+ * now; this suite still owns the OS-specific guarantee that the shared
+ * `configure({ lsKeyPrefix: 'vulos.os.endpoints.v1' })` migration seam keeps
+ * existing OS user state intact (the cache key must NOT change — that would
+ * wipe every OS user's last-known-good cloud↔LAN pair on first post-migration
+ * load and force an unnecessary re-probe round-trip).
  *
  * Covers the frozen contract:
- *   • both endpoints cached
+ *   • both endpoints cached under 'vulos.os.endpoints.v1'
  *   • reachable chosen automatically
  *   • cloud-down → LAN
  *   • LAN-down → cloud
@@ -25,9 +28,14 @@ const CLOUD = 'https://box.vulos.org'
 const LAN = 'https://box.abc.lan.vulos.org'
 
 // Each test gets a fresh module instance so internal selection state is reset.
+// The freshly-imported module re-runs configure() with the OS lsKeyPrefix so
+// the cached pair lives under 'vulos.os.endpoints.v1' (the pre-migration key,
+// preserved verbatim for backwards-compat).
 async function freshModule() {
   vi.resetModules()
-  return import('../lib/endpoints.js')
+  const mod = await import('@vulos/relay-client/endpoints')
+  mod.configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status' })
+  return mod
 }
 
 function setEndpoints({ cloud = CLOUD, lan = LAN } = {}) {

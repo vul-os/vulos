@@ -12,12 +12,12 @@
  *   • online + queue non-empty    → "N queued — sending…"   (OFFLINE-03)
  *   • offline + queue non-empty   → "Offline — N queued to send"
  *
- * Pure visual; failover is owned by lib/endpoints.js and replay is owned by
+ * Pure visual; failover is owned by @vulos/relay-client/endpoints and replay is owned by
  * lib/offlineQueue.js.
  */
 
 import { useEffect, useState } from 'react'
-import { currentEndpoint, onEndpointChange } from '../lib/endpoints.js'
+import { currentEndpoint, onEndpointChange } from '@vulos/relay-client/endpoints'
 import { onQueueChange, readAll } from '../lib/offlineQueue.js'
 
 export default function OfflineIndicator() {
