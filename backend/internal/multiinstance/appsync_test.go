@@ -36,6 +36,73 @@ func openTempAppSync(t *testing.T) (*multiinstance.Registry, *multiinstance.AppS
 	return reg, as
 }
 
+// signedOrigin is a peer identity that can emit SIGNED uninstall changesets the
+// verifier will accept (CRDT-QUORUM-01). Each origin has its own AppSync with a
+// generated Ed25519 keypair; its public key must be published into the verifier's
+// roster (registerOriginPubKey) so the verifier can validate its signatures.
+type signedOrigin struct {
+	ulid string
+	as   *multiinstance.AppSync
+}
+
+// newSignedOrigin creates a peer AppSync with a fresh keypair bound to ulid.
+func newSignedOrigin(t *testing.T, ulid string) *signedOrigin {
+	t.Helper()
+	_, as := openTempAppSync(t)
+	if _, err := as.GenerateAndSetIdentity(ulid); err != nil {
+		t.Fatalf("GenerateAndSetIdentity(%s): %v", ulid, err)
+	}
+	return &signedOrigin{ulid: ulid, as: as}
+}
+
+// publishInto registers this origin's instance + public key into reg (the
+// verifier's roster) so the verifier can validate this origin's signatures. The
+// origin's own AppSync stores its pubkey in its OWN registry; we copy it across.
+func (o *signedOrigin) publishInto(t *testing.T, reg *multiinstance.Registry) {
+	t.Helper()
+	inst, ok := o.lookupSelf()
+	if !ok || inst.Ed25519PublicKey == "" {
+		t.Fatalf("origin %s has no published pubkey", o.ulid)
+	}
+	if err := reg.Upsert(inst); err != nil {
+		t.Fatalf("publish origin %s pubkey: %v", o.ulid, err)
+	}
+}
+
+// lookupSelf finds this origin's own instance row (carrying its pubkey).
+func (o *signedOrigin) lookupSelf() (multiinstance.Instance, bool) {
+	// The origin's AppSync registered itself in its own registry via SetIdentity;
+	// re-emit a changeset to obtain a signed changeset, but the pubkey we need is
+	// on the instance row, exposed via EmitChangeset's SignerPubKey.
+	cs, err := o.as.EmitChangeset(o.ulid, nil)
+	if err != nil || cs == nil || cs.SignerPubKey == "" {
+		return multiinstance.Instance{}, false
+	}
+	return multiinstance.Instance{
+		ULID:             o.ulid,
+		Kind:             multiinstance.KindDevice,
+		Role:             multiinstance.RolePeer,
+		Status:           multiinstance.StatusOnline,
+		Ed25519PublicKey: cs.SignerPubKey,
+	}, true
+}
+
+// emitUninstall builds a SIGNED uninstall changeset from this origin for
+// (instanceULID, appID) stamped at updatedAt.
+func (o *signedOrigin) emitUninstall(t *testing.T, instanceULID, appID, version string, updatedAt time.Time) *multiinstance.AppChangeset {
+	t.Helper()
+	cs, err := o.as.EmitChangeset(o.ulid, []multiinstance.AppRegistryEntry{
+		{InstanceULID: instanceULID, AppID: appID, AppVersion: version, Installed: false, InstalledBy: o.ulid, UpdatedAt: updatedAt},
+	})
+	if err != nil {
+		t.Fatalf("emit signed uninstall from %s: %v", o.ulid, err)
+	}
+	if cs.Signature == "" {
+		t.Fatalf("origin %s emitted an UNSIGNED uninstall (no identity?)", o.ulid)
+	}
+	return cs
+}
+
 // ── AC1: install on A appears in B ───────────────────────────────────────────
 
 // TestAppInstallReplicatesAtoB verifies that an install event on instance A
@@ -258,20 +325,20 @@ func TestUninstallQuorumMet(t *testing.T) {
 
 	reg, as := openTempAppSync(t)
 
-	// 3 instances in registry → distinct-origin quorum threshold is 2.
+	// 3 instances in registry → distinct-origin quorum threshold is 2. Each of the
+	// two reporting origins has its OWN signing identity whose public key is
+	// published into the verifier's roster, so their signed uninstalls VERIFY.
 	const (
 		originB = "01HWZMINST000000000000005B"
 		originC = "01HWZMINST000000000000005C"
 	)
-	for _, u := range []string{ulid, originB, originC} {
-		if err := reg.Upsert(multiinstance.Instance{
-			ULID:   u,
-			Kind:   multiinstance.KindDevice,
-			Status: multiinstance.StatusOnline,
-		}); err != nil {
-			t.Fatalf("Upsert: %v", err)
-		}
+	oB := newSignedOrigin(t, originB)
+	oC := newSignedOrigin(t, originC)
+	if err := reg.Upsert(multiinstance.Instance{ULID: ulid, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
+		t.Fatalf("Upsert victim: %v", err)
 	}
+	oB.publishInto(t, reg)
+	oC.publishInto(t, reg)
 
 	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 
@@ -280,30 +347,18 @@ func TestUninstallQuorumMet(t *testing.T) {
 	})
 	_ = as.ApplyChangeset(csInstall)
 
-	// First distinct origin (originB) reports the uninstall. One observation is
-	// below the threshold of 2 → the removal is suppressed (installed stays true).
-	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
-		OriginULID: originB,
-		PeerCount:  1, // ignored for the decision
-		Entries: []multiinstance.AppRegistryEntry{
-			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: originB, UpdatedAt: base.Add(time.Minute)},
-		},
-	}); err != nil {
+	// First distinct origin (originB) reports a SIGNED uninstall. One verified
+	// observation is below the threshold of 2 → removal suppressed (stays true).
+	if err := as.ApplyChangeset(oB.emitUninstall(t, ulid, appID, "1.0.0", base.Add(time.Minute))); err != nil {
 		t.Fatalf("apply uninstall from originB: %v", err)
 	}
 	if apps, _ := as.ListAppsForInstance(ulid, false); len(apps) != 1 || !apps[0].Installed {
 		t.Fatalf("after ONE distinct origin the uninstall must be suppressed; rows=%+v", apps)
 	}
 
-	// Second distinct origin (originC) reports the uninstall → 2 distinct origins
-	// now meet the threshold → quorum is met → the removal applies.
-	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
-		OriginULID: originC,
-		PeerCount:  1, // ignored for the decision
-		Entries: []multiinstance.AppRegistryEntry{
-			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: originC, UpdatedAt: base.Add(2 * time.Minute)},
-		},
-	}); err != nil {
+	// Second distinct origin (originC) reports a SIGNED uninstall → 2 distinct
+	// verified origins meet the threshold → quorum is met → the removal applies.
+	if err := as.ApplyChangeset(oC.emitUninstall(t, ulid, appID, "1.0.0", base.Add(2*time.Minute))); err != nil {
 		t.Fatalf("apply uninstall from originC: %v", err)
 	}
 
@@ -338,12 +393,15 @@ func TestUninstallDistinctOriginQuorum(t *testing.T) {
 		appID = "vault"
 	)
 	reg, as := openTempAppSync(t)
-	// 3 instances → threshold = 2 distinct origins.
-	for _, u := range []string{ulid, "01HWZMINST00000000000DIST2", "01HWZMINST00000000000DIST3"} {
-		if err := reg.Upsert(multiinstance.Instance{ULID: u, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
-			t.Fatalf("Upsert %s: %v", u, err)
-		}
+	// 3 instances → threshold = 2 distinct origins. The two reporting origins are
+	// SIGNED + rostered so their observations count (CRDT-QUORUM-01).
+	lone := newSignedOrigin(t, "01HWZMINST00000000000DIST2")
+	second := newSignedOrigin(t, "01HWZMINST00000000000DIST3")
+	if err := reg.Upsert(multiinstance.Instance{ULID: ulid, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
+		t.Fatalf("Upsert victim: %v", err)
 	}
+	lone.publishInto(t, reg)
+	second.publishInto(t, reg)
 	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 
 	csInstall, _ := as.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{
@@ -353,40 +411,24 @@ func TestUninstallDistinctOriginQuorum(t *testing.T) {
 		t.Fatalf("install: %v", err)
 	}
 
-	// ONE origin, even with a wildly inflated PeerCount, does NOT reach quorum.
-	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
-		OriginULID: "lone-origin", PeerCount: 9999,
-		Entries: []multiinstance.AppRegistryEntry{
-			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "lone-origin", UpdatedAt: base.Add(time.Minute)},
-		},
-	}); err != nil {
+	// ONE verified origin does NOT reach the threshold of 2.
+	if err := as.ApplyChangeset(lone.emitUninstall(t, ulid, appID, "1.0.0", base.Add(time.Minute))); err != nil {
 		t.Fatalf("apply lone origin: %v", err)
 	}
 	if apps, _ := as.ListAppsForInstance(ulid, false); len(apps) != 1 || !apps[0].Installed {
-		t.Fatalf("ONE inflated origin must NOT reach quorum; rows=%+v", apps)
+		t.Fatalf("ONE origin must NOT reach quorum; rows=%+v", apps)
 	}
 
 	// Re-applying the SAME origin (replay) still counts as ONE distinct origin.
-	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
-		OriginULID: "lone-origin", PeerCount: 9999,
-		Entries: []multiinstance.AppRegistryEntry{
-			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "lone-origin", UpdatedAt: base.Add(90 * time.Second)},
-		},
-	}); err != nil {
+	if err := as.ApplyChangeset(lone.emitUninstall(t, ulid, appID, "1.0.0", base.Add(90*time.Second))); err != nil {
 		t.Fatalf("apply lone origin replay: %v", err)
 	}
 	if apps, _ := as.ListAppsForInstance(ulid, false); len(apps) != 1 || !apps[0].Installed {
 		t.Fatalf("replaying the SAME origin must still be ONE distinct origin; rows=%+v", apps)
 	}
 
-	// A SECOND distinct origin (even with a deflated/honest PeerCount) reaches the
-	// threshold of 2 → the uninstall applies.
-	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
-		OriginULID: "second-origin", PeerCount: 1,
-		Entries: []multiinstance.AppRegistryEntry{
-			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "second-origin", UpdatedAt: base.Add(2 * time.Minute)},
-		},
-	}); err != nil {
+	// A SECOND distinct verified origin reaches the threshold of 2 → uninstall applies.
+	if err := as.ApplyChangeset(second.emitUninstall(t, ulid, appID, "1.0.0", base.Add(2*time.Minute))); err != nil {
 		t.Fatalf("apply second origin: %v", err)
 	}
 	apps, _ := as.ListAppsForInstance(ulid, false)

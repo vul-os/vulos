@@ -14,6 +14,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -291,6 +292,39 @@ func migrate(db *sql.DB) error {
 		if _, err := db.Exec(string(sqlBytes)); err != nil {
 			return fmt.Errorf("migrate: exec %s: %w", entry.Name(), err)
 		}
+	}
+	// Additive columns that an already-migrated DB (created before 0006) lacks.
+	// modernc.org/sqlite has no "ADD COLUMN IF NOT EXISTS", so we add each column
+	// and tolerate the "duplicate column name" error that a fresh DB (which
+	// already carries the column from the 0006 CREATE TABLE) returns.
+	if err := ensureObservationEpochColumns(db); err != nil {
+		return fmt.Errorf("migrate: observation epoch columns: %w", err)
+	}
+	return nil
+}
+
+// ensureObservationEpochColumns adds the epoch / observer_pubkey columns to a
+// pre-0006 app_uninstall_observations table. It is idempotent: on a fresh DB the
+// columns already exist (carried by the 0006 CREATE TABLE) and the ALTERs return
+// a "duplicate column name" error, which is swallowed.
+func ensureObservationEpochColumns(db *sql.DB) error {
+	stmts := []string{
+		`ALTER TABLE app_uninstall_observations ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE app_uninstall_observations ADD COLUMN observer_pubkey TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return err
+		}
+	}
+	// The epoch index can only be created once the column is guaranteed to exist
+	// (above), so it lives here rather than in the .sql file (which races 0005).
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_app_uninstall_obs_epoch
+		ON app_uninstall_observations(instance_ulid, app_id, epoch)`); err != nil {
+		return err
 	}
 	return nil
 }

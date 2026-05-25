@@ -23,6 +23,7 @@ import (
 	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
+	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/appfs"
@@ -2432,6 +2433,22 @@ func main() {
 		} else if fabricAppSync == nil {
 			log.Printf("[fabric] disabled: app-registry sync (AppSync) unavailable")
 		} else {
+			// CRDT-QUORUM-01: install this box's PERSISTENT per-instance Ed25519
+			// signing key and publish its public key into the registry roster.
+			// Uninstall observations this box emits are then SIGNED, and peers
+			// verify them against the rostered key — so a single shared-secret
+			// holder can only ever validly sign as itself (one distinct verified
+			// origin), defeating the multi-forged-origin quorum attack. The key
+			// must persist across restarts (peers cached the public key).
+			fabricKeyPath := filepath.Join(dataDir, "fabric_instance_key")
+			if instKey, kerr := multiinstance.LoadOrCreateInstanceKey(fabricKeyPath); kerr != nil {
+				log.Printf("[fabric] WARNING: could not load/create signing key (%v) — uninstall observations from this box will NOT count toward peer quorum", kerr)
+			} else if serr := fabricAppSync.SetIdentity(cfg.InstanceID, instKey); serr != nil {
+				log.Printf("[fabric] WARNING: could not set signing identity (%v) — uninstall observations from this box will NOT count toward peer quorum", serr)
+			} else {
+				log.Printf("[fabric] per-instance signing identity active (CRDT-QUORUM-01: signed uninstall observations)")
+			}
+
 			// mDNS discoverer: advertise this box and resolve peers. Falls back
 			// to a no-peer static discoverer if multicast cannot bind (CI), so
 			// the service still constructs and serves inbound exchanges.
