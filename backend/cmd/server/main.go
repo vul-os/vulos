@@ -20,6 +20,7 @@ import (
 
 	"vulos/backend/internal/airouter"
 	"vulos/backend/internal/config"
+	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
 	"vulos/backend/internal/storage"
@@ -1624,7 +1625,7 @@ func main() {
 	// New-feature routes: airouter, identity, multiinstance, appnet subdomain
 	// provisioning, recovery handlers, cloud-sync, edge-cache.
 	// Must be called AFTER RegisterVisibilityHandlers.
-	registerNewFeatureRoutes(mux, newFeatureDeps{
+	fabricAppSync := registerNewFeatureRoutes(mux, newFeatureDeps{
 		dbDir:     dbDir,
 		netMgr:    netMgr,
 		visStore:  visStore,
@@ -2413,10 +2414,64 @@ func main() {
 		if v := os.Getenv("VULOS_LAN_DNS_ADDR"); v != "" {
 			dnsAddr = v
 		}
+		// FABRIC-P2P-01: same-LAN peer-to-peer CRDT sync. The fabric handlers
+		// (/api/fabric/changeset) are mounted on a LAN-ONLY mux so they ride the
+		// LAN HTTPS listener (pinned to the LAN IP) and are never exposed on the
+		// public cloud surface. The sync loop discovers sibling boxes over mDNS
+		// and exchanges app-registry changesets directly — no cloud / no S3 —
+		// so two boxes converge even with the internet down.
+		//
+		// Gated on a shared fabric secret (VULOS_FABRIC_SECRET). Without it the
+		// handlers would have no peer auth, so fabric stays OFF (fail-closed)
+		// rather than opening an unauthenticated exchange.
+		lanHandler := handler
+		var fabricSvc *fabric.Service
+		fabricSecret := os.Getenv("VULOS_FABRIC_SECRET")
+		if fabricSecret == "" {
+			log.Printf("[fabric] disabled: VULOS_FABRIC_SECRET unset (set it on every sibling box to enable same-LAN P2P sync)")
+		} else if fabricAppSync == nil {
+			log.Printf("[fabric] disabled: app-registry sync (AppSync) unavailable")
+		} else {
+			// mDNS discoverer: advertise this box and resolve peers. Falls back
+			// to a no-peer static discoverer if multicast cannot bind (CI), so
+			// the service still constructs and serves inbound exchanges.
+			var disc fabric.Discoverer
+			if mdisc, derr := fabric.NewMDNSDiscoverer(fabric.MDNSConfig{
+				SelfIP: lan.DetectLANIP(),
+				Port:   fabric.PortFromAddr(httpsAddr, 443),
+			}); derr != nil {
+				log.Printf("[fabric] mDNS discovery unavailable (%v) — inbound exchange still served; no auto peer discovery", derr)
+				disc = fabric.NewStaticDiscoverer()
+			} else {
+				disc = mdisc
+			}
+
+			fs, ferr := fabric.New(fabric.Config{
+				InstanceID: cfg.InstanceID,
+				Secret:     fabricSecret,
+				AppSync:    fabricAppSync,
+				Discoverer: disc,
+				HTTPClient: fabric.NewLANClient(10 * time.Second),
+			})
+			if ferr != nil {
+				log.Printf("[fabric] disabled: %v", ferr)
+			} else {
+				fabricSvc = fs
+				// Mount fabric routes on a LAN-only mux that delegates everything
+				// else to the shared handler.
+				fabricMux := http.NewServeMux()
+				fs.RegisterHandlers(fabricMux)
+				fabricMux.Handle("/", handler)
+				lanHandler = fabricMux
+				go fs.Run(ctx)
+				log.Printf("[fabric] same-LAN P2P sync active (instance=%s, /api/fabric/changeset on LAN listener)", cfg.InstanceID)
+			}
+		}
+
 		lanCfg := lan.Config{
 			InstanceID: cfg.InstanceID,
 			CertSource: certSrc,
-			Handler:    handler,
+			Handler:    lanHandler,
 			HTTPSAddr:  httpsAddr,
 			DNSAddr:    dnsAddr,
 		}
@@ -2428,6 +2483,7 @@ func main() {
 			lanSvc = s
 			log.Printf("[lan] reachable at https://%s and %s (mDNS vulos.local)", lanHost, s.HTTPSAddr())
 		}
+		_ = fabricSvc
 
 		// FIX-LANCERT-PULL-01: opt-in cloud LAN-cert puller. When enabled, this
 		// background goroutine reports the box's LAN IP to the cloud control-plane

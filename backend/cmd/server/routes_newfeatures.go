@@ -50,7 +50,14 @@ type newFeatureDeps struct {
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
 // onto mux.  Must be called after RegisterVisibilityHandlers (appnet) because
 // RegisterSubdomainHandlers adds routes that extend the visibility surface.
-func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) {
+//
+// It returns the shared *multiinstance.AppSync (CRDT merge primitive) opened on
+// the single shared registry handle so the caller can reuse it for the fabric
+// P2P same-LAN sync service WITHOUT opening a second *sql.DB to the
+// single-writer file (audit P1-4). Returns nil when the registry is
+// unavailable.
+func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) *multiinstance.AppSync {
+	var sharedAppSync *multiinstance.AppSync
 	// Resolve the server shutdown context.  A variadic parameter lets existing
 	// call-sites compile without change; pass serverCtx explicitly to bind
 	// background goroutines to the server lifecycle.
@@ -197,7 +204,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			deployStore, dsErr = appnet.NewDeploymentStore()
 			if dsErr != nil {
 				log.Printf("[appnet/subdomain] deployment store fallback error: %v — subdomain routes disabled", dsErr)
-				return
+				return sharedAppSync
 			}
 		}
 		provisioner := appnet.NewProvisioner(deployStore, nil)
@@ -380,12 +387,15 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 				log.Printf("[multiinstance/appsync] open warning: %v — app-sync routes disabled", asErr)
 			} else {
 				multiinstance.RegisterAppSyncHandlers(mux, appSync)
+				sharedAppSync = appSync // reused by the fabric P2P sync service (FABRIC-P2P-01)
 				log.Printf("[multiinstance/appsync] registered GET /api/instances/{ulid}/apps")
 			}
 		} else {
 			log.Printf("[multiinstance/appsync] registry unavailable — app-sync routes disabled")
 		}
 	}
+
+	return sharedAppSync
 }
 
 // openSharedRegistry opens the single multiinstance registry handle shared by

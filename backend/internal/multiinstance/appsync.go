@@ -358,6 +358,45 @@ func (as *AppSync) ListAllApps() ([]AppRegistryEntry, error) {
 	return scanEntries(rows)
 }
 
+// ChangesetSince returns every app_registry row whose updated_at is strictly
+// greater than the provided cursor, ordered by (updated_at, instance_ulid,
+// app_id) so a caller can advance its cursor to the max returned UpdatedAt.
+//
+// This is the read-side primitive used by the fabric P2P sync transport
+// (GET /api/fabric/changeset?since=<cursor>): a peer asks "what changed since I
+// last saw you?" and gets back exactly the rows that postdate its cursor,
+// including uninstalled (installed=0) rows so OR-set/LWW removals propagate.
+//
+// A zero `since` returns the full table (a cold-start full sync). The returned
+// rows carry the writer node id (installed_by) and updated_at so the receiver's
+// ApplyChangeset can run the deterministic LWW merge unchanged.
+func (as *AppSync) ChangesetSince(since time.Time) ([]AppRegistryEntry, error) {
+	// We compare on the RFC3339Nano text form because that is how updated_at is
+	// stored; lexicographic ordering of RFC3339Nano UTC strings matches temporal
+	// ordering. Using the text comparison (rather than a parsed-time WHERE) keeps
+	// the query index-friendly and avoids per-row parse cost in SQLite.
+	var rows *sql.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = as.db.Query(`
+			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at
+			FROM app_registry
+			ORDER BY updated_at, instance_ulid, app_id`)
+	} else {
+		cursor := since.UTC().Format(time.RFC3339Nano)
+		rows, err = as.db.Query(`
+			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at
+			FROM app_registry
+			WHERE updated_at > ?
+			ORDER BY updated_at, instance_ulid, app_id`, cursor)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("appsync: ChangesetSince: %w", err)
+	}
+	defer rows.Close()
+	return scanEntries(rows)
+}
+
 // scanEntries scans *sql.Rows into a slice of AppRegistryEntry.
 func scanEntries(rows *sql.Rows) ([]AppRegistryEntry, error) {
 	var out []AppRegistryEntry

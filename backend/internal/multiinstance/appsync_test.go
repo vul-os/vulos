@@ -606,3 +606,63 @@ func TestEmitChangesetEmptyOriginErrors(t *testing.T) {
 		t.Error("expected error for empty originULID")
 	}
 }
+
+// ── ChangesetSince (cursor read-side for fabric P2P sync) ─────────────────────
+
+// TestChangesetSinceCursor verifies the read-side primitive the fabric P2P
+// transport relies on: a zero cursor returns the full table; a cursor returns
+// only strictly-newer rows; the result is ordered by updated_at so a caller can
+// advance its cursor to the max returned timestamp.
+func TestChangesetSinceCursor(t *testing.T) {
+	const ulid = "01HWZMINST00000000000SINCE"
+	_, as := openTempAppSync(t)
+
+	t0 := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	for i, ts := range []time.Time{t0, t1, t2} {
+		cs, _ := as.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appIDFor(i), AppVersion: "1.0.0", Installed: true, InstalledBy: "n", UpdatedAt: ts},
+		})
+		if err := as.ApplyChangeset(cs); err != nil {
+			t.Fatalf("apply %d: %v", i, err)
+		}
+	}
+
+	// Zero cursor → full table (3 rows), ordered ascending by updated_at.
+	all, err := as.ChangesetSince(time.Time{})
+	if err != nil {
+		t.Fatalf("ChangesetSince(zero): %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("zero cursor: expected 3 rows, got %d", len(all))
+	}
+	for i := 1; i < len(all); i++ {
+		if all[i].UpdatedAt.Before(all[i-1].UpdatedAt) {
+			t.Errorf("rows not ordered ascending by updated_at: %v then %v", all[i-1].UpdatedAt, all[i].UpdatedAt)
+		}
+	}
+
+	// Cursor at t0 → only strictly-newer rows (t1, t2) = 2 rows.
+	after0, err := as.ChangesetSince(t0)
+	if err != nil {
+		t.Fatalf("ChangesetSince(t0): %v", err)
+	}
+	if len(after0) != 2 {
+		t.Fatalf("cursor t0: expected 2 strictly-newer rows, got %d", len(after0))
+	}
+
+	// Cursor at t2 (the max) → nothing newer.
+	after2, err := as.ChangesetSince(t2)
+	if err != nil {
+		t.Fatalf("ChangesetSince(t2): %v", err)
+	}
+	if len(after2) != 0 {
+		t.Fatalf("cursor at max: expected 0 rows, got %d", len(after2))
+	}
+}
+
+func appIDFor(i int) string {
+	return []string{"alpha", "bravo", "charlie"}[i%3]
+}

@@ -409,6 +409,27 @@ truth (offline-capable), syncing its CRDT index + blobs via a central Tigris ren
 fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; `@vulos.org` identity
 + anchor inbox stay central. Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
 
+**FABRIC-P2P-01 (same-LAN P2P CRDT sync) — now REAL, not a stub.** Task #119 previously shipped only the
+transport-agnostic merge (`internal/multiinstance/appsync.go`) with no peer discovery and no peer-to-peer
+exchange — i.e. it could merge a changeset handed to it but had no way to obtain one from a sibling box.
+The real same-LAN path now lives in `backend/internal/fabric/`:
+- **Discovery:** mDNS (`vulos-fabric.local`) advertises this box and resolves sibling boxes' LAN IPs
+  (`fabric.MDNSDiscoverer`); a `StaticDiscoverer` seam covers CI / manual peer lists. No cloud, no S3.
+- **Transport:** authenticated HTTPS over the LAN listener —
+  `GET /api/fabric/changeset?since=<cursor>` serves a box's changesets after a cursor;
+  `POST /api/fabric/changeset` accepts a peer's. Both require the shared `VULOS_FABRIC_SECRET` in
+  `X-Fabric-Auth` (constant-time compare, fail-closed on empty), so a random LAN host cannot inject or read
+  registry state. Handlers are mounted on a LAN-only mux (pinned to the LAN IP), never the public surface.
+- **Sync loop:** periodic + on-`Nudge` pull-then-push with every discovered peer, advancing a per-peer
+  cursor; convergence is deterministic via the existing hardened LWW/OR-set merge.
+- **Offline-first:** peers talk directly over the LAN with the internet/control-plane/Tigris down.
+- Wired in `cmd/server` behind `VULOS_LAN_ENABLE=1` + `VULOS_FABRIC_SECRET`; reuses the single shared
+  registry `*sql.DB` (no second handle — audit P1-4). Pure-Go `modernc.org/sqlite`, CGO disabled.
+- Tests (`backend/internal/fabric/fabric_test.go`): two in-process instances on TLS httptest LAN
+  listeners each make a different local change, run a sync round, and converge to identical registry state
+  (`TestTwoInstancesConvergeOverLAN`); plus auth-rejection (`TestUnauthenticatedPeerRejected`,
+  `TestPushFromUnauthenticatedPeerDoesNotMerge`) and a TLS-on-the-wire sanity check.
+
 ---
 
 ## Audit-fix wave A + video-meet (v7.1 — 2026-05-24)

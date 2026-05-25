@@ -261,6 +261,13 @@ func isWildcardHost(host string) bool {
 	return false
 }
 
+// DetectLANIP returns the box's primary non-loopback IPv4 LAN address (the same
+// detection the LAN Service uses to pin its listeners), falling back to
+// 127.0.0.1 when nothing routable is found. It is exported so co-located
+// services (e.g. the fabric P2P sync discoverer) can advertise the same IP the
+// LAN listener is bound to without re-implementing detection.
+func DetectLANIP() net.IP { return detectLANIP() }
+
 // detectLANIP returns the box's primary non-loopback IPv4 LAN address, falling
 // back to 127.0.0.1 when nothing routable is found (so the service is still
 // well-formed in an isolated/CI environment).
