@@ -2437,8 +2437,16 @@ func main() {
 			// the service still constructs and serves inbound exchanges.
 			var disc fabric.Discoverer
 			if mdisc, derr := fabric.NewMDNSDiscoverer(fabric.MDNSConfig{
-				SelfIP: lan.DetectLANIP(),
-				Port:   fabric.PortFromAddr(httpsAddr, 443),
+				SelfIP:     lan.DetectLANIP(),
+				Port:       fabric.PortFromAddr(httpsAddr, 443),
+				InstanceID: cfg.InstanceID,
+				// Multi-peer (>2 box) discovery: resolve a per-instance qualified
+				// name for every peer in the registry roster, so QueryAddr's
+				// one-answer-per-name limit doesn't cap us at a single peer under
+				// the shared mDNS name. Self is excluded.
+				PeerNamesFunc: func() []string {
+					return fabricAppSync.PeerInstanceIDs(cfg.InstanceID)
+				},
 			}); derr != nil {
 				log.Printf("[fabric] mDNS discovery unavailable (%v) — inbound exchange still served; no auto peer discovery", derr)
 				disc = fabric.NewStaticDiscoverer()
@@ -2457,6 +2465,11 @@ func main() {
 				log.Printf("[fabric] disabled: %v", ferr)
 			} else {
 				fabricSvc = fs
+				// Wire local app-registry changes to an immediate sync push: a
+				// LocalInstall/LocalUninstall fires this hook, which Nudges the
+				// fabric loop so a local change converges without waiting the
+				// background tick (FABRIC-P2P-01 / wire-Nudge fix).
+				fabricAppSync.SetOnLocalChange(fs.Nudge)
 				// Mount fabric routes on a LAN-only mux that delegates everything
 				// else to the shared handler.
 				fabricMux := http.NewServeMux()

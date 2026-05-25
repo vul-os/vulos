@@ -31,6 +31,23 @@ const maxChangesetBytes = 8 << 20
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/fabric/changeset", s.handleServeChangeset)
 	mux.HandleFunc("POST /api/fabric/changeset", s.handleAcceptChangeset)
+	mux.HandleFunc("GET /api/fabric/status", s.handleStatus)
+}
+
+// handleStatus serves a JSON snapshot of the fabric sync state (this box's id,
+// last-run time, and per-peer cursor + last-sync time/err) for observability.
+// It is gated by the same shared fabric secret as the exchange endpoints — the
+// roster/cursor data is LAN-only operational state and must not be readable by
+// an unauthenticated host, consistent with the LAN-only/auth fabric posture.
+func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.authOK(r.Header.Get("X-Fabric-Auth")) {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(s.Status()); err != nil {
+		log.Printf("[fabric] encode status: %v", err)
+	}
 }
 
 // handleServeChangeset serves every app_registry row this box has changed since

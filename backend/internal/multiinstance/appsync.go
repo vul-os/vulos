@@ -59,6 +59,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -100,6 +101,14 @@ type AppChangeset struct {
 type AppSync struct {
 	reg *Registry // borrows the same *sql.DB (via the exported DB() accessor)
 	db  *sql.DB
+
+	// onLocalChange, when set, is invoked (without holding any lock) after a
+	// successful LOCAL app-registry mutation (LocalInstall / LocalUninstall).
+	// The fabric P2P sync service registers its Nudge here so a local install/
+	// uninstall triggers an immediate out-of-band sync push rather than waiting
+	// the background tick. Guarded by hookMu so it can be set after construction.
+	hookMu        sync.RWMutex
+	onLocalChange func()
 }
 
 // OpenAppSync creates an AppSync that shares the Registry's database.
@@ -111,6 +120,90 @@ func OpenAppSync(reg *Registry) (*AppSync, error) {
 		return nil, fmt.Errorf("multiinstance/appsync: registry DB is nil")
 	}
 	return &AppSync{reg: reg, db: db}, nil
+}
+
+// SetOnLocalChange registers a callback fired (without holding any AppSync lock)
+// after a successful LOCAL app-registry mutation — LocalInstall or
+// LocalUninstall. The fabric P2P sync service passes its Nudge here so a local
+// change converges immediately instead of waiting the background sync tick.
+// Passing nil clears the hook. Safe to call at any time.
+func (as *AppSync) SetOnLocalChange(fn func()) {
+	as.hookMu.Lock()
+	as.onLocalChange = fn
+	as.hookMu.Unlock()
+}
+
+// fireLocalChange invokes the registered local-change hook, if any. Called after
+// a local mutation commits. The hook (typically fabric Nudge) must be cheap and
+// non-blocking; it is invoked synchronously but outside any lock.
+func (as *AppSync) fireLocalChange() {
+	as.hookMu.RLock()
+	fn := as.onLocalChange
+	as.hookMu.RUnlock()
+	if fn != nil {
+		fn()
+	}
+}
+
+// ── Local mutations ────────────────────────────────────────────────────────────
+
+// LocalInstall records that appID@version is installed on THIS instance and
+// fires the local-change hook (fabric Nudge) so peers learn promptly.
+//
+// It writes a single app_registry row stamped with UpdatedAt = now and
+// InstalledBy = instanceULID (this box is the writer node), which is exactly the
+// LWW input ChangesetSince/EmitChangeset will later replicate. instanceULID must
+// be this box's stable ULID.
+func (as *AppSync) LocalInstall(instanceULID, appID, version string) error {
+	return as.localMutate(instanceULID, appID, version, true)
+}
+
+// LocalUninstall records that appID is uninstalled on THIS instance (OR-set flag
+// flipped to false, stamped now) and fires the local-change hook. The actual
+// propagation still obeys the uninstall-quorum rules on the receiving peers.
+func (as *AppSync) LocalUninstall(instanceULID, appID string) error {
+	return as.localMutate(instanceULID, appID, "", false)
+}
+
+// localMutate is the shared write path for LocalInstall/LocalUninstall. It
+// upserts the row in a single transaction, then — only on commit success —
+// fires the local-change hook so the fabric sync loop pushes the change without
+// waiting the tick.
+func (as *AppSync) localMutate(instanceULID, appID, version string, installed bool) error {
+	if instanceULID == "" {
+		return fmt.Errorf("appsync: localMutate: instanceULID must not be empty")
+	}
+	if appID == "" {
+		return fmt.Errorf("appsync: localMutate: appID must not be empty")
+	}
+	tx, err := as.db.Begin()
+	if err != nil {
+		return fmt.Errorf("appsync: localMutate: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	entry := AppRegistryEntry{
+		InstanceULID: instanceULID,
+		AppID:        appID,
+		AppVersion:   version,
+		Installed:    installed,
+		InstalledBy:  instanceULID,
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := as.upsertEntry(tx, entry); err != nil {
+		return fmt.Errorf("appsync: localMutate: upsert: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("appsync: localMutate: commit: %w", err)
+	}
+	committed = true
+	// Local change is durable — nudge the fabric so it converges immediately.
+	as.fireLocalChange()
+	return nil
 }
 
 // ── Emit ─────────────────────────────────────────────────────────────────────
@@ -318,6 +411,27 @@ func (as *AppSync) upsertEntry(tx *sql.Tx, e AppRegistryEntry) error {
 			updated_at   = excluded.updated_at
 	`, e.InstanceULID, e.AppID, e.AppVersion, installed, e.InstalledBy, updatedAt)
 	return err
+}
+
+// PeerInstanceIDs returns the ULIDs of every instance in the registry roster,
+// optionally excluding self. It is the roster source the fabric mDNS discoverer
+// uses to build per-instance qualified query names (InstanceFabricName) so a
+// >2-box LAN resolves every known peer individually rather than only the single
+// responder the shared mDNS name yields. Returns nil on a read error (the
+// discoverer then falls back to the shared name only).
+func (as *AppSync) PeerInstanceIDs(excludeSelfULID string) []string {
+	insts, err := as.reg.List()
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(insts))
+	for _, in := range insts {
+		if in.ULID == "" || in.ULID == excludeSelfULID {
+			continue
+		}
+		out = append(out, in.ULID)
+	}
+	return out
 }
 
 // ── Read helpers ──────────────────────────────────────────────────────────────

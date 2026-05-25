@@ -39,6 +39,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -100,9 +101,18 @@ type Service struct {
 	cfg Config
 
 	mu      sync.Mutex
-	cursors map[string]time.Time // peer base URL -> last-synced updated_at cursor
+	cursors map[string]time.Time  // peer base URL -> last-synced updated_at cursor
+	status  map[string]peerStatus // peer base URL -> last-sync result (observability)
+	lastRun time.Time             // wall-clock of the most recent SyncOnce round
 
 	nudge chan struct{} // out-of-band sync trigger (on local change)
+}
+
+// peerStatus is the per-peer last-sync result tracked for the status endpoint.
+type peerStatus struct {
+	instanceID string
+	lastSyncAt time.Time
+	lastErr    string // "" on success
 }
 
 // New validates cfg and returns a fabric Service. It does no network I/O.
@@ -128,6 +138,7 @@ func New(cfg Config) (*Service, error) {
 	return &Service{
 		cfg:     cfg,
 		cursors: make(map[string]time.Time),
+		status:  make(map[string]peerStatus),
 		nudge:   make(chan struct{}, 1),
 	}, nil
 }
@@ -181,6 +192,10 @@ func (s *Service) Nudge() {
 // never stall convergence with the rest. It is safe to call concurrently with
 // the background loop, though typically only the loop calls it.
 func (s *Service) SyncOnce(ctx context.Context) {
+	s.mu.Lock()
+	s.lastRun = time.Now()
+	s.mu.Unlock()
+
 	peers, err := s.cfg.Discoverer.Peers(ctx)
 	if err != nil {
 		log.Printf("[fabric] discovery failed: %v", err)
@@ -190,10 +205,30 @@ func (s *Service) SyncOnce(ctx context.Context) {
 		if s.isSelf(p) {
 			continue
 		}
-		if err := s.syncPeer(ctx, p); err != nil {
+		err := s.syncPeer(ctx, p)
+		s.recordStatus(p, err)
+		if err != nil {
 			log.Printf("[fabric] sync with peer %s (%s) failed: %v", p.InstanceID, p.BaseURL, err)
 		}
 	}
+}
+
+// recordStatus stamps the last-sync time + error for a peer (observability for
+// the /api/fabric/status endpoint).
+func (s *Service) recordStatus(p Peer, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.status[p.BaseURL]
+	if p.InstanceID != "" {
+		st.instanceID = p.InstanceID
+	}
+	st.lastSyncAt = time.Now()
+	if err != nil {
+		st.lastErr = err.Error()
+	} else {
+		st.lastErr = ""
+	}
+	s.status[p.BaseURL] = st
 }
 
 // isSelf reports whether a discovered peer is actually this box (matching
@@ -265,6 +300,79 @@ func (s *Service) syncPeer(ctx context.Context, p Peer) error {
 
 	s.setCursor(p.BaseURL, maxSeen)
 	return nil
+}
+
+// ── Status (observability) ─────────────────────────────────────────────────
+
+// PeerSyncStatus is the per-peer view returned by the status endpoint: who the
+// peer is, where the LWW cursor sits, and the result of the last sync attempt.
+type PeerSyncStatus struct {
+	InstanceID string     `json:"instance_id,omitempty"`
+	BaseURL    string     `json:"base_url"`
+	Cursor     *time.Time `json:"cursor,omitempty"`       // last-synced updated_at watermark
+	LastSyncAt *time.Time `json:"last_sync_at,omitempty"` // wall-clock of last attempt
+	LastError  string     `json:"last_error,omitempty"`   // "" when the last sync succeeded
+}
+
+// FabricStatus is the JSON shape served by GET /api/fabric/status. It reports
+// this box's identity, when the sync loop last ran, and the per-peer state.
+type FabricStatus struct {
+	InstanceID     string           `json:"instance_id"`
+	LastRunAt      *time.Time       `json:"last_run_at,omitempty"`
+	SyncIntervalMS int64            `json:"sync_interval_ms"`
+	PeerCount      int              `json:"peer_count"`
+	Peers          []PeerSyncStatus `json:"peers"`
+}
+
+// Status returns a snapshot of the fabric sync state for observability. It is
+// safe to call concurrently with the sync loop. Peers are ordered by base URL
+// so the output is stable across calls.
+func (s *Service) Status() FabricStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := FabricStatus{
+		InstanceID:     s.cfg.InstanceID,
+		SyncIntervalMS: s.cfg.SyncInterval.Milliseconds(),
+		Peers:          make([]PeerSyncStatus, 0, len(s.status)),
+	}
+	if !s.lastRun.IsZero() {
+		lr := s.lastRun.UTC()
+		out.LastRunAt = &lr
+	}
+
+	// Union of every base URL we have either a cursor or a status for.
+	keys := make(map[string]struct{})
+	for k := range s.cursors {
+		keys[k] = struct{}{}
+	}
+	for k := range s.status {
+		keys[k] = struct{}{}
+	}
+	ordered := make([]string, 0, len(keys))
+	for k := range keys {
+		ordered = append(ordered, k)
+	}
+	sort.Strings(ordered)
+
+	for _, base := range ordered {
+		ps := PeerSyncStatus{BaseURL: base}
+		if st, ok := s.status[base]; ok {
+			ps.InstanceID = st.instanceID
+			if !st.lastSyncAt.IsZero() {
+				ls := st.lastSyncAt.UTC()
+				ps.LastSyncAt = &ls
+			}
+			ps.LastError = st.lastErr
+		}
+		if c, ok := s.cursors[base]; ok && !c.IsZero() {
+			cu := c.UTC()
+			ps.Cursor = &cu
+		}
+		out.Peers = append(out.Peers, ps)
+	}
+	out.PeerCount = len(out.Peers)
+	return out
 }
 
 func (s *Service) cursorFor(baseURL string) time.Time {

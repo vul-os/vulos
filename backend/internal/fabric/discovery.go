@@ -60,12 +60,51 @@ func (d *StaticDiscoverer) Set(peers ...Peer) {
 
 // ── mDNS-backed discovery ──────────────────────────────────────────────────
 
-// FabricMDNSName is the multicast-DNS name every fabric-enabled box advertises.
-// pion/mdns answers A queries for ".local" names; we use one shared service
-// name and let every box answer it with its own LAN IP. A querier therefore
-// learns the set of LAN IPs running the fabric. The port is the well-known LAN
-// HTTPS port unless the box advertises an override via FabricPort.
+// FabricMDNSName is the SHARED multicast-DNS name every fabric-enabled box
+// advertises. It is the bootstrap name: pion/mdns's QueryAddr resolves a name to
+// a SINGLE responder, so the shared name alone reliably finds only ONE peer (the
+// first to answer). It remains useful for first-contact on a fresh LAN, but
+// multi-peer (>2 box) discovery additionally uses per-instance qualified names —
+// see InstanceFabricName.
 const FabricMDNSName = "vulos-fabric.local"
+
+// FabricMDNSSuffix is the suffix appended after a per-instance label to build a
+// box's unique mDNS name (InstanceFabricName). Each box answers BOTH the shared
+// FabricMDNSName and its own <id>.vulos-fabric.local, so a querier that knows a
+// roster of peer instance ids can resolve EACH peer's distinct A record — which
+// is what makes a 3+ box LAN converge despite QueryAddr's one-answer-per-name
+// limitation.
+const FabricMDNSSuffix = ".vulos-fabric.local"
+
+// InstanceFabricName returns the per-instance mDNS name a box advertises and
+// peers resolve to find that specific box. The instance id is lower-cased and
+// stripped of characters that are not valid in a DNS label so the name is a
+// well-formed hostname (ULIDs are Crockford base32 — already label-safe — but we
+// sanitise defensively for any id shape). Returns "" for an empty id.
+func InstanceFabricName(instanceID string) string {
+	label := sanitizeDNSLabel(instanceID)
+	if label == "" {
+		return ""
+	}
+	return label + FabricMDNSSuffix
+}
+
+// sanitizeDNSLabel lower-cases and keeps only [a-z0-9-] from s, truncating to the
+// 63-octet DNS label limit. A leading/trailing '-' is trimmed. Returns "" when
+// nothing usable remains.
+func sanitizeDNSLabel(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		}
+		if b.Len() >= 63 {
+			break
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
 
 // MDNSDiscoverer discovers fabric peers over multicast DNS. It advertises this
 // box under FabricMDNSName (so peers find us) and queries the same name to find
@@ -80,7 +119,14 @@ const FabricMDNSName = "vulos-fabric.local"
 type MDNSDiscoverer struct {
 	conn       *mdns.Conn
 	port       int
-	queryNames []string
+	queryNames []string // static names always queried (incl. the shared name)
+
+	// peerNamesFunc, when set, supplies additional per-instance qualified names
+	// to resolve each round (sourced from the registry roster). This is the
+	// multi-peer (>2 box) path: querying <id>.vulos-fabric.local for each known
+	// peer id resolves EACH peer's distinct A record, working around QueryAddr's
+	// one-answer-per-name limitation.
+	peerNamesFunc func() []string
 
 	mu    sync.RWMutex
 	cache []Peer
@@ -88,29 +134,41 @@ type MDNSDiscoverer struct {
 
 // MDNSConfig configures an MDNSDiscoverer.
 type MDNSConfig struct {
-	// SelfIP is this box's LAN IP, published as the answer to FabricMDNSName so
+	// SelfIP is this box's LAN IP, published as the answer to its mDNS names so
 	// peers can find us. When nil, advertisement is best-effort/disabled.
 	SelfIP net.IP
 	// Port is the LAN HTTPS port peers should be dialled on. Defaults to 443.
 	Port int
-	// QueryNames are the mDNS names to resolve when looking for peers. Defaults
-	// to [FabricMDNSName]. A deployment that gives each box a distinct
-	// box.<id>.local name can list those here too.
+	// InstanceID, when set, makes this box ALSO advertise the per-instance name
+	// InstanceFabricName(InstanceID) in addition to the shared FabricMDNSName, so
+	// peers that know this box's id can resolve it specifically. This is what
+	// enables >2-box convergence.
+	InstanceID string
+	// QueryNames are extra static mDNS names to resolve when looking for peers.
+	// The shared FabricMDNSName is ALWAYS queried; these are appended.
 	QueryNames []string
+	// PeerNamesFunc, when set, is called each discovery round to obtain the
+	// per-instance qualified names to resolve (typically built from the registry
+	// roster of known peer ULIDs via InstanceFabricName). It lets a box discover
+	// every rostered peer individually rather than only the single responder the
+	// shared name yields. Must be safe for concurrent use.
+	PeerNamesFunc func() []string
 }
 
-// NewMDNSDiscoverer starts advertising this box under FabricMDNSName and
-// prepares to resolve peers. Multicast binding can fail in restricted
-// environments (CI/containers); callers should treat a non-nil error as
-// "mDNS discovery unavailable" and fall back to a StaticDiscoverer.
+// NewMDNSDiscoverer starts advertising this box (shared name + its per-instance
+// name when InstanceID is set) and prepares to resolve peers. Multicast binding
+// can fail in restricted environments (CI/containers); callers should treat a
+// non-nil error as "mDNS discovery unavailable" and fall back to a
+// StaticDiscoverer.
 func NewMDNSDiscoverer(cfg MDNSConfig) (*MDNSDiscoverer, error) {
 	if cfg.Port == 0 {
 		cfg.Port = 443
 	}
-	names := cfg.QueryNames
-	if len(names) == 0 {
-		names = []string{FabricMDNSName}
-	}
+	// Always query the shared name (bootstrap/first-contact), then any extra
+	// static names. Per-instance roster names are added per-round via
+	// PeerNamesFunc, not baked in here.
+	names := []string{FabricMDNSName}
+	names = append(names, cfg.QueryNames...)
 
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if err != nil {
@@ -121,10 +179,13 @@ func NewMDNSDiscoverer(cfg MDNSConfig) (*MDNSDiscoverer, error) {
 		return nil, fmt.Errorf("fabric: mdns listen: %w", err)
 	}
 
-	mcfg := &mdns.Config{
-		// Answer FabricMDNSName so peers querying it discover this box.
-		LocalNames: []string{strings.TrimSuffix(FabricMDNSName, ".")},
+	// Advertise the shared name AND (when known) this box's per-instance name so
+	// a peer that learns our id from the roster can resolve us specifically.
+	localNames := []string{strings.TrimSuffix(FabricMDNSName, ".")}
+	if self := InstanceFabricName(cfg.InstanceID); self != "" {
+		localNames = append(localNames, strings.TrimSuffix(self, "."))
 	}
+	mcfg := &mdns.Config{LocalNames: localNames}
 	if v4 := selfV4(cfg.SelfIP); v4 != nil {
 		mcfg.LocalAddress = v4
 	}
@@ -135,10 +196,23 @@ func NewMDNSDiscoverer(cfg MDNSConfig) (*MDNSDiscoverer, error) {
 	}
 
 	return &MDNSDiscoverer{
-		conn:       conn,
-		port:       cfg.Port,
-		queryNames: names,
+		conn:          conn,
+		port:          cfg.Port,
+		queryNames:    names,
+		peerNamesFunc: cfg.PeerNamesFunc,
 	}, nil
+}
+
+// SetPeerNamesFunc registers (or replaces) the roster provider used to build the
+// per-instance names queried each round. Safe to call after construction (e.g.
+// once the registry handle is available in main.go).
+func (d *MDNSDiscoverer) SetPeerNamesFunc(fn func() []string) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	d.peerNamesFunc = fn
+	d.mu.Unlock()
 }
 
 func selfV4(ip net.IP) net.IP {
@@ -161,10 +235,35 @@ func (d *MDNSDiscoverer) Peers(ctx context.Context) ([]Peer, error) {
 		return nil, errors.New("fabric: mdns discoverer closed")
 	}
 
+	// Build the full query set for this round: the static names (shared + any
+	// configured extras) plus the per-instance roster names. Each roster entry
+	// is "<id>.vulos-fabric.local" and carries the originating instance id, so a
+	// resolved address can be stamped with the peer's id (sharpening self-skip).
+	type query struct {
+		name       string
+		instanceID string // "" for the shared/static names
+	}
+	queries := make([]query, 0, len(d.queryNames)+4)
+	for _, n := range d.queryNames {
+		queries = append(queries, query{name: n})
+	}
+	d.mu.RLock()
+	pn := d.peerNamesFunc
+	d.mu.RUnlock()
+	if pn != nil {
+		for _, id := range pn() {
+			name := InstanceFabricName(id)
+			if name == "" {
+				continue
+			}
+			queries = append(queries, query{name: name, instanceID: id})
+		}
+	}
+
 	seen := make(map[string]Peer)
-	for _, name := range d.queryNames {
+	for _, q := range queries {
 		qctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-		_, addr, err := d.conn.QueryAddr(qctx, strings.TrimSuffix(name, "."))
+		_, addr, err := d.conn.QueryAddr(qctx, strings.TrimSuffix(q.name, "."))
 		cancel()
 		if err != nil {
 			continue // no answer for this name this round
@@ -173,7 +272,11 @@ func (d *MDNSDiscoverer) Peers(ctx context.Context) ([]Peer, error) {
 			continue
 		}
 		base := fmt.Sprintf("https://%s", net.JoinHostPort(addr.String(), itoa(d.port)))
-		seen[base] = Peer{BaseURL: base}
+		// Prefer an entry carrying the instance id (qualified-name resolution)
+		// over a bare shared-name hit for the same base URL.
+		if existing, ok := seen[base]; !ok || (existing.InstanceID == "" && q.instanceID != "") {
+			seen[base] = Peer{BaseURL: base, InstanceID: q.instanceID}
+		}
 	}
 
 	if len(seen) == 0 {

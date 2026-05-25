@@ -666,3 +666,106 @@ func TestChangesetSinceCursor(t *testing.T) {
 func appIDFor(i int) string {
 	return []string{"alpha", "bravo", "charlie"}[i%3]
 }
+
+// ── Local mutations + OnLocalChange hook (fabric Nudge wiring) ────────────────
+
+// TestLocalInstallWritesRowAndFiresHook verifies LocalInstall persists a local
+// app_registry row stamped with the instance as the writer node, and fires the
+// registered OnLocalChange hook (the fabric Service.Nudge in production).
+func TestLocalInstallWritesRowAndFiresHook(t *testing.T) {
+	const ulid = "01HWZMINST00000000000LOCAL"
+	_, as := openTempAppSync(t)
+
+	fired := 0
+	as.SetOnLocalChange(func() { fired++ })
+
+	if err := as.LocalInstall(ulid, "browser", "1.2.3"); err != nil {
+		t.Fatalf("LocalInstall: %v", err)
+	}
+	if fired != 1 {
+		t.Fatalf("OnLocalChange hook fired %d times, want 1", fired)
+	}
+
+	apps, err := as.ListAppsForInstance(ulid, false)
+	if err != nil {
+		t.Fatalf("ListAppsForInstance: %v", err)
+	}
+	if len(apps) != 1 || apps[0].AppID != "browser" || apps[0].AppVersion != "1.2.3" || !apps[0].Installed {
+		t.Fatalf("unexpected local row: %+v", apps)
+	}
+	if apps[0].InstalledBy != ulid {
+		t.Errorf("InstalledBy: got %q want %q (the local instance is the writer node)", apps[0].InstalledBy, ulid)
+	}
+	if apps[0].UpdatedAt.IsZero() {
+		t.Error("UpdatedAt must be stamped on a local install")
+	}
+}
+
+// TestLocalUninstallFlipsFlagAndFiresHook verifies LocalUninstall flips the
+// OR-set installed flag to false (with a fresh timestamp) and fires the hook.
+func TestLocalUninstallFlipsFlagAndFiresHook(t *testing.T) {
+	const ulid = "01HWZMINST00000000000UNINS"
+	_, as := openTempAppSync(t)
+
+	fired := 0
+	as.SetOnLocalChange(func() { fired++ })
+
+	if err := as.LocalInstall(ulid, "notes", "2.0.0"); err != nil {
+		t.Fatalf("LocalInstall: %v", err)
+	}
+	if err := as.LocalUninstall(ulid, "notes"); err != nil {
+		t.Fatalf("LocalUninstall: %v", err)
+	}
+	if fired != 2 {
+		t.Fatalf("hook fired %d times, want 2 (install + uninstall)", fired)
+	}
+
+	// installed=1 rows only → should now be empty.
+	installed, err := as.ListAppsForInstance(ulid, false)
+	if err != nil {
+		t.Fatalf("ListAppsForInstance(installed): %v", err)
+	}
+	if len(installed) != 0 {
+		t.Fatalf("expected 0 installed rows after uninstall, got %d", len(installed))
+	}
+	// includeRemoved → the row still exists with installed=false.
+	all, err := as.ListAppsForInstance(ulid, true)
+	if err != nil {
+		t.Fatalf("ListAppsForInstance(all): %v", err)
+	}
+	if len(all) != 1 || all[0].Installed {
+		t.Fatalf("expected 1 uninstalled row, got %+v", all)
+	}
+}
+
+// TestLocalMutateRejectsEmptyArgs guards the validation on the local write path.
+func TestLocalMutateRejectsEmptyArgs(t *testing.T) {
+	_, as := openTempAppSync(t)
+	if err := as.LocalInstall("", "app", "1.0.0"); err == nil {
+		t.Error("expected error for empty instance ULID")
+	}
+	if err := as.LocalInstall("ulid", "", "1.0.0"); err == nil {
+		t.Error("expected error for empty app id")
+	}
+}
+
+// TestPeerInstanceIDsRosterExcludesSelf verifies the roster source the fabric
+// mDNS discoverer uses to build per-instance query names excludes self.
+func TestPeerInstanceIDsRosterExcludesSelf(t *testing.T) {
+	reg, as := openTempAppSync(t)
+	self := "01HWZMINST0000000000SELF00"
+	for _, ulid := range []string{self, "01HWZMINST0000000000PEER01", "01HWZMINST0000000000PEER02"} {
+		if err := reg.Upsert(multiinstance.Instance{ULID: ulid, Kind: multiinstance.KindDevice}); err != nil {
+			t.Fatalf("register %s: %v", ulid, err)
+		}
+	}
+	ids := as.PeerInstanceIDs(self)
+	if len(ids) != 2 {
+		t.Fatalf("PeerInstanceIDs excluding self: got %d ids %v, want 2", len(ids), ids)
+	}
+	for _, id := range ids {
+		if id == self {
+			t.Errorf("roster must exclude self %q", self)
+		}
+	}
+}
