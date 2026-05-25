@@ -341,6 +341,18 @@ func (p *LANCertPuller) Run(ctx context.Context) {
 	}
 }
 
+// ProbeOnce performs a single report-IP round-trip and returns its error. It
+// exists as a SECURITY TEST SEAM (used by the backend/security pentest suite)
+// so an external package can assert that the puller's hardened transport
+// rejects a plaintext / unpinned / mismatched-cert control plane WITHOUT having
+// to run the full background Run loop (which only logs errors). It performs no
+// state mutation beyond what reportIP already does and is safe to call before
+// Run. The returned error is non-nil whenever the TLS handshake or HTTP call
+// failed — which is exactly the MITM-rejection signal the pentest asserts on.
+func (p *LANCertPuller) ProbeOnce(ctx context.Context) error {
+	return p.reportIP(ctx)
+}
+
 // reportIP POSTs the box's current LAN IP to /api/lancert/report-ip. Best
 // effort: any non-2xx response is returned as an error so the caller can log
 // it, but the puller keeps going either way.

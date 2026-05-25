@@ -16,19 +16,30 @@
 //     when the timestamps are equal.  A true uninstall (status=0) only
 //     propagates when its updated_at is strictly newer than the local row.
 //     Exception: when more than 2 instances exist in the registry, an
-//     uninstall is only accepted when quorum is met.
+//     uninstall is only accepted when distinct-origin quorum is met.
 //
-// Quorum hardening (audit P1-3)
+// Quorum hardening (audit P1-3 + CRDT-QUORUM-01)
 //
-//	The uninstall quorum is governed by the LOCALLY-OBSERVED peer count from the
-//	registry, never by the self-reported AppChangeset.PeerCount alone.  A
-//	malicious or buggy peer therefore cannot:
-//	  (a) force a removal by inflating PeerCount — the local registry must also
-//	      corroborate ≥ 2 peers before a >2-instance uninstall is accepted; nor
-//	  (b) unilaterally block a removal by deflating PeerCount — when the local
-//	      registry shows ≤ 2 instances quorum is not required at all.
-//	The self-reported PeerCount is treated only as a non-authoritative hint that
-//	can tighten (never loosen) the locally-derived decision.
+//	The uninstall quorum is met by N DISTINCT ORIGINATING INSTANCES having
+//	independently reported the uninstall — never by any self-reported
+//	AppChangeset.PeerCount.  Each uninstall changeset carries its reporting
+//	instance's identity (AppChangeset.OriginULID); applying it records ONE
+//	observation in app_uninstall_observations keyed by (instance_ulid, app_id,
+//	observer_ulid).  The uninstall applies only once the number of DISTINCT
+//	observers meets the quorum threshold derived from the LOCALLY-observed peer
+//	count (a majority of the registry roster).  Consequences:
+//	  (a) A single peer that inflates PeerCount to 99 still contributes exactly
+//	      ONE observation and cannot force a removal — the field is ignored for
+//	      the security decision and kept only as a non-authoritative telemetry
+//	      hint.
+//	  (b) A peer cannot unilaterally BLOCK a legitimate removal: it can only
+//	      withhold its own observation; other instances' observations still
+//	      accumulate toward quorum.
+//	  (c) When the local registry shows ≤ 2 instances quorum is not required at
+//	      all (a 2-node system cannot form a majority): a strictly-newer
+//	      uninstall is accepted on LWW alone.
+//	The observation set is a monotonic OR-set persisted in SQLite so it survives
+//	merges/restarts and converges deterministically (union semantics).
 //
 // Wire format
 //
@@ -89,8 +100,12 @@ type AppChangeset struct {
 	OriginULID string `json:"origin_ulid"`
 	// Entries are the changed rows.
 	Entries []AppRegistryEntry `json:"entries"`
-	// PeerCount is the number of instances the originator knew about when
-	// it emitted this changeset.  Used to evaluate uninstall quorum.
+	// PeerCount is the number of instances the originator knew about when it
+	// emitted this changeset.  TELEMETRY ONLY — it is NOT trusted for the
+	// uninstall-quorum decision (see CRDT-QUORUM-01). Quorum is decided from the
+	// count of DISTINCT OriginULIDs that have reported an uninstall, gated by the
+	// locally-observed peer count. A peer cannot force a removal by inflating
+	// this field.
 	PeerCount int `json:"peer_count"`
 }
 
@@ -242,12 +257,20 @@ func (as *AppSync) ApplyChangeset(cs *AppChangeset) error {
 		return nil
 	}
 
-	// Count known instances for quorum evaluation.
+	// Count locally-known instances for quorum evaluation. This is the only
+	// peer count we trust — the self-reported cs.PeerCount is ignored for the
+	// security decision (CRDT-QUORUM-01).
 	peers, err := as.reg.List()
 	if err != nil {
 		return fmt.Errorf("appsync: ApplyChangeset: list peers: %w", err)
 	}
 	peerCount := len(peers)
+
+	// The reporting instance for this changeset. Each uninstall contributes at
+	// most ONE distinct observation, keyed by this origin. A changeset with no
+	// origin id (legacy / direct apply) falls back to the per-entry writer node
+	// (InstalledBy) so a forged changeset cannot dodge attribution.
+	originULID := cs.OriginULID
 
 	tx, err := as.db.Begin()
 	if err != nil {
@@ -260,7 +283,7 @@ func (as *AppSync) ApplyChangeset(cs *AppChangeset) error {
 	}()
 
 	for _, e := range cs.Entries {
-		if err = as.mergeEntry(tx, e, peerCount, cs.PeerCount); err != nil {
+		if err = as.mergeEntry(tx, e, peerCount, originULID); err != nil {
 			return fmt.Errorf("appsync: ApplyChangeset: merge %s/%s: %w",
 				e.InstanceULID, e.AppID, err)
 		}
@@ -276,16 +299,36 @@ func (as *AppSync) ApplyChangeset(cs *AppChangeset) error {
 // mergeEntry merges one AppRegistryEntry into the local table using the rules:
 //
 //  1. If no local row exists → insert unconditionally (but still subject to the
-//     uninstall-quorum guard below: a first-seen uninstall under a quorum
-//     regime is recorded as installed=true so a peer cannot seed a removal).
+//     uninstall-quorum guard below: a first-seen uninstall that has not reached
+//     distinct-origin quorum is recorded as installed=true so a peer cannot seed
+//     a removal).
 //  2. LWW on updated_at: remote row wins only when it is strictly newer.
 //     Tie-break: lexicographically larger writer node id (installed_by) wins —
 //     deterministic and symmetric across peers.
 //  3. OR-set installed flag: if timestamps are equal, true wins over false.
-//  4. Uninstall quorum: governed by the locally-observed peer count (see
-//     quorumOK); the self-reported remotePeerCount can only tighten the
-//     decision, never loosen it.
-func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCount, remotePeerCount int) error {
+//  4. Uninstall quorum: an uninstall applies only when the number of DISTINCT
+//     originating instances that have reported it meets the threshold derived
+//     from the locally-observed peer count (see uninstallQuorumMet). The
+//     self-reported PeerCount plays NO part in this decision (CRDT-QUORUM-01).
+//
+// originULID is the reporting instance (cs.OriginULID); each uninstall it
+// carries contributes exactly one observation toward quorum.
+func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCount int, originULID string) error {
+	// Record the distinct-origin observation BEFORE deciding quorum so the
+	// reporting instance counts toward its own threshold. Recording is a no-op
+	// if this origin already reported this uninstall (idempotent OR-set union).
+	if !remote.Installed {
+		observer := originULID
+		if observer == "" {
+			// No changeset origin (legacy/direct apply): attribute to the writer
+			// node so a forged uninstall cannot dodge attribution entirely.
+			observer = remote.InstalledBy
+		}
+		if err := as.recordUninstallObservation(tx, remote.InstanceULID, remote.AppID, observer, remote.UpdatedAt); err != nil {
+			return fmt.Errorf("record uninstall observation: %w", err)
+		}
+	}
+
 	row := tx.QueryRow(`
 		SELECT app_version, installed, installed_by, updated_at
 		FROM app_registry
@@ -302,13 +345,19 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 	err := row.Scan(&localVersion, &localInstalled, &localInstalledBy, &localUpdatedRaw)
 	if err == sql.ErrNoRows {
 		// No local row. Insert remote — but never let a peer seed an *uninstall*
-		// row under a quorum regime, otherwise (a) it would block a later install
-		// via LWW and (b) it is exactly the unilateral-removal a hostile peer
-		// would attempt.
-		if !remote.Installed && !as.quorumOK(localPeerCount, remotePeerCount) {
-			log.Printf("[appsync] quorum not met for first-seen uninstall of %s/%s — recording installed=true",
-				remote.InstanceULID, remote.AppID)
-			remote.Installed = true
+		// row before distinct-origin quorum is met, otherwise (a) it would block a
+		// later install via LWW and (b) it is exactly the unilateral-removal a
+		// hostile peer would attempt.
+		if !remote.Installed {
+			met, qerr := as.uninstallQuorumMet(tx, remote.InstanceULID, remote.AppID, localPeerCount)
+			if qerr != nil {
+				return qerr
+			}
+			if !met {
+				log.Printf("[appsync] distinct-origin quorum not met for first-seen uninstall of %s/%s — recording installed=true",
+					remote.InstanceULID, remote.AppID)
+				remote.Installed = true
+			}
 		}
 		return as.upsertEntry(tx, remote)
 	}
@@ -326,19 +375,51 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 	switch {
 	case remote.UpdatedAt.After(localUpdatedAt):
 		// Remote is strictly newer → accept.
-		// Quorum check for uninstalls:
-		if !remote.Installed && !as.quorumOK(localPeerCount, remotePeerCount) {
-			log.Printf("[appsync] quorum not met for uninstall of %s/%s — retaining installed=true",
-				remote.InstanceULID, remote.AppID)
-			// Keep installed=true from the local row; still update version if newer.
-			remote.Installed = true
+		// Distinct-origin quorum check for uninstalls:
+		if !remote.Installed {
+			met, qerr := as.uninstallQuorumMet(tx, remote.InstanceULID, remote.AppID, localPeerCount)
+			if qerr != nil {
+				return qerr
+			}
+			if !met {
+				log.Printf("[appsync] distinct-origin quorum not met for uninstall of %s/%s — retaining installed=true",
+					remote.InstanceULID, remote.AppID)
+				// Keep installed=true from the local row; still update version if newer.
+				remote.Installed = true
+			}
 		}
 		return as.upsertEntry(tx, remote)
 
 	case remote.UpdatedAt.Equal(localUpdatedAt):
-		// Tie: apply OR-set on installed; deterministic tie-break on the writer
-		// node id (installed_by), NOT the row's instance_ulid (which is identical
-		// on both sides for this (instance_ulid, app_id) key).
+		// Tie. An uninstall that has now reached distinct-origin quorum is the
+		// corroborated decision and overrides the OR-set "install wins" default:
+		// this is how a legitimate multi-origin uninstall converges even when each
+		// originating instance stamps the same removal timestamp, and how a
+		// previously-suppressed (downgraded) uninstall flips to removed once the
+		// Nth distinct origin reports it. A single forged origin can never reach
+		// quorum, so it cannot exploit this branch.
+		if !remote.Installed {
+			met, qerr := as.uninstallQuorumMet(tx, remote.InstanceULID, remote.AppID, localPeerCount)
+			if qerr != nil {
+				return qerr
+			}
+			if met {
+				e := remote
+				e.Installed = false
+				// Deterministic writer for the removed row: the larger node id of
+				// the two, so all peers converge to identical installed_by.
+				if localInstalledBy > e.InstalledBy {
+					e.InstalledBy = localInstalledBy
+				}
+				if localVersion != "" {
+					e.AppVersion = localVersion
+				}
+				return as.upsertEntry(tx, e)
+			}
+		}
+		// OR-set default: install wins over a non-quorum uninstall; deterministic
+		// tie-break on the writer node id (installed_by), NOT the row's
+		// instance_ulid (which is identical on both sides for this key).
 		mergedInstalled := localInstalled == 1 || remote.Installed // OR-set
 		if remote.InstalledBy > localInstalledBy {
 			// Remote wins tie-break — use remote's data but OR the installed flag.
@@ -361,32 +442,99 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 		return nil
 
 	default:
-		// Remote is older → discard.
+		// Remote is strictly older. Normally discarded — but a strictly-older
+		// uninstall observation that pushes the DISTINCT-origin set over quorum
+		// must still flip a currently-installed row to removed (the observation
+		// set, not the timestamp, is the quorum trigger). Without this, ordering
+		// the corroborating observations newest-first would silently lose the
+		// removal. A single forged origin can never reach quorum here either.
+		if !remote.Installed && localInstalled == 1 {
+			met, qerr := as.uninstallQuorumMet(tx, remote.InstanceULID, remote.AppID, localPeerCount)
+			if qerr != nil {
+				return qerr
+			}
+			if met {
+				return as.upsertEntry(tx, AppRegistryEntry{
+					InstanceULID: remote.InstanceULID,
+					AppID:        remote.AppID,
+					AppVersion:   localVersion,
+					Installed:    false,
+					InstalledBy:  localInstalledBy,
+					UpdatedAt:    localUpdatedAt,
+				})
+			}
+		}
 		return nil
 	}
 }
 
-// quorumOK reports whether an uninstall may be accepted given the LOCALLY
-// observed peer count (authoritative) and the self-reported remote peer count
-// (a non-authoritative hint).
-//
-// Rules (audit P1-3 — do not trust self-reported counts):
-//   - When the local registry shows ≤ 2 instances, quorum is NOT required: a
-//     two-node system cannot form a majority, so a strictly-newer uninstall is
-//     accepted on LWW alone. (A peer cannot block this by lying about its own
-//     count because we ignore remotePeerCount in this branch.)
-//   - When the local registry shows > 2 instances, quorum IS required AND the
-//     self-reported remotePeerCount must independently corroborate ≥ 2 peers.
-//     A peer therefore cannot force a removal by inflating its count (the local
-//     registry must agree there are >2 instances) and cannot bypass the
-//     corroboration requirement by deflating it (deflation only fails quorum).
-func (as *AppSync) quorumOK(localPeerCount, remotePeerCount int) bool {
-	if localPeerCount <= 2 {
-		return true // quorum not required in a ≤2-node system
+// recordUninstallObservation records that observerULID has reported the
+// uninstall of (instanceULID, appID). It is an idempotent OR-set union: the same
+// observer reporting twice is a no-op (PRIMARY KEY conflict), and the observed_at
+// is advanced to the most-recent observation for telemetry. This set is the sole
+// authority for uninstall quorum — never AppChangeset.PeerCount (CRDT-QUORUM-01).
+func (as *AppSync) recordUninstallObservation(tx *sql.Tx, instanceULID, appID, observerULID string, observedAt time.Time) error {
+	if observerULID == "" {
+		// Cannot attribute the observation to a distinct origin. Refuse to count
+		// it (it contributes nothing toward quorum) rather than crediting a blank.
+		return nil
 	}
-	// >2 local instances: require the originator to have independently observed
-	// at least 2 peers. The local count is the gate; the remote count must agree.
-	return remotePeerCount >= 2
+	ts := ""
+	if !observedAt.IsZero() {
+		ts = observedAt.UTC().Format(time.RFC3339Nano)
+	}
+	_, err := tx.Exec(`
+		INSERT INTO app_uninstall_observations
+			(instance_ulid, app_id, observer_ulid, observed_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(instance_ulid, app_id, observer_ulid) DO UPDATE SET
+			observed_at = MAX(observed_at, excluded.observed_at)
+	`, instanceULID, appID, observerULID, ts)
+	return err
+}
+
+// distinctUninstallOrigins counts the DISTINCT originating instances that have
+// reported an uninstall of (instanceULID, appID).
+func (as *AppSync) distinctUninstallOrigins(tx *sql.Tx, instanceULID, appID string) (int, error) {
+	var n int
+	err := tx.QueryRow(`
+		SELECT COUNT(*) FROM app_uninstall_observations
+		WHERE instance_ulid = ? AND app_id = ?
+	`, instanceULID, appID).Scan(&n)
+	return n, err
+}
+
+// uninstallQuorumThreshold returns the number of DISTINCT originating instances
+// that must report an uninstall before it is accepted, derived ONLY from the
+// locally-observed peer count.
+//
+//   - ≤ 2 local instances: 1 — a two-node system cannot form a majority, so a
+//     single (strictly-newer) uninstall observation suffices (LWW alone).
+//   - > 2 local instances: a strict majority of the roster, floored at 2, so a
+//     lone origin can never satisfy it. (N=3→2, N=4→3, N=5→3, …)
+//
+// Because the threshold is computed from the LOCAL registry and the count is the
+// number of DISTINCT origins, a single peer cannot reach quorum by inflating any
+// self-reported value — it is always exactly one origin.
+func uninstallQuorumThreshold(localPeerCount int) int {
+	if localPeerCount <= 2 {
+		return 1
+	}
+	majority := localPeerCount/2 + 1
+	if majority < 2 {
+		majority = 2
+	}
+	return majority
+}
+
+// uninstallQuorumMet reports whether enough DISTINCT origins have reported the
+// uninstall of (instanceULID, appID) to meet the locally-derived threshold.
+func (as *AppSync) uninstallQuorumMet(tx *sql.Tx, instanceULID, appID string, localPeerCount int) (bool, error) {
+	n, err := as.distinctUninstallOrigins(tx, instanceULID, appID)
+	if err != nil {
+		return false, fmt.Errorf("count distinct uninstall origins: %w", err)
+	}
+	return n >= uninstallQuorumThreshold(localPeerCount), nil
 }
 
 // upsertEntry writes an AppRegistryEntry into the database (insert or replace).

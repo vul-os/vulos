@@ -242,8 +242,14 @@ func TestUninstallQuorumNotMet(t *testing.T) {
 	}
 }
 
-// TestUninstallQuorumMet: with ≥2 peer instances known to the originator the
-// uninstall IS accepted.
+// TestUninstallQuorumMet: a legitimate multi-origin uninstall IS accepted.
+//
+// CRDT-QUORUM-01: quorum is no longer a single peer's self-reported PeerCount —
+// it is the number of DISTINCT originating instances that have independently
+// reported the uninstall. In a 3-node registry the threshold is 2 distinct
+// origins. This test mirrors how the legitimate path actually converges: TWO
+// real peers each emit (and we apply) their own uninstall changeset. Once the
+// second distinct origin's observation lands, the removal applies.
 func TestUninstallQuorumMet(t *testing.T) {
 	const (
 		ulid  = "01HWZMINST000000000000005A"
@@ -252,8 +258,12 @@ func TestUninstallQuorumMet(t *testing.T) {
 
 	reg, as := openTempAppSync(t)
 
-	// 3 instances in registry.
-	for _, u := range []string{ulid, "01HWZMINST000000000000005B", "01HWZMINST000000000000005C"} {
+	// 3 instances in registry → distinct-origin quorum threshold is 2.
+	const (
+		originB = "01HWZMINST000000000000005B"
+		originC = "01HWZMINST000000000000005C"
+	)
+	for _, u := range []string{ulid, originB, originC} {
 		if err := reg.Upsert(multiinstance.Instance{
 			ULID:   u,
 			Kind:   multiinstance.KindDevice,
@@ -270,16 +280,31 @@ func TestUninstallQuorumMet(t *testing.T) {
 	})
 	_ = as.ApplyChangeset(csInstall)
 
-	// Uninstall with PeerCount=2 → quorum met.
-	csUninstall := &multiinstance.AppChangeset{
-		OriginULID: ulid,
-		PeerCount:  2, // ≥2 → quorum satisfied
+	// First distinct origin (originB) reports the uninstall. One observation is
+	// below the threshold of 2 → the removal is suppressed (installed stays true).
+	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
+		OriginULID: originB,
+		PeerCount:  1, // ignored for the decision
 		Entries: []multiinstance.AppRegistryEntry{
-			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "nodeA", UpdatedAt: base.Add(time.Minute)},
+			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: originB, UpdatedAt: base.Add(time.Minute)},
 		},
+	}); err != nil {
+		t.Fatalf("apply uninstall from originB: %v", err)
 	}
-	if err := as.ApplyChangeset(csUninstall); err != nil {
-		t.Fatalf("apply uninstall: %v", err)
+	if apps, _ := as.ListAppsForInstance(ulid, false); len(apps) != 1 || !apps[0].Installed {
+		t.Fatalf("after ONE distinct origin the uninstall must be suppressed; rows=%+v", apps)
+	}
+
+	// Second distinct origin (originC) reports the uninstall → 2 distinct origins
+	// now meet the threshold → quorum is met → the removal applies.
+	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
+		OriginULID: originC,
+		PeerCount:  1, // ignored for the decision
+		Entries: []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: originC, UpdatedAt: base.Add(2 * time.Minute)},
+		},
+	}); err != nil {
+		t.Fatalf("apply uninstall from originC: %v", err)
 	}
 
 	// Row should be gone from the installed view.
@@ -288,7 +313,7 @@ func TestUninstallQuorumMet(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	if len(apps) != 0 {
-		t.Errorf("expected 0 installed apps after quorum uninstall, got %d", len(apps))
+		t.Errorf("expected 0 installed apps after distinct-origin quorum uninstall, got %d", len(apps))
 	}
 
 	// But the row should still exist with installed=false when includeRemoved=true.
@@ -301,6 +326,72 @@ func TestUninstallQuorumMet(t *testing.T) {
 	}
 	if all[0].Installed {
 		t.Error("expected installed=false for uninstalled row")
+	}
+}
+
+// TestUninstallDistinctOriginQuorum is the direct CRDT-QUORUM-01 unit assertion:
+// in a >2-node registry, N distinct origins DO reach quorum while one origin does
+// NOT — regardless of the PeerCount it claims.
+func TestUninstallDistinctOriginQuorum(t *testing.T) {
+	const (
+		ulid  = "01HWZMINST00000000000DISTO"
+		appID = "vault"
+	)
+	reg, as := openTempAppSync(t)
+	// 3 instances → threshold = 2 distinct origins.
+	for _, u := range []string{ulid, "01HWZMINST00000000000DIST2", "01HWZMINST00000000000DIST3"} {
+		if err := reg.Upsert(multiinstance.Instance{ULID: u, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
+			t.Fatalf("Upsert %s: %v", u, err)
+		}
+	}
+	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+
+	csInstall, _ := as.EmitChangeset(ulid, []multiinstance.AppRegistryEntry{
+		{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: true, InstalledBy: "nodeA", UpdatedAt: base},
+	})
+	if err := as.ApplyChangeset(csInstall); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// ONE origin, even with a wildly inflated PeerCount, does NOT reach quorum.
+	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
+		OriginULID: "lone-origin", PeerCount: 9999,
+		Entries: []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "lone-origin", UpdatedAt: base.Add(time.Minute)},
+		},
+	}); err != nil {
+		t.Fatalf("apply lone origin: %v", err)
+	}
+	if apps, _ := as.ListAppsForInstance(ulid, false); len(apps) != 1 || !apps[0].Installed {
+		t.Fatalf("ONE inflated origin must NOT reach quorum; rows=%+v", apps)
+	}
+
+	// Re-applying the SAME origin (replay) still counts as ONE distinct origin.
+	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
+		OriginULID: "lone-origin", PeerCount: 9999,
+		Entries: []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "lone-origin", UpdatedAt: base.Add(90 * time.Second)},
+		},
+	}); err != nil {
+		t.Fatalf("apply lone origin replay: %v", err)
+	}
+	if apps, _ := as.ListAppsForInstance(ulid, false); len(apps) != 1 || !apps[0].Installed {
+		t.Fatalf("replaying the SAME origin must still be ONE distinct origin; rows=%+v", apps)
+	}
+
+	// A SECOND distinct origin (even with a deflated/honest PeerCount) reaches the
+	// threshold of 2 → the uninstall applies.
+	if err := as.ApplyChangeset(&multiinstance.AppChangeset{
+		OriginULID: "second-origin", PeerCount: 1,
+		Entries: []multiinstance.AppRegistryEntry{
+			{InstanceULID: ulid, AppID: appID, AppVersion: "1.0.0", Installed: false, InstalledBy: "second-origin", UpdatedAt: base.Add(2 * time.Minute)},
+		},
+	}); err != nil {
+		t.Fatalf("apply second origin: %v", err)
+	}
+	apps, _ := as.ListAppsForInstance(ulid, false)
+	if len(apps) != 0 {
+		t.Fatalf("TWO distinct origins must reach quorum and apply the uninstall; rows=%+v", apps)
 	}
 }
 
