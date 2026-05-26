@@ -505,11 +505,15 @@ func changesetSigningMessage(originULID string, entries []AppRegistryEntry) []by
 	return []byte(b.String())
 }
 
-// verifyChangesetSignature reports whether cs carries a valid signature by the
-// ROSTERED public key for cs.OriginULID. It returns true only when:
+// verifyChangesetSignature reports whether cs carries a valid signature by a
+// CURRENTLY-VALID rostered public key for cs.OriginULID. It returns true only
+// when:
 //   - the origin is a KNOWN instance in the local registry roster, AND
+//   - that instance is NOT revoked (FABRIC-KEY-01: a revoked key never counts), AND
 //   - that instance has a published Ed25519 public key, AND
-//   - the signature decodes and verifies over the canonical message.
+//   - the signature decodes and verifies over the canonical message against
+//     EITHER the current rostered key OR, within an active rotation overlap
+//     window, the previous rostered key (FABRIC-KEY-01 grace period).
 //
 // The self-asserted cs.SignerPubKey is IGNORED for the decision — the rostered
 // key is authoritative — so a forged pubkey cannot help. A box's OWN origin
@@ -530,12 +534,13 @@ func (as *AppSync) verifyChangesetSignature(cs *AppChangeset) bool {
 		return false
 	}
 	inst, ok := as.reg.Get(cs.OriginULID)
-	if !ok || inst.Ed25519PublicKey == "" {
-		// Unknown / unrostered origin, or no published key → cannot verify.
+	if !ok {
+		// Unknown / unrostered origin → cannot verify.
 		return false
 	}
-	pub, err := base64.StdEncoding.DecodeString(inst.Ed25519PublicKey)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
+	// FABRIC-KEY-01 revocation: a compromised peer key NEVER counts toward
+	// quorum, regardless of which (current or previous) key signed. Fail closed.
+	if inst.Revoked {
 		return false
 	}
 	sig, err := base64.StdEncoding.DecodeString(cs.Signature)
@@ -543,6 +548,35 @@ func (as *AppSync) verifyChangesetSignature(cs *AppChangeset) bool {
 		return false
 	}
 	msg := changesetSigningMessage(cs.OriginULID, cs.Entries)
+
+	// Accept the CURRENT key.
+	if verifyWithB64Key(inst.Ed25519PublicKey, msg, sig) {
+		return true
+	}
+	// FABRIC-KEY-01 rotation overlap: accept the PREVIOUS key while its grace
+	// window is still open, so an observation signed just before a rotation (and
+	// still in flight) keeps verifying until peers have re-learned the new key.
+	if inst.PrevEd25519PublicKey != "" &&
+		!inst.PrevKeyExpiresAt.IsZero() &&
+		time.Now().UTC().Before(inst.PrevKeyExpiresAt) {
+		if verifyWithB64Key(inst.PrevEd25519PublicKey, msg, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyWithB64Key decodes a base64-standard Ed25519 public key and reports
+// whether sig is a valid signature by it over msg. Returns false on any decode
+// or length error (fail closed).
+func verifyWithB64Key(pubB64 string, msg, sig []byte) bool {
+	if pubB64 == "" {
+		return false
+	}
+	pub, err := base64.StdEncoding.DecodeString(pubB64)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return false
+	}
 	return ed25519.Verify(ed25519.PublicKey(pub), msg, sig)
 }
 

@@ -21,9 +21,18 @@ type cl10ConflictEntry struct {
 	Size      int64  `json:"size"`
 }
 
-// cl10ConflictPattern matches *.conflict-{node}-{timestamp}
-// e.g. notes.txt.conflict-node1-20240101T120000
-var cl10ConflictPattern = regexp.MustCompile(`^(.+)\.conflict-([^-]+(?:-[^-]+)*?)-(\d{8}T\d{6}|\d+)$`)
+// cl10ConflictPattern matches the conflict-copy filenames written by
+// services/sync (conflictCopyPath):
+//
+//	<stem>.conflict-<nodeID>-<YYYYMMDD-HHMMSS><ext>
+//	e.g. notes.conflict-office-20260516-143022.txt
+//	     data.conflict-home-server-20260516-143022.bin   (node ID may contain '-')
+//	     noext.conflict-node1-20260516-143022            (extension optional)
+//
+// Capture groups: 1=stem, 2=nodeID, 3=timestamp, 4=ext (with leading dot, or "").
+// The fixed-width "\d{8}-\d{6}" timestamp is the reliable anchor that lets the
+// node ID itself contain dashes. The base (canonical) file is stem+ext.
+var cl10ConflictPattern = regexp.MustCompile(`^(.+)\.conflict-(.+)-(\d{8}-\d{6})(\.[^.]+)?$`)
 
 // registerConflictRoutes wires GET /api/sync/conflicts and POST /api/sync/conflicts/resolve.
 func registerConflictRoutes(mux *http.ServeMux, dataDir string, notifySvc *notify.Service) {
@@ -54,7 +63,11 @@ func cl10ListConflicts(dataDir string) http.HandlerFunc {
 			if err == nil {
 				size = info.Size()
 			}
-			baseName := m[1] // filename without .conflict-*
+			// Reconstruct the canonical (base) filename: stem + ext. The
+			// conflict-copy filename interleaves the .conflict-<node>-<ts> marker
+			// BEFORE the extension (notes.conflict-office-20260516-143022.txt), so
+			// the base file is stem(m[1]) + ext(m[4]).
+			baseName := m[1] + m[4]
 			node := m[2]
 			ts := m[3]
 			baseRel := filepath.Join(filepath.Dir(rel), baseName)
@@ -142,7 +155,7 @@ func cl10ResolveConflict(dataDir string, notifySvc *notify.Service) http.Handler
 			return
 		}
 
-		baseName := m[1]
+		baseName := m[1] + m[4] // stem + ext → canonical base filename
 		baseAbs := filepath.Join(filepath.Dir(conflictAbs), baseName)
 
 		switch req.Keep {

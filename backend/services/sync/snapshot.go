@@ -315,6 +315,114 @@ func (c *Compactor) Run(ctx context.Context) error {
 	return nil
 }
 
+// ── Restore (SYNC-03: inverse of compaction) ──────────────────────────────────
+
+// DBRehydrate is the caller-supplied inverse of DBSnapshot: it takes the raw
+// decrypted snapshot blob (whatever DBSnapshot serialised — a sqlite3_serialize
+// image or a changeset bundle) and the version it covers, and applies it to the
+// local merged DB. It is the only state-mutating step of a restore; the
+// Restorer treats the blob as opaque bytes.
+type DBRehydrate func(ctx context.Context, data []byte, version int64) error
+
+// RestoreResult reports what a restore did.
+type RestoreResult struct {
+	// Version is the snapshot version that was restored.
+	Version int64
+	// Key is the S3 key of the snapshot blob that was restored.
+	Key string
+	// Bytes is the size of the decrypted snapshot blob applied.
+	Bytes int
+	// CreatedAt is the snapshot's recorded creation time.
+	CreatedAt time.Time
+}
+
+// ErrNoSnapshot is returned by Restore/LatestSnapshot when the bucket holds no
+// latest.json (nothing has ever been backed up).
+var ErrNoSnapshot = errors.New("sync: no snapshot present (latest.json absent)")
+
+// Restorer pulls the latest snapshot from the bucket and rehydrates local state.
+// It is the inverse of Compactor and shares the same SnapshotS3 abstraction, so
+// it works against the real SSE-C cluster client in production and the in-memory
+// mock in tests.
+//
+// Restore is intentionally LEASE-FREE: it is a read of an immutable, versioned
+// snapshot blob plus a local apply. Multiple nodes restoring concurrently is
+// harmless (they converge on the same snapshot), and a node recovering from a
+// blank disk must not need to win a write lease just to read its own backup.
+type Restorer struct {
+	s3        SnapshotS3
+	rehydrate DBRehydrate
+}
+
+// NewRestorer creates a Restorer.
+//
+//   - s3 must be the SAME encrypted cluster client used by the Compactor (the
+//     SSE-C key is managed by the cluster.Client layer; the Restorer never sees
+//     a passphrase).
+//   - rehydrate applies the decrypted blob to local state.
+func NewRestorer(s3 SnapshotS3, rehydrate DBRehydrate) *Restorer {
+	return &Restorer{s3: s3, rehydrate: rehydrate}
+}
+
+// LatestSnapshot reads and parses cluster/snapshot/latest.json. It returns
+// ErrNoSnapshot when latest.json is absent so callers can distinguish "nothing
+// backed up yet" from a transport error.
+func (r *Restorer) LatestSnapshot(ctx context.Context) (LatestDoc, error) {
+	data, err := r.s3.GetEncrypted(ctx, latestKey)
+	if err != nil {
+		// Treat any miss as "no snapshot" — the mock and the cluster client both
+		// surface a not-found as a plain error, and a restore on a fresh bucket
+		// should report ErrNoSnapshot rather than a raw transport error.
+		return LatestDoc{}, ErrNoSnapshot
+	}
+	var doc LatestDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return LatestDoc{}, fmt.Errorf("sync: parse latest.json: %w", err)
+	}
+	if doc.Key == "" {
+		return LatestDoc{}, fmt.Errorf("sync: latest.json has empty snapshot key")
+	}
+	return doc, nil
+}
+
+// Restore downloads the latest snapshot blob referenced by latest.json and
+// applies it via the rehydrate function. It returns ErrNoSnapshot when there is
+// nothing to restore.
+//
+// Steps:
+//  1. Read latest.json → {version, key, created_at}.
+//  2. Download + decrypt the snapshot blob at key.
+//  3. Apply it locally via rehydrate(data, version).
+func (r *Restorer) Restore(ctx context.Context) (RestoreResult, error) {
+	if r.rehydrate == nil {
+		return RestoreResult{}, fmt.Errorf("sync: Restore: nil rehydrate function")
+	}
+	doc, err := r.LatestSnapshot(ctx)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+
+	blob, err := r.s3.GetEncrypted(ctx, doc.Key)
+	if err != nil {
+		return RestoreResult{}, fmt.Errorf("sync: Restore: download snapshot blob %s: %w", doc.Key, err)
+	}
+	if len(blob) == 0 {
+		return RestoreResult{}, fmt.Errorf("sync: Restore: snapshot blob %s is empty", doc.Key)
+	}
+
+	if err := r.rehydrate(ctx, blob, doc.Version); err != nil {
+		return RestoreResult{}, fmt.Errorf("sync: Restore: rehydrate version %d: %w", doc.Version, err)
+	}
+
+	log.Printf("[snapshot] restored snapshot version=%d key=%s (%d bytes)", doc.Version, doc.Key, len(blob))
+	return RestoreResult{
+		Version:   doc.Version,
+		Key:       doc.Key,
+		Bytes:     len(blob),
+		CreatedAt: doc.CreatedAt,
+	}, nil
+}
+
 // existingSnapshotVersion reads latest.json and returns the version field.
 // Returns (0, err) when the object is absent or unreadable.
 func (c *Compactor) existingSnapshotVersion(ctx context.Context) (int64, error) {

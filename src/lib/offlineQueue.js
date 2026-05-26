@@ -1,5 +1,6 @@
 /**
- * offlineQueue.js — local write-queue for offline operation (OFFLINE-03).
+ * offlineQueue.js — local write-queue for offline operation (OFFLINE-03 +
+ * OFFLINE-04 IndexedDB upgrade).
  *
  * Shape mirrors webmail-vulos/src/lib/outboxQueue.js so the OS shell, mail
  * client, and office suite behave identically when the network drops.
@@ -18,27 +19,48 @@
  *       method:  string,           // 'POST' | 'PUT' | 'PATCH' | 'DELETE' | …
  *       path:    string,           // absolute URL OR /api-relative path
  *       headers: object | null,
- *       body:    string | null,    // already-serialized payload (e.g. JSON.stringify)
+ *       body:    string | Blob | ArrayBuffer | null,  // payload (may be binary)
  *     },
  *     queuedAt:  number,           // ms epoch
  *     attempts:  number,
  *     lastError: string | null,
  *   }
  *
- * Storage: localStorage (single key). v1 cap is small (per-OS-shell write
- * actions are infrequent — file ops + settings mutations); the IndexedDB
- * upgrade path is open for later.
+ * Storage (OFFLINE-04): IndexedDB is the DURABLE backing store, so large and
+ * BINARY queued writes (Blob / ArrayBuffer bodies) survive offline without the
+ * ~5 MB synchronous localStorage cap. To keep the EXISTING synchronous queue API
+ * (readAll/size/enqueue/remove/clear are all sync), an in-memory MIRROR is the
+ * source of truth for reads; every mutation writes through to IndexedDB (async,
+ * durable) and best-effort to localStorage (so the mirror can be re-hydrated
+ * synchronously on the next module load even before IndexedDB resolves).
+ *
+ * When IndexedDB is unavailable (SSR, locked-down browsers, the jsdom test env),
+ * the queue degrades to the previous localStorage-only behaviour with no API
+ * change.
  */
 
 import { request, rawFetch } from './api.js'
 
 const LS_KEY = 'vulos.os.offlineQueue.v1'
+const IDB_NAME = 'vulos.os.offlineQueue'
+const IDB_STORE = 'writes'
+const IDB_VERSION = 1
 const MAX_ATTEMPTS = 5
 const FLUSH_INTERVAL_MS = 30_000
+// Only mirror to localStorage when the JSON-serialisable form is comfortably
+// under the ~5 MB localStorage budget; large/binary records live only in
+// IndexedDB. This keeps the synchronous-hydration fast path working for the
+// common (small) case without ever overflowing localStorage.
+const LS_MIRROR_CAP_BYTES = 1_000_000
 
 let _flushing = false
 let _flushTimer = null
 const listeners = new Set()
+
+// In-memory mirror — the synchronous source of truth for readAll/size.
+let _mirror = hydrateFromLocalStorage()
+// Resolves once the initial IndexedDB hydration (if any) has completed.
+let _ready = hydrateFromIndexedDB()
 
 /** Subscribe to queue-state changes. Returns an unsubscribe fn. */
 export function onQueueChange(fn) {
@@ -60,25 +82,195 @@ function genId() {
   return `q-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-/** Read the full queue from localStorage. Empty array on missing/corrupt. */
-export function readAll() {
+// ── IndexedDB plumbing ───────────────────────────────────────────────────────
+
+/** True when IndexedDB is usable in this environment. */
+function idbAvailable() {
+  try {
+    return typeof indexedDB !== 'undefined' && indexedDB !== null
+  } catch {
+    return false
+  }
+}
+
+/** Open (creating/upgrading) the queue object store. Resolves to an IDBDatabase. */
+function openIDB() {
+  return new Promise((resolve, reject) => {
+    let req
+    try {
+      req = indexedDB.open(IDB_NAME, IDB_VERSION)
+    } catch (err) {
+      reject(err)
+      return
+    }
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        // keyPath 'id' so put/delete are keyed by the record id.
+        db.createObjectStore(IDB_STORE, { keyPath: 'id' })
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error || new Error('indexedDB open failed'))
+  })
+}
+
+/**
+ * Run fn(store) inside a transaction of the given mode and resolve to fn's
+ * result. We resolve from BOTH fn's own promise (which settles on the request's
+ * onsuccess, carrying the result) AND tx.oncomplete (durability), so the value
+ * is never lost to microtask-vs-macrotask ordering between onsuccess and
+ * oncomplete. Errors reject.
+ */
+async function withStore(mode, fn) {
+  const db = await openIDB()
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, mode)
+      const store = tx.objectStore(IDB_STORE)
+      let result
+      let fnDone = false
+      let txDone = false
+      const maybeResolve = () => { if (fnDone && txDone) resolve(result) }
+      Promise.resolve(fn(store)).then((r) => {
+        result = r
+        fnDone = true
+        maybeResolve()
+      }).catch(reject)
+      tx.oncomplete = () => { txDone = true; maybeResolve() }
+      tx.onerror = () => reject(tx.error || new Error('indexedDB tx failed'))
+      tx.onabort = () => reject(tx.error || new Error('indexedDB tx aborted'))
+    })
+  } finally {
+    try { db.close() } catch { /* ignore */ }
+  }
+}
+
+/** Read every record from IndexedDB (ordered by queuedAt for stable replay). */
+async function idbReadAll() {
+  return withStore('readonly', (store) => new Promise((resolve, reject) => {
+    const req = store.getAll()
+    req.onsuccess = () => {
+      const rows = Array.isArray(req.result) ? req.result.slice() : []
+      rows.sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0))
+      resolve(rows)
+    }
+    req.onerror = () => reject(req.error)
+  }))
+}
+
+function idbPut(record) {
+  return withStore('readwrite', (store) => { store.put(record) })
+}
+
+function idbDelete(id) {
+  return withStore('readwrite', (store) => { store.delete(id) })
+}
+
+function idbClear() {
+  return withStore('readwrite', (store) => { store.clear() })
+}
+
+/**
+ * Persist the full record set to IndexedDB (durable), then best-effort mirror a
+ * small subset to localStorage for fast synchronous re-hydration. Binary/large
+ * records are kept in IndexedDB only. Fire-and-forget: failures never block the
+ * synchronous caller (the in-memory mirror already reflects the change).
+ */
+function persist(items) {
+  writeLocalStorageMirror(items)
+  if (!idbAvailable()) return Promise.resolve()
+  // Reconcile IndexedDB to exactly `items`: clear then re-put. The set is small
+  // (queued offline writes), so a full rewrite is simplest and race-free.
+  return idbClear()
+    .then(() => Promise.all(items.map((it) => idbPut(it))))
+    .catch(() => { /* durable store unavailable — mirror still holds the data */ })
+}
+
+// ── localStorage mirror (synchronous hydration source + fallback) ─────────────
+
+/**
+ * writeLocalStorageMirror serialises items to localStorage when they are small
+ * enough and JSON-safe. Records carrying binary (Blob/ArrayBuffer) bodies or an
+ * over-cap total are NOT mirrored (they live durably in IndexedDB); a marker is
+ * left so a fresh load knows to wait for the IndexedDB hydration.
+ */
+function writeLocalStorageMirror(items) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const jsonSafe = items.every((it) => isJsonSafeBody(it.body && it.body.body))
+    if (!jsonSafe) {
+      // Cannot represent binary in localStorage — defer to IndexedDB entirely.
+      localStorage.setItem(LS_KEY, JSON.stringify({ deferred: true }))
+      return
+    }
+    const serialized = JSON.stringify(items)
+    if (serialized.length > LS_MIRROR_CAP_BYTES) {
+      localStorage.setItem(LS_KEY, JSON.stringify({ deferred: true }))
+      return
+    }
+    localStorage.setItem(LS_KEY, serialized)
+  } catch { /* storage may be full or unavailable — IndexedDB remains durable */ }
+}
+
+/** A body is JSON-safe if it is null, a string, or absent (not Blob/ArrayBuffer). */
+function isJsonSafeBody(body) {
+  if (body == null) return true
+  if (typeof body === 'string') return true
+  return false
+}
+
+/** Synchronously hydrate the mirror from localStorage. [] on missing/corrupt/deferred. */
+function hydrateFromLocalStorage() {
   try {
     if (typeof localStorage === 'undefined') return []
     const raw = localStorage.getItem(LS_KEY)
     if (!raw) return []
     const v = JSON.parse(raw)
-    return Array.isArray(v) ? v : []
+    if (Array.isArray(v)) return v
+    // { deferred: true } or any non-array → empty until IndexedDB hydrates.
+    return []
   } catch {
     return []
   }
 }
 
-function writeAll(items) {
+/**
+ * Asynchronously hydrate the mirror from IndexedDB (the durable store). When
+ * IndexedDB holds records the localStorage mirror could not (binary/large), this
+ * is what restores them after a reload. IndexedDB is authoritative on init.
+ */
+async function hydrateFromIndexedDB() {
+  if (!idbAvailable()) return
   try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(LS_KEY, JSON.stringify(items))
+    const rows = await idbReadAll()
+    if (rows.length > 0) {
+      _mirror = rows
+      emit()
     }
-  } catch { /* storage may be full or unavailable */ }
+  } catch { /* durable store unavailable — keep the localStorage-hydrated mirror */ }
+}
+
+/**
+ * ready — resolves once the initial IndexedDB hydration has completed. Optional;
+ * the synchronous API works immediately off the localStorage-hydrated mirror,
+ * but a caller (or test) that needs the durable set restored can await this.
+ */
+export function ready() {
+  return _ready
+}
+
+// ── Public queue API (synchronous, mirror-backed) ────────────────────────────
+
+/** Read the full queue. Synchronous — returns a copy of the in-memory mirror. */
+export function readAll() {
+  return _mirror.slice()
+}
+
+/** Replace the mirror and write through to the durable + fallback stores. */
+function writeAll(items) {
+  _mirror = items.slice()
+  persist(_mirror)
 }
 
 /**
@@ -87,6 +279,8 @@ function writeAll(items) {
  * @param {object} entry
  * @param {string} [entry.kind]    free-form caller tag
  * @param {object} entry.body      { method, path, headers, body }
+ *   body.body may be a string, a Blob, or an ArrayBuffer — binary survives via
+ *   IndexedDB (it could not in the old localStorage-only queue).
  * @returns {object} the stored record
  */
 export function enqueue(entry) {
@@ -113,8 +307,7 @@ export function enqueue(entry) {
 
 /** Remove a record by id. */
 export function remove(id) {
-  const items = readAll().filter((it) => it.id !== id)
-  writeAll(items)
+  writeAll(readAll().filter((it) => it.id !== id))
   emit()
 }
 
@@ -126,7 +319,7 @@ export function clear() {
 
 /** Number of items currently queued. */
 export function size() {
-  return readAll().length
+  return _mirror.length
 }
 
 /**
@@ -175,9 +368,10 @@ export async function flush(deps) {
     for (const record of items) {
       try {
         await replay(record)
-        // Success: drop from queue.
+        // Success: drop from queue (durable delete + mirror update).
         items = readAll().filter((it) => it.id !== record.id)
         writeAll(items)
+        if (idbAvailable()) { try { await idbDelete(record.id) } catch { /* mirror authoritative */ } }
         sent++
       } catch (err) {
         record.attempts++

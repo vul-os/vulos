@@ -2440,8 +2440,20 @@ func main() {
 			// holder can only ever validly sign as itself (one distinct verified
 			// origin), defeating the multi-forged-origin quorum attack. The key
 			// must persist across restarts (peers cached the public key).
+			// FABRIC-KEY-01: encrypt the signing key AT REST. The seed is sealed
+			// with AES-256-GCM under the OS-keyring root key (VULOS_FABRIC_KEY_HEX,
+			// fail-closed in VULOS_ENV=prod). A legacy plaintext key file is
+			// migrated in place on first sealed load. If no keyring key is
+			// available (dev without the env), SealedKeyFromEnv derives a loud dev
+			// key; LoadOrCreateSealedInstanceKey with a nil sealer would fall back
+			// to the legacy unencrypted file.
 			fabricKeyPath := filepath.Join(dataDir, "fabric_instance_key")
-			if instKey, kerr := multiinstance.LoadOrCreateInstanceKey(fabricKeyPath); kerr != nil {
+			fabricSealer, sealErr := multiinstance.SealedKeyFromEnv()
+			if sealErr != nil {
+				log.Printf("[fabric] WARNING: key-at-rest sealing unavailable (%v) — falling back to UNENCRYPTED signing key file", sealErr)
+				fabricSealer = nil
+			}
+			if instKey, kerr := multiinstance.LoadOrCreateSealedInstanceKey(fabricKeyPath, fabricSealer); kerr != nil {
 				log.Printf("[fabric] WARNING: could not load/create signing key (%v) — uninstall observations from this box will NOT count toward peer quorum", kerr)
 			} else if serr := fabricAppSync.SetIdentity(cfg.InstanceID, instKey); serr != nil {
 				log.Printf("[fabric] WARNING: could not set signing identity (%v) — uninstall observations from this box will NOT count toward peer quorum", serr)

@@ -59,6 +59,21 @@ type Instance struct {
 	Role            Role      `json:"role"`
 	Status          Status    `json:"status"`
 	LastSeenAt      time.Time `json:"last_seen_at"`
+
+	// ── FABRIC-KEY-01: key rotation overlap + revocation ─────────────────────
+	//
+	// PrevEd25519PublicKey is the instance's PREVIOUS signing key, retained for a
+	// grace window after a rotation so in-flight observations signed under the
+	// old key still verify (and thus still count toward quorum) until peers have
+	// re-learned the new key. Empty when no rotation overlap is active.
+	PrevEd25519PublicKey string `json:"prev_ed25519_public_key,omitempty"`
+	// PrevKeyExpiresAt is when the PrevEd25519PublicKey overlap window ends; after
+	// this the old key is no longer accepted. Zero == no overlap.
+	PrevKeyExpiresAt time.Time `json:"prev_key_expires_at,omitempty"`
+	// Revoked marks this peer's key as compromised. A revoked instance's signed
+	// observations NEVER count toward quorum (verification fails closed),
+	// regardless of which (current or previous) key signed them.
+	Revoked bool `json:"revoked,omitempty"`
 }
 
 // Registry is the local persistent store of all account instances.
@@ -112,14 +127,20 @@ func (r *Registry) Upsert(inst Instance) error {
 	}
 
 	lastSeen := formatTime(inst.LastSeenAt)
+	prevExpires := formatTime(inst.PrevKeyExpiresAt)
+	revoked := 0
+	if inst.Revoked {
+		revoked = 1
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	_, err := r.db.Exec(`
 		INSERT INTO instances
-			(ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			(ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
+			 prev_ed25519_public_key, prev_key_expires_at, revoked)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(ulid) DO UPDATE SET
 			display_name      = excluded.display_name,
 			kind              = excluded.kind,
@@ -130,7 +151,10 @@ func (r *Registry) Upsert(inst Instance) error {
 			last_seen_at      = CASE
 				WHEN excluded.last_seen_at != '' THEN excluded.last_seen_at
 				ELSE instances.last_seen_at
-			END`,
+			END,
+			prev_ed25519_public_key = excluded.prev_ed25519_public_key,
+			prev_key_expires_at     = excluded.prev_key_expires_at,
+			revoked                 = excluded.revoked`,
 		inst.ULID,
 		inst.DisplayName,
 		string(inst.Kind),
@@ -139,6 +163,9 @@ func (r *Registry) Upsert(inst Instance) error {
 		string(inst.Role),
 		string(inst.Status),
 		lastSeen,
+		inst.PrevEd25519PublicKey,
+		prevExpires,
+		revoked,
 	)
 	if err != nil {
 		return fmt.Errorf("multiinstance: Upsert %s: %w", inst.ULID, err)
@@ -152,7 +179,8 @@ func (r *Registry) Get(ulid string) (Instance, bool) {
 	defer r.mu.RUnlock()
 
 	row := r.db.QueryRow(`
-		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at
+		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
+		       prev_ed25519_public_key, prev_key_expires_at, revoked
 		FROM instances WHERE ulid = ?`, ulid)
 	inst, err := scanInstance(row)
 	if err == sql.ErrNoRows {
@@ -172,7 +200,8 @@ func (r *Registry) List() ([]Instance, error) {
 	defer r.mu.RUnlock()
 
 	rows, err := r.db.Query(`
-		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at
+		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
+		       prev_ed25519_public_key, prev_key_expires_at, revoked
 		FROM instances ORDER BY ulid`)
 	if err != nil {
 		return nil, fmt.Errorf("multiinstance: List: %w", err)
@@ -217,11 +246,13 @@ type scanner interface {
 
 func scanInstance(s scanner) (Instance, error) {
 	var (
-		inst        Instance
-		kind        string
-		role        string
-		status      string
-		lastSeenRaw string
+		inst           Instance
+		kind           string
+		role           string
+		status         string
+		lastSeenRaw    string
+		prevExpiresRaw string
+		revokedInt     int
 	)
 	err := s.Scan(
 		&inst.ULID,
@@ -232,6 +263,9 @@ func scanInstance(s scanner) (Instance, error) {
 		&role,
 		&status,
 		&lastSeenRaw,
+		&inst.PrevEd25519PublicKey,
+		&prevExpiresRaw,
+		&revokedInt,
 	)
 	if err != nil {
 		return Instance{}, err
@@ -239,9 +273,15 @@ func scanInstance(s scanner) (Instance, error) {
 	inst.Kind = Kind(kind)
 	inst.Role = Role(role)
 	inst.Status = Status(status)
+	inst.Revoked = revokedInt != 0
 	if lastSeenRaw != "" {
 		if t, err := time.Parse(time.RFC3339Nano, lastSeenRaw); err == nil {
 			inst.LastSeenAt = t
+		}
+	}
+	if prevExpiresRaw != "" {
+		if t, err := time.Parse(time.RFC3339Nano, prevExpiresRaw); err == nil {
+			inst.PrevKeyExpiresAt = t
 		}
 	}
 	return inst, nil
@@ -299,6 +339,31 @@ func migrate(db *sql.DB) error {
 	// already carries the column from the 0006 CREATE TABLE) returns.
 	if err := ensureObservationEpochColumns(db); err != nil {
 		return fmt.Errorf("migrate: observation epoch columns: %w", err)
+	}
+	if err := ensureInstanceKeyRotationColumns(db); err != nil {
+		return fmt.Errorf("migrate: instance key-rotation columns: %w", err)
+	}
+	return nil
+}
+
+// ensureInstanceKeyRotationColumns adds the FABRIC-KEY-01 rotation/revocation
+// columns to the instances table for a DB created before these columns existed.
+// Idempotent: a "duplicate column name" error means the column is already
+// present (fresh DB or a prior run) and is swallowed. modernc.org/sqlite has no
+// "ADD COLUMN IF NOT EXISTS" so we add each and tolerate the duplicate error.
+func ensureInstanceKeyRotationColumns(db *sql.DB) error {
+	stmts := []string{
+		`ALTER TABLE instances ADD COLUMN prev_ed25519_public_key TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE instances ADD COLUMN prev_key_expires_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE instances ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return err
+		}
 	}
 	return nil
 }
