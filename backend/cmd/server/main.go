@@ -46,6 +46,7 @@ import (
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/installer"
+	"vulos/backend/services/lease"
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/osdist"
@@ -75,6 +76,17 @@ import (
 
 func main() {
 	obs.Init()
+
+	// Subcommand dispatch: `vulos backup` / `vulos restore` run a one-shot
+	// snapshot/restore against S3 and exit, instead of starting the server.
+	{
+		cmdCtx, cmdCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		if handled, code := dispatchSubcommand(cmdCtx); handled {
+			cmdCancel()
+			os.Exit(code)
+		}
+		cmdCancel()
+	}
 
 	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
 	flag.Parse()
@@ -1994,6 +2006,54 @@ func main() {
 						log.Printf("[sync] file sync loop started")
 					} else {
 						log.Printf("[sync] init warning: %v", syncErr)
+					}
+
+					// DB snapshot backup/restore (services/sync Compactor/Restorer)
+					// wired to admin HTTP endpoints + an optional periodic loop.
+					backupNodeID, _ := clusterInst.Health()["node_id"].(string)
+					backupLeaseCfg := lease.S3Config{
+						Endpoint:  clusterS3Cfg.Endpoint,
+						Bucket:    clusterS3Cfg.Bucket,
+						AccessKey: clusterS3Cfg.AccessKey,
+						SecretKey: clusterS3Cfg.SecretKey,
+						UseSSL:    clusterS3Cfg.UseSSL,
+					}
+					backupDBPath := os.Getenv("VULOS_BACKUP_DB")
+					if backupDBPath == "" {
+						backupDBPath = filepath.Join(dbDir, "auth.db")
+					}
+					registerBackupRoutes(mux, clusterBackupDeps(authStore, s3c, backupLeaseCfg, backupNodeID, backupDBPath))
+					log.Printf("[backup] admin backup/restore endpoints registered (db=%s)", backupDBPath)
+
+					// Optional config-gated periodic backup. Enable by setting
+					// VULOS_BACKUP_INTERVAL (e.g. "1h", "30m"). Disabled by default.
+					if iv := os.Getenv("VULOS_BACKUP_INTERVAL"); iv != "" {
+						if d, perr := time.ParseDuration(iv); perr == nil && d > 0 {
+							if compactor, cerr := sync.BuildCompactor(
+								sync.BackupConfig{NodeID: backupNodeID, DBPath: backupDBPath},
+								s3c, backupLeaseCfg,
+							); cerr == nil {
+								go func() {
+									ticker := time.NewTicker(d)
+									defer ticker.Stop()
+									for {
+										select {
+										case <-ctx.Done():
+											return
+										case <-ticker.C:
+											if err := compactor.Run(ctx); err != nil {
+												log.Printf("[backup] periodic backup failed: %v", err)
+											}
+										}
+									}
+								}()
+								log.Printf("[backup] periodic backup loop started (interval=%s)", d)
+							} else {
+								log.Printf("[backup] periodic backup init warning: %v", cerr)
+							}
+						} else {
+							log.Printf("[backup] invalid VULOS_BACKUP_INTERVAL %q: %v", iv, perr)
+						}
 					}
 				}
 			}

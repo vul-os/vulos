@@ -494,6 +494,14 @@ func (c *Client) ListPrefix(ctx context.Context, prefix string) ([]string, error
 	return keys, nil
 }
 
+// DeleteObject removes a single object from the cluster bucket. It mirrors the
+// SnapshotS3 abstraction in services/sync so *Client can drive the Compactor's
+// changeset pruning. Deleting an absent key is not treated as an error by the
+// minio client.
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	return c.mc.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+}
+
 // ── readAll helper (unexported, avoids import cycle with io package) ──────────
 
 // readAll is a local alias so sync.go is self-contained.
