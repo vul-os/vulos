@@ -61,23 +61,31 @@ func (s *Service) EnsureUser(username, password, role string) error {
 		}
 	}
 
-	// Create standard XDG directories
-	for _, dir := range []string{"Documents", "Downloads", "Pictures", "Music", "Videos", "Desktop"} {
-		os.MkdirAll(homeDir+"/"+dir, 0755)
+	// Restrict the home directory to owner-only (adduser creates it ~0755).
+	// This must happen before subdirs are created so the entire tree is private.
+	if err := os.Chmod(homeDir, 0700); err != nil {
+		log.Printf("[sysuser] chmod home %q: %v", homeDir, err)
 	}
 
-	// Create .vulos directories
+	// Create standard XDG directories (owner-only: no cross-profile reads)
+	for _, dir := range []string{"Documents", "Downloads", "Pictures", "Music", "Videos", "Desktop"} {
+		os.MkdirAll(homeDir+"/"+dir, 0700)
+	}
+
+	// Create .vulos directories (owner-only)
 	for _, dir := range []string{"data", "db", "sandbox", "apps"} {
-		os.MkdirAll(homeDir+"/.vulos/"+dir, 0755)
+		os.MkdirAll(homeDir+"/.vulos/"+dir, 0700)
 	}
 
 	s.ensureBashrc(homeDir, sysName)
 
-	// Set ownership
+	// Set ownership, then re-apply 0700 recursively to catch any dirs adduser
+	// may have created with broader permissions (e.g. ~/.ssh via skeldir).
 	if u, err := user.Lookup(sysName); err == nil {
 		uid, _ := strconv.Atoi(u.Uid)
 		gid, _ := strconv.Atoi(u.Gid)
 		chownR(homeDir, uid, gid)
+		chmodR(homeDir, 0700)
 	}
 
 	log.Printf("[sysuser] created Linux user %q", sysName)
@@ -218,4 +226,8 @@ func sanitizeUsername(name string) string {
 
 func chownR(path string, uid, gid int) {
 	exec.Command("chown", "-R", fmt.Sprintf("%d:%d", uid, gid), path).Run()
+}
+
+func chmodR(path string, mode os.FileMode) {
+	exec.Command("chmod", "-R", fmt.Sprintf("%04o", mode), path).Run()
 }

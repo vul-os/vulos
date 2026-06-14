@@ -2,6 +2,7 @@ package pty
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -229,7 +230,14 @@ func (s *Service) createSession(userID string, cols, rows uint16) (*Session, err
 		"HOSTNAME=vula",
 	)
 
-	if s.resolve != nil && s.sysUsers != nil && os.Getuid() == 0 {
+	if s.resolve != nil && s.sysUsers != nil {
+		// Per-profile isolation is configured.  We can only enforce it when the
+		// server runs as root (needed to setuid/setgid to the profile's uid/gid).
+		// Silently running as the shared server user would mean every profile
+		// shares one Linux identity — a privilege-escalation risk.  Fail closed.
+		if os.Getuid() != 0 {
+			return nil, fmt.Errorf("terminal requires the OS server to run as root for per-profile isolation")
+		}
 		if username := s.resolve(userID); username != "" {
 			if procAttr, homeDir := s.sysUsers.Credential(username); procAttr != nil {
 				cmd.SysProcAttr = procAttr
