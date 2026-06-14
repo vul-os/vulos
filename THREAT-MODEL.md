@@ -1,6 +1,6 @@
 # Threat Model — Vulos OS
 
-STRIDE pass. Last updated: 2026-05-23.
+STRIDE pass. Last updated: 2026-05-26 (added Component 4: Login & Credential Isolation).
 
 ---
 
@@ -100,6 +100,39 @@ Trust boundaries:
 ### Residual risks
 - Seccomp filter completeness depends on the kernel version; old kernels may lack certain enforcement.
 - App-registry trust (whether an app package is signed) is not yet enforced end-to-end (tracked in APPSTORE tasks).
+
+---
+
+## Component 4: Login & Credential Isolation
+
+**Principle: isolate the credential, not the browsing.** Vulos browsing is native — web content runs in the host browser, never a server-side streamed browser (ROADMAP.md §11). A streamed login was explicitly rejected: it does not protect a secret typed on a compromised client. Vulos instead isolates the *credential* (passkeys) and the *durable token* (server-side vault).
+
+### Mechanisms in code
+- **Passkeys / WebAuthn (primary login)** — `backend/services/passkeys/` (`login.go`), `src/auth/`. Registration + assertion login; the private key never leaves the authenticator, so a keylogger/extension captures nothing reusable; origin-bound → phishing-resistant. Password+2FA remains a fallback; new accounts default to passkeys.
+- **QR / phone-approval login** — `backend/services/passkeys/qrlogin.go`. Short-lived, single-use challenge approved by an already-authenticated phone, so no reusable secret is typed on a shared/streamed/kiosk client.
+- **Token vault / BFF** — `backend/services/credvault/tokenvault.go`, `cmd/server/routes_oauth.go`. OAuth/OIDC refresh tokens stored server-side, encrypted at rest (existing credvault AES-256-GCM). The client gets only a session reference; the backend makes credentialed outbound calls. `TestRefreshTokenNeverInHTTPResponse` asserts the refresh token never appears in a client-bound response or header.
+
+### Top STRIDE threats
+
+| # | Category | Threat |
+|---|----------|--------|
+| 1 | **Information Disclosure** | A connected-service refresh token leaks to the client (or to another tenant) and grants perpetual access. |
+| 2 | **Spoofing** | A phishing origin replays a captured password/2FA against the real backend. |
+| 3 | **Elevation of Privilege** | A QR login challenge is replayed or approved by the wrong account, granting a kiosk an unintended session. |
+
+### What this does NOT protect (honesty)
+- The BFF isolates the **durable token, not the entry moment** — a client compromised at the instant of auth can abuse that *session* while it lasts, but never gains the long-lived refresh token.
+- **Pixel-streaming a login does not protect a secret typed on a compromised client** — keystrokes originate on the client regardless of where the screen renders. This is why Vulos does not stream logins.
+- **Passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client.** A password can be captured at the point of entry however it is transported; a passkey private key cannot, because it never leaves the authenticator.
+
+### Mitigations / invariants
+- New connected-service integrations MUST route long-lived credentials through the token vault and MUST carry a test asserting the credential never reaches the client.
+- QR challenges are single-use with TTL; egress proxy rejects private/SSRF ranges.
+- Do not "add security" by streaming a login screen — strictly worse (cost, no benefit).
+
+### Residual risks
+- Session-scoped compromise on an already-infected client is out of scope of credential isolation (bounded, not eliminated).
+- Passkey recovery / account-reset path must not become a weaker backdoor than the passkey itself (tracked with the recovery-ladder design).
 
 ---
 

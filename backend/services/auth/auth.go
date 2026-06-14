@@ -33,7 +33,9 @@ type Session struct {
 }
 
 // User represents a vulos user account.
-// Primary auth is username + password. OAuth is optional for service connections.
+// Auth is local username + password; external provider links (Providers map) are
+// retained for accounts originally created via a social login flow but are not
+// used for OS login.
 type User struct {
 	ID           string            `json:"id"`
 	Username     string            `json:"username"`
@@ -293,6 +295,21 @@ func loadOrCreateSecret(path string) []byte {
 	os.MkdirAll(filepath.Dir(path), 0700)
 	os.WriteFile(path, secret, 0600)
 	return secret
+}
+
+// GetUserByUsername returns a user by username (nil if not found).
+func (s *Store) GetUserByUsername(username string) *User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if username == "" {
+		return nil
+	}
+	for _, u := range s.users {
+		if u.Username == username {
+			return u
+		}
+	}
+	return nil
 }
 
 // GetUserByEmail returns a user by email (nil if not found).

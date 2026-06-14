@@ -1,8 +1,12 @@
 package main
 
-// routes_open.go — POST /api/open: server-side xdg-open / Chromium new-tab.
-// Extracted from main.go to demonstrate the per-area routes file pattern.
-// See ROUTES.md for the contract new routes should follow.
+// routes_open.go — POST /api/open: host-browser open instruction.
+//
+// BROWSER-01/02 (native-first re-architecture): all URL opens resolve to a
+// host-browser instruction. The server-side streamed Chromium path has been
+// removed (services/webbrowser package deleted in BROWSER-02).
+// The response tells the frontend to open the URL in the host browser (in-shell
+// web view or new window/tab). Zero stream.Session objects are created.
 
 import (
 	"encoding/json"
@@ -13,7 +17,6 @@ import (
 	"sync/atomic"
 
 	"vulos/backend/services/notify"
-	"vulos/backend/services/webbrowser"
 )
 
 // openTabCount tracks concurrent open-tab requests for rate-limiting (SEC-H, H6).
@@ -50,9 +53,19 @@ func isRestrictedHost(host string) bool {
 	return false
 }
 
+// hostBrowserOpenResponse is returned by POST /api/open (BROWSER-01).
+// The frontend shell uses the "action" field to open the URL in the host
+// browser: either as an in-shell web view (iframe/web-view window) or a
+// real host OS browser tab, depending on the client environment.
+// Zero stream.Session objects are created for this action.
+type hostBrowserOpenResponse struct {
+	Action string `json:"action"` // always "open_in_host_browser"
+	URL    string `json:"url"`
+}
+
 // registerOpenRoutes wires POST /api/open onto mux.
 // All dependencies are passed explicitly — no globals captured.
-func registerOpenRoutes(mux *http.ServeMux, browserSvc *webbrowser.Service, notifySvc *notify.Service) {
+func registerOpenRoutes(mux *http.ServeMux, notifySvc *notify.Service) {
 	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			URL string `json:"url"`
@@ -75,20 +88,20 @@ func registerOpenRoutes(mux *http.ServeMux, browserSvc *webbrowser.Service, noti
 			return
 		}
 
-		// Enforce concurrent-tab cap to prevent resource exhaustion.
+		// Enforce concurrent-request cap to prevent resource exhaustion.
 		if atomic.AddInt32(&openTabCount, 1) > openTabMax {
 			atomic.AddInt32(&openTabCount, -1)
-			writeErr(w, 429, "too many open tabs")
+			writeErr(w, 429, "too many open requests")
 			return
 		}
 		defer atomic.AddInt32(&openTabCount, -1)
 
-		tab, err := browserSvc.OpenTab(req.URL)
-		if err != nil {
-			writeErr(w, 500, err.Error())
-			return
-		}
-		notifySvc.Send("browser", req.URL, notify.LevelInfo, "xdg-open")
-		writeJSON(w, tab)
+		// BROWSER-01: return a host-browser open instruction — do NOT call
+		// browserSvc.OpenTab() or spawn any stream.Session.
+		notifySvc.Send("browser", req.URL, notify.LevelInfo, "host-browser-open")
+		writeJSON(w, hostBrowserOpenResponse{
+			Action: "open_in_host_browser",
+			URL:    req.URL,
+		})
 	})
 }

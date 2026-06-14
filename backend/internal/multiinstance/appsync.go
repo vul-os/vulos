@@ -284,7 +284,7 @@ func (as *AppSync) identity() (selfULID string, priv ed25519.PrivateKey, pubB64 
 // The key file holds the base64-standard seed (ed25519.PrivateKey.Seed()) and is
 // written 0600. This is the same secrecy class as the box's other private keys.
 // SECURITY NOTE: this stores the key UNENCRYPTED at rest; for an at-rest-encrypted
-// variant, wrap with the OS keyring like internal/identity does. The fabric is
+// variant, wrap with the OS keyring like internal/airouter does. The fabric is
 // LAN-only and the key is access-controlled by file perms + the data dir.
 func LoadOrCreateInstanceKey(path string) (ed25519.PrivateKey, error) {
 	if b, err := os.ReadFile(path); err == nil {

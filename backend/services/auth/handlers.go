@@ -14,10 +14,9 @@ import (
 	"time"
 )
 
-// Handler wires OAuth routes into an http.ServeMux.
+// Handler wires local password, PIN, and fingerprint auth routes into an http.ServeMux.
 type Handler struct {
 	store         *Store
-	providers     map[string]*OAuthProvider
 	states        *stateStore
 	limiter       *RateLimiter
 	OnUserCreated func(username, password, role string) // called after a new user is registered
@@ -31,10 +30,9 @@ type Handler struct {
 
 func NewHandler(store *Store) *Handler {
 	return &Handler{
-		store:     store,
-		providers: Providers(),
-		states:    newStateStore(),
-		limiter:   DefaultRateLimiter(),
+		store:   store,
+		states:  newStateStore(),
+		limiter: DefaultRateLimiter(),
 	}
 }
 
@@ -46,10 +44,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/status", h.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/change-password", h.handleChangePassword)
 
-	// OAuth (for connecting services, not primary login)
-	mux.HandleFunc("GET /api/auth/providers", h.handleProviders)
-	mux.HandleFunc("GET /api/auth/login/{provider}", h.handleOAuthLogin)
-	mux.HandleFunc("GET /api/auth/callback/{provider}", h.handleCallback)
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
 	mux.HandleFunc("POST /api/auth/logout", h.handleLogout)
 
@@ -86,13 +80,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/fingerprint/verify", h.handleFingerprintVerify)
 	mux.HandleFunc("POST /api/auth/fingerprint/remove", h.handleFingerprintRemove)
 
-	log.Printf("[auth] registered providers: %s", strings.Join(providerNames(h.providers), ", "))
+	log.Printf("[auth] registered email/password auth routes")
 }
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
 	"/health":                      true,
-	"/api/auth/providers":          true,
 	"/api/auth/me":                 true,
 	"/api/auth/logout":             true,
 	"/api/auth/register":           true,
@@ -110,14 +103,16 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloud/signup":       true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
 	"/api/auth/pin/unlock":         true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":         true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
-	"/api/auth/fingerprint/status": true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
-	"/api/auth/fingerprint/verify": true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
+	"/api/auth/fingerprint/status":      true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/verify":      true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
+	"/api/auth/passkey/login/begin":     true, // LOGINISO-01: start passkey assertion (public — user not yet logged in)
+	"/api/auth/passkey/login/finish":    true, // LOGINISO-01: finish passkey assertion + issue session (public)
+	"/api/auth/qr/begin":               true, // LOGINISO-02: kiosk requests a QR challenge (public)
+	"/api/auth/qr/poll":                true, // LOGINISO-02: kiosk polls for approval (public)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
 var publicPrefixes = []string{
-	"/api/auth/login/",
-	"/api/auth/callback/",
 	"/assets/",
 }
 
@@ -193,8 +188,7 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 
 func (h *Handler) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
-		"has_users":       h.store.HasAnyUsers(),
-		"oauth_providers": providerNames(h.providers),
+		"has_users": h.store.HasAnyUsers(),
 	})
 }
 
@@ -399,91 +393,6 @@ func (h *Handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "password changed"})
 }
 
-func (h *Handler) handleProviders(w http.ResponseWriter, r *http.Request) {
-	var names []string
-	for k := range h.providers {
-		names = append(names, k)
-	}
-	writeJSON(w, map[string]any{"providers": names})
-}
-
-func (h *Handler) handleOAuthLogin(w http.ResponseWriter, r *http.Request) {
-	providerName := r.PathValue("provider")
-	provider, ok := h.providers[providerName]
-	if !ok {
-		writeErr(w, 404, fmt.Sprintf("unknown provider: %s", providerName))
-		return
-	}
-
-	state := h.states.create()
-	deviceID := r.URL.Query().Get("device_id")
-	if deviceID != "" {
-		h.states.setMeta(state, "device_id", deviceID)
-	}
-
-	http.Redirect(w, r, provider.AuthorizeURL(state), http.StatusTemporaryRedirect)
-}
-
-func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
-	providerName := r.PathValue("provider")
-	provider, ok := h.providers[providerName]
-	if !ok {
-		writeErr(w, 404, "unknown provider")
-		return
-	}
-
-	code := r.URL.Query().Get("code")
-	state := r.URL.Query().Get("state")
-
-	ip := extractIP(r)
-	if !h.states.validate(state) {
-		h.limiter.RecordFailure(ip)
-		writeErr(w, 400, "invalid or expired state")
-		return
-	}
-
-	deviceID := h.states.getMeta(state, "device_id")
-	h.states.delete(state)
-
-	// Exchange code for token
-	token, err := provider.Exchange(r.Context(), code)
-	if err != nil {
-		h.limiter.RecordFailure(ip)
-		writeErr(w, 500, fmt.Sprintf("token exchange failed: %v", err))
-		return
-	}
-
-	// Fetch user info
-	info, err := provider.FetchUserInfo(r.Context(), token.AccessToken)
-	if err != nil {
-		h.limiter.RecordFailure(ip)
-		writeErr(w, 500, fmt.Sprintf("failed to get user info: %v", err))
-		return
-	}
-
-	h.limiter.RecordSuccess(ip)
-
-	// Find or create user, create session
-	isNew := h.store.GetUserByEmail(info.Email) == nil
-	user := h.store.FindOrCreateUser(providerName, info.ProviderID, info.Email, info.Name, info.Picture)
-	if isNew && h.OnUserCreated != nil {
-		profile, _ := h.store.GetProfile(user.ID)
-		role := "user"
-		if profile != nil {
-			role = string(profile.Role)
-		}
-		h.OnUserCreated(user.Username, generateRandomPassword(), role)
-	}
-	sess := h.store.CreateSession(user, deviceID)
-	h.store.Flush()
-
-	// Set cookie (long-lived, httponly)
-	http.SetCookie(w, sessionCookie(r, sess.Token))
-
-	// Redirect to frontend
-	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
-}
-
 func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 	token := extractToken(r)
 	if token == "" {
@@ -550,6 +459,13 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	fmt.Fprintf(w, `{"error":%q}`, msg)
+}
+
+// SetSessionCookie writes the vulos_session cookie to w using the token.
+// It delegates to sessionCookie for cookie construction so all auth endpoints
+// produce identical cookies. Exported so route files in cmd/server can use it.
+func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, sessionCookie(r, token))
 }
 
 // sessionCookie creates a consistent session cookie for all auth endpoints.
@@ -637,14 +553,6 @@ func cookieDomain(r *http.Request) string {
 	// simple {sub}.{domain} setups still work.
 	// e.g. cockpit.lvh.me → .lvh.me
 	return "." + strings.Join(parts[1:], ".")
-}
-
-func providerNames(m map[string]*OAuthProvider) []string {
-	var names []string
-	for k := range m {
-		names = append(names, k)
-	}
-	return names
 }
 
 // stateStore manages CSRF state tokens with expiry.

@@ -61,7 +61,7 @@ const sealedKeyMagic = "vulos-fabric-sealed-v1"
 // "key-at-rest" mechanism: the seed never touches disk in plaintext.
 //
 // The root key is the same custody class as the box's other at-rest keys
-// (internal/airouter, internal/identity): derived from the OS keyring / an
+// (e.g. internal/airouter): derived from the OS keyring / an
 // operator-supplied env secret, never persisted alongside the ciphertext.
 type KeyringSealer struct {
 	rootKey []byte // exactly 32 bytes (AES-256)

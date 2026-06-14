@@ -7,7 +7,6 @@ package main
 //   - internal/airouter     — AI model router (BYO + cloud mode) replacing the
 //                             inline /api/ai/chat and /api/ai/status handlers
 //                             that have been removed from main.go.
-//   - internal/identity     — E2E-encrypted OS mail identity + mailbox.
 //   - internal/multiinstance — per-instance app routing table.
 //   - services/appnet       — subdomain provisioning (PUBWEB-02).
 //
@@ -33,7 +32,6 @@ import (
 	"vulos/backend/internal/airouter"
 	"vulos/backend/internal/cgroups"
 	"vulos/backend/internal/multiinstance"
-	"vulos/backend/internal/identity"
 	svcauth "vulos/backend/services/auth"
 	"vulos/backend/services/appnet"
 )
@@ -102,44 +100,6 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		airRouter := airouter.NewRouter(airStore)
 		airouter.RegisterHandlers(mux, airRouter)
 		log.Printf("[airouter] registered POST /api/ai/chat, POST /api/ai/models, GET /api/ai/status, PUT /api/ai/config")
-	}
-
-	// ── 2. Identity (internal/identity) ─────────────────────────────────────
-	//
-	// Routes registered:
-	//   POST  /api/identity/send
-	//   GET   /api/identity/mailbox
-	//   GET   /api/identity/mailbox/{id}
-	//   PATCH /api/identity/mailbox/{id}
-	//   GET   /api/identity/identity
-	//   POST  /api/identity/identity/rotate
-	//
-	// Identity is nil on first boot (no keypair generated yet); the handlers
-	// return 404/412 gracefully.  The relay key resolver returns a "not
-	// implemented" error for Send until the relay client is complete.
-	{
-		vmailDBPath := ""
-		if deps.dbDir != "" {
-			vmailDBPath = filepath.Join(deps.dbDir, "identity.db")
-		}
-		vmailStore, _ := identity.NewStore(vmailDBPath) // degraded mode on error
-
-		relayURL := os.Getenv("VULOS_RELAY_URL") // empty → DefaultRelayURL
-		vmailSvc := identity.New(nil, vmailStore, relayURL)
-
-		// Real relay-backed KeyResolver (IDENTITY-05).
-		relayClient := identity.NewRelayClient(relayURL)
-
-		// SessionValidator: resolve X-OS-Session against the auth Store so
-		// the identity handler no longer accepts an arbitrary non-empty header as proof of
-		// identity. When authStore is nil (degraded mode), pass nil — the
-		// identity handler is fail-closed in prod and dev-permissive otherwise.
-		var sessVal identity.SessionValidator
-		if deps.authStore != nil {
-			sessVal = identitySessionAdapter{store: deps.authStore}
-		}
-		identity.RegisterHandlersWithSession(mux, vmailSvc, relayClient, sessVal)
-		log.Printf("[identity] registered /api/identity/* routes")
 	}
 
 	// ── 3. Multi-instance app router (internal/multiinstance) ────────────────
@@ -415,23 +375,5 @@ func openSharedRegistry(dbDir string) *multiinstance.Registry {
 		}
 	}
 	return reg
-}
-
-// identitySessionAdapter bridges svcauth.Store.ValidateToken into the
-// identity.SessionValidator interface so the identity package can resolve X-OS-Session tokens
-// to a live, unrevoked user without importing services/auth directly.
-type identitySessionAdapter struct {
-	store *svcauth.Store
-}
-
-func (a identitySessionAdapter) ValidateOSSession(token string) (string, bool) {
-	if a.store == nil {
-		return "", false
-	}
-	sess, ok := a.store.ValidateToken(token)
-	if !ok || sess == nil {
-		return "", false
-	}
-	return sess.UserID, true
 }
 

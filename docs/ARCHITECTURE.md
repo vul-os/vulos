@@ -47,6 +47,23 @@ Vulos is a self-hosted personal OS in a container. It runs on a single machine (
 - `/metrics` — Prometheus textfile (counters, histograms, gauges in `vulos_*` namespace)
 - OTel traces via `backend/internal/obs.Start(ctx, op)` when `OTEL_EXPORTER_OTLP_ENDPOINT` is set
 
+## Browser architecture (BROWSER-01/02)
+
+Browsing is **host-browser-native**: `POST /api/open` returns a
+`{"action":"open_in_host_browser","url":"..."}` instruction; the frontend shell
+opens the URL in the kiosk Chromium (bare-metal) or the user's desktop browser
+(remote). No server-side streamed Chromium session is created.
+
+The `services/webbrowser` package (server-side Chromium streaming via Xvfb +
+GStreamer + WebRTC) was removed in BROWSER-02. The `xvfb`, `chromium`, and
+`xdotool` streaming-only packages are no longer installed in the container or
+bare-metal image; the kiosk Chromium and its enterprise-policy files
+(`/etc/chromium/policies/managed/vulos.json`) remain intact.
+
+Isolated/Disposable Browsing (RBI) is not implemented; the stub and its flag
+(`VULOS_ENABLE_ISOLATED_BROWSER`) have been removed. Revisit if a concrete use
+case arises that cannot be served by the host browser.
+
 ## See Also
 
 - Roadmap: `ROADMAP.md`

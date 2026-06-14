@@ -1,9 +1,9 @@
 // signal.go — P2P-preferred / relay-fallback decision logic.
 //
 // The fabric is used for *signaling*; media MUST go peer-to-peer whenever
-// possible. The relay's VULOS-STREAM/1 sub-protocol exposes a TURN slot
-// only after the requester emits an explicit msgP2PFailed signal — see
-// vulos-relay/internal/relay/streamsignal.go for the relay side.
+// possible. The VULOS-STREAM/1 sub-protocol exposes a TURN slot
+// only after the requester emits an explicit msgP2PFailed signal, served by
+// the host's peering backend.
 //
 // PathChooser owns the box-side decision: it runs a configurable P2P probe
 // (typically a STUN/ICE handshake attempt against the candidate addresses);

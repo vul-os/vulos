@@ -2,7 +2,7 @@
  * offlineQueue.js — local write-queue for offline operation (OFFLINE-03 +
  * OFFLINE-04 IndexedDB upgrade).
  *
- * Shape mirrors webmail-vulos/src/lib/outboxQueue.js so the OS shell, mail
+ * Shape mirrors lilmail/src/lib/outboxQueue.js so the OS shell, mail
  * client, and office suite behave identically when the network drops.
  *
  * When a write (POST/PUT/PATCH/DELETE) fails because the box is unreachable,

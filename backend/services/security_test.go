@@ -460,7 +460,6 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 	// with a comment explaining why it is safe to expose unauthenticated.
 	expectedPublicPaths := map[string]string{
 		"/health":                      "health probe — no sensitive data",
-		"/api/auth/providers":          "OAuth provider list — no sensitive data",
 		"/api/auth/me":                 "returns empty without a valid session",
 		"/api/auth/logout":             "logout is harmless without a session",
 		"/api/auth/register":           "first-user registration — protected at handler level",

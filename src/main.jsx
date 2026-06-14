@@ -11,13 +11,11 @@ configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status'
 import { bootstrapOffline } from '@vulos/relay-client/offlineBootstrap'
 import { startOfflineQueueFlushLoop } from './lib/offlineQueue.js'
 
-// MEET-OS-01: synchronous OS tier resolver. Reads window.__VULOS_TIER (set by
-// the OS bootstrap / Setup state). Returns 'free' as a safe default — the
-// SpacesApp still re-resolves the tier from /api/auth/status asynchronously
-// and writes window.__VULOS_MEET_LIVEKIT on its own (that path is unchanged
-// and byte-equivalent). The shared package treats the returned value as
-// opaque and exposes it via currentTierHint() for any other OS code that
-// wants a synchronous tier read at boot.
+// Synchronous OS tier resolver. Reads window.__VULOS_TIER (set by the OS
+// bootstrap / Setup state). Returns 'free' as a safe default. The shared
+// package treats the returned value as opaque and exposes it via
+// currentTierHint() for any other OS code that wants a synchronous tier
+// read at boot.
 function osTierHint() {
   if (typeof window !== 'undefined' && typeof window.__VULOS_TIER === 'string') {
     return window.__VULOS_TIER.toLowerCase()

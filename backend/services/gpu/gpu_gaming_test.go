@@ -116,3 +116,48 @@ func mustContain(t *testing.T, args []string, tokens ...string) {
 		}
 	}
 }
+
+// TestCaptureArgsUseDamage verifies STREAMWIN-02: use-damage=true for normal sessions
+// and use-damage=false for gaming sessions on the ximagesrc (X11/software) path.
+// The PipeWire path does not emit use-damage at all, so tests use software-tier Info.
+func TestCaptureArgsUseDamage(t *testing.T) {
+	sw := Info{Tier: TierSoftware} // no PipeWire, forces ximagesrc path
+
+	t.Run("normal/use-damage=true", func(t *testing.T) {
+		args := sw.CaptureArgs(":99", 60, false)
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, "use-damage=true") {
+			t.Errorf("normal session: expected use-damage=true; got: %s", joined)
+		}
+		if strings.Contains(joined, "use-damage=false") {
+			t.Errorf("normal session: must not contain use-damage=false; got: %s", joined)
+		}
+	})
+
+	t.Run("gaming/use-damage=false", func(t *testing.T) {
+		args := sw.CaptureArgs(":99", 60, true)
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, "use-damage=false") {
+			t.Errorf("gaming session: expected use-damage=false; got: %s", joined)
+		}
+		if strings.Contains(joined, "use-damage=true") {
+			t.Errorf("gaming session: must not contain use-damage=true; got: %s", joined)
+		}
+	})
+
+	t.Run("gaming-does-not-change-encoder-args", func(t *testing.T) {
+		// Encoder args must be identical between gaming=true and gaming=false
+		// for CaptureArgs (it only controls use-damage, not the encoder).
+		normalArgs := sw.CaptureArgs(":10", 30, false)
+		gamingArgs := sw.CaptureArgs(":10", 30, true)
+		// Both must have ximagesrc
+		mustContain(t, normalArgs, "ximagesrc")
+		mustContain(t, gamingArgs, "ximagesrc")
+		// They must differ only in the use-damage value
+		normalJoined := strings.Join(normalArgs, " ")
+		gamingJoined := strings.Join(gamingArgs, " ")
+		if normalJoined == gamingJoined {
+			t.Errorf("normal and gaming CaptureArgs must differ (use-damage); got identical: %s", normalJoined)
+		}
+	})
+}

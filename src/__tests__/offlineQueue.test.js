@@ -1,7 +1,7 @@
 /**
  * offlineQueue.test.js — OS write-queue (OFFLINE-03).
  *
- * Mirrors webmail-vulos/src/__tests__/outboxQueue.test.js so the OS shell,
+ * Mirrors lilmail/src/__tests__/outboxQueue.test.js so the OS shell,
  * mail, and office queues all behave the same.
  *
  * Covers:

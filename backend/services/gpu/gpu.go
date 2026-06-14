@@ -62,7 +62,11 @@ type Info struct {
 // CaptureArgs returns the GStreamer capture source element + properties.
 // When PipeWire is available, uses pipewiresrc for DMA-BUF zero-copy capture.
 // Falls back to ximagesrc (SHM copy from X11).
-func (g *Info) CaptureArgs(display string, fps int) []string {
+//
+// gaming controls the ximagesrc use-damage property:
+//   - gaming=false (normal): use-damage=true  — dirty-region capture; static windows produce ~0 frames
+//   - gaming=true:           use-damage=false — full-frame capture; required for constant high-FPS encode
+func (g *Info) CaptureArgs(display string, fps int, gaming bool) []string {
 	// PipeWire screen capture — DMA-BUF path, zero CPU copy
 	if g.HasPipeWire && g.HasDRI && gstHasElement("pipewiresrc") {
 		return []string{
@@ -70,10 +74,16 @@ func (g *Info) CaptureArgs(display string, fps int) []string {
 			"!", fmt.Sprintf("video/x-raw,framerate=%d/1", fps),
 		}
 	}
+	// Dirty-region capture: enabled for normal sessions (static window → ~0 encoded frames),
+	// disabled for gaming (full-frame capture needed for constant high-FPS encode).
+	useDamage := "true"
+	if gaming {
+		useDamage = "false"
+	}
 	// Default: ximagesrc (X11 SHM capture)
 	return []string{
 		"ximagesrc", fmt.Sprintf("display-name=%s", display),
-		"use-damage=false", "show-pointer=true",
+		"use-damage=" + useDamage, "show-pointer=true",
 		"!", fmt.Sprintf("video/x-raw,framerate=%d/1", fps),
 	}
 }

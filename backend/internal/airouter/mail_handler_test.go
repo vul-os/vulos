@@ -346,9 +346,8 @@ func TestMailStatus_Shape(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp struct {
-		Enabled              bool `json:"enabled"`
-		MonthlyTokenUsage    int  `json:"monthly_token_usage"`
-		MonthlyWalletCharge  int  `json:"monthly_wallet_charge_zar"`
+		Enabled           bool `json:"enabled"`
+		MonthlyTokenUsage int  `json:"monthly_token_usage"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)

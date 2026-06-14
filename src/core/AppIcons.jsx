@@ -9,7 +9,6 @@ export const APP_LOGOS = {
   chrome: '/icons/chrome.svg',
   browser: '/icons/chrome.svg',
   firefox: '/icons/firefox.svg',
-  thunderbird: '/icons/thunderbird.svg',
   gimp: '/icons/gimp.svg',
   blender: '/icons/blender.svg',
   inkscape: '/icons/inkscape.svg',
@@ -35,7 +34,7 @@ export const APP_COLORS = {
   browser: '#4285F4', apphub: '#EC4899', library: '#F97316', gallery: '#06B6D4',
   disks: '#EF4444', packages: '#10B981', drivers: '#6366F1', chat: '#3B82F6',
   // Desktop apps
-  firefox: '#FF7139', thunderbird: '#0A84FF', gimp: '#5C5543', blender: '#EA7600',
+  firefox: '#FF7139', gimp: '#5C5543', blender: '#EA7600',
   inkscape: '#000', libreoffice: '#18A303', vlc: '#FF8800', audacity: '#0000CC',
   kicad: '#314CB0', keepassxc: '#6CAC4D', filezilla: '#BF0000', transmission: '#B91C1C',
   freecad: '#374DF5', godot: '#478CBF', obs: '#302E31', kdenlive: '#527EB2',

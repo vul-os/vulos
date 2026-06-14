@@ -489,13 +489,12 @@ func (h *MailHandler) handleMailStatus(w http.ResponseWriter, r *http.Request) {
 		`SELECT monthly_token_usage FROM accounts WHERE account_id=?`, accountID,
 	).Scan(&monthlyTokens)
 
-	// Wallet charge estimate: ~R0.001 per 50 tokens (rough; real billing is in the billing service).
-	chargeZAR := monthlyTokens / 50
-
+	// OSS reports raw token USAGE only. Pricing/wallet charging is NOT done here —
+	// it lives entirely in the cloud billing service (which reads usage and applies
+	// the tier/rate model). Keeping ZAR pricing out of the OSS project is deliberate.
 	jsonOK(w, map[string]any{
-		"enabled":                 enabled,
-		"monthly_token_usage":     monthlyTokens,
-		"monthly_wallet_charge_zar": chargeZAR,
+		"enabled":             enabled,
+		"monthly_token_usage": monthlyTokens,
 	})
 }
 

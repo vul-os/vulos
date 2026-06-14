@@ -5,6 +5,14 @@
 //               The backend verifies the cloud-signed token locally; no live
 //               cloud dependency.
 //
+// LOGINISO-01: passkey (WebAuthn) login promoted from re-auth gate to full
+// login.  Shown as the primary CTA in LocalForm with "use password instead"
+// fallback.  PasskeyRegisterButton lives in Settings/Security.
+//
+// LOGINISO-02: QR / phone-approval kiosk login — shown when the device is in
+// kiosk/streamed mode (data-device-profile="kiosk") or the user clicks the QR
+// icon on the login screen.
+//
 // The component is a drop-in replacement for LoginScreen.jsx used when a
 // Login.jsx-aware router is in place.  It accepts the same onSuccess callback
 // as LoginScreen and calls it after a successful login.
@@ -13,6 +21,8 @@ import { useState, useEffect } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useAuth } from './AuthProvider'
+import { PasskeyLoginButton } from './PasskeyButton'
+import QRLoginPanel from './QRLogin'
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
@@ -50,6 +60,13 @@ export default function Login({ defaultMode }) {
       .catch(() => setHasUsers(true)) // safe default: assume users exist
   }, [])
 
+  // LOGINISO-02: detect kiosk/streamed mode — show QR login as an extra option.
+  const isKiosk = typeof document !== 'undefined' &&
+    document.documentElement.dataset.deviceProfile === 'kiosk'
+
+  // QR panel state — user can toggle it from the Local form.
+  const [showQR, setShowQR] = useState(isKiosk)
+
   if (!enrolledChecked || hasUsers === null) {
     return (
       <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center">
@@ -73,31 +90,53 @@ export default function Login({ defaultMode }) {
         <p className="text-xs text-neutral-700 mt-0.5">open</p>
       </div>
 
-      {/* Mode toggle (only shown on enrolled devices or when users already exist) */}
-      {hasUsers !== false && (
-        <div className="relative mb-6 flex rounded-xl bg-neutral-900/70 border border-neutral-800/60 p-1 gap-1">
-          <ModeTab
-            active={mode === 'local'}
-            onClick={() => setMode('local')}
-            label="Local"
-            icon={<LocalIcon />}
-          />
-          <ModeTab
-            active={mode === 'cloud'}
-            onClick={() => setMode('cloud')}
-            label="Cloud account"
-            icon={<CloudIcon />}
-          />
-        </div>
-      )}
+      {/* LOGINISO-02: QR panel overrides the normal form on kiosk mode */}
+      {showQR && hasUsers !== false
+        ? (
+          <div className="relative w-full max-w-sm">
+            <QRLoginPanel
+              onSuccess={checkAuth}
+              onCancel={() => setShowQR(false)}
+            />
+          </div>
+        )
+        : (
+          <>
+            {/* Mode toggle (only shown when users already exist) */}
+            {hasUsers !== false && (
+              <div className="relative mb-6 flex rounded-xl bg-neutral-900/70 border border-neutral-800/60 p-1 gap-1">
+                <ModeTab
+                  active={mode === 'local'}
+                  onClick={() => setMode('local')}
+                  label="Local"
+                  icon={<LocalIcon />}
+                />
+                <ModeTab
+                  active={mode === 'cloud'}
+                  onClick={() => setMode('cloud')}
+                  label="Cloud account"
+                  icon={<CloudIcon />}
+                />
+                {/* LOGINISO-02: QR button (always available, not just kiosk) */}
+                <ModeTab
+                  active={false}
+                  onClick={() => setShowQR(true)}
+                  label="QR"
+                  icon={<QRModeIcon />}
+                />
+              </div>
+            )}
 
-      {/* Form area */}
-      <div className="relative w-full max-w-sm">
-        {mode === 'local' || hasUsers === false
-          ? <LocalForm isSetup={hasUsers === false} onSuccess={checkAuth} />
-          : <CloudForm onSuccess={checkAuth} />
-        }
-      </div>
+            {/* Form area */}
+            <div className="relative w-full max-w-sm">
+              {mode === 'local' || hasUsers === false
+                ? <LocalForm isSetup={hasUsers === false} onSuccess={checkAuth} />
+                : <CloudForm onSuccess={checkAuth} />
+              }
+            </div>
+          </>
+        )
+      }
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -129,7 +168,7 @@ function ModeTab({ active, onClick, label, icon }) {
   )
 }
 
-// ─── Local form (username + password) ────────────────────────────────────────
+// ─── Local form (username + password + passkey) ───────────────────────────────
 
 function LocalForm({ isSetup, onSuccess }) {
   const [username, setUsername] = useState('')
@@ -137,6 +176,8 @@ function LocalForm({ isSetup, onSuccess }) {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // LOGINISO-01: show passkey-first UX for returning users; fallback to password.
+  const [usePassword, setUsePassword] = useState(isSetup)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -167,6 +208,46 @@ function LocalForm({ isSetup, onSuccess }) {
     }
   }
 
+  // LOGINISO-01: passkey-first layout for returning users.
+  if (!isSetup && !usePassword) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg text-neutral-300 text-center mb-2">Sign in</h2>
+
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1">Username</label>
+          <input
+            type="text"
+            value={username}
+            onChange={e => { setUsername(e.target.value); setError('') }}
+            placeholder="Username"
+            autoFocus
+            autoComplete="username"
+            className="input"
+          />
+        </div>
+
+        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+
+        {/* Primary CTA: passkey */}
+        <PasskeyLoginButton
+          username={username}
+          onSuccess={onSuccess}
+          onError={msg => setError(msg)}
+        />
+
+        {/* Fallback: password */}
+        <button
+          type="button"
+          onClick={() => { setUsePassword(true); setError('') }}
+          className="w-full text-sm text-neutral-600 hover:text-neutral-400 transition-colors text-center"
+        >
+          Use password instead
+        </button>
+      </div>
+    )
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <h2 className="text-lg text-neutral-300 text-center mb-2">
@@ -194,7 +275,7 @@ function LocalForm({ isSetup, onSuccess }) {
           onChange={e => setUsername(e.target.value)}
           placeholder="Username"
           required
-          autoFocus
+          autoFocus={isSetup}
           autoComplete="username"
           className="input"
         />
@@ -219,6 +300,17 @@ function LocalForm({ isSetup, onSuccess }) {
         {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
         {isSetup ? 'Create Account' : 'Sign In'}
       </button>
+
+      {/* LOGINISO-01: offer passkey switch for returning users */}
+      {!isSetup && (
+        <button
+          type="button"
+          onClick={() => { setUsePassword(false); setError('') }}
+          className="w-full text-sm text-neutral-600 hover:text-neutral-400 transition-colors text-center"
+        >
+          Use passkey instead
+        </button>
+      )}
     </form>
   )
 }
@@ -411,6 +503,19 @@ function CloudIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
+    </svg>
+  )
+}
+
+// LOGINISO-02: QR mode tab icon.
+function QRModeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <rect x="2" y="2" width="5" height="5" rx="0.5" />
+      <rect x="9" y="2" width="5" height="5" rx="0.5" />
+      <rect x="2" y="9" width="5" height="5" rx="0.5" />
+      <rect x="9.5" y="9.5" width="2" height="2" />
+      <path d="M12 9.5v2M9.5 12h2M12 12v2" />
     </svg>
   )
 }

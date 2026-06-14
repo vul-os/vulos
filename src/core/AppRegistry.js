@@ -119,8 +119,8 @@ const builtinRegistry = [
     id: 'mail',
     name: 'Mail',
     icon: '✉',
-    description: 'Vulos mail — inbox, compose, send, and thread view',
-    keywords: ['mail', 'email', 'inbox', 'compose', 'send', 'vumail', 'messages', 'thread'],
+    description: 'LilMail — lightweight IMAP/SMTP email client',
+    keywords: ['mail', 'email', 'inbox', 'compose', 'send', 'imap', 'smtp', 'lilmail', 'messages'],
     category: 'internet',
     builtin: true,
   },
@@ -165,14 +165,19 @@ const builtinRegistry = [
     builtin: true,
   },
 
+  // BROWSER-01: "Smart Browser" is the client-side web app (apps/browser/).
+  // It opens in the host browser as a WebApp lane entry — zero stream.Session.
+  // The server-side streamed Chromium ("browser" via stream pool) is retired.
   {
     id: 'browser',
-    name: 'Chrome',
+    name: 'Smart Browser',
     icon: 'chrome',
-    description: 'Web browser',
-    keywords: ['browser', 'web', 'internet', 'surf', 'chromium', 'chrome'],
+    description: 'Web browser — opens in host browser (no streaming)',
+    keywords: ['browser', 'web', 'internet', 'surf', 'chromium', 'smart'],
     category: 'internet',
     builtin: true,
+    type: 'web',
+    url: '/apps/browser/',
   },
 
   // --- Installed app services (have implementations in /apps/) ---

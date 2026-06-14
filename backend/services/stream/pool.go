@@ -213,6 +213,10 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		// Debounce channels for FPS and MangoHud changes (capacity 1).
 		fpsC:      make(chan int, 1),
 		mangoHudC: make(chan bool, 1),
+		// STREAMWIN-03: idle lifecycle.
+		gaming:      opts.Gaming,
+		normalFPS:   opts.FPS,
+		lastInputAt: time.Now(),
 	}
 
 	// Resolve user home — use provided UserHome, fall back to $HOME, then /root
@@ -359,6 +363,12 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	if gstBin != "" {
 		// buildVideoCmd constructs a gst-launch command with the current session bitrate.
 		// Called on initial launch and on every adaptive-bitrate restart.
+		// gstClientBin holds the path to `gst-client` if available.
+		// gst-client can set element properties on a running gst-launch-1.0
+		// pipeline via the GStreamer debug/control TCP socket.
+		// STREAMWIN-05: used for live bitrate updates without pipeline restart.
+		gstClientBin, _ := lookPath("gst-client")
+
 		sess.buildVideoCmd = func() *exec.Cmd {
 			sess.mu.Lock()
 			kbps := sess.bitrate
@@ -367,12 +377,16 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			sess.mu.Unlock()
 			args := []string{"-q"}
 			// Capture source: PipeWire DMA-BUF when available, ximagesrc fallback
-			args = append(args, gpuInfo.CaptureArgs(display, currentFPS)...)
+			args = append(args, gpuInfo.CaptureArgs(display, currentFPS, opts.Gaming)...)
 			// Color conversion / GPU upload (DMA-BUF for VA-API, CUDA for NVENC, CPU for software)
 			args = append(args, "!")
 			args = append(args, gpuInfo.ConvertArgs()...)
 			args = append(args, "!", "queue", "max-size-buffers=1", "leaky=downstream")
 			args = append(args, "!")
+			// STREAMWIN-05: insert videorate (name=vrate) so FPS changes can be applied
+			// live by adjusting the caps negotiation rate without a full pipeline restart.
+			args = append(args, "videorate", "name=vrate", "!")
+			args = append(args, fmt.Sprintf("video/x-raw,framerate=%d/1", currentFPS), "!")
 			// Encoder: gaming profile (zero-latency, no B-frames) or standard profile
 			if opts.Gaming {
 				args = append(args, gpuInfo.GamingEncoderArgs(opts.FPS, QualityGaming.Bitrate())...)
@@ -403,6 +417,39 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			return cmd
+		}
+
+		// tryLiveBitrateUpdate attempts to set the encoder bitrate live via gst-client
+		// without restarting the pipeline (STREAMWIN-05).
+		// Returns true if the live update succeeded; false means the caller must fall
+		// back to the restart path.
+		tryLiveBitrateUpdate := func(kbps int) bool {
+			if gstClientBin == "" {
+				return false
+			}
+			// Determine property name and value for each encoder.
+			// vp8enc uses target-bitrate in bps; nvenc/vaapi use bitrate in kbps.
+			var prop, val string
+			switch gpuInfo.Encoder {
+			case "nvh264enc", "nvav1enc":
+				prop = "bitrate"
+				val = fmt.Sprintf("%d", kbps)
+			case "vaapih264enc", "vaav1enc":
+				prop = "bitrate"
+				val = fmt.Sprintf("%d", kbps)
+			default: // vp8enc
+				prop = "target-bitrate"
+				val = fmt.Sprintf("%d", kbps*1000)
+			}
+			// gst-client pipeline_name element_name property_name property_value
+			// Pipeline name defaults to "pipeline0" for gst-launch-1.0.
+			cmd := exec.Command(gstClientBin,
+				"set_property", "pipeline0", EncoderElementName, prop, val)
+			if err := cmd.Run(); err != nil {
+				return false
+			}
+			log.Printf("[stream] %s: live bitrate update → %dkbps (no restart)", sess.Name, kbps)
+			return true
 		}
 
 		// Video pipeline — adaptive-bitrate restarts via runWithBackoff (STREAM-04).
@@ -447,12 +494,19 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			}
 		}()
 
-		// Video pipeline
-		go runWithBackoff(ctx, sess.Name+"-video", sess.buildVideoCmd, &sess.gstVideo)
+		// STREAMWIN-01: Assign videoStartFn so peerConnect() can launch the video
+		// pipeline on the first peer connection. The pipeline is NOT started here;
+		// it will be started on the 0→1 peer transition.
+		sess.videoStartFn = func() {
+			runWithBackoff(ctx, sess.Name+"-video", sess.buildVideoCmd, &sess.gstVideo)
+		}
 
-		// Debounced adaptive-bitrate restart: waits ≥5 s after a quality change,
-		// then kills the running gst video process so runWithBackoff relaunches it
-		// with the updated bitrate from sess.buildVideoCmd.
+		// STREAMWIN-05: Debounced adaptive-bitrate change handler.
+		// On each bitrateC signal:
+		//   1. Try a live property set via gst-client (no restart, no black frame).
+		//   2. If gst-client is unavailable or fails, fall back to the old SIGTERM restart.
+		// The debounce window is kept at 5 s so rapid ABR oscillations don't thrash
+		// the encoder; only the live path avoids the visible restart artefact.
 		go func() {
 			const debounce = 5 * time.Second
 			timer := time.NewTimer(debounce)
@@ -467,13 +521,17 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 					timer.Stop()
 					timer.Reset(debounce)
 				case <-timer.C:
-					// Debounce elapsed — kill current gst video process.
-					// runWithBackoff will relaunch via buildVideoCmd (reads updated bitrate).
 					sess.mu.Lock()
 					kbps := sess.bitrate
 					cmd := sess.gstVideo
 					sess.mu.Unlock()
-					log.Printf("[stream] adaptive bitrate restart: encoder=%s bitrate=%dkbps",
+					// Attempt live update first (STREAMWIN-05 happy path).
+					if tryLiveBitrateUpdate(kbps) {
+						// Live update succeeded — no restart needed.
+						continue
+					}
+					// Fallback: restart the pipeline (legacy path).
+					log.Printf("[stream] adaptive bitrate restart (fallback): encoder=%s bitrate=%dkbps",
 						sess.Encoder, kbps)
 					if cmd != nil && cmd.Process != nil {
 						syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -573,6 +631,9 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		delete(p.sessions, opts.ID)
 		p.mu.Unlock()
 	}()
+
+	// STREAMWIN-03: start idle lifecycle watcher (no-op when gaming=true).
+	sess.startIdleWatcher()
 
 	p.mu.Lock()
 	p.sessions[opts.ID] = sess

@@ -153,9 +153,10 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	s.httpLn = ln
 	tlsLn := tls.NewListener(ln, TLSConfig(s.cfg.CertSource))
-	s.httpSrv = &http.Server{Handler: s.cfg.Handler}
+	srv := &http.Server{Handler: s.cfg.Handler}
+	s.httpSrv = srv
 	go func() {
-		if err := s.httpSrv.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("[lan] https serve error: %v", err)
 		}
 	}()

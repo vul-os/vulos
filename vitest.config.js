@@ -6,8 +6,6 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Allow apps/mail/ to import @vulos/mail-client from the local source tree
-      '@vulos/mail-client': resolve(import.meta.dirname, '../vulos-mail/webmail-vulos/src/lib.jsx'),
       // Allow office/spaces/calendar/meet OS wrappers to import @vulos/office-client
       // sub-path exports from the local vulos-office source tree
       '@vulos/office-client/docs':     resolve(import.meta.dirname, '../vulos-office/src/apps/docs/lib.jsx'),

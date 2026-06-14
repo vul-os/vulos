@@ -68,6 +68,19 @@ type Session struct {
 	mangoHudC     chan bool // GAME-08 MangoHud toggle signals
 	// AUTH-13: WebAuthn re-auth gate.
 	inputGated bool
+
+	// STREAMWIN-01: connected-peer refcount.
+	// On 0→1 the video encode pipeline is started; on 1→0 it is suspended (SIGSTOP).
+	// All mutations are protected by mu.
+	peerCount    int
+	videoStartFn func() // called on 0→1 transition; assigned by Launch
+
+	// STREAMWIN-03: idle lifecycle fields.
+	// gaming=true makes all idle/throttle logic a no-op.
+	gaming      bool
+	lastInputAt time.Time // updated by noteInput on every input event
+	normalFPS   int       // baseline FPS to restore after idle-fps throttle
+	idleFPS     bool      // true while we are in the low-fps idle state
 }
 
 // Resize changes the Xvfb framebuffer resolution via xrandr.
@@ -195,6 +208,45 @@ func (s *Session) SetMangoHud(on bool) {
 	}
 }
 
+// peerConnect increments the connected-peer refcount.
+// On the 0→1 transition it resumes (SIGCONT) a suspended gstVideo process, or
+// calls videoStartFn to kick off the video pipeline for the very first peer.
+func (s *Session) peerConnect() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.peerCount++
+	if s.peerCount == 1 {
+		if s.gstVideo != nil && s.gstVideo.Process != nil {
+			// Resume a SIGSTOP-suspended process (subsequent reconnects).
+			syscall.Kill(-s.gstVideo.Process.Pid, syscall.SIGCONT)
+			log.Printf("[stream] %s: video encode resumed (peer connected)", s.Name)
+		} else if s.videoStartFn != nil {
+			// Start for the very first peer (process was never launched yet).
+			fn := s.videoStartFn
+			go fn()
+			log.Printf("[stream] %s: video encode started (first peer connected)", s.Name)
+		}
+	}
+}
+
+// peerDisconnect decrements the connected-peer refcount.
+// On the 1→0 transition it suspends the gstVideo process with SIGSTOP so it
+// consumes ~0 CPU while no viewer is watching.
+func (s *Session) peerDisconnect() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.peerCount <= 0 {
+		return
+	}
+	s.peerCount--
+	if s.peerCount == 0 {
+		if s.gstVideo != nil && s.gstVideo.Process != nil {
+			syscall.Kill(-s.gstVideo.Process.Pid, syscall.SIGSTOP)
+			log.Printf("[stream] %s: video encode suspended (no peers connected)", s.Name)
+		}
+	}
+}
+
 // HandleSignaling upgrades an HTTP request to WebSocket and runs WebRTC signaling.
 // The client gets video + audio tracks and can send input via a data channel.
 func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
@@ -228,14 +280,19 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 		pc.AddTrack(s.audioTrack)
 	}
 
-	// Adaptive bitrate controller — monitors RTCP stats and adjusts quality
-	bc := newBitrateController(pc, QualityMedium, func(q Quality) {
+	// Adaptive bitrate + resolution controller (STREAMWIN-04).
+	// resizeFn is nil-safe — Resize only applies when gaming=false.
+	var resizeFn func(w, h int)
+	if !s.gaming {
+		resizeFn = func(w, h int) { s.Resize(w, h) }
+	}
+	bc := newBitrateControllerFull(pc, QualityMedium, func(q Quality) {
 		s.mu.Lock()
 		s.bitrate = q.Bitrate()
 		s.Quality = q.String()
 		s.mu.Unlock()
 		s.SetBitrate(q.Bitrate())
-	})
+	}, s.gaming, resizeFn)
 	defer bc.Close()
 
 	var wsMu sync.Mutex
@@ -245,21 +302,28 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 		ws.WriteMessage(websocket.TextMessage, data)
 	}
 
-	// AUTH-13: notify client that input is gated if this session has injection.
-	// We send {"t":"need-webauthn"} once the peer connection transitions to connected.
-	if s.injector != nil {
-		s.mu.Lock()
-		isGated := s.inputGated
-		s.mu.Unlock()
-		if isGated {
-			pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-				if state == webrtc.PeerConnectionStateConnected {
+	// STREAMWIN-01: track connected peers so the video encode pipeline can be
+	// started/suspended based on whether anyone is watching.
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			s.peerConnect()
+			// AUTH-13: notify gated sessions that WebAuthn is required.
+			if s.injector != nil {
+				s.mu.Lock()
+				isGated := s.inputGated
+				s.mu.Unlock()
+				if isGated {
 					msg, _ := json.Marshal(map[string]string{"t": "need-webauthn"})
 					wsWrite(msg)
 				}
-			})
+			}
+		case webrtc.PeerConnectionStateDisconnected,
+			webrtc.PeerConnectionStateFailed,
+			webrtc.PeerConnectionStateClosed:
+			s.peerDisconnect()
 		}
-	}
+	})
 
 	// Input data channels — split by priority for cloud-gaming grade input
 	// Mouse: unreliable/unordered (latest-wins, high freq)
@@ -366,6 +430,7 @@ func (s *Session) handleMouse(data []byte) {
 	if json.Unmarshal(data, &evt) != nil {
 		return
 	}
+	s.noteInput()
 	switch evt.T {
 	case "mm":
 		s.injector.MouseMove(int(evt.X), int(evt.Y))
@@ -419,6 +484,7 @@ func (s *Session) handleKeyboard(data []byte) {
 		return
 	}
 
+	s.noteInput()
 	// Sync modifier state — reconcile held modifiers from bitmask
 	s.injector.SyncModifiers(evt.Mod)
 
@@ -453,6 +519,7 @@ func (s *Session) handleInput(data []byte) {
 		return
 	}
 
+	s.noteInput()
 	switch evt.Type {
 	case "mousemove":
 		s.injector.MouseMove(int(evt.X), int(evt.Y))
@@ -472,6 +539,97 @@ func (s *Session) handleInput(data []byte) {
 	case "keyup":
 		s.injector.KeyPress(evt.Key, evt.Code, false)
 	}
+}
+
+// noteInput records the current time as the most-recent input event.
+// Called on every mouse/keyboard/gamepad message so the idle timer resets.
+func (s *Session) noteInput() {
+	s.mu.Lock()
+	s.lastInputAt = time.Now()
+	// If we are in idle-FPS mode, ramp back to normal immediately.
+	if s.idleFPS && !s.gaming {
+		s.idleFPS = false
+		fps := s.normalFPS
+		s.mu.Unlock()
+		log.Printf("[stream] %s: idle FPS ramp-up → %d fps (input received)", s.Name, fps)
+		s.SetFPS(fps)
+		return
+	}
+	s.mu.Unlock()
+}
+
+// idleThresholdFPS is the FPS to drop to when the session has been idle
+// (no input events) for idleStaticSeconds. Not applied when Gaming=true.
+const idleThresholdFPS = 2
+
+// idleStaticSeconds is how long the session must be without input before
+// the FPS is throttled to idleThresholdFPS.
+const idleStaticSeconds = 10 * time.Second
+
+// idleSuspendDuration is how long the session must be without input AND
+// without any connected peer before Xvfb/app processes are suspended (SIGSTOP).
+const idleSuspendDuration = 5 * time.Minute
+
+// startIdleWatcher launches the background goroutine that monitors input-event
+// recency and applies idle-FPS throttle and idle-suspend logic.
+// Must be called once during Launch (with gaming flag already set on sess).
+func (s *Session) startIdleWatcher() {
+	if s.gaming {
+		return // STREAMWIN-03 guardrail: no-op for gaming sessions
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+				s.mu.Lock()
+				if s.gaming {
+					// Safety re-check — if gaming flag was toggled on, bail.
+					s.mu.Unlock()
+					return
+				}
+				since := time.Since(s.lastInputAt)
+				peers := s.peerCount
+				idleAlready := s.idleFPS
+				normalFPS := s.normalFPS
+				s.mu.Unlock()
+
+				switch {
+				case since >= idleSuspendDuration && peers == 0:
+					// No input AND no viewers for idleSuspendDuration → suspend.
+					s.mu.Lock()
+					proc := s.gstVideo
+					s.mu.Unlock()
+					if proc != nil && proc.Process != nil {
+						log.Printf("[stream] %s: idle suspend (no input for %.0fs, no peers)",
+							s.Name, since.Seconds())
+						syscall.Kill(-proc.Process.Pid, syscall.SIGSTOP)
+					}
+
+				case since >= idleStaticSeconds && !idleAlready:
+					// Static for idleStaticSeconds → drop FPS.
+					s.mu.Lock()
+					s.idleFPS = true
+					s.mu.Unlock()
+					log.Printf("[stream] %s: idle FPS drop → %d fps (no input for %.0fs)",
+						s.Name, idleThresholdFPS, since.Seconds())
+					s.SetFPS(idleThresholdFPS)
+
+				case since < idleStaticSeconds && idleAlready:
+					// Input resumed but noteInput ramp-up beat us here — still
+					// clear the flag in case it didn't fire.
+					s.mu.Lock()
+					s.idleFPS = false
+					s.mu.Unlock()
+					log.Printf("[stream] %s: idle FPS ramp-up → %d fps (ticker)", s.Name, normalFPS)
+					s.SetFPS(normalFPS)
+				}
+			}
+		}
+	}()
 }
 
 // rumbleForwardLoop reads FF_RUMBLE events from the uinput channel and sends
@@ -522,6 +680,7 @@ func (s *Session) handleGamepad(data []byte) {
 	if json.Unmarshal(data, &state) != nil {
 		return
 	}
+	s.noteInput()
 	for i, pressed := range state.Buttons {
 		s.injector.GamepadButton(i, pressed)
 	}

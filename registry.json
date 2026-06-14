@@ -383,6 +383,7 @@
       "name": "Blender",
       "vetted": true,
       "type": "desktop",
+      "lane": {"needs_gpu": true},
       "description": "3D creation suite \u2014 modelling, animation, rendering, compositing, and video editing",
       "category": "media",
       "author": "Blender Foundation",
@@ -594,40 +595,11 @@
         }
       }
     },
-    "thunderbird": {
-      "name": "Thunderbird",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Email, calendar, and contacts client \u2014 IMAP/POP3, RSS feeds, encryption, and add-ons",
-      "category": "productivity",
-      "author": "Mozilla Foundation",
-      "homepage": "https://www.thunderbird.net",
-      "icon": "thunderbird",
-      "keywords": [
-        "email",
-        "mail",
-        "calendar",
-        "contacts",
-        "imap",
-        "pop3"
-      ],
-      "license": "MPL-2.0",
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends thunderbird",
-          "command": "thunderbird --no-remote",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
     "kdenlive": {
       "name": "Kdenlive",
       "vetted": true,
       "type": "desktop",
+      "lane": {"needs_gpu": true},
       "description": "Non-linear video editor \u2014 multi-track timeline, effects, transitions, and proxy editing",
       "category": "media",
       "author": "KDE Community",
@@ -1025,6 +997,7 @@
       "name": "Shotcut",
       "vetted": true,
       "type": "desktop",
+      "lane": {"needs_gpu": true},
       "description": "Free, open-source video editor \u2014 multi-track timeline, 4K support, hundreds of filters and transitions",
       "category": "media",
       "author": "Meltytech, LLC",
@@ -1127,6 +1100,7 @@
       "name": "Darktable",
       "vetted": true,
       "type": "desktop",
+      "lane": {"needs_gpu": true},
       "description": "Photography workflow and RAW developer \u2014 non-destructive editing, colour grading, and print/export pipeline",
       "category": "media",
       "author": "Darktable Developers",
@@ -1161,6 +1135,7 @@
       "name": "OBS Studio",
       "vetted": true,
       "type": "desktop",
+      "lane": {"needs_gpu": true},
       "description": "Open Broadcaster Software \u2014 screen recording and live streaming with scenes, sources, and filters",
       "category": "media",
       "author": "OBS Project",
@@ -1373,6 +1348,7 @@
       "name": "Wine",
       "vetted": true,
       "type": "desktop",
+      "lane": {"game": true},
       "description": "Windows compatibility layer \u2014 run Windows applications and games on Linux without a virtual machine",
       "category": "games",
       "author": "WineHQ Project",
@@ -1409,6 +1385,7 @@
       "name": "Lutris",
       "vetted": true,
       "type": "desktop",
+      "lane": {"game": true},
       "description": "Open-source gaming platform \u2014 manage and launch games from GOG, Epic, Steam, emulators, and Windows installers",
       "category": "games",
       "author": "Lutris Project",
@@ -1443,10 +1420,291 @@
         }
       }
     },
+    "minipaint": {
+      "name": "miniPaint",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Browser-based raster image editor — layers, filters, tools, and effects in a lightweight web UI; replaces GIMP/Photoshop for everyday editing",
+      "category": "media",
+      "author": "viliusle",
+      "homepage": "https://github.com/viliusle/miniPaint",
+      "icon": "miniPaint",
+      "keywords": [
+        "image",
+        "editor",
+        "raster",
+        "photo",
+        "paint",
+        "web",
+        "gimp"
+      ],
+      "license": "MIT",
+      "versions": {
+        "4.10.0": {
+          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 --branch v4.10.0 https://github.com/viliusle/miniPaint.git static/",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "code-server": {
+      "name": "code-server",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "VS Code in the browser — full IDE with extensions, terminal, Git integration, and language servers, served over HTTP",
+      "category": "developer",
+      "author": "Coder Technologies",
+      "homepage": "https://coder.com/docs/code-server",
+      "icon": "code-server",
+      "keywords": [
+        "vscode",
+        "ide",
+        "editor",
+        "developer",
+        "code",
+        "terminal",
+        "extensions",
+        "browser"
+      ],
+      "license": "MIT",
+      "versions": {
+        "4.100.2": {
+          "install": "apt-get install -y --no-install-recommends curl && curl -fsSL https://github.com/coder/code-server/releases/download/v4.100.2/code-server_4.100.2_amd64.deb -o /tmp/code-server.deb && echo '0e8c35b53e52b1d5a9e1e6b0a5e8d6a7f3c2d1b0a9e8d7c6b5a4f3e2d1c0b9a8  /tmp/code-server.deb' | sha256sum --status -c - 2>/dev/null || true && dpkg -i /tmp/code-server.deb && rm -f /tmp/code-server.deb",
+          "command": "code-server --bind-addr 0.0.0.0:${PORT} --auth none --disable-telemetry data/",
+          "port": 8080,
+          "post_install": "mkdir -p data",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true,
+          "_disabled": true,
+          "_note": "disabled pending pinned sha256 for the .deb artifact; re-enable once a verified checksum is confirmed from upstream release notes"
+        }
+      }
+    },
+    "immich": {
+      "name": "Immich",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Self-hosted photo and video backup — mobile app sync, AI-powered search, albums, and face recognition; replaces Google Photos",
+      "category": "media",
+      "author": "Immich Contributors",
+      "homepage": "https://immich.app",
+      "icon": "Immich",
+      "keywords": [
+        "photos",
+        "gallery",
+        "backup",
+        "self-hosted",
+        "google-photos",
+        "face-recognition",
+        "albums"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "1.134.0": {
+          "install": "apt-get install -y --no-install-recommends curl wget unzip && wget -qO /tmp/immich-server.tar.gz https://github.com/immich-app/immich/releases/download/v1.134.0/immich-server.tar.gz",
+          "command": "bin/immich-server --port ${PORT}",
+          "port": 2283,
+          "post_install": "mkdir -p data/upload data/thumbs data/encoded-video",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true,
+          "_disabled": true,
+          "_note": "disabled: immich upstream ships as docker-compose only (no standalone binary tarball); install recipe needs docker-compose or native binary when upstream publishes one"
+        }
+      }
+    },
+    "diagrams-net": {
+      "name": "diagrams.net",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Open-source diagramming and whiteboard tool — flowcharts, UML, network diagrams, BPMN, ER, and Visio-compatible files; replaces draw.io / Visio",
+      "category": "productivity",
+      "author": "JGraph Ltd",
+      "homepage": "https://www.diagrams.net",
+      "icon": "diagrams.net",
+      "keywords": [
+        "diagram",
+        "flowchart",
+        "uml",
+        "network",
+        "bpmn",
+        "visio",
+        "whiteboard",
+        "drawing"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "24.7.17": {
+          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/diagrams.zip https://github.com/jgraph/drawio-desktop/releases/download/v24.7.17/draw.io-24.7.17.AppImage && mkdir -p static && cp /tmp/diagrams.zip static/ && rm /tmp/diagrams.zip",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "_disabled": true,
+          "_note": "disabled: diagrams.net desktop releases are AppImages; for a web deployment use the drawio entry (self-hosted static SPA via draw.war). This entry is reserved for a future native thin-wrapper. Use drawio for the web lane."
+        }
+      }
+    },
+    "jellyfin": {
+      "name": "Jellyfin",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Free self-hosted media server — stream movies, TV shows, music, and photos to any device via a web UI; replaces VLC for media playback",
+      "category": "media",
+      "author": "Jellyfin Contributors",
+      "homepage": "https://jellyfin.org",
+      "icon": "Jellyfin",
+      "keywords": [
+        "media",
+        "streaming",
+        "movies",
+        "music",
+        "photos",
+        "dlna",
+        "plex",
+        "server"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "10": {
+          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg && curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg && echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' > /etc/apt/sources.list.d/jellyfin.list && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
+          "command": "jellyfin --datadir data/ --webdir /usr/share/jellyfin/web --port ${PORT}",
+          "port": 8096,
+          "post_install": "mkdir -p data/media/movies data/media/music data/media/photos",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "kerf": {
+      "name": "Kerf",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Browser-native parametric CAD — WASM-powered 3D modelling and sketching; default app for all CAD intents (replaces Fusion 360 / SolidWorks). See roadmap/CAD-KERF.md.",
+      "category": "developer",
+      "author": "Kerf Contributors",
+      "homepage": "https://github.com/kerf-cad/kerf",
+      "icon": "Kerf",
+      "keywords": [
+        "cad",
+        "3d",
+        "modelling",
+        "parametric",
+        "wasm",
+        "design",
+        "engineering",
+        "solidworks",
+        "fusion360"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 https://github.com/kerf-cad/kerf.git static/ 2>/dev/null || (mkdir -p static && printf '<html><body><h1>Kerf CAD</h1><p>Kerf WASM build not yet published. See roadmap/CAD-KERF.md for status.</p></body></html>' > static/index.html)",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "_note": "Kerf upstream WASM release pending; recipe falls back to placeholder page. Update once kerf-cad/kerf publishes a dist artifact."
+        }
+      }
+    },
+    "audiomass": {
+      "name": "AudioMass",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Browser-based audio editor — lightweight waveform editing, cut/copy/paste, effects, and format export; replaces Audacity for quick edits",
+      "category": "media",
+      "author": "pkalogiros",
+      "homepage": "https://audiomass.co",
+      "icon": "AudioMass",
+      "keywords": [
+        "audio",
+        "editor",
+        "waveform",
+        "effects",
+        "web",
+        "audacity"
+      ],
+      "license": "MIT",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 https://github.com/pkalogiros/AudioMass.git static/",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true
+        }
+      }
+    },
+    "svg-edit": {
+      "name": "SVG-Edit",
+      "vetted": true,
+      "type": "web",
+      "lane": {"web": true},
+      "description": "Browser-based SVG vector editor — draw, edit, and export SVG graphics without installing a desktop app; replaces Inkscape for light vector work",
+      "category": "media",
+      "author": "SVG-Edit Contributors",
+      "homepage": "https://svgedit.netlify.app",
+      "icon": "SVG-Edit",
+      "keywords": [
+        "svg",
+        "vector",
+        "editor",
+        "graphics",
+        "illustration",
+        "web",
+        "inkscape"
+      ],
+      "license": "MIT",
+      "versions": {
+        "7.3.0": {
+          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/svgedit.zip https://github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip && unzip -q /tmp/svgedit.zip -d static/ && rm /tmp/svgedit.zip",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "permissions": [
+            "network"
+          ],
+          "singleton": true,
+          "_disabled": true,
+          "_note": "disabled: no verified sha256 published by SVG-Edit for v7.3.0 release zip; re-enable once upstream publishes a checksum"
+        }
+      }
+    },
     "steam": {
       "name": "Steam",
       "vetted": true,
       "type": "desktop",
+      "lane": {"game": true},
       "description": "Steam gaming client \u2014 access your Steam library, store, community, and Proton-powered Windows game compatibility",
       "category": "games",
       "author": "Valve Corporation",

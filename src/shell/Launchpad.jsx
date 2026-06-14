@@ -5,6 +5,28 @@ import Settings from '../core/Settings'
 import { AppIconTile } from '../core/AppIcons'
 import { useNativeMode } from '../core/useNativeMode'
 
+// ROUTER-02: Consult /api/router/classify before launching an app.
+// Returns the lane string or null on fetch failure (caller falls back to
+// legacy dispatch).
+async function fetchLane(appId) {
+  try {
+    const res = await fetch(`/api/router/classify?app=${encodeURIComponent(appId)}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.lane || null
+  } catch {
+    return null
+  }
+}
+
+// openInHostBrowser opens a URL in the host browser.
+// For in-shell web windows this dispatches a custom event that the Window
+// manager picks up to render an iframe/web-view window.
+// BROWSER-01: this path spawns ZERO stream.Session objects.
+function openInHostBrowser(url, title, icon, openWindow) {
+  openWindow({ appId: '_webview_' + Date.now(), title: title || url, url, icon })
+}
+
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
 const FileManager = lazy(() => import('../builtin/files/FileManager'))
@@ -158,6 +180,56 @@ export default function Launchpad() {
       return
     }
 
+    // ROUTER-02: Consult Open Router to get the execution lane.
+    // Falls back to legacy heuristic if the endpoint is unavailable.
+    const lane = await fetchLane(app.id)
+
+    // ── WebApp lane — open in host browser, ZERO stream.Session ─────────────
+    // Covers: type:"web" registry apps, apps tagged web:true, the Smart Browser.
+    // BROWSER-01: no streamed Chromium session is created for any WebApp lane.
+    if (lane === 'WebApp' || app.type === 'web' || app.lane_web) {
+      if (app.url) {
+        // Default web apps served directly from the shell (e.g. /app/calculator/)
+        openWindow({ appId: app.id, title: app.name, url: app.url, icon: app.icon })
+      } else {
+        // registry.json type:"web" apps — launch backend process, open in in-shell web view
+        try {
+          await fetch('/api/apps/launch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
+          })
+        } catch { /* non-fatal — window still opens */ }
+        const proto = location.protocol
+        const webAppUrl = `${proto}//${app.id}--default.${location.host}/`
+        openInHostBrowser(webAppUrl, app.name, app.icon, openWindow)
+      }
+      close()
+      return
+    }
+
+    // ── ComputeWorker lane — background job, no window ───────────────────────
+    if (lane === 'ComputeWorker') {
+      fetch('/api/apps/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '' }),
+      }).catch(() => {})
+      close()
+      return
+    }
+
+    // ── LocalOnly lane — local dispatch only ─────────────────────────────────
+    if (lane === 'LocalOnly') {
+      fetch('/api/shell/native-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: app.id }),
+      }).catch(() => {})
+      close()
+      return
+    }
+
     // v2 native-launch branch (D93): only when VULOS_NATIVE_MODE_V2 is set server-side
     // and a multi-window compositor (labwc/Sway) is running. In v1 (default) bm6_isNative
     // is always false so this block never executes — all apps stream over cage.
@@ -182,21 +254,15 @@ export default function Launchpad() {
       return
     }
 
-    // Desktop/stream apps — launch via stream system (v1 bare-metal default path)
-    // Includes: registry desktop apps, .desktop entries, and the browser
-    const isStreamApp = app._desktop || app.type === 'desktop' || app.id === 'browser'
+    // ── CPUStream / GPURoute lanes — streamed window ──────────────────────────
+    // Also handles .desktop entries and the legacy fallback path.
+    // BROWSER-01: the "browser" app ID is now WebApp lane (caught above); this
+    // block no longer launches a streamed Chromium session for app.id === 'browser'.
+    const isStreamApp = app._desktop || app.type === 'desktop' || lane === 'CPUStream' || lane === 'GPURoute'
     if (isStreamApp) {
-      let cmd, args
-      if (app.id === 'browser') {
-        cmd = 'chromium'
-        args = await gpuapiGetChromiumArgs()
-      } else {
-        cmd = app._exec ? app._exec.split(' ')[0] : app.command?.split(' ')[0] || app.id
-        args = app._exec ? app._exec.split(' ').slice(1) : app.command?.split(' ').slice(1) || []
-      }
-      // Browser: each window gets its own Chromium instance
-      // Desktop apps: fixed session ID (most enforce single-instance via lock files)
-      const sessionId = app.id === 'browser' ? `browser-${Date.now()}` : app.id
+      const cmd = app._exec ? app._exec.split(' ')[0] : app.command?.split(' ')[0] || app.id
+      const args = app._exec ? app._exec.split(' ').slice(1) : app.command?.split(' ').slice(1) || []
+      const sessionId = app.id
       const streamW = window.innerWidth
       const streamH = window.innerHeight - 32 - 64 - 36
       // Fire stream launch in background — don't wait
@@ -214,7 +280,7 @@ export default function Launchpad() {
         }),
       }).catch(() => {})
       // Always open the viewer — it will connect when the stream is ready
-      const loading = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
+      const streamLoading = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
         createElement('span', { className: 'flex items-center gap-2' },
           createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
           'Starting...'
@@ -224,8 +290,8 @@ export default function Launchpad() {
         appId: app.id,
         title: app.name,
         icon: app.icon,
-        singleton: app.id !== 'browser', // desktop apps are single-instance, browser allows multiple
-        component: createElement(Suspense, { fallback: loading },
+        singleton: true,
+        component: createElement(Suspense, { fallback: streamLoading },
           createElement(StreamViewer, { sessionId })
         ),
       })

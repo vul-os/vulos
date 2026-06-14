@@ -65,7 +65,6 @@ import (
 	"vulos/backend/services/sysuser"
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/vault"
-	"vulos/backend/services/webbrowser"
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
 	"vulos/backend/services/wine"
@@ -369,20 +368,6 @@ func main() {
 	// Stream pool (generic X11 app streaming — Xvfb + GStreamer + WebRTC)
 	streamPool := stream.NewPool()
 
-	// Remote browser (Chromium via stream pool — one persistent instance, always ready).
-	// Pre-warming spins up a second headless Chromium + Xvfb + GStreamer at boot;
-	// on a memory-constrained bare-metal first boot this lets the kernel OOM-kill
-	// the kiosk Chromium. VULOS_PREWARM_BROWSER=0 starts the browser lazily on the
-	// first stream request instead. Default = pre-warm (existing remote/dev behavior).
-	browserSvc := webbrowser.New(streamPool)
-	if os.Getenv("VULOS_PREWARM_BROWSER") == "0" {
-		log.Printf("[browser] pre-warm disabled (VULOS_PREWARM_BROWSER=0); lazy on first request")
-	} else if err := browserSvc.Start(ctx, 0); err != nil {
-		log.Printf("[browser] start warning: %v", err)
-	} else {
-		browserSvc.WaitReady(30 * time.Second)
-	}
-
 	// Wine prefix management (create/delete/DXVK per user)
 	wineSvc := wine.New(filepath.Join(home, ".vulos", "wine"))
 
@@ -555,6 +540,10 @@ func main() {
 		return filepath.Join(home, ".vulos", "auth", "vault", userID)
 	})
 	credVaultHandler.RegisterHandlers(mux)
+
+	// Mail: URL of the embedded LilMail service (built-in Mail app).
+	registerMailRoutes(mux)
+
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)
 
@@ -566,6 +555,11 @@ func main() {
 	} else {
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
 		registerPasskeysRoutes(mux, passkeysSvc, authStore)
+		// LOGINISO-01: promote WebAuthn from re-auth gate to full login flow.
+		// LOGINISO-02: QR / phone-approval kiosk login.
+		loginSvc := passkeys.NewLoginService(passkeysSvc, authStore)
+		qrSvc := passkeys.NewQRLoginService(authStore)
+		registerPasskeyLoginRoutes(mux, loginSvc, qrSvc)
 		// AUTH-10c: device identity / TPM status / seal-unseal HTTP API.
 		devicekey.RegisterHandlers(mux, deviceKS, func(r *http.Request) bool {
 			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
@@ -690,9 +684,15 @@ func main() {
 	})
 	registerNotifyExtRoutes(mux, notifySvc, home) // NOTIF-05+06: DND + inline actions
 
-	// xdg-open handler — opens URL in the OS browser via CDP and signals frontend.
+	// Open Router — GET /api/router/classify?app=<id> → {lane}
+	// Used by the shell launcher to dispatch per lane (WebApp/CPUStream/GPURoute/etc).
+	registerRouterRoutes(mux)
+
+	// xdg-open handler — opens URL in the OS browser and signals frontend.
 	// Requires authentication (not in publicPaths). Hardened against SSRF (H6).
-	registerOpenRoutes(mux, browserSvc, notifySvc)
+	// BROWSER-01/02: POST /api/open returns a host-browser-open instruction;
+	// server-side Chromium streaming removed.
+	registerOpenRoutes(mux, notifySvc)
 
 	// Vault endpoints
 	mux.HandleFunc("GET /api/vault/status", func(w http.ResponseWriter, r *http.Request) {
@@ -1315,9 +1315,6 @@ func main() {
 	peeringHub.RegisterHandlers(mux)
 	// Boot-mode router — GET /api/setup/mode
 	bootmode.RegisterHandlers(mux, home)
-
-	// Remote browser — WebRTC (delegates to stream pool)
-	browserSvc.RegisterHandlers(mux)
 
 	// Generic app streaming (any X11 app via WebRTC)
 	streamPool.RegisterHandlers(mux)
@@ -2414,7 +2411,6 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		log.Println("shutting down...")
-		browserSvc.StopAll()
 		streamPool.StopAll()
 		sandboxSvc.StopAll()
 		netSvc.Stop()

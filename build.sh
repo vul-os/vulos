@@ -242,7 +242,6 @@ apt-get update
 apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
     iproute2 iptables \
-    xvfb chromium xdotool \
     gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     gstreamer1.0-vaapi \
     pulseaudio pulseaudio-utils \
@@ -537,7 +536,6 @@ chroot "$ROOTFS" apt-get update
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
     iproute2 iptables \
-    xvfb chromium xdotool \
     gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     gstreamer1.0-vaapi \
     pulseaudio pulseaudio-utils \

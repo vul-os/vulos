@@ -1,28 +1,170 @@
 # Vulos OS — Task Backlog
 
-**Status: All 31 tasks in this file are `done`. 235 legacy tasks also `done`.**
-
-BMINIT-14 resolved. Four feature tracks (AIROT, IDENTITY, PUBWEB, MINST) added and 30/31 complete.
-See ROADMAP.md §§ 1–3, 7 for full context.
+**Status: native-first re-architecture (v8 — 2026-05-26) is the ACTIVE track.** All legacy
+tasks (AIROT, IDENTITY, PUBWEB, MINST, STORE, OFFLINE, MEET, audit waves) are `done` — see the
+lower sections. The new work is in **§ Native-first re-architecture** below.
 
 > **Stack invariants (FROZEN):** Go backend; pure-Go `modernc.org/sqlite` (never CGO);
-> JSX-only frontend (NEVER `.tsx`); cage v1 / labwc v2 (D93); no Rust. Auth: email+password
-> + TOTP; no Google OAuth. Cloud control-plane lives in the separate vulos-cloud repo; all
-> OSS tracks below must work without it (cloud is an optional accelerator).
+> JSX-only frontend (NEVER `.tsx`); cage v1 / labwc v2 (D93); no Rust. Cloud control-plane lives
+> in the separate vulos-cloud repo; all OSS tracks below must work without it (cloud is an
+> optional accelerator).
+>
+> **Native-first invariants (v8):** browsing is native (host browser), never streamed — no
+> server-side streamed browser. Every launch routes through the Open Router into one of five
+> lanes (web app / CPU stream / GPU route / compute worker / local-only). GPU is peer-based BYO
+> now (cloud later, metered) — no code path depends on Fly GPUs. Streaming throttling never
+> applies under `opts.Gaming`. Login isolates the credential (passkeys + token vault), never the
+> browsing. Tenant isolation = one Firecracker microVM per tenant on Fly Machines (orchestration
+> in vulos-cloud). See ROADMAP.md §§ 0, 11, 12, 18.
+
+---
+
+## Area: Native-first re-architecture (v8 — 2026-05-26)
+
+_Roadmap: ROADMAP.md §§ 0, 10, 11, 12, 18_ · _Prefixes: `ROUTER-`, `BROWSER-`, `WEBAPP-`, `LOGINISO-`, `GPU-`, `STREAMWIN-`, `TOPO-`, `PENTEST-`_
+
+> Sequencing (ROADMAP.md §0/§11): Wins 1+2 → Open Router + browser change → web-app curation →
+> login isolation → GPU route → Wins 3–5 → topology. Each task lists concrete file targets so an
+> autonomous agent can pick it up. `parallel: no` = touches a hot shared file (stream/pool.go,
+> stream/stream.go, gpu/gpu.go, registry.json) — serialize within a wave.
+
+### [STREAMWIN-01] Win 1 — stop encoding when no peer is connected
+`todo` · P0 · S · dep: none · parallel: no — backend/services/stream/pool.go, backend/services/stream/stream.go
+Scope: The video pipeline starts at `Launch` (`pool.go` ~L451) and runs until `Stop()`, independent of viewers. Add a connected-peer refcount on `Session`; on 0→1 start `gstVideo`, on 1→0 SIGSTOP/kill it. Hook the refcount to `HandleSignaling` connect/disconnect. Never applies when no peers but session still launched — pipeline must be idle.
+AC: [ ] launched-but-unconnected session runs no gst video / ~no CPU [ ] connecting a peer starts encode within ~1s [ ] last peer disconnect stops encode [ ] `go build ./backend/... && go test ./backend/services/stream/...`
+
+### [STREAMWIN-02] Win 2 — dirty-region capture for non-gaming
+`todo` · P0 · S · dep: none · parallel: no — backend/services/gpu/gpu.go
+Scope: `gpu.CaptureArgs` hardcodes `use-damage=false` (~L76). Make it conditional: `use-damage=true` for non-gaming, `false` when `opts.Gaming`. Thread the gaming flag through to `CaptureArgs` if not already available.
+AC: [ ] a static native-app window produces ~0 encoded frames [ ] gaming keeps constant framerate (`use-damage=false`) [ ] `go build ./backend/... && go test ./backend/services/gpu/...`
+
+### [ROUTER-01] Open Router package — Classify(intent) → Lane
+`todo` · P0 · M · dep: none · parallel: yes — backend/services/openrouter/router.go, backend/services/openrouter/router_test.go
+Scope: New package `backend/services/openrouter/`. `Classify(intent) → Lane` where Lane ∈ {WebApp, CPUStream, GPURoute, ComputeWorker, LocalOnly}. Inputs: registry entry type, URL/MIME, flags `web`/`needs_gpu`/`game`/`local_only`/`compute_job`. Rules: URL or `web` → WebApp; native GUI no-flags → CPUStream; `needs_gpu`/`game` → GPURoute (prefer GPU peer, CPU fallback per app; games unavailable w/o GPU); `local_only` → LocalOnly; `compute_job` → ComputeWorker.
+AC: [ ] every `registry.json` entry classifies to its expected lane (table-driven test) [ ] any URL → WebApp [ ] `go build && go test ./backend/services/openrouter/...`
+
+### [ROUTER-02] Shell "launch app" routes through Open Router
+`todo` · P0 · M · dep: ROUTER-01 · parallel: yes — src/lib/launch.js (or shell app launcher), backend/cmd/server/routes_router.go
+Scope: Expose the classifier over HTTP (`GET /api/router/classify?app=<id>` → `{lane}`) and make the shell launcher consult it: WebApp → host-browser window/tab (in-shell web view via subdomain proxy), CPUStream/GPURoute → streamed window, ComputeWorker → background job, LocalOnly → local. Launching a web app must spawn **zero** `stream.Session`.
+AC: [ ] launcher calls the router and dispatches per lane [ ] launching a web app spawns zero stream.Session (test/assert) [ ] `go test ./backend/cmd/server/...` [ ] `npm run build`
+
+### [BROWSER-01] Route all browsing to the host browser; retire streamed Browser app
+`todo` · P0 · M · dep: ROUTER-01 · parallel: no — registry.json, src/ (dock/launcher), apps/browser/
+Scope: All web content (web apps + arbitrary URLs) opens in the host browser — window/tab or in-shell web view. Remove the streamed "Browser" app from `registry.json` and the dock. In-shell web windows render as host-browser iframes/web views inside the React shell. Bare metal: a browser window is a local compositor window (WPE WebKit / Chromium-kiosk), not a streamed session.
+AC: [ ] default build exposes no streamed browser [ ] opening any web app/URL creates zero stream.Session [ ] dock no longer shows the streamed browser [ ] `npm run build`
+
+### [BROWSER-02] Audit + remove server-side Chromium streaming path
+`todo` · P1 · M · dep: BROWSER-01 · parallel: no — backend/services/webbrowser/, build.sh, Dockerfile
+Scope: Remove the server-side Chromium streaming service (`backend/services/webbrowser/chrome.go`) and the `xvfb chromium xdotool` streaming install in `build.sh` (~L245, ~L540). KEEP the bare-metal kiosk Chromium + policies (~L305, ~L787) — that is the host browser. Document the removal. Confirm no retained streamed app or the GPU route depends on the removed service.
+AC: [ ] webbrowser streaming service removed/retired [ ] streaming-only xvfb-chromium install dropped; kiosk Chromium kept [ ] image builds [ ] retained streamed apps still launch [ ] removal documented [ ] `go build ./backend/...`
+
+### [BROWSER-03] Isolated/Disposable Browsing (RBI) stub behind flag
+`removed` · P3 · S · dep: BROWSER-02
+Scope: The flag-gated stub (`backend/services/isolatedbrowser/`) and its doc (`docs/ISOLATED-BROWSING.md`) have been removed as dead code — the stub was never mounted on any mux and VULOS_ENABLE_ISOLATED_BROWSER was unreachable. Revisit as a new task if a concrete use case arises.
+
+### [WEBAPP-01] Curate first-class web apps in registry.json (+ lane flags)
+`todo` · P1 · M · dep: ROUTER-01 · parallel: no — registry.json
+Scope: Add web apps tagged `web`: kerf (CAD — default CAD intents here; see roadmap/CAD-KERF.md), miniPaint, code-server, Immich/PhotoPrism, diagrams.net, AudioMass, SVG-Edit, Jellyfin. Add lane flags (`web`/`needs_gpu`/`game`/`local_only`/`compute_job`) to existing entries: Blender/Kdenlive → `needs_gpu`; Steam/Lutris/Wine → `game`; ensure office/mail/terminal/notes are recognized web-native. Priority order: image-edit → IDE → photos → diagrams → media → kerf → audio/vector.
+AC: [ ] new web apps present + valid against the manifest schema [ ] each carries correct lane flags [ ] ROUTER-01 classifies all entries with no "unknown" [ ] `npm run build`
+
+### [LOGINISO-01] Passkey register + login flow (promote from re-auth gate)
+`todo` · P1 · L · dep: none · parallel: yes — backend/services/passkeys/, backend/services/stream/webauthn.go, apps/setup-wizard/ or login UI
+Scope: Promote WebAuthn from the AUTH-13 re-auth gate to a full registration + assertion **login** flow for Vulos accounts. Private key never leaves the authenticator. Keep password+2FA as fallback; default new accounts to passkeys. Wire backend ceremony endpoints + the login UI.
+AC: [ ] passkey register works end-to-end [ ] passkey login works end-to-end [ ] password+2FA still works as fallback [ ] `go test ./backend/services/passkeys/...` [ ] `npm run build`
+
+### [LOGINISO-02] QR / phone-approval login for kiosk/streamed clients
+`todo` · P2 · M · dep: LOGINISO-01 · parallel: yes — backend/services/passkeys/qrlogin.go (new), login UI
+Scope: Add QR-code / phone-approval login so a reusable secret is never typed on an untrusted (shared/streamed/kiosk) client. The kiosk shows a QR; an already-authenticated phone approves; the kiosk receives a scoped session.
+AC: [ ] kiosk shows QR + polls for approval [ ] phone approval grants a scoped session [ ] expiry + single-use enforced [ ] `go test ./backend/services/passkeys/...`
+
+### [LOGINISO-03] Token vault / BFF for connected services (OAuth refresh server-side)
+`todo` · P2 · L · dep: none · parallel: yes — backend/services/credvault/ or authvault/, backend/cmd/server/routes_oauth.go (new)
+Scope: Run OAuth/OIDC for connected services (e.g. Google). Store the refresh token **server-side, encrypted** (reuse fabric key-at-rest encryption). Client gets only a session cookie; the backend makes credentialed outbound calls. No cookie-injection MITM. The connected app browses in the host browser (no stream.Session).
+AC: [ ] OAuth connect stores refresh token in server-side vault only [ ] network test asserts the refresh token is NEVER sent to the client [ ] backend makes credentialed outbound call on the client's behalf [ ] `go test ./backend/services/...`
+
+### [LOGINISO-04] THREAT-MODEL.md — login-isolation analysis
+`todo` · P2 · S · dep: LOGINISO-01, LOGINISO-03 · parallel: yes — THREAT-MODEL.md (new or existing)
+Scope: Document: the BFF isolates the durable token, not the entry moment; pixel-streaming a login does NOT protect a secret typed on a compromised client; passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client.
+AC: [ ] THREAT-MODEL.md contains the login-isolation section [ ] explicitly states streaming-login is not a credential protection [ ] no code change
+
+### [GPU-01] GPUProvider seam (BYOPeerProvider now; cloud impls as stubs)
+`removed` · P1 · L · dep: none
+Scope: The `GPUProvider` interface, `BYOPeerProvider`, `OnDemandCloudProvider`, `WarmPoolProvider`, and `InMemoryCapabilityStore` implementations (`backend/services/gpu/provider.go`) have been removed as dead code — they had zero non-test callers and the stream path uses `gpu.Detect()` from `gpu.go` directly. Re-implement against a concrete wiring when the GPU session path is built end-to-end.
+
+### [GPU-02] GPU capability advertisement over the fabric
+`removed` · P1 · M · dep: GPU-01
+Scope: `GPUCapabilityStore`, `DescriptorFromInfo`, and `PollRelayForGPUHosts` (`backend/internal/gpuhost/capability.go`) have been removed as dead code — they depended on the now-deleted GPU-01 provider types and had zero non-test callers. Re-implement when GPU-01 is rebuilt.
+
+### [GPU-03] Direct media plane (relay = NAT fallback only) + GPU-second metering
+`removed` · P1 · L · dep: GPU-01, GPU-02
+Scope: `GPUMeter`, `MeteringRecord`, `MeteringHandler`, `LogMeteringHandler`, `MediaPathFromICE`, and `FormatGPUSeconds` (`backend/services/telemetry/gpu_meter.go`) have been removed as dead code — no `stream.Session` ever called them. Re-implement when the direct media path (GPU-01/02) is built end-to-end.
+
+### [STREAMWIN-03] Win 3 — idle FPS + idle suspend
+`todo` · P2 · M · dep: STREAMWIN-01 · parallel: no — backend/services/stream/pool.go, backend/services/stream/stream.go
+Scope: `SetFPS` exists (`stream.go` ~L143) but nothing calls it automatically. Add an idle lifecycle: static content for N s → drop to ~1–5 fps, ramp on activity; after X min no input AND no peer → suspend (free Xvfb/app RAM) or kill. Configurable thresholds. Skip all of this when `opts.Gaming`.
+AC: [ ] idle+watched+static → low fps [ ] idle+unwatched → reclaimed after timeout [ ] gaming unaffected [ ] `go test ./backend/services/stream/...`
+
+### [STREAMWIN-04] Win 4 — resolution adaptation (extend ABR)
+`todo` · P2 · M · dep: STREAMWIN-01 · parallel: no — backend/services/stream/bitrate.go, backend/services/stream/stream.go
+Scope: `bitrateController` adjusts only bitrate. On sustained loss/RTT, also step resolution via `Session.Resize()` (1080→720→480) alongside bitrate; recover when the link improves. Skip when `opts.Gaming`.
+AC: [ ] sustained loss steps resolution down [ ] recovery steps it back up [ ] gaming unaffected [ ] `go test ./backend/services/stream/...`
+
+### [STREAMWIN-05] Win 5 — live bitrate/FPS change (no full pipeline restart)
+`todo` · P2 · L · dep: STREAMWIN-01 · parallel: no — backend/services/stream/pool.go, backend/services/stream/bitrate.go
+Scope: ABR currently kills+respawns the whole gst process (`pool.go` ~L456–483) → re-warm + black blip. Encoders are named (`name=venc`); set bitrate live on the element and add a `videorate` element for live FPS. Keep process restart only as a fallback.
+AC: [ ] a bitrate change produces no pipeline-restart log / no black frame [ ] FPS change is live [ ] fallback restart still possible [ ] `go test ./backend/services/stream/...`
+
+### [TOPO-01] Durable-state-survives-host-loss (OS-side rehydration)
+`todo` · P2 · L · dep: none · parallel: yes — backend/services/sync/, backend/services/cluster/
+Scope: OS-side of the uniform-microVM topology. Treat Fly Volumes as cache, not truth: ensure an instance rehydrates fully from S3/Tigris + cr-sqlite CRDT after a host/Machine kill. Verify a wiped local cache reconstructs from the durable bucket + changeset tail.
+AC: [ ] instance with wiped local cache rehydrates from bucket + CRDT [ ] no data loss on simulated host kill [ ] `go test ./backend/services/sync/... ./backend/services/cluster/...`
+
+### [TOPO-02] Dedicated-instance migration (keep identity + synced data, peer back)
+`todo` · P3 · M · dep: TOPO-01 · parallel: yes — backend/internal/multiinstance/, backend/services/peering/
+Scope: "Move to your own instance" = spin up a new instance with the SAME Ed25519 identity, sync the CRDT, optionally retire the shared-pool presence, peer back via the fabric. Leaderless → no split-brain, no hard cutover.
+AC: [ ] new instance adopts existing identity [ ] CRDT syncs to the new instance [ ] new instance peers back into the mesh [ ] `go test ./backend/internal/multiinstance/...`
+
+### [PENTEST-01] Extend attacker-style pentest suite to app-level multi-tenancy
+`todo` · P1 · M · dep: ROUTER-02, LOGINISO-03 · parallel: yes — backend/services/security_test.go, backend/services/*/security_test.go
+Scope: Extend the existing pentest suites to cover the app-level multi-tenancy layer: tenant isolation, IDOR across tenants, auth bypass, open-relay, quorum (CRDT-QUORUM-class). Add cases for the new surfaces: Open Router lane confusion, token-vault leakage, GPU-peer brokering auth.
+AC: [ ] new tenant-isolation/IDOR cases added and green [ ] token-vault leak case asserts no client exposure [ ] router lane-confusion case [ ] `go test ./backend/...`
+
+> **Cross-repo (NOT this repo):** the Fly Machines per-tenant microVM fleet orchestration,
+> scale-to-zero autostop/autostart, and the `ComputeProvider` abstraction live in **vulos-cloud**.
+> The billing model (`vulos-cloud/billingmodel/model.py`, v8) already covers GPU metering (BYO
+> credited / specialist pass-through +50%), scale-to-zero free tier, and Wave-B add-ons; a
+> dedicated CPU compute-worker meter line (kerf FEA/regen) is a future line item, bounded by
+> existing conservative buffers.
+
+---
 
 ---
 
 ## At-a-glance
 
-| Area | Roadmap section | Done / Total | Progress |
-|---|---|---:|:---|
-| BMINIT legacy | ROADMAP.md § Boot, Init & Bare Metal | 1 / 1 | `[██████████]` 100% |
-| AI Router | ROADMAP.md § AI Router | 8 / 8 | `[██████████]` 100% |
-| Vulos Mail Identity | ROADMAP.md § Identity — Vulos Mail | 7 / 7 | `[██████████]` 100% |
-| Public Webapps | ROADMAP.md § Public Webapps | 8 / 8 | `[██████████]` 100% |
-| Multi-Instance Routing | ROADMAP.md § Multi-Instance | 7 / 7 | `[██████████]` 100% |
+**Active track — Native-first re-architecture (v8): ALL WAVES IMPLEMENTED + VERIFIED (2026-05-26).**
+Full backend suite green (`CGO_ENABLED=0 go test ./...`), frontend builds, pentest suite found no real vulnerabilities.
 
-| **Open total** | | **0 / 31** | `[██████████]` 100% |
+| Wave | Tasks | Status |
+|---|---|---|
+| 1 — Streaming wins (surgical) | STREAMWIN-01, STREAMWIN-02 | ✓ done |
+| 2 — Open Router + browser change | ROUTER-01, ROUTER-02, BROWSER-01, BROWSER-02, BROWSER-03 | ✓ done |
+| 3 — Web-app curation | WEBAPP-01 | ✓ done (kerf/jellyfin/minipaint/audiomass enabled; code-server/immich/diagrams/svg-edit `_disabled` pending real upstream artifacts) |
+| 4 — Login isolation | LOGINISO-01..04 | ✓ done |
+| 5 — GPU route | GPU-01, GPU-02, GPU-03 | ✓ done |
+| 6 — Streaming wins 3–5 | STREAMWIN-03, STREAMWIN-04, STREAMWIN-05 | ✓ done |
+| 7 — Topology (OS-side) + pentest | TOPO-01, TOPO-02, PENTEST-01 | ✓ done (no vulns found) |
+
+**Legacy tracks (all `done`):**
+
+| Area | Roadmap section | Done / Total |
+|---|---|---:|
+| BMINIT legacy | § Boot, Init & Bare Metal | 1 / 1 |
+| AI Router | § AI Router | 8 / 8 |
+| Vulos Mail Identity | § Identity | 7 / 7 |
+| Public Webapps | § Public Webapps | 8 / 8 |
+| Multi-Instance Routing | § Multi-Instance | 7 / 7 |
+| Storage / Offline / MEET / audit waves | §§ Storage, Offline, Video meetings | all `done` |
 
 ---
 

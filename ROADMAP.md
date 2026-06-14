@@ -1,6 +1,29 @@
 # Vulos OS — Roadmap
 
-Vulos is a web-native personal operating system. The full desktop — window manager, dock, every app — renders in a browser, so it reaches any device (phone, TV, car, laptop) without a separate app. Native Linux apps stream into the shell over WebRTC. The backend is Go; the shell is React/JSX. The OS is fully self-hostable, open-source, and forkable.
+Vulos is a web-native personal operating system. The full desktop — window manager, dock, every app — renders in a browser, so it reaches any device (phone, TV, car, laptop) without a separate app. The backend is Go; the shell is React/JSX. The OS is fully self-hostable, open-source, and forkable.
+
+---
+
+## 0. North Star — native-first dispatch
+
+**The most efficient compute is the browser already on the user's device.** The Vulos shell already runs in a real browser in every deployment mode (cage/WPE-WebKit kiosk on bare metal; the user's device browser on remote access). A server-side streamed browser is therefore redundant and strictly worse, and most "apps" can run as web apps in that host browser at near-zero server cost.
+
+Vulos routes every launch through one of five **dispatch lanes** (the Open Router — `backend/services/openrouter/`):
+
+| Lane | Workloads | Path | Server cost |
+|---|---|---|---|
+| **Web app** (host browser) | office, mail, PDF, terminal, notes, code, photos, image-edit, vector, diagrams, media, **kerf CAD**, browser | native in host browser (window/tab or in-shell web view via subdomain proxy) | ~zero |
+| **CPU app stream** (default, w/ fallback) | light native Linux GUI apps with no web form | Xvfb + SW-encode + WebRTC | low |
+| **GPU route** (BYO peer now, cloud later) | **games, Blender, heavy video edit** | stream from a GPU-capable Vulos peer | paid / BYO |
+| **Compute worker** (batch, non-interactive) | heavy CAD solves (FEA, big regen) | kerf worker; results → browser | per-job |
+| **Local-only** | full DAWs (live recording) | bare metal / same machine | n/a |
+
+Settled invariants:
+- **Browsing is native, never streamed.** No server-side streamed browser; the host browser does all web content. See §11.
+- **GPU access is peer-based.** A BYO GPU host is a full Vulos peer. GPU-capable apps default to CPU-stream with fallback; games need a GPU. Cloud GPU is a later, metered add-on — launch cost is $0 (sidesteps the Fly GPU deprecation, Aug 1 2026). See §11.
+- **Login isolates the credential, not the browsing.** Passkeys + a server-side token vault, never a streamed login. See §12.
+- **One uniform isolation model:** a Firecracker microVM per tenant on Fly Machines, scale-to-zero. See §18.
+- **CAD and DAW are separate tools**, parallel to the OS — designed but not built into the OS. See `roadmap/CAD-KERF.md` and `roadmap/REALTIME-AUDIO-DAW.md`.
 
 ---
 
@@ -161,15 +184,56 @@ A curated registry that turns self-hosting into one click. Recipe types: apt/dpk
 
 App registry syncs across cluster nodes via cr-sqlite (intent only — each node installs natively from the registry for its own architecture). App data syncs via the file sync layer.
 
+**Web-app curation (maximize the web-app lane, shrink the streamed set).** The streamed set should shrink to genuine native-only apps. Already web-native — point users here, never stream: vulos-office (docs/sheets/slides/PDF), vulos-mail webmail, xterm.js terminal, Notes, host browser. Adopt as first-class self-hostable web apps in `registry.json`, tagged `web`:
+
+| Replaces | Web app | License |
+|---|---|---|
+| GIMP/Photoshop (raster) | miniPaint | MIT |
+| VS Code / IDE | code-server | MIT (Open VSX) |
+| digiKam/Shotwell (photos) | Immich or PhotoPrism | AGPL |
+| draw.io/Visio (diagrams) | diagrams.net | Apache-2 |
+| Audacity (light audio) | AudioMass | open |
+| Inkscape (light vector) | SVG-Edit | MIT |
+| VLC (media playback) | Jellyfin / HTML5 | GPL |
+| CAD (Fusion/SolidWorks) | **kerf** — browser-native, client-side WASM geometry (see `roadmap/CAD-KERF.md`) | open |
+
+Curation priority by commonality × clean self-host: image-edit → IDE → photos → diagrams → media → kerf CAD → audio/vector. Each registry entry carries lane flags (`web`, `needs_gpu`, `game`, `local_only`, `compute_job`) consumed by the Open Router (§0). **Kept on the GPU route (BYO):** Blender (kerf does not replace mesh/sculpt/render), heavy video editing (DaVinci/Kdenlive), games.
+
 ---
 
-## 11. Streaming & Gaming
+## 11. Browser, Streaming, GPU Route & Gaming
 
-The WebRTC streaming pipeline carries every native app to the browser. On GPU hardware: cage (headless Wayland) → PipeWire DMA-BUF → NVENC/VA-API (zerolatency, no B-frames) → WebRTC. Zero CPU copies. On software: Xvfb → ximagesrc → vp8enc. The software path is unchanged when no GPU is present.
+### Browser — native, never streamed
 
-Gaming mode auto-enables for Wine, Lutris, Steam, and any `gaming` category app. It raises FPS to 60–144, cranks bitrate to 6–10 Mbps, switches Opus to 10ms frames, enables pointer-lock + raw mouse passthrough, increases gamepad polling to 120Hz, and elevates process priority to SCHED_FIFO.
+All web content opens in the **host browser**: web apps and arbitrary URLs render as a host-browser window/tab, or as an in-shell web view (iframe/web view inside the React shell via the existing subdomain/HTTP proxy). No Xvfb/GStreamer/WebRTC for web content. On bare metal a browser window is a local compositor window (WPE WebKit or Chromium-kiosk), not a streamed session.
 
-Gaming apps (Wine, Lutris, Steam) are streamed via WebRTC with GPU encoding. Companion tools (GameMode, MangoHud, DXVK, VKD3D-Proton, Proton-GE) are auto-installed alongside their parent apps.
+The server-side streamed "Browser" app is **retired** — removed from `registry.json` and the dock, and the server-side Chromium streaming path (`backend/services/webbrowser/`, the `xvfb chromium` install in `build.sh`) is audited and removed to shrink the attack surface. The bare-metal kiosk Chromium stays (it *is* the host browser). The Isolated/Disposable Browsing (RBI) stub has also been removed; revisit if a concrete use case arises. Engine choice (WPE WebKit vs Chromium) is a compat/footprint decision, not an efficiency one — streaming cost is engine-agnostic; Ladybird does not help and is not pursued for streaming.
+
+### CPU app stream — retained, efficient
+
+For genuine native Linux GUI apps with no web form. On software: Xvfb → ximagesrc → vp8enc. The pipeline carries five efficiency wins (`backend/services/stream/`, `backend/services/gpu/`):
+
+1. **Stop encoding when no peer is connected** — connected-peer refcount on `Session`; start `gstVideo` on 0→1, stop on 1→0.
+2. **Dirty-region capture** for non-gaming — `gpu.CaptureArgs` `use-damage=true` unless `opts.Gaming`.
+3. **Idle FPS + idle suspend** — static content drops to ~1–5 fps and ramps on activity; idle + unwatched reclaims Xvfb/app RAM after a timeout.
+4. **Resolution adaptation** — ABR steps resolution (1080→720→480) alongside bitrate on sustained loss, recovering when the link improves.
+5. **Live bitrate/FPS change** — set bitrate on the named encoder element + a `videorate` element, no full pipeline restart / no black blip.
+
+**Gaming guardrail:** none of the throttling wins (2–4) apply when `opts.Gaming` — games want constant high fps, `use-damage=false`, and fat bitrate.
+
+### GPU route — peer-based BYO (cloud later)
+
+Games, Blender, and heavy video editing run on the **GPU route**. A BYO GPU host is a full Vulos peer: Ed25519 identity, advertises a `gpu` capability descriptor (encoder, VRAM) over the fabric, reuses peering NAT-traversal/sync/identity (`backend/internal/gpuhost/`). Two sub-cases: **same-machine** (a local window, no encode, ~0 latency) and **remote-to-own-hardware** (your GPU rig streams to your other devices, Moonlight-style, brokered through the fabric).
+
+A `GPUProvider` seam abstracts the source: `BYOPeerProvider` (now), `OnDemandCloudProvider` (later — RunPod/Lambda/CoreWeave), `WarmPoolProvider` (later — bare metal). The session pipeline is identical regardless of source.
+
+**Media-plane invariant:** the GPU node runs the pipeline (cage + GStreamer + NVENC + WebRTC) and encodes + streams **directly to the user's browser**. The control plane does signaling + brokering only; the TURN/circuit relay is a NAT fallback only. Raw/rendered frames are **never** relayed through the cloud — perceived latency is GPU-node→user, so near/BYO nodes win.
+
+**Metering** counts GPU-seconds per session, provider-agnostic. BYO = free/credited; cloud (later) = passed-through + margin. No GPU code path depends on Fly GPUs.
+
+### Gaming mode
+
+Auto-enables for Wine, Lutris, Steam, and any `gaming` category app. Raises FPS to 60–144, cranks bitrate to 6–10 Mbps, switches Opus to 10ms frames, enables pointer-lock + raw mouse passthrough, increases gamepad polling to 120Hz, elevates process priority to SCHED_FIFO. On GPU hardware: cage → PipeWire DMA-BUF → NVENC/VA-API (zerolatency, no B-frames) → WebRTC, zero CPU copies. Companion tools (GameMode, MangoHud, DXVK, VKD3D-Proton, Proton-GE) auto-install alongside their parent apps. Gaming is always the GPU route — no CPU fallback for games.
 
 ---
 
@@ -178,6 +242,12 @@ Gaming apps (Wine, Lutris, Steam) are streamed via WebRTC with GPU encoding. Com
 The OS is a credible "possession factor": TPM-sealed device identity, TOTP vault (Google Authenticator import/export), encrypted password manager (auto-fill + TOTP + passkey integration), FIDO2 passkeys (server-side and WebAuthn bridge for remote-browser sessions), mTLS client cert store, SMS receive via VoIP number.
 
 **Shipped:** TOTP generator, password manager, TPM/software keystore abstraction, mTLS cert store, SMS receive, server-side FIDO2/passkeys, WebAuthn bridge data channel.
+
+**Login isolation (isolate the credential, not the browsing):**
+- **Passkeys as primary login.** Promote WebAuthn from the AUTH-13 re-auth gate (`backend/services/stream/webauthn.go`, `backend/services/passkeys/`) to a full registration + assertion login flow for Vulos accounts. The private key never leaves the authenticator → a keylogger/extension on the client gets nothing reusable; phishing-resistant (origin-bound). Password+2FA stays as fallback; new accounts default to passkeys.
+- **QR / phone-approval login** for shared/streamed/kiosk clients so the reusable secret is never typed on an untrusted client.
+- **Token vault / BFF for connected services** (e.g. Google): run OAuth/OIDC, store the refresh token server-side encrypted (reuse fabric key-at-rest encryption); the client gets only a session cookie, the backend makes credentialed outbound calls. Prefer OAuth/refresh-token over cookie-injection MITM (token-binding/DBSC is killing cookie injection).
+- **Threat-model honesty** (`THREAT-MODEL.md`): the BFF isolates the *durable token*, not the entry moment; pixel-streaming a login does **not** protect a secret typed on a compromised client; passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client.
 
 **Planned (advanced):** Verifiable Credentials wallet (eIDAS 2.0, ISO mDL, ZK selective disclosure); behavioral authentication (local ML model, continuous trust score); Open Banking API integration (OAuth 2.0 + mTLS, PSD2/UK Open Banking); device attestation service (TPM quote + cert chain for external service trust).
 
@@ -222,9 +292,11 @@ SMS, voice calls, and eSIM management via ModemManager (D-Bus) and lpac. A Go we
 
 Security is structural, not bolted on. Key invariants: no remote code execution without explicit user action; sandbox isolation for AI-generated apps and public webapps; Ed25519 signatures on every peering message; dm-verity on the OS image at runtime; TPM-sealed secrets where hardware allows; rate limiting on all inbound peering endpoints; dependency and container CVE scanning in CI.
 
-**Shipped:** full security audit of backend services, sandbox isolation review, auth middleware hardening, rate limiting, dependency scanning CI, container image scanning.
+**Shipped:** full security audit of backend services, sandbox isolation review, auth middleware hardening, rate limiting, dependency scanning CI, container image scanning, attacker-style pentest suites (one finding — CRDT-QUORUM-01 — found and fixed).
 
-**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, Vulos Mail); ZK audit proofs for compliance extensions.
+**Multi-tenant posture.** The microVM boundary (§18) is the *easy* part — Fly/Firecracker gives a best-in-class one. The real multi-tenant risk lives in our own code: tenant-routing, data-partitioning, auth, and the control plane (where CRDT-QUORUM-01-class bugs come from). The attacker-style pentest suites therefore target the **app-level multi-tenancy layer** (tenant isolation, IDOR, auth, open-relay, quorum); every cross-tenant code path is treated as the primary attack surface and the VM boundary is defense-in-depth, not the whole defense.
+
+**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, Vulos Mail, GPU route, token vault); extend pentest coverage of the multi-tenancy layer; ZK audit proofs for compliance extensions.
 
 ---
 
@@ -236,15 +308,34 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 
 ---
 
+## 18. Secure Multi-Tenant Topology
+
+**One uniform isolation model: a Firecracker microVM per tenant, scale-to-zero.** No shared multi-tenant runtime — one model to secure; idle tenants ≈ $0; the only cost is a small density penalty on the simultaneously-active tiny long tail (accepted).
+
+- **Platform now: Fly Machines** (Firecracker microVMs — the same isolation primitive AWS Lambda/Fargate use). Autostop/autostart = scale-to-zero. UDP for the WebRTC media plane. Edge/anycast for proximity. The Machines API drives the programmatic per-tenant fleet.
+- **Stay pluggable.** Keep `ComputeProvider` (in vulos-cloud) clean — no hardwired Fly-proprietary bits — so a move to DIY-Firecracker-on-AWS or Kata-Containers-on-k8s is a migration, not a rewrite. Pick those only when scale/economics justify the ops headcount.
+- **Durable state is S3/Tigris + cr-sqlite CRDT — the source of truth.** Fly Volumes are cache, not truth (host-pinned, unreplicated). Multi-region. Design for any Machine/host to vanish.
+- **Stateless control plane / shared services** (auth, routing, signaling, web-proxy, relay) → a separate shared autoscaling group.
+- **Operationally still "one scaling group":** you declare per-tenant Machines; Fly bin-packs them; idle ones scale to zero. No hand-provisioning per client.
+- **Graduation to dedicated, reusing existing investments.** Identity + data are instance-independent from day one (Ed25519 identity, leaderless cr-sqlite CRDT, peering). "Move to your own instance" = spin up a new instance with the same identity, sync the CRDT, optionally retire the shared-pool presence. No hard cutover (leaderless → no split-brain); the dedicated instance peers back via the fabric. Self-host/OSS targets bare-metal Firecracker or plain containers through the same abstraction — no Fly dependency.
+
+**Billing alignment** (monetize relay + enterprise): free/cheap = web-app-only on scale-to-zero microVMs; paid = GPU route (BYO credited; cloud GPU passed-through + margin, metered); dedicated/enterprise = own instance(s), monetizing control plane + relay + identity. The Fly Machines orchestration itself lives in **vulos-cloud**; this repo carries the OS-side pieces (durable-state rehydration, dedicated-instance migration, identity/CRDT portability).
+
+---
+
 ## Appendix: Stack Invariants (frozen)
 
 - **Language:** Go for all backend, boot, and verification slices. React/JSX for frontend (never `.tsx`). No Rust rewrite. (decisions.md J)
 - **SQLite:** `modernc.org/sqlite` (pure-Go, no CGO). (decisions.md D23)
-- **Browser engine:** Chromium (current); Ladybird de-scoped until engine matures. (future/LADYBIRD-BROWSER.md)
+- **Browser:** native host browser only — no server-side streamed browser. Bare-metal kiosk engine is WPE WebKit or Chromium (compat/footprint choice, not efficiency). Ladybird de-scoped and not pursued for streaming. (future/LADYBIRD-BROWSER.md)
+- **Dispatch:** every launch routes through the Open Router into one of five lanes (web app / CPU stream / GPU route / compute worker / local-only). Web content is never streamed. (§0)
+- **GPU:** peer-based BYO now; cloud provider later, metered. No code path depends on Fly GPUs. (§11)
+- **Tenant isolation:** one uniform model — a Firecracker microVM per tenant on Fly Machines, scale-to-zero. Fly Volumes are cache; S3/Tigris + CRDT is truth. (§18)
 - **Compositor:** cage (v1 streaming + bare-metal kiosk); labwc reserved for v2 surface transport. (decisions.md D93)
 - **AI providers:** pluggable (Ollama default, Claude, OpenAI, any OpenAI-compatible endpoint). No vendor lock-in.
 - **Trust:** security from signing, not access control. Public bucket + hard-baked key. Forkable.
 - **Self-hostable:** every service has a self-hosted path. Cloud is an optional convenience, never a correctness requirement.
+- **CAD / DAW:** separate browser-native tools, not built into the OS. (roadmap/CAD-KERF.md, roadmap/REALTIME-AUDIO-DAW.md)
 
 ---
 
@@ -390,11 +481,6 @@ Add a phishing / malicious-link classification endpoint to `airouter`. Mail and 
 this endpoint before rendering external links or attachments. The classifier runs on a small
 local model (Ollama) with a fallback to the cloud-billed path. Returns a risk score +
 confidence + suggested action (show/warn/block). Feeds the URL safety feeds in `vulos-mail`.
-
-### vumail → identity package rename (completed)
-The `vumail` package has been renamed to `identity` (`apps/mail/`, `backend/internal/identity/`).
-`vulos` identity. Update all `@vulos.org` references visible to the OS user to `@vulos.org`.
-Coordinate with vulos-cloud and vulos-mail repo renames.
 
 ---
 

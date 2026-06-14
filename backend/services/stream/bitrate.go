@@ -56,22 +56,61 @@ func (q Quality) String() string {
 	}
 }
 
+// resolutionStep holds a resolution tier used by the resolution-adaptive ABR.
+type resolutionStep struct {
+	width, height int
+}
+
+// resolutionLadder is the ordered resolution-step ladder (highest first).
+// STREAMWIN-04: on sustained loss the controller walks down; on recovery it walks up.
+var resolutionLadder = []resolutionStep{
+	{1920, 1080},
+	{1280, 720},
+	{854, 480},
+}
+
 // bitrateController monitors a WebRTC peer connection and signals when
 // the stream quality should change. It reads RTCP stats every few seconds.
+//
+// STREAMWIN-04: when gaming=false, sustained loss/RTT also steps down
+// the resolution via resizeFn; hysteresis prevents oscillation.
 type bitrateController struct {
 	mu       sync.Mutex
 	pc       *webrtc.PeerConnection
 	current  Quality
 	onChange func(Quality)
 	stop     chan struct{}
+
+	// STREAMWIN-04: resolution adaptation (non-gaming only).
+	gaming   bool
+	resizeFn func(w, h int) // calls Session.Resize; nil = disabled
+	// resIdx is the current index into resolutionLadder (0 = highest).
+	resIdx int
+	// downCount / upCount are hysteresis counters:
+	// resolution steps down after downThreshold consecutive bad evaluations,
+	// and steps up after upThreshold consecutive good evaluations.
+	downCount int
+	upCount   int
 }
 
+const resDownThreshold = 3 // consecutive bad evals before stepping resolution down
+const resUpThreshold = 5   // consecutive good evals before stepping resolution up
+
+// newBitrateController creates a controller with optional resolution adaptation.
+// Pass resizeFn=nil or gaming=true to disable resolution stepping.
 func newBitrateController(pc *webrtc.PeerConnection, initial Quality, onChange func(Quality)) *bitrateController {
+	return newBitrateControllerFull(pc, initial, onChange, false, nil)
+}
+
+// newBitrateControllerFull creates a controller with explicit gaming flag and resize hook.
+func newBitrateControllerFull(pc *webrtc.PeerConnection, initial Quality, onChange func(Quality), gaming bool, resizeFn func(w, h int)) *bitrateController {
 	bc := &bitrateController{
 		pc:       pc,
 		current:  initial,
 		onChange: onChange,
 		stop:     make(chan struct{}),
+		gaming:   gaming,
+		resizeFn: resizeFn,
 	}
 	go bc.run()
 	return bc
@@ -168,6 +207,7 @@ func (bc *bitrateController) evaluate() {
 	}
 
 	bc.current = next
+
 	bc.mu.Unlock()
 
 	if next != prev {
@@ -176,5 +216,59 @@ func (bc *bitrateController) evaluate() {
 		if bc.onChange != nil {
 			bc.onChange(next)
 		}
+	}
+
+	// STREAMWIN-04: resolution adaptation alongside bitrate (non-gaming only).
+	bc.applyResolutionAdaptation(lossRate, avgRTT)
+}
+
+// applyResolutionAdaptation updates the resolution hysteresis counters and,
+// when a threshold is crossed, calls resizeFn with the new resolution.
+// It is a no-op when gaming=true or resizeFn=nil.
+// Extracted as a separate method so it can be called directly in tests without
+// needing a live WebRTC peer connection.
+func (bc *bitrateController) applyResolutionAdaptation(lossRate, avgRTT float64) {
+	if bc.gaming || bc.resizeFn == nil {
+		return
+	}
+
+	linkBad := lossRate > 2 || avgRTT > 0.15
+	linkGood := lossRate < 0.5 && avgRTT < 0.08
+
+	bc.mu.Lock()
+	var resStep *resolutionStep
+	if linkBad {
+		bc.upCount = 0
+		bc.downCount++
+		if bc.downCount >= resDownThreshold && bc.resIdx < len(resolutionLadder)-1 {
+			bc.resIdx++
+			bc.downCount = 0
+			step := resolutionLadder[bc.resIdx]
+			resStep = &step
+		}
+	} else if linkGood {
+		bc.downCount = 0
+		bc.upCount++
+		if bc.upCount >= resUpThreshold && bc.resIdx > 0 {
+			bc.resIdx--
+			bc.upCount = 0
+			step := resolutionLadder[bc.resIdx]
+			resStep = &step
+		}
+	} else {
+		// Neutral: decay both counters toward zero to avoid stale hysteresis.
+		if bc.downCount > 0 {
+			bc.downCount--
+		}
+		if bc.upCount > 0 {
+			bc.upCount--
+		}
+	}
+	bc.mu.Unlock()
+
+	if resStep != nil {
+		log.Printf("[stream] adaptive resolution: → %dx%d (loss=%.1f%%, rtt=%.0fms)",
+			resStep.width, resStep.height, lossRate, avgRTT*1000)
+		bc.resizeFn(resStep.width, resStep.height)
 	}
 }
