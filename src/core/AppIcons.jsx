@@ -24,7 +24,7 @@ export const APP_LOGOS = {
   jupyter: 'https://upload.wikimedia.org/wikipedia/commons/3/38/Jupyter_logo.svg',
   gitea: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Gitea_Logo.svg',
   syncthing: 'https://upload.wikimedia.org/wikipedia/commons/8/83/SyncthingAugworGraphic.png',
-  wede: 'https://raw.githubusercontent.com/webcrft/wede/main/public/icon.svg',
+  wede: 'https://raw.githubusercontent.com/vul-os/wede/main/public/icon.svg',
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

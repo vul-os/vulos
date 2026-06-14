@@ -72,8 +72,8 @@
       "type": "web",
       "description": "Lightweight web-based code editor \u2014 edit files and projects from your browser with syntax highlighting",
       "category": "developer",
-      "author": "webcrft",
-      "homepage": "https://github.com/webcrft/wede",
+      "author": "Vulos",
+      "homepage": "https://github.com/vul-os/wede",
       "icon": "wede",
       "keywords": [
         "editor",
