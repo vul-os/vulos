@@ -336,7 +336,7 @@ func TestPIN_TPMWrapped_NoKeyStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth.NewStore: %v", err)
 	}
-	user, err := store.Register("pintest", "password123", "PinTest")
+	user, err := store.Register("pintest", "password12345", "PinTest")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}

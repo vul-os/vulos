@@ -31,7 +31,7 @@ func newTestDeps(t *testing.T) (*auth.Store, *appnet.Manager, *appnet.PortPool) 
 // seedSession registers a local user, opens a session and returns the token.
 func seedSession(t *testing.T, store *auth.Store) (token string, userID string) {
 	t.Helper()
-	u, err := store.Register("testuser", "testpass123", "Test User")
+	u, err := store.Register("testuser", "testpass123456", "Test User")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestValidateSession_RejectsExpiredSession(t *testing.T) {
 	store, mgr, pool := newTestDeps(t)
 
 	// Register a user and get a session, then revoke it to simulate expiry
-	u, err := store.Register("expireduser", "password123", "Expired User")
+	u, err := store.Register("expireduser", "password12345", "Expired User")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestValidateSession_RejectsExpiredSession(t *testing.T) {
 func TestIdentityHeadersForwarded(t *testing.T) {
 	store, mgr, pool := newTestDeps(t)
 
-	u, err := store.Register("headeruser", "headerpass", "Header User")
+	u, err := store.Register("headeruser", "headerpass123", "Header User")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}

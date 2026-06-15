@@ -289,7 +289,7 @@ func testAdminGateNonAdmin(t *testing.T) {
 	// Register the first user (becomes admin automatically).
 	r1 := postJSON(t, srv, "/api/auth/register", map[string]string{
 		"username": "admin1",
-		"password": "Str0ng!Pass",
+		"password": "Str0ng!Pass1",
 	}, nil)
 	if r1.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(r1.Body)
@@ -302,7 +302,7 @@ func testAdminGateNonAdmin(t *testing.T) {
 	// First, log in as admin to get a session token.
 	loginResp := postJSON(t, srv, "/api/auth/login", map[string]string{
 		"username": "admin1",
-		"password": "Str0ng!Pass",
+		"password": "Str0ng!Pass1",
 	}, nil)
 	if loginResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(loginResp.Body)
@@ -367,7 +367,7 @@ func testKillSwitchDisableExec(t *testing.T) {
 	// Register + login as admin so middleware lets us through.
 	r1 := postJSON(t, srv, "/api/auth/register", map[string]string{
 		"username": "ksadmin",
-		"password": "Str0ng!KS99",
+		"password": "Str0ng!KS991",
 	}, nil)
 	if r1.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(r1.Body)
@@ -381,7 +381,7 @@ func testKillSwitchDisableExec(t *testing.T) {
 		// If not, log in explicitly.
 		loginR := postJSON(t, srv, "/api/auth/login", map[string]string{
 			"username": "ksadmin",
-			"password": "Str0ng!KS99",
+			"password": "Str0ng!KS991",
 		}, nil)
 		adminToken = sessionToken(loginR)
 		mustClose(loginR)
@@ -421,7 +421,7 @@ func testAuthHappyPath(t *testing.T) {
 	// 1. Register (first user → admin, no existing users).
 	regResp := postJSON(t, srv, "/api/auth/register", map[string]string{
 		"username": "alice",
-		"password": "Alicepass1!",
+		"password": "Alicepass1!2",
 	}, nil)
 	if regResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(regResp.Body)
@@ -445,7 +445,7 @@ func testAuthHappyPath(t *testing.T) {
 	if regToken == "" {
 		loginResp := postJSON(t, srv, "/api/auth/login", map[string]string{
 			"username": "alice",
-			"password": "Alicepass1!",
+			"password": "Alicepass1!2",
 		}, nil)
 		regToken = sessionToken(loginResp)
 		mustClose(loginResp)

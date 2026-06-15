@@ -34,10 +34,10 @@ func setupHome(t *testing.T) string {
 	return home
 }
 
-// shortCodeRe matches VULA-XXXX-XXXX-XXXX where X is from the Crockford alphabet.
-var shortCodeRe = regexp.MustCompile(`^VULA-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`)
+// shortCodeRe matches VULOS-XXXX-XXXX-XXXX where X is from the Crockford alphabet.
+var shortCodeRe = regexp.MustCompile(`^VULOS-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`)
 
-// TestIssue_ShortCodeFormat verifies the VULA-XXXX-XXXX-XXXX format.
+// TestIssue_ShortCodeFormat verifies the VULOS-XXXX-XXXX-XXXX format.
 func TestIssue_ShortCodeFormat(t *testing.T) {
 	home := setupHome(t)
 	jc, code, err := Issue(home, time.Hour)
@@ -48,7 +48,7 @@ func TestIssue_ShortCodeFormat(t *testing.T) {
 		t.Fatal("Issue returned nil JoinCode")
 	}
 	if !shortCodeRe.MatchString(code) {
-		t.Errorf("short code %q does not match VULA-XXXX-XXXX-XXXX format", code)
+		t.Errorf("short code %q does not match VULOS-XXXX-XXXX-XXXX format", code)
 	}
 }
 
