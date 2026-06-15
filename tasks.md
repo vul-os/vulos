@@ -78,7 +78,7 @@ Scope: Add QR-code / phone-approval login so a reusable secret is never typed on
 AC: [ ] kiosk shows QR + polls for approval [ ] phone approval grants a scoped session [ ] expiry + single-use enforced [ ] `go test ./backend/services/passkeys/...`
 
 ### [LOGINISO-03] Token vault / BFF for connected services (OAuth refresh server-side)
-`todo` · P2 · L · dep: none · parallel: yes — backend/services/credvault/ or authvault/, backend/cmd/server/routes_oauth.go (new)
+`wontfix` · P2 · L — **WON'T-DO.** OAuth / connected-services was de-scoped: Vulos auth is email/password (+2FA/passkey/QR) only, no Google OAuth. The Connected-Accounts OAuth BFF (routes_oauth.go, credvault/oauth_provider.go, tokenvault.go, ConnectedAccountsPanel.jsx) was deleted. This task will not be built.
 Scope: Run OAuth/OIDC for connected services (e.g. Google). Store the refresh token **server-side, encrypted** (reuse fabric key-at-rest encryption). Client gets only a session cookie; the backend makes credentialed outbound calls. No cookie-injection MITM. The connected app browses in the host browser (no stream.Session).
 AC: [ ] OAuth connect stores refresh token in server-side vault only [ ] network test asserts the refresh token is NEVER sent to the client [ ] backend makes credentialed outbound call on the client's behalf [ ] `go test ./backend/services/...`
 
@@ -150,10 +150,10 @@ Full backend suite green (`CGO_ENABLED=0 go test ./...`), frontend builds, pente
 | 1 — Streaming wins (surgical) | STREAMWIN-01, STREAMWIN-02 | ✓ done |
 | 2 — Open Router + browser change | ROUTER-01, ROUTER-02, BROWSER-01, BROWSER-02, BROWSER-03 | ✓ done |
 | 3 — Web-app curation | WEBAPP-01 | ✓ done (kerf/jellyfin/minipaint/audiomass enabled; code-server/immich/diagrams/svg-edit `_disabled` pending real upstream artifacts) |
-| 4 — Login isolation | LOGINISO-01..04 | ✓ done |
+| 4 — Login isolation | LOGINISO-01, 02, 04 | ✓ done · LOGINISO-03 (OAuth BFF) **won't-do** — no OAuth in Vulos |
 | 5 — GPU route | GPU-01, GPU-02, GPU-03 | ✓ done |
 | 6 — Streaming wins 3–5 | STREAMWIN-03, STREAMWIN-04, STREAMWIN-05 | ✓ done |
-| 7 — Topology (OS-side) + pentest | TOPO-01, TOPO-02, PENTEST-01 | ✓ done (no vulns found) |
+| 7 — Topology (OS-side) + pentest | TOPO-01, TOPO-02, PENTEST-01 | **todo** — not implemented (TOPO-01/02 OS-side rehydration + dedicated-instance migration; PENTEST-01 dep on removed LOGINISO-03 is moot, but broad multi-tenant pentest coverage was added across cloud/office this session) |
 
 **Legacy tracks (all `done`):**
 
