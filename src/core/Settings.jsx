@@ -4,6 +4,7 @@ import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 import { PamVisibilityControl } from './PublicAppsManager'
 import AIRouterPanel from './settings/AIRouterPanel.jsx'
+import StoragePanel from './settings/StoragePanel.jsx'
 
 const sections = [
   { id: 'ai', label: 'AI Assistant' },
@@ -64,7 +65,7 @@ export default function Settings() {
         {active === 'energy' && <EnergySettings />}
         {active === 'vault' && <VaultSettings />}
         {active === 'recall' && <RecallSettings />}
-        {active === 'storage' && <StorageSettings />}
+        {active === 'storage' && <StoragePanel />}
         {active === 'storagemode' && <StorageModeSettings />}
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
