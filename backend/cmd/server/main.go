@@ -602,10 +602,18 @@ func main() {
 		writeJSON(w, missionStore.ListForUser(userID, 20))
 	})
 	mux.HandleFunc("GET /api/missions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
 		m := missionStore.Get(r.PathValue("id"))
 		if m == nil {
 			writeErr(w, 404, "not found")
 			return
+		}
+		// IDOR-MISSION-01: only the owner or an admin may read a mission.
+		if m.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 404, "not found")
+				return
+			}
 		}
 		writeJSON(w, m)
 	})
@@ -622,6 +630,19 @@ func main() {
 		writeJSON(w, m)
 	})
 	mux.HandleFunc("PUT /api/missions/{id}/step/{stepId}", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		m := missionStore.Get(r.PathValue("id"))
+		if m == nil {
+			writeErr(w, 404, "not found")
+			return
+		}
+		// IDOR-MISSION-01: only the owner or an admin may update mission steps.
+		if m.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 404, "not found")
+				return
+			}
+		}
 		var req struct {
 			Status string `json:"status"`
 			Output string `json:"output"`
@@ -632,6 +653,19 @@ func main() {
 		writeJSON(w, missionStore.Get(r.PathValue("id")))
 	})
 	mux.HandleFunc("POST /api/missions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		m := missionStore.Get(r.PathValue("id"))
+		if m == nil {
+			writeErr(w, 404, "not found")
+			return
+		}
+		// IDOR-MISSION-01: only the owner or an admin may cancel a mission.
+		if m.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 404, "not found")
+				return
+			}
+		}
 		missionStore.Cancel(r.PathValue("id"))
 		missionStore.Flush()
 		writeJSON(w, map[string]string{"status": "cancelled"})
@@ -1676,6 +1710,19 @@ func main() {
 		writeJSON(w, p)
 	})
 	mux.HandleFunc("PUT /api/browser-profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
+		// IDOR-BPROFILE-01: only the profile owner or an admin may mutate a browser profile.
+		userID := r.Header.Get("X-User-ID")
+		bp, ok := browserProfiles.Get(r.PathValue("id"))
+		if !ok {
+			writeErr(w, 404, "browser profile not found")
+			return
+		}
+		if bp.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 403, "cannot modify another user's browser profile")
+				return
+			}
+		}
 		var req struct {
 			Name  string `json:"name"`
 			Color string `json:"color"`
@@ -1687,16 +1734,55 @@ func main() {
 		writeJSON(w, map[string]string{"status": "updated"})
 	})
 	mux.HandleFunc("DELETE /api/browser-profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
+		// IDOR-BPROFILE-01: only the profile owner or an admin may delete a browser profile.
+		userID := r.Header.Get("X-User-ID")
+		bp, ok := browserProfiles.Get(r.PathValue("id"))
+		if !ok {
+			writeErr(w, 404, "browser profile not found")
+			return
+		}
+		if bp.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 403, "cannot delete another user's browser profile")
+				return
+			}
+		}
 		browserProfiles.Delete(r.PathValue("id"))
 		browserProfiles.Flush()
 		writeJSON(w, map[string]string{"status": "deleted"})
 	})
 	mux.HandleFunc("POST /api/browser-profiles/{id}/clear", func(w http.ResponseWriter, r *http.Request) {
+		// IDOR-BPROFILE-01: only the profile owner or an admin may clear a browser profile's data.
+		userID := r.Header.Get("X-User-ID")
+		bp, ok := browserProfiles.Get(r.PathValue("id"))
+		if !ok {
+			writeErr(w, 404, "browser profile not found")
+			return
+		}
+		if bp.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 403, "cannot clear another user's browser profile")
+				return
+			}
+		}
 		browserProfiles.ClearData(r.PathValue("id"))
 		browserProfiles.Flush()
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
 	mux.HandleFunc("POST /api/browser-profiles/{id}/bind", func(w http.ResponseWriter, r *http.Request) {
+		// IDOR-BPROFILE-01: only the profile owner or an admin may bind an app to a browser profile.
+		userID := r.Header.Get("X-User-ID")
+		bp, ok := browserProfiles.Get(r.PathValue("id"))
+		if !ok {
+			writeErr(w, 404, "browser profile not found")
+			return
+		}
+		if bp.UserID != userID {
+			if p, _ := authStore.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
+				writeErr(w, 403, "cannot bind app to another user's browser profile")
+				return
+			}
+		}
 		var req struct {
 			AppID string `json:"app_id"`
 		}
