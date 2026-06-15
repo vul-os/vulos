@@ -128,7 +128,9 @@ Vulos auto-detects GPU hardware and selects the best encoder for streaming deskt
 
 ### Applications
 - **Terminal** — persistent PTY sessions with bash, accessible from anywhere
-- **Browser** — Chromium instances streamed via WebRTC, multiple independent windows
+- **Browser** — native host-browser (no server-side streaming); web content opens in the kiosk Chromium (bare metal) or the user's desktop browser (remote)
+- **Mail** — LilMail, the bundled default IMAP/SMTP webmail client; the mail server is the separate vulos-mail repository
+- **Office** — vulos-office (docs, sheets, slides, spaces, calendar) via `@vulos/office-client`
 - **File Manager** — browse, upload, download, manage files
 - **App Store** — install web apps and desktop apps from apt/Flatpak
 - **Activity Monitor** — processes, CPU, memory, network connections
@@ -155,13 +157,15 @@ The OS is a **signed, immutable squashfs** — never patched in place, always re
 - **Signed boot chain (NETB / SIGN / VERITY / SEED)** — Secure Boot shim → bootloader → kernel/initramfs → squashfs; each stage verified before execution; offline root-signs-intermediate PKI; monotonic min-epoch for revocation and rollback protection
 - **Forkable trust anchor** — baked Ed25519 public key + soft bucket URL in the seed; rebuild the seed with your own key and bucket for a fully independent fork ([`roadmap/SEED-TRUST.md`](roadmap/SEED-TRUST.md))
 
-### Cloud Login Modes (CLOGIN)
+### Authentication
 
-The OS login screen offers three modes alongside the classic local username/password:
+Vulos auth is **email + password + 2FA/TOTP** as the baseline, with **passkeys (WebAuthn/FIDO2) as the primary login** for new accounts. No Google OAuth or third-party identity providers.
 
-- **Cloud account login** — email + password + 2FA; the cloud-signed token is verified locally against a baked cloud pubkey, with an offline grace-period cache so login works when the network is down
+- **Passkeys (primary)** — private key never leaves the authenticator; phishing-resistant and origin-bound
+- **QR / phone-approval login** — for kiosk/shared clients; no reusable secret typed on an untrusted device
+- **Password + 2FA** — fallback for all accounts; TOTP via any authenticator app
 - **Device PIN** — TPM-wrapped short PIN for fast re-unlock; falls back to password after lockout
-- **Fingerprint** — optional `fprintd`/libfprint unlock on bare metal; fingerprint unlocks the same TPM-wrapped credential as the PIN; gracefully hidden when no supported hardware is present
+- **Fingerprint** — optional `fprintd`/libfprint unlock on bare metal; gracefully hidden when no supported hardware is present
 
 Cloud profile changes (username, password, full name) are pushed as signed management messages and applied locally. The cloud is an accelerator, not a runtime dependency.
 

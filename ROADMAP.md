@@ -46,12 +46,12 @@ The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert
 At install/onboarding every user creates or claims a **Vulos mail identity**. There is no external email provider connected at OS level. The Vulos mail identity is the account's persistent, portable address across the Vulos ecosystem.
 
 The mail identity cross-references:
-- **vulos-mail** (OSS mail server) — the SMTP/IMAP backend that handles actual mail delivery, peering authentication, and notification routing.
-- **vulos-relay** — handles relay and peering for instances behind NAT; the relay server is the transport layer for Vulos Mail delivery when direct instance-to-instance is blocked.
+- **vulos-mail** (OSS mail server, separate repo) — the SMTP/IMAP backend that handles actual mail delivery, peering authentication, and notification routing. The bundled default mail client in the OS is **LilMail** (see `docs/MAIL-LILMAIL.md`), which connects to vulos-mail or any IMAP/SMTP server.
+- **circuit relay** (`vulos-cloud/backend/circuit`) — media/TURN PoP for WebRTC NAT traversal; not a mail transport. (The retired `vulos-relay` mail-delivery daemon is distinct and no longer in use.)
 
 The Vulos mail identity also anchors the Ed25519 peering keypair (PEERING.md), so one identity covers messaging, notifications, mail, and peer trust — no separate accounts.
 
-**Outstanding:** Vulos account provisioning in the first-boot wizard; tie the peering identity email-verification flow to Vulos Mail rather than external addresses; document the vulos-mail/vulos-relay boundary.
+**Outstanding:** Vulos account provisioning in the first-boot wizard; tie the peering identity email-verification flow to Vulos Mail rather than external addresses.
 
 ---
 
@@ -178,7 +178,7 @@ Every default app can integrate with the AI router: Docs gets summarize/rewrite/
 
 A curated registry that turns self-hosting into one click. Recipe types: apt/dpkg, Flatpak, static binary, download-and-extract. Each installed app gets its own subdomain and isolated network namespace.
 
-**Shipped (17 in registry):** Kdenlive, Audacity, Blender, GIMP, Inkscape, Jupyter Lab, LibreOffice, Gitea, Wede, Geany, Grafana, KiCad, Firefox, FileZilla, qBittorrent, Transmission, Syncthing, Thunderbird, KeePassXC, Cockpit, VLC.
+**Shipped (in registry):** Kdenlive, Audacity, Blender, GIMP, Inkscape, Jupyter Lab, LibreOffice, Gitea, Wede, Geany, Grafana, KiCad, Firefox, FileZilla, qBittorrent, Transmission, Syncthing, KeePassXC, Cockpit, VLC. (Thunderbird was removed — mail is handled by LilMail + vulos-mail.)
 
 **Planned:** Shotcut, Ardour, LMMS, Darktable, Penpot, OBS Studio, MapLibre GIS Editor, QGIS, GNU Octave, GnuCash, Firefly III, Jitsi Meet, Excalidraw, draw.io, Vaultwarden, Navidrome, Jellyfin, Memos, Uptime Kuma, Stirling PDF, VS Code (code-server), Hoppscotch, LibreTranslate, Matrix client (Cinny + Conduit homeserver + mautrix bridges for WhatsApp/Telegram/Signal), Steam, Lutris, Wine.
 
@@ -241,13 +241,14 @@ Auto-enables for Wine, Lutris, Steam, and any `gaming` category app. Raises FPS 
 
 The OS is a credible "possession factor": TPM-sealed device identity, TOTP vault (Google Authenticator import/export), encrypted password manager (auto-fill + TOTP + passkey integration), FIDO2 passkeys (server-side and WebAuthn bridge for remote-browser sessions), mTLS client cert store, SMS receive via VoIP number.
 
-**Shipped:** TOTP generator, password manager, TPM/software keystore abstraction, mTLS cert store, SMS receive, server-side FIDO2/passkeys, WebAuthn bridge data channel.
+**Auth model:** email + password + 2FA (TOTP) as the baseline; passkeys (WebAuthn/FIDO2) as the primary login for new accounts; QR / phone-approval login for kiosk/shared clients. **No third-party OAuth or Google sign-in** at the OS level. (LOGINISO-03 OAuth BFF was evaluated and descoped — Vulos identity is self-contained.)
 
-**Login isolation (isolate the credential, not the browsing):**
-- **Passkeys as primary login.** Promote WebAuthn from the AUTH-13 re-auth gate (`backend/services/stream/webauthn.go`, `backend/services/passkeys/`) to a full registration + assertion login flow for Vulos accounts. The private key never leaves the authenticator → a keylogger/extension on the client gets nothing reusable; phishing-resistant (origin-bound). Password+2FA stays as fallback; new accounts default to passkeys.
-- **QR / phone-approval login** for shared/streamed/kiosk clients so the reusable secret is never typed on an untrusted client.
-- **Token vault / BFF for connected services** (e.g. Google): run OAuth/OIDC, store the refresh token server-side encrypted (reuse fabric key-at-rest encryption); the client gets only a session cookie, the backend makes credentialed outbound calls. Prefer OAuth/refresh-token over cookie-injection MITM (token-binding/DBSC is killing cookie injection).
-- **Threat-model honesty** (`THREAT-MODEL.md`): the BFF isolates the *durable token*, not the entry moment; pixel-streaming a login does **not** protect a secret typed on a compromised client; passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client.
+**Shipped:** TOTP generator, password manager, TPM/software keystore abstraction, mTLS cert store, SMS receive, server-side FIDO2/passkeys (full registration + assertion login flow, `backend/services/passkeys/`), WebAuthn bridge data channel, QR / phone-approval login (`backend/services/passkeys/qrlogin.go`).
+
+**Login isolation (isolate the credential, not the browsing) — shipped:**
+- **Passkeys as primary login.** Full WebAuthn registration + assertion login flow for Vulos accounts (`backend/services/passkeys/login.go`). The private key never leaves the authenticator → a keylogger/extension on the client gets nothing reusable; phishing-resistant (origin-bound). Password+2FA stays as fallback; new accounts default to passkeys.
+- **QR / phone-approval login** for shared/streamed/kiosk clients — a short-lived, single-use challenge approved by an already-authenticated phone, so no reusable secret is typed on an untrusted client (`backend/services/passkeys/qrlogin.go`).
+- **Threat-model honesty** (`THREAT-MODEL.md`): passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client; pixel-streaming a login does **not** protect a secret typed on a compromised client.
 
 **Planned (advanced):** Verifiable Credentials wallet (eIDAS 2.0, ISO mDL, ZK selective disclosure); behavioral authentication (local ML model, continuous trust score); Open Banking API integration (OAuth 2.0 + mTLS, PSD2/UK Open Banking); device attestation service (TPM quote + cert chain for external service trust).
 
@@ -292,11 +293,11 @@ SMS, voice calls, and eSIM management via ModemManager (D-Bus) and lpac. A Go we
 
 Security is structural, not bolted on. Key invariants: no remote code execution without explicit user action; sandbox isolation for AI-generated apps and public webapps; Ed25519 signatures on every peering message; dm-verity on the OS image at runtime; TPM-sealed secrets where hardware allows; rate limiting on all inbound peering endpoints; dependency and container CVE scanning in CI.
 
-**Shipped:** full security audit of backend services, sandbox isolation review, auth middleware hardening, rate limiting, dependency scanning CI, container image scanning, attacker-style pentest suites (one finding — CRDT-QUORUM-01 — found and fixed).
+**Shipped:** full security audit of backend services, sandbox isolation review, auth middleware hardening, rate limiting, dependency scanning CI, container image scanning, attacker-style pentest suites (one finding — CRDT-QUORUM-01 — found and fixed). Security-hardening pass: 35 privileged endpoints now gated behind admin checks, IDOR fixes across mission/profile/peering endpoints, command-injection fixes in firstboot hostname validation, SSRF blocking on `/api/open` and the web proxy.
 
 **Multi-tenant posture.** The microVM boundary (§18) is the *easy* part — Fly/Firecracker gives a best-in-class one. The real multi-tenant risk lives in our own code: tenant-routing, data-partitioning, auth, and the control plane (where CRDT-QUORUM-01-class bugs come from). The attacker-style pentest suites therefore target the **app-level multi-tenancy layer** (tenant isolation, IDOR, auth, open-relay, quorum); every cross-tenant code path is treated as the primary attack surface and the VM boundary is defense-in-depth, not the whole defense.
 
-**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, Vulos Mail, GPU route, token vault); extend pentest coverage of the multi-tenancy layer; ZK audit proofs for compliance extensions.
+**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, Vulos Mail, GPU route); extend pentest coverage of the multi-tenancy layer (PENTEST-01); ZK audit proofs for compliance extensions.
 
 ---
 
@@ -526,9 +527,9 @@ cert puller (offline-LAN HTTPS was stuck on self-signed because the cert never r
 constants, a startup log for the storagemode store, and a cross-repo SW-cache-version registry.
 Tasks: `FIX-LANCERT-PULL-01`, `FIX-GPUHOST-WIRE-01`, `FIX-LAN-PATH-CONST-01`, `FIX-STORE-LOCAL-LOG-01`, `FIX-SW-CACHE-COORD-01`.
 
-**Video meetings (LiveKit, Wave B)** — target Google-Meet-class 500-participant rooms on Pro tier. The current
-Spaces calling stack is mesh + opaque relay fallback (correct for ≤5, fails past ~15); 500 needs an SFU with
-simulcast/SVC/active-speaker. OSS choice: LiveKit (MIT, Go) in a new sibling `vulos-meet` repo. Spaces becomes a
-LiveKit client (preserving the mesh fallback for intimate calls); transcription rides the existing airouter via a
-Whisper provider. Tasks (OS side): `MEET-OS-01`, `MEET-TRANSCRIPT-01`. See sibling repos for the SFU core (vulos-relay
-`MEET-CORE-01`), the cloud Pro-gate (`MEET-CP-01`/`MEET-RECORDING-01`), and the office UI (`MEET-SPACES-01`).
+**Video meetings** — **WON'T-DO (LiveKit/SFU removed).** The LiveKit / `vulos-meet` approach was
+evaluated and removed. Video calling in Vulos is **P2P WebRTC mesh only** (browser-to-browser;
+servers handle signaling only, not media). For groups (5+), a Pion SFU runs on the host's own
+instance (simulcast, Last-N, dominant-speaker audio mixing, hard cap: 50 participants). A
+cloud-scale SFU (LiveKit, 500-participant rooms) is not in scope for this repo; revisit if a
+concrete large-group requirement arises in vulos-office Spaces.

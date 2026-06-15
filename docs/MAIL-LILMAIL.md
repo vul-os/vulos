@@ -1,21 +1,22 @@
 # Mail (LilMail integration)
 
-Vula OS's default mail client is **LilMail**
+Vulos's default mail client is **LilMail**
 (github.com/exolutionza/lilmail) — a lightweight, database-free IMAP/SMTP
-webmail client, part of the Vula OS suite. It replaces the previous bespoke
-webmail and the Thunderbird desktop package.
+webmail client. It is the bundled default mail client for Vulos; the mail
+server itself is the separate **vulos-mail** repository.
 
-LilMail lives in its own repository and is consumed by the OS, the same way
-mail server (`vulos-mail`) and office (`vulos-office`) are kept separate. No
-LilMail source is vendored into this repo.
+LilMail lives in its own repository and is consumed by the OS as a service,
+the same way the mail server (`vulos-mail`) and office suite (`vulos-office`)
+are kept separate. No LilMail source is vendored into this repo.
 
 ## How it is wired
 
 - **Service.** LilMail runs as a local service (Fiber web app, default port
   `3000`). It serves its own server-rendered UI and handles IMAP/SMTP login
-  itself (email + password, or optional OAuth2 against an external IMAP
-  provider — this is LilMail's own connection auth, unrelated to Vula OS
-  sign-in).
+  itself (email + password for the IMAP account — this is LilMail's own
+  mail-server connection auth, unrelated to Vulos OS sign-in). Vulos OS
+  authentication is email/password + 2FA/passkey/QR only; there is no
+  Google OAuth or third-party identity provider at the OS level.
 - **Embedding.** The OS shell embeds LilMail same-window via an `<iframe>`.
   The built-in **Mail** app (`src/apps/mail/App.jsx`) fetches the service URL
   from `GET /api/mail/url` and frames it.

@@ -1,4 +1,4 @@
-## Vula OS vX.Y.Z
+## Vulos vX.Y.Z
 
 ### Highlights
 

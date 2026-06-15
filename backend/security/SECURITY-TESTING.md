@@ -117,7 +117,7 @@ observations and cannot re-quorum off pre-reinstall rows.
   yet. The key is persisted and meant to be stable.
 - **Key at rest.** `LoadOrCreateInstanceKey` stores the seed `0600` UNENCRYPTED in
   the data dir (same class as other box secrets). An at-rest-encrypted variant
-  (OS-keyring-wrapped, like `internal/identity`) is a follow-up.
+  (OS-keyring-wrapped, using the same keyring abstraction as other box secrets) is a follow-up.
 
 ---
 

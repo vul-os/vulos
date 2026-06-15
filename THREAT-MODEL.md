@@ -110,28 +110,27 @@ Trust boundaries:
 ### Mechanisms in code
 - **Passkeys / WebAuthn (primary login)** — `backend/services/passkeys/` (`login.go`), `src/auth/`. Registration + assertion login; the private key never leaves the authenticator, so a keylogger/extension captures nothing reusable; origin-bound → phishing-resistant. Password+2FA remains a fallback; new accounts default to passkeys.
 - **QR / phone-approval login** — `backend/services/passkeys/qrlogin.go`. Short-lived, single-use challenge approved by an already-authenticated phone, so no reusable secret is typed on a shared/streamed/kiosk client.
-- **Token vault / BFF** — `backend/services/credvault/tokenvault.go`, `cmd/server/routes_oauth.go`. OAuth/OIDC refresh tokens stored server-side, encrypted at rest (existing credvault AES-256-GCM). The client gets only a session reference; the backend makes credentialed outbound calls. `TestRefreshTokenNeverInHTTPResponse` asserts the refresh token never appears in a client-bound response or header.
+- **No third-party OAuth at OS level** — Vulos auth is email/password + 2FA/passkey/QR only. A connected-services OAuth BFF was evaluated (LOGINISO-03) and descoped; there is no Google OAuth or external identity provider integration in the OS. The `credvault` package handles the OS's own credential store, not third-party OAuth tokens.
 
 ### Top STRIDE threats
 
 | # | Category | Threat |
 |---|----------|--------|
-| 1 | **Information Disclosure** | A connected-service refresh token leaks to the client (or to another tenant) and grants perpetual access. |
-| 2 | **Spoofing** | A phishing origin replays a captured password/2FA against the real backend. |
-| 3 | **Elevation of Privilege** | A QR login challenge is replayed or approved by the wrong account, granting a kiosk an unintended session. |
+| 1 | **Spoofing** | A phishing origin replays a captured password/2FA against the real backend. |
+| 2 | **Elevation of Privilege** | A QR login challenge is replayed or approved by the wrong account, granting a kiosk an unintended session. |
+| 3 | **Spoofing** | An attacker brute-forces a device PIN or TOTP code on an unthrottled endpoint. |
 
 ### What this does NOT protect (honesty)
-- The BFF isolates the **durable token, not the entry moment** — a client compromised at the instant of auth can abuse that *session* while it lasts, but never gains the long-lived refresh token.
 - **Pixel-streaming a login does not protect a secret typed on a compromised client** — keystrokes originate on the client regardless of where the screen renders. This is why Vulos does not stream logins.
 - **Passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client.** A password can be captured at the point of entry however it is transported; a passkey private key cannot, because it never leaves the authenticator.
+- Session-scoped compromise (short-lived session on an already-infected client) is bounded but not eliminated.
 
 ### Mitigations / invariants
-- New connected-service integrations MUST route long-lived credentials through the token vault and MUST carry a test asserting the credential never reaches the client.
 - QR challenges are single-use with TTL; egress proxy rejects private/SSRF ranges.
+- Admin-gated endpoints (35 privileged routes) require an authenticated admin session; security-hardening pass addressed IDOR and command-injection vectors.
 - Do not "add security" by streaming a login screen — strictly worse (cost, no benefit).
 
 ### Residual risks
-- Session-scoped compromise on an already-infected client is out of scope of credential isolation (bounded, not eliminated).
 - Passkey recovery / account-reset path must not become a weaker backdoor than the passkey itself (tracked with the recovery-ladder design).
 
 ---

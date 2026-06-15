@@ -68,14 +68,14 @@ Scope: Add web apps tagged `web`: kerf (CAD — default CAD intents here; see ro
 AC: [ ] new web apps present + valid against the manifest schema [ ] each carries correct lane flags [ ] ROUTER-01 classifies all entries with no "unknown" [ ] `npm run build`
 
 ### [LOGINISO-01] Passkey register + login flow (promote from re-auth gate)
-`todo` · P1 · L · dep: none · parallel: yes — backend/services/passkeys/, backend/services/stream/webauthn.go, apps/setup-wizard/ or login UI
+`done` · P1 · L · dep: none · parallel: yes — backend/services/passkeys/, backend/services/stream/webauthn.go, apps/setup-wizard/ or login UI
 Scope: Promote WebAuthn from the AUTH-13 re-auth gate to a full registration + assertion **login** flow for Vulos accounts. Private key never leaves the authenticator. Keep password+2FA as fallback; default new accounts to passkeys. Wire backend ceremony endpoints + the login UI.
-AC: [ ] passkey register works end-to-end [ ] passkey login works end-to-end [ ] password+2FA still works as fallback [ ] `go test ./backend/services/passkeys/...` [ ] `npm run build`
+AC: [x] passkey register works end-to-end [x] passkey login works end-to-end [x] password+2FA still works as fallback [x] `go test ./backend/services/passkeys/...` [x] `npm run build`
 
 ### [LOGINISO-02] QR / phone-approval login for kiosk/streamed clients
-`todo` · P2 · M · dep: LOGINISO-01 · parallel: yes — backend/services/passkeys/qrlogin.go (new), login UI
+`done` · P2 · M · dep: LOGINISO-01 · parallel: yes — backend/services/passkeys/qrlogin.go, src/auth/QRLogin.jsx
 Scope: Add QR-code / phone-approval login so a reusable secret is never typed on an untrusted (shared/streamed/kiosk) client. The kiosk shows a QR; an already-authenticated phone approves; the kiosk receives a scoped session.
-AC: [ ] kiosk shows QR + polls for approval [ ] phone approval grants a scoped session [ ] expiry + single-use enforced [ ] `go test ./backend/services/passkeys/...`
+AC: [x] kiosk shows QR + polls for approval [x] phone approval grants a scoped session [x] expiry + single-use enforced [x] `go test ./backend/services/passkeys/...`
 
 ### [LOGINISO-03] Token vault / BFF for connected services (OAuth refresh server-side)
 `wontfix` · P2 · L — **WON'T-DO.** OAuth / connected-services was de-scoped: Vulos auth is email/password (+2FA/passkey/QR) only, no Google OAuth. The Connected-Accounts OAuth BFF (routes_oauth.go, credvault/oauth_provider.go, tokenvault.go, ConnectedAccountsPanel.jsx) was deleted. This task will not be built.
@@ -83,9 +83,9 @@ Scope: Run OAuth/OIDC for connected services (e.g. Google). Store the refresh to
 AC: [ ] OAuth connect stores refresh token in server-side vault only [ ] network test asserts the refresh token is NEVER sent to the client [ ] backend makes credentialed outbound call on the client's behalf [ ] `go test ./backend/services/...`
 
 ### [LOGINISO-04] THREAT-MODEL.md — login-isolation analysis
-`todo` · P2 · S · dep: LOGINISO-01, LOGINISO-03 · parallel: yes — THREAT-MODEL.md (new or existing)
-Scope: Document: the BFF isolates the durable token, not the entry moment; pixel-streaming a login does NOT protect a secret typed on a compromised client; passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client.
-AC: [ ] THREAT-MODEL.md contains the login-isolation section [ ] explicitly states streaming-login is not a credential protection [ ] no code change
+`done` · P2 · S · dep: LOGINISO-01 · parallel: yes — THREAT-MODEL.md
+Scope: Document: passkeys / out-of-band auth are the only things that make the credential un-capturable by an untrusted client; pixel-streaming a login does NOT protect a secret typed on a compromised client.
+AC: [x] THREAT-MODEL.md contains the login-isolation section (Component 4) [x] explicitly states streaming-login is not a credential protection [x] no code change
 
 ### [GPU-01] GPUProvider seam (BYOPeerProvider now; cloud impls as stubs)
 `removed` · P1 · L · dep: none
@@ -125,9 +125,9 @@ Scope: "Move to your own instance" = spin up a new instance with the SAME Ed2551
 AC: [ ] new instance adopts existing identity [ ] CRDT syncs to the new instance [ ] new instance peers back into the mesh [ ] `go test ./backend/internal/multiinstance/...`
 
 ### [PENTEST-01] Extend attacker-style pentest suite to app-level multi-tenancy
-`todo` · P1 · M · dep: ROUTER-02, LOGINISO-03 · parallel: yes — backend/services/security_test.go, backend/services/*/security_test.go
-Scope: Extend the existing pentest suites to cover the app-level multi-tenancy layer: tenant isolation, IDOR across tenants, auth bypass, open-relay, quorum (CRDT-QUORUM-class). Add cases for the new surfaces: Open Router lane confusion, token-vault leakage, GPU-peer brokering auth.
-AC: [ ] new tenant-isolation/IDOR cases added and green [ ] token-vault leak case asserts no client exposure [ ] router lane-confusion case [ ] `go test ./backend/...`
+`todo` · P1 · M · dep: ROUTER-02 · parallel: yes — backend/security/, backend/services/*/security_test.go
+Scope: Extend the existing pentest suites to cover the app-level multi-tenancy layer: tenant isolation, IDOR across tenants, auth bypass, open-relay, quorum (CRDT-QUORUM-class). Add cases for the new surfaces: Open Router lane confusion, GPU-peer brokering auth. (LOGINISO-03 OAuth BFF dep is moot — no OAuth in Vulos.)
+AC: [ ] new tenant-isolation/IDOR cases added and green [ ] router lane-confusion case [ ] `go test ./backend/...`
 
 > **Cross-repo (NOT this repo):** the Fly Machines per-tenant microVM fleet orchestration,
 > scale-to-zero autostop/autostart, and the `ComputeProvider` abstraction live in **vulos-cloud**.

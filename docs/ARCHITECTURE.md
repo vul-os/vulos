@@ -54,11 +54,12 @@ Browsing is **host-browser-native**: `POST /api/open` returns a
 opens the URL in the kiosk Chromium (bare-metal) or the user's desktop browser
 (remote). No server-side streamed Chromium session is created.
 
-The `services/webbrowser` package (server-side Chromium streaming via Xvfb +
-GStreamer + WebRTC) was removed in BROWSER-02. The `xvfb`, `chromium`, and
-`xdotool` streaming-only packages are no longer installed in the container or
-bare-metal image; the kiosk Chromium and its enterprise-policy files
-(`/etc/chromium/policies/managed/vulos.json`) remain intact.
+The `services/webbrowser` package (server-side Chromium streaming) was removed
+in BROWSER-02. The `xvfb`, `chromium`, and `xdotool` streaming-only packages
+are no longer installed in the container or bare-metal image. The kiosk
+Chromium and its enterprise-policy files
+(`/etc/chromium/policies/managed/vulos.json`) remain intact — the kiosk
+Chromium *is* the host browser on bare metal.
 
 Isolated/Disposable Browsing (RBI) is not implemented; the stub and its flag
 (`VULOS_ENABLE_ISOLATED_BROWSER`) have been removed. Revisit if a concrete use

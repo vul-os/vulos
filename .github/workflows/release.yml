@@ -95,11 +95,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: Vula OS ${{ steps.version.outputs.VERSION }}
+          name: Vulos ${{ steps.version.outputs.VERSION }}
           body: |
-            ## Vula OS ${{ steps.version.outputs.VERSION }}
-
-            ### Install on bare metal
+            ## Vulos ${{ steps.version.outputs.VERSION }}
 
             ### Bare metal (flash to USB)
 
