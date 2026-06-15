@@ -516,3 +516,73 @@ func TestSEC_Quorum_StaleObservationReplayBlocked(t *testing.T) {
 	// changeset cannot reach the quorum threshold on the current generation.
 	assertInstalled(t, verifier, victimULID, appID)
 }
+
+// ─── QUORUM-SEC-06: stale-timestamp replay cannot bypass GC (CRDT-GC-01) ──────
+
+// TestSEC_Quorum_StaleTimestampReplayBypassBlocked is the CRDT-GC-01 regression.
+// After a reinstall bumps the epoch, two verified peers resend their PRE-REINSTALL
+// signed uninstall changesets (same signatures, same old timestamps). Without the
+// temporal watermark guard (observed_at >= generation_at), recordUninstallObservation
+// would stamp both observations at the current epoch, making them appear "fresh"
+// and letting them jointly satisfy quorum — the reinstall's GC guarantee would be
+// bypassed.
+//
+// The fix: distinctUninstallOrigins adds AND observed_at >= generation_at so that
+// an observation whose timestamp predates the reinstall is excluded even when its
+// stored epoch matches the current generation.
+func TestSEC_Quorum_StaleTimestampReplayBypassBlocked(t *testing.T) {
+	const (
+		victimULID = "01SEC-GC01-VICTIM-ULID0001"
+		appID      = "vault"
+	)
+
+	reg, verifier := openSec(t)
+
+	const (
+		originB = "01SEC-GC01-ORIGIN-B-000001"
+		originC = "01SEC-GC01-ORIGIN-C-000001"
+	)
+	oB := newSignedOrigin(t, originB)
+	oC := newSignedOrigin(t, originC)
+
+	// 3 instances → quorum threshold = 2.
+	if err := reg.Upsert(multiinstance.Instance{ULID: victimULID, Kind: multiinstance.KindDevice, Status: multiinstance.StatusOnline}); err != nil {
+		t.Fatalf("Upsert victim: %v", err)
+	}
+	oB.publishInto(t, reg)
+	oC.publishInto(t, reg)
+
+	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	gen1Install := base
+	gen1Uninstall := base.Add(time.Minute)
+	gen2Install := base.Add(2 * time.Minute)
+
+	// PHASE 1: install v1.0.0 (generation 1).
+	seedInstall(t, verifier, victimULID, appID, "1.0.0", gen1Install)
+
+	// oB sends an uninstall stamped BEFORE the reinstall (gen1Uninstall < gen2Install).
+	if err := verifier.ApplyChangeset(oB.emitUninstall(t, victimULID, appID, "1.0.0", gen1Uninstall)); err != nil {
+		t.Fatalf("apply oB gen1 uninstall: %v", err)
+	}
+	assertInstalled(t, verifier, victimULID, appID)
+
+	// PHASE 2: reinstall v2.0.0 — bumps epoch to 2.
+	seedInstall(t, verifier, victimULID, appID, "2.0.0", gen2Install)
+
+	// PHASE 3: both oB and oC resend (replay) their pre-reinstall signed changesets
+	// with the SAME old timestamp (gen1Uninstall < gen2Install). Without the
+	// temporal watermark fix, recordUninstallObservation would stamp both at epoch 2
+	// and distinctUninstallOrigins (epoch=2 only) would count them → quorum met →
+	// app wrongly uninstalled. With the fix, observed_at < generation_at causes
+	// them to be excluded from the quorum count → quorum not met → app stays installed.
+	if err := verifier.ApplyChangeset(oB.emitUninstall(t, victimULID, appID, "1.0.0", gen1Uninstall)); err != nil {
+		t.Fatalf("apply oB stale replay: %v", err)
+	}
+	if err := verifier.ApplyChangeset(oC.emitUninstall(t, victimULID, appID, "1.0.0", gen1Uninstall)); err != nil {
+		t.Fatalf("apply oC stale: %v", err)
+	}
+
+	// The app MUST remain installed — stale-timestamp replays do not satisfy quorum
+	// after a reinstall, regardless of how many verified peers send them.
+	assertInstalled(t, verifier, victimULID, appID)
+}

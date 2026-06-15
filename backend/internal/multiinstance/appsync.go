@@ -48,8 +48,13 @@
 //	merges/restarts and converges deterministically (union semantics).  Each
 //	observation is tagged with the app's install GENERATION (app_install_generation);
 //	a (re)install bumps the generation and quorum counts ONLY current-generation
-//	observations, so a re-install GCs stale rows and a later uninstall must gather
-//	FRESH observations (observation-set GC).
+//	observations whose observed_at is NOT before the generation's install timestamp.
+//	This dual guard (epoch + temporal watermark) prevents a verified peer from
+//	bypassing the GC by replaying a pre-reinstall signed changeset: the replayed
+//	observation lands at the current epoch (recordUninstallObservation uses
+//	currentGeneration at apply-time), but distinctUninstallOrigins additionally
+//	requires observed_at >= generation_at so the stale-timestamp replay is excluded
+//	(CRDT-GC-01 temporal watermark).
 //
 // Wire format
 //
@@ -870,19 +875,61 @@ func (as *AppSync) recordUninstallObservation(tx *sql.Tx, instanceULID, appID, o
 
 // distinctUninstallOrigins counts the DISTINCT VERIFIED originating instances
 // that have reported an uninstall of (instanceULID, appID) AT THE CURRENT install
-// generation. Observations carrying a stale epoch (made before a later
-// re-install) are excluded — that is the observation-set GC: a re-install bumps
-// the generation, so a subsequent uninstall must gather FRESH observations.
+// generation AND whose observation timestamp is not older than the generation's
+// install timestamp.
+//
+// Two guards are enforced:
+//
+//  1. epoch = currentGeneration — the epoch filter GCs observations accumulated
+//     before a re-install without a destructive bulk delete (OR-set monotonicity).
+//
+//  2. observed_at >= generation_at — the timestamp guard ensures that a verified
+//     peer cannot "revive" a pre-reinstall observation by replaying a
+//     stale-timestamped changeset after the reinstall.  Without this check,
+//     recordUninstallObservation stamps the new observation with the current
+//     epoch (because currentGeneration is called at apply-time) even though the
+//     changeset's observed_at predates the reinstall — bypassing the GC
+//     (CRDT-GC-01 temporal watermark).
+//
+// Both checks are necessary: epoch alone is insufficient because replayed
+// stale-timestamp changesets from verified peers are stamped with the current
+// epoch at record-time.
 func (as *AppSync) distinctUninstallOrigins(tx *sql.Tx, instanceULID, appID string) (int, error) {
-	gen, err := as.currentGeneration(tx, instanceULID, appID)
+	var gen int64
+	var generationAt string
+	err := tx.QueryRow(`
+		SELECT generation, generation_at FROM app_install_generation
+		WHERE instance_ulid = ? AND app_id = ?
+	`, instanceULID, appID).Scan(&gen, &generationAt)
+	if err == sql.ErrNoRows {
+		// No generation record: genesis state; epoch 0 with no install timestamp.
+		// Count observations with epoch 0 and no timestamp guard (no reinstall
+		// has occurred, so no GC watermark to enforce).
+		var n int
+		err = tx.QueryRow(`
+			SELECT COUNT(*) FROM app_uninstall_observations
+			WHERE instance_ulid = ? AND app_id = ? AND epoch = 0
+		`, instanceULID, appID).Scan(&n)
+		return n, err
+	}
 	if err != nil {
 		return 0, err
 	}
 	var n int
-	err = tx.QueryRow(`
-		SELECT COUNT(*) FROM app_uninstall_observations
-		WHERE instance_ulid = ? AND app_id = ? AND epoch = ?
-	`, instanceULID, appID, gen).Scan(&n)
+	if generationAt == "" {
+		// generation_at is empty (legacy / corrupt row) — fall back to epoch-only filter.
+		err = tx.QueryRow(`
+			SELECT COUNT(*) FROM app_uninstall_observations
+			WHERE instance_ulid = ? AND app_id = ? AND epoch = ?
+		`, instanceULID, appID, gen).Scan(&n)
+	} else {
+		// Dual guard: epoch matches AND the observation was recorded at or after the
+		// install that set this generation (temporal watermark — CRDT-GC-01).
+		err = tx.QueryRow(`
+			SELECT COUNT(*) FROM app_uninstall_observations
+			WHERE instance_ulid = ? AND app_id = ? AND epoch = ? AND observed_at >= ?
+		`, instanceULID, appID, gen, generationAt).Scan(&n)
+	}
 	return n, err
 }
 
