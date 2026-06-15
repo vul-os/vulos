@@ -6,7 +6,7 @@
 //  1. Kiosk calls POST /api/auth/qr/begin  → receives { challenge_id, qr_data }.
 //     qr_data is a URL-safe string the kiosk encodes into a QR code.
 //  2. An already-authenticated phone (with a valid session cookie) calls
-//     POST /api/auth/qr/approve  → { challenge_id, approved: true }.
+//     POST /api/auth/qr/approve  → { challenge_id, nonce, approved: true }.
 //     The challenge is resolved and a scoped session token is minted.
 //  3. Kiosk polls GET /api/auth/qr/poll?id=<challenge_id> until it gets
 //     { approved: true, session_token: "..." }, then sets the session cookie.
@@ -15,12 +15,18 @@
 //   - Single-use: a challenge can only be approved once; further polls/approvals
 //     after resolution are rejected.
 //   - Expiry: challenges expire after qrChallengeTTL (2 minutes).
+//   - Nonce binding (QRSEC-01): Begin() generates a random nonce that is
+//     embedded in qr_data. The approving device must echo the nonce in its
+//     Approve() call. A shoulder-surfer who sees only the on-screen QR image
+//     but does not have access to the decoded payload bytes cannot construct a
+//     valid approval request without the nonce.
 //   - The session token minted is identical to a normal auth.CreateSession token
 //     so no special server-side scoping is required; the kiosk gets a normal OS
 //     session.
-//   - qr_data encodes only the challenge_id + expiry, never a secret. The
-//     real secret lives server-side; the approving phone sends the challenge_id
-//     back over an authenticated channel.
+//   - Residual risk: a device that can both photograph and decode the QR code
+//     (e.g. a camera aimed at the screen) still obtains the nonce. Full
+//     device-key binding (signing the approval with the phone's TPM key) is
+//     deferred; the nonce-echo is the minimum viable improvement.
 package passkeys
 
 import (
@@ -53,10 +59,17 @@ var ErrQRChallengeExpired = errors.New("qrlogin: challenge expired")
 // already been resolved.
 var ErrQRChallengeAlreadyUsed = errors.New("qrlogin: challenge already used")
 
+// ErrQRNonceMismatch is returned when the approver supplies the wrong nonce.
+// This indicates a shoulder-surfer attack: the approver knows the challenge_id
+// (e.g. from seeing it in the URL or a brief glimpse of the QR image) but
+// does not hold the decoded QR payload bytes containing the nonce.
+var ErrQRNonceMismatch = errors.New("qrlogin: nonce mismatch")
+
 // qrChallenge holds the server-side state for one QR approval challenge.
 type qrChallenge struct {
 	mu           sync.Mutex
 	id           string
+	nonce        string    // QRSEC-01: random value embedded in qr_data; approver must echo
 	expiresAt    time.Time
 	approvedByID string // userID of the approving phone (empty until approved)
 	sessionToken string // minted on approval, handed to the kiosk on poll
@@ -88,15 +101,25 @@ type QRBeginResult struct {
 
 // Begin creates a new QR challenge and returns the data the kiosk should render
 // as a QR code.
+//
+// QRSEC-01: a random nonce is generated and embedded in qr_data. The approving
+// phone must include this nonce in its Approve() call. This prevents an attacker
+// who knows the challenge_id (e.g. from a partial glimpse of the screen or the
+// poll URL) from approving without access to the full decoded QR payload.
 func (s *QRLoginService) Begin() (*QRBeginResult, error) {
 	id, err := qrRandID()
 	if err != nil {
 		return nil, fmt.Errorf("qrlogin: generate id: %w", err)
 	}
+	nonce, err := qrRandID()
+	if err != nil {
+		return nil, fmt.Errorf("qrlogin: generate nonce: %w", err)
+	}
 
 	exp := time.Now().Add(qrChallengeTTL)
 	ch := &qrChallenge{
 		id:        id,
+		nonce:     nonce,
 		expiresAt: exp,
 	}
 
@@ -104,10 +127,13 @@ func (s *QRLoginService) Begin() (*QRBeginResult, error) {
 	s.challenges[id] = ch
 	s.mu.Unlock()
 
-	// qr_data encodes just the challenge_id inside a custom URL so the phone
-	// app can deep-link straight to the approval flow.
+	// qr_data encodes the challenge_id + nonce + expiry inside a custom URL so
+	// the phone app can deep-link straight to the approval flow.
+	// The nonce is intentionally opaque to the kiosk: the kiosk only displays
+	// the QR code; it never needs to read the nonce value itself.
 	qrPayload, err := json.Marshal(map[string]string{
 		"challenge_id": id,
+		"nonce":        nonce,
 		"expires_at":   exp.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
@@ -125,11 +151,18 @@ func (s *QRLoginService) Begin() (*QRBeginResult, error) {
 // approverUserID must be a valid, already-authenticated user ID (taken from the
 // X-User-ID header set by the auth middleware).
 //
+// QRSEC-01: the caller must supply the nonce that was embedded in the QR code
+// payload. This value is only obtainable by decoding the QR image; knowing
+// the challenge_id alone (e.g. from a shoulder-surfing glimpse) is not enough.
+//
 // On success it mints an auth session for the same user and stores it in the
 // challenge so the kiosk can retrieve it via Poll.
-func (s *QRLoginService) Approve(challengeID, approverUserID string) error {
+func (s *QRLoginService) Approve(challengeID, approverUserID, nonce string) error {
 	if approverUserID == "" {
 		return fmt.Errorf("qrlogin: approver must be authenticated")
+	}
+	if nonce == "" {
+		return ErrQRNonceMismatch
 	}
 
 	s.mu.Lock()
@@ -147,6 +180,12 @@ func (s *QRLoginService) Approve(challengeID, approverUserID string) error {
 	}
 	if ch.used {
 		return ErrQRChallengeAlreadyUsed
+	}
+
+	// QRSEC-01: verify the nonce echoed by the approving device matches the
+	// value that was embedded in the QR payload.
+	if nonce != ch.nonce {
+		return ErrQRNonceMismatch
 	}
 
 	// Look up the approver in the auth store.

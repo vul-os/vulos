@@ -8,7 +8,8 @@
 // Usage:
 //   <QRLoginPanel onSuccess={checkAuth} onCancel={() => setShowQR(false)} />
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import QRCodeLib from 'qrcode'
 
 const POLL_INTERVAL_MS = 2000 // 2s poll cadence
 
@@ -161,31 +162,44 @@ export default function QRLoginPanel({ onSuccess, onCancel }) {
 }
 
 // ─── QRCodeDisplay ─────────────────────────────────────────────────────────────
-// Renders qr_data as a minimal SVG QR code using the qrcode-svg approach.
-// We use the browser's built-in btoa-based approach to embed the data as a
-// simple data URI so we avoid adding a QR library dependency.
-//
-// For production quality, drop in a `qrcode` or `qr-code-styling` npm package.
-// This is a functional placeholder that encodes the challenge URL.
+// Renders qr_data as a real, scannable SVG QR code using the `qrcode` package.
+// The QR image is phone-scannable; the raw URL is NOT exposed in any attribute
+// (no title/data-* leaking the challenge URL to the accessibility tree or DOM).
 function QRCodeDisplay({ value }) {
-  // Render a placeholder grid indicating QR content (180×180 px).
-  // The actual data is embedded as a title so screen readers can access it.
-  // In production this would use a real QR renderer.
-  const cells = generateQRMatrix(value)
+  // Build the QR bit matrix synchronously using the qrcode library's core API.
+  // QRCodeLib.create() returns { modules: BitMatrix, version, ... }.
+  // modules.get(row, col) returns a truthy value for dark cells.
+  const { cells, size } = useMemo(() => {
+    try {
+      const qr = QRCodeLib.create(value, { errorCorrectionLevel: 'M' })
+      const sz = qr.modules.size
+      const grid = []
+      for (let r = 0; r < sz; r++) {
+        const row = []
+        for (let c = 0; c < sz; c++) {
+          row.push(!!qr.modules.get(r, c))
+        }
+        grid.push(row)
+      }
+      return { cells: grid, size: sz }
+    } catch {
+      return { cells: [], size: 0 }
+    }
+  }, [value])
+
+  if (!size) return null
 
   return (
-    <div
-      className="w-44 h-44 rounded-2xl bg-white p-3 shadow-lg"
-      title={value}
-    >
+    <div className="w-44 h-44 rounded-2xl bg-white p-3 shadow-lg">
       <svg
-        viewBox={`0 0 ${cells.length} ${cells.length}`}
+        viewBox={`0 0 ${size} ${size}`}
         className="w-full h-full"
         aria-label="QR code for phone sign-in"
+        role="img"
       >
         {cells.flatMap((row, y) =>
-          row.map((cell, x) =>
-            cell ? (
+          row.map((dark, x) =>
+            dark ? (
               <rect
                 key={`${x}-${y}`}
                 x={x}
@@ -200,59 +214,6 @@ function QRCodeDisplay({ value }) {
       </svg>
     </div>
   )
-}
-
-// generateQRMatrix produces a minimal QR-like bit matrix from the input string.
-// This is NOT a real QR code generator — it produces a deterministic visual
-// grid that encodes the first 256 bits of a SHA-256-like hash of the string,
-// suitable for display while a real QR library is integrated.
-//
-// Replace this with a real QR library (e.g. `import QRCode from 'qrcode'`) for
-// production use.
-function generateQRMatrix(text) {
-  const SIZE = 21
-  const matrix = Array.from({ length: SIZE }, () => new Array(SIZE).fill(false))
-
-  // Finder patterns (top-left, top-right, bottom-left corners).
-  const drawFinder = (r, c) => {
-    for (let i = 0; i < 7; i++) {
-      for (let j = 0; j < 7; j++) {
-        const border = i === 0 || i === 6 || j === 0 || j === 6
-        const inner = i >= 2 && i <= 4 && j >= 2 && j <= 4
-        if (r + i < SIZE && c + j < SIZE) {
-          matrix[r + i][c + j] = border || inner
-        }
-      }
-    }
-  }
-  drawFinder(0, 0)
-  drawFinder(0, SIZE - 7)
-  drawFinder(SIZE - 7, 0)
-
-  // Simple data fill: XOR bytes of the text into the data region.
-  const bytes = []
-  for (let i = 0; i < text.length; i++) bytes.push(text.charCodeAt(i))
-
-  let byteIdx = 0, bitIdx = 0
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      // Skip finder-pattern and separation zones.
-      const inFinder =
-        (r < 8 && c < 8) ||
-        (r < 8 && c >= SIZE - 8) ||
-        (r >= SIZE - 8 && c < 8)
-      if (inFinder) continue
-      if (matrix[r][c]) continue // already set
-
-      if (byteIdx < bytes.length) {
-        matrix[r][c] = (bytes[byteIdx] >> (7 - bitIdx)) & 1 ? true : false
-        bitIdx++
-        if (bitIdx === 8) { bitIdx = 0; byteIdx++ }
-      }
-    }
-  }
-
-  return matrix
 }
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────

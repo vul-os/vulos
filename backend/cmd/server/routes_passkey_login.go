@@ -189,8 +189,13 @@ func (h *loginISOHandler) qrBegin(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/auth/qr/approve
 // Requires an authenticated session (phone calling this has a valid session).
-// Body: { "challenge_id": "..." }
+// Body: { "challenge_id": "...", "nonce": "..." }
 // Response: { "status": "approved" }
+//
+// The nonce field is required (QRSEC-01): the approving phone app decodes the
+// QR payload and must echo back the nonce embedded in it. This prevents an
+// attacker who knows only the challenge_id from approving via an authenticated
+// session without having actually scanned the QR code.
 func (h *loginISOHandler) qrApprove(w http.ResponseWriter, r *http.Request) {
 	approverUserID := r.Header.Get("X-User-ID")
 	if approverUserID == "" {
@@ -200,6 +205,7 @@ func (h *loginISOHandler) qrApprove(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		ChallengeID string `json:"challenge_id"`
+		Nonce       string `json:"nonce"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		writeErr(w, 400, "invalid request body")
@@ -209,8 +215,12 @@ func (h *loginISOHandler) qrApprove(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "challenge_id required")
 		return
 	}
+	if req.Nonce == "" {
+		writeErr(w, 400, "nonce required")
+		return
+	}
 
-	if err := h.qr.Approve(req.ChallengeID, approverUserID); err != nil {
+	if err := h.qr.Approve(req.ChallengeID, approverUserID, req.Nonce); err != nil {
 		switch err {
 		case passkeys.ErrQRChallengeNotFound:
 			writeErr(w, 404, "challenge not found or expired")
@@ -218,6 +228,8 @@ func (h *loginISOHandler) qrApprove(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 410, "challenge has expired")
 		case passkeys.ErrQRChallengeAlreadyUsed:
 			writeErr(w, 409, "challenge already used")
+		case passkeys.ErrQRNonceMismatch:
+			writeErr(w, 403, "nonce mismatch")
 		default:
 			writeErr(w, 400, err.Error())
 		}

@@ -174,6 +174,29 @@ func newTestQRService(t *testing.T) (*QRLoginService, *auth.Store) {
 	return NewQRLoginService(store), store
 }
 
+// extractNonce parses the nonce from a QRBeginResult.QRData payload.
+// qr_data = "vulos://qr-login/" + base64url(json)
+func extractNonce(t *testing.T, qrData string) string {
+	t.Helper()
+	const prefix = "vulos://qr-login/"
+	if len(qrData) <= len(prefix) {
+		t.Fatalf("qr_data too short: %q", qrData)
+	}
+	b, err := base64.RawURLEncoding.DecodeString(qrData[len(prefix):])
+	if err != nil {
+		t.Fatalf("decode qr_data payload: %v", err)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(b, &payload); err != nil {
+		t.Fatalf("unmarshal qr_data payload: %v", err)
+	}
+	nonce := payload["nonce"]
+	if nonce == "" {
+		t.Fatal("nonce missing from qr_data payload")
+	}
+	return nonce
+}
+
 // TestQRLogin_ApproveAndPoll verifies the happy-path: begin → approve → poll.
 func TestQRLogin_ApproveAndPoll(t *testing.T) {
 	qr, store := newTestQRService(t)
@@ -197,8 +220,11 @@ func TestQRLogin_ApproveAndPoll(t *testing.T) {
 		t.Fatal("ExpiresAt is not in the future")
 	}
 
-	// Authenticated phone approves the challenge.
-	if err := qr.Approve(result.ChallengeID, user.ID); err != nil {
+	// Extract nonce from the QR payload (as the phone app would).
+	nonce := extractNonce(t, result.QRData)
+
+	// Authenticated phone approves the challenge — must supply the nonce.
+	if err := qr.Approve(result.ChallengeID, user.ID, nonce); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -233,6 +259,77 @@ func TestQRLogin_ApproveAndPoll(t *testing.T) {
 	}
 }
 
+// TestQRLogin_NonceMismatch verifies that Approve rejects a wrong nonce
+// (QRSEC-01 — shoulder-surfer protection).
+func TestQRLogin_NonceMismatch(t *testing.T) {
+	qr, store := newTestQRService(t)
+
+	user, _ := store.Register("qr-nonce-user", "pw-1234-extra!", "Nonce User")
+
+	result, err := qr.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	// Approve with the wrong nonce (simulates knowing challenge_id but not the payload).
+	err = qr.Approve(result.ChallengeID, user.ID, "wrong-nonce-value")
+	if err != ErrQRNonceMismatch {
+		t.Fatalf("Approve with wrong nonce: got %v, want ErrQRNonceMismatch", err)
+	}
+
+	// After a failed nonce attempt the challenge must still be pending (not consumed).
+	poll, err := qr.Poll(result.ChallengeID)
+	if err != nil {
+		t.Fatalf("Poll after nonce mismatch: %v", err)
+	}
+	if !poll.Pending {
+		t.Fatal("challenge should still be Pending after a nonce-mismatch Approve attempt")
+	}
+}
+
+// TestQRLogin_EmptyNonceRejected verifies that an empty nonce is rejected.
+func TestQRLogin_EmptyNonceRejected(t *testing.T) {
+	qr, store := newTestQRService(t)
+
+	user, _ := store.Register("qr-empty-nonce", "pw-1234-extra!", "Empty Nonce")
+
+	result, err := qr.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	err = qr.Approve(result.ChallengeID, user.ID, "")
+	if err != ErrQRNonceMismatch {
+		t.Fatalf("Approve with empty nonce: got %v, want ErrQRNonceMismatch", err)
+	}
+}
+
+// TestQRLogin_NonceInQRPayload verifies that the nonce is present in qr_data
+// and is non-empty (ensures Begin() always embeds a nonce for the phone to use).
+func TestQRLogin_NonceInQRPayload(t *testing.T) {
+	qr, _ := newTestQRService(t)
+
+	result, err := qr.Begin()
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	nonce := extractNonce(t, result.QRData)
+	if len(nonce) < 10 {
+		t.Errorf("nonce in qr_data looks too short: %q (expected cryptographic random token)", nonce)
+	}
+
+	// A second Begin() must produce a different nonce.
+	result2, err := qr.Begin()
+	if err != nil {
+		t.Fatalf("Begin (second): %v", err)
+	}
+	nonce2 := extractNonce(t, result2.QRData)
+	if nonce == nonce2 {
+		t.Error("two successive Begin() calls returned the same nonce — nonces must be unique")
+	}
+}
+
 // TestQRLogin_Expiry verifies that an expired challenge is rejected on Approve
 // and returns Expired=true on Poll.
 func TestQRLogin_Expiry(t *testing.T) {
@@ -245,6 +342,8 @@ func TestQRLogin_Expiry(t *testing.T) {
 		t.Fatalf("Begin: %v", err)
 	}
 
+	nonce := extractNonce(t, result.QRData)
+
 	// Wind the expiry back to force expiration.
 	qr.mu.Lock()
 	ch := qr.challenges[result.ChallengeID]
@@ -255,7 +354,7 @@ func TestQRLogin_Expiry(t *testing.T) {
 	ch.mu.Unlock()
 
 	// Approve must fail with ErrQRChallengeExpired.
-	err = qr.Approve(result.ChallengeID, user.ID)
+	err = qr.Approve(result.ChallengeID, user.ID, nonce)
 	if err != ErrQRChallengeExpired {
 		t.Fatalf("Approve on expired challenge: got %v, want ErrQRChallengeExpired", err)
 	}
@@ -285,13 +384,15 @@ func TestQRLogin_SingleUse(t *testing.T) {
 		t.Fatalf("Begin: %v", err)
 	}
 
+	nonce := extractNonce(t, result.QRData)
+
 	// First approval must succeed.
-	if err := qr.Approve(result.ChallengeID, user.ID); err != nil {
+	if err := qr.Approve(result.ChallengeID, user.ID, nonce); err != nil {
 		t.Fatalf("first Approve: %v", err)
 	}
 
 	// Second approval must fail with ErrQRChallengeAlreadyUsed.
-	err = qr.Approve(result.ChallengeID, user.ID)
+	err = qr.Approve(result.ChallengeID, user.ID, nonce)
 	if err != ErrQRChallengeAlreadyUsed {
 		t.Fatalf("second Approve: got %v, want ErrQRChallengeAlreadyUsed", err)
 	}
