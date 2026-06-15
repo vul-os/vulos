@@ -108,6 +108,10 @@ type UpdateHandlers struct {
 	slotMgr        *SlotManager
 	runningVersion string
 	store          *StatusStore
+	// isAdmin is called for privileged mutation routes (/apply).  If nil,
+	// callers without a supplied gate are always allowed (unsafe — always pass
+	// a real check in production).
+	isAdmin func(r *http.Request) bool
 }
 
 // NewUpdateHandlers creates UpdateHandlers.
@@ -117,11 +121,14 @@ type UpdateHandlers struct {
 //     (e.g. "v08"); passed through UpdaterConfig.RunningVersion.
 //   - store          — the StatusStore that the Updater writes to; may be nil,
 //     in which case last_check and last_error are always absent.
-func NewUpdateHandlers(slotMgr *SlotManager, runningVersion string, store *StatusStore) *UpdateHandlers {
+//   - isAdmin        — predicate that returns true when the HTTP request is
+//     from an admin user; used to gate POST /api/os/update/apply.
+func NewUpdateHandlers(slotMgr *SlotManager, runningVersion string, store *StatusStore, isAdmin func(r *http.Request) bool) *UpdateHandlers {
 	return &UpdateHandlers{
 		slotMgr:        slotMgr,
 		runningVersion: runningVersion,
 		store:          store,
+		isAdmin:        isAdmin,
 	}
 }
 
@@ -164,6 +171,11 @@ func (h *UpdateHandlers) handleStatus(w http.ResponseWriter, r *http.Request) {
 // ─── POST /api/os/update/apply ────────────────────────────────────────────────
 
 func (h *UpdateHandlers) handleApply(w http.ResponseWriter, r *http.Request) {
+	// SEC: flipping the boot slot is a privileged host mutation — admin only.
+	if h.isAdmin != nil && !h.isAdmin(r) {
+		writeUpdateErr(w, 403, "admin only")
+		return
+	}
 	bs, err := h.slotMgr.Load()
 	if err != nil {
 		writeUpdateErr(w, 500, fmt.Sprintf("load boot state: %v", err))

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"vulos/backend/services/auth"
 	"vulos/backend/services/gpu"
 )
 
@@ -331,13 +332,32 @@ func IsGamingCommand(cmd string) bool {
 }
 
 // RegisterHandlers registers Wine prefix API endpoints.
-func (s *Service) RegisterHandlers(mux *http.ServeMux) {
+// authStore is used to enforce admin-only access on all mutating Wine endpoints
+// (prefix create/delete, dxvk install, wine run). GET /api/wine/prefixes and
+// GET /api/wine/status remain readable by any authenticated user.
+func (s *Service) RegisterHandlers(mux *http.ServeMux, authStore *auth.Store) {
+	// requireAdmin returns true (and writes 403) when the caller is not admin.
+	requireAdmin := func(w http.ResponseWriter, r *http.Request) bool {
+		p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+		if p == nil || p.Role != auth.RoleAdmin {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error":"admin only"}`))
+			return true
+		}
+		return false
+	}
+
 	mux.HandleFunc("GET /api/wine/prefixes", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(s.List())
 	})
 
 	mux.HandleFunc("POST /api/wine/prefixes", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: creating a Wine prefix initialises a Windows environment — admin only.
+		if requireAdmin(w, r) {
+			return
+		}
 		var req struct {
 			Name string `json:"name"`
 			Arch string `json:"arch"`
@@ -356,6 +376,10 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("DELETE /api/wine/prefixes", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: deleting a Wine prefix removes files from the host — admin only.
+		if requireAdmin(w, r) {
+			return
+		}
 		name := r.URL.Query().Get("name")
 		if err := s.Delete(name); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 404)
@@ -366,6 +390,10 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("POST /api/wine/run", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: running a Windows executable via Wine is a privileged host exec — admin only.
+		if requireAdmin(w, r) {
+			return
+		}
 		var req struct {
 			Prefix string   `json:"prefix"`
 			Exe    string   `json:"exe"`
@@ -388,6 +416,10 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("POST /api/wine/dxvk", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: installing DXVK runs winetricks as root — admin only.
+		if requireAdmin(w, r) {
+			return
+		}
 		var req struct {
 			Prefix string `json:"prefix"`
 		}

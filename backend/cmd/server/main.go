@@ -912,6 +912,11 @@ func main() {
 		})
 	})
 	mux.HandleFunc("POST /api/apps/stop", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: stopping a running app process is a privileged mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			AppID string `json:"app_id"`
 		}
@@ -950,6 +955,11 @@ func main() {
 		writeJSON(w, energyMgr.State())
 	})
 	mux.HandleFunc("POST /api/energy/mode", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: changing the host energy profile is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Mode string `json:"mode"`
 		}
@@ -1009,6 +1019,11 @@ func main() {
 		})
 	})
 	mux.HandleFunc("POST /api/sandbox/stop", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: stopping a sandbox process is a privileged mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
@@ -1017,10 +1032,20 @@ func main() {
 		writeJSON(w, map[string]string{"status": "stopped"})
 	})
 	mux.HandleFunc("GET /api/sandbox/list", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: sandbox list leaks process isolation info — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		writeJSON(w, sandboxSvc.List())
 	})
 	// Sandbox proxy — /api/sandbox/{id}/* → localhost:{sandbox_port}/*
 	mux.HandleFunc("/api/sandbox/", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: proxying to a sandbox subprocess is a privileged operation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		path := strings.TrimPrefix(r.URL.Path, "/api/sandbox/")
 		slashIdx := strings.Index(path, "/")
 		if slashIdx == -1 {
@@ -1104,11 +1129,17 @@ func main() {
 		writeJSON(w, netSvc.Config())
 	})
 	mux.HandleFunc("POST /api/network/configure", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: network configuration is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var cfg network.Config
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&cfg); err != nil {
 			writeErr(w, 400, "invalid config")
 			return
 		}
+		execAuditLog(r, "POST /api/network/configure", "network config updated")
 		netSvc.Configure(cfg)
 		writeJSON(w, netSvc.Config())
 	})
@@ -1132,6 +1163,11 @@ func main() {
 		writeJSON(w, networks)
 	})
 	mux.HandleFunc("POST /api/wifi/connect", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: connecting to a network is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			SSID     string `json:"ssid"`
 			Password string `json:"password"`
@@ -1140,6 +1176,7 @@ func main() {
 			writeErr(w, 400, "invalid request")
 			return
 		}
+		execAuditLog(r, "POST /api/wifi/connect", fmt.Sprintf("ssid=%q", req.SSID))
 		if err := wifiSvc.Connect(r.Context(), req.SSID, req.Password); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1147,6 +1184,12 @@ func main() {
 		writeJSON(w, map[string]string{"status": "connecting"})
 	})
 	mux.HandleFunc("POST /api/wifi/disconnect", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: disconnecting from a network is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
+		execAuditLog(r, "POST /api/wifi/disconnect", "wifi disconnect")
 		wifiSvc.Disconnect(r.Context())
 		writeJSON(w, map[string]string{"status": "disconnected"})
 	})
@@ -1154,10 +1197,16 @@ func main() {
 		writeJSON(w, wifiSvc.SavedNetworks(r.Context()))
 	})
 	mux.HandleFunc("POST /api/wifi/forget", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: forgetting a saved network is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			SSID string `json:"ssid"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		execAuditLog(r, "POST /api/wifi/forget", fmt.Sprintf("ssid=%q", req.SSID))
 		wifiSvc.ForgetNetwork(r.Context(), req.SSID)
 		writeJSON(w, map[string]string{"status": "forgotten"})
 	})
@@ -1167,10 +1216,20 @@ func main() {
 		writeJSON(w, wifi.ListEthernet(r.Context()))
 	})
 	mux.HandleFunc("POST /api/ethernet/dhcp", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: ethernet configuration is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Interface string `json:"interface"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		if !validIfaceName(req.Interface) {
+			writeErr(w, 400, "invalid interface name")
+			return
+		}
+		execAuditLog(r, "POST /api/ethernet/dhcp", fmt.Sprintf("iface=%q", req.Interface))
 		if err := wifi.EnableDHCP(r.Context(), req.Interface); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1178,12 +1237,22 @@ func main() {
 		writeJSON(w, map[string]string{"status": "dhcp started"})
 	})
 	mux.HandleFunc("POST /api/ethernet/static", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: setting a static IP is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Interface string `json:"interface"`
 			IP        string `json:"ip"`
 			Gateway   string `json:"gateway"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		if !validIfaceName(req.Interface) {
+			writeErr(w, 400, "invalid interface name")
+			return
+		}
+		execAuditLog(r, "POST /api/ethernet/static", fmt.Sprintf("iface=%q ip=%q gw=%q", req.Interface, req.IP, req.Gateway))
 		if err := wifi.SetStaticIP(r.Context(), req.Interface, req.IP, req.Gateway); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1191,10 +1260,20 @@ func main() {
 		writeJSON(w, map[string]string{"status": "configured"})
 	})
 	mux.HandleFunc("POST /api/ethernet/disable", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: disabling an interface is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Interface string `json:"interface"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		if !validIfaceName(req.Interface) {
+			writeErr(w, 400, "invalid interface name")
+			return
+		}
+		execAuditLog(r, "POST /api/ethernet/disable", fmt.Sprintf("iface=%q", req.Interface))
 		wifi.DisableEthernet(r.Context(), req.Interface)
 		writeJSON(w, map[string]string{"status": "disabled"})
 	})
@@ -1204,10 +1283,16 @@ func main() {
 		writeJSON(w, btSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/bluetooth/power", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: toggling bluetooth power is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			On bool `json:"on"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		execAuditLog(r, "POST /api/bluetooth/power", fmt.Sprintf("on=%v", req.On))
 		if err := btSvc.SetPower(r.Context(), req.On); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1215,6 +1300,11 @@ func main() {
 		writeJSON(w, btSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/bluetooth/scan", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: starting bluetooth discovery is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			On bool `json:"on"`
 		}
@@ -1227,10 +1317,16 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/pair", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: pairing a bluetooth device is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Address string `json:"address"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		execAuditLog(r, "POST /api/bluetooth/pair", fmt.Sprintf("addr=%q", req.Address))
 		if err := btSvc.Pair(r.Context(), req.Address); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1238,10 +1334,16 @@ func main() {
 		writeJSON(w, map[string]string{"status": "paired"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/connect", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: connecting a bluetooth device is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Address string `json:"address"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		execAuditLog(r, "POST /api/bluetooth/connect", fmt.Sprintf("addr=%q", req.Address))
 		if err := btSvc.Connect(r.Context(), req.Address); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1249,6 +1351,11 @@ func main() {
 		writeJSON(w, map[string]string{"status": "connected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/disconnect", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: disconnecting a bluetooth device is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Address string `json:"address"`
 		}
@@ -1257,10 +1364,16 @@ func main() {
 		writeJSON(w, map[string]string{"status": "disconnected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/remove", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: removing a bluetooth device is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Address string `json:"address"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		execAuditLog(r, "POST /api/bluetooth/remove", fmt.Sprintf("addr=%q", req.Address))
 		btSvc.Remove(r.Context(), req.Address)
 		writeJSON(w, map[string]string{"status": "removed"})
 	})
@@ -1270,6 +1383,11 @@ func main() {
 		writeJSON(w, audioSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/audio/volume", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: changing audio device volume is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			DeviceID string `json:"device_id"`
 			Type     string `json:"type"` // "output" or "input"
@@ -1283,6 +1401,11 @@ func main() {
 		writeJSON(w, audioSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/audio/mute", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: muting an audio device is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			DeviceID string `json:"device_id"`
 			Type     string `json:"type"`
@@ -1296,6 +1419,11 @@ func main() {
 		writeJSON(w, audioSvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/audio/default", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: changing the default audio device is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			DeviceID string `json:"device_id"`
 			Type     string `json:"type"`
@@ -1310,6 +1438,11 @@ func main() {
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/display/brightness", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: writing to /sys/class/backlight is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Brightness int `json:"brightness"`
 		}
@@ -1321,11 +1454,25 @@ func main() {
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/display/resolution", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: changing display resolution is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Output     string `json:"output"`
 			Resolution string `json:"resolution"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		if !validDisplayOutput(req.Output) {
+			writeErr(w, 400, "invalid output name")
+			return
+		}
+		if !validDisplayMode(req.Resolution) {
+			writeErr(w, 400, "invalid resolution format")
+			return
+		}
+		execAuditLog(r, "POST /api/display/resolution", fmt.Sprintf("output=%q res=%q", req.Output, req.Resolution))
 		if err := displaySvc.SetResolution(r.Context(), req.Output, req.Resolution); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1333,11 +1480,21 @@ func main() {
 		writeJSON(w, displaySvc.GetStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/display/enable", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: enabling/disabling a display output is a privileged host mutation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Output string `json:"output"`
 			Enable bool   `json:"enable"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		if !validDisplayOutput(req.Output) {
+			writeErr(w, 400, "invalid output name")
+			return
+		}
+		execAuditLog(r, "POST /api/display/enable", fmt.Sprintf("output=%q enable=%v", req.Output, req.Enable))
 		if err := displaySvc.EnableOutput(r.Context(), req.Output, req.Enable); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1379,6 +1536,15 @@ func main() {
 	// Sets LaunchOpts.Gaming=true when the manifest category=="gaming" OR the
 	// command starts with wine/wine64/lutris/steam/steam-runtime.
 	mux.HandleFunc("POST /api/stream/launch-app", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: launching a stream session spawns host processes — admin only.
+		if execDisabled() {
+			writeErr(w, 503, "exec disabled by administrator")
+			return
+		}
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			AppID   string   `json:"app_id"`
 			Name    string   `json:"name"`
@@ -1419,6 +1585,7 @@ func main() {
 			}
 		}
 
+		execAuditLog(r, "POST /api/stream/launch-app", fmt.Sprintf("app_id=%q cmd=%q", req.AppID, req.Command))
 		sess, err := streamPool.Launch(stream.LaunchOpts{
 			ID:       req.AppID,
 			Name:     req.Name,
@@ -1440,7 +1607,7 @@ func main() {
 	})
 
 	// Wine prefix management
-	wineSvc.RegisterHandlers(mux)
+	wineSvc.RegisterHandlers(mux, authStore)
 	desktopSvc.RegisterHandlers(mux)
 	gpu.RegisterGPUInfoHandlers(mux)
 
@@ -1812,6 +1979,11 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /api/shell/native-window", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: spawning a browser window is a privileged host operation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		if nativeMode != "native" {
 			writeErr(w, 400, "native windows not supported in "+nativeMode+" mode")
 			return
@@ -1894,6 +2066,11 @@ func main() {
 	})
 
 	mux.HandleFunc("DELETE /api/shell/native-window", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: sending SIGTERM to a PID is a privileged host operation — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			PID int `json:"pid"`
 		}
@@ -1901,6 +2078,12 @@ func main() {
 			writeErr(w, 400, "pid required")
 			return
 		}
+		// Reject clearly invalid PIDs (kernel range on Linux is 1–4194304).
+		if req.PID < 2 || req.PID > 4194304 {
+			writeErr(w, 400, "invalid pid")
+			return
+		}
+		execAuditLog(r, "DELETE /api/shell/native-window", fmt.Sprintf("pid=%d", req.PID))
 		proc, err := os.FindProcess(req.PID)
 		if err != nil {
 			writeErr(w, 404, "process not found")
@@ -1914,7 +2097,11 @@ func main() {
 	// Routes are always registered; destructive operations are self-guarded by
 	// the install handler (requires confirm:true) and by installer.IsLiveSession
 	// which reports mode:live only when the root is a squashfs+overlay.
-	installer.RegisterHandlers(mux, installer.New())
+	installerIsAdmin := func(r *http.Request) bool {
+		p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+		return p != nil && p.Role == auth.RoleAdmin
+	}
+	installer.RegisterHandlers(mux, installer.NewWithAdminGate(installerIsAdmin))
 
 	// BMINIT-18: wlr-foreign-toplevel-management-v1 window enumeration + control.
 	// Registers GET /api/shell/windows, POST /api/shell/windows/focus,
@@ -2068,7 +2255,11 @@ func main() {
 	// OS update status + apply (OSDIST-04 + OSDIST-05)
 	if osdistSlotMgr, osdistErr := osdist.NewSlotManager(filepath.Join(home, ".vulos", "os-cache")); osdistErr == nil {
 		osdistStore := osdist.NewStatusStore()
-		osdist.NewUpdateHandlers(osdistSlotMgr, os.Getenv("VULOS_OS_VERSION"), osdistStore).RegisterHandlers(mux)
+		osdistIsAdmin := func(r *http.Request) bool {
+			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+			return p != nil && p.Role == auth.RoleAdmin
+		}
+		osdist.NewUpdateHandlers(osdistSlotMgr, os.Getenv("VULOS_OS_VERSION"), osdistStore, osdistIsAdmin).RegisterHandlers(mux)
 
 		// OSDIST-04: start the 4-hour background update-fetch loop.
 		// Trust anchor is optional — skip updater when key is absent (dev/CI).
@@ -2432,6 +2623,12 @@ func main() {
 		writeJSON(w, map[string]string{"status": "removed", "name": req.Name})
 	})
 	mux.HandleFunc("POST /api/packages/update", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: apt-get update modifies package metadata as root — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
+		execAuditLog(r, "POST /api/packages/update", "apt-get update")
 		if err := packages.Update(r.Context()); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -2439,6 +2636,12 @@ func main() {
 		writeJSON(w, map[string]string{"status": "updated"})
 	})
 	mux.HandleFunc("POST /api/packages/upgrade", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: apt-get upgrade -y installs packages system-wide as root — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
+		execAuditLog(r, "POST /api/packages/upgrade", "apt-get upgrade -y")
 		output, err := packages.Upgrade(r.Context())
 		if err != nil {
 			writeErr(w, 500, output)
@@ -2895,6 +3098,51 @@ func detectNativeMode(v2Enabled bool) string {
 // non-empty value, disabling all privileged exec endpoints at runtime.
 func execDisabled() bool {
 	return os.Getenv("VULOS_DISABLE_EXEC") != ""
+}
+
+// validIfaceName validates that an ethernet/wifi interface name contains only
+// safe characters (alphanumerics, dash, underscore, dot; max 15 chars per
+// IFNAMSIZ). This prevents argument injection into ip/dhcpcd subcommands.
+func validIfaceName(iface string) bool {
+	if iface == "" || len(iface) > 15 {
+		return false
+	}
+	for _, c := range iface {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+// validDisplayOutput validates a wlr-randr/xrandr output name (e.g. "HDMI-A-1",
+// "eDP-1", "DP-2"). Only alphanumerics, dash, and dot are accepted (max 32 chars).
+func validDisplayOutput(name string) bool {
+	if name == "" || len(name) > 32 {
+		return false
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+// validDisplayMode validates a resolution/mode string (e.g. "1920x1080",
+// "1920x1080@60", "1280x720@60.00"). Accepted form: WxH or WxH@R.
+func validDisplayMode(mode string) bool {
+	if mode == "" || len(mode) > 24 {
+		return false
+	}
+	for _, c := range mode {
+		if !((c >= '0' && c <= '9') || c == 'x' || c == '@' || c == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -163,14 +163,24 @@ func (h *progressHub) isDone() (bool, error) {
 
 // Service holds dependencies and mutable installation state.
 type Service struct {
-	cmd Commander
-	mu  sync.Mutex
-	hub *progressHub
+	cmd      Commander
+	mu       sync.Mutex
+	hub      *progressHub
+	// isAdmin is called for the destructive /install endpoint to gate access to
+	// admin users only.  If nil, no auth check is performed (useful in tests;
+	// the live-USB flow always supplies a real check via cmd/server/main.go).
+	isAdmin  func(r *http.Request) bool
 }
 
 // New returns a Service backed by real OS commands.
 func New() *Service {
 	return &Service{cmd: &osCommander{}}
+}
+
+// NewWithAdminGate returns a Service backed by real OS commands and wired with
+// an admin-role predicate that guards POST /api/installer/install.
+func NewWithAdminGate(isAdmin func(r *http.Request) bool) *Service {
+	return &Service{cmd: &osCommander{}, isAdmin: isAdmin}
 }
 
 // newWithCommander creates a Service using the provided Commander (for tests).
@@ -220,6 +230,13 @@ func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Service) handleInstall(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// SEC: disk wipe and OS installation is a destructive privileged operation.
+	// Gate on admin role when the service has been wired with an isAdmin predicate.
+	if s.isAdmin != nil && !s.isAdmin(r) {
+		http.Error(w, `{"error":"admin only"}`, http.StatusForbidden)
 		return
 	}
 
