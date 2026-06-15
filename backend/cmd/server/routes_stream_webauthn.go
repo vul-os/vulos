@@ -1,12 +1,17 @@
-// saWebauthn-/A13_ WebAuthn re-auth endpoint for input-injection sessions.
+// saWebauthn-/A13_ WebAuthn re-auth endpoints for input-injection sessions.
 //
-// POST /api/stream/webauthn-assert
+// POST /api/stream/webauthn-begin   — start assertion: get challenge + session_data
+// POST /api/stream/webauthn-assert  — finish assertion: lift the input gate
 //
-// The client POSTs a raw WebAuthn assertion (base64url-encoded or binary) after
-// receiving a {"t":"need-webauthn"} data-channel message from the streaming
-// session.  On success the input gate on the session is lifted and the response
-// is {"status":"ok"}.  On failure the gate remains active and the response is
-// 403 {"error":"..."}.
+// Flow:
+//  1. Client receives {"t":"need-webauthn"} data-channel message.
+//  2. Client POSTs /api/stream/webauthn-begin?id=<session-id> to get challenge.
+//  3. Client signs challenge with their authenticator.
+//  4. Client POSTs /api/stream/webauthn-assert with:
+//     {"session_data":"<from step 2>","assertion_response":{...WebAuthn response...}}
+//  5. On success the input gate is lifted and the response is {"status":"ok"}.
+//
+// On failure the gate remains active and the response is 403 {"error":"..."}.
 package main
 
 import (
@@ -16,14 +21,56 @@ import (
 	"net/http"
 
 	"vulos/backend/services/auth"
+	"vulos/backend/services/passkeys"
 	"vulos/backend/services/stream"
 )
 
-// registerStreamWebAuthnRoutes wires the WebAuthn assertion endpoint.
-// It is called from main.go with a single line:
-//
-//	registerStreamWebAuthnRoutes(mux, streamPool, authStore)
-func registerStreamWebAuthnRoutes(mux *http.ServeMux, pool *stream.Pool, authStore *auth.Store) {
+// registerStreamWebAuthnRoutes wires the WebAuthn begin + assert endpoints.
+// sv may be nil if passkeys are unavailable; in that case the begin endpoint
+// returns 503 and the assert endpoint falls back to the stub verifier.
+func registerStreamWebAuthnRoutes(mux *http.ServeMux, pool *stream.Pool, authStore *auth.Store, sv *passkeys.StreamVerifier) {
+	// POST /api/stream/webauthn-begin?id=<session-id>
+	// Returns {"challenge":{...},"session_data":"<opaque>"}
+	mux.HandleFunc("POST /api/stream/webauthn-begin", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if sv == nil {
+			writeErr(w, 503, "passkeys not available — devicekey unavailable on this host")
+			return
+		}
+
+		sessionID := r.URL.Query().Get("id")
+		if sessionID == "" {
+			writeErr(w, 400, "id parameter required")
+			return
+		}
+
+		sess := pool.Get(sessionID)
+		if sess == nil {
+			writeErr(w, 404, "session not found")
+			return
+		}
+
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			writeErr(w, 401, "not authenticated")
+			return
+		}
+
+		challenge, sessionData, err := sv.BeginStreamAssertion(userID)
+		if err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+
+		writeJSON(w, map[string]json.RawMessage{
+			"challenge":    json.RawMessage(challenge),
+			"session_data": sawaJSONString(sessionData),
+		})
+	})
+
+	// POST /api/stream/webauthn-assert?id=<session-id>
+	// Body: {"session_data":"<from begin>","assertion_response":{...}} OR raw bytes
 	mux.HandleFunc("POST /api/stream/webauthn-assert", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
@@ -89,4 +136,10 @@ func handleAssertionBytes(w http.ResponseWriter, pool *stream.Pool, sessionID st
 	}
 
 	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// sawaJSONString JSON-encodes b as a JSON string for the session_data field.
+func sawaJSONString(b []byte) json.RawMessage {
+	out, _ := json.Marshal(string(b))
+	return out
 }

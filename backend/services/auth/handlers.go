@@ -109,6 +109,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/passkey/login/finish":    true, // LOGINISO-01: finish passkey assertion + issue session (public)
 	"/api/auth/qr/begin":               true, // LOGINISO-02: kiosk requests a QR challenge (public)
 	"/api/auth/qr/poll":                true, // LOGINISO-02: kiosk polls for approval (public)
+	"/init-passphrase":                 true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

@@ -1,0 +1,100 @@
+# Vulos OS — Managed (headless) cloud box
+#
+# Headless terminal + web-apps only. NO GPU, NO desktop streaming,
+# NO Xvfb, NO GStreamer, NO Wine, NO DXVK.
+#
+# Runs:
+#   - Vulos OS backend (./vulos server)
+#   - Office (vulos-office, configured via env)
+#   - LilMail (configured via env, served as iframe)
+#   - Wede (configured via env)
+#
+# Peer services (office, lilmail, wede) are separate deployments.
+# This image only runs the OS backend and serves the static frontend.
+# Their URLs are injected at runtime via environment variables.
+#
+# Build (from repo root):
+#   docker build -f deploy/managed/Dockerfile -t vulos-managed .
+#
+# Run (requires real secrets — will refuse to start with dev defaults):
+#   docker run -p 8080:8080 \
+#     -e VULOS_ENV=prod \
+#     -e VULOS_RPID=vulos.org \
+#     -e VULOS_ORIGIN=https://vulos.org \
+#     -e VULOS_RESTIC_PASSWORD=<secret> \
+#     -e S3_ACCESS_KEY=<key> \
+#     -e S3_SECRET_KEY=<secret> \
+#     -e S3_BUCKET=<bucket> \
+#     -e BURST_HEARTBEAT_SECRET=<secret> \
+#     vulos-managed
+
+# ── Stage 1: Frontend build ───────────────────────────────────────────────────
+FROM node:22-slim AS frontend
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY index.html vite.config.js eslint.config.js ./
+COPY src/ src/
+COPY public/ public/
+# Build with VITE_MANAGED=true to strip GPU/streaming UI components.
+ENV VITE_MANAGED=true
+RUN npm run build
+
+# ── Stage 2: Go backend build ─────────────────────────────────────────────────
+FROM golang:1.23-bookworm AS gobuild
+WORKDIR /src
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+# CGO disabled — no C deps needed for headless mode.
+# -tags managed disables GPU/stream/X11 build tags if present.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X main.buildMode=managed" \
+    -o /vulos-server \
+    ./cmd/server
+
+# ── Stage 3: Runtime image ────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+# tini for proper signal forwarding + zombie reaping in containers.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tini \
+    ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Non-root user for the process.
+RUN groupadd -r vulos && useradd -r -g vulos -m -d /home/vulos vulos
+
+# Data directory (mounted as a volume in production for persistence).
+RUN mkdir -p /data && chown vulos:vulos /data
+
+WORKDIR /app
+COPY --from=gobuild /vulos-server /app/vulos
+COPY --from=frontend /app/dist /app/dist
+COPY deploy/managed/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Static frontend served from /app/dist; the Go server reads VULOS_STATIC_DIR.
+ENV VULOS_STATIC_DIR=/app/dist
+
+# Headless mode: disable GPU, desktop streaming, X11, and related subsystems.
+ENV VULOS_NO_GPU=1
+ENV VULOS_NO_STREAM=1
+ENV VULOS_NO_DESKTOP=1
+
+# Data lives in /data (mount a persistent volume here).
+ENV VULOS_DATA_DIR=/data
+
+# Default to prod safety. Operators MUST override the following env vars
+# or the server will refuse to start:
+#   VULOS_RPID, VULOS_ORIGIN          — WebAuthn relying party
+#   VULOS_RESTIC_PASSWORD             — vault encryption key
+#   BURST_HEARTBEAT_SECRET            — /init-passphrase gate
+ENV VULOS_ENV=prod
+
+EXPOSE 8080
+
+USER vulos
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/app/entrypoint.sh"]

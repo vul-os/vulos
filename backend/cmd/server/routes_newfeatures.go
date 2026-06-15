@@ -109,13 +109,31 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//
 	// The registry SQLite DB sits in dbDir.  The shared handle opened above is
 	// reused so all multiinstance sections write through one *sql.DB.
+	//
+	// deployStore is declared here and set in section 4. The AppProvider closure
+	// captures it by reference so it returns real deployment data once section 4
+	// has completed (the func is called at request time, not at registration time).
+	var deployStore *appnet.DeploymentStore
 	{
 		reg := sharedReg
 		if reg != nil {
 			appRouter := multiinstance.NewAppRouter(reg, "")
-			// Stub AppProvider: returns nil so the handler returns [] not null.
-			// MINST-02 (cloud sync) will replace this with a real provider.
-			appRouter.WithAppProvider(func() []multiinstance.PublishedApp { return nil })
+			appRouter.WithAppProvider(func() []multiinstance.PublishedApp {
+				if deployStore == nil {
+					return nil
+				}
+				var apps []multiinstance.PublishedApp
+				for _, d := range deployStore.All() {
+					if d == nil {
+						continue
+					}
+					apps = append(apps, multiinstance.PublishedApp{
+						App:     d.AppID,
+						Profile: d.Profile,
+					})
+				}
+				return apps
+			})
 			multiinstance.RegisterHandlers(mux, appRouter)
 			log.Printf("[multiinstance] registered GET /api/routing/apps")
 		} else {
@@ -157,7 +175,8 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		}
 	}
 	if !provisioningMisconfigured {
-		deployStore, dsErr := appnet.NewDeploymentStore()
+		var dsErr error
+		deployStore, dsErr = appnet.NewDeploymentStore()
 		if dsErr != nil {
 			log.Printf("[appnet/subdomain] deployment store init warning: %v — trying temp path", dsErr)
 			os.Setenv("VULOS_DEPLOY_DB", filepath.Join(os.TempDir(), "vulos-app-deployments.json"))

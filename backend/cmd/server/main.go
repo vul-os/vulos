@@ -123,6 +123,10 @@ func main() {
 
 	// S3 storage
 	s3cfg := storage.LoadS3Config()
+	if activeEnv.IsProd() && s3cfg.Configured() && s3cfg.Endpoint == "s3.amazonaws.com" && os.Getenv("S3_ENDPOINT") == "" {
+		// Endpoint is the default — may be intentional (real AWS), but log for clarity.
+		log.Printf("[s3] using default S3 endpoint s3.amazonaws.com — set S3_ENDPOINT if using S3-compatible storage (MinIO, Tigris, etc.)")
+	}
 
 	// Vault (Restic backup)
 	v := vault.New(s3cfg, dataDir)
@@ -139,6 +143,9 @@ func main() {
 	// Embeddings
 	embCfg := embeddings.DefaultConfig()
 	embedder := embeddings.New(embCfg)
+	if activeEnv.IsProd() && embCfg.Backend == "ollama" && (embCfg.Endpoint == "http://localhost:11434" || embCfg.Endpoint == "") {
+		log.Printf("[embeddings] WARNING: EMBED_ENDPOINT is unset in prod — using localhost:11434 which is almost certainly wrong; set EMBED_ENDPOINT or EMBED_BACKEND=openai")
+	}
 
 	// Recall (semantic search)
 	recallSvc, err := recall.New(filepath.Join(dbDir, "recall.json"), dataDir, embedder)
@@ -223,6 +230,9 @@ func main() {
 	// AI service
 	aiSvc := ai.New()
 	aiCfg := ai.DefaultConfig()
+	if activeEnv.IsProd() && aiCfg.Provider == ai.ProviderOllama && (aiCfg.Endpoint == "http://localhost:11434" || aiCfg.Endpoint == "") {
+		log.Printf("[ai] WARNING: AI_ENDPOINT is unset in prod — using localhost:11434 which is almost certainly wrong; set AI_ENDPOINT or AI_PROVIDER=claude")
+	}
 	chatHistory := ai.NewHistoryStore(dbDir)
 	missionStore := ai.NewMissionStore(dbDir)
 
@@ -549,11 +559,20 @@ func main() {
 
 	// AUTH-12: server-side passkey (FIDO2/WebAuthn) authenticator. Credentials
 	// are sealed at rest per-user via the device KeyStore (TPM or software).
+	// streamVerifier is set here when passkeys are available; used below for
+	// AUTH-13 (input-injection re-auth gate).
+	var streamVerifier *passkeys.StreamVerifier
 	deviceKS, deviceKSErr := devicekey.Open(filepath.Join(home, ".vulos", "auth", "tpm"))
 	if deviceKSErr != nil {
 		log.Printf("passkeys: devicekey unavailable, server-side passkeys disabled: %v", deviceKSErr)
 	} else {
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
+		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.
+		if activeEnv.IsProd() {
+			if err := passkeysSvc.ValidateConfig(); err != nil {
+				log.Fatalf("[passkeys] %v", err)
+			}
+		}
 		registerPasskeysRoutes(mux, passkeysSvc, authStore)
 		// LOGINISO-01: promote WebAuthn from re-auth gate to full login flow.
 		// LOGINISO-02: QR / phone-approval kiosk login.
@@ -565,6 +584,9 @@ func main() {
 			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
 			return p != nil && p.Role == auth.RoleAdmin
 		})
+		// AUTH-13: wire the real WebAuthn verifier for input-injection re-auth.
+		streamVerifier = passkeys.NewStreamVerifier(passkeysSvc)
+		streamPool.SetWebAuthnVerifier(streamVerifier)
 	}
 
 	// App gateway — /app/{appId}/* proxied with auth
@@ -757,6 +779,42 @@ func main() {
 			return
 		}
 		writeJSON(w, map[string]string{"status": "synced"})
+	})
+
+	// POST /init-passphrase — managed-box vault unlock.
+	//
+	// Called by the orchestrator (burst agent) immediately after a managed VM
+	// boots to inject the vault passphrase at runtime. Gated by
+	// X-Burst-Secret: <BURST_HEARTBEAT_SECRET> — no session cookie required
+	// (listed in publicPaths). Accepts JSON {"passphrase": "..."}.
+	mux.HandleFunc("POST /init-passphrase", func(w http.ResponseWriter, r *http.Request) {
+		burstSecret := os.Getenv("BURST_HEARTBEAT_SECRET")
+		if burstSecret == "" {
+			writeErr(w, 503, "init-passphrase not configured (BURST_HEARTBEAT_SECRET unset)")
+			return
+		}
+		if r.Header.Get("X-Burst-Secret") != burstSecret {
+			writeErr(w, 401, "unauthorized")
+			return
+		}
+		var req struct {
+			Passphrase string `json:"passphrase"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req); err != nil {
+			writeErr(w, 400, "invalid request body")
+			return
+		}
+		if req.Passphrase == "" {
+			writeErr(w, 400, "passphrase required")
+			return
+		}
+		if err := v.SetPassword(r.Context(), req.Passphrase); err != nil {
+			log.Printf("[init-passphrase] vault unlock failed: %v", err)
+			writeErr(w, 500, "vault unlock failed: "+err.Error())
+			return
+		}
+		log.Printf("[init-passphrase] vault unlocked successfully")
+		writeJSON(w, map[string]string{"status": "ready"})
 	})
 
 	// Recall endpoints
@@ -1517,20 +1575,21 @@ func main() {
 	registerStreamRoutes(mux, streamPool)
 
 	// AUTH-13: WebAuthn re-auth gate for input-injection sessions.
-	//
-	// Pool.SetWebAuthnVerifier is intentionally never called here yet — there is
-	// no production WebAuthn verifier in tree, so RequireAssertion falls back to
-	// A13_stubVerifier which always rejects.  In prod that means input
-	// injection can never be unlocked, which is the safe failure mode, but the
-	// system is also non-functional for legitimate users.  Refuse to start in
-	// prod so the misconfiguration is loud rather than silent.
-	if streamPool.WebAuthnVerifier() == nil && activeEnv.IsProd() {
-		log.Fatal("[stream/webauthn] ABORT: no WebAuthn verifier wired (Pool.SetWebAuthnVerifier was never called) and env=prod — input-injection re-auth would be permanently broken. Wire a real verifier before starting in prod.")
-	}
+	// streamVerifier is non-nil when passkeys are available (set above in the
+	// AUTH-12 block); nil when devicekey is unavailable (e.g. CI or containers
+	// without TPM). In the nil case the stub verifier rejects all assertions
+	// (safe failure mode: input injection cannot be unlocked). Prod requires
+	// passkeys to be available or the gate is permanently locked, so surface a
+	// clear log rather than crash — the operator can disable input injection
+	// if passkeys are intentionally not deployed.
 	if streamPool.WebAuthnVerifier() == nil {
-		log.Printf("[stream/webauthn] WARNING: no WebAuthn verifier wired — input injection will remain gated (stub rejects all assertions). Acceptable in dev/local; fatal in prod.")
+		if activeEnv.IsProd() {
+			log.Printf("[stream/webauthn] WARNING: devicekey unavailable in prod — input-injection re-auth permanently gated (stub rejects all assertions). Set up a TPM or software keystore to enable passkey-gated input injection.")
+		} else {
+			log.Printf("[stream/webauthn] WARNING: no WebAuthn verifier wired — input injection will remain gated (stub rejects all assertions). Acceptable in dev/local.")
+		}
 	}
-	registerStreamWebAuthnRoutes(mux, streamPool, authStore)
+	registerStreamWebAuthnRoutes(mux, streamPool, authStore, streamVerifier)
 
 	// GAME-07: manifest-aware stream launch — detects gaming sessions automatically.
 	// Sets LaunchOpts.Gaming=true when the manifest category=="gaming" OR the

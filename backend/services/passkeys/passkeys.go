@@ -115,6 +115,21 @@ func New(vaultDir string, ks devicekey.KeyStore) *Service {
 	}
 }
 
+// ValidateConfig checks that the RP ID and origin are safe for production.
+// Returns an error if either is set to the insecure localhost defaults.
+// Call this after New() when VULOS_ENV=prod.
+func (svc *Service) ValidateConfig() error {
+	if svc.rpID == a12DefaultRPID || svc.rpID == "" {
+		return fmt.Errorf("VULOS_RPID is unset or set to the dev default %q — set it to your production domain (e.g. vulos.org) before starting in prod", a12DefaultRPID)
+	}
+	for _, o := range svc.origins {
+		if o == a12DefaultOrigin || o == "" || strings.HasPrefix(o, "http://localhost") {
+			return fmt.Errorf("VULOS_ORIGIN is unset or set to a localhost value %q — set it to your production origin (e.g. https://vulos.org) before starting in prod", o)
+		}
+	}
+	return nil
+}
+
 // BeginRegistration starts a WebAuthn registration ceremony.
 //
 // Returns:

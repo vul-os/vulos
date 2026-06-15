@@ -44,11 +44,31 @@ type Snapshot struct {
 const defaultResticPassword = "vulos-default-key"
 
 func New(s3 *storage.S3Config, dataDir string) *Vault {
+	// VULOS_RESTIC_PASSWORD takes precedence (namespaced convention);
+	// RESTIC_PASSWORD is accepted as a fallback for compatibility with
+	// standard Restic tooling. Dev-only default if neither is set.
+	password := os.Getenv("VULOS_RESTIC_PASSWORD")
+	if password == "" {
+		password = getenv("RESTIC_PASSWORD", defaultResticPassword)
+	}
 	return &Vault{
 		s3:       s3,
-		password: getenv("RESTIC_PASSWORD", defaultResticPassword),
+		password: password,
 		dataDir:  dataDir,
 	}
+}
+
+// SetPassword updates the vault encryption passphrase at runtime and
+// re-initializes the repository. Called by POST /init-passphrase when a
+// managed VM boots and the passphrase is injected by the orchestrator.
+func (v *Vault) SetPassword(ctx context.Context, passphrase string) error {
+	if passphrase == "" {
+		return fmt.Errorf("vault: passphrase must not be empty")
+	}
+	v.mu.Lock()
+	v.password = passphrase
+	v.mu.Unlock()
+	return v.Init(ctx)
 }
 
 // usingDefaultPassword reports whether the vault is configured with the

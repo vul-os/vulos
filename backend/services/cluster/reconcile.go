@@ -97,8 +97,12 @@ func newAppReconcileStore(dataDir string) (*appReconcileStore, error) {
 		desired:     make(map[string]*InstalledAppRecord),
 		localStatus: make(map[string]*LocalAppStatusRecord),
 	}
-	_ = s.loadDesired()
-	_ = s.loadLocal()
+	if err := s.loadDesired(); err != nil {
+		log.Printf("[cluster/reconcile] load desired state: %v", err)
+	}
+	if err := s.loadLocal(); err != nil {
+		log.Printf("[cluster/reconcile] load local status: %v", err)
+	}
 	return s, nil
 }
 
@@ -418,12 +422,14 @@ func (r *Reconciler) installApp(ctx context.Context, rec *InstalledAppRecord) {
 	}
 
 	// Mark as installing.
-	_ = r.store.SetLocalStatus(&LocalAppStatusRecord{
+	if err := r.store.SetLocalStatus(&LocalAppStatusRecord{
 		AppID:      appID,
 		State:      LocalAppInstalling,
 		Progress:   "queued",
 		RetryCount: retryCount,
-	})
+	}); err != nil {
+		log.Printf("[cluster/reconcile] set local status for %s: %v", appID, err)
+	}
 
 	log.Printf("[cluster/reconcile] installing %s@%s (attempt %d)", appID, rec.Version, retryCount+1)
 
@@ -439,40 +445,48 @@ func (r *Reconciler) installApp(ctx context.Context, rec *InstalledAppRecord) {
 			log.Printf("[cluster/reconcile] %s: no more retries, marking failed", appID)
 		}
 
-		_ = r.store.SetLocalStatus(&LocalAppStatusRecord{
+		if serr := r.store.SetLocalStatus(&LocalAppStatusRecord{
 			AppID:       appID,
 			State:       LocalAppFailed,
 			Error:       err.Error(),
 			RetryCount:  retryCount + 1,
 			NextRetryAt: nextRetry,
-		})
+		}); serr != nil {
+			log.Printf("[cluster/reconcile] set local status for %s: %v", appID, serr)
+		}
 		return
 	}
 
 	log.Printf("[cluster/reconcile] installed %s@%s", appID, rec.Version)
-	_ = r.store.SetLocalStatus(&LocalAppStatusRecord{
+	if err := r.store.SetLocalStatus(&LocalAppStatusRecord{
 		AppID:    appID,
 		State:    LocalAppInstalled,
 		Progress: "installed",
-	})
+	}); err != nil {
+		log.Printf("[cluster/reconcile] set local status for %s: %v", appID, err)
+	}
 }
 
 // uninstallApp runs Uninstall for one app and updates local_app_status.
 func (r *Reconciler) uninstallApp(appID string) {
-	_ = r.store.SetLocalStatus(&LocalAppStatusRecord{
+	if err := r.store.SetLocalStatus(&LocalAppStatusRecord{
 		AppID: appID,
 		State: LocalAppRemoving,
-	})
+	}); err != nil {
+		log.Printf("[cluster/reconcile] set local status for %s: %v", appID, err)
+	}
 
 	log.Printf("[cluster/reconcile] uninstalling %s", appID)
 
 	if err := r.appStore.Uninstall(appID); err != nil {
 		log.Printf("[cluster/reconcile] uninstall failed %s: %v", appID, err)
-		_ = r.store.SetLocalStatus(&LocalAppStatusRecord{
+		if serr := r.store.SetLocalStatus(&LocalAppStatusRecord{
 			AppID: appID,
 			State: LocalAppFailed,
 			Error: err.Error(),
-		})
+		}); serr != nil {
+			log.Printf("[cluster/reconcile] set local status for %s: %v", appID, serr)
+		}
 		return
 	}
 
