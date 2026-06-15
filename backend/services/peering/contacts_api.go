@@ -60,6 +60,12 @@ type ContactAPI struct {
 	vulaID   string // local node's Vula ID
 	myServer string // local node's publicly reachable "host:port"
 
+	// SelfDisplayName returns the local user's display name for inclusion in
+	// approval notifications sent to peers. It is optional; if nil (or returns ""),
+	// the display_name field is left empty and the peer can fetch the profile
+	// via the well-known endpoint.
+	SelfDisplayName func() string
+
 	// OnApprove is an optional hook called after a contact transitions to
 	// StateApproved.  It receives the approved contact's Vula ID and the
 	// server address stored in the contact record.  The hook is invoked
@@ -561,10 +567,14 @@ func (a *ContactAPI) notifyPeerApproved(peerServer, peerVulaID string) {
 
 	baseURL := "https://" + peerServer
 
+	selfName := ""
+	if a.SelfDisplayName != nil {
+		selfName = a.SelfDisplayName()
+	}
 	approvalPayload, err := json.Marshal(map[string]string{
 		"status":       "approved",
 		"approved_by":  a.vulaID,
-		"display_name": "", // profile name, not yet wired
+		"display_name": selfName, // populated when SelfDisplayName callback is set
 	})
 	if err != nil {
 		log.Printf("[peering/contacts] notifyPeerApproved marshal: %v", err)

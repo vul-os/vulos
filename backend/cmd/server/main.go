@@ -26,6 +26,7 @@ import (
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
+	"vulos/backend/services/anchorinbox"
 	"vulos/backend/services/appfs"
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/audio"
@@ -1727,6 +1728,19 @@ func main() {
 		if contactStore != nil {
 			// Contacts (request/approve/block/remove/list + inbound/request).
 			contactAPI := peering.NewContactAPI(contactStore, peerClient, peeringHub, pPriv, pVulaID, myServer)
+			// Wire the local profile's display name into approval notifications.
+			// We read the profile.json file lazily on each call so updates are
+			// reflected without restarting the server.
+			profileJSONPath := filepath.Join(pRoot, "profile", "profile.json")
+			contactAPI.SelfDisplayName = func() string {
+				var pd struct {
+					DisplayName string `json:"display_name"`
+				}
+				if data, err := os.ReadFile(profileJSONPath); err == nil {
+					_ = json.Unmarshal(data, &pd)
+				}
+				return pd.DisplayName
+			}
 			// PEER-12 AC: "approve triggers fetch" — immediately warm the
 			// peer profile cache when a contact is approved.
 			contactAPI.OnApprove = peering.FetchPeerProfileAsync
@@ -2561,6 +2575,15 @@ func main() {
 	// /var/lib/vulos/minio/.minio_secret, and this endpoint flips the bundle
 	// to consume it. The default path remains untouched.
 	registerStorageModeRoutes(mux, home, authStore)
+
+	// ANCHOR-01: per-account anchor inbox provisioning (always-on ~1 GiB Tigris
+	// inbox). Routes: POST /api/anchor-inbox/provision, GET /api/anchor-inbox/status.
+	if anchorStore, anchorErr := anchorinbox.Open(filepath.Join(dbDir, "anchorinbox.db")); anchorErr != nil {
+		log.Printf("[anchorinbox] store unavailable: %v — endpoints will 500", anchorErr)
+	} else {
+		anchorinbox.RegisterAnchorHandlers(mux, anchorStore)
+		log.Printf("[anchorinbox] registered POST /api/anchor-inbox/provision + GET /api/anchor-inbox/status")
+	}
 
 	// Disk usage
 	mux.HandleFunc("GET /api/disks", func(w http.ResponseWriter, r *http.Request) {

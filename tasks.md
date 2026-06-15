@@ -178,7 +178,7 @@ Full backend suite green (`CGO_ENABLED=0 go test ./...`), frontend builds, pente
 | 5 — GPU route | GPU-01, GPU-02, GPU-03 | ✓ done |
 | 6 — Streaming wins 3–5 | STREAMWIN-03, STREAMWIN-04, STREAMWIN-05 | ✓ done — idle FPS + suspend, resolution ladder ABR, live bitrate via gst-client + videorate; logic tested; GStreamer pipeline behaviour hardware-gated |
 | 7 — Topology (OS-side) + pentest | TOPO-01, TOPO-02, PENTEST-01 | ✓ TOPO-01 done (Restorer + Bootstrap, all tests green); ✓ TOPO-02 done (Migrator, 7 tests green); PENTEST-01 todo (dep on removed LOGINISO-03 is moot; multi-tenant pentest left as future work) |
-| 8 — Storage backend + anchor inbox | STORE-BYO-01, ANCHOR-01 | ✓ done — storagemode Store + GET/PUT /api/settings/storage + StoragePanel.jsx; AnchorStore + POST/GET /api/anchor-inbox + 5 tests green |
+| 8 — Storage backend + anchor inbox | STORE-BYO-01, ANCHOR-01 | ✓ done — storagemode Store + GET/PUT /api/storagemode + StoragePanel.jsx; AnchorStore + POST/GET /api/anchor-inbox + 5 tests green |
 
 **Legacy tracks (all `done`):**
 
@@ -441,7 +441,7 @@ Propagate the chosen endpoint/creds to the CRDT sync, mail, and file store layer
 `StorageConfig` struct. Document the anchor-inbox exception: anchor inbox always uses Tigris
 regardless of the selected backend.
 AC: [x] `storage_backend` persists in account settings [x] StoragePanel renders backend selector [x] MinIO endpoint + creds injected into all S3 clients [x] Tigris remains the default [x] anchor inbox is always Tigris regardless of backend choice [x] `go build ./... && npm run build`
-Implemented: storagemode.Store (SQLite) + GET/PUT /api/settings/storage handlers + StoragePanel.jsx in Settings (replaces stub StorageSettings).
+Implemented: storagemode.Store (SQLite) + GET/PUT /api/storagemode handlers + StoragePanel.jsx in Settings (replaces stub StorageSettings).
 
 ### [STORE-MULTLOC-02] Multi-location enrollment: join a second or third box to an org
 `todo` · P2 · L · dep: STORE-BYO-01 · parallel: yes — backend/internal/multiinstance/, apps/dashboard/src/components/LocationsPanel.jsx

@@ -329,6 +329,7 @@ export default function Launchpad() {
           {search && (
             <button
               onClick={() => setSearch('')}
+              aria-label="Clear search"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 text-lg"
             >
               {'\u00D7'}
@@ -432,6 +433,7 @@ function AppTile({ app, onLaunch }) {
   return (
     <button
       onClick={() => onLaunch(app)}
+      aria-label={`Open ${app.name}`}
       className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl hover:bg-white/5 transition-colors group"
     >
       <AppIconTile id={app.id} size={48} unicode={app.icon} />

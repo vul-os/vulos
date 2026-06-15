@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback } from 'react'
 // ---------------------------------------------------------------------------
 // STORE-BYO-01: Per-account storage-backend selector
 // Endpoints:
-//   GET /api/settings/storage  → { mode, minio_endpoint, minio_region, minio_bucket, minio_creds_ref }
-//   PUT /api/settings/storage  → same shape, persists the selection
+//   GET /api/storagemode  → { mode, minio_endpoint, minio_region, minio_bucket, minio_creds_ref }
+//   PUT /api/storagemode  → same shape, persists the selection
 //
 // The anchor inbox is ALWAYS on Tigris regardless of the mode selected here.
 // ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ export default function StoragePanel() {
   const load = useCallback(() => {
     setLoading(true)
     setError('')
-    fetch('/api/settings/storage')
+    fetch('/api/storagemode')
       .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
       .then(d => {
         setCfg(d)
@@ -95,7 +95,7 @@ export default function StoragePanel() {
         minio_bucket: bucket,
         minio_creds_ref: credsRef,
       }
-      const r = await fetch('/api/settings/storage', {
+      const r = await fetch('/api/storagemode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

@@ -13,6 +13,20 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Wire `RegisterAnchorHandlers` in `main.go` — ANCHOR-01 routes
+  (`POST /api/anchor-inbox/provision`, `GET /api/anchor-inbox/status`) were
+  implemented but never mounted on the mux; they now register correctly
+- Fix URL mismatch in `src/core/settings/StoragePanel.jsx` — the component
+  called `/api/settings/storage` but the backend registers `/api/storagemode`;
+  URLs now match so the Storage settings panel loads correctly
+- Wire `SelfDisplayName` callback on `ContactAPI` — peer approval notifications
+  now include the local user's display name (populated from `profile.json`)
+  rather than always sending an empty string
+- Add `aria-label` to icon-only buttons in `Launchpad.jsx` (clear-search `×`
+  and app tiles) for screen-reader accessibility
+
 ---
 
 ## [0.2.0] — 2026-06-15
