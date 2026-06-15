@@ -239,8 +239,8 @@ func RegisterCollabHistoryHandlers(mux *http.ServeMux, store *CollabStore) {
 // handleListHistory returns the snapshot index for a document.
 func (s *CollabStore) handleListHistory(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
-	if docID == "" {
-		writeCollabErr(w, http.StatusBadRequest, "missing doc_id")
+	if err := validateDocID(docID); err != nil {
+		writeCollabErr(w, http.StatusBadRequest, "invalid doc_id")
 		return
 	}
 
@@ -270,8 +270,8 @@ func (s *CollabStore) handleGetSnapshot(w http.ResponseWriter, r *http.Request) 
 	docID := r.PathValue("doc_id")
 	seqStr := r.PathValue("seq")
 
-	if docID == "" {
-		writeCollabErr(w, http.StatusBadRequest, "missing doc_id")
+	if err := validateDocID(docID); err != nil {
+		writeCollabErr(w, http.StatusBadRequest, "invalid doc_id")
 		return
 	}
 	seq, err := strconv.Atoi(seqStr)

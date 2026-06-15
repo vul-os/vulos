@@ -4,10 +4,27 @@ package packages
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
+
+// validPkgName is the allowlist for Debian package names and apt-cache search
+// queries.  Debian policy: lowercase letters, digits, hyphens, dots and plus
+// signs; first character must be alphanumeric.
+// We also permit a trailing version suffix (=1.2.3) for install.
+var validPkgName = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]{0,127}(=[a-zA-Z0-9.+\-~:]+)?$`)
+
+// validatePkgName returns an error when name cannot be passed safely to
+// apt-get/apt-cache.  A leading '-' would be interpreted as a flag.
+func validatePkgName(name string) error {
+	if !validPkgName.MatchString(name) {
+		return fmt.Errorf("invalid package name %q: must match ^[a-z0-9][a-z0-9.+\\-]{0,127}$", name)
+	}
+	return nil
+}
 
 // Package represents a Debian package.
 type Package struct {
@@ -88,6 +105,9 @@ func ListInstalled(ctx context.Context) []Package {
 // Search finds packages matching a query.
 func Search(ctx context.Context, query string) []Package {
 	var pkgs []Package
+	if err := validatePkgName(query); err != nil {
+		return nil
+	}
 	out, err := exec.CommandContext(ctx, "apt-cache", "search", query).Output()
 	if err != nil {
 		return nil
@@ -114,11 +134,17 @@ func Search(ctx context.Context, query string) []Package {
 
 // Install installs a package.
 func Install(ctx context.Context, name string) error {
+	if err := validatePkgName(name); err != nil {
+		return err
+	}
 	return exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", name).Run()
 }
 
 // Remove removes a package.
 func Remove(ctx context.Context, name string) error {
+	if err := validatePkgName(name); err != nil {
+		return err
+	}
 	return exec.CommandContext(ctx, "apt-get", "remove", "-y", name).Run()
 }
 
@@ -152,6 +178,9 @@ func Upgrade(ctx context.Context) (string, error) {
 // GetInfo returns detailed info about a package.
 func GetInfo(ctx context.Context, name string) map[string]string {
 	info := make(map[string]string)
+	if err := validatePkgName(name); err != nil {
+		return info
+	}
 	out, err := exec.CommandContext(ctx, "apt-cache", "show", name).Output()
 	if err != nil {
 		return info

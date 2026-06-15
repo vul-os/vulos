@@ -123,7 +123,10 @@ func canonicalHash(hexDigest string) string {
 }
 
 // hexFromCanonical strips the "sha256:" prefix and returns the bare hex string.
-// Returns an error when the input does not start with "sha256:".
+// Returns an error when the input does not start with "sha256:", when the hex
+// portion is not exactly 64 characters, or when it contains non-hex characters.
+// The character validation prevents path-traversal: a bare "../"-filled 64-char
+// string would otherwise escape the media root via filepath.Join.
 func hexFromCanonical(ref string) (string, error) {
 	const pfx = "sha256:"
 	if !strings.HasPrefix(ref, pfx) {
@@ -132,6 +135,11 @@ func hexFromCanonical(ref string) (string, error) {
 	h := strings.TrimPrefix(ref, pfx)
 	if len(h) != 64 {
 		return "", fmt.Errorf("peering/media: hash ref %q has wrong hex length", ref)
+	}
+	for _, c := range h {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return "", fmt.Errorf("peering/media: hash ref %q contains non-hex character %q", ref, c)
+		}
 	}
 	return h, nil
 }

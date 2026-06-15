@@ -776,7 +776,7 @@ func main() {
 			Query string `json:"query"`
 			TopK  int    `json:"top_k"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request body")
 			return
 		}
@@ -990,7 +990,7 @@ func main() {
 			ID   string `json:"id"`
 			Code string `json:"code"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Code == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil || req.Code == "" {
 			writeErr(w, 400, "invalid request")
 			return
 		}
@@ -1823,7 +1823,7 @@ func main() {
 			Height      int    `json:"height"`
 			AlwaysOnTop bool   `json:"always_on_top"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 			writeErr(w, 400, "invalid request")
 			return
 		}
@@ -2333,10 +2333,14 @@ func main() {
 		writeJSON(w, drivers.Detect(r.Context()))
 	})
 	mux.HandleFunc("POST /api/drivers/load", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Module string `json:"module"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || req.Module == "" {
 			writeErr(w, 400, "module required")
 			return
 		}
@@ -2347,10 +2351,14 @@ func main() {
 		writeJSON(w, map[string]string{"status": "loaded", "module": req.Module})
 	})
 	mux.HandleFunc("POST /api/drivers/unload", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Module string `json:"module"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Module == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || req.Module == "" {
 			writeErr(w, 400, "module required")
 			return
 		}
@@ -2388,10 +2396,14 @@ func main() {
 		writeJSON(w, packages.GetInfo(r.Context(), name))
 	})
 	mux.HandleFunc("POST /api/packages/install", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Name string `json:"name"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || req.Name == "" {
 			writeErr(w, 400, "name required")
 			return
 		}
@@ -2402,10 +2414,14 @@ func main() {
 		writeJSON(w, map[string]string{"status": "installed", "name": req.Name})
 	})
 	mux.HandleFunc("POST /api/packages/remove", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Name string `json:"name"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || req.Name == "" {
 			writeErr(w, 400, "name required")
 			return
 		}

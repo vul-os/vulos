@@ -861,11 +861,27 @@ func (h *Handler) handleValidatePIN(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not authenticated")
 		return
 	}
+	// Brute-force protection — same pattern as handleDevicePINUnlock and
+	// handleFingerprintVerify; a PIN is typically 4-6 digits so a silent
+	// per-IP retry loop can exhaust the space quickly without this guard.
+	ip := extractIP(r)
+	if h.limiter.IsBanned(ip) {
+		writeErr(w, 429, "too many failed attempts")
+		return
+	}
 	var req struct {
 		PIN string `json:"pin"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request")
+		return
+	}
 	valid := h.store.ValidatePIN(userID, req.PIN)
+	if !valid {
+		h.limiter.RecordFailure(ip)
+	} else {
+		h.limiter.RecordSuccess(ip)
+	}
 	writeJSON(w, map[string]any{"valid": valid, "has_pin": h.store.HasPIN(userID)})
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -122,7 +123,18 @@ func (s *Service) Connect(ctx context.Context, ssid, password string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Add network to wpa_supplicant
+	// Validate SSID and password before using them in a config file.
+	// SSID must not contain null bytes or newlines which could corrupt the
+	// wpa_supplicant config block (shell injection risk eliminated below).
+	if strings.ContainsAny(ssid, "\x00\n\r") {
+		return fmt.Errorf("invalid SSID: contains control characters")
+	}
+	if strings.ContainsAny(password, "\x00\n\r") {
+		return fmt.Errorf("invalid password: contains control characters")
+	}
+
+	// Build the network block as a Go string and write it with os.WriteFile —
+	// no shell involved, so SSID/password cannot inject shell commands.
 	var netBlock string
 	if password == "" {
 		netBlock = fmt.Sprintf("network={\n\tssid=\"%s\"\n\tkey_mgmt=NONE\n}\n", ssid)
@@ -130,10 +142,15 @@ func (s *Service) Connect(ctx context.Context, ssid, password string) error {
 		netBlock = fmt.Sprintf("network={\n\tssid=\"%s\"\n\tpsk=\"%s\"\n}\n", ssid, password)
 	}
 
-	// Append to wpa_supplicant.conf
+	// Append to wpa_supplicant.conf directly via Go — no sh -c.
 	confPath := "/etc/wpa_supplicant/wpa_supplicant.conf"
-	cmd := fmt.Sprintf("echo '%s' >> %s", netBlock, confPath)
-	if err := run(ctx, "sh", "-c", cmd); err != nil {
+	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	_, err = f.WriteString(netBlock)
+	f.Close()
+	if err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 

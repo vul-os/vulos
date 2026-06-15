@@ -7,11 +7,13 @@ package peering
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -31,6 +33,21 @@ const (
 	// msgTypeSync requests the persisted doc state for catch-up.
 	msgTypeSync = "collab:sync"
 )
+
+// docIDPattern is the allowlist for collaborative document IDs.
+// Only lowercase hex characters (UUID-style) and hyphens are accepted.
+// This prevents path traversal when docID is embedded in filesystem paths
+// (e.g. <dir>/<docID>.yjs, <dir>/<docID>.snapshots/).
+var docIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{0,126}$`)
+
+// validateDocID returns an error if docID is empty or contains characters
+// that could be used for path traversal.
+func validateDocID(docID string) error {
+	if !docIDPattern.MatchString(docID) {
+		return fmt.Errorf("invalid doc_id: must match [a-z0-9][a-z0-9-]{0,126}")
+	}
+	return nil
+}
 
 // collabMsg is the envelope exchanged on the "collab" WebSocket channel.
 // Payload is opaque binary (base64-encoded in JSON); the server never
@@ -294,8 +311,8 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 // handleCollabWS upgrades the connection and runs the read/write pumps.
 func (s *CollabStore) handleCollabWS(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
-	if docID == "" {
-		http.Error(w, `{"error":"missing doc_id"}`, http.StatusBadRequest)
+	if err := validateDocID(docID); err != nil {
+		http.Error(w, `{"error":"invalid doc_id"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -445,8 +462,8 @@ func (s *CollabStore) handleListDocs(w http.ResponseWriter, r *http.Request) {
 // handleGetDoc returns the Yjs state and metadata for a single document.
 func (s *CollabStore) handleGetDoc(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
-	if docID == "" {
-		writeCollabErr(w, http.StatusBadRequest, "missing doc_id")
+	if err := validateDocID(docID); err != nil {
+		writeCollabErr(w, http.StatusBadRequest, "invalid doc_id")
 		return
 	}
 
@@ -473,8 +490,8 @@ func (s *CollabStore) handleGetDoc(w http.ResponseWriter, r *http.Request) {
 // handleDeleteDoc removes a document from the store.
 func (s *CollabStore) handleDeleteDoc(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
-	if docID == "" {
-		writeCollabErr(w, http.StatusBadRequest, "missing doc_id")
+	if err := validateDocID(docID); err != nil {
+		writeCollabErr(w, http.StatusBadRequest, "invalid doc_id")
 		return
 	}
 	if err := s.DeleteDoc(docID); err != nil {

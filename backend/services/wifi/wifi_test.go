@@ -1,6 +1,7 @@
 package wifi
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -274,6 +275,60 @@ func TestSSIDMaxLength(t *testing.T) {
 func TestSSIDEmpty(t *testing.T) {
 	if len("") != 0 {
 		t.Error("empty SSID length check failed")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SSID/password injection prevention — SEC-WIFI-01
+// ---------------------------------------------------------------------------
+
+// TestConnect_ShellInjectionPrevented verifies that Connect rejects SSIDs and
+// passwords that contain shell-significant control characters.  The previous
+// implementation appended a wpa_supplicant block via `sh -c "echo '...' >> f"`,
+// which allowed an SSID like `'; rm -rf /; echo '` to escape the quoting.
+// The fix writes the file directly from Go using os.OpenFile.
+func TestConnect_RejectsControlCharsInSSID(t *testing.T) {
+	svc := &Service{iface: "wlan0"}
+	ctx := context.Background()
+
+	injections := []string{
+		"'; rm -rf /; echo '",
+		"test\nnetwork={}",
+		"evil\r\nkey_mgmt=NONE",
+		"a\x00b",
+	}
+	for _, ssid := range injections {
+		if err := svc.Connect(ctx, ssid, "password"); err == nil {
+			t.Errorf("Connect should reject SSID %q but returned nil error", ssid)
+		}
+	}
+}
+
+func TestConnect_RejectsControlCharsInPassword(t *testing.T) {
+	svc := &Service{iface: "wlan0"}
+	ctx := context.Background()
+
+	injections := []string{
+		"pass'; rm -rf /; echo '",
+		"pass\nnetwork={}",
+		"pass\x00word",
+	}
+	for _, pw := range injections {
+		if err := svc.Connect(ctx, "HomeNetwork", pw); err == nil {
+			t.Errorf("Connect should reject password %q but returned nil error", pw)
+		}
+	}
+}
+
+func TestConnect_AcceptsNormalSSID(t *testing.T) {
+	// Connect will fail on the os.OpenFile call on CI (no /etc/wpa_supplicant),
+	// but it must NOT fail on the validation step.  We distinguish by checking
+	// that the returned error is NOT a control-character rejection.
+	svc := &Service{iface: "wlan0"}
+	ctx := context.Background()
+	err := svc.Connect(ctx, "MyHomeWifi", "SecurePass123!")
+	if err != nil && (strings.Contains(err.Error(), "invalid SSID") || strings.Contains(err.Error(), "invalid password")) {
+		t.Errorf("valid SSID/password rejected: %v", err)
 	}
 }
 

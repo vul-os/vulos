@@ -200,15 +200,13 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 		return nil, fmt.Errorf("create namespace: %w", err)
 	}
 
-	// Expand ${PORT} and ${CONSOLE_PORT} in command
+	// Expand only the well-known numeric port tokens in the manifest command.
+	// Do NOT perform generic ${VAR} substitution from the caller-supplied env
+	// slice into the shell string: a caller could inject shell metacharacters
+	// via an env value (e.g. KEY=x; rm -rf / → expanded into the sh -c arg).
+	// Caller env entries are delivered to the process via cmd.Env instead.
 	expandedCmd := strings.ReplaceAll(command, "${PORT}", fmt.Sprintf("%d", appPort))
-
-	// Expand env vars in command (e.g. ${CONSOLE_PORT})
-	for _, e := range env {
-		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
-			expandedCmd = strings.ReplaceAll(expandedCmd, "${"+parts[0]+"}", parts[1])
-		}
-	}
+	expandedCmd = strings.ReplaceAll(expandedCmd, "${CONSOLE_PORT}", fmt.Sprintf("%d", appPort))
 
 	// Run inside namespace — use background context so the app outlives the HTTP request
 	cmd := exec.Command("ip", "netns", "exec", ns.Name, "sh", "-c", expandedCmd)

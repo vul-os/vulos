@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -467,5 +468,71 @@ func TestParseProcModules_TooFewFields(t *testing.T) {
 	modules := parseProcModules(raw)
 	if len(modules) != 1 {
 		t.Errorf("expected 1 module (2-field line skipped), got %d", len(modules))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SEC-DRV-01: Module name validation — flag injection prevention
+// ---------------------------------------------------------------------------
+
+func TestValidateModuleName_AcceptsValid(t *testing.T) {
+	valid := []string{
+		"i915",
+		"rtw89-8852be",
+		"nvidia",
+		"snd-hda-intel",
+		"usbhid",
+		"v4l2loopback",
+	}
+	for _, name := range valid {
+		if err := validateModuleName(name); err != nil {
+			t.Errorf("validateModuleName(%q) returned unexpected error: %v", name, err)
+		}
+	}
+}
+
+func TestValidateModuleName_RejectsFlagInjection(t *testing.T) {
+	// A module name starting with '-' would be interpreted as a modprobe flag.
+	dangerous := []string{
+		"--remove-all",
+		"-r",
+		"--dry-run",
+		"-v",
+	}
+	for _, name := range dangerous {
+		if err := validateModuleName(name); err == nil {
+			t.Errorf("validateModuleName(%q) should return error (flag injection)", name)
+		}
+	}
+}
+
+func TestValidateModuleName_RejectsPathTraversal(t *testing.T) {
+	// modprobe can load modules by path — traversal attempts must be blocked.
+	dangerous := []string{
+		"../../etc/evil",
+		"/path/to/evil.ko",
+		"evil module",
+	}
+	for _, name := range dangerous {
+		if err := validateModuleName(name); err == nil {
+			t.Errorf("validateModuleName(%q) should return error (path/meta char)", name)
+		}
+	}
+}
+
+func TestLoadModule_ValidatesName(t *testing.T) {
+	ctx := context.Background()
+	if err := LoadModule(ctx, "--remove-all"); err == nil {
+		t.Error("LoadModule should reject --remove-all (flag injection)")
+	}
+	if err := LoadModule(ctx, "../../etc/evil"); err == nil {
+		t.Error("LoadModule should reject path traversal")
+	}
+}
+
+func TestUnloadModule_ValidatesName(t *testing.T) {
+	ctx := context.Background()
+	if err := UnloadModule(ctx, "-v"); err == nil {
+		t.Error("UnloadModule should reject -v (flag injection)")
 	}
 }

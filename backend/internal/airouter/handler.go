@@ -252,7 +252,7 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&req); err != nil {
 		jsonError(w, "invalid_json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -450,7 +450,7 @@ func (h *Handler) handleEmbed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req EmbedRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		jsonError(w, "invalid_json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -501,8 +501,11 @@ type noteIndexRequest struct {
 // handleNotesIndex embeds note content and stores it in note_embeddings.
 // Returns 503 when AI Router is unconfigured so the caller can degrade gracefully.
 func (h *Handler) handleNotesIndex(w http.ResponseWriter, r *http.Request) {
+	if !h.checkRateLimit(w, r) {
+		return
+	}
 	var req noteIndexRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&req); err != nil {
 		jsonError(w, "invalid_json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -550,8 +553,11 @@ type noteSearchHit struct {
 // handleNotesSearch embeds the query and returns top semantic hits.
 // Gracefully degrades (returns empty hits + degraded:true) when unconfigured.
 func (h *Handler) handleNotesSearch(w http.ResponseWriter, r *http.Request) {
+	if !h.checkRateLimit(w, r) {
+		return
+	}
 	var req noteSearchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&req); err != nil {
 		jsonError(w, "invalid_json: "+err.Error(), http.StatusBadRequest)
 		return
 	}

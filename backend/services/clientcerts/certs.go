@@ -72,10 +72,12 @@ func NewStore(baseDir string, ks devicekey.KeyStore) (*Store, error) {
 }
 
 // domainDir returns the per-domain directory, sanitising the name to avoid
-// path traversal.
+// path traversal.  A domain must be a single path component: no slashes,
+// no backslashes, and no dot-dot component (including the bare ".." case
+// that filepath.Clean leaves intact and that ContainsAny("/\\") would miss).
 func (s *Store) domainDir(domain string) (string, error) {
 	clean := filepath.Clean(domain)
-	if clean == "." || strings.ContainsAny(clean, "/\\") {
+	if clean == "." || clean == ".." || strings.ContainsAny(clean, "/\\") {
 		return "", fmt.Errorf("clientcerts: invalid domain %q", domain)
 	}
 	return filepath.Join(s.baseDir, clean), nil

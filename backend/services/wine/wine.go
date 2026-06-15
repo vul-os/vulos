@@ -180,7 +180,14 @@ func (s *Service) Run(name, exe string, args []string) error {
 		return fmt.Errorf("prefix %q not found", name)
 	}
 
-	cmdArgs := append([]string{exe}, args...)
+	// Confine the exe path to the prefix directory to prevent path traversal.
+	// filepath.Join alone does not block "../" sequences.
+	cleanExe := filepath.Clean(filepath.Join(pfxDir, exe))
+	if !strings.HasPrefix(cleanExe, pfxDir+string(filepath.Separator)) {
+		return fmt.Errorf("exe path escapes prefix directory")
+	}
+
+	cmdArgs := append([]string{cleanExe}, args...)
 	cmd := exec.Command("wine", cmdArgs...)
 	cmd.Env = append(os.Environ(),
 		"WINEPREFIX="+pfxDir,

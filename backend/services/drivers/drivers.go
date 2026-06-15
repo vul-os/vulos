@@ -3,11 +3,25 @@ package drivers
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// validModuleName is the allowlist for Linux kernel module names.
+// Kernel modules are [a-z0-9_-] with a maximum length of 64 chars.
+// A leading '-' would be interpreted as a modprobe flag.
+var validModuleName = regexp.MustCompile(`^[a-z0-9][a-z0-9_\-]{0,62}$`)
+
+func validateModuleName(name string) error {
+	if !validModuleName.MatchString(name) {
+		return fmt.Errorf("invalid module name %q: must match ^[a-z0-9][a-z0-9_\\-]{0,62}$", name)
+	}
+	return nil
+}
 
 // Device represents a detected hardware device.
 type Device struct {
@@ -223,11 +237,17 @@ func listModules() []Module {
 
 // LoadModule loads a kernel module via modprobe.
 func LoadModule(ctx context.Context, name string) error {
+	if err := validateModuleName(name); err != nil {
+		return err
+	}
 	return exec.CommandContext(ctx, "modprobe", name).Run()
 }
 
 // UnloadModule unloads a kernel module via modprobe -r.
 func UnloadModule(ctx context.Context, name string) error {
+	if err := validateModuleName(name); err != nil {
+		return err
+	}
 	return exec.CommandContext(ctx, "modprobe", "-r", name).Run()
 }
 
