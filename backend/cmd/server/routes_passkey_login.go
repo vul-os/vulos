@@ -20,6 +20,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"vulos/backend/services/auth"
@@ -65,7 +66,10 @@ func (h *loginISOHandler) beginRegister(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		DisplayName string `json:"display_name"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeErr(w, 400, "invalid request body")
+		return
+	}
 	if req.DisplayName == "" {
 		req.DisplayName = userID
 	}

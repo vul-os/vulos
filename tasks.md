@@ -140,6 +140,23 @@ AC: [ ] new tenant-isolation/IDOR cases added and green [ ] router lane-confusio
 
 ---
 
+## Security hardening + managed-box deliverables (2026-06-15)
+
+All 8 tasks below were implemented and verified (`go build ./... && go test ./... && npm run build` all green):
+
+| Task | Status | Summary |
+|---|---|---|
+| TASK-1 (P0) WebAuthn verifier wiring | ✓ done | `passkeys.StreamVerifier` + `POST /api/stream/webauthn-begin` + main.go wiring |
+| TASK-2 (P0) Passkey RP ID prod safety | ✓ done | `Service.ValidateConfig()` called in prod; rejects localhost defaults |
+| TASK-3 (P0) `/api/routing/apps` nil stub | ✓ done | `deployStore` var shared from section 3→4; real deployment data returned |
+| TASK-4 (P1) Restic key | ✓ done | `VULOS_RESTIC_PASSWORD` takes precedence over `RESTIC_PASSWORD` |
+| TASK-5 (P1) Swallowed errors | ✓ done | Passkey JSON decode errors surfaced; reconcile.go SetLocalStatus/load errors logged |
+| TASK-6 (P1) Localhost defaults in prod | ✓ done | prod warnings for S3/embeddings/AI endpoints; wsutil blocks private origins in prod |
+| TASK-7 Managed-box Dockerfile | ✓ done | `deploy/managed/Dockerfile` + `entrypoint.sh` — headless, no GPU/stream/X11 |
+| TASK-8 `/init-passphrase` endpoint | ✓ done | Vault unlock via orchestrator; gated by `X-Burst-Secret` header; `Vault.SetPassword()` |
+
+---
+
 ## At-a-glance
 
 **Active track — Native-first re-architecture (v8): ALL WAVES IMPLEMENTED + VERIFIED (2026-05-26).**
