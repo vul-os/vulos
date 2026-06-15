@@ -87,7 +87,7 @@ func TestFindOrCreateUser_LinkByEmail(t *testing.T) {
 // non-empty and passes ValidateToken.
 func TestCreateSession_ReturnsValidToken(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("dave", "pass1234", "Dave")
+	u, _ := s.Register("dave", "pass1234-XXXX", "Dave")
 	sess := s.CreateSession(u, "device-1")
 	if sess.Token == "" {
 		t.Fatal("CreateSession returned empty token")
@@ -105,7 +105,7 @@ func TestCreateSession_ReturnsValidToken(t *testing.T) {
 // for the same user+device returns the same session.
 func TestCreateSession_ReusesSameDevice(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("eve", "pass1234", "Eve")
+	u, _ := s.Register("eve", "pass1234-XXXX", "Eve")
 	sess1 := s.CreateSession(u, "device-2")
 	sess2 := s.CreateSession(u, "device-2")
 	if sess1.ID != sess2.ID {
@@ -117,7 +117,7 @@ func TestCreateSession_ReusesSameDevice(t *testing.T) {
 // is rejected.
 func TestValidateToken_ExpiredRejected(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("frank", "pass1234", "Frank")
+	u, _ := s.Register("frank", "pass1234-XXXX", "Frank")
 	sess := s.CreateSession(u, "device-3")
 
 	// Manually expire.
@@ -143,7 +143,7 @@ func TestValidateToken_UnknownToken(t *testing.T) {
 // TestRevokeSession removes a session and confirms it can no longer be validated.
 func TestRevokeSession(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("grace", "pass1234", "Grace")
+	u, _ := s.Register("grace", "pass1234-XXXX", "Grace")
 	sess := s.CreateSession(u, "device-4")
 	s.RevokeSession(sess.Token)
 
@@ -156,7 +156,7 @@ func TestRevokeSession(t *testing.T) {
 // TestRevokeAllSessions removes every session for a user.
 func TestRevokeAllSessions(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("henry", "pass1234", "Henry")
+	u, _ := s.Register("henry", "pass1234-XXXX", "Henry")
 	sess1 := s.CreateSession(u, "device-5a")
 	sess2 := s.CreateSession(u, "device-5b")
 	sess3 := s.CreateSession(u, "device-5c")
@@ -173,7 +173,7 @@ func TestRevokeAllSessions(t *testing.T) {
 // TestGetUser returns the user when it exists and false when not.
 func TestGetUser(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("iris", "pass1234", "Iris")
+	u, _ := s.Register("iris", "pass1234-XXXX", "Iris")
 
 	got, ok := s.GetUser(u.ID)
 	if !ok || got.Username != "iris" {
@@ -189,7 +189,7 @@ func TestGetUser(t *testing.T) {
 // TestGetUserByEmail returns user by email and nil for unknown email.
 func TestGetUserByEmail(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("james", "pass1234", "James")
+	u, _ := s.Register("james", "pass1234-XXXX", "James")
 	// Add email (Register doesn't set email; use FindOrCreate for that).
 	s.mu.Lock()
 	s.users[u.ID].Email = "james@example.com"
@@ -211,8 +211,8 @@ func TestGetUserByEmail(t *testing.T) {
 // TestListUsernames returns all registered usernames.
 func TestListUsernames(t *testing.T) {
 	s := newTestStore(t)
-	s.Register("kathy", "pass1234", "Kathy")
-	s.Register("liam", "pass1234", "Liam")
+	s.Register("kathy", "pass1234-XXXX", "Kathy")
+	s.Register("liam", "pass1234-XXXX", "Liam")
 
 	names := s.ListUsernames()
 	if len(names) != 2 {
@@ -231,8 +231,8 @@ func TestListUsernames(t *testing.T) {
 func TestListUsersWithRoles(t *testing.T) {
 	s := newTestStore(t)
 	// First user gets admin.
-	u1, _ := s.Register("maria", "pass1234", "Maria")
-	s.Register("nick", "pass1234", "Nick")
+	u1, _ := s.Register("maria", "pass1234-XXXX", "Maria")
+	s.Register("nick", "pass1234-XXXX", "Nick")
 
 	pairs := s.ListUsersWithRoles()
 	if len(pairs) != 2 {
@@ -257,10 +257,10 @@ func TestListUsersWithRoles(t *testing.T) {
 // TestChangePassword_ValidOldPassword succeeds and revokes existing sessions.
 func TestChangePassword_ValidOldPassword(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("olive", "oldpass", "Olive")
+	u, _ := s.Register("olive", "oldpassword12", "Olive")
 	sess := s.CreateSession(u, "device-cp1")
 
-	if err := s.ChangePassword(u.ID, "oldpass", "newpass1234"); err != nil {
+	if err := s.ChangePassword(u.ID, "oldpassword12", "newpass12345"); err != nil {
 		t.Fatalf("ChangePassword: %v", err)
 	}
 
@@ -270,12 +270,12 @@ func TestChangePassword_ValidOldPassword(t *testing.T) {
 	}
 
 	// Login with new password succeeds.
-	if _, err := s.Login("olive", "newpass1234"); err != nil {
+	if _, err := s.Login("olive", "newpass12345"); err != nil {
 		t.Errorf("Login with new password: %v", err)
 	}
 
 	// Login with old password fails.
-	if _, err := s.Login("olive", "oldpass"); err == nil {
+	if _, err := s.Login("olive", "oldpassword12"); err == nil {
 		t.Error("Login with old password should fail after change")
 	}
 }
@@ -283,8 +283,8 @@ func TestChangePassword_ValidOldPassword(t *testing.T) {
 // TestChangePassword_WrongOldPassword is rejected.
 func TestChangePassword_WrongOldPassword(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("peter", "correct", "Peter")
-	if err := s.ChangePassword(u.ID, "wrong", "newpass"); err == nil {
+	u, _ := s.Register("peter", "correct-password", "Peter")
+	if err := s.ChangePassword(u.ID, "wrong-password-X", "newpassword12"); err == nil {
 		t.Error("ChangePassword with wrong old password should fail")
 	}
 }
@@ -300,8 +300,8 @@ func TestChangePassword_UnknownUser(t *testing.T) {
 // TestChangePassword_TooShortNewPassword is rejected.
 func TestChangePassword_TooShortNewPassword(t *testing.T) {
 	s := newTestStore(t)
-	u, _ := s.Register("quinn", "correct", "Quinn")
-	if err := s.ChangePassword(u.ID, "correct", "abc"); err == nil {
+	u, _ := s.Register("quinn", "correct-password", "Quinn")
+	if err := s.ChangePassword(u.ID, "correct-password", "abc"); err == nil {
 		t.Error("ChangePassword with 3-char new password should fail")
 	}
 }
@@ -312,7 +312,7 @@ func TestHasAnyUsers(t *testing.T) {
 	if s.HasAnyUsers() {
 		t.Error("HasAnyUsers: true on empty store")
 	}
-	s.Register("rose", "pass1234", "Rose")
+	s.Register("rose", "pass1234-XXXX", "Rose")
 	if !s.HasAnyUsers() {
 		t.Error("HasAnyUsers: false after register")
 	}
@@ -363,7 +363,7 @@ func TestVerifyPassword_BcryptAndLegacy(t *testing.T) {
 	if !verifyPassword(hash, "mysecret") {
 		t.Error("bcrypt verify failed for correct password")
 	}
-	if verifyPassword(hash, "wrong") {
+	if verifyPassword(hash, "wrong-password-X") {
 		t.Error("bcrypt verify should fail for wrong password")
 	}
 

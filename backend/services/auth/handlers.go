@@ -641,6 +641,21 @@ func (h *Handler) handleListProfiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userId")
+
+	// Only the profile owner or an admin may read a profile.
+	reqUserID := r.Header.Get("X-User-ID")
+	if reqUserID == "" {
+		writeErr(w, 401, "not authenticated")
+		return
+	}
+	if reqUserID != userID {
+		reqProfile, _ := h.store.GetProfile(reqUserID)
+		if reqProfile == nil || reqProfile.Role != RoleAdmin {
+			writeErr(w, 403, "can only read your own profile")
+			return
+		}
+	}
+
 	profile, ok := h.store.GetProfile(userID)
 	if !ok {
 		writeErr(w, 404, "profile not found")
@@ -812,6 +827,11 @@ func (h *Handler) handleUnban(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleSecurityStats(w http.ResponseWriter, r *http.Request) {
+	reqProfile, _ := h.store.GetProfile(r.Header.Get("X-User-ID"))
+	if reqProfile == nil || reqProfile.Role != RoleAdmin {
+		writeErr(w, 403, "admin only")
+		return
+	}
 	writeJSON(w, h.limiter.Stats())
 }
 

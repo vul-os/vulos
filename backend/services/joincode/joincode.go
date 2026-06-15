@@ -106,7 +106,7 @@ func readStorageConfig(home string) (storageConfig, error) {
 	return cfg, nil
 }
 
-// generateShortCode produces a VULA-XXXX-XXXX-XXXX code using Crockford base32.
+// generateShortCode produces a VULOS-XXXX-XXXX-XXXX code using Crockford base32.
 // Each segment is 4 characters from the 32-character alphabet → 5 bits each → 20 bits
 // per segment, 60 bits total across three segments (~50+ bits of entropy).
 func generateShortCode() (string, error) {
@@ -134,7 +134,7 @@ func generateShortCode() (string, error) {
 		}
 		parts[i] = s
 	}
-	return fmt.Sprintf("VULA-%s-%s-%s", parts[0], parts[1], parts[2]), nil
+	return fmt.Sprintf("VULOS-%s-%s-%s", parts[0], parts[1], parts[2]), nil
 }
 
 // Issue generates a new JoinCode from the storage config at the given home directory.

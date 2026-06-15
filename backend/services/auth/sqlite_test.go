@@ -20,7 +20,7 @@ func TestRegisterLoginRoundTrip(t *testing.T) {
 	}
 	defer s.Close()
 
-	u, err := s.Register("alice", "hunter2", "Alice")
+	u, err := s.Register("alice", "hunter2-xtra!", "Alice")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestRegisterLoginRoundTrip(t *testing.T) {
 		t.Fatalf("username = %q, want alice", u.Username)
 	}
 
-	got, err := s.Login("alice", "hunter2")
+	got, err := s.Login("alice", "hunter2-xtra!")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestUsersPersistAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore #1: %v", err)
 	}
-	if _, err := s1.Register("bob", "passw0rd", "Bob"); err != nil {
+	if _, err := s1.Register("bob", "passw0rd-extra", "Bob"); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	s1.Close()
@@ -61,7 +61,7 @@ func TestUsersPersistAcrossRestart(t *testing.T) {
 	}
 	defer s2.Close()
 
-	got, err := s2.Login("bob", "passw0rd")
+	got, err := s2.Login("bob", "passw0rd-extra")
 	if err != nil {
 		t.Fatalf("Login after restart: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSessionsSurviveRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore #1: %v", err)
 	}
-	u, err := s1.Register("carol", "secret1", "Carol")
+	u, err := s1.Register("carol", "secret1-xtra!!", "Carol")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestExpiredSessionsNotReturned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore #1: %v", err)
 	}
-	u, err := s1.Register("dave", "secret1", "Dave")
+	u, err := s1.Register("dave", "secret1-xtra!!", "Dave")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestRevokeSessionPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore #1: %v", err)
 	}
-	u, err := s1.Register("erin", "secret1", "Erin")
+	u, err := s1.Register("erin", "secret1-xtra!!", "Erin")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestSQLiteRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore #1: %v", err)
 	}
-	u, err := s1.Register("frank", "secret1", "Frank")
+	u, err := s1.Register("frank", "secret1-xtra!!", "Frank")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -262,14 +262,14 @@ func TestChangePasswordRevokesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore #1: %v", err)
 	}
-	u, err := s1.Register("grace", "oldpass", "Grace")
+	u, err := s1.Register("grace", "oldpassword1!", "Grace")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	sess := s1.CreateSession(u, "dev-1")
 	token := sess.Token
 
-	if err := s1.ChangePassword(u.ID, "oldpass", "newpass"); err != nil {
+	if err := s1.ChangePassword(u.ID, "oldpassword1!", "newpassword1!"); err != nil {
 		t.Fatalf("ChangePassword: %v", err)
 	}
 	// SEC-J revoke loop: session must be gone immediately in memory.
@@ -289,10 +289,10 @@ func TestChangePasswordRevokesAndPersists(t *testing.T) {
 		t.Fatalf("revoked session should stay revoked after restart")
 	}
 	// New password must work after restart; old must not.
-	if _, err := s2.Login("grace", "newpass"); err != nil {
+	if _, err := s2.Login("grace", "newpassword1!"); err != nil {
 		t.Fatalf("login with new password after restart: %v", err)
 	}
-	if _, err := s2.Login("grace", "oldpass"); err == nil {
+	if _, err := s2.Login("grace", "oldpassword1!"); err == nil {
 		t.Fatalf("login with old password should fail after change")
 	}
 }
@@ -309,14 +309,14 @@ func TestDegradedModeNoCrash(t *testing.T) {
 		secret:   make([]byte, 32),
 		// db left nil on purpose -> degraded mode
 	}
-	u, err := s.Register("heidi", "secret1", "Heidi")
+	u, err := s.Register("heidi", "secret1-xtra!!", "Heidi")
 	if err != nil {
 		t.Fatalf("Register in degraded mode: %v", err)
 	}
-	if _, err := s.Login("heidi", "secret1"); err != nil {
+	if _, err := s.Login("heidi", "secret1-xtra!!"); err != nil {
 		t.Fatalf("Login in degraded mode: %v", err)
 	}
-	if err := s.ChangePassword(u.ID, "secret1", "secret2"); err != nil {
+	if err := s.ChangePassword(u.ID, "secret1-xtra!!", "secret2-xtra!!"); err != nil {
 		t.Fatalf("ChangePassword in degraded mode: %v", err)
 	}
 	if err := s.Flush(); err != nil {

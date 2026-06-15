@@ -152,7 +152,7 @@ func adminStore(t *testing.T) (*auth.Store, string) {
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	u, err := store.Register("admin", "password123", "Admin")
+	u, err := store.Register("admin", "password123!", "Admin")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestBackupEndpointSnapshotsAndUploads(t *testing.T) {
 func TestRestoreRequiresAdmin(t *testing.T) {
 	store, _ := adminStore(t)
 	// Register a second, non-admin user.
-	u2, err := store.Register("bob", "password123", "Bob")
+	u2, err := store.Register("bob", "password123!", "Bob")
 	if err != nil {
 		t.Fatalf("Register bob: %v", err)
 	}

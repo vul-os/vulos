@@ -228,8 +228,12 @@ func (h *loginISOHandler) qrApprove(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/auth/qr/poll?id=<challenge_id>
 // PUBLIC — kiosk polls this until approved or expired.
-// Response: { "pending": bool, "approved": bool, "session_token": "...", "expired": bool }
-// On approved: also sets the vulos_session cookie.
+// Response: { "pending": bool, "approved": bool, "expired": bool }
+// The session token is NEVER included in the JSON body; it is set as an httponly
+// cookie only (so it is inaccessible to JavaScript).
+// Basic rate-limiting: the per-IP rate limiter applied by auth middleware covers
+// this path; the endpoint also rejects requests with an empty id to avoid
+// burning cycles on garbage.
 func (h *loginISOHandler) qrPoll(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
@@ -243,11 +247,15 @@ func (h *loginISOHandler) qrPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result.Approved && result.SessionToken != "" {
-		// Set the session cookie so the kiosk browser becomes authenticated.
-		auth.SetSessionCookie(w, r, result.SessionToken)
+	if result.Approved {
+		tok := result.SessionToken()
+		if tok != "" {
+			// Deliver the session exclusively via httponly cookie — not in the body.
+			auth.SetSessionCookie(w, r, tok)
+		}
 	}
 
+	// JSON body intentionally omits the session token (unexported field).
 	writeJSON(w, result)
 }
 

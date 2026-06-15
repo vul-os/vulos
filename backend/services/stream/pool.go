@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -702,16 +704,78 @@ func (p *Pool) List() []*Session {
 	return list
 }
 
+// isBlockedVNCHost returns true when the given host resolves to a loopback,
+// private, link-local, multicast, or unspecified address, preventing SSRF via
+// the VNC host parameter.  Fail-closed on DNS resolution errors.
+func isBlockedVNCHost(host string) bool {
+	h := strings.ToLower(strings.TrimSuffix(host, "."))
+	for _, b := range []string{"localhost", "127.0.0.1", "0.0.0.0", "::1"} {
+		if h == b {
+			return true
+		}
+	}
+	ips, err := net.LookupHost(h)
+	if err != nil {
+		return true // fail closed
+	}
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			return true
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+			ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+			return true
+		}
+	}
+	return false
+}
+
+// blockedEnvPrefixes lists env-var prefixes that must not be forwarded to
+// exec'd processes to prevent library-injection attacks (VULN-04).
+var blockedEnvPrefixes = []string{
+	"ld_preload=",
+	"ld_library_path=",
+	"ld_audit=",
+	"ld_debug=",
+	"dyld_insert_libraries=",
+	"python_path=",
+}
+
+// validateLaunchEnv returns an error if any element of env is a blocked var.
+func validateLaunchEnv(env []string) error {
+	for _, e := range env {
+		lower := strings.ToLower(e)
+		for _, prefix := range blockedEnvPrefixes {
+			if strings.HasPrefix(lower, prefix) {
+				return fmt.Errorf("forbidden env var: %s", strings.SplitN(e, "=", 2)[0])
+			}
+		}
+	}
+	return nil
+}
+
 // RegisterHandlers registers streaming API endpoints.
-func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
+// isAdmin is a callback that returns true when the request comes from an admin user.
+// Pass nil to skip the admin gate (not recommended for production).
+func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Request) bool) {
+	adminGate := func(r *http.Request) bool { return true }
+	if len(isAdmin) > 0 && isAdmin[0] != nil {
+		adminGate = isAdmin[0]
+	}
+
 	// List all streaming sessions
 	mux.HandleFunc("GET /api/stream/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(p.List())
 	})
 
-	// Launch a new streaming session
+	// Launch a new streaming session (admin only — arbitrary command execution)
 	mux.HandleFunc("POST /api/stream/launch", func(w http.ResponseWriter, r *http.Request) {
+		if !adminGate(r) {
+			http.Error(w, `{"error":"admin only"}`, 403)
+			return
+		}
 		var req struct {
 			ID      string   `json:"id"`
 			Name    string   `json:"name"`
@@ -730,6 +794,11 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 		}
 		if req.Command == "" {
 			http.Error(w, `{"error":"command required"}`, 400)
+			return
+		}
+		// Block dangerous env vars (VULN-04 / env-var injection prevention).
+		if err := validateLaunchEnv(req.Env); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 400)
 			return
 		}
 		// Resolve user home from request
@@ -788,8 +857,12 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 		w.Write([]byte(`{"status":"stopped"}`))
 	})
 
-	// Launch a VNC streaming session
+	// Launch a VNC streaming session (admin only — SSRF risk via host parameter)
 	mux.HandleFunc("POST /api/stream/vnc", func(w http.ResponseWriter, r *http.Request) {
+		if !adminGate(r) {
+			http.Error(w, `{"error":"admin only"}`, 403)
+			return
+		}
 		var req struct {
 			ID       string `json:"id"`
 			Name     string `json:"name"`
@@ -802,6 +875,11 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux) {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, `{"error":"bad request"}`, 400)
+			return
+		}
+		// Validate host to prevent SSRF to loopback / metadata addresses.
+		if req.Host != "" && isBlockedVNCHost(req.Host) {
+			http.Error(w, `{"error":"vnc host resolves to a restricted address"}`, 403)
 			return
 		}
 		sess, err := p.LaunchVNC(VNCOpts{

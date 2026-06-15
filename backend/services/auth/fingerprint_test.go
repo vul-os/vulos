@@ -33,7 +33,7 @@ func newTestFingerprintServiceWithPIN(t *testing.T) (*FingerprintService, *Devic
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	user, err := store.Register("fpuser", "password123", "FP User")
+	user, err := store.Register("fpuser", "password123XYZ", "FP User")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}

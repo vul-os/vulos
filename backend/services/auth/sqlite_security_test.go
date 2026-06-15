@@ -32,7 +32,7 @@ func TestSQLInjection_UsernameIsOpaque(t *testing.T) {
 	}
 	created := make([]*User, 0, len(payloads))
 	for i, p := range payloads {
-		u, err := s.Register(p, "pw"+strings_repeat("x", i+4), "Inj")
+		u, err := s.Register(p, "pw"+strings_repeat("x", i+12), "Inj")
 		if err != nil {
 			t.Fatalf("Register(%q): %v", p, err)
 		}
@@ -79,7 +79,7 @@ func TestSessionExpiryEnforcedAfterSQLiteLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	u, err := s.Register("bob", "pw12345", "Bob")
+	u, err := s.Register("bob", "pw12345678901", "Bob")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}

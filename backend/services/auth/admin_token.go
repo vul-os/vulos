@@ -9,6 +9,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -145,14 +146,9 @@ func AT10TokenPrefix8(tok string) string {
 	return AT10TokenPrefix + bare + "..."
 }
 
-// at10Equal does a constant-time string comparison.
+// at10Equal does a constant-time string comparison using crypto/subtle.
+// subtle.ConstantTimeCompare returns 0 on mismatch (including length mismatch),
+// so it already avoids the length-early-exit timing oracle.
 func at10Equal(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var diff byte
-	for i := 0; i < len(a); i++ {
-		diff |= a[i] ^ b[i]
-	}
-	return diff == 0
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

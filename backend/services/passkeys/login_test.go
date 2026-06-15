@@ -178,7 +178,7 @@ func newTestQRService(t *testing.T) (*QRLoginService, *auth.Store) {
 func TestQRLogin_ApproveAndPoll(t *testing.T) {
 	qr, store := newTestQRService(t)
 
-	user, err := store.Register("qr-approver-1", "pw-1234", "QR Approver")
+	user, err := store.Register("qr-approver-1", "pw-1234-extra!", "QR Approver")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -210,15 +210,15 @@ func TestQRLogin_ApproveAndPoll(t *testing.T) {
 	if !poll.Approved {
 		t.Fatal("Poll.Approved should be true after approval")
 	}
-	if poll.SessionToken == "" {
-		t.Fatal("Poll.SessionToken is empty after approval")
+	if poll.SessionToken() == "" {
+		t.Fatal("Poll.SessionToken() is empty after approval")
 	}
 	if poll.Pending || poll.Expired {
 		t.Fatal("Poll should not have Pending or Expired set after approval")
 	}
 
 	// The session token must be valid in the auth store.
-	sess, ok := store.ValidateToken(poll.SessionToken)
+	sess, ok := store.ValidateToken(poll.SessionToken())
 	if !ok {
 		t.Fatal("session token returned from QR poll is not valid in auth store")
 	}
@@ -238,7 +238,7 @@ func TestQRLogin_ApproveAndPoll(t *testing.T) {
 func TestQRLogin_Expiry(t *testing.T) {
 	qr, store := newTestQRService(t)
 
-	user, _ := store.Register("qr-exp-user", "pw-1234", "Exp User")
+	user, _ := store.Register("qr-exp-user", "pw-1234-extra!", "Exp User")
 
 	result, err := qr.Begin()
 	if err != nil {
@@ -278,7 +278,7 @@ func TestQRLogin_Expiry(t *testing.T) {
 func TestQRLogin_SingleUse(t *testing.T) {
 	qr, store := newTestQRService(t)
 
-	user, _ := store.Register("qr-singleuse-user", "pw-1234", "Single Use")
+	user, _ := store.Register("qr-singleuse-user", "pw-1234-extra!", "Single Use")
 
 	result, err := qr.Begin()
 	if err != nil {

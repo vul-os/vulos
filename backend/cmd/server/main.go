@@ -789,7 +789,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/apps/launch", func(w http.ResponseWriter, r *http.Request) {
 		// Kill-switch: operator can disable all privileged exec at runtime.
-		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+		if execDisabled() {
 			writeErr(w, 503, "exec disabled by administrator")
 			return
 		}
@@ -943,7 +943,7 @@ func main() {
 	// Sandbox — AI-generated Python scripts
 	mux.HandleFunc("POST /api/sandbox/run", func(w http.ResponseWriter, r *http.Request) {
 		// Kill-switch: operator can disable all privileged exec at runtime.
-		if os.Getenv("VULOS_DISABLE_EXEC") != "" {
+		if execDisabled() {
 			writeErr(w, 503, "exec disabled by administrator")
 			return
 		}
@@ -1026,8 +1026,8 @@ func main() {
 
 	// One-shot command exec (for Portal /commands)
 	mux.HandleFunc("POST /api/exec", func(w http.ResponseWriter, r *http.Request) {
-		// Kill-switch: set VULOS_DISABLE_EXEC=1 to disable entirely.
-		if os.Getenv("VULOS_DISABLE_EXEC") == "1" {
+		// Kill-switch: set VULOS_DISABLE_EXEC to any non-empty value to disable.
+		if execDisabled() {
 			writeErr(w, 503, "exec endpoint disabled by configuration")
 			return
 		}
@@ -1316,8 +1316,12 @@ func main() {
 	// Boot-mode router — GET /api/setup/mode
 	bootmode.RegisterHandlers(mux, home)
 
-	// Generic app streaming (any X11 app via WebRTC)
-	streamPool.RegisterHandlers(mux)
+	// Generic app streaming (any X11 app via WebRTC).
+	// launch + vnc endpoints require admin — pass the same gate used elsewhere.
+	streamPool.RegisterHandlers(mux, func(r *http.Request) bool {
+		p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+		return p != nil && p.Role == auth.RoleAdmin
+	})
 	// Stream toolbar endpoints (FPS selector, MangoHud toggle — GAME-08)
 	registerStreamRoutes(mux, streamPool)
 
@@ -1741,6 +1745,13 @@ func main() {
 			writeErr(w, 400, "url required")
 			return
 		}
+
+		// Validate scheme and host (SSRF prevention — mirrors /api/open validation).
+		if err := validateNativeWindowURL(req.URL); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+
 		if req.Width == 0 {
 			req.Width = 720
 		}
@@ -1890,8 +1901,12 @@ func main() {
 		writeJSON(w, map[string]any{"pid": pid})
 	})
 
-	// OS Control — AI and frontend can control the shell
+	// OS Control — AI and frontend can control the shell (admin only)
 	mux.HandleFunc("POST /api/os/open-app", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		// Triggers app launch from backend (AI can call this)
 		var req struct {
 			AppID   string `json:"app_id"`
@@ -1917,6 +1932,10 @@ func main() {
 		writeJSON(w, map[string]any{"app_id": req.AppID, "url": gateway.URLForApp(req.AppID)})
 	})
 	mux.HandleFunc("POST /api/os/close-app", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			AppID string `json:"app_id"`
 		}
@@ -1927,6 +1946,10 @@ func main() {
 		writeJSON(w, map[string]string{"status": "closed"})
 	})
 	mux.HandleFunc("POST /api/os/notify", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Title string `json:"title"`
 			Body  string `json:"body"`
@@ -1944,6 +1967,10 @@ func main() {
 		writeJSON(w, map[string]string{"status": "sent"})
 	})
 	mux.HandleFunc("POST /api/os/energy-mode", func(w http.ResponseWriter, r *http.Request) {
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		var req struct {
 			Mode string `json:"mode"`
 		}
@@ -2755,9 +2782,17 @@ func detectNativeMode(v2Enabled bool) string {
 		return "native"
 	}
 
-	// No display server detected — or WPE is running as sole renderer
-	_ = ua
+	// No display server detected — or WPE is running as sole renderer.
+	// ua (WPE_USER_AGENT) is not needed for mode detection; suppress the
+	// unused-variable error without keeping a confusing blank identifier.
+	_ = ua // reserved for future user-agent-based mode hinting
 	return "baremetal"
+}
+
+// execDisabled returns true when the operator has set VULOS_DISABLE_EXEC to any
+// non-empty value, disabling all privileged exec endpoints at runtime.
+func execDisabled() bool {
+	return os.Getenv("VULOS_DISABLE_EXEC") != ""
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

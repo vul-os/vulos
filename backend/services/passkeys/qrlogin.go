@@ -167,11 +167,16 @@ func (s *QRLoginService) Approve(challengeID, approverUserID string) error {
 }
 
 // QRPollResult is the response payload for GET /api/auth/qr/poll.
+// The session token is intentionally NOT included in the body — it is delivered
+// only via an httponly cookie set by the HTTP handler so it is never readable
+// by JavaScript running in the kiosk page.
 type QRPollResult struct {
-	Pending      bool   `json:"pending"`       // true while waiting
-	Approved     bool   `json:"approved"`      // true when the phone approved
-	SessionToken string `json:"session_token"` // set when Approved=true
-	Expired      bool   `json:"expired"`       // true when challenge is past TTL
+	Pending  bool   `json:"pending"`  // true while waiting
+	Approved bool   `json:"approved"` // true when the phone approved
+	Expired  bool   `json:"expired"`  // true when challenge is past TTL
+	// sessionToken is the minted token; it is not exported to JSON.
+	// The HTTP handler reads it and sets the cookie, then discards it.
+	sessionToken string
 }
 
 // Poll returns the current state of a challenge. The kiosk calls this
@@ -190,12 +195,13 @@ func (s *QRLoginService) Poll(challengeID string) (*QRPollResult, error) {
 	defer ch.mu.Unlock()
 
 	if ch.used && ch.sessionToken != "" {
-		// Approved — return the token and remove the challenge.
+		// Approved — return the token via the unexported field so the HTTP handler
+		// can set it as an httponly cookie without leaking it in the JSON body.
 		token := ch.sessionToken
 		s.mu.Lock()
 		delete(s.challenges, challengeID)
 		s.mu.Unlock()
-		return &QRPollResult{Approved: true, SessionToken: token}, nil
+		return &QRPollResult{Approved: true, sessionToken: token}, nil
 	}
 
 	if time.Now().After(ch.expiresAt) {
@@ -208,6 +214,10 @@ func (s *QRLoginService) Poll(challengeID string) (*QRPollResult, error) {
 
 	return &QRPollResult{Pending: true}, nil
 }
+
+// SessionToken returns the minted session token (only populated when Approved is true).
+// Callers should set this as an httponly cookie rather than including it in a JSON body.
+func (r *QRPollResult) SessionToken() string { return r.sessionToken }
 
 // qrRandID generates a URL-safe random challenge id.
 func qrRandID() (string, error) {

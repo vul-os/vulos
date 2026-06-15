@@ -55,34 +55,6 @@ const categoryLabels = {
   system: 'System',
 }
 
-// Cached GPU tier — fetched once, best-effort. null = not yet fetched.
-let gpuapiTierCache = null
-
-async function gpuapiGetChromiumArgs() {
-  const softwareArgs = ['--no-sandbox', '--disable-gpu', '--disable-software-rasterizer',
-    '--disable-dev-shm-usage', '--no-first-run',
-    '--disable-translate', '--disable-dbus',
-    '--disable-infobars', '--disable-default-apps',
-    '--user-data-dir=/root/.vulos/browser/profile',
-    '--start-maximized', 'https://google.com']
-  try {
-    if (gpuapiTierCache === null) {
-      const res = await fetch('/api/gpu/info')
-      const data = await res.json()
-      gpuapiTierCache = data.tier_name || 'software'
-    }
-    if (gpuapiTierCache === 'software') return softwareArgs
-    // GPU tier (vaapi or nvenc) — enable hardware acceleration, drop --disable-gpu
-    return ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run',
-      '--disable-translate', '--disable-dbus',
-      '--disable-infobars', '--disable-default-apps',
-      '--user-data-dir=/root/.vulos/browser/profile',
-      '--start-maximized', 'https://google.com']
-  } catch {
-    return softwareArgs
-  }
-}
-
 export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
   // v2 opt-in only: native-launch (labwc/Sway) is disabled in v1 (D93).

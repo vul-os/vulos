@@ -10,6 +10,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -61,6 +62,20 @@ func isRestrictedHost(host string) bool {
 type hostBrowserOpenResponse struct {
 	Action string `json:"action"` // always "open_in_host_browser"
 	URL    string `json:"url"`
+}
+
+// validateNativeWindowURL checks that the URL is safe to open in a native
+// window: scheme must be http or https, and the host must not resolve to a
+// restricted network address (SSRF prevention, mirrors /api/open logic).
+func validateNativeWindowURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("url must use http or https scheme")
+	}
+	if isRestrictedHost(parsed.Hostname()) {
+		return fmt.Errorf("url resolves to a restricted network address")
+	}
+	return nil
 }
 
 // registerOpenRoutes wires POST /api/open onto mux.

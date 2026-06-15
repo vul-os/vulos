@@ -18,6 +18,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// bcryptMaxBytes is the maximum password length bcrypt will process.
+// Passwords longer than this are silently truncated by bcrypt, which means
+// two passwords that share the same first 72 bytes would hash identically.
+// We reject inputs longer than this limit at the API layer.
+const bcryptMaxBytes = 72
+
+// minPasswordLength is the minimum accepted password length.
+const minPasswordLength = 12
+
 // Session represents an authenticated user session.
 type Session struct {
 	ID        string    `json:"id"`
@@ -357,30 +366,23 @@ func firstProvider(m map[string]string) string {
 func hashPassword(password string) string {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		// Fallback to SHA256 if bcrypt fails (should never happen)
-		salt := make([]byte, 16)
-		rand.Read(salt)
-		saltHex := fmt.Sprintf("%x", salt)
-		h := sha256.Sum256([]byte(saltHex + ":" + password))
-		return saltHex + "$" + fmt.Sprintf("%x", h)
+		// bcrypt should never fail for a valid password; panic rather than silently
+		// falling back to a weaker scheme that could be subtly exploited.
+		panic(fmt.Sprintf("bcrypt.GenerateFromPassword failed: %v", err))
 	}
 	return string(hash)
 }
 
 func verifyPassword(hash, password string) bool {
-	// Try bcrypt first (new hashes)
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err == nil {
-		return true
-	}
-	// Fall back to legacy SHA256 for existing users (auto-migrated on next password change)
-	idx := strings.Index(hash, "$")
-	if idx < 0 {
+	// Only accept bcrypt hashes (prefix "$2"). The legacy SHA-256 fallback has
+	// been removed: any stored hash that is not bcrypt must be re-set via a
+	// password-change flow before the account can log in again.
+	if !isbcryptHash(hash) {
 		return false
 	}
-	salt := hash[:idx]
-	h := sha256.Sum256([]byte(salt + ":" + password))
-	return hash == salt+"$"+fmt.Sprintf("%x", h)
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
+
 
 // Register creates a new local user with username + password.
 // First user gets admin role.
@@ -395,8 +397,14 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 		}
 	}
 
-	if len(username) < 2 || len(password) < 4 {
-		return nil, fmt.Errorf("username must be 2+ chars, password 4+ chars")
+	if len(username) < 2 {
+		return nil, fmt.Errorf("username must be 2+ chars")
+	}
+	if len(password) < minPasswordLength {
+		return nil, fmt.Errorf("password must be %d+ chars", minPasswordLength)
+	}
+	if len(password) > bcryptMaxBytes {
+		return nil, fmt.Errorf("password must be %d chars or fewer", bcryptMaxBytes)
 	}
 
 	hash := hashPassword(password)
@@ -417,7 +425,7 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 		LastLogin:    time.Now(),
 	}
 	s.users[u.ID] = u
-	log.Printf("[auth] registered user %q (id=%s, hash_prefix=%s)", username, u.ID, hash[:20])
+	log.Printf("[auth] registered user %q (id=%s)", username, u.ID)
 
 	// Create profile — first user is admin
 	role := RoleUser
@@ -509,8 +517,11 @@ func (s *Store) ChangePassword(userID, oldPassword, newPassword string) error {
 	if u.PasswordHash != "" && !verifyPassword(u.PasswordHash, oldPassword) {
 		return fmt.Errorf("incorrect current password")
 	}
-	if len(newPassword) < 4 {
-		return fmt.Errorf("password must be 4+ chars")
+	if len(newPassword) < minPasswordLength {
+		return fmt.Errorf("password must be %d+ chars", minPasswordLength)
+	}
+	if len(newPassword) > bcryptMaxBytes {
+		return fmt.Errorf("password must be %d chars or fewer", bcryptMaxBytes)
 	}
 	u.PasswordHash = hashPassword(newPassword)
 

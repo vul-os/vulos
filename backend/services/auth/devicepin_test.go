@@ -22,7 +22,7 @@ func newTestPINService(t *testing.T) (*DevicePINService, *Store) {
 		t.Fatalf("NewStore: %v", err)
 	}
 	// Register a user + session so we have a real session token to wrap.
-	user, err := store.Register("testuser", "password123", "Test User")
+	user, err := store.Register("testuser", "password123XYZ", "Test User")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestState_PersistsAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, _ := store.Register("u2", "pw123456", "U2")
+	user, _ := store.Register("u2", "pw1234567890!", "U2")
 	sess := store.CreateSession(user, "d")
 
 	svc1, _ := NewDevicePINService(dir, nil, 4, store)
@@ -357,7 +357,7 @@ func TestValidatePIN_TPMWrapped_NoKeyStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	user, _ := store.Register("utpm", "pw123456", "Utpm")
+	user, _ := store.Register("utpm", "pw1234567890!", "Utpm")
 	sess := store.CreateSession(user, "d")
 
 	// Write a pin.bin with tpm_wrapped=true directly, simulating a file
