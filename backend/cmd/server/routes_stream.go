@@ -33,7 +33,7 @@ func registerStreamRoutes(mux *http.ServeMux, streamPool *stream.Pool) {
 			http.Error(w, `{"error":"fps must be 1–240"}`, http.StatusBadRequest)
 			return
 		}
-		sess := streamPool.Get(req.ID)
+		sess := streamPool.GetForUser(req.ID, r.Header.Get("X-User-ID"))
 		if sess == nil {
 			http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
 			return
@@ -59,7 +59,7 @@ func registerStreamRoutes(mux *http.ServeMux, streamPool *stream.Pool) {
 			http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
 			return
 		}
-		sess := streamPool.Get(req.ID)
+		sess := streamPool.GetForUser(req.ID, r.Header.Get("X-User-ID"))
 		if sess == nil {
 			http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
 			return

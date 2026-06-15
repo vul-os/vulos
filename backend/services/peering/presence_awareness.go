@@ -292,10 +292,12 @@ func RegisterPresenceHandlers(mux *http.ServeMux, svc *PresenceService) {
 
 // handlePresenceWS upgrades to WebSocket and runs the presence read/write pumps.
 //
-// The caller must supply a peerID via the "X-Peer-ID" header (or query param
-// "peer_id"). This ID is never validated against a PKI on the WS path — it is
-// trusted as-is because authentication is handled by the surrounding middleware
-// layer (same assumption as collab.go and ws.go).
+// The peer ID is derived from the authenticated session (X-User-ID set by the
+// auth middleware), preventing any client from claiming an arbitrary peer identity.
+// The optional X-Peer-ID / ?peer_id= values are accepted ONLY as a display
+// hint appended to the authenticated ID (e.g. to distinguish multiple tabs of
+// the same user), but the authenticated user ID always forms the authoritative
+// prefix so no spoofing is possible.
 func (s *PresenceService) handlePresenceWS(w http.ResponseWriter, r *http.Request) {
 	appID := r.PathValue("app_id")
 	if appID == "" {
@@ -303,14 +305,37 @@ func (s *PresenceService) handlePresenceWS(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Accept peer ID from header or query param.
-	peerID := r.Header.Get("X-Peer-ID")
-	if peerID == "" {
-		peerID = r.URL.Query().Get("peer_id")
-	}
-	if peerID == "" {
-		presenceWriteErr(w, http.StatusBadRequest, "peer_id is required (X-Peer-ID header or ?peer_id=)")
+	// Derive the canonical peer ID from the authenticated session.
+	// X-User-ID is stripped + re-set by the auth middleware (inbound.go / auth
+	// handler), so it cannot be spoofed by the client.
+	authUserID := r.Header.Get("X-User-ID")
+	if authUserID == "" {
+		presenceWriteErr(w, http.StatusUnauthorized, "authentication required")
 		return
+	}
+
+	// Allow an optional per-tab suffix from the client (X-Peer-ID / ?peer_id=)
+	// but anchor it to the authenticated user ID so impersonation is impossible.
+	// Format: "<authUserID>" or "<authUserID>:<clientHint>" (hint is limited to
+	// 64 characters and stripped of dangerous characters).
+	peerID := authUserID
+	clientHint := r.Header.Get("X-Peer-ID")
+	if clientHint == "" {
+		clientHint = r.URL.Query().Get("peer_id")
+	}
+	if clientHint != "" && clientHint != authUserID {
+		// Sanitise: allow only alphanumeric, dash, underscore.
+		safe := make([]byte, 0, len(clientHint))
+		for i := 0; i < len(clientHint) && i < 64; i++ {
+			c := clientHint[i]
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') || c == '-' || c == '_' {
+				safe = append(safe, c)
+			}
+		}
+		if len(safe) > 0 {
+			peerID = authUserID + ":" + string(safe)
+		}
 	}
 
 	conn, err := wsutil.Upgrader.Upgrade(w, r, nil)

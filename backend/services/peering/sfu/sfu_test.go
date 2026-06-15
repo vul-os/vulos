@@ -1,6 +1,7 @@
 package sfu
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,7 +84,7 @@ func TestSFU_CreateAndClose(t *testing.T) {
 		t.Fatal("new SFU should have 0 rooms")
 	}
 
-	r := s.CreateRoom(6)
+	r := s.CreateRoom(6, "")
 	if s.RoomCount() != 1 {
 		t.Fatalf("expected 1 room, got %d", s.RoomCount())
 	}
@@ -111,9 +112,9 @@ func TestSFU_CloseRoom_NotFound_NoOp(t *testing.T) {
 
 func TestSFU_MultipleRooms(t *testing.T) {
 	s := New()
-	r1 := s.CreateRoom(4)
-	r2 := s.CreateRoom(6)
-	r3 := s.CreateRoom(9)
+	r1 := s.CreateRoom(4, "")
+	r2 := s.CreateRoom(6, "")
+	r3 := s.CreateRoom(9, "")
 
 	if s.RoomCount() != 3 {
 		t.Fatalf("expected 3 rooms, got %d", s.RoomCount())
@@ -206,7 +207,7 @@ func TestHandleCloseRoom_Exists(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterSFUHandlers(mux, s)
 
-	r := s.CreateRoom(6)
+	r := s.CreateRoom(6, "")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/sfu/rooms/"+r.ID, nil)
 	w := httptest.NewRecorder()
@@ -255,7 +256,7 @@ func TestHandleICE_ParticipantNotFound(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterSFUHandlers(mux, s)
 
-	r := s.CreateRoom(6)
+	r := s.CreateRoom(6, "")
 	defer s.CloseRoom(r.ID)
 
 	body := `{"participant_id":"nobody","candidate":"c","sdp_mid":"0","sdp_mline_index":0}`
@@ -374,5 +375,57 @@ func webrtcICECandidate() webrtc.ICECandidateInit {
 		Candidate:     "candidate:0 1 UDP 2122252543 192.0.2.1 50000 typ host",
 		SDPMid:        &mid,
 		SDPMLineIndex: &idx,
+	}
+}
+
+// ─────────────────────────────────────────
+// Security regression: SFU room ownership
+// ─────────────────────────────────────────
+
+// TestHandleCloseRoom_OwnershipEnforced verifies that a user who did not create
+// a room cannot delete it (receives 403).
+//
+// Guards: SFU-SEC-01 — only the room creator may close a room.
+func TestHandleCloseRoom_OwnershipEnforced(t *testing.T) {
+	s := New()
+	mux := http.NewServeMux()
+	RegisterSFUHandlers(mux, s)
+
+	// Alice creates a room via the HTTP handler (sets X-User-ID: alice).
+	createReq := httptest.NewRequest(http.MethodPost, "/api/sfu/rooms", strings.NewReader(`{}`))
+	createReq.Header.Set("X-User-ID", "alice")
+	createW := httptest.NewRecorder()
+	mux.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", createW.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(createW.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	roomID, _ := resp["room_id"].(string)
+	if roomID == "" {
+		t.Fatal("no room_id in create response")
+	}
+
+	// Bob tries to delete Alice's room — must get 403.
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/sfu/rooms/"+roomID, nil)
+	deleteReq.Header.Set("X-User-ID", "bob")
+	deleteW := httptest.NewRecorder()
+	mux.ServeHTTP(deleteW, deleteReq)
+
+	if deleteW.Code != http.StatusForbidden {
+		t.Fatalf("SFU-SEC-01 REGRESSION: expected 403 when non-owner deletes room, got %d (room %s owned by alice, deleted by bob)", deleteW.Code, roomID)
+	}
+
+	// Alice herself can delete her own room.
+	deleteReq2 := httptest.NewRequest(http.MethodDelete, "/api/sfu/rooms/"+roomID, nil)
+	deleteReq2.Header.Set("X-User-ID", "alice")
+	deleteW2 := httptest.NewRecorder()
+	mux.ServeHTTP(deleteW2, deleteReq2)
+
+	if deleteW2.Code != http.StatusNoContent {
+		t.Fatalf("owner should be able to delete her own room, got %d", deleteW2.Code)
 	}
 }

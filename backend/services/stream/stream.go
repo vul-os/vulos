@@ -44,6 +44,10 @@ type Session struct {
 	Encoder  string `json:"encoder"`
 	Quality  string `json:"quality"`  // current adaptive quality level
 	MangoHud bool   `json:"mangohud"` // whether MangoHud overlay is active
+	// OwnerID is the authenticated user ID that launched this session.
+	// Set from X-User-ID at launch time; used to enforce per-user session isolation.
+	// Empty only for sessions launched without an authenticated context (e.g. CLI).
+	OwnerID string `json:"owner_id,omitempty"`
 
 	mu            sync.Mutex
 	ctx           context.Context

@@ -24,24 +24,32 @@ var (
 //
 //	s := sfu.New()
 //	sfu.RegisterSFUHandlers(mux, s)
+// roomEntry holds a Room together with the user ID of its creator.
+type roomEntry struct {
+	room    *Room
+	ownerID string // X-User-ID of the caller who created this room; empty = any
+}
+
 type SFU struct {
 	mu    sync.RWMutex
-	rooms map[string]*Room
+	rooms map[string]*roomEntry
 }
 
 // New creates a new SFU instance with an empty room registry.
 func New() *SFU {
-	return &SFU{rooms: make(map[string]*Room)}
+	return &SFU{rooms: make(map[string]*roomEntry)}
 }
 
-// CreateRoom creates a new room with the given Last-N value and registers it.
+// CreateRoom creates a new room with the given Last-N value and registers it
+// under ownerID.  ownerID is the authenticated user (X-User-ID); pass ""
+// for system/unowned rooms.
 // Valid lastN values are 4, 6, and 9; other values fall back to DefaultLastN.
-func (s *SFU) CreateRoom(lastN int) *Room {
+func (s *SFU) CreateRoom(lastN int, ownerID string) *Room {
 	r := NewRoom(lastN)
 	s.mu.Lock()
-	s.rooms[r.ID] = r
+	s.rooms[r.ID] = &roomEntry{room: r, ownerID: ownerID}
 	s.mu.Unlock()
-	log.Printf("[sfu] room=%s created lastN=%d", r.ID, r.LastN)
+	log.Printf("[sfu] room=%s created lastN=%d owner=%q", r.ID, r.LastN, ownerID)
 	return r
 }
 
@@ -49,20 +57,36 @@ func (s *SFU) CreateRoom(lastN int) *Room {
 func (s *SFU) Room(id string) (*Room, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	r, ok := s.rooms[id]
-	return r, ok
+	entry, ok := s.rooms[id]
+	if !ok {
+		return nil, false
+	}
+	return entry.room, true
+}
+
+// IsOwner reports whether userID is allowed to manage room id.
+// Unowned rooms (ownerID == "") are managed by anyone; otherwise only the
+// creator may close the room.
+func (s *SFU) IsOwner(id, userID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entry, ok := s.rooms[id]
+	if !ok {
+		return false
+	}
+	return entry.ownerID == "" || entry.ownerID == userID
 }
 
 // CloseRoom closes and removes the room with the given ID.
 func (s *SFU) CloseRoom(id string) {
 	s.mu.Lock()
-	r, ok := s.rooms[id]
+	entry, ok := s.rooms[id]
 	if ok {
 		delete(s.rooms, id)
 	}
 	s.mu.Unlock()
 	if ok {
-		r.Close()
+		entry.room.Close()
 	}
 }
 
@@ -115,7 +139,8 @@ func (s *SFU) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		req.LastN = DefaultLastN
 	}
 
-	room := s.CreateRoom(req.LastN)
+	ownerID := r.Header.Get("X-User-ID")
+	room := s.CreateRoom(req.LastN, ownerID)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"room_id": room.ID,
 		"last_n":  room.LastN,
@@ -123,13 +148,21 @@ func (s *SFU) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCloseRoom handles DELETE /api/sfu/rooms/{room_id}.
+// Only the room creator (or any user for unowned rooms) may close a room.
 func (s *SFU) handleCloseRoom(w http.ResponseWriter, r *http.Request) {
 	roomID := r.PathValue("room_id")
+	callerID := r.Header.Get("X-User-ID")
+
 	s.mu.RLock()
-	_, ok := s.rooms[roomID]
+	entry, ok := s.rooms[roomID]
 	s.mu.RUnlock()
 	if !ok {
 		http.Error(w, errRoomNotFound.Error(), http.StatusNotFound)
+		return
+	}
+	// Ownership check: only the creator may delete; unowned rooms are open.
+	if entry.ownerID != "" && entry.ownerID != callerID {
+		http.Error(w, "forbidden: only the room creator may close this room", http.StatusForbidden)
 		return
 	}
 	s.CloseRoom(roomID)

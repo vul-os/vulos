@@ -374,3 +374,30 @@ func TestPresenceService_BuildFrame(t *testing.T) {
 		t.Errorf("app_id = %q, want %q", p.AppID, "my-app")
 	}
 }
+
+// ─────────────────────────────────────────
+// Security regression: presence peer-ID spoofing
+// ─────────────────────────────────────────
+
+// TestPresenceWS_RequiresAuth verifies that a WebSocket upgrade request without
+// an authenticated user ID (X-User-ID) is rejected before the WebSocket upgrade.
+// Without this, an unauthenticated or spoofing client could inject presence
+// frames as any peer ID.
+//
+// Guards: PRES-SEC-01 — peerID must be derived from authenticated session.
+func TestPresenceWS_RequiresAuth(t *testing.T) {
+	svc := newTestPresenceService()
+	mux := presenceMux(svc)
+
+	// Request without X-User-ID — should get 401 (not a WS upgrade).
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/presence/my-app", nil)
+	// No X-User-ID set.
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	// A non-WS GET to the presence endpoint without auth must be rejected.
+	// The handler returns 401 before attempting the WebSocket upgrade.
+	if rr.Code == http.StatusOK || rr.Code == http.StatusSwitchingProtocols {
+		t.Fatalf("PRES-SEC-01 REGRESSION: presence WS endpoint accepted request without authentication (status=%d) — peer ID spoofing is possible", rr.Code)
+	}
+}

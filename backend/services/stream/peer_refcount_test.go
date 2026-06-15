@@ -122,3 +122,56 @@ func TestPeerRefcountSIGSTOP(t *testing.T) {
 		t.Errorf("peerCount = %d after reconnect, want 1", sess.peerCount)
 	}
 }
+
+// TestSessionIDOR verifies that GetForUser enforces per-user session isolation:
+// user A cannot access a session owned by user B.
+//
+// Guards: STREAM-SEC-01 — session IDOR via /api/stream/ws, /api/stream/resize,
+// /api/stream/stop, /api/stream/fps, /api/stream/mangohud.
+func TestSessionIDOR(t *testing.T) {
+	pool := NewPool()
+
+	// Inject a fake session owned by "user-alice".
+	sessAlice := &Session{
+		ID:      "sess-alice",
+		Name:    "alice-app",
+		OwnerID: "user-alice",
+		Running: true,
+	}
+	pool.mu.Lock()
+	pool.sessions["sess-alice"] = sessAlice
+	pool.mu.Unlock()
+
+	// Alice can access her own session.
+	if got := pool.GetForUser("sess-alice", "user-alice"); got == nil {
+		t.Fatal("STREAM-SEC-01 REGRESSION: owner could not access her own session")
+	}
+
+	// Bob must NOT be able to access Alice's session.
+	if got := pool.GetForUser("sess-alice", "user-bob"); got != nil {
+		t.Fatal("STREAM-SEC-01 REGRESSION: unauthorized user gained access to another user's session")
+	}
+
+	// Unknown session returns nil for everyone.
+	if got := pool.GetForUser("no-such-id", "user-alice"); got != nil {
+		t.Fatal("GetForUser returned non-nil for unknown session")
+	}
+
+	// Session with no owner is accessible to any authenticated user.
+	sessSystem := &Session{
+		ID:      "sess-system",
+		Name:    "system-app",
+		OwnerID: "", // no owner
+		Running: true,
+	}
+	pool.mu.Lock()
+	pool.sessions["sess-system"] = sessSystem
+	pool.mu.Unlock()
+
+	if got := pool.GetForUser("sess-system", "user-alice"); got == nil {
+		t.Fatal("unowned session should be accessible by any authenticated user")
+	}
+	if got := pool.GetForUser("sess-system", "user-bob"); got == nil {
+		t.Fatal("unowned session should be accessible by any authenticated user")
+	}
+}

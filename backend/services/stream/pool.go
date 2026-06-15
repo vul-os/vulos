@@ -205,6 +205,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		FPS:        opts.FPS,
 		Running:    true,
 		Encoder:    gpuInfo.Encoder,
+		OwnerID:    opts.UserID,
 		ctx:        ctx,
 		cancel:     cancel,
 		videoPort:  videoPort,
@@ -665,6 +666,32 @@ func (p *Pool) Get(id string) *Session {
 	return p.sessions[id]
 }
 
+// GetForUser returns a session by ID only if it is owned by userID.
+// Returns nil when the session does not exist OR when the caller is not the
+// owner.  Use this instead of Get on any endpoint that lets a user mutate
+// or observe a session (resize, stop, fps, mangohud, WebRTC signaling).
+//
+// Exception: admin callers (adminUserID == "") are NOT exempt — use the
+// adminGate callback in RegisterHandlers for privilege escalation.
+// Sessions launched without an owner (OwnerID == "") are accessible by any
+// authenticated user (e.g. system-level sessions launched from the CLI).
+func (p *Pool) GetForUser(id, userID string) *Session {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	sess, ok := p.sessions[id]
+	if !ok {
+		return nil
+	}
+	// Sessions without an owner are accessible to any authenticated caller.
+	if sess.OwnerID == "" {
+		return sess
+	}
+	if sess.OwnerID != userID {
+		return nil
+	}
+	return sess
+}
+
 // Stop kills a session by ID.
 func (p *Pool) Stop(id string) error {
 	p.mu.Lock()
@@ -764,10 +791,25 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 		adminGate = isAdmin[0]
 	}
 
-	// List all streaming sessions
+	// List streaming sessions — returns only sessions owned by the caller.
+	// Admin users see all sessions (adminGate).
 	mux.HandleFunc("GET /api/stream/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(p.List())
+		userID := r.Header.Get("X-User-ID")
+		if adminGate(r) && userID == "" {
+			// Admin bearer token with no user ID (system context) — list all.
+			json.NewEncoder(w).Encode(p.List())
+			return
+		}
+		// Filter to sessions owned by this user (plus unowned system sessions).
+		all := p.List()
+		visible := make([]*Session, 0, len(all))
+		for _, s := range all {
+			if s.OwnerID == "" || s.OwnerID == userID {
+				visible = append(visible, s)
+			}
+		}
+		json.NewEncoder(w).Encode(visible)
 	})
 
 	// Launch a new streaming session (admin only — arbitrary command execution)
@@ -833,8 +875,9 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 			http.Error(w, `{"error":"bad request"}`, 400)
 			return
 		}
-		sess := p.Get(req.ID)
+		sess := p.GetForUser(req.ID, r.Header.Get("X-User-ID"))
 		if sess == nil {
+			// Return 404 to avoid revealing whether the session exists.
 			http.Error(w, `{"error":"session not found"}`, 404)
 			return
 		}
@@ -846,9 +889,14 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 		w.Write([]byte(`{"status":"resized"}`))
 	})
 
-	// Stop a session
+	// Stop a session — caller must own the session (or it must be unowned).
 	mux.HandleFunc("POST /api/stream/stop", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
+		// Ownership check before stopping.
+		if p.GetForUser(id, r.Header.Get("X-User-ID")) == nil {
+			http.Error(w, `{"error":"session not found"}`, 404)
+			return
+		}
 		if err := p.Stop(id); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 404)
 			return
@@ -895,10 +943,10 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 		json.NewEncoder(w).Encode(sess)
 	})
 
-	// WebRTC signaling for a session
+	// WebRTC signaling for a session — caller must own the session.
 	mux.HandleFunc("GET /api/stream/ws", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
-		sess := p.Get(id)
+		sess := p.GetForUser(id, r.Header.Get("X-User-ID"))
 		if sess == nil {
 			http.Error(w, `{"error":"session not found"}`, 404)
 			return
