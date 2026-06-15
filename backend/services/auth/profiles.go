@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -163,6 +164,7 @@ func (s *Store) SetPIN(userID, pin string) error {
 }
 
 // ValidatePIN checks a PIN against the stored hash. Returns true if no PIN is set.
+// Uses subtle.ConstantTimeCompare to avoid timing oracle on the hash comparison.
 func (s *Store) ValidatePIN(userID, pin string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -174,7 +176,9 @@ func (s *Store) ValidatePIN(userID, pin string) bool {
 		return true
 	}
 	salt := extractSalt(p.PinHash)
-	return p.PinHash == hashPIN(pin, salt)
+	expected := hashPIN(pin, salt)
+	// SEC-PIN-01: use constant-time comparison to prevent timing oracle.
+	return subtle.ConstantTimeCompare([]byte(p.PinHash), []byte(expected)) == 1
 }
 
 // HasPIN returns whether a user has a PIN set.

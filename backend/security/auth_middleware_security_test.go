@@ -56,7 +56,7 @@ func TestC1_SpoofedHeaderWithNoSessionIsUnauthenticated(t *testing.T) {
 	st := newAuthStore(t)
 	// Seed one user so the store is "live" (HasAnyUsers true) — this models a
 	// real deployment where /api/exec etc. exist.
-	if _, err := st.Register("admin", "adminpw", "Admin"); err != nil {
+	if _, err := st.Register("admin", "adminpw-secure-1", "Admin"); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestC1_HeaderStripRunsBeforeBearerLogic(t *testing.T) {
 	}
 
 	st := newAuthStore(t)
-	u, err := st.Register("realadmin", "pw12345", "Real Admin")
+	u, err := st.Register("realadmin", "pw12345-secure!", "Real Admin")
 	if err != nil {
 		t.Fatalf("seed admin: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestAUTH10_InvalidBearerDoesNotAuthenticate(t *testing.T) {
 	}
 
 	st := newAuthStore(t)
-	if _, err := st.Register("admin", "pw12345", "Admin"); err != nil {
+	if _, err := st.Register("admin", "pw12345-secure!", "Admin"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestAUTH10_InvalidBearerDoesNotAuthenticate(t *testing.T) {
 // must not have broken the legitimate cookie/bearer-session path.
 func TestSessionTokenStillAuthenticates(t *testing.T) {
 	st := newAuthStore(t)
-	u, err := st.Register("alice", "pw12345", "Alice")
+	u, err := st.Register("alice", "pw12345-secure!", "Alice")
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestSessionTokenStillAuthenticates(t *testing.T) {
 // high-value RCE-adjacent routes are NOT public and reject anonymous access.
 func TestProtectedEndpointsRequireAuth(t *testing.T) {
 	st := newAuthStore(t)
-	if _, err := st.Register("admin", "pw12345", "Admin"); err != nil {
+	if _, err := st.Register("admin", "pw12345-secure!", "Admin"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	h := auth.NewHandler(st)
@@ -242,7 +242,7 @@ func TestProtectedEndpointsRequireAuth(t *testing.T) {
 // path must 401.
 func TestPublicPathsAreMinimal(t *testing.T) {
 	st := newAuthStore(t)
-	if _, err := st.Register("admin", "pw12345", "Admin"); err != nil {
+	if _, err := st.Register("admin", "pw12345-secure!", "Admin"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	h := auth.NewHandler(st)
