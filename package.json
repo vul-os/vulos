@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -37,6 +38,7 @@
     "jsdom": "^29.1.1",
     "qrcode": "^1.5.4",
     "vite": "^8.0.1",
+    "playwright": "^1.49.0",
     "vitest": "^4.1.7"
   }
 }

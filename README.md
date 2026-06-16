@@ -2,297 +2,258 @@
   <img src="public/icon-128.png" width="80" alt="Vulos" />
 </p>
 
-<h1 align="center">Vulos</h1>
+# Vulos
 
 <p align="center">
-  <strong>A web-native operating system built on Debian Linux.</strong><br/>
-  <em>"Vula" is isiZulu for "open".</em>
+  <strong>A web-native operating system built on Debian Linux.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/vul-os/vulos/actions/workflows/ci.yml"><img src="https://github.com/vul-os/vulos/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/vul-os/vulos/actions/workflows/release.yml"><img src="https://github.com/vul-os/vulos/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://github.com/vul-os/vulos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/vul-os/vulos" alt="License: MIT" /></a>
   <a href="https://github.com/vul-os/vulos/releases"><img src="https://img.shields.io/github/v/release/vul-os/vulos?include_prereleases&label=version" alt="Version" /></a>
-  <a href="https://github.com/vul-os/vulos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/vul-os/vulos" alt="License" /></a>
+  <a href="https://github.com/vul-os/vulos/actions/workflows/ci.yml"><img src="https://github.com/vul-os/vulos/actions/workflows/ci.yml/badge.svg" alt="Build" /></a>
 </p>
 
-<p align="center">
-  <a href="#install">Install</a> &middot;
-  <a href="#features">Features</a> &middot;
-  <a href="#development">Development</a> &middot;
-  <a href="#contributing">Contributing</a> &middot;
-  <a href="#license">License</a>
-</p>
-
-> **Alpha Software** — Under active development.
-
-<p align="center">
-  <img src="landing/docs/desktop.png" width="720" alt="Vulos Desktop" />
-</p>
+![Vulos](docs/screenshots/hero.png)
 
 ---
 
-## What is Vulos?
+## Overview
 
-Vulos is a **web-native window manager and operating system** built on Debian Linux. Instead of streaming an entire remote desktop, Vula streams individual application windows on demand — web apps run as first-class citizens in the browser, and native Linux GUI apps (GIMP, LibreOffice, Blender, games via Wine/Lutris) stream via WebRTC only when you open them.
+Vulos is a **web-native window manager and operating system** built on Debian Linux. The shell is a React SPA that runs in any browser — open it from a laptop, phone, or shared screen and get the same full desktop. Web apps run as first-class citizens with no streaming overhead; native Linux GUI apps (GIMP, LibreOffice, games via Wine/Lutris) stream via WebRTC only when you open them.
 
-### The five ideas
+The OS ships as a **signed, immutable squashfs** you can flash to USB and boot, deploy to a cloud server, or run in Docker. A single Go binary embeds the entire frontend. No Electron, no VNC, no always-on remote desktop session.
 
-1. **Web-native OS.** The shell is a real OS shell — windows, dock, file manager, terminal, settings — but it lives in a browser tab. Open it from your laptop, phone, or a TV at someone else's house and you get the same desktop.
-2. **Web-app sovereignty.** Self-host the apps you'd normally rent from a SaaS company. The bundled app store installs things like Memos, Navidrome, Uptime Kuma, and Vaultwarden as proper OS apps with their own subdomain and isolated network namespace — not embedded iframes, not browser bookmarks.
-3. **Peering, not federation.** Every Vula instance is a server with a stable identity (Ed25519 keypair, `vula:<id>` URI). Instances message, share files, place WebRTC calls, and collaborate on documents directly — no middleman, no account on someone else's server. See [`roadmap/PEERING.md`](roadmap/PEERING.md).
-4. **Real bare metal.** Flash the same image to a USB stick and it boots into `cage` running a fullscreen browser — and that browser **is** the Vulos shell. The OS *is* the React app. Native Linux apps stream into windows of that desktop on demand via the same WebRTC pipeline used for remote access. See [`roadmap/BAREMETAL-INIT.md`](roadmap/BAREMETAL-INIT.md).
-5. **Image-based OS distribution.** The OS ships as a **signed, immutable squashfs** pulled from a public bucket. A/B slots and boot-counter auto-rollback mean updates are atomic and reversible. The trust anchor is baked into the seed at flash time — security is enforced by the signing key, not by access control. See [`roadmap/OS-DISTRIBUTION.md`](roadmap/OS-DISTRIBUTION.md).
-
-### How the pieces fit
-
-- **Web apps are first-class** — install from apt or Flatpak, they run in isolated network namespaces and load in their own subdomain. No streaming overhead, just proxied HTTP.
-- **Desktop apps stream on demand** — open Audacity and it launches in its own virtual display, streams via WebRTC. Close the window, the stream stops. No always-on VNC session.
-- **Cloud gaming built in** — Wine/Lutris games stream with GPU-accelerated encoding (NVENC, VA-API, AV1). Gamepad, keyboard, and mouse input injected via uinput at kernel level.
-- **Full OS underneath** — real Debian Linux with terminal, file manager, package management. Multi-user with per-user isolation.
-- **Runs anywhere** — flash to bare metal (boots into a WebKit kiosk), deploy to a cloud server, or run in Docker for development.
-
-### How to read this project
-
-The repo carries its own project-management docs. If you want to follow along or contribute:
-
-| You want to… | Read |
-|---|---|
-| Understand the design of a specific area (peering, gaming, init, OS distribution, …) | `roadmap/` — start at [`roadmap/README.md`](roadmap/README.md) |
-| See what's done, what's open, and pick something to work on | [`tasks.md`](tasks.md) — start at the "At-a-glance" table |
-| Understand *why* the project was built a certain way | [`decisions.md`](decisions.md) — the running design-decision log |
-| Submit a change | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
-| Build / run / deploy | [`DEVELOPMENT.md`](DEVELOPMENT.md) |
+*"Vula" is isiZulu for "open".*
 
 ---
 
-## Install
+## Screenshots
 
-### Bare Metal (flash to USB)
+![Login screen](docs/screenshots/login.png)
 
-Download, flash, boot — like Ubuntu. On bare metal, Vulos boots a fullscreen browser via `cage`; the React shell is the desktop. Native Linux apps stream into windows of that desktop on demand — the same WebRTC pipeline used for remote access, so everything works out of the box on any hardware.
+**Login — email/password or passkey (WebAuthn/FIDO2). QR login for kiosk/shared clients.**
 
-| Platform | File | Devices |
-|----------|------|---------|
-| **x86_64** | `vulos-vX.X.X-x86_64.img.gz` | PC, laptop, server |
-| **ARM64** | `vulos-vX.X.X-arm64.img.gz` | Raspberry Pi, Pine64, Rock64 |
+![Launchpad — app grid](docs/screenshots/launchpad.png)
 
-```bash
-# Flash to USB drive
-gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
-```
+**Launchpad — full-screen app grid with search across all installed apps.**
 
-Or use [Balena Etcher](https://etcher.balena.io/) — drag and drop the `.img.gz` file.
+![Settings panel](docs/screenshots/settings.png)
 
-Alternatively, **netboot from a URL**: modern UEFI firmware can chainload `boot.vulos.org` directly (UEFI HTTP Boot), or use the ~1 MB one-time iPXE stick for older hardware. Either path runs a live-RAM "Try Vulos" session; **Install** writes the seed to disk only when you choose it. See [`roadmap/NETBOOT.md`](roadmap/NETBOOT.md).
+**Settings — display, WiFi, audio, Bluetooth, energy, backup, and identity.**
 
-### Cloud Server
+![Terminal](docs/screenshots/terminal.png)
 
-Deploy to any Debian server with one command:
+**Terminal — persistent PTY sessions (xterm.js) that survive browser reloads.**
 
-```bash
-./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
-```
+![File Manager](docs/screenshots/files.png)
 
-Web apps available at `https://{app}.os.yourdomain.com`. Wildcard TLS via Caddy + Namecheap/Cloudflare DNS.
+**File Manager — browse, upload, download, drag-and-drop.**
 
-### Docker (development)
+![App Hub](docs/screenshots/apphub.png)
 
-```bash
-docker run -p 8080:8080 --shm-size=1g --privileged -v vulos-data:/root/.vulos ghcr.io/vul-os/vulos:latest
-```
+**App Hub — install web apps and desktop apps. Each app runs in its own isolated network namespace.**
 
-Open **https://lvh.me:8080** (requires [mkcert](https://github.com/FiloSottile/mkcert) for local TLS).
-
----
-
-### GPU-Accelerated Streaming
-
-Vulos auto-detects GPU hardware and selects the best encoder for streaming desktop apps and games.
-
-| Tier | GPU | Encoder | FPS | Latency | Setup |
-|------|-----|---------|-----|---------|-------|
-| 0 | None | VP8 (CPU) | 30 | ~15ms | Default |
-| 1 | Intel/AMD | H.264/AV1 (VA-API) | 60 | <2ms | `--device /dev/dri` |
-| 2 | NVIDIA | H.264/AV1 (NVENC) | 120 | <1ms | `--gpus all` + [NVIDIA Container Toolkit](DEVELOPMENT.md#nvidia-container-toolkit-setup-host) |
+See [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for the full gallery and how to regenerate.
 
 ---
 
 ## Features
 
-### Window Manager
-- Multiple windows with drag, resize, snap (half/quarter screen like Ubuntu)
-- Mission Control (F3) — overview of all windows and desktops
-- Multiple desktops with drag-to-move between them
-- Dock with running app indicators
+### Window manager
+- Multiple windows with drag, resize, and snap (half/quarter screen)
+- Mission Control (F3) — overview of all windows and virtual desktops
+- Dock with running-app indicators
 
 ### Applications
-- **Terminal** — persistent PTY sessions with bash, accessible from anywhere
-- **Browser** — native host-browser (no server-side streaming); web content opens in the kiosk Chromium (bare metal) or the user's desktop browser (remote)
-- **Mail** — LilMail, the bundled default IMAP/SMTP webmail client; the mail server is the separate vulos-mail repository
+- **Terminal** — persistent PTY with bash, accessible from any browser
+- **Mail** — LilMail, the bundled IMAP/SMTP webmail client
 - **Office** — vulos-office (docs, sheets, slides, spaces, calendar) via `@vulos/office-client`
 - **File Manager** — browse, upload, download, manage files
-- **App Store** — install web apps and desktop apps from apt/Flatpak
+- **App Hub** — install web apps and desktop apps from apt/Flatpak
 - **Activity Monitor** — processes, CPU, memory, network connections
-- **Settings** — theme, display, WiFi, Bluetooth, audio, energy, backups
-
-### Peering
-
-Every Vula instance has an Ed25519 identity (`vula:ed25519:<base58>`). Instances communicate directly, no relay required. See [`roadmap/PEERING.md`](roadmap/PEERING.md).
-
-- **Messaging** — server-to-server signed message delivery; offline queue with exponential backoff
-- **Media** — image, video, and file transfer server-to-server over HTTPS; thumbnails auto-generated
-- **Voice and video calls** — WebRTC browser-to-browser; servers handle signaling only, not media
-- **Groups and rooms** — leaderless group fan-out; SFU (Pion) for 5+ participants with simulcast, Last-N video, dominant-speaker audio mixing, and bandwidth-aware host selection
-- **Real-time collaboration** — Yjs CRDT over the peering mesh for Docs, Sheets, Notes, and code editors; leaderless merge with cursor awareness
-- **AirDrop-style Drop** — LAN mDNS discovery, BLE on bare metal, or 6-digit proximity code fallback
-
-### Image-Based OS Distribution
-
-The OS is a **signed, immutable squashfs** — never patched in place, always replaced atomically. See [`roadmap/OS-DISTRIBUTION.md`](roadmap/OS-DISTRIBUTION.md).
-
-- **Public bucket** — `os/stable.json` manifest (signed) + versioned squashfs artifacts; security enforced by signing key, not access control
-- **A/B slots with auto-rollback** — new image staged to the inactive slot; boot counter reset; if services don't come up clean within the threshold, the bootloader flips back to the last-known-good slot automatically
-- **dm-verity** — Merkle tree over the squashfs verifies every block on read at runtime via `veritysetup open` in the initramfs; requires `os-core.hashtree` + `os-core.roothash` alongside the squashfs on the data partition ([`roadmap/SIGNING.md`](roadmap/SIGNING.md))
-- **Signed boot chain (NETB / SIGN / VERITY / SEED)** — Secure Boot shim → bootloader → kernel/initramfs → squashfs; each stage verified before execution; offline root-signs-intermediate PKI; monotonic min-epoch for revocation and rollback protection
-- **Forkable trust anchor** — baked Ed25519 public key + soft bucket URL in the seed; rebuild the seed with your own key and bucket for a fully independent fork ([`roadmap/SEED-TRUST.md`](roadmap/SEED-TRUST.md))
+- **Settings** — display, WiFi, Bluetooth, audio, energy, backups, identity
 
 ### Authentication
+- **Passkeys (primary)** — WebAuthn/FIDO2; private key never leaves the authenticator
+- **QR / phone-approval login** — for kiosk/shared clients; no reusable secrets
+- **Password + 2FA** — TOTP fallback via any authenticator app
+- No Google OAuth or third-party identity providers
 
-Vulos auth is **email + password + 2FA/TOTP** as the baseline, with **passkeys (WebAuthn/FIDO2) as the primary login** for new accounts. No Google OAuth or third-party identity providers.
+### Streaming
+- Web apps run natively (no streaming overhead) in isolated network namespaces
+- Native Linux apps stream via WebRTC on demand — close the window, stream stops
+- GPU-accelerated encoding: NVENC (NVIDIA), VA-API (Intel/AMD), VP8 software fallback
+- Cloud gaming: Wine/Lutris with gamepad support via `uinput`
 
-- **Passkeys (primary)** — private key never leaves the authenticator; phishing-resistant and origin-bound
-- **QR / phone-approval login** — for kiosk/shared clients; no reusable secret typed on an untrusted device
-- **Password + 2FA** — fallback for all accounts; TOTP via any authenticator app
-- **Device PIN** — TPM-wrapped short PIN for fast re-unlock; falls back to password after lockout
-- **Fingerprint** — optional `fprintd`/libfprint unlock on bare metal; gracefully hidden when no supported hardware is present
+### Peering & sync
+- Every instance has an Ed25519 identity (`vula:<id>` URI)
+- Leaderless CRDT sync (cr-sqlite) across your own nodes — no leader, no split-brain
+- AirDrop-style Drop: LAN mDNS, BLE on bare metal, 6-digit proximity code fallback
+- Real-time collaboration via Yjs CRDT over the peering mesh
 
-Cloud profile changes (username, password, full name) are pushed as signed management messages and applied locally. The cloud is an accelerator, not a runtime dependency.
-
-### Multi-Instance Sync
-
-Data sync across your own nodes is **leaderless**: cr-sqlite is a CRDT — every instance holds a full, mergeable copy; concurrent writes converge automatically with no leader to elect and no split-brain possible. See [`roadmap/SYNC.md`](roadmap/SYNC.md).
-
-- **Hot path** — live instances stream `crsql_changes` to each other directly over the peering mesh (relay fallback for NAT / cross-location)
-- **Cold path** — periodic durable checkpoint to the shared S3 bucket; an instance that was offline catches up from the bucket
-- **Snapshot / compaction** — periodic compacted snapshot to the bucket so a new instance bootstraps from `snapshot + short tail`, not unbounded replay
-- **Coordination** — bucket-backed leases with fencing tokens (`If-Match` CAS) prevent concurrent compaction; no leader, just the lease holder for the cycle ([`roadmap/COORDINATION.md`](roadmap/COORDINATION.md))
-
-### App Platform
-- **Web apps** run in isolated network namespaces with auth-gated subdomain routing
-- **Desktop apps** (apt/Flatpak) stream via WebRTC with GPU encoding
-- **Games** via Wine/Lutris with gamepad support and low-latency input
-- **AI Assistant** with pluggable backend (Ollama, OpenAI, Anthropic) and sandboxed code execution
+### Image-based OS distribution
+- Signed, immutable squashfs pulled from `os.vulos.org`
+- A/B slots with automatic rollback if the new image does not come up clean
+- dm-verity enforces block-level integrity at runtime
+- Forkable: supply your own trust anchor key + bucket URL for a fully independent fork
 
 ### Infrastructure
-- Multi-user with per-user Linux accounts, sudo, and profile isolation
-- Built-in tunnel for remote access from any device
-- S3/Restic backup and restore
-- 110+ API endpoints across 24 Go backend services
+- Single Go binary embeds the full frontend SPA
+- SQLite local-first storage; S3/Restic for encrypted backup
+- 110+ API endpoints across 24+ backend services
+- Multi-user with per-user Linux accounts and profile isolation
 
-### Tech Stack
+---
 
-| Layer | Technology |
-|-------|-----------|
-| Shell | React 19, Tailwind CSS 4, Vite |
-| Backend | Go (single binary, 24 services) |
-| Streaming | GStreamer, WebRTC (pion), Xvfb |
-| Apps | apt, Flatpak, isolated network namespaces |
-| Base | Debian 13 (Trixie), Caddy |
+## Quick start
+
+### Docker (fastest)
+
+```bash
+docker run -d \
+  --name vulos \
+  -p 8080:8080 \
+  --shm-size=1g \
+  -v vulos-data:/root/.vulos \
+  ghcr.io/vul-os/vulos:latest
+```
+
+Open **http://localhost:8080** and complete first-boot setup.
+
+### Dev mode (hot reload)
+
+```bash
+git clone https://github.com/vul-os/vulos.git
+cd vulos
+npm install
+
+# Terminal 1 — backend (no cloud account needed)
+go run ./backend/cmd/server --env=local
+
+# Terminal 2 — frontend
+npm run dev
+```
+
+Open **http://localhost:5173** — Vite proxies `/api` to the backend on `:8080`.
+
+### Deploy to a server
+
+```bash
+./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com --dns-namecheap USER APIKEY
+```
+
+### Bare metal (flash to USB)
+
+```bash
+gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+```
+
+Or use [Balena Etcher](https://etcher.balena.io/).
+
+| Platform | Image |
+|----------|-------|
+| x86_64 | `vulos-vX.X.X-x86_64.img.gz` |
+| ARM64 | `vulos-vX.X.X-arm64.img.gz` |
+
+---
+
+## Documentation
+
+- [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — install, first boot, troubleshooting
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system diagram, component map, design decisions
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — all env vars, config files, installer flags
+- [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) — screenshot gallery + how to regenerate
+- [docs/DEPLOY.md](docs/DEPLOY.md) — self-hosting and environment variables
+- [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md) — one-line install of OS + mail + office
+- [docs/REPRODUCIBLE-BUILDS.md](docs/REPRODUCIBLE-BUILDS.md) — deterministic builds + dm-verity signing
+- [docs/RELEASING.md](docs/RELEASING.md) — versioning and release workflow
+- [ROADMAP.md](ROADMAP.md) — design roadmap across all system areas
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [THREAT-MODEL.md](THREAT-MODEL.md) — STRIDE threat model
 
 ---
 
 ## Development
 
-```bash
-git clone https://github.com/vul-os/vulos.git
-cd vulos
+### Prerequisites
 
-./dev.sh                # Local dev — Go + Vite HMR (localhost:5173)
-./dev.sh deploy         # Full Docker build (localhost:8080)
+- Node.js 22+, Go 1.25+
+- Docker 24+ (OrbStack recommended on macOS)
+
+### Build commands
+
+```bash
+npm run dev          # Vite dev server (localhost:5173)
+npm run build        # Production frontend build → dist/
+npm run test         # Vitest unit tests
+npm run lint         # ESLint
+
+go build ./...                                  # Compile all Go packages
+go test ./backend/...                           # Go tests
+go run ./backend/cmd/server --env=local         # Run backend locally
+
+./dev.sh                # Go + Vite together
+./dev.sh deploy         # Full Docker build on localhost:8080
 ./dev.sh deploy quick   # Quick rebuild into running container
-./dev.sh deploy layer   # Docker rebuild, reuses cached apt layer
 ```
 
-### Runtime environments (`--env`)
-
-The backend accepts an `--env` flag (or `VULOS_ENV` env var) that sets the
-security and behaviour profile for the process.  The default is `prod`.
-
-| Flag value | Who uses it | What changes |
-|---|---|---|
-| `local` | Developer laptop | Binds `127.0.0.1`, skips TPM/fingerprint checks, allows self-signed certs, relaxes cookie flags, enables `/debug/env` endpoint |
-| `dev` | CI / staging | Same as local but without debug endpoints; accepts staging cloud-broker pubkey alongside prod key |
-| `prod` | Bare-metal / cloud | Binds all interfaces, full Secure cookies, hardware checks active where hardware is present, no debug endpoints |
-
-```bash
-# run the backend in local mode without any extra config
-go run ./backend/cmd/server --env=local
-
-# or via environment variable
-VULOS_ENV=local go run ./backend/cmd/server
-```
-
-You do not need mkcert, a TPM, or a cloud account to run in `local` mode.
-
-### Deploy to production
-
-```bash
-./build.sh --deploy SERVER_IP --domain os.yourdomain.com --dns-namecheap USER APIKEY
-```
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup, GPU configuration, and environment variables.
-
-### Project Structure
+### Project structure
 
 ```
 vulos/
 ├── src/                  # React frontend (shell, apps, auth)
-├── backend/              # Go backend (24 services, 110+ endpoints)
-│   ├── internal/         # Domain packages: airouter, identity, cgroups,
-│   │                     #   multiinstance, installer, auth, storage, …
+├── backend/              # Go backend (24+ services, 110+ endpoints)
+│   ├── internal/         # Domain packages: auth, fabric, multiinstance, …
 │   └── cmd/server/       # HTTP server + all route handlers
+├── scripts/              # Build, signing, and utility scripts
+├── docs/                 # Project documentation
 ├── apps/                 # Bundled app manifests
 ├── registry.json         # App store registry (apt + web apps)
-├── landing/              # Landing page
 ├── roadmap/              # Design documents (one per system area)
 ├── build.sh              # Bare-metal image builder + deployer
 └── dev.sh                # Dev and Docker deploy script
 ```
 
----
-
-## Releases
-
-Each release produces:
-
-- **System images** — `.img.gz` for bare metal (flash to USB)
-- **Docker images** — `ghcr.io/vul-os/vulos:latest` for `linux/amd64` and `linux/arm64`
+### Regenerate screenshots
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+# Install Playwright Chromium
+npx playwright install chromium
+
+# Boot the app (see docs/SCREENSHOTS.md for full instructions)
+go run ./backend/cmd/server --env=local &
+npm run dev &
+
+# Capture
+npm run screenshots
 ```
 
-Download from the [Releases](https://github.com/vul-os/vulos/releases) page.
+Screenshots are saved to `docs/screenshots/`. See [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for the full list of captured routes and how to target a remote instance.
 
 ---
 
 ## Contributing
 
-The short version:
+1. Skim [`tasks.md`](tasks.md) → "At-a-glance" table → pick a `todo` task whose dependencies are `done`.
+2. Branch as `task/<ID>` (e.g. `task/AUTH-10`) or `feat/`, `fix/`, `docs/` for off-roadmap work.
+3. Run `go build ./...` + `npm run build` + `go test ./backend/...` before opening a PR.
+4. Open a PR against `main` with the acceptance-criteria checkboxes ticked.
 
-1. Skim [`tasks.md`](tasks.md) → "At-a-glance" → pick a `todo` task whose dependencies are `done`.
-2. `./dev.sh` to run locally.
-3. Branch as `task/<ID>` (e.g. `task/AUTH-10`) or `feat/`, `fix/`, `docs/`, `refactor/` for off-roadmap work.
-4. Tick the task's acceptance criteria, run `go build ./...` + `npm run build`, open a PR.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide, task format, design decisions log, and security disclosure process.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full flow, including how tasks are formatted, where decisions live, and how to report a security issue.
+**Frozen invariants** (PRs violating these will not be merged):
+- No CGO in any OSS Go code
+- No `.tsx` files — frontend is JSX only
+- No Google SSO / OAuth login flows
+- No Stripe billing — billing lives in `vulos-cloud` only
+- No Rust — Go throughout
 
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
 <p align="center">
   <br/>
