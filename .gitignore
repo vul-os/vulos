@@ -2,6 +2,7 @@ node_modules/
 dist/
 output/
 tmp/
+data/
 *.exe
 *.test
 *.out

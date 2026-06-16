@@ -111,7 +111,9 @@ function Shell() {
   usePostMessageGuard()
   // MOBILE-06: device profile overrides the viewport-only `layout` value;
   // 'mobile' and 'tablet' both collapse to single-column MobileStack.
-  const useDesktop = deviceProfile === 'desktop' && layout === 'desktop'
+  // Known profiles: 'pc' | 'tablet' | 'mobile' | 'tv' | 'car' | 'watch'
+  // 'pc' is the desktop/workstation profile — use DesktopCanvas for it.
+  const useDesktop = (deviceProfile === 'pc' || deviceProfile === 'desktop') && layout === 'desktop'
 
   const { isDriving } = useDrivingMode() // DEVPROF-06
   useEffect(() => { document.body.classList.toggle('driving-mode', isDriving) }, [isDriving])

@@ -1,7 +1,38 @@
-import { useCallback, useState } from 'react'
+import { Component, useCallback, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
+
+// WindowErrorBoundary — catches errors thrown by a window's app component so
+// a single broken app cannot crash the entire desktop shell.
+class WindowErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error, info) {
+    console.error('[window] app error caught by boundary:', error, info?.componentStack)
+  }
+  render() {
+    if (this.state.error) {
+      const msg = this.state.error?.message || String(this.state.error)
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-neutral-950 text-center">
+          <div className="text-neutral-500 text-sm mb-2">App error</div>
+          <div className="text-red-400 text-xs font-mono bg-neutral-900 rounded p-3 max-w-md overflow-auto">{msg}</div>
+          <button
+            className="mt-4 text-xs text-neutral-500 hover:text-neutral-300"
+            onClick={() => this.setState({ error: null })}
+          >
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 export default function Window({ win, pointerBlock }) {
   const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, openNativeWindow, activeWindow } = useShell()
@@ -168,7 +199,9 @@ export default function Window({ win, pointerBlock }) {
       {/* Content */}
       <div className="flex-1 relative bg-neutral-950 overflow-hidden" style={pointerBlock ? { pointerEvents: 'none' } : undefined}>
         {win.component ? (
-          <div className="absolute inset-0 overflow-y-auto">{win.component}</div>
+          <WindowErrorBoundary key={win.id}>
+            <div className="absolute inset-0 overflow-y-auto">{win.component}</div>
+          </WindowErrorBoundary>
         ) : win.html ? (
           <iframe
             srcDoc={win.html}

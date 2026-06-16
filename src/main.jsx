@@ -47,8 +47,18 @@ function showFatal(label, err) {
     '</div>'
 }
 
-window.addEventListener('error', e => showFatal('window.error', e.error || e.message))
-window.addEventListener('unhandledrejection', e => showFatal('unhandledrejection', e.reason))
+// Track whether React has successfully mounted. Once mounted, runtime errors
+// inside the React tree should be handled by component-level error boundaries
+// (e.g. Window.jsx) rather than replacing the entire DOM with a boot error
+// screen — that would wipe the running desktop.
+let reactMounted = false
+
+window.addEventListener('error', e => {
+  if (!reactMounted) showFatal('window.error', e.error || e.message)
+})
+window.addEventListener('unhandledrejection', e => {
+  if (!reactMounted) showFatal('unhandledrejection', e.reason)
+})
 
 try {
   createRoot(document.getElementById('root')).render(
@@ -56,6 +66,7 @@ try {
       <App />
     </StrictMode>,
   )
+  reactMounted = true
 } catch (err) {
   showFatal('createRoot.render', err)
 }

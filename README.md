@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/icon-128.png" width="80" alt="Vulos" />
+  <img src="docs/assets/vulos-logo.png" width="120" alt="Vulos" />
 </p>
 
-# Vulos
+<h1 align="center">Vulos</h1>
 
 <p align="center">
   <strong>A web-native operating system built on Debian Linux.</strong>
@@ -14,7 +14,16 @@
   <a href="https://github.com/vul-os/vulos/actions/workflows/ci.yml"><img src="https://github.com/vul-os/vulos/actions/workflows/ci.yml/badge.svg" alt="Build" /></a>
 </p>
 
-![Vulos](docs/screenshots/hero.png)
+<p align="center">
+  <em>This is the core OS repo. The Vulos OS suite spans several companion repos:<br/>
+  <a href="https://github.com/vul-os/vulos-office">vulos-office</a> &middot;
+  <a href="https://github.com/vul-os/wede">wede</a> &middot;
+  <a href="https://github.com/vul-os/lilmail">lilmail</a> &middot;
+  <a href="https://github.com/vul-os/vulos-relay">vulos-relay</a> &middot;
+  <a href="https://github.com/vul-os/vulos-cloud">vulos-cloud</a></em>
+</p>
+
+![Vulos desktop](docs/screenshots/hero.png)
 
 ---
 
@@ -32,15 +41,19 @@ The OS ships as a **signed, immutable squashfs** you can flash to USB and boot, 
 
 ![Login screen](docs/screenshots/login.png)
 
-**Login — email/password or passkey (WebAuthn/FIDO2). QR login for kiosk/shared clients.**
+**Login — username/password form with passkey (WebAuthn/FIDO2) option. QR login for kiosk/shared clients.**
+
+![Vulos desktop](docs/screenshots/hero.png)
+
+**Desktop — DesktopCanvas window manager, menu bar with system tray, multiple virtual desktops.**
 
 ![Launchpad — app grid](docs/screenshots/launchpad.png)
 
-**Launchpad — full-screen app grid with search across all installed apps.**
+**Launchpad — full-screen app grid grouped by category (System, Internet, Productivity, Media) with search.**
 
 ![Settings panel](docs/screenshots/settings.png)
 
-**Settings — display, WiFi, audio, Bluetooth, energy, backup, and identity.**
+**Settings — AI assistant, display, WiFi, audio, Bluetooth, energy, backup, identity, and more.**
 
 ![Terminal](docs/screenshots/terminal.png)
 
@@ -48,7 +61,7 @@ The OS ships as a **signed, immutable squashfs** you can flash to USB and boot, 
 
 ![File Manager](docs/screenshots/files.png)
 
-**File Manager — browse, upload, download, drag-and-drop.**
+**File Manager — sidebar with standard locations (Home, Documents, Downloads, Pictures, Music, Videos) plus system paths.**
 
 ![App Hub](docs/screenshots/apphub.png)
 

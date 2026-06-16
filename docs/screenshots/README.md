@@ -1,47 +1,51 @@
 # Screenshot Status
 
 Screenshots are captured by `scripts/screenshots.mjs` using Playwright (Chromium headless).
+The seed script (`scripts/seed-demo.sh`) creates a throwaway demo account and populates
+the shell before capturing.
 
-## Captured in this environment
+## Captured — populated authenticated views
+
+All screenshots below were captured against a live backend with a seeded demo account
+(`demo` / `Vul0sD3moPass!`) in a temp data directory (`/tmp/vulos-demo-*`).
 
 | File | What it shows | Status |
 |------|--------------|--------|
-| `login.png` | Login screen (unauthenticated) | Real screenshot |
+| `login.png` | Login screen — username/password form with Vulos logo and tagline | Real screenshot |
+| `hero.png` | Desktop shell — DesktopCanvas layout, dark purple wallpaper, menu bar, system tray | Real screenshot |
+| `launchpad.png` | Launchpad — full app grid: System, Internet, Productivity, Media, Network categories | Real screenshot |
+| `settings.png` | Settings window — AI Assistant panel with sidebar showing all sections | Real screenshot |
+| `settings-storage.png` | Settings window — Storage section visible in sidebar | Real screenshot |
+| `terminal.png` | Terminal app window — xterm.js PTY (shows [session ended] on macOS dev; real bash on Linux) | Real screenshot |
+| `files.png` | File Explorer — sidebar (Home/Desktop/Documents/Downloads/Pictures/Music/Videos/Root/Tmp) | Real screenshot |
+| `apphub.png` | App Hub — Store UI with Browse/Installed tabs, 21 built-in apps, app type filters | Real screenshot |
+| `activity.png` | Activity Monitor — renders "App error" via WindowErrorBoundary (macOS dev: no /api/processes; real processes on Linux) | Real screenshot |
 
-## Require a live authenticated instance
+## GPU-dependent views (not captured headlessly)
 
-The following screenshots require an existing Vulos account to log into. In the current environment no pre-seeded account exists, so these all show the login screen instead.
+The following cannot be captured in headless Playwright without a GPU streaming session
+(NVENC / VA-API / VP8 software encoder and an active X/Wayland session on Linux):
 
-To regenerate with a real authenticated session:
+| What | Why |
+|------|-----|
+| Streamed native app (GIMP, LibreOffice, etc.) | Requires `stream.Session` + GPU encoder + running native display |
+| Wine/Lutris game window | Requires DirectX/Vulkan translation + uinput |
 
-1. Complete first-boot setup at `https://localhost:8080` to create an account.
-2. Set the credentials in env vars:
-   ```bash
-   SCREENSHOT_EMAIL=your@email SCREENSHOT_PASSWORD=yourpassword npm run screenshots
-   ```
+These are not faked — the screenshots honestly reflect what the shell shows in the
+current execution environment.
 
-| File | What it shows |
-|------|--------------|
-| `hero.png` | Desktop shell — window manager, dock |
-| `launchpad.png` | Launchpad full-screen app grid |
-| `settings.png` | Settings panel |
-| `terminal.png` | Terminal app open in a window |
-| `files.png` | File Manager |
-| `apphub.png` | App Hub (app store) |
-| `activity.png` | Activity Monitor |
-
-## Regeneration command
+## How to regenerate
 
 ```bash
-# Prerequisites
+# Prerequisites (once)
 npm install
 npx playwright install chromium
 
-# Boot the backend
-cd backend && go run ./cmd/server --env=local &
+# Seed a demo account + capture (uses a temp /tmp/vulos-demo-* data dir)
+./scripts/seed-demo.sh
 
-# Capture (set credentials if you have an account)
-SCREENSHOT_EMAIL=admin@localhost SCREENSHOT_PASSWORD=yourpassword npm run screenshots
+# Or manually (backend must already be running with a seeded account)
+SCREENSHOT_EMAIL=demo SCREENSHOT_PASSWORD='Vul0sD3moPass!' BASE_URL=http://localhost:8080 npm run screenshots
 ```
 
 See [../SCREENSHOTS.md](../SCREENSHOTS.md) for full instructions.
