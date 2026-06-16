@@ -13,6 +13,18 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-16
+
+Milestone release. First feature-complete, security-hardened Vula OS merged to
+`main`: email/password + passkey/2FA auth (no third-party OAuth), GPU-accelerated
+streaming with adaptive bitrate/resolution and idle/peer-aware encoder lifecycle,
+leaderless multi-instance CRDT sync with signed quorum, P2P WebRTC mesh,
+rehydration + instance migration, per-account storage selection, anchor inbox,
+and the headless `vulos-managed` cloud box image. Mail is fully separated
+(lilmail client + vulos-mail server are independent repos). Note: GPU-streaming
+and cloud/infra paths are implemented and unit-tested but await verification on
+real hardware/live services.
+
 ### Fixed
 
 - Wire `RegisterAnchorHandlers` in `main.go` — ANCHOR-01 routes
