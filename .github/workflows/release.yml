@@ -18,6 +18,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
@@ -27,23 +37,56 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── Derive version from the pushed tag ───────────────────────────────────
       - name: Extract version
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      # Build and push Docker image
+      # ── Verify tag matches package.json version ───────────────────────────────
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${{ steps.version.outputs.VERSION }}"
+          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "ERROR: git tag ($TAG) does not match package.json version ($PKG_VERSION)"
+            echo "Update package.json version to match the tag before releasing."
+            exit 1
+          fi
+          echo "Version check passed: $TAG == $PKG_VERSION"
+
+      # ── Frontend build ────────────────────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      # ── Go: test + vet ────────────────────────────────────────────────────────
+      - name: Go test
+        run: cd backend && go test -short ./...
+        env:
+          GOTOOLCHAIN: auto
+
+      - name: Go vet
+        run: cd backend && go vet ./...
+        env:
+          GOTOOLCHAIN: auto
+
+      # ── Docker image (embeds frontend dist/ via Dockerfile) ───────────────────
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build flashable bare-metal images (Debian Trixie)
+      # ── Build flashable bare-metal images (Debian Trixie) ────────────────────
       - name: Build system images
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
@@ -78,18 +121,27 @@ jobs:
 
           ls -lh vulos-*.img.gz
 
-      - name: Generate changelog
+      # ── Extract CHANGELOG section for this release ───────────────────────────
+      - name: Extract CHANGELOG notes
         id: changelog
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p' || echo "")
-          if [ -z "$PREV_TAG" ]; then
-            CHANGES=$(git log --pretty=format:"- %s (%h)")
-          else
-            CHANGES=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD")
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Strip leading 'v' to match CHANGELOG section headers like [1.0.0]
+          SEMVER="${VERSION#v}"
+          # Extract the block between ## [SEMVER] and the next ## heading
+          NOTES=$(awk "/^## \[${SEMVER}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            # Fall back to git log between tags
+            PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p' || echo "")
+            if [ -z "$PREV_TAG" ]; then
+              NOTES=$(git log --pretty=format:"- %s (%h)")
+            else
+              NOTES=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD")
+            fi
           fi
           {
-            echo "CHANGES<<EOF"
-            echo "$CHANGES"
+            echo "NOTES<<EOF"
+            echo "$NOTES"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -127,7 +179,7 @@ jobs:
 
             ### Changes
 
-            ${{ steps.changelog.outputs.CHANGES }}
+            ${{ steps.changelog.outputs.NOTES }}
           files: |
             vulos-*.img.gz
           draft: false

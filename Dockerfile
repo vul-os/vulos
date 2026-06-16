@@ -21,12 +21,14 @@ RUN npm run build
 
 # ── Stage 2: Go backend build ────────────────────────────
 FROM golang:trixie AS backend
+# VERSION is injected at build time via --build-arg VERSION=vX.Y.Z
+ARG VERSION=dev
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /vulos-server ./cmd/server
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /vulos-init ./cmd/init
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /vulos-server ./cmd/server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /vulos-init ./cmd/init
 
 # ── Stage 3: Runtime image ───────────────────────────────
 FROM debian:trixie-slim

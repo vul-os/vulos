@@ -74,6 +74,10 @@ import (
 	"vulos/backend/internal/obs"
 )
 
+// Version is the server version string. The default is "dev"; it is overridden
+// at build time via -ldflags "-X main.Version=vX.Y.Z" in the release pipeline.
+var Version = "dev"
+
 func main() {
 	obs.Init()
 
@@ -89,7 +93,13 @@ func main() {
 	}
 
 	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
+	versionFlag := flag.Bool("version", false, "Print the server version and exit.")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(Version)
+		os.Exit(0)
+	}
 
 	// Resolve and validate the environment.  An unrecognised value is fatal so
 	// operators get immediate feedback instead of a silent misconfig.
@@ -497,6 +507,11 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /metrics", obs.Handler())
+
+	// Version — public, no auth. Returns the server build version.
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"version": Version})
+	})
 
 	// NET-07: cluster health (data-dir writable, disk space, sync lag) — public
 	// syncer is wired below after cluster init; use a pointer so the handler
