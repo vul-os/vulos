@@ -31,6 +31,7 @@ import (
 	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/airouter"
 	"vulos/backend/internal/cgroups"
+	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/multiinstance"
 	svcauth "vulos/backend/services/auth"
 	"vulos/backend/services/appnet"
@@ -332,7 +333,8 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	{
 		reg := sharedReg
 		if reg != nil {
-			provisioner := multiinstance.NewProvisioner(reg, "")
+			provisioner := multiinstance.NewProvisioner(reg, "").
+				WithBilling(cpbilling.New(cpbilling.Config{}))
 			multiinstance.RegisterProvisionHandlers(mux, provisioner)
 			log.Printf("[multiinstance/provision] registered POST /api/instances/provision, GET /api/instances/{ulid}/status")
 		} else {

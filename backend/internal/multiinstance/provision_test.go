@@ -57,7 +57,7 @@ func TestProvision_ReturnsRequestAndUpserts(t *testing.T) {
 	t.Setenv("VULOS_CLOUD_URL", url)
 
 	p := multiinstance.NewProvisioner(reg, "test-device-cert")
-	req, err := p.Provision(context.Background(), "ams", "small")
+	req, err := p.Provision(context.Background(), "acct@x.com", "ams", "small")
 	if err != nil {
 		t.Fatalf("Provision: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestProvision_UnreachableCloudReturnsError(t *testing.T) {
 	t.Setenv("VULOS_CLOUD_URL", "http://127.0.0.1:0")
 
 	p := multiinstance.NewProvisioner(reg, "token")
-	_, err := p.Provision(context.Background(), "jnb", "small")
+	_, err := p.Provision(context.Background(), "acct@x.com", "jnb", "small")
 	if err == nil {
 		t.Fatal("expected error for unreachable cloud, got nil")
 	}
@@ -98,7 +98,7 @@ func TestProvision_UnreachableCloudReturnsError(t *testing.T) {
 func TestProvision_EmptyRegionErrors(t *testing.T) {
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "token")
-	_, err := p.Provision(context.Background(), "", "small")
+	_, err := p.Provision(context.Background(), "acct@x.com", "", "small")
 	if err == nil {
 		t.Fatal("expected error for empty region")
 	}
@@ -107,7 +107,7 @@ func TestProvision_EmptyRegionErrors(t *testing.T) {
 func TestProvision_EmptyPlanErrors(t *testing.T) {
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "token")
-	_, err := p.Provision(context.Background(), "ams", "")
+	_, err := p.Provision(context.Background(), "acct@x.com", "ams", "")
 	if err == nil {
 		t.Fatal("expected error for empty plan")
 	}
@@ -122,7 +122,7 @@ func TestProvision_Non200ResponseErrors(t *testing.T) {
 
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "bad-token")
-	_, err := p.Provision(context.Background(), "ams", "small")
+	_, err := p.Provision(context.Background(), "acct@x.com", "ams", "small")
 	if err == nil {
 		t.Fatal("expected error for 401 response")
 	}
@@ -145,7 +145,7 @@ func TestProvision_SendsAuthHeader(t *testing.T) {
 
 	reg := openTempRegistry(t)
 	p := multiinstance.NewProvisioner(reg, "my-device-cert")
-	_, err := p.Provision(context.Background(), "ams", "small")
+	_, err := p.Provision(context.Background(), "acct@x.com", "ams", "small")
 	if err != nil {
 		t.Fatalf("Provision: %v", err)
 	}

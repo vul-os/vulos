@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/pion/webrtc/v4"
+
+	"vulos/backend/internal/cpbilling"
 )
 
 // sentinel errors
@@ -33,11 +35,31 @@ type roomEntry struct {
 type SFU struct {
 	mu    sync.RWMutex
 	rooms map[string]*roomEntry
+
+	// billing GATES room creation on suspension and METERS rooms against cp.
+	// Nil or disabled (CP_URL unset) = standalone OS: Meet is ungated/unmetered.
+	// cp does not yet return Meet-specific caps (see WithBilling doc), so this
+	// enforces suspension only.
+	billing *cpbilling.Client
 }
 
 // New creates a new SFU instance with an empty room registry.
 func New() *SFU {
 	return &SFU{rooms: make(map[string]*roomEntry)}
+}
+
+// WithBilling wires a cp billing client so room creation is gated on the
+// caller's suspension state and metered to cp. A nil/disabled client is a
+// no-op (standalone OS). Returns s for chaining.
+//
+// CP CONTRACT NOTE: cp does not yet return Meet-specific per-tier caps
+// (e.g. max concurrent rooms / meeting minutes). This layer therefore enforces
+// only `suspended` and emits per-room usage (kind=meet_room) so cp can bill.
+// For full per-tier enforcement cp should add Meet caps to /api/entitlements
+// (e.g. meet_enabled, meet_max_rooms, meet_minutes_budget).
+func (s *SFU) WithBilling(b *cpbilling.Client) *SFU {
+	s.billing = b
+	return s
 }
 
 // CreateRoom creates a new room with the given Last-N value and registers it
@@ -140,7 +162,27 @@ func (s *SFU) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ownerID := r.Header.Get("X-User-ID")
+
+	// BILLING GATE (surface 4: Meet). Refuse room creation when the account is
+	// suspended (authoritative). Fail-open/degraded on a cold cp outage. No-op
+	// when billing is disabled (standalone OS).
+	if s.billing.Enabled() {
+		if d := s.billing.Gate(r.Context(), ownerID, cpbilling.ProductMeet); !d.Allowed {
+			http.Error(w, "account not entitled: "+d.Reason, http.StatusPaymentRequired)
+			return
+		}
+	}
+
 	room := s.CreateRoom(req.LastN, ownerID)
+
+	// METER (surface 4: Meet). One room created. No-op when disabled.
+	s.billing.MeterAsync(cpbilling.UsageEvent{
+		Product:   cpbilling.ProductMeet,
+		AccountID: ownerID,
+		Kind:      cpbilling.KindMeetRoom,
+		Count:     1,
+	})
+
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"room_id": room.ID,
 		"last_n":  room.LastN,

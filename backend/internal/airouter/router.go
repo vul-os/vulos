@@ -143,6 +143,10 @@ func (r *Router) callOpenAICompat(ctx context.Context, baseURL, apiKey, model st
 		"model":    model,
 		"messages": req.Messages,
 		"stream":   true,
+		// Ask OpenAI-compatible endpoints (incl. the llmux gateway) to emit a
+		// final `usage` block on the stream so the billing layer can meter real
+		// token counts. Harmless for endpoints that ignore it.
+		"stream_options": map[string]any{"include_usage": true},
 	}
 	data, _ := json.Marshal(body)
 

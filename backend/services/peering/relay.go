@@ -82,6 +82,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vulos/backend/internal/cpbilling"
 )
 
 // ─── Relay limits (package-level constants) ───────────────────────────────────
@@ -223,6 +225,27 @@ type RelayStore struct {
 	// rateMu guards senderDeposits.
 	rateMu         sync.Mutex
 	senderDeposits map[string][]time.Time // sender → timestamps of deposits in last hour
+
+	// billing GATES relay deposits on suspension and METERS relayed bytes
+	// against cp. Nil or disabled (CP_URL unset) = standalone OS: the relay is
+	// ungated/unmetered. The account key is the sender's VulaID (cp maps it).
+	// cp does not yet return relay-specific per-tier caps, so this enforces
+	// suspension only (see WithBilling doc).
+	billing *cpbilling.Client
+}
+
+// WithBilling wires a cp billing client so relay deposits are gated on the
+// sender's suspension state and the relayed byte count is metered. A
+// nil/disabled client is a no-op (standalone OS). Returns rs for chaining.
+//
+// CP CONTRACT NOTE: cp does not yet return relay-specific per-tier caps
+// (e.g. relay_enabled, relay_bytes_budget). This layer therefore enforces only
+// `suspended` and emits per-deposit usage (kind=relay_bytes, bytes=blob size)
+// so cp can bill on volume. For full per-tier enforcement cp should add relay
+// caps to /api/entitlements.
+func (rs *RelayStore) WithBilling(b *cpbilling.Client) *RelayStore {
+	rs.billing = b
+	return rs
 }
 
 // NewRelayStore creates a RelayStore backed by
@@ -401,6 +424,15 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 		return err
 	}
 
+	// 5b. BILLING GATE (surface 4: relay). Refuse a deposit from a suspended
+	// account (authoritative); fail-open/degraded on a cold cp outage. No-op
+	// when billing is disabled (standalone OS). Account key = sender VulaID.
+	if rs.billing.Enabled() {
+		if d := rs.billing.Gate(context.Background(), req.SenderVulaID, cpbilling.ProductRelay); !d.Allowed {
+			return fmt.Errorf("peering/relay: deposit: refused: %s", d.Reason)
+		}
+	}
+
 	// 6. Blob size check.
 	blobBytes, err := base64.StdEncoding.DecodeString(req.BlobB64)
 	if err != nil {
@@ -457,6 +489,16 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 	if err := relayAtomicWrite(recipientDir, dst, blobData); err != nil {
 		return fmt.Errorf("peering/relay: deposit: write blob: %w", err)
 	}
+
+	// METER (surface 4: relay). One deposit of blobSize relayed bytes. No-op
+	// when billing is disabled.
+	rs.billing.MeterAsync(cpbilling.UsageEvent{
+		Product:   cpbilling.ProductRelay,
+		AccountID: req.SenderVulaID,
+		Kind:      cpbilling.KindRelayBytes,
+		Count:     1,
+		Bytes:     blobSize,
+	})
 
 	// Record for rate limiting.
 	rs.recordDeposit(req.SenderVulaID, now)

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/airouter"
+	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
@@ -388,6 +389,12 @@ func main() {
 
 	// Stream pool (generic X11 app streaming — Xvfb + GStreamer + WebRTC)
 	streamPool := stream.NewPool()
+
+	// cp billing client (entitlements + usage + suspension). Shared across the
+	// billable OS surfaces wired directly in main.go (GPU/stream, SFU). When
+	// CP_URL is unset this client is DISABLED and every gate Allows / every
+	// meter is dropped — the standalone-OS path is unchanged.
+	billingClient := cpbilling.New(cpbilling.Config{})
 
 	// Wine prefix management (create/delete/DXVK per user)
 	wineSvc := wine.New(filepath.Join(home, ".vulos", "wine"))
@@ -1660,6 +1667,20 @@ func main() {
 			}
 		}
 
+		// BILLING GATE (surface 4: GPU/stream). A stream session is a billable
+		// GPU/compute surface. Refuse when the account is suspended
+		// (authoritative); fail-open/degraded on a cold cp outage. No-op when
+		// billing is disabled (standalone OS). cp does not yet return
+		// GPU-specific per-tier caps, so this enforces suspension only and emits
+		// per-session usage so cp can bill.
+		gpuAccount := r.Header.Get("X-User-ID")
+		if billingClient.Enabled() {
+			if d := billingClient.Gate(r.Context(), gpuAccount, cpbilling.ProductGPU); !d.Allowed {
+				writeErr(w, http.StatusPaymentRequired, "account not entitled: "+d.Reason)
+				return
+			}
+		}
+
 		execAuditLog(r, "POST /api/stream/launch-app", fmt.Sprintf("app_id=%q cmd=%q", req.AppID, req.Command))
 		sess, err := streamPool.Launch(stream.LaunchOpts{
 			ID:       req.AppID,
@@ -1678,6 +1699,13 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// METER (surface 4: GPU/stream). One GPU/stream session started.
+		billingClient.MeterAsync(cpbilling.UsageEvent{
+			Product:   cpbilling.ProductGPU,
+			AccountID: gpuAccount,
+			Kind:      cpbilling.KindGPUSession,
+			Count:     1,
+		})
 		writeJSON(w, sess)
 	})
 
@@ -1789,6 +1817,7 @@ func main() {
 			if relayStore, rErr := peering.NewRelayStore(pHome, contactStore); rErr != nil {
 				log.Printf("[peering] PEER-42 relay store init: %v", rErr)
 			} else {
+				relayStore.WithBilling(billingClient)
 				peering.RegisterRelayHandlers(peeringMux, relayStore)
 			}
 
@@ -1919,7 +1948,7 @@ func main() {
 	//   DELETE /api/sfu/rooms/{room_id}
 	//   POST   /api/sfu/rooms/{room_id}/join
 	//   POST   /api/sfu/rooms/{room_id}/ice
-	sfuSvc := sfu.New()
+	sfuSvc := sfu.New().WithBilling(billingClient)
 	sfu.RegisterSFUHandlers(mux, sfuSvc)
 
 	// App visibility (private|local|public)

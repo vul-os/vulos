@@ -1,6 +1,7 @@
 package airouter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"vulos/backend/internal/cpbilling"
 )
 
 // aiBucket holds per-account token state for aiRateLimiter.
@@ -175,6 +178,20 @@ type Handler struct {
 
 	// rl is the per-account rate limiter for POST endpoints.
 	rl *aiRateLimiter
+
+	// billing is the cp billing client used to GATE (entitlement + LLM budget +
+	// suspension) and METER (POST /api/usage) the LLM path. When nil or disabled
+	// (CP_URL unset) the LLM path is ungated/unmetered exactly as before — the
+	// standalone-OS behaviour. Set via [Handler.WithBilling].
+	billing *cpbilling.Client
+}
+
+// WithBilling wires a cp billing client into the handler so /api/ai/chat is
+// gated on LLM entitlement + suspension and metered to cp. A nil or disabled
+// client is a transparent no-op (standalone OS). Returns h for chaining.
+func (h *Handler) WithBilling(b *cpbilling.Client) *Handler {
+	h.billing = b
+	return h
 }
 
 // NewHandler creates a Handler backed by the given Router.
@@ -227,6 +244,10 @@ func (h *Handler) checkRateLimit(w http.ResponseWriter, r *http.Request) bool {
 //	DELETE /api/ai/notes/{note_id}/embed – remove a note's embedding (AIROT-04)
 func RegisterHandlers(mux *http.ServeMux, router *Router) {
 	h := NewHandler(router)
+	// Wire cp billing from the environment (CP_URL/CP_SHARED_SECRET). When
+	// CP_URL is unset the client is disabled and the LLM path stays
+	// ungated/unmetered — the standalone-OS behaviour.
+	h.WithBilling(cpbilling.New(cpbilling.Config{}))
 	mux.HandleFunc("POST /api/ai/chat", h.handleChat)
 	mux.HandleFunc("POST /api/ai/models", h.handleModels)
 	mux.HandleFunc("GET /api/ai/status", h.handleStatus)
@@ -263,6 +284,28 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BILLING GATE (surface 1: LLM). When cp billing is wired (CP_URL set), the
+	// LLM path is gated on the caller's LLM entitlement + budget + suspension
+	// BEFORE we issue the resource. A disabled client allows everything (the
+	// standalone-OS path). A cold-cache cp outage fails OPEN (degraded) so a cp
+	// blip doesn't black out the LLM; a KNOWN suspension is authoritative.
+	account := accountKey(r)
+	if h.billing.Enabled() {
+		if d := h.billing.GateLLM(r.Context(), account); !d.Allowed {
+			switch d.Reason {
+			case "suspended":
+				jsonError(w, "account_suspended", http.StatusPaymentRequired)
+			case "llm_disabled":
+				jsonError(w, "llm_not_entitled", http.StatusPaymentRequired)
+			case "llm_budget_exhausted":
+				jsonError(w, "llm_budget_exhausted", http.StatusPaymentRequired)
+			default:
+				jsonError(w, "not_entitled", http.StatusPaymentRequired)
+			}
+			return
+		}
+	}
+
 	// Acquire concurrency slot (queue if all 10 are busy).
 	select {
 	case h.sem <- struct{}{}:
@@ -294,10 +337,19 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	flusher, canFlush := w.(http.Flusher)
 
+	// usageScan sniffs the SSE bytes as they pass through for the OpenAI
+	// `usage` object (token counts) so we can METER real usage to cp after the
+	// stream completes. It never alters the bytes forwarded to the client.
+	var usageScan usageSniffer
+	meter := h.billing.Enabled()
+
 	buf := make([]byte, 4096)
 	for {
 		n, readErr := stream.Read(buf)
 		if n > 0 {
+			if meter {
+				usageScan.feed(buf[:n])
+			}
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 				return
 			}
@@ -313,9 +365,84 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 					flusher.Flush()
 				}
 			}
-			return
+			break
 		}
 	}
+
+	// METER (surface 1: LLM). Report the real token count parsed from the
+	// provider/llmux `usage` block. Fire-and-forget so the response path isn't
+	// blocked on cp. No-op when billing is disabled or no usage was seen.
+	if meter {
+		total := usageScan.totalTokens()
+		h.billing.MeterAsync(cpbilling.UsageEvent{
+			Product:   cpbilling.ProductLLM,
+			AccountID: account,
+			Kind:      cpbilling.KindLLMTokens,
+			Count:     total,
+		})
+	}
+}
+
+// usageSniffer accumulates SSE bytes and extracts the most recent OpenAI-style
+// `usage` object (prompt_tokens / completion_tokens / total_tokens). Most
+// OpenAI-compatible gateways (including llmux) emit a final usage block; if the
+// stream omits one, totalTokens reports 0 and the meter records a zero-count
+// event (cp still sees the request happened).
+type usageSniffer struct {
+	buf []byte
+}
+
+func (s *usageSniffer) feed(b []byte) {
+	s.buf = append(s.buf, b...)
+	// Bound memory: keep only the tail, which holds the final usage block.
+	const cap = 64 << 10
+	if len(s.buf) > cap {
+		s.buf = s.buf[len(s.buf)-cap:]
+	}
+}
+
+func (s *usageSniffer) totalTokens() int64 {
+	idx := bytes.LastIndex(s.buf, []byte(`"usage"`))
+	if idx < 0 {
+		return 0
+	}
+	// Find the JSON object value following "usage": ... by scanning braces.
+	rest := s.buf[idx:]
+	open := bytes.IndexByte(rest, '{')
+	if open < 0 {
+		return 0
+	}
+	depth := 0
+	end := -1
+	for i := open; i < len(rest); i++ {
+		switch rest[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end = i + 1
+			}
+		}
+		if end >= 0 {
+			break
+		}
+	}
+	if end < 0 {
+		return 0
+	}
+	var u struct {
+		TotalTokens      int64 `json:"total_tokens"`
+		PromptTokens     int64 `json:"prompt_tokens"`
+		CompletionTokens int64 `json:"completion_tokens"`
+	}
+	if err := json.Unmarshal(rest[open:end], &u); err != nil {
+		return 0
+	}
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return u.PromptTokens + u.CompletionTokens
 }
 
 // isModelNotFound returns true for errors that should surface as 422.

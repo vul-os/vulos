@@ -43,7 +43,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
+
+	"vulos/backend/internal/cpbilling"
 )
 
 // ProvisionRequest describes one pending or completed Fly Machine provisioning job.
@@ -84,6 +87,11 @@ type Provisioner struct {
 	reg         *Registry
 	httpClient  *http.Client
 	deviceToken string
+
+	// billing GATES (entitlement + suspension) and METERS compute provisioning
+	// against the cp control plane. Nil or disabled (CP_URL unset) = standalone
+	// OS: provisioning is ungated/unmetered exactly as before.
+	billing *cpbilling.Client
 }
 
 // NewProvisioner creates a Provisioner backed by reg.
@@ -98,6 +106,14 @@ func NewProvisioner(reg *Registry, deviceToken string) *Provisioner {
 	}
 }
 
+// WithBilling wires a cp billing client so compute provisioning is gated on
+// entitlement + suspension and metered. A nil/disabled client is a no-op.
+// Returns p for chaining.
+func (p *Provisioner) WithBilling(b *cpbilling.Client) *Provisioner {
+	p.billing = b
+	return p
+}
+
 // Provision requests the cloud control plane to create a new Fly Machine
 // in the given region with the given plan.  It stores the provision request
 // locally and upserts the new instance into the Registry immediately so it is
@@ -105,12 +121,23 @@ func NewProvisioner(reg *Registry, deviceToken string) *Provisioner {
 //
 // If the cloud is unreachable or returns an error, Provision returns a wrapped
 // error.  The local Registry is not modified in that case.
-func (p *Provisioner) Provision(ctx context.Context, region, plan string) (*ProvisionRequest, error) {
+func (p *Provisioner) Provision(ctx context.Context, account, region, plan string) (*ProvisionRequest, error) {
 	if region == "" {
 		return nil, fmt.Errorf("provision: region must not be empty")
 	}
 	if plan == "" {
 		return nil, fmt.Errorf("provision: plan must not be empty")
+	}
+
+	// BILLING GATE (surface 3: compute). Refuse before provisioning when the
+	// account is suspended (suspension is authoritative). Fail-open + degraded
+	// on a cold cp outage so a cp blip doesn't block all provisioning. No-op
+	// when billing is disabled (standalone OS). cp does not yet return
+	// compute-specific caps, so this enforces suspension + tier presence only.
+	if p.billing.Enabled() {
+		if d := p.billing.Gate(ctx, account, cpbilling.ProductCompute); !d.Allowed {
+			return nil, fmt.Errorf("provision: refused: %s", d.Reason)
+		}
 	}
 
 	cloudResp, err := p.callProvisionEndpoint(ctx, region, plan)
@@ -155,6 +182,15 @@ func (p *Provisioner) Provision(ctx context.Context, region, plan string) (*Prov
 			log.Printf("[provisioner] upsert new instance %s: %v", cloudResp.InstanceULID, uErr)
 		}
 	}
+
+	// METER (surface 3: compute). One billable machine provisioned. No-op when
+	// billing is disabled.
+	p.billing.MeterAsync(cpbilling.UsageEvent{
+		Product:   cpbilling.ProductCompute,
+		AccountID: account,
+		Kind:      cpbilling.KindComputeMachine,
+		Count:     1,
+	})
 
 	return req, nil
 }
@@ -372,11 +408,19 @@ func RegisterProvisionHandlers(mux *http.ServeMux, p *Provisioner) {
 			return
 		}
 
-		req, err := p.Provision(r.Context(), body.Region, body.Plan)
+		account := r.Header.Get("X-User-ID")
+		req, err := p.Provision(r.Context(), account, body.Region, body.Plan)
 		if err != nil {
 			log.Printf("[provisioner] Provision %s/%s: %v", body.Region, body.Plan, err)
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
+			// A billing refusal (suspended / not entitled) is the caller's fault:
+			// surface it as 402 so the dashboard can show a billing prompt. Cloud
+			// outages stay 503.
+			status := http.StatusServiceUnavailable
+			if strings.HasPrefix(err.Error(), "provision: refused:") {
+				status = http.StatusPaymentRequired
+			}
+			w.WriteHeader(status)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
