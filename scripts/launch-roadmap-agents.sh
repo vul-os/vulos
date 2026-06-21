@@ -4,7 +4,7 @@
 
 NUM_AGENTS=${1:-10}
 AGENT_TYPE="general"
-WORKSPACE="/Users/pc/code/exo/vulos"
+WORKSPACE="/Users/pc/code/vulos/vulos"
 
 echo "[$(date)] Launching $NUM_AGENTS agents for roadmap implementation..."
 

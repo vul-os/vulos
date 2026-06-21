@@ -2,7 +2,7 @@
 # Controller script for roadmap agent cron
 # Runs every 15 mins, manages a 2-hour window
 
-WORKSPACE="/Users/pc/code/exo/vulos"
+WORKSPACE="/Users/pc/code/vulos/vulos"
 STATE_FILE="/tmp/roadmap-agents-starttime"
 SESSIONS_FILE="/tmp/roadmap-agents-sessions"
 NUM_AGENTS=10
