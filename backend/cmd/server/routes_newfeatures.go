@@ -100,6 +100,12 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		airRouter := airouter.NewRouter(airStore)
 		airouter.RegisterHandlers(mux, airRouter)
 		log.Printf("[airouter] registered POST /api/ai/chat, POST /api/ai/models, GET /api/ai/status, PUT /api/ai/config")
+		// When LLMUX_URL is set, chat + embeddings route through the suite's
+		// OpenAI-compatible llmux gateway (LLMUX_KEY bearer) instead of calling
+		// providers directly. Unset = standalone (BYO/cloud) behaviour.
+		if lurl := os.Getenv("LLMUX_URL"); lurl != "" {
+			log.Printf("[airouter] LLMUX_URL set (%s) — chat + embeddings routed via llmux gateway", lurl)
+		}
 	}
 
 	// ── 3. Multi-instance app router (internal/multiinstance) ────────────────

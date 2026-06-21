@@ -79,6 +79,18 @@ func (r *Router) Route(ctx context.Context, req ChatRequest) (io.ReadCloser, err
 		return nil, fmt.Errorf("airouter: load config: %w", err)
 	}
 
+	// When the llmux gateway is configured (LLMUX_URL set), route chat through
+	// it regardless of mode — llmux is OpenAI-compatible, so this is just a
+	// (base_url, key) swap.  Falls through to the normal byo/cloud paths when
+	// unset, keeping the OS standalone-capable.
+	if lm, ok := llmuxEndpoint(); ok {
+		model := req.Model
+		if model == "" {
+			model = cfg.ActiveModel
+		}
+		return r.callOpenAICompat(ctx, lm.BaseURL, lm.Key, model, req)
+	}
+
 	switch cfg.Mode {
 	case ModeCloud:
 		return r.routeCloud(ctx, req)

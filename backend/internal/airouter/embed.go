@@ -159,6 +159,14 @@ func (e *Embedder) EvictExpired() error {
 // ---------------------------------------------------------------------------
 
 func (e *Embedder) callEmbedProvider(model, input string) ([]float32, error) {
+	// When the llmux gateway is configured (LLMUX_URL set), route embeddings
+	// through it regardless of mode — llmux is OpenAI-compatible, so this is a
+	// (base_url, key) swap to its /v1/embeddings endpoint.  Falls through to the
+	// normal byo/cloud paths when unset, keeping the OS standalone-capable.
+	if lm, ok := llmuxEndpoint(); ok {
+		return e.callEmbedOpenAICompat(lm.BaseURL, lm.Key, model, input)
+	}
+
 	cfg, err := e.store.GetConfig()
 	if err != nil {
 		return nil, fmt.Errorf("airouter embed: load config: %w", err)
@@ -185,7 +193,13 @@ func (e *Embedder) callEmbedBYO(model, input string) ([]float32, error) {
 		}
 	}
 
-	endpoint := strings.TrimRight(provider.BaseURL, "/") + "/v1/embeddings"
+	return e.callEmbedOpenAICompat(provider.BaseURL, provider.APIKeyEnc, model, input)
+}
+
+// callEmbedOpenAICompat POSTs to an OpenAI-compatible /v1/embeddings endpoint.
+// It is shared by the BYO provider path and the llmux gateway path.
+func (e *Embedder) callEmbedOpenAICompat(baseURL, apiKey, model, input string) ([]float32, error) {
+	endpoint := strings.TrimRight(baseURL, "/") + "/v1/embeddings"
 	reqBody := map[string]any{
 		"model": model,
 		"input": input,
@@ -197,18 +211,18 @@ func (e *Embedder) callEmbedBYO(model, input string) ([]float32, error) {
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	if provider.APIKeyEnc != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+provider.APIKeyEnc)
+	if apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	resp, err := e.router.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("airouter embed byo: request failed: %w", err)
+		return nil, fmt.Errorf("airouter embed: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("airouter embed byo: provider returned %d: %s", resp.StatusCode, b)
+		return nil, fmt.Errorf("airouter embed: provider returned %d: %s", resp.StatusCode, b)
 	}
 
 	return parseEmbedResponse(resp.Body)
