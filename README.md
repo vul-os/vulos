@@ -5,20 +5,18 @@
 <h1 align="center">Vulos</h1>
 
 <p align="center">
-  <strong>A web-native operating system built on Debian Linux.</strong>
+  <strong>A self-hostable, web-native operating system. Your cloud, your hardware, your rules.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/vul-os/vulos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/vul-os/vulos" alt="License: MIT" /></a>
-  <a href="https://github.com/vul-os/vulos/releases"><img src="https://img.shields.io/github/v/release/vul-os/vulos?include_prereleases&label=version" alt="Version" /></a>
-  <a href="https://github.com/vul-os/vulos/actions/workflows/ci.yml"><img src="https://github.com/vul-os/vulos/actions/workflows/ci.yml/badge.svg" alt="Build" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61dafb.svg" alt="React 19 + Vite" />
+  <img src="https://img.shields.io/badge/backend-Go%201.25-00ADD8.svg" alt="Go 1.25" />
 </p>
 
 <p align="center">
-  <em>This is the core OS repo. The Vulos OS suite spans several companion repos:<br/>
+  <em>This is the core OS repo. The Vulos suite spans companion repos:<br/>
   <a href="https://github.com/vul-os/vulos-office">vulos-office</a> &middot;
-  <a href="https://github.com/vul-os/wede">wede</a> &middot;
-  <a href="https://github.com/vul-os/lilmail">lilmail</a> &middot;
   <a href="https://github.com/vul-os/vulos-relay">vulos-relay</a> &middot;
   <a href="https://github.com/vul-os/vulos-cloud">vulos-cloud</a></em>
 </p>
@@ -27,101 +25,63 @@
 
 ---
 
-## Overview
+## What is Vulos?
 
-Vulos is a **web-native window manager and operating system** built on Debian Linux. The shell is a React SPA that runs in any browser — open it from a laptop, phone, or shared screen and get the same full desktop. Web apps run as first-class citizens with no streaming overhead; native Linux GUI apps (GIMP, LibreOffice, games via Wine/Lutris) stream via WebRTC only when you open them.
+Vulos is a **web-native desktop operating system you run on your own hardware.** The shell is a React single-page app — a real window manager with virtual desktops, a dock, and bundled apps — that runs in any browser. Open it from a laptop, a phone, or a shared screen and you get the same full desktop, backed by a single self-contained Go binary that embeds the entire frontend.
 
-The OS ships as a **signed, immutable squashfs** you can flash to USB and boot, deploy to a cloud server, or run in Docker. A single Go binary embeds the entire frontend. No Electron, no VNC, no always-on remote desktop session.
+No Electron, no VNC, no always-on remote-desktop session, no third-party login. Web apps run natively in the shell; native Linux GUI apps stream over WebRTC only while their window is open. The whole thing flashes to a USB stick, deploys to a cloud server, or runs in Docker.
 
-*"Vula" is isiZulu for "open".*
-
----
-
-## Screenshots
-
-![Login screen](docs/screenshots/login.png)
-
-**Login — username/password form with passkey (WebAuthn/FIDO2) option. QR login for kiosk/shared clients.**
-
-![Vulos desktop](docs/screenshots/hero.png)
-
-**Desktop — DesktopCanvas window manager, menu bar with system tray, multiple virtual desktops.**
-
-![Launchpad — app grid](docs/screenshots/launchpad.png)
-
-**Launchpad — full-screen app grid grouped by category (System, Internet, Productivity, Media) with search.**
-
-![Settings panel](docs/screenshots/settings.png)
-
-**Settings — AI assistant, display, WiFi, audio, Bluetooth, energy, backup, identity, and more.**
-
-![Terminal](docs/screenshots/terminal.png)
-
-**Terminal — persistent PTY sessions (xterm.js) that survive browser reloads.**
-
-![File Manager](docs/screenshots/files.png)
-
-**File Manager — sidebar with standard locations (Home, Documents, Downloads, Pictures, Music, Videos) plus system paths.**
-
-![App Hub](docs/screenshots/apphub.png)
-
-**App Hub — install web apps and desktop apps. Each app runs in its own isolated network namespace.**
-
-See [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for the full gallery and how to regenerate.
+*"Vula" is isiZulu for "open."*
 
 ---
 
 ## Features
 
-### Window manager
-- Multiple windows with drag, resize, and snap (half/quarter screen)
-- Mission Control (F3) — overview of all windows and virtual desktops
-- Dock with running-app indicators
-
-### Applications
-- **Terminal** — persistent PTY with bash, accessible from any browser
-- **Mail** — LilMail, the bundled IMAP/SMTP webmail client
-- **Office** — vulos-office (docs, sheets, slides, spaces, calendar) via `@vulos/office-client`
-- **File Manager** — browse, upload, download, manage files
-- **App Hub** — install web apps and desktop apps from apt/Flatpak
-- **Activity Monitor** — processes, CPU, memory, network connections
-- **Settings** — display, WiFi, Bluetooth, audio, energy, backups, identity
-
-### Authentication
-- **Passkeys (primary)** — WebAuthn/FIDO2; private key never leaves the authenticator
-- **QR / phone-approval login** — for kiosk/shared clients; no reusable secrets
-- **Password + 2FA** — TOTP fallback via any authenticator app
-- No Google OAuth or third-party identity providers
-
-### Streaming
-- Web apps run natively (no streaming overhead) in isolated network namespaces
-- Native Linux apps stream via WebRTC on demand — close the window, stream stops
-- GPU-accelerated encoding: NVENC (NVIDIA), VA-API (Intel/AMD), VP8 software fallback
-- Cloud gaming: Wine/Lutris with gamepad support via `uinput`
-
-### Peering & sync
-- Every instance has an Ed25519 identity (`vula:<id>` URI)
-- Leaderless CRDT sync (cr-sqlite) across your own nodes — no leader, no split-brain
-- AirDrop-style Drop: LAN mDNS, BLE on bare metal, 6-digit proximity code fallback
-- Real-time collaboration via Yjs CRDT over the peering mesh
-
-### Image-based OS distribution
-- Signed, immutable squashfs pulled from `os.vulos.org`
-- A/B slots with automatic rollback if the new image does not come up clean
-- dm-verity enforces block-level integrity at runtime
-- Forkable: supply your own trust anchor key + bucket URL for a fully independent fork
-
-### Infrastructure
-- Single Go binary embeds the full frontend SPA
-- SQLite local-first storage; S3/Restic for encrypted backup
-- 110+ API endpoints across 24+ backend services
-- Multi-user with per-user Linux accounts and profile isolation
+- **Window-manager shell** — drag, resize, and snap windows; virtual desktops; Mission Control overview; a dock with running-app indicators. Pure JSX React 19 + Vite + Tailwind.
+- **Bundled apps** — Terminal (persistent PTY over xterm.js), File Manager, App Hub, Activity Monitor, Settings, plus a full suite under `apps/`: Browser, Calendar, Notes, Mail, Office, Gallery, Music, Maps, Camera, and more.
+- **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, QR / phone-approval login for shared clients, TOTP 2FA fallback. No Google SSO, no OAuth login flows.
+- **On-demand app streaming** — native Linux apps stream via WebRTC with GPU-accelerated encoding (NVENC / VA-API / VP8 fallback). Close the window and the stream stops.
+- **AI router** — a built-in LLM gateway (`airouter`) that brokers chat and embeddings, with a local vector store for retrieval. You choose the provider.
+- **Peering & sync** — every instance has its own Ed25519 identity; leaderless CRDT sync across your nodes; AirDrop-style local Drop; real-time collaboration over Yjs.
+- **Local-first storage** — SQLite on the box, S3/Restic for encrypted backup. Your data lives on your machine first.
+- **One binary, immutable image** — the Go server embeds the SPA. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
 
 ---
 
-## Quick start
+## Architecture
 
-### Docker (fastest)
+A single Go backend serves the embedded React frontend and exposes the system over HTTP and WebSocket. The backend is organized into focused services under `backend/services/` and domain packages under `backend/internal/`:
+
+- **gateway** — request routing, auth enforcement, and the API surface
+- **airouter** — LLM/embeddings router and proxy, with a local vector DB (`vecdb`)
+- **fabric** — peer discovery and the leaderless sync mesh between your instances
+- **storage** — local-first file storage, app filesystems, and backup
+- **auth** — WebAuthn passkeys, TOTP, QR/phone approval, credential vault
+- **apps** — bundled app manifests, per-app network namespaces, GPU host, and streaming
+
+```
+vulos/
+├── src/            # React frontend: shell, window manager, auth, providers
+│   ├── shell/      #   desktop, dock, menu bar, window chrome
+│   └── apps/       #   bundled app UIs
+├── apps/           # App manifests + per-app frontends (browser, office, mail, …)
+├── backend/        # Go backend
+│   ├── cmd/        #   entrypoints: server, installer, sign, verify, init
+│   ├── services/   #   gateway, ai, storage, gpu, network, identity, …
+│   └── internal/   #   airouter, auth, fabric, storage, vecdb, obs, …
+├── scripts/        # Build, signing, and utility scripts
+├── docs/           # Architecture, configuration, deploy, self-host docs
+├── build.sh        # Bare-metal image builder + deployer
+└── dev.sh          # Local dev + Docker deploy helper
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full component map and design decisions.
+
+---
+
+## Quickstart
+
+### Run with Docker (fastest)
 
 ```bash
 docker run -d \
@@ -134,7 +94,9 @@ docker run -d \
 
 Open **http://localhost:8080** and complete first-boot setup.
 
-### Dev mode (hot reload)
+### Develop with hot reload
+
+Prerequisites: **Node.js 22+** and **Go 1.25+**.
 
 ```bash
 git clone https://github.com/vul-os/vulos.git
@@ -149,118 +111,79 @@ npm run dev
 ```
 
 Open **http://localhost:5173** — Vite proxies `/api` to the backend on `:8080`.
+Or run both together with `./dev.sh`.
 
-### Deploy to a server
+### Build for production
+
+```bash
+npm run build          # frontend → dist/ (embedded into the Go binary)
+go build ./backend/... # backend
+```
+
+---
+
+## Configuration
+
+Vulos runs locally with zero configuration via `--env=local`. Common knobs:
+
+| Setting | Purpose |
+|---------|---------|
+| `--env=local` | Run without a cloud account; data under `~/.vulos` |
+| `VULOS_DATA_DIR` | Override the data directory (default `~/.vulos`) |
+| Port `8080` | Backend HTTP/WebSocket server |
+| `.env` | Local dev overrides (frontend + dev scripts) |
+
+The full list of environment variables, config files, and installer flags lives in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+---
+
+## Development & testing
+
+```bash
+npm run dev          # Vite dev server (localhost:5173)
+npm run build        # Production frontend build → dist/
+npm run lint         # ESLint
+npm run test         # Vitest unit tests
+
+go build ./backend/...                       # Compile the backend
+go test ./backend/...                        # Go tests
+go run ./backend/cmd/server --env=local      # Run the backend locally
+
+./dev.sh             # Go + Vite together
+./dev.sh deploy      # Full Docker build on localhost:8080
+```
+
+**Frozen invariants** (enforced in review): no CGO in OSS Go code; frontend is JSX only (no `.tsx`); no Google SSO/OAuth login; billing lives in `vulos-cloud`, not here.
+
+---
+
+## Self-hosting
+
+Vulos is built to be owned end to end. Deploy it to your own server:
 
 ```bash
 ./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com --dns-namecheap USER APIKEY
 ```
 
-### Bare metal (flash to USB)
+Or flash a signed image to bare metal:
 
 ```bash
 gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
-Or use [Balena Etcher](https://etcher.balena.io/).
-
-| Platform | Image |
-|----------|-------|
-| x86_64 | `vulos-vX.X.X-x86_64.img.gz` |
-| ARM64 | `vulos-vX.X.X-arm64.img.gz` |
+The image is forkable: supply your own trust-anchor key and bucket URL for a fully independent build. See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md).
 
 ---
 
-## Documentation
+## Security
 
-- [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — install, first boot, troubleshooting
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system diagram, component map, design decisions
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — all env vars, config files, installer flags
-- [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) — screenshot gallery + how to regenerate
-- [docs/DEPLOY.md](docs/DEPLOY.md) — self-hosting and environment variables
-- [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md) — one-line install of OS + mail + office
-- [docs/REPRODUCIBLE-BUILDS.md](docs/REPRODUCIBLE-BUILDS.md) — deterministic builds + dm-verity signing
-- [docs/RELEASING.md](docs/RELEASING.md) — versioning and release workflow
-- [ROADMAP.md](ROADMAP.md) — design roadmap across all system areas
-- [CHANGELOG.md](CHANGELOG.md) — release history
-- [THREAT-MODEL.md](THREAT-MODEL.md) — STRIDE threat model
-
----
-
-## Development
-
-### Prerequisites
-
-- Node.js 22+, Go 1.25+
-- Docker 24+ (OrbStack recommended on macOS)
-
-### Build commands
-
-```bash
-npm run dev          # Vite dev server (localhost:5173)
-npm run build        # Production frontend build → dist/
-npm run test         # Vitest unit tests
-npm run lint         # ESLint
-
-go build ./...                                  # Compile all Go packages
-go test ./backend/...                           # Go tests
-go run ./backend/cmd/server --env=local         # Run backend locally
-
-./dev.sh                # Go + Vite together
-./dev.sh deploy         # Full Docker build on localhost:8080
-./dev.sh deploy quick   # Quick rebuild into running container
-```
-
-### Project structure
-
-```
-vulos/
-├── src/                  # React frontend (shell, apps, auth)
-├── backend/              # Go backend (24+ services, 110+ endpoints)
-│   ├── internal/         # Domain packages: auth, fabric, multiinstance, …
-│   └── cmd/server/       # HTTP server + all route handlers
-├── scripts/              # Build, signing, and utility scripts
-├── docs/                 # Project documentation
-├── apps/                 # Bundled app manifests
-├── registry.json         # App store registry (apt + web apps)
-├── roadmap/              # Design documents (one per system area)
-├── build.sh              # Bare-metal image builder + deployer
-└── dev.sh                # Dev and Docker deploy script
-```
-
-### Regenerate screenshots
-
-```bash
-# Install Playwright Chromium
-npx playwright install chromium
-
-# Boot the app (see docs/SCREENSHOTS.md for full instructions)
-go run ./backend/cmd/server --env=local &
-npm run dev &
-
-# Capture
-npm run screenshots
-```
-
-Screenshots are saved to `docs/screenshots/`. See [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for the full list of captured routes and how to target a remote instance.
+We take security seriously and welcome good-faith research under a documented safe-harbor policy. Report vulnerabilities via GitHub Security Advisories or `security@vulos.org`. See [SECURITY.md](SECURITY.md) and the [THREAT-MODEL.md](THREAT-MODEL.md).
 
 ---
 
 ## Contributing
 
-1. Skim [`tasks.md`](tasks.md) → "At-a-glance" table → pick a `todo` task whose dependencies are `done`.
-2. Branch as `task/<ID>` (e.g. `task/AUTH-10`) or `feat/`, `fix/`, `docs/` for off-roadmap work.
-3. Run `go build ./...` + `npm run build` + `go test ./backend/...` before opening a PR.
-4. Open a PR against `main` with the acceptance-criteria checkboxes ticked.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide, task format, design decisions log, and security disclosure process.
-
-**Frozen invariants** (PRs violating these will not be merged):
-- No CGO in any OSS Go code
-- No `.tsx` files — frontend is JSX only
-- No Google SSO / OAuth login flows
-- No Stripe billing — billing lives in `vulos-cloud` only
-- No Rust — Go throughout
+Contributions are welcome. Pick a task, branch as `task/<ID>` or `feat/`/`fix/`/`docs/`, and run `go build ./backend/...`, `npm run build`, and `go test ./backend/...` before opening a PR. The full guide — task format, decision log, and disclosure process — is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
