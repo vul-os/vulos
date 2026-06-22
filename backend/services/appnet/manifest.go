@@ -108,11 +108,15 @@ type AppManifest struct {
 	AutoStart   bool              `json:"auto_start"`  // start on boot
 	Singleton   bool              `json:"singleton"`   // only one instance on this machine (local constraint; see Concurrency for cluster policy)
 	Permissions []string          `json:"permissions"` // requested permissions: "network", "filesystem", etc.
-	Author      string            `json:"author"`      // app author/publisher
-	License     string            `json:"license"`     // SPDX license identifier
-	Homepage    string            `json:"homepage"`    // upstream project URL
-	Visibility  string            `json:"visibility"`  // "private" | "local" | "public"; default "private"
-	Concurrency string            `json:"concurrency"` // "singleton" | "replicated" | "collaborative"; default "singleton"
+	// Integrations lists third-party providers the app may receive a short-lived
+	// access token for via the cloud OAuth broker (INTEG-04), e.g. ["google"].
+	// The gateway injects X-Vulos-Integration-<Provider> only for listed apps.
+	Integrations []string `json:"integrations"`
+	Author       string   `json:"author"`      // app author/publisher
+	License      string   `json:"license"`     // SPDX license identifier
+	Homepage     string   `json:"homepage"`    // upstream project URL
+	Visibility   string   `json:"visibility"`  // "private" | "local" | "public"; default "private"
+	Concurrency  string   `json:"concurrency"` // "singleton" | "replicated" | "collaborative"; default "singleton"
 }
 
 // Validate checks that the manifest has all required fields and conforms

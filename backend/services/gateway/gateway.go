@@ -33,6 +33,14 @@ type Gateway struct {
 	appSecrets map[string]string // appId → secret token
 	appHits    map[string]*rateBucket
 	client     *http.Client
+
+	// integrationTokenFunc, when set, mints a short-lived third-party access
+	// token for (ctx, provider). Apps that declare the matching integration
+	// permission have it injected as an X-Vulos-Integration-<Provider> request
+	// header (INTEG-04). nil disables injection entirely.
+	integrationTokenFunc func(ctx context.Context, provider string) (string, error)
+	// integrationApps maps appID → set of providers that app may receive.
+	integrationApps map[string]map[string]bool
 }
 
 // rateBucket tracks request count per window for per-app rate limiting.
@@ -81,6 +89,63 @@ func New(authStore *auth.Store, netMgr *appnet.Manager, portPool *appnet.PortPoo
 	}()
 
 	return g
+}
+
+// SetIntegrationTokenFunc installs the third-party token minter (INTEG-04).
+// Pass nil to disable integration-token injection.
+func (g *Gateway) SetIntegrationTokenFunc(fn func(ctx context.Context, provider string) (string, error)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.integrationTokenFunc = fn
+}
+
+// AllowIntegration grants appID permission to receive the provider's access
+// token (derived from the app manifest's declared integrations).
+func (g *Gateway) AllowIntegration(appID, provider string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.integrationApps == nil {
+		g.integrationApps = make(map[string]map[string]bool)
+	}
+	if g.integrationApps[appID] == nil {
+		g.integrationApps[appID] = make(map[string]bool)
+	}
+	g.integrationApps[appID][provider] = true
+}
+
+// injectIntegrationTokens adds X-Vulos-Integration-<Provider> headers for every
+// provider appID is permitted to receive. Mint failures (not connected, cloud
+// unavailable) are swallowed — the app simply sees no token and degrades.
+func (g *Gateway) injectIntegrationTokens(ctx context.Context, pr *http.Request, appID string) {
+	g.mu.RLock()
+	fn := g.integrationTokenFunc
+	providers := g.integrationApps[appID]
+	g.mu.RUnlock()
+	if fn == nil || len(providers) == 0 {
+		return
+	}
+	// Strip any client-supplied integration headers to prevent spoofing.
+	for k := range pr.Header {
+		if strings.HasPrefix(http.CanonicalHeaderKey(k), "X-Vulos-Integration-") {
+			pr.Header.Del(k)
+		}
+	}
+	for provider := range providers {
+		tok, err := fn(ctx, provider)
+		if err != nil || tok == "" {
+			continue
+		}
+		pr.Header.Set("X-Vulos-Integration-"+integrationHeaderSuffix(provider), tok)
+	}
+}
+
+// integrationHeaderSuffix title-cases a provider id for the header name
+// (e.g. "google" → "Google" → X-Vulos-Integration-Google).
+func integrationHeaderSuffix(provider string) string {
+	if provider == "" {
+		return ""
+	}
+	return strings.ToUpper(provider[:1]) + provider[1:]
 }
 
 // GenerateAppSecret creates a secret for an app (injected as env var on launch).
@@ -198,13 +263,20 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			}
 		}
 
-		proxyReq.Header.Set("X-Vulos-User-ID", session.UserID)
-		proxyReq.Header.Set("X-Vulos-Email", session.Email)
-		proxyReq.Header.Set("X-Vulos-Session", session.ID)
-		proxyReq.Header.Set("X-Vulos-App-ID", appID)
-		proxyReq.Header.Del("Cookie")
-		proxyReq.Header.Del("Host")
-		proxyReq.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
+		// applyVulosHeaders stamps identity + integration headers and clears
+		// client-controlled hop headers. Applied on every (re)build of proxyReq
+		// so the retry path below doesn't drop these (previously it did).
+		applyVulosHeaders := func(pr *http.Request) {
+			pr.Header.Set("X-Vulos-User-ID", session.UserID)
+			pr.Header.Set("X-Vulos-Email", session.Email)
+			pr.Header.Set("X-Vulos-Session", session.ID)
+			pr.Header.Set("X-Vulos-App-ID", appID)
+			pr.Header.Del("Cookie")
+			pr.Header.Del("Host")
+			pr.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
+			g.injectIntegrationTokens(pr.Context(), pr, appID)
+		}
+		applyVulosHeaders(proxyReq)
 
 		// Retry up to 3 times — app may still be starting
 		var resp *http.Response
@@ -219,9 +291,7 @@ func (g *Gateway) Handler() http.HandlerFunc {
 						proxyReq.Header.Add(k, v)
 					}
 				}
-				proxyReq.Header.Del("Cookie")
-				proxyReq.Header.Del("Host")
-				proxyReq.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
+				applyVulosHeaders(proxyReq)
 			}
 			resp, proxyErr = g.client.Do(proxyReq)
 			if proxyErr == nil {

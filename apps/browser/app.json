@@ -13,6 +13,7 @@
   "auto_start": false,
   "singleton": true,
   "permissions": ["network"],
+  "integrations": ["google"],
   "author": "Vulos",
   "license": "MIT"
 }

@@ -1981,10 +1981,11 @@ func main() {
 	// provisioning, recovery handlers, cloud-sync, edge-cache.
 	// Must be called AFTER RegisterVisibilityHandlers.
 	fabricAppSync := registerNewFeatureRoutes(mux, newFeatureDeps{
-		dbDir:     dbDir,
-		netMgr:    netMgr,
-		visStore:  visStore,
-		authStore: authStore,
+		dbDir:              dbDir,
+		netMgr:             netMgr,
+		visStore:           visStore,
+		authStore:          authStore,
+		integrationsClient: integrationsClient,
 	}, ctx)
 
 	// MinIO storage provisioning

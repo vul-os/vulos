@@ -28,13 +28,14 @@ import (
 	"os"
 	"path/filepath"
 
-	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/airouter"
+	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/cgroups"
 	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/multiinstance"
-	svcauth "vulos/backend/services/auth"
 	"vulos/backend/services/appnet"
+	svcauth "vulos/backend/services/auth"
+	"vulos/backend/services/integrations"
 )
 
 // newFeatureDeps carries the server-level objects that the new-feature routes
@@ -44,6 +45,10 @@ type newFeatureDeps struct {
 	netMgr    *appnet.Manager
 	visStore  *appnet.VisibilityStore
 	authStore *svcauth.Store // for IDENTITY-06 recovery handlers
+	// integrationsClient is the shared cloud OAuth broker client (INTEG-03/04).
+	// The gateway uses the same instance to inject tokens, so they share one
+	// token cache. nil → a fresh client is created from env (e.g. tests).
+	integrationsClient *integrations.Client
 }
 
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
@@ -293,6 +298,25 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		}
 	}
 
+	// ── 6b. Cloud OAuth integrations consumer (services/integrations, INTEG-03) ──
+	//
+	// Routes registered:
+	//   GET /api/integrations/google/status — connection status (via broker probe)
+	//   GET /api/integrations/google/token  — short-lived Google access token
+	//
+	// The box mints short-lived access tokens from the cloud broker over the
+	// device-HMAC channel (DEVICE_SHARED_SECRET + VULOS_DEVICE_ULID). The refresh
+	// token + client secret stay in the control plane. Unprovisioned boxes report
+	// configured=false and the token endpoint 503s — fail-closed.
+	{
+		integClient := deps.integrationsClient
+		if integClient == nil {
+			integClient = integrations.NewClientFromEnv()
+		}
+		integrations.RegisterHandlers(mux, integClient)
+		log.Printf("[integrations] registered GET /api/integrations/google/{status,token} (configured=%v)", integClient.Configured())
+	}
+
 	// ── 7. cgroup Alerter (internal/cgroups, PUBWEB-08) ─────────────────────────
 	//
 	// Routes registered:
@@ -403,4 +427,3 @@ func openSharedRegistry(dbDir string) *multiinstance.Registry {
 	}
 	return reg
 }
-

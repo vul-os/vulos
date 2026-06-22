@@ -13,7 +13,8 @@
   "deps": ["python3"],
   "auto_start": false,
   "singleton": true,
-  "permissions": [],
+  "permissions": ["network"],
+  "integrations": ["google"],
   "author": "Vulos",
   "license": "MIT"
 }
