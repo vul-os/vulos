@@ -5,6 +5,7 @@ import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 import { PamVisibilityControl } from './PublicAppsManager'
 import AIRouterPanel from './settings/AIRouterPanel.jsx'
 import StoragePanel from './settings/StoragePanel.jsx'
+import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 
 const sections = [
   { id: 'ai', label: 'AI Assistant' },
@@ -27,6 +28,7 @@ const sections = [
   { id: 'pin', label: 'Device PIN' },
   { id: 'fingerprint', label: 'Fingerprint' },
   { id: 'account', label: 'Account' },
+  { id: 'plan', label: 'Plan & Billing' },
   { id: 'osupdate', label: 'OS Update' },
   { id: 'about', label: 'About' },
 ]
@@ -74,6 +76,7 @@ export default function Settings() {
         {active === 'pin' && <DevicePINSettings />}
         {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
+        {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'about' && <AboutSettings />}
       </div>
