@@ -612,6 +612,20 @@ func main() {
 	if deviceKSErr != nil {
 		log.Printf("passkeys: devicekey unavailable, server-side passkeys disabled: %v", deviceKSErr)
 	} else {
+		// INTEG-SEC-01: bind the integrations token mint to THIS box's device
+		// identity key. Registration is best-effort and runs in the background —
+		// mint keeps working via the fleet-HMAC fallback until the key is pinned.
+		integrationsClient.SetDeviceSigner(deviceKS)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := integrationsClient.Register(ctx); err != nil {
+				log.Printf("[integrations] device-key registration deferred: %v", err)
+			} else {
+				log.Printf("[integrations] device key registered with cloud broker")
+			}
+		}()
+
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
 		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.
 		if activeEnv.IsProd() {
