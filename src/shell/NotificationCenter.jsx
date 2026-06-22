@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useFocusTrap } from './useFocusTrap'
 
 // ─── NC04_ namespace — no identifier collisions with other shell modules ───
 
@@ -280,6 +281,8 @@ export default function NotificationCenter() {
   const [unread, setUnread] = useState(0)
   const triggerRef = useRef(null)
   const panelRef = useRef(null)
+  // A11Y: trap focus inside the panel while open + restore to the bell on close.
+  const trapRef = useFocusTrap(open)
 
   // Fetch unread count on mount + poll every 10s (background, even when panel is closed)
   const NC04_fetchUnread = useCallback(async () => {
@@ -300,7 +303,7 @@ export default function NotificationCenter() {
     return () => clearInterval(id)
   }, [NC04_fetchUnread])
 
-  // Close on outside click
+  // Close on outside click or Escape
   useEffect(() => {
     if (!open) return
     const handler = (e) => {
@@ -311,8 +314,13 @@ export default function NotificationCenter() {
         setOpen(false)
       }
     }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
   const toggle = useCallback(() => setOpen(v => !v), [])
@@ -325,6 +333,9 @@ export default function NotificationCenter() {
         ref={triggerRef}
         onClick={toggle}
         title="Notifications"
+        aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className={`h-8 px-1.5 flex items-center justify-center rounded-md transition-colors text-neutral-400 hover:text-neutral-200
           ${open ? 'bg-neutral-700/60 text-neutral-200' : 'hover:bg-neutral-800/60'}`}
       >
@@ -334,7 +345,10 @@ export default function NotificationCenter() {
       {/* Pull-down panel */}
       {open && (
         <div
-          ref={panelRef}
+          ref={(el) => { panelRef.current = el; trapRef.current = el }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Notifications"
           className="absolute top-full right-0 mt-1.5 z-[100]
             bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/50
             rounded-xl shadow-2xl shadow-black/50 overflow-hidden

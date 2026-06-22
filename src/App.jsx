@@ -15,6 +15,7 @@ import MobileStack from './layouts/MobileStack'
 import TVHome from './layouts/TVHome'
 import Popout from './shell/Popout'
 import Screensaver from './shell/Screensaver'
+import ShortcutsLegend from './shell/ShortcutsLegend'
 import OfflineIndicator from './components/OfflineIndicator'
 
 function DesktopShortcuts() {
@@ -126,6 +127,8 @@ function Shell() {
     <>
       <DesktopShortcuts />
       {useDesktop ? <DesktopCanvas /> : <MobileStack />}
+      {/* Press "?" anywhere to surface the keyboard-shortcut legend. */}
+      <ShortcutsLegend />
     </>
   )
 }

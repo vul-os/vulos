@@ -4,6 +4,7 @@ import { getApps, searchApps } from '../core/AppRegistry'
 import Settings from '../core/Settings'
 import { AppIconTile } from '../core/AppIcons'
 import { useNativeMode } from '../core/useNativeMode'
+import { useFocusTrap } from './useFocusTrap'
 
 // ROUTER-02: Consult /api/router/classify before launching an app.
 // Returns the lane string or null on fetch failure (caller falls back to
@@ -65,6 +66,8 @@ export default function Launchpad() {
   const [desktopEntries, setDesktopEntries] = useState([])
   const searchRef = useRef(null)
   const chatRef = useRef(null)
+  // A11Y: trap focus inside the launchpad while open + restore on close.
+  const trapRef = useFocusTrap(launchpadOpen)
 
   // Load desktop entries (apt-installed GUI apps)
   useEffect(() => {
@@ -306,6 +309,10 @@ export default function Launchpad() {
 
   return (
     <div
+      ref={trapRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Application launcher"
       className="fixed inset-0 z-50 flex flex-col bg-neutral-950/80 backdrop-blur-2xl"
       onClick={(e) => { if (e.target === e.currentTarget) close() }}
     >

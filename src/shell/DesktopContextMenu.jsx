@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { canSpawnNativeWindow } from '../core/useNativeMode'
+import { useFocusTrap } from './useFocusTrap'
 
 function dispatchAskAI(prompt) {
   window.dispatchEvent(new CustomEvent('vulos:chat', { detail: prompt }))
@@ -9,6 +10,8 @@ function dispatchAskAI(prompt) {
 export default function DesktopContextMenu() {
   const [menu, setMenu] = useState(null) // { x, y, selectedText }
   const { openNativeWindow } = useShell()
+  // A11Y: keyboard users land inside the menu and return to where they were.
+  const trapRef = useFocusTrap(!!menu)
 
   useEffect(() => {
     if (!canSpawnNativeWindow()) return
@@ -64,21 +67,26 @@ export default function DesktopContextMenu() {
 
   return (
     <div
+      ref={trapRef}
+      role="menu"
+      aria-label="Desktop actions"
       className="fixed z-[9999]"
       style={{ left: menu.x, top: menu.y }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[180px] shadow-2xl shadow-black/60">
         <button
+          role="menuitem"
           onClick={handleNewNative}
-          className="w-full text-left px-3 py-1.5 text-[13px] text-neutral-300 hover:bg-neutral-700/60 hover:text-white transition-colors"
+          className="w-full text-left px-3 py-1.5 text-[13px] text-neutral-300 hover:bg-neutral-700/60 hover:text-white transition-colors focus:bg-neutral-700/60 focus:text-white focus:outline-none"
         >
           Open Native Window
         </button>
         <div className="my-1 mx-2 border-t border-neutral-700/40" />
         <button
+          role="menuitem"
           onClick={handleAskAI}
-          className="w-full text-left px-3 py-1.5 text-[13px] text-violet-300 hover:bg-neutral-700/60 hover:text-violet-200 transition-colors"
+          className="w-full text-left px-3 py-1.5 text-[13px] text-violet-300 hover:bg-neutral-700/60 hover:text-violet-200 transition-colors focus:bg-neutral-700/60 focus:text-violet-200 focus:outline-none"
         >
           {menu.selectedText ? 'Ask AI about selection' : 'Ask AI about this'}
         </button>

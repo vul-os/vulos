@@ -88,9 +88,13 @@ function ToastCard({ toast, onDismiss }) {
       ? 'bg-amber-500'
       : 'bg-blue-500'
 
+  const assertive = priority === 'high' || priority === 'critical'
+
   return (
     <div
       onClick={handleClick}
+      role={assertive ? 'alert' : 'status'}
+      aria-live={assertive ? 'assertive' : 'polite'}
       className={`px-4 py-3 rounded-xl backdrop-blur-xl border cursor-pointer
         transition-all animate-[slideIn_0.2s_ease-out] select-none
         ${colorClass}
@@ -129,7 +133,7 @@ function CriticalOverlay({ toast, onDismiss }) {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-red-950 border border-red-700/60 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+      <div role="alertdialog" aria-modal="true" aria-live="assertive" className="bg-red-950 border border-red-700/60 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-4 h-4 rounded-full bg-red-500 animate-pulse shrink-0" />
           <span className="text-lg font-semibold text-red-100">{toast.title}</span>
@@ -208,7 +212,6 @@ export default function Toasts() {
           if (notif.source === 'sync' && notif.action) {
             setCl10ResolverOpen(true)
           }
-          setToasts(prev => [...prev.slice(-4), { ...notif, _key: Date.now() + Math.random() }])
         } catch { /* noop */ }
       }
       ws.onclose = () => { if (alive) setTimeout(connect, 3000) }
@@ -252,9 +255,16 @@ export default function Toasts() {
         />
       )}
 
-      {/* Regular toast stack (normal + high) */}
+      {/* Regular toast stack (normal + high).
+          A11Y: the stack is an aria-live region so screen readers announce
+          incoming toasts. High-priority toasts announce assertively (role
+          alert / aria-live assertive); normal toasts announce politely. */}
       {regularToasts.length > 0 && (
-        <div className="fixed top-10 right-3 z-[90] flex flex-col gap-2 max-w-sm">
+        <div
+          className="fixed top-10 right-3 z-[90] flex flex-col gap-2 max-w-sm"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
           {regularToasts.map(t => (
             <ToastCard
               key={t._key}
@@ -271,41 +281,6 @@ export default function Toasts() {
           >
             {soundEnabled ? 'Sound on' : 'Sound off'}
           </button>
-        </div>
-      )}
-      {toasts.length > 0 && (
-        <div className="fixed top-10 right-3 z-[90] flex flex-col gap-2 max-w-sm">
-          {toasts.map(t => (
-            <div
-              key={t._key}
-              className={`px-4 py-3 rounded-xl backdrop-blur-xl border cursor-pointer
-                transition-all animate-[slideIn_0.2s_ease-out]
-                ${t.level === 'urgent'
-                  ? 'bg-red-950/80 border-red-800/50 text-red-200'
-                  : t.level === 'warning'
-                    ? 'bg-amber-950/80 border-amber-800/50 text-amber-200'
-                    : 'bg-neutral-900/80 border-neutral-700/50 text-neutral-200'
-                }`}
-            >
-              <div className="flex items-center gap-2" onClick={() => dismiss(t._key)}>
-                <span className={`w-2 h-2 rounded-full shrink-0 ${
-                  t.level === 'urgent' ? 'bg-red-500' : t.level === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
-                }`} />
-                <span className="text-sm font-medium truncate">{t.title}</span>
-                <span className="text-[10px] text-neutral-500 ml-auto shrink-0">{t.source}</span>
-              </div>
-              {t.body && <p className="text-xs text-neutral-400 mt-1 line-clamp-2" onClick={() => dismiss(t._key)}>{t.body}</p>}
-              {/* CLUSTER-10: sync conflict deep-link action button */}
-              {t.source === 'sync' && t.action && (
-                <button
-                  className="mt-2 text-[10px] text-amber-400 underline hover:text-amber-200"
-                  onClick={(e) => { e.stopPropagation(); dismiss(t._key); setCl10ResolverOpen(true) }}
-                >
-                  View conflicts
-                </button>
-              )}
-            </div>
-          ))}
         </div>
       )}
       {/* CLUSTER-10: Conflict Resolver modal */}
