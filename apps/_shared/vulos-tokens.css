@@ -1,0 +1,75 @@
+/* ════════════════════════════════════════════════════════════════════════
+   vulos-tokens.css — shared design tokens for the bundled single-file apps
+   ────────────────────────────────────────────────────────────────────────
+   This is the single source of truth for the OS design language, mirroring
+   the semantic variables in /src/index.css so the whole suite (browser,
+   social, system-info, phone, camera, …) reads as one product.
+
+   The bundled apps are self-contained HTML served under a strict CSP
+   (style-src 'self' 'unsafe-inline'); rather than link this file (which each
+   server.py would have to serve), the same :root block is inlined into each
+   app's <head>. Keep this file and those inlined blocks in sync — this is the
+   canonical copy.
+
+   Canonical names match /src/index.css (--bg-*, --text-*, --border-*,
+   --accent). Short aliases (--surface, --text, --accent2, status colors) are
+   provided so existing app CSS can adopt the tokens with minimal churn.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Accent (shared OS blue) */
+  --accent: #3b82f6;
+  --accent-hover: #2f6fd6;
+  --accent2: #7c6ef7;
+
+  /* Backgrounds (dark) */
+  --bg-base: #0a0a0a;
+  --bg-surface: #111111;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: #1e1e1e;
+
+  /* Borders */
+  --border-default: #1f1f1f;
+  --border-strong: #2a2a2a;
+  --border-emphasis: #333333;
+
+  /* Text */
+  --text-primary: #e5e5e5;
+  --text-secondary: #cccccc;
+  --text-tertiary: #999999;
+  --text-muted: #888888;
+  --text-faint: #666666;
+  --text-ghost: #555555;
+
+  /* Status */
+  --ok: #22c55e;
+  --ok-bright: #4ade80;
+  --warn: #f59e0b;
+  --warn-bright: #fbbf24;
+  --danger: #ef4444;
+  --danger-bright: #f87171;
+
+  /* Convenience aliases used by existing app CSS */
+  --bg: var(--bg-base);
+  --surface: var(--bg-surface);
+  --surface2: var(--bg-elevated);
+  --surface3: var(--bg-hover);
+  --elevated: var(--bg-elevated);
+  --border: var(--border-default);
+  --border2: var(--border-strong);
+  --text: var(--text-primary);
+  --text2: var(--text-tertiary);
+  --text3: var(--text-ghost);
+  --muted: var(--text-muted);
+  --green: var(--ok-bright);
+  --green2: var(--ok);
+  --red: var(--danger-bright);
+  --yellow: var(--warn-bright);
+  --blue: var(--accent);
+  --record: var(--danger);
+
+  /* Shared shape + type */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

@@ -6,19 +6,23 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self';">
 <title>Smart Browser</title>
 <style>
+/* Vulos shared design tokens — keep in sync with apps/_shared/vulos-tokens.css */
+:root{--accent:#3b82f6;--accent-hover:#2f6fd6;--accent2:#7c6ef7;--bg-base:#0a0a0a;--bg-surface:#111;--bg-elevated:#1a1a1a;--bg-hover:#1e1e1e;--border-default:#1f1f1f;--border-strong:#2a2a2a;--border-emphasis:#333;--text-primary:#e5e5e5;--text-secondary:#ccc;--text-tertiary:#999;--text-muted:#888;--text-faint:#666;--text-ghost:#555;--ok:#22c55e;--ok-bright:#4ade80;--warn:#f59e0b;--warn-bright:#fbbf24;--danger:#ef4444;--danger-bright:#f87171;--radius:10px;--radius-sm:6px;--radius-lg:16px;--font-ui:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--bg:var(--bg-base);--surface:var(--bg-surface);--surface2:var(--bg-elevated);--surface3:var(--bg-hover);--elevated:var(--bg-elevated);--border:var(--border-default);--border2:var(--border-strong);--text:var(--text-primary);--text2:var(--text-tertiary);--text3:var(--text-ghost);--muted:var(--text-muted);--green:var(--ok-bright);--green2:var(--ok);--red:var(--danger-bright);--yellow:var(--warn-bright);--blue:var(--accent);--record:var(--danger)}
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui; }
-.bar { display: flex; gap: 8px; padding: 8px; background: #111; border-bottom: 1px solid #222; }
-.bar input { flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 12px; color: #e5e5e5; font-size: 14px; outline: none; }
-.bar input:focus { border-color: #555; }
-.bar button { background: #333; border: none; border-radius: 8px; padding: 8px 16px; color: #e5e5e5; cursor: pointer; font-size: 13px; }
-.bar button:hover { background: #444; }
+body { background: var(--bg-base); color: var(--text-primary); font-family: var(--font-ui); }
+.bar { display: flex; gap: 8px; padding: 8px; background: var(--bg-surface); border-bottom: 1px solid var(--border-strong); }
+.bar input { flex: 1; background: var(--bg-elevated); border: 1px solid var(--border-emphasis); border-radius: 8px; padding: 8px 12px; color: var(--text-primary); font-size: 14px; outline: none; }
+.bar input:focus { border-color: var(--accent); }
+.bar button { background: var(--border-emphasis); border: none; border-radius: 8px; padding: 8px 16px; color: var(--text-primary); cursor: pointer; font-size: 13px; transition: background .15s; }
+.bar button:hover { background: var(--accent); color: #fff; }
 .content { padding: 16px; }
 .content iframe { width: 100%; height: calc(100vh - 52px); border: none; background: white; border-radius: 4px; }
-.summary { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 14px; line-height: 1.5; }
-.summary h3 { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
-.summary-footer { display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #222; }
+.summary { background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 14px; line-height: 1.5; }
+.summary h3 { color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+.summary-footer { display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-strong); }
 .bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Vulos branding chip */
+.vulos-brand { margin-left: auto; padding: 0 4px; font-size: 10px; letter-spacing: .04em; color: var(--text-ghost); align-self: center; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -26,6 +30,7 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui; }
   <input id="url" type="text" placeholder="Enter URL..." autofocus>
   <button onclick="go()">Go</button>
   <button onclick="summarize()">Summarize</button>
+  <span class="vulos-brand" title="Part of Vulos">Vulos</span>
 </div>
 <div id="summary"></div>
 <div class="content"><iframe id="frame"></iframe></div>
@@ -140,7 +145,7 @@ function renderSummary(text, streaming) {
     wrapper.appendChild(body);
   } else if (streaming) {
     const loading = document.createElement('p');
-    loading.style.color = '#666';
+    loading.style.color = 'var(--text-faint)';
     loading.textContent = 'Generating summary…';
     wrapper.appendChild(loading);
   }
@@ -181,7 +186,7 @@ function renderSummaryError(msg) {
   heading.textContent = 'Error';
   wrapper.appendChild(heading);
   const body = document.createElement('p');
-  body.style.color = '#f87171';
+  body.style.color = 'var(--danger-bright)';
   body.textContent = msg;
   wrapper.appendChild(body);
   summaryDiv.appendChild(wrapper);
