@@ -36,10 +36,10 @@ type SFU struct {
 	mu    sync.RWMutex
 	rooms map[string]*roomEntry
 
-	// billing GATES room creation on suspension and METERS rooms against cp.
-	// Nil or disabled (CP_URL unset) = standalone OS: Meet is ungated/unmetered.
-	// cp does not yet return Meet-specific caps (see WithBilling doc), so this
-	// enforces suspension only.
+	// billing GATES room creation (meet_enabled, suspended, meet_minutes_budget,
+	// meet_max_rooms) and METERS rooms against cp. Nil or disabled (CP_URL
+	// unset) = standalone OS: Meet is ungated/unmetered. See WithBilling for
+	// enforcement-status notes.
 	billing *cpbilling.Client
 }
 
@@ -48,15 +48,19 @@ func New() *SFU {
 	return &SFU{rooms: make(map[string]*roomEntry)}
 }
 
-// WithBilling wires a cp billing client so room creation is gated on the
-// caller's suspension state and metered to cp. A nil/disabled client is a
-// no-op (standalone OS). Returns s for chaining.
+// WithBilling wires a cp billing client so room creation is gated on
+// meet_enabled, suspended, meet_minutes_budget, and the meet_max_rooms
+// concurrent-room cap. The room count is read in-process from RoomCount()
+// (authoritative). A nil/disabled client is a no-op (standalone OS). Returns
+// s for chaining.
 //
-// CP CONTRACT NOTE: cp does not yet return Meet-specific per-tier caps
-// (e.g. max concurrent rooms / meeting minutes). This layer therefore enforces
-// only `suspended` and emits per-room usage (kind=meet_room) so cp can bill.
-// For full per-tier enforcement cp should add Meet caps to /api/entitlements
-// (e.g. meet_enabled, meet_max_rooms, meet_minutes_budget).
+// ENFORCEMENT STATUS:
+//   - meet_enabled + suspended: ENFORCED (cp authoritative)
+//   - meet_max_rooms concurrent cap: ENFORCED (in-process RoomCount)
+//   - meet_minutes_budget=0: ENFORCED (hard-zero = no budget at all)
+//   - meet_minutes_budget > 0 (remaining minutes): NOT precisely enforced —
+//     cp returns the cap not the remaining balance; cp must flip meet_enabled
+//     or suspended when the monthly budget is exhausted.
 func (s *SFU) WithBilling(b *cpbilling.Client) *SFU {
 	s.billing = b
 	return s
@@ -163,11 +167,12 @@ func (s *SFU) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	ownerID := r.Header.Get("X-User-ID")
 
-	// BILLING GATE (surface 4: Meet). Refuse room creation when the account is
-	// suspended (authoritative). Fail-open/degraded on a cold cp outage. No-op
-	// when billing is disabled (standalone OS).
+	// BILLING GATE (surface 4: Meet). Enforces meet_enabled, suspended,
+	// meet_minutes_budget, and the meet_max_rooms concurrent-room cap
+	// (in-process RoomCount is authoritative). Fail-open/degraded on a cold cp
+	// outage. No-op when billing is disabled (standalone OS).
 	if s.billing.Enabled() {
-		if d := s.billing.Gate(r.Context(), ownerID, cpbilling.ProductMeet); !d.Allowed {
+		if d := s.billing.GateMeet(r.Context(), ownerID, s.RoomCount()); !d.Allowed {
 			http.Error(w, "account not entitled: "+d.Reason, http.StatusPaymentRequired)
 			return
 		}

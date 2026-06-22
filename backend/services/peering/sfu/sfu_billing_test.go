@@ -52,7 +52,7 @@ func (cs *sfuCPStub) client() *cpbilling.Client {
 }
 
 func TestSFUCreateRoom_AllowedWhenEntitled_AndMeters(t *testing.T) {
-	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "pro"})
+	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "pro", MeetEnabled: true, MeetMinutesBudget: 1000, MeetMaxRooms: 10})
 	defer cp.srv.Close()
 	s := New().WithBilling(cp.client())
 
@@ -84,7 +84,7 @@ func TestSFUCreateRoom_AllowedWhenEntitled_AndMeters(t *testing.T) {
 }
 
 func TestSFUCreateRoom_RefusedWhenSuspended(t *testing.T) {
-	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "pro", Suspended: true})
+	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "pro", Suspended: true, MeetEnabled: true, MeetMinutesBudget: 1000, MeetMaxRooms: 10})
 	defer cp.srv.Close()
 	s := New().WithBilling(cp.client())
 
@@ -113,5 +113,68 @@ func TestSFUCreateRoom_DisabledBillingUnchanged(t *testing.T) {
 	s.handleCreateRoom(rr, req)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("standalone create-room status = %d, want 201", rr.Code)
+	}
+}
+
+func TestSFUCreateRoom_RefusedWhenMeetDisabled(t *testing.T) {
+	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "free", MeetEnabled: false, MeetMinutesBudget: 0, MeetMaxRooms: 0})
+	defer cp.srv.Close()
+	s := New().WithBilling(cp.client())
+
+	req := httptest.NewRequest("POST", "/api/sfu/rooms", strings.NewReader(`{"last_n":6}`))
+	req.Header.Set("X-User-ID", "user@x.com")
+	rr := httptest.NewRecorder()
+	s.handleCreateRoom(rr, req)
+
+	if rr.Code != http.StatusPaymentRequired {
+		t.Fatalf("meet-disabled create-room status = %d, want 402", rr.Code)
+	}
+	if s.RoomCount() != 0 {
+		t.Fatalf("meet-disabled create-room must not create a room, got %d", s.RoomCount())
+	}
+}
+
+func TestSFUCreateRoom_RefusedOnZeroBudget(t *testing.T) {
+	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "pro", MeetEnabled: true, MeetMinutesBudget: 0, MeetMaxRooms: 10})
+	defer cp.srv.Close()
+	s := New().WithBilling(cp.client())
+
+	req := httptest.NewRequest("POST", "/api/sfu/rooms", strings.NewReader(`{"last_n":6}`))
+	req.Header.Set("X-User-ID", "user@x.com")
+	rr := httptest.NewRecorder()
+	s.handleCreateRoom(rr, req)
+
+	if rr.Code != http.StatusPaymentRequired {
+		t.Fatalf("zero-budget meet create-room status = %d, want 402", rr.Code)
+	}
+	if s.RoomCount() != 0 {
+		t.Fatal("zero-budget meet must not create a room")
+	}
+}
+
+func TestSFUCreateRoom_RefusedAtRoomCap(t *testing.T) {
+	cp := newSFUCPStub(cpbilling.Entitlement{Tier: "starter", MeetEnabled: true, MeetMinutesBudget: 500, MeetMaxRooms: 1})
+	defer cp.srv.Close()
+	s := New().WithBilling(cp.client())
+
+	// First room should succeed (0 < cap 1).
+	req1 := httptest.NewRequest("POST", "/api/sfu/rooms", strings.NewReader(`{"last_n":4}`))
+	req1.Header.Set("X-User-ID", "user@x.com")
+	rr1 := httptest.NewRecorder()
+	s.handleCreateRoom(rr1, req1)
+	if rr1.Code != http.StatusCreated {
+		t.Fatalf("first room must be created (201), got %d", rr1.Code)
+	}
+
+	// Second room must be refused (1 >= cap 1).
+	req2 := httptest.NewRequest("POST", "/api/sfu/rooms", strings.NewReader(`{"last_n":4}`))
+	req2.Header.Set("X-User-ID", "user@x.com")
+	rr2 := httptest.NewRecorder()
+	s.handleCreateRoom(rr2, req2)
+	if rr2.Code != http.StatusPaymentRequired {
+		t.Fatalf("at-room-cap create-room status = %d, want 402", rr2.Code)
+	}
+	if s.RoomCount() != 1 {
+		t.Fatalf("at-room-cap must leave room count at 1, got %d", s.RoomCount())
 	}
 }

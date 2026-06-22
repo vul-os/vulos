@@ -234,15 +234,19 @@ type RelayStore struct {
 	billing *cpbilling.Client
 }
 
-// WithBilling wires a cp billing client so relay deposits are gated on the
-// sender's suspension state and the relayed byte count is metered. A
-// nil/disabled client is a no-op (standalone OS). Returns rs for chaining.
+// WithBilling wires a cp billing client so relay deposits are gated on
+// relay_enabled, suspended, and relay_bytes_budget and the relayed byte count
+// is metered. A nil/disabled client is a no-op (standalone OS). Returns rs for
+// chaining.
 //
-// CP CONTRACT NOTE: cp does not yet return relay-specific per-tier caps
-// (e.g. relay_enabled, relay_bytes_budget). This layer therefore enforces only
-// `suspended` and emits per-deposit usage (kind=relay_bytes, bytes=blob size)
-// so cp can bill on volume. For full per-tier enforcement cp should add relay
-// caps to /api/entitlements.
+// ENFORCEMENT STATUS:
+//   - relay_enabled + suspended: ENFORCED (cp authoritative)
+//   - relay_bytes_budget=0: ENFORCED (hard-zero = no budget at all)
+//   - relay_bytes_budget > 0 (remaining volume): NOT precisely enforced — cp
+//     returns the monthly cap, not the remaining balance. Precise per-account
+//     relay volume enforcement requires cp to expose relay_bytes_remaining.
+//     Until then cp must flip relay_enabled=false or suspended=true when the
+//     monthly budget is exhausted.
 func (rs *RelayStore) WithBilling(b *cpbilling.Client) *RelayStore {
 	rs.billing = b
 	return rs
@@ -424,11 +428,15 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 		return err
 	}
 
-	// 5b. BILLING GATE (surface 4: relay). Refuse a deposit from a suspended
-	// account (authoritative); fail-open/degraded on a cold cp outage. No-op
-	// when billing is disabled (standalone OS). Account key = sender VulaID.
+	// 5b. BILLING GATE (surface 3: relay). Enforces relay_enabled, suspended,
+	// and relay_bytes_budget=0 (hard-zero = no budget at all). Fail-open /
+	// degraded on a cold cp outage. No-op when billing is disabled (standalone
+	// OS). Account key = sender VulaID.
+	//
+	// NOTE: relay_bytes_budget > 0 is treated as "budget available" — precise
+	// remaining-balance enforcement needs cp to expose relay_bytes_remaining.
 	if rs.billing.Enabled() {
-		if d := rs.billing.Gate(context.Background(), req.SenderVulaID, cpbilling.ProductRelay); !d.Allowed {
+		if d := rs.billing.GateRelay(context.Background(), req.SenderVulaID); !d.Allowed {
 			return fmt.Errorf("peering/relay: deposit: refused: %s", d.Reason)
 		}
 	}

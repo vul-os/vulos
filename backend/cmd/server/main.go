@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"vulos/backend/internal/airouter"
-	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/config"
+	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
@@ -48,6 +48,7 @@ import (
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/installer"
+	"vulos/backend/services/integrations"
 	"vulos/backend/services/lease"
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
@@ -488,6 +489,28 @@ func main() {
 
 	// App auth gateway — all app traffic proxied through here
 	appGateway := gateway.New(authStore, netMgr, portPool)
+
+	// INTEG-04: cloud OAuth integration injection. Apps that declare
+	// `integrations: ["google", ...]` in their manifest get a short-lived
+	// provider access token injected as X-Vulos-Integration-<Provider> by the
+	// gateway. The token is minted on demand from the cloud broker; the refresh
+	// token never reaches the box. Mint failures degrade silently (no header).
+	integrationsClient := integrations.NewClientFromEnv()
+	appGateway.SetIntegrationTokenFunc(func(ctx context.Context, provider string) (string, error) {
+		tok, err := integrationsClient.MintToken(ctx, provider)
+		if err != nil {
+			return "", err
+		}
+		return tok.AccessToken, nil
+	})
+	if manifests, err := appnet.ScanApps(appsDir); err == nil {
+		for _, m := range manifests {
+			for _, prov := range m.Integrations {
+				appGateway.AllowIntegration(m.ID, prov)
+				log.Printf("[integrations] app %q granted %q integration token", m.ID, prov)
+			}
+		}
+	}
 
 	// Periodic auth flush
 	go func() {
@@ -1667,15 +1690,15 @@ func main() {
 			}
 		}
 
-		// BILLING GATE (surface 4: GPU/stream). A stream session is a billable
-		// GPU/compute surface. Refuse when the account is suspended
-		// (authoritative); fail-open/degraded on a cold cp outage. No-op when
-		// billing is disabled (standalone OS). cp does not yet return
-		// GPU-specific per-tier caps, so this enforces suspension only and emits
-		// per-session usage so cp can bill.
+		// BILLING GATE (surface 1: GPU/stream). A stream session is a billable
+		// GPU/compute surface. Enforces: gpu_enabled, suspended, and the
+		// gpu_session_cap concurrent-session limit (tracked locally via the stream
+		// pool — no cp round-trip for the live count). Fail-open/degraded on a
+		// cold cp outage. No-op when billing is disabled (standalone OS).
 		gpuAccount := r.Header.Get("X-User-ID")
 		if billingClient.Enabled() {
-			if d := billingClient.Gate(r.Context(), gpuAccount, cpbilling.ProductGPU); !d.Allowed {
+			activeSessions := len(streamPool.List())
+			if d := billingClient.GateGPU(r.Context(), gpuAccount, activeSessions); !d.Allowed {
 				writeErr(w, http.StatusPaymentRequired, "account not entitled: "+d.Reason)
 				return
 			}

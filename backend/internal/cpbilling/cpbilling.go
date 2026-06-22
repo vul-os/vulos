@@ -64,13 +64,55 @@ const (
 )
 
 // Entitlement is the decoded GET /api/entitlements response. cp returns a
-// superset of fields; unknown ones are ignored. For surfaces where cp does not
-// yet return product-specific caps, only Tier and Suspended are meaningful.
+// superset of fields; unknown ones are ignored.
+//
+// CAP SEMANTICS — cp returns the *allowance* (cap), not the remaining balance.
+// The OS can enforce hard-disabled (Enabled=false) and hard-zero
+// (Budget/Cap <= 0) gates locally. Precise remaining-balance enforcement (e.g.
+// "you have 3 GB of the 10 GB relay budget left this month") requires cp to
+// return a *_remaining field that reflects metered consumption. Until cp adds
+// those fields, any budget/cap that is > 0 is treated as "not exhausted" — the
+// OS trusts cp to cut off the account at source (e.g. by flipping Enabled=false
+// or Suspended=true). Gates that need *_remaining are documented inline.
 type Entitlement struct {
-	Tier        string  `json:"tier"`
-	Suspended   bool    `json:"suspended"`
-	LLMEnabled  bool    `json:"llm_enabled"`
+	Tier      string `json:"tier"`
+	Suspended bool   `json:"suspended"`
+
+	// LLM caps
+	LLMEnabled   bool    `json:"llm_enabled"`
 	LLMBudgetUSD float64 `json:"llm_budget_usd"`
+
+	// Relay caps. RelayBytesBudget is the monthly volume cap in bytes.
+	// NOTE: precise relay_bytes volume enforcement requires cp to return
+	// relay_bytes_remaining (the un-metered balance); until then the OS refuses
+	// only when RelayEnabled=false, Suspended=true, or RelayBytesBudget=0.
+	RelayEnabled     bool  `json:"relay_enabled"`
+	RelayBytesBudget int64 `json:"relay_bytes_budget"`
+
+	// GPU caps. GPUSessionCap is the maximum number of *concurrent* GPU/stream
+	// sessions permitted. The OS tracks active sessions locally via the stream
+	// pool (see GateGPU) and refuses a launch when the count ≥ cap.
+	GPUEnabled    bool `json:"gpu_enabled"`
+	GPUSessionCap int  `json:"gpu_session_cap"`
+
+	// Meet caps. MeetMinutesBudget is the monthly meeting-minutes allowance.
+	// NOTE: precise meeting-minutes volume enforcement requires cp to return
+	// meet_minutes_remaining; until then the OS refuses only when
+	// MeetEnabled=false, Suspended=true, MeetMaxRooms=0, or
+	// MeetMinutesBudget=0. MeetMaxRooms is the concurrent-room cap enforced
+	// locally against SFU.RoomCount().
+	MeetEnabled        bool `json:"meet_enabled"`
+	MeetMinutesBudget  int  `json:"meet_minutes_budget"`
+	MeetMaxRooms       int  `json:"meet_max_rooms"`
+
+	// Compute caps. ComputeBoxCap is the maximum number of provisioned cloud
+	// instances. The OS enforces this locally against Registry.List() before
+	// calling the cloud provision endpoint. ComputeStorageGB is informational
+	// and exposed via GET /api/entitlements; block-level storage enforcement
+	// lives in the cloud control plane, not the OS.
+	ComputeEnabled   bool `json:"compute_enabled"`
+	ComputeBoxCap    int  `json:"compute_box_cap"`
+	ComputeStorageGB int  `json:"compute_storage_gb"`
 }
 
 // UsageEvent is the POST /api/usage body. Zero-valued fields are still sent so
@@ -245,6 +287,132 @@ func (c *Client) GateLLM(ctx context.Context, accountID string) Decision {
 	}
 	if ent.LLMBudgetUSD <= 0 {
 		return Decision{Allowed: false, Reason: "llm_budget_exhausted", Entitlement: ent}
+	}
+	return d
+}
+
+// GateGPU is Gate plus GPU product caps.
+//
+// Enforced caps:
+//   - gpu_enabled=false → refuse ("gpu_disabled")
+//   - suspended → refuse ("suspended")
+//   - activeSessions >= gpu_session_cap (when cap > 0) → refuse ("gpu_session_cap_reached")
+//     activeSessions is the caller-supplied count of currently running GPU/stream
+//     sessions for this account, tracked locally in the stream pool. The OS uses
+//     local counting because the cp entitlements response contains the cap but not
+//     the live session count; querying cp on every launch would add latency and a
+//     single-process in-memory counter is authoritative for the local OS.
+//
+// ENFORCEMENT STATUS:
+//   - gpu_enabled + suspended: ENFORCED (cp authoritative)
+//   - gpu_session_cap concurrent cap: ENFORCED locally (activeSessions arg)
+func (c *Client) GateGPU(ctx context.Context, accountID string, activeSessions int) Decision {
+	d := c.Gate(ctx, accountID, ProductGPU)
+	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+		return d
+	}
+	ent := d.Entitlement
+	if !ent.GPUEnabled {
+		return Decision{Allowed: false, Reason: "gpu_disabled", Entitlement: ent}
+	}
+	if ent.GPUSessionCap > 0 && activeSessions >= ent.GPUSessionCap {
+		return Decision{Allowed: false, Reason: "gpu_session_cap_reached", Entitlement: ent}
+	}
+	return d
+}
+
+// GateCompute is Gate plus compute product caps.
+//
+// Enforced caps:
+//   - compute_enabled=false → refuse ("compute_disabled")
+//   - suspended → refuse ("suspended")
+//   - activeBoxes >= compute_box_cap (when cap > 0) → refuse ("compute_box_cap_reached")
+//     activeBoxes is the caller-supplied count of provisioned instances,
+//     obtained from Registry.List() before calling the cloud endpoint.
+//
+// ENFORCEMENT STATUS:
+//   - compute_enabled + suspended: ENFORCED (cp authoritative)
+//   - compute_box_cap: ENFORCED locally (activeBoxes arg)
+//   - compute_storage_gb: NOT enforced by OS — storage limits live in the cloud
+//     control plane (it owns the Fly API token and enforces disk quotas).
+func (c *Client) GateCompute(ctx context.Context, accountID string, activeBoxes int) Decision {
+	d := c.Gate(ctx, accountID, ProductCompute)
+	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+		return d
+	}
+	ent := d.Entitlement
+	if !ent.ComputeEnabled {
+		return Decision{Allowed: false, Reason: "compute_disabled", Entitlement: ent}
+	}
+	if ent.ComputeBoxCap > 0 && activeBoxes >= ent.ComputeBoxCap {
+		return Decision{Allowed: false, Reason: "compute_box_cap_reached", Entitlement: ent}
+	}
+	return d
+}
+
+// GateRelay is Gate plus relay product caps.
+//
+// Enforced caps:
+//   - relay_enabled=false → refuse ("relay_disabled")
+//   - suspended → refuse ("suspended")
+//   - relay_bytes_budget <= 0 → refuse ("relay_budget_exhausted")
+//
+// ENFORCEMENT STATUS:
+//   - relay_enabled + suspended: ENFORCED (cp authoritative)
+//   - relay_bytes_budget=0: ENFORCED (hard-zero = no budget at all)
+//   - relay_bytes_budget > 0 (remaining volume): NOT precisely enforced — cp
+//     returns the monthly cap, not the remaining balance. Precise per-account
+//     relay volume enforcement requires cp to expose relay_bytes_remaining
+//     (metered balance). Until then the OS refuses only on disabled/budget=0;
+//     cp must enforce the running balance at source (e.g. flip relay_enabled=false
+//     or suspended=true when the budget is exhausted).
+func (c *Client) GateRelay(ctx context.Context, accountID string) Decision {
+	d := c.Gate(ctx, accountID, ProductRelay)
+	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+		return d
+	}
+	ent := d.Entitlement
+	if !ent.RelayEnabled {
+		return Decision{Allowed: false, Reason: "relay_disabled", Entitlement: ent}
+	}
+	if ent.RelayBytesBudget <= 0 {
+		return Decision{Allowed: false, Reason: "relay_budget_exhausted", Entitlement: ent}
+	}
+	return d
+}
+
+// GateMeet is Gate plus Meet product caps.
+//
+// Enforced caps:
+//   - meet_enabled=false → refuse ("meet_disabled")
+//   - suspended → refuse ("suspended")
+//   - meet_minutes_budget <= 0 → refuse ("meet_budget_exhausted")
+//   - activeRooms >= meet_max_rooms (when cap > 0) → refuse ("meet_room_cap_reached")
+//     activeRooms is the caller-supplied count from SFU.RoomCount(), tracked
+//     in-process as the authoritative concurrent-room count.
+//
+// ENFORCEMENT STATUS:
+//   - meet_enabled + suspended: ENFORCED (cp authoritative)
+//   - meet_max_rooms concurrent cap: ENFORCED locally (activeRooms arg)
+//   - meet_minutes_budget=0: ENFORCED (hard-zero = no budget at all)
+//   - meet_minutes_budget > 0 (remaining minutes): NOT precisely enforced — cp
+//     returns the monthly cap, not the remaining balance. Precise meeting-minute
+//     enforcement requires cp to expose meet_minutes_remaining. Until then cp
+//     must enforce the running balance at source.
+func (c *Client) GateMeet(ctx context.Context, accountID string, activeRooms int) Decision {
+	d := c.Gate(ctx, accountID, ProductMeet)
+	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+		return d
+	}
+	ent := d.Entitlement
+	if !ent.MeetEnabled {
+		return Decision{Allowed: false, Reason: "meet_disabled", Entitlement: ent}
+	}
+	if ent.MeetMinutesBudget <= 0 {
+		return Decision{Allowed: false, Reason: "meet_budget_exhausted", Entitlement: ent}
+	}
+	if ent.MeetMaxRooms > 0 && activeRooms >= ent.MeetMaxRooms {
+		return Decision{Allowed: false, Reason: "meet_room_cap_reached", Entitlement: ent}
 	}
 	return d
 }

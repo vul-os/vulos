@@ -196,3 +196,195 @@ func TestConcurrentGateAndMeter(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// ─── Typed gate tests ─────────────────────────────────────────────────────────
+
+func makeEntServer(t *testing.T, ent Entitlement) (*httptest.Server, *Client) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/usage" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(ent)
+	}))
+	t.Cleanup(srv.Close)
+	c := New(Config{BaseURL: srv.URL, SharedSecret: "s", CacheTTL: time.Hour})
+	return srv, c
+}
+
+// ─── GateGPU ─────────────────────────────────────────────────────────────────
+
+func TestGateGPU_AllowedUnderCap(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", GPUEnabled: true, GPUSessionCap: 3})
+	d := c.GateGPU(context.Background(), "u@x.com", 2) // 2 active < cap 3
+	if !d.Allowed {
+		t.Fatalf("under-cap GPU gate must allow, got %+v", d)
+	}
+}
+
+func TestGateGPU_RefusedAtCap(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", GPUEnabled: true, GPUSessionCap: 2})
+	d := c.GateGPU(context.Background(), "u@x.com", 2) // 2 active == cap 2
+	if d.Allowed || d.Reason != "gpu_session_cap_reached" {
+		t.Fatalf("at-cap GPU gate must refuse gpu_session_cap_reached, got %+v", d)
+	}
+}
+
+func TestGateGPU_RefusedWhenDisabled(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", GPUEnabled: false, GPUSessionCap: 10})
+	d := c.GateGPU(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "gpu_disabled" {
+		t.Fatalf("disabled GPU must refuse gpu_disabled, got %+v", d)
+	}
+}
+
+func TestGateGPU_RefusedWhenSuspended(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", Suspended: true, GPUEnabled: true, GPUSessionCap: 10})
+	d := c.GateGPU(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "suspended" {
+		t.Fatalf("suspended GPU gate must refuse suspended, got %+v", d)
+	}
+}
+
+func TestGateGPU_StandaloneAllows(t *testing.T) {
+	c := New(Config{}) // no CP_URL
+	d := c.GateGPU(context.Background(), "u@x.com", 9999)
+	if !d.Allowed || d.Reason != "disabled" {
+		t.Fatalf("standalone GPU gate must allow (disabled), got %+v", d)
+	}
+}
+
+// ─── GateCompute ─────────────────────────────────────────────────────────────
+
+func TestGateCompute_AllowedUnderCap(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", ComputeEnabled: true, ComputeBoxCap: 5})
+	d := c.GateCompute(context.Background(), "u@x.com", 4) // 4 < cap 5
+	if !d.Allowed {
+		t.Fatalf("under-cap compute gate must allow, got %+v", d)
+	}
+}
+
+func TestGateCompute_RefusedAtCap(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", ComputeEnabled: true, ComputeBoxCap: 3})
+	d := c.GateCompute(context.Background(), "u@x.com", 3) // 3 == cap 3
+	if d.Allowed || d.Reason != "compute_box_cap_reached" {
+		t.Fatalf("at-cap compute gate must refuse compute_box_cap_reached, got %+v", d)
+	}
+}
+
+func TestGateCompute_RefusedWhenDisabled(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", ComputeEnabled: false, ComputeBoxCap: 10})
+	d := c.GateCompute(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "compute_disabled" {
+		t.Fatalf("disabled compute must refuse compute_disabled, got %+v", d)
+	}
+}
+
+func TestGateCompute_RefusedWhenSuspended(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", Suspended: true, ComputeEnabled: true, ComputeBoxCap: 10})
+	d := c.GateCompute(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "suspended" {
+		t.Fatalf("suspended compute gate must refuse suspended, got %+v", d)
+	}
+}
+
+func TestGateCompute_StandaloneAllows(t *testing.T) {
+	c := New(Config{})
+	d := c.GateCompute(context.Background(), "u@x.com", 9999)
+	if !d.Allowed || d.Reason != "disabled" {
+		t.Fatalf("standalone compute gate must allow (disabled), got %+v", d)
+	}
+}
+
+// ─── GateRelay ───────────────────────────────────────────────────────────────
+
+func TestGateRelay_AllowedWhenEnabled(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", RelayEnabled: true, RelayBytesBudget: 1 << 30})
+	d := c.GateRelay(context.Background(), "u@x.com")
+	if !d.Allowed {
+		t.Fatalf("enabled relay gate must allow, got %+v", d)
+	}
+}
+
+func TestGateRelay_RefusedWhenDisabled(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", RelayEnabled: false, RelayBytesBudget: 1 << 30})
+	d := c.GateRelay(context.Background(), "u@x.com")
+	if d.Allowed || d.Reason != "relay_disabled" {
+		t.Fatalf("disabled relay must refuse relay_disabled, got %+v", d)
+	}
+}
+
+func TestGateRelay_RefusedOnZeroBudget(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", RelayEnabled: true, RelayBytesBudget: 0})
+	d := c.GateRelay(context.Background(), "u@x.com")
+	if d.Allowed || d.Reason != "relay_budget_exhausted" {
+		t.Fatalf("zero-budget relay must refuse relay_budget_exhausted, got %+v", d)
+	}
+}
+
+func TestGateRelay_RefusedWhenSuspended(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", Suspended: true, RelayEnabled: true, RelayBytesBudget: 1 << 30})
+	d := c.GateRelay(context.Background(), "u@x.com")
+	if d.Allowed || d.Reason != "suspended" {
+		t.Fatalf("suspended relay gate must refuse suspended, got %+v", d)
+	}
+}
+
+func TestGateRelay_StandaloneAllows(t *testing.T) {
+	c := New(Config{})
+	d := c.GateRelay(context.Background(), "u@x.com")
+	if !d.Allowed || d.Reason != "disabled" {
+		t.Fatalf("standalone relay gate must allow (disabled), got %+v", d)
+	}
+}
+
+// ─── GateMeet ────────────────────────────────────────────────────────────────
+
+func TestGateMeet_AllowedUnderCap(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", MeetEnabled: true, MeetMinutesBudget: 1000, MeetMaxRooms: 5})
+	d := c.GateMeet(context.Background(), "u@x.com", 4) // 4 < cap 5
+	if !d.Allowed {
+		t.Fatalf("under-cap meet gate must allow, got %+v", d)
+	}
+}
+
+func TestGateMeet_RefusedAtRoomCap(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", MeetEnabled: true, MeetMinutesBudget: 1000, MeetMaxRooms: 2})
+	d := c.GateMeet(context.Background(), "u@x.com", 2) // 2 == cap 2
+	if d.Allowed || d.Reason != "meet_room_cap_reached" {
+		t.Fatalf("at-cap meet gate must refuse meet_room_cap_reached, got %+v", d)
+	}
+}
+
+func TestGateMeet_RefusedWhenDisabled(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", MeetEnabled: false, MeetMinutesBudget: 1000, MeetMaxRooms: 10})
+	d := c.GateMeet(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "meet_disabled" {
+		t.Fatalf("disabled meet must refuse meet_disabled, got %+v", d)
+	}
+}
+
+func TestGateMeet_RefusedOnZeroBudget(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", MeetEnabled: true, MeetMinutesBudget: 0, MeetMaxRooms: 10})
+	d := c.GateMeet(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "meet_budget_exhausted" {
+		t.Fatalf("zero-budget meet must refuse meet_budget_exhausted, got %+v", d)
+	}
+}
+
+func TestGateMeet_RefusedWhenSuspended(t *testing.T) {
+	_, c := makeEntServer(t, Entitlement{Tier: "pro", Suspended: true, MeetEnabled: true, MeetMinutesBudget: 1000, MeetMaxRooms: 10})
+	d := c.GateMeet(context.Background(), "u@x.com", 0)
+	if d.Allowed || d.Reason != "suspended" {
+		t.Fatalf("suspended meet gate must refuse suspended, got %+v", d)
+	}
+}
+
+func TestGateMeet_StandaloneAllows(t *testing.T) {
+	c := New(Config{})
+	d := c.GateMeet(context.Background(), "u@x.com", 9999)
+	if !d.Allowed || d.Reason != "disabled" {
+		t.Fatalf("standalone meet gate must allow (disabled), got %+v", d)
+	}
+}

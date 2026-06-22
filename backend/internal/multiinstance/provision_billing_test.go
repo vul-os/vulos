@@ -65,7 +65,8 @@ func TestProvision_AllowedWhenEntitled_AndMeters(t *testing.T) {
 	defer cleanup()
 	t.Setenv("VULOS_CLOUD_URL", url)
 
-	cp := newProvisionCPStub(cpbilling.Entitlement{Tier: "pro"})
+	// Under-cap: empty registry → 0 boxes < cap 5.
+	cp := newProvisionCPStub(cpbilling.Entitlement{Tier: "pro", ComputeEnabled: true, ComputeBoxCap: 5})
 	defer cp.srv.Close()
 
 	p := multiinstance.NewProvisioner(reg, "dev").WithBilling(cp.client())
@@ -102,7 +103,7 @@ func TestProvision_RefusedWhenSuspended(t *testing.T) {
 	defer provURL.Close()
 	t.Setenv("VULOS_CLOUD_URL", provURL.URL)
 
-	cp := newProvisionCPStub(cpbilling.Entitlement{Tier: "pro", Suspended: true})
+	cp := newProvisionCPStub(cpbilling.Entitlement{Tier: "pro", Suspended: true, ComputeEnabled: true, ComputeBoxCap: 10})
 	defer cp.srv.Close()
 
 	p := multiinstance.NewProvisioner(reg, "dev").WithBilling(cp.client())
@@ -114,6 +115,58 @@ func TestProvision_RefusedWhenSuspended(t *testing.T) {
 	defer cp.mu.Unlock()
 	if len(cp.usage) != 0 {
 		t.Errorf("suspended provision must not meter, got %d", len(cp.usage))
+	}
+}
+
+func TestProvision_RefusedWhenComputeDisabled(t *testing.T) {
+	reg := openTempRegistry(t)
+	notCalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("cloud provision endpoint must not be called when compute disabled")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer notCalled.Close()
+	t.Setenv("VULOS_CLOUD_URL", notCalled.URL)
+
+	cp := newProvisionCPStub(cpbilling.Entitlement{Tier: "free", ComputeEnabled: false, ComputeBoxCap: 0})
+	defer cp.srv.Close()
+
+	p := multiinstance.NewProvisioner(reg, "dev").WithBilling(cp.client())
+	_, err := p.Provision(context.Background(), "acct@x.com", "ams", "small")
+	if err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("compute-disabled provision must be refused, got err=%v", err)
+	}
+}
+
+func TestProvision_RefusedAtBoxCap(t *testing.T) {
+	reg := openTempRegistry(t)
+	// Pre-populate the registry so activeBoxes == cap.
+	// Insert one instance so the count hits the cap of 1.
+	inst := multiinstance.Instance{
+		ULID:        "01HWZPROV0000000000000CAP",
+		DisplayName: "pre-existing",
+		Kind:        multiinstance.KindCloud,
+		Role:        multiinstance.RolePeer,
+		Status:      multiinstance.StatusUnknown,
+	}
+	if err := reg.Upsert(inst); err != nil {
+		t.Fatalf("pre-populate registry: %v", err)
+	}
+
+	notCalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("cloud provision endpoint must not be called at box cap")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer notCalled.Close()
+	t.Setenv("VULOS_CLOUD_URL", notCalled.URL)
+
+	// cap=1, activeBoxes=1 → refuse.
+	cp := newProvisionCPStub(cpbilling.Entitlement{Tier: "starter", ComputeEnabled: true, ComputeBoxCap: 1})
+	defer cp.srv.Close()
+
+	p := multiinstance.NewProvisioner(reg, "dev").WithBilling(cp.client())
+	_, err := p.Provision(context.Background(), "acct@x.com", "ams", "small")
+	if err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("at-box-cap provision must be refused, got err=%v", err)
 	}
 }
 

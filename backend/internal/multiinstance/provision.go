@@ -107,8 +107,15 @@ func NewProvisioner(reg *Registry, deviceToken string) *Provisioner {
 }
 
 // WithBilling wires a cp billing client so compute provisioning is gated on
-// entitlement + suspension and metered. A nil/disabled client is a no-op.
-// Returns p for chaining.
+// compute_enabled, suspended, and compute_box_cap (enforced locally against
+// Registry.List()) and metered. A nil/disabled client is a no-op. Returns p
+// for chaining.
+//
+// ENFORCEMENT STATUS:
+//   - compute_enabled + suspended: ENFORCED (cp authoritative)
+//   - compute_box_cap: ENFORCED locally (Registry.List() count before provisioning)
+//   - compute_storage_gb: NOT enforced by OS — storage quotas live in the cloud
+//     control plane (it owns the Fly API token and enforces disk limits).
 func (p *Provisioner) WithBilling(b *cpbilling.Client) *Provisioner {
 	p.billing = b
 	return p
@@ -129,13 +136,20 @@ func (p *Provisioner) Provision(ctx context.Context, account, region, plan strin
 		return nil, fmt.Errorf("provision: plan must not be empty")
 	}
 
-	// BILLING GATE (surface 3: compute). Refuse before provisioning when the
-	// account is suspended (suspension is authoritative). Fail-open + degraded
-	// on a cold cp outage so a cp blip doesn't block all provisioning. No-op
-	// when billing is disabled (standalone OS). cp does not yet return
-	// compute-specific caps, so this enforces suspension + tier presence only.
+	// BILLING GATE (surface 2: compute). Enforces compute_enabled, suspended,
+	// and compute_box_cap. The active box count is read from the local Registry
+	// (authoritative for this OS instance) before calling the cloud endpoint.
+	// Fail-open + degraded on a cold cp outage. No-op when billing is disabled
+	// (standalone OS).
+	//
+	// NOTE: compute_storage_gb is not enforced here — storage quota enforcement
+	// lives in the cloud control plane (it owns the Fly API token).
 	if p.billing.Enabled() {
-		if d := p.billing.Gate(ctx, account, cpbilling.ProductCompute); !d.Allowed {
+		var activeBoxes int
+		if instances, err := p.reg.List(); err == nil {
+			activeBoxes = len(instances)
+		}
+		if d := p.billing.GateCompute(ctx, account, activeBoxes); !d.Allowed {
 			return nil, fmt.Errorf("provision: refused: %s", d.Reason)
 		}
 	}

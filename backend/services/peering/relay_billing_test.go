@@ -51,7 +51,7 @@ func (cs *relayCPStub) client() *cpbilling.Client {
 
 func TestRelayDeposit_AllowedWhenEntitled_AndMeters(t *testing.T) {
 	rs, cs, _ := relayTestSetup(t)
-	cp := newRelayCPStub(cpbilling.Entitlement{Tier: "pro"})
+	cp := newRelayCPStub(cpbilling.Entitlement{Tier: "pro", RelayEnabled: true, RelayBytesBudget: 1 << 30})
 	defer cp.srv.Close()
 	rs.WithBilling(cp.client())
 
@@ -89,7 +89,7 @@ func TestRelayDeposit_AllowedWhenEntitled_AndMeters(t *testing.T) {
 
 func TestRelayDeposit_RefusedWhenSuspended(t *testing.T) {
 	rs, cs, _ := relayTestSetup(t)
-	cp := newRelayCPStub(cpbilling.Entitlement{Tier: "pro", Suspended: true})
+	cp := newRelayCPStub(cpbilling.Entitlement{Tier: "pro", Suspended: true, RelayEnabled: true, RelayBytesBudget: 1 << 30})
 	defer cp.srv.Close()
 	rs.WithBilling(cp.client())
 
@@ -106,6 +106,50 @@ func TestRelayDeposit_RefusedWhenSuspended(t *testing.T) {
 	defer cp.mu.Unlock()
 	if len(cp.usage) != 0 {
 		t.Errorf("suspended deposit must not meter, got %d", len(cp.usage))
+	}
+}
+
+func TestRelayDeposit_RefusedWhenRelayDisabled(t *testing.T) {
+	rs, cs, _ := relayTestSetup(t)
+	cp := newRelayCPStub(cpbilling.Entitlement{Tier: "free", RelayEnabled: false, RelayBytesBudget: 0})
+	defer cp.srv.Close()
+	rs.WithBilling(cp.client())
+
+	senderPriv, _, senderID := genKeyPair(t)
+	_, _, recipientID := genKeyPair(t)
+	relayAddApprovedContact(t, cs, senderID, "Sender")
+
+	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-dis", []byte("data"), 24)
+	err := rs.Deposit(req)
+	if err == nil {
+		t.Fatal("relay-disabled deposit must be refused")
+	}
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if len(cp.usage) != 0 {
+		t.Errorf("relay-disabled deposit must not meter, got %d", len(cp.usage))
+	}
+}
+
+func TestRelayDeposit_RefusedOnZeroBudget(t *testing.T) {
+	rs, cs, _ := relayTestSetup(t)
+	cp := newRelayCPStub(cpbilling.Entitlement{Tier: "pro", RelayEnabled: true, RelayBytesBudget: 0})
+	defer cp.srv.Close()
+	rs.WithBilling(cp.client())
+
+	senderPriv, _, senderID := genKeyPair(t)
+	_, _, recipientID := genKeyPair(t)
+	relayAddApprovedContact(t, cs, senderID, "Sender")
+
+	req := relayTestDeposit(t, senderPriv, senderID, recipientID, "blob-nobudget", []byte("data"), 24)
+	err := rs.Deposit(req)
+	if err == nil {
+		t.Fatal("zero-budget deposit must be refused")
+	}
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if len(cp.usage) != 0 {
+		t.Errorf("zero-budget deposit must not meter, got %d", len(cp.usage))
 	}
 }
 
