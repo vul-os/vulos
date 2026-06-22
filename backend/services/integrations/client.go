@@ -75,6 +75,15 @@ type DeviceSigner interface {
 	DeviceIdentity() (pubKeyDER []byte, err error)
 }
 
+// CertProvider supplies an owner-attested device certificate (INTEG-SEC-01
+// method 1). cloudenroll.Identity satisfies it. When present and ok, the client
+// authenticates the mint with the CA-signed cert + an ed25519 signature instead
+// of the TOFU/HMAC path — eliminating the trust-on-first-use window.
+type CertProvider interface {
+	DeviceCert() (cert, pubKey []byte, ok bool)
+	SignMint(message string) ([]byte, error)
+}
+
 // Client mints + caches short-lived access tokens from the cloud broker.
 // Safe for concurrent use.
 type Client struct {
@@ -87,6 +96,7 @@ type Client struct {
 	cache        map[string]Token     // provider → cached access token
 	notConnected map[string]time.Time // provider → time until which "not connected" holds
 	signer       DeviceSigner         // INTEG-SEC-01: per-device key (nil → fleet-HMAC only)
+	certProvider CertProvider         // INTEG-SEC-01: owner-attested cert (preferred over signer)
 	now          func() time.Time
 }
 
@@ -124,6 +134,39 @@ func (c *Client) SetDeviceSigner(s DeviceSigner) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.signer = s
+}
+
+// SetCertProvider installs an owner-attested device certificate provider
+// (INTEG-SEC-01 method 1). When it has a usable cert, the client authenticates
+// mints with the cert — preferred over the TOFU device-key path.
+func (c *Client) SetCertProvider(p CertProvider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.certProvider = p
+}
+
+// setCertAuth sets the cert-based mint headers if a usable cert is available,
+// returning true when it did. The cert path uses an ed25519 signature over the
+// raw mint message.
+func (c *Client) setCertAuth(req *http.Request, provider string) bool {
+	c.mu.Lock()
+	cp := c.certProvider
+	c.mu.Unlock()
+	if cp == nil {
+		return false
+	}
+	cert, pub, ok := cp.DeviceCert()
+	if !ok {
+		return false
+	}
+	sig, err := cp.SignMint("integrations:token:" + provider + ":" + c.deviceULID)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("X-Device-Cert", base64.StdEncoding.EncodeToString(cert))
+	req.Header.Set("X-Device-Pubkey", base64.StdEncoding.EncodeToString(pub))
+	req.Header.Set("X-Device-Sig", base64.StdEncoding.EncodeToString(sig))
+	return true
 }
 
 // sign computes the purpose-bound fleet-HMAC signature for a token-mint request
@@ -205,8 +248,12 @@ func (c *Client) fetch(ctx context.Context, provider string) (Token, error) {
 	}
 	req.Header.Set("X-Device-ULID", c.deviceULID)
 	req.Header.Set("X-Integration-Sig", c.sign(provider)) // fleet-HMAC fallback
-	if ds := c.deviceSig(provider); ds != "" {
-		req.Header.Set("X-Device-Sig", ds) // per-device proof (INTEG-SEC-01)
+	// Strongest available proof: owner-attested cert (method 1), else the TOFU
+	// device-key signature (method 2). The fleet HMAC above remains as fallback.
+	if !c.setCertAuth(req, provider) {
+		if ds := c.deviceSig(provider); ds != "" {
+			req.Header.Set("X-Device-Sig", ds)
+		}
 	}
 
 	resp, err := c.httpClient.Do(req)

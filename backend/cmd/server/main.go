@@ -35,6 +35,7 @@ import (
 	"vulos/backend/services/authvault"
 	"vulos/backend/services/bluetooth"
 	"vulos/backend/services/bootmode"
+	"vulos/backend/services/cloudenroll"
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
@@ -625,6 +626,17 @@ func main() {
 				log.Printf("[integrations] device key registered with cloud broker")
 			}
 		}()
+
+		// INTEG-SEC-01 method 1: if this box has completed owner-attested cloud
+		// enrollment, present its CA-signed device cert on mint (preferred over the
+		// TOFU device-key path — no first-use race).
+		enroller := cloudenroll.New(os.Getenv("VULOS_CLOUD_URL"), filepath.Join(home, ".vulos", "auth", "integrations"), deviceKS)
+		if ident, err := enroller.Load(); err != nil {
+			log.Printf("[integrations] cloud enrollment load: %v", err)
+		} else if ident != nil {
+			integrationsClient.SetCertProvider(ident)
+			log.Printf("[integrations] using owner-attested device cert (ulid=%s)", ident.ULID)
+		}
 
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
 		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.
