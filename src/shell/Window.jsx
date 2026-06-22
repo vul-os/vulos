@@ -1,4 +1,4 @@
-import { Component, useCallback, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
@@ -13,6 +13,34 @@ import { needsSameOrigin } from '../core/AppRegistry'
 function iframeSandbox(appId) {
   const base = 'allow-scripts allow-forms allow-popups'
   return needsSameOrigin(appId) ? `${base} allow-same-origin` : base
+}
+
+// WINDOW MOTION — read the user's reduced-motion preference at call time so the
+// open/close/minimize choreography can collapse to instant state changes.
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+// Aim the genie/minimize shrink at the dock area (bottom-center of the
+// viewport) relative to the window's own box, so the window appears to fly
+// toward the dock rather than collapsing in place.
+function dockTransformOrigin(win) {
+  try {
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const wx = win.position?.x ?? 0
+    const wy = win.position?.y ?? 0
+    const ww = win.size?.width ?? 720
+    const wh = win.size?.height ?? 500
+    // Dock target ≈ bottom-center of the screen.
+    const ox = ((vw / 2 - wx) / ww) * 100
+    const oy = ((vh - wy) / wh) * 100
+    return `${Math.max(-50, Math.min(150, ox))}% ${Math.max(0, Math.min(200, oy))}%`
+  } catch {
+    return '50% 100%'
+  }
 }
 
 // WindowErrorBoundary — catches errors thrown by a window's app component so
@@ -55,6 +83,61 @@ export default function Window({ win, pointerBlock }) {
   const isActive = win._active !== undefined ? win._active : activeWindow === win.id
   const zBase = isActive ? 20 : 10
   const isBrowser = win.appId === 'browser'
+
+  // ── Window lifecycle motion ──────────────────────────────────────────────
+  // phase: 'opening' → 'open' on mount; 'minimizing'/'restoring' track the
+  // minimized flag; 'closing' is a deferred-removal exit. Compositor-only
+  // (transform/opacity) and disabled under prefers-reduced-motion.
+  const reduceMotion = prefersReducedMotion()
+  const [phase, setPhase] = useState(reduceMotion ? 'open' : 'opening')
+  const [closing, setClosing] = useState(false)
+  const prevMinimized = useRef(win.minimized)
+  const animTimer = useRef(null)
+
+  // Mount: settle from 'opening' to 'open' on the next frame so the transition runs.
+  useEffect(() => {
+    if (reduceMotion) return
+    const raf = requestAnimationFrame(() => setPhase('open'))
+    return () => cancelAnimationFrame(raf)
+    // Run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Minimize / restore: drive the genie animation off the minimized flag.
+  // The parent folds "on another desktop" into `minimized`; only a *real*
+  // minimize (window still on the visible desktop) should play the genie —
+  // desktop switches must be instant.
+  useEffect(() => {
+    const was = prevMinimized.current
+    prevMinimized.current = win.minimized
+    if (was === win.minimized) return
+    const onVisibleDesktop = win._visible !== false
+    if (reduceMotion || !onVisibleDesktop) { setPhase('open'); return }
+    clearTimeout(animTimer.current)
+    if (win.minimized) {
+      // Going down to the dock: play 'minimizing', then fully hide once the
+      // genie resolves (so it stops painting / consuming compositor work).
+      setPhase('minimizing')
+      animTimer.current = setTimeout(() => setPhase('minimized'), 280)
+    } else {
+      // Coming back: start collapsed, then expand to 'open' next frame.
+      setPhase('restoring')
+      const raf = requestAnimationFrame(() => setPhase('open'))
+      return () => cancelAnimationFrame(raf)
+    }
+  }, [win.minimized, win._visible, reduceMotion])
+
+  useEffect(() => () => clearTimeout(animTimer.current), [])
+
+  // Intercept close so the window plays an exit animation before the shell
+  // removes it from state. Under reduced motion, close immediately.
+  const animatedClose = useCallback(() => {
+    if (reduceMotion) { closeWindow(win.id); return }
+    setClosing(true)
+    setPhase('closing')
+    clearTimeout(animTimer.current)
+    animTimer.current = setTimeout(() => closeWindow(win.id), 170)
+  }, [reduceMotion, closeWindow, win.id])
 
   const SNAP_EDGE = 3 // pixels from edge to trigger snap on release
   const SNAP_PREVIEW = 48 // larger zone to show snap preview while dragging
@@ -137,15 +220,27 @@ export default function Window({ win, pointerBlock }) {
     window.addEventListener('pointerup', onUp)
   }, [win, resizeWindow])
 
+  // Keep the window mounted+visible while the minimize genie plays; only fully
+  // hide it once minimized AND the exit transition has resolved.
+  const hidden = win.minimized && phase !== 'minimizing'
+  // Disable pointer events mid-animation so a flying window can't be clicked.
+  const animating = !reduceMotion && (phase === 'minimizing' || phase === 'restoring' || closing)
+  const genieOrigin = (phase === 'minimizing' || phase === 'restoring')
+    ? dockTransformOrigin(win)
+    : 'center center'
+
   return (
     <div
       data-window-id={win.id}
-      className={`absolute flex flex-col rounded-lg overflow-hidden transition-shadow
+      data-win-anim={reduceMotion ? undefined : phase}
+      className={`win-anim absolute flex flex-col rounded-lg overflow-hidden
         ${isActive ? 'ring-1 ring-neutral-600 shadow-2xl shadow-black/60' : 'ring-1 ring-neutral-800 shadow-lg shadow-black/30'}`}
       style={{
         left: win.position.x, top: win.position.y, width: win.size.width, height: win.size.height,
-        zIndex: zBase,
-        display: win.minimized ? 'none' : undefined,
+        zIndex: closing ? zBase + 5 : zBase,
+        transformOrigin: genieOrigin,
+        pointerEvents: animating ? 'none' : undefined,
+        display: hidden ? 'none' : undefined,
       }}
       onPointerDown={() => focusWindow(win.id)}
     >
@@ -156,9 +251,9 @@ export default function Window({ win, pointerBlock }) {
         <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart}>
           {/* Traffic lights */}
           <div className="flex items-center gap-1.5" data-no-drag>
-            <button onClick={() => closeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
-            <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
-            <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
+            <button onClick={animatedClose} aria-label="Close window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
+            <button onClick={() => minimizeWindow(win.id)} aria-label="Minimize window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
+            <button onClick={() => maximizeWindow(win.id)} aria-label="Maximize window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
           </div>
           <div className="flex-1 flex items-center justify-center gap-1.5 text-xs text-neutral-500 truncate">
             <AppIcon id={win.appId} size={12} color="#737373" />
@@ -238,9 +333,9 @@ export default function Window({ win, pointerBlock }) {
       {/* Browser overlay controls — top right, matching Chrome's title bar */}
       {isBrowser && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5" data-no-drag>
-          <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" title="Minimize" />
-          <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" title="Maximize" />
-          <button onClick={() => closeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" title="Close" />
+          <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" title="Minimize" aria-label="Minimize window" />
+          <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" title="Maximize" aria-label="Maximize window" />
+          <button onClick={animatedClose} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" title="Close" aria-label="Close window" />
         </div>
       )}
 

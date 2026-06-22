@@ -144,6 +144,69 @@ html, body, #root {
 }
 
 /* ═══════════════════════════════════════
+   Window lifecycle motion
+   Open / close (scale-pop) + minimize / restore (genie-to-dock).
+   Driven by the [data-win-anim] attribute set in Window.jsx so the
+   transform-origin can be aimed at the dock per-window. All of it is
+   gated behind prefers-reduced-motion below.
+   ═══════════════════════════════════════ */
+.win-anim {
+  /* Spring-ish ease for a tactile open/restore; transform + opacity only
+     (compositor-friendly, no layout thrash). */
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease-out;
+  will-change: transform, opacity;
+}
+/* Entering: window pops up from slightly small + transparent. */
+.win-anim[data-win-anim="opening"] {
+  transform: scale(0.92);
+  opacity: 0;
+}
+.win-anim[data-win-anim="open"] {
+  transform: scale(1);
+  opacity: 1;
+}
+/* Closing: quick scale-down + fade, snappier than open. */
+.win-anim[data-win-anim="closing"] {
+  transition:
+    transform 0.16s cubic-bezier(0.4, 0, 1, 1),
+    opacity 0.16s ease-in;
+  transform: scale(0.9);
+  opacity: 0;
+}
+/* Minimizing: genie toward the dock. transform-origin is set inline so the
+   shrink points at the window's dock slot; falls back to bottom-center. */
+.win-anim[data-win-anim="minimizing"] {
+  transition:
+    transform 0.26s cubic-bezier(0.5, 0, 0.7, 0),
+    opacity 0.2s ease-in;
+  transform: scale(0.18) translateY(40%);
+  opacity: 0;
+}
+/* Restoring: reverse of minimize — expand back out from the dock. */
+.win-anim[data-win-anim="restoring"] {
+  transform: scale(0.18) translateY(40%);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Honour the user's motion preference: no scale/fade choreography, just an
+     instant state change. Closing/minimizing still resolve (the JS timers run)
+     but visually snap rather than animate. */
+  .win-anim,
+  .win-anim[data-win-anim] {
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+  .win-anim[data-win-anim="closing"],
+  .win-anim[data-win-anim="minimizing"] {
+    opacity: 0 !important;
+  }
+}
+
+/* ═══════════════════════════════════════
    Component classes (theme-aware)
    ═══════════════════════════════════════ */
 .input {
