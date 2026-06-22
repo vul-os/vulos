@@ -189,7 +189,7 @@ func (e *Enroller) Enroll(ctx context.Context, notify func(userCode, verificatio
 			return nil, err
 		}
 		if retry > 0 {
-			interval = retry // honor slow_down
+			interval += retry // honor slow_down: widen (never narrow) the cadence
 			continue
 		}
 		if res == nil {
@@ -264,7 +264,10 @@ func (e *Enroller) poll(ctx context.Context, deviceCode string) (*pollResponse, 
 		case "authorization_pending":
 			return nil, 0, nil
 		case "slow_down":
-			return nil, 10 * time.Second, nil
+			// RFC 8628 §3.5: increase the poll interval by at least 5s. The caller
+			// ADDS this to the current interval, so repeated slow_downs compound and
+			// the cadence never narrows.
+			return nil, 5 * time.Second, nil
 		case "":
 			if pr.ULID == "" || len(pr.DeviceCert) == 0 {
 				return nil, 0, errors.New("cloudenroll: approved grant missing ulid/cert")

@@ -119,6 +119,23 @@ func TestEnrollAndLoad(t *testing.T) {
 	}
 }
 
+func TestPollSlowDownWidens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"error": "slow_down"})
+	}))
+	defer srv.Close()
+	e := New(srv.URL, t.TempDir(), xorSealer{})
+	res, retry, err := e.poll(context.Background(), "dev-code")
+	if err != nil || res != nil {
+		t.Fatalf("slow_down poll: res=%v err=%v", res, err)
+	}
+	// Must return a POSITIVE INCREMENT (the loop adds it to the current interval),
+	// never a fixed value that could shrink an already-larger cadence.
+	if retry != 5*time.Second {
+		t.Fatalf("slow_down retry = %v, want +5s increment", retry)
+	}
+}
+
 func TestLoadNotEnrolled(t *testing.T) {
 	id, err := New("http://unused", t.TempDir(), xorSealer{}).Load()
 	if err != nil || id != nil {
