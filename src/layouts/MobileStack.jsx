@@ -4,6 +4,14 @@ import LifePulse from '../core/SystemPulse'
 import Portal from '../core/Portal'
 import Launchpad from '../shell/Launchpad'
 import Toasts from '../shell/Toasts'
+import { needsSameOrigin } from '../core/AppRegistry'
+
+// SANDBOX-01: same-origin app iframes are opt-in (see AppRegistry.js). Apps that
+// don't declare needsSameOrigin run in an opaque origin, isolated from the shell.
+function iframeSandbox(appId) {
+  const base = 'allow-scripts allow-forms allow-popups'
+  return needsSameOrigin(appId) ? `${base} allow-same-origin` : base
+}
 
 export default function MobileStack() {
   const { windows, conversation, toggleLaunchpad } = useShell()
@@ -95,7 +103,7 @@ function MobileCard({ win }) {
             srcDoc={win.html || undefined}
             title={win.title}
             className="absolute inset-0 w-full h-full border-0"
-            sandbox={win.html ? 'allow-scripts' : 'allow-scripts allow-same-origin allow-forms allow-popups'}
+            sandbox={win.html ? 'allow-scripts' : iframeSandbox(win.appId)}
             referrerPolicy="no-referrer"
           />
         )}

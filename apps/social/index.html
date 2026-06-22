@@ -1168,6 +1168,80 @@ function esc(str) {
     .replace(/"/g,'&quot;');
 }
 
+// SEC (FED-XSS): Federated Mastodon/ActivityPub status HTML is UNTRUSTED — a
+// hostile instance can serve arbitrary markup. We previously trusted the
+// remote instance's server-side sanitisation, which is unsafe. sanitizeHtml()
+// re-parses the payload in an inert <template> (no scripts run, no resources
+// load, no current-document side effects) and rebuilds it against a strict
+// allowlist of inline/block tags + attributes that Mastodon actually emits.
+// Anything else (script, img, iframe, on* handlers, javascript: URLs, style,
+// etc.) is dropped. Use this for ANY remote-sourced HTML before insertion.
+const SANITIZE_ALLOWED_TAGS = new Set([
+  'a','p','br','span','strong','em','b','i','u','del','s','code','pre',
+  'blockquote','ul','ol','li','h1','h2','h3','h4','h5','h6','hr','div'
+]);
+// Per-tag attribute allowlist. Values are still validated below.
+const SANITIZE_ALLOWED_ATTRS = {
+  a: new Set(['href','rel','class','title','translate']),
+  span: new Set(['class','translate']),
+  p: new Set(['class']),
+  '*': new Set(['class']),
+};
+function sanitizeUrl(value) {
+  const v = String(value || '').trim();
+  // Allow only http(s), mailto, and protocol-relative/relative links.
+  if (/^(https?:|mailto:)/i.test(v)) return v;
+  if (/^[/#?]/.test(v)) return v;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(v)) return v; // no scheme → relative, OK
+  return ''; // javascript:, data:, vbscript:, etc.
+}
+function sanitizeNode(node, out) {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === 3) { // text
+      out.appendChild(document.createTextNode(child.nodeValue));
+      continue;
+    }
+    if (child.nodeType !== 1) continue; // drop comments/PIs/etc.
+    const tag = child.tagName.toLowerCase();
+    if (!SANITIZE_ALLOWED_TAGS.has(tag)) {
+      // Keep the text content of disallowed elements, drop the element itself.
+      sanitizeNode(child, out);
+      continue;
+    }
+    const clean = document.createElement(tag);
+    const allowed = SANITIZE_ALLOWED_ATTRS[tag] || SANITIZE_ALLOWED_ATTRS['*'];
+    for (const attr of Array.from(child.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) continue;           // event handlers
+      if (!allowed.has(name)) continue;              // not in allowlist
+      let val = attr.value;
+      if (name === 'href' || name === 'src') {
+        val = sanitizeUrl(val);
+        if (!val) continue;
+      }
+      clean.setAttribute(name, val);
+    }
+    if (tag === 'a') {
+      // Force safe link behaviour regardless of source markup.
+      clean.setAttribute('rel', 'noopener noreferrer nofollow');
+      clean.setAttribute('target', '_blank');
+    }
+    sanitizeNode(child, clean);
+    out.appendChild(clean);
+  }
+}
+function sanitizeHtml(html) {
+  const tpl = document.createElement('template');
+  // <template> content is inert: assigning innerHTML parses but does not run
+  // scripts, load <img>/<iframe> resources, or fire any handlers.
+  tpl.innerHTML = String(html ?? '');
+  const frag = document.createDocumentFragment();
+  sanitizeNode(tpl.content, frag);
+  const wrap = document.createElement('div');
+  wrap.appendChild(frag);
+  return wrap.innerHTML;
+}
+
 function relativeTime(iso) {
   const diff = (Date.now() - new Date(iso)) / 1000;
   if (diff < 60)    return 'now';
@@ -1220,13 +1294,10 @@ function renderStatus(s, opts) {
     contentClass = 'content cw-content';
   }
 
-  // SEC: actual.content is Mastodon-spec HTML — the Mastodon API guarantees it
-  // contains only safe inline elements (<a>, <p>, <br>, <span>, <strong>, <em>).
-  // The host proxy (backend/services/webproxy) is the fetch origin; it does not
-  // currently sanitize the payload. Trust is placed in Mastodon's server-side
-  // sanitisation. If untrusted Mastodon instances are added, add DOMPurify here.
+  // SEC (FED-XSS): actual.content is UNTRUSTED federated HTML — sanitize before
+  // inserting (the remote instance's own sanitisation cannot be trusted).
   const contentHtml = `<div class="${contentClass}"
-    id="${actual.spoiler_text ? 'cw-' + sid : ''}">${actual.content||''}</div>`;
+    id="${actual.spoiler_text ? 'cw-' + sid : ''}">${sanitizeHtml(actual.content||'')}</div>`;
 
   let mediaHtml = '';
   const images = (actual.media_attachments||[]).filter(m=>m.type==='image'||m.type==='gifv');
@@ -2088,7 +2159,7 @@ function buildVideoCard(status, vid) {
         </div>
         <span class="v-time">${relativeTime(status.created_at)}</span>
       </div>
-      <div class="video-content">${status.content || ''}</div>
+      <div class="video-content">${sanitizeHtml(status.content || '')}</div>
     </div>
     <div class="video-comments">
       <div class="video-comments-header"
@@ -2188,7 +2259,7 @@ function buildCommentHtml(status) {
       <span class="c-name">${esc(actual.account.display_name || actual.account.username)}</span>
       <span class="c-time">${relativeTime(actual.created_at)}</span>
     </div>
-    <div class="comment-content">${actual.content || ''}</div>
+    <div class="comment-content">${sanitizeHtml(actual.content || '')}</div>
   </div>`;
 }
 
@@ -3206,10 +3277,12 @@ function showNotifToast(notif) {
 
   let body = '';
   if (status.content) {
-    // Strip HTML tags
-    const tmp = document.createElement('div');
+    // Strip HTML tags. Parse in an inert <template> so untrusted markup can't
+    // trigger resource loads / handlers, then take text only. (body is also
+    // re-escaped via esc() before it is inserted below.)
+    const tmp = document.createElement('template');
     tmp.innerHTML = status.content;
-    body = (tmp.textContent || '').trim().slice(0, 120);
+    body = (tmp.content.textContent || '').trim().slice(0, 120);
   }
 
   // Remove any existing toast

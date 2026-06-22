@@ -222,6 +222,9 @@ const defaultWebApps = [
     category: 'utilities',
     url: '/app/calculator/',
     port: 80,
+    // SANDBOX-01: persists history/mode in localStorage at load — needs a
+    // real (non-opaque) origin. See needsSameOrigin() below.
+    needsSameOrigin: true,
   },
   {
     id: 'calendar',
@@ -242,6 +245,8 @@ const defaultWebApps = [
     category: 'utilities',
     url: '/app/clock/',
     port: 80,
+    // SANDBOX-01: reads world-clock config from localStorage at load.
+    needsSameOrigin: true,
   },
   {
     id: 'pdf-viewer',
@@ -252,6 +257,8 @@ const defaultWebApps = [
     category: 'productivity',
     url: '/app/pdf-viewer/',
     port: 80,
+    // SANDBOX-01: stores per-doc notes/annotations + recents in localStorage.
+    needsSameOrigin: true,
   },
   {
     id: 'text-editor',
@@ -262,6 +269,8 @@ const defaultWebApps = [
     category: 'productivity',
     url: '/app/text-editor/',
     port: 80,
+    // SANDBOX-01: persists theme/font/wrap/last-file in localStorage.
+    needsSameOrigin: true,
   },
   {
     id: 'sheets',
@@ -282,6 +291,8 @@ const defaultWebApps = [
     category: 'utilities',
     url: '/app/weather/',
     port: 80,
+    // SANDBOX-01: reads unit/location prefs from localStorage at load.
+    needsSameOrigin: true,
   },
 ]
 
@@ -309,6 +320,8 @@ export function refreshInstalled() {
           port: a.port || 80,
           command: a.command || '',
           workDir: a.work_dir || '',
+          // SANDBOX-01: installed apps opt into same-origin iframes explicitly.
+          needsSameOrigin: !!a.needs_same_origin,
           installed: true,
         }))
       return installedApps
@@ -358,6 +371,26 @@ export function getApps() {
 
 export function getAppById(id) {
   return getApps().find(app => app.id === id)
+}
+
+// SANDBOX-01: iframe origin isolation.
+//
+// App iframes are served from SAME-ORIGIN paths (/app/<id>/, /apps/browser/…).
+// A same-origin iframe with `allow-scripts` is NOT a security boundary: it can
+// reach window.top, the shell's localStorage/cookies, and any gateway-injected
+// auth headers. The correct long-term fix is to serve each app from its own
+// origin (e.g. <id>.apps.host) so the browser enforces isolation for us.
+//
+// Until that re-architecture lands, `allow-same-origin` is OPT-IN. An app only
+// receives it if it declares `needsSameOrigin: true` (builtin/web registry) or
+// `needs_same_origin: true` in its installed app.json. Everything else runs in
+// an opaque origin and is properly sandboxed from the shell. The only apps that
+// currently opt in are those that read/write localStorage at load (calculator,
+// clock, pdf-viewer, text-editor, weather) — an opaque origin makes localStorage
+// throw, which would white-screen them.
+export function needsSameOrigin(appId) {
+  const app = getAppById(appId)
+  return !!(app && app.needsSameOrigin)
 }
 
 export function getAppsByCategory() {

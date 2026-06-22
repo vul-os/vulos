@@ -2,6 +2,18 @@ import { Component, useCallback, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
+import { needsSameOrigin } from '../core/AppRegistry'
+
+// SANDBOX-01: build the iframe sandbox for a URL-loaded app. App pages are
+// served same-origin, so `allow-same-origin` here defeats the sandbox (the app
+// can reach window.top, shell localStorage/cookies, gateway auth headers). It
+// is therefore opt-in per app via AppRegistry's needsSameOrigin(); apps that do
+// not opt in run in an opaque origin and are isolated from the shell.
+// The real fix is per-app origins — see the note in AppRegistry.js.
+function iframeSandbox(appId) {
+  const base = 'allow-scripts allow-forms allow-popups'
+  return needsSameOrigin(appId) ? `${base} allow-same-origin` : base
+}
 
 // WindowErrorBoundary — catches errors thrown by a window's app component so
 // a single broken app cannot crash the entire desktop shell.
@@ -216,7 +228,7 @@ export default function Window({ win, pointerBlock }) {
             title={win.title}
             className="absolute inset-0 w-full h-full border-0"
             style={{ pointerEvents: dragging ? 'none' : 'auto' }}
-            sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+            sandbox={iframeSandbox(win.appId)}
             referrerPolicy="no-referrer"
           />
         )}
