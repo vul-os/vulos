@@ -74,6 +74,74 @@ class WindowErrorBoundary extends Component {
   }
 }
 
+// IframeApp — wraps a URL-loaded app iframe with load/crash detection so a
+// failed app (server down, crashed mid-session, blocked) gets a friendly
+// in-shell fallback with retry instead of a blank/broken frame. The React
+// error boundary above cannot see iframe load failures (they don't throw into
+// React), so this fills that gap (REVIEW item 5).
+const IFRAME_LOAD_TIMEOUT_MS = 12000
+
+function IframeApp({ url, title, appId, sandbox, dragging }) {
+  const [status, setStatus] = useState('loading') // 'loading' | 'ok' | 'error'
+  const [attempt, setAttempt] = useState(0)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStatus('loading')
+    clearTimeout(timerRef.current)
+    // If the frame hasn't loaded within the timeout, treat it as unreachable.
+    timerRef.current = setTimeout(() => {
+      setStatus(s => (s === 'loading' ? 'error' : s))
+    }, IFRAME_LOAD_TIMEOUT_MS)
+    return () => clearTimeout(timerRef.current)
+  }, [url, attempt])
+
+  const retry = useCallback(() => {
+    setStatus('loading')
+    setAttempt(a => a + 1)
+  }, [])
+
+  // Cache-bust on retry so a transiently-down app re-fetches rather than
+  // serving a stale failed response.
+  const src = attempt === 0 ? url : `${url}${url.includes('?') ? '&' : '?'}_r=${attempt}`
+
+  return (
+    <>
+      <iframe
+        key={attempt}
+        src={src}
+        title={title}
+        className="absolute inset-0 w-full h-full border-0"
+        style={{ pointerEvents: dragging ? 'none' : 'auto' }}
+        sandbox={sandbox}
+        referrerPolicy="no-referrer"
+        onLoad={() => { clearTimeout(timerRef.current); setStatus('ok') }}
+        onError={() => { clearTimeout(timerRef.current); setStatus('error') }}
+      />
+      {status === 'error' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/95">
+          <svg viewBox="0 0 24 24" className="w-9 h-9 text-neutral-700 mb-3" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
+          </svg>
+          <div className="text-neutral-300 text-sm font-medium mb-1">{title} didn’t load</div>
+          <div className="text-neutral-500 text-xs mb-4 max-w-xs">
+            The app may still be starting up or is temporarily unreachable.
+          </div>
+          <button
+            onClick={retry}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-blue-600 text-neutral-200 hover:text-white transition-colors focus-primary"
+          >
+            Retry{attempt > 0 ? ` (${attempt})` : ''}
+          </button>
+          <div className="text-[10px] text-neutral-700 mt-3 font-mono truncate max-w-xs">{appId}</div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function Window({ win, pointerBlock }) {
   const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, openNativeWindow, activeWindow } = useShell()
   const [dragging, setDragging] = useState(false)
@@ -182,7 +250,6 @@ export default function Window({ win, pointerBlock }) {
     }
   }
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const onDragStart = useCallback((e) => {
     if (e.target.closest('[data-no-drag]')) return
     e.preventDefault()
@@ -318,13 +385,12 @@ export default function Window({ win, pointerBlock }) {
             sandbox="allow-scripts"
           />
         ) : (
-          <iframe
-            src={win.url}
+          <IframeApp
+            url={win.url}
             title={win.title}
-            className="absolute inset-0 w-full h-full border-0"
-            style={{ pointerEvents: dragging ? 'none' : 'auto' }}
+            appId={win.appId}
             sandbox={iframeSandbox(win.appId)}
-            referrerPolicy="no-referrer"
+            dragging={dragging}
           />
         )}
 
