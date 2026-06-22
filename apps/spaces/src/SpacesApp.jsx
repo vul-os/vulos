@@ -10,7 +10,6 @@
  * removed. The mesh path supports up to DEFAULT_MESH_THRESHOLD participants.
  */
 
-import { useCallback } from 'react'
 import { SpacesLib } from '@vulos/office-client/spaces'
 import { useTheme } from '../../../src/core/ThemeProvider.jsx'
 
@@ -33,8 +32,10 @@ function osLogout() {
 export default function SpacesApp() {
   const { resolved: theme } = useTheme()
 
-  const handleNotification = useCallback(osNotifier, [])
-  const handleSignOut = useCallback(osLogout, [])
+  // osNotifier / osLogout are stable module-level functions; pass them through
+  // directly rather than memoising (no captured render-scope state).
+  const handleNotification = osNotifier
+  const handleSignOut = osLogout
 
   return (
     <SpacesLib

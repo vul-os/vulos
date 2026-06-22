@@ -20,6 +20,7 @@ function useFocusedAppVisibility(appId) {
   const [visibility, setVisibility] = useState(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!appId) { setVisibility(null); return }
 
     let cancelled = false

@@ -5,7 +5,19 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'apps/*/vendor/**', 'apps/notes/collab.js', 'apps/social/hls.js']),
+  // Build artifacts and vendored third-party bundles are not our source — they
+  // are minified / generated and should never be linted. `output/` is the
+  // build staging dir (gitignored), `dist/` the Vite output, and `vendor/`
+  // dirs hold upstream libraries shipped verbatim with the single-file apps.
+  globalIgnores([
+    'dist',
+    'output',
+    'apps/*/vendor/**',
+    'apps/**/vendor/**',
+    'apps/notes/collab.js',
+    'apps/social/hls.js',
+    'public/sw.js',
+  ]),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -15,7 +27,15 @@ export default defineConfig([
     ],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      // Browser is the primary runtime, but a handful of shell globals
+      // (service-worker registration, React DevTools hook, the Cache API used
+      // by the offline layer) are not in the default browser set on every
+      // eslint/globals version, so they are added explicitly here.
+      globals: {
+        ...globals.browser,
+        __REACT_DEVTOOLS_GLOBAL_HOOK__: 'readonly',
+        caches: 'readonly',
+      },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
@@ -24,6 +44,32 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+    },
+  },
+  // Test files — Vitest runs with `globals: true`, so the describe/it/expect
+  // family and the lifecycle hooks are ambient. Also allow Node globals
+  // (__dirname, process) used by fixture-loading tests.
+  {
+    files: ['**/*.test.{js,jsx}', '**/__tests__/**/*.{js,jsx}', 'src/test-setup.js'],
+    languageOptions: {
+      globals: {
+        ...globals.vitest,
+        ...globals.node,
+      },
+    },
+  },
+  // Node-context files — config, build scripts, and service worker tests read
+  // from the filesystem and use CommonJS/Node globals.
+  {
+    files: [
+      '*.config.js',
+      'scripts/**/*.{js,mjs}',
+      'public/**/*.js',
+    ],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 ])

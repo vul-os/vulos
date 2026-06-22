@@ -255,6 +255,7 @@ export default function AppPublishCard() {
 
   // Initial load + poll every 5 s
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
     timerRef.current = setInterval(loadData, APC_POLL_MS)
     return () => clearInterval(timerRef.current)

@@ -37,7 +37,7 @@ export async function semanticSearch(query, opts = {}) {
       hits: Array.isArray(data.hits) ? data.hits : [],
       degraded: !!data.degraded,
     };
-  } catch (_) {
+  } catch {
     return { hits: [], degraded: true };
   }
 }
@@ -55,7 +55,6 @@ export async function semanticSearch(query, opts = {}) {
  */
 export function mergeResults(allNotes, semanticHits, query) {
   const lq = query.toLowerCase();
-  const semanticMap = new Map(semanticHits.map(h => [h.note_id, h.score]));
 
   // Full-text matches (existing behaviour).
   const ftMatches = lq

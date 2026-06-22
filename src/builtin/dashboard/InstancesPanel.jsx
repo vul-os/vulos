@@ -393,6 +393,7 @@ export default function InstancesPanel() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
     pollRef.current = setInterval(loadData, IP_POLL_MS)
     return () => clearInterval(pollRef.current)

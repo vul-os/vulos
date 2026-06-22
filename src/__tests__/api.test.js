@@ -40,7 +40,7 @@ describe('api.request — cloud↔LAN failover', () => {
     // Second probe (forced): LAN down, cloud up → cloud selected.
     // Retry against cloud succeeds with JSON body.
     let lanProbed = 0
-    const fetchMock = vi.fn(async (url, init) => {
+    const fetchMock = vi.fn(async (url) => {
       const u = String(url)
       // Probes hit /api/auth/status; data requests hit /api/files in this test.
       if (u.endsWith('/api/auth/status')) {

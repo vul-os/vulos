@@ -16,7 +16,6 @@ const POLL_INTERVAL_MS = 2000 // 2s poll cadence
 export default function QRLoginPanel({ onSuccess, onCancel }) {
   const [state, setState] = useState('loading') // 'loading' | 'waiting' | 'approved' | 'expired' | 'error'
   const [qrData, setQrData] = useState(null)
-  const [expiresAt, setExpiresAt] = useState(null)
   const [secondsLeft, setSecondsLeft] = useState(null)
   const pollTimer = useRef(null)
   const countdownTimer = useRef(null)
@@ -30,7 +29,6 @@ export default function QRLoginPanel({ onSuccess, onCancel }) {
   const startChallenge = useCallback(async () => {
     setState('loading')
     setQrData(null)
-    setExpiresAt(null)
     setSecondsLeft(null)
     stopTimers()
 
@@ -42,7 +40,6 @@ export default function QRLoginPanel({ onSuccess, onCancel }) {
       challengeId.current = data.challenge_id
       const exp = new Date(data.expires_at)
       setQrData(data.qr_data)
-      setExpiresAt(exp)
       setState('waiting')
 
       // Countdown ticker.
@@ -82,7 +79,7 @@ export default function QRLoginPanel({ onSuccess, onCancel }) {
         }
       }
       pollTimer.current = setTimeout(poll, POLL_INTERVAL_MS)
-    } catch (err) {
+    } catch {
       setState('error')
     }
   }, [onSuccess, stopTimers])

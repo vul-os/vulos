@@ -11,7 +11,6 @@
  * The SpacesLib MemoryRouter starts at /meet for the focused join flow.
  */
 
-import { useCallback } from 'react'
 import { SpacesLib } from '@vulos/office-client/spaces'
 import { useTheme } from '../../../src/core/ThemeProvider.jsx'
 
@@ -34,8 +33,10 @@ function osLogout() {
 export default function MeetApp() {
   const { resolved: theme } = useTheme()
 
-  const handleNotification = useCallback(osNotifier, [])
-  const handleSignOut = useCallback(osLogout, [])
+  // osNotifier / osLogout are stable module-level functions; pass them through
+  // directly rather than memoising (no captured render-scope state).
+  const handleNotification = osNotifier
+  const handleSignOut = osLogout
 
   return (
     <SpacesLib

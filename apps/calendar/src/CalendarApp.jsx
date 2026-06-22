@@ -7,7 +7,7 @@
  *   - Routes in-app notifications to the OS notification bus
  */
 
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { CalendarLib } from '@vulos/office-client/calendar'
 import { ContactsLib } from '@vulos/office-client/contacts'
 import { useTheme } from '../../../src/core/ThemeProvider.jsx'
@@ -34,8 +34,10 @@ export default function CalendarApp() {
   const { resolved: theme } = useTheme()
   const [activeTab, setActiveTab] = useState('Calendar')
 
-  const handleNotification = useCallback(osNotifier, [])
-  const handleSignOut = useCallback(osLogout, [])
+  // osNotifier / osLogout are stable module-level functions; pass them through
+  // directly rather than memoising (no captured render-scope state).
+  const handleNotification = osNotifier
+  const handleSignOut = osLogout
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

@@ -770,6 +770,7 @@ function IS09_SyncingStep({ onNext, onComplete }) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     IS09_poll()
     IS09_pollRef.current = setInterval(IS09_poll, 3000)
     return () => clearInterval(IS09_pollRef.current)

@@ -161,7 +161,7 @@ describe('public/sw.js — OS service worker', () => {
   })
 
   it('cache-first: GET /index.html returns cached response without hitting the network', async () => {
-    const { handlers, caches, fetchSpy } = loadSW()
+    const { handlers, fetchSpy } = loadSW()
     await fireInstall(handlers) // populates the shell cache
     const req = makeRequest('https://app.vulos.org/index.html')
     const evt = fireFetch(handlers, req)
