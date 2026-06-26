@@ -173,6 +173,23 @@ gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 
 The image is forkable: supply your own trust-anchor key and bucket URL for a fully independent build. See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md).
 
+### Entry points: desktop shell vs. Workspace
+
+A self-hosted box exposes two clients for the **same** apps and data:
+
+- **Desktop shell (primary, local)** — `http://YOUR_BOX:8080/` serves the React
+  window-manager shell. This is the full local experience.
+- **Vulos Workspace (browser / remote front door)** — `http://YOUR_BOX:8080/workspace`
+  redirects to the gateway-served Workspace app (`/app/vulos-workspace/`). It is
+  the lightweight browser/remote client of the box: a remote browser hitting the
+  box lands on the Workspace front door to that box's apps.
+
+Workspace is served through the auth-enforcing gateway, which injects the box's
+identity headers and rewrites the app's `<base href>` so its assets resolve under
+`/app/vulos-workspace/`. Workspace's absolute `/api/*` calls bypass that base tag
+and resolve to the box's control-plane (this server), so the browser client always
+talks to the box it was opened from.
+
 ---
 
 ## Security

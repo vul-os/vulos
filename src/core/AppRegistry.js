@@ -135,15 +135,10 @@ const builtinRegistry = [
     builtin: true,
   },
 
-  {
-    id: 'spaces',
-    name: 'Spaces',
-    icon: '⊞',
-    description: 'Channels, DMs, threads, and video calls',
-    keywords: ['spaces', 'chat', 'channels', 'dm', 'direct', 'calls', 'video', 'meetings', 'talk'],
-    category: 'internet',
-    builtin: true,
-  },
+  // Spaces was extracted out of vulos-office into the standalone Vulos Talk
+  // product. The embedded builtin (which imported @vulos/office-client/spaces)
+  // is retired; users reach chat/channels via the gateway-proxied `vulos-talk`
+  // web app registered below (/app/vulos-talk/).
 
   {
     id: 'calendar',
@@ -155,15 +150,10 @@ const builtinRegistry = [
     builtin: true,
   },
 
-  {
-    id: 'meet',
-    name: 'Meet',
-    icon: '◉',
-    description: 'Join a video meeting by link or code',
-    keywords: ['meet', 'video', 'call', 'meeting', 'join', 'conference'],
-    category: 'internet',
-    builtin: true,
-  },
+  // The embedded "meet" builtin also relied on @vulos/office-client/spaces
+  // (the spaces lib provided the call/meeting components). With Spaces moved to
+  // Vulos Talk, video meetings are served by the gateway-proxied `vulos-meet`
+  // web app registered below (/app/vulos-meet/); the builtin is retired.
 
   // BROWSER-01: "Smart Browser" is the client-side web app (apps/browser/).
   // It opens in the host browser as a WebApp lane entry — zero stream.Session.

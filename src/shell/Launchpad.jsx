@@ -43,9 +43,10 @@ const Messages = lazy(() => import('../builtin/peering/Messages'))
 const MailApp = lazy(() => import('../apps/mail/App'))
 const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
 const OfficeApp   = lazy(() => import('../../apps/office/src/OfficeApp.jsx'))
-const SpacesApp   = lazy(() => import('../../apps/spaces/src/SpacesApp.jsx'))
 const CalendarApp = lazy(() => import('../../apps/calendar/src/CalendarApp.jsx'))
-const MeetApp     = lazy(() => import('../../apps/meet/src/MeetApp.jsx'))
+// Spaces (chat/channels) and Meet (video) were extracted into the standalone
+// Vulos Talk / Vulos Meet products. They are now launched as gateway-proxied
+// web apps (vulos-talk, vulos-meet) via the registry, not embedded builtins.
 
 const categoryLabels = {
   internet: 'Internet',
@@ -144,9 +145,7 @@ export default function Launchpad() {
       mail:     () => createElement(Suspense, { fallback: loading }, createElement(MailApp)),
       dashboard: () => createElement(Suspense, { fallback: loading }, createElement(DashboardApp)),
       office:   () => createElement(Suspense, { fallback: loading }, createElement(OfficeApp)),
-      spaces:   () => createElement(Suspense, { fallback: loading }, createElement(SpacesApp)),
       calendar: () => createElement(Suspense, { fallback: loading }, createElement(CalendarApp)),
-      meet:     () => createElement(Suspense, { fallback: loading }, createElement(MeetApp)),
     }
     const singletons = new Set(['persona', 'apphub', 'dashboard'])
     if (builtins[app.id]) {

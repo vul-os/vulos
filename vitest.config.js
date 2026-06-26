@@ -6,13 +6,13 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Allow office/spaces/calendar/meet OS wrappers to import @vulos/office-client
-      // sub-path exports from the local vulos-office source tree
+      // Allow the office/calendar OS wrappers to import @vulos/office-client
+      // sub-path exports from the local vulos-office source tree.
+      // (Spaces was extracted into the Vulos Talk product — no longer exported.)
       '@vulos/office-client/docs':     resolve(import.meta.dirname, '../vulos-office/src/apps/docs/lib.jsx'),
       '@vulos/office-client/sheets':   resolve(import.meta.dirname, '../vulos-office/src/apps/sheets/lib.jsx'),
       '@vulos/office-client/slides':   resolve(import.meta.dirname, '../vulos-office/src/apps/slides/lib.jsx'),
       '@vulos/office-client/pdf':      resolve(import.meta.dirname, '../vulos-office/src/apps/pdf/lib.jsx'),
-      '@vulos/office-client/spaces':   resolve(import.meta.dirname, '../vulos-office/src/apps/spaces/lib.jsx'),
       '@vulos/office-client/calendar': resolve(import.meta.dirname, '../vulos-office/src/apps/calendar/lib.jsx'),
       '@vulos/office-client/contacts': resolve(import.meta.dirname, '../vulos-office/src/apps/contacts/lib.jsx'),
       '@vulos/office-client':          resolve(import.meta.dirname, '../vulos-office/src/lib/index.js'),

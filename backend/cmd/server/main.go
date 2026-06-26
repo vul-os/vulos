@@ -2904,6 +2904,29 @@ func main() {
 	// Persistent notification store + prune endpoint (NOTIF-02)
 	registerNotifyPersistRoutes(mux, notifySvc, home)
 
+	// Box-serves-Workspace: friendly browser front door.
+	//
+	// The OS desktop shell (served from "/" below) is the primary LOCAL client.
+	// Vulos Workspace is the BROWSER/REMOTE client of the same box: a remote
+	// browser hitting the box gets the Workspace front door to that box's apps.
+	//
+	// Workspace is a gateway-proxied web app (registered as `vulos-workspace`,
+	// served at /app/vulos-workspace/). The gateway enforces auth, injects the
+	// box identity headers, and rewrites the app's <base href> so its relative
+	// assets resolve under the prefix. Workspace's ABSOLUTE /api/* calls are not
+	// affected by that <base> tag, so they hit the box control-plane (this mux)
+	// directly — exactly the box whose Workspace was opened.
+	//
+	// We expose a stable, human-friendly entry point (/workspace) that redirects
+	// to the gateway-served SPA. Registered before the "/" catch-all; Go's
+	// most-specific-wins ServeMux routing keeps it from shadowing the desktop.
+	const workspaceApp = "/app/vulos-workspace/"
+	workspaceFrontDoor := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, workspaceApp, http.StatusFound)
+	}
+	mux.HandleFunc("/workspace", workspaceFrontDoor)
+	mux.HandleFunc("/workspace/", workspaceFrontDoor)
+
 	// Serve frontend static files (production build)
 	webrootDir := ""
 	for _, dir := range []string{"/opt/vulos/webroot", "./dist", "../dist", "../../dist"} {
