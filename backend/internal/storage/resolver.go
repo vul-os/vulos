@@ -63,6 +63,11 @@ func normalizePrefix(p string) string {
 	return p + "/"
 }
 
+// defaultOSBucket is the legacy cluster bucket the OS uses for its own
+// (cluster/sync) data when no explicit bucket is configured. It is the
+// "box-user" bucket and is NEVER shared with per-user app storage.
+const defaultOSBucket = "vulos-cluster"
+
 // ResolverConfig is the box-side static configuration for the Resolver, read
 // from the environment in self-host deployments.
 type ResolverConfig struct {
@@ -72,21 +77,34 @@ type ResolverConfig struct {
 	SecretKey    string
 	SessionToken string
 	UseSSL       bool
-	// Bucket, when set, is the per-user account bucket shared across this box
-	// (single-tenant self-host). When empty, the account bucket is derived per
-	// user as "<BucketPrefix><userID>".
+	// Bucket, when set, is an EXPLICIT shared account bucket used for ALL users
+	// (single-tenant self-host). C2: configuring this in a multi-user box is a
+	// cross-user-isolation hazard — main() refuses to boot in that case. When
+	// empty (the default), the account bucket is derived PER USER as
+	// "<BucketPrefix><userID>" so isolation holds by construction.
 	Bucket       string
 	BucketPrefix string // default "vulos-"
+	// OSBucket is the bucket for the OS's own (cluster/sync) data — the box-user
+	// bucket. Defaults to "vulos-cluster" (legacy). It is independent of per-user
+	// buckets so the OS never co-mingles with user data.
+	OSBucket string
 	// LocalRoot is the local-FS fallback root used when no object store is
 	// configured (Endpoint empty).
 	LocalRoot string
 }
 
 // LoadResolverConfig reads the unified storage config from the environment.
-// VULOS_STORAGE_* take precedence; they fall back to the existing cluster
-// VULOS_S3_* variables so the OS storage binding matches the cluster config
-// out of the box (self-host). Defaults mirror cluster.LoadS3Config so wiring the
-// cluster through the resolver is behaviour-preserving.
+// VULOS_STORAGE_* take precedence; connection settings fall back to the existing
+// cluster VULOS_S3_* variables so the OS storage binding matches the cluster
+// config out of the box (self-host).
+//
+// C2 (per-user isolation by construction): Bucket is read ONLY from the explicit
+// VULOS_STORAGE_BUCKET opt-in and has NO default. When unset, every user gets a
+// derived per-user bucket "<BucketPrefix><userID>" — one shared bucket is never
+// handed to all users by default. The legacy VULOS_S3_BUCKET (and the
+// "vulos-cluster" default) now feed only OSBucket, the OS's own (cluster/sync)
+// bucket, so existing cluster behaviour is preserved without leaking that bucket
+// to per-user app storage.
 func LoadResolverConfig() ResolverConfig {
 	home, _ := os.UserHomeDir()
 	return ResolverConfig{
@@ -96,16 +114,35 @@ func LoadResolverConfig() ResolverConfig {
 		SecretKey:    firstNonEmpty(os.Getenv("VULOS_STORAGE_SECRET_KEY"), os.Getenv("VULOS_S3_SECRET_KEY")),
 		SessionToken: os.Getenv("VULOS_STORAGE_SESSION_TOKEN"),
 		UseSSL:       firstNonEmpty(os.Getenv("VULOS_STORAGE_USE_SSL"), os.Getenv("VULOS_S3_USE_SSL"), "false") == "true",
-		Bucket:       firstNonEmpty(os.Getenv("VULOS_STORAGE_BUCKET"), os.Getenv("VULOS_S3_BUCKET"), "vulos-cluster"),
+		// Explicit shared-bucket opt-in only — NO default (C2).
+		Bucket:       os.Getenv("VULOS_STORAGE_BUCKET"),
 		BucketPrefix: firstNonEmpty(os.Getenv("VULOS_STORAGE_BUCKET_PREFIX"), "vulos-"),
-		LocalRoot:    firstNonEmpty(os.Getenv("VULOS_STORAGE_LOCAL_ROOT"), filepath.Join(home, ".vulos", "storage")),
+		// OS/box bucket keeps the legacy cluster default.
+		OSBucket:  firstNonEmpty(os.Getenv("VULOS_STORAGE_OS_BUCKET"), os.Getenv("VULOS_S3_BUCKET"), defaultOSBucket),
+		LocalRoot: firstNonEmpty(os.Getenv("VULOS_STORAGE_LOCAL_ROOT"), filepath.Join(home, ".vulos", "storage")),
 	}
 }
 
 // CloudHook lets the cloud control plane override resolution with CP-provided
 // per-user storage credentials (e.g. STS-scoped to vulos-<ulid>). It returns
 // (Resolution, true) to take over, or (_, false) to fall through to box config.
+// This is the C1/C3 seam by which the cloud CP supplies short-lived, scoped
+// credentials instead of the box's long-lived static creds.
 type CloudHook func(ctx context.Context, userID string) (Resolution, bool)
+
+// ScopedCreds is a set of short-lived credentials scoped to a single
+// bucket/prefix (e.g. from STS AssumeRole with an inline session policy).
+type ScopedCreds struct {
+	AccessKey    string
+	SecretKey    string
+	SessionToken string
+}
+
+// CredentialMinter issues SHORT-LIVED, PREFIX-SCOPED credentials for the given
+// bucket+prefix (C1/C3). It returns (creds, true) on success or (_, false) to
+// fall back to the resolver's static credentials. The MinIO/STS implementation
+// is in sts.go; the cloud CP may supply its own via SetCredentialMinter.
+type CredentialMinter func(ctx context.Context, bucket, prefix string) (ScopedCreds, bool)
 
 // Resolver yields the per-user object-store binding for the current request.
 // In self-host it is fed entirely from box config/env; in cloud a CloudHook
@@ -113,6 +150,7 @@ type CloudHook func(ctx context.Context, userID string) (Resolution, bool)
 type Resolver struct {
 	cfg       ResolverConfig
 	cloudHook CloudHook
+	minter    CredentialMinter
 }
 
 // NewResolver builds a Resolver from box-side configuration.
@@ -120,12 +158,24 @@ func NewResolver(cfg ResolverConfig) *Resolver {
 	if cfg.BucketPrefix == "" {
 		cfg.BucketPrefix = "vulos-"
 	}
+	if cfg.OSBucket == "" {
+		cfg.OSBucket = defaultOSBucket
+	}
 	return &Resolver{cfg: cfg}
 }
 
 // SetCloudHook installs the cloud control-plane override (cloud deployments).
 // Pass nil to use box config exclusively (self-host).
 func (r *Resolver) SetCloudHook(h CloudHook) { r.cloudHook = h }
+
+// SetCredentialMinter installs the short-lived prefix-scoped credential minter
+// (C1/C3). Pass nil to hand out static per-user-bucket credentials instead.
+func (r *Resolver) SetCredentialMinter(m CredentialMinter) { r.minter = m }
+
+// SharedBucketConfigured reports whether an EXPLICIT shared account bucket is
+// set (VULOS_STORAGE_BUCKET). main() uses this to refuse multi-user boot, since
+// a single shared bucket across users defeats per-user isolation (C2).
+func (r *Resolver) SharedBucketConfigured() bool { return r.cfg.Bucket != "" }
 
 // LocalRoot returns the local-FS fallback root used when no object store is
 // configured.
@@ -169,9 +219,15 @@ func (r *Resolver) OSResolution(ctx context.Context) Resolution {
 	return res
 }
 
-// bucketFor returns the per-user account bucket. A configured Bucket is the
-// shared single-tenant account bucket; otherwise the bucket is derived per user.
+// bucketFor returns the account bucket for userID. The OS resolves to its own
+// box-user bucket (osBucket). For real users, an EXPLICIT shared Bucket is used
+// when configured (single-tenant; guarded against multi-user at boot — C2),
+// otherwise the bucket is derived PER USER so cross-user access is impossible by
+// construction.
 func (r *Resolver) bucketFor(userID string) string {
+	if userID == osUserID {
+		return r.osBucket()
+	}
 	if r.cfg.Bucket != "" {
 		return r.cfg.Bucket
 	}
@@ -179,6 +235,45 @@ func (r *Resolver) bucketFor(userID string) string {
 		return ""
 	}
 	return r.cfg.BucketPrefix + userID
+}
+
+// osBucket returns the bucket for the OS's own (cluster/sync) data. When an
+// explicit shared Bucket is configured the OS shares it (single-tenant);
+// otherwise it uses OSBucket (default "vulos-cluster") — never a per-user bucket.
+func (r *Resolver) osBucket() string {
+	if r.cfg.Bucket != "" {
+		return r.cfg.Bucket
+	}
+	if r.cfg.OSBucket != "" {
+		return r.cfg.OSBucket
+	}
+	return defaultOSBucket
+}
+
+// ResolveScoped returns the storage binding for userID with Prefix set to
+// prefix and, when a CredentialMinter is configured, credentials scoped DOWN to
+// bucket/prefix via short-lived STS (C1/C3). The gateway passes the full
+// per-user/app prefix ("<userID>/<appID>/") so the minted policy is locked to
+// that path. If minting is unavailable the static per-user-bucket credentials
+// are returned unchanged — cross-USER access is still impossible thanks to the
+// per-user bucket/prefix (C2); cross-APP-within-one-user isolation then depends
+// on STS (or gateway mediation). The bool mirrors the resolver func contract
+// (always true here; the gateway decides whether the app is permitted).
+func (r *Resolver) ResolveScoped(ctx context.Context, userID, prefix string) (Resolution, bool) {
+	res := r.Resolve(ctx, userID).WithPrefix(prefix)
+	// No object store (local-FS fallback) — nothing to scope; signal fallback.
+	if !res.Configured() {
+		return res, true
+	}
+	if r.minter != nil {
+		if sc, ok := r.minter(ctx, res.Bucket, res.Prefix); ok {
+			res.AccessKey = sc.AccessKey
+			res.SecretKey = sc.SecretKey
+			res.SessionToken = sc.SessionToken
+		}
+		// else: fall back to static per-user-bucket creds (documented residual).
+	}
+	return res, true
 }
 
 // endpointURL renders a raw host[:port] (or already-qualified URL) as an S3 URL.

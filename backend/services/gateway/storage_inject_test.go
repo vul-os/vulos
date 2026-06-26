@@ -10,18 +10,22 @@ import (
 )
 
 // newStorageGateway builds a Gateway with just the fields the storage-injection
-// logic needs (no network / auth wiring).
+// logic needs (no network / auth wiring). A broker secret is preset since H2/H3
+// makes the gateway fail closed without one.
 func newStorageGateway() *Gateway {
 	return &Gateway{
-		appSecrets:  make(map[string]string),
-		appHits:     make(map[string]*rateBucket),
-		storageApps: make(map[string]string),
+		appSecrets:          make(map[string]string),
+		appHits:             make(map[string]*rateBucket),
+		storageApps:         make(map[string]string),
+		storageBrokerSecret: "broker-secret",
 	}
 }
 
 func TestInjectStorage_PermittedApp(t *testing.T) {
 	g := newStorageGateway()
-	g.SetStorageResolver(func(_ context.Context, userID string) (storagepkg.Resolution, bool) {
+	var gotPrefix string
+	g.SetStorageResolver(func(_ context.Context, userID, prefix string) (storagepkg.Resolution, bool) {
+		gotPrefix = prefix
 		return storagepkg.Resolution{
 			Endpoint:  "https://s3.example.com",
 			Bucket:    "vulos-" + userID,
@@ -35,14 +39,18 @@ func TestInjectStorage_PermittedApp(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	g.injectStorageHeaders(context.Background(), r, "user123", "office")
 
+	// C2: the gateway must pass and stamp the per-user prefix "<userID>/<appID>/".
+	if gotPrefix != "user123/office/" {
+		t.Fatalf("resolver prefix = %q, want user123/office/", gotPrefix)
+	}
 	if got := r.Header.Get("X-Vulos-Storage-Endpoint"); got != "https://s3.example.com" {
 		t.Fatalf("endpoint = %q", got)
 	}
 	if got := r.Header.Get("X-Vulos-Storage-Bucket"); got != "vulos-user123" {
 		t.Fatalf("bucket = %q", got)
 	}
-	if got := r.Header.Get("X-Vulos-Storage-Prefix"); got != "office/" {
-		t.Fatalf("prefix = %q", got)
+	if got := r.Header.Get("X-Vulos-Storage-Prefix"); got != "user123/office/" {
+		t.Fatalf("prefix = %q, want user123/office/", got)
 	}
 	if got := r.Header.Get("X-Vulos-Storage-Region"); got != "us-east-1" {
 		t.Fatalf("region = %q", got)
@@ -53,11 +61,37 @@ func TestInjectStorage_PermittedApp(t *testing.T) {
 	if got := r.Header.Get("X-Vulos-Storage-Secret-Key"); got != "SK" {
 		t.Fatalf("secret key = %q", got)
 	}
+	// H2/H3: the broker-auth header must be injected so apps can trust the seam.
+	if got := r.Header.Get("X-Vulos-Storage-Broker-Auth"); got != "broker-secret" {
+		t.Fatalf("broker-auth = %q, want broker-secret", got)
+	}
+}
+
+// H2/H3: with no broker secret the gateway must NOT hand out any storage creds.
+func TestInjectStorage_FailsClosedWithoutBrokerSecret(t *testing.T) {
+	g := newStorageGateway()
+	g.storageBrokerSecret = "" // simulate VULOS_STORAGE_BROKER_SECRET unset
+	g.SetStorageResolver(func(_ context.Context, userID, prefix string) (storagepkg.Resolution, bool) {
+		return storagepkg.Resolution{Endpoint: "https://s3.example.com", Bucket: "b", AccessKey: "AK", SecretKey: "SK"}, true
+	})
+	g.AllowStorage("office", "office/")
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	// A spoofed inbound header must still be stripped even when failing closed.
+	r.Header.Set("X-Vulos-Storage-Access-Key", "attacker")
+	g.injectStorageHeaders(context.Background(), r, "user123", "office")
+
+	if got := r.Header.Get("X-Vulos-Storage-Access-Key"); got != "" {
+		t.Fatalf("fail-closed must inject no creds (and strip spoof), got %q", got)
+	}
+	if got := r.Header.Get("X-Vulos-Storage-Broker-Auth"); got != "" {
+		t.Fatalf("fail-closed must not emit broker-auth, got %q", got)
+	}
 }
 
 func TestInjectStorage_UnpermittedApp(t *testing.T) {
 	g := newStorageGateway()
-	g.SetStorageResolver(func(context.Context, string) (storagepkg.Resolution, bool) {
+	g.SetStorageResolver(func(context.Context, string, string) (storagepkg.Resolution, bool) {
 		return storagepkg.Resolution{Endpoint: "https://s3.example.com", Bucket: "b"}, true
 	})
 	// "notes" was never granted storage.
@@ -71,7 +105,7 @@ func TestInjectStorage_UnpermittedApp(t *testing.T) {
 
 func TestInjectStorage_StripsSpoofedHeaders(t *testing.T) {
 	g := newStorageGateway()
-	g.SetStorageResolver(func(context.Context, string) (storagepkg.Resolution, bool) {
+	g.SetStorageResolver(func(context.Context, string, string) (storagepkg.Resolution, bool) {
 		// Resolver declines (e.g. cloud unavailable) → no legitimate headers.
 		return storagepkg.Resolution{}, false
 	})
@@ -80,6 +114,7 @@ func TestInjectStorage_StripsSpoofedHeaders(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("X-Vulos-Storage-Access-Key", "attacker-controlled")
 	r.Header.Set("X-Vulos-Storage-Endpoint", "https://evil.example.com")
+	r.Header.Set("X-Vulos-Storage-Broker-Auth", "attacker-broker")
 	g.injectStorageHeaders(context.Background(), r, "user123", "office")
 
 	if got := r.Header.Get("X-Vulos-Storage-Access-Key"); got != "" {
@@ -88,13 +123,16 @@ func TestInjectStorage_StripsSpoofedHeaders(t *testing.T) {
 	if got := r.Header.Get("X-Vulos-Storage-Endpoint"); got != "" {
 		t.Fatalf("spoofed endpoint must be stripped, got %q", got)
 	}
+	if got := r.Header.Get("X-Vulos-Storage-Broker-Auth"); got != "" {
+		t.Fatalf("spoofed broker-auth must be stripped, got %q", got)
+	}
 }
 
 // Even an unpermitted app must have inbound storage headers stripped so it can
 // never read client-supplied credentials.
 func TestInjectStorage_StripsSpoofedForUnpermitted(t *testing.T) {
 	g := newStorageGateway()
-	g.SetStorageResolver(func(context.Context, string) (storagepkg.Resolution, bool) {
+	g.SetStorageResolver(func(context.Context, string, string) (storagepkg.Resolution, bool) {
 		return storagepkg.Resolution{}, false
 	})
 
@@ -109,7 +147,7 @@ func TestInjectStorage_StripsSpoofedForUnpermitted(t *testing.T) {
 
 func TestInjectStorage_EmptyEndpointSignalsFallback(t *testing.T) {
 	g := newStorageGateway()
-	g.SetStorageResolver(func(_ context.Context, userID string) (storagepkg.Resolution, bool) {
+	g.SetStorageResolver(func(_ context.Context, userID, prefix string) (storagepkg.Resolution, bool) {
 		// Local-FS fallback: empty endpoint, bucket still derived.
 		return storagepkg.Resolution{Bucket: "vulos-" + userID}, true
 	})

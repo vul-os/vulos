@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -120,5 +121,103 @@ func TestCloudHook_Override(t *testing.T) {
 	res := r.Resolve(context.Background(), "u9")
 	if res.Endpoint != "https://cp.example.com" || res.Bucket != "vulos-u9" || res.SessionToken != "tok" {
 		t.Fatalf("cloud hook not applied: %+v", res)
+	}
+}
+
+// C2: with no explicit shared bucket configured (the default), every user gets
+// a derived per-user bucket — never one shared bucket.
+func TestResolve_DefaultsToPerUserBucket(t *testing.T) {
+	// No Bucket configured → per-user derivation (mirrors LoadResolverConfig
+	// with VULOS_STORAGE_BUCKET unset).
+	r := NewResolver(ResolverConfig{
+		Endpoint:  "minio:9000",
+		AccessKey: "AK",
+		SecretKey: "SK",
+	})
+	if r.SharedBucketConfigured() {
+		t.Fatal("no shared bucket should be configured by default")
+	}
+	a := r.Resolve(context.Background(), "alice")
+	b := r.Resolve(context.Background(), "bob")
+	if a.Bucket != "vulos-alice" || b.Bucket != "vulos-bob" {
+		t.Fatalf("expected per-user buckets, got %q and %q", a.Bucket, b.Bucket)
+	}
+}
+
+// C2: an explicit shared bucket is reported so main() can refuse multi-user boot.
+func TestSharedBucketConfigured(t *testing.T) {
+	r := NewResolver(ResolverConfig{Bucket: "vulos-shared"})
+	if !r.SharedBucketConfigured() {
+		t.Fatal("explicit Bucket must report shared")
+	}
+	a := r.Resolve(context.Background(), "alice")
+	b := r.Resolve(context.Background(), "bob")
+	if a.Bucket != "vulos-shared" || b.Bucket != "vulos-shared" {
+		t.Fatalf("shared bucket must be returned for all users, got %q %q", a.Bucket, b.Bucket)
+	}
+}
+
+// C2: the OS uses its own (box-user) bucket, independent of per-user buckets.
+func TestOSBucket_IndependentOfUsers(t *testing.T) {
+	r := NewResolver(ResolverConfig{Endpoint: "minio:9000", AccessKey: "AK", SecretKey: "SK"})
+	os := r.OSResolution(context.Background())
+	if os.Bucket != "vulos-cluster" {
+		t.Fatalf("OS bucket = %q, want vulos-cluster (default OSBucket)", os.Bucket)
+	}
+	user := r.Resolve(context.Background(), "alice")
+	if user.Bucket == os.Bucket {
+		t.Fatalf("user bucket must not equal OS bucket (%q)", os.Bucket)
+	}
+}
+
+// C1/C3: ResolveScoped applies the prefix and, when a minter is set, replaces
+// the static creds with the minted short-lived scoped creds.
+func TestResolveScoped_MintsScopedCreds(t *testing.T) {
+	r := NewResolver(ResolverConfig{Endpoint: "minio:9000", AccessKey: "STATIC-AK", SecretKey: "STATIC-SK"})
+	var gotBucket, gotPrefix string
+	r.SetCredentialMinter(func(_ context.Context, bucket, prefix string) (ScopedCreds, bool) {
+		gotBucket, gotPrefix = bucket, prefix
+		return ScopedCreds{AccessKey: "TMP-AK", SecretKey: "TMP-SK", SessionToken: "TMP-TOK"}, true
+	})
+	res, ok := r.ResolveScoped(context.Background(), "alice", "alice/office/")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if gotBucket != "vulos-alice" || gotPrefix != "alice/office/" {
+		t.Fatalf("minter saw bucket=%q prefix=%q", gotBucket, gotPrefix)
+	}
+	if res.AccessKey != "TMP-AK" || res.SecretKey != "TMP-SK" || res.SessionToken != "TMP-TOK" {
+		t.Fatalf("expected minted creds, got %+v", res)
+	}
+	if res.Prefix != "alice/office/" {
+		t.Fatalf("prefix = %q", res.Prefix)
+	}
+}
+
+// C1/C3 residual: with no minter, ResolveScoped falls back to the static
+// per-user-bucket creds (cross-user still impossible thanks to the per-user
+// bucket from C2).
+func TestResolveScoped_FallsBackToStatic(t *testing.T) {
+	r := NewResolver(ResolverConfig{Endpoint: "minio:9000", AccessKey: "STATIC-AK", SecretKey: "STATIC-SK"})
+	res, ok := r.ResolveScoped(context.Background(), "alice", "alice/office/")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if res.AccessKey != "STATIC-AK" || res.Bucket != "vulos-alice" {
+		t.Fatalf("expected static per-user creds, got %+v", res)
+	}
+}
+
+// C1/C3: the STS inline session policy must lock to exactly bucket/prefix*.
+func TestScopedPolicy_LocksToPrefix(t *testing.T) {
+	p, err := scopedPolicy("vulos-alice", "alice/office/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p, "arn:aws:s3:::vulos-alice/alice/office/*") {
+		t.Fatalf("policy missing object-scope resource: %s", p)
+	}
+	if !strings.Contains(p, "\"s3:prefix\":[\"alice/office/*\"]") {
+		t.Fatalf("policy missing ListBucket prefix condition: %s", p)
 	}
 }

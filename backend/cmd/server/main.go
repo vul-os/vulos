@@ -508,10 +508,44 @@ func main() {
 	// per-user account bucket + credentials from box config/env (self-host) with a
 	// CloudHook seam for CP-provided config. Apps that declare the "storage"
 	// permission get X-Vulos-Storage-* headers injected by the gateway (server-side
-	// only, per-app key prefix), mirroring the integration-token injection.
+	// only, per-user/app key prefix), mirroring the integration-token injection.
 	storageResolver := storage.NewResolver(storage.LoadResolverConfig())
-	appGateway.SetStorageResolver(func(ctx context.Context, userID string) (storage.Resolution, bool) {
-		return storageResolver.Resolve(ctx, userID), true
+
+	// C1/C3: when an STS endpoint is configured, mint SHORT-LIVED, PREFIX-SCOPED
+	// credentials per app instead of handing out the box's long-lived full-bucket
+	// creds. Falls back to static per-user-bucket creds when STS is unavailable.
+	if stsEndpoint := os.Getenv("VULOS_STORAGE_STS_ENDPOINT"); stsEndpoint != "" {
+		durSec := 0
+		if v := os.Getenv("VULOS_STORAGE_STS_DURATION_SECONDS"); v != "" {
+			fmt.Sscanf(v, "%d", &durSec)
+		}
+		storageResolver.SetCredentialMinter(storageResolver.NewMinIOSTSMinter(storage.STSConfig{
+			Endpoint:        stsEndpoint,
+			RoleARN:         os.Getenv("VULOS_STORAGE_STS_ROLE_ARN"),
+			DurationSeconds: durSec,
+		}))
+		log.Printf("[storage] STS credential minting enabled (endpoint=%s) — apps receive short-lived prefix-scoped creds", stsEndpoint)
+	} else {
+		log.Printf("[storage] STS not configured (VULOS_STORAGE_STS_ENDPOINT unset) — apps receive static per-user-bucket creds; cross-app isolation within a user relies on gateway-mediated per-user/app prefixes")
+	}
+
+	// C2: refuse to boot with a single shared bucket while multiple users exist —
+	// a shared bucket across users defeats per-user isolation.
+	if storageResolver.SharedBucketConfigured() && authStore != nil {
+		if n := len(authStore.ListUsersWithRoles()); n > 1 {
+			log.Fatalf("[storage] ABORT: an explicit shared storage bucket (VULOS_STORAGE_BUCKET) is configured but %d users exist — this breaks per-user isolation (C2). Unset VULOS_STORAGE_BUCKET to use per-user buckets (vulos-<userID>).", n)
+		}
+	}
+
+	// H2/H3: the broker secret authenticates the gateway to consuming apps. When
+	// unset the gateway fails CLOSED (injects no storage creds at all).
+	storageBrokerSecret := os.Getenv("VULOS_STORAGE_BROKER_SECRET")
+	appGateway.SetStorageBrokerSecret(storageBrokerSecret)
+	if storageBrokerSecret == "" {
+		log.Printf("[storage] WARNING: VULOS_STORAGE_BROKER_SECRET unset — storage credential injection DISABLED (fail-closed). Set it (and the matching app-side secret) to enable the storage seam.")
+	}
+	appGateway.SetStorageResolver(func(ctx context.Context, userID, prefix string) (storage.Resolution, bool) {
+		return storageResolver.ResolveScoped(ctx, userID, prefix)
 	})
 	if manifests, err := appnet.ScanApps(appsDir); err == nil {
 		for _, m := range manifests {

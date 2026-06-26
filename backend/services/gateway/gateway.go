@@ -44,13 +44,22 @@ type Gateway struct {
 	integrationApps map[string]map[string]bool
 
 	// storageResolver, when set, yields the per-user object-store binding for the
-	// current request's user. Apps that declare the "storage" permission have it
-	// injected as X-Vulos-Storage-* request headers (the INTEG-04 pattern applied
-	// to storage). nil disables injection entirely.
-	storageResolver func(ctx context.Context, userID string) (storagepkg.Resolution, bool)
-	// storageApps maps appID → its key prefix in the shared per-user bucket
-	// (e.g. "office/"). Only listed apps receive storage headers.
+	// current request's user, scoped to the supplied prefix ("<userID>/<appID>/").
+	// Apps that declare the "storage" permission have it injected as
+	// X-Vulos-Storage-* request headers (the INTEG-04 pattern applied to storage).
+	// nil disables injection entirely.
+	storageResolver func(ctx context.Context, userID, prefix string) (storagepkg.Resolution, bool)
+	// storageApps maps appID → its key prefix component within the per-user
+	// namespace (e.g. "office/"). The gateway prepends "<userID>/" before
+	// injecting (C2), so the effective prefix is "<userID>/<appID>/". Only listed
+	// apps receive storage headers.
 	storageApps map[string]string
+	// storageBrokerSecret authenticates the gateway to consuming apps (H2/H3):
+	// when set it is emitted as X-Vulos-Storage-Broker-Auth alongside the storage
+	// headers, and apps reject seam headers unless it matches their own copy of
+	// VULOS_STORAGE_BROKER_SECRET. When EMPTY, the gateway refuses to inject any
+	// storage credentials (fail-closed).
+	storageBrokerSecret string
 }
 
 // rateBucket tracks request count per window for per-app rate limiting.
@@ -123,6 +132,32 @@ func (g *Gateway) AllowIntegration(appID, provider string) {
 	g.integrationApps[appID][provider] = true
 }
 
+// stripInboundVulosHeaders removes ALL client-supplied X-Vulos-* headers from h
+// so a client can never spoof identity, integration, storage, session or
+// broker-auth headers to an upstream app (H1). The gateway re-injects only the
+// trusted values afterwards. Used on both the HTTP and WebSocket paths.
+func stripInboundVulosHeaders(h http.Header) {
+	for k := range h {
+		if strings.HasPrefix(http.CanonicalHeaderKey(k), "X-Vulos-") {
+			h.Del(k)
+		}
+	}
+}
+
+// applyTrustedHeaders strips all inbound X-Vulos-* headers and re-injects the
+// trusted identity, integration and storage headers. Shared by the HTTP proxy
+// and WebSocket (H1) paths so neither can leak or be spoofed.
+func (g *Gateway) applyTrustedHeaders(ctx context.Context, pr *http.Request, session *auth.Session, appID string) {
+	stripInboundVulosHeaders(pr.Header)
+	pr.Header.Set("X-Vulos-User-ID", session.UserID)
+	pr.Header.Set("X-Vulos-Email", session.Email)
+	pr.Header.Set("X-Vulos-Session", session.ID)
+	pr.Header.Set("X-Vulos-App-ID", appID)
+	pr.Header.Del("Cookie")
+	g.injectIntegrationTokens(ctx, pr, appID)
+	g.injectStorageHeaders(ctx, pr, session.UserID, appID)
+}
+
 // injectIntegrationTokens adds X-Vulos-Integration-<Provider> headers for every
 // provider appID is permitted to receive. Mint failures (not connected, cloud
 // unavailable) are swallowed — the app simply sees no token and degrades.
@@ -150,12 +185,22 @@ func (g *Gateway) injectIntegrationTokens(ctx context.Context, pr *http.Request,
 }
 
 // SetStorageResolver installs the per-user storage resolver. Pass nil to
-// disable X-Vulos-Storage-* injection. The func returns the user's object-store
-// binding; the gateway overlays the per-app prefix before injecting headers.
-func (g *Gateway) SetStorageResolver(fn func(ctx context.Context, userID string) (storagepkg.Resolution, bool)) {
+// disable X-Vulos-Storage-* injection. The gateway computes the full per-user
+// prefix ("<userID>/<appID>/") and passes it so the resolver can mint
+// prefix-scoped credentials (C1/C3); the returned Resolution is injected as-is.
+func (g *Gateway) SetStorageResolver(fn func(ctx context.Context, userID, prefix string) (storagepkg.Resolution, bool)) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.storageResolver = fn
+}
+
+// SetStorageBrokerSecret sets the shared secret emitted as
+// X-Vulos-Storage-Broker-Auth (H2/H3). When empty, the gateway fails closed and
+// injects no storage credentials at all.
+func (g *Gateway) SetStorageBrokerSecret(secret string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.storageBrokerSecret = secret
 }
 
 // AllowStorage grants appID storage-header injection under prefix (its key
@@ -177,7 +222,8 @@ func (g *Gateway) AllowStorage(appID, prefix string) {
 // object store (empty Endpoint), the empty headers are still set so the app
 // detects the signal and falls back to local/standalone storage.
 func (g *Gateway) injectStorageHeaders(ctx context.Context, pr *http.Request, userID, appID string) {
-	// Anti-spoof: strip any client-supplied storage headers unconditionally.
+	// Anti-spoof: strip any client-supplied storage / broker-auth headers
+	// unconditionally — even for unpermitted apps and even when we won't inject.
 	for k := range pr.Header {
 		if strings.HasPrefix(http.CanonicalHeaderKey(k), "X-Vulos-Storage-") {
 			pr.Header.Del(k)
@@ -187,16 +233,30 @@ func (g *Gateway) injectStorageHeaders(ctx context.Context, pr *http.Request, us
 	g.mu.RLock()
 	fn := g.storageResolver
 	prefix, allowed := g.storageApps[appID]
+	secret := g.storageBrokerSecret
 	g.mu.RUnlock()
 	if fn == nil || !allowed {
 		return
 	}
+	// H2/H3 fail-closed: without a broker secret the consuming app cannot
+	// authenticate the seam, so never hand out storage credentials.
+	if secret == "" {
+		return
+	}
 
-	res, ok := fn(ctx, userID)
+	// C2: per-user prefix so isolation never depends on app behavior. The
+	// effective prefix is "<userID>/<appID>/"; the resolver scopes credentials
+	// to it (C1/C3) when a minter is configured.
+	fullPrefix := prefix
+	if userID != "" {
+		fullPrefix = userID + "/" + prefix
+	}
+
+	res, ok := fn(ctx, userID, fullPrefix)
 	if !ok {
 		return
 	}
-	res = res.WithPrefix(prefix)
+	res = res.WithPrefix(fullPrefix)
 
 	pr.Header.Set("X-Vulos-Storage-Endpoint", res.Endpoint)
 	pr.Header.Set("X-Vulos-Storage-Bucket", res.Bucket)
@@ -207,6 +267,8 @@ func (g *Gateway) injectStorageHeaders(ctx context.Context, pr *http.Request, us
 	if res.SessionToken != "" {
 		pr.Header.Set("X-Vulos-Storage-Session-Token", res.SessionToken)
 	}
+	// H2/H3: authenticate the broker to the app.
+	pr.Header.Set("X-Vulos-Storage-Broker-Auth", secret)
 }
 
 // integrationHeaderSuffix title-cases a provider id for the header name
@@ -316,7 +378,7 @@ func (g *Gateway) Handler() http.HandlerFunc {
 
 		// --- WebSocket upgrade ---
 		if isWebSocketUpgrade(r) {
-			g.proxyWebSocket(w, r, ns, appPath, session)
+			g.proxyWebSocket(w, r, ns, appPath, appID, session)
 			return
 		}
 
@@ -333,19 +395,14 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			}
 		}
 
-		// applyVulosHeaders stamps identity + integration headers and clears
+		// applyVulosHeaders strips all inbound X-Vulos-* (anti-spoof, H1), stamps
+		// trusted identity + integration + storage headers, and clears
 		// client-controlled hop headers. Applied on every (re)build of proxyReq
 		// so the retry path below doesn't drop these (previously it did).
 		applyVulosHeaders := func(pr *http.Request) {
-			pr.Header.Set("X-Vulos-User-ID", session.UserID)
-			pr.Header.Set("X-Vulos-Email", session.Email)
-			pr.Header.Set("X-Vulos-Session", session.ID)
-			pr.Header.Set("X-Vulos-App-ID", appID)
-			pr.Header.Del("Cookie")
+			g.applyTrustedHeaders(pr.Context(), pr, session, appID)
 			pr.Header.Del("Host")
 			pr.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
-			g.injectIntegrationTokens(pr.Context(), pr, appID)
-			g.injectStorageHeaders(pr.Context(), pr, session.UserID, appID)
 		}
 		applyVulosHeaders(proxyReq)
 
@@ -381,6 +438,11 @@ func (g *Gateway) Handler() http.HandlerFunc {
 				w.Header().Add(k, v)
 			}
 		}
+
+		// M2: strip ALL X-Vulos-* from the app's response so an app can never
+		// leak (or forge) seam headers — storage creds, broker-auth, identity —
+		// back to the browser. Done before the gateway sets its own X-Vulos-App.
+		stripInboundVulosHeaders(w.Header())
 
 		w.Header().Del("Set-Cookie")
 		w.Header().Del("X-Powered-By")
@@ -454,7 +516,7 @@ func isWebSocketUpgrade(r *http.Request) bool {
 }
 
 // proxyWebSocket handles WebSocket connections through the gateway.
-func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *appnet.Namespace, appPath string, session *auth.Session) {
+func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *appnet.Namespace, appPath, appID string, session *auth.Session) {
 	// Hijack the connection
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -469,12 +531,13 @@ func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *app
 		return
 	}
 
-	// Write the original HTTP upgrade request to the upstream
+	// Write the original HTTP upgrade request to the upstream. H1: strip ALL
+	// inbound X-Vulos-* and re-inject trusted identity/integration/storage
+	// headers so the WebSocket path can neither leak nor be spoofed (this
+	// previously wrote the client's raw headers, including any X-Vulos-*).
 	reqLine := fmt.Sprintf("%s %s HTTP/1.1\r\n", r.Method, appPath)
 	upConn.Write([]byte(reqLine))
-	r.Header.Set("X-Vulos-User-ID", session.UserID)
-	r.Header.Set("X-Vulos-Email", session.Email)
-	r.Header.Del("Cookie")
+	g.applyTrustedHeaders(r.Context(), r, session, appID)
 	r.Header.Write(upConn)
 	upConn.Write([]byte("\r\n"))
 
