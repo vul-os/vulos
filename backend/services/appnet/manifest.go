@@ -27,6 +27,7 @@ var ValidPermissions = []string{
 	"gpu",           // GPU acceleration
 	"background",    // run when window is closed
 	"notifications", // send desktop/push notifications to the user
+	"storage",       // receive per-user object-store credentials (X-Vulos-Storage-*)
 }
 
 // appIDMaxLen is the maximum length of an app ID (63 chars to fit in a DNS label).

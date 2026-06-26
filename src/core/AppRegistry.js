@@ -208,6 +208,101 @@ const builtinRegistry = [
     port: 80,
     category: 'network',
   },
+
+  // --- Vulos Suite (UNIFIED-STORAGE) ---
+  // The suite apps are separate products served as EXTERNAL, gateway-proxied web
+  // apps: Browser → :8080/app/{id}/* → [auth] → app namespace. They open in an
+  // in-shell iframe (type:'web' + url), exactly like the Smart Browser and the
+  // default web apps. The gateway injects identity (X-Vulos-User-ID), integration
+  // tokens, and — for apps that declare the "storage" permission in their app.json
+  // — the per-user object-store credentials (X-Vulos-Storage-*, prefix "{id}/").
+  //
+  // `permissions: ['storage']` here documents which apps are storage-bearing; the
+  // authoritative grant is the app's signed manifest, which the box gateway reads.
+  {
+    id: 'lilmail',
+    name: 'Mail',
+    icon: '✉',
+    description: 'LilMail — IMAP/SMTP email. Mail lives on the IMAP server, so no object store is needed.',
+    keywords: ['mail', 'email', 'inbox', 'compose', 'send', 'imap', 'smtp', 'lilmail'],
+    category: 'internet',
+    type: 'web',
+    url: '/app/lilmail/',
+    port: 80,
+    // No storage permission: lilmail is IMAP/SMTP-backed (server is the store).
+  },
+  {
+    id: 'vulos-office',
+    name: 'Office',
+    icon: '⊟',
+    description: 'Docs, Sheets, Slides, and PDF — collaborative editing with per-user file storage',
+    keywords: ['docs', 'sheets', 'slides', 'pdf', 'word', 'excel', 'spreadsheet', 'presentation', 'document', 'office'],
+    category: 'office',
+    type: 'web',
+    url: '/app/vulos-office/',
+    port: 80,
+    permissions: ['storage'], // file-bearing: documents persisted to the object store
+  },
+  {
+    id: 'vulos-workspace',
+    name: 'Workspace',
+    icon: '⊞',
+    description: 'Unified workspace shell that ties the suite together',
+    keywords: ['workspace', 'suite', 'home', 'shell', 'launcher'],
+    category: 'office',
+    type: 'web',
+    url: '/app/vulos-workspace/',
+    port: 80,
+    // No storage permission: Workspace is a stateless shell — it owns no files.
+  },
+  {
+    id: 'vulos-talk',
+    name: 'Talk',
+    icon: '☷',
+    description: 'Channels, DMs, and threads with file sharing',
+    keywords: ['talk', 'chat', 'channels', 'dm', 'direct', 'threads', 'messaging', 'spaces'],
+    category: 'internet',
+    type: 'web',
+    url: '/app/vulos-talk/',
+    port: 80,
+    permissions: ['storage'], // file-bearing: shared files/attachments
+  },
+  {
+    id: 'vulos-meet',
+    name: 'Meet',
+    icon: '◉',
+    description: 'Video meetings with recordings and shared files',
+    keywords: ['meet', 'video', 'call', 'meeting', 'join', 'conference', 'recording'],
+    category: 'internet',
+    type: 'web',
+    url: '/app/vulos-meet/',
+    port: 80,
+    permissions: ['storage'], // file-bearing: recordings/shared files
+  },
+  {
+    id: 'vulos-calendar',
+    name: 'Calendar',
+    icon: '⊡',
+    description: 'CalDAV calendar — events sync via the CalDAV server',
+    keywords: ['calendar', 'events', 'schedule', 'caldav', 'reminders'],
+    category: 'office',
+    type: 'web',
+    url: '/app/vulos-calendar/',
+    port: 80,
+    // No storage permission: CalDAV-backed (server is the store).
+  },
+  {
+    id: 'vulos-contacts',
+    name: 'Contacts',
+    icon: '☻',
+    description: 'CardDAV address book — contacts sync via the CardDAV server',
+    keywords: ['contacts', 'address', 'book', 'carddav', 'people'],
+    category: 'office',
+    type: 'web',
+    url: '/app/vulos-contacts/',
+    port: 80,
+    // No storage permission: CardDAV-backed (server is the store).
+  },
 ]
 
 // Default web apps shipped under apps/ — surfaced as launcher entries.

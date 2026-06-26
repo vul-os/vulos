@@ -504,11 +504,26 @@ func main() {
 		}
 		return tok.AccessToken, nil
 	})
+	// Unified per-user object store (UNIFIED-STORAGE). The resolver yields the
+	// per-user account bucket + credentials from box config/env (self-host) with a
+	// CloudHook seam for CP-provided config. Apps that declare the "storage"
+	// permission get X-Vulos-Storage-* headers injected by the gateway (server-side
+	// only, per-app key prefix), mirroring the integration-token injection.
+	storageResolver := storage.NewResolver(storage.LoadResolverConfig())
+	appGateway.SetStorageResolver(func(ctx context.Context, userID string) (storage.Resolution, bool) {
+		return storageResolver.Resolve(ctx, userID), true
+	})
 	if manifests, err := appnet.ScanApps(appsDir); err == nil {
 		for _, m := range manifests {
 			for _, prov := range m.Integrations {
 				appGateway.AllowIntegration(m.ID, prov)
 				log.Printf("[integrations] app %q granted %q integration token", m.ID, prov)
+			}
+			for _, p := range m.Permissions {
+				if p == "storage" {
+					appGateway.AllowStorage(m.ID, m.ID+"/")
+					log.Printf("[storage] app %q granted storage headers (prefix %q)", m.ID, m.ID+"/")
+				}
 			}
 		}
 	}
@@ -2454,7 +2469,23 @@ func main() {
 	// Cluster heartbeat + peer discovery (services/cluster).
 	// Conditional on S3 being configured and VULOS_CLUSTER_PASSPHRASE being set.
 	clusterPassphrase := os.Getenv("VULOS_CLUSTER_PASSPHRASE")
-	clusterS3Cfg := cluster.LoadS3Config()
+	// UNIFIED-STORAGE: the OS routes its own user/app data (cluster + sync S3
+	// paths) through the resolver under the "os/" prefix in the shared per-user
+	// bucket. OSResolution preserves the legacy cluster defaults (localhost:9000,
+	// vulos-cluster) so existing behaviour is unchanged when only VULOS_S3_* are
+	// set; appfs/store remain the local-FS fallback used when no object store is
+	// configured (empty Endpoint).
+	osStore := storageResolver.OSResolution(ctx)
+	osStoreHost, osStoreSSL := osStore.S3Host()
+	clusterS3Cfg := cluster.S3Config{
+		Endpoint:  osStoreHost,
+		Bucket:    osStore.Bucket,
+		AccessKey: osStore.AccessKey,
+		SecretKey: osStore.SecretKey,
+		UseSSL:    osStoreSSL,
+	}
+	log.Printf("[storage] OS storage namespace=%q bucket=%q object-store=%v",
+		osStore.Prefix, osStore.Bucket, osStore.Configured())
 	if clusterS3Cfg.Configured() && clusterPassphrase != "" {
 		if clusterInst, clusterErr := cluster.New(clusterS3Cfg, clusterPassphrase); clusterErr == nil {
 			go clusterInst.Start(ctx)

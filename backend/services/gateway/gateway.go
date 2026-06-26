@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	storagepkg "vulos/backend/internal/storage"
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/auth"
 )
@@ -41,6 +42,15 @@ type Gateway struct {
 	integrationTokenFunc func(ctx context.Context, provider string) (string, error)
 	// integrationApps maps appID → set of providers that app may receive.
 	integrationApps map[string]map[string]bool
+
+	// storageResolver, when set, yields the per-user object-store binding for the
+	// current request's user. Apps that declare the "storage" permission have it
+	// injected as X-Vulos-Storage-* request headers (the INTEG-04 pattern applied
+	// to storage). nil disables injection entirely.
+	storageResolver func(ctx context.Context, userID string) (storagepkg.Resolution, bool)
+	// storageApps maps appID → its key prefix in the shared per-user bucket
+	// (e.g. "office/"). Only listed apps receive storage headers.
+	storageApps map[string]string
 }
 
 // rateBucket tracks request count per window for per-app rate limiting.
@@ -136,6 +146,66 @@ func (g *Gateway) injectIntegrationTokens(ctx context.Context, pr *http.Request,
 			continue
 		}
 		pr.Header.Set("X-Vulos-Integration-"+integrationHeaderSuffix(provider), tok)
+	}
+}
+
+// SetStorageResolver installs the per-user storage resolver. Pass nil to
+// disable X-Vulos-Storage-* injection. The func returns the user's object-store
+// binding; the gateway overlays the per-app prefix before injecting headers.
+func (g *Gateway) SetStorageResolver(fn func(ctx context.Context, userID string) (storagepkg.Resolution, bool)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.storageResolver = fn
+}
+
+// AllowStorage grants appID storage-header injection under prefix (its key
+// prefix in the shared per-user bucket, e.g. "office/"). Derived from the app
+// manifest's "storage" permission.
+func (g *Gateway) AllowStorage(appID, prefix string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.storageApps == nil {
+		g.storageApps = make(map[string]string)
+	}
+	g.storageApps[appID] = prefix
+}
+
+// injectStorageHeaders stamps X-Vulos-Storage-* headers for appID when it is
+// permitted (declares the "storage" permission). Inbound X-Vulos-Storage-*
+// headers are ALWAYS stripped first — even for unpermitted apps — so a client
+// can never spoof storage credentials into an app. When the resolver reports no
+// object store (empty Endpoint), the empty headers are still set so the app
+// detects the signal and falls back to local/standalone storage.
+func (g *Gateway) injectStorageHeaders(ctx context.Context, pr *http.Request, userID, appID string) {
+	// Anti-spoof: strip any client-supplied storage headers unconditionally.
+	for k := range pr.Header {
+		if strings.HasPrefix(http.CanonicalHeaderKey(k), "X-Vulos-Storage-") {
+			pr.Header.Del(k)
+		}
+	}
+
+	g.mu.RLock()
+	fn := g.storageResolver
+	prefix, allowed := g.storageApps[appID]
+	g.mu.RUnlock()
+	if fn == nil || !allowed {
+		return
+	}
+
+	res, ok := fn(ctx, userID)
+	if !ok {
+		return
+	}
+	res = res.WithPrefix(prefix)
+
+	pr.Header.Set("X-Vulos-Storage-Endpoint", res.Endpoint)
+	pr.Header.Set("X-Vulos-Storage-Bucket", res.Bucket)
+	pr.Header.Set("X-Vulos-Storage-Prefix", res.Prefix)
+	pr.Header.Set("X-Vulos-Storage-Region", res.Region)
+	pr.Header.Set("X-Vulos-Storage-Access-Key", res.AccessKey)
+	pr.Header.Set("X-Vulos-Storage-Secret-Key", res.SecretKey)
+	if res.SessionToken != "" {
+		pr.Header.Set("X-Vulos-Storage-Session-Token", res.SessionToken)
 	}
 }
 
@@ -275,6 +345,7 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			pr.Header.Del("Host")
 			pr.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
 			g.injectIntegrationTokens(pr.Context(), pr, appID)
+			g.injectStorageHeaders(pr.Context(), pr, session.UserID, appID)
 		}
 		applyVulosHeaders(proxyReq)
 
