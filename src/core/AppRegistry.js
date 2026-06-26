@@ -115,40 +115,17 @@ const builtinRegistry = [
     builtin: true,
   },
 
-  {
-    id: 'mail',
-    name: 'Mail',
-    icon: '✉',
-    description: 'LilMail — lightweight IMAP/SMTP email client',
-    keywords: ['mail', 'email', 'inbox', 'compose', 'send', 'imap', 'smtp', 'lilmail', 'messages'],
-    category: 'internet',
-    builtin: true,
-  },
-
-  {
-    id: 'office',
-    name: 'Office',
-    icon: '⊟',
-    description: 'Docs, Sheets, Slides, and PDF — collaborative editing',
-    keywords: ['docs', 'sheets', 'slides', 'pdf', 'word', 'excel', 'spreadsheet', 'presentation', 'document', 'office'],
-    category: 'productivity',
-    builtin: true,
-  },
+  // UNIFIED-STORAGE de-dup: the embedded `mail`, `office`, and `calendar`
+  // builtins (React components in apps/mail, apps/office, apps/calendar) are
+  // RETIRED. Each is superseded by its gateway-proxied suite app registered
+  // below — `lilmail`, `vulos-office`, and `vulos-calendar` respectively — which
+  // are the canonical entries going forward. Keeping both produced duplicate
+  // launcher tiles (and a colliding `calendar` id shared with defaultWebApps).
 
   // Spaces was extracted out of vulos-office into the standalone Vulos Talk
   // product. The embedded builtin (which imported @vulos/office-client/spaces)
   // is retired; users reach chat/channels via the gateway-proxied `vulos-talk`
   // web app registered below (/app/vulos-talk/).
-
-  {
-    id: 'calendar',
-    name: 'Calendar',
-    icon: '⊡',
-    description: 'CalDAV calendar and CardDAV contacts',
-    keywords: ['calendar', 'contacts', 'events', 'schedule', 'caldav', 'carddav'],
-    category: 'productivity',
-    builtin: true,
-  },
 
   // The embedded "meet" builtin also relied on @vulos/office-client/spaces
   // (the spaces lib provided the call/meeting components). With Spaces moved to
@@ -311,16 +288,10 @@ const defaultWebApps = [
     // real (non-opaque) origin. See needsSameOrigin() below.
     needsSameOrigin: true,
   },
-  {
-    id: 'calendar',
-    name: 'Calendar',
-    icon: '📅',
-    description: 'Month, week, and day planning with server-side persistent events',
-    keywords: ['calendar', 'schedule', 'events', 'reminders', 'ics'],
-    category: 'productivity',
-    url: '/app/calendar/',
-    port: 80,
-  },
+  // UNIFIED-STORAGE de-dup: the standalone `calendar` web app (apps/calendar/)
+  // is retired here too — it duplicated both the (now-removed) `calendar`
+  // builtin's id and the `vulos-calendar` suite app's concept. The canonical
+  // Calendar going forward is the gateway-proxied `vulos-calendar` above.
   {
     id: 'clock',
     name: 'Clock',

@@ -40,13 +40,11 @@ const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 const Authenticator = lazy(() => import('../apps/Authenticator/Authenticator'))
 const Vault = lazy(() => import('../apps/Vault/Vault'))
 const Messages = lazy(() => import('../builtin/peering/Messages'))
-const MailApp = lazy(() => import('../apps/mail/App'))
 const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
-const OfficeApp   = lazy(() => import('../../apps/office/src/OfficeApp.jsx'))
-const CalendarApp = lazy(() => import('../../apps/calendar/src/CalendarApp.jsx'))
-// Spaces (chat/channels) and Meet (video) were extracted into the standalone
-// Vulos Talk / Vulos Meet products. They are now launched as gateway-proxied
-// web apps (vulos-talk, vulos-meet) via the registry, not embedded builtins.
+// UNIFIED-STORAGE de-dup: the embedded Mail / Office / Calendar builtins were
+// retired in favour of the gateway-proxied suite apps (lilmail, vulos-office,
+// vulos-calendar). Like Spaces/Meet (Vulos Talk / Vulos Meet), they now launch
+// as type:'web' registry entries, not embedded React components.
 
 const categoryLabels = {
   internet: 'Internet',
@@ -142,10 +140,7 @@ export default function Launchpad() {
       authenticator: () => createElement(Suspense, { fallback: loading }, createElement(Authenticator)),
       vault: () => createElement(Suspense, { fallback: loading }, createElement(Vault)),
       messages: () => createElement(Suspense, { fallback: loading }, createElement(Messages)),
-      mail:     () => createElement(Suspense, { fallback: loading }, createElement(MailApp)),
       dashboard: () => createElement(Suspense, { fallback: loading }, createElement(DashboardApp)),
-      office:   () => createElement(Suspense, { fallback: loading }, createElement(OfficeApp)),
-      calendar: () => createElement(Suspense, { fallback: loading }, createElement(CalendarApp)),
     }
     const singletons = new Set(['persona', 'apphub', 'dashboard'])
     if (builtins[app.id]) {
