@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -541,6 +543,18 @@ func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *app
 	r.Header.Write(upConn)
 	upConn.Write([]byte("\r\n"))
 
+	// Read the upstream's 101 handshake response so we can strip any X-Vulos-*
+	// headers an app might echo back before relaying it to the client (M2 on the
+	// WS path; the HTTP path strips response headers separately). Reads continue
+	// from upReader afterwards so no bytes buffered during ReadResponse are lost.
+	upReader := bufio.NewReader(upConn)
+	resp, err := http.ReadResponse(upReader, r)
+	if err != nil {
+		upConn.Close()
+		return
+	}
+	stripInboundVulosHeaders(resp.Header)
+
 	// Hijack the client connection
 	clientConn, _, err := hj.Hijack()
 	if err != nil {
@@ -548,13 +562,25 @@ func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *app
 		return
 	}
 
-	// Bidirectional copy
+	// Relay the sanitized handshake response to the client.
+	var hdr bytes.Buffer
+	fmt.Fprintf(&hdr, "HTTP/1.1 %s\r\n", resp.Status)
+	resp.Header.Write(&hdr)
+	hdr.WriteString("\r\n")
+	if _, err := clientConn.Write(hdr.Bytes()); err != nil {
+		upConn.Close()
+		clientConn.Close()
+		return
+	}
+
+	// Bidirectional copy (upstream side continues from upReader to preserve any
+	// bytes buffered during ReadResponse).
 	go func() {
 		io.Copy(upConn, clientConn)
 		upConn.Close()
 	}()
 	go func() {
-		io.Copy(clientConn, upConn)
+		io.Copy(clientConn, upReader)
 		clientConn.Close()
 	}()
 }
