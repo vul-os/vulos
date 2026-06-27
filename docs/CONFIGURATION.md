@@ -94,6 +94,31 @@ secret_key: (read from /var/lib/vulos/minio/.minio_secret at start)
 bucket: vulos
 ```
 
+#### Per-app isolation (STS) — required for multi-app deployments
+
+Each user gets their own bucket (`vulos-<userID>`), so cross-**user** isolation
+always holds. Cross-**app** isolation **within a single user** is only enforced
+when short-lived, prefix-scoped credentials are minted via STS.
+
+Without STS, every storage-permitted app for a user receives the same **static,
+full per-user-bucket credentials**. Those creds let an app read/write *any*
+other app's data for that user when used directly against the object store (the
+gateway-mediated `<userID>/<appID>/` prefix only scopes gateway-proxied access,
+not direct use of the handed-out credentials). The backend logs a prominent
+`[storage] WARNING` at startup whenever it runs in this mode.
+
+To enforce per-app isolation, configure STS:
+
+```bash
+VULOS_STORAGE_STS_ENDPOINT=https://sts.example.com   # required to enable STS
+VULOS_STORAGE_STS_ROLE_ARN=arn:...                   # optional
+VULOS_STORAGE_STS_DURATION_SECONDS=900               # optional (default minter value)
+```
+
+When set, the gateway hands apps short-lived credentials scoped down to the
+app's own `<userID>/<appID>/` prefix. **STS is REQUIRED for any deployment that
+runs more than one storage-permitted app per user and needs them isolated.**
+
 ### `/etc/vulos/vulos.yaml`
 
 OS backend config. Inherits from `fabric.yaml` and `storage.yaml`.

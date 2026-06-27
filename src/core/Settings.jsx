@@ -33,8 +33,10 @@ const sections = [
   { id: 'about', label: 'About' },
 ]
 
-export default function Settings() {
-  const [active, setActive] = useState('ai')
+export default function Settings({ initialSection } = {}) {
+  const [active, setActive] = useState(
+    initialSection && sections.some(s => s.id === initialSection) ? initialSection : 'ai',
+  )
   const { profile, updateProfile, logout } = useAuth()
 
   return (

@@ -4,6 +4,7 @@ import { classifyIntent } from './IntentRouter'
 import { searchApps } from './AppRegistry'
 import { useVoice } from './useVoice'
 import Settings from './Settings'
+import FileManager from '../builtin/files/FileManager'
 
 // eslint-disable-next-line no-unused-vars
 export default function Portal({ mode = 'panel' }) {
@@ -283,10 +284,10 @@ Only output the viewport block — no explanations outside it.`
         break
       case 'system':
         addMessage('user', input)
-        if (intent.action === 'open_persona') {
-          openWindow({ appId: 'settings', title: 'Settings', icon: '⚙', component: createElement(Settings) })
-        } else if (intent.url) {
-          openWindow({ appId: intent.action, title: intent.label, url: intent.url, icon: '⚙' })
+        if (intent.action === 'open_files') {
+          openWindow({ appId: 'files', title: 'File Explorer', icon: '⊡', component: createElement(FileManager) })
+        } else if (intent.action === 'open_settings') {
+          openWindow({ appId: 'settings', title: intent.label || 'Settings', icon: '⚙', component: createElement(Settings, { initialSection: intent.section }) })
         } else {
           addMessage('system', `${intent.label}`)
         }

@@ -116,11 +116,12 @@ const builtinRegistry = [
   },
 
   // UNIFIED-STORAGE de-dup: the embedded `mail`, `office`, and `calendar`
-  // builtins (React components in apps/mail, apps/office, apps/calendar) are
-  // RETIRED. Each is superseded by its gateway-proxied suite app registered
-  // below — `lilmail`, `vulos-office`, and `vulos-calendar` respectively — which
-  // are the canonical entries going forward. Keeping both produced duplicate
-  // launcher tiles (and a colliding `calendar` id shared with defaultWebApps).
+  // builtins are RETIRED. Each is superseded by its gateway-proxied suite app
+  // registered below — `lilmail`, `vulos-office`, and `vulos-calendar`
+  // respectively — which are the canonical entries going forward. Keeping both
+  // produced duplicate launcher tiles (and a colliding `calendar` id shared with
+  // defaultWebApps). ORPHAN-FIX: the retired `apps/mail/` and `apps/calendar/`
+  // build dirs have since been deleted so they are no longer shipped.
 
   // Spaces was extracted out of vulos-office into the standalone Vulos Talk
   // product. The embedded builtin (which imported @vulos/office-client/spaces)
@@ -311,11 +312,12 @@ const defaultWebApps = [
     // real (non-opaque) origin. See needsSameOrigin() below.
     needsSameOrigin: true,
   },
-  // UNIFIED-STORAGE de-dup: the standalone `calendar` web app (apps/calendar/)
-  // is retired here too — it duplicated both the (now-removed) `calendar`
-  // builtin's id and the `vulos-calendar` suite app's concept. The canonical
-  // Calendar going forward is the `vulos-calendar` tile above, which deep-links
-  // into the Mail app's /calendar surface (Mail/PIM now serves Calendar).
+  // UNIFIED-STORAGE de-dup: the standalone `calendar` web app is retired here
+  // too — it duplicated both the (now-removed) `calendar` builtin's id and the
+  // `vulos-calendar` suite app's concept. The canonical Calendar going forward
+  // is the `vulos-calendar` tile above, which deep-links into the Mail app's
+  // /calendar surface (Mail/PIM now serves Calendar). ORPHAN-FIX: the
+  // `apps/calendar/` build dir has been deleted so it is no longer shipped.
   {
     id: 'clock',
     name: 'Clock',
@@ -373,6 +375,102 @@ const defaultWebApps = [
     port: 80,
     // SANDBOX-01: reads unit/location prefs from localStorage at load.
     needsSameOrigin: true,
+  },
+  // ORPHAN-FIX: these apps ship full builds under apps/ (app.json + server.py)
+  // but were not registered anywhere, so they were unreachable. They are
+  // first-party, structurally identical to the entries above (python server.py,
+  // port 80, launched on demand via /api/apps/launch), so they are registered
+  // here as launcher entries. None reads localStorage at load, so none opts into
+  // a same-origin iframe (they run in the secure opaque-origin sandbox).
+  {
+    id: 'camera',
+    name: 'Camera',
+    icon: '⬤',
+    description: 'Take photos and record videos with your device camera',
+    keywords: ['camera', 'photo', 'video', 'capture', 'record', 'selfie'],
+    category: 'media',
+    url: '/app/camera/',
+    port: 80,
+  },
+  {
+    id: 'image-editor',
+    name: 'Image Editor',
+    icon: '✏',
+    description: 'Edit images with crop, rotate, filters, and annotation tools',
+    keywords: ['image', 'edit', 'photo', 'crop', 'filter', 'draw', 'annotate'],
+    category: 'media',
+    url: '/app/image-editor/',
+    port: 80,
+  },
+  {
+    id: 'maps',
+    name: 'Maps',
+    icon: '⊕',
+    description: 'OpenStreetMap navigation with place search, directions and favourites',
+    keywords: ['maps', 'navigation', 'directions', 'location', 'gps', 'osm', 'openstreetmap'],
+    category: 'productivity',
+    url: '/app/maps/',
+    port: 80,
+  },
+  {
+    id: 'music',
+    name: 'Music Player',
+    icon: '♪',
+    description: 'Music player with library, playlists, album art and keyboard shortcuts',
+    keywords: ['music', 'audio', 'player', 'playlist', 'mp3', 'flac'],
+    category: 'media',
+    url: '/app/music/',
+    port: 80,
+  },
+  {
+    id: 'phone',
+    name: 'Phone',
+    icon: '📞',
+    description: 'Calls, SMS and modem management via ModemManager',
+    keywords: ['phone', 'calls', 'sms', 'modem', 'telephony', 'cellular'],
+    category: 'other',
+    url: '/app/phone/',
+    port: 80,
+  },
+  {
+    id: 'screenshot',
+    name: 'Screenshot',
+    icon: '◉',
+    description: 'Screenshot and screen recording — capture, annotate, and save',
+    keywords: ['screenshot', 'screen', 'capture', 'record', 'annotate'],
+    category: 'system',
+    url: '/app/screenshot/',
+    port: 80,
+  },
+  {
+    id: 'system-info',
+    name: 'System Info',
+    icon: '💻',
+    description: 'Live dashboard — OS, CPU, RAM, storage, GPU, network and uptime',
+    keywords: ['system', 'info', 'about', 'hardware', 'cpu', 'ram', 'gpu', 'network', 'uptime'],
+    category: 'system',
+    url: '/app/system-info/',
+    port: 80,
+  },
+  {
+    id: 'video',
+    name: 'Video Player',
+    icon: '▶',
+    description: 'Play mp4, webm and mkv videos with subtitles, queue, and picture-in-picture',
+    keywords: ['video', 'player', 'mp4', 'webm', 'mkv', 'subtitles', 'media'],
+    category: 'media',
+    url: '/app/video/',
+    port: 80,
+  },
+  {
+    id: 'voice-recorder',
+    name: 'Voice Recorder',
+    icon: '⏺',
+    description: 'Record audio from microphone with live waveform, playback, trim, and timestamped history',
+    keywords: ['voice', 'record', 'audio', 'microphone', 'memo', 'sound', 'capture'],
+    category: 'media',
+    url: '/app/voice-recorder/',
+    port: 80,
   },
 ]
 

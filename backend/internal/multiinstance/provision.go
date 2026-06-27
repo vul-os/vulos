@@ -260,7 +260,11 @@ func (p *Provisioner) PollStatus(ctx context.Context, instanceULID string) (stri
 // callProvisionEndpoint POSTs to the cloud provision endpoint and returns the
 // decoded response.
 func (p *Provisioner) callProvisionEndpoint(ctx context.Context, region, plan string) (*cloudProvisionResponse, error) {
-	url := cloudBaseURL() + "/api/instances/provision"
+	base, err := requireSecureCloudBase()
+	if err != nil {
+		return nil, err
+	}
+	url := base + "/api/instances/provision"
 
 	body, err := json.Marshal(map[string]string{
 		"region": region,
@@ -299,7 +303,11 @@ func (p *Provisioner) callProvisionEndpoint(ctx context.Context, region, plan st
 
 // callStatusEndpoint GETs the cloud status for instanceULID.
 func (p *Provisioner) callStatusEndpoint(ctx context.Context, instanceULID string) (*cloudStatusResponse, error) {
-	url := cloudBaseURL() + "/api/instances/" + instanceULID + "/status"
+	base, err := requireSecureCloudBase()
+	if err != nil {
+		return nil, err
+	}
+	url := base + "/api/instances/" + instanceULID + "/status"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

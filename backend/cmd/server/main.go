@@ -81,6 +81,25 @@ import (
 // at build time via -ldflags "-X main.Version=vX.Y.Z" in the release pipeline.
 var Version = "dev"
 
+// shellCSP is the Content-Security-Policy applied to the OS shell + login HTML
+// (and its same-origin assets) served from the static "/" handler. See the
+// SEC-CSP-01 comment at that handler for the rationale behind each directive's
+// strictness; the structural directives (frame-ancestors/object-src/base-uri/
+// form-action) are strict, while content directives stay permissive enough to
+// support runtime cloud/LAN failover and srcdoc-sandboxed AI viewports.
+const shellCSP = "default-src 'self' blob: data: https:; " +
+	"script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data: blob: https:; " +
+	"font-src 'self' data:; " +
+	"connect-src 'self' https: wss: ws:; " +
+	"frame-src 'self' blob: https:; " +
+	"worker-src 'self' blob:; " +
+	"object-src 'none'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'; " +
+	"frame-ancestors 'self'"
+
 func main() {
 	obs.Init()
 
@@ -526,7 +545,13 @@ func main() {
 		}))
 		log.Printf("[storage] STS credential minting enabled (endpoint=%s) — apps receive short-lived prefix-scoped creds", stsEndpoint)
 	} else {
-		log.Printf("[storage] STS not configured (VULOS_STORAGE_STS_ENDPOINT unset) — apps receive static per-user-bucket creds; cross-app isolation within a user relies on gateway-mediated per-user/app prefixes")
+		log.Printf("[storage] WARNING: STS not configured (VULOS_STORAGE_STS_ENDPOINT unset) — " +
+			"storage-permitted apps receive STATIC, FULL per-user-bucket credentials with NO per-app prefix scoping. " +
+			"Cross-app isolation WITHIN a user is NOT enforced: any storage-permitted app can read/write every other " +
+			"app's data for the same user by using the handed-out creds directly (the gateway-mediated per-user/app " +
+			"prefix only scopes gateway-proxied access, not direct object-store use of the credentials). " +
+			"Cross-USER isolation still holds via per-user buckets. " +
+			"Set VULOS_STORAGE_STS_ENDPOINT to mint short-lived prefix-scoped creds — REQUIRED for multi-app isolation.")
 	}
 
 	// C2: refuse to boot with a single shared bucket while multiple users exist —
@@ -2941,6 +2966,23 @@ func main() {
 	if webrootDir != "" {
 		fs := http.FileServer(http.Dir(webrootDir))
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// SEC-CSP-01: richer Content-Security-Policy for the OS shell + login
+			// HTML (and its same-origin assets) served from here. The baseline
+			// `frame-ancestors 'self'` set in secHeadersMiddleware is overridden
+			// with the fuller policy below. Notes on the (intentional) looseness:
+			//   - script-src keeps 'unsafe-inline'/'unsafe-eval': srcdoc-sandboxed
+			//     AI viewport iframes INHERIT the embedder CSP, and they run
+			//     arbitrary inline/eval'd generated code (sandboxed to an opaque
+			//     origin via the iframe sandbox attr, not via CSP).
+			//   - connect-src allows https:/wss: because the shell fails over to
+			//     cloud/LAN origins injected at runtime (window.__VULOS_ENDPOINTS__)
+			//     that cannot be enumerated here.
+			//   - frame-src allows 'self'/blob:/https: for same-origin /app/ apps,
+			//     srcdoc/blob viewports, and https sandbox origins.
+			// The structural protections — frame-ancestors 'self', object-src
+			// 'none', base-uri 'self', form-action 'self' — are the load-bearing
+			// hardening and are strict.
+			w.Header().Set("Content-Security-Policy", shellCSP)
 			filePath := filepath.Join(webrootDir, filepath.Clean(r.URL.Path))
 			if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
 				fs.ServeHTTP(w, r)
@@ -2990,10 +3032,22 @@ func main() {
 	bindHost := envDefaults.BindHost
 	addr := bindHost + ":" + cfg.Port
 	// SEC: wrap with security headers for all responses served by this process.
+	//
+	// CSP (clickjacking — SEC-CSP-01): the gateway deletes X-Frame-Options so the
+	// shell can embed gateway-proxied apps same-origin, which left every response
+	// framable by arbitrary origins. We set `frame-ancestors 'self'` on EVERY
+	// response (shell, login, API, and proxied apps): same-origin embedding (the
+	// in-shell ProductFrame / /app/ iframes) is still permitted, but no external
+	// site can frame a Vulos page. The richer default-src/script-src policy for
+	// the shell+login HTML is set on the static "/" handler above (see shellCSP);
+	// it is intentionally NOT applied here because this middleware also wraps the
+	// gateway, and a strict script-src would break arbitrary proxied third-party
+	// apps and srcdoc-sandboxed AI viewports.
 	secHeadersMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
 			next.ServeHTTP(w, r)
 		})
 	}

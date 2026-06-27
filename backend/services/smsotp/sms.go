@@ -246,19 +246,44 @@ func (s *Service) handleRecent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"messages": msgs, "count": len(msgs)})
 }
 
-// handleNumber returns the currently configured virtual phone number.
-// Number provisioning is config-driven / stubbed; Twilio sub-account integration
-// is a follow-up task.
+// handleNumber returns the currently configured virtual phone number and its
+// real status. There is no automatic number provisioning yet — see the Twilio
+// wiring notes below — so the only way a number becomes active is by setting it
+// manually via PUT /api/auth/sms/settings after allocating it with the provider.
+//
+// Twilio wiring required for automatic provisioning (AUTH-15 follow-up):
+//   - Configure TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (and optionally a
+//     subaccount SID) for the box.
+//   - Call the Twilio IncomingPhoneNumbers API to buy/allocate an SMS-capable
+//     number, then point its SMS webhook at POST /api/auth/sms/webhook
+//     (secured with the WebhookToken shared secret).
+//   - Persist the allocated E.164 number into Settings.Number.
+//
+// Until that exists, an unset number is reported as "not_configured" (a clear
+// config-required state) rather than a misleading fake-success status.
 func (s *Service) handleNumber(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	num := s.settings.Number
 	provider := s.settings.Provider
 	s.mu.Unlock()
 
+	if num == "" {
+		writeJSON(w, map[string]any{
+			"number":   "",
+			"provider": provider,
+			"status":   "not_configured",
+			"detail": "No SMS number configured. Automatic provisioning is not implemented; " +
+				"allocate an SMS-capable number with your provider (e.g. Twilio), point its " +
+				"SMS webhook at POST /api/auth/sms/webhook, then set it via PUT /api/auth/sms/settings.",
+		})
+		return
+	}
+
+	// A number is configured: inbound OTP receipt works via the webhook.
 	writeJSON(w, map[string]any{
 		"number":   num,
 		"provider": provider,
-		"status":   "config_driven", // "active" once provisioning is wired
+		"status":   "active",
 	})
 }
 

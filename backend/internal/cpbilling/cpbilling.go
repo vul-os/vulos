@@ -2,7 +2,7 @@
 // (cp) billing contract: entitlement checks, usage metering, and suspension
 // enforcement for every billable OS surface (LLM, compute, relay, GPU, Meet).
 //
-// SEAM PHILOSOPHY — INDEPENDENT BY DEFAULT
+// # SEAM PHILOSOPHY — INDEPENDENT BY DEFAULT
 //
 // The whole package is a no-op unless CP_URL (or an explicitly supplied base
 // URL) is configured. A standalone vulos OS — one with no cp wired — behaves
@@ -16,7 +16,7 @@
 //	       → 200 {tier, suspended, llm_enabled, llm_budget_usd, ...}
 //	POST /api/usage  {product, account_id, kind, count, bytes, cost_usd}
 //
-// FAIL-OPEN, NOT FAIL-BLIND
+// # FAIL-OPEN, NOT FAIL-BLIND
 //
 // Entitlement lookups are cached with a short TTL. On a cp error we serve the
 // last-known entitlement if we have one (even if its TTL lapsed); only on a
@@ -101,9 +101,9 @@ type Entitlement struct {
 	// MeetEnabled=false, Suspended=true, MeetMaxRooms=0, or
 	// MeetMinutesBudget=0. MeetMaxRooms is the concurrent-room cap enforced
 	// locally against SFU.RoomCount().
-	MeetEnabled        bool `json:"meet_enabled"`
-	MeetMinutesBudget  int  `json:"meet_minutes_budget"`
-	MeetMaxRooms       int  `json:"meet_max_rooms"`
+	MeetEnabled       bool `json:"meet_enabled"`
+	MeetMinutesBudget int  `json:"meet_minutes_budget"`
+	MeetMaxRooms      int  `json:"meet_max_rooms"`
 
 	// Compute caps. ComputeBoxCap is the maximum number of provisioned cloud
 	// instances. The OS enforces this locally against Registry.List() before
@@ -187,8 +187,25 @@ func New(cfg Config) *Client {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
+	enabled := base != ""
+	// Refuse plaintext: the CP_SHARED_SECRET bearer travels in the X-Relay-Auth
+	// header on every connect-back, so a plaintext http base would let a network
+	// attacker harvest it. Fail CLOSED (disable the client) unless the explicit
+	// insecure escape hatch is set, mirroring the lancert puller (lan/lancert_puller.go).
+	if enabled && !cpAllowInsecure() {
+		if u, perr := url.Parse(base); perr != nil || u.Scheme != "https" {
+			scheme := "<unparseable>"
+			if perr == nil {
+				scheme = u.Scheme
+			}
+			log.Printf("[cpbilling] WARNING: CP base URL must be https (got scheme %q) — "+
+				"billing DISABLED to avoid leaking CP_SHARED_SECRET over plaintext; "+
+				"set VULOS_CP_ALLOW_INSECURE=1 only for local dev", scheme)
+			enabled = false
+		}
+	}
 	return &Client{
-		enabled: base != "",
+		enabled: enabled,
 		base:    base,
 		secret:  secret,
 		hc:      hc,
@@ -196,6 +213,16 @@ func New(cfg Config) *Client {
 		now:     nowFn,
 		cache:   make(map[string]cacheEntry),
 	}
+}
+
+// cpAllowInsecure reports whether the plaintext-http escape hatch is enabled
+// (VULOS_CP_ALLOW_INSECURE=1|true|yes). For local dev only.
+func cpAllowInsecure() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VULOS_CP_ALLOW_INSECURE"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
 }
 
 // Enabled reports whether cp billing is wired (CP_URL set). When false the

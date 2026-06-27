@@ -28,7 +28,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,6 +44,29 @@ func cloudBaseURL() string {
 		return v
 	}
 	return DefaultCloudBaseURL
+}
+
+// requireSecureCloudBase returns the effective cloud base URL only if it uses
+// https. The device bearer token ("Authorization: VulosDevice <token>") is sent
+// on every connect-back, so a plaintext http base would let a network attacker
+// harvest it. Refuse plaintext unless the explicit insecure escape hatch
+// (VULOS_CLOUD_ALLOW_INSECURE=1|true|yes) is set, mirroring the lancert puller
+// (lan/lancert_puller.go).
+func requireSecureCloudBase() (string, error) {
+	base := cloudBaseURL()
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VULOS_CLOUD_ALLOW_INSECURE"))) {
+	case "1", "true", "yes":
+		return base, nil
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("multiinstance: VULOS_CLOUD_URL %q: %w", base, err)
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("multiinstance: cloud base URL must be https (got %q); "+
+			"set VULOS_CLOUD_ALLOW_INSECURE=1 only for local dev", u.Scheme)
+	}
+	return base, nil
 }
 
 // CloudInstance is the wire format returned by the cloud
@@ -219,7 +244,11 @@ func (cs *CloudSyncer) applyStatus(ulid string, status Status) {
 
 // fetchInstances calls GET {cloudBase}/api/instances and returns the decoded slice.
 func (cs *CloudSyncer) fetchInstances(ctx context.Context) ([]CloudInstance, error) {
-	url := cloudBaseURL() + "/api/instances"
+	base, err := requireSecureCloudBase()
+	if err != nil {
+		return nil, err
+	}
+	url := base + "/api/instances"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

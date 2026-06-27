@@ -4,17 +4,20 @@ export function classifyIntent(input) {
   const trimmed = input.trim()
   if (!trimmed) return { type: 'empty' }
 
-  // System command: /settings, /wifi, /backup etc.
+  // System command: /settings, /wifi, /backup etc. These map to real in-shell
+  // surfaces — Settings panels (opened to a specific section) or a builtin app —
+  // NOT legacy pseudo-hosts. `section` selects the Settings sidebar entry; the
+  // `files` command opens the File Explorer builtin.
   if (trimmed.startsWith('/')) {
     const cmd = trimmed.slice(1).toLowerCase().trim()
     const sys = {
-      settings: { action: 'open_persona', label: 'My Persona', url: 'http://persona.vulos' },
-      persona: { action: 'open_persona', label: 'My Persona', url: 'http://persona.vulos' },
-      wifi: { action: 'open_network', label: 'Network', url: 'http://network.vulos' },
-      network: { action: 'open_network', label: 'Network', url: 'http://network.vulos' },
-      backup: { action: 'open_vault', label: 'Vault', url: 'http://vault.vulos' },
-      vault: { action: 'open_vault', label: 'Vault', url: 'http://vault.vulos' },
-      files: { action: 'open_finder', label: 'The Finder', url: 'http://finder.vulos' },
+      settings: { action: 'open_settings', label: 'Settings', section: 'ai' },
+      persona: { action: 'open_settings', label: 'Settings', section: 'ai' },
+      wifi: { action: 'open_settings', label: 'WiFi', section: 'wifi' },
+      network: { action: 'open_settings', label: 'Remote Access', section: 'network' },
+      backup: { action: 'open_settings', label: 'Backup & Sync', section: 'vault' },
+      vault: { action: 'open_settings', label: 'Backup & Sync', section: 'vault' },
+      files: { action: 'open_files', label: 'File Explorer' },
     }
     if (sys[cmd]) return { type: 'system', ...sys[cmd] }
     return { type: 'command', value: cmd }

@@ -2,6 +2,7 @@ package credvault
 
 import (
 	"crypto/rand"
+	_ "embed"
 	"fmt"
 	"math/big"
 	"strings"
@@ -228,14 +229,48 @@ func removeAmbiguous(cs string) string {
 
 // ---- Passphrase ----------------------------------------------------------
 
-// builtinWordlist is a minimal built-in word list used when no external list
-// is provided. It is large enough to give adequate entropy for 4+ word
-// passphrases (≥ 7 bits/word × 4 = ≥ 28 bits, practical security ≥ 40 bits
-// when combined with a number/capitalisation variant).
+// effLargeWordlistRaw is the embedded EFF Large Wordlist (7776 words, one per
+// line). It yields log2(7776) ≈ 12.925 bits per word — the intended entropy for
+// generated passphrases. Sourced from
+// https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt (dice-index
+// column stripped; words only).
 //
-// In production this would be replaced by the EFF Large Word List (7776 words,
-// 12.9 bits/word), but embedding a 60 KB word list is avoided here to keep the
-// package self-contained without external files.
+//go:embed eff_large_wordlist.txt
+var effLargeWordlistRaw string
+
+// effWordlist is the parsed EFF list. When it loads successfully (the embedded
+// file is present and non-trivial) it is used for passphrase generation;
+// otherwise the code falls back to builtinWordlist below.
+var effWordlist = parseWordlist(effLargeWordlistRaw)
+
+// parseWordlist splits raw newline-separated text into a trimmed, non-empty
+// word slice.
+func parseWordlist(raw string) []string {
+	lines := strings.Split(raw, "\n")
+	out := make([]string, 0, len(lines))
+	for _, ln := range lines {
+		if w := strings.TrimSpace(ln); w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// passphraseWordlist returns the wordlist used for passphrase generation: the
+// embedded EFF Large Wordlist when available (12.9 bits/word), else the smaller
+// builtin fallback (~7.6 bits/word). The threshold guards against a truncated
+// or missing embed degrading entropy silently.
+func passphraseWordlist() []string {
+	if len(effWordlist) >= 7000 {
+		return effWordlist
+	}
+	return builtinWordlist
+}
+
+// builtinWordlist is a minimal built-in word list used as a fallback when the
+// embedded EFF Large Wordlist is unavailable. It is large enough to give
+// adequate entropy for 4+ word passphrases (~7.6 bits/word × 4 ≈ 30 bits) but
+// is materially weaker than the EFF list — see passphraseWordlist.
 var builtinWordlist = []string{
 	"apple", "brave", "crisp", "dance", "eagle", "flame", "glass", "honey",
 	"ivory", "jewel", "knack", "lemon", "maple", "noble", "ocean", "pearl",
@@ -264,7 +299,7 @@ var builtinWordlist = []string{
 
 func generatePassphrase(cfg PassphraseConfig) (string, error) {
 	cfg = cfg.defaults()
-	wl := builtinWordlist
+	wl := passphraseWordlist()
 	n := big.NewInt(int64(len(wl)))
 
 	words := make([]string, cfg.WordCount)
