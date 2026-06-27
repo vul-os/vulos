@@ -237,6 +237,13 @@ func (r *Resolver) bucketFor(userID string) string {
 	return r.cfg.BucketPrefix + userID
 }
 
+// BucketFor returns the account bucket for userID (the per-user "vulos-<userID>"
+// bucket in the default self-host configuration). The Files control plane uses
+// it to record where a node's bytes live. It exposes bucketFor without revealing
+// credentials; cloud per-user STS bucket overrides (CloudHook) are not reflected
+// here — foundation/self-host derive the bucket statically.
+func (r *Resolver) BucketFor(userID string) string { return r.bucketFor(userID) }
+
 // osBucket returns the bucket for the OS's own (cluster/sync) data. When an
 // explicit shared Bucket is configured the OS shares it (single-tenant);
 // otherwise it uses OSBucket (default "vulos-cluster") — never a per-user bucket.

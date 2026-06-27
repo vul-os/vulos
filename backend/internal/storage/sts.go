@@ -58,6 +58,36 @@ func scopedPolicy(bucket, prefix string) (string, error) {
 	return string(b), nil
 }
 
+// objectScopedPolicy builds an inline session policy locking the bearer to
+// exactly bucket/key — read+write on the SINGLE object, no ListBucket, no
+// prefix wildcard. Used by the Files grant broker (FILES-FOUNDATION) to mint
+// object-scoped write credentials after an ACL check.
+func objectScopedPolicy(bucket, key string) (string, error) {
+	type statement struct {
+		Effect   string   `json:"Effect"`
+		Action   []string `json:"Action"`
+		Resource []string `json:"Resource"`
+	}
+	doc := struct {
+		Version   string      `json:"Version"`
+		Statement []statement `json:"Statement"`
+	}{
+		Version: "2012-10-17",
+		Statement: []statement{
+			{
+				Effect:   "Allow",
+				Action:   []string{"s3:GetObject", "s3:PutObject", "s3:DeleteObject"},
+				Resource: []string{fmt.Sprintf("arn:aws:s3:::%s/%s", bucket, key)},
+			},
+		},
+	}
+	b, err := json.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 // NewMinIOSTSMinter returns a CredentialMinter that calls MinIO/S3 STS
 // AssumeRole with an inline session policy locked to bucket/prefix, using the
 // resolver's static credentials as the calling identity. Mint failures return

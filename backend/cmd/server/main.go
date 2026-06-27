@@ -47,6 +47,7 @@ import (
 	"vulos/backend/services/embeddings"
 	"vulos/backend/services/energy"
 	vulenv "vulos/backend/services/env"
+	"vulos/backend/services/files"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/installer"
@@ -588,6 +589,34 @@ func main() {
 		}
 	}
 
+	// FILES-FOUNDATION: OS Files metadata/control-plane (the Drive index + ACLs +
+	// share links + versions). It is the source of truth; bytes live in per-user
+	// buckets. The grant broker reuses storageResolver to mint OBJECT-scoped,
+	// short-lived, ACL-gated grants (presigned GET read / object-scoped STS write,
+	// or a local-FS path in standalone mode). The Files service performs the ACL
+	// check BEFORE calling the broker, so an unauthorized user never gets a grant.
+	var filesSvc *files.Service
+	{
+		filesSTS := storage.STSConfig{
+			Endpoint: os.Getenv("VULOS_STORAGE_STS_ENDPOINT"),
+			RoleARN:  os.Getenv("VULOS_STORAGE_STS_ROLE_ARN"),
+		}
+		filesBroker := storage.NewGrantBroker(storageResolver, filesSTS, 15*time.Minute)
+		var ferr error
+		filesSvc, ferr = files.New(
+			filepath.Join(dbDir, "files.db"),
+			filesBroker,
+			func(uid string) string { return storageResolver.BucketFor(uid) },
+		)
+		if ferr != nil {
+			log.Printf("[files] init warning: %v — Files API disabled (503)", ferr)
+			filesSvc = nil
+		} else {
+			defer filesSvc.Close()
+			log.Printf("[files] control plane ready (db=%s, sts=%v)", filepath.Join(dbDir, "files.db"), filesSTS.Endpoint != "")
+		}
+	}
+
 	// Periodic auth flush
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -678,6 +707,10 @@ func main() {
 
 	// Board: mint short-lived HMAC tokens for the Vulos Board sync server.
 	registerBoardRoutes(mux)
+
+	// Files: OS Files metadata/control-plane API (Drive index, ACL-gated
+	// object-scoped grants, shares, share links, versions). Session-authed.
+	registerFilesRoutes(mux, filesSvc)
 
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)
