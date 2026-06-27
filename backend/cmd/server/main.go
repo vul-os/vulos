@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -942,7 +943,7 @@ func main() {
 			writeErr(w, 503, "init-passphrase not configured (BURST_HEARTBEAT_SECRET unset)")
 			return
 		}
-		if r.Header.Get("X-Burst-Secret") != burstSecret {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Burst-Secret")), []byte(burstSecret)) != 1 {
 			writeErr(w, 401, "unauthorized")
 			return
 		}
