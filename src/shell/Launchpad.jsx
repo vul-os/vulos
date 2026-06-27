@@ -31,6 +31,7 @@ function openInHostBrowser(url, title, icon, openWindow) {
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
 const FileManager = lazy(() => import('../builtin/files/FileManager'))
+const Drive = lazy(() => import('../builtin/drive/Drive'))
 // RemoteBrowser removed — browser now launches via generic stream pool
 const AppHub = lazy(() => import('../builtin/apphub/AppHub'))
 const Drivers = lazy(() => import('../builtin/drivers/Drivers'))
@@ -133,6 +134,7 @@ export default function Launchpad() {
       terminal: () => createElement(Suspense, { fallback: loading }, createElement(Terminal)),
       activity: () => createElement(Suspense, { fallback: loading }, createElement(ActivityMonitor)),
       files: () => createElement(Suspense, { fallback: loading }, createElement(FileManager)),
+      drive: () => createElement(Suspense, { fallback: loading }, createElement(Drive)),
       apphub: () => createElement(Suspense, { fallback: loading }, createElement(AppHub)),
       drivers: () => createElement(Suspense, { fallback: loading }, createElement(Drivers)),
       packages: () => createElement(Suspense, { fallback: loading }, createElement(Packages)),

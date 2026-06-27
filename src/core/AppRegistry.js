@@ -41,6 +41,19 @@ const builtinRegistry = [
     builtin: true,
   },
   {
+    // FILES PHASE-2A: the canonical Drive UI over the OS Files control plane
+    // (/api/files/*). Distinct from `files` (the local-FS explorer): `drive`
+    // browses the user's per-user Drive — upload/download, folders, move/rename/
+    // delete, sharing (user grants + expiring links), "Shared with me", versions.
+    id: 'drive',
+    name: 'Files',
+    icon: '🗂',
+    description: 'Your Drive — store, organize, share and version your files',
+    keywords: ['drive', 'files', 'cloud', 'storage', 'documents', 'upload', 'share', 'folder'],
+    category: 'productivity',
+    builtin: true,
+  },
+  {
     id: 'persona',
     name: 'Settings',
     icon: '⚙',

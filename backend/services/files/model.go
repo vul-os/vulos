@@ -13,6 +13,7 @@ package files
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"vulos/backend/internal/storage"
@@ -129,6 +130,17 @@ type Version struct {
 type Broker interface {
 	MintRead(ctx context.Context, ownerID, bucket, key string, ttl time.Duration) (storage.ObjectGrant, error)
 	MintWrite(ctx context.Context, ownerID, bucket, key string, ttl time.Duration) (storage.ObjectGrant, error)
+	// MoveObject physically relocates one object's bytes from srcKey to dstKey in
+	// the owner's store (the PHASE-2A byte-mover). The Files service calls it on
+	// move/rename, then commits the matching index keys; a missing source is a
+	// no-op so pending (not-yet-uploaded) nodes still reparent cleanly.
+	MoveObject(ctx context.Context, ownerID, bucket, srcKey, dstKey string) error
+	// PutContent / GetContent are the OS-mediated data plane: they move the actual
+	// bytes for callers that cannot talk to the bucket directly (chiefly STANDALONE
+	// local-FS mode, where the browser has no presigned URL). The Files service
+	// ACL-gates both before calling them.
+	PutContent(ctx context.Context, ownerID, bucket, key string, r io.Reader, size int64, contentType string) (string, error)
+	GetContent(ctx context.Context, ownerID, bucket, key string) (io.ReadCloser, int64, error)
 }
 
 // BucketResolver returns the per-user account bucket for a user. Wired from

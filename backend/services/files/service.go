@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"time"
@@ -313,6 +314,61 @@ func (s *Service) Commit(userID, nodeID string, size int64, contentType, etag st
 	return &v, nil
 }
 
+// PutContent streams r (size bytes) into nodeID's object via the OS-mediated data
+// plane and returns the stored ETag. Requires editor+. This is how the Files app
+// uploads bytes when a direct presigned PUT is unavailable (standalone local-FS /
+// STS). The caller still calls Commit afterwards to record the version. The ACL
+// is checked here BEFORE any bytes are written.
+func (s *Service) PutContent(ctx context.Context, userID, nodeID string, r io.Reader, size int64, contentType string) (string, error) {
+	n, err := s.getNode(nodeID)
+	if err != nil {
+		return "", err
+	}
+	if n.IsDir {
+		return "", fmt.Errorf("%w: folders have no bytes", ErrInvalid)
+	}
+	if !s.authorize(userID, n, RoleEditor) {
+		return "", ErrForbidden
+	}
+	if s.broker == nil {
+		return "", fmt.Errorf("files: storage broker unavailable")
+	}
+	if contentType == "" {
+		contentType = n.ContentType
+	}
+	etag, err := s.broker.PutContent(ctx, n.OwnerID, n.Bucket, n.ObjectKey, r, size, contentType)
+	if err != nil {
+		return "", err
+	}
+	s.audit(userID, "content.put", n.ID, fmt.Sprintf("size=%d", size))
+	return etag, nil
+}
+
+// GetContent opens nodeID's bytes for reading via the OS-mediated data plane.
+// Requires viewer+. The caller MUST Close the returned reader. Used by the Files
+// app to download when a direct presigned GET is unavailable (standalone / STS).
+func (s *Service) GetContent(ctx context.Context, userID, nodeID string) (io.ReadCloser, *Node, int64, error) {
+	n, err := s.getNode(nodeID)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	if n.IsDir {
+		return nil, nil, 0, fmt.Errorf("%w: folders have no bytes", ErrInvalid)
+	}
+	if !s.authorize(userID, n, RoleViewer) {
+		return nil, nil, 0, ErrForbidden
+	}
+	if s.broker == nil {
+		return nil, nil, 0, fmt.Errorf("files: storage broker unavailable")
+	}
+	rc, size, err := s.broker.GetContent(ctx, n.OwnerID, n.Bucket, n.ObjectKey)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	s.audit(userID, "content.get", n.ID, "")
+	return rc, n, size, nil
+}
+
 // Versions lists a node's version history (newest first). Requires viewer+.
 func (s *Service) Versions(userID, nodeID string) ([]Version, error) {
 	n, err := s.getNode(nodeID)
@@ -329,9 +385,16 @@ func (s *Service) Versions(userID, nodeID string) ([]Version, error) {
 
 // Move renames nodeID and/or reparents it to newParentID (empty = keep parent).
 // newName empty keeps the name. Requires editor+ on the node and on the new
-// parent, and forbids moving across bucket owners (a Phase-2+ concern). Folder
-// moves recompute descendant paths and object keys.
-func (s *Service) Move(userID, nodeID, newParentID, newName string) (*Node, error) {
+// parent, and forbids moving across bucket owners (a Phase-2+ concern).
+//
+// PHASE-2A byte-mover: a move both recomputes the index (path + object_key for
+// the node and, for a folder, its whole subtree) AND physically relocates the
+// underlying bytes. To keep the index and the object store consistent the bytes
+// are moved FIRST, then the index keys are committed in a single transaction;
+// if the index commit fails the already-moved bytes are rolled back, and if a
+// byte move fails partway the completed ones are reverted before returning — so
+// either the whole move lands or nothing changes.
+func (s *Service) Move(ctx context.Context, userID, nodeID, newParentID, newName string) (*Node, error) {
 	n, err := s.getNode(nodeID)
 	if err != nil {
 		return nil, err
@@ -378,25 +441,56 @@ func (s *Service) Move(userID, nodeID, newParentID, newName string) (*Node, erro
 	}
 	n.ParentID = parentID
 	n.Name = name
-	if err := s.reapplyPaths(n, parentPath); err != nil {
+
+	// Plan the new path/key for n and, when it is a folder, its whole subtree.
+	var plan []movePlan
+	if err := s.planMoves(n, parentPath, &plan); err != nil {
 		return nil, err
+	}
+
+	// 1) Relocate the bytes, tracking completed moves so a later failure can undo
+	//    them. Folders and pending (key-less / unchanged) nodes carry no bytes.
+	done, err := s.relocateBytes(ctx, plan)
+	if err != nil {
+		s.revertBytes(ctx, done)
+		return nil, err
+	}
+
+	// 2) Commit the matching index keys atomically. On failure roll the bytes
+	//    back so the store and index never diverge.
+	if err := s.commitMovePlan(plan); err != nil {
+		s.revertBytes(ctx, done)
+		return nil, err
+	}
+
+	// Reflect the committed plan onto the in-memory nodes (n is plan[0]).
+	for _, p := range plan {
+		p.node.Path = p.newPath
+		if !p.node.IsDir {
+			p.node.ObjectKey = p.newKey
+		}
 	}
 	s.audit(userID, "node.move", n.ID, n.Path)
 	return n, nil
 }
 
-// reapplyPaths recomputes path (and object_key for files) for n and, when n is a
-// folder, its whole subtree. Bytes are NOT physically relocated here — the index
-// records the new canonical Drive key; a data-plane mover reconciles bytes in a
-// later phase. Bounded recursion via the natural tree depth.
-func (s *Service) reapplyPaths(n *Node, parentPath string) error {
-	n.Path = joinPath(parentPath, n.Name)
+// movePlan is the precomputed relocation for one node in a moved subtree: its new
+// Drive-relative path and, for a file, the new canonical object key.
+type movePlan struct {
+	node    *Node
+	newPath string
+	newKey  string // file nodes only; empty for folders
+}
+
+// planMoves appends the relocation for n and, when n is a folder, its descendants
+// (depth-first) to out. It reads the current tree; it does NOT mutate anything.
+func (s *Service) planMoves(n *Node, parentPath string, out *[]movePlan) error {
+	newPath := joinPath(parentPath, n.Name)
+	mp := movePlan{node: n, newPath: newPath}
 	if !n.IsDir {
-		n.ObjectKey = driveKey(n.OwnerID, n.Path)
+		mp.newKey = driveKey(n.OwnerID, newPath)
 	}
-	if err := s.touchNode(n); err != nil {
-		return err
-	}
+	*out = append(*out, mp)
 	if !n.IsDir {
 		return nil
 	}
@@ -405,11 +499,72 @@ func (s *Service) reapplyPaths(n *Node, parentPath string) error {
 		return err
 	}
 	for _, k := range kids {
-		if err := s.reapplyPaths(k, n.Path); err != nil {
+		if err := s.planMoves(k, newPath, out); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// movedByte records a completed byte relocation so it can be reverted on failure.
+type movedByte struct {
+	ownerID, bucket, from, to string
+}
+
+// relocateBytes physically moves the bytes for each file node whose key changes,
+// returning the moves that succeeded (newest last) so the caller can revert them.
+func (s *Service) relocateBytes(ctx context.Context, plan []movePlan) ([]movedByte, error) {
+	var done []movedByte
+	for _, p := range plan {
+		if p.node.IsDir || p.node.ObjectKey == "" || p.newKey == p.node.ObjectKey {
+			continue
+		}
+		if s.broker == nil {
+			return done, fmt.Errorf("files: storage broker unavailable")
+		}
+		if err := s.broker.MoveObject(ctx, p.node.OwnerID, p.node.Bucket, p.node.ObjectKey, p.newKey); err != nil {
+			return done, err
+		}
+		done = append(done, movedByte{ownerID: p.node.OwnerID, bucket: p.node.Bucket, from: p.node.ObjectKey, to: p.newKey})
+	}
+	return done, nil
+}
+
+// revertBytes best-effort moves completed relocations back to their source keys,
+// in reverse order. Used to unwind a partial move so bytes match the (unchanged)
+// index.
+func (s *Service) revertBytes(ctx context.Context, done []movedByte) {
+	if s.broker == nil || len(done) == 0 {
+		return
+	}
+	for i := len(done) - 1; i >= 0; i-- {
+		d := done[i]
+		if err := s.broker.MoveObject(ctx, d.ownerID, d.bucket, d.to, d.from); err != nil {
+			log.Printf("[files] move rollback failed for %s->%s: %v", d.to, d.from, err)
+		}
+	}
+}
+
+// commitMovePlan writes every node's new path (and object_key for files) in a
+// single transaction so the index moves all-or-nothing.
+func (s *Service) commitMovePlan(plan []movePlan) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().Format(rfc)
+	for _, p := range plan {
+		key := p.node.ObjectKey
+		if !p.node.IsDir {
+			key = p.newKey
+		}
+		if _, err := tx.Exec(`UPDATE files_nodes SET name=?, parent_id=?, path=?, object_key=?, updated_at=? WHERE id=?`,
+			p.node.Name, p.node.ParentID, p.newPath, key, now, p.node.ID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // Delete soft-deletes nodeID (and, for a folder, leaves descendants tombstoned

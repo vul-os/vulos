@@ -24,6 +24,8 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -235,6 +237,135 @@ func (b *GrantBroker) client(res Resolution) (*minio.Client, error) {
 		return nil, fmt.Errorf("storage: minio client: %w", err)
 	}
 	return mc, nil
+}
+
+// MoveObject relocates the bytes of a SINGLE object from srcKey to dstKey within
+// the owner's store (FILES PHASE-2A byte-mover). The Files control plane already
+// records the new canonical Drive key in its index on move/rename; this is the
+// data-plane half that makes the bytes follow.
+//
+//   - With an object store: a server-side CopyObject(src→dst) followed by
+//     RemoveObject(src). S3 has no atomic rename; on a failed delete the freshly
+//     written destination is best-effort removed so no duplicate is left behind.
+//   - Standalone (no object store): an os.Rename under LocalRoot, mirroring the
+//     bucket layout.
+//
+// A MISSING source is treated as a no-op success: a "pending" Drive node (created
+// in the index but not yet uploaded/committed) has no bytes, yet its index key
+// must still move with the rest of a renamed subtree. srcKey == dstKey is a no-op.
+func (b *GrantBroker) MoveObject(ctx context.Context, ownerID, bucket, srcKey, dstKey string) error {
+	if srcKey == "" || dstKey == "" || srcKey == dstKey {
+		return nil
+	}
+	res := b.resolveOwner(ctx, ownerID)
+	if !res.Configured() {
+		return b.moveLocal(srcKey, dstKey)
+	}
+	mc, err := b.client(res)
+	if err != nil {
+		return err
+	}
+	src := minio.CopySrcOptions{Bucket: bucket, Object: srcKey}
+	dst := minio.CopyDestOptions{Bucket: bucket, Object: dstKey}
+	if _, err := mc.CopyObject(ctx, dst, src); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return nil // pending node: nothing to move
+		}
+		return fmt.Errorf("copy %s->%s: %w", srcKey, dstKey, err)
+	}
+	if err := mc.RemoveObject(ctx, bucket, srcKey, minio.RemoveObjectOptions{}); err != nil {
+		// Undo the copy so a half-move never leaves a duplicate object.
+		_ = mc.RemoveObject(ctx, bucket, dstKey, minio.RemoveObjectOptions{})
+		return fmt.Errorf("remove src %s: %w", srcKey, err)
+	}
+	return nil
+}
+
+// moveLocal renames an object under the local-FS fallback root, creating the
+// destination's parent directories. A missing source is a no-op (pending node).
+func (b *GrantBroker) moveLocal(srcKey, dstKey string) error {
+	src := b.localPath(srcKey)
+	dst := b.localPath(dstKey)
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(src, dst)
+}
+
+// PutContent writes size bytes from r to bucket/key in the owner's store and
+// returns the stored object's ETag (empty for the local-FS backend). It is the
+// OS-mediated data plane the Files app uses when a direct presigned PUT is not
+// available — chiefly STANDALONE (local-FS) mode, where the browser cannot write
+// a filesystem path itself, and the object-scoped STS case. The Files service
+// performs the ACL check (editor+) before calling this; the broker only moves
+// bytes. In standalone the bytes land under LocalRoot, mirroring the bucket key.
+func (b *GrantBroker) PutContent(ctx context.Context, ownerID, bucket, key string, r io.Reader, size int64, contentType string) (string, error) {
+	res := b.resolveOwner(ctx, ownerID)
+	if !res.Configured() {
+		dst := b.localPath(key)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return "", err
+		}
+		f, err := os.Create(dst)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		if _, err := io.Copy(f, r); err != nil {
+			return "", err
+		}
+		return "", f.Sync()
+	}
+	mc, err := b.client(res)
+	if err != nil {
+		return "", err
+	}
+	info, err := mc.PutObject(ctx, bucket, key, r, size, minio.PutObjectOptions{ContentType: contentType})
+	if err != nil {
+		return "", fmt.Errorf("put %s/%s: %w", bucket, key, err)
+	}
+	return info.ETag, nil
+}
+
+// GetContent opens bucket/key for reading from the owner's store, returning the
+// reader (the caller MUST Close it) and the object size (-1 when unknown). It is
+// the read half of the OS-mediated data plane (standalone / STS). The Files
+// service performs the ACL check (viewer+) before calling this.
+func (b *GrantBroker) GetContent(ctx context.Context, ownerID, bucket, key string) (io.ReadCloser, int64, error) {
+	res := b.resolveOwner(ctx, ownerID)
+	if !res.Configured() {
+		f, err := os.Open(b.localPath(key))
+		if err != nil {
+			return nil, 0, err
+		}
+		size := int64(-1)
+		if st, err := f.Stat(); err == nil {
+			size = st.Size()
+		}
+		return f, size, nil
+	}
+	mc, err := b.client(res)
+	if err != nil {
+		return nil, 0, err
+	}
+	obj, err := mc.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("get %s/%s: %w", bucket, key, err)
+	}
+	// GetObject is lazy; Stat forces the request so a missing object errors here
+	// (instead of returning a reader that fails mid-stream).
+	st, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		return nil, 0, fmt.Errorf("stat %s/%s: %w", bucket, key, err)
+	}
+	return obj, st.Size, nil
 }
 
 // localPath maps an object key to its location under the local-FS fallback root.

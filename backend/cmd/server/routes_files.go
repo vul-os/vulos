@@ -29,11 +29,18 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"vulos/backend/services/files"
 )
+
+// maxUploadBytes caps a single OS-mediated content upload (data plane). Large
+// objects in cloud mode go direct-to-bucket via the presigned grant and never
+// pass through here.
+const maxUploadBytes = 512 << 20 // 512 MiB
 
 // filesGrantTTL bounds how long a minted file grant lives. Short by design.
 const filesGrantTTL = 15 * time.Minute
@@ -114,6 +121,48 @@ func registerFilesRoutes(mux *http.ServeMux, svc *files.Service) {
 		writeJSON(w, map[string]any{"node": n, "grant": grant})
 	}))
 
+	// OS-mediated data plane (PHASE-2A). The Files app uploads/downloads bytes
+	// here when a direct presigned PUT/GET is unavailable — chiefly STANDALONE
+	// (local-FS) mode, where the browser cannot touch a filesystem path, and the
+	// object-scoped STS case. Both are ACL-gated by the service before any byte
+	// moves. In cloud-with-presigned mode the app talks to the bucket directly and
+	// these never run.
+	mux.HandleFunc("PUT /api/files/content", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		nodeID := r.URL.Query().Get("node")
+		if nodeID == "" {
+			writeErr(w, 400, "node required")
+			return
+		}
+		body := http.MaxBytesReader(w, r.Body, maxUploadBytes)
+		defer body.Close()
+		size := r.ContentLength
+		etag, err := svc.PutContent(r.Context(), uid, nodeID, body, size, r.Header.Get("Content-Type"))
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"etag": etag, "size": size})
+	}))
+
+	mux.HandleFunc("GET /api/files/content", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		rc, n, size, err := svc.GetContent(r.Context(), uid, r.URL.Query().Get("node"))
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		defer rc.Close()
+		if n.ContentType != "" {
+			w.Header().Set("Content-Type", n.ContentType)
+		} else {
+			w.Header().Set("Content-Type", "application/octet-stream")
+		}
+		if size >= 0 {
+			w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		}
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(n.Name)+"\"")
+		io.Copy(w, rc)
+	}))
+
 	mux.HandleFunc("POST /api/files/commit", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
 		var req struct {
 			NodeID      string `json:"node_id"`
@@ -141,7 +190,7 @@ func registerFilesRoutes(mux *http.ServeMux, svc *files.Service) {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		n, err := svc.Move(uid, req.NodeID, req.NewParentID, req.NewName)
+		n, err := svc.Move(r.Context(), uid, req.NodeID, req.NewParentID, req.NewName)
 		if err != nil {
 			writeFilesErr(w, err)
 			return
@@ -276,6 +325,23 @@ func registerFilesRoutes(mux *http.ServeMux, svc *files.Service) {
 		}
 		writeJSON(w, map[string]any{"node": n, "grant": grant})
 	}))
+}
+
+// sanitizeFilename strips characters unsafe for a Content-Disposition filename
+// (quotes, path separators, control bytes) so the header cannot be broken or
+// used for traversal. Names are already length/traversal-validated server-side.
+func sanitizeFilename(name string) string {
+	out := make([]rune, 0, len(name))
+	for _, c := range name {
+		if c < 0x20 || c == '"' || c == '\\' || c == '/' {
+			continue
+		}
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		return "download"
+	}
+	return string(out)
 }
 
 // decodeJSON reads a small JSON body into v, writing a 400 on failure.

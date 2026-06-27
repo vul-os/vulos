@@ -2,7 +2,11 @@ package files
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,10 +14,16 @@ import (
 )
 
 // fakeBroker records mint calls so tests can assert that an UNAUTHORIZED request
-// never reaches the minter, and lets tests observe grant TTL/expiry.
+// never reaches the minter, and lets tests observe grant TTL/expiry. It also
+// models a tiny in-memory object store (objs, keyed by bucket+"|"+key) so the
+// PHASE-2A byte-mover can be exercised — including a failAfter injection that
+// makes the Nth MoveObject fail, to prove the move rolls back.
 type fakeBroker struct {
 	reads, writes int
 	lastTTL       time.Duration
+	objs          map[string]string // bucket|key -> contents (object presence)
+	moves         int               // successful MoveObject count
+	failAfter     int               // when >0, the failAfter-th MoveObject fails
 }
 
 func (f *fakeBroker) MintRead(_ context.Context, ownerID, bucket, key string, ttl time.Duration) (storage.ObjectGrant, error) {
@@ -26,6 +36,61 @@ func (f *fakeBroker) MintWrite(_ context.Context, ownerID, bucket, key string, t
 	f.writes++
 	f.lastTTL = ttl
 	return storage.ObjectGrant{Type: storage.GrantLocal, Method: "PUT", Bucket: bucket, Key: key, ExpiresAt: time.Now().Add(ttl)}, nil
+}
+
+func okey(bucket, key string) string { return bucket + "|" + key }
+
+// put seeds a virtual object so MoveObject has bytes to relocate.
+func (f *fakeBroker) put(bucket, key, body string) {
+	if f.objs == nil {
+		f.objs = map[string]string{}
+	}
+	f.objs[okey(bucket, key)] = body
+}
+
+func (f *fakeBroker) get(bucket, key string) (string, bool) {
+	v, ok := f.objs[okey(bucket, key)]
+	return v, ok
+}
+
+// MoveObject relocates a virtual object. A missing source is a no-op (matching
+// the real broker's pending-node behaviour). When failAfter is reached it errors
+// WITHOUT moving, so the service must revert prior moves.
+func (f *fakeBroker) MoveObject(_ context.Context, _ /*ownerID*/, bucket, srcKey, dstKey string) error {
+	if srcKey == "" || dstKey == "" || srcKey == dstKey {
+		return nil
+	}
+	f.moves++
+	if f.failAfter > 0 && f.moves == f.failAfter {
+		return fmt.Errorf("fakeBroker: injected MoveObject failure")
+	}
+	if f.objs == nil {
+		f.objs = map[string]string{}
+	}
+	body, ok := f.objs[okey(bucket, srcKey)]
+	if !ok {
+		return nil // pending node: nothing to move
+	}
+	delete(f.objs, okey(bucket, srcKey))
+	f.objs[okey(bucket, dstKey)] = body
+	return nil
+}
+
+func (f *fakeBroker) PutContent(_ context.Context, _ /*ownerID*/, bucket, key string, r io.Reader, _ int64, _ string) (string, error) {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return "", err
+	}
+	f.put(bucket, key, string(b))
+	return "etag-" + key, nil
+}
+
+func (f *fakeBroker) GetContent(_ context.Context, _ /*ownerID*/, bucket, key string) (io.ReadCloser, int64, error) {
+	body, ok := f.get(bucket, key)
+	if !ok {
+		return nil, 0, fmt.Errorf("fakeBroker: no object %s", okey(bucket, key))
+	}
+	return io.NopCloser(strings.NewReader(body)), int64(len(body)), nil
 }
 
 func newTestService(t *testing.T) (*Service, *fakeBroker) {
@@ -291,7 +356,7 @@ func TestMoveRenameUpdatesKeys(t *testing.T) {
 		t.Fatalf("key=%q want %q", f.ObjectKey, want)
 	}
 	// Rename the folder; child key should follow.
-	if _, err := svc.Move(owner, dir.ID, "", "b"); err != nil {
+	if _, err := svc.Move(context.Background(), owner, dir.ID, "", "b"); err != nil {
 		t.Fatalf("Move/rename folder: %v", err)
 	}
 	moved, err := svc.getNode(f.ID)
@@ -329,5 +394,181 @@ func TestVersionsListed(t *testing.T) {
 	// A stranger cannot list versions.
 	if _, err := svc.Versions(other, n.ID); err != ErrForbidden {
 		t.Fatalf("stranger Versions: err=%v, want ErrForbidden", err)
+	}
+}
+
+// --- PHASE-2A byte-mover ---------------------------------------------------
+
+// TestByteMoverSubtree: renaming a folder physically relocates EVERY file's
+// bytes in its subtree (not just the index keys), via the broker.
+func TestByteMoverSubtree(t *testing.T) {
+	svc, fb := newTestService(t)
+	bucket := "vulos-" + owner
+
+	a, err := svc.CreateFolder(owner, "", "a")
+	if err != nil {
+		t.Fatalf("CreateFolder a: %v", err)
+	}
+	sub, err := svc.CreateFolder(owner, a.ID, "sub")
+	if err != nil {
+		t.Fatalf("CreateFolder sub: %v", err)
+	}
+	f := uploadFile(t, svc, owner, a.ID, "f.txt")   // a/f.txt
+	g := uploadFile(t, svc, owner, sub.ID, "g.txt") // a/sub/g.txt
+	fb.put(bucket, f.ObjectKey, "FFF")              // seed the bytes
+	fb.put(bucket, g.ObjectKey, "GGG")
+
+	// Rename a → b. Bytes for the whole subtree must follow.
+	if _, err := svc.Move(context.Background(), owner, a.ID, "", "b"); err != nil {
+		t.Fatalf("Move folder: %v", err)
+	}
+
+	wantF := owner + "/drive/b/f.txt"
+	wantG := owner + "/drive/b/sub/g.txt"
+	if body, ok := fb.get(bucket, wantF); !ok || body != "FFF" {
+		t.Fatalf("f.txt bytes not at new key %q (ok=%v body=%q)", wantF, ok, body)
+	}
+	if body, ok := fb.get(bucket, wantG); !ok || body != "GGG" {
+		t.Fatalf("g.txt bytes not at new key %q (ok=%v body=%q)", wantG, ok, body)
+	}
+	// Old keys must be gone (copy+delete, not copy).
+	if _, ok := fb.get(bucket, owner+"/drive/a/f.txt"); ok {
+		t.Fatalf("old f.txt bytes still present after move")
+	}
+	if _, ok := fb.get(bucket, owner+"/drive/a/sub/g.txt"); ok {
+		t.Fatalf("old g.txt bytes still present after move")
+	}
+	// Index agrees with the bytes.
+	if mv, _ := svc.getNode(g.ID); mv.ObjectKey != wantG {
+		t.Fatalf("index g key=%q want %q", mv.ObjectKey, wantG)
+	}
+}
+
+// TestByteMoverRollback: when a byte move fails partway through a subtree move,
+// the already-moved bytes are reverted AND the index is left unchanged, so the
+// store and the index stay consistent.
+func TestByteMoverRollback(t *testing.T) {
+	svc, fb := newTestService(t)
+	bucket := "vulos-" + owner
+
+	a, err := svc.CreateFolder(owner, "", "a")
+	if err != nil {
+		t.Fatalf("CreateFolder: %v", err)
+	}
+	f1 := uploadFile(t, svc, owner, a.ID, "f1.txt")
+	f2 := uploadFile(t, svc, owner, a.ID, "f2.txt")
+	k1, k2 := f1.ObjectKey, f2.ObjectKey
+	fb.put(bucket, k1, "ONE")
+	fb.put(bucket, k2, "TWO")
+
+	// Fail the 2nd object move: the 1st will have moved and must be reverted.
+	fb.failAfter = 2
+	if _, err := svc.Move(context.Background(), owner, a.ID, "", "b"); err == nil {
+		t.Fatalf("Move should have failed (injected byte-move failure)")
+	}
+
+	// Bytes back at their ORIGINAL keys (nothing left at the new keys).
+	if body, ok := fb.get(bucket, k1); !ok || body != "ONE" {
+		t.Fatalf("f1 bytes not reverted to %q (ok=%v body=%q)", k1, ok, body)
+	}
+	if body, ok := fb.get(bucket, k2); !ok || body != "TWO" {
+		t.Fatalf("f2 bytes disappeared from %q (ok=%v body=%q)", k2, ok, body)
+	}
+	for _, bad := range []string{owner + "/drive/b/f1.txt", owner + "/drive/b/f2.txt"} {
+		if _, ok := fb.get(bucket, bad); ok {
+			t.Fatalf("bytes leaked at new key %q after rollback", bad)
+		}
+	}
+
+	// Index unchanged: folder still "a", children still under a/.
+	if av, _ := svc.getNode(a.ID); av.Name != "a" || av.Path != "a" {
+		t.Fatalf("folder index changed after failed move: name=%q path=%q", av.Name, av.Path)
+	}
+	if mv, _ := svc.getNode(f1.ID); mv.ObjectKey != k1 || mv.Path != "a/f1.txt" {
+		t.Fatalf("f1 index changed after failed move: key=%q path=%q", mv.ObjectKey, mv.Path)
+	}
+}
+
+// TestContentDataPlaneLocalFS: the OS-mediated data plane writes and reads bytes
+// through the REAL broker in standalone (local-FS) mode, and ACL-gates both.
+func TestContentDataPlaneLocalFS(t *testing.T) {
+	root := t.TempDir()
+	resolver := storage.NewResolver(storage.ResolverConfig{BucketPrefix: "vulos-", LocalRoot: root})
+	broker := storage.NewGrantBroker(resolver, storage.STSConfig{}, time.Minute)
+	dbPath := filepath.Join(t.TempDir(), "files.db")
+	svc, err := New(dbPath, broker, resolver.BucketFor)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { svc.Close() })
+
+	n := uploadFile(t, svc, owner, "", "hello.txt")
+	if _, err := svc.PutContent(context.Background(), owner, n.ID, strings.NewReader("hello world"), 11, "text/plain"); err != nil {
+		t.Fatalf("PutContent: %v", err)
+	}
+	// Bytes really landed on disk under LocalRoot/<key>.
+	onDisk, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(n.ObjectKey)))
+	if err != nil || string(onDisk) != "hello world" {
+		t.Fatalf("on-disk bytes=%q err=%v", onDisk, err)
+	}
+	// Read them back via the data plane.
+	rc, _, size, err := svc.GetContent(context.Background(), owner, n.ID)
+	if err != nil {
+		t.Fatalf("GetContent: %v", err)
+	}
+	defer rc.Close()
+	got, _ := io.ReadAll(rc)
+	if string(got) != "hello world" || size != 11 {
+		t.Fatalf("read back=%q size=%d want %q/11", got, size, "hello world")
+	}
+	// A stranger can neither write nor read.
+	if _, err := svc.PutContent(context.Background(), other, n.ID, strings.NewReader("x"), 1, ""); err != ErrForbidden {
+		t.Fatalf("stranger PutContent: err=%v want ErrForbidden", err)
+	}
+	if _, _, _, err := svc.GetContent(context.Background(), other, n.ID); err != ErrForbidden {
+		t.Fatalf("stranger GetContent: err=%v want ErrForbidden", err)
+	}
+}
+
+// TestByteMoverRealLocalFS exercises the REAL storage.GrantBroker in standalone
+// (local-FS) mode through the service: a folder rename os.Renames the actual
+// files on disk for the whole subtree.
+func TestByteMoverRealLocalFS(t *testing.T) {
+	root := t.TempDir()
+	resolver := storage.NewResolver(storage.ResolverConfig{BucketPrefix: "vulos-", LocalRoot: root})
+	broker := storage.NewGrantBroker(resolver, storage.STSConfig{}, time.Minute)
+	dbPath := filepath.Join(t.TempDir(), "files.db")
+	svc, err := New(dbPath, broker, resolver.BucketFor)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { svc.Close() })
+
+	a, _ := svc.CreateFolder(owner, "", "a")
+	f := uploadFile(t, svc, owner, a.ID, "f.txt")
+
+	// Write the real bytes where the local grant points (LocalRoot/<key>).
+	srcPath := filepath.Join(root, filepath.FromSlash(f.ObjectKey))
+	if err := os.MkdirAll(filepath.Dir(srcPath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(srcPath, []byte("disk-bytes"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if _, err := svc.Move(context.Background(), owner, a.ID, "", "b"); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+
+	if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
+		t.Fatalf("source file still present after move (err=%v)", err)
+	}
+	dstPath := filepath.Join(root, filepath.FromSlash(owner+"/drive/b/f.txt"))
+	body, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("read moved file: %v", err)
+	}
+	if string(body) != "disk-bytes" {
+		t.Fatalf("moved file contents=%q want disk-bytes", body)
 	}
 }
