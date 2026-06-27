@@ -65,6 +65,33 @@ const filesApi = {
   peerReceived: () => request('/files/peer/received'),
   peerSave: (id, parent_id, name) =>
     request('/files/peer/save', { method: 'POST', body: JSON.stringify({ id, parent_id, name }) }),
+
+  // ── external stores (Phase 4: Google Drive et al. mounted as virtual drives) ──
+  externalStatus: () => request('/files/external/status'),
+  externalMounts: () => request('/files/external/mounts'),
+  externalConnect: (provider, name) =>
+    request('/files/external/connect', { method: 'POST', body: JSON.stringify({ provider, name }) }),
+  externalDisconnect: (id) =>
+    request('/files/external/disconnect', { method: 'POST', body: JSON.stringify({ id }) }),
+  externalList: (mount, folder) =>
+    request(`/files/external/list?mount=${encodeURIComponent(mount)}&folder=${encodeURIComponent(folder || '')}`),
+}
+
+// downloadExternal: stream a mounted-store file's bytes through the OS and save.
+async function downloadExternal(mountId, node) {
+  const res = await rawFetch(
+    `/files/external/content?mount=${encodeURIComponent(mountId)}&file=${encodeURIComponent(node.id)}&name=${encodeURIComponent(node.name)}`,
+  )
+  if (!res.ok) throw new Error(`download failed (${res.status})`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = node.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 // uploadOne: upload-grant → PUT bytes (direct presigned, else OS data plane) →
@@ -659,6 +686,47 @@ function RowMenu({ node, onAction, onClose }) {
   )
 }
 
+// ── connect-external modal (mount a Google Drive / other external store) ─────
+function ConnectModal({ providers, onConnect, onClose }) {
+  const [provider, setProvider] = useState(providers[0]?.kind || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const sel = providers.find((p) => p.kind === provider)
+
+  const connect = async () => {
+    setBusy(true); setErr(null)
+    try { await onConnect(provider); onClose() }
+    catch (e) {
+      // A 409 means the account hasn't linked the provider in cloud settings yet.
+      const msg = /409|not connected/i.test(e.message || '')
+        ? 'This account has not connected the provider yet. Connect it in your cloud account settings, then try again.'
+        : (e.message || 'Connect failed')
+      setErr(msg)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title="Connect an external drive" onClose={onClose} width={460}>
+      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14, lineHeight: 1.5 }}>
+        Mount an external store as a drive. Vulos lists and downloads its files using a
+        short-lived token brokered by your cloud account — the provider’s long-lived
+        credentials never touch this box. External drives are currently <b>read-only</b>.
+      </div>
+      <label style={{ fontSize: 12, color: T.textDim, display: 'block', marginBottom: 6 }}>Provider</label>
+      <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ ...inputStyle, marginBottom: 18 }}>
+        {providers.map((p) => <option key={p.kind} value={p.kind}>{p.display_name}</option>)}
+      </select>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn primary onClick={connect} disabled={busy || !provider}>
+          {busy ? 'Connecting…' : `Connect ${sel?.display_name || ''}`}
+        </Btn>
+      </div>
+    </Modal>
+  )
+}
+
 // ── main app ─────────────────────────────────────────────────────────────────
 export default function Drive() {
   const [view, setView] = useState('mydrive') // 'mydrive' | 'shared'
@@ -669,7 +737,14 @@ export default function Drive() {
   const [menuFor, setMenuFor] = useState(null)
   const [modal, setModal] = useState(null) // { kind, node }
   const [redeemOpen, setRedeemOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
+  const [extStatus, setExtStatus] = useState({ available: false, providers: [] })
+  const [mounts, setMounts] = useState([])
   const [busy, setBusy] = useState(null) // status text
+
+  // The active external mount, if the current view is one ("ext:<mountID>").
+  const extMountId = view.startsWith('ext:') ? view.slice(4) : ''
+  const extMount = mounts.find((m) => m.id === extMountId)
   const fileInputRef = useRef(null)
   const dropRef = useRef(null)
   const [dragOver, setDragOver] = useState(false)
@@ -677,10 +752,26 @@ export default function Drive() {
   const cur = trail[trail.length - 1]
   const atRoot = view === 'shared' || trail.length === 1
 
+  // Load external-store availability + the user's mounts once on open.
+  const loadExternal = useCallback(async () => {
+    try {
+      const st = await filesApi.externalStatus()
+      setExtStatus(st || { available: false, providers: [] })
+      if (st?.available) {
+        const r = await filesApi.externalMounts()
+        setMounts(r.mounts || [])
+      }
+    } catch { /* external is optional; ignore when unavailable */ }
+  }, [])
+  useEffect(() => { loadExternal() }, [loadExternal])
+
   const refresh = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      if (view === 'received') {
+      if (view.startsWith('ext:')) {
+        const r = await filesApi.externalList(view.slice(4), cur.id)
+        setNodes(r.nodes || [])
+      } else if (view === 'received') {
         const r = await filesApi.peerReceived()
         setNodes(r.items || [])
       } else {
@@ -702,7 +793,20 @@ export default function Drive() {
   const openFolder = (node) => setTrail([...trail, { id: node.id, name: node.name }])
   const gotoCrumb = (i) => setTrail(trail.slice(0, i + 1))
   const VIEW_NAMES = { shared: 'Shared with me', received: 'Received', mydrive: 'My Drive' }
-  const switchView = (v) => { setView(v); setTrail([{ id: '', name: VIEW_NAMES[v] || 'My Drive' }]) }
+  const switchView = (v, rootName) => { setView(v); setTrail([{ id: '', name: rootName || VIEW_NAMES[v] || 'My Drive' }]) }
+
+  const connectExternal = async (provider) => {
+    await filesApi.externalConnect(provider, '')
+    await loadExternal()
+  }
+  const disconnectExternal = async (m) => {
+    if (!window.confirm(`Disconnect “${m.name}”? Your files stay in ${m.name}; this only removes the drive from Vulos.`)) return
+    try {
+      await filesApi.externalDisconnect(m.id)
+      if (extMountId === m.id) switchView('mydrive')
+      await loadExternal()
+    } catch (e) { setError(e.message || 'Disconnect failed') }
+  }
 
   const saveReceived = async (item) => {
     setBusy(`Saving ${item.name} to Drive…`)
@@ -711,8 +815,13 @@ export default function Drive() {
   }
 
   const onRowOpen = (node) => {
-    if (node.is_dir) openFolder(node)
-    else handle('download', node)
+    if (node.is_dir) { openFolder(node); return }
+    if (extMountId) {
+      setBusy(`Downloading ${node.name}…`)
+      downloadExternal(extMountId, node).catch((e) => setError(e.message || 'Download failed')).finally(() => setBusy(null))
+      return
+    }
+    handle('download', node)
   }
 
   const handle = async (kind, node) => {
@@ -743,9 +852,10 @@ export default function Drive() {
     await refresh()
   }
 
+  const readOnlyView = view !== 'mydrive' // shared / received / external are not upload targets
   const onDrop = (e) => {
     e.preventDefault(); setDragOver(false)
-    if (view === 'shared' && trail.length === 1) return
+    if (readOnlyView) return
     if (e.dataTransfer?.files?.length) doUpload(e.dataTransfer.files)
   }
 
@@ -771,6 +881,50 @@ export default function Drive() {
             <span>{icon}</span><span>{label}</span>
           </button>
         ))}
+
+        {/* external drives (Google Drive etc.) — only when the seam is wired */}
+        {(extStatus.available || mounts.length > 0) && (
+          <>
+            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, padding: '14px 10px 4px' }}>External</div>
+            {mounts.map((m) => {
+              const v = `ext:${m.id}`
+              return (
+                <div key={m.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <button
+                    onClick={() => switchView(v, m.name)}
+                    title={m.name}
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9,
+                      border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', minWidth: 0,
+                      background: view === v ? T.selected : 'none', color: view === v ? T.text : T.textDim,
+                    }}
+                  >
+                    <span>🟢</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                  </button>
+                  <button
+                    onClick={() => disconnectExternal(m)}
+                    title="Disconnect"
+                    style={{ background: 'none', border: 'none', color: T.textFaint, cursor: 'pointer', fontSize: 14, padding: '0 6px' }}
+                  >×</button>
+                </div>
+              )
+            })}
+            <button
+              onClick={() => extStatus.available && setConnectOpen(true)}
+              disabled={!extStatus.available}
+              title={extStatus.available ? 'Connect an external drive' : 'External drives require a connected cloud account'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9,
+                border: 'none', cursor: extStatus.available ? 'pointer' : 'not-allowed', fontSize: 13, textAlign: 'left',
+                background: 'none', color: extStatus.available ? T.accent : T.textFaint, opacity: extStatus.available ? 1 : 0.6,
+              }}
+            >
+              <span>＋</span><span>{extStatus.available ? 'Connect Google Drive' : 'Connect (unavailable)'}</span>
+            </button>
+          </>
+        )}
+
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>
           <Btn small onClick={() => setRedeemOpen(true)}>↓ Redeem link</Btn>
         </div>
@@ -779,7 +933,7 @@ export default function Drive() {
       {/* main */}
       <div
         ref={dropRef}
-        onDragOver={(e) => { e.preventDefault(); if (!(view === 'shared' && trail.length === 1)) setDragOver(true) }}
+        onDragOver={(e) => { e.preventDefault(); if (!readOnlyView) setDragOver(true) }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false) }}
         onDrop={onDrop}
         style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
@@ -797,6 +951,9 @@ export default function Drive() {
               </span>
             ))}
           </div>
+          {extMountId && (
+            <span style={{ fontSize: 11, color: T.textFaint, border: `1px solid ${T.border}`, borderRadius: 6, padding: '3px 8px' }}>Read-only</span>
+          )}
           {view === 'mydrive' && (
             <>
               <Btn small onClick={() => setModal({ kind: 'newfolder' })}>+ Folder</Btn>
@@ -826,7 +983,7 @@ export default function Drive() {
             <Center>
               <div style={{ fontSize: 40, opacity: 0.4 }}>{view === 'shared' ? '👥' : view === 'received' ? '📥' : '📂'}</div>
               <div style={{ color: T.textDim, fontSize: 14 }}>
-                {view === 'received' ? 'Nothing received yet' : view === 'shared' ? 'Nothing shared with you yet' : atRoot ? 'Your Drive is empty' : 'This folder is empty'}
+                {view === 'received' ? 'Nothing received yet' : view === 'shared' ? 'Nothing shared with you yet' : extMountId ? (atRoot ? `${extMount?.name || 'This drive'} is empty` : 'This folder is empty') : atRoot ? 'Your Drive is empty' : 'This folder is empty'}
               </div>
               {view === 'received' && <Btn small primary onClick={() => setRedeemOpen(true)}>Redeem a link</Btn>}
               {view === 'mydrive' && <Btn small primary onClick={() => fileInputRef.current?.click()}>Upload a file</Btn>}
@@ -875,12 +1032,14 @@ export default function Drive() {
                   <span style={{ width: 90, textAlign: 'right', color: T.textFaint, fontSize: 12 }}>{node.is_dir ? '—' : fmtSize(node.size)}</span>
                   <span style={{ width: 110, textAlign: 'right', color: T.textFaint, fontSize: 12 }}>{fmtDate(node.updated_at)}</span>
                   <span style={{ width: 28, textAlign: 'center' }}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === node.id ? null : node.id) }}
-                      style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
-                    >⋯</button>
+                    {!extMountId && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === node.id ? null : node.id) }}
+                        style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
+                      >⋯</button>
+                    )}
                   </span>
-                  {menuFor === node.id && (
+                  {!extMountId && menuFor === node.id && (
                     <RowMenu node={node} onAction={(k) => handle(k, node)} onClose={() => setMenuFor(null)} />
                   )}
                 </div>
@@ -929,6 +1088,7 @@ export default function Drive() {
       {modal?.kind === 'peershare' && <PeerShareModal node={modal.node} onClose={() => setModal(null)} />}
       {modal?.kind === 'versions' && <VersionsModal node={modal.node} onClose={() => setModal(null)} />}
       {redeemOpen && <RedeemModal onClose={() => setRedeemOpen(false)} onRedeemed={() => { if (view === 'received') refresh() }} />}
+      {connectOpen && <ConnectModal providers={extStatus.providers || []} onConnect={connectExternal} onClose={() => setConnectOpen(false)} />}
 
       <style>{`@keyframes drive-spin { to { transform: rotate(360deg) } }`}</style>
     </div>

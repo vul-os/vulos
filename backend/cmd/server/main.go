@@ -630,6 +630,22 @@ func main() {
 			} else {
 				log.Printf("[files] OS peer-share disabled: no peering identity")
 			}
+			// FILES-4: wire the external-store seam (Google Drive). The box mints a
+			// short-lived Drive access token on demand from the CP integration broker
+			// (provider "google", Drive scope added CP-side); the refresh token never
+			// reaches the box and minted tokens are never persisted. Requires the
+			// integration broker to be configured; otherwise external mounts stay
+			// unavailable and the connect action is disabled — local Drive +
+			// peer-share work unchanged standalone (no hard cloud dependency).
+			if integrationsClient.Configured() {
+				filesSvc.WithExternal(
+					filesIntegrationTokenSource{c: integrationsClient},
+					files.NewGDriveProvider(),
+				)
+				log.Printf("[files] external mounts active (providers: gdrive)")
+			} else {
+				log.Printf("[files] external mounts disabled: integration broker not configured")
+			}
 		}
 	}
 
@@ -733,6 +749,7 @@ func main() {
 	// signed capability + recipient fetch proof, listed in auth.publicPaths).
 	registerFilesPeerRoutes(mux, filesSvc)
 	registerFilesPeerServe(mux, filesSvc)
+	registerFilesExternalRoutes(mux, filesSvc)
 
 	// Apps & Bots platform + MCP: give the OS an agent-operable surface over OS
 	// capabilities (Files, read-only app/system info) via the shared @vulos/apps

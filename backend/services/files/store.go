@@ -429,6 +429,64 @@ func (s *Service) listVersions(nodeID string) ([]Version, error) {
 	return out, rows.Err()
 }
 
+// --- external mounts (PHASE 4) ---
+
+func (s *Service) insertMount(m *ExternalMount) error {
+	_, err := s.db.Exec(`INSERT INTO files_external_mounts(id, owner_id, provider, name, config, created_at)
+		VALUES(?,?,?,?,'',?)`,
+		m.ID, m.OwnerID, m.Provider, m.Name, m.CreatedAt.Format(rfc))
+	return err
+}
+
+func scanMount(sc interface{ Scan(...any) error }) (*ExternalMount, error) {
+	var m ExternalMount
+	var created string
+	if err := sc.Scan(&m.ID, &m.OwnerID, &m.Provider, &m.Name, &created); err != nil {
+		return nil, err
+	}
+	m.CreatedAt, _ = time.Parse(rfc, created)
+	return &m, nil
+}
+
+const mountCols = `id, owner_id, provider, name, created_at`
+
+func (s *Service) getMount(id string) (*ExternalMount, error) {
+	row := s.db.QueryRow(`SELECT `+mountCols+` FROM files_external_mounts WHERE id=?`, id)
+	m, err := scanMount(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return m, err
+}
+
+func (s *Service) listMounts(ownerID string) ([]ExternalMount, error) {
+	rows, err := s.db.Query(`SELECT `+mountCols+` FROM files_external_mounts WHERE owner_id=? ORDER BY created_at DESC`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ExternalMount{}
+	for rows.Next() {
+		m, err := scanMount(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) deleteMount(id string) error {
+	res, err := s.db.Exec(`DELETE FROM files_external_mounts WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Close closes the underlying database.
 func (s *Service) Close() error {
 	if s.db == nil {

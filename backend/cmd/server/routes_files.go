@@ -374,6 +374,12 @@ func writeFilesErr(w http.ResponseWriter, err error) {
 		writeErr(w, 403, "invalid or expired capability")
 	case errors.Is(err, files.ErrPeerUnavailable):
 		writeErr(w, 503, "peer-share unavailable")
+	case errors.Is(err, files.ErrExternalUnavailable):
+		writeErr(w, 503, "external mounts not available")
+	case errors.Is(err, files.ErrExternalNotConnected):
+		writeErr(w, 409, "external account not connected")
+	case errors.Is(err, files.ErrExternalProvider):
+		writeErr(w, 400, "unknown external provider")
 	case errors.Is(err, files.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	default:

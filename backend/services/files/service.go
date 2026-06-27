@@ -47,6 +47,13 @@ type Service struct {
 	signer     PeerSigner
 	transport  PeerTransport
 	stagingDir string
+
+	// PHASE-4 external-store seam (wired via WithExternal; nil/empty ⇒ external
+	// mounts return ErrExternalUnavailable). extTokens mints short-lived provider
+	// access tokens from the CP integration broker; extProviders maps a mount kind
+	// (e.g. "gdrive") to its SSRF-safe API implementation.
+	extTokens    TokenSource
+	extProviders map[string]ExternalProvider
 }
 
 // New opens (creating + migrating) the Files DB at dbPath and returns a Service.
