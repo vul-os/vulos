@@ -650,6 +650,9 @@ func main() {
 	// Mail: URL of the embedded LilMail service (built-in Mail app).
 	registerMailRoutes(mux)
 
+	// Board: mint short-lived HMAC tokens for the Vulos Board sync server.
+	registerBoardRoutes(mux)
+
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)
 

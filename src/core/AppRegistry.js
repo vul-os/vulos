@@ -246,6 +246,20 @@ const builtinRegistry = [
     port: 80,
     permissions: ['storage'], // file-bearing: recordings/shared files
   },
+  {
+    id: 'board',
+    name: 'Board',
+    icon: '▦',
+    description: 'Vulos Board — collaborative infinite whiteboard with realtime sync',
+    keywords: ['board', 'whiteboard', 'canvas', 'draw', 'diagram', 'sketch', 'collaborate', 'realtime'],
+    category: 'productivity',
+    type: 'web',
+    url: '/app/board/',
+    port: 80,
+    // No storage permission: the board *sync server* uses the storage seam
+    // itself (it is not gateway header-injected). The OS mints its websocket
+    // auth token via GET /api/board/token (see backend routes_board.go).
+  },
   // MAIL-PIM: Calendar and Contacts are surfaces of the Mail product now (Office
   // stopped serving them). They are NOT separate gateway apps — there is no
   // `vulos-calendar`/`vulos-contacts` namespace to proxy to (that backend was
