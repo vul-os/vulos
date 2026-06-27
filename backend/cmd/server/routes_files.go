@@ -380,6 +380,10 @@ func writeFilesErr(w http.ResponseWriter, err error) {
 		writeErr(w, 409, "external account not connected")
 	case errors.Is(err, files.ErrExternalProvider):
 		writeErr(w, 400, "unknown external provider")
+	case errors.Is(err, files.ErrExternalReadOnly):
+		writeErr(w, 409, "external store is read-only")
+	case errors.Is(err, files.ErrExternalConflict):
+		writeErr(w, 409, "a file with that name already exists")
 	case errors.Is(err, files.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	default:

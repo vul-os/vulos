@@ -8,6 +8,7 @@ package files
 import (
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -432,23 +433,36 @@ func (s *Service) listVersions(nodeID string) ([]Version, error) {
 // --- external mounts (PHASE 4) ---
 
 func (s *Service) insertMount(m *ExternalMount) error {
+	cfg := ""
+	if len(m.Config) > 0 {
+		b, err := json.Marshal(m.Config)
+		if err != nil {
+			return err
+		}
+		cfg = string(b)
+	}
 	_, err := s.db.Exec(`INSERT INTO files_external_mounts(id, owner_id, provider, name, config, created_at)
-		VALUES(?,?,?,?,'',?)`,
-		m.ID, m.OwnerID, m.Provider, m.Name, m.CreatedAt.Format(rfc))
+		VALUES(?,?,?,?,?,?)`,
+		m.ID, m.OwnerID, m.Provider, m.Name, cfg, m.CreatedAt.Format(rfc))
 	return err
 }
 
 func scanMount(sc interface{ Scan(...any) error }) (*ExternalMount, error) {
 	var m ExternalMount
-	var created string
-	if err := sc.Scan(&m.ID, &m.OwnerID, &m.Provider, &m.Name, &created); err != nil {
+	var created, cfg string
+	if err := sc.Scan(&m.ID, &m.OwnerID, &m.Provider, &m.Name, &cfg, &created); err != nil {
 		return nil, err
+	}
+	if cfg != "" {
+		if err := json.Unmarshal([]byte(cfg), &m.Config); err != nil {
+			return nil, err
+		}
 	}
 	m.CreatedAt, _ = time.Parse(rfc, created)
 	return &m, nil
 }
 
-const mountCols = `id, owner_id, provider, name, created_at`
+const mountCols = `id, owner_id, provider, name, config, created_at`
 
 func (s *Service) getMount(id string) (*ExternalMount, error) {
 	row := s.db.QueryRow(`SELECT `+mountCols+` FROM files_external_mounts WHERE id=?`, id)

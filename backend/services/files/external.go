@@ -2,18 +2,20 @@ package files
 
 // external.go — FILES PHASE 4: external stores mounted as virtual "drives".
 //
-// A user can connect an external store (Google Drive in Wave 1) so it appears in
-// the Files app alongside their per-user bucket Drive. The OS NEVER holds the
-// provider's long-lived refresh token: it mints a SHORT-LIVED access token on
-// demand from the cloud integration broker (the same INTEG-SEC-01 path used for
-// app integration injection) and uses it for exactly one provider API call, then
-// drops it. Tokens are never persisted to the Files DB.
+// A user can connect an external store (Google Drive, Dropbox, Google Cloud
+// Storage) so it appears in the Files app alongside their per-user bucket Drive.
+// The OS NEVER holds the provider's long-lived refresh token: it mints a
+// SHORT-LIVED access token on demand from the cloud integration broker (the same
+// INTEG-SEC-01 path used for app integration injection) and uses it for exactly
+// one provider API call, then drops it. Tokens are never persisted to the Files
+// DB.
 //
-// What the DB stores is just the MOUNT: a (owner, provider, name) row in
-// files_external_mounts — a pointer to "this user has connected provider X".
-// All secrets stay in the CP broker. Listing/reading hits the provider's API
-// through an ExternalProvider implementation that is SSRF-safe (it talks ONLY to
-// the provider's fixed API host — see gdrive.go).
+// What the DB stores is just the MOUNT: a (owner, provider, name, config) row in
+// files_external_mounts — a pointer to "this user has connected provider X",
+// plus opaque non-secret config (e.g. a GCS bucket + prefix). All secrets stay
+// in the CP broker. Listing/reading/writing hits the provider's API through an
+// ExternalProvider implementation that is SSRF-safe (it talks ONLY to the
+// provider's fixed API host(s) — see gdrive.go, dropbox.go, gcs.go).
 //
 // Open-core / degrade: external mounts require the integration broker (cloud) or
 // BYO provider creds. When the seam is not wired (TokenSource nil or no
@@ -21,15 +23,18 @@ package files
 // the Files app disables the "Connect" action. Local Drive + peer-share are
 // completely unaffected — there is NO hard cloud dependency in core.
 //
-// Read-first scope: list folders/files + download. Write support (create/upload
-// into the external store) is deliberately deferred — see ProviderReadOnly and
-// the report. The provider interface leaves room for it without a schema change.
+// WRITE support: providers that report Writable() expose create-folder + upload
+// in addition to list + download. Writes apply a ConflictPolicy (rename-on-
+// collision by default; overwrite or fail on request) so an upload can never
+// silently clobber an existing object unless the caller asks for it.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"path"
+	"strings"
 	"time"
 
 	"vulos/backend/internal/ulid"
@@ -42,16 +47,48 @@ var (
 	ErrExternalUnavailable  = errors.New("files: external mounts unavailable")
 	ErrExternalProvider     = errors.New("files: unknown external provider")
 	ErrExternalNotConnected = errors.New("files: external account not connected")
+	ErrExternalReadOnly     = errors.New("files: external store is read-only")
+	ErrExternalConflict     = errors.New("files: external name already exists")
 )
 
+// ConflictPolicy controls what an upload/create does when an item of the same
+// name already exists in the target folder.
+//
+//   - ConflictRename (default): keep both — the new item is renamed with a
+//     " (n)" suffix. Safe and non-destructive; nothing is ever overwritten.
+//   - ConflictOverwrite: replace the existing item's bytes in place (by the
+//     provider's own id/object key). Explicit, destructive-by-request.
+//   - ConflictFail: do nothing and return ErrExternalConflict.
+type ConflictPolicy string
+
+const (
+	ConflictRename    ConflictPolicy = "rename"
+	ConflictOverwrite ConflictPolicy = "overwrite"
+	ConflictFail      ConflictPolicy = "fail"
+)
+
+// normalizeConflict maps an unset/unknown policy to the safe default (rename).
+func normalizeConflict(p ConflictPolicy) ConflictPolicy {
+	switch p {
+	case ConflictOverwrite, ConflictFail:
+		return p
+	default:
+		return ConflictRename
+	}
+}
+
 // ExternalMount is a user's connection to an external store, surfaced as a
-// virtual drive. It is a pointer only — no provider secrets live here.
+// virtual drive. It is a pointer only — no provider secrets live here. Config is
+// opaque, non-secret per-mount data (e.g. GCS bucket/prefix) persisted as JSON.
+// Writable is derived from the provider at read time (not stored).
 type ExternalMount struct {
-	ID        string    `json:"id"`
-	OwnerID   string    `json:"owner_id"`
-	Provider  string    `json:"provider"` // mount kind, e.g. "gdrive"
-	Name      string    `json:"name"`     // display name, e.g. "Google Drive"
-	CreatedAt time.Time `json:"created_at"`
+	ID        string            `json:"id"`
+	OwnerID   string            `json:"owner_id"`
+	Provider  string            `json:"provider"` // mount kind, e.g. "gdrive"
+	Name      string            `json:"name"`     // display name, e.g. "Google Drive"
+	Config    map[string]string `json:"config,omitempty"`
+	Writable  bool              `json:"writable"`
+	CreatedAt time.Time         `json:"created_at"`
 }
 
 // TokenSource mints a short-lived bearer access token for an external integration
@@ -65,24 +102,65 @@ type TokenSource interface {
 	MintToken(ctx context.Context, integrationProvider string) (string, error)
 }
 
-// ExternalProvider lists and reads from one kind of external store given a
-// short-lived bearer token. Implementations MUST be SSRF-safe: they may contact
-// ONLY the provider's fixed API host(s), never an attacker-influenced URL.
+// ProviderCall carries the per-call context for an ExternalProvider operation: a
+// fresh short-lived bearer Token plus the mount's opaque Config (e.g. the GCS
+// bucket/prefix). Token is never persisted; Config is the stored mount row.
+type ProviderCall struct {
+	Token  string
+	Config map[string]string
+}
+
+// cfg returns the config value for key, or "".
+func (c ProviderCall) cfg(key string) string { return c.Config[key] }
+
+// ExternalProvider lists, reads and (when Writable) writes one kind of external
+// store given a short-lived bearer token. Implementations MUST be SSRF-safe:
+// they may contact ONLY the provider's fixed API host(s), never an attacker-
+// influenced URL.
 type ExternalProvider interface {
 	// Kind is the mount provider id this implementation serves (e.g. "gdrive").
 	Kind() string
 	// IntegrationProvider is the CP integration token provider to mint for this
-	// store (e.g. "google" — the Drive access token rides the google integration).
+	// store (e.g. "google" for Drive, "dropbox", "gcs"). The CP broker maps it to
+	// the scope set the store needs (Drive write, Dropbox, devstorage).
 	IntegrationProvider() string
 	// DisplayName is the default human label for a new mount (e.g. "Google Drive").
 	DisplayName() string
-	// List returns the children of folderID (empty ⇒ provider root) mapped into
-	// the Files Node shape so the existing UI renders them. token is a fresh
-	// short-lived bearer.
-	List(ctx context.Context, token, folderID string) ([]*Node, error)
+	// Writable reports whether this provider supports CreateFolder + Upload.
+	Writable() bool
+	// ConfigFields describes connect-time config the UI must collect (e.g. a GCS
+	// bucket name). Empty for providers that need none.
+	ConfigFields() []ProviderConfigField
+	// ValidateConfig validates + normalizes connect-time config, returning the
+	// config to persist (no secrets). Providers that need none return (nil, nil).
+	ValidateConfig(in map[string]string) (map[string]string, error)
+	// List returns the children of folderID (empty ⇒ provider/config root) mapped
+	// into the Files Node shape so the existing UI renders them.
+	List(ctx context.Context, call ProviderCall, folderID string) ([]*Node, error)
 	// Download opens a file's bytes. Returns (reader, contentType, size). size may
 	// be -1 when the provider does not report it up front.
-	Download(ctx context.Context, token, fileID string) (io.ReadCloser, string, int64, error)
+	Download(ctx context.Context, call ProviderCall, fileID string) (io.ReadCloser, string, int64, error)
+	// CreateFolder creates a folder named name under parentID (empty ⇒ root) and
+	// returns the created Node. Writable providers only.
+	CreateFolder(ctx context.Context, call ProviderCall, parentID, name string) (*Node, error)
+	// Upload writes size bytes from r as name under parentID, applying policy on a
+	// name collision, and returns the resulting Node. Writable providers only.
+	Upload(ctx context.Context, call ProviderCall, parentID, name, contentType string, size int64, r io.Reader, policy ConflictPolicy) (*Node, error)
+}
+
+// ProviderConfigField describes one connect-time config input for a provider.
+type ProviderConfigField struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Required bool   `json:"required"`
+}
+
+// ProviderInfo describes a connectable external provider for the UI.
+type ProviderInfo struct {
+	Kind         string                `json:"kind"`
+	DisplayName  string                `json:"display_name"`
+	Writable     bool                  `json:"writable"`
+	ConfigFields []ProviderConfigField `json:"config_fields,omitempty"`
 }
 
 // WithExternal wires the external-store seam onto the Service. tokenSource mints
@@ -117,15 +195,14 @@ func (s *Service) AvailableProviders() []ProviderInfo {
 	}
 	out := make([]ProviderInfo, 0, len(s.extProviders))
 	for kind, p := range s.extProviders {
-		out = append(out, ProviderInfo{Kind: kind, DisplayName: p.DisplayName()})
+		out = append(out, ProviderInfo{
+			Kind:         kind,
+			DisplayName:  p.DisplayName(),
+			Writable:     p.Writable(),
+			ConfigFields: p.ConfigFields(),
+		})
 	}
 	return out
-}
-
-// ProviderInfo describes a connectable external provider for the UI.
-type ProviderInfo struct {
-	Kind        string `json:"kind"`
-	DisplayName string `json:"display_name"`
 }
 
 // provider resolves a registered provider by kind, or ErrExternalProvider.
@@ -138,6 +215,14 @@ func (s *Service) provider(kind string) (ExternalProvider, error) {
 		return nil, ErrExternalProvider
 	}
 	return p, nil
+}
+
+// stampMount fills the derived (non-stored) fields on a mount, currently the
+// Writable flag from its provider. Unknown providers stay non-writable.
+func (s *Service) stampMount(m *ExternalMount) {
+	if p, ok := s.extProviders[m.Provider]; ok {
+		m.Writable = p.Writable()
+	}
 }
 
 // mintExternal mints a fresh short-lived token for a provider's integration. A
@@ -157,12 +242,27 @@ func (s *Service) mintExternal(ctx context.Context, p ExternalProvider) (string,
 	return tok, nil
 }
 
-// ConnectExternal records a mount for userID against provider. It first verifies
-// the account can actually mint a token for the provider's integration (i.e. the
-// user has connected it CP-side) so we never create a dead mount. name defaults
-// to the provider's display name. Returns the created mount.
-func (s *Service) ConnectExternal(ctx context.Context, userID, provider, name string) (*ExternalMount, error) {
+// callFor mints a fresh token and packages it with the mount's config so the
+// provider has everything it needs for one call.
+func (s *Service) callFor(ctx context.Context, p ExternalProvider, m *ExternalMount) (ProviderCall, error) {
+	tok, err := s.mintExternal(ctx, p)
+	if err != nil {
+		return ProviderCall{}, err
+	}
+	return ProviderCall{Token: tok, Config: m.Config}, nil
+}
+
+// ConnectExternal records a mount for userID against provider. It validates the
+// supplied config against the provider, then verifies the account can actually
+// mint a token for the provider's integration (i.e. the user has connected it
+// CP-side) so we never create a dead mount. name defaults to the provider's
+// display name. Returns the created mount.
+func (s *Service) ConnectExternal(ctx context.Context, userID, provider, name string, config map[string]string) (*ExternalMount, error) {
 	p, err := s.provider(provider)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := p.ValidateConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -182,11 +282,13 @@ func (s *Service) ConnectExternal(ctx context.Context, userID, provider, name st
 		OwnerID:   userID,
 		Provider:  provider,
 		Name:      name,
+		Config:    cfg,
 		CreatedAt: time.Now(),
 	}
 	if err := s.insertMount(m); err != nil {
 		return nil, err
 	}
+	s.stampMount(m)
 	s.audit(userID, "external.connect", m.ID, provider)
 	return m, nil
 }
@@ -199,7 +301,14 @@ func (s *Service) ListExternalMounts(userID string) ([]ExternalMount, error) {
 	if !s.ExternalEnabled() {
 		return nil, nil
 	}
-	return s.listMounts(userID)
+	mounts, err := s.listMounts(userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range mounts {
+		s.stampMount(&mounts[i])
+	}
+	return mounts, nil
 }
 
 // DisconnectExternal removes a mount owned by userID. The CP-side connection is
@@ -242,11 +351,11 @@ func (s *Service) ListExternal(ctx context.Context, userID, mountID, folderID st
 	if err != nil {
 		return nil, err
 	}
-	tok, err := s.mintExternal(ctx, p)
+	call, err := s.callFor(ctx, p, m)
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := p.List(ctx, tok, folderID)
+	nodes, err := p.List(ctx, call, folderID)
 	if err != nil {
 		return nil, fmt.Errorf("files: external list: %w", err)
 	}
@@ -276,14 +385,105 @@ func (s *Service) DownloadExternal(ctx context.Context, userID, mountID, fileID 
 	if fileID == "" {
 		return nil, "", 0, fmt.Errorf("%w: file id required", ErrInvalid)
 	}
-	tok, err := s.mintExternal(ctx, p)
+	call, err := s.callFor(ctx, p, m)
 	if err != nil {
 		return nil, "", 0, err
 	}
-	rc, ct, size, err := p.Download(ctx, tok, fileID)
+	rc, ct, size, err := p.Download(ctx, call, fileID)
 	if err != nil {
 		return nil, "", 0, fmt.Errorf("files: external download: %w", err)
 	}
 	s.audit(userID, "external.download", mountID, fileID)
 	return rc, ct, size, nil
+}
+
+// writableProvider resolves a writable provider for an owned mount, returning
+// ErrExternalReadOnly for read-only providers.
+func (s *Service) writableProvider(userID, mountID string) (*ExternalMount, ExternalProvider, error) {
+	m, err := s.ownedMount(userID, mountID)
+	if err != nil {
+		return nil, nil, err
+	}
+	p, err := s.provider(m.Provider)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !p.Writable() {
+		return nil, nil, ErrExternalReadOnly
+	}
+	return m, p, nil
+}
+
+// CreateFolderExternal creates a folder named name under parentID (empty ⇒ root)
+// in a writable mounted store. Requires ownership; read-only mounts return
+// ErrExternalReadOnly.
+func (s *Service) CreateFolderExternal(ctx context.Context, userID, mountID, parentID, name string) (*Node, error) {
+	m, p, err := s.writableProvider(userID, mountID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validName(name); err != nil {
+		return nil, err
+	}
+	call, err := s.callFor(ctx, p, m)
+	if err != nil {
+		return nil, err
+	}
+	node, err := p.CreateFolder(ctx, call, parentID, name)
+	if err != nil {
+		return nil, fmt.Errorf("files: external create folder: %w", err)
+	}
+	node.OwnerID = userID
+	if node.ParentID == "" {
+		node.ParentID = mountID
+	}
+	s.audit(userID, "external.mkdir", mountID, name)
+	return node, nil
+}
+
+// UploadExternal writes size bytes from r as name under parentID in a writable
+// mounted store, applying policy on a name collision. Requires ownership;
+// read-only mounts return ErrExternalReadOnly.
+func (s *Service) UploadExternal(ctx context.Context, userID, mountID, parentID, name, contentType string, size int64, r io.Reader, policy ConflictPolicy) (*Node, error) {
+	m, p, err := s.writableProvider(userID, mountID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validName(name); err != nil {
+		return nil, err
+	}
+	call, err := s.callFor(ctx, p, m)
+	if err != nil {
+		return nil, err
+	}
+	node, err := p.Upload(ctx, call, parentID, name, contentType, size, r, normalizeConflict(policy))
+	if err != nil {
+		return nil, fmt.Errorf("files: external upload: %w", err)
+	}
+	node.OwnerID = userID
+	if node.ParentID == "" {
+		node.ParentID = mountID
+	}
+	s.audit(userID, "external.upload", mountID, node.Name)
+	return node, nil
+}
+
+// uniqueName returns name if exists(name) is false, otherwise the first
+// "base (n)<ext>" candidate that does not exist. Shared collision helper for the
+// rename ConflictPolicy across providers. The extension is preserved so renamed
+// files keep their type association.
+func uniqueName(name string, exists func(string) bool) string {
+	if !exists(name) {
+		return name
+	}
+	ext := path.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	for i := 1; i < 1000; i++ {
+		cand := fmt.Sprintf("%s (%d)%s", base, i, ext)
+		if !exists(cand) {
+			return cand
+		}
+	}
+	// Pathological fallback — astronomically unlikely; keep it collision-proof.
+	return fmt.Sprintf("%s (%d)%s", base, time.Now().UnixNano(), ext)
 }

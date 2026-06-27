@@ -12,16 +12,23 @@ package main
 // works unchanged standalone.
 //
 // Endpoints (under /api/files/external/):
-//   GET  status                         seam availability + connectable providers
-//   GET  mounts                         list the caller's connected external drives
-//   POST connect   {provider,name}      record a mount (verifies CP connectivity)
-//   POST disconnect {id}                remove a mount
-//   GET  list?mount=<id>&folder=<id>    list folders/files in a mounted store
-//   GET  content?mount=<id>&file=<id>   download a file's bytes (OS-mediated)
+//   GET  status                          seam availability + connectable providers
+//   GET  mounts                          list the caller's connected external drives
+//   POST connect   {provider,name,config} record a mount (verifies CP connectivity)
+//   POST disconnect {id}                 remove a mount
+//   GET  list?mount=<id>&folder=<id>     list folders/files in a mounted store
+//   GET  content?mount=<id>&file=<id>    download a file's bytes (OS-mediated)
+//   POST folder    {mount,parent,name}   create a folder in a WRITABLE mount
+//   POST upload?mount=&parent=&name=&conflict=  upload bytes into a WRITABLE mount
+//
+// Writes (folder/upload) are only honoured for providers that report Writable();
+// a read-only mount returns 409 (mapped from ErrExternalReadOnly). Tokens are
+// always minted per-call and never persisted.
 
 import (
 	"io"
 	"net/http"
+	"strconv"
 
 	"vulos/backend/services/files"
 )
@@ -65,13 +72,14 @@ func registerFilesExternalRoutes(mux *http.ServeMux, svc *files.Service) {
 
 	mux.HandleFunc("POST /api/files/external/connect", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
 		var req struct {
-			Provider string `json:"provider"`
-			Name     string `json:"name"`
+			Provider string            `json:"provider"`
+			Name     string            `json:"name"`
+			Config   map[string]string `json:"config"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		m, err := svc.ConnectExternal(r.Context(), uid, req.Provider, req.Name)
+		m, err := svc.ConnectExternal(r.Context(), uid, req.Provider, req.Name, req.Config)
 		if err != nil {
 			writeFilesErr(w, err)
 			return
@@ -121,5 +129,47 @@ func registerFilesExternalRoutes(mux *http.ServeMux, svc *files.Service) {
 		}
 		w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(name)+"\"")
 		io.Copy(w, rc)
+	}))
+
+	// Create a folder in a writable external mount. Read-only mounts → 409.
+	mux.HandleFunc("POST /api/files/external/folder", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		var req struct {
+			Mount  string `json:"mount"`
+			Parent string `json:"parent"`
+			Name   string `json:"name"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		node, err := svc.CreateFolderExternal(r.Context(), uid, req.Mount, req.Parent, req.Name)
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		writeJSON(w, node)
+	}))
+
+	// Upload bytes into a writable external mount. The body is the file content;
+	// metadata rides query params so the browser can stream the body directly.
+	// conflict ∈ {rename(default),overwrite,fail}. Read-only mounts → 409.
+	mux.HandleFunc("POST /api/files/external/upload", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		q := r.URL.Query()
+		mount := q.Get("mount")
+		parent := q.Get("parent")
+		name := q.Get("name")
+		ct := r.Header.Get("Content-Type")
+		size := int64(-1)
+		if cl := r.Header.Get("Content-Length"); cl != "" {
+			if v, perr := strconv.ParseInt(cl, 10, 64); perr == nil {
+				size = v
+			}
+		}
+		defer r.Body.Close()
+		node, err := svc.UploadExternal(r.Context(), uid, mount, parent, name, ct, size, r.Body, files.ConflictPolicy(q.Get("conflict")))
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		writeJSON(w, node)
 	}))
 }

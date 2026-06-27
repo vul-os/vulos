@@ -3,7 +3,10 @@ package files
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -25,23 +28,62 @@ func (f *fakeTokenSource) MintToken(_ context.Context, _ string) (string, error)
 }
 
 // fakeProvider is an in-memory ExternalProvider for exercising the mount path
-// without a network round-trip.
+// without a network round-trip. It is writable so it also covers create/upload.
 type fakeProvider struct {
-	files map[string][]*Node // folderID ("" = root) -> children
-	blob  string
+	files    map[string][]*Node // folderID ("" = root) -> children
+	blob     string
+	readOnly bool
+	uploads  []string // names actually written (post-conflict resolution)
 }
 
-func (p *fakeProvider) Kind() string                { return "gdrive" }
-func (p *fakeProvider) IntegrationProvider() string { return "google" }
-func (p *fakeProvider) DisplayName() string         { return "Google Drive" }
-func (p *fakeProvider) List(_ context.Context, token, folderID string) ([]*Node, error) {
-	if token == "" {
+func (p *fakeProvider) Kind() string                        { return "gdrive" }
+func (p *fakeProvider) IntegrationProvider() string         { return "google" }
+func (p *fakeProvider) DisplayName() string                 { return "Google Drive" }
+func (p *fakeProvider) Writable() bool                      { return !p.readOnly }
+func (p *fakeProvider) ConfigFields() []ProviderConfigField { return nil }
+func (p *fakeProvider) ValidateConfig(map[string]string) (map[string]string, error) {
+	return nil, nil
+}
+func (p *fakeProvider) List(_ context.Context, call ProviderCall, folderID string) ([]*Node, error) {
+	if call.Token == "" {
 		return nil, ErrExternalNotConnected
 	}
 	return p.files[folderID], nil
 }
-func (p *fakeProvider) Download(_ context.Context, _ /*token*/, _ /*fileID*/ string) (io.ReadCloser, string, int64, error) {
+func (p *fakeProvider) Download(_ context.Context, _ ProviderCall, _ string) (io.ReadCloser, string, int64, error) {
 	return io.NopCloser(strings.NewReader(p.blob)), "text/plain", int64(len(p.blob)), nil
+}
+func (p *fakeProvider) CreateFolder(_ context.Context, _ ProviderCall, parentID, name string) (*Node, error) {
+	n := &Node{ID: "fld-" + name, Name: name, IsDir: true}
+	if p.files == nil {
+		p.files = map[string][]*Node{}
+	}
+	p.files[parentID] = append(p.files[parentID], n)
+	return n, nil
+}
+func (p *fakeProvider) Upload(_ context.Context, _ ProviderCall, parentID, name, _ string, _ int64, r io.Reader, policy ConflictPolicy) (*Node, error) {
+	taken := map[string]bool{}
+	for _, n := range p.files[parentID] {
+		taken[n.Name] = true
+	}
+	if taken[name] {
+		switch policy {
+		case ConflictFail:
+			return nil, ErrExternalConflict
+		case ConflictOverwrite:
+			// keep name
+		default:
+			name = uniqueName(name, func(n string) bool { return taken[n] })
+		}
+	}
+	io.Copy(io.Discard, r)
+	p.uploads = append(p.uploads, name)
+	n := &Node{ID: "file-" + name, Name: name}
+	if p.files == nil {
+		p.files = map[string][]*Node{}
+	}
+	p.files[parentID] = append(p.files[parentID], n)
+	return n, nil
 }
 
 func newTestSvc(t *testing.T) *Service {
@@ -64,7 +106,7 @@ func TestExternalDegradesWhenNotWired(t *testing.T) {
 		t.Fatalf("local CreateFolder should work standalone: %v", err)
 	}
 	// External methods report unavailable, not a hard error elsewhere.
-	if _, err := svc.ConnectExternal(context.Background(), "u1", "gdrive", ""); err != ErrExternalUnavailable {
+	if _, err := svc.ConnectExternal(context.Background(), "u1", "gdrive", "", nil); err != ErrExternalUnavailable {
 		t.Fatalf("ConnectExternal = %v, want ErrExternalUnavailable", err)
 	}
 	if mounts, err := svc.ListExternalMounts("u1"); err != nil || mounts != nil {
@@ -79,10 +121,10 @@ func TestExternalConnectRequiresConnection(t *testing.T) {
 	if !svc.ExternalEnabled() {
 		t.Fatal("expected external enabled after WithExternal")
 	}
-	if _, err := svc.ConnectExternal(context.Background(), "u1", "gdrive", ""); err != ErrExternalNotConnected {
+	if _, err := svc.ConnectExternal(context.Background(), "u1", "gdrive", "", nil); err != ErrExternalNotConnected {
 		t.Fatalf("ConnectExternal not-connected = %v, want ErrExternalNotConnected", err)
 	}
-	if _, err := svc.ConnectExternal(context.Background(), "u1", "dropbox", ""); err != ErrExternalProvider {
+	if _, err := svc.ConnectExternal(context.Background(), "u1", "dropbox", "", nil); err != ErrExternalProvider {
 		t.Fatalf("ConnectExternal unknown provider = %v, want ErrExternalProvider", err)
 	}
 }
@@ -99,7 +141,7 @@ func TestExternalMountListAndIsolation(t *testing.T) {
 	}
 	svc.WithExternal(&fakeTokenSource{token: "live-token"}, prov)
 
-	m, err := svc.ConnectExternal(ctx, "u1", "gdrive", "")
+	m, err := svc.ConnectExternal(ctx, "u1", "gdrive", "", nil)
 	if err != nil {
 		t.Fatalf("ConnectExternal: %v", err)
 	}
@@ -191,7 +233,7 @@ func TestGDriveProviderMockedList(t *testing.T) {
 	g := NewGDriveProvider()
 	g.base = srv.URL // point the fixed host at the mock
 
-	nodes, err := g.List(ctx, "tok-123", "")
+	nodes, err := g.List(ctx, ProviderCall{Token: "tok-123"}, "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -206,7 +248,7 @@ func TestGDriveProviderMockedList(t *testing.T) {
 	}
 
 	// Regular binary file → alt=media branch.
-	rc, ct, _, err := g.Download(ctx, "tok-123", "D1")
+	rc, ct, _, err := g.Download(ctx, ProviderCall{Token: "tok-123"}, "D1")
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
@@ -217,7 +259,7 @@ func TestGDriveProviderMockedList(t *testing.T) {
 	}
 
 	// Auth rejection surfaces as an error.
-	if _, err := g.List(ctx, "wrong", ""); err == nil {
+	if _, err := g.List(ctx, ProviderCall{Token: "wrong"}, ""); err == nil {
 		t.Fatal("expected error on bad token")
 	}
 }
@@ -225,5 +267,306 @@ func TestGDriveProviderMockedList(t *testing.T) {
 func TestEscapeDriveQ(t *testing.T) {
 	if got := escapeDriveQ("a'b\\c"); got != `a\'b\\c` {
 		t.Fatalf("escapeDriveQ = %q", got)
+	}
+}
+
+// TestExternalWriteLifecycle exercises the service write surface end-to-end on a
+// writable mount: create-folder, upload, rename-on-collision, and the read-only
+// guard.
+func TestExternalWriteLifecycle(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestSvc(t)
+	prov := &fakeProvider{files: map[string][]*Node{"": {{ID: "f1", Name: "a.txt"}}}}
+	svc.WithExternal(&fakeTokenSource{token: "live"}, prov)
+
+	m, err := svc.ConnectExternal(ctx, "u1", "gdrive", "", nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if !m.Writable {
+		t.Fatal("mount should be writable")
+	}
+
+	if _, err := svc.CreateFolderExternal(ctx, "u1", m.ID, "", "docs"); err != nil {
+		t.Fatalf("CreateFolderExternal: %v", err)
+	}
+
+	// First upload of a fresh name keeps it.
+	n, err := svc.UploadExternal(ctx, "u1", m.ID, "", "new.txt", "text/plain", 3, strings.NewReader("abc"), ConflictRename)
+	if err != nil || n.Name != "new.txt" {
+		t.Fatalf("upload new = (%+v,%v)", n, err)
+	}
+	// Re-uploading a colliding name under rename policy gets a suffixed name.
+	n2, err := svc.UploadExternal(ctx, "u1", m.ID, "", "a.txt", "text/plain", 3, strings.NewReader("abc"), ConflictRename)
+	if err != nil || n2.Name != "a (1).txt" {
+		t.Fatalf("upload rename = (%+v,%v)", n2, err)
+	}
+	// Fail policy on a collision returns ErrExternalConflict (service-wrapped).
+	if _, err := svc.UploadExternal(ctx, "u1", m.ID, "", "a.txt", "text/plain", 3, strings.NewReader("x"), ConflictFail); !errors.Is(err, ErrExternalConflict) {
+		t.Fatalf("upload fail = %v, want ErrExternalConflict", err)
+	}
+
+	// Read-only provider rejects writes.
+	ro := &fakeProvider{readOnly: true}
+	svc2 := newTestSvc(t)
+	svc2.WithExternal(&fakeTokenSource{token: "live"}, ro)
+	rm, err := svc2.ConnectExternal(ctx, "u1", "gdrive", "", nil)
+	if err != nil {
+		t.Fatalf("connect ro: %v", err)
+	}
+	if rm.Writable {
+		t.Fatal("read-only mount must not be writable")
+	}
+	if _, err := svc2.CreateFolderExternal(ctx, "u1", rm.ID, "", "x"); err != ErrExternalReadOnly {
+		t.Fatalf("CreateFolderExternal ro = %v, want ErrExternalReadOnly", err)
+	}
+	if _, err := svc2.UploadExternal(ctx, "u1", rm.ID, "", "x", "", 0, strings.NewReader(""), ConflictRename); err != ErrExternalReadOnly {
+		t.Fatalf("UploadExternal ro = %v, want ErrExternalReadOnly", err)
+	}
+}
+
+// multipartName extracts the "name" from a Drive multipart/related upload body so
+// the mock can echo back what the provider actually sent (proving rename worked).
+func multipartName(t *testing.T, r *http.Request) string {
+	t.Helper()
+	_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("parse media type: %v", err)
+	}
+	mr := multipart.NewReader(r.Body, params["boundary"])
+	part, err := mr.NextPart()
+	if err != nil {
+		t.Fatalf("next part: %v", err)
+	}
+	var meta struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(part).Decode(&meta); err != nil {
+		t.Fatalf("decode meta: %v", err)
+	}
+	return meta.Name
+}
+
+// TestGDriveProviderWrite drives the REAL Drive provider's write paths against a
+// mocked Drive v3 API: create-folder, fresh upload, rename-on-collision, and
+// overwrite-by-id.
+func TestGDriveProviderWrite(t *testing.T) {
+	ctx := context.Background()
+	// Server state: one existing file "report.txt" (id EXIST) in root.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/files") && r.URL.Query().Get("q") != "":
+			json.NewEncoder(w).Encode(driveListResp{Files: []driveFile{
+				{ID: "EXIST", Name: "report.txt", MimeType: "text/plain", Size: "3"},
+			}})
+		case r.Method == http.MethodPost && r.URL.Query().Get("uploadType") == "multipart":
+			name := multipartName(t, r)
+			json.NewEncoder(w).Encode(driveFile{ID: "NEW", Name: name, MimeType: "text/plain"})
+		case r.Method == http.MethodPatch:
+			// overwrite-by-id: assert the path carries the existing id.
+			if !strings.Contains(r.URL.Path, "EXIST") {
+				t.Errorf("overwrite did not target EXIST: %s", r.URL.Path)
+			}
+			json.NewEncoder(w).Encode(driveFile{ID: "EXIST", Name: "report.txt", MimeType: "text/plain"})
+		case r.Method == http.MethodPost: // create-folder (application/json)
+			json.NewEncoder(w).Encode(driveFile{ID: "FLD", Name: "docs", MimeType: gdriveFolderMime})
+		default:
+			t.Errorf("unexpected request %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+
+	g := NewGDriveProvider()
+	g.base = srv.URL
+	g.uploadBase = srv.URL
+	call := ProviderCall{Token: "t"}
+
+	fld, err := g.CreateFolder(ctx, call, "", "docs")
+	if err != nil || !fld.IsDir || fld.Name != "docs" {
+		t.Fatalf("CreateFolder = (%+v,%v)", fld, err)
+	}
+
+	// Fresh name → kept as-is.
+	n, err := g.Upload(ctx, call, "", "fresh.txt", "text/plain", 3, strings.NewReader("abc"), ConflictRename)
+	if err != nil || n.Name != "fresh.txt" {
+		t.Fatalf("upload fresh = (%+v,%v)", n, err)
+	}
+	// Colliding name under rename → "report (1).txt".
+	n, err = g.Upload(ctx, call, "", "report.txt", "text/plain", 3, strings.NewReader("abc"), ConflictRename)
+	if err != nil || n.Name != "report (1).txt" {
+		t.Fatalf("upload rename = (%+v,%v)", n, err)
+	}
+	// Colliding name under overwrite → PATCH the existing id (node keeps name).
+	n, err = g.Upload(ctx, call, "", "report.txt", "text/plain", 3, strings.NewReader("abc"), ConflictOverwrite)
+	if err != nil || n.ID != "EXIST" {
+		t.Fatalf("upload overwrite = (%+v,%v)", n, err)
+	}
+	// Colliding name under fail → ErrExternalConflict (no write attempted).
+	if _, err := g.Upload(ctx, call, "", "report.txt", "text/plain", 3, strings.NewReader("abc"), ConflictFail); err != ErrExternalConflict {
+		t.Fatalf("upload fail = %v, want ErrExternalConflict", err)
+	}
+}
+
+// TestDropboxProvider drives the REAL Dropbox provider against a mocked v2 API:
+// list, download, create-folder, and upload (rename + fail-on-conflict).
+func TestDropboxProvider(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer t" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/2/files/list_folder":
+			json.NewEncoder(w).Encode(dropboxListResp{Entries: []dropboxEntry{
+				{Tag: "folder", Name: "Sub", PathDisplay: "/Sub"},
+				{Tag: "file", Name: "a.txt", PathDisplay: "/a.txt", Size: 3, ServerModified: "2026-06-01T00:00:00Z"},
+				{Tag: "deleted", Name: "gone.txt", PathDisplay: "/gone.txt"},
+			}})
+		case "/2/files/download":
+			w.Header().Set("Content-Type", "text/plain")
+			io.WriteString(w, "hello dropbox")
+		case "/2/files/create_folder_v2":
+			io.WriteString(w, `{"metadata":{".tag":"folder","name":"docs","path_display":"/docs"}}`)
+		case "/2/files/upload":
+			var arg struct {
+				Path       string `json:"path"`
+				Mode       string `json:"mode"`
+				Autorename bool   `json:"autorename"`
+			}
+			json.Unmarshal([]byte(r.Header.Get("Dropbox-API-Arg")), &arg)
+			if arg.Mode == "add" && !arg.Autorename {
+				w.WriteHeader(http.StatusConflict) // fail policy collides
+				return
+			}
+			name := arg.Path[strings.LastIndex(arg.Path, "/")+1:]
+			json.NewEncoder(w).Encode(dropboxEntry{Tag: "file", Name: name, PathDisplay: arg.Path, Size: 3})
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	d := NewDropboxProvider()
+	d.apiBase = srv.URL
+	d.contentBase = srv.URL
+	call := ProviderCall{Token: "t"}
+
+	nodes, err := d.List(ctx, call, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(nodes) != 2 || !nodes[0].IsDir || nodes[0].ID != "/Sub" || nodes[1].Name != "a.txt" {
+		t.Fatalf("dropbox list nodes wrong: %+v", nodes)
+	}
+
+	rc, ct, _, err := d.Download(ctx, call, "/a.txt")
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	b, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(b) != "hello dropbox" || ct != "text/plain" {
+		t.Fatalf("download = (%q,%q)", b, ct)
+	}
+
+	fld, err := d.CreateFolder(ctx, call, "", "docs")
+	if err != nil || !fld.IsDir || fld.Name != "docs" {
+		t.Fatalf("CreateFolder = (%+v,%v)", fld, err)
+	}
+
+	n, err := d.Upload(ctx, call, "/Sub", "x.txt", "text/plain", 3, strings.NewReader("abc"), ConflictRename)
+	if err != nil || n.Name != "x.txt" || n.ID != "/Sub/x.txt" {
+		t.Fatalf("upload rename = (%+v,%v)", n, err)
+	}
+	if _, err := d.Upload(ctx, call, "", "x.txt", "text/plain", 3, strings.NewReader("abc"), ConflictFail); err != ErrExternalConflict {
+		t.Fatalf("upload fail = %v, want ErrExternalConflict", err)
+	}
+}
+
+// TestGCSProvider drives the REAL GCS provider against a mocked JSON API: config
+// validation, prefix-scoped list, download, create-folder marker, and upload
+// (rename + fail-on-conflict via ifGenerationMatch=0).
+func TestGCSProvider(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer t" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/o") && r.URL.Query().Get("alt") != "media" && !strings.Contains(r.URL.Path, "/o/"):
+			// list under prefix "team/"
+			json.NewEncoder(w).Encode(gcsListResp{
+				Prefixes: []string{"team/sub/"},
+				Items: []gcsObject{
+					{Name: "team/", Size: "0"},                                 // folder marker, skipped
+					{Name: "team/a.txt", Size: "3", ContentType: "text/plain"}, // file
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Query().Get("alt") == "media":
+			w.Header().Set("Content-Type", "text/plain")
+			io.WriteString(w, "hello gcs")
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload/"):
+			name := r.URL.Query().Get("name")
+			if r.URL.Query().Get("ifGenerationMatch") == "0" && name == "team/a.txt" {
+				w.WriteHeader(http.StatusPreconditionFailed) // fail policy collides
+				return
+			}
+			json.NewEncoder(w).Encode(gcsObject{Name: name, ContentType: "text/plain"})
+		default:
+			t.Errorf("unexpected request %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+	}))
+	defer srv.Close()
+
+	g := NewGCSProvider()
+	g.base = srv.URL
+
+	// Config validation: bucket required; prefix normalized to trailing slash.
+	if _, err := g.ValidateConfig(map[string]string{}); err == nil {
+		t.Fatal("ValidateConfig should require a bucket")
+	}
+	cfg, err := g.ValidateConfig(map[string]string{"bucket": "my-bucket", "prefix": "team"})
+	if err != nil || cfg["bucket"] != "my-bucket" || cfg["prefix"] != "team/" {
+		t.Fatalf("ValidateConfig = (%+v,%v)", cfg, err)
+	}
+	call := ProviderCall{Token: "t", Config: cfg}
+
+	nodes, err := g.List(ctx, call, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(nodes) != 2 || !nodes[0].IsDir || nodes[0].Name != "sub" || nodes[1].Name != "a.txt" || nodes[1].ID != "team/a.txt" {
+		t.Fatalf("gcs list nodes wrong: %+v", nodes)
+	}
+
+	rc, _, _, err := g.Download(ctx, call, "team/a.txt")
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	b, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(b) != "hello gcs" {
+		t.Fatalf("download = %q", b)
+	}
+	// Scope guard: an object outside the mount prefix is refused.
+	if _, _, _, err := g.Download(ctx, call, "other/secret"); err == nil {
+		t.Fatal("expected out-of-scope download to fail")
+	}
+
+	fld, err := g.CreateFolder(ctx, call, "", "docs")
+	if err != nil || !fld.IsDir || fld.ID != "team/docs/" {
+		t.Fatalf("CreateFolder = (%+v,%v)", fld, err)
+	}
+
+	// rename: "a.txt" is taken under team/ → becomes "a (1).txt".
+	n, err := g.Upload(ctx, call, "", "a.txt", "text/plain", 3, strings.NewReader("abc"), ConflictRename)
+	if err != nil || n.Name != "a (1).txt" {
+		t.Fatalf("upload rename = (%+v,%v)", n, err)
+	}
+	// fail: colliding object with ifGenerationMatch=0 → ErrExternalConflict.
+	if _, err := g.Upload(ctx, call, "", "a.txt", "text/plain", 3, strings.NewReader("abc"), ConflictFail); err != ErrExternalConflict {
+		t.Fatalf("upload fail = %v, want ErrExternalConflict", err)
 	}
 }

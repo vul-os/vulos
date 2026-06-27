@@ -66,15 +66,33 @@ const filesApi = {
   peerSave: (id, parent_id, name) =>
     request('/files/peer/save', { method: 'POST', body: JSON.stringify({ id, parent_id, name }) }),
 
-  // ── external stores (Phase 4: Google Drive et al. mounted as virtual drives) ──
+  // ── external stores (Phase 4: Google Drive / Dropbox / GCS as virtual drives) ──
   externalStatus: () => request('/files/external/status'),
   externalMounts: () => request('/files/external/mounts'),
-  externalConnect: (provider, name) =>
-    request('/files/external/connect', { method: 'POST', body: JSON.stringify({ provider, name }) }),
+  externalConnect: (provider, name, config) =>
+    request('/files/external/connect', { method: 'POST', body: JSON.stringify({ provider, name, config }) }),
   externalDisconnect: (id) =>
     request('/files/external/disconnect', { method: 'POST', body: JSON.stringify({ id }) }),
   externalList: (mount, folder) =>
     request(`/files/external/list?mount=${encodeURIComponent(mount)}&folder=${encodeURIComponent(folder || '')}`),
+  externalFolder: (mount, parent, name) =>
+    request('/files/external/folder', { method: 'POST', body: JSON.stringify({ mount, parent, name }) }),
+}
+
+// uploadExternalOne: stream a file's bytes into a writable external mount under
+// parent, then return the created node. conflict defaults to rename-on-collision.
+async function uploadExternalOne(mountId, parentId, file, conflict = 'rename') {
+  const qs = new URLSearchParams({ mount: mountId, parent: parentId || '', name: file.name, conflict })
+  const res = await rawFetch(`/files/external/upload?${qs.toString()}`, {
+    method: 'POST',
+    body: file,
+    headers: file.type ? { 'Content-Type': file.type } : {},
+  })
+  if (!res.ok) {
+    if (res.status === 409) throw new Error('A file with that name already exists')
+    throw new Error(`upload failed (${res.status})`)
+  }
+  return res.json()
 }
 
 // downloadExternal: stream a mounted-store file's bytes through the OS and save.
@@ -686,16 +704,23 @@ function RowMenu({ node, onAction, onClose }) {
   )
 }
 
-// ── connect-external modal (mount a Google Drive / other external store) ─────
+// ── connect-external modal (mount Google Drive / Dropbox / GCS) ──────────────
 function ConnectModal({ providers, onConnect, onClose }) {
   const [provider, setProvider] = useState(providers[0]?.kind || '')
+  const [config, setConfig] = useState({})
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const sel = providers.find((p) => p.kind === provider)
+  const fields = sel?.config_fields || []
+
+  // Reset collected config whenever the chosen provider changes.
+  const pick = (kind) => { setProvider(kind); setConfig({}) }
+
+  const missing = fields.some((f) => f.required && !(config[f.key] || '').trim())
 
   const connect = async () => {
     setBusy(true); setErr(null)
-    try { await onConnect(provider); onClose() }
+    try { await onConnect(provider, config); onClose() }
     catch (e) {
       // A 409 means the account hasn't linked the provider in cloud settings yet.
       const msg = /409|not connected/i.test(e.message || '')
@@ -709,17 +734,32 @@ function ConnectModal({ providers, onConnect, onClose }) {
     <Modal title="Connect an external drive" onClose={onClose} width={460}>
       {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
       <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14, lineHeight: 1.5 }}>
-        Mount an external store as a drive. Vulos lists and downloads its files using a
-        short-lived token brokered by your cloud account — the provider’s long-lived
-        credentials never touch this box. External drives are currently <b>read-only</b>.
+        Mount an external store as a drive. Vulos browses it using a short-lived token
+        brokered by your cloud account — the provider’s long-lived credentials never
+        touch this box. {sel?.writable
+          ? 'You can upload and create folders directly in this drive.'
+          : 'This drive is read-only.'}
       </div>
       <label style={{ fontSize: 12, color: T.textDim, display: 'block', marginBottom: 6 }}>Provider</label>
-      <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ ...inputStyle, marginBottom: 18 }}>
+      <select value={provider} onChange={(e) => pick(e.target.value)} style={{ ...inputStyle, marginBottom: 18 }}>
         {providers.map((p) => <option key={p.kind} value={p.kind}>{p.display_name}</option>)}
       </select>
+      {fields.map((f) => (
+        <div key={f.key} style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, color: T.textDim, display: 'block', marginBottom: 6 }}>
+            {f.label}{f.required ? ' *' : ''}
+          </label>
+          <input
+            value={config[f.key] || ''}
+            onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })}
+            placeholder={f.label}
+            style={inputStyle}
+          />
+        </div>
+      ))}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Btn onClick={onClose}>Cancel</Btn>
-        <Btn primary onClick={connect} disabled={busy || !provider}>
+        <Btn primary onClick={connect} disabled={busy || !provider || missing}>
           {busy ? 'Connecting…' : `Connect ${sel?.display_name || ''}`}
         </Btn>
       </div>
@@ -795,8 +835,8 @@ export default function Drive() {
   const VIEW_NAMES = { shared: 'Shared with me', received: 'Received', mydrive: 'My Drive' }
   const switchView = (v, rootName) => { setView(v); setTrail([{ id: '', name: rootName || VIEW_NAMES[v] || 'My Drive' }]) }
 
-  const connectExternal = async (provider) => {
-    await filesApi.externalConnect(provider, '')
+  const connectExternal = async (provider, config) => {
+    await filesApi.externalConnect(provider, '', config)
     await loadExternal()
   }
   const disconnectExternal = async (m) => {
@@ -839,20 +879,27 @@ export default function Drive() {
     setModal({ kind, node })
   }
 
+  // A writable external mount is an upload/new-folder target, just like My Drive.
+  const extWritable = !!extMount?.writable
+
   const doUpload = async (fileList) => {
     const files = Array.from(fileList || [])
     if (files.length === 0) return
-    const parent = view === 'shared' ? '' : cur.id
     let done = 0
     for (const f of files) {
       setBusy(`Uploading ${f.name} (${++done}/${files.length})…`)
-      try { await uploadOne(parent, f) } catch (e) { setError(`Upload of ${f.name} failed: ${e.message || e}`) }
+      try {
+        if (extMountId) await uploadExternalOne(extMountId, cur.id, f)
+        else await uploadOne(view === 'shared' ? '' : cur.id, f)
+      } catch (e) { setError(`Upload of ${f.name} failed: ${e.message || e}`) }
     }
     setBusy(null)
     await refresh()
   }
 
-  const readOnlyView = view !== 'mydrive' // shared / received / external are not upload targets
+  // Where uploads/new-folder are allowed: My Drive, or a writable external mount.
+  const canWrite = view === 'mydrive' || extWritable
+  const readOnlyView = !canWrite // shared / received / read-only external aren't targets
   const onDrop = (e) => {
     e.preventDefault(); setDragOver(false)
     if (readOnlyView) return
@@ -920,7 +967,7 @@ export default function Drive() {
                 background: 'none', color: extStatus.available ? T.accent : T.textFaint, opacity: extStatus.available ? 1 : 0.6,
               }}
             >
-              <span>＋</span><span>{extStatus.available ? 'Connect Google Drive' : 'Connect (unavailable)'}</span>
+              <span>＋</span><span>{extStatus.available ? 'Connect a drive' : 'Connect (unavailable)'}</span>
             </button>
           </>
         )}
@@ -951,10 +998,10 @@ export default function Drive() {
               </span>
             ))}
           </div>
-          {extMountId && (
+          {extMountId && !extWritable && (
             <span style={{ fontSize: 11, color: T.textFaint, border: `1px solid ${T.border}`, borderRadius: 6, padding: '3px 8px' }}>Read-only</span>
           )}
-          {view === 'mydrive' && (
+          {canWrite && (
             <>
               <Btn small onClick={() => setModal({ kind: 'newfolder' })}>+ Folder</Btn>
               <Btn small primary onClick={() => fileInputRef.current?.click()}>↑ Upload</Btn>
@@ -986,7 +1033,7 @@ export default function Drive() {
                 {view === 'received' ? 'Nothing received yet' : view === 'shared' ? 'Nothing shared with you yet' : extMountId ? (atRoot ? `${extMount?.name || 'This drive'} is empty` : 'This folder is empty') : atRoot ? 'Your Drive is empty' : 'This folder is empty'}
               </div>
               {view === 'received' && <Btn small primary onClick={() => setRedeemOpen(true)}>Redeem a link</Btn>}
-              {view === 'mydrive' && <Btn small primary onClick={() => fileInputRef.current?.click()}>Upload a file</Btn>}
+              {canWrite && <Btn small primary onClick={() => fileInputRef.current?.click()}>Upload a file</Btn>}
             </Center>
           ) : view === 'received' ? (
             <div style={{ padding: 8 }}>
@@ -1066,8 +1113,11 @@ export default function Drive() {
           title="New folder" label="Folder name" confirmText="Create"
           onClose={() => setModal(null)}
           onConfirm={async (name) => {
-            try { await filesApi.createFolder(cur.id, name); await closeModal(true) }
-            catch (e) { setError(e.message || 'Create failed'); setModal(null) }
+            try {
+              if (extMountId) await filesApi.externalFolder(extMountId, cur.id, name)
+              else await filesApi.createFolder(cur.id, name)
+              await closeModal(true)
+            } catch (e) { setError(e.message || 'Create failed'); setModal(null) }
           }}
         />
       )}

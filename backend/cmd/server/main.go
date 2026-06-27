@@ -641,8 +641,10 @@ func main() {
 				filesSvc.WithExternal(
 					filesIntegrationTokenSource{c: integrationsClient},
 					files.NewGDriveProvider(),
+					files.NewDropboxProvider(),
+					files.NewGCSProvider(),
 				)
-				log.Printf("[files] external mounts active (providers: gdrive)")
+				log.Printf("[files] external mounts active (providers: gdrive, dropbox, gcs)")
 			} else {
 				log.Printf("[files] external mounts disabled: integration broker not configured")
 			}
