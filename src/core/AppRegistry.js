@@ -246,29 +246,38 @@ const builtinRegistry = [
     port: 80,
     permissions: ['storage'], // file-bearing: recordings/shared files
   },
+  // MAIL-PIM: Calendar and Contacts are surfaces of the Mail product now (Office
+  // stopped serving them). They are NOT separate gateway apps — there is no
+  // `vulos-calendar`/`vulos-contacts` namespace to proxy to (that backend was
+  // removed, which left these tiles 404'ing). Instead they deep-link into the
+  // already-running Mail app (`lilmail`), whose webmail serves the standalone
+  // /calendar and /contacts surfaces (@vulos/mail-ui <Calendar/>/<Contacts/>).
+  // Reusing the lilmail gateway route means no dangling app/grant of their own.
   {
     id: 'vulos-calendar',
     name: 'Calendar',
     icon: '⊡',
-    description: 'CalDAV calendar — events sync via the CalDAV server',
-    keywords: ['calendar', 'events', 'schedule', 'caldav', 'reminders'],
+    description: 'Calendar — a surface of the Mail product (events via CalDAV)',
+    keywords: ['calendar', 'events', 'schedule', 'caldav', 'reminders', 'mail'],
     category: 'office',
     type: 'web',
-    url: '/app/vulos-calendar/',
+    url: '/app/lilmail/calendar',
     port: 80,
-    // No storage permission: CalDAV-backed (server is the store).
+    // No storage permission: CalDAV-backed (server is the store). Served by the
+    // Mail app (lilmail), so no separate gateway grant for this id.
   },
   {
     id: 'vulos-contacts',
     name: 'Contacts',
     icon: '☻',
-    description: 'CardDAV address book — contacts sync via the CardDAV server',
-    keywords: ['contacts', 'address', 'book', 'carddav', 'people'],
+    description: 'Contacts — a surface of the Mail product (address book via CardDAV)',
+    keywords: ['contacts', 'address', 'book', 'carddav', 'people', 'mail'],
     category: 'office',
     type: 'web',
-    url: '/app/vulos-contacts/',
+    url: '/app/lilmail/contacts',
     port: 80,
-    // No storage permission: CardDAV-backed (server is the store).
+    // No storage permission: CardDAV-backed (server is the store). Served by the
+    // Mail app (lilmail), so no separate gateway grant for this id.
   },
 ]
 
@@ -291,7 +300,8 @@ const defaultWebApps = [
   // UNIFIED-STORAGE de-dup: the standalone `calendar` web app (apps/calendar/)
   // is retired here too — it duplicated both the (now-removed) `calendar`
   // builtin's id and the `vulos-calendar` suite app's concept. The canonical
-  // Calendar going forward is the gateway-proxied `vulos-calendar` above.
+  // Calendar going forward is the `vulos-calendar` tile above, which deep-links
+  // into the Mail app's /calendar surface (Mail/PIM now serves Calendar).
   {
     id: 'clock',
     name: 'Clock',
