@@ -6,11 +6,21 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// TestMain opts into the plaintext-http escape hatch for the whole package: the
+// httptest servers below serve http:// URLs, which New() otherwise rejects to
+// avoid leaking CP_SHARED_SECRET over plaintext (see cpAllowInsecure). This
+// mirrors the dev/test-only VULOS_LANCERT_ALLOW_INSECURE usage in the lan tests.
+func TestMain(m *testing.M) {
+	os.Setenv("VULOS_CP_ALLOW_INSECURE", "1")
+	os.Exit(m.Run())
+}
 
 // newTestClient points a Client at a stub server with a fast TTL.
 func newTestClient(base string) *Client {
@@ -19,6 +29,28 @@ func newTestClient(base string) *Client {
 		SharedSecret: "test-secret",
 		CacheTTL:     50 * time.Millisecond,
 	})
+}
+
+// TestPlaintextBaseDisablesClient verifies the SEC fix: without the insecure
+// escape hatch, a plaintext-http cp base disables the client (fail closed) so
+// the CP_SHARED_SECRET bearer never travels over an unencrypted transport.
+func TestPlaintextBaseDisablesClient(t *testing.T) {
+	t.Setenv("VULOS_CP_ALLOW_INSECURE", "")
+	c := New(Config{BaseURL: "http://cp.example.com", SharedSecret: "s"})
+	if c.Enabled() {
+		t.Fatal("plaintext http cp base must disable the client (fail closed)")
+	}
+	// https is accepted.
+	c = New(Config{BaseURL: "https://cp.example.com", SharedSecret: "s"})
+	if !c.Enabled() {
+		t.Fatal("https cp base must enable the client")
+	}
+	// With the explicit escape hatch, plaintext is permitted (dev/test).
+	t.Setenv("VULOS_CP_ALLOW_INSECURE", "1")
+	c = New(Config{BaseURL: "http://cp.example.com", SharedSecret: "s"})
+	if !c.Enabled() {
+		t.Fatal("VULOS_CP_ALLOW_INSECURE=1 must permit plaintext")
+	}
 }
 
 func TestDisabledClientIsTransparentNoOp(t *testing.T) {

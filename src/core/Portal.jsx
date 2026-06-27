@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useCallback, createElement } from 'react'
+import { useState, useRef, useEffect, useCallback, createElement, lazy, Suspense } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { classifyIntent } from './IntentRouter'
 import { searchApps } from './AppRegistry'
 import { useVoice } from './useVoice'
 import Settings from './Settings'
-import FileManager from '../builtin/files/FileManager'
+// Lazy-loaded so it stays in its own chunk (Launchpad also lazy-loads it).
+const FileManager = lazy(() => import('../builtin/files/FileManager'))
 
 // eslint-disable-next-line no-unused-vars
 export default function Portal({ mode = 'panel' }) {
@@ -285,7 +286,7 @@ Only output the viewport block — no explanations outside it.`
       case 'system':
         addMessage('user', input)
         if (intent.action === 'open_files') {
-          openWindow({ appId: 'files', title: 'File Explorer', icon: '⊡', component: createElement(FileManager) })
+          openWindow({ appId: 'files', title: 'File Explorer', icon: '⊡', component: createElement(Suspense, { fallback: null }, createElement(FileManager)) })
         } else if (intent.action === 'open_settings') {
           openWindow({ appId: 'settings', title: intent.label || 'Settings', icon: '⚙', component: createElement(Settings, { initialSection: intent.section }) })
         } else {

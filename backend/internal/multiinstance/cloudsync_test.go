@@ -15,6 +15,19 @@ import (
 	"vulos/backend/internal/multiinstance"
 )
 
+// TestMain opts into the plaintext-http escape hatch for the whole package: the
+// httptest cloud stubs below serve http:// URLs (and some tests point
+// VULOS_CLOUD_URL at http://127.0.0.1:0), which requireSecureCloudBase
+// otherwise rejects to avoid leaking the device bearer token over plaintext.
+// This mirrors the dev/test-only VULOS_LANCERT_ALLOW_INSECURE usage in the lan
+// tests.
+func TestMain(m *testing.M) {
+	os.Setenv("VULOS_CLOUD_ALLOW_INSECURE", "1")
+	// provision_billing_test.go points a cpbilling.Client at an http stub too.
+	os.Setenv("VULOS_CP_ALLOW_INSECURE", "1")
+	os.Exit(m.Run())
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
