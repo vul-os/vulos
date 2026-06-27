@@ -346,7 +346,12 @@ func sanitizeFilename(name string) string {
 
 // decodeJSON reads a small JSON body into v, writing a 400 on failure.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(v); err != nil {
+	return decodeJSONLimited(w, r, v, 64<<10)
+}
+
+// decodeJSONLimited reads a JSON body capped at max bytes into v, 400 on failure.
+func decodeJSONLimited(w http.ResponseWriter, r *http.Request, v any, max int64) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, max)).Decode(v); err != nil {
 		writeErr(w, 400, "invalid request body")
 		return false
 	}
@@ -365,6 +370,10 @@ func writeFilesErr(w http.ResponseWriter, err error) {
 		writeErr(w, 403, "forbidden")
 	case errors.Is(err, files.ErrLinkInactive):
 		writeErr(w, 410, "share link expired or revoked")
+	case errors.Is(err, files.ErrCapability):
+		writeErr(w, 403, "invalid or expired capability")
+	case errors.Is(err, files.ErrPeerUnavailable):
+		writeErr(w, 503, "peer-share unavailable")
 	case errors.Is(err, files.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	default:

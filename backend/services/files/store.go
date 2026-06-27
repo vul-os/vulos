@@ -9,12 +9,15 @@ import (
 	"database/sql"
 	"embed"
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/0001_files.sql
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 // ErrNotFound is returned when a node / link / version does not exist.
@@ -33,14 +36,30 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	sqlBytes, err := migrationsFS.ReadFile("migrations/0001_files.sql")
+	// Apply every embedded migration in lexicographic (filename) order. Each
+	// file is idempotent (IF NOT EXISTS), so re-running is safe.
+	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		db.Close()
 		return nil, err
 	}
-	if _, err := db.Exec(string(sqlBytes)); err != nil {
-		db.Close()
-		return nil, err
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		sqlBytes, rerr := migrationsFS.ReadFile("migrations/" + name)
+		if rerr != nil {
+			db.Close()
+			return nil, rerr
+		}
+		if _, eerr := db.Exec(string(sqlBytes)); eerr != nil {
+			db.Close()
+			return nil, fmt.Errorf("files: migration %s: %w", name, eerr)
+		}
 	}
 	return db, nil
 }
@@ -256,6 +275,129 @@ func (s *Service) listLinks(nodeID string) ([]ShareLink, error) {
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+// --- peer shares (PHASE-2B owner side) ---
+
+func (s *Service) insertPeerShare(p PeerShare) error {
+	_, err := s.db.Exec(`INSERT INTO files_peer_shares(id, node_id, owner_id, access, recipient, created_by, created_at, expires_at, revoked)
+		VALUES(?,?,?,?,?,?,?,?,0)`,
+		p.ID, p.NodeID, p.OwnerID, p.Access, p.Recipient, p.CreatedBy,
+		p.CreatedAt.Format(rfc), p.ExpiresAt.Format(rfc))
+	return err
+}
+
+func scanPeerShare(sc interface{ Scan(...any) error }) (*PeerShare, error) {
+	var p PeerShare
+	var created, expires string
+	var revoked int
+	if err := sc.Scan(&p.ID, &p.NodeID, &p.OwnerID, &p.Access, &p.Recipient,
+		&p.CreatedBy, &created, &expires, &revoked); err != nil {
+		return nil, err
+	}
+	p.CreatedAt, _ = time.Parse(rfc, created)
+	p.ExpiresAt, _ = time.Parse(rfc, expires)
+	p.Revoked = revoked == 1
+	return &p, nil
+}
+
+const peerShareCols = `id, node_id, owner_id, access, recipient, created_by, created_at, expires_at, revoked`
+
+func (s *Service) getPeerShare(id string) (*PeerShare, error) {
+	row := s.db.QueryRow(`SELECT `+peerShareCols+` FROM files_peer_shares WHERE id=?`, id)
+	p, err := scanPeerShare(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return p, err
+}
+
+func (s *Service) revokePeerShare(id string) error {
+	res, err := s.db.Exec(`UPDATE files_peer_shares SET revoked=1 WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Service) listPeerShares(nodeID string) ([]PeerShare, error) {
+	rows, err := s.db.Query(`SELECT `+peerShareCols+` FROM files_peer_shares WHERE node_id=? ORDER BY created_at DESC`, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PeerShare
+	for rows.Next() {
+		p, err := scanPeerShare(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
+	}
+	return out, rows.Err()
+}
+
+// --- received items (PHASE-2B recipient side) ---
+
+func (s *Service) insertReceived(it ReceivedItem) error {
+	isDir := 0
+	if it.IsDir {
+		isDir = 1
+	}
+	_, err := s.db.Exec(`INSERT INTO files_received(id, recipient_id, cap_id, name, is_dir, size, content_type, owner_vula_id, staging_path, saved_node_id, received_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		it.ID, it.RecipientID, it.CapID, it.Name, isDir, it.Size, it.ContentType,
+		it.OwnerVulaID, it.stagingPath, it.SavedNodeID, it.ReceivedAt.Format(rfc))
+	return err
+}
+
+func scanReceived(sc interface{ Scan(...any) error }) (*ReceivedItem, error) {
+	var it ReceivedItem
+	var isDir int
+	var received string
+	if err := sc.Scan(&it.ID, &it.RecipientID, &it.CapID, &it.Name, &isDir, &it.Size,
+		&it.ContentType, &it.OwnerVulaID, &it.stagingPath, &it.SavedNodeID, &received); err != nil {
+		return nil, err
+	}
+	it.IsDir = isDir == 1
+	it.ReceivedAt, _ = time.Parse(rfc, received)
+	return &it, nil
+}
+
+const receivedCols = `id, recipient_id, cap_id, name, is_dir, size, content_type, owner_vula_id, staging_path, saved_node_id, received_at`
+
+func (s *Service) getReceived(id string) (*ReceivedItem, error) {
+	row := s.db.QueryRow(`SELECT `+receivedCols+` FROM files_received WHERE id=?`, id)
+	it, err := scanReceived(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return it, err
+}
+
+func (s *Service) listReceived(recipientID string) ([]ReceivedItem, error) {
+	rows, err := s.db.Query(`SELECT `+receivedCols+` FROM files_received WHERE recipient_id=? ORDER BY received_at DESC`, recipientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ReceivedItem
+	for rows.Next() {
+		it, err := scanReceived(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *it)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) setReceivedSaved(id, nodeID string) error {
+	_, err := s.db.Exec(`UPDATE files_received SET saved_node_id=? WHERE id=?`, nodeID, id)
+	return err
 }
 
 // --- versions ---

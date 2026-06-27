@@ -85,31 +85,32 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                      true,
-	"/api/auth/me":                 true,
-	"/api/auth/logout":             true,
-	"/api/auth/register":           true,
-	"/api/auth/login":              true,
-	"/api/auth/status":             true,
-	"/api/setup/status":            true,
-	"/api/setup/mode":              true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
-	"/api/setup/join-code":         true, // INIT-10: unauthenticated join-code decode
-	"/api/setup/join":              true, // INIT-08: unauthenticated cluster join (setup-time)
-	"/api/setup/join/status":       true, // INIT-08: unauthenticated join progress poll
-	"/api/browser/status":          true,
-	"/manifest.json":               true,
-	"/api/auth/cloudlogin":         true, // CLOGIN-01: unauthenticated cloud login
-	"/api/auth/cloud/status":       true, // CLOGIN-01: enrollment status check (setup-time)
-	"/api/auth/cloud/signup":       true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
-	"/api/auth/pin/unlock":         true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
-	"/api/auth/pin/status":         true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
-	"/api/auth/fingerprint/status":      true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
-	"/api/auth/fingerprint/verify":      true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
-	"/api/auth/passkey/login/begin":     true, // LOGINISO-01: start passkey assertion (public — user not yet logged in)
-	"/api/auth/passkey/login/finish":    true, // LOGINISO-01: finish passkey assertion + issue session (public)
-	"/api/auth/qr/begin":               true, // LOGINISO-02: kiosk requests a QR challenge (public)
-	"/api/auth/qr/poll":                true, // LOGINISO-02: kiosk polls for approval (public)
-	"/init-passphrase":                 true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
+	"/health":                        true,
+	"/api/auth/me":                   true,
+	"/api/auth/logout":               true,
+	"/api/auth/register":             true,
+	"/api/auth/login":                true,
+	"/api/auth/status":               true,
+	"/api/setup/status":              true,
+	"/api/setup/mode":                true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
+	"/api/setup/join-code":           true, // INIT-10: unauthenticated join-code decode
+	"/api/setup/join":                true, // INIT-08: unauthenticated cluster join (setup-time)
+	"/api/setup/join/status":         true, // INIT-08: unauthenticated join progress poll
+	"/api/browser/status":            true,
+	"/manifest.json":                 true,
+	"/api/auth/cloudlogin":           true, // CLOGIN-01: unauthenticated cloud login
+	"/api/auth/cloud/status":         true, // CLOGIN-01: enrollment status check (setup-time)
+	"/api/auth/cloud/signup":         true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
+	"/api/auth/pin/unlock":           true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
+	"/api/auth/pin/status":           true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/status":   true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/verify":   true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
+	"/api/auth/passkey/login/begin":  true, // LOGINISO-01: start passkey assertion (public — user not yet logged in)
+	"/api/auth/passkey/login/finish": true, // LOGINISO-01: finish passkey assertion + issue session (public)
+	"/api/auth/qr/begin":             true, // LOGINISO-02: kiosk requests a QR challenge (public)
+	"/api/auth/qr/poll":              true, // LOGINISO-02: kiosk polls for approval (public)
+	"/init-passphrase":               true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
+	"/api/files/peer/serve":          true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

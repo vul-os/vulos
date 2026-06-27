@@ -55,6 +55,16 @@ const filesApi = {
     request('/files/share-link', { method: 'POST', body: JSON.stringify({ node_id, role, ttl_seconds }) }),
   revokeLink: (token) =>
     request('/files/share-link/revoke', { method: 'POST', body: JSON.stringify({ token }) }),
+
+  // ── OS peer-share (Mechanism B, bucket-less box-to-box) ──
+  peerIssue: (node_id, access, recipient, ttl_seconds) =>
+    request('/files/peer/issue', { method: 'POST', body: JSON.stringify({ node_id, access, recipient, ttl_seconds }) }),
+  peerShares: (node) => request(`/files/peer/shares?node=${encodeURIComponent(node)}`),
+  peerRevoke: (id) => request('/files/peer/revoke', { method: 'POST', body: JSON.stringify({ id }) }),
+  peerRedeem: (link) => request('/files/peer/redeem', { method: 'POST', body: JSON.stringify({ link }) }),
+  peerReceived: () => request('/files/peer/received'),
+  peerSave: (id, parent_id, name) =>
+    request('/files/peer/save', { method: 'POST', body: JSON.stringify({ id, parent_id, name }) }),
 }
 
 // uploadOne: upload-grant → PUT bytes (direct presigned, else OS data plane) →
@@ -98,6 +108,21 @@ async function downloadOne(node) {
   const a = document.createElement('a')
   a.href = url
   a.download = node.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+// downloadReceived: fetch a redeemed item's staged bytes and trigger a save.
+async function downloadReceived(item) {
+  const res = await rawFetch(`/files/peer/received/get?id=${encodeURIComponent(item.id)}`)
+  if (!res.ok) throw new Error(`download failed (${res.status})`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = item.is_dir ? `${item.name}.tar` : item.name
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -431,6 +456,167 @@ function ShareModal({ node, onClose }) {
   )
 }
 
+// ── peer-share modal (Mechanism B: bucket-less capability over p2p) ──────────
+const CAP_TTLS = [
+  { label: '1 hour', s: 3600 },
+  { label: '1 day', s: 86400 },
+  { label: '7 days', s: 604800 },
+]
+function PeerShareModal({ node, onClose }) {
+  const [shares, setShares] = useState([])
+  const [err, setErr] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [access, setAccess] = useState('viewer')
+  const [recipient, setRecipient] = useState('')
+  const [ttl, setTtl] = useState(86400)
+  const [link, setLink] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const reload = useCallback(async () => {
+    try { const r = await filesApi.peerShares(node.id); setShares(r.shares || []); setErr(null) }
+    catch (e) { setErr(e.message || 'Failed to load') }
+  }, [node.id])
+  useEffect(() => { reload() }, [reload])
+
+  const generate = async () => {
+    setBusy(true); setLink(''); setCopied(false)
+    try {
+      const r = await filesApi.peerIssue(node.id, access, recipient.trim(), ttl)
+      setLink(r.link || '')
+      await reload()
+    } catch (e) { setErr(e.message || 'Generate failed') } finally { setBusy(false) }
+  }
+  const revoke = async (id) => {
+    setBusy(true)
+    try { await filesApi.peerRevoke(id); await reload() }
+    catch (e) { setErr(e.message || 'Revoke failed') } finally { setBusy(false) }
+  }
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* ignore */ }
+  }
+  const section = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '4px 0 10px' }
+
+  return (
+    <Modal title={`Share via peer — ${node.name}`} onClose={onClose} width={540}>
+      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14, lineHeight: 1.5 }}>
+        Generate a signed, expiring capability link. The recipient redeems it on their own
+        Vulos box — bytes stream box-to-box, no bucket or cloud required. Leave the recipient
+        blank for anyone-with-the-link, or bind it to a specific peer’s Vula ID.
+      </div>
+
+      <div style={section}>New capability</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <select value={access} onChange={(e) => setAccess(e.target.value)} style={{ ...inputStyle, width: 120 }}>
+          <option value="viewer">Viewer</option>
+          <option value="editor">Editor</option>
+        </select>
+        <select value={ttl} onChange={(e) => setTtl(Number(e.target.value))} style={{ ...inputStyle, width: 120 }}>
+          {CAP_TTLS.map((t) => <option key={t.s} value={t.s}>{t.label}</option>)}
+        </select>
+        <input
+          style={{ ...inputStyle, flex: 1 }} placeholder="Recipient Vula ID (optional)"
+          value={recipient} onChange={(e) => setRecipient(e.target.value)}
+        />
+      </div>
+      <Btn primary onClick={generate} disabled={busy}>Generate capability link</Btn>
+
+      {link && (
+        <div style={{ marginTop: 12, padding: 12, background: T.elevated, borderRadius: 10 }}>
+          <div style={{ fontSize: 11, color: T.textFaint, marginBottom: 6 }}>Share this link with the recipient:</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <code style={{ flex: 1, fontSize: 11, color: T.text, wordBreak: 'break-all', maxHeight: 80, overflow: 'auto' }}>{link}</code>
+            <Btn small onClick={copy}>{copied ? 'Copied!' : 'Copy'}</Btn>
+          </div>
+        </div>
+      )}
+
+      <div style={{ ...section, marginTop: 20 }}>Active capabilities</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {shares.length === 0 ? <div style={{ color: T.textFaint, fontSize: 12 }}>No peer capabilities issued.</div>
+          : shares.map((s) => {
+            const expired = s.revoked || new Date(s.expires_at) < new Date()
+            return (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 11px', background: T.elevated, borderRadius: 8, fontSize: 12, opacity: expired ? 0.5 : 1 }}>
+                <span style={{ color: T.textDim }}>{s.access}</span>
+                <span style={{ flex: 1, color: T.textFaint, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {s.recipient ? `→ ${s.recipient.slice(0, 18)}…` : 'anyone with link'}
+                  {' · '}
+                  {s.revoked ? 'revoked' : expired ? 'expired' : `expires ${fmtDate(s.expires_at)}`}
+                </span>
+                {!s.revoked && (
+                  <button onClick={() => revoke(s.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 12 }}>Revoke</button>
+                )}
+              </div>
+            )
+          })}
+      </div>
+    </Modal>
+  )
+}
+
+// ── redeem modal (paste a capability link → fetch over p2p → preview/save) ───
+function RedeemModal({ onClose, onRedeemed }) {
+  const [link, setLink] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [item, setItem] = useState(null)
+
+  const redeem = async () => {
+    const v = link.trim()
+    if (!v) return
+    setBusy(true); setErr(null)
+    try { const it = await filesApi.peerRedeem(v); setItem(it); onRedeemed?.() }
+    catch (e) { setErr(e.message || 'Redeem failed') } finally { setBusy(false) }
+  }
+  const save = async () => {
+    setBusy(true)
+    try { await filesApi.peerSave(item.id, '', item.name); onClose() }
+    catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title="Redeem a capability link" onClose={onClose} width={520}>
+      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      {!item ? (
+        <>
+          <div style={{ fontSize: 12, color: T.textDim, marginBottom: 10, lineHeight: 1.5 }}>
+            Paste a capability link someone shared with you. Vulos verifies it and streams the
+            bytes directly from their box to yours.
+          </div>
+          <textarea
+            style={{ ...inputStyle, minHeight: 90, resize: 'vertical', fontFamily: 'monospace', fontSize: 11 }}
+            placeholder="Paste capability link…" value={link} onChange={(e) => setLink(e.target.value)}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <Btn onClick={onClose}>Cancel</Btn>
+            <Btn primary onClick={redeem} disabled={busy || !link.trim()}>{busy ? 'Fetching…' : 'Redeem'}</Btn>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ padding: 14, background: T.elevated, borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 24 }}>{item.is_dir ? '📁' : '📄'}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: T.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                <div style={{ color: T.textFaint, fontSize: 12 }}>{item.is_dir ? 'folder' : fmtSize(item.size)} · received</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14 }}>
+            Received and staged. Save it into your own Drive to keep it.
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn onClick={onClose}>Close</Btn>
+            <Btn primary onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save to Drive'}</Btn>
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
 // ── row action menu ──────────────────────────────────────────────────────────
 function RowMenu({ node, onAction, onClose }) {
   useEffect(() => {
@@ -443,6 +629,7 @@ function RowMenu({ node, onAction, onClose }) {
     ['rename', 'Rename'],
     ['move', 'Move…'],
     ['share', 'Share…'],
+    ['peershare', 'Share via peer…'],
     !node.is_dir && ['versions', 'Versions'],
     ['delete', 'Delete'],
   ].filter(Boolean)
@@ -481,6 +668,7 @@ export default function Drive() {
   const [error, setError] = useState(null)
   const [menuFor, setMenuFor] = useState(null)
   const [modal, setModal] = useState(null) // { kind, node }
+  const [redeemOpen, setRedeemOpen] = useState(false)
   const [busy, setBusy] = useState(null) // status text
   const fileInputRef = useRef(null)
   const dropRef = useRef(null)
@@ -492,10 +680,15 @@ export default function Drive() {
   const refresh = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const r = view === 'shared' && trail.length === 1
-        ? await filesApi.sharedWithMe()
-        : await filesApi.list(cur.id)
-      setNodes(r.nodes || [])
+      if (view === 'received') {
+        const r = await filesApi.peerReceived()
+        setNodes(r.items || [])
+      } else {
+        const r = view === 'shared' && trail.length === 1
+          ? await filesApi.sharedWithMe()
+          : await filesApi.list(cur.id)
+        setNodes(r.nodes || [])
+      }
     } catch (e) {
       setError(e.message || 'Failed to load')
       setNodes([])
@@ -508,7 +701,14 @@ export default function Drive() {
 
   const openFolder = (node) => setTrail([...trail, { id: node.id, name: node.name }])
   const gotoCrumb = (i) => setTrail(trail.slice(0, i + 1))
-  const switchView = (v) => { setView(v); setTrail([{ id: '', name: v === 'shared' ? 'Shared with me' : 'My Drive' }]) }
+  const VIEW_NAMES = { shared: 'Shared with me', received: 'Received', mydrive: 'My Drive' }
+  const switchView = (v) => { setView(v); setTrail([{ id: '', name: VIEW_NAMES[v] || 'My Drive' }]) }
+
+  const saveReceived = async (item) => {
+    setBusy(`Saving ${item.name} to Drive…`)
+    try { await filesApi.peerSave(item.id, '', item.name); await refresh() }
+    catch (e) { setError(e.message || 'Save failed') } finally { setBusy(null) }
+  }
 
   const onRowOpen = (node) => {
     if (node.is_dir) openFolder(node)
@@ -557,7 +757,7 @@ export default function Drive() {
       {/* sidebar */}
       <div style={{ width: 180, flexShrink: 0, borderRight: `1px solid ${T.border}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ fontSize: 15, fontWeight: 700, padding: '4px 10px 12px', color: T.text }}>Drive</div>
-        {[['mydrive', '📁', 'My Drive'], ['shared', '👥', 'Shared with me']].map(([v, icon, label]) => (
+        {[['mydrive', '📁', 'My Drive'], ['shared', '👥', 'Shared with me'], ['received', '📥', 'Received']].map(([v, icon, label]) => (
           <button
             key={v}
             onClick={() => switchView(v)}
@@ -571,6 +771,9 @@ export default function Drive() {
             <span>{icon}</span><span>{label}</span>
           </button>
         ))}
+        <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+          <Btn small onClick={() => setRedeemOpen(true)}>↓ Redeem link</Btn>
+        </div>
       </div>
 
       {/* main */}
@@ -621,12 +824,35 @@ export default function Drive() {
             </Center>
           ) : nodes.length === 0 ? (
             <Center>
-              <div style={{ fontSize: 40, opacity: 0.4 }}>{view === 'shared' ? '👥' : '📂'}</div>
+              <div style={{ fontSize: 40, opacity: 0.4 }}>{view === 'shared' ? '👥' : view === 'received' ? '📥' : '📂'}</div>
               <div style={{ color: T.textDim, fontSize: 14 }}>
-                {view === 'shared' ? 'Nothing shared with you yet' : atRoot ? 'Your Drive is empty' : 'This folder is empty'}
+                {view === 'received' ? 'Nothing received yet' : view === 'shared' ? 'Nothing shared with you yet' : atRoot ? 'Your Drive is empty' : 'This folder is empty'}
               </div>
+              {view === 'received' && <Btn small primary onClick={() => setRedeemOpen(true)}>Redeem a link</Btn>}
               {view === 'mydrive' && <Btn small primary onClick={() => fileInputRef.current?.click()}>Upload a file</Btn>}
             </Center>
+          ) : view === 'received' ? (
+            <div style={{ padding: 8 }}>
+              {nodes.map((item) => (
+                <div
+                  key={item.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 9 }}
+                >
+                  <span style={{ fontSize: 18, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.is_dir ? '📁' : fileGlyph(item)}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>{item.name}</span>
+                    <span style={{ display: 'block', color: T.textFaint, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      from {String(item.owner_vula_id || '').slice(0, 22)}… · {fmtDate(item.received_at)}
+                    </span>
+                  </span>
+                  <span style={{ color: T.textFaint, fontSize: 12 }}>{item.is_dir ? 'folder' : fmtSize(item.size)}</span>
+                  <Btn small onClick={() => { setBusy(`Downloading ${item.name}…`); downloadReceived(item).catch((e) => setError(e.message || 'Download failed')).finally(() => setBusy(null)) }}>Download</Btn>
+                  {item.saved_node_id
+                    ? <span style={{ color: T.textDim, fontSize: 12, width: 90, textAlign: 'center' }}>Saved ✓</span>
+                    : <Btn small primary onClick={() => saveReceived(item)}>Save to Drive</Btn>}
+                </div>
+              ))}
+            </div>
           ) : (
             <div style={{ padding: 8 }}>
               {/* header row */}
@@ -700,7 +926,9 @@ export default function Drive() {
         <MoveModal node={modal.node} onClose={() => setModal(null)} onMoved={() => closeModal(true)} />
       )}
       {modal?.kind === 'share' && <ShareModal node={modal.node} onClose={() => setModal(null)} />}
+      {modal?.kind === 'peershare' && <PeerShareModal node={modal.node} onClose={() => setModal(null)} />}
       {modal?.kind === 'versions' && <VersionsModal node={modal.node} onClose={() => setModal(null)} />}
+      {redeemOpen && <RedeemModal onClose={() => setRedeemOpen(false)} onRedeemed={() => { if (view === 'received') refresh() }} />}
 
       <style>{`@keyframes drive-spin { to { transform: rotate(360deg) } }`}</style>
     </div>

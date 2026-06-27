@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -614,6 +615,21 @@ func main() {
 		} else {
 			defer filesSvc.Close()
 			log.Printf("[files] control plane ready (db=%s, sts=%v)", filepath.Join(dbDir, "files.db"), filesSTS.Endpoint != "")
+			// FILES-2B: wire the OS peer-share seam (Mechanism B, bucket-less
+			// box-to-box). Capabilities are signed with the peering box identity;
+			// bytes stream over HTTP to/from peer boxes; redeemed bytes stage on
+			// local disk until promoted into the recipient's Drive. Requires a
+			// valid peering identity; without one, peer-share endpoints return 503.
+			if priv := peeringSvc.PrivateKey(); len(priv) == ed25519.PrivateKeySize {
+				filesSvc.WithPeer(
+					peerShareSigner{selfID: peeringSvc.VulaID(), priv: priv},
+					files.NewHTTPPeerTransport(),
+					filepath.Join(dbDir, "peer-received"),
+				)
+				log.Printf("[files] OS peer-share active (id=%s)", peeringSvc.VulaID())
+			} else {
+				log.Printf("[files] OS peer-share disabled: no peering identity")
+			}
 		}
 	}
 
@@ -711,6 +727,12 @@ func main() {
 	// Files: OS Files metadata/control-plane API (Drive index, ACL-gated
 	// object-scoped grants, shares, share links, versions). Session-authed.
 	registerFilesRoutes(mux, filesSvc)
+
+	// FILES-2B: OS peer-share (Mechanism B). Session-authed issue/redeem/save
+	// endpoints + the PUBLIC box-to-box serve endpoint (authenticated by the
+	// signed capability + recipient fetch proof, listed in auth.publicPaths).
+	registerFilesPeerRoutes(mux, filesSvc)
+	registerFilesPeerServe(mux, filesSvc)
 
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)

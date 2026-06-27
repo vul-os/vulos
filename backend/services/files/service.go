@@ -39,6 +39,14 @@ type Service struct {
 	db       *sql.DB
 	broker   Broker
 	bucketFn BucketResolver
+
+	// PHASE-2B OS peer-share seam (wired via WithPeer; nil ⇒ peer-share returns
+	// ErrPeerUnavailable). signer is THIS box's capability identity; transport
+	// streams bytes box-to-box; stagingDir holds redeemed bytes on local disk
+	// until promoted into the recipient's Drive.
+	signer     PeerSigner
+	transport  PeerTransport
+	stagingDir string
 }
 
 // New opens (creating + migrating) the Files DB at dbPath and returns a Service.

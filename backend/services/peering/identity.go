@@ -139,6 +139,32 @@ func decodeVulaID(id string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
+// PublicKeyForVulaID decodes a Vula ID ("vula:ed25519:<base58>") into the raw
+// Ed25519 public key it encodes. It is the exported counterpart of the internal
+// decodeVulaID, provided so other services (e.g. the Files OS peer-share
+// capability layer) can verify signatures made by a remote box's identity key
+// WITHOUT importing the base58 / Vula-ID machinery themselves. Vula-ID handling
+// stays centralized in this package.
+func PublicKeyForVulaID(id string) (ed25519.PublicKey, error) {
+	return decodeVulaID(id)
+}
+
+// VerifyVulaSignature reports whether sig is a valid Ed25519 signature by the
+// identity behind vulaID over msg. It is a small, self-contained verification
+// primitive for cross-box capability/proof checks: the verifier needs only the
+// peer's Vula ID (which embeds the public key) — no prior key exchange. Returns
+// a non-nil error when the Vula ID is malformed or the signature does not match.
+func VerifyVulaSignature(vulaID string, msg, sig []byte) error {
+	pub, err := decodeVulaID(vulaID)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(pub, msg, sig) {
+		return errors.New("peering: vula signature mismatch")
+	}
+	return nil
+}
+
 // ─── Address parsing ──────────────────────────────────────────────────────────
 
 // VulaAddress is a Vula ID combined with a server host and port.
