@@ -111,11 +111,21 @@ var publicPaths = map[string]bool{
 	"/api/auth/qr/poll":              true, // LOGINISO-02: kiosk polls for approval (public)
 	"/init-passphrase":               true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
 	"/api/files/peer/serve":          true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
+	"/mcp":                           true, // APPS/MCP: agent MCP server (authed by vat_ app token via the @vulos/apps platform, not a session)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
+//
+// APPS/MCP NOTE: the @vulos/apps runtime/webhook/MCP routes authenticate with a
+// vat_ app token (or the webhook-id secret), NOT an OS session, so the session
+// middleware must DEFER to the platform's own constant-time token auth here. Only
+// these token-authed subtrees are public; the apps MANAGEMENT API (/api/apps,
+// /api/apps/{id}, /api/apps/commands) is NOT listed and stays OS-session-authed.
 var publicPrefixes = []string{
 	"/assets/",
+	"/mcp/",            // MCP subtree (vat_ app token authed by the @vulos/apps MCP layer)
+	"/api/apps/v1/",    // apps runtime: act / read / events / auth.test (vat_ app token authed)
+	"/api/apps/hooks/", // apps incoming webhooks (authed by the webhook-id secret in the URL)
 }
 
 func isPublicPath(path string) bool {

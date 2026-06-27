@@ -15,12 +15,17 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
+	github.com/vul-os/vulos-apps v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
 	modernc.org/sqlite v1.50.1
 )
+
+// Open-core: the shared Vulos Apps & Bots platform (+ its MCP layer) is developed
+// in a sibling module. Self-host/dev builds resolve it from the local checkout.
+replace github.com/vul-os/vulos-apps => ../../vulos-apps
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

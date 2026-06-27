@@ -734,6 +734,14 @@ func main() {
 	registerFilesPeerRoutes(mux, filesSvc)
 	registerFilesPeerServe(mux, filesSvc)
 
+	// Apps & Bots platform + MCP: give the OS an agent-operable surface over OS
+	// capabilities (Files, read-only app/system info) via the shared @vulos/apps
+	// platform. Management is OS-session-authed; runtime/hooks + /mcp are vat_
+	// token-authed (those paths are listed in auth.publicPaths so the session
+	// middleware defers to the platform's own token auth). Standalone by default;
+	// cloud registry/gateway hooks are env-gated and never imported by this build.
+	mountAppsPlatform(mux, authStore, filesSvc, appsDir, dbDir)
+
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)
 
