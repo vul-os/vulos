@@ -167,9 +167,9 @@ func runRestoreCLI(ctx context.Context, args []string) int {
 	return 0
 }
 
-// dispatchSubcommand intercepts `backup`/`restore` before the normal server
-// boot. It returns (handled, exitCode): when handled is true the caller should
-// exit with exitCode; otherwise the server starts normally.
+// dispatchSubcommand intercepts `backup`/`restore`/`migrate` before the normal
+// server boot. It returns (handled, exitCode): when handled is true the caller
+// should exit with exitCode; otherwise the server starts normally.
 func dispatchSubcommand(ctx context.Context) (handled bool, exitCode int) {
 	if len(os.Args) < 2 {
 		return false, 0
@@ -179,6 +179,8 @@ func dispatchSubcommand(ctx context.Context) (handled bool, exitCode int) {
 		return true, runBackupCLI(ctx, os.Args[2:])
 	case "restore":
 		return true, runRestoreCLI(ctx, os.Args[2:])
+	case "migrate":
+		return true, runMigrateCLI(os.Args[2:])
 	default:
 		return false, 0
 	}

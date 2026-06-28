@@ -54,6 +54,24 @@ jobs:
           fi
           echo "Version check passed: $TAG == $PKG_VERSION"
 
+      # ── Verify tag matches binary --version ───────────────────────────────────
+      - name: Verify tag matches binary version
+        env:
+          GOTOOLCHAIN: auto
+        run: |
+          TAG="${{ steps.version.outputs.VERSION }}"
+          SEMVER="${TAG#v}"
+          cd backend && go build \
+            -ldflags "-X main.Version=${TAG}" \
+            -o /tmp/vulos-check \
+            ./cmd/server
+          BIN_VER=$(/tmp/vulos-check --version)
+          if [ "${BIN_VER}" != "${TAG}" ]; then
+            echo "ERROR: binary reports version '${BIN_VER}' but tag is '${TAG}'"
+            exit 1
+          fi
+          echo "Binary version check passed: ${TAG}"
+
       # ── Frontend build ────────────────────────────────────────────────────────
       - name: Install npm dependencies
         run: npm ci
