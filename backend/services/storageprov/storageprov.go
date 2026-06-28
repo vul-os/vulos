@@ -26,11 +26,16 @@ type storageprovRequest struct {
 
 // storageprovState is persisted to storage.json (passphrase is never stored).
 type storageprovState struct {
-	Enabled       bool      `json:"enabled"`
-	AccessKey     string    `json:"access_key"`
-	SecretKey     string    `json:"secret_key"`
-	SSECKey       string    `json:"ssec_key"`
-	BucketName    string    `json:"bucket_name"`
+	Enabled    bool   `json:"enabled"`
+	AccessKey  string `json:"access_key"`
+	SecretKey  string `json:"secret_key"`
+	SSECKey    string `json:"ssec_key"`
+	BucketName string `json:"bucket_name"`
+	// Region is the storage cell for this bucket (default "eu").
+	// Phase-0 (single cell): BucketPlaceFor always returns "eu".
+	// Additive field — existing storage.json files without this field
+	// are read back with an empty Region (treated as "eu" by callers).
+	Region        string    `json:"region,omitempty"`
 	ProvisionedAt time.Time `json:"provisioned_at"`
 }
 
@@ -48,6 +53,24 @@ type storageprovResponse struct {
 const storageprovBucket = "vulos-cluster"
 
 var storageprovMu sync.Mutex
+
+// BucketPlaceFor returns the storage region slug for the given region.
+// Phase-0 (single cell): all regions resolve to "eu".
+// To add a second storage cell later: extend this function and set VULOS_REGION
+// on boxes in that cell — no other callers need to change.
+func BucketPlaceFor(region string) string {
+	// Phase-0: single cell. All regions map to "eu".
+	return "eu"
+}
+
+// storageprovRegion returns the box's home region from the VULOS_REGION env
+// variable, defaulting to "eu".
+func storageprovRegion() string {
+	if v := os.Getenv("VULOS_REGION"); v != "" {
+		return v
+	}
+	return "eu"
+}
 
 // RegisterHandlers registers the storage provisioning endpoint on mux.
 // home is the user home directory (e.g. os.UserHomeDir()).
@@ -106,6 +129,7 @@ func storageprovHandle(w http.ResponseWriter, r *http.Request, home string) {
 		SecretKey:     secretKey,
 		SSECKey:       ssecKey,
 		BucketName:    storageprovBucket,
+		Region:        BucketPlaceFor(storageprovRegion()),
 		ProvisionedAt: time.Now().UTC(),
 	}
 	stateData, _ := json.MarshalIndent(state, "", "  ")

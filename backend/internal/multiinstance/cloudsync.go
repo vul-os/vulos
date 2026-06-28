@@ -38,12 +38,13 @@ import (
 // DefaultCloudBaseURL is the production Vulos cloud control-plane base URL.
 const DefaultCloudBaseURL = "https://api.vulos.org"
 
-// cloudBaseURL returns the effective cloud base URL (env override or default).
+// cloudBaseURL returns the effective cloud base URL for this box's home region.
+// It delegates to PlaceFor so that CP calls are region-aware: in Phase-0
+// (single cell) this is identical to returning DefaultCloudBaseURL, but when a
+// second cell is added the resolver will automatically route boxes in that cell
+// to the correct CP without any further code changes.
 func cloudBaseURL() string {
-	if v := os.Getenv("VULOS_CLOUD_URL"); v != "" {
-		return v
-	}
-	return DefaultCloudBaseURL
+	return PlaceFor(boxRegion())
 }
 
 // requireSecureCloudBase returns the effective cloud base URL only if it uses
@@ -81,6 +82,10 @@ type CloudInstance struct {
 	Role             string `json:"role"`
 	Status           string `json:"status"`
 	LastSeenAt       string `json:"last_seen_at"` // RFC3339Nano; may be empty
+	// Region is the home cell of this instance (default "eu").
+	// Phase-0: the CP always returns "eu"; the field is present so the OS can
+	// persist and route without a second parse step when a second cell arrives.
+	Region string `json:"region,omitempty"`
 }
 
 // PresenceEvent is the wire format for WebSocket presence update messages
@@ -287,6 +292,7 @@ func cloudInstanceToLocal(ci CloudInstance) Instance {
 		Kind:             Kind(ci.Kind),
 		Role:             Role(ci.Role),
 		Status:           Status(ci.Status),
+		Region:           ci.Region,
 	}
 	if ci.LastSeenAt != "" {
 		if t, err := time.Parse(time.RFC3339Nano, ci.LastSeenAt); err == nil {
@@ -302,6 +308,9 @@ func cloudInstanceToLocal(ci CloudInstance) Instance {
 	}
 	if inst.Status == "" {
 		inst.Status = StatusUnknown
+	}
+	if inst.Region == "" {
+		inst.Region = "eu"
 	}
 	return inst
 }

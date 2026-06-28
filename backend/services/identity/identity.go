@@ -19,6 +19,9 @@ type Instance struct {
 	ULID      string `json:"ulid"`
 	Hostname  string `json:"hostname"`
 	FirstBoot string `json:"first_boot"` // RFC3339
+	// Region is the home cell of this box (default "eu").
+	// Phase-0: only "eu" exists; a second cell is config-only later.
+	Region string `json:"region,omitempty"`
 }
 
 const instanceFile = "instance.json"
@@ -35,6 +38,11 @@ func Load(home string) (*Instance, error) {
 
 	// Try the preferred new path first.
 	if inst, err := readJSON(newPath); err == nil {
+		// Backfill Region for instance.json files written before this field
+		// existed (Phase-0: empty → "eu").
+		if inst.Region == "" {
+			inst.Region = instanceRegion()
+		}
 		return inst, nil
 	}
 
@@ -46,6 +54,7 @@ func Load(home string) (*Instance, error) {
 				ULID:      id,
 				Hostname:  autoHostname(id),
 				FirstBoot: time.Now().UTC().Format(time.RFC3339),
+				Region:    instanceRegion(),
 			}
 			// Migrate to the new path; best-effort.
 			_ = os.MkdirAll(dbDir, 0755)
@@ -61,6 +70,7 @@ func Load(home string) (*Instance, error) {
 		ULID:      id,
 		Hostname:  hostname,
 		FirstBoot: time.Now().UTC().Format(time.RFC3339),
+		Region:    instanceRegion(),
 	}
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return nil, err
@@ -69,6 +79,15 @@ func Load(home string) (*Instance, error) {
 		return nil, err
 	}
 	return inst, nil
+}
+
+// instanceRegion returns the box's home region from the VULOS_REGION env variable,
+// defaulting to "eu" for Phase-0 (single-cell deployment).
+func instanceRegion() string {
+	if v := strings.TrimSpace(os.Getenv("VULOS_REGION")); v != "" {
+		return v
+	}
+	return "eu"
 }
 
 // Save persists the instance to ~/.vulos/db/instance.json with mode 0600.

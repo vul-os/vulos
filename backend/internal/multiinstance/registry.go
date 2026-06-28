@@ -60,6 +60,12 @@ type Instance struct {
 	Status           Status    `json:"status"`
 	LastSeenAt       time.Time `json:"last_seen_at"`
 
+	// Region is the home cell of this instance (default "eu").
+	// Phase-0: only "eu" exists; a second cell is config-only later.
+	// Additive field — existing rows without this column read back as "eu"
+	// via the DEFAULT 'eu' in the DB schema.
+	Region string `json:"region,omitempty"`
+
 	// ── FABRIC-KEY-01: key rotation overlap + revocation ─────────────────────
 	//
 	// PrevEd25519PublicKey is the instance's PREVIOUS signing key, retained for a
@@ -132,6 +138,10 @@ func (r *Registry) Upsert(inst Instance) error {
 	if inst.Revoked {
 		revoked = 1
 	}
+	region := inst.Region
+	if region == "" {
+		region = "eu"
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -139,8 +149,8 @@ func (r *Registry) Upsert(inst Instance) error {
 	_, err := r.db.Exec(`
 		INSERT INTO instances
 			(ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
-			 prev_ed25519_public_key, prev_key_expires_at, revoked)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 region, prev_ed25519_public_key, prev_key_expires_at, revoked)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(ulid) DO UPDATE SET
 			display_name      = excluded.display_name,
 			kind              = excluded.kind,
@@ -152,6 +162,7 @@ func (r *Registry) Upsert(inst Instance) error {
 				WHEN excluded.last_seen_at != '' THEN excluded.last_seen_at
 				ELSE instances.last_seen_at
 			END,
+			region                  = excluded.region,
 			prev_ed25519_public_key = excluded.prev_ed25519_public_key,
 			prev_key_expires_at     = excluded.prev_key_expires_at,
 			revoked                 = excluded.revoked`,
@@ -163,6 +174,7 @@ func (r *Registry) Upsert(inst Instance) error {
 		string(inst.Role),
 		string(inst.Status),
 		lastSeen,
+		region,
 		inst.PrevEd25519PublicKey,
 		prevExpires,
 		revoked,
@@ -180,7 +192,7 @@ func (r *Registry) Get(ulid string) (Instance, bool) {
 
 	row := r.db.QueryRow(`
 		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
-		       prev_ed25519_public_key, prev_key_expires_at, revoked
+		       region, prev_ed25519_public_key, prev_key_expires_at, revoked
 		FROM instances WHERE ulid = ?`, ulid)
 	inst, err := scanInstance(row)
 	if err == sql.ErrNoRows {
@@ -201,7 +213,7 @@ func (r *Registry) List() ([]Instance, error) {
 
 	rows, err := r.db.Query(`
 		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
-		       prev_ed25519_public_key, prev_key_expires_at, revoked
+		       region, prev_ed25519_public_key, prev_key_expires_at, revoked
 		FROM instances ORDER BY ulid`)
 	if err != nil {
 		return nil, fmt.Errorf("multiinstance: List: %w", err)
@@ -263,6 +275,7 @@ func scanInstance(s scanner) (Instance, error) {
 		&role,
 		&status,
 		&lastSeenRaw,
+		&inst.Region,
 		&inst.PrevEd25519PublicKey,
 		&prevExpiresRaw,
 		&revokedInt,
@@ -343,6 +356,10 @@ func migrate(db *sql.DB) error {
 	if err := ensureInstanceKeyRotationColumns(db); err != nil {
 		return fmt.Errorf("migrate: instance key-rotation columns: %w", err)
 	}
+	// Phase-0 multi-region: additive region column for box.region hook.
+	if err := ensureInstanceRegionColumn(db); err != nil {
+		return fmt.Errorf("migrate: instance region column: %w", err)
+	}
 	return nil
 }
 
@@ -364,6 +381,20 @@ func ensureInstanceKeyRotationColumns(db *sql.DB) error {
 			}
 			return err
 		}
+	}
+	return nil
+}
+
+// ensureInstanceRegionColumn adds the Phase-0 multi-region `region` column to
+// the instances table for DBs created before this column existed.
+// Idempotent: "duplicate column name" means the column is already present and
+// is swallowed. modernc.org/sqlite has no "ADD COLUMN IF NOT EXISTS".
+func ensureInstanceRegionColumn(db *sql.DB) error {
+	if _, err := db.Exec(`ALTER TABLE instances ADD COLUMN region TEXT NOT NULL DEFAULT 'eu'`); err != nil {
+		if strings.Contains(err.Error(), "duplicate column name") {
+			return nil
+		}
+		return err
 	}
 	return nil
 }

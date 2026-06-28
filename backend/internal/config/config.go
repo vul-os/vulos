@@ -48,6 +48,11 @@ type Config struct {
 	DomainMode DomainMode // VULOS_DOMAIN_MODE ("fabric"|"direct"|"own"|"local")
 	NodeMode   NodeMode   // VULOS_MODE ("server"|"local")
 	Domain     string     // VULOS_DOMAIN (explicit override; derived automatically in fabric/direct)
+
+	// Region is the home cell of this box (VULOS_REGION; default "eu").
+	// Phase-0: only "eu" exists. A second cell is config-only: add its entry
+	// to the CP's region map and set VULOS_REGION on boxes in that cell.
+	Region string // VULOS_REGION
 }
 
 func Load(env string) *Config {
@@ -144,6 +149,8 @@ func Load(env string) *Config {
 
 	domain := get("VULOS_DOMAIN", "")
 
+	region := get("VULOS_REGION", "eu")
+
 	return &Config{
 		Port:       get("PORT", "8080"),
 		InstanceID: instanceID,
@@ -152,5 +159,6 @@ func Load(env string) *Config {
 		DomainMode: domainMode,
 		NodeMode:   nodeMode,
 		Domain:     domain,
+		Region:     region,
 	}
 }
