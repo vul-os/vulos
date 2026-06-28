@@ -274,6 +274,19 @@ func (h *MeshSignalingHub) handleMeshSignal(w http.ResponseWriter, r *http.Reque
 
 	log.Printf("[mesh] peer %s joined room %s (size=%d)", peerID, roomID, room.size())
 
+	// Send a "joined" acknowledgment to the newly connected peer so that
+	// clients (and tests) can use it as a synchronization barrier: once this
+	// frame is received, room.add() has completed and the peer is visible to
+	// all subsequent broadcasts.  The frame is queued into the buffered send
+	// channel before the writePump starts, so it is always the first frame
+	// the client reads.
+	joinedAck, _ := json.Marshal(map[string]any{
+		"type":   "joined",
+		"from":   peerID,
+		"roomId": roomID,
+	})
+	peer.write(joinedAck)
+
 	go peer.writePump()
 
 	// Read pump — handle inbound frames and route them.

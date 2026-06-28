@@ -19,6 +19,14 @@ import (
 
 // meshDialWS opens a WebSocket connection to the given URL and returns the conn.
 // It converts the test server's http:// URL to ws://.
+//
+// After a successful upgrade the server immediately queues a {"type":"joined"}
+// acknowledgment frame.  We read and discard it here so that callers can rely
+// on a hard invariant: when meshDialWS returns, the server has already called
+// room.add() for this peer and started its read/write pumps.  This eliminates
+// the race where a sender broadcasts a message before a recipient's handler has
+// registered the peer in the room — the root cause of spurious "meshRead:
+// i/o timeout" failures under heavy CI parallelism.
 func meshDialWS(t *testing.T, srv *httptest.Server, room, peer string) *websocket.Conn {
 	t.Helper()
 	u := "ws" + strings.TrimPrefix(srv.URL, "http") +
@@ -27,16 +35,25 @@ func meshDialWS(t *testing.T, srv *httptest.Server, room, peer string) *websocke
 	if err != nil {
 		t.Fatalf("meshDialWS: %v", err)
 	}
+	// Block until the server sends the "joined" ack — this is our
+	// synchronization point confirming the peer is now in the room.
+	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("meshDialWS: waiting for joined ack: %v", err)
+	}
+	conn.SetReadDeadline(time.Time{}) // clear deadline; callers set their own
 	return conn
 }
 
 // meshRead reads one text message from ws and decodes it.
-// The 10 s deadline is intentionally generous so that slow CI runners
+// The 30 s deadline is intentionally generous so that slow CI runners
 // (shared, throttled) don't produce spurious i/o timeout failures on
-// loopback WebSocket exchanges.
+// loopback WebSocket exchanges.  The real guard against missed messages is
+// the "joined" ack consumed in meshDialWS — this deadline is a last-resort
+// safeguard against genuine hangs.
 func meshRead(t *testing.T, ws *websocket.Conn) map[string]json.RawMessage {
 	t.Helper()
-	ws.SetReadDeadline(time.Now().Add(10 * time.Second))
+	ws.SetReadDeadline(time.Now().Add(30 * time.Second))
 	_, raw, err := ws.ReadMessage()
 	if err != nil {
 		t.Fatalf("meshRead: %v", err)
@@ -55,7 +72,7 @@ func meshSend(t *testing.T, ws *websocket.Conn, v any) {
 	if err != nil {
 		t.Fatalf("meshSend marshal: %v", err)
 	}
-	ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	ws.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if err := ws.WriteMessage(websocket.TextMessage, b); err != nil {
 		t.Fatalf("meshSend write: %v", err)
 	}
@@ -239,11 +256,11 @@ func TestMeshSignaling_LeaveSynthesised(t *testing.T) {
 	// A or B should receive a leave frame for peer-C.
 	// Use a generous deadline so slow CI runners don't produce false timeouts.
 	// Try A first.
-	wsA.SetReadDeadline(time.Now().Add(10 * time.Second))
+	wsA.SetReadDeadline(time.Now().Add(30 * time.Second))
 	_, raw, err := wsA.ReadMessage()
 	if err != nil {
 		// Maybe B got it.
-		wsB.SetReadDeadline(time.Now().Add(10 * time.Second))
+		wsB.SetReadDeadline(time.Now().Add(30 * time.Second))
 		_, raw, err = wsB.ReadMessage()
 		if err != nil {
 			t.Fatalf("expected a leave frame but got no message on either peer: %v", err)
@@ -286,7 +303,7 @@ func TestMeshSignaling_RoomFull(t *testing.T) {
 	}
 	defer ws5.Close()
 
-	ws5.SetReadDeadline(time.Now().Add(10 * time.Second))
+	ws5.SetReadDeadline(time.Now().Add(30 * time.Second))
 	_, raw, _ := ws5.ReadMessage()
 	if len(raw) > 0 {
 		var frame map[string]json.RawMessage
