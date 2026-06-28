@@ -26,6 +26,12 @@ jobs:
       - name: Clone vulos-office (office-client)
         run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
 
+      # Build sibling libs whose dist-lib/ directories are not committed.
+      # @vulos/relay-client subpath exports (./endpoints, ./offlineBootstrap, …)
+      # point at dist-lib/ — Rolldown/vite fails to resolve them without a build.
+      - name: Build @vulos/relay-client lib
+        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -153,6 +159,21 @@ jobs:
 
       - name: Clone vulos-office (office-client)
         run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
+
+      # Build relay-client lib and pre-build the frontend on the runner.
+      # The Dockerfile's runtime stage COPYs the pre-built dist/ directly
+      # instead of running npm inside the Docker build context, sidestepping
+      # the file: dep path issue (../vulos-relay/client is outside context: .).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build @vulos/relay-client lib
+        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
+
+      - name: Pre-build frontend (dist/ is COPY'd into the Docker image)
+        run: npm ci && npm run build
 
       - uses: docker/setup-qemu-action@v3
 

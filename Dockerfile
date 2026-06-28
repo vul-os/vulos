@@ -9,15 +9,15 @@
 #   2. Frontend build (npm) — changes with UI work
 #   3. Go binary + config — changes most often
 
-# ── Stage 1: Frontend build ──────────────────────────────
-FROM node:22-slim AS frontend
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY index.html vite.config.js eslint.config.js ./
-COPY src/ src/
-COPY public/ public/
-RUN npm run build
+# ── Stage 1: Frontend (pre-built) ────────────────────────
+# The frontend is built on the CI runner (or locally via `npm run build`)
+# before `docker build` is invoked.  dist/ is COPY'd from the build context
+# rather than rebuilt inside Docker, avoiding the file: dep path issue where
+# ../vulos-relay/client is outside the Docker build context (context: .).
+# To build locally: cd ../vulos-relay/client && npm install && npm run build:lib
+#                   npm ci && npm run build && docker build .
+FROM scratch AS frontend
+COPY dist/ /dist/
 
 # ── Stage 2: Go backend build ────────────────────────────
 FROM golang:trixie AS backend
@@ -113,7 +113,7 @@ RUN plymouth-set-default-theme vulos 2>/dev/null || \
         /etc/alternatives/default.plymouth 2>/dev/null || true
 
 # Layer 4: Frontend build output (changes with UI work)
-COPY --from=frontend /app/dist /opt/vulos/webroot
+COPY --from=frontend /dist /opt/vulos/webroot
 
 # Layer 5: Registry (changes when apps are added/removed)
 COPY registry.json /opt/vulos/registry.json

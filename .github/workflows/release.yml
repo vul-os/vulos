@@ -73,6 +73,17 @@ jobs:
           echo "Binary version check passed: ${TAG}"
 
       # ── Frontend build ────────────────────────────────────────────────────────
+      # Clone siblings required by file: deps in package.json and build the
+      # relay-client lib so that @vulos/relay-client subpath exports resolve.
+      - name: Clone vulos-relay (relay-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
+
+      - name: Clone vulos-office (office-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
+
+      - name: Build @vulos/relay-client lib
+        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
+
       - name: Install npm dependencies
         run: npm ci
 
