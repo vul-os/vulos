@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/airouter"
+	apikeyseam "vulos/backend/internal/apikey"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/fabric"
@@ -451,6 +452,20 @@ func main() {
 		}
 		if err := sysUserSvc.SetPassword(username, password); err != nil {
 			log.Printf("[sysuser] password sync failed for %q: %v", username, err)
+		}
+	}
+
+	// vk_ API-key auth seam (VK-AUTH-01): accept `Authorization: Bearer vk_…`
+	// on OS API endpoints by introspecting via the shared CP seam. Only active
+	// when VULOS_CP_BASE_URL is set; unset = self-host mode, session-only auth
+	// unchanged. Results are cached 60s in-process; fail-closed on CP errors.
+	{
+		vkCfg := apikeyseam.FromEnv()
+		if vkCfg.Enabled() {
+			authHandler.VKIntrospector = apikeyseam.NewIntrospector(vkCfg)
+			log.Printf("[apikey] vk_ API-key auth enabled (cp=%s)", vkCfg.BaseURL)
+		} else {
+			log.Printf("[apikey] vk_ API-key auth disabled (VULOS_CP_BASE_URL not set — session-only auth)")
 		}
 	}
 

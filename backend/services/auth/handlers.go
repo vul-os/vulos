@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vulos/backend/internal/apikey"
 )
 
 // Handler wires local password, PIN, and fingerprint auth routes into an http.ServeMux.
@@ -26,6 +28,10 @@ type Handler struct {
 	DevicePIN *DevicePINService
 	// CLOGIN-07: fingerprint unlock service (nil if not configured).
 	Fingerprint *FingerprintService
+	// VKIntrospector enables vk_ Bearer token auth on OS API endpoints.
+	// Set to a non-nil value only when VULOS_CP_BASE_URL is configured;
+	// when nil, vk_ tokens fall through to session-only auth (self-host unchanged).
+	VKIntrospector apikey.Introspector
 }
 
 func NewHandler(store *Store) *Handler {
@@ -142,8 +148,11 @@ func isPublicPath(path string) bool {
 }
 
 // Middleware extracts the session, enforces auth on protected endpoints, and rate limits.
-// AT10: additionally checks for `Authorization: Bearer vulos-admin-<token>` and, if
-// valid, injects the first registered user's identity (admin by convention).
+//
+//   - AT10: `Authorization: Bearer vulos-admin-<token>` → admin identity.
+//   - vk_ API-key auth: `Authorization: Bearer vk_…` → CP-introspected identity.
+//     Only active when VKIntrospector is set (VULOS_CP_BASE_URL configured);
+//     unset = self-host mode, session-only auth unchanged.
 func (h *Handler) Middleware(next http.Handler) http.Handler {
 	return h.limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// C1 (SEC-A): strip attacker-supplied identity headers before anything else.
@@ -159,6 +168,40 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 					r.Header.Set("X-User-ID", adminUser.ID)
 					r.Header.Set("X-User-Email", adminUser.Email)
 				}
+			}
+		}
+
+		// vk_ API-key auth (VK-AUTH-01): resolve vk_… Bearer tokens via the CP
+		// introspection seam. Only active when VKIntrospector is non-nil
+		// (VULOS_CP_BASE_URL configured). Fail-closed: CP errors and
+		// missing-product always yield 401 — never fall through to session auth.
+		if r.Header.Get("X-User-ID") == "" && h.VKIntrospector != nil {
+			if authHdr := r.Header.Get("Authorization"); strings.HasPrefix(authHdr, "Bearer "+apikey.KeyPrefix) {
+				key := strings.TrimPrefix(authHdr, "Bearer ")
+				res, err := h.VKIntrospector.Introspect(r.Context(), key)
+				if err != nil {
+					// CP unreachable — fail closed.
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprintf(w, `{"error":"api key validation unavailable"}`)
+					return
+				}
+				if !res.Valid || !res.HasProduct(apikey.ProductOS) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprintf(w, `{"error":"unauthorized"}`)
+					return
+				}
+				// Resolve CP account email → local OS user.
+				u := h.store.GetUserByEmail(res.Account)
+				if u == nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprintf(w, `{"error":"unauthorized"}`)
+					return
+				}
+				r.Header.Set("X-User-ID", u.ID)
+				r.Header.Set("X-User-Email", u.Email)
 			}
 		}
 
