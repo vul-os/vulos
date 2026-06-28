@@ -79,13 +79,13 @@ major x86 hardware.
 
 ### Key hierarchy
 
-```
-Microsoft UEFI CA (in firmware DB)
-  └── shimx64.efi (Microsoft-signed)
-        └── vulos-vendor.cer (embedded in shim)
-              ├── grubx64.efi (Vulos-signed)
-              │     └── vmlinuz (Vulos-signed kernel)
-              └── iPXE EFI binary (optional; Vulos-signed)
+```mermaid
+flowchart TD
+    CA["Microsoft UEFI CA (in firmware DB)"] --> Shim["shimx64.efi (Microsoft-signed)"]
+    Shim --> Cert["vulos-vendor.cer (embedded in shim)"]
+    Cert --> Grub["grubx64.efi (Vulos-signed)"]
+    Grub --> Kernel["vmlinuz (Vulos-signed kernel)"]
+    Cert --> iPXE["iPXE EFI binary (optional; Vulos-signed)"]
 ```
 
 ### Timelines and considerations
@@ -152,11 +152,12 @@ required; no Microsoft involvement. Not practical for end-user distribution.
 
 ### Key hierarchy (self-enrolled)
 
-```
-Vulos MOK certificate (enrolled in firmware DB or MokList)
-  ├── shimx64.efi (MOK-signed)  → optional, can use unsigned shim if MOK is in DB
-  ├── grubx64.efi (MOK-signed)
-  └── vmlinuz (MOK-signed)
+```mermaid
+flowchart TD
+    MOK["Vulos MOK certificate (enrolled in firmware DB or MokList)"]
+    MOK --> Shim["shimx64.efi (MOK-signed) — optional, can use unsigned shim if MOK is in DB"]
+    MOK --> Grub["grubx64.efi (MOK-signed)"]
+    MOK --> Kernel["vmlinuz (MOK-signed)"]
 ```
 
 ### When to use Path B

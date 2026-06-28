@@ -153,12 +153,10 @@ POST   /api/auth/vault/export      → encrypted export
 
 The user is sitting at a local browser (their laptop/desktop). The banking session runs in a remote browser on the Vula server. When the bank sends a WebAuthn challenge, it goes to the remote browser — but the user's hardware key (YubiKey, laptop TPM, fingerprint reader) is on the local machine.
 
-```
-Bank ──challenge──► Vula browser (remote, no hardware key)
-                         │
-                         ? how does the challenge reach the local YubiKey?
-                         │
-                    Local browser (has the YubiKey plugged in)
+```mermaid
+flowchart TD
+    Bank -->|challenge| Remote["Vula browser (remote, no hardware key)"]
+    Remote -. "? how does the challenge reach the local YubiKey?" .-> Local["Local browser (has the YubiKey plugged in)"]
 ```
 
 **Solution: WebAuthn proxy over WebRTC data channel**
@@ -175,21 +173,28 @@ Bank ──challenge──► Vula browser (remote, no hardware key)
 
 **Components:**
 
-```
-Remote (Vula server):
-  WebKit Web Extension
-    → intercepts navigator.credentials.get() / .create()
-    → serializes PublicKeyCredentialRequestOptions
-    → sends over data channel: { channel: "webauthn", payload: <challenge> }
-    → receives signed assertion
-    → resolves the original Promise with the assertion
-
-Local (user's machine):
-  JavaScript in the streaming client page
-    → receives challenge from data channel
-    → calls navigator.credentials.get() on local browser
-    → user touches YubiKey / scans fingerprint
-    → sends signed assertion back over data channel
+```mermaid
+flowchart TD
+    subgraph Remote["Remote (Vula server)"]
+        R0["WebKit Web Extension"]
+        R1["intercepts navigator.credentials.get() / .create()"]
+        R2["serializes PublicKeyCredentialRequestOptions"]
+        R3["sends over data channel: { channel: 'webauthn', payload: challenge }"]
+        R4["receives signed assertion"]
+        R5["resolves the original Promise with the assertion"]
+        R0 --> R1 --> R2 --> R3
+        R4 --> R5
+    end
+    subgraph Local["Local (user's machine)"]
+        L0["JavaScript in the streaming client page"]
+        L1["receives challenge from data channel"]
+        L2["calls navigator.credentials.get() on local browser"]
+        L3["user touches YubiKey / scans fingerprint"]
+        L4["sends signed assertion back over data channel"]
+        L0 --> L1 --> L2 --> L3 --> L4
+    end
+    R3 -->|data channel| L1
+    L4 -->|data channel| R4
 ```
 
 **Data channel:**
@@ -248,11 +253,13 @@ Alternative to the WebAuthn proxy: forward the USB device itself to the remote s
 
 **How it works:**
 
-```
-YubiKey plugged into local machine
-  → USB/IP or WebUSB forwards the device to Vula server
-    → Remote browser sees a "local" USB HID device
-      → WebAuthn works natively, no bridge needed
+```mermaid
+flowchart TD
+    A["YubiKey plugged into local machine"]
+    B["USB/IP or WebUSB forwards the device to Vula server"]
+    C["Remote browser sees a 'local' USB HID device"]
+    D["WebAuthn works natively, no bridge needed"]
+    A --> B --> C --> D
 ```
 
 **Implementation options:**
@@ -358,13 +365,13 @@ GET  /api/auth/device/tpm/status     → TPM availability, type (hardware/virtua
 
 **Boot chain:**
 
-```
-UEFI Secure Boot
-  → signed bootloader (GRUB/systemd-boot)
-    → signed kernel (Alpine/postmarketOS)
-      → dm-verity root filesystem (hash-verified, read-only)
-        → Vulos services start
-          → TPM PCRs contain measurements of entire chain
+```mermaid
+flowchart TD
+    A["UEFI Secure Boot"] --> B["signed bootloader (GRUB/systemd-boot)"]
+    B --> C["signed kernel (Alpine/postmarketOS)"]
+    C --> D["dm-verity root filesystem (hash-verified, read-only)"]
+    D --> E["Vulos services start"]
+    E --> F["TPM PCRs contain measurements of entire chain"]
 ```
 
 Each stage measures (hashes) the next stage into TPM PCR registers before executing it. The final PCR state is a fingerprint of the entire boot chain. If any component was modified, the PCRs don't match expected values and:
@@ -673,12 +680,10 @@ POST /api/auth/behavioral/reset        → reset model (re-train from scratch)
 
 Instead of loading a bank's website in the browser, a Vula app talks directly to the bank's Open Banking API:
 
-```
-Vula Banking App ──OAuth 2.0 + mTLS──► Bank API
-                                         │
-                                         ▼
-                                    Account data, transactions,
-                                    payments (PSD2/Open Banking)
+```mermaid
+flowchart TD
+    App["Vula Banking App"] -->|"OAuth 2.0 + mTLS"| BankAPI["Bank API"]
+    BankAPI --> Data["Account data, transactions,<br/>payments (PSD2/Open Banking)"]
 ```
 
 **Where Open Banking APIs exist today:**
@@ -758,13 +763,14 @@ All encrypted at rest. TPM-sealed where hardware TPM is available. Syncs across 
 
 ## Relationship to Other Specs
 
-```
-AUTHENTICATION.md (this)
-  ├── uses PEERING.md identity (Ed25519 keypair) as foundation
-  ├── uses NOTIFICATIONS.md for OTP display, step-up auth prompts
-  ├── uses CLUSTER.md for syncing auth data across nodes
-  ├── uses PEERING-EXTENSIONS.md §3.1 (TPM integration) for key storage
-  └── browser integration via existing WebRTC streaming infrastructure
+```mermaid
+flowchart LR
+    Auth["AUTHENTICATION.md (this)"]
+    Auth -->|"identity (Ed25519 keypair) as foundation"| Peering["PEERING.md"]
+    Auth -->|"OTP display, step-up auth prompts"| Notif["NOTIFICATIONS.md"]
+    Auth -->|"syncing auth data across nodes"| Cluster["CLUSTER.md"]
+    Auth -->|"§3.1 TPM integration for key storage"| PeerExt["PEERING-EXTENSIONS.md"]
+    Auth -->|"browser integration"| WebRTC["existing WebRTC streaming infrastructure"]
 ```
 
 The auth layer is horizontal — it sits below every app and above the hardware/OS. Any Vula app that needs external authentication calls the auth API instead of implementing its own credential management.

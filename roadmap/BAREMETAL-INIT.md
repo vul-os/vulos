@@ -35,28 +35,15 @@ labwc becomes the *sole* WM. Chrome moves to `wlr-layer-shell` (wallpaper on `ba
 
 ## How Modern OS Boot Works
 
-```
-Power on
-  → UEFI firmware (POST, probe hardware, find boot device)
-    → Reads GPT partition table, finds EFI System Partition
-      → Loads bootloader (GRUB / systemd-boot)
-
-Bootloader
-  → Loads Linux kernel + initramfs into RAM
-
-Kernel
-  → Probes hardware (PCI, USB, ACPI, device tree)
-  → Mounts initramfs as temporary root (/)
-  → Runs /init from initramfs
-
-initramfs
-  → Loads drivers (NVMe, ext4, GPU KMS)
-  → Finds real root partition, mounts it
-  → pivot_root → executes /sbin/init (PID 1)
-
-PID 1 (systemd or vulos-init)
-  → Mounts filesystems, starts services
-  → Display server + browser → user sees the desktop
+```mermaid
+flowchart TD
+    PowerOn["Power on"] --> UEFI["UEFI firmware<br/>(POST, probe hardware, find boot device)"]
+    UEFI --> GPT["Reads GPT partition table, finds EFI System Partition"]
+    GPT --> BL["Loads bootloader (GRUB / systemd-boot)"]
+    BL --> Bootloader["Bootloader: loads Linux kernel + initramfs into RAM"]
+    Bootloader --> Kernel["Kernel: probes hardware (PCI, USB, ACPI, device tree);<br/>mounts initramfs as temporary root (/);<br/>runs /init from initramfs"]
+    Kernel --> Initramfs["initramfs: loads drivers (NVMe, ext4, GPU KMS);<br/>finds real root partition, mounts it;<br/>pivot_root → executes /sbin/init (PID 1)"]
+    Initramfs --> PID1["PID 1 (systemd or vulos-init):<br/>mounts filesystems, starts services;<br/>display server + browser → user sees the desktop"]
 ```
 
 There is no assembly "start screen". The kernel provides a framebuffer via KMS/DRM from very early in boot. Plymouth draws a splash on that framebuffer. By the time PID 1 runs, you have pixels on screen. Starting Wayland is just launching a userspace program.
@@ -88,11 +75,13 @@ vulos-init → mount filesystems → vulos-server → cage + Cog → http://loca
 
 ### v1: one compositor, always-stream
 
-```
-Layer 1: Wayland compositor (cage — fullscreen kiosk)
-  └── Browser window (Cog/WPE or Chromium — fullscreen, IS the desktop)
-        └── Vulos React shell (launchpad, dock, menu bar, chat, all JSX windows)
-              └── Native app windows → stream transport: GStreamer/WebRTC → <StreamViewer>
+```mermaid
+flowchart TD
+    A["Layer 1: Wayland compositor (cage — fullscreen kiosk)"]
+    B["Browser window (Cog/WPE or Chromium — fullscreen, IS the desktop)"]
+    C["Vulos React shell (launchpad, dock, menu bar, chat, all JSX windows)"]
+    D["Native app windows → stream transport: GStreamer/WebRTC → &lt;StreamViewer&gt;"]
+    A --> B --> C --> D
 ```
 
 - **cage** — single-app Wayland kiosk (76KB); no configuration needed; runs the browser fullscreen
@@ -144,18 +133,19 @@ labwc gives us floating windows with custom-themed title bars — exactly what w
 
 ## Boot Sequence (v1 — current target)
 
-```
-UEFI → systemd-boot → Linux kernel + initramfs
-  → Plymouth splash (Vulos logo on screen)
-  → vulos-init as PID 1
-    → Phase 1: Filesystems
-    → Phase 2: Hardware detection (GPU, audio, input, network) — drives compositor env + Chromium flags
-    → Phase 3: Networking (DHCP)
-    → Phase 4: PipeWire (audio + screen capture for remote)
-    → Phase 5: cage (Wayland kiosk compositor)
-    → Phase 6: vulos-server (Go backend) [supervised by superviseServer]
-    → Phase 7: Browser (Cog/WPE or Chromium, fullscreen kiosk) → localhost:8080 [supervised by superviseKiosk]
-    → Plymouth quit (seamless handoff, no TTY flash)
+```mermaid
+flowchart TD
+    UEFI["UEFI"] --> SB["systemd-boot"] --> K["Linux kernel + initramfs"]
+    K --> Ply["Plymouth splash (Vulos logo on screen)"]
+    Ply --> Init["vulos-init as PID 1"]
+    Init --> P1["Phase 1: Filesystems"]
+    P1 --> P2["Phase 2: Hardware detection (GPU, audio, input, network) — drives compositor env + Chromium flags"]
+    P2 --> P3["Phase 3: Networking (DHCP)"]
+    P3 --> P4["Phase 4: PipeWire (audio + screen capture for remote)"]
+    P4 --> P5["Phase 5: cage (Wayland kiosk compositor)"]
+    P5 --> P6["Phase 6: vulos-server (Go backend) [supervised by superviseServer]"]
+    P6 --> P7["Phase 7: Browser (Cog/WPE or Chromium, fullscreen kiosk) → localhost:8080 [supervised by superviseKiosk]"]
+    P7 --> Q["Plymouth quit (seamless handoff, no TTY flash)"]
 ```
 
 ---
@@ -382,16 +372,16 @@ When `isOnDevice()` is true and surface transport is active, Launchpad changes l
 
 Yes — install the browser first. The installer is just another Vulos app.
 
-```
-USB boot
-  → Plymouth splash (Vulos logo)
-  → squashfs + tmpfs overlay (OS runs from RAM)
-  → vulos-init → PipeWire → cage → Chromium → http://localhost:8080
-  → Full Vulos desktop appears (React shell fullscreen in browser)
-  → "Install Vulos" app pinned to dock
-  → User clicks it → installer React app opens
-  → Partitions disk, copies files, installs bootloader
-  → Reboot → boots from internal disk
+```mermaid
+flowchart TD
+    A["USB boot"] --> B["Plymouth splash (Vulos logo)"]
+    B --> C["squashfs + tmpfs overlay (OS runs from RAM)"]
+    C --> D["vulos-init → PipeWire → cage → Chromium → http://localhost:8080"]
+    D --> E["Full Vulos desktop appears (React shell fullscreen in browser)"]
+    E --> F["'Install Vulos' app pinned to dock"]
+    F --> G["User clicks it → installer React app opens"]
+    G --> H["Partitions disk, copies files, installs bootloader"]
+    H --> I["Reboot → boots from internal disk"]
 ```
 
 This is exactly what Ubuntu, Fedora, and ChromeOS do — boot into a live desktop, run the installer as an app. No separate installer environment. No assembly. No C program drawing pixels. The entire installer UI is React running in the browser.

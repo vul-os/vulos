@@ -446,29 +446,12 @@ Matrix bridges let users receive messages from proprietary networks inside the M
 
 ### Architecture
 
-```
-┌─────────────────────────────────┐
-│  Cinny (web UI in WebKit)       │
-│  ← Matrix client-server API →   │
-└──────────────┬──────────────────┘
-               │
-┌──────────────▼──────────────────┐
-│  Conduit or Dendrite             │
-│  (lightweight Matrix homeserver) │
-│  ┌──────────────────────────┐   │
-│  │ Runs on localhost         │   │
-│  │ SQLite storage            │   │
-│  │ Federation optional       │   │
-│  └──────────────────────────┘   │
-└──────────────┬──────────────────┘
-               │
-┌──────────────▼──────────────────┐
-│  Bridges (optional services)     │
-│  mautrix-whatsapp                │
-│  mautrix-telegram                │
-│  mautrix-signal                  │
-│  ...                             │
-└──────────────────────────────────┘
+```mermaid
+flowchart TD
+    Cinny["Cinny (web UI in WebKit)<br/>← Matrix client-server API →"]
+    Homeserver["Conduit or Dendrite (lightweight Matrix homeserver)<br/>Runs on localhost · SQLite storage · Federation optional"]
+    Bridges["Bridges (optional services)<br/>mautrix-whatsapp · mautrix-telegram · mautrix-signal · ..."]
+    Cinny --> Homeserver --> Bridges
 ```
 
 ### Homeserver options

@@ -4,10 +4,12 @@ Two entry paths both converge on the same signed-payload boot chain: fetch
 signature-verified kernel + initramfs + squashfs over the network and boot
 into a live-RAM session.
 
-```
-UEFI HTTP Boot   ─┐
-                  ├──► fetch + imgverify manifest ──► fetch + imgverify kernel/initramfs ──► live-RAM
-~1 MB iPXE stick ─┘
+```mermaid
+flowchart LR
+    UEFI["UEFI HTTP Boot"] --> M["fetch + imgverify manifest"]
+    iPXE["~1 MB iPXE stick"] --> M
+    M --> K["fetch + imgverify kernel/initramfs"]
+    K --> Live["live-RAM"]
 ```
 
 See [roadmap/NETBOOT.md](../../roadmap/NETBOOT.md) for the full boot pipeline,

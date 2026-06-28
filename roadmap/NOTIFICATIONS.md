@@ -12,12 +12,10 @@ This spec depends on the peering system defined in [PEERING.md](PEERING.md). Not
 
 ## Core Concept
 
-```
-Bob's Vula Server ──── notification ────► Alice's Vula Server
-                                              │
-                                              ▼
-                                         Alice's browser
-                                         (toast / badge / sound)
+```mermaid
+flowchart LR
+    Bob["Bob's Vula Server"] -->|notification| Alice["Alice's Vula Server"]
+    Alice --> Browser["Alice's browser<br/>(toast / badge / sound)"]
 ```
 
 A notification is a lightweight, time-sensitive signal from a peer. It triggers system-level UI (toasts, badges, sounds) without requiring Alice to open a conversation or app. Notifications are not messages — they're events.
@@ -205,13 +203,13 @@ Only `call.incoming` should use `critical`. Peers cannot set `critical` on other
 
 ### Push Path (Online)
 
-```
-Peer's Vula server
-  → POST /api/peering/inbound/notification (HTTPS, signed)
-    → Recipient's server verifies signature + checks allow list
-      → Stored in notification queue
-        → Pushed to recipient's browser via WebSocket
-          → System toast / badge / sound
+```mermaid
+flowchart TD
+    A["Peer's Vula server"] --> B["POST /api/peering/inbound/notification (HTTPS, signed)"]
+    B --> C["Recipient's server verifies signature + checks allow list"]
+    C --> D["Stored in notification queue"]
+    D --> E["Pushed to recipient's browser via WebSocket"]
+    E --> F["System toast / badge / sound"]
 ```
 
 Same delivery pipe as messages (PEERING.md, Server-to-Server), but notifications go to the notification queue instead of the inbox.

@@ -17,10 +17,12 @@ Both paths converge on the same chainload: fetch a signed kernel + initramfs + s
 1. **UEFI HTTP Boot URL.** Modern firmware can boot directly from an HTTP(S) URL. Point it at `boot.vulos.org` (or a self-hosted equivalent) — no media at all.
 2. **~1 MB one-time iPXE stick.** For firmware without HTTP Boot, a tiny iPXE image on a USB stick chainloads the same URL. The stick is used **once** to bootstrap; the installed machine never needs it again.
 
-```
-UEFI HTTP Boot ──┐
-                 ├──► HTTPS chainload boot.vulos.org ──► kernel + initramfs + squashfs ──► live-RAM session
-~1 MB iPXE stick ─┘
+```mermaid
+flowchart LR
+    UEFI["UEFI HTTP Boot"] --> Chain["HTTPS chainload boot.vulos.org"]
+    iPXE["~1 MB iPXE stick"] --> Chain
+    Chain --> Artifacts["kernel + initramfs + squashfs"]
+    Artifacts --> Live["live-RAM session"]
 ```
 
 ---

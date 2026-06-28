@@ -210,14 +210,23 @@ can read but not write them.
 
 ### systemd dependency graph
 
-```
-network-online.target
-  └─> [vulos-minio.service]      # optional — only with --storage=minio
-        └─> vulos-fabric.service   # oneshot — generates keypairs if absent
-              ├─> vulos.service             # OS backend (port 8443)
-              ├─> vulos-mail.service        # mail server (ports 25/587/8444)
-              └─> vulos-office.service      # office backend (port 8445)
-                    └─> vulos-bundle.target  # all-up sentinel
+```mermaid
+flowchart TD
+    Net["network-online.target"]
+    Minio["vulos-minio.service<br/>(optional — only with --storage=minio)"]
+    Fabric["vulos-fabric.service<br/>(oneshot — generates keypairs if absent)"]
+    OS["vulos.service<br/>(OS backend, port 8443)"]
+    Mail["vulos-mail.service<br/>(mail server, ports 25/587/8444)"]
+    Office["vulos-office.service<br/>(office backend, port 8445)"]
+    Bundle["vulos-bundle.target<br/>(all-up sentinel)"]
+
+    Net --> Minio --> Fabric
+    Fabric --> OS
+    Fabric --> Mail
+    Fabric --> Office
+    OS --> Bundle
+    Mail --> Bundle
+    Office --> Bundle
 ```
 
 `vulos-bundle.target` is the recommended unit to use for start/stop/status:

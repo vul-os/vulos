@@ -10,42 +10,33 @@ Go webapp for SMS and voice calls on Linux, with remote streaming support via th
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│  Browser (local or remote)                      │
-│  ┌───────────┐  ┌───────────┐  ┌─────────────┐ │
-│  │  Dialer   │  │ Messages  │  │ eSIM Mgmt   │ │
-│  │  (React)  │  │  (React)  │  │  (React)    │ │
-│  └─────┬─────┘  └─────┬─────┘  └──────┬──────┘ │
-│        │              │               │         │
-│        └──────┬───────┴───────┬───────┘         │
-│               │  WebSocket    │  WebRTC          │
-└───────────────┼───────────────┼─────────────────┘
-                │               │
-┌───────────────┼───────────────┼─────────────────┐
-│  Go Backend   │               │                  │
-│  ┌────────────▼────────────┐  │                  │
-│  │  WebSocket Server       │  │                  │
-│  │  (SMS, call signaling)  │  │                  │
-│  └────────────┬────────────┘  │                  │
-│               │               │                  │
-│  ┌────────────▼────────────┐  ┌▼───────────────┐ │
-│  │  ModemManager Client    │  │ PipeWire Audio  │ │
-│  │  (D-Bus)                │  │ (call audio)    │ │
-│  └────────────┬────────────┘  └───────┬────────┘ │
-│               │                       │          │
-└───────────────┼───────────────────────┼──────────┘
-                │                       │
-         ┌──────▼───────────────────────▼──┐
-         │  ModemManager                    │
-         │  ┌──────────┐  ┌──────────────┐ │
-         │  │ SMS API  │  │ Voice Call   │ │
-         │  └────┬─────┘  └──────┬───────┘ │
-         │       │               │         │
-         │  ┌────▼───────────────▼───────┐ │
-         │  │  Modem (physical/eSIM)     │ │
-         │  └────────────────────────────┘ │
-         └─────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Browser["Browser (local or remote)"]
+        Dialer["Dialer (React)"]
+        Messages["Messages (React)"]
+        eSIMui["eSIM Mgmt (React)"]
+    end
+    subgraph Backend["Go Backend"]
+        WS["WebSocket Server<br/>(SMS, call signaling)"]
+        MMClient["ModemManager Client (D-Bus)"]
+        PW["PipeWire Audio (call audio)"]
+    end
+    subgraph MMd["ModemManager"]
+        SMSapi["SMS API"]
+        Voice["Voice Call"]
+        Modem["Modem (physical/eSIM)"]
+    end
+    Dialer -->|WebSocket| WS
+    Messages -->|WebSocket| WS
+    eSIMui -->|WebSocket| WS
+    Dialer -->|WebRTC| PW
+    WS --> MMClient
+    MMClient --> SMSapi
+    MMClient --> Voice
+    PW --> Voice
+    SMSapi --> Modem
+    Voice --> Modem
 ```
 
 ---
@@ -269,21 +260,26 @@ Battery life is a critical gap. PinePhone gets 4-6 hours vs 1-2 days on Android.
 
 ### Strategy: aggressive suspend + app freezing
 
-```
-Screen off
-  → 10s timeout → freeze all UI/apps (cgroup freezer)
-  → 15s timeout → enter S2idle/S3 suspend
-  → wake only on: modem ring, RTC alarm, power button
-
-Screen on
-  → unfreeze apps
-  → CPU governor ramps up
-  → radios wake as needed
-
-Background policy
-  → web apps get ZERO background runtime (web-first advantage)
-  → only system services (modem, push listener) stay alive
-  → single lightweight push daemon wakes for notifications
+```mermaid
+flowchart TD
+    subgraph ScreenOff["Screen off"]
+        O1["10s timeout → freeze all UI/apps (cgroup freezer)"]
+        O2["15s timeout → enter S2idle/S3 suspend"]
+        O3["wake only on: modem ring, RTC alarm, power button"]
+        O1 --> O2 --> O3
+    end
+    subgraph ScreenOn["Screen on"]
+        N1["unfreeze apps"]
+        N2["CPU governor ramps up"]
+        N3["radios wake as needed"]
+        N1 --> N2 --> N3
+    end
+    subgraph BG["Background policy"]
+        B1["web apps get ZERO background runtime (web-first advantage)"]
+        B2["only system services (modem, push listener) stay alive"]
+        B3["single lightweight push daemon wakes for notifications"]
+        B1 --> B2 --> B3
+    end
 ```
 
 ### Key optimizations

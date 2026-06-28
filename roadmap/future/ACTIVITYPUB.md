@@ -20,27 +20,22 @@ A single web app that combines microblogging, photos, video, and forums — all 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│  Vula Social (web UI in WebKit)                  │
-│                                                   │
-│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌───────┐ │
-│  │  Feed    │ │  Photos  │ │ Video  │ │ Forum │ │
-│  │ (Twitter)│ │ (Insta)  │ │ (YT)   │ │(Reddit)│ │
-│  └────┬─────┘ └────┬─────┘ └───┬────┘ └───┬───┘ │
-│       └─────────┬───┴───────┬───┘          │     │
-│                 │ ActivityPub API           │     │
-└─────────────────┼──────────────────────────┼─────┘
-                  │                          │
-┌─────────────────▼──────────────────────────▼─────┐
-│  ActivityPub Server (local or remote)             │
-│                                                    │
-│  Option A: GoToSocial (lightweight, single user)   │
-│  Option B: Connect to existing Mastodon account    │
-│  Option C: No server — read-only public feeds      │
-│                                                    │
-│  Federation ←→ Fediverse                           │
-└────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Social["Vula Social (web UI in WebKit)"]
+        Feed["Feed (Twitter)"]
+        Photos["Photos (Insta)"]
+        Video["Video (YT)"]
+        Forum["Forum (Reddit)"]
+    end
+    subgraph Server["ActivityPub Server (local or remote)"]
+        Opts["Option A: GoToSocial (lightweight, single user)<br/>Option B: Connect to existing Mastodon account<br/>Option C: No server — read-only public feeds"]
+    end
+    Feed -->|ActivityPub API| Server
+    Photos -->|ActivityPub API| Server
+    Video -->|ActivityPub API| Server
+    Forum -->|ActivityPub API| Server
+    Server <-->|Federation| Fediverse["Fediverse"]
 ```
 
 ---

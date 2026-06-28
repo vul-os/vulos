@@ -4,15 +4,15 @@ This directory contains the build definition for the `vulos-managed` container i
 
 ## Image architecture
 
-```
-+---------------------------+
-|     vulos-managed         |
-|  OS backend  (port 8080)  |
-|  Static frontend (/dist)  |
-+---------------------------+
-        |         |         |
-   vulos-office  lilmail  wede
-   (separate deployments, configured via env)
+```mermaid
+flowchart TD
+    Managed["vulos-managed<br/>OS backend (port 8080)<br/>Static frontend (/dist)"]
+    Managed --> Office["vulos-office"]
+    Managed --> Lilmail["lilmail"]
+    Managed --> Wede["wede"]
+    Office -.- Note["separate deployments, configured via env"]
+    Lilmail -.- Note
+    Wede -.- Note
 ```
 
 The image runs the Go OS backend only. Peer services (office, lilmail, wede) are independent deployments; their URLs are injected at runtime via environment variables that the OS backend already reads.

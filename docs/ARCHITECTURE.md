@@ -8,32 +8,23 @@ Vulos is a self-hosted personal operating system that runs on a single machine (
 
 ## System diagram
 
-```
-┌─────────────────────────────────────────────┐
-│  Browser (WebApp UI)                        │
-│  src/ — React SPA, served from /           │
-└──────────────────┬──────────────────────────┘
-                   │ WebSocket / HTTP
-┌──────────────────▼──────────────────────────┐
-│  Go HTTP backend  (backend/cmd/server/)     │
-│                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │  Auth    │  │  AI/Chat │  │  AppNet  │  │
-│  │ services │  │  router  │  │ launcher │  │
-│  └──────────┘  └──────────┘  └──────────┘  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │  Vault   │  │  Recall  │  │  Stream  │  │
-│  │ (Restic) │  │ (vector) │  │  pool    │  │
-│  └──────────┘  └──────────┘  └──────────┘  │
-│  ┌──────────────────────────────────────┐   │
-│  │  Observability: /metrics + OTel      │   │
-│  │  backend/internal/obs/               │   │
-│  └──────────────────────────────────────┘   │
-└─────────────────────────────────────────────┘
-         │                    │
-   SQLite DB             Namespace
-   ~/.vulos/db/          isolation
-                         (appnet)
+```mermaid
+flowchart TD
+    Browser["Browser (WebApp UI)<br/>src/ — React SPA, served from /"]
+    Browser -->|"WebSocket / HTTP"| Backend
+
+    subgraph Backend["Go HTTP backend (backend/cmd/server/)"]
+        Auth["Auth services"]
+        AI["AI/Chat router"]
+        AppNet["AppNet launcher"]
+        Vault["Vault (Restic)"]
+        Recall["Recall (vector)"]
+        Stream["Stream pool"]
+        Obs["Observability: /metrics + OTel<br/>backend/internal/obs/"]
+    end
+
+    Backend --> DB["SQLite DB<br/>~/.vulos/db/"]
+    Backend --> NS["Namespace isolation (appnet)"]
 ```
 
 ---
@@ -100,15 +91,19 @@ Isolated/Disposable Browsing (RBI) is not implemented; the stub and its flag (`V
 
 ## Auth flow
 
-```
-Client                       Backend
-  │── POST /api/auth/login ──▶ validate credentials
-  │◀─ Set-Cookie: session ──── issue session
-  │
-  │── POST /api/auth/passkey/begin ──▶ generate WebAuthn challenge
-  │◀─ PublicKeyCredentialRequestOptions ──
-  │── POST /api/auth/passkey/finish ──▶ verify assertion
-  │◀─ Set-Cookie: session ──── issue session
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Backend
+    Client->>Backend: POST /api/auth/login
+    Note right of Backend: validate credentials
+    Backend-->>Client: Set-Cookie: session (issue session)
+    Client->>Backend: POST /api/auth/passkey/begin
+    Note right of Backend: generate WebAuthn challenge
+    Backend-->>Client: PublicKeyCredentialRequestOptions
+    Client->>Backend: POST /api/auth/passkey/finish
+    Note right of Backend: verify assertion
+    Backend-->>Client: Set-Cookie: session (issue session)
 ```
 
 Session cookies are `HttpOnly`, `Secure`, `SameSite=Strict` in `prod` mode. In `local` mode cookie flags are relaxed for development without TLS.
@@ -117,12 +112,12 @@ Session cookies are `HttpOnly`, `Secure`, `SameSite=Strict` in `prod` mode. In `
 
 ## Streaming pipeline
 
-```
-Xvfb virtual display
-  └─▶ GStreamer capture
-        └─▶ GPU encode (NVENC / VA-API / VP8-software)
-              └─▶ RTP over WebRTC (pion)
-                    └─▶ Browser MediaStream
+```mermaid
+flowchart TD
+    A["Xvfb virtual display"] --> B["GStreamer capture"]
+    B --> C["GPU encode (NVENC / VA-API / VP8-software)"]
+    C --> D["RTP over WebRTC (pion)"]
+    D --> E["Browser MediaStream"]
 ```
 
 Stream pool (`backend/services/stream/pool.go`) manages the lifecycle: one stream per open native app window, ref-counted. When the last viewer closes the browser window the stream is torn down and the virtual display released.
@@ -136,10 +131,11 @@ GPU tier auto-detection (`backend/services/gpu/gpu.go`):
 
 ## Multi-instance CRDT sync
 
-```
-Instance A ─── peering mesh (WebSocket/Ziti) ──▶ Instance B
-     │                                               │
-     └──── S3 bucket (checkpoint + compaction) ─────┘
+```mermaid
+flowchart LR
+    A["Instance A"] -->|"peering mesh (WebSocket/Ziti)"| B["Instance B"]
+    A --> S3["S3 bucket (checkpoint + compaction)"]
+    B --> S3
 ```
 
 - **Hot path**: live instances stream `crsql_changes` directly over the peering mesh (relay fallback for NAT/cross-location)
@@ -151,12 +147,12 @@ Instance A ─── peering mesh (WebSocket/Ziti) ──▶ Instance B
 
 ## OS distribution (bare metal)
 
-```
-Signed squashfs ──▶ dm-verity Merkle tree ──▶ A/B slots
-                                               │
-                                    bootloader (boot counter)
-                                               │
-                              auto-rollback if services don't come up
+```mermaid
+flowchart TD
+    A["Signed squashfs"] --> B["dm-verity Merkle tree"]
+    B --> C["A/B slots"]
+    C --> D["bootloader (boot counter)"]
+    D --> E["auto-rollback if services don't come up"]
 ```
 
 - OS ships as a signed, immutable squashfs pulled from `os.vulos.org`

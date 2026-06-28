@@ -10,13 +10,16 @@ Direct communication between Vulos instances. Every Vula instance is a server �
 
 ## Core Concept
 
-```
-Alice (browser)                                    Bob (browser)
-     │                                                  │
-     ▼                                                  ▼
-Alice's Vula Server ◄──── messages/media ────► Bob's Vula Server
-     │                                                  │
-     └──── calls/video: direct browser ◄──► browser ────┘
+```mermaid
+flowchart TD
+    AliceB["Alice (browser)"]
+    BobB["Bob (browser)"]
+    AliceS["Alice's Vula Server"]
+    BobS["Bob's Vula Server"]
+    AliceB --> AliceS
+    BobB --> BobS
+    AliceS <-->|"messages/media"| BobS
+    AliceB <-->|"calls/video: direct browser ◄──► browser"| BobB
 ```
 
 Two layers, separated by nature:
@@ -128,10 +131,10 @@ GET  /api/peering/profile/:vula_id     → fetch a peer's profile (they control 
 
 ### Trust Model
 
-```
-Unknown ──► Pending ──► Approved ──► Blocked
-                │                      ▲
-                └──────────────────────┘
+```mermaid
+flowchart LR
+    Unknown --> Pending --> Approved --> Blocked
+    Pending --> Blocked
 ```
 
 - **Unknown**: default state. Cannot send you anything. Your server rejects their requests at the door.
@@ -175,12 +178,12 @@ Your Vula server is your mailbox. Others deliver to it. You read from it.
 
 ### Delivery
 
-```
-Sender's browser
-  → Sender's Vula server (signs message, queues for delivery)
-    → Recipient's Vula server (verifies signature, checks allow list)
-      → Stored in recipient's inbox
-        → Recipient's browser (fetched on connect, or pushed via WebSocket)
+```mermaid
+flowchart TD
+    A["Sender's browser"] --> B["Sender's Vula server<br/>(signs message, queues for delivery)"]
+    B --> C["Recipient's Vula server<br/>(verifies signature, checks allow list)"]
+    C --> D["Stored in recipient's inbox"]
+    D --> E["Recipient's browser<br/>(fetched on connect, or pushed via WebSocket)"]
 ```
 
 ### Message Format
@@ -397,13 +400,13 @@ Documents, sheets, slides, notes — any app that holds structured data can be c
 
 Same pipes as messaging. A document edit is just a message with type `crdt-op` instead of `text`.
 
-```
-Alice types "Hello" at position 0
-  → her browser generates CRDT operations
-    → sent to her Vula server
-      → fanned out to all peers who have this document open
-        → each peer's browser applies the operations
-          → everyone sees "Hello" appear
+```mermaid
+flowchart TD
+    A["Alice types 'Hello' at position 0"] --> B["her browser generates CRDT operations"]
+    B --> C["sent to her Vula server"]
+    C --> D["fanned out to all peers who have this document open"]
+    D --> E["each peer's browser applies the operations"]
+    E --> F["everyone sees 'Hello' appear"]
 ```
 
 ### CRDTs (Conflict-free Replicated Data Types)
@@ -419,17 +422,20 @@ CRDTs are data structures designed for exactly this — multiple people editing 
 Yjs is transport-agnostic — it produces binary update blobs, you choose how to deliver them. Peering provides two channels:
 
 **WebSocket (real-time, while both online):**
-```
-Alice's browser ──WebSocket──► Alice's Vula server ──server-to-server──► Bob's Vula server ──WebSocket──► Bob's browser
+```mermaid
+flowchart LR
+    AB["Alice's browser"] -->|WebSocket| AS["Alice's Vula server"]
+    AS -->|server-to-server| BS["Bob's Vula server"]
+    BS -->|WebSocket| BB["Bob's browser"]
 ```
 Sub-100ms latency for edits. Uses the same WebSocket connections already open for messaging and call signaling. Awareness protocol (cursor positions, selections, who's online) rides the same channel.
 
 **Server-to-server sync (catch-up, when someone was offline):**
-```
-Bob comes online
-  → Bob's server asks Alice's server: "what changed since my last state vector?"
-    → Alice's server sends the diff (Yjs binary update)
-      → Bob's document merges to current state
+```mermaid
+flowchart TD
+    A["Bob comes online"] --> B["Bob's server asks Alice's server:<br/>'what changed since my last state vector?'"]
+    B --> C["Alice's server sends the diff (Yjs binary update)"]
+    C --> D["Bob's document merges to current state"]
 ```
 
 This is the same offline-then-sync pattern as messages. Yjs has built-in state vectors for efficient diff — you only send what the other side is missing.
@@ -608,12 +614,16 @@ BLE advertisement:
 
 When there's no mDNS (remote browser) and no Bluetooth (not bare metal), users can still do quick nearby sharing with a short-lived code.
 
-```
-Alice opens Drop → sees a 6-digit code: 847 291
-Bob opens Drop → enters 847 291
-→ Bob's browser tells his Vula server "connect me to whoever has code 847291"
-→ Matched via a lightweight rendezvous on vulos.org (or direct if both servers are reachable)
-→ Transfer proceeds via normal peering
+```mermaid
+flowchart TD
+    A["Alice opens Drop → sees a 6-digit code: 847 291"]
+    B["Bob opens Drop → enters 847 291"]
+    C["Bob's browser tells his Vula server:<br/>'connect me to whoever has code 847291'"]
+    D["Matched via a lightweight rendezvous on vulos.org<br/>(or direct if both servers are reachable)"]
+    E["Transfer proceeds via normal peering"]
+    B --> C --> D
+    A --> D
+    D --> E
 ```
 
 - Code expires after 5 minutes or first use
@@ -803,10 +813,10 @@ Extensions are opt-in — the base system works without any of them.
 
 A relay peer is any Vula instance that both parties trust, willing to hold encrypted messages in transit. The relay never sees plaintext — messages are encrypted to the recipient's public key before leaving the sender.
 
-```
-Alice (offline) ──x──► Bob (offline)
-                          
-Alice (online) ──► Carol (relay) ──► Bob (comes online later)
+```mermaid
+flowchart LR
+    A1["Alice (offline)"] -. "blocked (both offline)" .-> B1["Bob (offline)"]
+    A2["Alice (online)"] --> Carol["Carol (relay)"] --> B2["Bob (comes online later)"]
 ```
 
 Carol holds the ciphertext. When Bob's server comes back, Carol delivers. Carol cannot read the message — she sees an opaque blob addressed to Bob's Vula ID.
@@ -908,10 +918,12 @@ POST /api/peering/relay/ack
 
 Alice runs multiple Vula nodes (home server, cloud VPS, office machine). All share her identity via cluster sync. When Bob sends to Alice, his server tries all of Alice's known endpoints — first response wins.
 
-```
-Bob's server ──► Alice node 1 (home, 50ms)     ← winner
-             ──► Alice node 2 (cloud, 120ms)
-             ──► Alice node 3 (office, offline)  ← skip
+```mermaid
+flowchart LR
+    Bob["Bob's server"]
+    Bob -->|"50ms — winner"| N1["Alice node 1 (home)"]
+    Bob -->|"120ms"| N2["Alice node 2 (cloud)"]
+    Bob -->|"offline — skip"| N3["Alice node 3 (office)"]
 ```
 
 ### Discovery of Multiple Nodes
@@ -967,12 +979,12 @@ PUT /api/identity/endpoints  → update endpoint list for your slug (syncs to .w
 
 A feed is a signed append-only log. The owner publishes entries, subscribers pull. No mutual approval needed — feeds are public or link-gated.
 
-```
-Alice publishes ──► signed entry added to her feed log
-                        │
-Bob (subscriber) ◄──── pulls new entries from Alice's server
-Carol (subscriber) ◄── pulls new entries from Alice's server
-Dave (not subscribed)   doesn't see anything
+```mermaid
+flowchart LR
+    Alice["Alice publishes"] --> Log["signed entry added to her feed log"]
+    Log -->|"pulls new entries"| Bob["Bob (subscriber)"]
+    Log -->|"pulls new entries"| Carol["Carol (subscriber)"]
+    Log -. "doesn't see anything" .-> Dave["Dave (not subscribed)"]
 ```
 
 Each entry is signed with Alice's Ed25519 key — verifiable by anyone who knows her Vula ID, no trust relationship required.
@@ -1071,13 +1083,19 @@ GET /api/feeds/:feed_id/entries          → no auth required for public/link fe
 
 Instead of the sender delivering to every member, messages propagate through the group epidemically. Each member who receives a message forwards it to a few peers who haven't seen it yet. Full propagation in O(log N) hops.
 
-```
-Alice sends message to 200-person group:
-  Alice → Bob, Carol, Dave           (3 peers, chosen randomly)
-  Bob → Eve, Frank, Grace            (3 more)
-  Carol → Heidi, Ivan, Judy          (3 more)
-  ...
-  Full propagation in ~5 hops         (log₃(200) ≈ 5)
+```mermaid
+flowchart TD
+    Alice["Alice (sends to 200-person group)"]
+    Alice -->|"3 peers, chosen randomly"| Bob
+    Alice --> Carol
+    Alice --> Dave
+    Bob --> Eve
+    Bob --> Frank
+    Bob --> Grace
+    Carol --> Heidi
+    Carol --> Ivan
+    Carol --> Judy
+    Note["Full propagation in ~5 hops (log₃(200) ≈ 5)"]
 ```
 
 Total messages sent by Alice: 3 (not 200). Total messages across the network: ~600 (3× the group size, each message forwarded ~3 times on average). But the load is distributed — no single server is overwhelmed.
@@ -1175,16 +1193,25 @@ With MLS: 1 encryption, 1 ciphertext
 
 ### MLS Tree Structure
 
+```mermaid
+flowchart TD
+    Root["Root Key"] --> N1["Node"]
+    Root --> N2["Node"]
+    N1 --> N11["Node"]
+    N1 --> N12["Node"]
+    N2 --> N21["Node"]
+    N2 --> N22["Node"]
+    N11 --> Alice
+    N11 --> Bob
+    N12 --> Carol
+    N12 --> Dave
+    N21 --> Eve
+    N21 --> Frank
+    N22 --> Grace
+    N22 --> Heidi
 ```
-                    [Root Key]
-                   /          \
-            [Node]              [Node]
-           /      \            /      \
-      [Node]    [Node]    [Node]    [Node]
-      /    \    /    \    /    \    /    \
-    Alice  Bob Carol Dave Eve  Frank Grace Heidi
-    (leaf keys — each member holds their own)
-```
+
+Leaf keys — each member holds their own.
 
 Each member knows their path from leaf to root. They can decrypt messages encrypted to the root key. When a member is removed, the tree updates — new root key, old member's leaf pruned. O(log N) updates propagated to remaining members.
 
@@ -1504,39 +1531,17 @@ GET  /api/org/compliance/report    → aggregate ZK audit results
 
 These extensions are independent but compose naturally:
 
-```
-                    ┌─────────────────┐
-                    │   Base Peering   │ ← PEERING.md
-                    │  (Identity,      │
-                    │   Trust, E2E)    │
-                    └────────┬────────┘
-                             │
-          ┌──────────────────┼───────────────────┐
-          │                  │                    │
-    ┌─────▼─────┐    ┌──────▼──────┐    ┌───────▼───────┐
-    │  Relay     │    │  Signed     │    │  Cluster      │
-    │  Peers (1) │    │  Feeds (3)  │    │  Anycast (2)  │
-    └─────┬─────┘    └──────┬──────┘    └───────────────┘
-          │                  │
-          │           ┌──────▼──────┐
-          │           │  Gossip     │ ← feeds + groups use gossip for distribution
-          │           │  Protocol(4)│
-          │           └──────┬──────┘
-          │                  │
-          │           ┌──────▼──────┐
-          │           │  MLS (5)    │ ← groups use MLS for encryption
-          │           └──────┬──────┘
-          │                  │
-          │           ┌──────▼──────┐
-          │           │  Ring       │ ← groups can enable anonymous mode
-          │           │  Sigs (6)   │
-          │           └─────────────┘
-          │
-    ┌─────▼──────────┐    ┌─────────────────┐
-    │  ZK Discovery  │    │  Compliance (8)  │ ← org layer, sits alongside
-    │  (7)           │    │  (threshold,     │    not on top of, other extensions
-    └────────────────┘    │   ZK audit)      │
-                          └─────────────────┘
+```mermaid
+flowchart TD
+    Base["Base Peering<br/>(Identity, Trust, E2E) — PEERING.md"]
+    Base --> Relay["Relay Peers (1)"]
+    Base --> Feeds["Signed Feeds (3)"]
+    Base --> Anycast["Cluster Anycast (2)"]
+    Feeds -->|"feeds + groups use gossip for distribution"| Gossip["Gossip Protocol (4)"]
+    Gossip -->|"groups use MLS for encryption"| MLS["MLS (5)"]
+    MLS -->|"groups can enable anonymous mode"| Ring["Ring Sigs (6)"]
+    Base --> ZK["ZK Discovery (7)"]
+    Base -->|"org layer, sits alongside not on top of other extensions"| Compliance["Compliance (8)<br/>(threshold, ZK audit)"]
 ```
 
 **Dependency chain:**

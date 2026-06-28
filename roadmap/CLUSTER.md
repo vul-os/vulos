@@ -14,19 +14,15 @@ For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For 
 
 ## Architecture
 
-```
-           Internet Users
-                │
-         *.bob.vulos.org / own domain
-         ┌──────┼──────┐
-         ▼      ▼      ▼
-      Home     Office   Laptop
-      server   server   (local mode, no remote access)
-         │      │       │
-         └──────┼───────┘
-                ▼
-           S3 / MinIO
-       (shared state layer)
+```mermaid
+flowchart TD
+    Users["Internet Users"]
+    Users -->|"*.bob.vulos.org / own domain"| Home["Home server"]
+    Users -->|"*.bob.vulos.org / own domain"| Office["Office server"]
+    Users -->|"*.bob.vulos.org / own domain"| Laptop["Laptop (local mode, no remote access)"]
+    Home --> S3["S3 / MinIO<br/>(shared state layer)"]
+    Office --> S3
+    Laptop --> S3
 ```
 
 ### Two Node Modes
@@ -496,47 +492,38 @@ User uninstalls GIMP on home → `installed_apps` row gets `status = 'removed'` 
 
 ### Full Flow: Install on One Node, Appears on All
 
-```
-Home (x86)                          Laptop (arm64)
-───────────                         ──────────────
-User installs GIMP
-    │
-    ▼
-installed_apps: {gimp, "1.0", active}
-    │
-    ▼ cr-sqlite sync via S3
-    │
-    ├──────────────────────────────────► Reconciler sees new app
-    │                                        │
-    │                                        ▼
-    │                                   registry.json lookup
-    │                                        │
-    │                                        ▼
-    │                                   apt-get install gimp
-    │                                   (arm64 native package)
-    │                                        │
-    │                                        ▼
-    │                                   local_app_status: installed
-    │
-    ▼ file sync via S3
-    │
-    ├──────────────────────────────────► ~/.vulos/data/gimp/
-                                        (user's GIMP configs, recent files)
+```mermaid
+flowchart TD
+    subgraph Home["Home (x86)"]
+        H1["User installs GIMP"]
+        H2["installed_apps: {gimp, '1.0', active}"]
+        H1 --> H2
+    end
+    subgraph Laptop["Laptop (arm64)"]
+        L1["Reconciler sees new app"]
+        L2["registry.json lookup"]
+        L3["apt-get install gimp<br/>(arm64 native package)"]
+        L4["local_app_status: installed"]
+        L5["~/.vulos/data/gimp/<br/>(user's GIMP configs, recent files)"]
+        L1 --> L2 --> L3 --> L4
+    end
+    H2 -->|"cr-sqlite sync via S3"| L1
+    H2 -->|"file sync via S3"| L5
 ```
 
 ---
 
 ## Redundancy Model
 
-```
-Node A (home)        Node B (office)       Node C (laptop)
- local SSD            local SSD             local SSD
- full copy            full copy             full copy
-    │                    │                     │
-    └────────────┬───────┘─────────────────────┘
-                 ▼
-            S3 / MinIO
-          (central sync copy)
+```mermaid
+flowchart TD
+    A["Node A (home)<br/>local SSD — full copy"]
+    B["Node B (office)<br/>local SSD — full copy"]
+    C["Node C (laptop)<br/>local SSD — full copy"]
+    S3["S3 / MinIO<br/>(central sync copy)"]
+    A --> S3
+    B --> S3
+    C --> S3
 ```
 
 **Every node has a full copy of all data.** S3 is the sync hub AND an additional redundancy copy. If any single node dies, its data exists on S3 and on every other node. If S3 goes down, every node keeps working with local data. If all nodes die except one, full recovery from that one node.
@@ -587,29 +574,15 @@ func putEncrypted(client *minio.Client, bucket, key string, data io.Reader, encK
 
 ## Sync Conflict Resolution Summary
 
-```
- Write event
-      │
-      ▼
- Write locally (always succeeds, never blocked)
-      │
-      ▼
- Push to S3 (async, debounced 5s)
-      │
-      ▼
- Other nodes pull
-      │
-      ├─ Database record? ──► cr-sqlite CRDT auto-merge
-      │                       (field-level, no conflicts possible)
-      │
-      ├─ File, only one ───► Update local copy
-      │  node edited?         (simple overwrite)
-      │
-      ├─ File, both ────────► Conflict copy created
-      │  nodes edited?        user notified via toast
-      │
-      └─ Setting ───────────► Last-write-wins per key
-                              (latest timestamp)
+```mermaid
+flowchart TD
+    W["Write event"] --> WL["Write locally<br/>(always succeeds, never blocked)"]
+    WL --> P["Push to S3 (async, debounced 5s)"]
+    P --> Pull["Other nodes pull"]
+    Pull --> DB["Database record?<br/>→ cr-sqlite CRDT auto-merge<br/>(field-level, no conflicts possible)"]
+    Pull --> F1["File, only one node edited?<br/>→ Update local copy (simple overwrite)"]
+    Pull --> F2["File, both nodes edited?<br/>→ Conflict copy created, user notified via toast"]
+    Pull --> S["Setting?<br/>→ Last-write-wins per key (latest timestamp)"]
 ```
 
 **Presence hints reduce conflicts but don't prevent them.** The safety net (conflict copies for files, CRDTs for DB) ensures no data loss regardless.
