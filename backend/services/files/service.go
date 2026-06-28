@@ -54,6 +54,13 @@ type Service struct {
 	// (e.g. "gdrive") to its SSRF-safe API implementation.
 	extTokens    TokenSource
 	extProviders map[string]ExternalProvider
+
+	// IMPORT engine seam (wired via WithImport; empty ⇒ ImportEnabled() is false
+	// and the Import action is "not available"). importSources maps an import
+	// source kind (e.g. "gdrive") to its SSRF-safe read implementation. Minting
+	// reuses extTokens (the CP integration broker), so an import requires a token
+	// source too.
+	importSources map[string]ImportSource
 }
 
 // New opens (creating + migrating) the Files DB at dbPath and returns a Service.

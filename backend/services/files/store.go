@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -499,6 +500,116 @@ func (s *Service) deleteMount(id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// --- import jobs + items (IMPORT engine) ---
+
+const importJobCols = `id, owner_id, provider, kind, source, mode, status, imported, skipped, errors, error, created_at, last_sync_at`
+
+func (s *Service) insertImportJob(j *ImportJob) error {
+	_, err := s.db.Exec(`INSERT INTO files_import_jobs(`+importJobCols+`)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.ID, j.OwnerID, j.Provider, j.Kind, j.Source, j.Mode, j.Status,
+		j.Imported, j.Skipped, j.Errors, j.Error, j.CreatedAt.Format(rfc), "")
+	return err
+}
+
+func scanImportJob(sc interface{ Scan(...any) error }) (*ImportJob, error) {
+	var j ImportJob
+	var created, lastSync string
+	if err := sc.Scan(&j.ID, &j.OwnerID, &j.Provider, &j.Kind, &j.Source, &j.Mode, &j.Status,
+		&j.Imported, &j.Skipped, &j.Errors, &j.Error, &created, &lastSync); err != nil {
+		return nil, err
+	}
+	j.CreatedAt, _ = time.Parse(rfc, created)
+	if lastSync != "" {
+		if t, err := time.Parse(rfc, lastSync); err == nil {
+			j.LastSyncAt = &t
+		}
+	}
+	return &j, nil
+}
+
+func (s *Service) getImportJob(id string) (*ImportJob, error) {
+	row := s.db.QueryRow(`SELECT `+importJobCols+` FROM files_import_jobs WHERE id=?`, id)
+	j, err := scanImportJob(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return j, err
+}
+
+func (s *Service) listImportJobs(ownerID string) ([]ImportJob, error) {
+	rows, err := s.db.Query(`SELECT `+importJobCols+` FROM files_import_jobs WHERE owner_id=? ORDER BY created_at DESC`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ImportJob{}
+	for rows.Next() {
+		j, err := scanImportJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) setImportStatus(id, status, msg string) error {
+	_, err := s.db.Exec(`UPDATE files_import_jobs SET status=?, error=? WHERE id=?`, status, msg, id)
+	return err
+}
+
+func (s *Service) updateImportResult(id, status, msg string, c importCounts, syncAt *time.Time) error {
+	lastSync := ""
+	if syncAt != nil {
+		lastSync = syncAt.Format(rfc)
+	}
+	_, err := s.db.Exec(`UPDATE files_import_jobs
+		SET status=?, error=?, imported=?, skipped=?, errors=?, last_sync_at=CASE WHEN ?='' THEN last_sync_at ELSE ? END
+		WHERE id=?`,
+		status, msg, c.imported, c.skipped, c.errors, lastSync, lastSync, id)
+	return err
+}
+
+func (s *Service) deleteImportJob(id string) error {
+	res, err := s.db.Exec(`DELETE FROM files_import_jobs WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Service) getImportItem(ownerID, provider, externalID string) (nodeID string, isDir bool, ok bool) {
+	var dir int
+	err := s.db.QueryRow(`SELECT node_id, is_dir FROM files_import_items
+		WHERE owner_id=? AND provider=? AND external_id=?`, ownerID, provider, externalID).Scan(&nodeID, &dir)
+	if err != nil {
+		return "", false, false
+	}
+	return nodeID, dir == 1, true
+}
+
+func (s *Service) putImportItem(ownerID, provider, externalID, nodeID string, isDir bool, jobID string) error {
+	dir := 0
+	if isDir {
+		dir = 1
+	}
+	_, err := s.db.Exec(`INSERT INTO files_import_items(owner_id, provider, external_id, node_id, is_dir, job_id, imported_at)
+		VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(owner_id, provider, external_id) DO UPDATE SET node_id=excluded.node_id, is_dir=excluded.is_dir, job_id=excluded.job_id, imported_at=excluded.imported_at`,
+		ownerID, provider, externalID, nodeID, dir, jobID, time.Now().Format(rfc))
+	return err
+}
+
+func (s *Service) deleteImportItemsForJob(jobID string) {
+	if _, err := s.db.Exec(`DELETE FROM files_import_items WHERE job_id=?`, jobID); err != nil {
+		log.Printf("[files-import] delete items for job %s failed: %v", jobID, err)
+	}
 }
 
 // Close closes the underlying database.

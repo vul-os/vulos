@@ -645,8 +645,18 @@ func main() {
 					files.NewGCSProvider(),
 				)
 				log.Printf("[files] external mounts active (providers: gdrive, dropbox, gcs)")
+				// FILES IMPORT: wire the import engine (copy provider files into the
+				// owner's Drive). Distinct from mounts: imports are Vulos-owned copies
+				// that persist after disconnect. Reuses the same per-call token source;
+				// Google-native docs export to Office formats on import, OneDrive Office
+				// files copy as-is.
+				filesSvc.WithImport(
+					files.NewGDriveProvider(),
+					files.NewOneDriveProvider(),
+				)
+				log.Printf("[files] import engine active (sources: gdrive, onedrive)")
 			} else {
-				log.Printf("[files] external mounts disabled: integration broker not configured")
+				log.Printf("[files] external mounts + import disabled: integration broker not configured")
 			}
 		}
 	}
@@ -674,6 +684,11 @@ func main() {
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok"})
+	})
+	// /healthz — trivial liveness probe the status page expects (200 + status +
+	// build version). Public, no auth.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"status": "ok", "version": Version})
 	})
 	mux.Handle("GET /metrics", obs.Handler())
 
@@ -752,6 +767,11 @@ func main() {
 	registerFilesPeerRoutes(mux, filesSvc)
 	registerFilesPeerServe(mux, filesSvc)
 	registerFilesExternalRoutes(mux, filesSvc)
+
+	// FILES IMPORT: copy provider files/folders into the owner's Drive (Vulos-
+	// owned copies that persist after disconnect). Session-authed; distinct from
+	// the external-mount endpoints above.
+	registerFilesImportRoutes(mux, filesSvc)
 
 	// Apps & Bots platform + MCP: give the OS an agent-operable surface over OS
 	// capabilities (Files, read-only app/system info) via the shared @vulos/apps

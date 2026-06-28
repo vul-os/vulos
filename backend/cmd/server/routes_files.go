@@ -384,6 +384,10 @@ func writeFilesErr(w http.ResponseWriter, err error) {
 		writeErr(w, 409, "external store is read-only")
 	case errors.Is(err, files.ErrExternalConflict):
 		writeErr(w, 409, "a file with that name already exists")
+	case errors.Is(err, files.ErrImportUnavailable):
+		writeErr(w, 503, "import not available")
+	case errors.Is(err, files.ErrImportProvider):
+		writeErr(w, 400, "unknown import provider")
 	case errors.Is(err, files.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	default:

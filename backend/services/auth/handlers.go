@@ -86,6 +86,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
 	"/health":                        true,
+	"/healthz":                       true, // trivial liveness probe (status page) — no auth
 	"/api/auth/me":                   true,
 	"/api/auth/logout":               true,
 	"/api/auth/register":             true,

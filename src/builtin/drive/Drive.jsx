@@ -77,6 +77,16 @@ const filesApi = {
     request(`/files/external/list?mount=${encodeURIComponent(mount)}&folder=${encodeURIComponent(folder || '')}`),
   externalFolder: (mount, parent, name) =>
     request('/files/external/folder', { method: 'POST', body: JSON.stringify({ mount, parent, name }) }),
+
+  // ── import (copy provider files INTO your owned Drive — distinct from mount) ──
+  // A mount is a live view that vanishes with the provider; an import is a copy
+  // you keep even after disconnecting the integration or deleting the upstream.
+  importStatus: () => request('/files/import/status'),
+  importJobs: () => request('/files/import/jobs'),
+  importStart: (provider, source, mode) =>
+    request('/files/import', { method: 'POST', body: JSON.stringify({ provider, source, mode }) }),
+  importSync: (id) => request(`/files/import/jobs/${encodeURIComponent(id)}/sync`, { method: 'POST' }),
+  importDelete: (id) => request(`/files/import/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 // uploadExternalOne: stream a file's bytes into a writable external mount under
@@ -767,6 +777,111 @@ function ConnectModal({ providers, onConnect, onClose }) {
   )
 }
 
+// ── import modal (copy provider files INTO your Drive) ───────────────────────
+// Distinct from ConnectModal (mount): this writes Vulos-OWNED copies that
+// persist after the integration is disconnected or the upstream file is deleted.
+// Lets the user pick a source, browse to a folder (or "everything"), choose
+// "Import once" vs "Keep in sync", and shows job progress + history.
+function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }) {
+  const [provider, setProvider] = useState(sources[0]?.kind || '')
+  const [mode, setMode] = useState('once')
+  // Folder picker over the provider tree (via a throwaway-style browse). For the
+  // foundation we offer "Everything" plus a typed source-folder id; deep
+  // provider browsing reuses the mount list endpoint when a mount exists.
+  const [source, setSource] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const sel = sources.find((p) => p.kind === provider)
+
+  const start = async () => {
+    setBusy(true); setErr(null)
+    try { await onStart(provider, source.trim(), mode) }
+    catch (e) {
+      const msg = /409|not connected/i.test(e.message || '')
+        ? 'This account has not connected the provider yet. Connect it in your cloud account settings, then try again.'
+        : (e.message || 'Import failed to start')
+      setErr(msg)
+    } finally { setBusy(false) }
+  }
+
+  const section = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '16px 0 8px' }
+  const statusColor = (s) => s === 'done' ? '#34d399' : s === 'error' ? '#f87171' : T.accent
+
+  return (
+    <Modal title="Import from Google / Microsoft" onClose={onClose} width={560}>
+      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      <div style={{ fontSize: 12, color: T.textDim, marginBottom: 6, lineHeight: 1.5 }}>
+        <strong style={{ color: T.text }}>Import = a copy you own.</strong> Vulos pulls the files into your
+        Drive. The copy stays even after you disconnect the integration or the
+        original is deleted. (That’s different from <em>Connect a drive</em>, which
+        is a live view that disappears with the provider.)
+      </div>
+
+      <div style={section}>Source</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+          {sources.map((p) => <option key={p.kind} value={p.kind}>{p.display_name}</option>)}
+        </select>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <input
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          placeholder="Folder id (leave blank for everything)"
+          style={inputStyle}
+        />
+        <div style={{ fontSize: 11, color: T.textFaint, marginTop: 4 }}>
+          Blank imports everything in {sel?.display_name || 'the source'}. Google
+          Docs/Sheets/Slides are saved as Office files (.docx/.xlsx/.pptx).
+        </div>
+      </div>
+
+      <div style={section}>How</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {[['once', 'Import once', 'A single copy.'], ['sync', 'Keep in sync', 'Re-pull adds new files; never deletes your copies.']].map(([v, label, hint]) => (
+          <button
+            key={v}
+            onClick={() => setMode(v)}
+            style={{
+              flex: 1, textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+              border: `1px solid ${mode === v ? T.accent : T.borderStrong}`,
+              background: mode === v ? T.selected : T.elevated, color: T.text,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+            <div style={{ fontSize: 11, color: T.textFaint, marginTop: 2 }}>{hint}</div>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <Btn primary onClick={start} disabled={busy || !provider}>{busy ? 'Starting…' : 'Start import'}</Btn>
+      </div>
+
+      <div style={section}>Imports</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {jobs.length === 0 ? <div style={{ color: T.textFaint, fontSize: 12 }}>No imports yet.</div>
+          : jobs.map((j) => (
+            <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', background: T.elevated, borderRadius: 8, fontSize: 12 }}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ color: T.text }}>{j.provider}</span>
+                <span style={{ color: T.textFaint }}>{' · '}{j.mode === 'sync' ? 'sync' : 'once'}{j.source ? ` · ${String(j.source).slice(0, 10)}…` : ' · everything'}</span>
+                <span style={{ display: 'block', color: T.textFaint, marginTop: 2 }}>
+                  {j.imported || 0} copied · {j.skipped || 0} skipped{j.errors ? ` · ${j.errors} errors` : ''}
+                </span>
+              </span>
+              <span style={{ color: statusColor(j.status), fontWeight: 600 }}>{j.status}</span>
+              {j.mode === 'sync' && j.status !== 'running' && (
+                <button onClick={() => onSync(j.id)} style={{ background: 'none', border: 'none', color: T.accent, cursor: 'pointer', fontSize: 12 }}>Sync now</button>
+              )}
+              <button onClick={() => onDelete(j.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 12 }}>Remove</button>
+            </div>
+          ))}
+      </div>
+    </Modal>
+  )
+}
+
 // ── main app ─────────────────────────────────────────────────────────────────
 export default function Drive() {
   const [view, setView] = useState('mydrive') // 'mydrive' | 'shared'
@@ -778,7 +893,10 @@ export default function Drive() {
   const [modal, setModal] = useState(null) // { kind, node }
   const [redeemOpen, setRedeemOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [extStatus, setExtStatus] = useState({ available: false, providers: [] })
+  const [importStatus, setImportStatus] = useState({ available: false, sources: [] })
+  const [importJobs, setImportJobs] = useState([])
   const [mounts, setMounts] = useState([])
   const [busy, setBusy] = useState(null) // status text
 
@@ -804,6 +922,25 @@ export default function Drive() {
     } catch { /* external is optional; ignore when unavailable */ }
   }, [])
   useEffect(() => { loadExternal() }, [loadExternal])
+
+  // Load import availability + the user's jobs. While a job is running, poll so
+  // the progress/history view updates live.
+  const loadImport = useCallback(async () => {
+    try {
+      const st = await filesApi.importStatus()
+      setImportStatus(st || { available: false, sources: [] })
+      if (st?.available) {
+        const r = await filesApi.importJobs()
+        setImportJobs(r.jobs || [])
+      }
+    } catch { /* import is optional; ignore when unavailable */ }
+  }, [])
+  useEffect(() => { loadImport() }, [loadImport])
+  useEffect(() => {
+    if (!importJobs.some((j) => j.status === 'running' || j.status === 'pending')) return
+    const t = setInterval(loadImport, 2000)
+    return () => clearInterval(t)
+  }, [importJobs, loadImport])
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(null)
@@ -846,6 +983,23 @@ export default function Drive() {
       if (extMountId === m.id) switchView('mydrive')
       await loadExternal()
     } catch (e) { setError(e.message || 'Disconnect failed') }
+  }
+
+  // Import handlers. After a start/sync we refresh the job list (and My Drive,
+  // since copies land there) so progress + new files show up.
+  const startImport = async (provider, source, mode) => {
+    await filesApi.importStart(provider, source, mode)
+    await loadImport()
+    setTimeout(() => { loadImport(); if (view === 'mydrive') refresh() }, 1500)
+  }
+  const syncImport = async (id) => {
+    try { await filesApi.importSync(id); await loadImport() }
+    catch (e) { setError(e.message || 'Sync failed') }
+  }
+  const deleteImport = async (id) => {
+    if (!window.confirm('Remove this import? Your imported files stay in your Drive; this only stops tracking the import.')) return
+    try { await filesApi.importDelete(id); await loadImport() }
+    catch (e) { setError(e.message || 'Remove failed') }
   }
 
   const saveReceived = async (item) => {
@@ -971,6 +1125,23 @@ export default function Drive() {
             </button>
           </>
         )}
+
+        {/* Import (copy provider files into your Drive) — distinct from Connect
+            (mount). Disabled with a hint when the integration broker isn't set. */}
+        <button
+          onClick={() => importStatus.available && setImportOpen(true)}
+          disabled={!importStatus.available}
+          title={importStatus.available
+            ? 'Import a copy of your Google / Microsoft files into your Drive'
+            : 'Import requires a connected cloud account'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9, marginTop: 6,
+            border: 'none', cursor: importStatus.available ? 'pointer' : 'not-allowed', fontSize: 13, textAlign: 'left',
+            background: 'none', color: importStatus.available ? T.accent : T.textFaint, opacity: importStatus.available ? 1 : 0.6,
+          }}
+        >
+          <span>⇩</span><span>{importStatus.available ? 'Import files' : 'Import (unavailable)'}</span>
+        </button>
 
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>
           <Btn small onClick={() => setRedeemOpen(true)}>↓ Redeem link</Btn>
@@ -1139,6 +1310,16 @@ export default function Drive() {
       {modal?.kind === 'versions' && <VersionsModal node={modal.node} onClose={() => setModal(null)} />}
       {redeemOpen && <RedeemModal onClose={() => setRedeemOpen(false)} onRedeemed={() => { if (view === 'received') refresh() }} />}
       {connectOpen && <ConnectModal providers={extStatus.providers || []} onConnect={connectExternal} onClose={() => setConnectOpen(false)} />}
+      {importOpen && (
+        <ImportModal
+          sources={importStatus.sources || []}
+          jobs={importJobs}
+          onStart={startImport}
+          onSync={syncImport}
+          onDelete={deleteImport}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
 
       <style>{`@keyframes drive-spin { to { transform: rotate(360deg) } }`}</style>
     </div>

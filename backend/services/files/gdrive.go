@@ -58,6 +58,21 @@ var gdriveExportMap = map[string]struct {
 	"application/vnd.google-apps.drawing":      {"image/png", ".png"},
 }
 
+// gdriveImportExportMap maps Google-native doc mime types to the portable Office
+// (or image) format used ON IMPORT. Unlike gdriveExportMap (which uses PDF for
+// the live-view mount download), import preserves an EDITABLE format so the owned
+// copy round-trips into Office/Workspace: Docs→docx, Sheets→xlsx, Slides→pptx,
+// Drawings→png. A native doc has no media bytes, so it MUST be exported; regular
+// files are copied as-is.
+var gdriveImportExportMap = map[string]struct {
+	mime, ext string
+}{
+	"application/vnd.google-apps.document":     {"application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"},
+	"application/vnd.google-apps.spreadsheet":  {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"},
+	"application/vnd.google-apps.presentation": {"application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx"},
+	"application/vnd.google-apps.drawing":      {"image/png", ".png"},
+}
+
 // GDriveProvider implements ExternalProvider over the Google Drive v3 API.
 type GDriveProvider struct {
 	base       string       // API base (default gdriveAPIBase); overridable in tests
@@ -292,6 +307,46 @@ func (g *GDriveProvider) uploadMedia(ctx context.Context, token, method, fullURL
 		return nil, err
 	}
 	return driveFileToNode(&f), nil
+}
+
+// OpenForImport opens a file's bytes for the IMPORT engine. A Google-native
+// document is EXPORTED to a portable Office/image format (and its name gets the
+// matching extension) so the imported copy is editable; a regular file streams
+// via alt=media unchanged. The mime type comes from the listed node's
+// ContentType (driveFileToNode stamps the Drive mimeType there). Implements
+// files.ImportSource alongside the existing Kind/IntegrationProvider/List.
+func (g *GDriveProvider) OpenForImport(ctx context.Context, call ProviderCall, file *Node) (io.ReadCloser, string, string, int64, error) {
+	token := call.Token
+	name := file.Name
+	var apiPath, contentType string
+	if exp, ok := gdriveImportExportMap[file.ContentType]; ok {
+		apiPath = "/files/" + url.PathEscape(file.ID) + "/export?mimeType=" + url.QueryEscape(exp.mime)
+		contentType = exp.mime
+		if !strings.HasSuffix(strings.ToLower(name), exp.ext) {
+			name += exp.ext
+		}
+	} else {
+		apiPath = "/files/" + url.PathEscape(file.ID) + "?alt=media"
+		contentType = file.ContentType
+	}
+	resp, err := g.do(ctx, token, apiPath)
+	if err != nil {
+		return nil, "", "", 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, "", "", 0, fmt.Errorf("gdrive: import open status %d", resp.StatusCode)
+	}
+	size := int64(-1)
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		if v, perr := strconv.ParseInt(cl, 10, 64); perr == nil {
+			size = v
+		}
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		contentType = ct
+	}
+	return resp.Body, name, contentType, size, nil
 }
 
 // getJSON performs an authenticated GET against the fixed API host and decodes a
