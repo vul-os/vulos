@@ -650,11 +650,34 @@ func main() {
 				// that persist after disconnect. Reuses the same per-call token source;
 				// Google-native docs export to Office formats on import, OneDrive Office
 				// files copy as-is.
+				//
+				// PIM IMPORT (contacts + calendar): GoogleContactsSource and
+				// GoogleCalendarSource are registered alongside the file sources. Their
+				// DataKind() returns "contacts"/"calendar" so the job Kind is set
+				// automatically, and the runPIMImport path posts bulk vCard/iCal
+				// batches to vulos-mail rather than writing to the Drive.
 				filesSvc.WithImport(
 					files.NewGDriveProvider(),
 					files.NewOneDriveProvider(),
+					files.NewGoogleContactsSource(),
+					files.NewGoogleCalendarSource(),
 				)
-				log.Printf("[files] import engine active (sources: gdrive, onedrive)")
+				// Wire the vulos-mail bulk import endpoint so the PIM runner knows
+				// where to POST. VULOS_MAIL_URL defaults to the same URL the OS shell
+				// uses to embed the Mail app; VULOS_MAIL_BROKER_SECRET is the
+				// LILMAIL_BROKER_SECRET shared with vulos-mail.
+				pimMailURL := os.Getenv("VULOS_MAIL_URL")
+				if pimMailURL == "" {
+					pimMailURL = "http://localhost:3000"
+				}
+				pimMailSecret := os.Getenv("VULOS_MAIL_BROKER_SECRET")
+				filesSvc.WithPIMConfig(pimMailURL, pimMailSecret, func(ownerID string) string {
+					if u, ok := authStore.GetUser(ownerID); ok {
+						return u.Email
+					}
+					return ""
+				})
+				log.Printf("[files] import engine active (sources: gdrive, onedrive, google-contacts, google-calendar)")
 			} else {
 				log.Printf("[files] external mounts + import disabled: integration broker not configured")
 			}

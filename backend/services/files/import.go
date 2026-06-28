@@ -54,7 +54,9 @@ var (
 
 // Import job kinds / modes / statuses.
 const (
-	ImportKindFiles = "files" // the only kind in Wave 1 (contacts/cal are future)
+	ImportKindFiles    = "files"    // copy into owned Drive storage
+	ImportKindContacts = "contacts" // bulk-import into vulos-mail CardDAV store
+	ImportKindCalendar = "calendar" // bulk-import into vulos-mail CalDAV store
 
 	ImportModeOnce = "once" // copy once and stop
 	ImportModeSync = "sync" // additive-only re-pull supported
@@ -211,7 +213,7 @@ func (s *Service) StartImport(ctx context.Context, ownerID, provider, source, mo
 		ID:        ulid.NewULID(),
 		OwnerID:   ownerID,
 		Provider:  src.Kind(),
-		Kind:      ImportKindFiles,
+		Kind:      importDataKind(src),
 		Source:    source,
 		Mode:      normalizeImportMode(mode),
 		Status:    ImportStatusPending,
@@ -222,6 +224,18 @@ func (s *Service) StartImport(ctx context.Context, ownerID, provider, source, mo
 	}
 	s.audit(ownerID, "import.start", job.ID, src.Kind()+":"+job.Mode)
 	return job, nil
+}
+
+// importDataKind returns the data kind for an ImportSource. Sources that
+// implement the optional DataKind() interface return their own kind (e.g.
+// "contacts", "calendar"); all others default to ImportKindFiles. This keeps
+// the existing GDriveProvider/OneDriveProvider unchanged.
+func importDataKind(src ImportSource) string {
+	type dker interface{ DataKind() string }
+	if dk, ok := src.(dker); ok {
+		return dk.DataKind()
+	}
+	return ImportKindFiles
 }
 
 // normalizeImportMode maps an unset/unknown mode to the safe default (once).
@@ -281,7 +295,13 @@ func (s *Service) RunImportJob(ctx context.Context, jobID string) error {
 	}
 	s.setImportStatus(job.ID, ImportStatusRunning, "")
 	var counts importCounts
-	walkErr := s.importWalk(ctx, src, job, job.Source, "", 0, &counts)
+	var walkErr error
+	switch job.Kind {
+	case ImportKindContacts, ImportKindCalendar:
+		counts, walkErr = s.runPIMImport(ctx, src, job)
+	default:
+		walkErr = s.importWalk(ctx, src, job, job.Source, "", 0, &counts)
+	}
 	s.finishImport(job, counts, walkErr)
 	if walkErr != nil {
 		return walkErr

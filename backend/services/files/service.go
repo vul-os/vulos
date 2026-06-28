@@ -61,6 +61,27 @@ type Service struct {
 	// reuses extTokens (the CP integration broker), so an import requires a token
 	// source too.
 	importSources map[string]ImportSource
+
+	// PIM import seam (wired via WithPIMConfig; nil ⇒ contacts/calendar import
+	// jobs fail with ErrImportUnavailable). pimMailURL is the vulos-mail instance
+	// base URL (e.g. "http://localhost:3000"); pimMailSecret is the
+	// LILMAIL_BROKER_SECRET shared secret. pimAccountResolver maps an OS ownerID
+	// to the mail account email address used as the CardDAV/CalDAV account key.
+	pimMailURL         string
+	pimMailSecret      string
+	pimAccountResolver func(ownerID string) string
+}
+
+// WithPIMConfig wires the PIM import seam: the URL of the vulos-mail instance
+// the OS importer will POST bulk contacts/events to, the matching broker secret
+// (LILMAIL_BROKER_SECRET), and a resolver that maps an OS ownerID to the mail
+// account email address (the CardDAV/CalDAV account key). Call this after
+// WithImport when wiring contacts/calendar import sources. Returns s for chaining.
+func (s *Service) WithPIMConfig(mailURL, mailSecret string, accountResolver func(ownerID string) string) *Service {
+	s.pimMailURL = mailURL
+	s.pimMailSecret = mailSecret
+	s.pimAccountResolver = accountResolver
+	return s
 }
 
 // New opens (creating + migrating) the Files DB at dbPath and returns a Service.
