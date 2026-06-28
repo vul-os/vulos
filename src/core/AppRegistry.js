@@ -572,16 +572,36 @@ export function getAppById(id) {
 // auth headers. The correct long-term fix is to serve each app from its own
 // origin (e.g. <id>.apps.host) so the browser enforces isolation for us.
 //
-// Until that re-architecture lands, `allow-same-origin` is OPT-IN. An app only
-// receives it if it declares `needsSameOrigin: true` (builtin/web registry) or
-// `needs_same_origin: true` in its installed app.json. Everything else runs in
-// an opaque origin and is properly sandboxed from the shell. The only apps that
-// currently opt in are those that read/write localStorage at load (calculator,
-// clock, pdf-viewer, text-editor, weather) — an opaque origin makes localStorage
-// throw, which would white-screen them.
+// SANDBOX-02 (security hardening): `allow-same-origin` is now restricted to
+// FIRST-PARTY apps only (apps shipped with the OS in builtinRegistry or
+// defaultWebApps).  Third-party installed apps from /api/store/installed are
+// NEVER granted allow-same-origin even if they declare needs_same_origin: true
+// in their app.json — a malicious or compromised store app could otherwise read
+// the shell's localStorage, cookies, and gateway-injected auth headers.
+//
+// The only first-party apps that currently opt in are those that read/write
+// localStorage at load (calculator, clock, pdf-viewer, text-editor, weather) —
+// an opaque origin makes localStorage throw, white-screening them.  All other
+// first-party apps run in opaque-origin sandboxes.
+//
+// Follow-up (SANDBOX-03): serve each app from its own subdomain origin
+// (<id>--default.<host>) using the gateway's existing subdomain routing.  When
+// that lands, allow-same-origin will mean a per-app origin (not the shell), and
+// the restriction below can be relaxed.  See backend/services/gateway/gateway.go
+// and appnet/subdomain.go for the routing infrastructure.
+
+// firstPartyIds is the set of app IDs shipped with the OS.  Only these apps may
+// receive the allow-same-origin sandbox token.
+const firstPartyIds = new Set([
+  ...builtinRegistry.map(a => a.id),
+  ...defaultWebApps.map(a => a.id),
+])
+
 export function needsSameOrigin(appId) {
   const app = getAppById(appId)
-  return !!(app && app.needsSameOrigin)
+  // SANDBOX-02: installed (third-party) apps are never granted same-origin,
+  // regardless of what their manifest declares.
+  return !!(app && app.needsSameOrigin && firstPartyIds.has(appId))
 }
 
 export function getAppsByCategory() {

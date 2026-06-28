@@ -18,6 +18,40 @@ import (
 // appLogMaxBytes is the per-app log file rotation threshold (10 MiB).
 const appLogMaxBytes = 10 * 1024 * 1024
 
+// ISOLATION-PRIV-01: process apps run as this unprivileged uid/gid (nobody /
+// nogroup, 65534/65534).  This is a system account present on every Debian /
+// Ubuntu system and is used as a safe, unprivileged identity for sandboxed
+// third-party apps.
+//
+// Why 65534 and not a dedicated `vulos-app` account: creating per-app system
+// users requires root at install time and complicates packaging; `nobody` is
+// always available and has no login shell, home dir, or sudo entries.
+//
+// Isolation model (defence-in-depth, innermost first):
+//  1. Network namespace (CLONE_NEWNET, via namespace.go): app can only reach
+//     the gateway at host:8080; all other egress and inter-namespace traffic is
+//     iptables-dropped.  Established by namespace.go — inherited here.
+//  2. Mount namespace (CLONE_NEWNS, added here via Cloneflags): the app sees a
+//     private copy of the host mount tree; mounts inside the app do not escape
+//     to the host, and bind-mounts performed by the host after launch are not
+//     visible to the app.
+//  3. Unprivileged uid/gid (setpriv, added here): the app process runs as
+//     uid/gid 65534 (nobody/nogroup) with an empty supplementary group list and
+//     no-new-privs.  A compromised app cannot:
+//     - read files owned by root or other users (mode 0600/0640/etc.)
+//     - escalate via setuid/setgid binaries (no-new-privs blocks them)
+//     - bind privileged ports (<1024) — only gateway-forwarded ports matter
+//     The app can still read world-readable files, but that is unavoidable on a
+//     shared system and is acceptable for a network-namespace-isolated process.
+//
+// Follow-up (not in scope here): mount a restricted rootfs (pivot_root) so the
+// app cannot read ANY of the host filesystem — this requires a per-app rootfs
+// image and is tracked as ISOLATION-PRIV-02.
+const (
+	appUID = 65534 // nobody
+	appGID = 65534 // nogroup
+)
+
 // openAppLog opens (or creates) the per-app log file at
 // ~/.vulos/logs/<appID>.log.  When the file already exceeds appLogMaxBytes it
 // is atomically renamed to <appID>.log.old before a fresh file is created,
@@ -208,14 +242,31 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 	expandedCmd := strings.ReplaceAll(command, "${PORT}", fmt.Sprintf("%d", appPort))
 	expandedCmd = strings.ReplaceAll(expandedCmd, "${CONSOLE_PORT}", fmt.Sprintf("%d", appPort))
 
-	// Run inside namespace — use background context so the app outlives the HTTP request
-	cmd := exec.Command("ip", "netns", "exec", ns.Name, "sh", "-c", expandedCmd)
+	// Run inside namespace — use background context so the app outlives the HTTP request.
+	//
+	// ISOLATION-PRIV-01: wrap with setpriv(8) to drop to nobody/nogroup before
+	// exec'ing the app shell.  `ip netns exec` requires CAP_SYS_ADMIN to enter
+	// the network namespace, so we cannot set SysProcAttr.Credential directly
+	// on the ip process (that would make ip itself fail to enter the namespace).
+	// Instead we call setpriv inside the namespace, which drops uid/gid
+	// AFTER namespace entry but BEFORE the application starts.
+	//
+	// setpriv is provided by util-linux (Priority: required on Debian/Ubuntu).
+	// Flags: --reuid/--regid set real+effective uid/gid; --clear-groups drops
+	// supplementary groups; --no-new-privs blocks setuid/setgid escalation.
+	cmd := exec.Command("ip", "netns", "exec", ns.Name,
+		"setpriv",
+		fmt.Sprintf("--reuid=%d", appUID),
+		fmt.Sprintf("--regid=%d", appGID),
+		"--clear-groups",
+		"--no-new-privs",
+		"sh", "-c", expandedCmd)
 	cmd.Dir = workDir
 	// Minimal scrubbed environment — never inherit os.Environ() to avoid
 	// leaking server secrets (API keys, tokens, etc.) into untrusted app processes.
 	cmd.Env = append([]string{
 		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
-		"HOME=/root",
+		"HOME=/tmp", // not /root: process apps run as nobody (uid 65534) which cannot write to /root
 		"TMPDIR=/tmp",
 	}, env...)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", appPort))
@@ -230,9 +281,12 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true, // own process group so we can kill cleanly
-	}
+	// ISOLATION-PRIV-01: newAppSysProcAttr() returns a platform-appropriate
+	// SysProcAttr.  On Linux it adds CLONE_NEWNS (private mount namespace) so
+	// mounts inside the app do not escape to the host.  On other platforms
+	// (macOS dev builds) it falls back to Setpgid-only.  The Linux build path
+	// is the security-relevant one; the macOS path is for developer convenience.
+	cmd.SysProcAttr = newAppSysProcAttr()
 
 	log.Printf("[appnet] starting %s: ip netns exec %s sh -c %q", instanceID, ns.Name, expandedCmd)
 	if err := cmd.Start(); err != nil {

@@ -309,7 +309,13 @@ func TestEndToEndOverHTTP(t *testing.T) {
 	defer srv.Close()
 
 	// Point the recipient at the real HTTP transport instead of the loopback.
-	recip.WithPeer(recip.signer, NewHTTPPeerTransport(), t.TempDir())
+	// Bypass the SSRF validator: the test server binds to 127.0.0.1, which is
+	// intentionally a loopback address.  Production code uses validateOwnerAddr;
+	// this bypass is test-only (addrValidator is unexported and not settable via
+	// the public API).
+	transport := NewHTTPPeerTransport()
+	transport.addrValidator = func(string) error { return nil } // test-only bypass
+	recip.WithPeer(recip.signer, transport, t.TempDir())
 
 	cap, _, err := owner.IssueCapability("userOwner", n.ID, RoleViewer, "", srv.URL, time.Hour)
 	if err != nil {
