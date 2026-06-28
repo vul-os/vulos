@@ -7,38 +7,38 @@
 //     caller invokes [CollabStore.AppendSnapshot].  Up to [maxSnapshots]
 //     snapshots are kept on disk under:
 //
-//	~/.vulos/peering/collab/<doc-id>/snapshots/<seq>.yjs
-//	~/.vulos/peering/collab/<doc-id>/snapshots/index.json
+//     ~/.vulos/peering/collab/<doc-id>/snapshots/<seq>.yjs
+//     ~/.vulos/peering/collab/<doc-id>/snapshots/index.json
 //
 //  2. Time-travel endpoints:
 //
-//	GET /api/peering/collab/{doc_id}/history        — list snapshot index
-//	GET /api/peering/collab/{doc_id}/history/{seq}  — retrieve one snapshot
+//     GET /api/peering/collab/{doc_id}/history        — list snapshot index
+//     GET /api/peering/collab/{doc_id}/history/{seq}  — retrieve one snapshot
 //
 //  3. Offline catch-up / state-vector diff:
 //
-//	GET /api/peering/inbound/collab-sync?doc_id=<id>&state_vector=<base64>
+//     GET /api/peering/inbound/collab-sync?doc_id=<id>&state_vector=<base64>
 //
-//	When state_vector is absent the existing handleInboundSync handler in
-//	collab.go sends the full state.  When state_vector is present, this
-//	handler attempts to return only the update bytes needed to bring the
-//	sender from their known state to the server's current state.
+//     When state_vector is absent the existing handleInboundSync handler in
+//     collab.go sends the full state.  When state_vector is present, this
+//     handler attempts to return only the update bytes needed to bring the
+//     sender from their known state to the server's current state.
 //
-//	Because the Go server is opaque to Yjs internals (it never parses CRDT
-//	trees), true Yjs diff computation is not possible here.  Instead we
-//	implement a pragmatic protocol:
+//     Because the Go server is opaque to Yjs internals (it never parses CRDT
+//     trees), true Yjs diff computation is not possible here.  Instead we
+//     implement a pragmatic protocol:
 //
-//	  a) If the client's state_vector matches (by base64 equality) the blob
-//	     currently stored at <doc-id>.yjs, the server replies with a
-//	     "collab:noop" frame so the client knows it is already up-to-date.
-//	  b) Otherwise the server replies with the full current state (same as
-//	     the no-state_vector path).  The client discards the parts it already
-//	     has when it applies the blob via Y.applyUpdate — Yjs is idempotent.
+//     a) If the client's state_vector matches (by base64 equality) the blob
+//     currently stored at <doc-id>.yjs, the server replies with a
+//     "collab:noop" frame so the client knows it is already up-to-date.
+//     b) Otherwise the server replies with the full current state (same as
+//     the no-state_vector path).  The client discards the parts it already
+//     has when it applies the blob via Y.applyUpdate — Yjs is idempotent.
 //
-//	This satisfies the AC "offline reconnect gets only diff" at the protocol
-//	level: the noop fast-path avoids re-transferring the full blob when the
-//	client is already current.  A future extension may integrate a real
-//	Yjs-capable diff layer (e.g. via WASM) for true state-vector diffing.
+//     This satisfies the AC "offline reconnect gets only diff" at the protocol
+//     level: the noop fast-path avoids re-transferring the full blob when the
+//     client is already current.  A future extension may integrate a real
+//     Yjs-capable diff layer (e.g. via WASM) for true state-vector diffing.
 //
 // # RegisterCollabHistoryHandlers
 //

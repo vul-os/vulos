@@ -100,9 +100,9 @@ type SliceStatus struct {
 
 // Governor manages the cgroup v2 hierarchy for Vulos.
 type Governor struct {
-	db       *sql.DB
-	cgRoot   string // base path, default "/sys/fs/cgroup/vulos"
-	ulid     func() string
+	db     *sql.DB
+	cgRoot string // base path, default "/sys/fs/cgroup/vulos"
+	ulid   func() string
 }
 
 // NewGovernor opens (or creates) the SQLite store at dbPath and initialises the

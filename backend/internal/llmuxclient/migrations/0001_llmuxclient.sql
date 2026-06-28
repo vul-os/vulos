@@ -1,5 +1,7 @@
--- AIROT-08: embedding cache + vector store.
--- All statements use IF NOT EXISTS so migration is idempotent.
+-- llmuxclient SQLite schema.
+-- Combines the embed cache and note embeddings tables (no provider/config tables
+-- — those live in llmux now).
+-- All statements use IF NOT EXISTS so the migration is idempotent.
 
 -- embed_cache stores embeddings keyed by SHA-256(model||input).
 -- vector_blob is a little-endian packed float32 array.
@@ -14,3 +16,14 @@ CREATE TABLE IF NOT EXISTS embed_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_embed_cache_expires ON embed_cache(expires_at);
+
+-- note_embeddings stores per-note embedding vectors produced by /api/ai/embed.
+-- vector_blob is a little-endian packed float32 array (same encoding as embed_cache).
+CREATE TABLE IF NOT EXISTS note_embeddings (
+    note_id     TEXT NOT NULL,
+    model_slug  TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,             -- packed little-endian float32 array
+    dim         INTEGER NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (note_id, model_slug)
+);

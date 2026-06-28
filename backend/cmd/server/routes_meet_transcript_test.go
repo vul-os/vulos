@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"vulos/backend/internal/airouter"
+	"vulos/backend/internal/llmuxclient"
 )
 
-// fakeProvider implements airouter.TranscriptionProvider for tests.
+// fakeProvider implements llmuxclient.TranscriptionProvider for tests.
 type fakeProvider struct {
 	mu       sync.Mutex
 	calls    int
@@ -25,7 +25,7 @@ type fakeProvider struct {
 	err      error
 }
 
-func (f *fakeProvider) Transcribe(ctx context.Context, audio []byte, ct, model string) ([]airouter.TranscriptFragment, error) {
+func (f *fakeProvider) Transcribe(ctx context.Context, audio []byte, ct, model string) ([]llmuxclient.TranscriptFragment, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
@@ -35,7 +35,7 @@ func (f *fakeProvider) Transcribe(ctx context.Context, audio []byte, ct, model s
 	if f.respText == "" {
 		return nil, nil
 	}
-	return []airouter.TranscriptFragment{{
+	return []llmuxclient.TranscriptFragment{{
 		Text:       f.respText,
 		Final:      true,
 		ReceivedAt: time.Now().UTC(),
@@ -46,7 +46,7 @@ func (f *fakeProvider) Name() string { return "fake" }
 
 // buildMux registers the meet routes against a fake provider.  authStore is
 // nil (dev-permissive) so X-User-ID alone is accepted as session.
-func buildMux(t *testing.T, provider airouter.TranscriptionProvider) (*http.ServeMux, *meetTranscriber) {
+func buildMux(t *testing.T, provider llmuxclient.TranscriptionProvider) (*http.ServeMux, *meetTranscriber) {
 	t.Helper()
 	t.Setenv("VULOS_MEET_TRANSCRIBE_ENABLE", "1")
 	mux := http.NewServeMux()
@@ -237,10 +237,10 @@ func TestMeetTranscribe_AudioTooLarge(t *testing.T) {
 func TestMeetTranscribeEnvFromTier(t *testing.T) {
 	// reset env between table rows
 	for _, tt := range []struct {
-		name     string
-		preset   string
-		tier     string
-		wantEnv  string
+		name    string
+		preset  string
+		tier    string
+		wantEnv string
 	}{
 		{"pro flips on", "", "pro", "1"},
 		{"team flips on", "", "team", "1"},

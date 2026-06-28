@@ -383,7 +383,6 @@ func verifyPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-
 // Register creates a new local user with username + password.
 // First user gets admin role.
 func (s *Store) Register(username, password, displayName string) (*User, error) {

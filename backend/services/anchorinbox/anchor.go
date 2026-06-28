@@ -178,7 +178,7 @@ func (s *AnchorStore) Status(ctx context.Context, accountID string) (AnchorInbox
 	defer s.mu.RUnlock()
 
 	var (
-		st           AnchorInboxStatus
+		st            AnchorInboxStatus
 		provisionedAt string
 	)
 	err := s.db.QueryRowContext(ctx, `

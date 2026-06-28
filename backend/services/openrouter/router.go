@@ -42,11 +42,11 @@ type Intent struct {
 
 	// Flags are mutually exclusive lane signals loaded from registry entries.
 	// The first matching flag wins (priority order matches the rules below).
-	Web         bool // registry flag: web-native app → WebApp
-	NeedsGPU    bool // registry flag: GPU-accelerated app → GPURoute
-	Game        bool // registry flag: game / Windows compat layer → GPURoute
-	LocalOnly   bool // registry flag: bare-metal local only → LocalOnly
-	ComputeJob  bool // registry flag: headless background job → ComputeWorker
+	Web        bool // registry flag: web-native app → WebApp
+	NeedsGPU   bool // registry flag: GPU-accelerated app → GPURoute
+	Game       bool // registry flag: game / Windows compat layer → GPURoute
+	LocalOnly  bool // registry flag: bare-metal local only → LocalOnly
+	ComputeJob bool // registry flag: headless background job → ComputeWorker
 }
 
 // Classify returns the lane for the given intent.

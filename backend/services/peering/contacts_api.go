@@ -215,9 +215,9 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Build the signed envelope.
 	payload, err := json.Marshal(ContactRequestPayload{
-		DisplayName:   body.DisplayName,
-		Message:       body.Message,
-		ServerAddr:    a.myServer,
+		DisplayName:  body.DisplayName,
+		Message:      body.Message,
+		ServerAddr:   a.myServer,
 		VulosAddress: body.VulosAddress,
 	})
 	if err != nil {
@@ -521,10 +521,10 @@ func (a *ContactAPI) HandleInboundRequest(w http.ResponseWriter, r *http.Request
 
 	// Push a real-time notification to connected browser tabs.
 	a.pushNotification("contact_request", map[string]any{
-		"vula_id":        senderID,
-		"display_name":   displayName,
-		"message":        payload.Message,
-		"server":         payload.ServerAddr,
+		"vula_id":       senderID,
+		"display_name":  displayName,
+		"message":       payload.Message,
+		"server":        payload.ServerAddr,
 		"vulos_address": payload.VulosAddress,
 	})
 

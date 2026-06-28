@@ -189,11 +189,11 @@ type EdgeCacheManager struct {
 // from environment variables with sane defaults.
 //
 //   - VULOS_NGINX_DIR        — directory for per-app Nginx conf files
-//                              (default /etc/nginx/vulos-apps)
+//     (default /etc/nginx/vulos-apps)
 //   - VULOS_NGINX_CACHE_DIR  — parent dir for on-disk cache zones
-//                              (default /var/cache/nginx/vulos)
+//     (default /var/cache/nginx/vulos)
 //   - VULOS_NGINX_STATUS_URL — Nginx stub_status URL
-//                              (default http://127.0.0.1:80/nginx-status)
+//     (default http://127.0.0.1:80/nginx-status)
 func NewEdgeCacheManager() *EdgeCacheManager {
 	nginxDir := os.Getenv("VULOS_NGINX_DIR")
 	if nginxDir == "" {

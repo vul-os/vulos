@@ -51,14 +51,14 @@ const (
 
 // Instance represents one entry in the local registry.
 type Instance struct {
-	ULID            string    `json:"ulid"`
-	DisplayName     string    `json:"display_name"`
-	Kind            Kind      `json:"kind"`
-	EndpointURL     string    `json:"endpoint_url"`
-	Ed25519PublicKey string   `json:"ed25519_public_key"`
-	Role            Role      `json:"role"`
-	Status          Status    `json:"status"`
-	LastSeenAt      time.Time `json:"last_seen_at"`
+	ULID             string    `json:"ulid"`
+	DisplayName      string    `json:"display_name"`
+	Kind             Kind      `json:"kind"`
+	EndpointURL      string    `json:"endpoint_url"`
+	Ed25519PublicKey string    `json:"ed25519_public_key"`
+	Role             Role      `json:"role"`
+	Status           Status    `json:"status"`
+	LastSeenAt       time.Time `json:"last_seen_at"`
 
 	// ── FABRIC-KEY-01: key rotation overlap + revocation ─────────────────────
 	//

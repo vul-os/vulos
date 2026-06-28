@@ -69,7 +69,7 @@ var ErrQRNonceMismatch = errors.New("qrlogin: nonce mismatch")
 type qrChallenge struct {
 	mu           sync.Mutex
 	id           string
-	nonce        string    // QRSEC-01: random value embedded in qr_data; approver must echo
+	nonce        string // QRSEC-01: random value embedded in qr_data; approver must echo
 	expiresAt    time.Time
 	approvedByID string // userID of the approving phone (empty until approved)
 	sessionToken string // minted on approval, handed to the kiosk on poll
@@ -95,7 +95,7 @@ func NewQRLoginService(store *auth.Store) *QRLoginService {
 // QRBeginResult is the response payload for POST /api/auth/qr/begin.
 type QRBeginResult struct {
 	ChallengeID string    `json:"challenge_id"`
-	QRData      string    `json:"qr_data"`   // encode this into a QR image
+	QRData      string    `json:"qr_data"`    // encode this into a QR image
 	ExpiresAt   time.Time `json:"expires_at"` // when the challenge expires
 }
 
@@ -210,9 +210,9 @@ func (s *QRLoginService) Approve(challengeID, approverUserID, nonce string) erro
 // only via an httponly cookie set by the HTTP handler so it is never readable
 // by JavaScript running in the kiosk page.
 type QRPollResult struct {
-	Pending  bool   `json:"pending"`  // true while waiting
-	Approved bool   `json:"approved"` // true when the phone approved
-	Expired  bool   `json:"expired"`  // true when challenge is past TTL
+	Pending  bool `json:"pending"`  // true while waiting
+	Approved bool `json:"approved"` // true when the phone approved
+	Expired  bool `json:"expired"`  // true when challenge is past TTL
 	// sessionToken is the minted token; it is not exported to JSON.
 	// The HTTP handler reads it and sets the cookie, then discards it.
 	sessionToken string

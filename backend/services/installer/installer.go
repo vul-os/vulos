@@ -163,13 +163,13 @@ func (h *progressHub) isDone() (bool, error) {
 
 // Service holds dependencies and mutable installation state.
 type Service struct {
-	cmd      Commander
-	mu       sync.Mutex
-	hub      *progressHub
+	cmd Commander
+	mu  sync.Mutex
+	hub *progressHub
 	// isAdmin is called for the destructive /install endpoint to gate access to
 	// admin users only.  If nil, no auth check is performed (useful in tests;
 	// the live-USB flow always supplies a real check via cmd/server/main.go).
-	isAdmin  func(r *http.Request) bool
+	isAdmin func(r *http.Request) bool
 }
 
 // New returns a Service backed by real OS commands.

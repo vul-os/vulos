@@ -160,8 +160,8 @@ func TestSEC_Quorum_ForgedMultipleOriginsCantUninstall(t *testing.T) {
 	// rostered key → verifyChangesetSignature returns false → observation ignored.
 	cs2Fake := &multiinstance.AppChangeset{
 		OriginULID:   fakeOriginC,
-		SignerPubKey: cs1.SignerPubKey,   // attacker re-uses realOriginB's pubkey
-		Signature:    cs1.Signature,      // same signature — wrong origin binding
+		SignerPubKey: cs1.SignerPubKey, // attacker re-uses realOriginB's pubkey
+		Signature:    cs1.Signature,    // same signature — wrong origin binding
 		Entries: []multiinstance.AppRegistryEntry{
 			{InstanceULID: victimULID, AppID: appID, AppVersion: "1.0.0",
 				Installed: false, InstalledBy: fakeOriginC, UpdatedAt: uninstallTime},

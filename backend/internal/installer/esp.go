@@ -284,8 +284,8 @@ func populateESP(ctx context.Context, squashfsPath string, prog func(int)) error
 
 	// Seed files to copy: src → dest relative to ESP mount.
 	type copySpec struct {
-		src     string
-		destRel string
+		src      string
+		destRel  string
 		optional bool
 	}
 	specs := []copySpec{

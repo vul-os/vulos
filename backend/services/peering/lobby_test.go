@@ -221,7 +221,7 @@ func TestLobby_RemotePeerProxied(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice"},              // local
+			{ID: "vula:alice"},                 // local
 			{ID: "vula:bob", Server: peerAddr}, // remote
 		},
 		InitiatorID: "vula:alice",
@@ -359,9 +359,9 @@ func TestLobby_AutoSelectHighestUpload(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice"},                       // local, 30 Mbps
-			{ID: "vula:carol", Server: carolAddr},    // peer, 80 Mbps
-			{ID: "vula:dave", Server: daveAddr},      // peer, 20 Mbps
+			{ID: "vula:alice"},                    // local, 30 Mbps
+			{ID: "vula:carol", Server: carolAddr}, // peer, 80 Mbps
+			{ID: "vula:dave", Server: daveAddr},   // peer, 20 Mbps
 		},
 		InitiatorID: "vula:alice",
 		// No explicit HostID — auto-select.

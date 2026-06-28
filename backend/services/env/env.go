@@ -91,28 +91,28 @@ func DefaultsFor(e Env) Defaults {
 	case EnvLocal:
 		return Defaults{
 			BindHost:              "127.0.0.1",
-			SkipHardwareChecks:   true,
-			AllowSelfSignedCerts: true,
-			StrictCookies:        false,
-			DebugEndpoints:       true,
+			SkipHardwareChecks:    true,
+			AllowSelfSignedCerts:  true,
+			StrictCookies:         false,
+			DebugEndpoints:        true,
 			AllowStagingBrokerKey: false,
 		}
 	case EnvDev:
 		return Defaults{
 			BindHost:              "127.0.0.1",
-			SkipHardwareChecks:   true,
-			AllowSelfSignedCerts: true,
-			StrictCookies:        false,
-			DebugEndpoints:       false,
+			SkipHardwareChecks:    true,
+			AllowSelfSignedCerts:  true,
+			StrictCookies:         false,
+			DebugEndpoints:        false,
 			AllowStagingBrokerKey: true,
 		}
 	default: // EnvProd
 		return Defaults{
 			BindHost:              "",
-			SkipHardwareChecks:   false,
-			AllowSelfSignedCerts: false,
-			StrictCookies:        true,
-			DebugEndpoints:       false,
+			SkipHardwareChecks:    false,
+			AllowSelfSignedCerts:  false,
+			StrictCookies:         true,
+			DebugEndpoints:        false,
 			AllowStagingBrokerKey: false,
 		}
 	}

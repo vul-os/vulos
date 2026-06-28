@@ -201,12 +201,12 @@ func TestMeshSignaling_BandwidthBroadcast(t *testing.T) {
 	defer wsC.Close()
 
 	meshSend(t, wsA, map[string]any{
-		"type":         "bw",
-		"from":         "peer-A",
-		"roomId":       "room5",
-		"upload_kbps":  2000,
+		"type":          "bw",
+		"from":          "peer-A",
+		"roomId":        "room5",
+		"upload_kbps":   2000,
 		"download_kbps": 10000,
-		"rtt_ms":       15,
+		"rtt_ms":        15,
 	})
 
 	// Both B and C should receive the bw frame.
@@ -333,9 +333,9 @@ func TestMeshSignaling_MissingQueryParams(t *testing.T) {
 	srv := newMeshServer(t)
 
 	cases := []string{
-		srv.URL + "/api/peering/call/signal",            // both missing
-		srv.URL + "/api/peering/call/signal?room=r1",    // peer missing
-		srv.URL + "/api/peering/call/signal?peer=p1",    // room missing
+		srv.URL + "/api/peering/call/signal",         // both missing
+		srv.URL + "/api/peering/call/signal?room=r1", // peer missing
+		srv.URL + "/api/peering/call/signal?peer=p1", // room missing
 	}
 
 	for _, rawURL := range cases {

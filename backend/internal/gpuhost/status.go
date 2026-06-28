@@ -99,14 +99,14 @@ func (s *Service) snapshot() statusResponse {
 	p2p, turn := s.chooser.Decisions()
 
 	return statusResponse{
-		Ready:     s.Ready(),
-		State:     state,
-		HostID:    s.cfg.Identity.HostID,
-		Domain:    s.cfg.Identity.Domain,
-		Advertise: fmt.Sprintf("%s:%d", s.cfg.AdvertiseHostname, s.cfg.AdvertisePort),
-		Codec:     s.cfg.Codec,
+		Ready:      s.Ready(),
+		State:      state,
+		HostID:     s.cfg.Identity.HostID,
+		Domain:     s.cfg.Identity.Domain,
+		Advertise:  fmt.Sprintf("%s:%d", s.cfg.AdvertiseHostname, s.cfg.AdvertisePort),
+		Codec:      s.cfg.Codec,
 		Supervisor: supBlock,
-		Decisions: statusDecisionsBlock{P2P: p2p, TURN: turn},
-		LastError: lastErrStr,
+		Decisions:  statusDecisionsBlock{P2P: p2p, TURN: turn},
+		LastError:  lastErrStr,
 	}
 }

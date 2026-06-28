@@ -26,6 +26,7 @@ var (
 //
 //	s := sfu.New()
 //	sfu.RegisterSFUHandlers(mux, s)
+//
 // roomEntry holds a Room together with the user ID of its creator.
 type roomEntry struct {
 	room    *Room

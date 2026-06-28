@@ -298,8 +298,8 @@ func TestHandleInboundRequest_VulosAddressPopulated(t *testing.T) {
 	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
-		DisplayName:   "Alice",
-		ServerAddr:    "alice.vulos.org:8080",
+		DisplayName:  "Alice",
+		ServerAddr:   "alice.vulos.org:8080",
 		VulosAddress: "alice@vulos.org",
 	}
 	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
@@ -363,7 +363,7 @@ func TestHandleSendRequest_IncludesVulosAddress(t *testing.T) {
 		"target_vula_id": remoteVulaID,
 		"target_server":  "127.0.0.1:9999", // SSRF-blocked but contact added first
 		"display_name":   "Me",
-		"vulos_address": "me@vulos.org",
+		"vulos_address":  "me@vulos.org",
 	})
 
 	// The contact should have been added before the (failing) delivery attempt.

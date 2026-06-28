@@ -28,10 +28,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"vulos/backend/internal/airouter"
 	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/cgroups"
 	"vulos/backend/internal/cpbilling"
+	"vulos/backend/internal/llmuxclient"
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/services/appnet"
 	svcauth "vulos/backend/services/auth"
@@ -79,39 +79,34 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	// single writer lock and surface SQLITE_BUSY. Open it ONCE here and share the
 	// one *Registry (hence one *sql.DB) across every section below.
 	sharedReg := openSharedRegistry(deps.dbDir)
-	// ── 1. AI Router (internal/airouter) ─────────────────────────────────────
+	// ── 1. LLM gateway client (internal/llmuxclient) ──────────────────────────
 	//
 	// Routes registered:
-	//   POST /api/ai/chat    — SSE chat completion (replaces inline handler
-	//                          removed from main.go)
-	//   POST /api/ai/models  — list available providers/models
-	//   GET  /api/ai/status  — current mode + active model (replaces inline
-	//                          handler removed from main.go)
-	//   PUT  /api/ai/config  — update mode / model / provider
+	//   POST /api/ai/chat    — SSE chat completion via llmux gateway
+	//   POST /api/ai/models  — list models (proxied from llmux)
+	//   GET  /api/ai/status  — llmux gateway status
+	//   PUT  /api/ai/config  — 410 Gone (config now lives in llmux)
+	//   POST /api/ai/embed   — embedding via llmux
+	//   GET  /api/ai/embed/stats — embedding cache stats
+	//   POST /api/ai/notes/index   — index a note embedding
+	//   POST /api/ai/notes/search  — semantic search over notes
+	//   DELETE /api/ai/notes/{note_id}/embed — remove note embedding
 	//
-	// The store DB lands next to the other per-service DBs in dbDir.
-	// AIROUTER_DB overrides the default path; AIROUTER_KEY_HEX provides the
-	// AES-256 key (dev falls back to a deterministic constant — not for prod).
-	if deps.dbDir != "" {
-		os.Setenv("AIROUTER_DB", filepath.Join(deps.dbDir, "airouter.db"))
-	}
-	airStore, err := airouter.NewStoreFromEnv()
-	if err != nil {
-		// In VULOS_ENV=prod with AIROUTER_KEY_HEX unset the store refuses to
-		// initialise (fail-closed). Disable the AI router routes with a clear
-		// message rather than crashing the whole server so other features stay
-		// available.
-		log.Printf("[airouter] store init refused: %v — /api/ai/* routes DISABLED (set AIROUTER_KEY_HEX to a 64-hex-char value)", err)
-	} else {
-		airRouter := airouter.NewRouter(airStore)
-		airouter.RegisterHandlers(mux, airRouter)
-		log.Printf("[airouter] registered POST /api/ai/chat, POST /api/ai/models, GET /api/ai/status, PUT /api/ai/config")
-		// When LLMUX_URL is set, chat + embeddings route through the suite's
-		// OpenAI-compatible llmux gateway (LLMUX_KEY bearer) instead of calling
-		// providers directly. Unset = standalone (BYO/cloud) behaviour.
-		if lurl := os.Getenv("LLMUX_URL"); lurl != "" {
-			log.Printf("[airouter] LLMUX_URL set (%s) — chat + embeddings routed via llmux gateway", lurl)
+	// LLM/AI requests are forwarded to the llmux gateway (LLMUX_URL).
+	// Billing and metering are handled by llmux → CP; the OS is transparent.
+	{
+		lmCfg, lmOk := llmuxclient.FromEnv()
+		if !lmOk {
+			log.Printf("[llmuxclient] LLMUX_URL unset — /api/ai/* routes will return 503 (set LLMUX_URL to enable)")
 		}
+		lmClient := llmuxclient.New(lmCfg)
+		lmStore, lmErr := llmuxclient.NewStoreFromEnv(deps.dbDir)
+		if lmErr != nil {
+			log.Printf("[llmuxclient] store init warning: %v — note embeddings disabled", lmErr)
+			lmStore = nil
+		}
+		llmuxclient.RegisterHandlers(mux, lmClient, lmStore)
+		log.Printf("[llmuxclient] registered /api/ai/* routes (gateway=%s configured=%v)", lmCfg.BaseURL, lmOk)
 	}
 
 	// ── 3. Multi-instance app router (internal/multiinstance) ────────────────

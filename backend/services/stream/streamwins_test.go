@@ -142,9 +142,9 @@ func TestResolutionStepsDownOnSustainedLoss(t *testing.T) {
 	var mu sync.Mutex
 
 	bc := &bitrateController{
-		current:  QualityMedium,
-		stop:     make(chan struct{}),
-		gaming:   false,
+		current: QualityMedium,
+		stop:    make(chan struct{}),
+		gaming:  false,
 		resizeFn: func(w, h int) {
 			mu.Lock()
 			resizeCalls = append(resizeCalls, resolutionStep{w, h})
@@ -185,9 +185,9 @@ func TestResolutionStepsUpOnRecovery(t *testing.T) {
 	var mu sync.Mutex
 
 	bc := &bitrateController{
-		current:  QualityMedium,
-		stop:     make(chan struct{}),
-		gaming:   false,
+		current: QualityMedium,
+		stop:    make(chan struct{}),
+		gaming:  false,
 		resizeFn: func(w, h int) {
 			mu.Lock()
 			resizeCalls = append(resizeCalls, resolutionStep{w, h})

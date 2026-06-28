@@ -1,6 +1,6 @@
-package airouter
+package llmuxclient
 
-// MEET-TRANSCRIPT-01: Whisper-style speech-to-text provider for the airouter.
+// MEET-TRANSCRIPT-01: Whisper-style speech-to-text provider for llmuxclient.
 //
 // Shape:
 //
@@ -20,10 +20,6 @@ package airouter
 //   stream, the OS server slices incoming audio into ~5-second windows
 //   (configurable) and emits one fragment per window. This keeps the provider
 //   trivially swappable and avoids requiring a websocket-capable backend.
-//
-//   The provider is wired so the existing airouter Router can reuse the same
-//   Store / cert / cloud-proxy plumbing later if/when we proxy through the
-//   cloud control plane; for now we hit Whisper directly.
 //
 // Privacy: cloud users default-on for Pro (server flips
 // `VULOS_MEET_TRANSCRIBE_ENABLE=1` from the tier hint at startup); self-host
@@ -56,7 +52,7 @@ type TranscriptFragment struct {
 	ReceivedAt time.Time `json:"received_at"`
 }
 
-// TranscriptionProvider is the airouter abstraction for speech-to-text
+// TranscriptionProvider is the llmuxclient abstraction for speech-to-text
 // backends.  Implementations are stateless from the OS server's point of
 // view; the OS server is responsible for windowing/queueing audio chunks.
 type TranscriptionProvider interface {
@@ -79,9 +75,9 @@ type TranscriptionProvider interface {
 
 // ErrTranscriberUnavailable signals that the provider has no backing URL
 // configured.  Callers should surface 503 / "off" rather than 5xx.
-var ErrTranscriberUnavailable = errors.New("airouter: transcription provider not configured")
+var ErrTranscriberUnavailable = errors.New("llmuxclient: transcription provider not configured")
 
-// WhisperProvider is the default airouter Whisper provider.  It speaks the
+// WhisperProvider is the default llmuxclient Whisper provider.  It speaks the
 // OpenAI-compatible /v1/audio/transcriptions shape, which is also what
 // whisper.cpp's server emits — so a single struct covers hosted + self-host.
 type WhisperProvider struct {
@@ -235,4 +231,12 @@ func filenameFromCT(ct string) string {
 	default:
 		return "chunk.wav"
 	}
+}
+
+// getenv returns the value of the env var key, or fallback if it is unset/empty.
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

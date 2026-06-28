@@ -14,7 +14,7 @@ package main
 //                                            query: ?room_id=…&content_type=…
 //                                            Buffers a single audio chunk
 //                                            (~5s window) and asynchronously
-//                                            transcribes via airouter Whisper.
+//                                            transcribes via llmuxclient Whisper.
 //                                            Fragments are fanned out on the
 //                                            room's SSE stream below.
 //
@@ -51,7 +51,7 @@ import (
 	"sync"
 	"time"
 
-	"vulos/backend/internal/airouter"
+	"vulos/backend/internal/llmuxclient"
 	svcauth "vulos/backend/services/auth"
 )
 
@@ -63,7 +63,7 @@ const fragmentBufferSize = 32
 
 // transcriber is the package-level singleton; nil = transcription disabled.
 type meetTranscriber struct {
-	provider airouter.TranscriptionProvider
+	provider  llmuxclient.TranscriptionProvider
 	authStore *svcauth.Store
 
 	mu    sync.RWMutex
@@ -71,14 +71,14 @@ type meetTranscriber struct {
 }
 
 type meetRoomState struct {
-	mu       sync.Mutex
-	optedIn  bool
-	buffer   []airouter.TranscriptFragment // ring buffer
-	subs     map[chan airouter.TranscriptFragment]struct{}
+	mu        sync.Mutex
+	optedIn   bool
+	buffer    []llmuxclient.TranscriptFragment // ring buffer
+	subs      map[chan llmuxclient.TranscriptFragment]struct{}
 	createdAt time.Time
 }
 
-func newMeetTranscriber(provider airouter.TranscriptionProvider, authStore *svcauth.Store) *meetTranscriber {
+func newMeetTranscriber(provider llmuxclient.TranscriptionProvider, authStore *svcauth.Store) *meetTranscriber {
 	return &meetTranscriber{
 		provider:  provider,
 		authStore: authStore,
@@ -129,7 +129,7 @@ func (m *meetTranscriber) ensureRoom(roomID string) *meetRoomState {
 		return st
 	}
 	st = &meetRoomState{
-		subs:      make(map[chan airouter.TranscriptFragment]struct{}),
+		subs:      make(map[chan llmuxclient.TranscriptFragment]struct{}),
 		createdAt: time.Now().UTC(),
 	}
 	m.rooms[roomID] = st
@@ -137,14 +137,14 @@ func (m *meetTranscriber) ensureRoom(roomID string) *meetRoomState {
 }
 
 // publish appends a fragment to the room buffer and fans out to subscribers.
-func (s *meetRoomState) publish(fr airouter.TranscriptFragment) {
+func (s *meetRoomState) publish(fr llmuxclient.TranscriptFragment) {
 	s.mu.Lock()
 	if len(s.buffer) >= fragmentBufferSize {
 		s.buffer = append(s.buffer[1:], fr)
 	} else {
 		s.buffer = append(s.buffer, fr)
 	}
-	subs := make([]chan airouter.TranscriptFragment, 0, len(s.subs))
+	subs := make([]chan llmuxclient.TranscriptFragment, 0, len(s.subs))
 	for ch := range s.subs {
 		subs = append(subs, ch)
 	}
@@ -159,16 +159,16 @@ func (s *meetRoomState) publish(fr airouter.TranscriptFragment) {
 }
 
 // subscribe registers a new SSE subscriber and replays the ring buffer.
-func (s *meetRoomState) subscribe() (chan airouter.TranscriptFragment, []airouter.TranscriptFragment) {
-	ch := make(chan airouter.TranscriptFragment, 16)
+func (s *meetRoomState) subscribe() (chan llmuxclient.TranscriptFragment, []llmuxclient.TranscriptFragment) {
+	ch := make(chan llmuxclient.TranscriptFragment, 16)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	snapshot := append([]airouter.TranscriptFragment(nil), s.buffer...)
+	snapshot := append([]llmuxclient.TranscriptFragment(nil), s.buffer...)
 	s.subs[ch] = struct{}{}
 	return ch, snapshot
 }
 
-func (s *meetRoomState) unsubscribe(ch chan airouter.TranscriptFragment) {
+func (s *meetRoomState) unsubscribe(ch chan llmuxclient.TranscriptFragment) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.subs[ch]; ok {
@@ -184,14 +184,14 @@ func (s *meetRoomState) closeAll() {
 	for ch := range s.subs {
 		close(ch)
 	}
-	s.subs = map[chan airouter.TranscriptFragment]struct{}{}
+	s.subs = map[chan llmuxclient.TranscriptFragment]struct{}{}
 	s.buffer = nil
 	s.optedIn = false
 }
 
 // registerMeetTranscriptRoutes wires the four endpoints onto mux.  Safe to
 // call with provider==nil — the endpoints then return 503 (feature off).
-func registerMeetTranscriptRoutes(mux *http.ServeMux, provider airouter.TranscriptionProvider, authStore *svcauth.Store) *meetTranscriber {
+func registerMeetTranscriptRoutes(mux *http.ServeMux, provider llmuxclient.TranscriptionProvider, authStore *svcauth.Store) *meetTranscriber {
 	mt := newMeetTranscriber(provider, authStore)
 
 	// POST /api/meet/transcribe/start
@@ -320,7 +320,7 @@ func registerMeetTranscriptRoutes(mux *http.ServeMux, provider airouter.Transcri
 		w.WriteHeader(http.StatusOK)
 
 		flusher, _ := w.(http.Flusher)
-		writeFragment := func(fr airouter.TranscriptFragment) bool {
+		writeFragment := func(fr llmuxclient.TranscriptFragment) bool {
 			b, _ := json.Marshal(fr)
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
 				return false

@@ -70,13 +70,13 @@ type lobbyReq struct {
 
 // LobbyParticipantReport is the per-participant bandwidth entry in the response.
 type LobbyParticipantReport struct {
-	ID          string  `json:"id"`
-	DisplayName string  `json:"display_name,omitempty"`
-	UploadMbps  float64 `json:"upload_mbps"`
+	ID           string  `json:"id"`
+	DisplayName  string  `json:"display_name,omitempty"`
+	UploadMbps   float64 `json:"upload_mbps"`
 	DownloadMbps float64 `json:"download_mbps"`
-	LatencyMs   float64 `json:"latency_ms"`
-	Source      string  `json:"source,omitempty"`  // "speedtest" | "traffic" | "cache" | "peer" | "unavailable"
-	Error       string  `json:"error,omitempty"`
+	LatencyMs    float64 `json:"latency_ms"`
+	Source       string  `json:"source,omitempty"` // "speedtest" | "traffic" | "cache" | "peer" | "unavailable"
+	Error        string  `json:"error,omitempty"`
 }
 
 // LobbyCapacity is the SFU capacity estimate for the selected host.

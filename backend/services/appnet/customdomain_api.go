@@ -23,9 +23,9 @@ type customDomainResponse struct {
 	AppID          string `json:"app_id"`
 	Domain         string `json:"domain"`
 	ChallengeToken string `json:"challenge_token"`
-	TXTRecord      string `json:"txt_record"`  // the exact DNS name to set
-	Status         string `json:"status"`      // "pending" | "verified"
-	CreatedAt      string `json:"created_at"`  // RFC3339
+	TXTRecord      string `json:"txt_record"` // the exact DNS name to set
+	Status         string `json:"status"`     // "pending" | "verified"
+	CreatedAt      string `json:"created_at"` // RFC3339
 	VerifiedAt     string `json:"verified_at,omitempty"`
 }
 

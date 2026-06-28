@@ -38,9 +38,9 @@ const (
 // Supervisor wraps one long-running external process and restarts it on
 // failure. Safe for concurrent use.
 type Supervisor struct {
-	binary  string
-	args    []string
-	initBO  time.Duration
+	binary string
+	args   []string
+	initBO time.Duration
 
 	mu       sync.Mutex
 	cmd      *exec.Cmd

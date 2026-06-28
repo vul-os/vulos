@@ -96,10 +96,10 @@ func (m *e2eMockBackend) Pull(_ context.Context, _ cluster.S3Config, _ string, p
 
 // e2eHarness holds everything for a complete seeded test scenario.
 type e2eHarness struct {
-	home    string
-	mock    *e2eMockBackend
-	store   *auth.Store
-	inbox   *peering.InboxStore
+	home     string
+	mock     *e2eMockBackend
+	store    *auth.Store
+	inbox    *peering.InboxStore
 	contacts *peering.ContactStore
 
 	// anchorPub is the mock OTA trust-anchor public key seeded into the harness.

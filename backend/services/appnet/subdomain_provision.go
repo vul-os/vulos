@@ -43,8 +43,8 @@ const (
 // Deployment records the provisioned subdomain for one app+profile.
 type Deployment struct {
 	AppID       string    `json:"app_id"`
-	Profile     string    `json:"profile"`      // "default" when not specified
-	FQDN        string    `json:"fqdn"`         // e.g. notes--default.01h5t3.vulos.net
+	Profile     string    `json:"profile"` // "default" when not specified
+	FQDN        string    `json:"fqdn"`    // e.g. notes--default.01h5t3.vulos.net
 	Provisioned time.Time `json:"provisioned"`
 	TLSObtained bool      `json:"tls_obtained"` // true once ACME cert is issued
 }
@@ -182,10 +182,10 @@ func (ds *DeploymentStore) All() []*Deployment {
 type Provisioner struct {
 	store      *DeploymentStore
 	httpClient *http.Client
-	dnsAPI     string      // POST endpoint for DNS provisioning
-	baseDomain string      // e.g. "vulos.net"
-	instanceID string      // ULID of this instance
-	caddyDir   string      // dir where Caddyfile snippets are written
+	dnsAPI     string // POST endpoint for DNS provisioning
+	baseDomain string // e.g. "vulos.net"
+	instanceID string // ULID of this instance
+	caddyDir   string // dir where Caddyfile snippets are written
 }
 
 // NewProvisioner creates a Provisioner with the given stores and an optional

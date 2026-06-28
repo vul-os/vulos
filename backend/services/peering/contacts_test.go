@@ -399,7 +399,7 @@ func TestUpdateVulosAddress_Happy(t *testing.T) {
 
 func TestUpdateVulosAddress_Clear(t *testing.T) {
 	cs := newTempStore(t)
-	cs.Add(aliceID, "Alice", "")                    //nolint:errcheck
+	cs.Add(aliceID, "Alice", "")                      //nolint:errcheck
 	cs.UpdateVulosAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	// Clearing the address with an empty string should be allowed.
@@ -430,7 +430,7 @@ func TestUpdateVulosAddress_EmptyID(t *testing.T) {
 func TestUpdateVulosAddress_Persistence(t *testing.T) {
 	dir := t.TempDir()
 	cs, _ := NewContactStore(dir)
-	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
+	cs.Add(aliceID, "Alice", "")                      //nolint:errcheck
 	cs.UpdateVulosAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	cs2, err := NewContactStore(dir)
@@ -450,7 +450,7 @@ func TestUpdateVulosAddress_Persistence(t *testing.T) {
 
 func TestLookupByVulosAddress_Found(t *testing.T) {
 	cs := newTempStore(t)
-	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
+	cs.Add(aliceID, "Alice", "")                      //nolint:errcheck
 	cs.UpdateVulosAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	c, ok := cs.LookupByVulosAddress("alice@vulos.org")
@@ -464,7 +464,7 @@ func TestLookupByVulosAddress_Found(t *testing.T) {
 
 func TestLookupByVulosAddress_CaseInsensitive(t *testing.T) {
 	cs := newTempStore(t)
-	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
+	cs.Add(aliceID, "Alice", "")                      //nolint:errcheck
 	cs.UpdateVulosAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	c, ok := cs.LookupByVulosAddress("Alice@VULOS.ORG")
@@ -489,7 +489,7 @@ func TestLookupByVulosAddress_NotFound(t *testing.T) {
 
 func TestLookupByVulosAddress_EmptyAddress(t *testing.T) {
 	cs := newTempStore(t)
-	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
+	cs.Add(aliceID, "Alice", "")                      //nolint:errcheck
 	cs.UpdateVulosAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	_, ok := cs.LookupByVulosAddress("")
@@ -500,8 +500,8 @@ func TestLookupByVulosAddress_EmptyAddress(t *testing.T) {
 
 func TestLookupByVulosAddress_ReturnsSnapshot(t *testing.T) {
 	cs := newTempStore(t)
-	cs.Add(aliceID, "Alice", "")                        //nolint:errcheck
-	cs.Approve(aliceID, DefaultPerms())                 //nolint:errcheck
+	cs.Add(aliceID, "Alice", "")                      //nolint:errcheck
+	cs.Approve(aliceID, DefaultPerms())               //nolint:errcheck
 	cs.UpdateVulosAddress(aliceID, "alice@vulos.org") //nolint:errcheck
 
 	c, ok := cs.LookupByVulosAddress("alice@vulos.org")

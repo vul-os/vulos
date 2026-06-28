@@ -17,6 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Clone sibling packages referenced via file: in package.json.
+      # @vulos/relay-client  → ../vulos-relay/client
+      # @vulos/office-client → ../vulos-office
+      - name: Clone vulos-relay (relay-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
+
+      - name: Clone vulos-office (office-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -35,6 +44,10 @@ jobs:
       GOTOOLCHAIN: auto
     steps:
       - uses: actions/checkout@v4
+
+      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
+      - name: Clone vulos-apps (local replace)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
       - uses: actions/setup-go@v5
         with:
@@ -83,6 +96,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone vulos-apps (local replace)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
@@ -127,6 +143,16 @@ jobs:
         platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@v4
+
+      # Clone sibling packages required by the Dockerfile build context.
+      - name: Clone vulos-apps (local replace)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
+
+      - name: Clone vulos-relay (relay-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
+
+      - name: Clone vulos-office (office-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
 
       - uses: docker/setup-qemu-action@v3
 

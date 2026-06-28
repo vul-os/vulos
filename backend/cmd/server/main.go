@@ -20,13 +20,13 @@ import (
 	"syscall"
 	"time"
 
-	"vulos/backend/internal/airouter"
 	apikeyseam "vulos/backend/internal/apikey"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
+	"vulos/backend/internal/llmuxclient"
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
@@ -3464,7 +3464,7 @@ func main() {
 	// 503 so the office UI can render the toggle as disabled cleanly rather
 	// than getting 404s.
 	meetTranscribeEnvFromTier(os.Getenv("VULOS_TIER"))
-	if whisper, werr := airouter.NewWhisperProviderFromEnv(); werr == nil {
+	if whisper, werr := llmuxclient.NewWhisperProviderFromEnv(); werr == nil {
 		registerMeetTranscriptRoutes(mux, whisper, authStore)
 		log.Printf("[meet/transcribe] registered POST /api/meet/transcribe/{start,audio,stop}, GET /api/meet/transcribe/stream/{room_id} (provider=%s)", whisper.Name())
 	} else {

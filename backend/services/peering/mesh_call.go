@@ -63,10 +63,10 @@ const meshPingPeriod = 50 * time.Second
 // meshFrame is the generic signaling frame exchanged between browsers.
 // The server does not interpret the payload beyond routing.
 type meshFrame struct {
-	Type   string          `json:"type"`
-	From   string          `json:"from,omitempty"`
-	To     string          `json:"to,omitempty"`
-	RoomID string          `json:"roomId,omitempty"`
+	Type   string `json:"type"`
+	From   string `json:"from,omitempty"`
+	To     string `json:"to,omitempty"`
+	RoomID string `json:"roomId,omitempty"`
 	// The rest of the fields are arbitrary and forwarded verbatim.
 	// We use json.RawMessage so we can re-serialise the whole frame unchanged.
 	raw json.RawMessage // original bytes — used for forwarding
@@ -80,7 +80,7 @@ type meshGenericFrame map[string]json.RawMessage
 
 // meshPeer represents one connected browser in a room.
 type meshPeer struct {
-	id   string          // Vula peer ID (from ?peer= query param)
+	id   string // Vula peer ID (from ?peer= query param)
 	ws   *websocket.Conn
 	send chan []byte
 	done chan struct{}

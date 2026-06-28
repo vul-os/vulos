@@ -62,22 +62,22 @@ type Service struct {
 	// chooser implements the P2P-preferred / relay-fallback decision.
 	chooser *PathChooser
 
-	mu       sync.Mutex
-	started  bool
-	state    State
-	lastErr  error
-	stopHB   context.CancelFunc // heartbeat cancel
-	ready    bool
+	mu      sync.Mutex
+	started bool
+	state   State
+	lastErr error
+	stopHB  context.CancelFunc // heartbeat cancel
+	ready   bool
 }
 
 // State is the coarse readiness state exposed via the status endpoint.
 type State string
 
 const (
-	StateStopped     State = "stopped"
-	StateStarting    State = "starting"
-	StateReady       State = "ready"
-	StateDegraded    State = "degraded" // supervisor or fabric in error, but still trying
+	StateStopped      State = "stopped"
+	StateStarting     State = "starting"
+	StateReady        State = "ready"
+	StateDegraded     State = "degraded" // supervisor or fabric in error, but still trying
 	StateUnregistered State = "unregistered"
 )
 
@@ -259,11 +259,11 @@ func (s *Service) fail(err error) {
 // registration is the snapshot the fabric receives at register/heartbeat time.
 func (s *Service) registration() HostRegistration {
 	return HostRegistration{
-		HostID:      s.cfg.Identity.HostID,
+		HostID:       s.cfg.Identity.HostID,
 		PublicKeyB64: s.cfg.Identity.PublicKeyB64,
-		Domain:      s.cfg.Identity.Domain,
-		Hostname:    s.cfg.AdvertiseHostname,
-		Port:        s.cfg.AdvertisePort,
+		Domain:       s.cfg.Identity.Domain,
+		Hostname:     s.cfg.AdvertiseHostname,
+		Port:         s.cfg.AdvertisePort,
 		Capabilities: HostCapabilities{
 			Codec:       s.cfg.Codec,
 			MaxBitrate:  s.cfg.MaxBitrateKbps,

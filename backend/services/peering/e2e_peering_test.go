@@ -7,16 +7,16 @@
 //
 // Surfaces exercised:
 //
-//   1. Identity exchange: two peers generate keypairs; each can encode/decode
-//      the other's Vula ID.
-//   2. 1:1 message send/receive: Peer A signs and delivers a TypeMessage
-//      envelope to Peer B's InboundMiddleware; Peer B stores it in its inbox.
-//   3. Signed feed publish + subscribe: Peer A publishes a signed entry and
-//      Peer B can fetch and verify it; chain integrity is confirmed.
-//   4. CRDT collaborative-doc lease: CollabStore creates a doc and receives an
-//      inbound CRDT update; the update is persisted and can be retrieved.
-//   5. Relay forwarder opacity: a RelayStore deposits an opaque ciphertext blob;
-//      the relay stores it but cannot read the plaintext payload.
+//  1. Identity exchange: two peers generate keypairs; each can encode/decode
+//     the other's Vula ID.
+//  2. 1:1 message send/receive: Peer A signs and delivers a TypeMessage
+//     envelope to Peer B's InboundMiddleware; Peer B stores it in its inbox.
+//  3. Signed feed publish + subscribe: Peer A publishes a signed entry and
+//     Peer B can fetch and verify it; chain integrity is confirmed.
+//  4. CRDT collaborative-doc lease: CollabStore creates a doc and receives an
+//     inbound CRDT update; the update is persisted and can be retrieved.
+//  5. Relay forwarder opacity: a RelayStore deposits an opaque ciphertext blob;
+//     the relay stores it but cannot read the plaintext payload.
 package peering
 
 import (

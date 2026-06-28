@@ -84,7 +84,7 @@ func TestWebApp_CannotBeCoercedToStream(t *testing.T) {
 func TestWebApp_URL_CannotBeDowngraded(t *testing.T) {
 	intent := Intent{
 		URL:        "https://app.example.com/",
-		NeedsGPU:  true,
+		NeedsGPU:   true,
 		Game:       true,
 		ComputeJob: true,
 		LocalOnly:  false,
@@ -194,8 +194,8 @@ func TestComputeJob_NotOverriddenByCPUStream(t *testing.T) {
 	intent := Intent{AppType: "desktop", ComputeJob: true}
 	lane := Classify(intent)
 	if lane == LaneCPUStream {
-		t.Fatalf("LANE-SEC-03 REGRESSION: ComputeJob intent classified as CPUStream "+
-			"— a headless compute job must not open a Xvfb stream session. "+
+		t.Fatalf("LANE-SEC-03 REGRESSION: ComputeJob intent classified as CPUStream " +
+			"— a headless compute job must not open a Xvfb stream session. " +
 			"This wastes resource and cross-contaminates stream sessions.")
 	}
 	if lane != LaneComputeWorker {
