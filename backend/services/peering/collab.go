@@ -1,4 +1,4 @@
-// Package peering implements Vula's peer-to-peer collaboration layer.
+// Package peering implements Vulos' peer-to-peer collaboration layer.
 // collab.go handles Yjs CRDT document sync and awareness over the
 // "collab" WebSocket channel, plus server-to-server relay of opaque
 // binary update blobs.

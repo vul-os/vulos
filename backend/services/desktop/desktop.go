@@ -1,10 +1,10 @@
 // Package desktop parses .desktop files (freedesktop.org Desktop Entry spec)
-// and provides a unified app listing for the Vula OS launchpad.
+// and provides a unified app listing for the Vulos launchpad.
 //
 // Sources:
 //   - /usr/share/applications/*.desktop (apt-installed apps)
 //   - ~/.local/share/applications/*.desktop (user apps)
-//   - Web apps registered via the Vula registry
+//   - Web apps registered via the Vulos registry
 package desktop
 
 import (

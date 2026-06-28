@@ -340,7 +340,7 @@ func (svc *Service) Delete(userID, credentialID string) error {
 
 func (svc *Service) waInstance() (*wa.WebAuthn, error) {
 	return wa.New(&wa.Config{
-		RPDisplayName: "Vula OS",
+		RPDisplayName: "Vulos",
 		RPID:          svc.rpID,
 		RPOrigins:     svc.origins,
 	})

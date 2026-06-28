@@ -1,4 +1,4 @@
-// Package peering implements Vula OS peer-to-peer communication services.
+// Package peering implements Vulos peer-to-peer communication services.
 // drop_ble.go implements BLE (Bluetooth Low Energy) advertisement and scanning
 // for the Drop feature on bare-metal Vula devices.
 //

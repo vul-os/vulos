@@ -1,4 +1,4 @@
-// Package cluster provides the S3 cluster client for Vula OS multi-node sync.
+// Package cluster provides the S3 cluster client for Vulos multi-node sync.
 // It wraps github.com/minio/minio-go/v7 with SSE-C encryption (server-side encryption
 // with customer-provided keys) and derives the 256-bit AES key from a passphrase
 // using Argon2id (time=3, mem=64 MiB, threads=4, keyLen=32).

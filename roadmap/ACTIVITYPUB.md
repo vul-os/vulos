@@ -4,7 +4,7 @@ A single web app that combines microblogging, photos, video, and forums — all 
 
 > **Goal.** One bundled `social` app that speaks ActivityPub well enough to feel like a usable Mastodon / Pixelfed / PeerTube / Lemmy client. OAuth2 against the user's existing server, not a new server we run.
 > **Non-goals.** Running our own ActivityPub server. Re-implementing every quirk of every fork. Bridging to non-AP networks (Bluesky, Nostr) — those are separate apps if anyone wants them.
-> **Status.** Scaffold, OAuth2 login, posting/boost/fav, Photos + Video views, Lemmy forums, and push-to-notify all in (FED-01 through FED-06).
+> **Status.** ✅ SHIPPED. Scaffold, OAuth2 login, posting/boost/fav, Photos + Video views, Lemmy forums, and push-to-notify all implemented (FED-01 through FED-06). Promoted from `roadmap/future/` 2026-06.
 
 ---
 

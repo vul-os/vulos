@@ -683,3 +683,68 @@ DSNs work unchanged since modernc parses standard SQLite URI syntax. Dropped `gi
 from `backend/go.mod` (no remaining consumers; `go mod tidy` removed transitive indirects).
 AC: [x] both test files use modernc driver [x] go.mod no longer requires mattn [x] go build + go vet [x] CGO_ENABLED=0 go build [x] CGO_ENABLED=0 go test ./... green [x] npm run build + npm test green
 
+---
+
+## Area: Docs-migrated audit items (2026-06)
+
+> Items migrated from stale root docs (moved to docs/history/ and docs/security/) to keep them tracked.
+> Source docs: AUDIT-CONSOLIDATED.md, SECURITY-AUDIT-2.md, SECURITY-WEBAPPS.md, FIRSTBOOT-E2E.md.
+
+### [CRDT-INBOUND-01] RegisterCollabHandlers CRDT inbound-handler wiring
+`done` · P1 · S · dep: none · parallel: yes — backend/services/peering/collab.go, backend/services/peering/collab_test.go
+Scope: Audit finding: `RegisterCollabHandlers` was identified as potentially wiring the plain `handleInboundUpdate`
+(reads from body) instead of `HandleInboundCollabUpdate` (reads pre-verified envelope from context, set by
+InboundMiddleware). If body-reading handler were wired, remote CRDT updates would return 400 because
+InboundMiddleware already consumed the body. Current code in `RegisterCollabHandlers` correctly wires
+`HandleInboundCollabUpdate`. A regression test (`TestRegisterCollabHandlers_InboundUsesEnvelopePath`) was
+added to `collab_test.go` to ensure this wiring is never reverted: the test sends a request with empty body
+(simulating InboundMiddleware having consumed it) but with an Envelope in context, and asserts 200 + state
+persisted from context — a wrong wiring would return 400.
+AC: [x] `RegisterCollabHandlers` wires `HandleInboundCollabUpdate` [x] regression test added and green [x] `go test ./services/peering/...` green
+
+### [SECAUDIT2-H1-FIX] Registry static-download checksum + safe tar extraction (HIGH)
+`done` · P0 · M · dep: none · parallel: yes — backend/services/appnet/registry.go
+Scope: SECAUDIT2 HIGH finding H1: `validateRecipeSecurity` only inspected `recipe.Install` for checksum
+requirements, not `recipe.DownloadURL`. A static-download recipe (`DownloadURL` set, `Install` empty) with an
+empty `Checksum` passed the security gate, allowing unverified archive download + extraction via system `tar`
+(which does not reject `../` members, absolute paths, or symlinks). Fix applied: `validateRecipeSecurity` now
+also requires a non-empty `Checksum` when `recipe.DownloadURL != ""` (SECAUDIT2-H1 gate). Additionally,
+`staticInstall` now lists archive members with `tar tf` before extraction and rejects any member containing
+`../`, absolute paths, or `..` components (defense-in-depth traversal screen). Both fixes are in production
+code and the regression tests (`TestStaticDownloadRequiresChecksum`, `TestStaticDownloadWithChecksumAccepted`)
+in `backend/services/appnet/registry_secaudit2_test.go` are green.
+AC: [x] `validateRecipeSecurity` rejects `DownloadURL + empty Checksum` [x] `staticInstall` screens archive members [x] regression tests green [x] `go test ./services/appnet/...` green
+
+### [WEBAPPS-HARDENING-01] Remove `unsafe-inline` from CSP (backlog)
+`todo` · P2 · L · dep: none · parallel: no — apps/*/index.html (all 20 apps)
+Scope: SECURITY-WEBAPPS audit backlog item 1. All 20 bundled app HTML files currently use
+`script-src 'self' 'unsafe-inline'` in their CSP meta tags because app scripts are inline. Removing
+`unsafe-inline` requires extracting all inline scripts to external `.js` files and using content-hash
+nonces. Significant refactor across all 20 apps. Do not weaken existing CSP — only tighten.
+AC: [ ] all 20 app index.html files have no inline scripts [ ] CSP no longer includes `unsafe-inline` [ ] `npm run build` green [ ] no XSS regression in notes/social/calculator apps
+
+### [WEBAPPS-HARDENING-02] Runtime permission enforcement via seccomp/landlock (backlog)
+`todo` · P2 · M · dep: none · parallel: yes — backend/services/appnet/launcher.go
+Scope: SECURITY-WEBAPPS audit backlog item 2. The app launcher validates manifest permissions at parse time
+but does not enforce them at the kernel layer. Apps without `"camera"` in permissions can still access camera
+devices at the OS level. Add seccomp/landlock profiles in `LaunchManifest` that map declared permissions to
+OS-level syscall/device restrictions.
+AC: [ ] apps without `"camera"` cannot open `/dev/video*` [ ] apps without `"microphone"` cannot open `/dev/snd/*` [ ] `go build ./backend/...` green
+
+### [WEBAPPS-HARDENING-03] Mastodon content sanitization with DOMPurify (backlog)
+`todo` · P2 · S · dep: none · parallel: yes — apps/social/index.html
+Scope: SECURITY-WEBAPPS audit backlog item 3. `apps/social/index.html` renders `actual.content` as raw HTML
+(Mastodon ActivityPub `content` field). A malicious Mastodon-compatible instance that does not sanitize its
+content could deliver XSS payloads. Add DOMPurify to sanitize `actual.content` client-side before rendering.
+AC: [ ] DOMPurify import added [ ] `actual.content` passes through `DOMPurify.sanitize()` before innerHTML [ ] npm run build green
+
+### [FIRSTBOOT-GAP-01] storageprov↔cluster live-reload wiring (deferred)
+`todo` · P3 · M · dep: none · parallel: yes — backend/services/storageprov/, backend/services/cluster/
+Scope: FIRSTBOOT-E2E audit gap. After `POST /api/setup/storage` writes `storage.json`, the running cluster
+service does not pick up the new credentials without a server restart (it reads only from `VULOS_S3_*` env
+vars at boot). A proper fix would have `storageprov`'s handler signal the cluster service to reload config at
+runtime, or have the cluster service watch `storage.json`. Deferred; documented in roadmap/INIT.md and
+docs/DEPLOY.md. No user-visible regression on new installs (operators pre-set `VULOS_S3_*` env vars or restart
+post-wizard).
+AC: [ ] `storageprov` notifies cluster service on write [ ] cluster reloads S3 config without restart [ ] `go test ./services/storageprov/... ./services/cluster/...` green
+

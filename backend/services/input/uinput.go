@@ -183,7 +183,7 @@ func createMouseDevice(screenW, screenH int) (*Device, error) {
 
 	// Setup device info
 	dev := uinputUserDev{}
-	copy(dev.Name[:], "Vula OS Virtual Mouse")
+	copy(dev.Name[:], "Vulos Virtual Mouse")
 	dev.ID = inputID{BusType: 0x03, Vendor: 0x1234, Product: 0x0001, Version: 1} // BUS_USB
 	dev.AbsMax[absX] = int32(screenW - 1)
 	dev.AbsMax[absY] = int32(screenH - 1)
@@ -217,7 +217,7 @@ func createKeyboardDevice() (*Device, error) {
 	}
 
 	dev := uinputUserDev{}
-	copy(dev.Name[:], "Vula OS Virtual Keyboard")
+	copy(dev.Name[:], "Vulos Virtual Keyboard")
 	dev.ID = inputID{BusType: 0x03, Vendor: 0x1234, Product: 0x0002, Version: 1}
 
 	if _, err := f.Write((*[unsafe.Sizeof(dev)]byte)(unsafe.Pointer(&dev))[:]); err != nil {
@@ -261,7 +261,7 @@ func createGamepadDevice() (*Device, error) {
 	ioctl(fd, uiSetFfBit, ffRumble)
 
 	dev := uinputUserDev{}
-	copy(dev.Name[:], "Vula OS Virtual Gamepad")
+	copy(dev.Name[:], "Vulos Virtual Gamepad")
 	dev.ID = inputID{BusType: 0x03, Vendor: 0x045e, Product: 0x028e, Version: 1} // Xbox 360 IDs
 	dev.EffectsMax = 4                                                           // small pool; one active rumble effect is typical
 	// Analog sticks: -32768 to 32767

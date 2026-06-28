@@ -375,7 +375,7 @@ func main() {
 	}
 
 	log.SetPrefix("[vulos-init] ")
-	log.Println("booting Vula OS...")
+	log.Println("booting Vulos...")
 	plymouthProgress(0) // milestone: boot start
 
 	// Phase 1: Mount essential filesystems

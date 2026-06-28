@@ -2,7 +2,7 @@
 
 > **Goal.** Make the AI assistant feel like the OS's brain rather than a separate app — surfaced from the desktop, the dock, app empty/error states, and right-click context menus. Let users generate, save, and iterate on small "AI apps" (HTML + optional Python sandbox).
 > **Non-goals.** Replacing real apps with chat. Training models. Running models inside the OS — providers (Ollama, Claude, OpenAI) are pluggable.
-> **Status.** Foundation is in: provider layer, sandbox, viewport rendering, save/launch. Outstanding: editing/versioning AI apps, public-app visibility + topbar warning, deeper context-menu integration.
+> **Status.** Foundation is in: AI apps (viewport rendering + Python sandbox), save/launch, and deeper context-menu integration. **airouter REMOVED** (2026-06) — the custom multi-provider Go airouter service has been replaced by the **llmux gateway**. All LLM calls now route through `LLMUX_URL` (the llmux service URL, configured per instance). The `backend/internal/airouter/` package is retired; callers use the llmux HTTP API directly. Outstanding: editing/versioning AI apps, public-app visibility + topbar warning.
 
 ## Choosing a Harness
 

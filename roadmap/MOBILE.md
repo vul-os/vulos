@@ -4,7 +4,7 @@ Go webapp for SMS and voice calls on Linux, with remote streaming support via th
 
 > **Goal.** Treat the modem as another OS service. ModemManager (D-Bus) for SMS + voice + signal, lpac for eSIM management, a `phone` app for Messages + Dialer. Calls hand off to the existing peering audio pipeline where possible.
 > **Non-goals.** Becoming a SIP/VoIP provider. Replacing the phone app on Android.
-> **Status.** Telephony service, SMS + voice + eSIM backend, and Messages + Dialer UI are in. Outstanding: responsive shell polish (MOBILE-06).
+> **Status.** ✅ SHIPPED. Telephony service (ModemManager D-Bus), SMS + voice + eSIM backend, and Messages + Dialer UI are all implemented and wired. Outstanding: responsive shell polish (MOBILE-06). Promoted from `roadmap/future/` 2026-06.
 
 ---
 

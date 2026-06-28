@@ -1,4 +1,4 @@
-// Package cluster implements cross-node cluster coordination for Vula OS.
+// Package cluster implements cross-node cluster coordination for Vulos.
 // This file provides advisory presence leases that let nodes detect when another
 // node has a file open for editing. Leases are written to S3-compatible storage
 // under the key leases/{user_id}/{sha256(file)} and expire after 60 seconds

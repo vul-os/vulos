@@ -1,4 +1,4 @@
-// Package cluster implements multi-node cluster coordination for Vula OS.
+// Package cluster implements multi-node cluster coordination for Vulos.
 // Nodes announce themselves by writing metadata to S3 (via the CLUSTER-03
 // encrypted client) and discover peers by reading those metadata objects.
 //

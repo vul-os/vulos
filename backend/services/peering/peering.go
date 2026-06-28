@@ -1,6 +1,6 @@
-// Package peering implements Vula's direct instance-to-instance communication layer.
+// Package peering implements Vulos' direct instance-to-instance communication layer.
 //
-// Every Vula instance is a server — if you're running Vula, you can receive.
+// Every Vulos instance is a server — if you're running Vulos, you can receive.
 // Peering enables server-to-server messaging, media transfer, calls, and
 // real-time collaboration without relay infrastructure or third-party accounts.
 //

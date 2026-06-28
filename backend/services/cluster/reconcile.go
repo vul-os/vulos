@@ -1,4 +1,4 @@
-// Package cluster manages multi-node coordination for Vula OS.
+// Package cluster manages multi-node coordination for Vulos.
 // It reconciles the desired installed-apps state (from the shared cr-sqlite
 // installed_apps table) against the actual state on the local filesystem,
 // calling appnet.AppStore.InstallFromRegistry / Uninstall as needed.

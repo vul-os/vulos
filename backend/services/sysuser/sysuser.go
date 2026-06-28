@@ -12,8 +12,8 @@ import (
 	"syscall"
 )
 
-// Service manages Linux system users that map to Vula OS profiles.
-// Each Vula profile gets a real Linux user with sudo access and bash.
+// Service manages Linux system users that map to Vulos profiles.
+// Each Vulos profile gets a real Linux user with sudo access and bash.
 type Service struct {
 	mu sync.Mutex
 }
@@ -187,7 +187,7 @@ func (s *Service) ensureBashrc(homeDir, username string) {
 	if _, err := os.Stat(bashrc); err == nil {
 		return // already exists
 	}
-	content := fmt.Sprintf(`# Vula OS shell config
+	content := fmt.Sprintf(`# Vulos shell config
 export PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]vula\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]\$ '
 export HOSTNAME=vula
 alias ls='ls --color=auto'

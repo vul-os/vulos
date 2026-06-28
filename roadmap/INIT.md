@@ -15,14 +15,14 @@ The software-level setup wizard that runs after the OS boots for the first time.
 ```
 ┌─────────────────────────────────────────────┐
 │                                             │
-│              Welcome to Vula                │
+│              Welcome to Vulos                │
 │                                             │
 │   ┌─────────────────┐ ┌──────────────────┐  │
 │   │                 │ │                  │  │
 │   │   New System    │ │  Join Existing   │  │
 │   │                 │ │                  │  │
 │   │  Set up a fresh │ │ Connect to your  │  │
-│   │  Vula instance  │ │ existing cluster │  │
+│   │  Vulos instance  │ │ existing cluster │  │
 │   │                 │ │                  │  │
 │   └─────────────────┘ └──────────────────┘  │
 │                                             │
@@ -41,7 +41,7 @@ The existing steps (Language, Timezone, Network, Account, Appearance) are unchan
 
 ### Step: Instance Identity
 
-Each Vula instance gets two identifiers:
+Each Vulos instance gets two identifiers:
 
 1. **Instance ID** — a ULID generated locally at first boot. Globally unique, no server check needed. This is the real identifier used for DNS routing (e.g., `*.01h5t3e8k2qj7r9xmvn4p.vulos.org`). Not user-chosen, not editable.
 2. **Hostname** — human-readable name for LAN discovery via mDNS. Auto-generated from `{username}-{device}`, user can customize. Only matters on local network.
@@ -102,7 +102,7 @@ Recommend self-hosting MinIO on this node. This is the foundation for multi-node
 │                                             │
 │           Set up storage                    │
 │                                             │
-│   Vula can self-host storage so your        │
+│   Vulos can self-host storage so your        │
 │   files, apps, and settings sync across     │
 │   all your devices automatically.           │
 │                                             │
@@ -377,7 +377,7 @@ User enters S3/MinIO credentials to reach the cluster:
 │   └────────────────┘  └────────────────┘    │
 │                                             │
 │   ── or scan a join code from ──            │
-│      another Vula node                      │
+│      another Vulos node                      │
 │                                             │
 │          [ QR / Code ]                      │
 │                                             │
@@ -486,8 +486,8 @@ type JoinCode struct {
 ```
 
 Encoded as:
-- **QR code** — scan with phone camera or another Vula node's camera
-- **Short code** — base32 alphanumeric, e.g. `VULA-K7MX-P2NR-9FTD` (typed manually)
+- **QR code** — scan with phone camera or another Vulos node's camera
+- **Short code** — base32 alphanumeric, e.g. `VULOS-K7MX-P2NR-9FTD` (typed manually)
 
 The join code creates a temporary MinIO service account with limited permissions (read-only for initial sync, full access once node is registered). The generating node revokes the temporary credentials after the joining node registers itself.
 
@@ -527,7 +527,7 @@ func boot() {
 POST /api/setup/new              → proceed with fresh setup wizard
 POST /api/setup/join             → { endpoint, bucket, access_key, secret_key }
                                     validates credentials, starts sync
-POST /api/setup/join-code        → { code: "VULA-K7MX-..." }
+POST /api/setup/join-code        → { code: "VULOS-K7MX-..." }
                                     decodes join code, starts sync
 GET  /api/setup/sync-status      → current sync progress (phases, counts, speed)
 POST /api/setup/sync-background  → dismiss sync screen, continue in background
@@ -545,3 +545,22 @@ GET  /api/cluster/join-code      → generate join code (from existing node)
 5. **New system flow** — full wizard with all new steps integrated
 6. **Join flow** — connect storage, sync screen with progress UI, reentrant sync state
 7. **Join codes** — generation from existing nodes, QR + short code encoding, temporary credentials
+
+---
+
+## Known Gaps (from FIRSTBOOT-E2E audit 2026-05)
+
+### Gap 1 — storageprov↔cluster wiring for "New Cluster" shape
+
+When a user completes the **New System + Storage** path (`IS05_StorageStep` → `POST /api/setup/storage`), `storageprov` writes `storage.json` with the generated S3 credentials. However, the running `cluster` service (heartbeat + CRDT sync loop) reads its config from `VULOS_S3_*` env vars set at **server start**, not from `storage.json`. This means:
+
+- The cluster heartbeat and CRDT sync loop are **not automatically started** when the user provisions storage through the wizard on a live server.
+- The operator must ensure `VULOS_S3_*` env vars are pre-configured (e.g. via Docker / systemd env) OR restart the server after `storageprov` writes `storage.json`.
+
+**Current workaround:** documented in `docs/DEPLOY.md`. A post-`storageprov` server restart picks up the new credentials. A proper fix would have `storageprov`'s `RegisterHandlers` signal the cluster service to reload config, or have the cluster service watch `storage.json` at runtime.
+
+### Gap 2 — Deployment-shape state machine for post-setup `/api/setup/join`
+
+`/api/setup/join` (and its `/status` companion) remain reachable **after** setup completes — they are in `publicPaths` and do not check `instance.json` existence. SECAUDIT2 (L-2) notes this as an accepted-risk low-severity finding: the passphrase gate means no config overwrite without a valid cluster secret, and there is a per-IP rate limit. The tracked remediation (gate behind "setup not yet complete" check) is deferred to a future hardening wave.
+
+**Priority:** low. Document in THREAT-MODEL.md; revisit when `/api/setup/*` gets a dedicated setup-state router.

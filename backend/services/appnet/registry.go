@@ -73,8 +73,8 @@ type Registry struct {
 //	independent and always enforced for binary downloads.
 type RegistryEntry struct {
 	Name        string                    `json:"name"`
-	Vetted      bool                      `json:"vetted"` // true = reviewed and approved by Vula OS team
-	Type        string                    `json:"type"`   // "web" (serves HTTP), "desktop" (GUI app, streamed via XvfbBackend), or "service" (background daemon)
+	Vetted      bool                      `json:"vetted"` // true = reviewed and approved by Vulos team
+	Type        string                    `json:"type"`   // "web" (serves HTTP), "desktop" (GUI app, streamed via WebRTC), or "service" (background daemon)
 	Arch        []string                  `json:"arch"`   // supported architectures (e.g. ["amd64","arm64"]), empty = all
 	Description string                    `json:"description"`
 	Category    string                    `json:"category"`

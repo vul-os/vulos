@@ -2402,7 +2402,7 @@ func main() {
 			req.Height = 500
 		}
 		if req.Title == "" {
-			req.Title = "Vula"
+			req.Title = "Vulos"
 		}
 
 		// Spawn a new Cog instance as a standalone Wayland window

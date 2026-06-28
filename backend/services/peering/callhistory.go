@@ -1,4 +1,4 @@
-// Package peering implements Vula OS peer-to-peer communication services.
+// Package peering implements Vulos peer-to-peer communication services.
 // callhistory.go — persistent call log storage and HTTP endpoints (PEER-24).
 package peering
 

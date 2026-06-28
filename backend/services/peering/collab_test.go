@@ -429,3 +429,64 @@ func TestHandleInboundCollabUpdate_NoEnvelopeFallback(t *testing.T) {
 		t.Errorf("persisted state = %q, want %q", state, payload)
 	}
 }
+
+// ── RegisterCollabHandlers wiring regression ──────────────────────────────────
+
+// TestRegisterCollabHandlers_InboundUsesEnvelopePath is a regression test for
+// the CRDT inbound-handler wiring bug: the route POST
+// /api/peering/inbound/collab-update MUST be wired to HandleInboundCollabUpdate
+// (which reads the pre-verified envelope from context, set by InboundMiddleware)
+// NOT to the plain handleInboundUpdate (which reads from the request body —
+// a body that InboundMiddleware has already consumed).
+//
+// The test simulates what happens after InboundMiddleware runs:
+//   - request body is empty (already consumed)
+//   - the decoded Envelope is in the request context
+//
+// If the route were wired to handleInboundUpdate it would read an empty body,
+// fail JSON decode, and return 400. The correct wiring (HandleInboundCollabUpdate)
+// reads from context and returns 200.
+func TestRegisterCollabHandlers_InboundUsesEnvelopePath(t *testing.T) {
+	s := newTestCollabStore(t)
+
+	mux := http.NewServeMux()
+	RegisterCollabHandlers(mux, s)
+
+	ops := []byte("crdt-ops-binary")
+	opsB64 := base64.StdEncoding.EncodeToString(ops)
+	innerPayload, _ := json.Marshal(map[string]string{
+		"doc_id": "wiring-doc",
+		"ops":    opsB64,
+	})
+	env := &Envelope{
+		ID:      "reg-test-id",
+		From:    "vula:ed25519:regtest",
+		Type:    TypeCollabUpdate,
+		Payload: json.RawMessage(innerPayload),
+	}
+
+	// Body is nil: simulating InboundMiddleware having already consumed it.
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/inbound/collab-update", nil)
+	ctx := context.WithValue(req.Context(), EnvelopeKey, env)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("REGRESSION: RegisterCollabHandlers wired the wrong handler for "+
+			"POST /api/peering/inbound/collab-update — got status %d (want 200). "+
+			"The route must use HandleInboundCollabUpdate (reads envelope from "+
+			"context), not handleInboundUpdate (reads from body, which InboundMiddleware "+
+			"has already consumed). Body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Confirm state was persisted from the envelope ops (not from body).
+	state, err := s.loadState("wiring-doc")
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	if string(state) != string(ops) {
+		t.Errorf("persisted state = %q, want %q (envelope ops)", state, ops)
+	}
+}

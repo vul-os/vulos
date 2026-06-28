@@ -33,8 +33,6 @@ Open http://localhost:5173
 
 Vite proxies `/api` and `/app` requests to the backend on `:8080`.
 
-> The remote browser (Xvfb + Chromium + GStreamer) only runs inside Docker. In dev mode the backend will log a warning and skip it.
-
 ## Project Structure
 
 ```

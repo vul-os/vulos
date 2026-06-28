@@ -6,7 +6,7 @@ For the underlying cr-sqlite/S3 model, schema, and conflict copies see CLUSTER.m
 
 > **Goal.** Make data redundant by construction (no failover election) and let a new or recovering instance join without replaying an unbounded changeset log: bootstrap from a recent snapshot + a short tail.
 > **Non-goals.** A primary node. A central database. Hot-replicating the running OS (that's OS-DISTRIBUTION.md). Changing cr-sqlite's CRDT semantics — this is about *transport tiers* and *log compaction*, not merge logic.
-> **Status.** Design. CLUSTER-05 already streams cr-sqlite changesets to S3 (the cold path). SYNC-* add the instance↔instance hot path over the peering mesh and the bucket-side snapshot/compaction so the per-node changeset log stops growing unbounded.
+> **Status.** ✅ SHIPPED. The cr-sqlite cold-path changeset streaming (CLUSTER-05), the instance↔instance hot-path relay over the peering mesh (SYNC-01/02), and bucket-side snapshot/compaction (SYNC-03) are all implemented in `backend/services/sync/` (hotpath, bootstrap, snapshot packages). The sync engine starts alongside the cluster service at boot. Snapshot compaction runs under the COORDINATION.md exclusion lease.
 
 ---
 

@@ -1,47 +1,11 @@
 # Third-Party Licenses
 
-Vula OS includes and depends on the following third-party software. Each
+Vulos includes and depends on the following third-party software. Each
 component is listed with its license. Full license texts are provided below.
 
 ---
 
 ## Runtime Dependencies (Docker Image)
-
-### Chromium
-
-- **Source**: https://www.chromium.org/
-- **License**: BSD 3-Clause
-- **Usage**: Remote browser rendering engine in the container
-
-```
-Copyright 2015 The Chromium Authors
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-   * Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-   * Redistributions in binary form must reproduce the above
-copyright notice, this list of conditions and the following disclaimer
-in the documentation and/or other materials provided with the
-distribution.
-   * Neither the name of Google LLC nor the names of its
-contributors may be used to endorse or promote products derived from
-this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
 
 ### Debian Linux
 
@@ -60,12 +24,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - **Source**: https://www.freedesktop.org/wiki/Software/PulseAudio/
 - **License**: LGPL-2.1-or-later
 - **Usage**: Audio server in the container
-
-### Xvfb (X Virtual Framebuffer)
-
-- **Source**: https://www.x.org/
-- **License**: MIT/X11
-- **Usage**: Headless display server for Chromium
 
 ### xdotool
 
@@ -213,8 +171,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 | License | Packages |
 |---------|----------|
-| MIT | React, React DOM, Tailwind CSS, Vite, xterm.js, Pion, creack/pty, Node.js, Xvfb |
-| BSD 3-Clause | Chromium, Go, golang.org/x/*, google/uuid, xdotool |
+| MIT | React, React DOM, Tailwind CSS, Vite, xterm.js, Pion, creack/pty, Node.js |
+| BSD 3-Clause | Go, golang.org/x/*, google/uuid, xdotool |
 | LGPL-2.1+ | GStreamer, PulseAudio |
 | PSF | Python 3 |
 | OFL-1.1 | Noto Fonts |
@@ -222,4 +180,4 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 > **Note**: LGPL dependencies (GStreamer, PulseAudio) are dynamically linked system
 > packages installed via Debian's package manager. They are not statically linked into
-> or distributed as part of Vula OS's own source code.
+> or distributed as part of Vulos' own source code.

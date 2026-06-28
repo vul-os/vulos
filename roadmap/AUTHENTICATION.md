@@ -2,12 +2,13 @@
 
 System-level authentication infrastructure for Vulos. Replaces the need for a mobile phone across banking, government, healthcare, enterprise, and every service that currently demands SMS OTP or a phone app.
 
-The core insight: a Vula instance with a TPM is a better "possession factor" than a phone. It's always on, doesn't get lost, doesn't change every 2 years, and has equivalent secure storage. The phone was never the point — proof of possession of a private key was.
+The core insight: a Vulos instance with a TPM is a better "possession factor" than a phone. It's always on, doesn't get lost, doesn't change every 2 years, and has equivalent secure storage. The phone was never the point — proof of possession of a private key was.
 
-This is not a single app. It's an OS-level service that every Vula app uses when authenticating against external services.
+This is not a single app. It's an OS-level service that every Vulos app uses when authenticating against external services.
 
-> **Goal.** Make a Vula instance a credible "possession factor" — TPM-sealed device identity, TOTP (with Google Authenticator import/export), a real encrypted password manager, FIDO2 server-side passkeys, mTLS client certs, and SMS-over-VoIP for the last-mile services that still demand it.
+> **Goal.** Make a Vulos instance a credible "possession factor" — TPM-sealed device identity, TOTP (with Google Authenticator import/export), a real encrypted password manager, FIDO2 server-side passkeys, mTLS client certs, and SMS-over-VoIP for the last-mile services that still demand it.
 > **Non-goals.** Becoming an identity provider for the open web. We're a local authenticator/vault, not Okta.
+> **Status.** ✅ SHIPPED. All AUTH tasks implemented. TOTP vault + UI + Google Authenticator import/export, credential vault (AES-256-GCM), TPM/software keystore abstraction, mTLS cert store, SMS receive, device-identity API (AUTH-10), server-side FIDO2/passkeys (AUTH-12), and WebAuthn bridge data channel (AUTH-13/14) are all wired. Promoted from `roadmap/future/` 2026-06.
 > **Status.** Complete. All AUTH tasks shipped. TOTP (vault + UI + import), credential vault, TPM/software keystore abstraction, mTLS cert store, SMS receive, device-identity API (AUTH-10 — including the device API that landed in AUTH-10c), server-side FIDO2/passkeys (AUTH-12), and WebAuthn bridge data channel (AUTH-13/14) are all implemented and wired.
 
 ---

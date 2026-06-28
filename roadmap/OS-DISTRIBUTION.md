@@ -6,7 +6,7 @@ For the trust anchor + flashed seed see SEED-TRUST.md. For first-boot netboot/in
 
 > **Goal.** Make OS updates atomic, verifiable, and reversible. Any machine pulls the OS it's supposed to run from a public bucket, proves it's authentic with a baked-in signing key (not access control), runs it off a local squashfs, and can always boot the last-known-good slot if a new release fails.
 > **Non-goals.** Running the OS *live* off S3 (we source from S3, cache locally, run local). In-place package patching of a mutable rootfs. A bespoke update protocol — we borrow the well-trodden A/B + rollback model from RAUC / Mender / ostree / Android A/B / Flatcar rather than reinvent it.
-> **Status.** Design. The squashfs+overlayfs build output (`build.sh --live`) is the artifact; A/B slots, the public-bucket layout, the signed `stable.json` manifest, and auto-rollback are new work (OSDIST-*). A self-hosted machine reads `os/stable.json` directly and is correctness-complete on its own; any optional release-advisor service is out of scope for this roadmap.
+> **Status.** ✅ SHIPPED. The squashfs+overlayfs build output (`build.sh --live`) is the artifact. A/B slot management, the public-bucket layout, the signed `stable.json` manifest, boot-counter auto-rollback, and the `osdist` service (which polls `stable.json`, downloads to the inactive slot, verifies the detached signature and dm-verity root hash, then flips the slot) are all implemented and wired. A self-hosted machine reads `os/stable.json` directly and is correctness-complete without a release-advisor service.
 
 ---
 

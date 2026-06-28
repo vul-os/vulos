@@ -1,4 +1,4 @@
-// Package peering implements Vula OS peer-to-peer communication services.
+// Package peering implements Vulos peer-to-peer communication services.
 // This file implements email/display-name discovery against the vulos.org
 // directory APIs so that users can locate peers by email address or name.
 package peering

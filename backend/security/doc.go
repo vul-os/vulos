@@ -1,5 +1,5 @@
 // Package security holds cross-cutting adversarial regression tests for
-// Vula OS (SECAUDIT2) AND the attacker-style PENTEST suite (PENTEST-OS-01).
+// Vulos (SECAUDIT2) AND the attacker-style PENTEST suite (PENTEST-OS-01).
 //
 // The original tests encode security INVARIANTS established by prior audits
 // (decisions.md D24 and the SEC-A..SEC-I / C1..C4 / H1..H6 fixes) so that a
