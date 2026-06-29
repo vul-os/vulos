@@ -1,6 +1,35 @@
 # Vula OS — Debian Container (layered for fast rebuilds)
 #
-# Build: docker build -t vulos .
+# ── Default build (pre-built frontend + backend binaries) ─────────────────────
+#
+#   Step 1 — build frontend (requires vulos-relay + vulos-office siblings):
+#     cd ../vulos-relay/client && npm install && npm run build:lib
+#     npm ci && npm run build
+#
+#   Step 2 — build Go binaries for the target platform (requires vulos-apps sibling):
+#     mkdir -p bin/linux_amd64
+#     cd backend
+#     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+#       -ldflags "-s -w -X main.Version=dev" -o ../bin/linux_amd64/vulos-server ./cmd/server
+#     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+#       -ldflags "-s -w" -o ../bin/linux_amd64/vulos-init ./cmd/init
+#
+#   Step 3 — build the image:
+#     docker build -t vulos .
+#
+# ── Standalone build (Go compiled inside Docker, no pre-built binary required) ─
+#
+#   This path resolves the go.mod `replace github.com/vul-os/vulos-apps =>
+#   ../../vulos-apps` by supplying vulos-apps as a named BuildKit build-context.
+#   The WORKDIR mirrors the local checkout layout so ../../vulos-apps resolves
+#   correctly inside the container.
+#
+#     docker build \
+#       --build-arg BINARY_SOURCE=built \
+#       --build-context vulos-apps=../vulos-apps \
+#       --build-arg VERSION=vX.Y.Z \
+#       -t vulos .
+#
 # Run:   docker run -p 8080:8080 --shm-size=1g vulos
 # Open:  http://localhost:8080
 #
@@ -9,7 +38,14 @@
 #   2. Frontend build (npm) — changes with UI work
 #   3. Go binary + config — changes most often
 
-# ── Stage 1: Frontend (pre-built) ────────────────────────
+# ── Binary source selection ────────────────────────────────────────────────────
+# 'prebuilt' (default, CI): binaries are built on the host before docker build.
+#   Binaries must be at bin/${TARGETOS}_${TARGETARCH}/vulos-server etc.
+# 'built'   (standalone):   builds Go from source inside Docker.
+#   Requires --build-context vulos-apps=../vulos-apps.
+ARG BINARY_SOURCE=prebuilt
+
+# ── Stage 1: Frontend (pre-built) ─────────────────────────────────────────────
 # The frontend is built on the CI runner (or locally via `npm run build`)
 # before `docker build` is invoked.  dist/ is COPY'd from the build context
 # rather than rebuilt inside Docker, avoiding the file: dep path issue where
@@ -19,18 +55,53 @@
 FROM scratch AS frontend
 COPY dist/ /dist/
 
-# ── Stage 2: Go backend build ────────────────────────────
-FROM golang:trixie AS backend
-# VERSION is injected at build time via --build-arg VERSION=vX.Y.Z
+# ── Stage 2a: Pre-built Go backend (CI / default path) ────────────────────────
+# Binaries are built on the runner (where go.mod `replace` paths resolve),
+# placed at bin/${TARGETOS}_${TARGETARCH}/, then COPY'd into this stage.
+# Docker buildx supplies TARGETOS and TARGETARCH automatically for the target
+# platform, enabling multi-arch builds from a single docker build invocation.
+FROM scratch AS backend-prebuilt
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+COPY bin/${TARGETOS}_${TARGETARCH}/ /
+
+# ── Stage 2b: Go source build (standalone path — requires --build-context) ────
+# Used when --build-arg BINARY_SOURCE=built is passed.
+# vulos-apps must be provided as a named build context:
+#   docker build --build-arg BINARY_SOURCE=built \
+#                --build-context vulos-apps=../vulos-apps .
+#
+# The WORKDIR mirrors the local checkout layout so the replace directive
+#   replace github.com/vul-os/vulos-apps => ../../vulos-apps
+# resolves correctly inside Docker:
+#   /workspace/vulos/backend + ../../vulos-apps = /workspace/vulos-apps ✓
+#
+# FROM --platform=$BUILDPLATFORM runs the Go compiler on the native builder
+# platform (fast); GOOS/GOARCH from $TARGETOS/$TARGETARCH handle cross-compilation.
+FROM --platform=$BUILDPLATFORM golang:trixie AS backend-built
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 ARG VERSION=dev
-WORKDIR /app
+ENV GOTOOLCHAIN=auto
+WORKDIR /workspace/vulos/backend
 COPY backend/go.mod backend/go.sum ./
+COPY --from=vulos-apps . /workspace/vulos-apps/
 RUN go mod download
 COPY backend/ .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /vulos-server ./cmd/server
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /vulos-init ./cmd/init
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" \
+    -o /vulos-server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" \
+    -o /vulos-init ./cmd/init
 
-# ── Stage 3: Runtime image ───────────────────────────────
+# ── Stage 2: Resolved backend binary source ────────────────────────────────────
+# Bridge stage: selects the binary source (prebuilt vs built-from-source).
+# BINARY_SOURCE is declared globally above (before first FROM) so it is
+# available for substitution in FROM statements throughout this Dockerfile.
+FROM backend-${BINARY_SOURCE} AS backend
+
+# ── Stage 3: Runtime image ────────────────────────────────────────────────────
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive

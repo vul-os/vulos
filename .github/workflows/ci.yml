@@ -150,8 +150,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Clone sibling packages required by the Dockerfile build context.
-      - name: Clone vulos-apps (local replace)
+      # Clone sibling packages required by go.mod replace + npm file: deps.
+      - name: Clone vulos-apps (go.mod local replace)
         run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
       - name: Clone vulos-relay (relay-client)
@@ -160,10 +160,9 @@ jobs:
       - name: Clone vulos-office (office-client)
         run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
 
-      # Build relay-client lib and pre-build the frontend on the runner.
-      # The Dockerfile's runtime stage COPYs the pre-built dist/ directly
-      # instead of running npm inside the Docker build context, sidestepping
-      # the file: dep path issue (../vulos-relay/client is outside context: .).
+      # ── Frontend: build on the runner, COPY dist/ into the Docker image ──────
+      # Sidesteps the file: dep path issue (../vulos-relay/client is outside
+      # the Docker build context: .).
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -175,10 +174,42 @@ jobs:
       - name: Pre-build frontend (dist/ is COPY'd into the Docker image)
         run: npm ci && npm run build
 
+      # ── Backend: build Go binary on the runner, COPY into the Docker image ───
+      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
+      # This path resolves on the runner (../vulos-apps cloned above) but not
+      # inside the Docker build context (context: .).  Mirroring the frontend
+      # pattern: compile on the runner, COPY the prebuilt binary into the image.
+      # Binaries land at bin/${GOOS}_${GOARCH}/ so the Dockerfile's
+      # COPY bin/${TARGETOS}_${TARGETARCH}/ / picks up the right arch automatically.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+        env:
+          GOTOOLCHAIN: auto
+
+      - name: Pre-build Go backend (${{ matrix.platform }})
+        run: |
+          PLATFORM="${{ matrix.platform }}"
+          GOOS="${PLATFORM%%/*}"
+          GOARCH="${PLATFORM##*/}"
+          mkdir -p "bin/${GOOS}_${GOARCH}"
+          cd backend
+          CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath \
+            -ldflags "-s -w -X main.Version=dev" \
+            -o "../bin/${GOOS}_${GOARCH}/vulos-server" ./cmd/server
+          CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath \
+            -ldflags "-s -w" \
+            -o "../bin/${GOOS}_${GOARCH}/vulos-init" ./cmd/init
+        env:
+          GOTOOLCHAIN: auto
+
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
+      # BINARY_SOURCE=prebuilt (default): the Dockerfile's backend-prebuilt stage
+      # COPY's bin/${TARGETOS}_${TARGETARCH}/ — no go build inside Docker.
       - uses: docker/build-push-action@v6
         with:
           context: .
