@@ -1,12 +1,14 @@
 package webproxy
 
 import (
+	"context"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // WSRelayHandler proxies WebSocket connections through the server for remote mode.
@@ -31,6 +33,9 @@ func (s *Service) WSRelayHandler() http.HandlerFunc {
 			rest = path[slashIdx:]
 		}
 
+		// Pre-flight SSRF check: user-friendly 403 for obviously blocked hosts.
+		// isPrivate calls safedial.ValidateHost which handles IP literals,
+		// obfuscated encodings, and hostname resolution.
 		if isPrivate(host) {
 			http.Error(w, `{"error":"cannot relay to private addresses"}`, 403)
 			return
@@ -42,8 +47,12 @@ func (s *Service) WSRelayHandler() http.HandlerFunc {
 			targetAddr = host + ":443"
 		}
 
-		// Connect to upstream
-		upConn, err := net.DialTimeout("tcp", targetAddr, 10*time.Second)
+		// Dial via safedial.New so the Control hook validates the resolved IP at
+		// connect(2) time — closing the TOCTOU window between the isPrivate check
+		// above and the actual socket connection (DNS-rebinding / redirect defence).
+		d := safedial.New(false)
+		d.Timeout = 10 * time.Second
+		upConn, err := d.DialContext(context.Background(), "tcp", targetAddr)
 		if err != nil {
 			log.Printf("[wsrelay] dial %s: %v", targetAddr, err)
 			http.Error(w, `{"error":"upstream unreachable"}`, 502)

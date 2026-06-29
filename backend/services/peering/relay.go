@@ -120,6 +120,16 @@ const (
 
 	// relayPickupBodyLimit is the maximum body for pickup ACK requests (1 MiB).
 	relayPickupBodyLimit int64 = 1 << 20
+
+	// nonceDedupeWindow is the time window within which a repeated
+	// (senderVulaID, nonce) pair is rejected as a replay.  Matches the rate
+	// limit window so the nonce map stays bounded by the same time horizon.
+	nonceDedupeWindow = time.Hour
+
+	// nonceMaxEntries is the maximum number of nonce entries held in memory
+	// across all senders.  Acts as a belt-and-suspenders cap against map growth
+	// when the TTL eviction has not yet run (e.g. many distinct senders).
+	nonceMaxEntries = 10_000
 )
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -222,9 +232,15 @@ type RelayStore struct {
 	mu     sync.RWMutex
 	config RelayConfig
 
-	// rateMu guards senderDeposits.
+	// rateMu guards senderDeposits and seenNonces.
 	rateMu         sync.Mutex
 	senderDeposits map[string][]time.Time // sender → timestamps of deposits in last hour
+
+	// seenNonces is a bounded TTL map for nonce deduplication.  Key is
+	// "<senderVulaID>\x00<nonce>"; value is the time the nonce was first seen.
+	// Entries are evicted lazily when older than nonceDedupeWindow.  The map
+	// is guarded by rateMu.
+	seenNonces map[string]time.Time
 
 	// billing GATES relay deposits on suspension and METERS relayed bytes
 	// against cp. Nil or disabled (CP_URL unset) = standalone OS: the relay is
@@ -274,6 +290,7 @@ func NewRelayStore(home string, contacts *ContactStore) (*RelayStore, error) {
 		storeDir:       storeDir,
 		contacts:       contacts,
 		senderDeposits: make(map[string][]time.Time),
+		seenNonces:     make(map[string]time.Time),
 	}
 
 	if err := rs.loadConfig(); err != nil {
@@ -423,7 +440,14 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 		return fmt.Errorf("peering/relay: deposit: sender %q is not in the allowed list", req.SenderVulaID)
 	}
 
-	// 5. Rate limit.
+	// 5. Nonce deduplication — reject a replayed (sender, nonce) pair within
+	// the dedup window.  Checked before rate-limiting so replays don't consume
+	// a rate-limit slot.
+	if err := rs.checkNonceDedup(req.SenderVulaID, req.Nonce); err != nil {
+		return err
+	}
+
+	// 6. Rate limit.
 	if err := rs.checkRateLimit(req.SenderVulaID); err != nil {
 		return err
 	}
@@ -672,6 +696,59 @@ func (rs *RelayStore) recordDeposit(senderVulaID string, at time.Time) {
 	rs.rateMu.Lock()
 	defer rs.rateMu.Unlock()
 	rs.senderDeposits[senderVulaID] = append(rs.senderDeposits[senderVulaID], at)
+}
+
+// checkNonceDedup returns an error if (senderVulaID, nonce) was already seen
+// within the nonceDedupeWindow.  If it is a fresh nonce it is recorded and
+// nil is returned.
+//
+// The seen-nonce map is bounded in two ways:
+//  1. Lazy TTL eviction: entries older than nonceDedupeWindow are deleted on
+//     every call (O(n), but the map is capped at nonceMaxEntries).
+//  2. Hard cap: when the map would exceed nonceMaxEntries after eviction, the
+//     single oldest remaining entry is evicted to make room.
+//
+// Both strategies keep memory use proportional to (rate_limit × senders), not
+// to total historical traffic.
+func (rs *RelayStore) checkNonceDedup(senderVulaID, nonce string) error {
+	rs.rateMu.Lock()
+	defer rs.rateMu.Unlock()
+
+	key := senderVulaID + "\x00" + nonce
+	now := time.Now().UTC()
+	cutoff := now.Add(-nonceDedupeWindow)
+
+	// Lazy TTL eviction: remove all expired entries.
+	for k, t := range rs.seenNonces {
+		if t.Before(cutoff) {
+			delete(rs.seenNonces, k)
+		}
+	}
+
+	// Check for duplicate before recording.
+	if _, seen := rs.seenNonces[key]; seen {
+		return fmt.Errorf("peering/relay: deposit: duplicate nonce %q from %s (replay rejected)", nonce, senderVulaID)
+	}
+
+	// Hard-cap eviction: if the map is full, remove the single oldest entry.
+	if len(rs.seenNonces) >= nonceMaxEntries {
+		var oldestKey string
+		var oldestTime time.Time
+		first := true
+		for k, t := range rs.seenNonces {
+			if first || t.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = t
+				first = false
+			}
+		}
+		if oldestKey != "" {
+			delete(rs.seenNonces, oldestKey)
+		}
+	}
+
+	rs.seenNonces[key] = now
+	return nil
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -1092,6 +1169,8 @@ func relayDepositErrStatus(err error) int {
 		return http.StatusUnauthorized
 	case strings.Contains(s, "rate limit"):
 		return http.StatusTooManyRequests
+	case strings.Contains(s, "duplicate nonce"):
+		return http.StatusConflict // 409: replay of a previously submitted request
 	case strings.Contains(s, "exceeds maximum"),
 		strings.Contains(s, "cap reached"),
 		strings.Contains(s, "capacity reached"):

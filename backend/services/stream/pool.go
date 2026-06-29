@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"vulos/backend/internal/safedial"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/input"
 
@@ -732,30 +732,15 @@ func (p *Pool) List() []*Session {
 }
 
 // isBlockedVNCHost returns true when the given host resolves to a loopback,
-// private, link-local, multicast, or unspecified address, preventing SSRF via
-// the VNC host parameter.  Fail-closed on DNS resolution errors.
+// private, link-local, CGNAT, multicast, or unspecified address, preventing
+// SSRF via the VNC host parameter.  Fail-closed on DNS resolution errors.
+//
+// Delegates to safedial.ValidateHost so the canonical deny-list (including
+// hex/decimal/octal obfuscated IP literals and CGNAT ranges) is applied
+// consistently across all services.
 func isBlockedVNCHost(host string) bool {
-	h := strings.ToLower(strings.TrimSuffix(host, "."))
-	for _, b := range []string{"localhost", "127.0.0.1", "0.0.0.0", "::1"} {
-		if h == b {
-			return true
-		}
-	}
-	ips, err := net.LookupHost(h)
-	if err != nil {
-		return true // fail closed
-	}
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			return true
-		}
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
-			return true
-		}
-	}
-	return false
+	_, err := safedial.ValidateHost(host, false)
+	return err != nil
 }
 
 // blockedEnvPrefixes lists env-var prefixes that must not be forwarded to

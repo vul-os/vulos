@@ -32,6 +32,9 @@ package files
 // Note: end-to-end capability authentication (Ed25519 signature + recipient
 // proof) remains in force regardless of the SSRF guard.  The guard is an
 // additional layer that limits the blast radius if a signer is compromised.
+//
+// The IP deny-list logic is implemented in internal/safedial so it is shared
+// with webproxy and stream services — a single canonical implementation.
 
 import (
 	"bytes"
@@ -39,7 +42,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,6 +49,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // PeerServePath is the route an owner box exposes to serve capability bytes.
@@ -137,6 +141,7 @@ func (t *HTTPPeerTransport) Fetch(ctx context.Context, ownerAddr string, req Pee
 //     private, CGNAT, metadata, reserved).  Private-range blocking is relaxed
 //     when VULOS_PEER_ALLOW_LAN=1, but metadata addresses are always blocked.
 //
+// The deny-list logic is shared with webproxy via internal/safedial.
 // Returns a descriptive error; callers should map to ErrCapability to avoid
 // leaking internal topology to the requester.
 func validateOwnerAddr(addr string) error {
@@ -148,228 +153,8 @@ func validateOwnerAddr(addr string) error {
 	if host == "" {
 		return fmt.Errorf("ownerAddr has no host")
 	}
-
-	allowLAN := getPeerAllowLAN()
-
-	// Quick-block well-known names before DNS.
-	lower := strings.ToLower(strings.TrimSuffix(host, "."))
-	if lower == "localhost" || lower == "broadcasthost" {
-		return fmt.Errorf("ownerAddr host %q is blocked", host)
-	}
-
-	// If the host is an IP literal, validate it directly (handles hex/decimal/octal).
-	if ip := peerNormalizeIPLiteral(host); ip != nil {
-		return checkPeerIP(ip, allowLAN)
-	}
-
-	// DNS resolution — validate ALL returned IPs.
-	addrs, lerr := net.LookupHost(host)
-	if lerr != nil {
-		return fmt.Errorf("ownerAddr: cannot resolve %q: %w", host, lerr)
-	}
-	for _, a := range addrs {
-		ip := net.ParseIP(a)
-		if ip == nil {
-			continue
-		}
-		if err := checkPeerIP(ip, allowLAN); err != nil {
-			return fmt.Errorf("ownerAddr: %w", err)
-		}
-	}
-	return nil
-}
-
-// checkPeerIP returns an error if ip is in a blocked range.
-// Cloud metadata (169.254.0.0/16) is always blocked; other private ranges
-// are blocked unless allowLAN is true.
-func checkPeerIP(ip net.IP, allowLAN bool) error {
-	// Normalise IPv4-in-IPv6.
-	if ip4 := ip.To4(); ip4 != nil {
-		ip = ip4
-	}
-
-	// Loopback is always blocked — a peer-share target on 127.x.x.x is
-	// the recipient box itself, which is never a legitimate owner address.
-	if ip.IsLoopback() || ip.IsUnspecified() {
-		return fmt.Errorf("IP %s is blocked (loopback/unspecified)", ip)
-	}
-
-	// Metadata IP (169.254.169.254 and the full link-local range 169.254/16)
-	// are ALWAYS blocked regardless of VULOS_PEER_ALLOW_LAN, because no
-	// legitimate peer box lives on the cloud instance metadata service.
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return fmt.Errorf("IP %s is blocked (link-local / cloud metadata)", ip)
-	}
-
-	// Multicast is always blocked.
-	if ip.IsMulticast() {
-		return fmt.Errorf("IP %s is blocked (multicast)", ip)
-	}
-
-	// Private ranges and additional reserved blocks: blocked unless VULOS_PEER_ALLOW_LAN=1.
-	if !allowLAN {
-		if ip.IsPrivate() {
-			return fmt.Errorf("IP %s is a private address; set VULOS_PEER_ALLOW_LAN=1 for LAN peer-share", ip)
-		}
-		for _, cidr := range peerDeniedCIDRs {
-			if cidr.Contains(ip) {
-				return fmt.Errorf("IP %s is in a reserved block (%s); set VULOS_PEER_ALLOW_LAN=1 for LAN peer-share", ip, cidr)
-			}
-		}
-	} else {
-		// Even with LAN opt-in, block truly reserved / bogon ranges that are
-		// never legitimate peer-share targets.
-		for _, cidr := range peerAlwaysDeniedCIDRs {
-			if cidr.Contains(ip) {
-				return fmt.Errorf("IP %s is in a permanently blocked reserved block (%s)", ip, cidr)
-			}
-		}
-	}
-
-	return nil
-}
-
-// peerDeniedCIDRs are private/reserved blocks blocked without VULOS_PEER_ALLOW_LAN.
-var peerDeniedCIDRs []*net.IPNet
-
-// peerAlwaysDeniedCIDRs are ALWAYS blocked even with VULOS_PEER_ALLOW_LAN=1.
-var peerAlwaysDeniedCIDRs []*net.IPNet
-
-func init() {
-	// Blocks denied unless VULOS_PEER_ALLOW_LAN=1 (RFC1918 + CGNAT — may be
-	// legitimate LAN peer-share targets in self-hosted deployments).
-	denied := []string{
-		"100.64.0.0/10",   // CGNAT (RFC 6598) — also used by Tailscale
-		"192.0.0.0/24",    // IETF Protocol Assignments
-		"192.0.2.0/24",    // TEST-NET-1 (RFC 5737)
-		"198.18.0.0/15",   // Benchmarking (RFC 2544)
-		"198.51.100.0/24", // TEST-NET-2 (RFC 5737)
-		"203.0.113.0/24",  // TEST-NET-3 (RFC 5737)
-		"240.0.0.0/4",     // Reserved (RFC 1112)
-		"fc00::/7",        // IPv6 ULA
-		"2002::/16",       // 6to4 (can encapsulate private IPv4)
-		"64:ff9b::/96",    // NAT64 well-known prefix
-	}
-	// Blocks ALWAYS denied regardless of env flag.
-	alwaysDenied := []string{
-		"255.255.255.255/32", // Broadcast
-		"ff00::/8",           // IPv6 multicast (belt-and-suspenders; IsMulticast covers this)
-	}
-	mustParseCIDRs := func(blocks []string) []*net.IPNet {
-		out := make([]*net.IPNet, 0, len(blocks))
-		for _, b := range blocks {
-			_, cidr, err := net.ParseCIDR(b)
-			if err != nil {
-				panic(fmt.Sprintf("files/transport: bad CIDR %s: %v", b, err))
-			}
-			out = append(out, cidr)
-		}
-		return out
-	}
-	peerDeniedCIDRs = mustParseCIDRs(denied)
-	peerAlwaysDeniedCIDRs = mustParseCIDRs(alwaysDenied)
-}
-
-// peerNormalizeIPLiteral attempts to parse host as a bare IP literal.
-// Handles standard dotted-decimal, IPv6, hex (0x7f000001), decimal (2130706433),
-// and IPv4-mapped IPv6.  Returns nil if host is not an IP literal.
-func peerNormalizeIPLiteral(host string) net.IP {
-	h := host
-	if strings.HasPrefix(h, "[") && strings.HasSuffix(h, "]") {
-		h = h[1 : len(h)-1]
-	}
-	if ip := net.ParseIP(h); ip != nil {
-		return ip
-	}
-	// Attempt decimal/hex/octal IPv4 — same logic as webproxy.parseAltIPv4.
-	if !strings.Contains(h, ":") {
-		if ip := peerParseAltIPv4(h); ip != nil {
-			return ip
-		}
-	}
-	return nil
-}
-
-// peerParseAltIPv4 parses non-standard IPv4 encodings (decimal int, hex 0x…,
-// octal 0…, multi-part forms).  Mirrors webproxy.parseAltIPv4 — duplicated
-// here to avoid cross-service imports; update both if logic changes.
-func peerParseAltIPv4(h string) net.IP {
-	parts := strings.Split(h, ".")
-	if len(parts) > 4 {
-		return nil
-	}
-	var octets [4]byte
-	parseOctet := func(s string) (uint64, bool) {
-		if s == "" {
-			return 0, false
-		}
-		if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-			return peerParseUint(s[2:], 16)
-		}
-		if len(s) > 1 && s[0] == '0' {
-			return peerParseUint(s[1:], 8)
-		}
-		return peerParseUint(s, 10)
-	}
-	switch len(parts) {
-	case 1:
-		n, ok := parseOctet(parts[0])
-		if !ok || n > 0xFFFFFFFF {
-			return nil
-		}
-		octets[0], octets[1], octets[2], octets[3] = byte(n>>24), byte(n>>16), byte(n>>8), byte(n)
-	case 4:
-		for i, p := range parts {
-			n, ok := parseOctet(p)
-			if !ok || n > 255 {
-				return nil
-			}
-			octets[i] = byte(n)
-		}
-	case 2:
-		n0, ok0 := parseOctet(parts[0])
-		n1, ok1 := parseOctet(parts[1])
-		if !ok0 || !ok1 || n0 > 255 || n1 > 0xFFFFFF {
-			return nil
-		}
-		octets[0], octets[1], octets[2], octets[3] = byte(n0), byte(n1>>16), byte(n1>>8), byte(n1)
-	case 3:
-		n0, ok0 := parseOctet(parts[0])
-		n1, ok1 := parseOctet(parts[1])
-		n2, ok2 := parseOctet(parts[2])
-		if !ok0 || !ok1 || !ok2 || n0 > 255 || n1 > 255 || n2 > 0xFFFF {
-			return nil
-		}
-		octets[0], octets[1], octets[2], octets[3] = byte(n0), byte(n1), byte(n2>>8), byte(n2)
-	default:
-		return nil
-	}
-	return net.IPv4(octets[0], octets[1], octets[2], octets[3])
-}
-
-func peerParseUint(s string, base int) (uint64, bool) {
-	if s == "" {
-		return 0, false
-	}
-	var n uint64
-	for _, c := range s {
-		var d uint64
-		switch {
-		case c >= '0' && c <= '9':
-			d = uint64(c - '0')
-		case c >= 'a' && c <= 'f' && base == 16:
-			d = uint64(c-'a') + 10
-		case c >= 'A' && c <= 'F' && base == 16:
-			d = uint64(c-'A') + 10
-		default:
-			return 0, false
-		}
-		if d >= uint64(base) {
-			return 0, false
-		}
-		n = n*uint64(base) + d
-	}
-	return n, true
+	_, err = safedial.ValidateHost(host, getPeerAllowLAN())
+	return err
 }
 
 // ctxReadCloser cancels the request context when the body is closed.
