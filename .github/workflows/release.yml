@@ -107,38 +107,24 @@ jobs:
         env:
           GOTOOLCHAIN: auto
 
-      # ── Pre-build Go binaries for Docker (amd64 + arm64) ─────────────────────
-      # go.mod replace resolves on the runner (../vulos-apps cloned above).
-      # Binaries land at bin/linux_{amd64,arm64}/ so the Dockerfile's
-      # backend-prebuilt stage (COPY bin/${TARGETOS}_${TARGETARCH}/) picks up
-      # the right arch automatically during the multi-arch buildx build.
-      - name: Pre-build Go backend (linux/amd64 + linux/arm64)
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          mkdir -p bin/linux_amd64 bin/linux_arm64
-          cd backend
-          for GOARCH in amd64 arm64; do
-            CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath \
-              -ldflags "-s -w -X main.Version=${VERSION}" \
-              -o "../bin/linux_${GOARCH}/vulos-server" ./cmd/server
-            CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath \
-              -ldflags "-s -w" \
-              -o "../bin/linux_${GOARCH}/vulos-init" ./cmd/init
-          done
-        env:
-          GOTOOLCHAIN: auto
-
-      # ── Docker image (embeds pre-built frontend + backend binaries) ───────────
-      # BINARY_SOURCE=prebuilt (default): the Dockerfile backend-prebuilt stage
-      # COPY's bin/${TARGETOS}_${TARGETARCH}/ — no go build inside Docker.
-      # For standalone docker builds (no pre-built binaries) see Dockerfile header.
+      # ── Docker image (multi-arch: Go built from source inside Docker) ────────────
+      # Uses BINARY_SOURCE=built so the Dockerfile's backend-built stage
+      # (FROM --platform=$BUILDPLATFORM golang:trixie) handles cross-compilation:
+      # Go runs natively on the amd64 builder; GOOS/GOARCH from TARGETOS/TARGETARCH
+      # (set automatically by buildx) target each platform's binary.
+      # vulos-apps is provided as a named BuildKit build-context (--build-context)
+      # so the go.mod replace directive resolves inside Docker without widening the
+      # primary build context from '.'.
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
+            BINARY_SOURCE=built
             VERSION=${{ steps.version.outputs.VERSION }}
+          build-contexts: |
+            vulos-apps=../vulos-apps
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}

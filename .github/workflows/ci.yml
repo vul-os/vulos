@@ -193,14 +193,17 @@ jobs:
           PLATFORM="${{ matrix.platform }}"
           GOOS="${PLATFORM%%/*}"
           GOARCH="${PLATFORM##*/}"
-          mkdir -p "bin/${GOOS}_${GOARCH}"
+          # Each matrix job builds for exactly one platform, so a flat bin/ dir
+          # is sufficient — the Dockerfile's backend-prebuilt stage does COPY bin/ /
+          # without any per-arch subdirectory lookup.
+          mkdir -p bin
           cd backend
           CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath \
             -ldflags "-s -w -X main.Version=dev" \
-            -o "../bin/${GOOS}_${GOARCH}/vulos-server" ./cmd/server
+            -o "../bin/vulos-server" ./cmd/server
           CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath \
             -ldflags "-s -w" \
-            -o "../bin/${GOOS}_${GOARCH}/vulos-init" ./cmd/init
+            -o "../bin/vulos-init" ./cmd/init
         env:
           GOTOOLCHAIN: auto
 

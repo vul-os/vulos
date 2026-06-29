@@ -1,28 +1,29 @@
 # Vula OS — Debian Container (layered for fast rebuilds)
 #
-# ── Default build (pre-built frontend + backend binaries) ─────────────────────
+# ── Default build (pre-built frontend + backend binary) ───────────────────────
 #
 #   Step 1 — build frontend (requires vulos-relay + vulos-office siblings):
 #     cd ../vulos-relay/client && npm install && npm run build:lib
 #     npm ci && npm run build
 #
-#   Step 2 — build Go binaries for the target platform (requires vulos-apps sibling):
-#     mkdir -p bin/linux_amd64
+#   Step 2 — build the Go binary for the target platform (requires vulos-apps):
+#     mkdir -p bin
 #     cd backend
 #     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
-#       -ldflags "-s -w -X main.Version=dev" -o ../bin/linux_amd64/vulos-server ./cmd/server
+#       -ldflags "-s -w -X main.Version=dev" -o ../bin/vulos-server ./cmd/server
 #     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
-#       -ldflags "-s -w" -o ../bin/linux_amd64/vulos-init ./cmd/init
+#       -ldflags "-s -w" -o ../bin/vulos-init ./cmd/init
 #
 #   Step 3 — build the image:
 #     docker build -t vulos .
 #
-# ── Standalone build (Go compiled inside Docker, no pre-built binary required) ─
+# ── Standalone / multi-arch build (Go compiled inside Docker) ─────────────────
 #
-#   This path resolves the go.mod `replace github.com/vul-os/vulos-apps =>
-#   ../../vulos-apps` by supplying vulos-apps as a named BuildKit build-context.
-#   The WORKDIR mirrors the local checkout layout so ../../vulos-apps resolves
-#   correctly inside the container.
+#   Resolves the go.mod `replace github.com/vul-os/vulos-apps => ../../vulos-apps`
+#   by supplying vulos-apps as a named BuildKit build-context.  WORKDIR mirrors
+#   the local checkout layout so ../../vulos-apps resolves inside the container.
+#   FROM --platform=$BUILDPLATFORM compiles Go natively; GOOS/GOARCH env vars
+#   handle cross-compilation for the target platform.
 #
 #     docker build \
 #       --build-arg BINARY_SOURCE=built \
@@ -39,10 +40,12 @@
 #   3. Go binary + config — changes most often
 
 # ── Binary source selection ────────────────────────────────────────────────────
-# 'prebuilt' (default, CI): binaries are built on the host before docker build.
-#   Binaries must be at bin/${TARGETOS}_${TARGETARCH}/vulos-server etc.
-# 'built'   (standalone):   builds Go from source inside Docker.
-#   Requires --build-context vulos-apps=../vulos-apps.
+# 'prebuilt' (default, CI):  binaries are pre-built on the host before
+#   docker build and placed at bin/vulos-server + bin/vulos-init.
+#   Each CI matrix job builds for exactly one platform, so a flat bin/ dir
+#   is sufficient (no per-arch subdirectory needed).
+# 'built'   (standalone / release multi-arch):  builds Go from source inside
+#   Docker.  Requires --build-context vulos-apps=../vulos-apps.
 ARG BINARY_SOURCE=prebuilt
 
 # ── Stage 1: Frontend (pre-built) ─────────────────────────────────────────────
@@ -56,20 +59,18 @@ FROM scratch AS frontend
 COPY dist/ /dist/
 
 # ── Stage 2a: Pre-built Go backend (CI / default path) ────────────────────────
-# Binaries are built on the runner (where go.mod `replace` paths resolve),
-# placed at bin/${TARGETOS}_${TARGETARCH}/, then COPY'd into this stage.
-# Docker buildx supplies TARGETOS and TARGETARCH automatically for the target
-# platform, enabling multi-arch builds from a single docker build invocation.
+# go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
+# This path resolves on the runner (sibling cloned) but not inside the Docker
+# build context.  Binaries are compiled on the runner (CGO_ENABLED=0, so
+# cross-compilation is trivial) and placed in bin/ before docker build.
+# Each CI matrix job builds for one platform and owns bin/ exclusively.
 FROM scratch AS backend-prebuilt
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
-COPY bin/${TARGETOS}_${TARGETARCH}/ /
+COPY bin/ /
 
-# ── Stage 2b: Go source build (standalone path — requires --build-context) ────
+# ── Stage 2b: Go source build (standalone / release multi-arch path) ──────────
 # Used when --build-arg BINARY_SOURCE=built is passed.
-# vulos-apps must be provided as a named build context:
-#   docker build --build-arg BINARY_SOURCE=built \
-#                --build-context vulos-apps=../vulos-apps .
+# vulos-apps must be provided as a named BuildKit build-context:
+#   --build-context vulos-apps=../vulos-apps
 #
 # The WORKDIR mirrors the local checkout layout so the replace directive
 #   replace github.com/vul-os/vulos-apps => ../../vulos-apps
@@ -77,7 +78,9 @@ COPY bin/${TARGETOS}_${TARGETARCH}/ /
 #   /workspace/vulos/backend + ../../vulos-apps = /workspace/vulos-apps ✓
 #
 # FROM --platform=$BUILDPLATFORM runs the Go compiler on the native builder
-# platform (fast); GOOS/GOARCH from $TARGETOS/$TARGETARCH handle cross-compilation.
+# platform (fast); GOOS/GOARCH from TARGETOS/TARGETARCH handle cross-compilation
+# so this path works correctly for multi-arch buildx builds (linux/amd64 +
+# linux/arm64 in a single invocation).
 FROM --platform=$BUILDPLATFORM golang:trixie AS backend-built
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
