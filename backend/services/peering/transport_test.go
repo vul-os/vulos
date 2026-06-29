@@ -7,8 +7,8 @@
 //   - InboundMiddleware: unknown sender is rejected (403)
 //   - InboundMiddleware: unsigned request is rejected (401)
 //   - InboundMiddleware: contact-request path bypasses allow-list (only sig required)
-//   - isPrivateHost: private addresses are detected
-//   - isPrivateHost: public addresses are not blocked
+//   - safedial.ValidateHost: private addresses are detected (M1 fix: replaces isPrivateHost)
+//   - safedial.ValidateHost: public addresses are not blocked
 //   - PeerClient.Post: refuses private addresses (SSRF guard)
 //   - PeerClient.Post: times out on unresponsive servers
 package peering
@@ -20,13 +20,14 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -256,41 +257,31 @@ func TestInboundMiddleware(t *testing.T) {
 	}
 }
 
-// ─── isPrivateHost tests ──────────────────────────────────────────────────────
+// ─── safedial SSRF guard tests (M1 fix: replaces removed isPrivateHost) ──────
+//
+// These tests verify the SSRF protection now provided by safedial.ValidateHost.
+// isPrivateHost has been removed; safedial is the canonical SSRF implementation.
 
-func TestIsPrivateHost(t *testing.T) {
-	tests := []struct {
-		host    string
-		private bool
-	}{
-		{"localhost", true},
-		{"127.0.0.1", true},
-		{"0.0.0.0", true},
-		{"::1", true},
-		{"[::1]", true},
-		// Private RFC-1918 ranges via literal IP
-		{"192.168.1.1", true},
-		{"10.0.0.1", true},
-		{"172.16.0.1", true},
-		// Public hosts (will resolve; don't call DNS in unit tests — skip)
-		// These are checked via literal IPs only.
+func TestSafedialRejectsPrivateHosts(t *testing.T) {
+	// These are literal IPs that safedial must reject (allowLAN=false).
+	blocked := []string{
+		"127.0.0.1", "0.0.0.0", "::1",
+		"192.168.1.1", "10.0.0.1", "172.16.0.1",
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.host, func(t *testing.T) {
-			got := isPrivateHost(tt.host)
-			if got != tt.private {
-				t.Errorf("isPrivateHost(%q) = %v, want %v", tt.host, got, tt.private)
+	for _, host := range blocked {
+		t.Run(host, func(t *testing.T) {
+			if _, err := safedial.ValidateHost(host, false); err == nil {
+				t.Errorf("safedial.ValidateHost(%q) = nil, want error (blocked range)", host)
 			}
 		})
 	}
 }
 
-// TestIsPrivateHostPublicIP verifies that a well-known public IP is not blocked.
-func TestIsPrivateHostPublicIP(t *testing.T) {
+// TestSafedialAcceptsPublicIP verifies that a well-known public IP is not blocked.
+func TestSafedialAcceptsPublicIP(t *testing.T) {
 	// 1.1.1.1 is Cloudflare's public DNS — definitively not private.
-	if isPrivateHost("1.1.1.1") {
-		t.Error("isPrivateHost(1.1.1.1) = true, want false")
+	if _, err := safedial.ValidateHost("1.1.1.1", false); err != nil {
+		t.Errorf("safedial.ValidateHost(1.1.1.1) should accept public IP, got: %v", err)
 	}
 }
 
@@ -458,20 +449,13 @@ func TestInboundMiddlewareBodySizeLimit(t *testing.T) {
 	}
 }
 
-// ─── Standalone isPrivateHost DNS test ───────────────────────────────────────
+// ─── Standalone safedial loopback test (M1 fix: replaces isPrivateHost) ─────
 
-// TestIsPrivateHostLoopbackResolution tests that a hostname that resolves to a
-// loopback address is correctly identified as private.
-func TestIsPrivateHostLoopbackResolution(t *testing.T) {
-	// Start a local TCP listener to confirm we have a reachable loopback address.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Skip("cannot create loopback listener:", err)
-	}
-	ln.Close()
-
-	if !isPrivateHost("127.0.0.1") {
-		t.Error("isPrivateHost(127.0.0.1) = false, want true")
+// TestSafedialRejectsLoopback verifies that safedial rejects the loopback
+// address 127.0.0.1 even with allowLAN=false.
+func TestSafedialRejectsLoopback(t *testing.T) {
+	if _, err := safedial.ValidateHost("127.0.0.1", false); err == nil {
+		t.Error("safedial.ValidateHost(127.0.0.1) should reject loopback, got nil")
 	}
 }
 

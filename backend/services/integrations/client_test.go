@@ -17,6 +17,7 @@ import (
 const (
 	testULID   = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 	testSecret = "device-shared-secret"
+	testUser   = "user-alice"
 )
 
 func testClient(base string) *Client {
@@ -65,7 +66,8 @@ func TestMintTokenHappyPath(t *testing.T) {
 	defer srv.Close()
 
 	c := testClient(srv.URL)
-	tok, err := c.MintToken(context.Background(), ProviderGoogle)
+	// H3: per-user token — pass userID
+	tok, err := c.MintToken(context.Background(), ProviderGoogle, testUser)
 	if err != nil {
 		t.Fatalf("MintToken: %v", err)
 	}
@@ -81,7 +83,7 @@ func TestMintTokenCaches(t *testing.T) {
 
 	c := testClient(srv.URL)
 	for i := 0; i < 3; i++ {
-		if _, err := c.MintToken(context.Background(), ProviderGoogle); err != nil {
+		if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); err != nil {
 			t.Fatalf("MintToken #%d: %v", i, err)
 		}
 	}
@@ -99,12 +101,12 @@ func TestMintTokenRefreshesWhenExpired(t *testing.T) {
 	c := testClient(srv.URL)
 	base := time.Unix(1_700_000_000, 0).UTC()
 	c.now = func() time.Time { return base }
-	if _, err := c.MintToken(context.Background(), ProviderGoogle); err != nil {
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); err != nil {
 		t.Fatal(err)
 	}
 	// Advance well past expiry → must hit the broker again.
 	c.now = func() time.Time { return time.Unix(1_700_001_000, 0).UTC() }
-	if _, err := c.MintToken(context.Background(), ProviderGoogle); err != nil {
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt32(&n); got != 2 {
@@ -114,7 +116,7 @@ func TestMintTokenRefreshesWhenExpired(t *testing.T) {
 
 func TestMintTokenNotConfigured(t *testing.T) {
 	c := &Client{cloudBaseURL: "http://unused", cache: map[string]Token{}, now: time.Now, httpClient: http.DefaultClient}
-	if _, err := c.MintToken(context.Background(), ProviderGoogle); !errors.Is(err, ErrNotConfigured) {
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("want ErrNotConfigured, got %v", err)
 	}
 }
@@ -125,7 +127,7 @@ func TestMintTokenNotConnected(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := testClient(srv.URL)
-	if _, err := c.MintToken(context.Background(), ProviderGoogle); !errors.Is(err, ErrNotConnected) {
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("want ErrNotConnected, got %v", err)
 	}
 }
@@ -143,7 +145,7 @@ func TestMintTokenNotConnectedIsNegativeCached(t *testing.T) {
 
 	// Three rapid probes within the TTL → only one broker round-trip.
 	for i := 0; i < 3; i++ {
-		if _, err := c.MintToken(context.Background(), ProviderGoogle); !errors.Is(err, ErrNotConnected) {
+		if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); !errors.Is(err, ErrNotConnected) {
 			t.Fatalf("probe %d: want ErrNotConnected, got %v", i, err)
 		}
 	}
@@ -153,7 +155,7 @@ func TestMintTokenNotConnectedIsNegativeCached(t *testing.T) {
 
 	// After the TTL expires, it probes again.
 	c.now = func() time.Time { return base.Add(notConnectedTTL + time.Second) }
-	if _, err := c.MintToken(context.Background(), ProviderGoogle); !errors.Is(err, ErrNotConnected) {
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("post-TTL: want ErrNotConnected, got %v", err)
 	}
 	if got := atomic.LoadInt32(&n); got != 2 {
@@ -168,14 +170,42 @@ func TestMintTokenFailClosedOffline(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := testClient(srv.URL)
-	if _, err := c.MintToken(context.Background(), ProviderGoogle); !errors.Is(err, ErrCloudUnavail) {
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, testUser); !errors.Is(err, ErrCloudUnavail) {
 		t.Fatalf("want ErrCloudUnavail, got %v", err)
 	}
+	// Cache key is now per-user (H3 fix): check the actual key, not bare ProviderGoogle.
+	ckey := mintCacheKey(ProviderGoogle, testUser)
 	c.mu.Lock()
-	_, cached := c.cache[ProviderGoogle]
+	_, cached := c.cache[ckey]
 	c.mu.Unlock()
 	if cached {
 		t.Fatal("must not cache a token on failure")
+	}
+}
+
+func TestMintTokenIsolatedPerUser(t *testing.T) {
+	// H3 regression: two different users must get separate cache entries.
+	var n int32
+	srv := brokerStub(t, &n, time.Now().Add(time.Hour))
+	defer srv.Close()
+
+	c := testClient(srv.URL)
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, "alice"); err != nil {
+		t.Fatalf("alice MintToken: %v", err)
+	}
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, "bob"); err != nil {
+		t.Fatalf("bob MintToken: %v", err)
+	}
+	// Both users are distinct → 2 broker round-trips.
+	if got := atomic.LoadInt32(&n); got != 2 {
+		t.Fatalf("expected 2 broker calls (separate users), got %d", got)
+	}
+	// Each user's second call hits the cache.
+	if _, err := c.MintToken(context.Background(), ProviderGoogle, "alice"); err != nil {
+		t.Fatalf("alice MintToken #2: %v", err)
+	}
+	if got := atomic.LoadInt32(&n); got != 2 {
+		t.Fatalf("expected no additional broker calls (cached), got %d", got)
 	}
 }
 

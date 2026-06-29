@@ -29,7 +29,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -132,11 +134,42 @@ type cachedResult struct {
 	fetched time.Time
 }
 
+// EnvCPAllowInsecure is the opt-in escape hatch for local dev / test
+// environments. When set to "1", "true", or "yes", the apikey introspector
+// accepts an http:// CP base URL. In production this must NEVER be set.
+const EnvCPAllowInsecure = "VULOS_CP_ALLOW_INSECURE"
+
+// cpAllowInsecure reports whether the plaintext-http escape hatch is enabled.
+func cpAllowInsecure() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvCPAllowInsecure))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
 // NewIntrospector builds a control-plane-backed Introspector from cfg. Returns
 // nil when cfg is not Enabled() so the caller can detect the session-only path.
+//
+// M3 fix: rejects plaintext http:// base URLs to prevent leaking the
+// X-Relay-Auth (VULOS_CP_TOKEN) bearer over an unencrypted connection.
+// Only https:// is accepted; set VULOS_CP_ALLOW_INSECURE=1 for local dev.
 func NewIntrospector(cfg Config) Introspector {
 	if !cfg.Enabled() {
 		return nil
+	}
+	if !cpAllowInsecure() {
+		u, parseErr := url.Parse(cfg.BaseURL)
+		if parseErr != nil || u.Scheme != "https" {
+			scheme := "<unparseable>"
+			if parseErr == nil {
+				scheme = u.Scheme
+			}
+			log.Printf("[apikey] WARNING: VULOS_CP_BASE_URL scheme is %q — "+
+				"API-key introspection DISABLED to avoid leaking X-Relay-Auth over plaintext; "+
+				"set VULOS_CP_ALLOW_INSECURE=1 only for local dev (M3)", scheme)
+			return nil
+		}
 	}
 	return NewIntrospectorWithClient(cfg, &http.Client{Timeout: 5 * time.Second})
 }

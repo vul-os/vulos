@@ -51,7 +51,13 @@ func registerNotifyPersistRoutes(mux *http.ServeMux, notifySvc *notify.Service, 
 	// POST /api/notifications/prune — manual retention trigger.
 	// Body: {"max_n": 500, "max_age_hours": 720}. Omitted/zero fields fall
 	// back to the store defaults (cap 500, age 30d).
+	//
+	// M7: requires an authenticated user.
 	mux.HandleFunc("POST /api/notifications/prune", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-User-ID") == "" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
 		var req struct {
 			MaxN        int `json:"max_n"`
 			MaxAgeHours int `json:"max_age_hours"`

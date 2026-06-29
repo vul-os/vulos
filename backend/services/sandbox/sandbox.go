@@ -44,15 +44,31 @@ type warmProcess struct {
 	done  chan struct{}
 }
 
+// envSandboxEnabled is the opt-in env var that enables arbitrary AI code
+// execution. MUST be set explicitly in environments that understand and accept
+// the risk. When unset, Run() returns an error immediately (C2 fix).
+//
+// The old substring blocklist (containsDangerousCode) is NOT a security
+// boundary: it is trivially bypassed by obfuscation. Real isolation would
+// require Linux namespaces + setpriv + seccomp (the same stack the app
+// launcher uses). Until that is implemented, execution is disabled by default.
+const envSandboxEnabled = "VULOS_SANDBOX_ENABLED"
+
 // Sandbox manages ephemeral AI-generated scripts.
 // The AI generates Python + HTML. Python runs as a backend on a port.
 // The HTML viewport connects to it via /api/sandbox/{id}/ (proxied through gateway).
+//
+// SECURITY NOTE (C2): arbitrary code execution is disabled by default.
+// Set VULOS_SANDBOX_ENABLED=1 to opt in.  This flag MUST NOT be set in
+// production unless the host has kernel-level isolation (namespaces, seccomp)
+// wrapping the Python processes.
 type Sandbox struct {
 	mu      sync.Mutex
 	scripts map[string]*Script
 	dir     string
 	minPort int
 	maxPort int
+	enabled bool // false unless VULOS_SANDBOX_ENABLED=1
 
 	// Pool of pre-warmed Python processes.
 	pool         []*warmProcess
@@ -67,8 +83,21 @@ func New(dataDir string) *Sandbox {
 	dir := filepath.Join(dataDir, "sandbox")
 	os.MkdirAll(dir, 0755)
 
+	// C2 fix: disabled by default; require explicit opt-in.
+	enabled := strings.TrimSpace(os.Getenv(envSandboxEnabled)) == "1"
+	if enabled {
+		log.Printf("[sandbox] WARNING: arbitrary code execution is ENABLED (VULOS_SANDBOX_ENABLED=1). " +
+			"Ensure kernel-level isolation (namespaces/seccomp) is active.")
+	} else {
+		log.Printf("[sandbox] code execution is disabled (VULOS_SANDBOX_ENABLED not set). " +
+			"Set VULOS_SANDBOX_ENABLED=1 only in isolated environments.")
+	}
+
 	poolSize := defaultPoolSize
-	if v := os.Getenv("VULOS_SANDBOX_POOL_SIZE"); v != "" {
+	if !enabled {
+		// Pool is useless when disabled; suppress background goroutines.
+		poolSize = 0
+	} else if v := os.Getenv("VULOS_SANDBOX_POOL_SIZE"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			poolSize = n
 		}
@@ -88,6 +117,7 @@ func New(dataDir string) *Sandbox {
 		dir:          dir,
 		minPort:      9100,
 		maxPort:      9199,
+		enabled:      enabled,
 		poolSize:     poolSize,
 		launcherPath: launcherPath,
 		python:       python,
@@ -106,18 +136,23 @@ func New(dataDir string) *Sandbox {
 // Run returns the URL.
 // The script receives its port as env var VULOS_PORT.
 // Returns the script info including the assigned port.
+//
+// Run returns an error immediately if VULOS_SANDBOX_ENABLED is not set (C2).
 func (s *Sandbox) Run(ctx context.Context, id, code string) (*Script, error) {
+	// C2 fix: gate on explicit opt-in flag. The old blocklist was not a
+	// security boundary (trivially bypassed). Until kernel-level isolation
+	// is integrated, refuse execution when the flag is absent.
+	if !s.enabled {
+		return nil, fmt.Errorf("sandbox: arbitrary code execution is disabled — " +
+			"set VULOS_SANDBOX_ENABLED=1 in an isolated environment to enable (C2)")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Kill existing with same ID
 	if existing, ok := s.scripts[id]; ok && existing.Running {
 		s.kill(existing)
-	}
-
-	// Validate: reject obviously dangerous code
-	if containsDangerousCode(code) {
-		return nil, fmt.Errorf("script contains disallowed operations")
 	}
 
 	// Write script to disk

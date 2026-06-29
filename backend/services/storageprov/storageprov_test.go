@@ -8,29 +8,75 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"vulos/backend/services/auth"
 )
+
+const testAdminID = "admin-test-user"
 
 // storageprovTestHome creates a temp directory as a fake home.
 func storageprovTestHome(t *testing.T) string {
 	t.Helper()
+	return t.TempDir()
+}
+
+// storageprovTestAuth creates an auth.Store in a temp directory with a single
+// admin user pre-registered (H2 fix: RegisterHandlers now requires authStore).
+func storageprovTestAuth(t *testing.T) *auth.Store {
+	t.Helper()
 	dir := t.TempDir()
-	return dir
+	store, err := auth.NewStore(dir)
+	if err != nil {
+		t.Fatalf("auth.NewStore: %v", err)
+	}
+	// Seed an admin profile — no need to register a full user for header-gated
+	// auth; SetProfile is enough for GetProfile to return the role.
+	store.SetProfile(&auth.Profile{
+		UserID: testAdminID,
+		Role:   auth.RoleAdmin,
+	})
+	return store
+}
+
+// adminRequest wraps httptest.NewRequest and pre-sets the admin user header.
+func adminRequest(method, target string, body []byte) *http.Request {
+	req := httptest.NewRequest(method, target, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", testAdminID)
+	return req
+}
+
+// TestStorageprovForbiddenWithoutAdmin verifies the H2 admin gate.
+func TestStorageprovForbiddenWithoutAdmin(t *testing.T) {
+	home := storageprovTestHome(t)
+	mux := http.NewServeMux()
+	RegisterHandlers(mux, home, storageprovTestAuth(t))
+
+	body, _ := json.Marshal(storageprovRequest{Enable: false})
+	req := httptest.NewRequest("POST", "/api/setup/storage", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	// No X-User-ID → not admin
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d", w.Code)
+	}
 }
 
 // TestStorageprovDisabled verifies that enable:false returns 200 with status "disabled".
 func TestStorageprovDisabled(t *testing.T) {
 	home := storageprovTestHome(t)
 	mux := http.NewServeMux()
-	RegisterHandlers(mux, home)
+	RegisterHandlers(mux, home, storageprovTestAuth(t))
 
 	body, _ := json.Marshal(storageprovRequest{Enable: false})
-	req := httptest.NewRequest("POST", "/api/setup/storage", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := adminRequest("POST", "/api/setup/storage", body)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp storageprovResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -45,7 +91,7 @@ func TestStorageprovDisabled(t *testing.T) {
 func TestStorageprovEnabled(t *testing.T) {
 	home := storageprovTestHome(t)
 	mux := http.NewServeMux()
-	RegisterHandlers(mux, home)
+	RegisterHandlers(mux, home, storageprovTestAuth(t))
 
 	body, _ := json.Marshal(storageprovRequest{
 		Enable:     true,
@@ -53,8 +99,7 @@ func TestStorageprovEnabled(t *testing.T) {
 		Password:   "hunter2",
 		Passphrase: "super-secret-passphrase",
 	})
-	req := httptest.NewRequest("POST", "/api/setup/storage", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := adminRequest("POST", "/api/setup/storage", body)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -101,13 +146,15 @@ func TestStorageprovEnabled(t *testing.T) {
 	}
 }
 
-// TestStorageprovInvalidBody verifies a 400 is returned on malformed JSON.
+// TestStorageprovInvalidBody verifies a 400 is returned on malformed JSON
+// when an admin user is authenticated (auth passes, body parsing fails).
 func TestStorageprovInvalidBody(t *testing.T) {
 	home := storageprovTestHome(t)
 	mux := http.NewServeMux()
-	RegisterHandlers(mux, home)
+	RegisterHandlers(mux, home, storageprovTestAuth(t))
 
 	req := httptest.NewRequest("POST", "/api/setup/storage", bytes.NewBufferString("not-json"))
+	req.Header.Set("X-User-ID", testAdminID)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

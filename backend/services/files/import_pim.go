@@ -440,7 +440,7 @@ func (s *Service) runPIMImport(ctx context.Context, src ImportSource, job *Impor
 		return importCounts{}, fmt.Errorf("files: PIM import: no mail account found for owner %s", job.OwnerID)
 	}
 
-	listCall, err := s.importCall(ctx, src)
+	listCall, err := s.importCall(ctx, src, job.OwnerID)
 	if err != nil {
 		return importCounts{}, fmt.Errorf("files: PIM import: mint token: %w", err)
 	}
@@ -499,7 +499,7 @@ func (s *Service) runPIMImport(ctx context.Context, src ImportSource, job *Impor
 			continue
 		}
 		// Mint a fresh token per item (same pattern as importFile).
-		call, err := s.importCall(ctx, src)
+		call, err := s.importCall(ctx, src, job.OwnerID)
 		if err != nil {
 			counts.errors++
 			log.Printf("[files-pim-import] token mint failed %s: %v", node.ID, err)

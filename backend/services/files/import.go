@@ -178,11 +178,12 @@ func (s *Service) importSource(provider string) (ImportSource, error) {
 // importCall mints a FRESH short-lived token for the source's integration and
 // packages it for one provider call. Tokens are never persisted. A "not
 // connected" result surfaces as ErrExternalNotConnected.
-func (s *Service) importCall(ctx context.Context, src ImportSource) (ProviderCall, error) {
+// H3 fix: ownerID is forwarded so the broker returns per-user tokens.
+func (s *Service) importCall(ctx context.Context, src ImportSource, ownerID string) (ProviderCall, error) {
 	if s.extTokens == nil {
 		return ProviderCall{}, ErrImportUnavailable
 	}
-	tok, err := s.extTokens.MintToken(ctx, src.IntegrationProvider())
+	tok, err := s.extTokens.MintToken(ctx, src.IntegrationProvider(), ownerID)
 	if err != nil {
 		return ProviderCall{}, err
 	}
@@ -206,7 +207,7 @@ func (s *Service) StartImport(ctx context.Context, ownerID, provider, source, mo
 	}
 	// Prove connectivity: a successful mint means the account has connected the
 	// provider CP-side. The token is discarded here.
-	if _, err := s.importCall(ctx, src); err != nil {
+	if _, err := s.importCall(ctx, src, ownerID); err != nil {
 		return nil, err
 	}
 	job := &ImportJob{
@@ -340,7 +341,7 @@ func (s *Service) importWalk(ctx context.Context, src ImportSource, job *ImportJ
 	if depth > importMaxDepth {
 		return fmt.Errorf("files: import folder depth exceeds %d", importMaxDepth)
 	}
-	listCall, err := s.importCall(ctx, src)
+	listCall, err := s.importCall(ctx, src, job.OwnerID)
 	if err != nil {
 		return err
 	}
@@ -403,7 +404,7 @@ func (s *Service) importFile(ctx context.Context, src ImportSource, job *ImportJ
 			return nil // already imported, copy still present → additive no-op
 		}
 	}
-	call, err := s.importCall(ctx, src)
+	call, err := s.importCall(ctx, src, job.OwnerID)
 	if err != nil {
 		return err
 	}

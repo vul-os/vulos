@@ -80,7 +80,7 @@ Trust boundaries:
 ## Component 3: App Sandbox
 
 ### Trust boundaries
-- Each installed app runs in a seccomp-filtered process.
+- Installed apps run as child processes; seccomp filtering is **not currently applied** (M5: the earlier claim was incorrect — this is a known gap, tracked for a future hardening sprint).
 - App ↔ Backend API: HTTP over loopback, authenticated per-app token.
 - App cannot directly reach other apps' data directories.
 
@@ -88,7 +88,7 @@ Trust boundaries:
 
 | # | Category | Threat |
 |---|----------|--------|
-| 1 | **Elevation of Privilege** | Seccomp filter gap allows a malicious app to call a restricted syscall (e.g. `ptrace`, `mount`) and escape the sandbox. |
+| 1 | **Elevation of Privilege** | No seccomp filter is applied today, so a malicious app can call unrestricted syscalls (e.g. `ptrace`, `mount`) and escalate privileges on the host. |
 | 2 | **Tampering** | Malicious app writes to another app's data directory by exploiting a path-traversal in the backend's file API. |
 | 3 | **Information Disclosure** | App reads `/proc` or environment variables of sibling processes before sandbox is fully applied. |
 

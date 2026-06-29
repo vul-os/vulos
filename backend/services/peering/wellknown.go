@@ -18,13 +18,24 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
+
+// peeringSSRFBypass is a test-only hook for the entire peering package. When
+// true, all SSRF validation (ValidateHost calls and safedial transports) is
+// skipped so httptest.Server on 127.0.0.1 and fake hostnames ("home.alice")
+// are accepted. Must NEVER be set in production — only via TestMain in tests
+// inside package peering.
+var peeringSSRFBypass bool
 
 // --------------------------------------------------------------------------
 // Identity storage
@@ -295,24 +306,57 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 
 	// Build the well-known URL.
 	base := wkNormaliseServerAddr(serverAddr)
-	url := base + "/.well-known/vula-id"
+	wkURL := base + "/.well-known/vula-id"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// H1 fix: validate host against the SSRF deny-list before dialling.
+	// Peers are external by definition, so allowLAN=false (strict mode).
+	// peeringSSRFBypass is a test-only override (package-level var, default false).
+	// We also wire safedial.New into the Transport so DNS-rebinding attacks
+	// that resolve to a private IP at connect time are caught too.
+	if !peeringSSRFBypass {
+		host := serverAddr
+		// serverAddr may be a full URL (http://...) or a bare host:port.
+		// Use url.Parse for URLs; SplitHostPort for bare host:port.
+		if strings.HasPrefix(serverAddr, "http://") || strings.HasPrefix(serverAddr, "https://") {
+			if u, parseErr := url.Parse(serverAddr); parseErr == nil {
+				host = u.Hostname()
+			}
+		} else if h, _, splitErr := net.SplitHostPort(serverAddr); splitErr == nil {
+			host = h
+		}
+		if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+			return nil, fmt.Errorf("peering: FetchPeerProfile SSRF guard rejected server %q: %w", serverAddr, ssrfErr)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wkURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("peering: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "VulaOS/1.0 (+peering)")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if peeringSSRFBypass {
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		}
+		return safedial.New(false).DialContext(ctx, network, addr)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			DialContext:         dialFn,
+			TLSHandshakeTimeout: 5 * time.Second,
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("peering: fetch %s: %w", url, err)
+		return nil, fmt.Errorf("peering: fetch %s: %w", wkURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("peering: well-known returned %d from %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("peering: well-known returned %d from %s", resp.StatusCode, wkURL)
 	}
 
 	var wk WKIdentityResponse

@@ -37,11 +37,12 @@ type Gateway struct {
 	appHits    map[string]*rateBucket
 	client     *http.Client
 
-	// integrationTokenFunc, when set, mints a short-lived third-party access
+	// integrationTokenFunc, when set, mints a short-lived per-user third-party access
 	// token for (ctx, provider). Apps that declare the matching integration
 	// permission have it injected as an X-Vulos-Integration-<Provider> request
 	// header (INTEG-04). nil disables injection entirely.
-	integrationTokenFunc func(ctx context.Context, provider string) (string, error)
+	// H3 fix: userID added so tokens are scoped per user, not per box.
+	integrationTokenFunc func(ctx context.Context, provider, userID string) (string, error)
 	// integrationApps maps appID → set of providers that app may receive.
 	integrationApps map[string]map[string]bool
 
@@ -114,7 +115,8 @@ func New(authStore *auth.Store, netMgr *appnet.Manager, portPool *appnet.PortPoo
 
 // SetIntegrationTokenFunc installs the third-party token minter (INTEG-04).
 // Pass nil to disable integration-token injection.
-func (g *Gateway) SetIntegrationTokenFunc(fn func(ctx context.Context, provider string) (string, error)) {
+// H3 fix: fn now receives userID so each user gets their own oauth token.
+func (g *Gateway) SetIntegrationTokenFunc(fn func(ctx context.Context, provider, userID string) (string, error)) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.integrationTokenFunc = fn
@@ -156,14 +158,15 @@ func (g *Gateway) applyTrustedHeaders(ctx context.Context, pr *http.Request, ses
 	pr.Header.Set("X-Vulos-Session", session.ID)
 	pr.Header.Set("X-Vulos-App-ID", appID)
 	pr.Header.Del("Cookie")
-	g.injectIntegrationTokens(ctx, pr, appID)
+	g.injectIntegrationTokens(ctx, pr, session.UserID, appID)
 	g.injectStorageHeaders(ctx, pr, session.UserID, appID)
 }
 
 // injectIntegrationTokens adds X-Vulos-Integration-<Provider> headers for every
 // provider appID is permitted to receive. Mint failures (not connected, cloud
 // unavailable) are swallowed — the app simply sees no token and degrades.
-func (g *Gateway) injectIntegrationTokens(ctx context.Context, pr *http.Request, appID string) {
+// H3 fix: userID is threaded through so tokens are scoped per user.
+func (g *Gateway) injectIntegrationTokens(ctx context.Context, pr *http.Request, userID, appID string) {
 	g.mu.RLock()
 	fn := g.integrationTokenFunc
 	providers := g.integrationApps[appID]
@@ -178,7 +181,7 @@ func (g *Gateway) injectIntegrationTokens(ctx context.Context, pr *http.Request,
 		}
 	}
 	for provider := range providers {
-		tok, err := fn(ctx, provider)
+		tok, err := fn(ctx, provider, userID)
 		if err != nil || tok == "" {
 			continue
 		}

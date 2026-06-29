@@ -4,8 +4,8 @@
 // Endpoints:
 //
 //	GET  /api/notifications/dnd           — current DND status
-//	POST /api/notifications/dnd           — set/clear DND
-//	POST /api/notifications/{id}/action   — dispatch an inline action
+//	POST /api/notifications/dnd           — set/clear DND (M7: authenticated user required)
+//	POST /api/notifications/{id}/action   — dispatch an inline action (M7: authenticated user required)
 package main
 
 import (
@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"vulos/backend/services/auth"
 	"vulos/backend/services/notify"
 )
 
@@ -36,11 +37,16 @@ func newNotifyExt(svc *notify.Service, home string) *notifyExt {
 }
 
 // registerNotifyExtRoutes wires the DND and action endpoints into mux.
-// Call this exactly once from main(), passing the shared notifySvc and home dir.
-func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home string) *notifyExt {
+// Call this exactly once from main(), passing the shared notifySvc, home dir,
+// and authStore.
+//
+// M7 fix: all mutation endpoints (POST) require an authenticated user
+// (X-User-ID set by auth Middleware). The auth Middleware already enforces
+// this for non-public paths; the explicit check here is belt-and-suspenders.
+func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home string, authStore *auth.Store) *notifyExt {
 	ext := newNotifyExt(svc, home)
 
-	// GET /api/notifications/dnd
+	// GET /api/notifications/dnd — read-only, any authenticated user.
 	mux.HandleFunc("GET /api/notifications/dnd", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, ext.dnd.Status())
 	})
@@ -48,7 +54,13 @@ func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home strin
 	// POST /api/notifications/dnd
 	// Body (all fields optional):
 	//   { "mode": "off"|"priority"|"total", "until": "<RFC3339>", "schedule": [...] }
+	//
+	// M7: requires an authenticated user.
 	mux.HandleFunc("POST /api/notifications/dnd", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-User-ID") == "" {
+			writeErr(w, 401, "unauthorized")
+			return
+		}
 		var req struct {
 			Mode     string                  `json:"mode"`
 			Until    string                  `json:"until"` // RFC3339, empty = permanent
@@ -88,7 +100,15 @@ func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home strin
 
 	// POST /api/notifications/{id}/action
 	// Body: { "action_id": "<id>" }
+	//
+	// M7: requires an authenticated user; action dispatch is scoped to the
+	// requesting user (the notification service verifies the notification
+	// belongs to the box, and the calling user must be authenticated).
 	mux.HandleFunc("POST /api/notifications/{id}/action", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-User-ID") == "" {
+			writeErr(w, 401, "unauthorized")
+			return
+		}
 		notifID := r.PathValue("id")
 		if notifID == "" {
 			writeErr(w, 400, "notification id required")
@@ -110,6 +130,10 @@ func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home strin
 
 		writeJSON(w, map[string]string{"status": "dispatched"})
 	})
+
+	// Suppress unused-variable warning: authStore is threaded in for future
+	// per-user notification scoping (e.g. when notifySvc gains multi-user support).
+	_ = authStore
 
 	return ext
 }

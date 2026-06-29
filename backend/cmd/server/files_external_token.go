@@ -22,8 +22,10 @@ type filesIntegrationTokenSource struct {
 	c *integrations.Client
 }
 
-func (t filesIntegrationTokenSource) MintToken(ctx context.Context, provider string) (string, error) {
-	tok, err := t.c.MintToken(ctx, provider)
+// MintToken forwards the mint request to the integration broker, now including
+// userID (H3 fix: per-user token scoping).
+func (t filesIntegrationTokenSource) MintToken(ctx context.Context, provider, userID string) (string, error) {
+	tok, err := t.c.MintToken(ctx, provider, userID)
 	if err != nil {
 		if errors.Is(err, integrations.ErrNotConnected) {
 			return "", nil // → ErrExternalNotConnected upstream

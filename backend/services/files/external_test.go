@@ -22,7 +22,8 @@ type fakeTokenSource struct {
 	calls int
 }
 
-func (f *fakeTokenSource) MintToken(_ context.Context, _ string) (string, error) {
+// MintToken now takes userID (H3 fix: per-user token scoping).
+func (f *fakeTokenSource) MintToken(_ context.Context, _, _ string) (string, error) {
 	f.calls++
 	return f.token, f.err
 }

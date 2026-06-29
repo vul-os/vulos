@@ -58,7 +58,7 @@ func TestMintPresentsOwnerAttestedCert(t *testing.T) {
 
 	c := testClient(srv.URL)
 	c.SetCertProvider(fakeCertProvider{cert: cert, pub: pub, priv: priv})
-	tok, err := c.MintToken(context.Background(), ProviderGoogle)
+	tok, err := c.MintToken(context.Background(), ProviderGoogle, "test-user")
 	if err != nil {
 		t.Fatalf("MintToken with cert: %v", err)
 	}

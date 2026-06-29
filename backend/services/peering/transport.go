@@ -3,16 +3,15 @@
 // PeerClient makes signed POST requests to a remote Vula peer's
 // /api/peering/inbound/* endpoints. Every request carries a signed Envelope
 // in the JSON body. The client refuses to connect to private / loopback
-// addresses (SSRF guard — same logic as backend/services/webproxy) and
-// enforces a hard timeout.
+// addresses (SSRF guard via safedial) and enforces a hard timeout.
 //
 // # SSRF guard
 //
-// isPrivateHost resolves the target hostname to IP addresses and rejects any
-// that are loopback, link-local, unspecified, or RFC-1918 private. This
-// mirrors the isPrivate function in services/webproxy/proxy.go. The check
-// runs at request time (after DNS resolution), so it cannot be bypassed by a
-// hostname that initially resolved to a public IP but changes later.
+// M1 fix: the hand-rolled ssrfGuardTransport / isPrivateHost implementation
+// has been removed and replaced with safedial.New(false), the canonical
+// SSRF-safe dialer used throughout the OS. safedial validates IP addresses at
+// the kernel connect(2) call (after DNS resolution), closing the DNS-rebinding
+// window that the old RoundTripper-level check left open.
 //
 // # Signed requests
 //
@@ -38,6 +37,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // peerClientTimeout is the total time allowed for a single outbound request
@@ -52,22 +53,27 @@ type PeerClient struct {
 }
 
 // NewPeerClient creates a PeerClient with a pre-configured http.Client that
-// enforces TLS, a 15-second total timeout, and the SSRF guard transport.
+// enforces TLS, a 15-second total timeout, and safedial SSRF protection.
+// M1 fix: uses safedial.New(false) instead of the removed ssrfGuardTransport.
 func NewPeerClient() *PeerClient {
-	transport := &ssrfGuardTransport{
-		inner: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			},
-			// Honour timeouts inside the dialer so the SSRF check is applied
-			// before the connection is established.
-			DialContext: (&net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			TLSHandshakeTimeout:   5 * time.Second,
-			ResponseHeaderTimeout: 10 * time.Second,
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
 		},
+		// safedial.New(false) validates the resolved IP at kernel connect(2)
+		// time, preventing DNS-rebinding attacks and SSRF via private IPs.
+		// The peeringSSRFBypass closure allows httptest.Server in package tests.
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if peeringSSRFBypass {
+				return (&net.Dialer{
+					Timeout:   5 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext(ctx, network, addr)
+			}
+			return safedial.New(false).DialContext(ctx, network, addr)
+		},
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
 	}
 	return &PeerClient{
 		http: &http.Client{
@@ -154,59 +160,4 @@ func (c *PeerClient) PostToEndpoints(ctx context.Context, toVulaID, baseURL, msg
 		SortByLatency: true,
 	}
 	return EndpointFailoverDeliver(ctx, req)
-}
-
-// ─── SSRF guard transport ─────────────────────────────────────────────────────
-
-// ssrfGuardTransport wraps an inner http.RoundTripper and rejects requests
-// whose target hostname resolves to a private, loopback, link-local, or
-// unspecified IP address. This prevents server-side request forgery attacks
-// where a crafted peer URL redirects the server to hit internal services.
-type ssrfGuardTransport struct {
-	inner http.RoundTripper
-}
-
-// RoundTrip implements http.RoundTripper. It resolves the host, runs the SSRF
-// check, and then delegates to the inner transport.
-func (t *ssrfGuardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	host := req.URL.Hostname()
-	if isPrivateHost(host) {
-		return nil, fmt.Errorf("peering/transport: SSRF guard: %q resolves to a private address", host)
-	}
-	return t.inner.RoundTrip(req)
-}
-
-// isPrivateHost resolves host to IP addresses and returns true if any of them
-// are private/loopback/link-local. Unresolvable hosts return false (the
-// subsequent connection attempt will fail with a network error, which is
-// acceptable — we don't want to block legitimate hosts just because DNS is
-// slow).
-//
-// This mirrors the isPrivate function in backend/services/webproxy/proxy.go.
-func isPrivateHost(host string) bool {
-	// Quick string-level check for the most common cases.
-	h := strings.ToLower(strings.TrimSuffix(host, "."))
-	for _, blocked := range []string{"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "::1"} {
-		if h == blocked {
-			return true
-		}
-	}
-
-	// Resolve to IPs and check each one.
-	ips, err := net.LookupHost(h)
-	if err != nil {
-		// Cannot resolve — let the inner transport fail naturally.
-		return false
-	}
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
-		}
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return true
-		}
-	}
-	return false
 }

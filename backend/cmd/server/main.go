@@ -534,8 +534,9 @@ func main() {
 	// gateway. The token is minted on demand from the cloud broker; the refresh
 	// token never reaches the box. Mint failures degrade silently (no header).
 	integrationsClient := integrations.NewClientFromEnv()
-	appGateway.SetIntegrationTokenFunc(func(ctx context.Context, provider string) (string, error) {
-		tok, err := integrationsClient.MintToken(ctx, provider)
+	// H3 fix: pass userID so the broker returns per-user tokens, not box-level tokens.
+	appGateway.SetIntegrationTokenFunc(func(ctx context.Context, provider, userID string) (string, error) {
+		tok, err := integrationsClient.MintToken(ctx, provider, userID)
 		if err != nil {
 			return "", err
 		}
@@ -995,7 +996,16 @@ func main() {
 	mux.HandleFunc("GET /api/notifications/unread", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]int{"unread": notifySvc.UnreadCount()})
 	})
+	// M7 fix: notification mutation endpoints require an authenticated user
+	// (X-User-ID enforced by auth Middleware) and /send additionally requires
+	// admin role to prevent notification-injection attacks (phishing via injected
+	// system-level UI pop-ups).
 	mux.HandleFunc("POST /api/notifications/read", func(w http.ResponseWriter, r *http.Request) {
+		// Authenticated user may mark their own notifications read.
+		if r.Header.Get("X-User-ID") == "" {
+			writeErr(w, 401, "unauthorized")
+			return
+		}
 		var req struct {
 			ID string `json:"id"`
 		}
@@ -1008,6 +1018,12 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /api/notifications/send", func(w http.ResponseWriter, r *http.Request) {
+		// M7: /send is admin-only — prevents a non-admin app or user from
+		// injecting phishing-style notifications into the OS notification feed.
+		if !secI_isAdmin(r, authStore) {
+			writeErr(w, 403, "forbidden: notification injection requires admin")
+			return
+		}
 		var req struct {
 			Title  string       `json:"title"`
 			Body   string       `json:"body"`
@@ -1025,10 +1041,15 @@ func main() {
 		writeJSON(w, n)
 	})
 	mux.HandleFunc("POST /api/notifications/clear", func(w http.ResponseWriter, r *http.Request) {
+		// M7: /clear requires an authenticated user (X-User-ID checked explicitly).
+		if r.Header.Get("X-User-ID") == "" {
+			writeErr(w, 401, "unauthorized")
+			return
+		}
 		notifySvc.Clear()
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
-	registerNotifyExtRoutes(mux, notifySvc, home) // NOTIF-05+06: DND + inline actions
+	registerNotifyExtRoutes(mux, notifySvc, home, authStore) // NOTIF-05+06: DND + inline actions
 
 	// Open Router — GET /api/router/classify?app=<id> → {lane}
 	// Used by the shell launcher to dispatch per lane (WebApp/CPUStream/GPURoute/etc).
@@ -1045,6 +1066,12 @@ func main() {
 		writeJSON(w, v.Status())
 	})
 	mux.HandleFunc("POST /api/vault/backup", func(w http.ResponseWriter, r *http.Request) {
+		// H2 fix: backup triggers potentially heavy I/O and reads all vault data
+		// — restrict to admin.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		if err := v.Backup(r.Context()); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1064,6 +1091,11 @@ func main() {
 		writeJSON(w, v.SyncStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/vault/sync", func(w http.ResponseWriter, r *http.Request) {
+		// H2 fix: sync pulls encrypted vault data across the network — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		if err := v.SyncToDevice(r.Context(), dataDir); err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -1493,7 +1525,8 @@ func main() {
 	})
 
 	// TURN/coturn settings routes (NET-10)
-	registerTURNRoutes(mux, turnStore)
+	// H2 fix: POST /api/turn/config and POST /api/turn/test are admin-only.
+	registerTURNRoutes(mux, turnStore, authStore)
 	registerNetModeRoutes(mux, netSvc, authStore)
 
 	// --- System Settings ---
@@ -2232,8 +2265,8 @@ func main() {
 		integrationsClient: integrationsClient,
 	}, ctx)
 
-	// MinIO storage provisioning
-	storageprov.RegisterHandlers(mux, home)
+	// MinIO storage provisioning — H2 fix: admin-only + IsProvisioned guard
+	storageprov.RegisterHandlers(mux, home, authStore)
 
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())

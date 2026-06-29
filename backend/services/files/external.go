@@ -96,10 +96,12 @@ type ExternalMount struct {
 // broker client (integrations.Client.MintToken); nil ⇒ external mounts are
 // unavailable. The returned token is used for a single provider call and dropped
 // — it is NEVER persisted.
+//
+// H3 fix: userID is included so tokens are scoped per user, not per box.
 type TokenSource interface {
-	// MintToken returns a short-lived access token for integrationProvider, or an
-	// error. A "not connected" condition should surface so Connect can report it.
-	MintToken(ctx context.Context, integrationProvider string) (string, error)
+	// MintToken returns a short-lived access token for integrationProvider and
+	// userID. A "not connected" condition should surface so Connect can report it.
+	MintToken(ctx context.Context, integrationProvider, userID string) (string, error)
 }
 
 // ProviderCall carries the per-call context for an ExternalProvider operation: a
@@ -228,11 +230,12 @@ func (s *Service) stampMount(m *ExternalMount) {
 // mintExternal mints a fresh short-lived token for a provider's integration. A
 // "not connected" result is translated to ErrExternalNotConnected so callers can
 // distinguish it from a transport failure.
-func (s *Service) mintExternal(ctx context.Context, p ExternalProvider) (string, error) {
+// H3 fix: userID is forwarded to the broker so each user gets their own token.
+func (s *Service) mintExternal(ctx context.Context, p ExternalProvider, userID string) (string, error) {
 	if s.extTokens == nil {
 		return "", ErrExternalUnavailable
 	}
-	tok, err := s.extTokens.MintToken(ctx, p.IntegrationProvider())
+	tok, err := s.extTokens.MintToken(ctx, p.IntegrationProvider(), userID)
 	if err != nil {
 		return "", err
 	}
@@ -244,8 +247,8 @@ func (s *Service) mintExternal(ctx context.Context, p ExternalProvider) (string,
 
 // callFor mints a fresh token and packages it with the mount's config so the
 // provider has everything it needs for one call.
-func (s *Service) callFor(ctx context.Context, p ExternalProvider, m *ExternalMount) (ProviderCall, error) {
-	tok, err := s.mintExternal(ctx, p)
+func (s *Service) callFor(ctx context.Context, p ExternalProvider, m *ExternalMount, userID string) (ProviderCall, error) {
+	tok, err := s.mintExternal(ctx, p, userID)
 	if err != nil {
 		return ProviderCall{}, err
 	}
@@ -268,7 +271,7 @@ func (s *Service) ConnectExternal(ctx context.Context, userID, provider, name st
 	}
 	// Prove connectivity: a successful mint means the CP broker has a refresh
 	// token for this account/provider. The token itself is discarded here.
-	if _, err := s.mintExternal(ctx, p); err != nil {
+	if _, err := s.mintExternal(ctx, p, userID); err != nil {
 		return nil, err
 	}
 	if name == "" {
@@ -351,7 +354,7 @@ func (s *Service) ListExternal(ctx context.Context, userID, mountID, folderID st
 	if err != nil {
 		return nil, err
 	}
-	call, err := s.callFor(ctx, p, m)
+	call, err := s.callFor(ctx, p, m, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +388,7 @@ func (s *Service) DownloadExternal(ctx context.Context, userID, mountID, fileID 
 	if fileID == "" {
 		return nil, "", 0, fmt.Errorf("%w: file id required", ErrInvalid)
 	}
-	call, err := s.callFor(ctx, p, m)
+	call, err := s.callFor(ctx, p, m, userID)
 	if err != nil {
 		return nil, "", 0, err
 	}
@@ -425,7 +428,7 @@ func (s *Service) CreateFolderExternal(ctx context.Context, userID, mountID, par
 	if err := validName(name); err != nil {
 		return nil, err
 	}
-	call, err := s.callFor(ctx, p, m)
+	call, err := s.callFor(ctx, p, m, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +455,7 @@ func (s *Service) UploadExternal(ctx context.Context, userID, mountID, parentID,
 	if err := validName(name); err != nil {
 		return nil, err
 	}
-	call, err := s.callFor(ctx, p, m)
+	call, err := s.callFor(ctx, p, m, userID)
 	if err != nil {
 		return nil, err
 	}

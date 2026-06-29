@@ -206,12 +206,57 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Extract session if present (cookie / regular Bearer session token).
+		// Track whether auth came from the session COOKIE so we can apply the
+		// CSRF check below (M6 fix: SameSite=None requires CSRF protection).
+		authedViaCookie := false
 		if r.Header.Get("X-User-ID") == "" {
 			token := extractToken(r)
 			if token != "" {
 				if sess, ok := h.store.ValidateToken(token); ok {
 					r.Header.Set("X-User-ID", sess.UserID)
 					r.Header.Set("X-User-Email", sess.Email)
+					// Detect cookie-only auth: no Authorization header was present.
+					authedViaCookie = r.Header.Get("Authorization") == ""
+				}
+			}
+		}
+
+		// M6 fix: CSRF protection for cookie-authenticated mutations.
+		//
+		// When SameSite=None is in use (required for subdomain iframes), the
+		// browser sends cookies on cross-site requests. Without a CSRF check, a
+		// malicious page can trigger state-mutating API calls on behalf of the
+		// logged-in user.
+		//
+		// Mitigation: for state-changing methods (POST/PUT/PATCH/DELETE) that
+		// are authenticated via session cookie, we require either:
+		//   a) Content-Type: application/json  (browser form/fetch defaults
+		//      cannot set this without a preflight — CORS blocks the attack), or
+		//   b) Origin header that matches the request Host (same-origin check).
+		//
+		// GET/HEAD/OPTIONS are exempt (idempotent reads).
+		// Requests already authenticated via AT10 bearer or vk_ API-key skip
+		// this check (those tokens are already not cookie-bound).
+		if authedViaCookie {
+			method := r.Method
+			if method == http.MethodPost || method == http.MethodPut ||
+				method == http.MethodPatch || method == http.MethodDelete {
+				ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+				// Accept application/json (or application/json;charset=utf-8 etc.)
+				jsonCT := strings.HasPrefix(ct, "application/json")
+				// Accept same-origin: Origin must match the Host.
+				origin := r.Header.Get("Origin")
+				sameOrigin := origin == "" // absent Origin is allowed (non-browser clients)
+				if !sameOrigin && origin != "" {
+					// Strip scheme from Origin and compare to Host.
+					originHost := strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://")
+					sameOrigin = originHost == r.Host
+				}
+				if !jsonCT && !sameOrigin {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					fmt.Fprintf(w, `{"error":"csrf: request rejected — use application/json content-type or same-origin request"}`)
+					return
 				}
 			}
 		}

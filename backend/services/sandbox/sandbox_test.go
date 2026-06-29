@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"net"
 	"os"
 	"strings"
@@ -9,6 +10,13 @@ import (
 )
 
 // ---- containsDangerousCode --------------------------------------------------
+//
+// NOTE (C2): containsDangerousCode is NOT a security boundary. It is a
+// best-effort heuristic to catch accidental mistakes by the AI model. Real
+// security requires kernel-level isolation (namespaces, seccomp). The sandbox
+// is disabled by default (VULOS_SANDBOX_ENABLED=1 required). These tests
+// document the heuristic's coverage but must NOT be used to justify the
+// blocklist as an isolation mechanism.
 
 func TestContainsDangerousCode_safe(t *testing.T) {
 	safe := []string{
@@ -17,12 +25,15 @@ func TestContainsDangerousCode_safe(t *testing.T) {
 	}
 	for _, code := range safe {
 		if containsDangerousCode(code) {
-			t.Errorf("expected safe code to pass filter:\n%s", code)
+			t.Errorf("heuristic flagged safe code (may indicate over-blocking):\n%s", code)
 		}
 	}
 }
 
 func TestContainsDangerousCode_dangerous(t *testing.T) {
+	// These tests document the heuristic — NOT a security guarantee.
+	// The blocklist is bypassable via obfuscation. Security requires
+	// VULOS_SANDBOX_ENABLED to be unset (default) or kernel isolation.
 	cases := []struct {
 		name string
 		code string
@@ -44,10 +55,35 @@ func TestContainsDangerousCode_dangerous(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if !containsDangerousCode(tc.code) {
-				t.Errorf("expected code to be detected as dangerous")
+				t.Errorf("heuristic missed pattern %q (update blocklist)", tc.name)
 			}
 		})
 	}
+}
+
+// TestSandboxDisabledByDefault confirms that Run() is refused when
+// VULOS_SANDBOX_ENABLED is not set (C2 fix: default-closed).
+func TestSandboxDisabledByDefault(t *testing.T) {
+	// Do NOT set VULOS_SANDBOX_ENABLED — test the default-off behaviour.
+	t.Setenv(envSandboxEnabled, "")
+
+	dir, err := os.MkdirTemp("", "sandbox-disabled-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	sb := New(dir)
+	defer sb.StopAll()
+
+	_, err = sb.Run(context.Background(), "test-disabled", "print('hello')")
+	if err == nil {
+		t.Fatal("expected Run() to be refused when VULOS_SANDBOX_ENABLED is unset — got nil (C2 regression)")
+	}
+	if !strings.Contains(err.Error(), "disabled") && !strings.Contains(err.Error(), "VULOS_SANDBOX_ENABLED") {
+		t.Errorf("expected 'disabled'/'VULOS_SANDBOX_ENABLED' in error, got: %v", err)
+	}
+	t.Logf("correctly refused: %v", err)
 }
 
 // ---- waitForPort ------------------------------------------------------------

@@ -67,7 +67,7 @@ func TestMintSendsValidDeviceSig(t *testing.T) {
 
 	c := testClient(srv.URL)
 	c.SetDeviceSigner(signer)
-	tok, err := c.MintToken(context.Background(), ProviderGoogle)
+	tok, err := c.MintToken(context.Background(), ProviderGoogle, "test-user")
 	if err != nil {
 		t.Fatalf("MintToken: %v", err)
 	}

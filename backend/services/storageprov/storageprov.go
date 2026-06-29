@@ -14,6 +14,9 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"vulos/backend/services/auth"
+	"vulos/backend/services/joinsync"
 )
 
 // storageprovRequest is the body accepted by POST /api/setup/storage.
@@ -74,8 +77,21 @@ func storageprovRegion() string {
 
 // RegisterHandlers registers the storage provisioning endpoint on mux.
 // home is the user home directory (e.g. os.UserHomeDir()).
-func RegisterHandlers(mux *http.ServeMux, home string) {
+// authStore is used to enforce the admin-only gate (H2 fix).
+func RegisterHandlers(mux *http.ServeMux, home string, authStore *auth.Store) {
 	mux.HandleFunc("POST /api/setup/storage", func(w http.ResponseWriter, r *http.Request) {
+		// H2 fix: storage provisioning is an admin-only operation.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			storageprovWriteErr(w, http.StatusForbidden, "admin only")
+			return
+		}
+		// IsProvisioned guard: refuse re-provisioning once already set up
+		// (mirrors the /api/setup/join guard — prevents a second admin from
+		// clobbering an already-provisioned storage configuration).
+		if joinsync.IsProvisioned(home) {
+			storageprovWriteErr(w, http.StatusConflict, "storage already provisioned — this instance is fully set up")
+			return
+		}
 		storageprovHandle(w, r, home)
 	})
 }

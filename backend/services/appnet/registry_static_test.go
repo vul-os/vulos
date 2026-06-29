@@ -158,6 +158,8 @@ func TestVersionRecipe_DownloadURLJSON(t *testing.T) {
 // TestInstallFromRegistry_StaticPath verifies the full static install flow:
 // download → checksum verify → binary installed → manifest written.
 func TestInstallFromRegistry_StaticPath(t *testing.T) {
+	// C1 fix: registry now requires a trust anchor. Use INSECURE mode in tests.
+	t.Setenv(envRegistryInsecure, "1")
 	content := []byte("#!/bin/sh\necho running\n")
 	sum := sha256.Sum256(content)
 	checksum := hex.EncodeToString(sum[:])

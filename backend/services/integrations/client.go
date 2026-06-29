@@ -199,48 +199,62 @@ func (c *Client) deviceSig(provider string) string {
 	return base64.StdEncoding.EncodeToString(sig)
 }
 
-// MintToken returns a valid short-lived access token for provider, serving a
-// fresh cached token when possible and otherwise fetching a new one from the
-// broker. Fail-closed: an unreachable broker with no fresh cache returns an
-// error, never a stale token.
-func (c *Client) MintToken(ctx context.Context, provider string) (Token, error) {
+// mintCacheKey returns the per-user, per-provider cache key.
+// H3 fix: include userID so different users cannot share the same cached token.
+func mintCacheKey(provider, userID string) string {
+	return provider + ":" + userID
+}
+
+// MintToken returns a valid short-lived access token for provider and userID,
+// serving a fresh cached token when possible and otherwise fetching a new one
+// from the broker. Fail-closed: an unreachable broker with no fresh cache
+// returns an error, never a stale token.
+//
+// H3 fix: userID is included in the cache key and the broker request so each
+// user only receives tokens for their own oauth_identities, not the box's
+// shared identity.
+func (c *Client) MintToken(ctx context.Context, provider, userID string) (Token, error) {
 	if !c.Configured() {
 		return Token{}, ErrNotConfigured
 	}
 
 	now := c.now()
+	ckey := mintCacheKey(provider, userID)
+
 	c.mu.Lock()
-	if tok, ok := c.cache[provider]; ok && now.Add(cacheSkew).Before(tok.Expiry) {
+	if tok, ok := c.cache[ckey]; ok && now.Add(cacheSkew).Before(tok.Expiry) {
 		c.mu.Unlock()
 		return tok, nil
 	}
 	// Short-circuit a recent "not connected" result to avoid hammering the
 	// broker on every gateway-injected request.
-	if until, ok := c.notConnected[provider]; ok && now.Before(until) {
+	if until, ok := c.notConnected[ckey]; ok && now.Before(until) {
 		c.mu.Unlock()
 		return Token{}, ErrNotConnected
 	}
 	c.mu.Unlock()
 
-	tok, err := c.fetch(ctx, provider)
+	tok, err := c.fetch(ctx, provider, userID)
 	if err != nil {
 		if errors.Is(err, ErrNotConnected) {
 			c.mu.Lock()
-			c.notConnected[provider] = now.Add(notConnectedTTL)
+			c.notConnected[ckey] = now.Add(notConnectedTTL)
 			c.mu.Unlock()
 		}
 		return Token{}, err
 	}
 
 	c.mu.Lock()
-	c.cache[provider] = tok
-	delete(c.notConnected, provider) // a successful mint clears the negative cache
+	c.cache[ckey] = tok
+	delete(c.notConnected, ckey) // a successful mint clears the negative cache
 	c.mu.Unlock()
 	return tok, nil
 }
 
 // fetch performs the broker round-trip (no caching).
-func (c *Client) fetch(ctx context.Context, provider string) (Token, error) {
+// H3 fix: userID is forwarded to the broker via X-User-ID so the CP returns
+// only the oauth_identities token for that specific user.
+func (c *Client) fetch(ctx context.Context, provider, userID string) (Token, error) {
 	url := c.cloudBaseURL + "/api/integrations/" + provider + "/token"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -248,6 +262,12 @@ func (c *Client) fetch(ctx context.Context, provider string) (Token, error) {
 	}
 	req.Header.Set("X-Device-ULID", c.deviceULID)
 	req.Header.Set("X-Integration-Sig", c.sign(provider)) // fleet-HMAC fallback
+	// H3 fix: pass the requesting user's ID so the CP resolves the right
+	// oauth_identities row. Without this, the CP would use the device-level
+	// identity and any user on the box would receive the same access token.
+	if userID != "" {
+		req.Header.Set("X-User-ID", userID)
+	}
 	// Strongest available proof: owner-attested cert (method 1), else the TOFU
 	// device-key signature (method 2). The fleet HMAC above remains as fallback.
 	if !c.setCertAuth(req, provider) {
@@ -346,7 +366,9 @@ func (c *Client) Status(ctx context.Context, provider string) (configured, conne
 	if !c.Configured() {
 		return false, false, nil
 	}
-	_, err = c.MintToken(ctx, provider)
+	// Status is a box-level connectivity probe; userID="" omits X-User-ID so the
+	// broker checks device credentials only, not a per-user oauth_identities row.
+	_, err = c.MintToken(ctx, provider, "")
 	switch {
 	case err == nil:
 		return true, true, nil

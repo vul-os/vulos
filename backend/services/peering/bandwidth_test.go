@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // ---------------------------------------------------------------------------
@@ -282,7 +284,7 @@ func TestRegisterBandwidthHandlers_PeerBandwidth_ProxiesResponse(t *testing.T) {
 	})
 	// httptest.Server uses 127.0.0.1 which is blocked by SSRF in production;
 	// skip the check in this unit test only.
-	meter.skipSSRFCheck = true
+	// peeringSSRFBypass set by TestMain allows httptest.Server on 127.0.0.1.
 
 	mux := http.NewServeMux()
 	RegisterBandwidthHandlers(mux, meter)
@@ -308,7 +310,7 @@ func TestRegisterBandwidthHandlers_PeerBandwidth_PeerUnreachable(t *testing.T) {
 	})
 	// 127.0.0.1:1 is loopback (SSRF blocked in prod); skip check to test the
 	// unreachable-peer path directly.
-	meter.skipSSRFCheck = true
+	// peeringSSRFBypass set by TestMain allows httptest.Server on 127.0.0.1.
 
 	mux := http.NewServeMux()
 	RegisterBandwidthHandlers(mux, meter)
@@ -394,32 +396,32 @@ func TestSplitLines(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Critical fix #3: SSRF protections on handlePeerBandwidth
+// M1 fix: SSRF protections on handlePeerBandwidth (safedial.ValidateHost)
 // ---------------------------------------------------------------------------
+// checkSSRF and isPrivateIP have been removed. These tests now verify the
+// canonical safedial.ValidateHost behaviour that replaced them.
 
-// TestCheckSSRF_PrivateIPRejected verifies that private IP addresses are
-// blocked by checkSSRF. We use loopback (127.0.0.1) which always resolves.
-func TestCheckSSRF_PrivateIPRejected(t *testing.T) {
-	err := checkSSRF("http://127.0.0.1:8080/api/peering/bandwidth")
-	if err == nil {
-		t.Error("expected SSRF check to reject 127.0.0.1, got nil error")
+// TestSafedialRejectsPrivateIP verifies that safedial blocks loopback addresses.
+func TestSafedialRejectsPrivateIP(t *testing.T) {
+	if _, err := safedial.ValidateHost("127.0.0.1", false); err == nil {
+		t.Error("expected safedial to reject 127.0.0.1, got nil error")
 	}
 }
 
-// TestCheckSSRF_LocalhostRejected verifies that the literal "localhost"
-// hostname is rejected without DNS resolution.
-func TestCheckSSRF_LocalhostRejected(t *testing.T) {
-	err := checkSSRF("http://localhost:8080/api/peering/bandwidth")
-	if err == nil {
-		t.Error("expected SSRF check to reject 'localhost', got nil error")
+// TestSafedialRejectsLocalhost verifies that the literal "localhost"
+// hostname is rejected (it resolves to 127.0.0.1 which is always blocked).
+func TestSafedialRejectsLocalhost(t *testing.T) {
+	if _, err := safedial.ValidateHost("localhost", false); err == nil {
+		t.Error("expected safedial to reject 'localhost', got nil error")
 	}
 }
 
-// TestCheckSSRF_DotLocalRejected verifies that .local TLD is rejected.
-func TestCheckSSRF_DotLocalRejected(t *testing.T) {
-	err := checkSSRF("http://mydevice.local/api/peering/bandwidth")
-	if err == nil {
-		t.Error("expected SSRF check to reject .local hostname, got nil error")
+// TestSafedialRejectsDotLocal verifies that .local mDNS names are rejected.
+// safedial fails closed on DNS resolution errors, so unresolvable .local names
+// produce an error rather than being silently allowed.
+func TestSafedialRejectsDotLocal(t *testing.T) {
+	if _, err := safedial.ValidateHost("mydevice.local", false); err == nil {
+		t.Error("expected safedial to reject .local hostname, got nil error")
 	}
 }
 
@@ -440,8 +442,7 @@ func TestPeerBandwidth_RedirectNotFollowed(t *testing.T) {
 	defer redirectSrv.Close()
 
 	meter := NewBandwidthMeter(BandwidthConfig{Interval: 10 * time.Minute})
-	// httptest servers use 127.0.0.1; skip SSRF check so we can test redirect behaviour.
-	meter.skipSSRFCheck = true
+	// peeringSSRFBypass is set by TestMain — httptest servers on 127.0.0.1 are allowed.
 	mux := http.NewServeMux()
 	RegisterBandwidthHandlers(mux, meter)
 
@@ -473,7 +474,7 @@ func TestPeerBandwidth_OversizeBodyCapped(t *testing.T) {
 
 	meter := NewBandwidthMeter(BandwidthConfig{Interval: 10 * time.Minute})
 	// httptest server uses 127.0.0.1; skip SSRF check to test body-cap logic.
-	meter.skipSSRFCheck = true
+	// peeringSSRFBypass set by TestMain allows httptest.Server on 127.0.0.1.
 	mux := http.NewServeMux()
 	RegisterBandwidthHandlers(mux, meter)
 
@@ -486,17 +487,17 @@ func TestPeerBandwidth_OversizeBodyCapped(t *testing.T) {
 	}
 }
 
-// TestCheckSSRF_PublicIPAccepted verifies that a publicly-routable hostname
-// (or a loopback URL that won't be reached) is accepted by the SSRF check
-// itself — the acceptance logic should not reject non-private addresses.
-// We test with a synthetic non-private IP URL (DNS lookup will fail which is
-// a different error, not an SSRF block error).
-func TestCheckSSRF_PublicIPAccepted(t *testing.T) {
-	// Use a clearly-public DNS name. DNS may fail in CI but the error must NOT
-	// be an SSRF error — it should be a DNS lookup failure.
-	err := checkSSRF("http://203.0.113.1/api/peering/bandwidth") // TEST-NET-3 (non-routable but not blocked by our rules)
-	// We accept either: nil error (if DNS resolves) or a DNS-failure error (not SSRF).
-	if err != nil && strings.Contains(err.Error(), "SSRF") {
-		t.Errorf("public IP should not trigger SSRF block, got: %v", err)
+// TestSafedialAcceptsPublicIP verifies that safedial accepts public IP addresses.
+// M1 fix: replaces TestCheckSSRF_PublicIPAccepted.
+// Note: 203.0.113.x (TEST-NET-3) is blocked by safedial's alwaysDeniedCIDRs.
+// Use 1.1.1.1 (Cloudflare) which is genuinely public.
+func TestSafedialBandwidthAcceptsPublicIP(t *testing.T) {
+	// 1.1.1.1 is a well-known public IP — safedial must not block it.
+	if _, err := safedial.ValidateHost("1.1.1.1", false); err != nil {
+		t.Errorf("safedial should accept public 1.1.1.1, got: %v", err)
+	}
+	// 203.0.113.1 is TEST-NET-3 — blocked by safedial (correct behavior for docs IPs).
+	if _, err := safedial.ValidateHost("203.0.113.1", false); err == nil {
+		t.Error("safedial should reject TEST-NET-3 (203.0.113.1)")
 	}
 }

@@ -21,10 +21,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // ---------------------------------------------------------------------------
@@ -76,8 +79,21 @@ var (
 
 	// epHTTPClient is the shared client used for both latency probes and
 	// failover delivery attempts.
+	// H1 fix: use safedial transport to guard against SSRF — endpoint Server
+	// values come from registered peers and must not reach internal addresses.
+	// The DialContext closure reads peeringSSRFBypass at dial time; when the
+	// bypass is active (tests only) the default dialer is used instead.
 	epHTTPClient = &http.Client{
 		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if peeringSSRFBypass {
+					return (&net.Dialer{}).DialContext(ctx, network, addr)
+				}
+				return safedial.New(false).DialContext(ctx, network, addr)
+			},
+			TLSHandshakeTimeout: 5 * time.Second,
+		},
 	}
 )
 
@@ -238,6 +254,20 @@ func epHandleRegister(w http.ResponseWriter, r *http.Request) {
 	if req.ID == "" || req.VulaID == "" || req.Server == "" {
 		http.Error(w, "id, vula_id and server are required", http.StatusBadRequest)
 		return
+	}
+	// H1 fix: validate the server host at register time so that no private/
+	// loopback address can be stored and later used for delivery (SSRF).
+	{
+		host := req.Server
+		if h, _, splitErr := net.SplitHostPort(req.Server); splitErr == nil {
+			host = h
+		}
+		if !peeringSSRFBypass {
+			if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+				http.Error(w, "server address rejected (SSRF guard): "+ssrfErr.Error(), http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	ep := &epEndpoint{
 		ID:       req.ID,
@@ -444,7 +474,22 @@ func EndpointFailoverDeliver(ctx context.Context, req EndpointDeliveryRequest) e
 }
 
 // epDoDeliver performs a single HTTP POST to server+path with payload.
+// H1 fix: validates the server host against the SSRF deny-list as defence-
+// in-depth (primary validation happens at register time in epHandleRegister).
 func epDoDeliver(ctx context.Context, server, path string, payload []byte) error {
+	// Defence-in-depth: re-validate at delivery time (handles in-memory
+	// registrations that bypassed epHandleRegister).
+	{
+		host := server
+		if h, _, splitErr := net.SplitHostPort(server); splitErr == nil {
+			host = h
+		}
+		if !peeringSSRFBypass {
+			if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+				return fmt.Errorf("peering: epDoDeliver SSRF guard rejected %q: %w", server, ssrfErr)
+			}
+		}
+	}
 	url := "https://" + server + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {

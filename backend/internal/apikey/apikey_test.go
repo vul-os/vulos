@@ -148,6 +148,33 @@ func TestConfig_Enabled(t *testing.T) {
 	}
 }
 
+// TestNewIntrospector_HTTPSEnforced verifies the M3 fix: NewIntrospector
+// returns nil (disabled) when VULOS_CP_BASE_URL uses http:// instead of
+// https://, to prevent leaking X-Relay-Auth over plaintext.
+func TestNewIntrospector_HTTPSEnforced(t *testing.T) {
+	t.Setenv(EnvCPAllowInsecure, "")
+
+	// http:// base → disabled (M3).
+	if NewIntrospector(Config{BaseURL: "http://cp.vulos.org"}) != nil {
+		t.Fatal("NewIntrospector with http:// base must return nil (M3: HTTPS enforced)")
+	}
+
+	// https:// base → not disabled.
+	if NewIntrospector(Config{BaseURL: "https://cp.vulos.org"}) == nil {
+		t.Fatal("NewIntrospector with https:// base must not return nil")
+	}
+}
+
+// TestNewIntrospector_InsecureEscapeHatch verifies that VULOS_CP_ALLOW_INSECURE=1
+// allows http:// for local dev.
+func TestNewIntrospector_InsecureEscapeHatch(t *testing.T) {
+	t.Setenv(EnvCPAllowInsecure, "1")
+	// With insecure flag, http:// is accepted.
+	if NewIntrospector(Config{BaseURL: "http://localhost:8080"}) == nil {
+		t.Fatal("NewIntrospector with http:// and VULOS_CP_ALLOW_INSECURE=1 must not return nil")
+	}
+}
+
 func TestProductOS_MissingProductRejects(t *testing.T) {
 	// Key valid but doesn't carry the "os" product.
 	srv, _ := mockCP(t, func(req introspectRequest) Result {

@@ -30,10 +30,14 @@ package peering
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"time"
+
+	"vulos/backend/internal/safedial"
 )
 
 // ─── Wire types ───────────────────────────────────────────────────────────────
@@ -134,11 +138,26 @@ type LobbyService struct {
 
 // NewLobbyService creates a LobbyService.
 // meter provides the local node's own bandwidth reading.
+// H1 fix: the HTTP client uses safedial.New to guard against SSRF — peer
+// bandwidth fetch targets come from the request body and must not reach
+// internal/loopback addresses.
 func NewLobbyService(meter *BandwidthMeter) *LobbyService {
 	return &LobbyService{
 		meter: meter,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				// Closure reads peeringSSRFBypass at dial time; in tests the
+				// default dialer is used so httptest.Server on 127.0.0.1 is
+				// reachable. In production safedial guards against SSRF.
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					if peeringSSRFBypass {
+						return (&net.Dialer{}).DialContext(ctx, network, addr)
+					}
+					return safedial.New(false).DialContext(ctx, network, addr)
+				},
+				TLSHandshakeTimeout: 5 * time.Second,
+			},
 		},
 	}
 }
@@ -290,6 +309,24 @@ func (s *LobbyService) fetchBandwidth(ctx context.Context, p LobbyParticipant) L
 		report.LatencyMs = result.LatencyMs
 		report.Source = result.Source
 		return report
+	}
+
+	// H1 fix: validate server host against the SSRF deny-list before building
+	// the request. The server value comes from the JSON request body and must
+	// not be allowed to reach loopback or private addresses.
+	{
+		host := p.Server
+		// Strip port if present (host:port form).
+		if h, _, splitErr := net.SplitHostPort(p.Server); splitErr == nil {
+			host = h
+		}
+		if !peeringSSRFBypass {
+			if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+				report.Error = fmt.Sprintf("peer address rejected (SSRF guard): %v", ssrfErr)
+				report.Source = "unavailable"
+				return report
+			}
+		}
 	}
 
 	// Remote peer — proxy GET https://{server}/api/peering/bandwidth.

@@ -15,7 +15,8 @@ import (
 //	GET /api/integrations/google/token  — { access_token, expires_at, scopes }
 func RegisterHandlers(mux *http.ServeMux, c *Client) {
 	mux.HandleFunc("GET /api/integrations/google/status", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-User-ID") == "" {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -33,11 +34,14 @@ func RegisterHandlers(mux *http.ServeMux, c *Client) {
 	})
 
 	mux.HandleFunc("GET /api/integrations/google/token", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-User-ID") == "" {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		tok, err := c.MintToken(r.Context(), ProviderGoogle)
+		// H3 fix: pass userID so the cache key and broker request are per-user.
+		// Without this, any authenticated user receives the same box-level token.
+		tok, err := c.MintToken(r.Context(), ProviderGoogle, userID)
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrNotConfigured):

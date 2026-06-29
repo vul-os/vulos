@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -122,5 +123,101 @@ func TestCookieDomain(t *testing.T) {
 				t.Errorf("cookieDomain(%q) = %q; want %q", tc.host, got, tc.want)
 			}
 		})
+	}
+}
+
+// makeCSRFTestHandler returns a Middleware-wrapped handler seeded with one
+// user+session. The cookie token is returned so tests can set it.
+func makeCSRFTestHandler(t *testing.T) (cookieToken string, mw http.Handler) {
+	t.Helper()
+	store := &Store{
+		users:    make(map[string]*User),
+		sessions: make(map[string]*Session),
+		profiles: make(map[string]*Profile),
+		secret:   []byte("test-secret-m6"),
+	}
+	u := &User{ID: "uid-csrf", Username: "csrfuser", Email: "csrf@test.local"}
+	store.users["uid-csrf"] = u
+	// Create a live session token for the cookie.
+	sess := store.CreateSession(u, "csrf-test-device")
+	cookieToken = sess.Token
+	h := NewHandler(store)
+	echo := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	return cookieToken, h.Middleware(echo)
+}
+
+// TestCSRF_CookieAuthMutationWithoutJSONRejected verifies M6: a POST
+// authenticated via session cookie without Content-Type: application/json
+// and without a matching Origin header is rejected with 403.
+func TestCSRF_CookieAuthMutationWithoutJSONRejected(t *testing.T) {
+	tok, mw := makeCSRFTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader("data=x"))
+	req.Host = "vulos.local"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded") // browser form default
+	req.Header.Set("Origin", "https://evil.example.com")                // cross-site origin
+	req.AddCookie(&http.Cookie{Name: "vulos_session", Value: tok})
+	w := httptest.NewRecorder()
+	mw.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for CSRF-unprotected POST, got %d", w.Code)
+	}
+}
+
+// TestCSRF_CookieAuthMutationWithJSONAllowed verifies that cookie-authed POST
+// with Content-Type: application/json is accepted (JSON CT is CSRF-safe).
+func TestCSRF_CookieAuthMutationWithJSONAllowed(t *testing.T) {
+	tok, mw := makeCSRFTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(`{}`))
+	req.Host = "vulos.local"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://evil.example.com") // cross-site — but JSON CT exempts
+	req.AddCookie(&http.Cookie{Name: "vulos_session", Value: tok})
+	w := httptest.NewRecorder()
+	mw.ServeHTTP(w, req)
+
+	if w.Code == http.StatusForbidden {
+		t.Fatal("expected non-403 for application/json cookie-authed POST, got 403")
+	}
+}
+
+// TestCSRF_CookieAuthMutationSameOriginAllowed verifies that a same-origin
+// POST (matching Origin and Host) is accepted even without JSON content-type.
+func TestCSRF_CookieAuthMutationSameOriginAllowed(t *testing.T) {
+	tok, mw := makeCSRFTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader("data=x"))
+	req.Host = "vulos.local"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "https://vulos.local") // same origin as Host
+	req.AddCookie(&http.Cookie{Name: "vulos_session", Value: tok})
+	w := httptest.NewRecorder()
+	mw.ServeHTTP(w, req)
+
+	if w.Code == http.StatusForbidden {
+		t.Fatal("expected non-403 for same-origin POST, got 403")
+	}
+}
+
+// TestCSRF_BearerAuthMutationSkipsCheck verifies that a Bearer-authenticated
+// POST is NOT subject to the CSRF check (Bearer tokens are not cookies).
+func TestCSRF_BearerAuthMutationSkipsCheck(t *testing.T) {
+	tok, mw := makeCSRFTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader("data=x"))
+	req.Host = "vulos.local"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "https://evil.example.com")
+	req.Header.Set("Authorization", "Bearer "+tok) // Bearer, not cookie
+	w := httptest.NewRecorder()
+	mw.ServeHTTP(w, req)
+
+	// Bearer auth means authedViaCookie=false → CSRF check skipped.
+	if w.Code == http.StatusForbidden {
+		t.Fatal("expected non-403 for Bearer-authed POST (CSRF check should be skipped)")
 	}
 }
