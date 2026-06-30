@@ -140,23 +140,42 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// extractIP resolves the client IP used as the rate-limit / ban key.
+//
+// Proxy headers are ONLY consulted when the immediate peer is loopback (a
+// reverse proxy on the same host). Critically, the client-supplied portion of
+// X-Forwarded-For is NEVER trusted: XFF is appended left-to-right, so the
+// LEFTMOST entry is whatever the client sent and an attacker can prepend a
+// fake IP per request to evade bans / brute-force protection. We instead use
+// the proxy's own trusted view of the client:
+//
+//   - Fly-Client-IP — set by the Fly edge and overwrites any client value.
+//   - else the RIGHTMOST X-Forwarded-For entry — the hop the trusted proxy
+//     appended (the real peer); entries to its left are client-controlled.
+//   - else X-Real-IP — set wholesale by the proxy (not appended).
+//
+// Every candidate must parse as an IP, otherwise we fall back to RemoteAddr.
 func extractIP(r *http.Request) string {
-	// Only trust proxy headers from loopback (reverse proxy on same host)
 	remoteHost, _, _ := net.SplitHostPort(r.RemoteAddr)
 	fromTrustedProxy := remoteHost == "127.0.0.1" || remoteHost == "::1"
 
 	if fromTrustedProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			for i, c := range xff {
-				if c == ',' {
-					return strings.TrimSpace(xff[:i])
-				}
-				_ = i
+		if fly := strings.TrimSpace(r.Header.Get("Fly-Client-IP")); fly != "" {
+			if net.ParseIP(fly) != nil {
+				return fly
 			}
-			return strings.TrimSpace(xff)
 		}
-		if xri := r.Header.Get("X-Real-IP"); xri != "" {
-			return xri
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			rightmost := strings.TrimSpace(parts[len(parts)-1])
+			if net.ParseIP(rightmost) != nil {
+				return rightmost
+			}
+		}
+		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+			if net.ParseIP(xri) != nil {
+				return xri
+			}
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

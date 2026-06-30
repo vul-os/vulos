@@ -528,17 +528,27 @@ func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	token := extractToken(r)
 	if token != "" {
-		h.store.RevokeSession(token)
+		// Optional "sign out everywhere": ?all=true revokes every session for
+		// the user, not just the current one.
+		if r.URL.Query().Get("all") == "true" {
+			if sess, ok := h.store.ValidateToken(token); ok {
+				h.store.RevokeAllSessions(sess.UserID)
+			} else {
+				h.store.RevokeSession(token)
+			}
+		} else {
+			h.store.RevokeSession(token)
+		}
 		h.store.Flush()
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:   "vulos_session",
-		Value:  "",
-		Path:   "/",
-		Domain: cookieDomain(r),
-		MaxAge: -1,
-	})
+	// Build the clearing cookie from the SAME attributes used when the cookie
+	// was set (HttpOnly, Secure, SameSite, Domain, Path). A clearing cookie
+	// that drops these may not match/replace the original in the browser,
+	// leaving the session cookie in place. Only the value + MaxAge change.
+	clear := sessionCookie(r, "")
+	clear.MaxAge = -1
+	http.SetCookie(w, clear)
 
 	writeJSON(w, map[string]string{"status": "logged out"})
 }
