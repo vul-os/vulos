@@ -46,6 +46,7 @@
 package peering
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
@@ -172,10 +173,27 @@ type AttestPolicy struct {
 	// root is used for Nitro documents.
 	TrustedRootPEM string
 
-	// MaxAge is the maximum accepted age of the [AttestDoc.IssuedAt] timestamp.
-	// Zero means no age limit (not recommended for production).
+	// MaxAge is the maximum accepted age of the attestation. For the generic
+	// (provider-agnostic) pre-check this bounds the UNSIGNED [AttestDoc.IssuedAt];
+	// zero means no pre-check. For the Nitro verifier this bounds the SIGNED NSM
+	// timestamp, and a zero value falls back to [attestDefaultMaxAge] (strict
+	// default — a Nitro document is NEVER accepted with an unbounded age, so a
+	// backdated/stale signed document cannot be replayed).
 	MaxAge time.Duration
+
+	// Nonce, when non-empty, is a caller-supplied challenge that MUST appear in the
+	// SIGNED NSM nonce field. It binds an attestation to a specific verification
+	// request so a captured-but-valid document cannot be replayed against a
+	// different challenge. Empty disables the nonce check (back-compat).
+	Nonce []byte
 }
+
+// attestDefaultMaxAge is the strict freshness window applied to the SIGNED Nitro
+// timestamp when the policy does not pin its own MaxAge. A Nitro attestation older
+// (or more future-dated) than this is rejected so a stale/backdated document can
+// never be replayed. Nitro attestations are produced on demand and are meant to be
+// fresh, so a few minutes is generous.
+const attestDefaultMaxAge = 5 * time.Minute
 
 // ─── AttestVerifier interface ─────────────────────────────────────────────────
 
@@ -533,13 +551,31 @@ func (AttestNitroVerifier) Verify(doc AttestDoc, policy AttestPolicy) error {
 		return attestErr("missing-leaf-cert", "NSM payload has no end-entity certificate", nil)
 	}
 
-	// 3. Verify the end-entity certificate chains to the trusted Nitro root via
-	//    the cabundle intermediates. The verification time is the document's
-	//    issued_at when set (Nitro leaf certs are short-lived), else now.
-	at := doc.IssuedAt
-	if at.IsZero() {
-		at = time.Now()
+	// 2b. Freshness on SIGNED data. The outer doc.IssuedAt is attacker-mutable, so
+	//     it carries no weight; the NSM timestamp is inside the COSE-signed payload
+	//     we are about to verify the signature over. We require it to be present and
+	//     within a bounded window so a captured-but-valid (backdated) document cannot
+	//     be replayed. A zero/missing timestamp is fail-closed.
+	if nsm.Timestamp == 0 {
+		return attestErr("missing-timestamp",
+			"signed NSM document has no timestamp: freshness cannot be established (fail-closed)", nil)
 	}
+	signedAt := time.UnixMilli(int64(nsm.Timestamp))
+	maxAge := policy.MaxAge
+	if maxAge <= 0 {
+		maxAge = attestDefaultMaxAge // strict default — never unbounded for Nitro.
+	}
+	if age := time.Since(signedAt); age > maxAge || -age > maxAge {
+		return attestErr("stale-attestation",
+			fmt.Sprintf("signed NSM timestamp is %s away from now, max allowed %s (replay/backdate guard)",
+				absDuration(age), maxAge), nil)
+	}
+
+	// 3. Verify the end-entity certificate chains to the trusted Nitro root via
+	//    the cabundle intermediates. The verification time is the SIGNED NSM
+	//    timestamp (Nitro leaf certs are short-lived); using the unsigned
+	//    doc.IssuedAt here would let an attacker pick a validity instant.
+	at := signedAt
 	leaf, err := attestVerifyNitroDERChain(nsm.Certificate, nsm.CABundle, policy.TrustedRootPEM, at)
 	if err != nil {
 		return attestErr("invalid-cert-chain", "Nitro certificate chain validation failed", err)
@@ -572,7 +608,25 @@ func (AttestNitroVerifier) Verify(doc AttestDoc, policy AttestPolicy) error {
 			fmt.Sprintf("signed user_data does not match relay_vula_id %q", doc.RelayVulaID), nil)
 	}
 
+	// 7. Bind a caller-supplied challenge nonce (anti-replay). When the policy pins
+	//    a Nonce, the SIGNED NSM nonce MUST equal it; otherwise a captured valid
+	//    attestation could be replayed against a different verification request.
+	if len(policy.Nonce) > 0 {
+		if !bytes.Equal(nsm.Nonce, policy.Nonce) {
+			return attestErr("nonce-mismatch",
+				"signed NSM nonce does not match the caller-supplied challenge (replay guard)", nil)
+		}
+	}
+
 	return nil
+}
+
+// absDuration returns the absolute value of d.
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 // attestCheckPCRs verifies that every entry in expected is present in actual
