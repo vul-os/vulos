@@ -95,6 +95,54 @@ const (
 // x3dhHKDFInfo is the HKDF info label binding derived keys to this scheme/version.
 const x3dhHKDFInfo = "vula-x3dh-content-v2"
 
+// X3DHKDFInfoLabel is the EXPORTED, authoritative HKDF `info` label for the v2
+// content KDF. A non-Go initiator (the vula-relay JS client, the cloud-home cell)
+// MUST use this exact byte string so a JS sender and a Go responder derive an
+// identical key. See the "Cross-language X3DH wire spec" block below.
+const X3DHKDFInfoLabel = x3dhHKDFInfo
+
+// ─── Cross-language X3DH wire spec (Contract B; match BYTE-FOR-BYTE) ────────────
+//
+// This is the normative spec a JS initiator (vula-relay) and the cloud-home cell
+// must reproduce so they interop with the Go responder (X3DHRespond) here.
+//
+// IDENTITIES. A VulaID is "vula:ed25519:" + base58(32-byte Ed25519 pubkey)
+// (identity.go). Ed25519 keys are mapped to X25519 exactly as libsodium /
+// Signal (crypto.go):
+//   - private: X25519_scalar = clamp(SHA512(ed25519_seed[0:32])[0:32]) where
+//     clamp does scalar[0]&=248; scalar[31]&=127; scalar[31]|=64.
+//   - public:  u = (1+y)/(1-y) mod (2^255-19), y = LE-decode(ed_pub) with the
+//     top sign bit cleared; encode u as 32-byte little-endian.
+//
+// PER-MESSAGE HEADER (sent alongside ciphertext; JSON field names are stable):
+//   { "v": 2, "from": "<sender VulaID>", "ek": "<b64 32-byte X25519 EK pub>",
+//     "spk_id": "<recipient signed-prekey id>", "opk_id": "<claimed OPK id|omitted>" }
+// `ek` is Go []byte → JSON standard-base64 (encoding/json). `opk_id` is omitted
+// (or "") when no one-time prekey was claimed (signed-prekey-only fallback).
+//
+// SENDER claims the recipient bundle via Contract A, then computes (X3DHInitiate):
+//   EK            = fresh X25519 keypair (32-byte scalar; clamping NOT required
+//                   because curve25519.X25519 clamps internally — match by using
+//                   a random 32-byte scalar and X25519(scalar, basepoint)).
+//   DH1 = X25519(IK_send_priv, SPK_recv_pub)
+//   DH2 = X25519(EK_priv,      IK_recv_pub)
+//   DH3 = X25519(EK_priv,      SPK_recv_pub)
+//   DH4 = X25519(EK_priv,      OPK_recv_pub)   // omit entirely when no OPK
+//
+// KDF (x3dhKDF / X3DHDeriveSharedKey — the byte-exact reference):
+//   IKM   = (0xFF repeated 32 times) || DH1 || DH2 || DH3 [|| DH4]
+//   salt  = utf8( lo + ":" + hi )  where {lo,hi} = the two VulaIDs sorted by Go
+//           string comparison (lexicographic over UTF-8 bytes); lo is the smaller.
+//   info  = utf8(X3DHKDFInfoLabel)   // "vula-x3dh-content-v2"
+//   SK    = HKDF-SHA256(ikm=IKM, salt=salt, info=info), first 32 bytes.
+// SK is then used directly as the XChaCha20-Poly1305 key in EncryptForPeer
+// (24-byte random nonce prepended to AEAD output; additionalData is the caller's
+// conversation context, matched on both ends).
+//
+// RECIPIENT mirrors the DHs with its private SPK/OPK + the sender's EK/IK
+// (X3DHRespond), consuming-and-deleting the OPK referenced by opk_id. A header
+// that names an already-consumed OPK fails closed (replay protection + FS).
+
 // ─── Published bundle ──────────────────────────────────────────────────────────
 
 // SignedPreKeyPublic is a medium-term X25519 prekey signed by the identity key.
@@ -305,6 +353,15 @@ func X3DHRespond(store *PreKeyStore, recipientEdPriv ed25519.PrivateKey, recipie
 }
 
 // ─── KDF ───────────────────────────────────────────────────────────────────────
+
+// X3DHDeriveSharedKey is the EXPORTED, byte-exact content-key KDF. dhConcat is
+// DH1||DH2||DH3 (||DH4 when an OPK was used), idA/idB are the two VulaIDs in any
+// order (sorted internally). It returns the 32-byte SK used as the AEAD key. This
+// is the reference a JS/cell initiator reproduces (see the cross-language spec
+// above); the deterministic test vector in prekeys_test.go pins its output.
+func X3DHDeriveSharedKey(dhConcat []byte, idA, idB string) (SharedKey, error) {
+	return x3dhKDF(dhConcat, idA, idB)
+}
 
 // x3dhKDF runs HKDF-SHA256 over F||DHs with the IDs bound into the salt, matching
 // both sides regardless of who is local/remote (sorted, like PeerSharedSecret).
