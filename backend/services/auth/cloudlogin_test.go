@@ -157,26 +157,47 @@ func TestCloudLogin_NoBrokerPubkey(t *testing.T) {
 	}
 }
 
-func TestCloudLogin_SessionReuse(t *testing.T) {
+func TestCloudLogin_ReplayRejected(t *testing.T) {
 	store := makeTestStore(t)
 	pub, priv := makeTestKeyPair(t)
 
 	verifier := NewCloudLoginVerifier(store, pub)
 	tok := freshToken()
+	tok.JTI = "jti-replay-" + base64.RawURLEncoding.EncodeToString([]byte(time.Now().String()))
 	tokenBytes, sigB64 := signToken(t, priv, tok)
 
-	info1, err := verifier.Login(tokenBytes, sigB64)
-	if err != nil {
+	if _, err := verifier.Login(tokenBytes, sigB64); err != nil {
 		t.Fatalf("first login: %v", err)
 	}
-	info2, err := verifier.Login(tokenBytes, sigB64)
-	if err != nil {
-		t.Fatalf("second login: %v", err)
+	// A login token is single-use: replaying it within its validity window
+	// must be rejected, even on the same device.
+	if _, err := verifier.Login(tokenBytes, sigB64); err != ErrTokenReplay {
+		t.Errorf("expected ErrTokenReplay on replay, got %v", err)
 	}
-	// Sessions should be reused for the same device.
-	if info1.SessionToken != info2.SessionToken {
-		t.Errorf("expected session reuse but got different tokens: %q vs %q",
-			info1.SessionToken, info2.SessionToken)
+}
+
+func TestCloudLogin_DeviceBindingEnforced(t *testing.T) {
+	store := makeTestStore(t)
+	pub, priv := makeTestKeyPair(t)
+
+	// This device identifies as a DIFFERENT ULID than the token is bound to.
+	t.Setenv("VULOS_DEVICE_ULID", "01HZTHISDEVICE999")
+	verifier := NewCloudLoginVerifier(store, pub)
+
+	tok := freshToken() // ULID = "01HZDEVICEULID001"
+	tokenBytes, sigB64 := signToken(t, priv, tok)
+
+	if _, err := verifier.Login(tokenBytes, sigB64); err != ErrDeviceMismatch {
+		t.Errorf("expected ErrDeviceMismatch for token bound to another device, got %v", err)
+	}
+
+	// A token bound to THIS device's ULID is accepted.
+	tok2 := freshToken()
+	tok2.ULID = "01HZTHISDEVICE999"
+	tok2.JTI = "jti-match-1"
+	tb2, sig2 := signToken(t, priv, tok2)
+	if _, err := verifier.Login(tb2, sig2); err != nil {
+		t.Errorf("expected success for token bound to this device, got %v", err)
 	}
 }
 

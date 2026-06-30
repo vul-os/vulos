@@ -449,6 +449,10 @@ func (h *Handler) handleCloudLogin(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 401, "cloud token has expired")
 		case ErrBadSignature:
 			writeErr(w, 401, "invalid cloud token signature")
+		case ErrDeviceMismatch:
+			writeErr(w, 401, "cloud token is not valid for this device")
+		case ErrTokenReplay:
+			writeErr(w, 401, "cloud token has already been used")
 		case ErrNoBrokerPubkey:
 			writeErr(w, 503, "cloud login not configured on this device")
 		default:

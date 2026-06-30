@@ -24,6 +24,7 @@ package auth
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"vulos/backend/services/signing"
@@ -126,6 +128,10 @@ type CloudLoginToken struct {
 	Name      string    `json:"name"`
 	ExpiresAt time.Time `json:"expires_at"`
 	IssuedAt  time.Time `json:"issued_at"`
+	// JTI is an optional unique token identifier (nonce) used for replay
+	// detection. When the cloud broker emits it, replays are deduped on the
+	// JTI; otherwise the verifier falls back to deduping on the token bytes.
+	JTI string `json:"jti,omitempty"`
 }
 
 // CloudLoginRequest is the wire format sent by the frontend to
@@ -153,12 +159,57 @@ type CloudSessionInfo struct {
 type CloudLoginVerifier struct {
 	store  *Store
 	pubkey ed25519.PublicKey // may be nil if cloud login is not configured
+	// deviceULID is THIS device's canonical ULID (from VULOS_DEVICE_ULID).
+	// When non-empty the verifier enforces that the token's ulid binding
+	// matches this device, rejecting tokens minted for a different device.
+	deviceULID string
+}
+
+// localDeviceULID returns this device's canonical ULID as configured via the
+// VULOS_DEVICE_ULID environment variable (the same value the integrations
+// client uses). Empty when unset (self-host / dev box not cloud-enrolled with
+// a device identity), in which case token→device binding cannot be enforced.
+func localDeviceULID() string {
+	return strings.TrimSpace(os.Getenv("VULOS_DEVICE_ULID"))
 }
 
 // NewCloudLoginVerifier creates a verifier.  pubkey may be nil; in that case
 // every call to Login returns ErrNoBrokerPubkey.
 func NewCloudLoginVerifier(store *Store, pubkey ed25519.PublicKey) *CloudLoginVerifier {
-	return &CloudLoginVerifier{store: store, pubkey: pubkey}
+	return &CloudLoginVerifier{store: store, pubkey: pubkey, deviceULID: localDeviceULID()}
+}
+
+// ─── Replay guard ────────────────────────────────────────────────────────────
+
+// cloudLoginReplay is a process-wide dedup cache of consumed login tokens.
+// A cloud login token is single-use: once it has minted a session it must not
+// be accepted again within its validity window. Handlers construct a fresh
+// verifier per request, so the guard MUST be package-level to be effective.
+var cloudLoginReplay = &replayGuard{seen: make(map[string]time.Time)}
+
+type replayGuard struct {
+	mu   sync.Mutex
+	seen map[string]time.Time // dedup-key -> token expiry (eviction horizon)
+}
+
+// checkAndRecord records key (valid until expiry) and reports whether it was
+// newly seen. It returns false when key was already recorded and is still
+// within its validity window — i.e. a replay.
+func (g *replayGuard) checkAndRecord(key string, expiry time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := time.Now()
+	// Opportunistic eviction of entries past their token-expiry horizon.
+	for k, exp := range g.seen {
+		if now.After(exp) {
+			delete(g.seen, k)
+		}
+	}
+	if exp, ok := g.seen[key]; ok && now.Before(exp) {
+		return false // replay within validity window
+	}
+	g.seen[key] = expiry
+	return true
 }
 
 // Login validates a CloudLoginRequest and, on success, returns a CloudSessionInfo
@@ -204,13 +255,51 @@ func (v *CloudLoginVerifier) Login(tokenBytes []byte, sigB64 string) (*CloudSess
 		return nil, errors.New("cloudlogin: token missing account_id or email")
 	}
 
+	// 6. Enforce device binding (CLOGIN-01 hardening). The token documents
+	//    `ulid` as "device this token is bound to". A signed token minted for
+	//    device A must NOT be accepted on device B. When this device knows its
+	//    own ULID (cloud-enrolled box), require an exact match — and reject a
+	//    token that carries no binding at all. When the device ULID is unknown
+	//    (self-host / dev box without VULOS_DEVICE_ULID) the binding cannot be
+	//    checked; we log and proceed so self-host cloud login keeps working.
+	if v.deviceULID != "" {
+		if tok.ULID == "" {
+			log.Printf("[cloudlogin] reject: token has no device binding (account=%s) but this device is %s",
+				tok.AccountID, v.deviceULID)
+			return nil, ErrDeviceMismatch
+		}
+		if tok.ULID != v.deviceULID {
+			log.Printf("[cloudlogin] reject: token bound to device %s, this device is %s (account=%s)",
+				tok.ULID, v.deviceULID, tok.AccountID)
+			return nil, ErrDeviceMismatch
+		}
+	} else if tok.ULID != "" {
+		log.Printf("[cloudlogin] warning: token bound to device %s but VULOS_DEVICE_ULID is unset; binding NOT enforced",
+			tok.ULID)
+	}
+
+	// 7. Replay protection: a login token is single-use within its validity
+	//    window. Dedup on the broker-supplied jti when present, else on a hash
+	//    of the exact signed token bytes (unique per minted token).
+	replayKey := tok.JTI
+	if replayKey == "" {
+		sum := sha256.Sum256(tokenBytes)
+		replayKey = "tok:" + base64.RawURLEncoding.EncodeToString(sum[:])
+	} else {
+		replayKey = "jti:" + replayKey
+	}
+	if !cloudLoginReplay.checkAndRecord(replayKey, tok.ExpiresAt) {
+		log.Printf("[cloudlogin] reject: replayed token (account=%s jti=%q)", tok.AccountID, tok.JTI)
+		return nil, ErrTokenReplay
+	}
+
 	log.Printf("[cloudlogin] valid token: account=%s email=%s expires=%s",
 		tok.AccountID, tok.Email, tok.ExpiresAt.Format(time.RFC3339))
 
-	// 6. Find or create a local User linked to this cloud account.
+	// 8. Find or create a local User linked to this cloud account.
 	user := v.store.FindOrCreateUser("cloud", tok.AccountID, tok.Email, tok.Name, "")
 
-	// 7. Create OS session.
+	// 9. Create OS session.
 	sess := v.store.CreateSession(user, "cloud:"+tok.AccountID)
 
 	return &CloudSessionInfo{
@@ -225,8 +314,10 @@ func (v *CloudLoginVerifier) Login(tokenBytes []byte, sigB64 string) (*CloudSess
 
 // Sentinel errors for cloud login.
 var (
-	ErrTokenExpired = errors.New("cloudlogin: token has expired")
-	ErrBadSignature = errors.New("cloudlogin: signature verification failed")
+	ErrTokenExpired   = errors.New("cloudlogin: token has expired")
+	ErrBadSignature   = errors.New("cloudlogin: signature verification failed")
+	ErrDeviceMismatch = errors.New("cloudlogin: token is not bound to this device")
+	ErrTokenReplay    = errors.New("cloudlogin: token has already been used")
 )
 
 // decodeSig decodes a base64 (standard or raw-URL) encoded signature.
