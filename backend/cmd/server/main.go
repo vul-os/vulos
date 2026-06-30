@@ -21,6 +21,7 @@ import (
 	"time"
 
 	apikeyseam "vulos/backend/internal/apikey"
+	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/cpbilling"
 	"vulos/backend/internal/fabric"
@@ -2067,11 +2068,19 @@ func main() {
 		// every admission/verify point (InboundMiddleware, VerifyVulaSignatureChecked)
 		// reject revoked identities; the lifecycle publisher exposes the chain +
 		// revocations on /.well-known/vula-id so peers can follow rotations and
-		// honor revocations. The recovery anchor (account-bound) is derived from
-		// the recovery kit at restore time; it is left empty here when no recovery
-		// seed is available, in which case rotation + self-revocation still work
-		// and recovery is re-enabled once the account recovery seed is wired.
-		if lcStore, lcErr := peering.NewLifecycleStore(filepath.Join(pRoot, "identity"), pVulaID, ""); lcErr != nil {
+		// honor revocations. The recovery anchor (account-bound) is the account
+		// recovery-kit anchor: its PUBLIC id is persisted under the identity dir at
+		// recovery-kit generation/restore time (the only moments the recovery seed
+		// is in hand) and re-loaded here on every boot so the well-known endpoint
+		// publishes it and peers TOFU-pin it. The anchor PRIVATE key (recovery
+		// signing power) is never stored on the box — it lives only in the off-box
+		// recovery kit — so recovery is account-anchored, not box-anchored. When no
+		// kit has been generated yet the anchor is empty: rotation + self-revocation
+		// still work and recovery activates the moment a kit is generated/restored
+		// (the live seed observer wired below calls SetAnchor without a restart).
+		identityDir := filepath.Join(pRoot, "identity")
+		persistedAnchor := peering.LoadRecoveryAnchorID(identityDir)
+		if lcStore, lcErr := peering.NewLifecycleStore(identityDir, pVulaID, persistedAnchor); lcErr != nil {
 			log.Printf("[peering] identity lifecycle store init: %v", lcErr)
 		} else {
 			peering.SetRevocationChecker(lcStore.IsRevoked)
@@ -2084,6 +2093,22 @@ func main() {
 					Revocations:  lcStore.RevocationList(),
 				}
 			})
+			// Recovery-anchor seam (Contract C, box side): when a recovery kit is
+			// generated or an account is restored, internal/auth hands us the 64-byte
+			// recovery seed transiently. We derive the anchor, persist ONLY its public
+			// id, and install it on the live lifecycle store so recovery turns on
+			// immediately. The seed is not retained.
+			internalauth.SetRecoverySeedObserver(func(seed []byte) {
+				anchorID, err := peering.AnchorFromRecoverySeed(lcStore, identityDir, seed)
+				if err != nil {
+					log.Printf("[peering] recovery anchor install: %v", err)
+					return
+				}
+				log.Printf("[peering] recovery anchor active: %s", anchorID)
+			})
+			if persistedAnchor != "" {
+				log.Printf("[peering] recovery anchor loaded from disk: %s", persistedAnchor)
+			}
 		}
 
 		// Forward secrecy: publish an X3DH prekey bundle (signed prekey + one-time

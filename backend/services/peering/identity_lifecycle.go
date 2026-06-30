@@ -511,6 +511,43 @@ func (s *LifecycleStore) RecordRevocation(cert *RevocationCert) error {
 	return s.saveLocked()
 }
 
+// SetAnchor installs (or confirms) this node's account recovery anchor public
+// VulaID. It is the LIVE seam that turns recovery on after boot: the box derives
+// the anchor public id from the account recovery seed only when that seed is
+// transiently in hand (recovery-kit generation / restore), then calls SetAnchor
+// so subsequent well-known publications carry the anchor and peers can TOFU-pin
+// it. Only the PUBLIC anchor id is ever stored on the box; the anchor PRIVATE key
+// (the recovery signing power) lives solely in the off-box recovery kit.
+//
+// Fails closed on a takeover attempt: once an anchor is set, SetAnchor refuses to
+// replace it with a DIFFERENT id (which would let a box compromise swap the
+// recovery anchor). Setting the same id, or setting from empty, is allowed.
+func (s *LifecycleStore) SetAnchor(anchorVulaID string) error {
+	if anchorVulaID == "" {
+		return errors.New("lifecycle: empty anchor id")
+	}
+	if _, err := decodeVulaID(anchorVulaID); err != nil {
+		return fmt.Errorf("lifecycle: anchor vula id: %w", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.AnchorVulaID == anchorVulaID {
+		return nil
+	}
+	if s.state.AnchorVulaID != "" {
+		return fmt.Errorf("lifecycle: recovery anchor already set to a different key; refusing to replace")
+	}
+	s.state.AnchorVulaID = anchorVulaID
+	return s.saveLocked()
+}
+
+// AnchorVulaID returns this node's configured recovery anchor public id, or "".
+func (s *LifecycleStore) AnchorVulaID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.state.AnchorVulaID
+}
+
 // headLocked returns this node's current identity id (end of its own chain).
 func (s *LifecycleStore) headLocked() string {
 	head := s.state.RootVulaID

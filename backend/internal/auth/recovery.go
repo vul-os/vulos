@@ -227,6 +227,37 @@ type RecoveryStore interface {
 	LoadRecoveryBlob(userID string) ([]byte, error)
 }
 
+// ─── Recovery-seed observer (peering recovery anchor seam) ────────────────────
+
+// recoverySeedObserver, when set, is invoked with the 64-byte BIP39 recovery
+// seed at the two moments it is transiently available in-process: recovery-kit
+// GENERATION and account RESTORE. The live server installs an observer (via
+// SetRecoverySeedObserver) that derives the account recovery ANCHOR and persists
+// only its PUBLIC id for the peering lifecycle subsystem — see
+// services/peering/recovery_anchor.go for the trust boundary. The seed itself is
+// never persisted here; the observer must not retain it beyond deriving the
+// public anchor id.
+var recoverySeedObserver func(seed []byte)
+
+// SetRecoverySeedObserver installs the recovery-seed observer. Passing nil
+// disables it. Keeping this as a hook avoids internal/auth importing the peering
+// package (and the import cycle that would create).
+func SetRecoverySeedObserver(f func(seed []byte)) {
+	recoverySeedObserver = f
+}
+
+// notifyRecoverySeed derives the seed from mnemonic and hands it to the observer
+// (if any). Best-effort and synchronous; the observer is expected to derive the
+// public anchor id and return promptly without retaining the seed.
+func notifyRecoverySeed(mnemonic string) {
+	obs := recoverySeedObserver
+	if obs == nil {
+		return
+	}
+	seed := deriveRecoverySeed(normaliseMnemonic(mnemonic))
+	obs(seed)
+}
+
 // ─── RegisterRecoveryHandlers ─────────────────────────────────────────────────
 
 // RegisterRecoveryHandlers mounts the account-recovery HTTP routes on mux.
@@ -279,6 +310,11 @@ func (h *recoveryHandlers) handleGenerate(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Recovery-anchor seam: the seed is in hand exactly here. Derive + persist the
+	// PUBLIC peering recovery anchor (private key discarded by the observer) so the
+	// box's well-known endpoint publishes it and peers TOFU-pin it.
+	notifyRecoverySeed(kit.Mnemonic)
+
 	writeRecoveryJSON(w, http.StatusOK, map[string]string{"mnemonic": kit.Mnemonic})
 }
 
@@ -300,6 +336,11 @@ func (h *recoveryHandlers) handleRestore(w http.ResponseWriter, r *http.Request)
 		writeRecoveryJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+
+	// Recovery-anchor seam: a restore also re-establishes the anchor on this box
+	// (e.g. moving an account to a new device) so the peering lifecycle can keep
+	// publishing it.
+	notifyRecoverySeed(req.Mnemonic)
 
 	pubB64 := base64.StdEncoding.EncodeToString(keys.Ed25519PubKey)
 	writeRecoveryJSON(w, http.StatusOK, map[string]string{"public_key_b64": pubB64})
