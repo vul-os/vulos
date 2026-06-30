@@ -20,6 +20,7 @@ package main
 //       POST /api/files/peer/serve        stream bytes for a verified capability
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"strconv"
@@ -164,6 +165,38 @@ func registerFilesPeerRoutes(mux *http.ServeMux, svc *files.Service) {
 			return
 		}
 		n, err := svc.SaveReceivedToDrive(r.Context(), uid, req.ID, req.ParentID, req.Name)
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		writeJSON(w, n)
+	}))
+
+	// POST /api/files/peer/receive — B→A bridge intake for OFF-BOX redemption.
+	//
+	// The Vulos cell redeems a peershare capability on an account's behalf (it
+	// custodies the account's cloud-home key, signs the fetch proof, and PULLs the
+	// bytes from the sharer's /api/files/peer/serve). It then posts the redeemed
+	// bytes HERE so they land directly in the account's Drive on the cell's own
+	// Files service — no local RedeemCapability/ReceivedItem round-trip. The
+	// recipient account is the X-User-ID (the cell sets it to the account ID). The
+	// body matches cloudhome.httpDriveStager exactly:
+	//   { parent_id, name, content_type, is_dir, bytes }
+	// where bytes is the file content (or, for is_dir, the tar archive the serve
+	// endpoint streams for a folder). base64 is the JSON wire form of []byte.
+	mux.HandleFunc("POST /api/files/peer/receive", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		var req struct {
+			ParentID    string `json:"parent_id"`
+			Name        string `json:"name"`
+			ContentType string `json:"content_type"`
+			IsDir       bool   `json:"is_dir"`
+			Bytes       []byte `json:"bytes"`
+		}
+		// Generous cap: a received document can be large (whole-file / folder tar).
+		if !decodeJSONLimited(w, r, &req, 256<<20) {
+			return
+		}
+		n, err := svc.SaveBytesToDrive(r.Context(), uid, req.ParentID, req.Name, req.ContentType, req.IsDir, bytes.NewReader(req.Bytes))
 		if err != nil {
 			writeFilesErr(w, err)
 			return

@@ -629,6 +629,41 @@ func (s *Service) SaveReceivedToDrive(ctx context.Context, recipientUserID, recv
 	return root, nil
 }
 
+// SaveBytesToDrive writes already-redeemed document bytes DIRECTLY into
+// recipientUserID's own Drive, without first creating a staged ReceivedItem. It
+// is the entry point of the B→A bridge for a recipient whose redemption happened
+// OFF-BOX: the Vulos cell pulls a capability's bytes on an account's behalf (it
+// custodies the account's cloud-home key and signs the fetch proof) and then
+// hands the bytes here so they land in the account's Drive on the cell's own
+// Files service. A file (isDir=false) becomes one Drive node under parentID; a
+// folder (isDir=true) expects r to be the same tar archive ServeCapability
+// streams for a directory and is extracted into a new Drive subtree. parentID ""
+// means the recipient's Drive root. Returns the created root node.
+//
+// This mirrors SaveReceivedToDrive's bytes→Drive promotion but sources the bytes
+// from a reader instead of a previously-staged ReceivedItem, so the cell never
+// needs a local RedeemCapability round-trip.
+func (s *Service) SaveBytesToDrive(ctx context.Context, recipientUserID, parentID, name, contentType string, isDir bool, r io.Reader) (*Node, error) {
+	if s.broker == nil {
+		return nil, ErrPeerUnavailable
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("%w: name required", ErrInvalid)
+	}
+	// Stage the reader to a temp file so we can reuse the same Drive-promotion
+	// helpers as SaveReceivedToDrive (they read from a path).
+	tmpID := ulid.NewULID()
+	stagePath, _, err := s.stageBytes(tmpID, r)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(stagePath)
+	if isDir {
+		return s.extractTarToDrive(ctx, recipientUserID, parentID, name, stagePath)
+	}
+	return s.saveFileToDrive(ctx, recipientUserID, parentID, name, contentType, stagePath)
+}
+
 // saveFileToDrive copies a staged file into a new Drive node owned by the
 // recipient and commits a version.
 func (s *Service) saveFileToDrive(ctx context.Context, userID, parentID, name, contentType, stagePath string) (*Node, error) {
