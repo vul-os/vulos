@@ -23,5 +23,11 @@ func (s peerShareSigner) SelfID() string { return s.selfID }
 func (s peerShareSigner) Sign(msg []byte) []byte { return ed25519.Sign(s.priv, msg) }
 
 func (s peerShareSigner) Verify(vulaID string, msg, sig []byte) error {
-	return peering.VerifyVulaSignature(vulaID, msg, sig)
+	// Use the revocation-CHECKED verifier so a key that has been revoked (self- or
+	// recovery-anchor-signed) can no longer redeem Files capabilities, even though
+	// its Ed25519 signature is still cryptographically valid. The bare
+	// VerifyVulaSignature would honor a compromised-then-revoked key. When no
+	// lifecycle subsystem is wired the revocation gate is a no-op, so this is a
+	// strict superset of the previous behavior.
+	return peering.VerifyVulaSignatureChecked(vulaID, msg, sig)
 }

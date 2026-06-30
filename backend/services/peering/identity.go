@@ -139,6 +139,14 @@ func decodeVulaID(id string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
+// EncodeVulaID encodes a raw Ed25519 public key as its canonical Vula ID
+// ("vula:ed25519:<base58>"). It is the exported counterpart of PublicKeyForVulaID
+// so other services (and cross-package tests) can construct a Vula ID from a key
+// without reimplementing the base58 / prefix machinery.
+func EncodeVulaID(pub ed25519.PublicKey) string {
+	return encodeVulaID(pub)
+}
+
 // PublicKeyForVulaID decodes a Vula ID ("vula:ed25519:<base58>") into the raw
 // Ed25519 public key it encodes. It is the exported counterpart of the internal
 // decodeVulaID, provided so other services (e.g. the Files OS peer-share
