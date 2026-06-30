@@ -461,6 +461,25 @@ func (s *Store) Register(username, password, displayName string) (*User, error) 
 	return u, nil
 }
 
+// errInvalidLogin is the single, uniform failure returned for every bad login
+// regardless of cause (unknown user, no password set, wrong password). A
+// distinct "no password set" message would let an attacker enumerate accounts.
+var errInvalidLogin = fmt.Errorf("invalid username or password")
+
+// dummyBcryptHash is a valid bcrypt hash of a random throwaway password. It is
+// compared against on the unknown-user / no-password paths so those paths spend
+// the same time as a real bcrypt verify — closing the timing oracle that would
+// otherwise reveal whether a username exists.
+var dummyBcryptHash = func() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	h, err := bcrypt.GenerateFromPassword(b, bcrypt.DefaultCost)
+	if err != nil {
+		panic(fmt.Sprintf("auth: bcrypt dummy hash init failed: %v", err))
+	}
+	return string(h)
+}()
+
 // Login validates username + password and returns the user.
 func (s *Store) Login(username, password string) (*User, error) {
 	s.mu.Lock()
@@ -468,13 +487,16 @@ func (s *Store) Login(username, password string) (*User, error) {
 
 	for _, u := range s.users {
 		if u.Username == username {
-			if u.PasswordHash == "" {
-				log.Printf("[auth] login failed for %q: no password set", username)
-				return nil, fmt.Errorf("account has no password set")
+			// Known user but no usable bcrypt hash: burn an equivalent bcrypt
+			// compare so timing matches the success path, then fail uniformly.
+			if !isbcryptHash(u.PasswordHash) {
+				bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
+				log.Printf("[auth] login failed for %q: no usable password hash", username)
+				return nil, errInvalidLogin
 			}
 			if !verifyPassword(u.PasswordHash, password) {
 				log.Printf("[auth] login failed for %q: password mismatch", username)
-				return nil, fmt.Errorf("invalid username or password")
+				return nil, errInvalidLogin
 			}
 			u.LastLogin = time.Now()
 			s.persistUser(u)
@@ -482,8 +504,11 @@ func (s *Store) Login(username, password string) (*User, error) {
 			return u, nil
 		}
 	}
-	log.Printf("[auth] login failed: user %q not found (have %d users)", username, len(s.users))
-	return nil, fmt.Errorf("invalid username or password")
+	// Unknown user: run a dummy bcrypt compare so the unknown-user path costs
+	// the same as the known-user path (no user-enumeration timing oracle).
+	bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
+	log.Printf("[auth] login failed: user %q not found", username)
+	return nil, errInvalidLogin
 }
 
 // HasAnyUsers returns true if at least one user exists.
