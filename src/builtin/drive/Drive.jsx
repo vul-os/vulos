@@ -48,6 +48,10 @@ const filesApi = {
   shares: (node) => request(`/files/shares?node=${encodeURIComponent(node)}`),
   share: (node_id, principal_id, role) =>
     request('/files/share', { method: 'POST', body: JSON.stringify({ node_id, principal_id, role }) }),
+  // Account-only sharing: resolve a recipient EMAIL (directory) and route by
+  // locality — co-cloud → ACL grant; remote → a delivered per-document capability.
+  shareByEmail: (node_id, email, role, ttl_seconds) =>
+    request('/files/share-by-email', { method: 'POST', body: JSON.stringify({ node_id, email, role, ttl_seconds }) }),
   unshare: (node_id, principal_id) =>
     request('/files/unshare', { method: 'POST', body: JSON.stringify({ node_id, principal_id }) }),
   links: (node) => request(`/files/share-links?node=${encodeURIComponent(node)}`),
@@ -403,8 +407,9 @@ function ShareModal({ node, onClose }) {
   const [links, setLinks] = useState([])
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [principal, setPrincipal] = useState('')
+  const [email, setEmail] = useState('')
   const [role, setRole] = useState('viewer')
+  const [note, setNote] = useState(null)
   const [linkRole, setLinkRole] = useState('viewer')
   const [linkTtl, setLinkTtl] = useState(604800)
   const [copied, setCopied] = useState('')
@@ -418,10 +423,24 @@ function ShareModal({ node, onClose }) {
   useEffect(() => { reload() }, [reload])
 
   const addShare = async () => {
-    const p = principal.trim()
-    if (!p) return
-    setBusy(true)
-    try { await filesApi.share(node.id, p, role); setPrincipal(''); await reload() }
+    const addr = email.trim()
+    if (!addr) return
+    setBusy(true); setNote(null)
+    try {
+      const r = await filesApi.shareByEmail(node.id, addr, role, 0)
+      setEmail('')
+      // Surface the routing outcome: co-cloud grants show in the list below;
+      // remote shares mint+deliver a capability to the recipient's server.
+      if (r && r.mode === 'remote') {
+        setNote(r.delivered
+          ? `Sent to ${addr} (delivered to ${r.server || 'their server'}).`
+          : `Shared with ${addr}. Could not auto-deliver — copy the link: ${r.link || ''}`)
+      } else {
+        setNote(`Shared with ${addr}.`)
+      }
+      setErr(null)
+      await reload()
+    }
     catch (e) { setErr(e.message || 'Share failed') } finally { setBusy(false) }
   }
   const removeShare = async (p) => {
@@ -453,16 +472,18 @@ function ShareModal({ node, onClose }) {
       <div style={section}>Share with a person</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         <input
-          style={{ ...inputStyle, flex: 1 }} placeholder="User ID" value={principal}
-          onChange={(e) => setPrincipal(e.target.value)}
+          type="email" autoComplete="off"
+          style={{ ...inputStyle, flex: 1 }} placeholder="Email address" value={email}
+          onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addShare() }}
         />
         <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...inputStyle, width: 110 }}>
           <option value="viewer">Viewer</option>
           <option value="editor">Editor</option>
         </select>
-        <Btn primary onClick={addShare} disabled={busy || !principal.trim()}>Add</Btn>
+        <Btn primary onClick={addShare} disabled={busy || !email.trim()}>Add</Btn>
       </div>
+      {note && <div style={{ color: T.textDim, fontSize: 12, marginBottom: 8, wordBreak: 'break-all' }}>{note}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
         {shares.length === 0 ? <div style={{ color: T.textFaint, fontSize: 12 }}>Not shared with anyone.</div>
           : shares.map((s) => (
