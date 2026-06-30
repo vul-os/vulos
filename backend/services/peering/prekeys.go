@@ -517,6 +517,22 @@ func (s *PreKeyStore) PublicBundle() *PreKeyBundlePublic {
 	return b
 }
 
+// PublicBundleSignedOnly returns the publishable bundle WITHOUT any one-time
+// prekeys — only the signed prekey. This is what /.well-known/vula-id MUST serve.
+//
+// SECURITY: the well-known endpoint is a cacheable, UNAUTHENTICATED GET with no
+// depletion. Publishing the one-time-prekey pool there lets every sender that
+// skips the claim endpoint read (and reuse) the same OPK[0], which silently
+// destroys the per-sender forward secrecy a one-time prekey is supposed to
+// provide. One-time prekeys are therefore obtainable ONLY via the single-use
+// ClaimOneTimePreKey (POST /api/peering/prekeys/claim), which atomically hands out
+// and deletes a distinct OPK per claim.
+func (s *PreKeyStore) PublicBundleSignedOnly() *PreKeyBundlePublic {
+	b := s.PublicBundle()
+	b.OneTimePreKeys = nil
+	return b
+}
+
 // OneTimePreKeyCount reports how many one-time prekeys remain (for replenishment).
 func (s *PreKeyStore) OneTimePreKeyCount() int {
 	s.mu.Lock()

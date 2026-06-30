@@ -2118,7 +2118,12 @@ func main() {
 		if pkStore, pkErr := peering.NewPreKeyStore(filepath.Join(pRoot, "identity"), pVulaID, pPriv, 64); pkErr != nil {
 			log.Printf("[peering] prekey store init: %v", pkErr)
 		} else {
-			peering.SetPreKeyPublisher(pkStore.PublicBundle)
+			// Publish ONLY the signed prekey on the cacheable, unauthenticated
+			// well-known GET. One-time prekeys are NOT published there (a cached,
+			// depletion-free bundle would let every sender reuse the same OPK,
+			// defeating per-sender forward secrecy); they are handed out single-use
+			// via the CLAIM endpoint below.
+			peering.SetPreKeyPublisher(pkStore.PublicBundleSignedOnly)
 			// Contract A: the OPK CLAIM endpoint hands out + deletes a single one-time
 			// prekey per claim (per-sender forward secrecy). Mounted on peeringMux with
 			// the same public auth model as the well-known bundle. A background loop
