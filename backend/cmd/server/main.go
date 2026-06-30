@@ -2086,6 +2086,16 @@ func main() {
 			})
 		}
 
+		// Forward secrecy: publish an X3DH prekey bundle (signed prekey + one-time
+		// prekey pool) on /.well-known/vula-id so senders derive per-message keys
+		// from an ephemeral + one-time prekey rather than static-static ECDH
+		// (prekeys.go). The long-term identity key is used only to sign the bundle.
+		if pkStore, pkErr := peering.NewPreKeyStore(filepath.Join(pRoot, "identity"), pVulaID, pPriv, 64); pkErr != nil {
+			log.Printf("[peering] prekey store init: %v", pkErr)
+		} else {
+			peering.SetPreKeyPublisher(pkStore.PublicBundle)
+		}
+
 		contactStore, csErr := peering.NewContactStore(pHome)
 		if csErr != nil {
 			log.Printf("[peering] PEER-42 contact store init: %v", csErr)

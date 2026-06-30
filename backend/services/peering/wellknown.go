@@ -271,6 +271,12 @@ type WKIdentityResponse struct {
 	// only attests that this server published them.
 	Lifecycle *WKLifecycle `json:"lifecycle,omitempty"`
 
+	// PreKeys, when present, publishes this identity's X3DH prekey bundle (signed
+	// prekey + one-time prekey pool) so senders can establish FORWARD-SECRET
+	// content sessions (prekeys.go). The signed prekey carries its own identity-key
+	// signature; one-time prekeys are consumed at most once by the recipient.
+	PreKeys *PreKeyBundlePublic `json:"prekeys,omitempty"`
+
 	// Signature is the base64url Ed25519 signature over the canonical form of
 	// this response (with this field empty), produced by the node's identity
 	// key. Because a Vula ID IS an Ed25519 public key, fetchers verify this
@@ -359,6 +365,10 @@ type WKPeerProfile struct {
 	// well-known response, sorted by priority (PEER-40). May be empty when
 	// the peer has not registered any endpoints or is running an older version.
 	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
+	// PreKeys is the peer's published X3DH prekey bundle, when present, enabling
+	// forward-secret content sessions to this peer (prekeys.go). The signed prekey
+	// is verified against the peer's identity before the profile is cached.
+	PreKeys *PreKeyBundlePublic `json:"prekeys,omitempty"`
 	// Signature is the verified Ed25519 signature from the peer's well-known
 	// response (base64url). Retained for auditing; a cached profile is only
 	// stored after this signature has been verified against the Vula ID.
@@ -508,6 +518,19 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 		return nil, fmt.Errorf("peering: profile for %s has a missing or invalid signature — rejecting (possible spoof/MITM)", vulaID)
 	}
 
+	// Forward-secrecy prekeys: only surface a bundle whose signed prekey verifies
+	// against the (already-authenticated) identity. A bundle with a bad signature
+	// is dropped so a sender never establishes a session to an unauthenticated key.
+	var preKeys *PreKeyBundlePublic
+	if wk.PreKeys != nil {
+		if wk.PreKeys.IdentityVulaID == "" {
+			wk.PreKeys.IdentityVulaID = vulaID
+		}
+		if wk.PreKeys.IdentityVulaID == vulaID && wk.PreKeys.VerifySignedPreKey() == nil {
+			preKeys = wk.PreKeys
+		}
+	}
+
 	p := &WKPeerProfile{
 		VulaID:        vulaID, // authenticated identity (== wk.VulaID when present)
 		DisplayName:   wk.DisplayName,
@@ -516,6 +539,7 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 		Slug:          wk.Slug,
 		Image:         wk.Image,
 		Endpoints:     wk.Endpoints,
+		PreKeys:       preKeys,
 		Signature:     wk.Signature,
 		CachedAt:      time.Now(),
 		ServerAddr:    serverAddr,
@@ -590,6 +614,10 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 		// peers can follow rotations and honor revocations (identity_lifecycle.go).
 		if lc := wkCurrentLifecycle(); lc != nil {
 			resp.Lifecycle = lc
+		}
+		// Publish the X3DH prekey bundle so senders get forward secrecy (prekeys.go).
+		if pk := wkCurrentPreKeyBundle(); pk != nil {
+			resp.PreKeys = pk
 		}
 		// Sign so fetchers can verify authenticity against our Vula ID.
 		if privErr == nil {
