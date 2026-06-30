@@ -2198,9 +2198,17 @@ func main() {
 		// CRDT transport set (incl. the /sync WebSocket) is the superset.
 		// The collab-invite inbound route (from collab_share/shares) does NOT
 		// conflict and is wired separately via a lightweight SharesService below.
+		// Single shared per-document share ACL (Contract 4): the SAME ShareStore
+		// instance backs BOTH the collab inbound/WS authorization (CollabStore)
+		// and the share invite/perms intake (SharesService below). An invite
+		// received here registers the peer's permission, which the collab inbound
+		// and WebSocket paths then enforce — closing the live hole where any
+		// approved contact could persist/broadcast CRDT ops to any document.
+		shareStore := peering.NewShareStore()
 		if collabStore, cErr := peering.NewCollabStore(filepath.Join(pRoot, "collab")); cErr != nil {
 			log.Printf("[peering] PEER-42 collab store init: %v", cErr)
 		} else {
+			collabStore.WithShareStore(shareStore)
 			peering.RegisterCollabHandlers(peeringMux, collabStore)
 			// Collab history (time-travel snapshots): GET /api/peering/collab/{doc_id}/history[/{seq}]
 			// and GET /api/peering/collab-sync-v2. Routes are non-overlapping with
@@ -2222,7 +2230,7 @@ func main() {
 		if contactStore != nil {
 			sharesSvc := peering.NewSharesService(
 				contactStore,
-				peering.NewShareStore(),
+				shareStore,
 				peerClient,
 				pPriv,
 				pVulaID,

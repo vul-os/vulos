@@ -142,6 +142,25 @@ type CollabStore struct {
 
 	mu    sync.Mutex
 	rooms map[string]*collabRoom // doc_id → room
+
+	// shares is the per-document share ACL (collab_share.go). When non-nil,
+	// HandleInboundCollabUpdate enforces ShareStore.PeerPerm before persisting /
+	// broadcasting a peer's CRDT ops (rejecting view-only writers and updates to
+	// documents not shared with the sender), and handleCollabWS requires per-doc
+	// authorization to join a room. A nil shares store disables this enforcement
+	// and is used only by isolated unit tests; the LIVE server always wires it
+	// (cmd/server/main.go) so the inbound + WS paths fail closed.
+	shares *ShareStore
+}
+
+// WithShareStore wires the per-document share ACL used to authorize inbound CRDT
+// updates and WebSocket room joins (Contract 4). Returns s for chaining. Passing
+// a non-nil store turns the per-document permission check ON; the LIVE server
+// must call this so the collab inbound + WS paths are not gated by the binary
+// contacts allow-list alone.
+func (s *CollabStore) WithShareStore(shares *ShareStore) *CollabStore {
+	s.shares = shares
+	return s
 }
 
 // NewCollabStore creates (or opens) the collab storage directory.
@@ -308,11 +327,53 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 	mux.HandleFunc("GET /api/peering/inbound/collab-sync", store.handleInboundSync)
 }
 
+// authorizeRoom enforces collab-WS access control (Contract 4). It returns the
+// caller's identity and an HTTP status code; status 0 means authorized.
+//
+//   - Authentication: the request must carry an authenticated identity. The auth
+//     middleware sets X-User-ID for a valid session (it strips any client-supplied
+//     value first, so it cannot be spoofed); X-Vula-ID, when present, names the
+//     caller's peering identity. An empty identity ⇒ 401.
+//   - Per-document authorization: when a share ACL is wired and the document is a
+//     tracked share, the caller must hold a permission on it (owner, editor, or
+//     viewer — viewers may join to receive ops, they just cannot push). A caller
+//     with no entry ⇒ 403. A document NOT tracked by the share store is a
+//     private/local document reachable only through the owner's own authenticated
+//     session, so authentication alone suffices.
+func (s *CollabStore) authorizeRoom(r *http.Request, docID string) (string, int) {
+	caller := r.Header.Get("X-Vula-ID")
+	if caller == "" {
+		caller = r.Header.Get("X-User-ID")
+	}
+	if caller == "" {
+		return "", http.StatusUnauthorized
+	}
+	if s.shares != nil {
+		if _, err := s.shares.Get(docID); err == nil {
+			// The document is a tracked share — require a per-doc permission.
+			if _, permErr := s.shares.PeerPerm(docID, caller); permErr != nil {
+				return "", http.StatusForbidden
+			}
+		}
+	}
+	return caller, 0
+}
+
 // handleCollabWS upgrades the connection and runs the read/write pumps.
 func (s *CollabStore) handleCollabWS(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
 	if err := validateDocID(docID); err != nil {
 		http.Error(w, `{"error":"invalid doc_id"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Contract 4: the room WebSocket previously had NO authentication — any
+	// client could join any document's room and read/inject CRDT ops. Require a
+	// valid authenticated session AND, for a shared document, per-doc
+	// authorization BEFORE upgrading the connection.
+	callerID, status := s.authorizeRoom(r, docID)
+	if status != 0 {
+		http.Error(w, `{"error":"unauthorized"}`, status)
 		return
 	}
 
@@ -323,9 +384,10 @@ func (s *CollabStore) handleCollabWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &collabClient{
-		conn:  conn,
-		send:  make(chan []byte, 64),
-		docID: docID,
+		conn:   conn,
+		send:   make(chan []byte, 64),
+		docID:  docID,
+		peerID: callerID,
 	}
 
 	room := s.room(docID)
@@ -624,6 +686,33 @@ func (s *CollabStore) HandleInboundCollabUpdate(w http.ResponseWriter, r *http.R
 	if body.DocID == "" {
 		writeCollabErr(w, http.StatusBadRequest, "doc_id is required in collab-update payload")
 		return
+	}
+
+	// Contract 4 — per-document authorization. InboundMiddleware has only verified
+	// the envelope signature and that env.From is an approved contact (a binary,
+	// all-or-nothing gate). That is NOT sufficient: an approved contact who was
+	// granted VIEW (or no access) on this document must not be able to persist or
+	// broadcast CRDT ops. Enforce the per-doc ACL here, BEFORE any persist/broadcast.
+	// Fail closed: when the share store is wired, an unknown/revoked document or a
+	// sender with no edit permission is rejected.
+	if s.shares != nil {
+		perm, permErr := s.shares.PeerPerm(body.DocID, env.From)
+		if permErr != nil {
+			status := http.StatusForbidden
+			if permErr.Error() == "share: document has been revoked" {
+				status = http.StatusGone
+			}
+			log.Printf("[peering/collab] inbound S2S update DENIED for doc %s from %s: %v",
+				body.DocID, env.From, permErr)
+			writeCollabErr(w, status, "forbidden: per-document share permission required")
+			return
+		}
+		if perm == SharePermView {
+			log.Printf("[peering/collab] inbound S2S update DENIED (view-only) for doc %s from %s",
+				body.DocID, env.From)
+			writeCollabErr(w, http.StatusForbidden, "forbidden: view-only peers may not send updates")
+			return
+		}
 	}
 
 	// Decode the base64 ops blob (may be absent for a sync-request-only message).
