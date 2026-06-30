@@ -19,6 +19,9 @@ package auth
 
 import (
 	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +29,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"vulos/backend/services/signing"
 )
 
 // ─── Default configuration ────────────────────────────────────────────────────
@@ -64,6 +69,10 @@ type CloudTokenCache struct {
 	// GracePeriodStr records the configured grace duration for auditability.
 	// It is informational only; the verifier's own GracePeriod governs behaviour.
 	GracePeriodStr string `json:"grace_period"`
+	// MAC is a base64 HMAC-SHA256 over the canonical record (with MAC empty),
+	// keyed by a device-local secret. It is verified on read so that a local
+	// file write cannot forge an offline session (CLOGIN-02 integrity guard).
+	MAC string `json:"mac,omitempty"`
 }
 
 // ─── Cache path ───────────────────────────────────────────────────────────────
@@ -105,7 +114,43 @@ var (
 
 	// ErrGraceExpired means a cache exists but the offline grace period has elapsed.
 	ErrGraceExpired = errors.New("cloudtoken: offline grace period expired — full re-authentication required")
+
+	// ErrCacheTampered means the cache file failed its HMAC integrity check —
+	// it was modified outside the legitimate write path. Fail closed: the
+	// cache is NOT trusted and offline login is refused.
+	ErrCacheTampered = errors.New("cloudtoken: cached token failed integrity check — refusing to trust it")
 )
+
+// ─── Cache integrity (HMAC) ───────────────────────────────────────────────────
+
+// cloudtokenMACKey loads (or creates) the device-local 32-byte secret used to
+// HMAC the offline token cache. It is colocated with the cache file so that
+// each box / test sandbox has its own key. The key file is mode 0600.
+//
+// This raises the bar against the "local file write forges a session" attack:
+// an actor who can write the cache JSON but cannot read this 0600 secret key
+// cannot produce a valid MAC, so a forged cache is rejected on read.
+func cloudtokenMACKey() ([]byte, error) {
+	path, err := cacheFilePath()
+	if err != nil {
+		return nil, err
+	}
+	keyPath := filepath.Join(filepath.Dir(path), ".cloudtoken.key")
+	return loadOrCreateSecret(keyPath), nil
+}
+
+// cacheMAC computes the base64 HMAC-SHA256 over the canonical form of c with
+// its MAC field cleared.
+func cacheMAC(key []byte, c CloudTokenCache) (string, error) {
+	c.MAC = "" // never sign over the MAC itself
+	canon, err := signing.Canonical(c)
+	if err != nil {
+		return "", fmt.Errorf("cloudtoken: canonicalize cache: %w", err)
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(canon)
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil)), nil
+}
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 
@@ -119,6 +164,16 @@ func WriteTokenCache(c CloudTokenCache) error {
 	if err := os.MkdirAll(filepath.Dir(path), cacheDirMode); err != nil {
 		return fmt.Errorf("cloudtoken: mkdir cache dir: %w", err)
 	}
+	// Integrity: stamp an HMAC over the record so reads can detect tampering.
+	key, err := cloudtokenMACKey()
+	if err != nil {
+		return err
+	}
+	mac, err := cacheMAC(key, c)
+	if err != nil {
+		return err
+	}
+	c.MAC = mac
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cloudtoken: marshal cache: %w", err)
@@ -151,6 +206,21 @@ func ReadTokenCache() (*CloudTokenCache, error) {
 	var c CloudTokenCache
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("cloudtoken: parse cache: %w", err)
+	}
+
+	// Integrity: verify the HMAC before trusting any field. Fail closed —
+	// a missing or wrong MAC means the file was not written by us.
+	key, err := cloudtokenMACKey()
+	if err != nil {
+		return nil, err
+	}
+	want, err := cacheMAC(key, c)
+	if err != nil {
+		return nil, err
+	}
+	if c.MAC == "" || !hmac.Equal([]byte(c.MAC), []byte(want)) {
+		log.Printf("[cloudtoken] cache integrity check FAILED — refusing to trust cached token")
+		return nil, ErrCacheTampered
 	}
 	return &c, nil
 }
@@ -210,11 +280,13 @@ func (v *CloudOfflineVerifier) Login(tokenBytes []byte, sigB64 string) (*CloudSe
 		return nil, err
 	}
 
-	// Persist the successful validation for future offline logins.
+	// Persist the successful validation for future offline logins. Bind the
+	// cache to this device's ULID so a cache copied to another box is rejected.
 	cache := CloudTokenCache{
 		AccountID:      info.AccountID,
 		Email:          info.Email,
 		Name:           info.Name,
+		DeviceULID:     localDeviceULID(),
 		TokenExpiresAt: info.ExpiresAt,
 		ValidatedAt:    time.Now().UTC(),
 		GracePeriodStr: v.gracePeriod.String(),
@@ -237,6 +309,15 @@ func (v *CloudOfflineVerifier) LoginOffline() (*CloudSessionInfo, error) {
 	cache, err := ReadTokenCache()
 	if err != nil {
 		return nil, err
+	}
+
+	// Device binding: a cache minted for another device's ULID must not be
+	// usable here (e.g. file copied between boxes). Enforced when this device
+	// knows its own ULID; skipped on self-host boxes without VULOS_DEVICE_ULID.
+	if dev := localDeviceULID(); dev != "" && cache.DeviceULID != "" && cache.DeviceULID != dev {
+		log.Printf("[cloudtoken] offline reject: cache bound to device %s, this device is %s",
+			cache.DeviceULID, dev)
+		return nil, ErrDeviceMismatch
 	}
 
 	age := time.Since(cache.ValidatedAt)
