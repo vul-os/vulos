@@ -2221,6 +2221,10 @@ func main() {
 			log.Printf("[peering] PEER-42 collab store init: %v", cErr)
 		} else {
 			collabStore.WithShareStore(shareStore)
+			// Bind authenticated OS sessions to this box's VulaID so the collab WS
+			// authorizer checks the share ACL against an un-spoofable identity rather
+			// than the client-supplied X-Vula-ID header (Contract 4, multi-user box).
+			collabStore.WithSelfVulaID(pVulaID)
 			peering.RegisterCollabHandlers(peeringMux, collabStore)
 			// Collab history (time-travel snapshots): GET /api/peering/collab/{doc_id}/history[/{seq}]
 			// and GET /api/peering/collab-sync-v2. Routes are non-overlapping with

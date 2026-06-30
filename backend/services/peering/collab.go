@@ -151,6 +151,55 @@ type CollabStore struct {
 	// and is used only by isolated unit tests; the LIVE server always wires it
 	// (cmd/server/main.go) so the inbound + WS paths fail closed.
 	shares *ShareStore
+
+	// selfVulaID is this box's own peering identity (vula:ed25519:...). When set,
+	// it is the authoritative VulaID for ANY locally-authenticated OS session that
+	// does not resolve to a more specific per-user identity. It is used by
+	// authorizeRoom to map an authenticated OS user (X-User-ID, set by the auth
+	// middleware and un-spoofable) to the VulaID checked against the per-document
+	// share ACL — so the client-supplied X-Vula-ID header is NEVER trusted as the
+	// authorization principal. The LIVE server wires this with the box VulaID.
+	selfVulaID string
+
+	// vulaResolver, when set, maps an authenticated OS user ID to that user's own
+	// peering VulaID on boxes that maintain PER-USER identities (multi-user boxes).
+	// It takes precedence over selfVulaID. Returning ok=false means the OS user has
+	// no known VulaID; authorizeRoom then FAILS CLOSED on tracked-share documents
+	// (ambiguous mapping) rather than guessing.
+	vulaResolver func(osUserID string) (vulaID string, ok bool)
+}
+
+// WithSelfVulaID wires this box's own peering identity as the authoritative VulaID
+// for locally-authenticated OS sessions (see CollabStore.selfVulaID). The LIVE
+// server passes the box VulaID so authorizeRoom can bind an un-spoofable OS session
+// to the VulaID checked against the share ACL. Returns s for chaining.
+func (s *CollabStore) WithSelfVulaID(vulaID string) *CollabStore {
+	s.selfVulaID = vulaID
+	return s
+}
+
+// WithVulaResolver wires a per-user OS-user→VulaID resolver for multi-user boxes
+// that maintain distinct peering identities per OS user (see CollabStore.vulaResolver).
+// Returns s for chaining.
+func (s *CollabStore) WithVulaResolver(f func(osUserID string) (string, bool)) *CollabStore {
+	s.vulaResolver = f
+	return s
+}
+
+// resolveVulaID maps an authenticated OS user ID to the authoritative VulaID used
+// for per-document authorization. The bool is false when no VulaID can be bound to
+// the session (ambiguous), in which case callers must fail closed on tracked shares.
+func (s *CollabStore) resolveVulaID(osUserID string) (string, bool) {
+	if s.vulaResolver != nil {
+		if v, ok := s.vulaResolver(osUserID); ok && v != "" {
+			return v, true
+		}
+		return "", false
+	}
+	if s.selfVulaID != "" {
+		return s.selfVulaID, true
+	}
+	return "", false
 }
 
 // WithShareStore wires the per-document share ACL used to authorize inbound CRDT
@@ -328,35 +377,67 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 }
 
 // authorizeRoom enforces collab-WS access control (Contract 4). It returns the
-// caller's identity and an HTTP status code; status 0 means authorized.
+// caller's authoritative identity and an HTTP status code; status 0 means
+// authorized.
 //
-//   - Authentication: the request must carry an authenticated identity. The auth
-//     middleware sets X-User-ID for a valid session (it strips any client-supplied
-//     value first, so it cannot be spoofed); X-Vula-ID, when present, names the
-//     caller's peering identity. An empty identity ⇒ 401.
-//   - Per-document authorization: when a share ACL is wired and the document is a
-//     tracked share, the caller must hold a permission on it (owner, editor, or
-//     viewer — viewers may join to receive ops, they just cannot push). A caller
-//     with no entry ⇒ 403. A document NOT tracked by the share store is a
-//     private/local document reachable only through the owner's own authenticated
-//     session, so authentication alone suffices.
+// Authentication. The ONLY trusted principal is X-User-ID, which the auth
+// middleware sets for a valid session after stripping any client-supplied value
+// (so it cannot be spoofed). The X-Vula-ID header is client-controlled and is
+// therefore NEVER trusted as the authorization principal — it is only accepted as
+// a consistency assertion that must EXACTLY match the server-resolved VulaID, else
+// the request is rejected as a spoofing attempt. A request with no authenticated
+// OS user ⇒ 401.
+//
+// OS-user ↔ VulaID mapping (multi-user boxes). The per-document share ACL is keyed
+// by VulaID, so the authenticated OS user must be mapped to a VulaID server-side:
+//   - a per-user resolver (WithVulaResolver) yields that user's own VulaID, or
+//   - the box identity (WithSelfVulaID) is the authoritative VulaID for the session.
+//
+// When neither yields a VulaID the mapping is AMBIGUOUS; for a tracked-share
+// document we FAIL CLOSED (403) rather than trust the unauthenticated header.
+//
+// Per-document authorization. When a share ACL is wired and the document is a
+// tracked share, the resolved VulaID must hold a permission on it (owner, editor,
+// or viewer — viewers may join to receive ops, they just cannot push). No entry ⇒
+// 403. A document NOT tracked by the share store is a private/local document
+// reachable only through the owner's own authenticated session, so an authenticated
+// session alone suffices.
 func (s *CollabStore) authorizeRoom(r *http.Request, docID string) (string, int) {
-	caller := r.Header.Get("X-Vula-ID")
-	if caller == "" {
-		caller = r.Header.Get("X-User-ID")
-	}
-	if caller == "" {
+	osUser := r.Header.Get("X-User-ID")
+	if osUser == "" {
+		// X-Vula-ID alone is NOT authentication — it is fully client-controlled.
 		return "", http.StatusUnauthorized
 	}
+
+	principal, resolved := s.resolveVulaID(osUser)
+
+	// If the client asserts a VulaID, it MUST match the server-resolved one. A
+	// mismatch (or an assertion we cannot verify, on a tracked share) is treated
+	// as a spoofing attempt and rejected below / here.
+	if claimed := r.Header.Get("X-Vula-ID"); claimed != "" && resolved && claimed != principal {
+		return "", http.StatusForbidden
+	}
+
 	if s.shares != nil {
 		if _, err := s.shares.Get(docID); err == nil {
-			// The document is a tracked share — require a per-doc permission.
-			if _, permErr := s.shares.PeerPerm(docID, caller); permErr != nil {
+			// Tracked share: require an authoritative VulaID and a per-doc perm.
+			if !resolved {
+				// Ambiguous OS-user→VulaID mapping ⇒ fail closed.
 				return "", http.StatusForbidden
 			}
+			if _, permErr := s.shares.PeerPerm(docID, principal); permErr != nil {
+				return "", http.StatusForbidden
+			}
+			return principal, 0
 		}
 	}
-	return caller, 0
+
+	// Private/untracked document: an authenticated session suffices. Return the
+	// resolved VulaID when available, else the OS user ID as the session principal.
+	if resolved {
+		return principal, 0
+	}
+	return osUser, 0
 }
 
 // handleCollabWS upgrades the connection and runs the read/write pumps.
@@ -590,7 +671,21 @@ func (s *CollabStore) handleShare(w http.ResponseWriter, r *http.Request) {
 
 // handleInboundUpdate receives a CRDT update blob from a peer server,
 // persists it, and fans it out to all locally connected browser clients.
+//
+// This is the no-envelope fallback path: it is reached only when the route is
+// called WITHOUT InboundMiddleware, i.e. there is no cryptographically verified,
+// approved sender. With the per-document share ACL wired (the LIVE server always
+// wires it), an unattributable update cannot be authorized against any per-doc
+// permission, so we FAIL CLOSED here instead of relying on this path merely being
+// unreachable in production. Only the isolated unit-test configuration (nil share
+// store) still exercises the unauthenticated persist/broadcast.
 func (s *CollabStore) handleInboundUpdate(w http.ResponseWriter, r *http.Request) {
+	if s.shares != nil {
+		writeCollabErr(w, http.StatusUnauthorized,
+			"unauthenticated collab update rejected: no verified sender envelope")
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
 	if err != nil {
 		writeCollabErr(w, http.StatusBadRequest, "failed to read body")
