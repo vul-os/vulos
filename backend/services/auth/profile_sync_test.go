@@ -86,7 +86,7 @@ func signEnvelope(t *testing.T, priv ed25519.PrivateKey, payload ProfileUpdatePa
 // returns that user.
 func registerCloudUser(t *testing.T, store *Store, accountID, username, name string) *User {
 	t.Helper()
-	u := store.FindOrCreateUser("cloud", accountID, username+"@example.com", name, "")
+	u := store.FindOrCreateUser("cloud", accountID, username+"@example.com", name, "", true)
 	return u
 }
 

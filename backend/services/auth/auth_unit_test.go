@@ -40,7 +40,7 @@ func TestSafeOmitsPasswordHash(t *testing.T) {
 // created with correct fields and a default profile.
 func TestFindOrCreateUser_CreateNew(t *testing.T) {
 	s := newTestStore(t)
-	u := s.FindOrCreateUser("github", "gh-100", "alice@example.com", "Alice", "https://pic/alice")
+	u := s.FindOrCreateUser("github", "gh-100", "alice@example.com", "Alice", "https://pic/alice", true)
 	if u.ID == "" {
 		t.Error("FindOrCreateUser returned empty ID")
 	}
@@ -61,8 +61,8 @@ func TestFindOrCreateUser_CreateNew(t *testing.T) {
 // on subsequent calls.
 func TestFindOrCreateUser_ReuseByProvider(t *testing.T) {
 	s := newTestStore(t)
-	u1 := s.FindOrCreateUser("github", "gh-200", "bob@example.com", "Bob", "")
-	u2 := s.FindOrCreateUser("github", "gh-200", "bob@example.com", "Bob Updated", "pic2")
+	u1 := s.FindOrCreateUser("github", "gh-200", "bob@example.com", "Bob", "", true)
+	u2 := s.FindOrCreateUser("github", "gh-200", "bob@example.com", "Bob Updated", "pic2", true)
 	if u1.ID != u2.ID {
 		t.Errorf("second call returned different ID: %q vs %q", u1.ID, u2.ID)
 	}
@@ -76,10 +76,61 @@ func TestFindOrCreateUser_ReuseByProvider(t *testing.T) {
 // to an existing account when the email matches.
 func TestFindOrCreateUser_LinkByEmail(t *testing.T) {
 	s := newTestStore(t)
-	u1 := s.FindOrCreateUser("github", "gh-300", "carol@example.com", "Carol", "")
-	u2 := s.FindOrCreateUser("google", "g-300", "carol@example.com", "Carol G", "")
+	u1 := s.FindOrCreateUser("github", "gh-300", "carol@example.com", "Carol", "", true)
+	u2 := s.FindOrCreateUser("google", "g-300", "carol@example.com", "Carol G", "", true)
 	if u1.ID != u2.ID {
 		t.Errorf("email-link: different IDs returned: %q vs %q", u1.ID, u2.ID)
+	}
+}
+
+// TestFindOrCreateUser_UnverifiedEmailDoesNotLink confirms that an unverified
+// provider email is NOT merged into a pre-existing account (takeover guard):
+// it creates a separate user instead.
+func TestFindOrCreateUser_UnverifiedEmailDoesNotLink(t *testing.T) {
+	s := newTestStore(t)
+	// Pre-existing native account for the victim email.
+	victim, _ := s.Register("victim", "pass1234-XXXX", "Victim")
+	s.mu.Lock()
+	victim.Email = "victim@example.com"
+	s.users[victim.ID] = victim
+	s.mu.Unlock()
+
+	// Attacker signs in via a provider asserting the same email, UNVERIFIED.
+	u := s.FindOrCreateUser("cloud", "acct-evil", "victim@example.com", "Evil", "", false)
+	if u.ID == victim.ID {
+		t.Fatal("unverified email was linked onto the victim account (takeover)")
+	}
+
+	// A VERIFIED email may link.
+	u2 := s.FindOrCreateUser("cloud", "acct-good", "victim@example.com", "Victim", "", true)
+	if u2.ID != victim.ID {
+		t.Errorf("verified email should link to existing account; got new user")
+	}
+}
+
+// TestFindOrCreateUser_NoSilentAdmin confirms a cloud/provider login is never
+// auto-granted admin just for being the first account.
+func TestFindOrCreateUser_NoSilentAdmin(t *testing.T) {
+	s := newTestStore(t)
+	u := s.FindOrCreateUser("cloud", "acct-1", "first@example.com", "First", "", true)
+	p, ok := s.GetProfile(u.ID)
+	if !ok {
+		t.Fatal("profile missing")
+	}
+	if p.Role == RoleAdmin {
+		t.Errorf("first cloud user was silently granted admin: role=%q", p.Role)
+	}
+}
+
+// TestFindOrCreateUser_BootstrapAdmin confirms explicit env-named bootstrap
+// admin provisioning works for a verified email.
+func TestFindOrCreateUser_BootstrapAdmin(t *testing.T) {
+	s := newTestStore(t)
+	t.Setenv("VULOS_BOOTSTRAP_ADMIN_EMAIL", "boss@example.com")
+	u := s.FindOrCreateUser("cloud", "acct-boss", "boss@example.com", "Boss", "", true)
+	p, _ := s.GetProfile(u.ID)
+	if p == nil || p.Role != RoleAdmin {
+		t.Errorf("bootstrap admin email should be granted admin, got %v", p)
 	}
 }
 

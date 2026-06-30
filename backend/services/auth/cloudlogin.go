@@ -128,6 +128,10 @@ type CloudLoginToken struct {
 	Name      string    `json:"name"`
 	ExpiresAt time.Time `json:"expires_at"`
 	IssuedAt  time.Time `json:"issued_at"`
+	// EmailVerified reports whether the cloud broker has verified that this
+	// account owns `email`. It gates linking onto a pre-existing local user by
+	// email (account-takeover guard). Absent ⇒ treated as unverified.
+	EmailVerified bool `json:"email_verified,omitempty"`
 	// JTI is an optional unique token identifier (nonce) used for replay
 	// detection. When the cloud broker emits it, replays are deduped on the
 	// JTI; otherwise the verifier falls back to deduping on the token bytes.
@@ -145,12 +149,13 @@ type CloudLoginRequest struct {
 
 // CloudSessionInfo is returned to the frontend on a successful cloud login.
 type CloudSessionInfo struct {
-	SessionToken string    `json:"session_token"`
-	UserID       string    `json:"user_id"`
-	Email        string    `json:"email"`
-	Name         string    `json:"name"`
-	AccountID    string    `json:"account_id"`
-	ExpiresAt    time.Time `json:"expires_at"`
+	SessionToken  string    `json:"session_token"`
+	UserID        string    `json:"user_id"`
+	Email         string    `json:"email"`
+	Name          string    `json:"name"`
+	AccountID     string    `json:"account_id"`
+	EmailVerified bool      `json:"email_verified"`
+	ExpiresAt     time.Time `json:"expires_at"`
 }
 
 // ─── Verifier ────────────────────────────────────────────────────────────────
@@ -297,18 +302,19 @@ func (v *CloudLoginVerifier) Login(tokenBytes []byte, sigB64 string) (*CloudSess
 		tok.AccountID, tok.Email, tok.ExpiresAt.Format(time.RFC3339))
 
 	// 8. Find or create a local User linked to this cloud account.
-	user := v.store.FindOrCreateUser("cloud", tok.AccountID, tok.Email, tok.Name, "")
+	user := v.store.FindOrCreateUser("cloud", tok.AccountID, tok.Email, tok.Name, "", tok.EmailVerified)
 
 	// 9. Create OS session.
 	sess := v.store.CreateSession(user, "cloud:"+tok.AccountID)
 
 	return &CloudSessionInfo{
-		SessionToken: sess.Token,
-		UserID:       user.ID,
-		Email:        tok.Email,
-		Name:         tok.Name,
-		AccountID:    tok.AccountID,
-		ExpiresAt:    sess.ExpiresAt,
+		SessionToken:  sess.Token,
+		UserID:        user.ID,
+		Email:         tok.Email,
+		Name:          tok.Name,
+		AccountID:     tok.AccountID,
+		EmailVerified: tok.EmailVerified,
+		ExpiresAt:     sess.ExpiresAt,
 	}, nil
 }
 

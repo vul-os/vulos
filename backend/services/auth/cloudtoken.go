@@ -59,6 +59,10 @@ type CloudTokenCache struct {
 	Email string `json:"email"`
 	// Name is the display name from the last valid token.
 	Name string `json:"name"`
+	// EmailVerified records whether the cloud broker verified the email on the
+	// last valid token. Preserved so offline logins make the same
+	// email-linking decision as the online path.
+	EmailVerified bool `json:"email_verified,omitempty"`
 	// DeviceULID is the device ULID the token was bound to.
 	DeviceULID string `json:"device_ulid"`
 	// TokenExpiresAt is the expiry field from the last valid token (informational).
@@ -286,6 +290,7 @@ func (v *CloudOfflineVerifier) Login(tokenBytes []byte, sigB64 string) (*CloudSe
 		AccountID:      info.AccountID,
 		Email:          info.Email,
 		Name:           info.Name,
+		EmailVerified:  info.EmailVerified,
 		DeviceULID:     localDeviceULID(),
 		TokenExpiresAt: info.ExpiresAt,
 		ValidatedAt:    time.Now().UTC(),
@@ -331,7 +336,7 @@ func (v *CloudOfflineVerifier) LoginOffline() (*CloudSessionInfo, error) {
 		cache.AccountID, cache.Email, age.Round(time.Minute), v.gracePeriod)
 
 	user := v.inner.store.FindOrCreateUser(
-		"cloud", cache.AccountID, cache.Email, cache.Name, "",
+		"cloud", cache.AccountID, cache.Email, cache.Name, "", cache.EmailVerified,
 	)
 	sess := v.inner.store.CreateSession(user, "cloud:"+cache.AccountID)
 

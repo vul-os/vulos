@@ -139,7 +139,15 @@ func NewStore(dataDir string) (*Store, error) {
 }
 
 // FindOrCreateUser finds a user by provider+providerID, or creates a new one.
-func (s *Store) FindOrCreateUser(provider, providerUserID, email, name, picture string) *User {
+//
+// emailVerified MUST reflect whether the identity provider has verified
+// ownership of `email`. It gates the email-match linking branch: linking a
+// provider identity onto a pre-existing local account by email is an account
+// takeover vector if the email is attacker-controlled and unverified, so we
+// only merge on a verified email. An unverified email never links to an
+// existing account — it falls through to creating a fresh, separate user keyed
+// by the provider identity.
+func (s *Store) FindOrCreateUser(provider, providerUserID, email, name, picture string, emailVerified bool) *User {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -154,15 +162,19 @@ func (s *Store) FindOrCreateUser(provider, providerUserID, email, name, picture 
 		}
 	}
 
-	// Find by email and link provider
-	for _, u := range s.users {
-		if u.Email == email {
-			u.Providers[provider] = providerUserID
-			u.LastLogin = time.Now()
-			u.Name = name
-			u.Picture = picture
-			s.persistUser(u)
-			return u
+	// Find by email and link provider — ONLY when the provider has verified
+	// the email. Without this check a signed-in identity bearing a victim's
+	// (unverified) email would be silently merged into the victim's account.
+	if emailVerified && email != "" {
+		for _, u := range s.users {
+			if u.Email == email {
+				u.Providers[provider] = providerUserID
+				u.LastLogin = time.Now()
+				u.Name = name
+				u.Picture = picture
+				s.persistUser(u)
+				return u
+			}
 		}
 	}
 
@@ -184,10 +196,18 @@ func (s *Store) FindOrCreateUser(provider, providerUserID, email, name, picture 
 	}
 	s.users[u.ID] = u
 
-	// Create default profile — first user gets admin
+	// Create default profile. Provider/cloud logins are NEVER silently granted
+	// admin just for being the first account on the box — that is a privilege
+	// escalation if anyone can mint a cloud login. Admin is provisioned
+	// explicitly: via native first-run Register(), or by naming a verified
+	// bootstrap-admin email in VULOS_BOOTSTRAP_ADMIN_EMAIL.
 	role := RoleUser
-	if len(s.users) == 1 {
-		role = RoleAdmin
+	if emailVerified && email != "" {
+		if want := strings.TrimSpace(os.Getenv("VULOS_BOOTSTRAP_ADMIN_EMAIL")); want != "" &&
+			strings.EqualFold(want, email) {
+			role = RoleAdmin
+			log.Printf("[auth] provisioning bootstrap admin for verified email %s (provider=%s)", email, provider)
+		}
 	}
 	p := DefaultProfile(u.ID, name)
 	p.Role = role
