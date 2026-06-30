@@ -46,17 +46,22 @@
 package peering
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 )
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
@@ -299,15 +304,174 @@ func AttestVerifyRelay(doc AttestDoc, policy AttestPolicy) error {
 
 // AttestNitroVerifier verifies AWS Nitro Enclave attestation documents.
 //
-// SECURITY (PEER-39): this verifier FAILS CLOSED. The PCR / measurement fields
-// on AttestDoc are populated by the relay itself and are NOT covered by any
-// signature we currently verify, so a malicious relay can set ExpectedPCRs-
-// matching values at will. Until the COSE_Sign1 signature over the NSM
-// RawDocument is verified (binding the PCRs to AWS's hardware root of trust),
-// trusting those PCRs provides no security. Therefore Verify rejects every
-// document rather than accept self-asserted measurements. See the TODO in
-// Verify for the exact COSE verification that must be implemented to re-enable.
+// SECURITY (PEER-39): this verifier performs REAL cryptographic verification of
+// the NSM COSE_Sign1 attestation document. It:
+//
+//  1. base64-decodes doc.RawDocument → the CBOR COSE_Sign1 structure.
+//  2. parses the COSE_Sign1 (protected header, payload, signature) and the
+//     embedded NSM attestation payload (PCRs, certificate, cabundle, user_data).
+//  3. verifies the end-entity certificate chains to the AWS Nitro root CA (or a
+//     caller-pinned root) through the cabundle intermediates.
+//  4. verifies the COSE_Sign1 ES384 signature over the Sig_structure using the
+//     end-entity certificate's P-384 public key — this is what binds the PCRs to
+//     AWS's hardware root of trust.
+//  5. reads the PCRs FROM THE SIGNED PAYLOAD (never from the unsigned doc.PCRs)
+//     and checks them against policy.ExpectedPCRs.
+//  6. binds doc.RelayVulaID to the signed NSM user_data so the document cannot be
+//     replayed for a different relay identity.
+//
+// It still FAILS CLOSED on every error path and when doc.RawDocument is absent
+// (a doc with only self-asserted doc.PCRs and no signed document is rejected).
 type AttestNitroVerifier struct{}
+
+// coseAlgES384 is the COSE algorithm identifier for ECDSA w/ SHA-384 (RFC 9053).
+const coseAlgES384 = -35
+
+// nsmAttestationDoc mirrors the CBOR map of an AWS Nitro NSM attestation document.
+// Field names follow the NSM specification. Optional fields may be nil.
+type nsmAttestationDoc struct {
+	ModuleID    string            `cbor:"module_id"`
+	Digest      string            `cbor:"digest"`
+	Timestamp   uint64            `cbor:"timestamp"`
+	PCRs        map[uint64][]byte `cbor:"pcrs"`
+	Certificate []byte            `cbor:"certificate"` // DER end-entity cert
+	CABundle    [][]byte          `cbor:"cabundle"`    // DER intermediates (root-first)
+	PublicKey   []byte            `cbor:"public_key"`
+	UserData    []byte            `cbor:"user_data"`
+	Nonce       []byte            `cbor:"nonce"`
+}
+
+// attestParseCOSESign1 decodes a (possibly tag-18-wrapped) COSE_Sign1 structure
+// into its raw protected-header bytes, payload bytes, and signature bytes. The
+// bstr CONTENTS are returned verbatim so the Sig_structure can be reconstructed
+// byte-for-byte for signature verification.
+func attestParseCOSESign1(raw []byte) (protected, payload, signature []byte, err error) {
+	// COSE_Sign1 may be wrapped in CBOR tag 18. Try the untagged 4-array first
+	// (NSM emits untagged), then fall back to the tagged form.
+	var arr []cbor.RawMessage
+	if e := cbor.Unmarshal(raw, &arr); e != nil || len(arr) != 4 {
+		var tag cbor.Tag
+		if e2 := cbor.Unmarshal(raw, &tag); e2 != nil {
+			return nil, nil, nil, fmt.Errorf("not a COSE_Sign1 structure: %w", e)
+		}
+		if tag.Number != 18 {
+			return nil, nil, nil, fmt.Errorf("unexpected COSE tag %d (want 18)", tag.Number)
+		}
+		inner, e3 := cbor.Marshal(tag.Content)
+		if e3 != nil {
+			return nil, nil, nil, fmt.Errorf("re-encode tagged COSE content: %w", e3)
+		}
+		if e4 := cbor.Unmarshal(inner, &arr); e4 != nil || len(arr) != 4 {
+			return nil, nil, nil, errors.New("tagged COSE_Sign1 is not a 4-element array")
+		}
+	}
+
+	if e := cbor.Unmarshal(arr[0], &protected); e != nil {
+		return nil, nil, nil, fmt.Errorf("decode protected header bstr: %w", e)
+	}
+	if e := cbor.Unmarshal(arr[2], &payload); e != nil {
+		return nil, nil, nil, fmt.Errorf("decode payload bstr: %w", e)
+	}
+	if e := cbor.Unmarshal(arr[3], &signature); e != nil {
+		return nil, nil, nil, fmt.Errorf("decode signature bstr: %w", e)
+	}
+	return protected, payload, signature, nil
+}
+
+// attestVerifyCOSESignature reconstructs the COSE Sig_structure and verifies the
+// ES384 signature (raw r||s, 96 bytes) using the P-384 public key in leaf.
+func attestVerifyCOSESignature(leaf *x509.Certificate, protected, payload, signature []byte) error {
+	// The protected header must select ES384.
+	var hdr map[int]any
+	if err := cbor.Unmarshal(protected, &hdr); err != nil {
+		return fmt.Errorf("decode protected header map: %w", err)
+	}
+	algRaw, ok := hdr[1] // label 1 = alg
+	if !ok {
+		return errors.New("protected header has no alg")
+	}
+	alg, ok := attestAsInt(algRaw)
+	if !ok || alg != coseAlgES384 {
+		return fmt.Errorf("unsupported COSE alg %v (want ES384 %d)", algRaw, coseAlgES384)
+	}
+
+	pub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
+	if !ok || pub.Curve != elliptic.P384() {
+		return errors.New("end-entity certificate key is not ECDSA P-384")
+	}
+	if len(signature) != 96 {
+		return fmt.Errorf("ES384 signature length %d, want 96", len(signature))
+	}
+
+	// Sig_structure = [ "Signature1", body_protected, external_aad (empty), payload ].
+	sigStructure := []any{"Signature1", protected, []byte{}, payload}
+	toBeSigned, err := cbor.Marshal(sigStructure)
+	if err != nil {
+		return fmt.Errorf("encode Sig_structure: %w", err)
+	}
+	digest := sha512.Sum384(toBeSigned)
+
+	r := new(big.Int).SetBytes(signature[:48])
+	s := new(big.Int).SetBytes(signature[48:])
+	if !ecdsa.Verify(pub, digest[:], r, s) {
+		return errors.New("COSE_Sign1 ES384 signature does not verify")
+	}
+	return nil
+}
+
+// attestAsInt coerces a CBOR-decoded integer (which may be int, int64, uint64)
+// to an int, reporting whether the conversion was lossless-enough for a label.
+func attestAsInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case uint64:
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
+// attestVerifyNitroDERChain verifies a DER end-entity certificate against the
+// trusted root (AWS Nitro root by default, or trustedRootPEM when set) using the
+// DER cabundle as intermediates. It returns the parsed leaf certificate.
+func attestVerifyNitroDERChain(leafDER []byte, cabundle [][]byte, trustedRootPEM string, at time.Time) (*x509.Certificate, error) {
+	leaf, err := x509.ParseCertificate(leafDER)
+	if err != nil {
+		return nil, fmt.Errorf("parse end-entity certificate: %w", err)
+	}
+
+	roots := x509.NewCertPool()
+	rootPEM := trustedRootPEM
+	if rootPEM == "" {
+		rootPEM = nitroRootCAPEM
+	}
+	if !roots.AppendCertsFromPEM([]byte(rootPEM)) {
+		return nil, errors.New("failed to parse trusted root certificate(s)")
+	}
+
+	intermediates := x509.NewCertPool()
+	for _, der := range cabundle {
+		c, e := x509.ParseCertificate(der)
+		if e != nil {
+			return nil, fmt.Errorf("parse cabundle certificate: %w", e)
+		}
+		intermediates.AddCert(c)
+	}
+
+	opts := x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		CurrentTime:   at,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	}
+	if _, err := leaf.Verify(opts); err != nil {
+		return nil, fmt.Errorf("end-entity chain verification: %w", err)
+	}
+	return leaf, nil
+}
 
 // nitroRootCAPEM is the AWS Nitro Enclaves root CA certificate (PEM).
 // Source: https://aws-nitro-enclaves.amazonaws.com/AWS_NitroEnclaves_Root-G1.zip
@@ -327,107 +491,87 @@ YbGEJBnRLSvRnHjVrp2bKWpYEv/pJIHBbIGDvxYT5scHjGkCMQCOJzOCM8Fwzuhl
 1MHb7VQ5HM/7e0KKAqCG8v2T0fjvhYLNXIx6ioSzIaT1F09aJpk=
 -----END CERTIFICATE-----`
 
-// Verify implements [AttestVerifier] for AWS Nitro Enclaves.
-//
-// It FAILS CLOSED: it never returns nil, because the cryptographic binding
-// between AWS's hardware root of trust and the PCRs in the document is not yet
-// verified here. Returning success would mean trusting relay-supplied,
-// unsigned PCRs.
+// Verify implements [AttestVerifier] for AWS Nitro Enclaves with real COSE_Sign1
+// verification (PEER-39). It FAILS CLOSED on every error path.
 func (AttestNitroVerifier) Verify(doc AttestDoc, policy AttestPolicy) error {
 	if doc.Provider != AttestProviderNitro {
 		return attestErr("wrong-provider",
 			fmt.Sprintf("AttestNitroVerifier called for provider %q", doc.Provider), nil)
 	}
 
-	// Certificate-chain validation is necessary but NOT sufficient: a valid
-	// Nitro cert chain proves the chain exists, not that THIS document's PCRs
-	// were produced under it. We still run it so a malformed chain is rejected
-	// early, but a valid chain does not grant acceptance.
-	if doc.CertChainPEM != "" {
-		if err := attestVerifyNitroCertChain(doc.CertChainPEM, policy.TrustedRootPEM); err != nil {
-			return attestErr("invalid-cert-chain", "Nitro certificate chain validation failed", err)
-		}
+	// The signed NSM document is mandatory. Without it the only PCRs available
+	// are the self-asserted doc.PCRs, which carry no cryptographic weight; reject.
+	if doc.RawDocument == "" {
+		return attestErr("cose-unverified",
+			"Nitro attestation has no raw_document: PCRs would be self-asserted and cannot be trusted (fail-closed)", nil)
 	}
 
-	// FAIL CLOSED. The PCRs on the AttestDoc are self-asserted by the relay
-	// (no verified signature covers them), so we refuse rather than trust them.
-	//
-	// TODO(PEER-39): implement real AWS Nitro COSE_Sign1 verification before
-	// this may return nil. Required steps:
-	//   1. base64-decode doc.RawDocument → the CBOR-encoded COSE_Sign1 structure
-	//      (protected header, unprotected header, payload, signature).
-	//   2. Parse the CBOR with a vetted library (e.g. fxamacker/cbor) — add it
-	//      to the module dependency set.
-	//   3. Extract the end-entity (leaf) certificate from CertChainPEM and
-	//      verify it chains to the embedded AWS Nitro root (already done above),
-	//      and that its validity window covers doc.IssuedAt.
-	//   4. Verify the COSE_Sign1 signature over the protected-header+payload
-	//      using the leaf certificate's public key (ECDSA P-384 / ES384).
-	//   5. Decode the *signed* NSM attestation payload and read PCRs FROM IT
-	//      (never from the unsigned doc.PCRs), then call attestCheckPCRs against
-	//      policy.ExpectedPCRs.
-	//   6. Bind doc.RelayVulaID to the attested public_key / user_data field so
-	//      the document cannot be replayed for a different relay identity.
-	// Only after all of the above succeed may this return nil. attestCheckPCRs
-	// is retained (exercised by tests) for use once PCRs come from the signed
-	// payload.
-	return attestErr("cose-unverified",
-		"Nitro attestation rejected: COSE_Sign1 signature over the NSM document is not "+
-			"verified, so PCRs are self-asserted and cannot be trusted (fail-closed; see TODO)", nil)
-}
-
-// attestVerifyNitroCertChain verifies certChainPEM against the trusted root.
-// If trustedRootPEM is empty the built-in AWS Nitro root CA is used.
-func attestVerifyNitroCertChain(certChainPEM, trustedRootPEM string) error {
-	roots := x509.NewCertPool()
-
-	rootPEM := trustedRootPEM
-	if rootPEM == "" {
-		rootPEM = nitroRootCAPEM
-	}
-	if !roots.AppendCertsFromPEM([]byte(rootPEM)) {
-		return errors.New("failed to parse trusted root certificate(s)")
+	// Default-deny on measurements: a Nitro document that pins NO expected PCRs
+	// would accept any enclave image. Require at least one pinned PCR.
+	if len(policy.ExpectedPCRs) == 0 {
+		return attestErr("no-expected-pcrs",
+			"Nitro policy pins no ExpectedPCRs (default-deny): refusing to accept any enclave image", nil)
 	}
 
-	// Parse all certificates from the chain.
-	var certs []*x509.Certificate
-	rest := []byte(certChainPEM)
-	for {
-		var block *pem.Block
-		block, rest = pem.Decode(rest)
-		if block == nil {
-			break
-		}
-		if block.Type != "CERTIFICATE" {
-			continue
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return fmt.Errorf("parse certificate: %w", err)
-		}
-		certs = append(certs, cert)
-	}
-	if len(certs) == 0 {
-		return errors.New("cert_chain_pem contains no certificates")
+	rawCOSE, err := base64.StdEncoding.DecodeString(doc.RawDocument)
+	if err != nil {
+		return attestErr("bad-raw-document", "raw_document is not valid base64", err)
 	}
 
-	// Build intermediates pool from all but the first certificate.
-	intermediates := x509.NewCertPool()
-	for _, c := range certs[1:] {
-		intermediates.AddCert(c)
+	// 1. Parse the COSE_Sign1 envelope.
+	protected, payload, signature, err := attestParseCOSESign1(rawCOSE)
+	if err != nil {
+		return attestErr("bad-cose", "failed to parse COSE_Sign1 structure", err)
 	}
 
-	opts := x509.VerifyOptions{
-		Roots:         roots,
-		Intermediates: intermediates,
-		// Nitro end-entity certs have very short lifespans; we allow the
-		// caller to override CurrentTime for testing by leaving it zero
-		// (x509 package uses time.Now() when zero).
+	// 2. Parse the signed NSM attestation payload.
+	var nsm nsmAttestationDoc
+	if err := cbor.Unmarshal(payload, &nsm); err != nil {
+		return attestErr("bad-nsm-payload", "failed to parse NSM attestation payload", err)
+	}
+	if len(nsm.Certificate) == 0 {
+		return attestErr("missing-leaf-cert", "NSM payload has no end-entity certificate", nil)
 	}
 
-	if _, err := certs[0].Verify(opts); err != nil {
-		return fmt.Errorf("certificate chain verification: %w", err)
+	// 3. Verify the end-entity certificate chains to the trusted Nitro root via
+	//    the cabundle intermediates. The verification time is the document's
+	//    issued_at when set (Nitro leaf certs are short-lived), else now.
+	at := doc.IssuedAt
+	if at.IsZero() {
+		at = time.Now()
 	}
+	leaf, err := attestVerifyNitroDERChain(nsm.Certificate, nsm.CABundle, policy.TrustedRootPEM, at)
+	if err != nil {
+		return attestErr("invalid-cert-chain", "Nitro certificate chain validation failed", err)
+	}
+
+	// 4. Verify the COSE_Sign1 ES384 signature using the (now trusted) leaf key.
+	//    THIS is what binds the PCRs to AWS's hardware root of trust.
+	if err := attestVerifyCOSESignature(leaf, protected, payload, signature); err != nil {
+		return attestErr("bad-signature", "COSE_Sign1 signature verification failed", err)
+	}
+
+	// 5. Read PCRs FROM THE SIGNED PAYLOAD and check them against the policy.
+	signedPCRs := make(map[string]string, len(nsm.PCRs))
+	for idx, val := range nsm.PCRs {
+		signedPCRs[fmt.Sprintf("%d", idx)] = fmt.Sprintf("%x", val)
+	}
+	if err := attestCheckPCRs(signedPCRs, policy.ExpectedPCRs); err != nil {
+		return err // already an *AttestError with pcr-missing / pcr-mismatch.
+	}
+
+	// 6. Bind the document to the relay identity. The relay MUST place its Vula
+	//    ID in the signed NSM user_data; otherwise the document could be replayed
+	//    to vouch for a different relay.
+	if len(nsm.UserData) == 0 {
+		return attestErr("missing-identity-binding",
+			"NSM user_data is empty: cannot bind attestation to relay_vula_id (fail-closed)", nil)
+	}
+	if string(nsm.UserData) != doc.RelayVulaID {
+		return attestErr("identity-mismatch",
+			fmt.Sprintf("signed user_data does not match relay_vula_id %q", doc.RelayVulaID), nil)
+	}
+
 	return nil
 }
 
