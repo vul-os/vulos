@@ -109,6 +109,19 @@ func InboundMiddleware(contacts *ContactStore, next http.Handler) http.Handler {
 			return
 		}
 
+		// 1b. Revocation gate (identity lifecycle). A valid signature from a
+		// REVOKED identity must be rejected at admission — a compromised key that
+		// has been revoked (self- or recovery-anchor-signed) can still produce
+		// structurally valid envelopes. When no lifecycle subsystem is wired the
+		// checker is absent and this is a no-op; once wired it fails closed.
+		if isVulaIDRevoked(env.From) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "sender identity has been revoked",
+				"from":  env.From,
+			})
+			return
+		}
+
 		// 2. Allow-list check — required for all routes except inbound/request.
 		path := r.URL.Path
 		isContactRequest := strings.TrimRight(path, "/") == strings.TrimRight(inboundContactRequestPath, "/")

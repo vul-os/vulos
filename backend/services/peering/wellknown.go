@@ -263,12 +263,61 @@ type WKIdentityResponse struct {
 	// sorted by priority (lower = higher priority). Populated from the local
 	// endpoint registry (PEER-40). Empty when no endpoints are registered.
 	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
+	// Lifecycle, when present, publishes this identity's key-lifecycle data
+	// (rotation/recovery chain + observed revocations) so peers can follow key
+	// rotations/recoveries and honor revocations (identity_lifecycle.go). The
+	// certificates inside carry their own independent base58 signatures, so they
+	// are verifiable regardless of this response's signature; the outer signature
+	// only attests that this server published them.
+	Lifecycle *WKLifecycle `json:"lifecycle,omitempty"`
+
 	// Signature is the base64url Ed25519 signature over the canonical form of
 	// this response (with this field empty), produced by the node's identity
 	// key. Because a Vula ID IS an Ed25519 public key, fetchers verify this
 	// against the expected Vula ID to authenticate the profile (PEER-12
 	// hardening). Empty only when the node could not load its private key.
 	Signature string `json:"sig,omitempty"`
+}
+
+// WKLifecycle is the published key-lifecycle bundle (see identity_lifecycle.go).
+type WKLifecycle struct {
+	// RootVulaID is the original identity this chain descends from.
+	RootVulaID string `json:"root_vula_id"`
+	// AnchorVulaID is the account recovery anchor (peers TOFU-pin this to follow
+	// recovery certs).
+	AnchorVulaID string `json:"anchor_vula_id,omitempty"`
+	// Chain is the ordered rotation/recovery transition history.
+	Chain []LifecycleLink `json:"chain,omitempty"`
+	// Revocations are observed, self/anchor-signed revocation certificates.
+	Revocations []*RevocationCert `json:"revocations,omitempty"`
+}
+
+// wkLifecyclePublisher, when set, supplies the lifecycle bundle embedded in the
+// well-known response. The LIVE server wires it from a *LifecycleStore. Kept as a
+// package hook so the wellknown handler need not import the store directly and so
+// tests can install a stub.
+var (
+	wkLifecyclePublisherMu sync.RWMutex
+	wkLifecyclePublisher   func() *WKLifecycle
+)
+
+// SetLifecyclePublisher installs the lifecycle bundle source for the well-known
+// endpoint. The live server passes a closure over its *LifecycleStore.OwnChain /
+// RevocationList. Passing nil disables lifecycle publication.
+func SetLifecyclePublisher(f func() *WKLifecycle) {
+	wkLifecyclePublisherMu.Lock()
+	wkLifecyclePublisher = f
+	wkLifecyclePublisherMu.Unlock()
+}
+
+func wkCurrentLifecycle() *WKLifecycle {
+	wkLifecyclePublisherMu.RLock()
+	f := wkLifecyclePublisher
+	wkLifecyclePublisherMu.RUnlock()
+	if f == nil {
+		return nil
+	}
+	return f()
 }
 
 // wkBuildPublicResponse filters the own profile down to public-only fields
@@ -537,6 +586,11 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/vula-id", func(w http.ResponseWriter, r *http.Request) {
 		profile := wkLoadOwnProfile(dataDir, ownVulaID)
 		resp := wkBuildPublicResponse(profile)
+		// Publish key-lifecycle data (rotation/recovery chain + revocations) so
+		// peers can follow rotations and honor revocations (identity_lifecycle.go).
+		if lc := wkCurrentLifecycle(); lc != nil {
+			resp.Lifecycle = lc
+		}
 		// Sign so fetchers can verify authenticity against our Vula ID.
 		if privErr == nil {
 			if err := wkSignResponse(&resp, ownPriv); err != nil {

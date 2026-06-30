@@ -2061,6 +2061,31 @@ func main() {
 		pVulaID := peeringSvc.VulaID()
 		myServer := "localhost:" + cfg.Port // best-effort self-address
 
+		// Identity key lifecycle (rotation / revocation / recovery). The store
+		// owns this node's transition chain + observed revocations and persists
+		// them under the identity dir. Wiring the global revocation checker makes
+		// every admission/verify point (InboundMiddleware, VerifyVulaSignatureChecked)
+		// reject revoked identities; the lifecycle publisher exposes the chain +
+		// revocations on /.well-known/vula-id so peers can follow rotations and
+		// honor revocations. The recovery anchor (account-bound) is derived from
+		// the recovery kit at restore time; it is left empty here when no recovery
+		// seed is available, in which case rotation + self-revocation still work
+		// and recovery is re-enabled once the account recovery seed is wired.
+		if lcStore, lcErr := peering.NewLifecycleStore(filepath.Join(pRoot, "identity"), pVulaID, ""); lcErr != nil {
+			log.Printf("[peering] identity lifecycle store init: %v", lcErr)
+		} else {
+			peering.SetRevocationChecker(lcStore.IsRevoked)
+			peering.SetLifecyclePublisher(func() *peering.WKLifecycle {
+				root, anchor, chain := lcStore.OwnChain()
+				return &peering.WKLifecycle{
+					RootVulaID:   root,
+					AnchorVulaID: anchor,
+					Chain:        chain,
+					Revocations:  lcStore.RevocationList(),
+				}
+			})
+		}
+
 		contactStore, csErr := peering.NewContactStore(pHome)
 		if csErr != nil {
 			log.Printf("[peering] PEER-42 contact store init: %v", csErr)
