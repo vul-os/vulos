@@ -60,7 +60,7 @@ func TestAttestVerifyRelay_MissingRelayID(t *testing.T) {
 		Provider: AttestProviderNoop,
 		IssuedAt: time.Now(),
 	}
-	err := AttestVerifyRelay(doc, AttestPolicy{})
+	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNoop})
 	assertAttestCode(t, err, "missing-relay-id")
 }
 
@@ -69,7 +69,7 @@ func TestAttestVerifyRelay_MissingIssuedAt(t *testing.T) {
 		Provider:    AttestProviderNoop,
 		RelayVulaID: "vula:ed25519:test",
 	}
-	err := AttestVerifyRelay(doc, AttestPolicy{})
+	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNoop})
 	assertAttestCode(t, err, "missing-issued-at")
 }
 
@@ -79,7 +79,7 @@ func TestAttestVerifyRelay_DocExpired(t *testing.T) {
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now().Add(-2 * time.Hour),
 	}
-	policy := AttestPolicy{MaxAge: time.Hour}
+	policy := AttestPolicy{Provider: AttestProviderNoop, MaxAge: time.Hour}
 	err := AttestVerifyRelay(doc, policy)
 	assertAttestCode(t, err, "doc-expired")
 }
@@ -90,7 +90,7 @@ func TestAttestVerifyRelay_DocFutureDated(t *testing.T) {
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now().Add(2 * time.Hour),
 	}
-	policy := AttestPolicy{MaxAge: time.Hour}
+	policy := AttestPolicy{Provider: AttestProviderNoop, MaxAge: time.Hour}
 	err := AttestVerifyRelay(doc, policy)
 	assertAttestCode(t, err, "doc-expired")
 }
@@ -101,29 +101,48 @@ func TestAttestVerifyRelay_UnknownProvider(t *testing.T) {
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now(),
 	}
-	err := AttestVerifyRelay(doc, AttestPolicy{})
+	// Pin the (unregistered) provider so we reach the verifier-lookup step.
+	err := AttestVerifyRelay(doc, AttestPolicy{Provider: "unknown-provider"})
 	assertAttestCode(t, err, "unknown-provider")
 }
 
-func TestAttestVerifyRelay_NoopSuccess(t *testing.T) {
+func TestAttestVerifyRelay_EmptyPolicyRejected(t *testing.T) {
+	// DEFAULT-DENY: an empty policy (no pinned provider) must be rejected even
+	// for a structurally complete document.
 	doc := AttestDoc{
 		Provider:    AttestProviderNoop,
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now(),
 	}
-	if err := AttestVerifyRelay(doc, AttestPolicy{}); err != nil {
-		t.Fatalf("expected success, got: %v", err)
-	}
+	err := AttestVerifyRelay(doc, AttestPolicy{})
+	assertAttestCode(t, err, "empty-policy")
 }
 
-func TestAttestVerifyRelay_NoMaxAge_OldDocAccepted(t *testing.T) {
-	// Zero MaxAge means no age enforcement.
+func TestAttestVerifyRelay_NoopVerifierRejected(t *testing.T) {
+	// Even with the provider pinned, the (now fail-closed, unregistered) noop
+	// provider must not yield a pass: it is not in the default registry.
 	doc := AttestDoc{
 		Provider:    AttestProviderNoop,
 		RelayVulaID: "vula:ed25519:test",
+		IssuedAt:    time.Now(),
+	}
+	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNoop})
+	assertAttestCode(t, err, "unknown-provider")
+}
+
+func TestAttestVerifyRelay_NoMaxAge_OldDocAccepted(t *testing.T) {
+	// Zero MaxAge means no age enforcement: an old doc passes the age gate and
+	// reaches (and is accepted by) a registered, passing verifier.
+	const okProvider AttestProvider = "test-nomaxage-provider-39"
+	AttestRegisterVerifier(okProvider, attestVerifierFunc(func(_ AttestDoc, _ AttestPolicy) error {
+		return nil
+	}))
+	doc := AttestDoc{
+		Provider:    okProvider,
+		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now().Add(-365 * 24 * time.Hour),
 	}
-	if err := AttestVerifyRelay(doc, AttestPolicy{}); err != nil {
+	if err := AttestVerifyRelay(doc, AttestPolicy{Provider: okProvider}); err != nil {
 		t.Fatalf("expected old doc to be accepted when MaxAge=0, got: %v", err)
 	}
 }
@@ -144,7 +163,7 @@ func TestAttestRegisterVerifier_Custom(t *testing.T) {
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now(),
 	}
-	if err := AttestVerifyRelay(doc, AttestPolicy{}); err != nil {
+	if err := AttestVerifyRelay(doc, AttestPolicy{Provider: customProvider}); err != nil {
 		t.Fatalf("custom verifier: unexpected error: %v", err)
 	}
 	if !called {
@@ -164,7 +183,7 @@ func TestAttestRegisterVerifier_CustomReject(t *testing.T) {
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now(),
 	}
-	err := AttestVerifyRelay(doc, AttestPolicy{})
+	err := AttestVerifyRelay(doc, AttestPolicy{Provider: badProvider})
 	assertAttestCode(t, err, "custom-reject")
 }
 
@@ -177,7 +196,10 @@ func TestAttestNitroVerifier_WrongProviderPanics(t *testing.T) {
 	assertAttestCode(t, err, "wrong-provider")
 }
 
-func TestAttestNitroVerifier_PCRMatch(t *testing.T) {
+func TestAttestNitroVerifier_FailsClosedEvenWithMatchingPCRs(t *testing.T) {
+	// SECURITY: PCRs on the doc are self-asserted (no verified COSE signature
+	// covers them). The Nitro verifier must reject even when they "match" the
+	// policy — otherwise a malicious relay simply sets matching PCRs.
 	v := AttestNitroVerifier{}
 	doc := AttestDoc{
 		Provider:    AttestProviderNitro,
@@ -190,61 +212,52 @@ func TestAttestNitroVerifier_PCRMatch(t *testing.T) {
 	}
 	policy := AttestPolicy{
 		ExpectedPCRs: map[string]string{
-			"0": "AABBCCDD", // case-insensitive match
+			"0": "AABBCCDD",
 			"1": "11223344",
 		},
 	}
-	if err := v.Verify(doc, policy); err != nil {
-		t.Fatalf("expected PCR match, got: %v", err)
-	}
+	err := v.Verify(doc, policy)
+	assertAttestCode(t, err, "cose-unverified")
 }
 
-func TestAttestNitroVerifier_PCRMissing(t *testing.T) {
+func TestAttestNitroVerifier_FailsClosed_NoPCRsNoCertChain(t *testing.T) {
+	// With nothing to check the verifier must still fail closed — it never
+	// returns nil until COSE_Sign1 verification is implemented.
 	v := AttestNitroVerifier{}
 	doc := AttestDoc{
 		Provider:    AttestProviderNitro,
 		RelayVulaID: "vula:ed25519:test",
 		IssuedAt:    time.Now(),
-		PCRs:        map[string]string{"0": "aabbccdd"},
 	}
-	policy := AttestPolicy{
-		ExpectedPCRs: map[string]string{
-			"0": "aabbccdd",
-			"8": "deadbeef", // slot 8 not present
-		},
-	}
-	err := v.Verify(doc, policy)
+	err := v.Verify(doc, AttestPolicy{})
+	assertAttestCode(t, err, "cose-unverified")
+}
+
+// The PCR-comparison helper is retained for use once PCRs are read from the
+// signed NSM payload; verify its matching logic directly.
+func TestAttestCheckPCRs_Missing(t *testing.T) {
+	err := attestCheckPCRs(
+		map[string]string{"0": "aabbccdd"},
+		map[string]string{"0": "aabbccdd", "8": "deadbeef"},
+	)
 	assertAttestCode(t, err, "pcr-missing")
 }
 
-func TestAttestNitroVerifier_PCRMismatch(t *testing.T) {
-	v := AttestNitroVerifier{}
-	doc := AttestDoc{
-		Provider:    AttestProviderNitro,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
-		PCRs:        map[string]string{"0": "aabbccdd"},
-	}
-	policy := AttestPolicy{
-		ExpectedPCRs: map[string]string{
-			"0": "deadbeef", // wrong value
-		},
-	}
-	err := v.Verify(doc, policy)
+func TestAttestCheckPCRs_Mismatch(t *testing.T) {
+	err := attestCheckPCRs(
+		map[string]string{"0": "aabbccdd"},
+		map[string]string{"0": "deadbeef"},
+	)
 	assertAttestCode(t, err, "pcr-mismatch")
 }
 
-func TestAttestNitroVerifier_NoPCRPolicy_NoCertChain_OK(t *testing.T) {
-	// When policy.ExpectedPCRs is empty and no cert chain is provided, Nitro
-	// verifier should succeed (no checks to fail).
-	v := AttestNitroVerifier{}
-	doc := AttestDoc{
-		Provider:    AttestProviderNitro,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
-	}
-	if err := v.Verify(doc, AttestPolicy{}); err != nil {
-		t.Fatalf("expected success, got: %v", err)
+func TestAttestCheckPCRs_MatchCaseInsensitive(t *testing.T) {
+	err := attestCheckPCRs(
+		map[string]string{"0": "aabbccdd", "1": "11223344"},
+		map[string]string{"0": "AABBCCDD", "1": "11223344"},
+	)
+	if err != nil {
+		t.Fatalf("expected case-insensitive PCR match, got: %v", err)
 	}
 }
 
@@ -402,9 +415,15 @@ func TestRegisterAttestHandlers_NilStore_Panics(t *testing.T) {
 // ─── AttestFetchAndVerifyWithClient ───────────────────────────────────────────
 
 func TestAttestFetchAndVerifyWithClient_Success(t *testing.T) {
-	// Spin up a test HTTP server that returns a valid noop doc.
+	// Register a deliberate passing verifier under a dedicated provider so the
+	// fetch+verify happy path can be exercised (the default registry is
+	// default-deny and ships no "accept anything" verifier).
+	const fetchProvider AttestProvider = "test-fetch-provider-39"
+	AttestRegisterVerifier(fetchProvider, attestVerifierFunc(func(_ AttestDoc, _ AttestPolicy) error {
+		return nil
+	}))
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
+		Provider:    fetchProvider,
 		RelayVulaID: "vula:ed25519:fetch-test-relay",
 		IssuedAt:    time.Now().UTC(),
 	}
@@ -414,7 +433,7 @@ func TestAttestFetchAndVerifyWithClient_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := AttestFetchAndVerifyWithClient(srv.Client(), srv.URL, AttestPolicy{})
+	got, err := AttestFetchAndVerifyWithClient(srv.Client(), srv.URL, AttestPolicy{Provider: fetchProvider})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

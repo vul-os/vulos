@@ -33,10 +33,10 @@
 // # Pluggable verifier interface
 //
 // Providers implement [AttestVerifier].  The package ships one built-in
-// implementation: [AttestNitroVerifier] (AWS Nitro Enclaves).  A no-TEE
-// deployment can register [AttestNoopVerifier] for testing — it accepts any
-// document without cryptographic checks.  Production callers MUST NOT use
-// [AttestNoopVerifier].
+// implementation: [AttestNitroVerifier] (AWS Nitro Enclaves).  The registry is
+// DEFAULT-DENY: [AttestNoopVerifier] is no longer registered and is itself
+// fail-closed (its Verify always rejects), so there is no built-in way to pass
+// attestation without a deliberately-registered, real verifier.
 //
 // # Reject-on-failure guarantee
 //
@@ -186,11 +186,14 @@ type AttestVerifier interface {
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
+// The default registry is DEFAULT-DENY. AttestNoopVerifier is deliberately NOT
+// registered here — registering an "accept anything" verifier by default would
+// silently disable attestation. A deployment that genuinely wants no TEE checks
+// must make that an explicit, auditable choice by registering its own verifier.
 var (
 	attestRegistryMu sync.RWMutex
 	attestRegistry   = map[AttestProvider]AttestVerifier{
 		AttestProviderNitro: AttestNitroVerifier{},
-		AttestProviderNoop:  AttestNoopVerifier{},
 	}
 )
 
@@ -220,9 +223,13 @@ func attestLookupVerifier(provider AttestProvider) (AttestVerifier, bool) {
 // doc.Provider.  Any non-nil return is a hard reject — the caller MUST NOT
 // proceed with the deposit.
 //
+// DEFAULT-DENY: an empty/zero policy that pins no provider is REJECTED. A
+// policy that "accepts any provider" provides no security, so callers must
+// explicitly name the provider they trust.
+//
 // Checks performed (in order):
 //  1. doc.Provider must be non-empty.
-//  2. If policy.Provider is set, doc.Provider must match.
+//  2. policy.Provider must be set (default-deny) AND doc.Provider must match it.
 //  3. doc.RelayVulaID must be non-empty.
 //  4. doc.IssuedAt must not be zero.
 //  5. If policy.MaxAge > 0, doc.IssuedAt must be within MaxAge of now.
@@ -234,8 +241,14 @@ func AttestVerifyRelay(doc AttestDoc, policy AttestPolicy) error {
 			"attestation document does not specify a provider", nil)
 	}
 
-	// 2. Provider must match policy (if policy specifies one).
-	if policy.Provider != "" && doc.Provider != policy.Provider {
+	// 2. Default-deny: the policy MUST pin an expected provider, and the
+	//    document's provider MUST match it. An empty policy is refused outright
+	//    rather than accepting whatever provider the relay self-declares.
+	if policy.Provider == "" {
+		return attestErr("empty-policy",
+			"attestation policy pins no provider (default-deny): refusing to accept a self-declared provider", nil)
+	}
+	if doc.Provider != policy.Provider {
 		return attestErr("provider-mismatch",
 			fmt.Sprintf("expected provider %q, got %q", policy.Provider, doc.Provider), nil)
 	}
@@ -286,18 +299,14 @@ func AttestVerifyRelay(doc AttestDoc, policy AttestPolicy) error {
 
 // AttestNitroVerifier verifies AWS Nitro Enclave attestation documents.
 //
-// It performs the following checks:
-//  1. CertChainPEM parses successfully and chains to the trusted root.
-//  2. PCR values in doc match all entries in policy.ExpectedPCRs
-//     (case-insensitive hex comparison).
-//
-// Note: full CBOR/COSE parsing of the raw NSM document is intentionally not
-// implemented here — it requires a CBOR library that is not currently in the
-// module's dependency set.  The implementation validates the certificate chain
-// (present in the PEM field) and PCR measurements extracted into the
-// structured AttestDoc by the relay.  A production deployment should
-// additionally verify the COSE_Sign1 signature over RawDocument using the
-// end-entity certificate from the chain.
+// SECURITY (PEER-39): this verifier FAILS CLOSED. The PCR / measurement fields
+// on AttestDoc are populated by the relay itself and are NOT covered by any
+// signature we currently verify, so a malicious relay can set ExpectedPCRs-
+// matching values at will. Until the COSE_Sign1 signature over the NSM
+// RawDocument is verified (binding the PCRs to AWS's hardware root of trust),
+// trusting those PCRs provides no security. Therefore Verify rejects every
+// document rather than accept self-asserted measurements. See the TODO in
+// Verify for the exact COSE verification that must be implemented to re-enable.
 type AttestNitroVerifier struct{}
 
 // nitroRootCAPEM is the AWS Nitro Enclaves root CA certificate (PEM).
@@ -319,27 +328,52 @@ YbGEJBnRLSvRnHjVrp2bKWpYEv/pJIHBbIGDvxYT5scHjGkCMQCOJzOCM8Fwzuhl
 -----END CERTIFICATE-----`
 
 // Verify implements [AttestVerifier] for AWS Nitro Enclaves.
+//
+// It FAILS CLOSED: it never returns nil, because the cryptographic binding
+// between AWS's hardware root of trust and the PCRs in the document is not yet
+// verified here. Returning success would mean trusting relay-supplied,
+// unsigned PCRs.
 func (AttestNitroVerifier) Verify(doc AttestDoc, policy AttestPolicy) error {
 	if doc.Provider != AttestProviderNitro {
 		return attestErr("wrong-provider",
 			fmt.Sprintf("AttestNitroVerifier called for provider %q", doc.Provider), nil)
 	}
 
-	// 1. Certificate chain validation.
+	// Certificate-chain validation is necessary but NOT sufficient: a valid
+	// Nitro cert chain proves the chain exists, not that THIS document's PCRs
+	// were produced under it. We still run it so a malformed chain is rejected
+	// early, but a valid chain does not grant acceptance.
 	if doc.CertChainPEM != "" {
 		if err := attestVerifyNitroCertChain(doc.CertChainPEM, policy.TrustedRootPEM); err != nil {
 			return attestErr("invalid-cert-chain", "Nitro certificate chain validation failed", err)
 		}
 	}
 
-	// 2. PCR measurement check.
-	if len(policy.ExpectedPCRs) > 0 {
-		if err := attestCheckPCRs(doc.PCRs, policy.ExpectedPCRs); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// FAIL CLOSED. The PCRs on the AttestDoc are self-asserted by the relay
+	// (no verified signature covers them), so we refuse rather than trust them.
+	//
+	// TODO(PEER-39): implement real AWS Nitro COSE_Sign1 verification before
+	// this may return nil. Required steps:
+	//   1. base64-decode doc.RawDocument → the CBOR-encoded COSE_Sign1 structure
+	//      (protected header, unprotected header, payload, signature).
+	//   2. Parse the CBOR with a vetted library (e.g. fxamacker/cbor) — add it
+	//      to the module dependency set.
+	//   3. Extract the end-entity (leaf) certificate from CertChainPEM and
+	//      verify it chains to the embedded AWS Nitro root (already done above),
+	//      and that its validity window covers doc.IssuedAt.
+	//   4. Verify the COSE_Sign1 signature over the protected-header+payload
+	//      using the leaf certificate's public key (ECDSA P-384 / ES384).
+	//   5. Decode the *signed* NSM attestation payload and read PCRs FROM IT
+	//      (never from the unsigned doc.PCRs), then call attestCheckPCRs against
+	//      policy.ExpectedPCRs.
+	//   6. Bind doc.RelayVulaID to the attested public_key / user_data field so
+	//      the document cannot be replayed for a different relay identity.
+	// Only after all of the above succeed may this return nil. attestCheckPCRs
+	// is retained (exercised by tests) for use once PCRs come from the signed
+	// payload.
+	return attestErr("cose-unverified",
+		"Nitro attestation rejected: COSE_Sign1 signature over the NSM document is not "+
+			"verified, so PCRs are self-asserted and cannot be trusted (fail-closed; see TODO)", nil)
 }
 
 // attestVerifyNitroCertChain verifies certChainPEM against the trusted root.
@@ -416,16 +450,18 @@ func attestCheckPCRs(actual, expected map[string]string) error {
 
 // ─── AttestNoopVerifier ───────────────────────────────────────────────────────
 
-// AttestNoopVerifier is a no-op verifier intended for testing and
-// non-TEE deployments.  It accepts every document without performing any
-// cryptographic checks.
-//
-// WARNING: MUST NOT be used in production deployments — it provides no
-// security guarantees whatsoever.
+// AttestNoopVerifier formerly accepted every document. It is now FAIL-CLOSED:
+// Verify always returns an error, and it is no longer registered by default.
+// This removes the "accept anything" bypass entirely — there is no way to pass
+// attestation without a real, deliberately-registered verifier.
 type AttestNoopVerifier struct{}
 
-// Verify implements [AttestVerifier] and always returns nil.
-func (AttestNoopVerifier) Verify(_ AttestDoc, _ AttestPolicy) error { return nil }
+// Verify implements [AttestVerifier] and always REJECTS. A no-op verifier that
+// returned nil would silently disable attestation.
+func (AttestNoopVerifier) Verify(_ AttestDoc, _ AttestPolicy) error {
+	return attestErr("noop-rejected",
+		"AttestNoopVerifier performs no cryptographic checks and is fail-closed: rejecting", nil)
+}
 
 // ─── Relay-side: AttestStore ──────────────────────────────────────────────────
 
