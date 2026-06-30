@@ -646,6 +646,18 @@ func main() {
 			} else {
 				log.Printf("[files] OS peer-share disabled: no peering identity")
 			}
+			// ACCOUNT-SHARE: wire share-by-email resolution + locality routing
+			// (Contract 2 + 3). Co-cloud recipients (a local OS account) take the
+			// ACL grant path; remote recipients resolve via the vulos.org directory
+			// to a {VulaID, server} and take the peershare capability path, with the
+			// minted capability delivered to the recipient's server intake.
+			filesSvc.WithShareResolver(
+				&osShareResolver{
+					auth:      authStore,
+					directory: peering.DiscoveryNewService(nil),
+				},
+				&httpCapabilityDeliverer{client: &http.Client{Timeout: 10 * time.Second}},
+			)
 			// FILES-4: wire the external-store seam (Google Drive). The box mints a
 			// short-lived Drive access token on demand from the CP integration broker
 			// (provider "google", Drive scope added CP-side); the refresh token never

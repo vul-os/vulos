@@ -238,6 +238,30 @@ func registerFilesRoutes(mux *http.ServeMux, svc *files.Service) {
 		writeJSON(w, e)
 	}))
 
+	// Account-only sharing: the sharer enters a recipient EMAIL. The service
+	// resolves it (directory, Contract 2) and routes by locality (Contract 3):
+	// co-cloud → ACL grant; remote → per-document capability minted + delivered.
+	mux.HandleFunc("POST /api/files/share-by-email", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		var req struct {
+			NodeID     string `json:"node_id"`
+			Email      string `json:"email"`
+			Role       string `json:"role"`
+			TTLSeconds int64  `json:"ttl_seconds"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		res, err := svc.ShareByEmail(
+			r.Context(), uid, req.NodeID, req.Email, files.Role(req.Role),
+			requestBaseURL(r), time.Duration(req.TTLSeconds)*time.Second,
+		)
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		writeJSON(w, res)
+	}))
+
 	mux.HandleFunc("POST /api/files/unshare", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
 		var req struct {
 			NodeID      string `json:"node_id"`
@@ -388,6 +412,10 @@ func writeFilesErr(w http.ResponseWriter, err error) {
 		writeErr(w, 503, "import not available")
 	case errors.Is(err, files.ErrImportProvider):
 		writeErr(w, 400, "unknown import provider")
+	case errors.Is(err, files.ErrShareResolveUnavailable):
+		writeErr(w, 503, "share resolver not available")
+	case errors.Is(err, files.ErrRecipientNotFound):
+		writeErr(w, 404, "share recipient not found")
 	case errors.Is(err, files.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	default:
