@@ -127,7 +127,17 @@ func InboundMiddleware(contacts *ContactStore, next http.Handler) http.Handler {
 		isContactRequest := strings.TrimRight(path, "/") == strings.TrimRight(inboundContactRequestPath, "/")
 
 		if !isContactRequest {
-			if !contacts.IsApproved(env.From) {
+			approved := contacts.IsApproved(env.From)
+			if !approved {
+				// Follow a rotation/recovery: if the sender's key resolves (via a
+				// VERIFIED, ingested lifecycle chain) to a ROOT that IS an approved
+				// contact, admit it on the new key. A forged chain records no mapping,
+				// so this cannot be used to smuggle in an unapproved key.
+				if root, ok := resolvePresentedRoot(env.From); ok && contacts.IsApproved(root) {
+					approved = true
+				}
+			}
+			if !approved {
 				writeJSON(w, http.StatusForbidden, map[string]string{
 					"error": "sender is not in the approved contacts list",
 					"from":  env.From,

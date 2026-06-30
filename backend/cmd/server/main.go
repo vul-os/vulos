@@ -2084,6 +2084,20 @@ func main() {
 			log.Printf("[peering] identity lifecycle store init: %v", lcErr)
 		} else {
 			peering.SetRevocationChecker(lcStore.IsRevoked)
+			// Ingest peers' published lifecycle (revocations + rotation/recovery
+			// chains) on every authenticated profile fetch/refresh, so a contact's
+			// self-/anchor-revocation actually reaches IsRevoked end-to-end and a
+			// rotated/recovered contact is followed to its current key.
+			peering.SetLifecycleIngestor(func(lc *peering.WKLifecycle) {
+				if _, err := lcStore.IngestPeerLifecycle(lc); err != nil {
+					log.Printf("[peering] lifecycle ingest: %v", err)
+				}
+			})
+			// Follow a rotated/recovered peer at admission: map a presented current
+			// key back to its approved ROOT (only verified chains populate this).
+			peering.SetIdentityRootResolver(lcStore.RootForResolvedKey)
+			// Self-revocation endpoint (session-authed): POST /api/peering/identity/revoke.
+			peering.RegisterIdentityLifecycleHandlers(peeringMux, lcStore, pPriv)
 			peering.SetLifecyclePublisher(func() *peering.WKLifecycle {
 				root, anchor, chain := lcStore.OwnChain()
 				return &peering.WKLifecycle{
@@ -2173,14 +2187,21 @@ func main() {
 			contactAPI.RegisterContactHandlers(peeringMux)
 
 			// PEER-12: periodic background refresh of approved peers' profiles.
-			peering.StartPeerProfileSync(ctx, func() []peering.WKApprovedPeer {
+			approvedPeers := func() []peering.WKApprovedPeer {
 				contacts := contactStore.ListByState(peering.StateApproved)
 				peers := make([]peering.WKApprovedPeer, 0, len(contacts))
 				for _, c := range contacts {
 					peers = append(peers, peering.WKApprovedPeer{VulaID: c.VulaID, ServerAddr: c.Server})
 				}
 				return peers
-			})
+			}
+			peering.StartPeerProfileSync(ctx, approvedPeers)
+
+			// Lifecycle propagation: periodically re-ingest approved contacts'
+			// revocation/rotation bundles (bypassing the profile cache) so a
+			// revocation a contact publishes is honored within the refresh interval
+			// even if no fresh profile fetch occurs.
+			peering.StartLifecycleRefresh(ctx, approvedPeers)
 
 			// Messaging (conversations + inbound/message).
 			if inboxStore != nil {

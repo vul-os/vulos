@@ -400,6 +400,12 @@ type lifecycleState struct {
 	// PinnedAnchors maps a contact's ROOT Vula ID → the anchor this node trusts
 	// to recover that contact (TOFU at first contact).
 	PinnedAnchors map[string]string `json:"pinned_anchors,omitempty"`
+	// Aliases maps a peer's RESOLVED current key → its ROOT Vula ID, recorded when
+	// a peer's published rotation/recovery chain is ingested and verified
+	// (IngestPeerLifecycle → ResolveCurrentKey). It lets the admission path accept a
+	// peer that has rotated/recovered on its NEW key while the local contact entry
+	// still names the ROOT key. Only verified (fail-closed) chains add an alias.
+	Aliases map[string]string `json:"aliases,omitempty"`
 }
 
 // LifecycleStore is the goroutine-safe, persistent owner of lifecycle state. It
@@ -425,6 +431,7 @@ func NewLifecycleStore(dir, rootVulaID, anchorVulaID string) (*LifecycleStore, e
 			AnchorVulaID:  anchorVulaID,
 			Revoked:       map[string]*RevocationCert{},
 			PinnedAnchors: map[string]string{},
+			Aliases:       map[string]string{},
 		},
 	}
 	if raw, err := os.ReadFile(s.path); err == nil {
@@ -435,6 +442,9 @@ func NewLifecycleStore(dir, rootVulaID, anchorVulaID string) (*LifecycleStore, e
 			}
 			if st.PinnedAnchors == nil {
 				st.PinnedAnchors = map[string]string{}
+			}
+			if st.Aliases == nil {
+				st.Aliases = map[string]string{}
 			}
 			s.state = st
 		}
@@ -509,6 +519,97 @@ func (s *LifecycleStore) RecordRevocation(cert *RevocationCert) error {
 	}
 	s.state.Revoked[cert.VulaID] = cert
 	return s.saveLocked()
+}
+
+// SelfRevoke signs and records a self-revocation of THIS node's current head
+// identity, signed by priv (which must correspond to the head). After this,
+// IsRevoked(head) is true, the head appears in RevocationList() (so it is
+// published on /.well-known/vula-id), and every wired admission/verify point
+// rejects the head key. This is the box side of the "I lost / am retiring this
+// key" operation, exposed over POST /api/peering/identity/revoke.
+func (s *LifecycleStore) SelfRevoke(priv ed25519.PrivateKey, reason string) (*RevocationCert, error) {
+	head := s.Head()
+	cert, err := NewRevocationCert(priv, head, head, reason)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.RecordRevocation(cert); err != nil {
+		return nil, err
+	}
+	return cert, nil
+}
+
+// recordAlias records a verified resolved-current-key → root-vula-id mapping so the
+// admission path can accept a rotated/recovered peer on its new key.
+func (s *LifecycleStore) recordAlias(currentVulaID, rootVulaID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Aliases == nil {
+		s.state.Aliases = map[string]string{}
+	}
+	if s.state.Aliases[currentVulaID] == rootVulaID {
+		return nil
+	}
+	s.state.Aliases[currentVulaID] = rootVulaID
+	return s.saveLocked()
+}
+
+// RootForResolvedKey returns the ROOT Vula ID a resolved current key maps back to
+// (recorded by IngestPeerLifecycle), or ("", false). The admission path uses this
+// to follow a peer that rotated/recovered: an envelope from the new key is gated on
+// whether its ROOT is an approved contact.
+func (s *LifecycleStore) RootForResolvedKey(currentVulaID string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	root, ok := s.state.Aliases[currentVulaID]
+	return root, ok
+}
+
+// IngestPeerLifecycle ingests a peer's published lifecycle bundle (from its
+// well-known response): it TOFU-pins the peer's recovery anchor, records every
+// VERIFIED revocation, and follows the rotation/recovery chain to the peer's
+// current key (recording a verified alias so admission can follow the rotation).
+//
+// It FAILS CLOSED on the chain: a malformed/forged chain records NO alias (so a
+// forged rotation cannot move a contact onto an attacker key) and returns an error
+// for the caller to log. Invalid individual revocations are skipped (RecordRevocation
+// verifies signer-authorization internally) without aborting the rest.
+//
+// Returns the resolved current key for the peer (== root when there is no chain).
+func (s *LifecycleStore) IngestPeerLifecycle(lc *WKLifecycle) (string, error) {
+	if lc == nil || lc.RootVulaID == "" {
+		return "", nil
+	}
+	// TOFU-pin the peer's recovery anchor so anchor-signed revocations/recoveries
+	// for this peer verify. A conflicting anchor (takeover attempt) is refused by
+	// PinAnchor; we then keep the already-trusted anchor.
+	if lc.AnchorVulaID != "" {
+		_ = s.PinAnchor(lc.RootVulaID, lc.AnchorVulaID)
+	}
+	trustedAnchor := s.TrustedAnchorFor(lc.RootVulaID)
+
+	// Record every verified revocation. RecordRevocation enforces that the signer
+	// is the identity itself or a trusted anchor, so a peer cannot revoke a third
+	// party. Invalid ones are skipped.
+	for _, rc := range lc.Revocations {
+		if rc == nil {
+			continue
+		}
+		_ = s.RecordRevocation(rc)
+	}
+
+	// Follow the chain to the current key. Fail closed: a forged/broken chain
+	// records no alias.
+	current, err := ResolveCurrentKey(lc.RootVulaID, trustedAnchor, lc.Chain)
+	if err != nil {
+		return "", err
+	}
+	if current != lc.RootVulaID {
+		if aerr := s.recordAlias(current, lc.RootVulaID); aerr != nil {
+			return current, aerr
+		}
+	}
+	return current, nil
 }
 
 // SetAnchor installs (or confirms) this node's account recovery anchor public
@@ -661,6 +762,40 @@ func isVulaIDRevoked(vulaID string) bool {
 		return false
 	}
 	return f(vulaID)
+}
+
+// identityRootResolver is the process-wide hook consulted by InboundMiddleware to
+// FOLLOW a peer's rotation/recovery: given a presented (current) key it returns the
+// peer's ROOT Vula ID when a verified chain has been ingested for it. The LIVE
+// server wires this to LifecycleStore.RootForResolvedKey. nil ⇒ no rotation
+// following (admission then gates strictly on the presented key, the historical
+// behavior).
+var (
+	identityRootResolverMu sync.RWMutex
+	identityRootResolver   func(presentedVulaID string) (string, bool)
+)
+
+// SetIdentityRootResolver installs the process-wide rotation/recovery resolver.
+// The live server wires it to a LifecycleStore.RootForResolvedKey so a peer that
+// has rotated/recovered is admitted on its new key when its ROOT is approved.
+// Passing nil disables rotation following.
+func SetIdentityRootResolver(f func(presentedVulaID string) (string, bool)) {
+	identityRootResolverMu.Lock()
+	identityRootResolver = f
+	identityRootResolverMu.Unlock()
+}
+
+// resolvePresentedRoot maps a presented current key back to its peer ROOT via the
+// installed resolver (if any). The mapping is only ever populated from a VERIFIED,
+// fail-closed chain (IngestPeerLifecycle), so a forged rotation produces no mapping.
+func resolvePresentedRoot(presentedVulaID string) (string, bool) {
+	identityRootResolverMu.RLock()
+	f := identityRootResolver
+	identityRootResolverMu.RUnlock()
+	if f == nil {
+		return "", false
+	}
+	return f(presentedVulaID)
 }
 
 // VerifyVulaSignatureChecked is VerifyVulaSignature plus a revocation gate: it

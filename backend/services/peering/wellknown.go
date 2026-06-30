@@ -326,6 +326,39 @@ func wkCurrentLifecycle() *WKLifecycle {
 	return f()
 }
 
+// wkLifecycleIngestor, when set, consumes a peer's published lifecycle bundle on
+// every authenticated profile fetch/refresh: it verifies + records the peer's
+// revocations and follows its rotation/recovery chain (identity_lifecycle.go). The
+// LIVE server wires it from a *LifecycleStore.IngestPeerLifecycle. Without it,
+// FetchPeerProfile never reads wk.Lifecycle and revocations never propagate.
+var (
+	wkLifecycleIngestorMu sync.RWMutex
+	wkLifecycleIngestor   func(lc *WKLifecycle)
+)
+
+// SetLifecycleIngestor installs the sink for peer lifecycle bundles seen during
+// profile fetch/refresh. The live server passes a closure over its
+// *LifecycleStore.IngestPeerLifecycle so a peer that publishes a revocation (or a
+// rotation/recovery) is honored without a separate gossip channel. Passing nil
+// disables ingestion.
+func SetLifecycleIngestor(f func(lc *WKLifecycle)) {
+	wkLifecycleIngestorMu.Lock()
+	wkLifecycleIngestor = f
+	wkLifecycleIngestorMu.Unlock()
+}
+
+func wkIngestLifecycle(lc *WKLifecycle) {
+	if lc == nil {
+		return
+	}
+	wkLifecycleIngestorMu.RLock()
+	f := wkLifecycleIngestor
+	wkLifecycleIngestorMu.RUnlock()
+	if f != nil {
+		f(lc)
+	}
+}
+
 // wkBuildPublicResponse filters the own profile down to public-only fields
 // and embeds any registered endpoints from the endpoint registry (PEER-40).
 func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
@@ -444,78 +477,22 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 		return p, nil
 	}
 
-	// Build the well-known URL.
-	base := wkNormaliseServerAddr(serverAddr)
-	wkURL := base + "/.well-known/vula-id"
-
-	// H1 fix: validate host against the SSRF deny-list before dialling.
-	// Peers are external by definition, so allowLAN=false (strict mode).
-	// peeringSSRFBypass is a test-only override (package-level var, default false).
-	// We also wire safedial.New into the Transport so DNS-rebinding attacks
-	// that resolve to a private IP at connect time are caught too.
-	if !peeringSSRFBypass {
-		host := serverAddr
-		// serverAddr may be a full URL (http://...) or a bare host:port.
-		// Use url.Parse for URLs; SplitHostPort for bare host:port.
-		if strings.HasPrefix(serverAddr, "http://") || strings.HasPrefix(serverAddr, "https://") {
-			if u, parseErr := url.Parse(serverAddr); parseErr == nil {
-				host = u.Hostname()
-			}
-		} else if h, _, splitErr := net.SplitHostPort(serverAddr); splitErr == nil {
-			host = h
-		}
-		if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
-			return nil, fmt.Errorf("peering: FetchPeerProfile SSRF guard rejected server %q: %w", serverAddr, ssrfErr)
-		}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wkURL, nil)
+	wk, err := wkFetchAndVerify(ctx, vulaID, serverAddr)
 	if err != nil {
-		return nil, fmt.Errorf("peering: build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "VulaOS/1.0 (+peering)")
-
-	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if peeringSSRFBypass {
-			return (&net.Dialer{}).DialContext(ctx, network, addr)
-		}
-		return safedial.New(false).DialContext(ctx, network, addr)
-	}
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			DialContext:         dialFn,
-			TLSHandshakeTimeout: 5 * time.Second,
-		},
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("peering: fetch %s: %w", wkURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("peering: well-known returned %d from %s", resp.StatusCode, wkURL)
+		return nil, err
 	}
 
-	var wk WKIdentityResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wk); err != nil {
-		return nil, fmt.Errorf("peering: decode well-known: %w", err)
-	}
+	// Ingest the peer's published key-lifecycle (revocations + rotation/recovery
+	// chain) BEFORE building/caching the profile. This is what makes a revocation
+	// take effect through the real fetch path: a peer that has self-revoked (or
+	// been anchor-revoked) is recorded here, so the admission gate and
+	// VerifyVulaSignatureChecked subsequently reject it.
+	wkIngestLifecycle(wk.Lifecycle)
 
-	// Validate that the returned Vula ID matches what we expected.
-	if wk.VulaID != "" && wk.VulaID != vulaID {
-		return nil, fmt.Errorf("peering: vula_id mismatch: expected %s got %s", vulaID, wk.VulaID)
-	}
-
-	// Authenticate the profile. The peer profile (VerifiedEmail, DisplayName,
-	// Endpoints, …) is otherwise attacker-mutable in transit / by a malicious
-	// server, enabling identity spoofing and endpoint redirection. A Vula ID IS
-	// an Ed25519 public key, so require a valid signature over the canonical
-	// response by that key. Fail closed on any missing/invalid signature.
-	if !wkVerifyResponse(wk, vulaID) {
-		return nil, fmt.Errorf("peering: profile for %s has a missing or invalid signature — rejecting (possible spoof/MITM)", vulaID)
+	// Fail closed if the fetched identity is now revoked: do not hand back (or
+	// cache) a usable profile for a key that has just been retired.
+	if isVulaIDRevoked(vulaID) {
+		return nil, fmt.Errorf("peering: identity %s is revoked — refusing profile", vulaID)
 	}
 
 	// Forward-secrecy prekeys: only surface a bundle whose signed prekey verifies
@@ -547,6 +524,136 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 
 	wkCachePut(vulaID, p)
 	return p, nil
+}
+
+// wkFetchAndVerify performs the SSRF-guarded GET of a peer's /.well-known/vula-id,
+// decodes it, checks the returned Vula ID matches what we expected, and verifies
+// the response's Ed25519 signature against that key. It returns the authenticated
+// WKIdentityResponse. It is shared by FetchPeerProfile (which then builds/caches a
+// profile) and RefreshPeerLifecycle (which only ingests the lifecycle bundle).
+func wkFetchAndVerify(ctx context.Context, vulaID, serverAddr string) (WKIdentityResponse, error) {
+	var zero WKIdentityResponse
+
+	// Build the well-known URL.
+	base := wkNormaliseServerAddr(serverAddr)
+	wkURL := base + "/.well-known/vula-id"
+
+	// H1 fix: validate host against the SSRF deny-list before dialling.
+	// Peers are external by definition, so allowLAN=false (strict mode).
+	// peeringSSRFBypass is a test-only override (package-level var, default false).
+	// We also wire safedial.New into the Transport so DNS-rebinding attacks
+	// that resolve to a private IP at connect time are caught too.
+	if !peeringSSRFBypass {
+		host := serverAddr
+		if strings.HasPrefix(serverAddr, "http://") || strings.HasPrefix(serverAddr, "https://") {
+			if u, parseErr := url.Parse(serverAddr); parseErr == nil {
+				host = u.Hostname()
+			}
+		} else if h, _, splitErr := net.SplitHostPort(serverAddr); splitErr == nil {
+			host = h
+		}
+		if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+			return zero, fmt.Errorf("peering: FetchPeerProfile SSRF guard rejected server %q: %w", serverAddr, ssrfErr)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wkURL, nil)
+	if err != nil {
+		return zero, fmt.Errorf("peering: build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "VulaOS/1.0 (+peering)")
+
+	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if peeringSSRFBypass {
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		}
+		return safedial.New(false).DialContext(ctx, network, addr)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			DialContext:         dialFn,
+			TLSHandshakeTimeout: 5 * time.Second,
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return zero, fmt.Errorf("peering: fetch %s: %w", wkURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return zero, fmt.Errorf("peering: well-known returned %d from %s", resp.StatusCode, wkURL)
+	}
+
+	var wk WKIdentityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&wk); err != nil {
+		return zero, fmt.Errorf("peering: decode well-known: %w", err)
+	}
+
+	// Validate that the returned Vula ID matches what we expected.
+	if wk.VulaID != "" && wk.VulaID != vulaID {
+		return zero, fmt.Errorf("peering: vula_id mismatch: expected %s got %s", vulaID, wk.VulaID)
+	}
+
+	// Authenticate the profile. The peer profile (VerifiedEmail, DisplayName,
+	// Endpoints, …) is otherwise attacker-mutable in transit / by a malicious
+	// server, enabling identity spoofing and endpoint redirection. A Vula ID IS
+	// an Ed25519 public key, so require a valid signature over the canonical
+	// response by that key. Fail closed on any missing/invalid signature.
+	if !wkVerifyResponse(wk, vulaID) {
+		return zero, fmt.Errorf("peering: profile for %s has a missing or invalid signature — rejecting (possible spoof/MITM)", vulaID)
+	}
+	return wk, nil
+}
+
+// RefreshPeerLifecycle fetches a peer's authenticated well-known response and
+// ingests ONLY its lifecycle bundle (revocations + rotation/recovery chain),
+// bypassing the profile cache. It is the propagation path that lets a revocation
+// published by a contact take effect on this node WITHOUT waiting for a fresh
+// profile fetch (the profile cache could otherwise serve a stale, pre-revocation
+// copy for its whole TTL). Errors are returned for logging.
+func RefreshPeerLifecycle(ctx context.Context, vulaID, serverAddr string) error {
+	wk, err := wkFetchAndVerify(ctx, vulaID, serverAddr)
+	if err != nil {
+		return err
+	}
+	wkIngestLifecycle(wk.Lifecycle)
+	return nil
+}
+
+// wkLifecycleRefreshInterval is how often the background loop re-ingests known
+// contacts' lifecycle bundles so a revocation/rotation propagates promptly.
+const wkLifecycleRefreshInterval = 10 * time.Minute
+
+// StartLifecycleRefresh launches a background goroutine that periodically
+// re-ingests the lifecycle bundles of known contacts (bypassing the profile
+// cache), so a revocation or rotation a contact publishes is honored within at most
+// wkLifecycleRefreshInterval even if a fresh profile has not been fetched. The
+// goroutine exits when ctx is cancelled.
+func StartLifecycleRefresh(ctx context.Context, listContacts func() []WKApprovedPeer) {
+	go func() {
+		ticker := time.NewTicker(wkLifecycleRefreshInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				for _, p := range listContacts() {
+					if p.VulaID == "" || p.ServerAddr == "" {
+						continue
+					}
+					tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					if err := RefreshPeerLifecycle(tctx, p.VulaID, p.ServerAddr); err != nil {
+						fmt.Fprintf(os.Stderr, "[peering/wellknown] lifecycle refresh %s: %v\n", p.VulaID, err)
+					}
+					cancel()
+				}
+			}
+		}
+	}()
 }
 
 // wkNormaliseServerAddr converts a bare host:port or full URL base into a
