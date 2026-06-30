@@ -2,6 +2,8 @@ package peering
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +14,24 @@ import (
 	"testing"
 	"time"
 )
+
+// wkTestSignedPeer returns a fresh Vula ID and a function that signs a
+// WKIdentityResponse with that identity's key. Used to exercise the
+// signature-authenticated fetch path (PEER-12 hardening): a Vula ID IS an
+// Ed25519 public key, so a profile must be signed by it to be trusted.
+func wkTestSignedPeer(t *testing.T) (vulaID string, sign func(*WKIdentityResponse)) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	vulaID = wkFormatVulaID(pub)
+	return vulaID, func(resp *WKIdentityResponse) {
+		if err := wkSignResponse(resp, priv); err != nil {
+			t.Fatalf("sign response: %v", err)
+		}
+	}
+}
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -358,8 +378,8 @@ func TestWKPeerProfileHandler_MissingServer(t *testing.T) {
 }
 
 func TestWKPeerProfileHandler_LiveFetch(t *testing.T) {
-	// Spin up a fake peer server.
-	fakeID := "vula:ed25519:fakepeer"
+	// Spin up a fake peer server that serves a properly signed profile.
+	fakeID, sign := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/.well-known/vula-id" {
 			http.NotFound(w, r)
@@ -370,6 +390,7 @@ func TestWKPeerProfileHandler_LiveFetch(t *testing.T) {
 			DisplayName:   "FakePeer",
 			VerifiedEmail: true,
 		}
+		sign(&resp)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -428,13 +449,14 @@ func TestWKPeerProfileHandler_LiveFetch(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestFetchPeerProfile_ReturnsPublicFields(t *testing.T) {
-	const fakeID = "vula:ed25519:fetch_test"
+	fakeID, sign := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := WKIdentityResponse{
 			VulaID:        fakeID,
 			DisplayName:   "FetchUser",
 			VerifiedEmail: false,
 		}
+		sign(&resp)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -484,8 +506,71 @@ func TestFetchPeerProfile_IDMismatchRejected(t *testing.T) {
 	}
 }
 
+func TestFetchPeerProfile_UnsignedRejected(t *testing.T) {
+	// A profile with NO signature must be rejected (fail-closed authenticity).
+	fakeID, _ := wkTestSignedPeer(t)
+	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := WKIdentityResponse{VulaID: fakeID, DisplayName: "NoSig", VerifiedEmail: true}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) // unsigned
+	}))
+	defer fakePeer.Close()
+
+	wkCacheMu.Lock()
+	delete(wkCache, fakeID)
+	wkCacheMu.Unlock()
+
+	if _, err := FetchPeerProfile(context.Background(), fakeID, fakePeer.URL); err == nil {
+		t.Error("expected rejection of unsigned profile")
+	}
+}
+
+func TestFetchPeerProfile_TamperedRejected(t *testing.T) {
+	// Sign a profile, then tamper a field after signing — verification must fail
+	// (prevents identity spoofing / endpoint redirection by a malicious server).
+	fakeID, sign := wkTestSignedPeer(t)
+	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := WKIdentityResponse{VulaID: fakeID, DisplayName: "Honest", VerifiedEmail: false}
+		sign(&resp)
+		resp.VerifiedEmail = true // tamper after signing
+		resp.DisplayName = "Spoofed"
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer fakePeer.Close()
+
+	wkCacheMu.Lock()
+	delete(wkCache, fakeID)
+	wkCacheMu.Unlock()
+
+	if _, err := FetchPeerProfile(context.Background(), fakeID, fakePeer.URL); err == nil {
+		t.Error("expected rejection of tampered profile")
+	}
+}
+
+func TestFetchPeerProfile_WrongKeySignatureRejected(t *testing.T) {
+	// Profile signed by a DIFFERENT key than the requested Vula ID — reject.
+	requestedID, _ := wkTestSignedPeer(t)
+	_, signWithOther := wkTestSignedPeer(t)
+	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := WKIdentityResponse{VulaID: requestedID, DisplayName: "Imposter"}
+		signWithOther(&resp) // signed by the wrong identity
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer fakePeer.Close()
+
+	wkCacheMu.Lock()
+	delete(wkCache, requestedID)
+	wkCacheMu.Unlock()
+
+	if _, err := FetchPeerProfile(context.Background(), requestedID, fakePeer.URL); err == nil {
+		t.Error("expected rejection of profile signed by wrong key")
+	}
+}
+
 func TestFetchPeerProfile_CachesResult(t *testing.T) {
-	const fakeID = "vula:ed25519:cache_result"
+	fakeID, sign := wkTestSignedPeer(t)
 	calls := 0
 	var mu sync.Mutex
 
@@ -494,6 +579,7 @@ func TestFetchPeerProfile_CachesResult(t *testing.T) {
 		calls++
 		mu.Unlock()
 		resp := WKIdentityResponse{VulaID: fakeID, DisplayName: "CacheMe"}
+		sign(&resp)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -719,7 +805,7 @@ func TestWKWellKnownHandler_NoEndpointsOmitted(t *testing.T) {
 // TestFetchPeerProfile_CachesEndpoints verifies that endpoints advertised in a
 // peer's well-known response are stored in the cached WKPeerProfile.
 func TestFetchPeerProfile_CachesEndpoints(t *testing.T) {
-	const fakeID = "vula:ed25519:ep-cache-test"
+	fakeID, sign := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := WKIdentityResponse{
 			VulaID:      fakeID,
@@ -729,6 +815,7 @@ func TestFetchPeerProfile_CachesEndpoints(t *testing.T) {
 				{Server: "cloud.peer:8080", Priority: 2},
 			},
 		}
+		sign(&resp)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))

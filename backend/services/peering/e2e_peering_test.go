@@ -609,10 +609,18 @@ func TestE2E_RelayAttestation(t *testing.T) {
 	alice := newTestPeer(t)
 	addMutualContact(t, relay, alice)
 
+	// The default registry is default-deny and ships no "accept anything"
+	// verifier, so register a deliberate passing verifier under a dedicated
+	// test provider to exercise the end-to-end happy path.
+	const e2eProvider AttestProvider = "test-e2e-provider-39"
+	AttestRegisterVerifier(e2eProvider, attestVerifierFunc(func(_ AttestDoc, _ AttestPolicy) error {
+		return nil
+	}))
+
 	// Set up attestation doc on relay.
 	attestStore := NewAttestStore()
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
+		Provider:    e2eProvider,
 		RelayVulaID: relay.svc.VulaID(),
 		IssuedAt:    time.Now().UTC(),
 	}
@@ -628,7 +636,7 @@ func TestE2E_RelayAttestation(t *testing.T) {
 
 	// Sender fetches and verifies.
 	policy := AttestPolicy{
-		Provider: AttestProviderNoop,
+		Provider: e2eProvider,
 		MaxAge:   5 * time.Minute,
 	}
 	fetchedDoc, err := AttestFetchAndVerifyWithClient(attestSrv.Client(),

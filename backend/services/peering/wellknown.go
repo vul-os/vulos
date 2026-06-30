@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/safedial"
+	"vulos/backend/services/signing"
 )
 
 // peeringSSRFBypass is a test-only hook for the entire peering package. When
@@ -69,6 +70,76 @@ const wkVulaIDPrefix = "vula:ed25519:"
 // wkFormatVulaID encodes a raw Ed25519 public key as a Vula ID string.
 func wkFormatVulaID(pub ed25519.PublicKey) string {
 	return wkVulaIDPrefix + base64.RawURLEncoding.EncodeToString(pub)
+}
+
+// wkParseVulaID extracts the raw Ed25519 public key embedded in a Vula ID.
+// A Vula ID *is* a public key, so this is the key the peer's profile signature
+// must verify against. Returns an error for malformed IDs.
+func wkParseVulaID(vulaID string) (ed25519.PublicKey, error) {
+	if !strings.HasPrefix(vulaID, wkVulaIDPrefix) {
+		return nil, fmt.Errorf("peering: vula_id %q missing %q prefix", vulaID, wkVulaIDPrefix)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(vulaID, wkVulaIDPrefix))
+	if err != nil {
+		return nil, fmt.Errorf("peering: decode vula_id key: %w", err)
+	}
+	if len(raw) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("peering: vula_id key is %d bytes, want %d", len(raw), ed25519.PublicKeySize)
+	}
+	return ed25519.PublicKey(raw), nil
+}
+
+// wkStoredIdentity.privateKey reconstructs the Ed25519 private key from the
+// stored base64url seed.
+func (id *wkStoredIdentity) privateKey() (ed25519.PrivateKey, error) {
+	seed, err := base64.RawURLEncoding.DecodeString(id.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("peering: decode identity seed: %w", err)
+	}
+	if len(seed) != ed25519.SeedSize {
+		return nil, fmt.Errorf("peering: identity seed is %d bytes, want %d", len(seed), ed25519.SeedSize)
+	}
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+// wkCanonicalSigningBytes returns the deterministic bytes that a profile
+// signature covers: the canonical JSON of the response with the signature
+// field cleared (it is omitempty, so it is absent from the signed payload).
+func wkCanonicalSigningBytes(resp WKIdentityResponse) ([]byte, error) {
+	resp.Signature = ""
+	return signing.Canonical(resp)
+}
+
+// wkSignResponse signs resp in place with priv, populating resp.Signature.
+func wkSignResponse(resp *WKIdentityResponse, priv ed25519.PrivateKey) error {
+	payload, err := wkCanonicalSigningBytes(*resp)
+	if err != nil {
+		return err
+	}
+	resp.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(priv, payload))
+	return nil
+}
+
+// wkVerifyResponse reports whether resp carries a valid Ed25519 signature over
+// its canonical form by the key embedded in expectedVulaID. Fail-closed:
+// missing, malformed, or mismatched signatures all return false.
+func wkVerifyResponse(resp WKIdentityResponse, expectedVulaID string) bool {
+	pub, err := wkParseVulaID(expectedVulaID)
+	if err != nil {
+		return false
+	}
+	if resp.Signature == "" {
+		return false
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(resp.Signature)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	payload, err := wkCanonicalSigningBytes(resp)
+	if err != nil {
+		return false
+	}
+	return ed25519.Verify(pub, payload, sig)
 }
 
 // --------------------------------------------------------------------------
@@ -192,6 +263,12 @@ type WKIdentityResponse struct {
 	// sorted by priority (lower = higher priority). Populated from the local
 	// endpoint registry (PEER-40). Empty when no endpoints are registered.
 	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
+	// Signature is the base64url Ed25519 signature over the canonical form of
+	// this response (with this field empty), produced by the node's identity
+	// key. Because a Vula ID IS an Ed25519 public key, fetchers verify this
+	// against the expected Vula ID to authenticate the profile (PEER-12
+	// hardening). Empty only when the node could not load its private key.
+	Signature string `json:"sig,omitempty"`
 }
 
 // wkBuildPublicResponse filters the own profile down to public-only fields
@@ -233,6 +310,10 @@ type WKPeerProfile struct {
 	// well-known response, sorted by priority (PEER-40). May be empty when
 	// the peer has not registered any endpoints or is running an older version.
 	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
+	// Signature is the verified Ed25519 signature from the peer's well-known
+	// response (base64url). Retained for auditing; a cached profile is only
+	// stored after this signature has been verified against the Vula ID.
+	Signature string `json:"sig,omitempty"`
 	// CachedAt records when we last fetched this profile.
 	CachedAt time.Time `json:"cached_at"`
 	// ServerAddr is the address we fetched from.
@@ -365,23 +446,33 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 	}
 
 	// Validate that the returned Vula ID matches what we expected.
-	if vulaID != "" && wk.VulaID != "" && wk.VulaID != vulaID {
+	if wk.VulaID != "" && wk.VulaID != vulaID {
 		return nil, fmt.Errorf("peering: vula_id mismatch: expected %s got %s", vulaID, wk.VulaID)
 	}
 
+	// Authenticate the profile. The peer profile (VerifiedEmail, DisplayName,
+	// Endpoints, …) is otherwise attacker-mutable in transit / by a malicious
+	// server, enabling identity spoofing and endpoint redirection. A Vula ID IS
+	// an Ed25519 public key, so require a valid signature over the canonical
+	// response by that key. Fail closed on any missing/invalid signature.
+	if !wkVerifyResponse(wk, vulaID) {
+		return nil, fmt.Errorf("peering: profile for %s has a missing or invalid signature — rejecting (possible spoof/MITM)", vulaID)
+	}
+
 	p := &WKPeerProfile{
-		VulaID:        wk.VulaID,
+		VulaID:        vulaID, // authenticated identity (== wk.VulaID when present)
 		DisplayName:   wk.DisplayName,
 		Bio:           wk.Bio,
 		VerifiedEmail: wk.VerifiedEmail,
 		Slug:          wk.Slug,
 		Image:         wk.Image,
 		Endpoints:     wk.Endpoints,
+		Signature:     wk.Signature,
 		CachedAt:      time.Now(),
 		ServerAddr:    serverAddr,
 	}
 
-	wkCachePut(wk.VulaID, p)
+	wkCachePut(vulaID, p)
 	return p, nil
 }
 
@@ -436,9 +527,22 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 
 	// ── GET /.well-known/vula-id ─────────────────────────────────────────
 	// Public, unauthenticated. Returns only public-visibility fields.
+	// Load this node's private key once so every well-known response can be
+	// signed (peers authenticate the profile against the Vula ID public key).
+	ownPriv, privErr := identity.privateKey()
+	if privErr != nil {
+		fmt.Fprintf(os.Stderr, "[peering] cannot load identity private key; well-known responses will be UNSIGNED and rejected by peers: %v\n", privErr)
+	}
+
 	mux.HandleFunc("GET /.well-known/vula-id", func(w http.ResponseWriter, r *http.Request) {
 		profile := wkLoadOwnProfile(dataDir, ownVulaID)
 		resp := wkBuildPublicResponse(profile)
+		// Sign so fetchers can verify authenticity against our Vula ID.
+		if privErr == nil {
+			if err := wkSignResponse(&resp, ownPriv); err != nil {
+				fmt.Fprintf(os.Stderr, "[peering] sign well-known response: %v\n", err)
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=60")
 		json.NewEncoder(w).Encode(resp)
