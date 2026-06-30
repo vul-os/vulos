@@ -2119,6 +2119,12 @@ func main() {
 			log.Printf("[peering] prekey store init: %v", pkErr)
 		} else {
 			peering.SetPreKeyPublisher(pkStore.PublicBundle)
+			// Contract A: the OPK CLAIM endpoint hands out + deletes a single one-time
+			// prekey per claim (per-sender forward secrecy). Mounted on peeringMux with
+			// the same public auth model as the well-known bundle. A background loop
+			// replenishes the pool so claims keep depleting fresh OPKs.
+			peering.RegisterPreKeyHandlers(peeringMux, pkStore)
+			peering.StartPreKeyReplenish(ctx, pkStore, 64, time.Hour)
 		}
 
 		contactStore, csErr := peering.NewContactStore(pHome)

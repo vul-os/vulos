@@ -467,6 +467,55 @@ func (s *PreKeyStore) OneTimePreKeyCount() int {
 	return len(s.state.OneTimePriv)
 }
 
+// IdentityVulaID returns the identity this store holds prekeys for.
+func (s *PreKeyStore) IdentityVulaID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.IdentityVulaID
+}
+
+// ClaimedBundle is the result of a single OPK CLAIM (Contract A): the always-
+// present signed prekey plus AT MOST ONE one-time prekey, atomically removed from
+// the pool. OneTimePreKey is nil when the pool is exhausted (the sender then falls
+// back to signed-prekey-only — weaker FS, but it MUST NOT reuse an OPK).
+type ClaimedBundle struct {
+	IdentityVulaID string               `json:"identity_vula_id"`
+	SignedPreKey   SignedPreKeyPublic   `json:"signed_prekey"`
+	OneTimePreKey  *OneTimePreKeyPublic `json:"one_time_prekey"`
+}
+
+// ClaimOneTimePreKey atomically hands out a single one-time prekey and DELETES it
+// from the pool (single-use → per-sender forward secrecy), returning it alongside
+// the signed prekey. When the pool is empty it returns a ClaimedBundle with a nil
+// OneTimePreKey (never reuse, never block). This is the depletion mechanism that
+// makes per-sender FS real: each caller receives a DIFFERENT OPK, unlike the
+// static well-known bundle where every sender would otherwise see the same OPK.
+func (s *PreKeyStore) ClaimOneTimePreKey() (*ClaimedBundle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := &ClaimedBundle{
+		IdentityVulaID: s.state.IdentityVulaID,
+		SignedPreKey: SignedPreKeyPublic{
+			ID:  s.state.SignedPreKeyID,
+			Pub: append([]byte(nil), s.state.SignedPreKeyPub...),
+			Sig: append([]byte(nil), s.state.SignedPreKeySig...),
+		},
+	}
+	// Pick one OPK (map order is randomized, which is fine — any single key) and
+	// remove it before returning so it can never be handed out again.
+	for id, pub := range s.state.OneTimePub {
+		out.OneTimePreKey = &OneTimePreKeyPublic{ID: id, Pub: append([]byte(nil), pub...)}
+		delete(s.state.OneTimePriv, id)
+		delete(s.state.OneTimePub, id)
+		if err := s.saveLocked(); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	// Pool exhausted: signed-prekey-only fallback.
+	return out, nil
+}
+
 // Replenish tops the one-time prekey pool back up to target.
 func (s *PreKeyStore) Replenish(target int) error {
 	s.mu.Lock()
