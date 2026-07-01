@@ -36,6 +36,14 @@ type Config struct {
 	Model    string   `json:"model"`
 	Endpoint string   `json:"endpoint"` // for Ollama or custom
 	System   string   `json:"system"`   // system prompt
+	// Tier is the operator's DECLARATION of the sovereignty tier the endpoint
+	// sits in (one of "local"/"sovereign"/"brokered"/"external"; empty ⇒ derive
+	// from locality). It is how an operator says "this off-box endpoint is a
+	// Vulos-operated in-region sovereign pool" or "a brokered no-train provider".
+	// It is NEVER used to upgrade a loopback endpoint (that stays local) and an
+	// unverifiable "local" declaration on an off-box endpoint fails closed to
+	// external. See services/assistant.Evaluate for the classification.
+	Tier string `json:"tier"`
 }
 
 // CompletionRequest is what we send to the provider.
@@ -71,6 +79,11 @@ func DefaultConfig() Config {
 		APIKey:   os.Getenv("AI_API_KEY"),
 		Model:    getenv("AI_MODEL", "llama3"),
 		Endpoint: getenv("AI_ENDPOINT", "http://localhost:11434"),
+		// Operator's sovereignty-tier declaration for the endpoint (the config
+		// knob, mirrored on the llmux side by each provider's `tier`). Empty ⇒
+		// derive from locality (loopback → local, else external), so nothing
+		// silently upgrades; sovereign/brokered are explicit declarations.
+		Tier:   strings.TrimSpace(os.Getenv("VULOS_AI_TIER")),
 		System: getenv("AI_SYSTEM_PROMPT", `You are Vula, the AI assistant built into Vula OS. You are helpful, concise, and friendly.
 
 You can generate visual UI by including a <viewport> block in your response. The OS opens it as a window.

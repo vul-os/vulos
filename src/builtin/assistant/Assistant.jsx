@@ -5,29 +5,97 @@
  * user's own instance with no third-party egress by default. Talks to the
  * backend /api/assistant/* endpoints (see backend/cmd/server/routes_assistant.go).
  *
- * The headline is the SOVEREIGNTY badge: it surfaces exactly where the model
- * runs so the "nothing leaves your server" promise is visible and auditable.
+ * The headline is the SOVEREIGNTY badge: it surfaces exactly which TIER the
+ * model runs in — "where your AI runs" — so the posture is honest, visible, and
+ * auditable. A minimal picker lets the operator choose the tier.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-// ── Sovereignty badge ────────────────────────────────────────────────────────
+// ── Sovereignty tiers ────────────────────────────────────────────────────────
+// The tier vocabulary + labels are the shared contract with the backend Guard
+// and the llmux gateway. Ordered most → least private.
 
-const EGRESS = {
-  'on-instance': { dot: '#22c55e', label: 'Private · on your server', tone: 'text-neutral-400' },
-  'external-configured': { dot: '#f59e0b', label: 'External model (you authorized)', tone: 'text-amber-400' },
-  blocked: { dot: '#ef4444', label: 'Egress blocked — configure a local model', tone: 'text-red-400' },
+const TIERS = {
+  local:     { dot: '#22c55e', label: 'On your device',                    tone: 'text-emerald-400', blurb: 'Inference runs on this box. Nothing leaves your server.' },
+  sovereign: { dot: '#22c55e', label: 'Vulos sovereign · in-region, no-train', tone: 'text-emerald-400', blurb: 'A Vulos-operated in-region endpoint inside the sovereignty boundary. No training on your data.' },
+  brokered:  { dot: '#f59e0b', label: 'Brokered · no-train',              tone: 'text-amber-400',   blurb: 'A named third-party model under a no-train agreement. Requires the egress opt-in.' },
+  external:  { dot: '#ef4444', label: 'External · not private',           tone: 'text-red-400',     blurb: 'An off-box endpoint that may mine or train on your data. Blocked unless explicitly authorized.' },
 }
 
-function SovereigntyBadge({ status }) {
+const tierInfo = (tier) => TIERS[tier] || TIERS.external
+
+function SovereigntyBadge({ status, onClick }) {
   if (!status) return null
-  const s = status.sovereignty || {}
-  const info = EGRESS[s.egress] || EGRESS['on-instance']
-  const model = [s.provider, s.model].filter(Boolean).join(' · ')
+  const tier = status.tier || status.sovereignty?.tier || 'external'
+  const info = tierInfo(tier)
+  const label = status.label || info.label
+  const model = [status.sovereignty?.provider, status.sovereignty?.model].filter(Boolean).join(' · ')
   return (
-    <div className="flex items-center gap-2 text-[11px]" title={s.reason || ''}>
+    <button
+      type="button"
+      onClick={onClick}
+      title={status.sovereignty?.reason || info.blurb}
+      className="flex items-center gap-2 text-[11px] rounded-md px-1.5 py-1 -mr-1 hover:bg-neutral-800/60 transition-colors"
+    >
       <span className="inline-block w-2 h-2 rounded-full" style={{ background: info.dot }} />
-      <span className={info.tone}>{info.label}</span>
-      {model && <span className="text-neutral-600">{model}</span>}
+      <span className={info.tone}>{label}</span>
+      {model && <span className="text-neutral-600 hidden sm:inline">{model}</span>}
+      <svg viewBox="0 0 20 20" fill="currentColor" width="11" height="11" className="text-neutral-600">
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </button>
+  )
+}
+
+// ── Tier picker ──────────────────────────────────────────────────────────────
+// Lets the operator declare "where your AI runs". POSTs to /api/assistant/tier;
+// the backend Guard stays authoritative (loopback is always local, brokered/
+// external still need the egress opt-in), so this labels the posture honestly —
+// it can never weaken the guarantee.
+
+function TierPicker({ status, options, current, onPick, busy, onClose }) {
+  const opts = options && options.length ? options : [
+    { tier: 'local', label: TIERS.local.label },
+    { tier: 'sovereign', label: TIERS.sovereign.label },
+    { tier: 'brokered', label: TIERS.brokered.label },
+  ]
+  return (
+    <div className="flex-shrink-0 px-4 py-3 border-b border-neutral-800/60 bg-neutral-900/40">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] font-medium text-neutral-300">Where your AI runs</div>
+        <button type="button" onClick={onClose} className="text-neutral-600 hover:text-neutral-300 text-[11px]">Done</button>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {opts.map(o => {
+          const info = tierInfo(o.tier)
+          const active = current === o.tier
+          return (
+            <button
+              key={o.tier}
+              type="button"
+              disabled={busy}
+              onClick={() => onPick(o.tier)}
+              className={`text-left rounded-lg px-3 py-2 border transition-colors disabled:opacity-50 ${
+                active
+                  ? 'bg-neutral-800/80 border-neutral-600'
+                  : 'bg-neutral-900/60 border-neutral-800 hover:border-neutral-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: info.dot }} />
+                <span className={`text-[12px] ${info.tone}`}>{o.label || info.label}</span>
+                {active && <span className="ml-auto text-[10px] text-neutral-500">current</span>}
+              </div>
+              <div className="text-[10.5px] text-neutral-500 mt-0.5 leading-snug pl-4">{info.blurb}</div>
+            </button>
+          )
+        })}
+      </div>
+      {status?.sovereignty && !status.sovereignty.allowed && (
+        <div className="text-[10.5px] text-amber-400/80 mt-2 leading-snug">
+          This tier needs the egress opt-in (VULOS_ASSISTANT_ALLOW_EXTERNAL=1) before mail is sent to it.
+        </div>
+      )}
     </div>
   )
 }
@@ -66,6 +134,8 @@ export default function Assistant() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [tierBusy, setTierBusy] = useState(false)
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -74,6 +144,26 @@ export default function Assistant() {
       .then(r => (r.ok ? r.json() : null))
       .then(setStatus)
       .catch(() => {})
+  }, [])
+
+  // Operator picks the sovereignty tier. The backend Guard remains
+  // authoritative; the returned status carries the honest resulting tier.
+  const pickTier = useCallback(async (tier) => {
+    setTierBusy(true)
+    try {
+      const res = await fetch('/api/assistant/tier', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      })
+      if (res.ok) {
+        const data = await res.json().catch(() => null)
+        if (data) setStatus(s => ({ ...(s || {}), ...data }))
+      }
+    } catch { /* leave status as-is */ } finally {
+      setTierBusy(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -178,7 +268,8 @@ export default function Assistant() {
     else if (q.id === 'summarize') runSkill('/api/assistant/summarize', { scope: 'inbox' }, 'Summarize my inbox')
   }
 
-  const blocked = status?.sovereignty?.egress === 'blocked'
+  const currentTier = status?.tier || status?.sovereignty?.tier
+  const blocked = status?.sovereignty && status.sovereignty.allowed === false
 
   return (
     <div className="flex flex-col h-full bg-neutral-950 text-neutral-200 overflow-hidden">
@@ -193,13 +284,25 @@ export default function Assistant() {
             </div>
           </div>
         </div>
-        <SovereigntyBadge status={status} />
+        <SovereigntyBadge status={status} onClick={() => setPickerOpen(o => !o)} />
       </div>
+
+      {pickerOpen && (
+        <TierPicker
+          status={status}
+          options={status?.tier_options}
+          current={currentTier}
+          busy={tierBusy}
+          onPick={pickTier}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
 
       {blocked && (
         <div className="flex-shrink-0 px-4 py-2 text-[11px] text-red-300 bg-red-950/40 border-b border-red-900/40">
-          External AI egress is blocked so your mail stays on this box. Configure a local model (Ollama) or,
-          to allow an external endpoint, set VULOS_ASSISTANT_ALLOW_EXTERNAL=1.
+          This endpoint's tier ({tierInfo(currentTier).label}) is not permitted, so your mail stays inside the
+          sovereignty boundary. Pick a local or sovereign endpoint, or set VULOS_ASSISTANT_ALLOW_EXTERNAL=1 to
+          authorize a brokered/external one.
         </div>
       )}
 

@@ -41,35 +41,60 @@ func localCfg() ai.Config {
 	return ai.Config{Provider: ai.ProviderOllama, Model: "llama3", Endpoint: "http://localhost:11434"}
 }
 
-// --- Sovereign guard --------------------------------------------------------
+// --- Sovereign guard (tiered) -----------------------------------------------
 
 func TestSovereignGuard(t *testing.T) {
 	cases := []struct {
 		name          string
 		cfg           ai.Config
 		allowExternal bool
-		wantEgress    Egress
+		wantTier      Tier
 		wantBlocked   bool
 	}{
-		{"ollama-localhost", localCfg(), false, EgressOnInstance, false},
-		{"ollama-empty-endpoint", ai.Config{Provider: ai.ProviderOllama}, false, EgressOnInstance, false},
-		// A LAN box and an mDNS/.local name are DIFFERENT machines → off-box egress,
-		// blocked without an explicit opt-in (F5: no longer silently "on-instance").
-		{"custom-lan-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, false, EgressBlocked, true},
-		{"custom-mdns-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://gpu.local:8000"}, false, EgressBlocked, true},
-		{"custom-internal-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://exfil.internal/v1"}, false, EgressBlocked, true},
-		{"custom-lan-optin", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, true, EgressExternalConfigured, false},
-		{"claude-blocked", ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, false, EgressBlocked, true},
-		{"openai-blocked", ai.Config{Provider: ai.ProviderOpenAI}, false, EgressBlocked, true},
-		{"custom-public-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com"}, false, EgressBlocked, true},
-		{"claude-allowed-optin", ai.Config{Provider: ai.ProviderClaude}, true, EgressExternalConfigured, false},
-		{"custom-public-allowed-optin", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com"}, true, EgressExternalConfigured, false},
+		// local — always allowed, no opt-in.
+		{"ollama-localhost", localCfg(), false, TierLocal, false},
+		{"ollama-empty-endpoint", ai.Config{Provider: ai.ProviderOllama}, false, TierLocal, false},
+		// A loopback endpoint stays local even if the operator declared a lesser
+		// tier — most private wins, F4/F5 hardening intact.
+		{"loopback-ignores-declaration", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://localhost:4000/v1", Tier: "external"}, false, TierLocal, false},
+
+		// sovereign — an EXPLICIT off-box operator declaration; allowed by default.
+		{"declared-sovereign-allowed", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://eu.sovereign.vulos.net/v1", Tier: "sovereign"}, false, TierSovereign, false},
+
+		// brokered — blocked until opted in, then allowed.
+		{"declared-brokered-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://broker.example/v1", Tier: "brokered"}, false, TierBrokered, true},
+		{"declared-brokered-optin", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://broker.example/v1", Tier: "brokered"}, true, TierBrokered, false},
+
+		// A LAN box / .local / .internal name is a DIFFERENT machine and is NEVER
+		// inferred as sovereign from a private IP — off-box, unmarked → external.
+		{"custom-lan-external", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, false, TierExternal, true},
+		{"custom-mdns-external", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://gpu.local:8000"}, false, TierExternal, true},
+		{"custom-internal-external", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://exfil.internal/v1"}, false, TierExternal, true},
+		{"custom-lan-optin", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, true, TierExternal, false},
+
+		// Cloud providers are external; blocked without opt-in.
+		{"claude-external", ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, false, TierExternal, true},
+		{"openai-external", ai.Config{Provider: ai.ProviderOpenAI}, false, TierExternal, true},
+		{"custom-public-external", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com"}, false, TierExternal, true},
+		{"claude-optin", ai.Config{Provider: ai.ProviderClaude}, true, TierExternal, false},
+		{"custom-public-optin", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com"}, true, TierExternal, false},
+
+		// Fail closed: an unverifiable "local" declaration on an off-box endpoint,
+		// and a garbage tier, both collapse to external/blocked.
+		{"offbox-local-lie-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com", Tier: "local"}, false, TierExternal, true},
+		{"unknown-tier-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com", Tier: "wat"}, false, TierExternal, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := Evaluate(tc.cfg, tc.allowExternal)
-			if s.Egress != tc.wantEgress {
-				t.Errorf("egress = %q, want %q", s.Egress, tc.wantEgress)
+			if s.Tier != tc.wantTier {
+				t.Errorf("tier = %q, want %q", s.Tier, tc.wantTier)
+			}
+			if s.Label != TierLabel(tc.wantTier) {
+				t.Errorf("label = %q, want %q", s.Label, TierLabel(tc.wantTier))
+			}
+			if s.Allowed == tc.wantBlocked {
+				t.Errorf("allowed = %v, wantBlocked %v", s.Allowed, tc.wantBlocked)
 			}
 			err := Guard(tc.cfg, tc.allowExternal)
 			if tc.wantBlocked && err == nil {
@@ -79,6 +104,22 @@ func TestSovereignGuard(t *testing.T) {
 				t.Errorf("expected Guard to allow, got %v", err)
 			}
 		})
+	}
+}
+
+// TestTierLabelsMatchContract pins the exact UI strings shared with the llmux
+// side; a drift here breaks the cross-repo vocabulary contract.
+func TestTierLabelsMatchContract(t *testing.T) {
+	want := map[Tier]string{
+		TierLocal:     "On your device",
+		TierSovereign: "Vulos sovereign · in-region, no-train",
+		TierBrokered:  "Brokered · no-train",
+		TierExternal:  "External · not private",
+	}
+	for tier, label := range want {
+		if got := TierLabel(tier); got != label {
+			t.Errorf("TierLabel(%q) = %q, want %q", tier, got, label)
+		}
 	}
 }
 
@@ -96,8 +137,8 @@ func TestLLMuxConfigStaysSovereign(t *testing.T) {
 	if cfg.Provider != ai.ProviderCustom {
 		t.Fatalf("provider = %q, want custom", cfg.Provider)
 	}
-	if s := Evaluate(cfg, false); s.Egress != EgressOnInstance {
-		t.Errorf("llmux egress = %q, want on-instance (sovereign)", s.Egress)
+	if s := Evaluate(cfg, false); s.Tier != TierLocal {
+		t.Errorf("llmux tier = %q, want local (on-instance loopback)", s.Tier)
 	}
 	if err := Guard(cfg, false); err != nil {
 		t.Errorf("Guard blocked the on-box llmux endpoint: %v", err)

@@ -14,7 +14,8 @@ package main
 //
 // Endpoints (all session-authed via X-User-ID set by the auth middleware):
 //
-//	GET  /api/assistant/status    — sovereignty + mail-source state (for the UI badge)
+//	GET  /api/assistant/status    — sovereignty tier + mail-source state (for the UI badge)
+//	POST /api/assistant/tier      — operator picks the sovereignty tier; body {tier}
 //	POST /api/assistant/chat      — SSE stream; body {message, history?}
 //	POST /api/assistant/summarize — body {scope:"inbox"|"thread", uid?, folder?}
 //	POST /api/assistant/draft     — body {uid, folder?, instructions?, save?}
@@ -27,6 +28,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"vulos/backend/services/ai"
@@ -63,8 +65,15 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 		deps.source = assistant.NewFixtureSource()
 	}
 
+	// mu guards deps.cfg.Tier, which the /api/assistant/tier picker mutates at
+	// runtime so the operator can choose "where your AI runs" without a restart.
+	var mu sync.RWMutex
 	newAssistant := func() *assistant.Assistant {
-		return assistant.New(deps.svc, deps.cfg, deps.source, deps.allowExternal).WithIndex(deps.index)
+		mu.RLock()
+		cfg := deps.cfg
+		allowExternal := deps.allowExternal
+		mu.RUnlock()
+		return assistant.New(deps.svc, cfg, deps.source, allowExternal).WithIndex(deps.index)
 	}
 	authOf := func(r *http.Request) assistant.Auth {
 		return assistant.Auth{
@@ -75,12 +84,49 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 	}
 
 	// GET /api/assistant/status — no mail content, safe pre-auth-check surface.
+	// The sovereignty block carries the honest current tier + label + the tiers
+	// the operator may pick (see POST /api/assistant/tier).
 	mux.HandleFunc("GET /api/assistant/status", func(w http.ResponseWriter, r *http.Request) {
 		a := newAssistant()
+		sv := a.Sovereignty()
 		writeJSON(w, map[string]any{
-			"sovereignty":    a.Sovereignty(),
+			"tier":           sv.Tier,
+			"label":          sv.Label,
+			"sovereignty":    sv,
+			"tier_options":   assistantTierOptions(),
 			"mail_source":    a.MailName(),
 			"semantic_index": a.Indexed(),
+		})
+	})
+
+	// POST /api/assistant/tier — the operator picks the sovereignty tier the
+	// endpoint is declared to sit in ("where your AI runs"). This is the config
+	// knob (mirrors VULOS_AI_TIER) applied at runtime. Loopback endpoints stay
+	// "local" no matter what is declared, and brokered/external still require the
+	// egress opt-in — so this cannot weaken the guarantee, only label it.
+	mux.HandleFunc("POST /api/assistant/tier", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		var body struct {
+			Tier string `json:"tier"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		t := assistant.NormalizeTier(body.Tier)
+		if t == "" {
+			writeErr(w, 400, "tier must be one of local, sovereign, brokered, external")
+			return
+		}
+		mu.Lock()
+		deps.cfg.Tier = string(t)
+		mu.Unlock()
+		a := newAssistant()
+		sv := a.Sovereignty()
+		writeJSON(w, map[string]any{
+			"tier":         sv.Tier,
+			"label":        sv.Label,
+			"sovereignty":  sv,
+			"tier_options": assistantTierOptions(),
 		})
 	})
 
@@ -212,6 +258,19 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 			send(map[string]any{"error": err.Error(), "done": true})
 		}
 	})
+}
+
+// assistantTierOptions lists the tiers the operator can pick in the UI, each
+// with its honest label. "external" is intentionally omitted from the picker: it
+// is the fail-closed bucket and is only ever reached via the explicit
+// VULOS_ASSISTANT_ALLOW_EXTERNAL egress opt-in, not chosen as a posture.
+func assistantTierOptions() []map[string]string {
+	pick := []assistant.Tier{assistant.TierLocal, assistant.TierSovereign, assistant.TierBrokered}
+	out := make([]map[string]string, 0, len(pick))
+	for _, t := range pick {
+		out = append(out, map[string]string{"tier": string(t), "label": assistant.TierLabel(t)})
+	}
+	return out
 }
 
 // assistantAuthed enforces a signed-in session (X-User-ID injected by the auth
