@@ -184,10 +184,22 @@ func (s *Store) FindOrCreateUser(provider, providerUserID, email, name, picture 
 		username += fmt.Sprintf("%d", time.Now().UnixNano()%1000)
 	}
 
+	// Only store the email on the new account when the provider VERIFIED it.
+	// Persisting an unverified, attacker-supplied email would plant a second
+	// account bearing someone else's address; a later VERIFIED sign-in doing
+	// email-match linking (above) iterates s.users and could non-deterministically
+	// merge onto the wrong (attacker) account — the reverse of the takeover this
+	// function already guards against. Leaving it empty keeps emails unique to
+	// their verified owner and makes the linking branch deterministic.
+	storedEmail := ""
+	if emailVerified {
+		storedEmail = email
+	}
+
 	u := &User{
 		ID:        generateID(),
 		Username:  username,
-		Email:     email,
+		Email:     storedEmail,
 		Name:      name,
 		Picture:   picture,
 		Providers: map[string]string{provider: providerUserID},
