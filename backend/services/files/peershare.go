@@ -445,6 +445,32 @@ func (s *Service) ServeCapability(ctx context.Context, req PeerFetchRequest) (io
 	return rc, size, c, nil
 }
 
+// FolderTar streams a tar archive of the folder subtree rooted at nodeID for an
+// AUTHORIZED actor. It is the owner-side source the sharer's CLIENT uses to obtain
+// a folder's bytes so it can SEAL them (VSEAL1) for a content-blind remote share:
+// the client fetches this tar, packs it with metadata (is_dir=true), seals it to
+// the recipient's content key, and posts the ciphertext to issue-sealed. The cell
+// therefore never sees the tar plaintext. The caller MUST Close the reader.
+//
+// Fail-closed: the actor must have at least viewer access to the node, and the node
+// must be a directory (a file has no tar form here — use downloadNodeBytes).
+func (s *Service) FolderTar(ctx context.Context, actorID, nodeID string) (io.ReadCloser, error) {
+	if s.broker == nil {
+		return nil, ErrPeerUnavailable
+	}
+	n, err := s.getNode(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.authorize(actorID, n, RoleViewer) {
+		return nil, ErrForbidden
+	}
+	if !n.IsDir {
+		return nil, fmt.Errorf("%w: node is not a folder", ErrInvalid)
+	}
+	return s.streamFolderTar(ctx, n), nil
+}
+
 // streamFolderTar streams a tar archive of the folder subtree rooted at n,
 // reading each file's bytes through the broker. It uses an io.Pipe so nothing is
 // buffered in full — large trees stream chunked. Read errors abort the stream

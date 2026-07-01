@@ -2301,7 +2301,16 @@ func main() {
 		if contactStore != nil {
 			profileContacts = contactStore
 		}
-		peering.RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), pVulaID, profileContacts)
+		profStore := peering.RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), pVulaID, profileContacts)
+
+		// WAVE-7: internal content-key lookup the Vulos cell calls to enforce
+		// recipient-targeting on content-blind shares (closes the F2 gap). Gated by
+		// CP_SHARED_SECRET (X-Vulos-Internal-Auth), registered on the MAIN mux and
+		// listed in auth.publicPaths so it is reached by the internal caller and gated
+		// solely by the shared secret (the session middleware strips X-User-ID). When
+		// CP_SHARED_SECRET is unset the endpoint returns 503, which the cell treats as
+		// fail-closed. Cross-repo contract lives in peering/content_key_lookup.go.
+		peering.RegisterContentKeyLookup(mux, profStore, os.Getenv("CP_SHARED_SECRET"))
 
 		// Email verification (initiate/confirm/status against vulos.org).
 		if vfySvc, vErr := peering.VerifyNewService(filepath.Join(pRoot, "identity")); vErr != nil {

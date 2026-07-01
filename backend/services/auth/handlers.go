@@ -124,6 +124,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/qr/poll":              true, // LOGINISO-02: kiosk polls for approval (public)
 	"/init-passphrase":               true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
 	"/api/files/peer/serve":          true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
+	"/api/files/internal/content-key": true, // WAVE-7: internal cell→box content-key lookup (authed by X-Vulos-Internal-Auth shared secret, not a session)
 	"/mcp":                           true, // APPS/MCP: agent MCP server (authed by vat_ app token via the @vulos/apps platform, not a session)
 }
 

@@ -172,6 +172,24 @@ func registerFilesPeerRoutes(mux *http.ServeMux, svc *files.Service) {
 		writeJSON(w, n)
 	}))
 
+	// GET /api/files/peer/folder-tar?node=<id> — WAVE-7 sealed-FOLDER source.
+	//
+	// Streams a tar archive of the owner's folder subtree so the sharer's CLIENT can
+	// SEAL it (VSEAL1) for a content-blind remote share (the client packs the tar
+	// with metadata is_dir=true, seals to the recipient's content key, and posts the
+	// ciphertext to issue-sealed). The relaying cell never sees the tar plaintext.
+	// Session-authed (owner/viewer); the node must be a folder.
+	mux.HandleFunc("GET /api/files/peer/folder-tar", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		rc, err := svc.FolderTar(r.Context(), uid, r.URL.Query().Get("node"))
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		defer rc.Close()
+		w.Header().Set("Content-Type", "application/x-tar")
+		io.Copy(w, rc)
+	}))
+
 	// POST /api/files/peer/issue-sealed — WAVE-3 CONTENT-BLIND remote share.
 	//
 	// The sharer's CLIENT seals the file (src/lib/contentSeal.js) to the recipient's

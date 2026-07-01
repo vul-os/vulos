@@ -49,6 +49,15 @@ func TestSealedCapabilityServesCiphertextEndToEnd(t *testing.T) {
 	if !cap.Sealed || cap.IsDir {
 		t.Fatalf("capability should be sealed + non-dir: %+v", cap)
 	}
+	// WAVE-7: the capability must leak NO filename/type to the relaying cell — the
+	// real metadata is sealed inside the envelope (VMETA1); the cap carries only a
+	// placeholder.
+	if cap.Name == "secret.txt" || cap.Name != SealedCapPlaceholderName {
+		t.Fatalf("capability leaks the real filename: %q", cap.Name)
+	}
+	if cap.ContentType != "" {
+		t.Fatalf("capability leaks a content-type: %q", cap.ContentType)
+	}
 
 	// The recipient (or the cell on its behalf) PULLs via the loopback transport.
 	freq := fetchReq(cap, recipSigner)

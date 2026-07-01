@@ -162,16 +162,61 @@ async function downloadNodeBytes(node) {
   return new Uint8Array(await res.arrayBuffer())
 }
 
+// downloadFolderTar fetches a folder subtree as a tar archive (owner-authed) so it
+// can be sealed for a content-blind share. Mirrors the server /peer/folder-tar route.
+async function downloadFolderTar(node) {
+  const res = await rawFetch(`/files/peer/folder-tar?node=${encodeURIComponent(node.id)}`)
+  if (!res.ok) throw new Error(`could not read folder (${res.status})`)
+  return new Uint8Array(await res.arrayBuffer())
+}
+
 // maybeDecrypt transparently decrypts WAVE-3 content-blind (VSEAL1) bytes with the
-// in-memory master key. Received content-blind shares are stored as ciphertext; the
-// recipient's browser opens them here on download. Non-sealed bytes pass through.
+// in-memory master key and recovers the sealed WAVE-7 metadata. Returns
+// { bytes, meta } where meta = { name, content_type, is_dir } | null. Non-sealed
+// bytes pass through with meta=null. The recipient's browser opens seals here on
+// download; the cell only ever handled the ciphertext + opaque metadata.
 async function maybeDecrypt(bytes) {
-  const { isSealed, open } = await import('../../lib/contentSeal.js')
-  if (!isSealed(bytes)) return bytes
+  const { isSealed, open, unpackMeta } = await import('../../lib/contentSeal.js')
+  if (!isSealed(bytes)) return { bytes, meta: null }
   const { getMasterKey } = await import('../../lib/masterKey.js')
   const mk = getMasterKey()
   if (!mk) throw new Error('This file is encrypted; unlock your account to open it.')
-  return open(bytes, mk)
+  const pt = await open(bytes, mk)
+  return unpackMeta(pt)
+}
+
+// extractSealedFolderToDrive untars a decrypted folder payload into the recipient's
+// Drive under parentId, recreating the subtree with filesApi. Returns the count of
+// created files. The cell never saw this tar — it is reconstructed client-side.
+async function extractSealedFolderToDrive(rootName, tarBytes, parentId) {
+  const { untar } = await import('../../lib/contentSeal.js')
+  const entries = untar(tarBytes)
+  const root = await filesApi.createFolder(parentId || '', rootName)
+  const dirIds = { '': root.id } // relative-path → folder node id
+  const ensureDir = async (relPath) => {
+    if (relPath in dirIds) return dirIds[relPath]
+    const slash = relPath.lastIndexOf('/')
+    const parentRel = slash < 0 ? '' : relPath.slice(0, slash)
+    const name = slash < 0 ? relPath : relPath.slice(slash + 1)
+    const pid = await ensureDir(parentRel)
+    const f = await filesApi.createFolder(pid, name)
+    dirIds[relPath] = f.id
+    return f.id
+  }
+  let files = 0
+  for (const e of entries) {
+    // Strip the archive's own root component (streamFolderTar roots at the folder).
+    const rel = e.name.split('/').slice(1).join('/')
+    if (!rel) continue
+    if (e.isDir) { await ensureDir(rel); continue }
+    const slash = rel.lastIndexOf('/')
+    const dirRel = slash < 0 ? '' : rel.slice(0, slash)
+    const fname = slash < 0 ? rel : rel.slice(slash + 1)
+    const pid = await ensureDir(dirRel)
+    await uploadOne(pid, new File([e.bytes], fname))
+    files++
+  }
+  return files
 }
 
 function saveBlob(bytes, name) {
@@ -185,10 +230,17 @@ function saveBlob(bytes, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// downloadOne: fetch bytes → (content-blind) decrypt if sealed → save.
-async function downloadOne(node) {
-  const bytes = await maybeDecrypt(await downloadNodeBytes(node))
-  saveBlob(bytes, node.name)
+// downloadOne: fetch bytes → (content-blind) decrypt if sealed → recover metadata →
+// save the file under its REAL name, or (a sealed folder) untar it into Drive under
+// destParentId. Returns { extractedFolder, files } when a folder was reconstructed.
+async function downloadOne(node, destParentId) {
+  const { bytes, meta } = await maybeDecrypt(await downloadNodeBytes(node))
+  if (meta && meta.is_dir) {
+    const files = await extractSealedFolderToDrive(meta.name || node.name, bytes, destParentId || '')
+    return { extractedFolder: meta.name || node.name, files }
+  }
+  saveBlob(bytes, (meta && meta.name) || node.name)
+  return {}
 }
 
 // shareFileContentBlind performs a CONTENT-BLIND remote share: it resolves the
@@ -213,10 +265,17 @@ async function shareFileContentBlind(node, email, access, ttlSeconds) {
   const { getMasterKey } = await import('../../lib/masterKey.js')
   const mk = getMasterKey()
   if (!mk) throw new Error('Unlock your account to share encrypted files.')
-  const { deriveContentPubKeyB64, seal } = await import('../../lib/contentSeal.js')
+  const { deriveContentPubKeyB64, seal, packMeta } = await import('../../lib/contentSeal.js')
   const myPub = await deriveContentPubKeyB64(mk)
-  const bytes = await downloadNodeBytes(node)
-  const sealed = await seal(bytes, [rec.content_pub_key, myPub])
+  // WAVE-7: a folder is sealed as its TAR archive (the recipient untars after
+  // decrypt); a file is sealed as its bytes. Name/type/is_dir ride INSIDE the seal
+  // (packMeta) so the relaying cell sees no filename — only opaque ciphertext.
+  const payload = node.is_dir ? await downloadFolderTar(node) : await downloadNodeBytes(node)
+  const packed = packMeta(
+    { name: node.name, content_type: node.content_type || '', is_dir: !!node.is_dir },
+    payload,
+  )
+  const sealed = await seal(packed, [rec.content_pub_key, myPub])
   const fd = new FormData()
   fd.append('node_id', node.id)
   fd.append('email', email)
@@ -234,8 +293,13 @@ async function shareFileContentBlind(node, email, access, ttlSeconds) {
 async function downloadReceived(item) {
   const res = await rawFetch(`/files/peer/received/get?id=${encodeURIComponent(item.id)}`)
   if (!res.ok) throw new Error(`download failed (${res.status})`)
-  const bytes = await maybeDecrypt(new Uint8Array(await res.arrayBuffer()))
-  saveBlob(bytes, item.is_dir ? `${item.name}.tar` : item.name)
+  const { bytes, meta } = await maybeDecrypt(new Uint8Array(await res.arrayBuffer()))
+  if (meta && meta.is_dir) {
+    const files = await extractSealedFolderToDrive(meta.name || item.name, bytes, '')
+    return { extractedFolder: meta.name || item.name, files }
+  }
+  saveBlob(bytes, (meta && meta.name) || (item.is_dir ? `${item.name}.tar` : item.name))
+  return {}
 }
 
 // ── formatting helpers ───────────────────────────────────────────────────────
@@ -477,11 +541,11 @@ function ShareModal({ node, onClose }) {
     if (!addr) return
     setBusy(true); setNote(null)
     try {
-      // WAVE-3: prefer a CONTENT-BLIND share for directory-resolvable (remote)
-      // recipients — the file is sealed to the recipient's published key so the
-      // relaying cell only sees ciphertext. Only files (not folders) are sealed in
-      // v1; folders and co-cloud/local recipients use the ordinary share path.
-      if (!node.is_dir) {
+      // WAVE-3/7: prefer a CONTENT-BLIND share for directory-resolvable (remote)
+      // recipients — the file (or, for a folder, its tar) is sealed to the recipient's
+      // published key so the relaying cell only sees ciphertext. Both files AND
+      // folders are sealed (WAVE-7); co-cloud/local recipients use the ordinary path.
+      {
         const blind = await shareFileContentBlind(node, addr, role, 0)
         if (blind.blind) {
           setEmail('')
@@ -1109,7 +1173,10 @@ export default function Drive() {
   const handle = async (kind, node) => {
     if (kind === 'download') {
       setBusy(`Downloading ${node.name}…`)
-      try { await downloadOne(node) } catch (e) { setError(e.message || 'Download failed') } finally { setBusy(null) }
+      try {
+        const r = await downloadOne(node, cur.id)
+        if (r && r.extractedFolder) await refresh() // a sealed folder was untarred into Drive
+      } catch (e) { setError(e.message || 'Download failed') } finally { setBusy(null) }
       return
     }
     if (kind === 'delete') {

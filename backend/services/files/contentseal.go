@@ -419,6 +419,93 @@ func Open(blob, masterKey []byte) ([]byte, error) {
 	return nil, fmt.Errorf("%w: no wrap for this recipient", ErrSeal)
 }
 
+// ─── Sealed metadata container (WAVE-7: metadata is content-blind too) ─────────
+//
+// The file's Name / ContentType / IsDir used to ride IN THE CLEAR on the peer-share
+// capability, so the relaying cell (and any observer) saw the filename and type.
+// WAVE-7 moves them INSIDE the sealed body: the plaintext that Seal encrypts is a
+// "VMETA1" container that carries the metadata JSON followed by the real payload
+// (the file bytes, or — for a folder — the tar archive). The cell parses only the
+// VSEAL1 header (crypto params + recipient wraps); the whole VMETA1 container is
+// inside the AES-256-GCM body it cannot open, so the metadata is opaque to it. The
+// recipient recovers it on decrypt.
+//
+// VMETA1 container (the AEAD plaintext):
+//
+//	magic    "VMETA1\n"                    (7 bytes)
+//	meta_len uint32 big-endian             (4 bytes)
+//	meta     meta_len bytes of JSON: {"name":..,"content_type":..,"is_dir":bool}
+//	payload  the remaining bytes (file content, or a tar archive when is_dir)
+//
+// Back-compat / fail-closed: a plaintext that does NOT begin with the VMETA1 magic
+// is treated as a raw payload with NO metadata (a pre-wave-7 sealed blob), so old
+// envelopes still open; callers fall back to the capability's (placeholder) name.
+// Kept byte-for-byte in sync with src/lib/contentSeal.js.
+const (
+	// SealMetaMagic prefixes the in-envelope metadata container.
+	SealMetaMagic = "VMETA1\n"
+	// maxSealMeta bounds the metadata JSON (defense against a huge alloc).
+	maxSealMeta = 1 << 16
+)
+
+// SealedMeta is the content-blind, in-envelope metadata for a sealed share.
+type SealedMeta struct {
+	Name        string `json:"name,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	IsDir       bool   `json:"is_dir,omitempty"`
+}
+
+// PackSealedPayload builds the VMETA1 plaintext that Seal should encrypt: the
+// metadata JSON framed ahead of the payload. Pass meta=nil to omit metadata (the
+// result is then the raw payload, i.e. the legacy shape).
+func PackSealedPayload(meta *SealedMeta, payload []byte) ([]byte, error) {
+	if meta == nil {
+		return payload, nil
+	}
+	mj, err := json.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+	if len(mj) > maxSealMeta {
+		return nil, fmt.Errorf("%w: sealed metadata too large", ErrSeal)
+	}
+	out := make([]byte, 0, len(SealMetaMagic)+4+len(mj)+len(payload))
+	out = append(out, SealMetaMagic...)
+	var l [4]byte
+	binary.BigEndian.PutUint32(l[:], uint32(len(mj)))
+	out = append(out, l[:]...)
+	out = append(out, mj...)
+	out = append(out, payload...)
+	return out, nil
+}
+
+// UnpackSealedPayload splits a decrypted VMETA1 plaintext into its metadata and
+// payload. A plaintext without the VMETA1 magic is returned verbatim as the payload
+// with meta=nil (legacy / back-compat). A truncated or malformed VMETA1 frame is a
+// fail-closed error (never a partial/ambiguous read).
+func UnpackSealedPayload(plaintext []byte) (*SealedMeta, []byte, error) {
+	if len(plaintext) < len(SealMetaMagic) || string(plaintext[:len(SealMetaMagic)]) != SealMetaMagic {
+		return nil, plaintext, nil // legacy: no metadata container
+	}
+	rest := plaintext[len(SealMetaMagic):]
+	if len(rest) < 4 {
+		return nil, nil, fmt.Errorf("%w: truncated metadata length", ErrSeal)
+	}
+	mlen := binary.BigEndian.Uint32(rest[:4])
+	if mlen > maxSealMeta {
+		return nil, nil, fmt.Errorf("%w: metadata too large", ErrSeal)
+	}
+	rest = rest[4:]
+	if uint32(len(rest)) < mlen {
+		return nil, nil, fmt.Errorf("%w: truncated metadata", ErrSeal)
+	}
+	var meta SealedMeta
+	if err := json.Unmarshal(rest[:mlen], &meta); err != nil {
+		return nil, nil, fmt.Errorf("%w: bad metadata json", ErrSeal)
+	}
+	return &meta, rest[mlen:], nil
+}
+
 // ─── AEAD helpers (AES-256-GCM, browser-parity) ───────────────────────────────
 
 func aesGCMSealSeal(key, nonce, plaintext, aad []byte) ([]byte, error) {

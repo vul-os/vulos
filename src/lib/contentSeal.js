@@ -280,6 +280,104 @@ export async function open(blob, masterKey) {
   return pt
 }
 
+// ─── sealed metadata container (VMETA1) ────────────────────────────────────────
+//
+// WAVE-7: the file name / content-type / is_dir are packed INSIDE the sealed body so
+// the relaying cell (which only parses the VSEAL1 header) never sees them. Mirrors
+// contentseal.go PackSealedPayload / UnpackSealedPayload byte-for-byte:
+//
+//   magic  "VMETA1\n" (7 bytes)
+//   mlen   uint32 big-endian
+//   meta   JSON { name, content_type, is_dir }
+//   payload the file bytes (or, for is_dir, a tar archive)
+//
+// Back-compat: a plaintext without the magic is a legacy raw payload (meta = null).
+const META_MAGIC = 'VMETA1\n'
+const MAX_META = 1 << 16
+
+// packMeta frames metadata ahead of payload for sealing. Pass meta=null to omit it.
+export function packMeta(meta, payload) {
+  if (!(payload instanceof Uint8Array)) payload = new Uint8Array(payload)
+  if (!meta) return payload
+  const metaJSON = te.encode(JSON.stringify({
+    name: meta.name || '',
+    content_type: meta.content_type || '',
+    is_dir: !!meta.is_dir,
+  }))
+  if (metaJSON.length > MAX_META) throw new Error('contentSeal: sealed metadata too large')
+  const lenPrefix = new Uint8Array(4)
+  new DataView(lenPrefix.buffer).setUint32(0, metaJSON.length, false)
+  return concatBytes(te.encode(META_MAGIC), lenPrefix, metaJSON, payload)
+}
+
+// unpackMeta splits a decrypted VMETA1 plaintext into { meta, payload }. A plaintext
+// without the magic is returned as { meta: null, payload }. Fail-closed on a
+// truncated/malformed frame.
+export function unpackMeta(plaintext) {
+  if (!(plaintext instanceof Uint8Array)) plaintext = new Uint8Array(plaintext)
+  const magic = te.encode(META_MAGIC)
+  if (plaintext.length < magic.length) return { meta: null, payload: plaintext }
+  for (let i = 0; i < magic.length; i++) {
+    if (plaintext[i] !== magic[i]) return { meta: null, payload: plaintext }
+  }
+  let o = magic.length
+  if (plaintext.length < o + 4) throw new Error('contentSeal: truncated metadata length')
+  const mlen = new DataView(plaintext.buffer, plaintext.byteOffset + o, 4).getUint32(0, false)
+  o += 4
+  if (mlen > MAX_META || plaintext.length < o + mlen) throw new Error('contentSeal: truncated metadata')
+  const meta = JSON.parse(new TextDecoder().decode(plaintext.subarray(o, o + mlen)))
+  return { meta, payload: plaintext.subarray(o + mlen) }
+}
+
+// ─── tar reader (untar sealed folders, zero third-party JS) ─────────────────────
+//
+// Reads the USTAR/PAX tar archive that vulos streamFolderTar (Go archive/tar) emits
+// for a shared folder. Handles regular files, directories, and PAX 'x' extended
+// headers (used for long "path=" names). Returns [{ name, isDir, bytes }].
+function parseOctal(bytes) {
+  let s = ''
+  for (let i = 0; i < bytes.length; i++) {
+    const c = bytes[i]
+    if (c === 0 || c === 0x20) continue
+    s += String.fromCharCode(c)
+  }
+  return s ? parseInt(s, 8) : 0
+}
+
+export function untar(buf) {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
+  const td = new TextDecoder()
+  const out = []
+  let off = 0
+  let paxPath = null
+  while (off + 512 <= bytes.length) {
+    const header = bytes.subarray(off, off + 512)
+    // Two consecutive zero blocks mark end-of-archive.
+    let allZero = true
+    for (let i = 0; i < 512; i++) { if (header[i] !== 0) { allZero = false; break } }
+    if (allZero) break
+    let name = td.decode(header.subarray(0, 100)).replace(/\0.*$/, '')
+    const prefix = td.decode(header.subarray(345, 500)).replace(/\0.*$/, '')
+    if (prefix) name = prefix + '/' + name
+    const size = parseOctal(header.subarray(124, 136))
+    const typeflag = String.fromCharCode(header[156] || 0x30)
+    off += 512
+    const data = bytes.subarray(off, off + size)
+    off += Math.ceil(size / 512) * 512
+    if (typeflag === 'x' || typeflag === 'g') {
+      // PAX extended header: parse "len key=value\n" records; capture path override.
+      const rec = td.decode(data)
+      const m = rec.match(/\d+ path=([^\n]*)\n/)
+      if (m) paxPath = m[1]
+      continue
+    }
+    if (paxPath !== null) { name = paxPath; paxPath = null }
+    const isDir = typeflag === '5' || name.endsWith('/')
+    out.push({ name: name.replace(/\/+$/, ''), isDir, bytes: isDir ? new Uint8Array(0) : new Uint8Array(data) })
+  }
+  return out
+}
+
 // ─── directory publish ─────────────────────────────────────────────────────────
 
 // publishContentPublicKey publishes the caller's derived content public key to

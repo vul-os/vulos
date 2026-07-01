@@ -646,7 +646,11 @@ type profileSvc struct {
 //	dir     — storage directory, e.g. filepath.Join(home, ".vulos/peering/profile")
 //	vulaID  — local Vula ID string (e.g. "vula:ed25519:...")
 //	contacts — used to resolve peer-visibility checks; may be nil
-func RegisterProfileHandlers(mux *http.ServeMux, dir, vulaID string, contacts profileContactChecker) {
+//
+// It returns the *ProfileStore (nil on init failure) so callers can reuse it for
+// adjacent seams — e.g. the internal content-key lookup the Vulos cell calls to
+// enforce recipient-targeting on content-blind shares (RegisterContentKeyLookup).
+func RegisterProfileHandlers(mux *http.ServeMux, dir, vulaID string, contacts profileContactChecker) *ProfileStore {
 	store, err := NewProfileStore(dir, vulaID, contacts)
 	if err != nil {
 		log.Printf("[peering/profile] store init: %v", err)
@@ -657,13 +661,20 @@ func RegisterProfileHandlers(mux *http.ServeMux, dir, vulaID string, contacts pr
 		mux.HandleFunc("PUT /api/peering/profile", fail)
 		mux.HandleFunc("POST /api/peering/profile/image", fail)
 		mux.HandleFunc("GET /api/peering/profile/image", fail)
-		return
+		return nil
 	}
 	svc := &profileSvc{store: store, vulaID: vulaID}
 	mux.HandleFunc("GET /api/peering/profile", svc.handleGet)
 	mux.HandleFunc("PUT /api/peering/profile", svc.handlePut)
 	mux.HandleFunc("POST /api/peering/profile/image", svc.handlePostImage)
 	mux.HandleFunc("GET /api/peering/profile/image", svc.handleGetImage)
+	return store
+}
+
+// ContentPubKey returns the profile's published X25519 content public key (base64
+// std), or "" if none has been published. Used by the internal content-key lookup.
+func (ps *ProfileStore) ContentPubKey() string {
+	return ps.Get().ContentPubKey
 }
 
 // ─── GET /api/peering/profile ─────────────────────────────────────────────────

@@ -16,9 +16,13 @@ package files
 // so IsDir is forced false on the wire — the cell treats the payload as a single
 // opaque node.
 //
-// Metadata note (v1): Name / ContentType / Size on the capability are NOT sealed —
-// they were already carried in the clear by unsealed capabilities, so this is no
-// regression. Sealing the metadata too is a documented follow-up.
+// Metadata note (WAVE-7): Name / ContentType / IsDir are now SEALED INSIDE the
+// envelope (a VMETA1 container the sharer's client packs ahead of the payload —
+// contentseal.PackSealedPayload). The capability therefore carries only an opaque
+// placeholder name, an empty content-type, and IsDir=false, so the relaying cell
+// and any observer see no filename/type. The recipient recovers the real metadata
+// on decrypt (UnpackSealedPayload). Size stays on the capability (it is the sealed
+// artifact's byte length — a coarse ciphertext size, not the plaintext size).
 
 import (
 	"bytes"
@@ -34,6 +38,12 @@ import (
 
 	"vulos/backend/internal/ulid"
 )
+
+// SealedCapPlaceholderName is the opaque, non-identifying name a WAVE-7 sealed
+// capability carries in place of the real filename (which is sealed inside the
+// envelope). It must be non-empty (the recipient's Drive requires a node name until
+// the client decrypts and recovers the true name).
+const SealedCapPlaceholderName = "Encrypted item"
 
 // ShareSealedByEmail is the CONTENT-BLIND sibling of ShareByEmail for REMOTE
 // (account-only / cross-instance) recipients. The sharer's client has already
@@ -228,12 +238,14 @@ func (s *Service) IssueSealedCapability(actorID, nodeID string, access Role, rec
 
 	now := time.Now()
 	cap := &Capability{
-		ID:          capID,
-		NodeID:      n.ID,
-		Name:        n.Name,
-		IsDir:       false, // sealed payload is a single opaque artifact
+		ID:     capID,
+		NodeID: n.ID,
+		// Content-blind metadata (WAVE-7): the real Name/ContentType/IsDir are sealed
+		// inside the VMETA1 envelope; the capability leaks only an opaque placeholder.
+		Name:        SealedCapPlaceholderName,
+		IsDir:       false, // sealed payload is a single opaque artifact (file OR tar)
 		Size:        sealedSize,
-		ContentType: n.ContentType,
+		ContentType: "",
 		Access:      access,
 		OwnerVulaID: s.signer.SelfID(),
 		OwnerAddr:   strings.TrimRight(ownerAddr, "/"),

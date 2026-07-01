@@ -56,6 +56,98 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSealedMetaRoundTrip (WAVE-7): the file's name/type/is_dir are packed INTO the
+// sealed body (VMETA1) and recovered by the recipient on decrypt — the cell that
+// only parses the VSEAL1 header sees none of it.
+func TestSealedMetaRoundTrip(t *testing.T) {
+	recipient := mkMaster(t)
+	recipPub, _ := DeriveContentPubKeyB64(recipient)
+
+	meta := &SealedMeta{Name: "Quarterly Results.xlsx", ContentType: "application/vnd.ms-excel", IsDir: false}
+	payload := []byte("SECRET spreadsheet bytes")
+	packed, err := PackSealedPayload(meta, payload)
+	if err != nil {
+		t.Fatalf("PackSealedPayload: %v", err)
+	}
+	blob, err := Seal(packed, []string{recipPub})
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+
+	// The cell's content-blind view must not contain the filename anywhere.
+	if bytes.Contains(blob, []byte("Quarterly Results")) {
+		t.Fatal("filename leaked into the sealed envelope bytes")
+	}
+	info, err := ParseSealed(blob)
+	if err != nil || len(info.KIDs) != 1 {
+		t.Fatalf("ParseSealed: %v info=%+v", err, info)
+	}
+
+	// Recipient opens and recovers metadata + payload.
+	pt, err := Open(blob, recipient)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	gotMeta, gotPayload, err := UnpackSealedPayload(pt)
+	if err != nil {
+		t.Fatalf("UnpackSealedPayload: %v", err)
+	}
+	if gotMeta == nil || gotMeta.Name != meta.Name || gotMeta.ContentType != meta.ContentType || gotMeta.IsDir {
+		t.Fatalf("recovered metadata mismatch: %+v", gotMeta)
+	}
+	if !bytes.Equal(gotPayload, payload) {
+		t.Fatal("recovered payload mismatch")
+	}
+}
+
+// TestSealedFolderTarRoundTrip (WAVE-7 item 1): a sealed FOLDER is a sealed tar with
+// is_dir=true; the recipient recovers the tar and the is_dir flag. The cell only
+// ever handles the opaque ciphertext.
+func TestSealedFolderTarRoundTrip(t *testing.T) {
+	recipient := mkMaster(t)
+	recipPub, _ := DeriveContentPubKeyB64(recipient)
+
+	tarBytes := []byte("PRETEND-TAR-ARCHIVE-BYTES-OF-A-FOLDER-SUBTREE")
+	packed, err := PackSealedPayload(&SealedMeta{Name: "Project", IsDir: true}, tarBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := Seal(packed, []string{recipPub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt, err := Open(blob, recipient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, payload, err := UnpackSealedPayload(pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta == nil || !meta.IsDir || meta.Name != "Project" {
+		t.Fatalf("folder metadata mismatch: %+v", meta)
+	}
+	if !bytes.Equal(payload, tarBytes) {
+		t.Fatal("tar payload mismatch")
+	}
+}
+
+// TestUnpackSealedPayloadBackCompat: a legacy plaintext (no VMETA1 magic) is
+// returned verbatim as the payload with nil metadata.
+func TestUnpackSealedPayloadBackCompat(t *testing.T) {
+	raw := []byte("legacy raw file bytes, no metadata container")
+	meta, payload, err := UnpackSealedPayload(raw)
+	if err != nil {
+		t.Fatalf("legacy unpack must not error: %v", err)
+	}
+	if meta != nil {
+		t.Fatal("legacy plaintext must have nil metadata")
+	}
+	if !bytes.Equal(payload, raw) {
+		t.Fatal("legacy payload must pass through unchanged")
+	}
+}
+
 func TestOpenWrongRecipientFailsClosed(t *testing.T) {
 	recipient := mkMaster(t)
 	stranger := mkMaster(t)
