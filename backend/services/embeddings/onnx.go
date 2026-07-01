@@ -81,6 +81,14 @@ func (o *OnnxEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 
 func (o *OnnxEmbedder) Dimension() int { return o.dim }
 
+// OnInstance reports that this embedder runs entirely on the local box: it
+// shells out to a local python3 + ONNX model and performs NO network I/O. This
+// is the sovereign-certification signal consumers (e.g. the mail assistant's
+// vector index) check before trusting an embedder with mail content. The HTTP
+// Embedder deliberately does NOT implement this, so it can never be mistaken
+// for an on-instance embedder.
+func (o *OnnxEmbedder) OnInstance() bool { return true }
+
 // Available checks if ONNX inference is possible.
 func OnnxAvailable(modelsDir string) bool {
 	// Check python3

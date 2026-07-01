@@ -93,6 +93,19 @@ func (db *DB) Search(queryEmb []float32, topK int) []SearchResult {
 	return results
 }
 
+// All returns a snapshot copy of every stored document. Order is unspecified.
+// Used by callers that need to enforce size caps / eviction policies.
+func (db *DB) All() []*Document {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	out := make([]*Document, 0, len(db.docs))
+	for _, d := range db.docs {
+		cp := *d
+		out = append(out, &cp)
+	}
+	return out
+}
+
 // Count returns the number of documents.
 func (db *DB) Count() int {
 	db.mu.RLock()
