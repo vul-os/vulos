@@ -82,6 +82,28 @@ func TestSovereignGuard(t *testing.T) {
 	}
 }
 
+// TestLLMuxConfigStaysSovereign confirms that routing the assistant through the
+// on-box llmux gateway (VULOS_LLMUX_URL) yields a config the guard still
+// classifies as on-instance — the choke point remains sovereign, with no
+// external opt-in required.
+func TestLLMuxConfigStaysSovereign(t *testing.T) {
+	for _, k := range []string{"AI_PROVIDER", "AI_MODEL", "AI_ENDPOINT", "AI_API_KEY", "AI_SYSTEM_PROMPT"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("VULOS_LLMUX_URL", "http://localhost:4000/v1")
+
+	cfg := ai.DefaultConfig()
+	if cfg.Provider != ai.ProviderCustom {
+		t.Fatalf("provider = %q, want custom", cfg.Provider)
+	}
+	if s := Evaluate(cfg, false); s.Egress != EgressOnInstance {
+		t.Errorf("llmux egress = %q, want on-instance (sovereign)", s.Egress)
+	}
+	if err := Guard(cfg, false); err != nil {
+		t.Errorf("Guard blocked the on-box llmux endpoint: %v", err)
+	}
+}
+
 // The guard must fire BEFORE any mail content reaches the model.
 func TestGuardBlocksBeforeModelCall(t *testing.T) {
 	m := &fakeModel{}

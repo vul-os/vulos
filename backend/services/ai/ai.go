@@ -66,7 +66,7 @@ func New() *Service {
 
 // DefaultConfig returns config from environment.
 func DefaultConfig() Config {
-	return Config{
+	cfg := Config{
 		Provider: Provider(getenv("AI_PROVIDER", "ollama")),
 		APIKey:   os.Getenv("AI_API_KEY"),
 		Model:    getenv("AI_MODEL", "llama3"),
@@ -129,6 +129,36 @@ You can control the OS by including <os-action> blocks:
 
 You can include multiple actions in one response alongside text and viewports.`),
 	}
+
+	// llmux sovereign gateway (opt-in). When VULOS_LLMUX_URL is set, route the
+	// assistant's completions through the on-box llmux OpenAI-compatible gateway
+	// — the single sovereign choke point that enforces default-deny egress and
+	// captures observability — instead of talking to Ollama directly. llmux runs
+	// on the instance (e.g. http://localhost:4000/v1), so the endpoint stays
+	// loopback and assistant.Guard() still classifies it as EgressOnInstance
+	// (sovereign). If VULOS_LLMUX_URL is unset, we keep today's direct-Ollama
+	// default untouched. The guard is NOT weakened: pointing this at a non-local
+	// host would (correctly) be blocked unless external egress is opted into.
+	if raw := strings.TrimSpace(os.Getenv("VULOS_LLMUX_URL")); raw != "" {
+		cfg.Provider = ProviderCustom
+		cfg.Endpoint = normalizeOpenAIBase(raw)
+		if k := os.Getenv("VULOS_LLMUX_KEY"); k != "" {
+			cfg.APIKey = k
+		}
+	}
+
+	return cfg
+}
+
+// normalizeOpenAIBase turns an OpenAI-compatible base URL (e.g.
+// "http://localhost:4000/v1") into the origin form that completeOpenAI /
+// streamOpenAI expect for ProviderCustom: those append "/v1/chat/completions"
+// themselves, so a trailing "/v1" here would double it. We strip a trailing
+// "/v1" and any trailing slashes; other paths are left intact.
+func normalizeOpenAIBase(base string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	base = strings.TrimSuffix(base, "/v1")
+	return strings.TrimRight(base, "/")
 }
 
 // Complete sends a non-streaming completion request.

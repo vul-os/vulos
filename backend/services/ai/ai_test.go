@@ -158,6 +158,58 @@ func TestDefaultConfig_EnvOverrides(t *testing.T) {
 	}
 }
 
+// TestDefaultConfig_LLMuxOptIn verifies that setting VULOS_LLMUX_URL routes the
+// assistant through the on-box llmux OpenAI-compatible gateway (ProviderCustom)
+// while keeping the endpoint loopback so it remains sovereign, and that the
+// trailing "/v1" is normalized away (the OpenAI path appends its own).
+func TestDefaultConfig_LLMuxOptIn(t *testing.T) {
+	for _, k := range []string{"AI_PROVIDER", "AI_MODEL", "AI_ENDPOINT", "AI_API_KEY", "AI_SYSTEM_PROMPT"} {
+		os.Unsetenv(k)
+	}
+	t.Setenv("VULOS_LLMUX_URL", "http://localhost:4000/v1")
+	t.Setenv("VULOS_LLMUX_KEY", "llmux-key")
+
+	cfg := DefaultConfig()
+	if cfg.Provider != ProviderCustom {
+		t.Errorf("provider = %q, want custom", cfg.Provider)
+	}
+	if cfg.Endpoint != "http://localhost:4000" {
+		t.Errorf("endpoint = %q, want http://localhost:4000 (trailing /v1 stripped)", cfg.Endpoint)
+	}
+	if cfg.APIKey != "llmux-key" {
+		t.Errorf("api_key = %q, want llmux-key", cfg.APIKey)
+	}
+}
+
+// TestDefaultConfig_LLMuxUnsetKeepsOllama confirms the default falls back to the
+// direct-Ollama behavior when VULOS_LLMUX_URL is not set.
+func TestDefaultConfig_LLMuxUnsetKeepsOllama(t *testing.T) {
+	for _, k := range []string{"AI_PROVIDER", "AI_MODEL", "AI_ENDPOINT", "AI_API_KEY", "AI_SYSTEM_PROMPT", "VULOS_LLMUX_URL", "VULOS_LLMUX_KEY"} {
+		os.Unsetenv(k)
+	}
+	cfg := DefaultConfig()
+	if cfg.Provider != ProviderOllama {
+		t.Errorf("provider = %q, want ollama", cfg.Provider)
+	}
+	if !strings.Contains(cfg.Endpoint, "11434") {
+		t.Errorf("endpoint %q should contain 11434", cfg.Endpoint)
+	}
+}
+
+func TestNormalizeOpenAIBase(t *testing.T) {
+	cases := map[string]string{
+		"http://localhost:4000/v1":  "http://localhost:4000",
+		"http://localhost:4000/v1/": "http://localhost:4000",
+		"http://localhost:4000/":    "http://localhost:4000",
+		"http://localhost:4000":     "http://localhost:4000",
+	}
+	for in, want := range cases {
+		if got := normalizeOpenAIBase(in); got != want {
+			t.Errorf("normalizeOpenAIBase(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 5. DefaultConfig system prompt — viewport & OS-action markers
 // ---------------------------------------------------------------------------
