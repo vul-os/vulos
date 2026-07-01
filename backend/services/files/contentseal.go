@@ -312,10 +312,16 @@ func IsSealed(blob []byte) bool {
 }
 
 // SealedTargets reports whether blob is a well-formed VSEAL1 envelope that carries
-// a wrap for recipientPubB64 (i.e. the recipient can actually open it). This is the
-// cell's FAIL-CLOSED gate: it stages a received document only when this returns
-// true, guaranteeing what it forwards is ciphertext the intended recipient — and
-// not the cell — can decrypt.
+// a wrap whose key-id STRING equals recipientPubB64. It is a fail-closed integrity
+// gate that keeps the cell from staging plaintext, and confirms the envelope claims
+// this recipient as a target.
+//
+// It does NOT — and cannot, being content-blind — prove the wrap actually decrypts
+// to a CEK under that key: the recipient content pubkey is public (advertised in the
+// directory), so a malicious sharer can craft a wrap with the right key-id but junk
+// epk/ct. Such a blob passes this gate yet fails the recipient's Open — an
+// undecryptable-junk (integrity/liveness) outcome, never a confidentiality break.
+// True openability is verified by the recipient on download, where the key is held.
 func SealedTargets(blob []byte, recipientPubB64 string) bool {
 	info, err := ParseSealed(blob)
 	if err != nil || recipientPubB64 == "" {

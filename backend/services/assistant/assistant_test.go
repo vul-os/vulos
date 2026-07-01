@@ -53,8 +53,12 @@ func TestSovereignGuard(t *testing.T) {
 	}{
 		{"ollama-localhost", localCfg(), false, EgressOnInstance, false},
 		{"ollama-empty-endpoint", ai.Config{Provider: ai.ProviderOllama}, false, EgressOnInstance, false},
-		{"custom-lan", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, false, EgressOnInstance, false},
-		{"custom-mdns", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://gpu.local:8000"}, false, EgressOnInstance, false},
+		// A LAN box and an mDNS/.local name are DIFFERENT machines → off-box egress,
+		// blocked without an explicit opt-in (F5: no longer silently "on-instance").
+		{"custom-lan-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, false, EgressBlocked, true},
+		{"custom-mdns-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://gpu.local:8000"}, false, EgressBlocked, true},
+		{"custom-internal-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://exfil.internal/v1"}, false, EgressBlocked, true},
+		{"custom-lan-optin", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://192.168.1.50:8000"}, true, EgressExternalConfigured, false},
 		{"claude-blocked", ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, false, EgressBlocked, true},
 		{"openai-blocked", ai.Config{Provider: ai.ProviderOpenAI}, false, EgressBlocked, true},
 		{"custom-public-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://api.example.com"}, false, EgressBlocked, true},

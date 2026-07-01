@@ -56,7 +56,10 @@ func NewOnnxEmbedder(modelsDir string) (*OnnxEmbedder, error) {
 
 // Embed generates an embedding using the local ONNX model.
 func (o *OnnxEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	cmd := exec.CommandContext(ctx, "python3", o.scriptPath, o.modelPath, text)
+	cmd := exec.CommandContext(ctx, "python3", o.scriptPath, o.modelPath)
+	// Pass the (private mail) text on STDIN, never as a process argument — an argv
+	// is world-readable via `ps`/`/proc` to other local users on the box.
+	cmd.Stdin = strings.NewReader(text)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("onnx embed: %w", err)
@@ -166,7 +169,7 @@ def embed(model_path, text):
 
 if __name__ == "__main__":
     model_path = sys.argv[1]
-    text = " ".join(sys.argv[2:])
+    text = sys.stdin.read()
     result = embed(model_path, text)
     print(json.dumps(result))
 `

@@ -113,19 +113,23 @@ func isLocalEndpoint(endpoint string) bool {
 	return isLocalHost(u.Hostname())
 }
 
+// isLocalHost reports whether host is truly THIS instance (loopback). A LAN /
+// private-network host (192.168.x, 10.x, 172.16.x, ULA, link-local) or a
+// *.internal / *.local name is a DIFFERENT machine: sending mail there IS
+// off-box egress and must be an explicit operator opt-in
+// (VULOS_ASSISTANT_ALLOW_EXTERNAL), never silently reported as "on-instance".
+// Only loopback and the reserved localhost names qualify.
 func isLocalHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
 		return false
 	}
-	if host == "localhost" ||
-		strings.HasSuffix(host, ".localhost") ||
-		strings.HasSuffix(host, ".local") ||
-		strings.HasSuffix(host, ".internal") {
+	// RFC 6761: "localhost" and *.localhost resolve to loopback by convention.
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
+		return ip.IsLoopback()
 	}
 	return false
 }
