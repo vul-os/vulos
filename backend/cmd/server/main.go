@@ -43,6 +43,7 @@ import (
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
+	"vulos/backend/services/assistant"
 	"vulos/backend/services/devicekey"
 	"vulos/backend/services/disks"
 	"vulos/backend/services/display"
@@ -925,7 +926,27 @@ func main() {
 	// Sovereign mail assistant (the wedge): private AI over the user's mail,
 	// on-instance by default with no third-party egress. Uses the same aiSvc/aiCfg
 	// seam; enforcement lives in services/assistant.Guard.
-	registerAssistantRoutes(mux, aiSvc, aiCfg)
+	//
+	// Semantic RAG retrieval: embed mail with the ON-INSTANCE ONNX embedder and
+	// index it in the on-box vector store. Stays sovereign — NewMailIndex refuses
+	// any embedder that can't certify on-instance operation, so we never use the
+	// HTTP embeddings.Embedder (which may egress) here. If no local ONNX model is
+	// present the assistant transparently falls back to lexical retrieval.
+	var mailIndex *assistant.MailIndex
+	modelsDir := filepath.Join(home, ".vulos", "models")
+	if embeddings.OnnxAvailable(modelsDir) {
+		if onnx, oerr := embeddings.NewOnnxEmbedder(modelsDir); oerr != nil {
+			log.Printf("[assistant] ONNX embedder init failed: %v — semantic mail index disabled (lexical fallback)", oerr)
+		} else if mi, ierr := assistant.NewMailIndex(filepath.Join(dbDir, "assistant"), onnx); ierr != nil {
+			log.Printf("[assistant] mail index init failed: %v", ierr)
+		} else {
+			mailIndex = mi
+			log.Printf("[assistant] semantic mail index enabled (on-instance ONNX embeddings, on-box vector store)")
+		}
+	} else {
+		log.Printf("[assistant] no local ONNX model in %s — using sovereign lexical retrieval (no external embedding API)", modelsDir)
+	}
+	registerAssistantRoutes(mux, aiSvc, aiCfg, mailIndex)
 
 	// Missions
 	mux.HandleFunc("GET /api/missions", func(w http.ResponseWriter, r *http.Request) {

@@ -41,16 +41,19 @@ type assistantDeps struct {
 	source        assistant.MailSource
 	allowExternal bool
 	brokerHeaders map[string]string
+	index         *assistant.MailIndex // optional on-instance semantic index; nil ⇒ lexical
 }
 
 // registerAssistantRoutes wires the assistant endpoints into mux. svc/cfg are
-// the same ai.Service + ai.DefaultConfig() used elsewhere in main.
-func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config) {
+// the same ai.Service + ai.DefaultConfig() used elsewhere in main. index is the
+// optional on-instance semantic mail index (nil ⇒ lexical retrieval).
+func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config, index *assistant.MailIndex) {
 	deps := assistantDeps{
 		svc:           svc,
 		cfg:           cfg,
 		allowExternal: os.Getenv("VULOS_ASSISTANT_ALLOW_EXTERNAL") == "1",
 		brokerHeaders: assistantBrokerHeaders(),
+		index:         index,
 	}
 	// Mail read path: the local LilMail /v1 API when configured, else an
 	// in-memory fixture inbox so the assistant is demoable/testable offline.
@@ -61,18 +64,23 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config)
 	}
 
 	newAssistant := func() *assistant.Assistant {
-		return assistant.New(deps.svc, deps.cfg, deps.source, deps.allowExternal)
+		return assistant.New(deps.svc, deps.cfg, deps.source, deps.allowExternal).WithIndex(deps.index)
 	}
 	authOf := func(r *http.Request) assistant.Auth {
-		return assistant.Auth{Cookie: r.Header.Get("Cookie"), Broker: deps.brokerHeaders}
+		return assistant.Auth{
+			Cookie: r.Header.Get("Cookie"),
+			Broker: deps.brokerHeaders,
+			UserID: r.Header.Get("X-User-ID"),
+		}
 	}
 
 	// GET /api/assistant/status — no mail content, safe pre-auth-check surface.
 	mux.HandleFunc("GET /api/assistant/status", func(w http.ResponseWriter, r *http.Request) {
 		a := newAssistant()
 		writeJSON(w, map[string]any{
-			"sovereignty": a.Sovereignty(),
-			"mail_source": a.MailName(),
+			"sovereignty":    a.Sovereignty(),
+			"mail_source":    a.MailName(),
+			"semantic_index": a.Indexed(),
 		})
 	})
 
