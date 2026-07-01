@@ -43,6 +43,15 @@ export default function LoginScreen() {
       })
       const data = await res.json()
       if (res.ok) {
+        // WAVE2-RECOVERY: unwrap the per-user master key client-side and hold it
+        // in memory for the session (best-effort; fail-closed unwrap, never
+        // persisted). Legacy accounts without a master key are a no-op.
+        try {
+          const { unlockMasterKeyForSession } = await import('../lib/masterKey.js')
+          await unlockMasterKeyForSession(password)
+        } catch (err) {
+          console.warn('[masterkey] client-side unlock skipped:', err?.message || err)
+        }
         // Do NOT window.location.reload() — under cage + software-GL Chromium
         // a full page reload re-spawns the GPU process and can stall the
         // compositor commit, leaving a uniform-black framebuffer with no

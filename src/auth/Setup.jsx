@@ -5,6 +5,7 @@ import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import PostSignupWizard from './PostSignupWizard'
+import MasterKeyReveal from './MasterKeyReveal'
 import VulosAccountStep from '../../apps/setup-wizard/src/steps/VulosAccountStep'
 import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 
@@ -2910,8 +2911,24 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
 // ═══════════════════════════════════
 function ReadyStep({ config, onFinish, onPrev }) {
   const { t } = useI18n()
+  const { theme } = useTheme()
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  // WAVE2-RECOVERY: the 24-word master-key recovery phrase, returned once by the
+  // register endpoint. When set, we FORCE the phrase-reveal screen before finishing.
+  const [masterPhrase, setMasterPhrase] = useState('')
+
+  // finalize runs the post-account steps (PIN) and completes setup.
+  const finalize = async () => {
+    if (config.pin) {
+      await fetch('/api/auth/pin/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: config.pin }),
+      }).catch(() => {})
+    }
+    await onFinish()
+  }
 
   const handleFinish = async () => {
     setCreating(true)
@@ -2935,6 +2952,14 @@ function ReadyStep({ config, onFinish, onPrev }) {
           setCreating(false)
           return
         }
+        const data = await res.json().catch(() => ({}))
+        // If the server minted a master-key recovery phrase, force the user to save
+        // it before setup can complete (Proton-style). We never persist it here.
+        if (data.master_recovery_phrase) {
+          setMasterPhrase(data.master_recovery_phrase)
+          setCreating(false)
+          return
+        }
       } catch {
         setError(t('setup.ready.error_server'))
         setCreating(false)
@@ -2942,21 +2967,22 @@ function ReadyStep({ config, onFinish, onPrev }) {
       }
     }
 
-    // Set PIN if configured
-    if (config.pin) {
-      await fetch('/api/auth/pin/set', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: config.pin }),
-      }).catch(() => {})
-    }
+    await finalize()
+  }
 
-    await onFinish()
+  // WAVE2-RECOVERY: forced recovery-phrase reveal gate.
+  if (masterPhrase) {
+    return (
+      <MasterKeyReveal
+        phrase={masterPhrase}
+        onConfirm={async () => { setMasterPhrase(''); setCreating(true); await finalize() }}
+        onSkip={async () => { setMasterPhrase(''); setCreating(true); await finalize() }}
+      />
+    )
   }
 
   const selectedTz = TIMEZONES.find(tz => tz.id === config.timezone)
   const selectedLang = LANGUAGES.find(l => l.code === config.locale)
-  const { theme } = useTheme()
   const themeLabels = {
     dark: t('setup.ready.theme_dark'),
     light: t('setup.ready.theme_light'),

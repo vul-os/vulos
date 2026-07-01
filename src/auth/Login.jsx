@@ -197,6 +197,16 @@ function LocalForm({ isSetup, onSuccess }) {
       })
       const data = await res.json()
       if (res.ok) {
+        // WAVE2-RECOVERY: unwrap the per-user master key CLIENT-SIDE from the
+        // password-wrapped envelope and hold it in memory for the session. Best-
+        // effort for login UX (legacy accounts have no master key); the unwrap
+        // itself is fail-closed and never persists the key.
+        try {
+          const { unlockMasterKeyForSession } = await import('../lib/masterKey.js')
+          await unlockMasterKeyForSession(password)
+        } catch (err) {
+          console.warn('[masterkey] client-side unlock skipped:', err?.message || err)
+        }
         await onSuccess()
       } else {
         setError(data.error || 'Login failed')
