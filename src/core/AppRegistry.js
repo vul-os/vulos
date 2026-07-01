@@ -54,6 +54,15 @@ const builtinRegistry = [
     builtin: true,
   },
   {
+    id: 'assistant',
+    name: 'Assistant',
+    icon: '✦',
+    description: 'Private AI over your mail — runs on your own server',
+    keywords: ['assistant', 'ai', 'vula', 'mail', 'inbox', 'summarize', 'draft', 'triage', 'search', 'sovereign', 'private'],
+    category: 'productivity',
+    builtin: true,
+  },
+  {
     id: 'persona',
     name: 'Settings',
     icon: '⚙',

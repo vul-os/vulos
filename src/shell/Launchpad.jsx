@@ -42,6 +42,7 @@ const Authenticator = lazy(() => import('../apps/Authenticator/Authenticator'))
 const Vault = lazy(() => import('../apps/Vault/Vault'))
 const Messages = lazy(() => import('../builtin/peering/Messages'))
 const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
+const Assistant = lazy(() => import('../builtin/assistant/Assistant'))
 // UNIFIED-STORAGE de-dup: the embedded Mail / Office / Calendar builtins were
 // retired in favour of the gateway-proxied suite apps (lilmail, vulos-office,
 // vulos-calendar). Like Spaces/Meet (Vulos Talk / Vulos Meet), they now launch
@@ -143,8 +144,9 @@ export default function Launchpad() {
       vault: () => createElement(Suspense, { fallback: loading }, createElement(Vault)),
       messages: () => createElement(Suspense, { fallback: loading }, createElement(Messages)),
       dashboard: () => createElement(Suspense, { fallback: loading }, createElement(DashboardApp)),
+      assistant: () => createElement(Suspense, { fallback: loading }, createElement(Assistant)),
     }
-    const singletons = new Set(['persona', 'apphub', 'dashboard'])
+    const singletons = new Set(['persona', 'apphub', 'dashboard', 'assistant'])
     if (builtins[app.id]) {
       openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtins[app.id](), singleton: singletons.has(app.id) })
       close()
