@@ -922,6 +922,11 @@ func main() {
 		writeJSON(w, map[string]string{"status": "deleted"})
 	})
 
+	// Sovereign mail assistant (the wedge): private AI over the user's mail,
+	// on-instance by default with no third-party egress. Uses the same aiSvc/aiCfg
+	// seam; enforcement lives in services/assistant.Guard.
+	registerAssistantRoutes(mux, aiSvc, aiCfg)
+
 	// Missions
 	mux.HandleFunc("GET /api/missions", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
