@@ -50,6 +50,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/status", h.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/change-password", h.handleChangePassword)
 
+	// WAVE2-RECOVERY: per-user master key + phrase recovery.
+	mux.HandleFunc("GET /api/auth/masterkey/status", h.handleMasterKeyStatus)
+	mux.HandleFunc("GET /api/auth/masterkey/envelope", h.handleMasterKeyEnvelope)
+	mux.HandleFunc("POST /api/auth/masterkey/recover", h.handleMasterKeyRecover)
+
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
 	mux.HandleFunc("POST /api/auth/logout", h.handleLogout)
 
@@ -108,6 +113,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloudlogin":           true, // CLOGIN-01: unauthenticated cloud login
 	"/api/auth/cloud/status":         true, // CLOGIN-01: enrollment status check (setup-time)
 	"/api/auth/cloud/signup":         true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
+	"/api/auth/masterkey/recover":    true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":           true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":           true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
 	"/api/auth/fingerprint/status":   true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
@@ -349,11 +355,26 @@ func (h *Handler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		sess := h.store.CreateSession(user, "")
 		h.store.Flush()
 		http.SetCookie(w, sessionCookie(r, sess.Token))
-		writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
+
+		// WAVE2-RECOVERY: provision the per-user MASTER KEY and force the recovery
+		// phrase. The phrase is returned ONCE for display; it is never persisted or
+		// logged. Fail-closed: if provisioning fails we surface it so the account is
+		// not left in a keyless state (the UI can retry / warn).
+		resp := map[string]any{"user": user.Safe(), "session": sess}
+		phrase, mkErr := h.store.ProvisionMasterKey(user.ID, req.Password)
+		if mkErr != nil {
+			log.Printf("[auth] CRITICAL: master-key provisioning failed for %q: %v", req.Username, mkErr)
+			resp["master_key_error"] = "master key provisioning failed"
+		} else {
+			resp["master_recovery_phrase"] = phrase
+		}
+		writeJSON(w, resp)
 		return
 	}
 
-	// Admin creating a user — just return the new user info
+	// Admin creating a user — just return the new user info. The master key for an
+	// admin-created account is provisioned on that user's FIRST login (the admin
+	// must never see the new user's recovery phrase), which is a follow-up path.
 	writeJSON(w, map[string]any{"user": user.Safe()})
 }
 
@@ -494,8 +515,78 @@ func (h *Handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	// WAVE2-RECOVERY: keep the master-key password wrap in sync with the login
+	// credential. The bcrypt password already changed above; if the master-key
+	// rewrap fails we log CRITICAL but do not fail the request — the phrase wrap is
+	// unaffected, so recovery via phrase still restores access.
+	if err := h.store.RewrapMasterKeyOnPasswordChange(userID, req.OldPassword, req.NewPassword); err != nil {
+		log.Printf("[auth] CRITICAL: master-key rewrap on password change failed for %s: %v", userID, err)
+	}
 	h.store.Flush()
 	writeJSON(w, map[string]string{"status": "password changed"})
+}
+
+// ─── WAVE2-RECOVERY: master-key endpoints ─────────────────────────────────────
+
+// handleMasterKeyStatus reports whether the authenticated user has a master key.
+func (h *Handler) handleMasterKeyStatus(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "unauthorized")
+		return
+	}
+	writeJSON(w, map[string]any{"provisioned": h.store.HasMasterKey(userID)})
+}
+
+// handleMasterKeyEnvelope returns the password-wrapped envelope for the
+// authenticated user so the browser can unwrap the master key CLIENT-SIDE. The
+// phrase wrap is never returned here. The server holds only wrapped bytes.
+func (h *Handler) handleMasterKeyEnvelope(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "unauthorized")
+		return
+	}
+	env, err := h.store.PasswordEnvelope(userID)
+	if err != nil {
+		writeErr(w, 404, "no master key")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(env) //nolint:errcheck
+}
+
+// handleMasterKeyRecover is the public "forgot password" endpoint: it resets the
+// login password AND re-wraps the master key using the 24-word recovery phrase.
+// Possession of the phrase is the authorization; a wrong phrase fails closed.
+func (h *Handler) handleMasterKeyRecover(w http.ResponseWriter, r *http.Request) {
+	ip := extractIP(r)
+	if h.limiter.IsBanned(ip) {
+		writeErr(w, 429, "too many attempts")
+		return
+	}
+	var req struct {
+		Username    string `json:"username"`
+		Mnemonic    string `json:"mnemonic"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request")
+		return
+	}
+	if req.Username == "" || req.Mnemonic == "" || req.NewPassword == "" {
+		writeErr(w, 422, "username, mnemonic and new_password are required")
+		return
+	}
+	if err := h.store.RecoverAccountWithPhrase(req.Username, req.Mnemonic, req.NewPassword); err != nil {
+		h.limiter.RecordFailure(ip)
+		// Uniform failure — never reveal whether it was the username or the phrase.
+		writeErr(w, 400, "recovery failed: check your recovery phrase and try again")
+		return
+	}
+	h.limiter.RecordSuccess(ip)
+	h.store.Flush()
+	writeJSON(w, map[string]string{"status": "account recovered; sign in with your new password"})
 }
 
 func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {

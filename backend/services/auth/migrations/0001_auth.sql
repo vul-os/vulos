@@ -30,3 +30,11 @@ CREATE TABLE IF NOT EXISTS recovery_blobs (
     user_id TEXT PRIMARY KEY,
     blob    BLOB NOT NULL
 );
+
+-- WAVE2-RECOVERY: per-user MASTER KEY envelope (one per user). Opaque, doubly
+-- wrapped (password + recovery-phrase); the server never stores the plaintext
+-- master key or phrase. See internal/auth/masterkey.go.
+CREATE TABLE IF NOT EXISTS master_key_blobs (
+    user_id TEXT PRIMARY KEY,
+    blob    BLOB NOT NULL
+);

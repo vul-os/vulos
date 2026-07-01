@@ -276,6 +276,27 @@ func RewrapPassword(e *MasterKeyEnvelope, mnemonic, newPassword string) (*Master
 	return &MasterKeyEnvelope{Version: masterKeyEnvelopeVersion, Password: pw, Phrase: e.Phrase}, nil
 }
 
+// RewrapPasswordWithPassword re-wraps the master key under a new password given
+// the OLD password. Used by the ordinary change-password flow so the password
+// wrap stays in sync with the login credential. The master key and phrase wrap
+// are unchanged, so content stays decryptable. Fails closed on a wrong old
+// password.
+func RewrapPasswordWithPassword(e *MasterKeyEnvelope, oldPassword, newPassword string) (*MasterKeyEnvelope, error) {
+	if newPassword == "" {
+		return nil, errors.New("auth/masterkey: new password must not be empty")
+	}
+	mk, err := UnwrapWithPassword(e, oldPassword)
+	if err != nil {
+		return nil, err
+	}
+	defer zero(mk)
+	pw, err := sealUnderPassword(mk, newPassword)
+	if err != nil {
+		return nil, err
+	}
+	return &MasterKeyEnvelope{Version: masterKeyEnvelopeVersion, Password: pw, Phrase: e.Phrase}, nil
+}
+
 // ─── Content-key derivation (wave 3 entry point) ──────────────────────────────
 
 // DeriveContentKey derives a 256-bit per-content key from the master key using

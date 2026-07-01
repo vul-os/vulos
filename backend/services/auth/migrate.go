@@ -18,5 +18,5 @@ func Migrate(dbPath string) error {
 // MigrationTables returns the names of the tables created by the auth
 // migrations, for use by the migrate status subcommand.
 func MigrationTables() []string {
-	return []string{"meta", "users", "sessions", "profiles", "recovery_blobs"}
+	return []string{"meta", "users", "sessions", "profiles", "recovery_blobs", "master_key_blobs"}
 }
