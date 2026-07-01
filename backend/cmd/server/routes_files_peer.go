@@ -172,6 +172,46 @@ func registerFilesPeerRoutes(mux *http.ServeMux, svc *files.Service) {
 		writeJSON(w, n)
 	}))
 
+	// POST /api/files/peer/issue-sealed — WAVE-3 CONTENT-BLIND remote share.
+	//
+	// The sharer's CLIENT seals the file (src/lib/contentSeal.js) to the recipient's
+	// PUBLISHED content key and posts it here as multipart/form-data:
+	//   fields: node_id, email, access(=viewer|editor), ttl_seconds
+	//   file:   sealed   (the VSEAL1 envelope bytes)
+	// The server resolves the recipient, verifies the seal is addressed to their
+	// published key, mints a SEALED capability, and delivers it to the recipient's
+	// server intake. FAIL CLOSED: a recipient with no published content key is
+	// refused (ErrRecipientNoContentKey) — never a plaintext fallback.
+	mux.HandleFunc("POST /api/files/peer/issue-sealed", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		// Cap the sealed upload generously (whole-file / sealed folder tar).
+		r.Body = http.MaxBytesReader(w, r.Body, 256<<20)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeErr(w, 400, "invalid multipart form")
+			return
+		}
+		nodeID := r.FormValue("node_id")
+		email := r.FormValue("email")
+		access := files.Role(r.FormValue("access"))
+		var ttl time.Duration
+		if v := r.FormValue("ttl_seconds"); v != "" {
+			if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+				ttl = time.Duration(secs) * time.Second
+			}
+		}
+		f, _, err := r.FormFile("sealed")
+		if err != nil {
+			writeErr(w, 400, "missing 'sealed' file part")
+			return
+		}
+		defer f.Close()
+		res, err := svc.ShareSealedByEmail(r.Context(), uid, nodeID, email, access, requestBaseURL(r), ttl, f)
+		if err != nil {
+			writeFilesErr(w, err)
+			return
+		}
+		writeJSON(w, res)
+	}))
+
 	// POST /api/files/peer/receive — B→A bridge intake for OFF-BOX redemption.
 	//
 	// The Vulos cell redeems a peershare capability on an account's behalf (it

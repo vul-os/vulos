@@ -135,7 +135,14 @@ type Capability struct {
 	Recipient   string    `json:"recipient,omitempty"`
 	IssuedAt    time.Time `json:"issued_at"`
 	ExpiresAt   time.Time `json:"expires_at"`
-	Signature   string    `json:"signature,omitempty"`
+	// Sealed marks a WAVE-3 CONTENT-BLIND capability: the served bytes are a VSEAL1
+	// sealed envelope (see contentseal.go) staged as an opaque artifact at issue
+	// time, NOT the live plaintext node content. Used when sharing to an
+	// account-only (cloud) recipient so the relaying cell only ever sees ciphertext.
+	// Part of the signed canonical bytes (older unsealed caps omit it).
+	Sealed bool `json:"sealed,omitempty"`
+	// Signature is excluded from the signed canonical bytes (see signingBytes).
+	Signature string `json:"signature,omitempty"`
 }
 
 // PeerShare is the owner-side record of an issued capability (for revoke/audit).
@@ -349,6 +356,8 @@ func (s *Service) RevokePeerShare(actorID, capID string) error {
 	if err := s.revokePeerShare(capID); err != nil {
 		return err
 	}
+	// Best-effort: drop any staged sealed artifact for this capability.
+	s.removeSealedArtifact(capID)
 	s.audit(actorID, "peer.revoke", ps.NodeID, capID)
 	return nil
 }
@@ -416,6 +425,15 @@ func (s *Service) ServeCapability(ctx context.Context, req PeerFetchRequest) (io
 		return nil, 0, nil, ErrCapability
 	}
 	s.audit(req.RequesterID, "peer.serve", n.ID, c.ID)
+	// WAVE-3 sealed capability: serve the pre-sealed ciphertext artifact (staged at
+	// issue time), never the live plaintext node. The recipient decrypts client-side.
+	if c.Sealed {
+		rc, size, err := s.openSealedArtifact(c.ID)
+		if err != nil {
+			return nil, 0, nil, ErrCapability
+		}
+		return rc, size, c, nil
+	}
 	if n.IsDir {
 		rc := s.streamFolderTar(ctx, n)
 		return rc, -1, c, nil

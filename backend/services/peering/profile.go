@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"container/heap"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -43,6 +44,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -95,6 +97,14 @@ type ProfileData struct {
 	Slug          string                 `json:"slug"`
 	Visibility    ProfileFieldVisibility `json:"visibility"`
 	UpdatedAt     time.Time              `json:"updated_at"`
+	// ContentPubKey is the user's PUBLISHED X25519 content-encryption public key
+	// (base64 std, 32 raw bytes), derived client-side from the master key
+	// (src/lib/contentSeal.js deriveContentKeyPair). It is PUBLIC key material only
+	// — the private half never leaves the client. Sharers wrap file content to this
+	// key so a content-blind (cloud-relayed) share can only be opened by this user.
+	// Empty means the user has not published one yet (older client / pre-wave-3):
+	// content-blind shares to them must fail closed, never fall back to plaintext.
+	ContentPubKey string `json:"content_pub_key,omitempty"`
 }
 
 // ─── Narrow interface ─────────────────────────────────────────────────────────
@@ -667,6 +677,7 @@ type profileGetResp struct {
 	HasAvatar     bool                   `json:"has_avatar"`
 	Visibility    ProfileFieldVisibility `json:"visibility"`
 	UpdatedAt     time.Time              `json:"updated_at"`
+	ContentPubKey string                 `json:"content_pub_key,omitempty"`
 }
 
 func (svc *profileSvc) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -682,16 +693,18 @@ func (svc *profileSvc) handleGet(w http.ResponseWriter, r *http.Request) {
 		HasAvatar:     hasAvatar,
 		Visibility:    d.Visibility,
 		UpdatedAt:     d.UpdatedAt,
+		ContentPubKey: d.ContentPubKey,
 	})
 }
 
 // ─── PUT /api/peering/profile ─────────────────────────────────────────────────
 
 type profilePutReq struct {
-	DisplayName *string                 `json:"display_name"`
-	Bio         *string                 `json:"bio"`
-	Slug        *string                 `json:"slug"`
-	Visibility  *ProfileFieldVisibility `json:"visibility"`
+	DisplayName   *string                 `json:"display_name"`
+	Bio           *string                 `json:"bio"`
+	Slug          *string                 `json:"slug"`
+	Visibility    *ProfileFieldVisibility `json:"visibility"`
+	ContentPubKey *string                 `json:"content_pub_key"`
 }
 
 func (svc *profileSvc) handlePut(w http.ResponseWriter, r *http.Request) {
@@ -709,6 +722,16 @@ func (svc *profileSvc) handlePut(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Slug != nil {
 			d.Slug = *req.Slug
+		}
+		if req.ContentPubKey != nil {
+			// Accept only a valid 32-byte X25519 public key (base64 std) or "" to
+			// clear it. Reject anything else so a malformed key never gets published
+			// and silently break content-blind sharing.
+			if v := strings.TrimSpace(*req.ContentPubKey); v == "" {
+				d.ContentPubKey = ""
+			} else if raw, err := base64.StdEncoding.DecodeString(v); err == nil && len(raw) == 32 {
+				d.ContentPubKey = v
+			}
 		}
 		if req.Visibility != nil {
 			v := *req.Visibility

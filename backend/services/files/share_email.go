@@ -36,6 +36,11 @@ var (
 	// ErrRecipientNotFound is returned when the email resolves to neither a
 	// co-cloud principal nor a directory entry. Callers map it to 404.
 	ErrRecipientNotFound = errors.New("files: share recipient not found")
+	// ErrRecipientNoContentKey is returned by ShareSealedByEmail when a REMOTE
+	// recipient has published no X25519 content key, so a content-blind share to
+	// them cannot be made. FAIL CLOSED: the share is refused rather than sent as
+	// plaintext through the relaying cell. Callers surface it to the sharer.
+	ErrRecipientNoContentKey = errors.New("files: recipient has not published a content key; cannot share content-blind")
 )
 
 // ShareRecipient is the resolved target of a share-by-email. Exactly one form is
@@ -50,6 +55,12 @@ type ShareRecipient struct {
 	VulaID      string // remote cloud-home/box VulaID; "" when co-cloud
 	Server      string // remote server address (for capability delivery)
 	DisplayName string
+	// ContentPubKey is the recipient's PUBLISHED X25519 content-encryption public
+	// key (base64 std). For a REMOTE share the sharer's CLIENT wraps the file
+	// content to this key so the relaying cell stays content-blind. Empty means the
+	// recipient has published no content key: a content-blind share to them cannot
+	// be made and must fail closed (see ErrRecipientNoContentKey).
+	ContentPubKey string
 }
 
 // IsLocal reports whether the recipient is co-cloud (ACL grant path).

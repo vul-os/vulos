@@ -52,9 +52,10 @@ func (r *osShareResolver) ResolveRecipient(ctx context.Context, email string) (f
 		}
 		if res != nil && res.VulaID != "" {
 			return files.ShareRecipient{
-				VulaID:      res.VulaID,
-				Server:      res.Server,
-				DisplayName: res.DisplayName,
+				VulaID:        res.VulaID,
+				Server:        res.Server,
+				DisplayName:   res.DisplayName,
+				ContentPubKey: res.ContentPubKey,
 			}, nil
 		}
 	}

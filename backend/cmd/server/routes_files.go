@@ -416,6 +416,8 @@ func writeFilesErr(w http.ResponseWriter, err error) {
 		writeErr(w, 503, "share resolver not available")
 	case errors.Is(err, files.ErrRecipientNotFound):
 		writeErr(w, 404, "share recipient not found")
+	case errors.Is(err, files.ErrRecipientNoContentKey):
+		writeErr(w, 409, "recipient has not published a content key; cannot share content-blind")
 	case errors.Is(err, files.ErrInvalid):
 		writeErr(w, 400, err.Error())
 	default:

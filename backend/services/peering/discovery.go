@@ -35,6 +35,14 @@ type DiscoveryResult struct {
 	// DisplayName is the user-chosen name registered with the directory.
 	// May be empty if the user has not set one.
 	DisplayName string `json:"display_name,omitempty"`
+	// ContentPubKey is the peer's PUBLISHED X25519 content-encryption public key
+	// (base64 std, 32 raw bytes) — see peering.ProfileData.ContentPubKey. A sharer
+	// wraps file content to this key so a content-blind (cloud-relayed) share can
+	// only be opened by the recipient. Empty means the peer has not published one;
+	// a content-blind share to them must fail closed (never plaintext through the
+	// relay). Part of the WAVE-3 wire contract shared with vulos-cloud's
+	// cloudhome.DiscoveryResult.
+	ContentPubKey string `json:"content_pub_key,omitempty"`
 }
 
 // DiscoveryService proxies lookup requests to the vulos.org verify/directory

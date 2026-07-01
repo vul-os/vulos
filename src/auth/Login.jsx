@@ -202,8 +202,17 @@ function LocalForm({ isSetup, onSuccess }) {
         // effort for login UX (legacy accounts have no master key); the unwrap
         // itself is fail-closed and never persists the key.
         try {
-          const { unlockMasterKeyForSession } = await import('../lib/masterKey.js')
+          const { unlockMasterKeyForSession, getMasterKey } = await import('../lib/masterKey.js')
           await unlockMasterKeyForSession(password)
+          // WAVE-3: publish the PUBLIC X25519 content key so peers can wrap file
+          // content to it for content-blind sharing. Idempotent; best-effort.
+          const mk = getMasterKey()
+          if (mk) {
+            const { publishContentPublicKey } = await import('../lib/contentSeal.js')
+            await publishContentPublicKey(mk).catch((e) =>
+              console.warn('[contentseal] publish content key skipped:', e?.message || e),
+            )
+          }
         } catch (err) {
           console.warn('[masterkey] client-side unlock skipped:', err?.message || err)
         }

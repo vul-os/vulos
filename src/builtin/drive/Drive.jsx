@@ -149,43 +149,93 @@ async function uploadOne(parentId, file) {
   return node
 }
 
-// downloadOne: download-grant → fetch bytes (direct presigned, else OS data
-// plane) → trigger a browser save.
-async function downloadOne(node) {
+// downloadNodeBytes fetches a node's raw content bytes (presigned or OS data plane).
+async function downloadNodeBytes(node) {
   const { grant } = await filesApi.downloadGrant(node.id)
-  let blob
+  let res
   if (grant && grant.type === 'presigned' && grant.url) {
-    const res = await fetch(grant.url)
-    if (!res.ok) throw new Error(`download failed (${res.status})`)
-    blob = await res.blob()
+    res = await fetch(grant.url)
   } else {
-    const res = await rawFetch(`/files/content?node=${encodeURIComponent(node.id)}`)
-    if (!res.ok) throw new Error(`download failed (${res.status})`)
-    blob = await res.blob()
+    res = await rawFetch(`/files/content?node=${encodeURIComponent(node.id)}`)
   }
-  const url = URL.createObjectURL(blob)
+  if (!res.ok) throw new Error(`download failed (${res.status})`)
+  return new Uint8Array(await res.arrayBuffer())
+}
+
+// maybeDecrypt transparently decrypts WAVE-3 content-blind (VSEAL1) bytes with the
+// in-memory master key. Received content-blind shares are stored as ciphertext; the
+// recipient's browser opens them here on download. Non-sealed bytes pass through.
+async function maybeDecrypt(bytes) {
+  const { isSealed, open } = await import('../../lib/contentSeal.js')
+  if (!isSealed(bytes)) return bytes
+  const { getMasterKey } = await import('../../lib/masterKey.js')
+  const mk = getMasterKey()
+  if (!mk) throw new Error('This file is encrypted; unlock your account to open it.')
+  return open(bytes, mk)
+}
+
+function saveBlob(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes]))
   const a = document.createElement('a')
   a.href = url
-  a.download = node.name
+  a.download = name
   document.body.appendChild(a)
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// downloadReceived: fetch a redeemed item's staged bytes and trigger a save.
+// downloadOne: fetch bytes → (content-blind) decrypt if sealed → save.
+async function downloadOne(node) {
+  const bytes = await maybeDecrypt(await downloadNodeBytes(node))
+  saveBlob(bytes, node.name)
+}
+
+// shareFileContentBlind performs a CONTENT-BLIND remote share: it resolves the
+// recipient's PUBLISHED X25519 content key from the directory, seals the file bytes
+// to it (and to the sharer's own key) client-side, and hands the CIPHERTEXT to
+// /files/peer/issue-sealed. The relaying cell only ever sees the sealed envelope.
+// FAIL CLOSED: a directory-resolvable recipient with NO published content key is
+// refused (never a plaintext fallback through the cell). Returns { ok, blind, note }.
+async function shareFileContentBlind(node, email, access, ttlSeconds) {
+  let disc
+  try {
+    disc = await request(`/peering/discover?email=${encodeURIComponent(email)}`)
+  } catch {
+    return { ok: false, blind: false } // not directory-resolvable → caller falls back
+  }
+  const rec = disc && disc.found ? disc.result : null
+  if (!rec) return { ok: false, blind: false } // co-cloud/local or unknown → caller falls back
+  if (!rec.content_pub_key) {
+    // Remote recipient that has published NO content key: cannot share content-blind.
+    throw new Error(`${email} has not published an encryption key yet — cannot share securely.`)
+  }
+  const { getMasterKey } = await import('../../lib/masterKey.js')
+  const mk = getMasterKey()
+  if (!mk) throw new Error('Unlock your account to share encrypted files.')
+  const { deriveContentPubKeyB64, seal } = await import('../../lib/contentSeal.js')
+  const myPub = await deriveContentPubKeyB64(mk)
+  const bytes = await downloadNodeBytes(node)
+  const sealed = await seal(bytes, [rec.content_pub_key, myPub])
+  const fd = new FormData()
+  fd.append('node_id', node.id)
+  fd.append('email', email)
+  fd.append('access', access)
+  if (ttlSeconds) fd.append('ttl_seconds', String(ttlSeconds))
+  fd.append('sealed', new Blob([sealed], { type: 'application/octet-stream' }), 'sealed.vseal')
+  const res = await rawFetch('/files/peer/issue-sealed', { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(`Secure share failed (${res.status})`)
+  const out = await res.json()
+  return { ok: true, blind: true, result: out }
+}
+
+// downloadReceived: fetch a redeemed item's staged bytes, (content-blind) decrypt
+// if sealed, and trigger a save.
 async function downloadReceived(item) {
   const res = await rawFetch(`/files/peer/received/get?id=${encodeURIComponent(item.id)}`)
   if (!res.ok) throw new Error(`download failed (${res.status})`)
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = item.is_dir ? `${item.name}.tar` : item.name
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  const bytes = await maybeDecrypt(new Uint8Array(await res.arrayBuffer()))
+  saveBlob(bytes, item.is_dir ? `${item.name}.tar` : item.name)
 }
 
 // ── formatting helpers ───────────────────────────────────────────────────────
@@ -427,6 +477,23 @@ function ShareModal({ node, onClose }) {
     if (!addr) return
     setBusy(true); setNote(null)
     try {
+      // WAVE-3: prefer a CONTENT-BLIND share for directory-resolvable (remote)
+      // recipients — the file is sealed to the recipient's published key so the
+      // relaying cell only sees ciphertext. Only files (not folders) are sealed in
+      // v1; folders and co-cloud/local recipients use the ordinary share path.
+      if (!node.is_dir) {
+        const blind = await shareFileContentBlind(node, addr, role, 0)
+        if (blind.blind) {
+          setEmail('')
+          const r = blind.result || {}
+          setNote(r.delivered
+            ? `Sent to ${addr}, end-to-end encrypted (delivered to ${r.server || 'their server'}).`
+            : `Encrypted for ${addr}. Could not auto-deliver — copy the link: ${r.link || ''}`)
+          setErr(null)
+          await reload()
+          return
+        }
+      }
       const r = await filesApi.shareByEmail(node.id, addr, role, 0)
       setEmail('')
       // Surface the routing outcome: co-cloud grants show in the list below;

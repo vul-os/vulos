@@ -47,8 +47,18 @@ export default function LoginScreen() {
         // in memory for the session (best-effort; fail-closed unwrap, never
         // persisted). Legacy accounts without a master key are a no-op.
         try {
-          const { unlockMasterKeyForSession } = await import('../lib/masterKey.js')
+          const { unlockMasterKeyForSession, getMasterKey } = await import('../lib/masterKey.js')
           await unlockMasterKeyForSession(password)
+          // WAVE-3 content-blind sharing: publish this user's PUBLIC X25519 content
+          // key to their profile so peers can wrap file content to it. Idempotent
+          // (same master key -> same key); best-effort, never blocks login.
+          const mk = getMasterKey()
+          if (mk) {
+            const { publishContentPublicKey } = await import('../lib/contentSeal.js')
+            await publishContentPublicKey(mk).catch((e) =>
+              console.warn('[contentseal] publish content key skipped:', e?.message || e),
+            )
+          }
         } catch (err) {
           console.warn('[masterkey] client-side unlock skipped:', err?.message || err)
         }
