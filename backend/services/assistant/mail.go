@@ -61,6 +61,11 @@ type Draft struct {
 type Auth struct {
 	Cookie string
 	Broker map[string]string
+	// UserID identifies the mailbox owner for this request. It is used ONLY to
+	// scope the on-instance vector index per user (isolation) — never sent to
+	// the mail service or the model. Empty is treated as a single "default"
+	// scope (fixture/offline mode).
+	UserID string
 }
 
 // MailSource is the read/write seam over the user's mailbox. The default

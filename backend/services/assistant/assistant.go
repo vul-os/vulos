@@ -37,6 +37,7 @@ type Assistant struct {
 	cfg           ai.Config
 	mail          MailSource
 	allowExternal bool
+	index         *MailIndex // optional on-instance semantic index; nil ⇒ lexical retrieval
 }
 
 // New builds an assistant. model is the ai seam, cfg the model config
@@ -45,6 +46,19 @@ type Assistant struct {
 func New(model Completer, cfg ai.Config, mail MailSource, allowExternal bool) *Assistant {
 	return &Assistant{model: model, cfg: cfg, mail: mail, allowExternal: allowExternal}
 }
+
+// WithIndex attaches an on-instance semantic mail index for RAG retrieval.
+// When set, retrieval is semantic (embedding similarity) + lexical hybrid; when
+// nil the assistant uses the pure-lexical baseline. Returns a the same
+// assistant for chaining. The index MUST use an on-instance embedder (enforced
+// by NewMailIndex) so the sovereign guarantee holds for the embedding path too.
+func (a *Assistant) WithIndex(idx *MailIndex) *Assistant {
+	a.index = idx
+	return a
+}
+
+// Indexed reports whether a semantic index is attached (for status/telemetry).
+func (a *Assistant) Indexed() bool { return a.index != nil }
 
 // Sovereignty reports the current no-egress state (for the status endpoint/UI).
 func (a *Assistant) Sovereignty() Sovereignty {
@@ -79,15 +93,14 @@ func (a *Assistant) complete(ctx context.Context, system, user string) (string, 
 
 // ---- Retrieval (RAG) -------------------------------------------------------
 //
-// v1 retrieval is deliberately simple and correct: recent inbox messages plus
-// server-side keyword-search hits for the query, deduped and capped. It is a
-// lexical baseline — good enough to be useful and honest about what it does.
-//
-// WHERE A REAL EMBEDDING INDEX GOES: replace retrieve() with a call into an
-// on-box vector index (backend/internal/vecdb + services/embeddings already
-// exist; vulos-mail emits body/attachment text at ingest per internal/search's
-// design note). Embed the query, ANN-search the per-account index, and merge
-// with the recency signal below. The interface and callers do not change.
+// Retrieval is now a real, on-instance semantic index (see index.go): mail is
+// embedded with the local ONNX embedder and stored in the on-box vector store
+// (internal/vecdb), and queries are answered by embedding-similarity ANN search
+// merged with an on-box exact-term pass (hybrid). When no index is attached, or
+// it is empty/errors, retrieve() falls back to the v1 lexical baseline below
+// (recent inbox + server-side keyword hits) so behaviour never regresses. The
+// embedding path stays sovereign: NewMailIndex refuses any embedder that cannot
+// certify on-instance operation, so mail content never leaves the box.
 
 const (
 	maxContextMessages = 12
@@ -95,10 +108,25 @@ const (
 	maxContextChars    = 14000
 )
 
-// retrieve gathers the most relevant messages for a query: recent inbox first,
-// then keyword-search hits, deduped by UID and capped. When query is empty it
+// retrieve gathers the most relevant messages for a query. When a semantic
+// index is attached it embeds the query and returns the top-k messages by
+// meaning (hybrid: embedding similarity + on-box exact-term matches); it falls
+// back to the lexical baseline (recent + keyword hits) when the index is absent,
+// empty, or errors — so retrieval is never worse than v1. When query is empty it
 // returns pure recency (e.g. for "summarize my inbox").
 func (a *Assistant) retrieve(ctx context.Context, auth Auth, query string, limit int) ([]Message, error) {
+	if a.index != nil && strings.TrimSpace(query) != "" {
+		if msgs, err := a.index.Retrieve(ctx, auth, a.mail, query, limit); err == nil && len(msgs) > 0 {
+			return msgs, nil
+		}
+		// else: fall through to the lexical baseline below
+	}
+	return a.retrieveLexical(ctx, auth, query, limit)
+}
+
+// retrieveLexical is the v1 lexical baseline: recent inbox first, then keyword
+// hits, deduped by UID and capped. It is the fallback for the semantic path.
+func (a *Assistant) retrieveLexical(ctx context.Context, auth Auth, query string, limit int) ([]Message, error) {
 	recent, err := a.mail.Recent(ctx, auth, defaultFolder, limit)
 	if err != nil {
 		return nil, err
@@ -172,6 +200,15 @@ func formatContext(msgs []Message, bodies bool) string {
 	return b.String()
 }
 
+// ensureIndex opportunistically refreshes the semantic index (throttled,
+// idempotent, best-effort) so recency-oriented skills keep the vector store warm
+// for later semantic queries. No-op when no index is attached.
+func (a *Assistant) ensureIndex(ctx context.Context, auth Auth) {
+	if a.index != nil {
+		_ = a.index.Index(ctx, auth, a.mail)
+	}
+}
+
 // ---- Skills ----------------------------------------------------------------
 
 // SummarizeInbox produces a short digest of recent inbox activity.
@@ -180,6 +217,7 @@ func (a *Assistant) SummarizeInbox(ctx context.Context, auth Auth) (string, erro
 	if err != nil {
 		return "", err
 	}
+	a.ensureIndex(ctx, auth) // keep the vector store warm for later semantic queries
 	user := "Summarize my inbox. Group related messages, highlight anything time-sensitive, and keep it to a few tight bullets.\n\nINBOX:\n" +
 		formatContext(msgs, false)
 	return a.complete(ctx, systemPreamble, user)
@@ -243,6 +281,23 @@ func (a *Assistant) Attention(ctx context.Context, auth Auth) (string, error) {
 	msgs, err := a.mail.Recent(ctx, auth, defaultFolder, 30)
 	if err != nil {
 		return "", err
+	}
+	// Semantic augmentation: pull messages that *read like* they need action
+	// (deadlines, approvals, payments, direct requests) even if they've aged out
+	// of the recency window, and fold them into the triage set. Best-effort.
+	if a.index != nil {
+		if hits, herr := a.index.Retrieve(ctx, auth, a.mail, "urgent action required deadline approval payment reply needed question for me", 8); herr == nil && len(hits) > 0 {
+			seen := make(map[string]bool, len(msgs))
+			for _, m := range msgs {
+				seen[m.UID] = true
+			}
+			for _, h := range hits {
+				if !seen[h.UID] {
+					seen[h.UID] = true
+					msgs = append(msgs, h)
+				}
+			}
+		}
 	}
 	// Surface unread first so the model's recency window favors what's new.
 	sort.SliceStable(msgs, func(i, j int) bool {
