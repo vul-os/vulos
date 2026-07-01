@@ -2138,11 +2138,16 @@ func main() {
 			// defeating per-sender forward secrecy); they are handed out single-use
 			// via the CLAIM endpoint below.
 			peering.SetPreKeyPublisher(pkStore.PublicBundleSignedOnly)
+			// Public-only directory for REMOTE (browser) peers: they generate their
+			// X3DH prekeys client-side and PUBLISH the PUBLIC halves here so senders can
+			// claim their one-time prekeys. CLOUD-BLIND — this stores no private key.
+			publishedBundles := peering.NewPublishedBundleStore(0, 0)
 			// Contract A: the OPK CLAIM endpoint hands out + deletes a single one-time
-			// prekey per claim (per-sender forward secrecy). Mounted on peeringMux with
-			// the same public auth model as the well-known bundle. A background loop
-			// replenishes the pool so claims keep depleting fresh OPKs.
-			peering.RegisterPreKeyHandlers(peeringMux, pkStore)
+			// prekey per claim (per-sender forward secrecy), and PUBLISH lets browser
+			// peers register their public bundles. Mounted on peeringMux with the same
+			// public auth model as the well-known bundle. A background loop replenishes
+			// this host's own pool so claims keep depleting fresh OPKs.
+			peering.RegisterPreKeyHandlers(peeringMux, pkStore, publishedBundles)
 			peering.StartPreKeyReplenish(ctx, pkStore, 64, time.Hour)
 		}
 

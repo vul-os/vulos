@@ -59,6 +59,23 @@
 // (ConversationKey, no FS); v2 == this X3DH scheme. NegotiateContentVersion picks
 // v2 when a recipient bundle is available and v1 otherwise, so a v2 sender can
 // still reach a v1-only peer (with a clear loss-of-FS signal to the caller).
+//
+// # Where the wire protocol actually runs (HONESTY note)
+//
+// The content forward-secrecy WIRE PROTOCOL — per-message envelope construction,
+// one-time-prekey selection, and the browser↔browser handshake — is implemented by
+// the CLIENT (vulos-relay/fabric.js + prekeys.js), which holds ALL private keys.
+// This Go package provides two things only: (1) the REFERENCE X3DH derivation
+// (X3DHInitiate/X3DHRespond/X3DHDeriveSharedKey + the byte-exact cross-language
+// KDF) that a JS initiator must reproduce, and (2) the PUBLIC prekey DIRECTORY
+// (publish + claim, prekeys_claim.go + prekeys_published.go). It is NOT a normative
+// on-wire endpoint the client talks to for every message.
+//
+// The host and the cloud are CONTENT-BLIND: they store ONLY public prekeys
+// (signed-prekey public + one-time-prekey publics) and opaque ciphertext, and NEVER
+// a content-decryption key. A browser peer's private prekeys never leave the
+// browser; the published directory holds public bytes exclusively (see
+// prekeys_published.go, which cannot even represent a private scalar).
 package peering
 
 import (

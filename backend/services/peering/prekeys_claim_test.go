@@ -72,7 +72,7 @@ func TestClaimHandler_HTTP(t *testing.T) {
 		t.Fatalf("NewPreKeyStore: %v", err)
 	}
 	mux := http.NewServeMux()
-	RegisterPreKeyHandlers(mux, store)
+	RegisterPreKeyHandlers(mux, store, NewPublishedBundleStore(0, 0))
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
