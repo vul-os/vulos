@@ -176,6 +176,18 @@ const BUILTIN_COMMANDS = [
     icon: '◐',
     run: (ctx) => ctx.toggleTheme(),
   },
+  {
+    id: 'keyboard-shortcuts',
+    title: 'Keyboard shortcuts',
+    subtitle: 'Show the shortcut cheat-sheet (?)',
+    keywords: ['keyboard', 'shortcuts', 'keys', 'hotkeys', 'cheatsheet', 'help', 'bindings'],
+    icon: '⌨',
+    run: (ctx) => {
+      // The ShortcutsLegend overlay listens for this event.
+      try { window.dispatchEvent(new CustomEvent('vulos:open-shortcuts')) } catch { /* noop */ }
+      ctx.close?.()
+    },
+  },
 ]
 
 // Register the built-ins immediately so they exist before the palette mounts.

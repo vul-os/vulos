@@ -11,7 +11,20 @@ import { useFocusTrap } from './useFocusTrap'
 // of the OS so it tracks the active theme automatically.
 const GROUPS = [
   {
-    title: 'Desktops',
+    title: 'Windows',
+    items: [
+      { keys: ['Super', '←/→'], label: 'Snap window to left / right half' },
+      { keys: ['Super', '↑'], label: 'Maximize the window' },
+      { keys: ['Super', '↓'], label: 'Restore / un-tile the window' },
+      { keys: ['Ctrl+Alt', '←→↑↓'], label: 'Tile (no Super key)' },
+      { keys: ['Alt', '`'], label: 'Cycle windows (Shift to reverse)' },
+      { keys: ['Ctrl / Cmd', 'W'], label: 'Close the active window' },
+      { keys: ['Double-click'], label: 'Title bar → maximize / restore' },
+      { keys: ['Drag'], label: 'To a screen edge → snap' },
+    ],
+  },
+  {
+    title: 'Desktops & overview',
     items: [
       { keys: ['Ctrl', '1–9'], label: 'Switch to desktop' },
       { keys: ['Ctrl', 'N'], label: 'New desktop' },
@@ -67,8 +80,14 @@ export default function ShortcutsLegend() {
         setOpen(false)
       }
     }
+    // Also openable from the ⌘K palette ("Keyboard shortcuts" command).
+    const onOpen = () => setOpen(true)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('vulos:open-shortcuts', onOpen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('vulos:open-shortcuts', onOpen)
+    }
   }, [open])
 
   if (!open) return null
