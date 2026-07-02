@@ -107,6 +107,63 @@ const QUICK = [
   { id: 'summarize', label: 'Summarize my inbox', prompt: null },
 ]
 
+// ── Proposal card ────────────────────────────────────────────────────────────
+// The CONFIRMATION GATE surface. When the agent wants to DO something that
+// mutates state (send an email, schedule an event, add a contact, triage a
+// message) it returns a PROPOSAL — nothing has happened yet. The user must
+// Approve before /api/assistant/execute runs the real action, or Reject to drop
+// it. Read-only tools never reach here.
+
+const PROPOSAL_VERB = {
+  send_email: 'Send email',
+  create_calendar_event: 'Create event',
+  add_contact: 'Add contact',
+  triage: 'Change mailbox',
+}
+
+function ProposalCard({ proposal, state, onApprove, onReject }) {
+  const verb = PROPOSAL_VERB[proposal.tool] || 'Action'
+  const args = proposal.args || {}
+  return (
+    <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-amber-500/30 bg-amber-950/20 px-3.5 py-3 text-[13px]">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
+        <span className="text-amber-300 font-medium text-[12px]">Needs your approval · {verb}</span>
+      </div>
+      <div className="text-neutral-200 leading-relaxed mb-1">{proposal.summary}</div>
+      {(args.body || args.notes) && (
+        <div className="text-[12px] text-neutral-400 whitespace-pre-wrap bg-neutral-900/50 rounded-lg px-2.5 py-2 mt-1.5 max-h-40 overflow-y-auto">
+          {args.body || args.notes}
+        </div>
+      )}
+      {state === 'done' ? (
+        <div className="text-[12px] text-emerald-400 mt-2">✓ Approved and executed.</div>
+      ) : state === 'rejected' ? (
+        <div className="text-[12px] text-neutral-500 mt-2">Rejected — nothing was done.</div>
+      ) : (
+        <div className="flex gap-2 mt-2.5">
+          <button
+            type="button"
+            disabled={state === 'busy'}
+            onClick={onApprove}
+            className="text-[12px] px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
+          >
+            {state === 'busy' ? 'Working…' : 'Approve'}
+          </button>
+          <button
+            type="button"
+            disabled={state === 'busy'}
+            onClick={onReject}
+            className="text-[12px] px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50"
+          >
+            Reject
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Message bubble ───────────────────────────────────────────────────────────
 
 function Bubble({ role, content, pending }) {
@@ -183,6 +240,10 @@ export default function Assistant() {
     })
   }, [])
 
+  const patchById = useCallback((id, patch) => {
+    setMessages(m => m.map(msg => (msg.id === id ? { ...msg, ...patch } : msg)))
+  }, [])
+
   // JSON skills (attention / summarize / search) — single-shot answers.
   const runSkill = useCallback(async (path, body, userLabel) => {
     if (busy) return
@@ -210,50 +271,79 @@ export default function Assistant() {
     }
   }, [busy, push, patchLast])
 
-  // Freeform chat — streamed, grounded in retrieved mail context.
+  // Approve a proposal → POST it to /api/assistant/execute (the second half of
+  // the confirmation round-trip). Only here does a mutating action actually run.
+  const approveProposal = useCallback(async (msgId, proposal) => {
+    patchById(msgId, { state: 'busy' })
+    try {
+      const res = await fetch('/api/assistant/execute', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(proposal),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        patchById(msgId, { state: 'pending' })
+        push('assistant', data.error || `Could not complete the action (${res.status}).`)
+        return
+      }
+      patchById(msgId, { state: 'done' })
+      if (data.result) push('assistant', data.result)
+    } catch {
+      patchById(msgId, { state: 'pending' })
+      push('assistant', 'Could not reach the assistant to run the action.')
+    }
+  }, [patchById, push])
+
+  const rejectProposal = useCallback((msgId) => {
+    patchById(msgId, { state: 'rejected' })
+  }, [patchById])
+
+  // Freeform chat — the TOOL-USING agent turn. The model may call read-only
+  // tools (which run on the box) and return either a final answer or a PROPOSAL
+  // for a mutating action, which we render with Approve/Reject. History is the
+  // prior user/assistant text turns (proposals are excluded).
   const sendChat = useCallback(async (text) => {
     if (busy || !text.trim()) return
+    const history = messages
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.proposal && m.content)
+      .map(m => ({ role: m.role, content: m.content }))
     push('user', text)
     push('assistant', '')
     patchLast('', true)
     setBusy(true)
-    let full = ''
     try {
-      const res = await fetch('/api/assistant/chat', {
+      const res = await fetch('/api/assistant/agent', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, history }),
       })
-      if (!res.ok || !res.body) {
-        const err = await res.json().catch(() => ({}))
-        patchLast(err.error || 'Assistant unavailable.', false)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        patchLast(data.error || `Assistant unavailable (${res.status}).`, false)
         return
       }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let done = false
-      while (!done) {
-        const { done: rdone, value } = await reader.read()
-        if (rdone) break
-        for (const line of decoder.decode(value).split('\n')) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const chunk = JSON.parse(line.slice(6))
-            if (chunk.error) { full = chunk.error; done = true }
-            if (chunk.content) full += chunk.content
-            patchLast(full, !done)
-            if (chunk.done) done = true
-          } catch { /* noop */ }
-        }
+      if (data.proposal) {
+        // Replace the pending assistant bubble with a proposal card.
+        setMessages(m => {
+          const copy = m.slice()
+          const last = copy[copy.length - 1]
+          if (last && last.role === 'assistant') {
+            copy[copy.length - 1] = { ...last, pending: false, proposal: data.proposal, state: 'pending', content: data.answer || '' }
+          }
+          return copy
+        })
+      } else {
+        patchLast(data.answer || 'No response.', false)
       }
-      patchLast(full || 'No response.', false)
     } catch {
       patchLast('Could not reach the assistant.', false)
     } finally {
       setBusy(false)
     }
-  }, [busy, push, patchLast])
+  }, [busy, messages, push, patchLast])
 
   const submit = (e) => {
     e?.preventDefault()
@@ -328,7 +418,19 @@ export default function Assistant() {
           </div>
         )}
         {messages.map(m => (
-          <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} />
+          m.proposal ? (
+            <div key={m.id} className="flex justify-start flex-col gap-2 items-start">
+              {m.content && <Bubble role="assistant" content={m.content} />}
+              <ProposalCard
+                proposal={m.proposal}
+                state={m.state}
+                onApprove={() => approveProposal(m.id, m.proposal)}
+                onReject={() => rejectProposal(m.id)}
+              />
+            </div>
+          ) : (
+            <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} />
+          )
         ))}
       </div>
 

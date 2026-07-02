@@ -21,6 +21,8 @@ package main
 //	POST /api/assistant/draft     — body {uid, folder?, instructions?, save?}
 //	POST /api/assistant/attention — no body; prioritized triage
 //	POST /api/assistant/search    — body {q}
+//	POST /api/assistant/agent     — tool-using turn; body {message, history?} → {answer|proposal, steps}
+//	POST /api/assistant/execute   — run an approved proposal; body {proposal} → {executed, result}
 
 import (
 	"encoding/json"
@@ -219,6 +221,57 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 			return
 		}
 		writeJSON(w, res)
+	})
+
+	// POST /api/assistant/agent — the TOOL-USING turn. The model may call
+	// curated tools (search/read/draft/compose freely; send/schedule/contact/
+	// triage are PROPOSED and gated). Returns either {answer, steps} or
+	// {proposal, steps}. Mutating actions never execute here — the client must
+	// approve a proposal and POST it back to /api/assistant/execute.
+	mux.HandleFunc("POST /api/assistant/agent", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		var body struct {
+			Message string       `json:"message"`
+			History []ai.Message `json:"history"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if strings.TrimSpace(body.Message) == "" {
+			writeErr(w, 400, "message required")
+			return
+		}
+		res, err := newAssistant().AgentTurn(r.Context(), authOf(r), body.Message, body.History)
+		if err != nil {
+			assistantErr(w, err)
+			return
+		}
+		writeJSON(w, res)
+	})
+
+	// POST /api/assistant/execute — run a PREVIOUSLY-PROPOSED mutating action
+	// AFTER the user approved it in the UI. This is the second half of the
+	// confirmation round-trip; it performs a local /v1 write only (no model
+	// call, no mail egress). Body: the proposal object returned by /agent.
+	mux.HandleFunc("POST /api/assistant/execute", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		var p assistant.Proposal
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			writeErr(w, 400, "invalid proposal")
+			return
+		}
+		if strings.TrimSpace(p.Tool) == "" {
+			writeErr(w, 400, "proposal.tool required")
+			return
+		}
+		result, err := newAssistant().ExecuteProposal(r.Context(), authOf(r), p)
+		if err != nil {
+			assistantErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"executed": true, "result": result, "at": time.Now().UTC()})
 	})
 
 	// POST /api/assistant/chat — SSE stream of the grounded answer.

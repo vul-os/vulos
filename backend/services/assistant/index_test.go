@@ -214,7 +214,11 @@ func (emptySource) Get(context.Context, Auth, string, string) (Message, error) {
 func (emptySource) Search(context.Context, Auth, string, string, int) ([]Message, error) {
 	return nil, nil
 }
-func (emptySource) SaveDraft(context.Context, Auth, Draft) error { return nil }
+func (emptySource) SaveDraft(context.Context, Auth, Draft) error           { return nil }
+func (emptySource) SendEmail(context.Context, Auth, Draft) error           { return nil }
+func (emptySource) CreateEvent(context.Context, Auth, CalendarEvent) error { return nil }
+func (emptySource) AddContact(context.Context, Auth, Contact) error        { return nil }
+func (emptySource) Triage(context.Context, Auth, TriageAction) error       { return nil }
 
 func subjects(msgs []Message) []string {
 	out := make([]string, len(msgs))

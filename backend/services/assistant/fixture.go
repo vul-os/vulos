@@ -13,9 +13,13 @@ import (
 // demoable and testable fully offline — no IMAP, no network. It is deterministic
 // relative to a fixed "now" so summaries read naturally.
 type FixtureSource struct {
-	mu     sync.Mutex
-	msgs   []Message
-	drafts []Draft
+	mu       sync.Mutex
+	msgs     []Message
+	drafts   []Draft
+	sent     []Draft
+	events   []CalendarEvent
+	contacts []Contact
+	triaged  []TriageAction
 }
 
 // NewFixtureSource returns a fixture mailbox seeded with a small, realistic
@@ -134,6 +138,58 @@ func (f *FixtureSource) Drafts() []Draft {
 	out := make([]Draft, len(f.drafts))
 	copy(out, f.drafts)
 	return out
+}
+
+// --- Mutating actions (offline demo/test doubles for the confirm/execute path).
+
+func (f *FixtureSource) SendEmail(_ context.Context, _ Auth, d Draft) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, d)
+	return nil
+}
+
+func (f *FixtureSource) CreateEvent(_ context.Context, _ Auth, ev CalendarEvent) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, ev)
+	return nil
+}
+
+func (f *FixtureSource) AddContact(_ context.Context, _ Auth, c Contact) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.contacts = append(f.contacts, c)
+	return nil
+}
+
+func (f *FixtureSource) Triage(_ context.Context, _ Auth, a TriageAction) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.triaged = append(f.triaged, a)
+	return nil
+}
+
+// Sent/Events/Contacts/Triaged expose executed mutations for test/demo assertions.
+func (f *FixtureSource) Sent() []Draft {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]Draft(nil), f.sent...)
+}
+func (f *FixtureSource) Events() []CalendarEvent {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]CalendarEvent(nil), f.events...)
+}
+func (f *FixtureSource) Contacts() []Contact {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]Contact(nil), f.contacts...)
+}
+func (f *FixtureSource) Triaged() []TriageAction {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]TriageAction(nil), f.triaged...)
 }
 
 type sentinelError string

@@ -44,10 +44,10 @@ var ErrEmbedderNotLocal = errors.New("assistant: embedder is not certified on-in
 
 // Bounds keep the index cheap and safe on empty or very large mailboxes.
 const (
-	indexMaxDocs    = 2000            // hard cap on stored vectors per user (eviction beyond this)
-	indexPullBatch  = 400            // messages pulled from the mail source per pass
+	indexMaxDocs    = 2000             // hard cap on stored vectors per user (eviction beyond this)
+	indexPullBatch  = 400              // messages pulled from the mail source per pass
 	indexThrottle   = 20 * time.Second // minimum gap between index passes for a user
-	indexEmbedChars = 4000           // cap on chars embedded per message
+	indexEmbedChars = 4000             // cap on chars embedded per message
 	defaultScope    = "default"
 )
 

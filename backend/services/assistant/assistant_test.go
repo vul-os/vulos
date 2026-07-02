@@ -14,6 +14,7 @@ type fakeModel struct {
 	lastCfg    ai.Config
 	lastReq    ai.CompletionRequest
 	reply      string
+	replies    []string // scripted multi-turn replies (popped per Complete call); overrides reply when non-empty
 	calls      int
 	streamText string
 }
@@ -22,6 +23,11 @@ func (f *fakeModel) Complete(_ context.Context, cfg ai.Config, req ai.Completion
 	f.calls++
 	f.lastCfg = cfg
 	f.lastReq = req
+	if len(f.replies) > 0 {
+		r := f.replies[0]
+		f.replies = f.replies[1:]
+		return r, nil
+	}
 	if f.reply == "" {
 		return "ok", nil
 	}

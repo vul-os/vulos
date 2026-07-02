@@ -45,13 +45,46 @@ func (m Message) Sender() string {
 	return m.From
 }
 
-// Draft is an outgoing message the assistant asks the mail service to persist.
+// Draft is an outgoing message the assistant asks the mail service to persist
+// (or, once the user approves, to send).
 type Draft struct {
 	To        string `json:"to"`
 	Cc        string `json:"cc,omitempty"`
 	Subject   string `json:"subject"`
 	Text      string `json:"text"`
 	InReplyTo string `json:"inReplyTo,omitempty"`
+}
+
+// CalendarEvent is a calendar entry the assistant proposes creating against the
+// local mail service's /v1 calendar API. Times are passed through as the model /
+// user supplied them (ISO-8601/RFC3339 preferred); the mail service does the
+// authoritative parsing.
+type CalendarEvent struct {
+	Title     string `json:"title"`
+	Start     string `json:"start"`
+	End       string `json:"end,omitempty"`
+	Location  string `json:"location,omitempty"`
+	Notes     string `json:"notes,omitempty"`
+	Attendees string `json:"attendees,omitempty"`
+}
+
+// Contact is a contact-book entry the assistant proposes adding.
+type Contact struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Phone string `json:"phone,omitempty"`
+	Notes string `json:"notes,omitempty"`
+}
+
+// TriageAction is a mailbox state change (archive / snooze / label) the
+// assistant proposes for a single message. Only the fields relevant to Action
+// are populated.
+type TriageAction struct {
+	MessageID string `json:"message_id"`
+	Action    string `json:"action"` // "archive" | "snooze" | "label"
+	Until     string `json:"until,omitempty"`
+	Label     string `json:"label,omitempty"`
+	Folder    string `json:"folder,omitempty"`
 }
 
 // Auth carries the per-request credentials used to reach the local mail API.
@@ -83,6 +116,19 @@ type MailSource interface {
 	Search(ctx context.Context, auth Auth, folder, query string, limit int) ([]Message, error)
 	// SaveDraft persists a draft reply to the Drafts folder.
 	SaveDraft(ctx context.Context, auth Auth, d Draft) error
+
+	// --- Mutating actions (only reached AFTER explicit user confirmation via
+	// the assistant's proposal/execute round-trip; the model can PROPOSE these
+	// but never triggers them directly). ---
+
+	// SendEmail sends an outgoing message.
+	SendEmail(ctx context.Context, auth Auth, d Draft) error
+	// CreateEvent creates a calendar event.
+	CreateEvent(ctx context.Context, auth Auth, ev CalendarEvent) error
+	// AddContact adds a contact-book entry.
+	AddContact(ctx context.Context, auth Auth, c Contact) error
+	// Triage applies a mailbox state change (archive/snooze/label) to a message.
+	Triage(ctx context.Context, auth Auth, action TriageAction) error
 }
 
 const defaultFolder = "INBOX"
@@ -211,6 +257,71 @@ func (s *LilmailSource) SaveDraft(ctx context.Context, auth Auth, d Draft) error
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("lilmail draft failed: %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+// SendEmail sends an outgoing message via POST /v1/messages. The mail service
+// runs on this instance, so this is an on-box write; it is only ever called
+// after the user approves the assistant's proposal.
+func (s *LilmailSource) SendEmail(ctx context.Context, auth Auth, d Draft) error {
+	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages", d, "send")
+}
+
+// CreateEvent creates a calendar event via POST /v1/calendar/events.
+func (s *LilmailSource) CreateEvent(ctx context.Context, auth Auth, ev CalendarEvent) error {
+	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/calendar/events", ev, "calendar create")
+}
+
+// AddContact adds a contact via POST /v1/contacts.
+func (s *LilmailSource) AddContact(ctx context.Context, auth Auth, c Contact) error {
+	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/contacts", c, "add contact")
+}
+
+// Triage maps archive/snooze/label onto the /v1 flag + snooze surface:
+//   - snooze → POST /v1/messages/{id}/snooze {"until": ...}
+//   - label  → PATCH /v1/messages/{id}/flags {"add": ["<label>"]}
+//   - archive→ PATCH /v1/messages/{id}/flags {"add": ["\\Deleted"]} (move out of INBOX)
+//
+// The exact archive semantics are the mail service's; the assistant only ever
+// asks for one of these after the user approves the proposal.
+func (s *LilmailSource) Triage(ctx context.Context, auth Auth, a TriageAction) error {
+	id := url.PathEscape(a.MessageID)
+	switch strings.ToLower(strings.TrimSpace(a.Action)) {
+	case "snooze":
+		return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages/"+id+"/snooze",
+			map[string]string{"until": a.Until}, "snooze")
+	case "label":
+		return s.writeJSON(ctx, auth, http.MethodPatch, "/v1/messages/"+id+"/flags",
+			map[string]any{"add": []string{a.Label}}, "label")
+	case "archive":
+		return s.writeJSON(ctx, auth, http.MethodPatch, "/v1/messages/"+id+"/flags",
+			map[string]any{"add": []string{"\\Deleted"}}, "archive")
+	default:
+		return fmt.Errorf("unknown triage action %q", a.Action)
+	}
+}
+
+// writeJSON is the shared mutating-request helper (send/calendar/contacts/triage).
+func (s *LilmailSource) writeJSON(ctx context.Context, auth Auth, method, path string, payload any, what string) error {
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, method, s.baseURL+path, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	s.apply(req, auth)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("mail service unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("mail not authenticated")
+	}
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("lilmail %s failed: %d: %s", what, resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	return nil
 }
