@@ -1,161 +1,113 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react'
+import { useShell } from '../providers/ShellProvider'
+import { getAppById } from '../core/AppRegistry'
+import { launchApp } from './launchApp'
 import { classifyIntent } from '../core/IntentRouter'
 import ConflictResolver from '../core/ConflictResolver'
+import {
+  subscribeToasts, getToasts, dismissToast,
+  subscribePrefs, getPrefs, markRead,
+} from '../core/notificationStore'
 
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/notifications/stream`
+// Store-driven Toaster (Wave 13). Renders the transient toast queue from the
+// notificationStore. Toasts auto-dismiss (per level / ttl); actionable ones
+// route through the shell's app-launch path. A11Y: the stack is an aria-live
+// region; urgent/critical announce assertively.
 
-// localStorage key for notification sound preference
-const SOUND_PREF_KEY = 'vulos_notif_sound'
-
-// Derive effective priority from notification: prefer explicit priority, fall back to legacy level mapping
-function effectivePriority(notif) {
-  if (notif.priority) return notif.priority
-  // Legacy level → priority mapping
-  if (notif.level === 'urgent') return 'high'
-  if (notif.level === 'warning') return 'normal'
-  if (notif.level === 'info') return 'normal'
-  return 'normal'
-}
-
-// Play a Web Audio chime appropriate for the given priority
-function playChime(priority) {
+// ── sound ────────────────────────────────────────────────────────────────────
+function playChime(level) {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     if (!AudioCtx) return
     const ctx = new AudioCtx()
-
-    // Build a simple tone sequence: a short ascending chime for normal, a two-note ring for high
-    const schedule = priority === 'high'
+    const schedule = (level === 'urgent' || level === 'critical')
       ? [{ freq: 880, start: 0, dur: 0.12 }, { freq: 1100, start: 0.14, dur: 0.18 }]
-      : [{ freq: 660, start: 0, dur: 0.10 }]
-
+      : [{ freq: 660, start: 0, dur: 0.1 }]
     schedule.forEach(({ freq, start, dur }) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
+      osc.connect(gain); gain.connect(ctx.destination)
       osc.type = 'sine'
       osc.frequency.setValueAtTime(freq, ctx.currentTime + start)
       gain.gain.setValueAtTime(0, ctx.currentTime + start)
-      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + start + 0.02)
+      gain.gain.linearRampToValueAtTime(0.16, ctx.currentTime + start + 0.02)
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur)
       osc.start(ctx.currentTime + start)
       osc.stop(ctx.currentTime + start + dur + 0.05)
     })
-
-    // Close context after sounds finish
     setTimeout(() => ctx.close(), 800)
-  } catch {
-    // Silently fail if Web Audio is unavailable
-  }
+  } catch { /* Web Audio unavailable */ }
 }
 
-// Toast card component
-function ToastCard({ toast, onDismiss }) {
-  const priority = effectivePriority(toast)
+// ── toast card ───────────────────────────────────────────────────────────────
+function ToastCard({ notif, onAction, onDismiss }) {
+  const urgent = notif.level === 'urgent' || notif.level === 'critical'
+  const warn = notif.level === 'warning'
+  const primary = notif.actions?.[0] || null
 
-  const handleClick = useCallback(() => {
-    const actionUrl = toast.action?.url || toast.action
-    if (actionUrl && typeof actionUrl === 'string') {
-      // Try to route through IntentRouter; navigate to the URL
-      try {
-        const intent = classifyIntent(actionUrl)
-        if (intent && intent.url) {
-          window.location.href = intent.url
-        } else {
-          window.location.href = actionUrl
-        }
-      } catch {
-        window.location.href = actionUrl
-      }
-      onDismiss()
-    } else {
-      onDismiss()
-    }
-  }, [toast, onDismiss])
-
-  const hasAction = !!(toast.action?.url || (typeof toast.action === 'string' && toast.action))
-
-  const colorClass = priority === 'critical' || priority === 'high'
-    ? 'bg-red-950/90 border-red-700/60 text-red-100'
-    : priority === 'normal' && (toast.level === 'warning')
-      ? 'bg-amber-950/80 border-amber-800/50 text-amber-200'
-      : 'bg-neutral-900/85 border-neutral-700/50 text-neutral-200'
-
-  const dotClass = priority === 'critical' || priority === 'high'
-    ? 'bg-red-400 animate-pulse'
-    : priority === 'normal' && toast.level === 'warning'
-      ? 'bg-amber-500'
-      : 'bg-blue-500'
-
-  const assertive = priority === 'high' || priority === 'critical'
+  const color = urgent
+    ? 'bg-red-950/90 border-red-700/60'
+    : warn
+      ? 'bg-amber-950/80 border-amber-800/50'
+      : 'bg-neutral-900/90 border-neutral-700/50'
+  const dot = urgent ? 'bg-red-400 animate-pulse' : warn ? 'bg-amber-500' : 'bg-blue-500'
 
   return (
     <div
-      onClick={handleClick}
-      role={assertive ? 'alert' : 'status'}
-      aria-live={assertive ? 'assertive' : 'polite'}
-      className={`px-4 py-3 rounded-xl backdrop-blur-xl border cursor-pointer
-        transition-all animate-[slideIn_0.2s_ease-out] select-none
-        ${colorClass}
-        ${hasAction ? 'hover:brightness-110' : ''}`}
+      role={urgent ? 'alert' : 'status'}
+      aria-live={urgent ? 'assertive' : 'polite'}
+      className={`w-80 px-3.5 py-2.5 rounded-xl backdrop-blur-xl border text-neutral-200 shadow-lg shadow-black/30
+        transition-all animate-[slideIn_0.2s_ease-out] select-none ${color}`}
     >
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full shrink-0 ${dotClass}`} />
-        <span className="text-sm font-medium truncate flex-1">{toast.title}</span>
-        {priority === 'high' && (
-          <span className="text-[9px] uppercase tracking-wider text-red-400 font-semibold shrink-0">Urgent</span>
-        )}
-        <span className="text-[10px] text-neutral-500 shrink-0">{toast.source}</span>
+        <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+        <span className="text-sm font-medium truncate flex-1">{notif.title}</span>
+        {urgent && <span className="text-[9px] uppercase tracking-wider text-red-400 font-semibold shrink-0">Urgent</span>}
+        <span className="text-[10px] text-neutral-500 shrink-0">{notif.source}</span>
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="w-4 h-4 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-200 text-[10px] shrink-0"
+        >✕</button>
       </div>
-      {toast.body && (
-        <p className="text-xs text-neutral-400 mt-1 line-clamp-2">
-          {typeof toast.body === 'string' ? toast.body : toast.body.title || toast.body.detail || ''}
-        </p>
-      )}
-      {hasAction && (
-        <p className="text-[10px] text-blue-400 mt-1">Tap to open</p>
+      {notif.body && <p className="text-xs text-neutral-400 mt-1 line-clamp-2 pl-4">{notif.body}</p>}
+      {notif.actions?.length > 0 && (
+        <div className="flex gap-1.5 mt-2 pl-4">
+          {notif.actions.map(a => (
+            <button
+              key={a.id}
+              onClick={() => onAction(a)}
+              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors
+                ${a === primary ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700'}`}
+            >
+              {a.label || 'Open'}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
 }
 
-// Critical full-screen overlay
-function CriticalOverlay({ toast, onDismiss }) {
-  const actionUrl = toast.action?.url || (typeof toast.action === 'string' ? toast.action : null)
-
-  const handleAction = useCallback(() => {
-    if (actionUrl) {
-      window.location.href = actionUrl
-    }
-    onDismiss()
-  }, [actionUrl, onDismiss])
-
+// ── critical overlay ─────────────────────────────────────────────────────────
+function CriticalOverlay({ notif, onAction, onDismiss }) {
+  const primary = notif.actions?.[0] || null
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div role="alertdialog" aria-modal="true" aria-live="assertive" className="bg-red-950 border border-red-700/60 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+      <div role="alertdialog" aria-modal="true" aria-live="assertive"
+        className="bg-red-950 border border-red-700/60 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-4 h-4 rounded-full bg-red-500 animate-pulse shrink-0" />
-          <span className="text-lg font-semibold text-red-100">{toast.title}</span>
+          <span className="text-lg font-semibold text-red-100">{notif.title}</span>
         </div>
-        {toast.body && (
-          <p className="text-sm text-red-200/80 mb-6">
-            {typeof toast.body === 'string' ? toast.body : toast.body.title || toast.body.detail || ''}
-          </p>
-        )}
+        {notif.body && <p className="text-sm text-red-200/80 mb-6">{notif.body}</p>}
         <div className="flex gap-3 justify-end">
-          <button
-            onClick={onDismiss}
-            className="px-4 py-2 rounded-lg bg-red-900/60 text-red-200 text-sm hover:bg-red-900 transition-colors"
-          >
-            Dismiss
-          </button>
-          {actionUrl && (
-            <button
-              onClick={handleAction}
-              className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-500 transition-colors"
-            >
-              Open
+          <button onClick={onDismiss}
+            className="px-4 py-2 rounded-lg bg-red-900/60 text-red-200 text-sm hover:bg-red-900 transition-colors">Dismiss</button>
+          {primary && (
+            <button onClick={() => onAction(primary)}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-500 transition-colors">
+              {primary.label || 'Open'}
             </button>
           )}
         </div>
@@ -165,127 +117,97 @@ function CriticalOverlay({ toast, onDismiss }) {
 }
 
 export default function Toasts() {
-  const [toasts, setToasts] = useState([])
-  const [soundEnabled, setSoundEnabled] = useState(() => {
+  const queue = useSyncExternalStore(subscribeToasts, getToasts)
+  const prefs = useSyncExternalStore(subscribePrefs, getPrefs)
+  const { openWindow } = useShell()
+  const soundRef = useRef(prefs.sound)
+  useEffect(() => { soundRef.current = prefs.sound }, [prefs.sound])
+  const chimedRef = useRef(new Set())
+
+  // CLUSTER-10: a 'sync' notification with a deep-link opens the ConflictResolver.
+  const [resolverOpen, setResolverOpen] = useState(false)
+  const seenSyncRef = useRef(new Set())
+
+  // Resolve a notification action through the shell's launch path.
+  const runAction = useCallback((notif, action) => {
+    markRead(notif.id)
+    dismissToast(`${notif.id}:${notif.ts}`)
     try {
-      const stored = localStorage.getItem(SOUND_PREF_KEY)
-      return stored === null ? true : stored === 'true'
-    } catch {
-      return true
-    }
-  })
-  const wsRef = useRef(null)
-  const soundEnabledRef = useRef(soundEnabled)
-
-  // Keep ref in sync so WS callback always reads the latest value
-  useEffect(() => {
-    soundEnabledRef.current = soundEnabled
-    try { localStorage.setItem(SOUND_PREF_KEY, String(soundEnabled)) } catch { /* noop */ }
-  }, [soundEnabled])
-  // CLUSTER-10: show ConflictResolver when a sync-category deep-link notification arrives
-  const [cl10ResolverOpen, setCl10ResolverOpen] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    function connect() {
-      if (!alive) return
-      const ws = new WebSocket(WS_URL)
-      wsRef.current = ws
-      ws.onmessage = (e) => {
-        try {
-          const notif = JSON.parse(e.data)
-          if (notif.source === 'xdg-open') return
-
-          const priority = effectivePriority(notif)
-
-          // low priority: badge only, suppress toast entirely
-          if (priority === 'low') return
-
-          const enriched = { ...notif, _key: Date.now() + Math.random(), _priority: priority }
-          setToasts(prev => [...prev.slice(-4), enriched])
-
-          // Play chime for normal+ if sound is enabled
-          if (soundEnabledRef.current && (priority === 'normal' || priority === 'high' || priority === 'critical')) {
-            playChime(priority)
-          }
-          // CLUSTER-10: sync conflict notification with deep-link → open ConflictResolver
-          if (notif.source === 'sync' && notif.action) {
-            setCl10ResolverOpen(true)
-          }
-        } catch { /* noop */ }
+      if (typeof action?.run === 'function') { action.run(); return }
+      if (action?.route?.app) {
+        const app = getAppById(action.route.app)
+        if (app) {
+          if (app.url) openWindow({ appId: app.id, title: app.name, url: app.url, icon: app.icon })
+          else launchApp(app, { openWindow })
+        }
+        return
       }
-      ws.onclose = () => { if (alive) setTimeout(connect, 3000) }
-      ws.onerror = () => ws.close()
-    }
-    connect()
-    return () => { alive = false; wsRef.current?.close() }
-  }, [])
+      const url = action?.url || notif.action
+      if (url && typeof url === 'string') {
+        const intent = classifyIntent(url)
+        window.location.href = intent?.url || url
+      }
+    } catch { /* action best-effort */ }
+  }, [openWindow])
 
-  const dismiss = useCallback((key) => {
-    setToasts(prev => prev.filter(t => t._key !== key))
-  }, [])
-
-  // Auto-dismiss: normal=6s, high=persistent (no auto-dismiss), critical=persistent
+  // Play a chime once per newly-arrived toast (sound honoured from store prefs).
   useEffect(() => {
-    if (toasts.length === 0) return
+    for (const t of queue) {
+      if (chimedRef.current.has(t.key)) continue
+      chimedRef.current.add(t.key)
+      if (soundRef.current) playChime(t.notif.level)
+      if (t.notif.source === 'sync' && (t.notif.action || t.notif.actions?.length)) {
+        if (!seenSyncRef.current.has(t.notif.id)) {
+          seenSyncRef.current.add(t.notif.id)
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- open the conflict resolver in response to an incoming sync toast
+          setResolverOpen(true)
+        }
+      }
+    }
+  }, [queue])
 
-    const timers = toasts
-      .filter(t => t._priority === 'normal')
-      .map(t => {
-        // Respect TTL field if present, otherwise default 6s for normal
-        const delay = t.ttl ? Math.min(t.ttl * 1000, 30000) : 6000
-        return setTimeout(() => dismiss(t._key), delay)
-      })
-
+  // Auto-dismiss non-sticky toasts (ttl seconds; 0 = sticky for urgent/critical).
+  useEffect(() => {
+    const timers = queue
+      .filter(t => t.notif.ttl > 0 && t.notif.level !== 'critical')
+      .map(t => setTimeout(() => dismissToast(t.key), Math.min(t.notif.ttl * 1000, 30000)))
     return () => timers.forEach(clearTimeout)
-  }, [toasts, dismiss])
+  }, [queue])
 
-  if (toasts.length === 0 && !cl10ResolverOpen) return null
+  const critical = queue.filter(t => t.notif.level === 'critical')
+  const regular = queue.filter(t => t.notif.level !== 'critical')
 
-  const criticalToasts = toasts.filter(t => t._priority === 'critical')
-  const regularToasts = toasts.filter(t => t._priority !== 'critical')
+  if (queue.length === 0 && !resolverOpen) return null
 
   return (
     <>
-      {/* Critical overlay — show topmost critical notification */}
-      {criticalToasts.length > 0 && (
+      {critical.length > 0 && (
         <CriticalOverlay
-          toast={criticalToasts[criticalToasts.length - 1]}
-          onDismiss={() => dismiss(criticalToasts[criticalToasts.length - 1]._key)}
+          notif={critical[critical.length - 1].notif}
+          onAction={(a) => runAction(critical[critical.length - 1].notif, a)}
+          onDismiss={() => dismissToast(critical[critical.length - 1].key)}
         />
       )}
 
-      {/* Regular toast stack (normal + high).
-          A11Y: the stack is an aria-live region so screen readers announce
-          incoming toasts. High-priority toasts announce assertively (role
-          alert / aria-live assertive); normal toasts announce politely. */}
-      {regularToasts.length > 0 && (
+      {regular.length > 0 && (
         <div
-          className="fixed top-10 right-3 z-[90] flex flex-col gap-2 max-w-sm"
+          className="fixed top-10 right-3 z-[90] flex flex-col gap-2"
           aria-live="polite"
           aria-relevant="additions"
         >
-          {regularToasts.map(t => (
+          {regular.map(t => (
             <ToastCard
-              key={t._key}
-              toast={t}
-              onDismiss={() => dismiss(t._key)}
+              key={t.key}
+              notif={t.notif}
+              onAction={(a) => runAction(t.notif, a)}
+              onDismiss={() => dismissToast(t.key)}
             />
           ))}
-
-          {/* Sound toggle — subtle control within the toast stack */}
-          <button
-            onClick={() => setSoundEnabled(v => !v)}
-            className="self-end text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors px-1"
-            title={soundEnabled ? 'Mute notification sounds' : 'Unmute notification sounds'}
-          >
-            {soundEnabled ? 'Sound on' : 'Sound off'}
-          </button>
         </div>
       )}
-      {/* CLUSTER-10: Conflict Resolver modal */}
-      {cl10ResolverOpen && (
-        <ConflictResolver onClose={() => setCl10ResolverOpen(false)} />
+
+      {resolverOpen && (
+        <ConflictResolver onClose={() => setResolverOpen(false)} />
       )}
     </>
   )

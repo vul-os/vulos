@@ -18,6 +18,8 @@ import Popout from './shell/Popout'
 import Screensaver from './shell/Screensaver'
 import ShortcutsLegend from './shell/ShortcutsLegend'
 import OfflineIndicator from './components/OfflineIndicator'
+import { startNotificationBridge } from './core/notificationBridge'
+import { startAttentionNotifier } from './core/notifiers/attentionNotifier'
 
 function DesktopShortcuts() {
   const { desktops, switchDesktop, addDesktop } = useShell()
@@ -119,6 +121,15 @@ function Shell() {
 
   const { isDriving } = useDrivingMode() // DEVPROF-06
   useEffect(() => { document.body.classList.toggle('driving-mode', isDriving) }, [isDriving])
+
+  // WAVE-13: start the notification runtime once the shell is up — the backend
+  // bridge (folds /api/notifications into the client store) and the sovereign
+  // attention notifier (polls the on-instance assistant for "needs you" items).
+  useEffect(() => {
+    const stopBridge = startNotificationBridge()
+    const stopNotifier = startAttentionNotifier()
+    return () => { stopBridge(); stopNotifier() }
+  }, [])
   if (locked) return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
   if (screensaver) return <Screensaver onDismiss={dismissScreensaver} />
   if (popout) return <Popout />

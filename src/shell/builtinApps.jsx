@@ -9,6 +9,7 @@
 
 import { createElement, lazy, Suspense } from 'react'
 import Settings from '../core/Settings'
+import { consumePendingSettingsSection } from '../core/settingsNav'
 
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
@@ -29,7 +30,7 @@ const wrap = (Cmp) => createElement(Suspense, { fallback: loadingEl() }, createE
 
 // BUILTIN_COMPONENTS maps app.id → a factory returning a fresh React element.
 export const BUILTIN_COMPONENTS = {
-  persona: () => createElement(Settings),
+  persona: () => createElement(Settings, { initialSection: consumePendingSettingsSection() }),
   terminal: () => wrap(Terminal),
   activity: () => wrap(ActivityMonitor),
   files: () => wrap(FileManager),

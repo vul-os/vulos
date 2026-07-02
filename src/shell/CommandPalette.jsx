@@ -33,6 +33,7 @@ import { launchApp } from './launchApp'
 import { fuzzyRank } from '../core/fuzzy'
 import { classifyAsk } from '../core/askRouting'
 import { getCommands, subscribeCommands } from '../core/commandRegistry'
+import { setPendingSettingsSection } from '../core/settingsNav'
 
 const RECENT_KEY = 'vulos-cmdk-recent'
 const MAX_APPS = 6
@@ -160,7 +161,7 @@ export default function CommandPalette() {
       windows.filter(w => !w.minimized).forEach(w => minimizeWindow(w.id))
       close()
     },
-    openSettings: () => openApp('persona'),
+    openSettings: (section) => { setPendingSettingsSection(section); openApp('persona') },
     openTransparency: () => { sovereignty.openPanel?.(); close() },
     toggleTheme: () => { theme.toggle?.(); close() },
     lock: () => {

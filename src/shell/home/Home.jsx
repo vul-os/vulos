@@ -24,7 +24,7 @@ import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../bui
 
 // Curated quick-launch tiles — the everyday surfaces. "All apps" opens the
 // full Launchpad, so Home complements rather than replaces it.
-const QUICK_LAUNCH = ['lilmail', 'vulos-calendar', 'drive', 'assistant', 'vulos-office', 'terminal']
+const QUICK_LAUNCH = ['lilmail', 'vulos-calendar', 'drive', 'assistant', 'vulos-office', 'terminal', 'persona']
 
 const TIER_DOT = { local: '#22c55e', sovereign: '#22c55e', brokered: '#f59e0b', external: '#ef4444' }
 

@@ -141,6 +141,26 @@ const BUILTIN_COMMANDS = [
     run: (ctx) => ctx.openSettings(),
   },
   {
+    id: 'open-notifications',
+    title: 'Show notifications',
+    subtitle: 'Open the notification center',
+    keywords: ['notifications', 'notification', 'center', 'bell', 'alerts', 'unread'],
+    icon: '🔔',
+    run: (ctx) => {
+      // Framework-agnostic: the shell bell listens for this event.
+      try { window.dispatchEvent(new CustomEvent('vulos:open-notifications')) } catch { /* noop */ }
+      ctx.close?.()
+    },
+  },
+  {
+    id: 'notification-settings',
+    title: 'Notification settings',
+    subtitle: 'Mute, sounds, per-source',
+    keywords: ['notifications', 'do not disturb', 'dnd', 'mute', 'sound', 'settings'],
+    icon: '⚙',
+    run: (ctx) => ctx.openSettings('notifications'),
+  },
+  {
     id: 'lock',
     title: 'Lock screen',
     subtitle: 'Ctrl+L',

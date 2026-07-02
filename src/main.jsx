@@ -31,6 +31,11 @@ bootstrapOffline({
   onBoot: () => { startOfflineQueueFlushLoop() },
 })
 
+// WAVE-13: apply the persisted shell density before first paint (no flash).
+try {
+  document.documentElement.dataset.density = localStorage.getItem('vulos.density') || 'comfortable'
+} catch { /* localStorage unavailable — default comfortable via CSS */ }
+
 // Diagnostic surface: if React fails to mount (or any unhandled error fires
 // before/during render), paint a *visible* error directly to the document
 // body. The kiosk path is black-on-black in software-GL — an unhandled

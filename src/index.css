@@ -28,6 +28,15 @@
   --graph-grid: #1a1a1a;
 }
 
+/* WAVE-13: shell density. Compact nudges the root font-size down so the whole
+   token-driven UI tightens proportionally. Set on <html> by main.jsx + Settings. */
+:root[data-density="compact"] {
+  font-size: 14px;
+}
+:root[data-density="comfortable"] {
+  font-size: 16px;
+}
+
 /* ═══════════════════════════════════════
    Light theme overrides
    ═══════════════════════════════════════ */

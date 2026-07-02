@@ -1,4 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import {
+  subscribePrefs, getPrefs, setMuted, setSound, setSourceEnabled, getSources,
+} from './notificationStore'
 import { useAuth } from '../auth/AuthProvider'
 import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
@@ -12,6 +15,7 @@ const sections = [
   { id: 'airouter', label: 'AI Router' },
   { id: 'aiapps', label: 'AI Apps' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'wifi', label: 'WiFi' },
   { id: 'bluetooth', label: 'Bluetooth' },
   { id: 'audio', label: 'Sound' },
@@ -62,6 +66,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'airouter' && <AIRouterPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
         {active === 'appearance' && <AppearanceSettings />}
+        {active === 'notifications' && <NotificationsSettings />}
         {active === 'wifi' && <WiFiSettings />}
         {active === 'bluetooth' && <BluetoothSettings />}
         {active === 'audio' && <AudioSettings />}
@@ -257,12 +262,51 @@ function AppearanceSettings() {
         <AccentPicker accent={accent} setAccent={setAccent} />
       </div>
 
+      {/* Density (WAVE-13) */}
+      <div className="mt-6 pt-4 border-t border-neutral-800/50">
+        <h3 className="text-sm font-medium mb-1">Density</h3>
+        <p className="text-xs text-neutral-600 mb-3">Compact tightens spacing across the shell.</p>
+        <DensityPicker />
+      </div>
+
       {/* Wallpaper */}
       <div className="mt-6 pt-4 border-t border-neutral-800/50">
         <h3 className="text-sm font-medium mb-3">Wallpaper</h3>
         <WallpaperPicker />
       </div>
     </Section>
+  )
+}
+
+// DensityPicker — a real, persisted appearance pref. Writes
+// document.documentElement.dataset.density (consumed by index.css) and
+// localStorage so it survives reloads. Applied eagerly on load in main.jsx.
+const DENSITY_KEY = 'vulos.density'
+function DensityPicker() {
+  const [density, setDensity] = useState(() => {
+    try { return localStorage.getItem(DENSITY_KEY) || 'comfortable' } catch { return 'comfortable' }
+  })
+  // Apply the DOM/localStorage side-effects reactively when density changes.
+  useEffect(() => {
+    try { localStorage.setItem(DENSITY_KEY, density) } catch { /* noop */ }
+    if (typeof document !== 'undefined') document.documentElement.dataset.density = density
+  }, [density])
+  const apply = (v) => setDensity(v)
+  return (
+    <div className="flex gap-2">
+      {[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }].map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => apply(opt.value)}
+          className={`flex-1 py-2 rounded-lg text-sm transition-all border
+            ${density === opt.value
+              ? 'bg-blue-600/20 border-blue-500/50 text-blue-400'
+              : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -2267,6 +2311,44 @@ function InfoRow({ label, value, ok }) {
 }
 
 // --- Shared UI components ---
+// --- Notifications (WAVE-13) ---
+// Wired to the framework-agnostic notificationStore. All prefs persist to
+// localStorage via the store; the shell bell + toaster honour them live.
+const NOTIF_SOURCE_LABELS = {
+  mail: 'Mail', assistant: 'Assistant', system: 'System', sync: 'Sync', ai: 'AI',
+}
+function NotificationsSettings() {
+  const prefs = useSyncExternalStore(subscribePrefs, getPrefs)
+  // Always show the core producers, plus any other source seen in the feed.
+  const sources = [...new Set(['mail', 'assistant', 'system', ...getSources()])]
+
+  return (
+    <Section title="Notifications">
+      <p className="text-xs text-neutral-500 mb-4">
+        Notifications are computed on your box by the on-instance assistant — no new egress.
+        Do Not Disturb silences pop-ups (they still collect quietly in the bell).
+      </p>
+      <div className="rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 divide-y divide-neutral-800/50">
+        <Toggle label="Do Not Disturb" checked={prefs.muted} onChange={setMuted} />
+        <Toggle label="Notification sounds" checked={prefs.sound} onChange={setSound} />
+      </div>
+
+      <h3 className="text-sm font-medium mt-6 mb-2">Sources</h3>
+      <p className="text-xs text-neutral-600 mb-3">Turn a source off to stop collecting its notifications entirely.</p>
+      <div className="rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 divide-y divide-neutral-800/50">
+        {sources.map(src => (
+          <Toggle
+            key={src}
+            label={NOTIF_SOURCE_LABELS[src] || src.charAt(0).toUpperCase() + src.slice(1)}
+            checked={prefs.sources?.[src] !== false}
+            onChange={(v) => setSourceEnabled(src, v)}
+          />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
 function Section({ title, children }) {
   return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
 }
