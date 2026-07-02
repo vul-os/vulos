@@ -69,6 +69,11 @@ function ProposalCard({ proposal, state, onApprove, onReject }) {
         <span className="text-amber-300 font-medium text-[12px]">Needs your approval · {verb}</span>
       </div>
       <div className="text-neutral-200 leading-relaxed">{proposal.summary}</div>
+      {proposal.from_content && (
+        <div className="text-[12px] text-red-300 bg-red-950/30 border border-red-500/30 rounded-lg px-2.5 py-1.5 mt-1.5">
+          ⚠ {proposal.warning || "This action's target came from message content — review carefully."}
+        </div>
+      )}
       {(args.body || args.notes) && (
         <div className="text-[12px] text-neutral-400 whitespace-pre-wrap bg-neutral-900/50 rounded-lg px-2.5 py-2 mt-2 max-h-40 overflow-y-auto">
           {args.body || args.notes}
