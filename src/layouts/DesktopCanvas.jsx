@@ -17,6 +17,8 @@ import PublicAppBanner from '../shell/PublicAppBanner'
 import TrustBadge from '../shell/TrustBadge'
 import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
+import Dock from '../shell/Dock'
+import { useWindowShortcuts } from '../shell/useWindowShortcuts'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -45,6 +47,8 @@ export default function DesktopCanvas() {
   const mcLayout = useMissionControlLayout(windows.filter(w => !w.minimized), missionControlOpen)
   const { wallpaper } = useWallpaper()
   const { isDark } = useTheme()
+  // Keyboard-first window management (tile / cycle / close).
+  useWindowShortcuts()
 
   // xdg-open: listen for browser open events and focus/open browser window
   const windowsRef = useRef(windows)
@@ -248,6 +252,10 @@ export default function DesktopCanvas() {
           <Portal />
         </div>
       )}
+
+      {/* Dock / taskbar — restores minimized windows & fast-switches. Hidden
+          while Mission Control is up (its backdrop already covers this z-layer). */}
+      {!missionControlOpen && <Dock />}
 
       {/* WAVE-12: unified ⌘K command palette (apps · mail · actions · ask) */}
       <CommandPalette />
