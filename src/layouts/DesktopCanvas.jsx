@@ -13,6 +13,8 @@ import AIFirstRun from '../core/AIFirstRun'
 import PublicAppsManager from '../core/PublicAppsManager'
 import IncomingCall from '../builtin/peering/call/IncomingCall'
 import PublicAppBanner from '../shell/PublicAppBanner'
+import TrustBadge from '../shell/TrustBadge'
+import TransparencyPanel from '../shell/TransparencyPanel'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -153,6 +155,10 @@ export default function DesktopCanvas() {
           </button>
         </div>
         <div className="flex items-center">
+          {/* Always-on sovereignty indicator — AI tier + "what leaves this box" +
+              at-rest lock; click opens the transparency panel. */}
+          <TrustBadge />
+          <div className="w-px h-3.5 bg-neutral-700/40 mx-1" />
           {/* Chat toggle */}
           <button
             onClick={toggleChat}
@@ -249,6 +255,8 @@ export default function DesktopCanvas() {
       <PublicAppsManager />
       {/* Incoming call modal + call history — shell-wide, z-[300] (PEER-24) */}
       <IncomingCall />
+      {/* Legible-trust transparency panel — opened from the TrustBadge */}
+      <TransparencyPanel />
     </div>
   )
 }

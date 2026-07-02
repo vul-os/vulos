@@ -6,6 +6,7 @@ import { I18nProvider } from './core/i18n'
 import { WallpaperProvider } from './core/useWallpaper.jsx'
 import { DeviceProfileProvider, useDeviceProfile } from './core/useDeviceProfile.jsx'
 import { ShellProvider, useShell } from './providers/ShellProvider'
+import { SovereigntyProvider } from './core/useSovereignty'
 import { useSpatialNav } from './core/useSpatialNav'
 import LoginScreen from './auth/LoginScreen'
 import LockScreen from './auth/LockScreen'
@@ -160,7 +161,9 @@ function AuthGate() {
 
   return (
     <ShellProvider>
-      <Shell />
+      <SovereigntyProvider>
+        <Shell />
+      </SovereigntyProvider>
     </ShellProvider>
   )
 }

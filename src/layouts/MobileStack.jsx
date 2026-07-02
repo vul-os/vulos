@@ -4,6 +4,8 @@ import LifePulse from '../core/SystemPulse'
 import Portal from '../core/Portal'
 import Launchpad from '../shell/Launchpad'
 import Toasts from '../shell/Toasts'
+import TrustBadge from '../shell/TrustBadge'
+import TransparencyPanel from '../shell/TransparencyPanel'
 import { needsSameOrigin } from '../core/AppRegistry'
 
 // SANDBOX-01: same-origin app iframes are opt-in (see AppRegistry.js). Apps that
@@ -25,8 +27,14 @@ export default function MobileStack() {
           <img src="/vulos.png" alt="" className="w-3.5 h-3.5 opacity-70" />
           <span className="text-xs font-semibold text-neutral-300">vula</span>
         </div>
-        <LifePulse compact />
+        <div className="flex items-center gap-1.5">
+          <TrustBadge compact />
+          <LifePulse compact />
+        </div>
       </div>
+
+      {/* Legible-trust transparency panel — opened from the TrustBadge */}
+      <TransparencyPanel />
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">

@@ -826,6 +826,13 @@ func main() {
 	// the external-mount endpoints above.
 	registerFilesImportRoutes(mux, filesSvc)
 
+	// EXPORT ("it's yours"): GET /api/export/data streams a single .zip of the
+	// signed-in user's mail (.eml), Drive files, and — where the mail service
+	// exposes them — calendar (.ics) / contacts (.vcf), in standard portable
+	// formats. The anti-lock-in / data-permanence half of the legible-trust
+	// surface. Session-authed; reuses the mail broker headers from the assistant.
+	registerExportRoutes(mux, filesSvc, mailBaseURLFromEnv(), assistantBrokerHeaders())
+
 	// Apps & Bots platform + MCP: give the OS an agent-operable surface over OS
 	// capabilities (Files, read-only app/system info) via the shared @vulos/apps
 	// platform. Management is OS-session-authed; runtime/hooks + /mcp are vat_
