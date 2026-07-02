@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   unwrapMasterKeyWithPassword,
   unwrapMasterKeyWithPhrase,
+  wrapMasterKeyWithPassword,
+  resetPasswordWithActiveSession,
   deriveContentKey,
   holdMasterKey,
   getMasterKey,
@@ -70,6 +72,68 @@ describe('masterKey client unwrap (Go wire parity)', () => {
     await expect(
       unwrapMasterKeyWithPassword({ kdf: 'argon2id', iter: 1, salt: '', iv: '', ct: '' }, 'x'),
     ).rejects.toThrow(/unsupported/)
+  })
+})
+
+describe('wrapMasterKeyWithPassword (Tier-2 re-wrap, Go wire parity)', () => {
+  it('round-trips: a JS-wrapped slot unwraps to the same master key', async () => {
+    const mk = await unwrapMasterKeyWithPassword({ ...FIXTURE.env.pw, v: 1 }, FIXTURE.password)
+    const slot = await wrapMasterKeyWithPassword(mk, 'a brand new password 123')
+    // Wire shape matches the Go password slot.
+    expect(slot.kdf).toBe('pbkdf2-sha256')
+    expect(slot.iter).toBe(600000)
+    expect(typeof slot.salt).toBe('string')
+    expect(typeof slot.iv).toBe('string')
+    expect(typeof slot.ct).toBe('string')
+    // The new-password slot unwraps to the SAME key.
+    const mk2 = await unwrapMasterKeyWithPassword(slot, 'a brand new password 123')
+    expect(hex(mk2)).toBe(FIXTURE.mkHex)
+    // The old password no longer opens the new slot.
+    await expect(unwrapMasterKeyWithPassword(slot, FIXTURE.password)).rejects.toBeTruthy()
+  })
+
+  it('uses a fresh random salt/iv each call', async () => {
+    const mk = new Uint8Array(32).fill(3)
+    const a = await wrapMasterKeyWithPassword(mk, 'pw')
+    const b = await wrapMasterKeyWithPassword(mk, 'pw')
+    expect(a.salt).not.toBe(b.salt)
+    expect(a.iv).not.toBe(b.iv)
+    expect(a.ct).not.toBe(b.ct)
+  })
+})
+
+describe('resetPasswordWithActiveSession', () => {
+  it('posts a client-wrapped slot when the key is held in memory', async () => {
+    const mk = await unwrapMasterKeyWithPassword({ ...FIXTURE.env.pw, v: 1 }, FIXTURE.password)
+    holdMasterKey(mk)
+    let captured = null
+    const fakeFetch = async (url, opts) => {
+      captured = { url, body: JSON.parse(opts.body) }
+      return { ok: true, status: 200, json: async () => ({ status: 'password reset' }) }
+    }
+    const out = await resetPasswordWithActiveSession('a fresh new pass!!', fakeFetch)
+    expect(out.ok).toBe(true)
+    expect(captured.url).toBe('/api/auth/masterkey/reset-active')
+    expect(captured.body.new_password).toBe('a fresh new pass!!')
+    // The posted slot re-wraps the SAME key.
+    const mk2 = await unwrapMasterKeyWithPassword(captured.body.password_slot, 'a fresh new pass!!')
+    expect(hex(mk2)).toBe(FIXTURE.mkHex)
+    clearMasterKey()
+  })
+
+  it('fails to the phrase path (NO_MASTER_KEY) when no key is held', async () => {
+    clearMasterKey()
+    await expect(resetPasswordWithActiveSession('whatever new pw', async () => {
+      throw new Error('fetch should not be called')
+    })).rejects.toMatchObject({ code: 'NO_MASTER_KEY' })
+  })
+
+  it('surfaces NO_MASTER_KEY when the server returns 409', async () => {
+    holdMasterKey(new Uint8Array(32).fill(9))
+    const fetch409 = async () => ({ ok: false, status: 409, json: async () => ({ error: 'no master key' }) })
+    await expect(resetPasswordWithActiveSession('another new pw!!', fetch409))
+      .rejects.toMatchObject({ code: 'NO_MASTER_KEY' })
+    clearMasterKey()
   })
 })
 

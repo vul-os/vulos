@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -54,6 +55,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/masterkey/status", h.handleMasterKeyStatus)
 	mux.HandleFunc("GET /api/auth/masterkey/envelope", h.handleMasterKeyEnvelope)
 	mux.HandleFunc("POST /api/auth/masterkey/recover", h.handleMasterKeyRecover)
+	// WAVE8-TIER2: active-session password reset (session-required; NOT public).
+	mux.HandleFunc("POST /api/auth/masterkey/reset-active", h.handleMasterKeyResetActive)
 
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
 	mux.HandleFunc("POST /api/auth/logout", h.handleLogout)
@@ -588,6 +591,60 @@ func (h *Handler) handleMasterKeyRecover(w http.ResponseWriter, r *http.Request)
 	h.limiter.RecordSuccess(ip)
 	h.store.Flush()
 	writeJSON(w, map[string]string{"status": "account recovered; sign in with your new password"})
+}
+
+// handleMasterKeyResetActive is the Tier-2 (active-session / trusted-device)
+// password reset. It is SESSION-REQUIRED and deliberately NOT in publicPaths:
+// authorization is the caller's existing logged-in session PLUS the client's
+// possession of the in-memory master key. The client re-wraps THE SAME master key
+// under the new password entirely client-side and posts only the resulting wrapped
+// slot; this handler updates the password wrap + the login credential and revokes
+// the user's OTHER sessions.
+//
+// It does NOT accept the OLD password (the whole point — the user forgot it) and
+// NEVER sees the master key or the phrase; the phrase slot is untouched. If the
+// session holds no master key (legacy account/login), it returns 409 so the client
+// falls back to the recovery phrase (Tier-1) instead of silently failing.
+//
+// HONEST BOUNDARY: this authorizes a reset via an active session + the in-memory
+// key, so a hijacked LIVE session could reset the password — the same risk surface
+// as any logged-in session, which is acceptable and standard. It never weakens the
+// zero-access property (the server still never holds the master key or phrase).
+func (h *Handler) handleMasterKeyResetActive(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		writeErr(w, 401, "unauthorized")
+		return
+	}
+	var req struct {
+		NewPassword  string          `json:"new_password"`
+		PasswordSlot json.RawMessage `json:"password_slot"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeErr(w, 400, "invalid request")
+		return
+	}
+	if req.NewPassword == "" || len(req.PasswordSlot) == 0 {
+		writeErr(w, 422, "new_password and password_slot are required")
+		return
+	}
+	keepToken := extractToken(r)
+	if err := h.store.ResetPasswordWithSessionKey(userID, keepToken, req.PasswordSlot, req.NewPassword); err != nil {
+		if errors.Is(err, ErrNoMasterKey) {
+			// Legacy/keyless session — the active session alone cannot authorize a
+			// zero-access reset. Tell the client to fall back to the recovery phrase.
+			writeErr(w, 409, "no master key held by this session; use your recovery phrase")
+			return
+		}
+		writeErr(w, 400, err.Error())
+		return
+	}
+	h.store.Flush()
+	// Keep the caller signed in: refresh their (unchanged) session cookie.
+	if keepToken != "" {
+		http.SetCookie(w, sessionCookie(r, keepToken))
+	}
+	writeJSON(w, map[string]string{"status": "password reset"})
 }
 
 func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {

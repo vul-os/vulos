@@ -119,6 +119,95 @@ func TestRewrapWithWrongPhraseFailsClosed(t *testing.T) {
 	}
 }
 
+// TestRewrapPasswordFromClientSlot is the Tier-2 (active-session) crypto property:
+// a client-produced password slot wrapping the SAME master key replaces the
+// password slot, leaves the phrase slot verbatim, and the server never touches the
+// key.
+func TestRewrapPasswordFromClientSlot(t *testing.T) {
+	env, originalMK, mnemonic := provision(t, testPassword)
+
+	// Simulate the signed-in CLIENT: it already holds originalMK in memory and
+	// re-wraps it under a NEW password entirely client-side.
+	clientEnv, err := WrapMasterKey(originalMK, "a brand new password 123", mnemonic)
+	if err != nil {
+		t.Fatalf("client WrapMasterKey: %v", err)
+	}
+	slotJSON, err := clientEnv.PasswordEnvelopeJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newEnv, err := RewrapPasswordFromClientSlot(env, slotJSON)
+	if err != nil {
+		t.Fatalf("RewrapPasswordFromClientSlot: %v", err)
+	}
+
+	// New password unwraps to the SAME master key.
+	mkNew, err := UnwrapWithPassword(newEnv, "a brand new password 123")
+	if err != nil {
+		t.Fatalf("unwrap new: %v", err)
+	}
+	if !bytes.Equal(mkNew, originalMK) {
+		t.Fatal("client-slot reset changed the master key")
+	}
+	// Old password no longer works.
+	if _, err := UnwrapWithPassword(newEnv, testPassword); err == nil {
+		t.Fatal("old password should not unwrap the re-wrapped envelope")
+	}
+	// Phrase slot preserved verbatim and still unwraps the same key.
+	if !bytes.Equal(newEnv.Phrase.CT, env.Phrase.CT) || !bytes.Equal(newEnv.Phrase.IV, env.Phrase.IV) {
+		t.Fatal("phrase slot must be preserved unchanged")
+	}
+	mkPhrase, err := UnwrapWithMnemonic(newEnv, mnemonic)
+	if err != nil {
+		t.Fatalf("phrase unwrap after reset: %v", err)
+	}
+	if !bytes.Equal(mkPhrase, originalMK) {
+		t.Fatal("phrase wrap changed after client-slot reset")
+	}
+}
+
+// TestRewrapPasswordFromClientSlotRejectsBadSlots proves the server fails closed on
+// structurally invalid or KDF-downgraded client slots (the only checks it can make
+// without possessing the key).
+func TestRewrapPasswordFromClientSlotRejectsBadSlots(t *testing.T) {
+	env, mk, mnemonic := provision(t, testPassword)
+	good, _ := WrapMasterKey(mk, "well formed new pw!!", mnemonic)
+	goodJSON, _ := good.PasswordEnvelopeJSON()
+
+	// Sanity: a well-formed slot is accepted.
+	if _, err := RewrapPasswordFromClientSlot(env, goodJSON); err != nil {
+		t.Fatalf("well-formed slot rejected: %v", err)
+	}
+
+	mutate := func(k string, v any) []byte {
+		var m map[string]any
+		if err := json.Unmarshal(goodJSON, &m); err != nil {
+			t.Fatal(err)
+		}
+		m[k] = v
+		b, _ := json.Marshal(m)
+		return b
+	}
+
+	// Downgraded KDF iteration count must be rejected (no silent KDF weakening).
+	if _, err := RewrapPasswordFromClientSlot(env, mutate("iter", 1000)); err == nil {
+		t.Fatal("expected rejection of downgraded iteration count")
+	}
+	// Unsupported KDF rejected.
+	if _, err := RewrapPasswordFromClientSlot(env, mutate("kdf", "argon2id")); err == nil {
+		t.Fatal("expected rejection of unsupported kdf")
+	}
+	// Wrong-size ciphertext rejected.
+	if _, err := RewrapPasswordFromClientSlot(env, mutate("ct", "AAAA")); err == nil {
+		t.Fatal("expected rejection of wrong-size ciphertext")
+	}
+	// Garbage JSON rejected.
+	if _, err := RewrapPasswordFromClientSlot(env, []byte("not json")); err == nil {
+		t.Fatal("expected rejection of non-JSON slot")
+	}
+}
+
 // TestEnvelopeNeverContainsPlaintext is the core trust-boundary property: the
 // serialised blob must not contain the master key or the phrase in any form.
 func TestEnvelopeNeverContainsPlaintext(t *testing.T) {

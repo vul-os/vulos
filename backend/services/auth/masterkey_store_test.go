@@ -142,6 +142,115 @@ func TestRewrapOnPasswordChange(t *testing.T) {
 	}
 }
 
+// TestResetPasswordWithSessionKey covers the Tier-2 (active-session) reset: a
+// signed-in session re-wraps the master key under a new password client-side; the
+// key still unwraps under the NEW password AND the phrase, other sessions are
+// revoked (current kept), and no plaintext key is stored.
+func TestResetPasswordWithSessionKey(t *testing.T) {
+	s := newTestStore(t)
+	u, _ := s.Register("frank", "old-password-123", "Frank")
+	phrase, err := s.ProvisionMasterKey(u.ID, "old-password-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Baseline master key (recovered via the phrase, as the client would hold it).
+	origBlob, _ := s.LoadMasterKeyBlob(u.ID)
+	origEnv, _ := internalauth.ParseMasterKeyEnvelope(origBlob)
+	origMK, _ := internalauth.UnwrapWithMnemonic(origEnv, phrase)
+
+	// Simulate the signed-in CLIENT: it holds origMK and re-wraps under a new pw.
+	clientEnv, _ := internalauth.WrapMasterKey(origMK, "new-session-pass-1", phrase)
+	slotJSON, _ := clientEnv.PasswordEnvelopeJSON()
+
+	// Two live sessions: one kept (current), one to be revoked.
+	keep := s.CreateSession(u, "keep-device")
+	other := s.CreateSession(u, "other-device")
+
+	if err := s.ResetPasswordWithSessionKey(u.ID, keep.Token, slotJSON, "new-session-pass-1"); err != nil {
+		t.Fatalf("ResetPasswordWithSessionKey: %v", err)
+	}
+
+	// New password logs in; old does not.
+	if _, err := s.Login("frank", "new-session-pass-1"); err != nil {
+		t.Fatalf("new password should log in: %v", err)
+	}
+	if _, err := s.Login("frank", "old-password-123"); err == nil {
+		t.Fatal("old password should no longer work")
+	}
+
+	// Master key preserved: unwraps to the SAME key under new password AND phrase.
+	nb, _ := s.LoadMasterKeyBlob(u.ID)
+	ne, _ := internalauth.ParseMasterKeyEnvelope(nb)
+	mkPw, err := internalauth.UnwrapWithPassword(ne, "new-session-pass-1")
+	if err != nil {
+		t.Fatalf("unwrap new pw: %v", err)
+	}
+	if !bytes.Equal(mkPw, origMK) {
+		t.Fatal("master key changed under the new password")
+	}
+	mkPh, err := internalauth.UnwrapWithMnemonic(ne, phrase)
+	if err != nil {
+		t.Fatalf("unwrap phrase: %v", err)
+	}
+	if !bytes.Equal(mkPh, origMK) {
+		t.Fatal("phrase no longer unwraps the same key")
+	}
+
+	// Current session survives; the other is revoked.
+	if _, ok := s.ValidateToken(keep.Token); !ok {
+		t.Fatal("current session should survive the reset")
+	}
+	if _, ok := s.ValidateToken(other.Token); ok {
+		t.Fatal("other session should be revoked")
+	}
+
+	// Server stores no plaintext key.
+	if bytes.Contains(nb, origMK) {
+		t.Fatal("stored blob contains the raw master key")
+	}
+}
+
+// TestResetPasswordWithSessionKeyNoMasterKeyFailsClosed proves a session that holds
+// no master key (legacy account) fails closed to ErrNoMasterKey — the caller must
+// fall back to the phrase — and changes nothing.
+func TestResetPasswordWithSessionKeyNoMasterKeyFailsClosed(t *testing.T) {
+	s := newTestStore(t)
+	u, _ := s.Register("grace", "grace-password-1", "Grace") // no master key provisioned
+	sess := s.CreateSession(u, "d")
+
+	fakeMK := make([]byte, 32)
+	_, phrase, _ := internalauth.ProvisionMasterKey("x")
+	ce, _ := internalauth.WrapMasterKey(fakeMK, "brand-new-pass-9", phrase)
+	slotJSON, _ := ce.PasswordEnvelopeJSON()
+
+	if err := s.ResetPasswordWithSessionKey(u.ID, sess.Token, slotJSON, "brand-new-pass-9"); err != ErrNoMasterKey {
+		t.Fatalf("expected ErrNoMasterKey, got %v", err)
+	}
+	if _, err := s.Login("grace", "grace-password-1"); err != nil {
+		t.Fatal("password must be unchanged after a fail-closed reset")
+	}
+}
+
+// TestResetPasswordWithSessionKeyRejectsBadSlot proves a structurally invalid slot
+// is rejected WITHOUT touching the login credential.
+func TestResetPasswordWithSessionKeyRejectsBadSlot(t *testing.T) {
+	s := newTestStore(t)
+	u, _ := s.Register("heidi", "heidi-password-1", "Heidi")
+	if _, err := s.ProvisionMasterKey(u.ID, "heidi-password-1"); err != nil {
+		t.Fatal(err)
+	}
+	sess := s.CreateSession(u, "d")
+
+	bad := []byte(`{"v":1,"kdf":"pbkdf2-sha256","iter":10,"salt":"AAAA","iv":"AAAA","ct":"AAAA"}`)
+	if err := s.ResetPasswordWithSessionKey(u.ID, sess.Token, bad, "another-new-pass-1"); err == nil {
+		t.Fatal("expected rejection of a structurally invalid slot")
+	}
+	if _, err := s.Login("heidi", "heidi-password-1"); err != nil {
+		t.Fatal("password must be unchanged after an invalid-slot reset")
+	}
+}
+
 // TestPasswordEnvelopeOmitsPhrase confirms the client-facing envelope never
 // carries the phrase slot.
 func TestPasswordEnvelopeOmitsPhrase(t *testing.T) {

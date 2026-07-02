@@ -38,6 +38,18 @@ function b64ToBytes(b64) {
   return out
 }
 
+// bytesToB64 encodes to standard base64 — the shape Go's encoding/json expects for
+// a []byte field, so a slot produced here round-trips into the Go wrapSlot verbatim.
+function bytesToB64(u8) {
+  let bin = ''
+  for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i])
+  return btoa(bin)
+}
+
+// PBKDF2_ITERS mirrors backend mkPBKDF2Iters — the standard password-wrap cost.
+// The server enforces this as a FLOOR (mkMinPBKDF2Iters), rejecting anything lower.
+const PBKDF2_ITERS = 600000
+
 // normaliseMnemonic mirrors auth/recovery.go: lowercase + collapse whitespace.
 function normaliseMnemonic(m) {
   return String(m).trim().toLowerCase().split(/\s+/).join(' ')
@@ -97,6 +109,79 @@ export async function unwrapMasterKeyWithPhrase(slot, mnemonic) {
     b64ToBytes(slot.ct),
   )
   return new Uint8Array(mk)
+}
+
+// wrapMasterKeyWithPassword seals `masterKey` under `password`, producing a slot
+// byte-for-byte compatible with backend/internal/auth/masterkey.go's password wrap
+// (PBKDF2-HMAC-SHA256 -> AES-256-GCM, AAD 'vulos-mk-pw-v1'). Returns
+// { v, kdf, iter, salt, iv, ct } with salt/iv/ct base64-encoded (matching Go's JSON
+// []byte encoding), ready to POST. Runs entirely CLIENT-SIDE: the master key never
+// leaves the tab and is never sent to the server — only this wrapped slot is.
+export async function wrapMasterKeyWithPassword(masterKey, password, iter = PBKDF2_ITERS) {
+  if (!(masterKey instanceof Uint8Array) || masterKey.length !== 32) {
+    throw new Error('masterKey: master key must be 32 bytes')
+  }
+  if (!password) throw new Error('masterKey: password must not be empty')
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16))
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12))
+  const baseKey = await subtle().importKey('raw', te.encode(password), 'PBKDF2', false, ['deriveKey'])
+  const aesKey = await subtle().deriveKey(
+    { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  )
+  const ct = new Uint8Array(await subtle().encrypt(
+    { name: 'AES-GCM', iv, additionalData: te.encode(AAD_PW) },
+    aesKey,
+    masterKey,
+  ))
+  return {
+    v: 1,
+    kdf: 'pbkdf2-sha256',
+    iter,
+    salt: bytesToB64(salt),
+    iv: bytesToB64(iv),
+    ct: bytesToB64(ct),
+  }
+}
+
+// resetPasswordWithActiveSession performs the Tier-2 (active-session / trusted-
+// device) password reset: it re-wraps the IN-MEMORY master key under `newPassword`
+// CLIENT-SIDE and posts the wrapped slot + new password to the session-authed
+// endpoint. The server never sees the master key — zero-access is preserved.
+//
+// If this session does not hold the master key (legacy login, or the key was
+// cleared), it throws an error tagged `code === 'NO_MASTER_KEY'` so the caller can
+// fall back to the recovery phrase (Tier-1) instead of silently failing.
+export async function resetPasswordWithActiveSession(newPassword, fetchImpl = fetch) {
+  const mk = getMasterKey()
+  if (!mk) {
+    const e = new Error('This session does not hold your encryption key — use your recovery phrase instead.')
+    e.code = 'NO_MASTER_KEY'
+    throw e
+  }
+  const slot = await wrapMasterKeyWithPassword(mk, newPassword)
+  const res = await fetchImpl('/api/auth/masterkey/reset-active', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_password: newPassword, password_slot: slot }),
+  })
+  if (res.status === 409) {
+    const e = new Error('This session does not hold your encryption key — use your recovery phrase instead.')
+    e.code = 'NO_MASTER_KEY'
+    throw e
+  }
+  if (!res.ok) {
+    let msg = `reset failed (${res.status})`
+    try {
+      const j = await res.json()
+      if (j && j.error) msg = j.error
+    } catch { /* non-JSON error body */ }
+    throw new Error(msg)
+  }
+  return { ok: true }
 }
 
 // deriveContentKey mirrors internal/auth.DeriveContentKey — the wave-3 entry

@@ -221,6 +221,79 @@ func (s *Store) RecoverAccountWithPhrase(username, mnemonic, newPassword string)
 	return nil
 }
 
+// ResetPasswordWithSessionKey performs a Tier-2 (active-session / trusted-device)
+// password reset. Authorization is the caller's ACTIVE SESSION (enforced by the
+// handler) PLUS the client's possession of the in-memory master key, which the
+// client used to produce newPasswordSlotJSON — a fresh password-wrap of the SAME
+// master key. This path deliberately does NOT take the OLD password (the user
+// forgot it) and the server NEVER sees the master key: it only stores the wrapped
+// slot the client produced.
+//
+// It (1) swaps the password wrap slot of the envelope for the client-produced one,
+// leaving the PHRASE slot untouched, (2) resets the bcrypt login credential to
+// newPassword, and (3) revokes every OTHER session for the user, keeping the
+// caller's current session (keepToken) alive so they stay signed in.
+//
+// Fail-closed: if the account has no master key it returns ErrNoMasterKey (the
+// caller should fall back to the recovery phrase — the active session alone cannot
+// authorize a zero-access reset), and if the client slot is structurally invalid
+// nothing is changed (the login credential is only touched AFTER the new envelope
+// is persisted).
+func (s *Store) ResetPasswordWithSessionKey(userID, keepToken string, newPasswordSlotJSON []byte, newPassword string) error {
+	if len(newPassword) < minPasswordLength {
+		return fmt.Errorf("password must be %d+ chars", minPasswordLength)
+	}
+	if len(newPassword) > bcryptMaxBytes {
+		return fmt.Errorf("password must be %d chars or fewer", bcryptMaxBytes)
+	}
+
+	// 1. Swap ONLY the password wrap slot for the client-produced one. This runs
+	//    BEFORE the login credential is touched, so a missing master key or a
+	//    malformed slot fails closed and changes nothing.
+	blob, err := s.LoadMasterKeyBlob(userID)
+	if err != nil || len(blob) == 0 {
+		return ErrNoMasterKey
+	}
+	env, err := internalauth.ParseMasterKeyEnvelope(blob)
+	if err != nil {
+		return fmt.Errorf("auth: ResetPasswordWithSessionKey: %w", err)
+	}
+	newEnv, err := internalauth.RewrapPasswordFromClientSlot(env, newPasswordSlotJSON)
+	if err != nil {
+		return fmt.Errorf("auth: ResetPasswordWithSessionKey: %w", err)
+	}
+	newBlob, err := newEnv.Marshal()
+	if err != nil {
+		return fmt.Errorf("auth: ResetPasswordWithSessionKey: %w", err)
+	}
+	if err := s.SaveMasterKeyBlob(userID, newBlob); err != nil {
+		return err
+	}
+
+	// 2. Reset the bcrypt login credential and revoke every OTHER session (standard
+	//    on password change), keeping the caller's active session alive.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[userID]
+	if !ok {
+		return fmt.Errorf("user not found")
+	}
+	u.PasswordHash = hashPassword(newPassword)
+	revoked := make([]string, 0)
+	for token, sess := range s.sessions {
+		if sess.UserID == userID && token != keepToken {
+			delete(s.sessions, token)
+			revoked = append(revoked, token)
+		}
+	}
+	s.persistUser(u)
+	for _, token := range revoked {
+		s.deleteSession(token)
+	}
+	log.Printf("[auth] Tier-2 active-session password reset for user %s (%d other session(s) revoked; server never saw the master key)", userID, len(revoked))
+	return nil
+}
+
 // Sentinels.
 var (
 	ErrMasterKeyExists = fmt.Errorf("auth: master key already provisioned")

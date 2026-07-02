@@ -76,6 +76,12 @@ const (
 	// wrap. 600k follows OWASP 2023 guidance for PBKDF2-HMAC-SHA256.
 	mkPBKDF2Iters = 600_000
 
+	// mkMinPBKDF2Iters is the FLOOR the server accepts for a client-produced
+	// password slot (Tier-2 active-session reset). It equals the standard cost:
+	// accepting a lower count would let a client (e.g. a hijacked live session)
+	// silently DOWNGRADE the password KDF, so anything below it fails closed.
+	mkMinPBKDF2Iters = mkPBKDF2Iters
+
 	// masterKeyEnvelopeVersion is the on-disk envelope schema version.
 	masterKeyEnvelopeVersion = 1
 
@@ -295,6 +301,61 @@ func RewrapPasswordWithPassword(e *MasterKeyEnvelope, oldPassword, newPassword s
 		return nil, err
 	}
 	return &MasterKeyEnvelope{Version: masterKeyEnvelopeVersion, Password: pw, Phrase: e.Phrase}, nil
+}
+
+// RewrapPasswordFromClientSlot replaces ONLY the password wrap slot of e with a
+// client-produced slot (the JSON shape emitted by PasswordEnvelopeJSON and by
+// src/lib/masterKey.js wrapMasterKeyWithPassword) and returns a new envelope with
+// the phrase slot preserved verbatim.
+//
+// This backs Tier-2 (active-session / trusted-device) password reset: a signed-in
+// client that already holds the unwrapped master key in memory re-wraps THE SAME
+// key under the new password entirely CLIENT-SIDE and hands the server only the
+// wrapped bytes. The server therefore never sees the master key on this path — the
+// zero-access property is preserved.
+//
+// The server cannot verify the slot actually wraps the user's master key (it never
+// has the key); that authenticity is the client's responsibility and is bounded by
+// the phrase slot, which is left UNTOUCHED and always recovers the true key. What
+// the server DOES enforce, fail-closed, are the wire invariants it can check
+// without the key: correct KDF, an iteration count at or above the security floor
+// (no KDF downgrade), and salt/iv/ct of the expected sizes. A malformed or
+// downgraded slot is rejected and nothing is changed.
+func RewrapPasswordFromClientSlot(e *MasterKeyEnvelope, newPasswordSlotJSON []byte) (*MasterKeyEnvelope, error) {
+	if e == nil {
+		return nil, errors.New("auth/masterkey: nil envelope")
+	}
+	var slot wrapSlot
+	if err := json.Unmarshal(newPasswordSlotJSON, &slot); err != nil {
+		return nil, fmt.Errorf("auth/masterkey: parse client password slot: %w", err)
+	}
+	if err := validatePasswordSlot(slot); err != nil {
+		return nil, err
+	}
+	// Preserve the phrase slot verbatim: the master key is unchanged.
+	return &MasterKeyEnvelope{Version: masterKeyEnvelopeVersion, Password: slot, Phrase: e.Phrase}, nil
+}
+
+// validatePasswordSlot enforces the structural wire invariants of a password wrap
+// slot that the server can verify WITHOUT possessing the master key. Fail-closed.
+func validatePasswordSlot(s wrapSlot) error {
+	if s.KDF != kdfPassword {
+		return fmt.Errorf("auth/masterkey: client slot has unsupported kdf %q", s.KDF)
+	}
+	if s.Iter < mkMinPBKDF2Iters {
+		return fmt.Errorf("auth/masterkey: client slot iterations %d below floor %d", s.Iter, mkMinPBKDF2Iters)
+	}
+	if len(s.Salt) < 16 {
+		return errors.New("auth/masterkey: client slot salt too short")
+	}
+	if len(s.IV) != 12 {
+		return errors.New("auth/masterkey: client slot iv must be 12 bytes")
+	}
+	// AES-256-GCM ciphertext of a 32-byte key is exactly key||16-byte-tag.
+	if len(s.CT) != MasterKeyLen+16 {
+		return fmt.Errorf("auth/masterkey: client slot ciphertext must be %d bytes", MasterKeyLen+16)
+	}
+	return nil
 }
 
 // ─── Content-key derivation (wave 3 entry point) ──────────────────────────────
