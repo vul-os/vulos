@@ -278,25 +278,27 @@ func (s *LilmailSource) AddContact(ctx context.Context, auth Auth, c Contact) er
 	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/contacts", c, "add contact")
 }
 
-// Triage maps archive/snooze/label onto the /v1 flag + snooze surface:
-//   - snooze → POST /v1/messages/{id}/snooze {"until": ...}
-//   - label  → PATCH /v1/messages/{id}/flags {"add": ["<label>"]}
-//   - archive→ PATCH /v1/messages/{id}/flags {"add": ["\\Deleted"]} (move out of INBOX)
+// Triage maps archive/snooze/label onto lilmail's REAL /v1 surface:
+//   - archive → POST  /v1/messages/{id}/move  {"toFolder":"Archive"}
+//   - snooze  → POST  /v1/messages/{id}/move  {"toFolder":"Snoozed"}
+//     (lilmail has no timed-snooze primitive, so "snooze" = park it in a Snoozed
+//     folder; a timed un-snooze would be a control-plane scheduler job later.)
+//   - label   → PATCH /v1/messages/{id}/flags {"flags":["<label>"],"add":true}
+//     (lilmail's flags endpoint: `add` is a boolean, `flags` is the keyword list.)
 //
-// The exact archive semantics are the mail service's; the assistant only ever
-// asks for one of these after the user approves the proposal.
+// Triage runs only after the user approves the proposal.
 func (s *LilmailSource) Triage(ctx context.Context, auth Auth, a TriageAction) error {
 	id := url.PathEscape(a.MessageID)
 	switch strings.ToLower(strings.TrimSpace(a.Action)) {
 	case "snooze":
-		return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages/"+id+"/snooze",
-			map[string]string{"until": a.Until}, "snooze")
+		return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages/"+id+"/move",
+			map[string]string{"toFolder": "Snoozed"}, "snooze")
 	case "label":
 		return s.writeJSON(ctx, auth, http.MethodPatch, "/v1/messages/"+id+"/flags",
-			map[string]any{"add": []string{a.Label}}, "label")
+			map[string]any{"flags": []string{a.Label}, "add": true}, "label")
 	case "archive":
-		return s.writeJSON(ctx, auth, http.MethodPatch, "/v1/messages/"+id+"/flags",
-			map[string]any{"add": []string{"\\Deleted"}}, "archive")
+		return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages/"+id+"/move",
+			map[string]string{"toFolder": "Archive"}, "archive")
 	default:
 		return fmt.Errorf("unknown triage action %q", a.Action)
 	}
