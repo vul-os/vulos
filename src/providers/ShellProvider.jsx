@@ -1,12 +1,16 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
 import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
+import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
+import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
 
 const ShellContext = createContext(null)
 
 let nextId = 1
 
-function shellReducer(state, action) {
+// Exported for unit tests (the store is the heart of the window manager).
+// eslint-disable-next-line react-refresh/only-export-components
+export function shellReducer(state, action) {
   switch (action.type) {
     case 'OPEN_WINDOW': {
       const desktopId = state.activeDesktop
@@ -61,7 +65,11 @@ function shellReducer(state, action) {
       const desktops = { ...state.desktops }
       const desk = { ...desktops[state.activeDesktop] }
       desk.windows = desk.windows.map(w =>
-        w.id === action.id ? { ...w, position: action.position } : w
+        // Dragging/moving a tiled window frees it — clear the tile flags so the
+        // next keyboard-tiling gesture starts fresh from a floating window.
+        w.id === action.id
+          ? { ...w, position: action.position, _tile: action.keepTile ? w._tile : null, _maximized: action.keepTile ? w._maximized : false }
+          : w
       )
       desktops[state.activeDesktop] = desk
       return { ...state, desktops }
@@ -70,8 +78,38 @@ function shellReducer(state, action) {
       const desktops = { ...state.desktops }
       const desk = { ...desktops[state.activeDesktop] }
       desk.windows = desk.windows.map(w =>
-        w.id === action.id ? { ...w, size: action.size } : w
+        w.id === action.id
+          ? { ...w, size: action.size, _tile: action.keepTile ? w._tile : null, _maximized: action.keepTile ? w._maximized : false }
+          : w
       )
+      desktops[state.activeDesktop] = desk
+      return { ...state, desktops }
+    }
+    case 'TILE_WINDOW': {
+      const { id, zone, geometry } = action
+      const desktops = { ...state.desktops }
+      const desk = { ...desktops[state.activeDesktop] }
+      desk.windows = desk.windows.map(w => {
+        if (w.id !== id) return w
+        if (zone === 'restore') {
+          if (!w._prevPosition) return { ...w, _tile: null, _maximized: false }
+          return { ...w, position: w._prevPosition, size: w._prevSize, _tile: null, _maximized: false, _prevPosition: null, _prevSize: null }
+        }
+        if (!geometry) return w
+        // Preserve the floating geometry the first time a window is tiled so
+        // 'restore' (and Down-arrow / double-click) can return it home.
+        const alreadyTiled = !!(w._tile || w._maximized)
+        return {
+          ...w,
+          _prevPosition: alreadyTiled ? w._prevPosition : w.position,
+          _prevSize: alreadyTiled ? w._prevSize : w.size,
+          position: geometry.position,
+          size: geometry.size,
+          _tile: zone,
+          _maximized: zone === 'maximize',
+        }
+      })
+      desk.activeWindow = id
       desktops[state.activeDesktop] = desk
       return { ...state, desktops }
     }
@@ -81,12 +119,16 @@ function shellReducer(state, action) {
       desk.windows = desk.windows.map(w => {
         if (w.id !== action.id) return w
         if (w._maximized) {
-          return { ...w, position: w._prevPosition, size: w._prevSize, _maximized: false }
+          return { ...w, position: w._prevPosition, size: w._prevSize, _maximized: false, _tile: null }
         }
+        // Preserve floating geometry only if the window isn't already tiled.
+        const alreadyTiled = !!w._tile
         // Position below menu bar (32px), fullscreen to bottom
         return {
           ...w,
-          _prevPosition: w.position, _prevSize: w.size, _maximized: true,
+          _prevPosition: alreadyTiled ? w._prevPosition : w.position,
+          _prevSize: alreadyTiled ? w._prevSize : w.size,
+          _maximized: true, _tile: 'maximize',
           position: { x: 0, y: 32 },
           size: { width: window.innerWidth, height: window.innerHeight - 32 },
         }
@@ -179,8 +221,27 @@ function shellReducer(state, action) {
       return { ...state, missionControlOpen: !state.missionControlOpen }
     case 'SET_MISSION_CONTROL':
       return { ...state, missionControlOpen: action.open }
-    case 'RESTORE_STATE':
-      return { ...state, ...action.saved, conversation: state.conversation }
+    case 'RESTORE_STATE': {
+      const saved = action.saved
+      const desktops = {}
+      let maxId = 0
+      for (const [deskId, desk] of Object.entries(saved.desktops || {})) {
+        const windows = (desk.windows || []).map(w => {
+          if (typeof w.id === 'number') maxId = Math.max(maxId, w.id)
+          // Re-hydrate builtin apps: their React component can't be serialized,
+          // so we persist only the appId and rebuild the live element on load.
+          if (w._builtin && isBuiltinComponent(w.appId)) {
+            return { ...w, component: builtinComponent(w.appId) }
+          }
+          return w
+        })
+        desktops[deskId] = { ...desk, windows }
+      }
+      // Advance the id counter past every restored window so freshly-opened
+      // windows never collide with a persisted id.
+      if (maxId >= nextId) nextId = maxId + 1
+      return { ...state, ...saved, desktops, conversation: state.conversation }
+    }
     // BMINIT-18: thin WM — sync wlr-foreign-toplevel state into JSX windows.
     // Matches each toplevel (by app_id) to the corresponding JSX window and
     // stores its handle as _wtHandle so focusWindow/minimizeWindow can call the
@@ -207,7 +268,8 @@ function shellReducer(state, action) {
 
 // Persist shell state to localStorage (survives refresh)
 const STORAGE_KEY = 'vulos-shell-state'
-function saveShellState(state) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function saveShellState(state) {
   try {
     // Only persist serializable window data (strip component/html which can be large)
     const toSave = {
@@ -217,16 +279,29 @@ function saveShellState(state) {
     for (const [id, desk] of Object.entries(state.desktops)) {
       toSave.desktops[id] = {
         ...desk,
-        windows: desk.windows.filter(w => w.url && !w.component && !w.html).map(w => ({
-          id: w.id, appId: w.appId, title: w.title, url: w.url, icon: w.icon,
-          position: w.position, size: w.size, minimized: w.minimized,
-        })),
+        windows: desk.windows
+          // Persist windows we can faithfully rebuild on reload: URL/web-view
+          // apps, and builtin React apps (rebuilt from their appId). Stream /
+          // browser / raw-html windows need a live backend session, so they're
+          // intentionally dropped.
+          .filter(w => (w.url && !w.component && !w.html) || isBuiltinComponent(w.appId))
+          .map(w => {
+            const base = {
+              id: w.id, appId: w.appId, title: w.title, icon: w.icon,
+              position: w.position, size: w.size, minimized: w.minimized,
+              _tile: w._tile || null, _maximized: !!w._maximized,
+            }
+            return isBuiltinComponent(w.appId)
+              ? { ...base, _builtin: true }
+              : { ...base, url: w.url }
+          }),
       }
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch { /* noop */ }
 }
-function loadShellState() {
+// eslint-disable-next-line react-refresh/only-export-components
+export function loadShellState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
@@ -237,8 +312,12 @@ function loadShellState() {
     if (typeof data.activeDesktop !== 'string') return null
     for (const desk of Object.values(data.desktops)) {
       if (!desk || !Array.isArray(desk.windows)) return null
-      // Strip any non-serializable or stale data
-      desk.windows = desk.windows.filter(w => w && typeof w.appId === 'string' && typeof w.url === 'string')
+      // Strip any non-serializable or stale data. Keep URL windows and builtin
+      // apps (which restore from appId); drop anything else.
+      desk.windows = desk.windows.filter(w =>
+        w && typeof w.appId === 'string' &&
+        (typeof w.url === 'string' || (w._builtin && isBuiltinComponent(w.appId)))
+      )
     }
     if (!data.desktops[data.activeDesktop]) {
       data.activeDesktop = Object.keys(data.desktops)[0]
@@ -387,6 +466,16 @@ export function ShellProvider({ children }) {
 
   const maximizeWindow = useCallback((id) => dispatch({ type: 'MAXIMIZE_WINDOW', id }), [])
 
+  // Snap/tile a window into a zone (or 'restore' to floating). Geometry is
+  // computed here from the live viewport; the reducer records the tile so the
+  // keyboard-tiling state machine can build quarters from halves, etc.
+  const tileWindow = useCallback((id, zone) => {
+    const geometry = zone === 'restore'
+      ? null
+      : tileGeometry(zone, window.innerWidth, window.innerHeight, MENU_BAR_H)
+    dispatch({ type: 'TILE_WINDOW', id, zone, geometry })
+  }, [])
+
   const switchDesktop = useCallback((id) => dispatch({ type: 'SWITCH_DESKTOP', id }), [])
   const addDesktop = useCallback((label) => dispatch({ type: 'ADD_DESKTOP', label }), [])
   const removeDesktop = useCallback((id) => dispatch({ type: 'REMOVE_DESKTOP', id }), [])
@@ -449,7 +538,7 @@ export function ShellProvider({ children }) {
       conversation: state.conversation, thinking: state.thinking,
       launchpadOpen: state.launchpadOpen, chatOpen: state.chatOpen, missionControlOpen: state.missionControlOpen,
       layout,
-      openWindow, closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow,
+      openWindow, closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, tileWindow,
       switchDesktop, addDesktop, removeDesktop, moveWindowToDesktop,
       openNativeWindow, closeNativeWindow,
       popoutApp, closePopout,

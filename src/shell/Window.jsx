@@ -3,6 +3,7 @@ import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
 import { needsSameOrigin } from '../core/AppRegistry'
+import { tileGeometry, snapZoneForPoint, MENU_BAR_H } from './windowTiling'
 
 // SANDBOX-01: build the iframe sandbox for a URL-loaded app. App pages are
 // served same-origin, so `allow-same-origin` here defeats the sandbox (the app
@@ -143,7 +144,7 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
 }
 
 export default function Window({ win, pointerBlock }) {
-  const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, openNativeWindow, activeWindow } = useShell()
+  const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, tileWindow, openNativeWindow, activeWindow } = useShell()
   const [dragging, setDragging] = useState(false)
   // BMINIT-18: in v2 labwc native mode the compositor (labwc SSD) owns
   // decoration, positioning, and stacking — React becomes a thin mirror.
@@ -207,48 +208,15 @@ export default function Window({ win, pointerBlock }) {
     animTimer.current = setTimeout(() => closeWindow(win.id), 170)
   }, [reduceMotion, closeWindow, win.id])
 
-  const SNAP_EDGE = 3 // pixels from edge to trigger snap on release
-  const SNAP_PREVIEW = 48 // larger zone to show snap preview while dragging
+  const SNAP_PREVIEW = 48 // zone (px) to show snap preview while dragging
 
   const [snapZone, setSnapZone] = useState(null) // 'left' | 'right' | 'top' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
-  const getSnapZone = (x, y, vw, vh, edge) => {
-    const isLeft = x <= edge
-    const isRight = x >= vw - edge
-    const isTop = y <= edge
-    const isBottom = y >= vh - edge
-    if (isLeft && isTop) return 'top-left'
-    if (isRight && isTop) return 'top-right'
-    if (isLeft && isBottom) return 'bottom-left'
-    if (isRight && isBottom) return 'bottom-right'
-    if (isLeft) return 'left'
-    if (isRight) return 'right'
-    if (isTop) return 'top'
-    return null
-  }
-
-  const applySnap = (zone, vw, vh) => {
-    const top = 32    // menu bar
-    const usableH = vh - top
-    const halfW = Math.floor(vw / 2)
-    const halfH = Math.floor(usableH / 2)
-    switch (zone) {
-      case 'left':
-        moveWindow(win.id, { x: 0, y: top }); resizeWindow(win.id, { width: halfW, height: usableH }); break
-      case 'right':
-        moveWindow(win.id, { x: halfW, y: top }); resizeWindow(win.id, { width: halfW, height: usableH }); break
-      case 'top':
-        moveWindow(win.id, { x: 0, y: top }); resizeWindow(win.id, { width: vw, height: usableH }); break
-      case 'top-left':
-        moveWindow(win.id, { x: 0, y: top }); resizeWindow(win.id, { width: halfW, height: halfH }); break
-      case 'top-right':
-        moveWindow(win.id, { x: halfW, y: top }); resizeWindow(win.id, { width: halfW, height: halfH }); break
-      case 'bottom-left':
-        moveWindow(win.id, { x: 0, y: top + halfH }); resizeWindow(win.id, { width: halfW, height: halfH }); break
-      case 'bottom-right':
-        moveWindow(win.id, { x: halfW, y: top + halfH }); resizeWindow(win.id, { width: halfW, height: halfH }); break
-    }
-  }
+  // Geometry + edge-detection now live in the pure, tested windowTiling module.
+  // tileWindow() applies the geometry AND records the tile zone (+ pre-tile
+  // floating geometry) so the drag-snap path and the keyboard-tiling path stay
+  // in lock-step and share one restore path.
+  const applySnap = (zone) => tileWindow(win.id, zone)
 
   const onDragStart = useCallback((e) => {
     if (e.target.closest('[data-no-drag]')) return
@@ -262,16 +230,16 @@ export default function Window({ win, pointerBlock }) {
 
     const onMove = (ev) => {
       moveWindow(win.id, { x: Math.max(0, ev.clientX - ox), y: Math.max(0, ev.clientY - oy) })
-      setSnapZone(getSnapZone(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW))
+      setSnapZone(snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW))
     }
     const onUp = (ev) => {
       setDragging(false)
-      const zone = snapZone || getSnapZone(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
+      const zone = snapZone || snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
       setSnapZone(null)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
 
-      if (zone) applySnap(zone, vw, vh)
+      if (zone) applySnap(zone)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -315,7 +283,7 @@ export default function Window({ win, pointerBlock }) {
           In v2 labwc mode: traffic lights + drag handle are suppressed because the
           compositor provides SSD (server-side decoration) for all windows. */}
       {!isBrowser && !thinWM && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart}>
+        <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart} onDoubleClick={() => maximizeWindow(win.id)}>
           {/* Traffic lights */}
           <div className="flex items-center gap-1.5" data-no-drag>
             <button onClick={animatedClose} aria-label="Close window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
@@ -421,30 +389,12 @@ export default function Window({ win, pointerBlock }) {
 }
 
 function SnapPreview({ zone }) {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const top = 32
-  const usableH = vh - top
-  const halfW = Math.floor(vw / 2)
-  const halfH = Math.floor(usableH / 2)
-
-  const styles = {
-    'left':         { left: 0, top, width: halfW, height: usableH },
-    'right':        { left: halfW, top, width: halfW, height: usableH },
-    'top':          { left: 0, top, width: vw, height: usableH },
-    'top-left':     { left: 0, top, width: halfW, height: halfH },
-    'top-right':    { left: halfW, top, width: halfW, height: halfH },
-    'bottom-left':  { left: 0, top: top + halfH, width: halfW, height: halfH },
-    'bottom-right': { left: halfW, top: top + halfH, width: halfW, height: halfH },
-  }
-
-  const s = styles[zone]
-  if (!s) return null
-
+  const g = tileGeometry(zone, window.innerWidth, window.innerHeight, MENU_BAR_H)
+  if (!g) return null
   return (
     <div
       className="fixed z-[100] rounded-xl border-2 border-blue-500/40 bg-blue-500/10 pointer-events-none transition-all duration-150"
-      style={s}
+      style={{ left: g.position.x, top: g.position.y, width: g.size.width, height: g.size.height }}
     />
   )
 }

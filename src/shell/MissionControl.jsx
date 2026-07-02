@@ -88,7 +88,9 @@ export default function MissionControl() {
   // Keyboard shortcut: F3 (Windows/Linux), Ctrl+Up (mac fallback)
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'F3' || (e.ctrlKey && e.key === 'ArrowUp')) {
+      // Ctrl+Alt+↑ is reserved for keyboard tiling (maximize), so require that
+      // Alt is NOT held for the Ctrl+↑ Mission Control fallback.
+      if (e.key === 'F3' || (e.ctrlKey && !e.altKey && e.key === 'ArrowUp')) {
         e.preventDefault()
         toggleMissionControl()
       }
