@@ -23,7 +23,8 @@ package main
 //	POST /api/assistant/attention — no body; prioritized triage
 //	POST /api/assistant/search    — body {q}
 //	POST /api/assistant/agent     — tool-using turn; body {message, history?} → {answer|proposal, steps}
-//	POST /api/assistant/execute   — run an approved proposal; body {proposal} → {executed, result}
+//	POST /api/assistant/execute   — run an approved proposal by id; body {id} → {executed, result}
+//	POST /api/assistant/triage    — direct user-initiated triage; body {message_id, action, ...}
 
 import (
 	"encoding/json"
@@ -42,12 +43,13 @@ import (
 // assistantDeps bundles what the assistant routes need. The mail source and
 // egress policy are resolved once from the environment at registration.
 type assistantDeps struct {
-	svc           *ai.Service
+	model         assistant.Completer // the model seam (satisfied by *ai.Service; a fake in tests)
 	cfg           ai.Config
 	source        assistant.MailSource
 	allowExternal bool
 	brokerHeaders map[string]string
-	index         *assistant.MailIndex // optional on-instance semantic index; nil ⇒ lexical
+	index         *assistant.MailIndex      // optional on-instance semantic index; nil ⇒ lexical
+	ledger        *assistant.ProposalLedger // server-side store of mutating proposals awaiting approval
 }
 
 // registerAssistantRoutes wires the assistant endpoints into mux. svc/cfg are
@@ -55,11 +57,12 @@ type assistantDeps struct {
 // optional on-instance semantic mail index (nil ⇒ lexical retrieval).
 func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config, index *assistant.MailIndex) {
 	deps := assistantDeps{
-		svc:           svc,
+		model:         svc,
 		cfg:           cfg,
 		allowExternal: os.Getenv("VULOS_ASSISTANT_ALLOW_EXTERNAL") == "1",
 		brokerHeaders: assistantBrokerHeaders(),
 		index:         index,
+		ledger:        assistant.NewProposalLedger(),
 	}
 	// Mail read path: the local LilMail /v1 API when configured, else an
 	// in-memory fixture inbox so the assistant is demoable/testable offline.
@@ -68,7 +71,17 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 	} else {
 		deps.source = assistant.NewFixtureSource()
 	}
+	registerAssistantRoutesWithDeps(mux, deps)
+}
 
+// registerAssistantRoutesWithDeps wires the endpoints given a fully-built deps
+// bundle. Split out from registerAssistantRoutes so tests can inject a scripted
+// model, a fixture mail source, and their own ledger to exercise the
+// /agent→/execute round-trip and the forged/expired/cross-user rejections.
+func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
+	if deps.ledger == nil {
+		deps.ledger = assistant.NewProposalLedger()
+	}
 	// mu guards deps.cfg.Tier, which the /api/assistant/tier picker mutates at
 	// runtime so the operator can choose "where your AI runs" without a restart.
 	var mu sync.RWMutex
@@ -77,7 +90,7 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 		cfg := deps.cfg
 		allowExternal := deps.allowExternal
 		mu.RUnlock()
-		return assistant.New(deps.svc, cfg, deps.source, allowExternal).WithIndex(deps.index)
+		return assistant.New(deps.model, cfg, deps.source, allowExternal).WithIndex(deps.index)
 	}
 	authOf := func(r *http.Request) assistant.Auth {
 		return assistant.Auth{
@@ -295,26 +308,98 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 			assistantErr(w, err)
 			return
 		}
+		// SERVER-SIDE PROPOSAL LEDGER: a mutating proposal is stored server-side,
+		// keyed by its opaque id and bound to this session's user, before it is
+		// shown to the client. /execute later runs the SERVER-STORED args by id —
+		// the client never gets to supply the args that actually run, so a forged
+		// proposal cannot execute. The client still receives id + summary + args
+		// (for display) exactly as before.
+		if res.Proposal != nil {
+			deps.ledger.Put(r.Header.Get("X-User-ID"), *res.Proposal)
+		}
 		writeJSON(w, res)
 	})
 
 	// POST /api/assistant/execute — run a PREVIOUSLY-PROPOSED mutating action
 	// AFTER the user approved it in the UI. This is the second half of the
 	// confirmation round-trip; it performs a local /v1 write only (no model
-	// call, no mail egress). Body: the proposal object returned by /agent.
+	// call, no mail egress).
+	//
+	// SECURITY: the body is now just {"id":"prop_…"}. The action's ARGS are NOT
+	// read from the request — they are looked up from the server-side ledger by
+	// id (bound to this session's user, TTL-limited, single-use). A forged
+	// proposal cannot execute because the client cannot fabricate a valid
+	// id→args mapping. Unknown/expired/used/wrong-user ids are rejected 4xx and
+	// nothing runs.
 	mux.HandleFunc("POST /api/assistant/execute", func(w http.ResponseWriter, r *http.Request) {
 		if !assistantAuthed(w, r) {
 			return
 		}
-		var p assistant.Proposal
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			writeErr(w, 400, "invalid proposal")
+		var body struct {
+			ID string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		id := strings.TrimSpace(body.ID)
+		if id == "" {
+			writeErr(w, 400, "id required")
 			return
 		}
-		if strings.TrimSpace(p.Tool) == "" {
-			writeErr(w, 400, "proposal.tool required")
+		p, err := deps.ledger.Take(r.Header.Get("X-User-ID"), id)
+		if err != nil {
+			// Fail closed: unknown/expired/used → 404; cross-user → 403. Never
+			// falls through to executing client-supplied args.
+			if err == assistant.ErrProposalOwner {
+				writeErr(w, 403, "proposal does not belong to this session")
+				return
+			}
+			writeErr(w, 404, "proposal not found, expired, or already used")
 			return
 		}
+		result, err := newAssistant().ExecuteProposal(r.Context(), authOf(r), p)
+		if err != nil {
+			assistantErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"executed": true, "result": result, "at": time.Now().UTC()})
+	})
+
+	// POST /api/assistant/triage — DIRECT, user-initiated triage from a surface
+	// where the user clicked an explicit action on a message they can see (the
+	// Home "snooze" affordance). This is NOT an LLM proposal, so it does not go
+	// through the proposal ledger: it is a deterministic, session-authed mailbox
+	// state change (archive/snooze/label only — it cannot send mail). Keeping it
+	// separate lets /execute stay strictly ledger-only, so the dangerous
+	// capability (sending mail from a forged proposal) remains impossible.
+	// Body: {message_id, action, until?, label?, folder?}.
+	mux.HandleFunc("POST /api/assistant/triage", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		var body struct {
+			MessageID string `json:"message_id"`
+			Action    string `json:"action"`
+			Until     string `json:"until"`
+			Label     string `json:"label"`
+			Folder    string `json:"folder"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if strings.TrimSpace(body.MessageID) == "" || strings.TrimSpace(body.Action) == "" {
+			writeErr(w, 400, "message_id and action required")
+			return
+		}
+		switch body.Action {
+		case "archive", "snooze", "label": // allowlist: no send/delete here
+		default:
+			writeErr(w, 400, "action must be archive, snooze, or label")
+			return
+		}
+		p := assistant.Proposal{Tool: "triage", Args: map[string]any{
+			"message_id": body.MessageID,
+			"action":     body.Action,
+			"until":      body.Until,
+			"label":      body.Label,
+			"folder":     body.Folder,
+		}}
 		result, err := newAssistant().ExecuteProposal(r.Context(), authOf(r), p)
 		if err != nil {
 			assistantErr(w, err)

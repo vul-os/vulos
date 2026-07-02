@@ -266,11 +266,12 @@ export default function CommandPalette() {
   const approveProposal = useCallback(async () => {
     setAsk(a => a ? { ...a, proposalState: 'busy' } : a)
     try {
+      // Send ONLY the opaque proposal id; the server runs its stored args.
       const res = await fetch('/api/assistant/execute', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ask?.proposal),
+        body: JSON.stringify({ id: ask?.proposal?.id }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {

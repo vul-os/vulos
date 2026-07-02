@@ -276,11 +276,14 @@ export default function Assistant() {
   const approveProposal = useCallback(async (msgId, proposal) => {
     patchById(msgId, { state: 'busy' })
     try {
+      // Send ONLY the opaque proposal id: the server executes the args it stored
+      // when it issued the proposal (never client-supplied args), so a forged
+      // proposal can't run. See routes_assistant.go /execute.
       const res = await fetch('/api/assistant/execute', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proposal),
+        body: JSON.stringify({ id: proposal.id }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {

@@ -202,10 +202,11 @@ export default function Home() {
   const approve = useCallback(async (id, proposal) => {
     setTurns(t => t.map(x => x.id === id ? { ...x, state: 'busy' } : x))
     try {
+      // Send ONLY the opaque proposal id; the server runs its stored args.
       const res = await fetch('/api/assistant/execute', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proposal),
+        body: JSON.stringify({ id: proposal.id }),
       })
       const d = await res.json().catch(() => ({}))
       setTurns(t => t.map(x => x.id === id ? { ...x, state: res.ok ? 'done' : 'pending' } : x))
@@ -218,19 +219,17 @@ export default function Home() {
   }, [])
   const reject = useCallback((id) => setTurns(t => t.map(x => x.id === id ? { ...x, state: 'rejected' } : x)), [])
 
-  // ── snooze a focus item (triage proposal → confirm → /execute) ──────────────
+  // ── snooze a focus item — a DIRECT, user-initiated triage on a message the
+  // user can see. This is not an LLM proposal, so it uses the dedicated
+  // /api/assistant/triage endpoint (deterministic, session-authed, triage-only)
+  // rather than the ledger-gated /execute. ──────────────────────────────────
   const snooze = useCallback(async (item) => {
     setSnoozing(`busy:${item.uid}`)
-    const proposal = {
-      tool: 'triage',
-      summary: `Snooze "${item.subject}"`,
-      args: { message_id: item.uid, action: 'snooze', folder: item.folder || 'INBOX' },
-    }
     try {
-      const res = await fetch('/api/assistant/execute', {
+      const res = await fetch('/api/assistant/triage', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proposal),
+        body: JSON.stringify({ message_id: item.uid, action: 'snooze', folder: item.folder || 'INBOX' }),
       })
       if (res.ok) setDismissed(s => new Set(s).add(item.uid))
     } catch { /* leave it in place on failure */ }
