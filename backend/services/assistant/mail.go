@@ -278,9 +278,22 @@ func (s *LilmailSource) SendEmail(ctx context.Context, auth Auth, d Draft) error
 	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages", d, "send")
 }
 
-// CreateEvent creates a calendar event via POST /v1/calendar/events.
+// CreateEvent creates a calendar event via POST /v1/calendar/events. lilmail's
+// create payload uses {summary,start,end,location,description,allDay} — map the
+// assistant's CalendarEvent (title/notes/all_day) onto that so the created event
+// isn't left with an empty summary.
 func (s *LilmailSource) CreateEvent(ctx context.Context, auth Auth, ev CalendarEvent) error {
-	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/calendar/events", ev, "calendar create")
+	payload := map[string]any{
+		"summary":  ev.Title,
+		"start":    ev.Start,
+		"end":      ev.End,
+		"location": ev.Location,
+		"allDay":   ev.AllDay,
+	}
+	if strings.TrimSpace(ev.Notes) != "" {
+		payload["description"] = ev.Notes
+	}
+	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/calendar/events", payload, "calendar create")
 }
 
 // lilEvent mirrors a lilmail /v1 calendar event, tolerating the common field
@@ -359,7 +372,20 @@ func convertEvents(in []lilEvent) []CalendarEvent {
 
 // AddContact adds a contact via POST /v1/contacts.
 func (s *LilmailSource) AddContact(ctx context.Context, auth Auth, c Contact) error {
-	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/contacts", c, "add contact")
+	// lilmail's POST /v1/contacts expects {name, emails[], phones[], note} — map
+	// the assistant's singular email/phone/notes onto the array/field shape so the
+	// contact isn't saved with a name but no address.
+	payload := map[string]any{"name": c.Name}
+	if strings.TrimSpace(c.Email) != "" {
+		payload["emails"] = []string{c.Email}
+	}
+	if strings.TrimSpace(c.Phone) != "" {
+		payload["phones"] = []string{c.Phone}
+	}
+	if strings.TrimSpace(c.Notes) != "" {
+		payload["note"] = c.Notes
+	}
+	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/contacts", payload, "add contact")
 }
 
 // Triage maps archive/snooze/label onto lilmail's REAL /v1 surface:
