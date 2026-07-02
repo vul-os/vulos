@@ -15,6 +15,7 @@ package main
 // Endpoints (all session-authed via X-User-ID set by the auth middleware):
 //
 //	GET  /api/assistant/status    — sovereignty tier + mail-source state (for the UI badge)
+//	GET  /api/assistant/home      — Home surface aggregate: brief + agenda + activity + sovereignty
 //	POST /api/assistant/tier      — operator picks the sovereignty tier; body {tier}
 //	POST /api/assistant/chat      — SSE stream; body {message, history?}
 //	POST /api/assistant/summarize — body {scope:"inbox"|"thread", uid?, folder?}
@@ -130,6 +131,19 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 			"sovereignty":  sv,
 			"tier_options": assistantTierOptions(),
 		})
+	})
+
+	// GET /api/assistant/home — the proactive Home surface aggregate: a curated
+	// "what needs you today" brief (the guarded Attention skill), today's agenda
+	// (/v1 calendar), a light recent-activity feed, and the sovereignty posture —
+	// all in one round-trip. Sections fail independently into their own *_error
+	// fields so Home always renders (e.g. brief shows "assistant offline", never a
+	// crash). The single model call is Attention(), which goes through Guard().
+	mux.HandleFunc("GET /api/assistant/home", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		writeJSON(w, newAssistant().Home(r.Context(), authOf(r)))
 	})
 
 	// POST /api/assistant/summarize

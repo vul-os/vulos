@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createElement, lazy, Suspense } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { getApps, searchApps } from '../core/AppRegistry'
-import Settings from '../core/Settings'
+import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from './builtinApps'
 import { AppIconTile } from '../core/AppIcons'
 import { useNativeMode } from '../core/useNativeMode'
 import { useFocusTrap } from './useFocusTrap'
@@ -28,21 +28,10 @@ function openInHostBrowser(url, title, icon, openWindow) {
   openWindow({ appId: '_webview_' + Date.now(), title: title || url, url, icon })
 }
 
-const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
-const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
-const FileManager = lazy(() => import('../builtin/files/FileManager'))
-const Drive = lazy(() => import('../builtin/drive/Drive'))
-// RemoteBrowser removed — browser now launches via generic stream pool
-const AppHub = lazy(() => import('../builtin/apphub/AppHub'))
-const Drivers = lazy(() => import('../builtin/drivers/Drivers'))
-const Packages = lazy(() => import('../builtin/packages/Packages'))
-const DiskUsage = lazy(() => import('../builtin/disks/DiskUsage'))
+// Builtin React components are launched via the shared builtinApps map
+// (builtinComponent / BUILTIN_SINGLETONS). StreamViewer stays local — it is
+// used only by the streamed-app launch path below, not the builtin map.
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
-const Authenticator = lazy(() => import('../apps/Authenticator/Authenticator'))
-const Vault = lazy(() => import('../apps/Vault/Vault'))
-const Messages = lazy(() => import('../builtin/peering/Messages'))
-const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
-const Assistant = lazy(() => import('../builtin/assistant/Assistant'))
 // UNIFIED-STORAGE de-dup: the embedded Mail / Office / Calendar builtins were
 // retired in favour of the gateway-proxied suite apps (lilmail, vulos-office,
 // vulos-calendar). Like Spaces/Meet (Vulos Talk / Vulos Meet), they now launch
@@ -129,26 +118,8 @@ export default function Launchpad() {
   const grouped = search.trim() ? null : groupByCategory(apps)
 
   const launch = async (app) => {
-    const loading = createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
-    const builtins = {
-      persona: () => createElement(Settings),
-      terminal: () => createElement(Suspense, { fallback: loading }, createElement(Terminal)),
-      activity: () => createElement(Suspense, { fallback: loading }, createElement(ActivityMonitor)),
-      files: () => createElement(Suspense, { fallback: loading }, createElement(FileManager)),
-      drive: () => createElement(Suspense, { fallback: loading }, createElement(Drive)),
-      apphub: () => createElement(Suspense, { fallback: loading }, createElement(AppHub)),
-      drivers: () => createElement(Suspense, { fallback: loading }, createElement(Drivers)),
-      packages: () => createElement(Suspense, { fallback: loading }, createElement(Packages)),
-      disks: () => createElement(Suspense, { fallback: loading }, createElement(DiskUsage)),
-      authenticator: () => createElement(Suspense, { fallback: loading }, createElement(Authenticator)),
-      vault: () => createElement(Suspense, { fallback: loading }, createElement(Vault)),
-      messages: () => createElement(Suspense, { fallback: loading }, createElement(Messages)),
-      dashboard: () => createElement(Suspense, { fallback: loading }, createElement(DashboardApp)),
-      assistant: () => createElement(Suspense, { fallback: loading }, createElement(Assistant)),
-    }
-    const singletons = new Set(['persona', 'apphub', 'dashboard', 'assistant'])
-    if (builtins[app.id]) {
-      openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtins[app.id](), singleton: singletons.has(app.id) })
+    if (isBuiltinComponent(app.id)) {
+      openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtinComponent(app.id), singleton: BUILTIN_SINGLETONS.has(app.id) })
       close()
       return
     }

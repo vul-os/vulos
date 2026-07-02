@@ -1,0 +1,60 @@
+/* eslint-disable react-refresh/only-export-components --
+   This is a helper module (a builtin-id → lazy-component registry), not a
+   component file. It intentionally exports the map + helpers alongside the lazy
+   component consts; Fast Refresh doesn't apply. */
+// builtinApps — the single source of truth mapping a builtin app id to its
+// React component, shared by the Launchpad and the Home surface so both launch
+// builtins identically (no divergent copies). Components are code-split via
+// React.lazy and wrapped in a shared Suspense fallback.
+
+import { createElement, lazy, Suspense } from 'react'
+import Settings from '../core/Settings'
+
+const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
+const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
+const FileManager = lazy(() => import('../builtin/files/FileManager'))
+const Drive = lazy(() => import('../builtin/drive/Drive'))
+const AppHub = lazy(() => import('../builtin/apphub/AppHub'))
+const Drivers = lazy(() => import('../builtin/drivers/Drivers'))
+const Packages = lazy(() => import('../builtin/packages/Packages'))
+const DiskUsage = lazy(() => import('../builtin/disks/DiskUsage'))
+const Authenticator = lazy(() => import('../apps/Authenticator/Authenticator'))
+const Vault = lazy(() => import('../apps/Vault/Vault'))
+const Messages = lazy(() => import('../builtin/peering/Messages'))
+const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
+const Assistant = lazy(() => import('../builtin/assistant/Assistant'))
+
+const loadingEl = () => createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
+const wrap = (Cmp) => createElement(Suspense, { fallback: loadingEl() }, createElement(Cmp))
+
+// BUILTIN_COMPONENTS maps app.id → a factory returning a fresh React element.
+export const BUILTIN_COMPONENTS = {
+  persona: () => createElement(Settings),
+  terminal: () => wrap(Terminal),
+  activity: () => wrap(ActivityMonitor),
+  files: () => wrap(FileManager),
+  drive: () => wrap(Drive),
+  apphub: () => wrap(AppHub),
+  drivers: () => wrap(Drivers),
+  packages: () => wrap(Packages),
+  disks: () => wrap(DiskUsage),
+  authenticator: () => wrap(Authenticator),
+  vault: () => wrap(Vault),
+  messages: () => wrap(Messages),
+  dashboard: () => wrap(DashboardApp),
+  assistant: () => wrap(Assistant),
+}
+
+// Apps that should only ever have one window open at a time.
+export const BUILTIN_SINGLETONS = new Set(['persona', 'apphub', 'dashboard', 'assistant'])
+
+// builtinComponent returns a fresh element for a builtin id, or null if the id
+// is not a React builtin (e.g. a web/stream app).
+export function builtinComponent(appId) {
+  const factory = BUILTIN_COMPONENTS[appId]
+  return factory ? factory() : null
+}
+
+export function isBuiltinComponent(appId) {
+  return Object.prototype.hasOwnProperty.call(BUILTIN_COMPONENTS, appId)
+}

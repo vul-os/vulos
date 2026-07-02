@@ -217,6 +217,9 @@ func (emptySource) Search(context.Context, Auth, string, string, int) ([]Message
 func (emptySource) SaveDraft(context.Context, Auth, Draft) error           { return nil }
 func (emptySource) SendEmail(context.Context, Auth, Draft) error           { return nil }
 func (emptySource) CreateEvent(context.Context, Auth, CalendarEvent) error { return nil }
+func (emptySource) ListEvents(context.Context, Auth, string, string) ([]CalendarEvent, error) {
+	return nil, nil
+}
 func (emptySource) AddContact(context.Context, Auth, Contact) error        { return nil }
 func (emptySource) Triage(context.Context, Auth, TriageAction) error       { return nil }
 

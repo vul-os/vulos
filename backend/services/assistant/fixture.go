@@ -156,6 +156,46 @@ func (f *FixtureSource) CreateEvent(_ context.Context, _ Auth, ev CalendarEvent)
 	return nil
 }
 
+// ListEvents returns a small, always-fresh demo agenda anchored to the current
+// day (so the offline Home always has "today" to show), plus any events the user
+// created this session, filtered to the requested window.
+func (f *FixtureSource) ListEvents(_ context.Context, _ Auth, fromISO, toISO string) ([]CalendarEvent, error) {
+	now := time.Now()
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	at := func(h, m int) string { return day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute).Format(time.RFC3339) }
+	seeded := []CalendarEvent{
+		{ID: "demo-standup", Title: "Team standup", Start: at(9, 30), End: at(9, 45), Location: "Meet"},
+		{ID: "demo-1on1", Title: "1:1 with Priya", Start: at(14, 0), End: at(14, 30), Location: "Calendly"},
+		{ID: "demo-focus", Title: "Focus: contract review", Start: at(16, 0), End: at(17, 0)},
+		{ID: "demo-dinner", Title: "Dinner at Mom's", Start: day.AddDate(0, 0, 2).Add(18 * time.Hour).Format(time.RFC3339), AllDay: false},
+	}
+	f.mu.Lock()
+	for _, e := range f.events {
+		seeded = append(seeded, e)
+	}
+	f.mu.Unlock()
+
+	from, _ := time.Parse(time.RFC3339, fromISO)
+	to, _ := time.Parse(time.RFC3339, toISO)
+	var out []CalendarEvent
+	for _, e := range seeded {
+		st, err := time.Parse(time.RFC3339, e.Start)
+		if err != nil {
+			out = append(out, e) // keep unparseable ones rather than drop
+			continue
+		}
+		if !from.IsZero() && st.Before(from) {
+			continue
+		}
+		if !to.IsZero() && st.After(to) {
+			continue
+		}
+		out = append(out, e)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	return out, nil
+}
+
 func (f *FixtureSource) AddContact(_ context.Context, _ Auth, c Contact) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -59,13 +59,19 @@ type Draft struct {
 // local mail service's /v1 calendar API. Times are passed through as the model /
 // user supplied them (ISO-8601/RFC3339 preferred); the mail service does the
 // authoritative parsing.
+//
+// ID/AllDay are populated only on the READ path (ListEvents) and are omitted on
+// the create/propose path so the existing POST /v1/calendar/events payload is
+// unchanged.
 type CalendarEvent struct {
+	ID        string `json:"id,omitempty"`
 	Title     string `json:"title"`
 	Start     string `json:"start"`
 	End       string `json:"end,omitempty"`
 	Location  string `json:"location,omitempty"`
 	Notes     string `json:"notes,omitempty"`
 	Attendees string `json:"attendees,omitempty"`
+	AllDay    bool   `json:"all_day,omitempty"`
 }
 
 // Contact is a contact-book entry the assistant proposes adding.
@@ -116,6 +122,10 @@ type MailSource interface {
 	Search(ctx context.Context, auth Auth, folder, query string, limit int) ([]Message, error)
 	// SaveDraft persists a draft reply to the Drafts folder.
 	SaveDraft(ctx context.Context, auth Auth, d Draft) error
+	// ListEvents returns calendar events overlapping [fromISO, toISO] (RFC3339),
+	// soonest first. It is a READ over the local /v1 calendar surface, used by the
+	// Home agenda. Sources that cannot read events may return an empty slice.
+	ListEvents(ctx context.Context, auth Auth, fromISO, toISO string) ([]CalendarEvent, error)
 
 	// --- Mutating actions (only reached AFTER explicit user confirmation via
 	// the assistant's proposal/execute round-trip; the model can PROPOSE these
@@ -273,6 +283,80 @@ func (s *LilmailSource) CreateEvent(ctx context.Context, auth Auth, ev CalendarE
 	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/calendar/events", ev, "calendar create")
 }
 
+// lilEvent mirrors a lilmail /v1 calendar event, tolerating the common field
+// spellings (title/summary, start/dtStart, ...) so the Home agenda reads cleanly
+// regardless of the exact CalDAV-JSON shape the mail service emits.
+type lilEvent struct {
+	ID       string `json:"id"`
+	UID      string `json:"uid"`
+	Title    string `json:"title"`
+	Summary  string `json:"summary"`
+	Start    string `json:"start"`
+	DTStart  string `json:"dtStart"`
+	End      string `json:"end"`
+	DTEnd    string `json:"dtEnd"`
+	Location string `json:"location"`
+	AllDay   bool   `json:"allDay"`
+}
+
+func (e lilEvent) toEvent() CalendarEvent {
+	return CalendarEvent{
+		ID:       strEmpty(e.ID, e.UID),
+		Title:    strEmpty(e.Title, e.Summary),
+		Start:    strEmpty(e.Start, e.DTStart),
+		End:      strEmpty(e.End, e.DTEnd),
+		Location: e.Location,
+		AllDay:   e.AllDay,
+	}
+}
+
+// ListEvents reads calendar events overlapping [fromISO, toISO] from
+// GET /v1/calendar/events. The response is decoded tolerantly: either a
+// {"events":[...]} envelope or a bare array. Best-effort — an unreadable
+// calendar surfaces as an empty agenda, never a crash.
+func (s *LilmailSource) ListEvents(ctx context.Context, auth Auth, fromISO, toISO string) ([]CalendarEvent, error) {
+	q := url.Values{}
+	if fromISO != "" {
+		q.Set("from", fromISO)
+		q.Set("start", fromISO)
+	}
+	if toISO != "" {
+		q.Set("to", toISO)
+		q.Set("end", toISO)
+	}
+	path := "/v1/calendar/events"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	raw, err := s.getRaw(ctx, auth, path)
+	if err != nil {
+		return nil, err
+	}
+	var env struct {
+		Events []lilEvent `json:"events"`
+	}
+	if err := json.Unmarshal(raw, &env); err == nil && env.Events != nil {
+		return convertEvents(env.Events), nil
+	}
+	var arr []lilEvent
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return convertEvents(arr), nil
+	}
+	return nil, fmt.Errorf("calendar: unrecognized events response")
+}
+
+func convertEvents(in []lilEvent) []CalendarEvent {
+	out := make([]CalendarEvent, 0, len(in))
+	for _, e := range in {
+		ev := e.toEvent()
+		if strings.TrimSpace(ev.Title) == "" && strings.TrimSpace(ev.Start) == "" {
+			continue
+		}
+		out = append(out, ev)
+	}
+	return out
+}
+
 // AddContact adds a contact via POST /v1/contacts.
 func (s *LilmailSource) AddContact(ctx context.Context, auth Auth, c Contact) error {
 	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/contacts", c, "add contact")
@@ -329,24 +413,33 @@ func (s *LilmailSource) writeJSON(ctx context.Context, auth Auth, method, path s
 }
 
 func (s *LilmailSource) getJSON(ctx context.Context, auth Auth, path string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
+	raw, err := s.getRaw(ctx, auth, path)
 	if err != nil {
 		return err
+	}
+	return json.Unmarshal(raw, v)
+}
+
+// getRaw performs an authed GET and returns the (size-capped) response body.
+func (s *LilmailSource) getRaw(ctx context.Context, auth Auth, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+path, nil)
+	if err != nil {
+		return nil, err
 	}
 	s.apply(req, auth)
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("mail service unreachable: %w", err)
+		return nil, fmt.Errorf("mail service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("mail not authenticated")
+		return nil, fmt.Errorf("mail not authenticated")
 	}
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("mail service error %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return nil, fmt.Errorf("mail service error %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-	return json.NewDecoder(resp.Body).Decode(v)
+	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
 
 func convert(in []lilEmail, folder string) []Message {

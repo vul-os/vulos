@@ -5,6 +5,7 @@ import Portal from '../core/Portal'
 import Window from '../shell/Window'
 import Launchpad from '../shell/Launchpad'
 import MissionControl, { useMissionControlLayout } from '../shell/MissionControl'
+import Home from '../shell/home/Home'
 import Toasts from '../shell/Toasts'
 import DesktopContextMenu from '../shell/DesktopContextMenu'
 import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
@@ -192,6 +193,16 @@ export default function DesktopCanvas() {
 
       {/* Windows area — render ALL windows persistently, hide inactive desktops via CSS */}
       <div className="absolute inset-0 pt-8">
+        {/* WAVE-11: Home — the proactive default surface. It sits as the desktop
+            backdrop BELOW all windows, so it's what you see first (and return to
+            when you close everything), while apps stack over it. Only shown when
+            the active desktop has no open windows, so it never steals clicks from
+            a floating app. */}
+        {windows.filter(w => !w.minimized).length === 0 && (
+          <div className="absolute inset-0">
+            <Home />
+          </div>
+        )}
         {allWindows.map(win => {
           const mc = missionControlOpen && win._visible && !win.minimized ? mcLayout[win.id] : null
           return (
