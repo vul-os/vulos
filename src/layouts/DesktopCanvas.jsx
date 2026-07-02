@@ -16,6 +16,7 @@ import IncomingCall from '../builtin/peering/call/IncomingCall'
 import PublicAppBanner from '../shell/PublicAppBanner'
 import TrustBadge from '../shell/TrustBadge'
 import TransparencyPanel from '../shell/TransparencyPanel'
+import CommandPalette from '../shell/CommandPalette'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -247,6 +248,9 @@ export default function DesktopCanvas() {
           <Portal />
         </div>
       )}
+
+      {/* WAVE-12: unified ⌘K command palette (apps · mail · actions · ask) */}
+      <CommandPalette />
 
       {/* Launchpad overlay */}
       <Launchpad />

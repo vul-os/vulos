@@ -6,6 +6,7 @@ import Launchpad from '../shell/Launchpad'
 import Toasts from '../shell/Toasts'
 import TrustBadge from '../shell/TrustBadge'
 import TransparencyPanel from '../shell/TransparencyPanel'
+import CommandPalette from '../shell/CommandPalette'
 import { needsSameOrigin } from '../core/AppRegistry'
 
 // SANDBOX-01: same-origin app iframes are opt-in (see AppRegistry.js). Apps that
@@ -35,6 +36,9 @@ export default function MobileStack() {
 
       {/* Legible-trust transparency panel — opened from the TrustBadge */}
       <TransparencyPanel />
+
+      {/* WAVE-12: unified ⌘K command palette */}
+      <CommandPalette />
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">

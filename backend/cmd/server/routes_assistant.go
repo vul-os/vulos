@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -235,6 +236,40 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 			return
 		}
 		writeJSON(w, res)
+	})
+
+	// GET /api/mail/search?q=&limit= — WAVE-12: the FAST, non-LLM mail lookup
+	// behind the ⌘K command palette's "Mail" section. Unlike POST
+	// /api/assistant/search (which grounds an LLM answer over the hits), this
+	// returns the raw matching messages directly from the mail source
+	// (lilmail's /v1/search behind the box), so it's cheap enough to call live
+	// on every debounced keystroke. Degrades to an empty list on any source
+	// error so the palette stays responsive.
+	mux.HandleFunc("GET /api/mail/search", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q == "" {
+			writeJSON(w, map[string]any{"messages": []assistant.Message{}})
+			return
+		}
+		limit := 8
+		if n := r.URL.Query().Get("limit"); n != "" {
+			if v, err := strconv.Atoi(n); err == nil && v > 0 && v <= 25 {
+				limit = v
+			}
+		}
+		msgs, err := deps.source.Search(r.Context(), authOf(r), "", q, limit)
+		if err != nil {
+			// Honest degradation: report the failure but don't 500 the palette.
+			writeJSON(w, map[string]any{"messages": []assistant.Message{}, "error": err.Error()})
+			return
+		}
+		if msgs == nil {
+			msgs = []assistant.Message{}
+		}
+		writeJSON(w, map[string]any{"messages": msgs})
 	})
 
 	// POST /api/assistant/agent — the TOOL-USING turn. The model may call

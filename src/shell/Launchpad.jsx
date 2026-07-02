@@ -1,37 +1,12 @@
-import { useState, useEffect, useRef, createElement, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { getApps, searchApps } from '../core/AppRegistry'
-import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from './builtinApps'
+import { launchApp } from './launchApp'
 import { AppIconTile } from '../core/AppIcons'
-import { useNativeMode } from '../core/useNativeMode'
 import { useFocusTrap } from './useFocusTrap'
 
-// ROUTER-02: Consult /api/router/classify before launching an app.
-// Returns the lane string or null on fetch failure (caller falls back to
-// legacy dispatch).
-async function fetchLane(appId) {
-  try {
-    const res = await fetch(`/api/router/classify?app=${encodeURIComponent(appId)}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.lane || null
-  } catch {
-    return null
-  }
-}
-
-// openInHostBrowser opens a URL in the host browser.
-// For in-shell web windows this dispatches a custom event that the Window
-// manager picks up to render an iframe/web-view window.
-// BROWSER-01: this path spawns ZERO stream.Session objects.
-function openInHostBrowser(url, title, icon, openWindow) {
-  openWindow({ appId: '_webview_' + Date.now(), title: title || url, url, icon })
-}
-
-// Builtin React components are launched via the shared builtinApps map
-// (builtinComponent / BUILTIN_SINGLETONS). StreamViewer stays local — it is
-// used only by the streamed-app launch path below, not the builtin map.
-const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
+// The full lane-dispatch launch logic lives in the shared ./launchApp module so
+// the Launchpad and the ⌘K command palette open apps identically.
 // UNIFIED-STORAGE de-dup: the embedded Mail / Office / Calendar builtins were
 // retired in favour of the gateway-proxied suite apps (lilmail, vulos-office,
 // vulos-calendar). Like Spaces/Meet (Vulos Talk / Vulos Meet), they now launch
@@ -48,9 +23,6 @@ const categoryLabels = {
 
 export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
-  // v2 opt-in only: native-launch (labwc/Sway) is disabled in v1 (D93).
-  // canSpawnNativeWindow() returns false unless VULOS_NATIVE_MODE_V2 is set.
-  const { isNative: bm6_isNative } = useNativeMode()
   const [search, setSearch] = useState('')
   const [chatInput, setChatInput] = useState('')
   const [desktopEntries, setDesktopEntries] = useState([])
@@ -118,150 +90,9 @@ export default function Launchpad() {
   const grouped = search.trim() ? null : groupByCategory(apps)
 
   const launch = async (app) => {
-    if (isBuiltinComponent(app.id)) {
-      openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtinComponent(app.id), singleton: BUILTIN_SINGLETONS.has(app.id) })
-      close()
-      return
-    }
-
-    // ROUTER-02: Consult Open Router to get the execution lane.
-    // Falls back to legacy heuristic if the endpoint is unavailable.
-    const lane = await fetchLane(app.id)
-
-    // ── WebApp lane — open in host browser, ZERO stream.Session ─────────────
-    // Covers: type:"web" registry apps, apps tagged web:true, the Smart Browser.
-    // BROWSER-01: no streamed Chromium session is created for any WebApp lane.
-    if (lane === 'WebApp' || app.type === 'web' || app.lane_web) {
-      if (app.url) {
-        // Default web apps served directly from the shell (e.g. /app/calculator/)
-        openWindow({ appId: app.id, title: app.name, url: app.url, icon: app.icon })
-      } else {
-        // registry.json type:"web" apps — launch backend process, open in in-shell web view
-        try {
-          await fetch('/api/apps/launch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
-          })
-        } catch { /* non-fatal — window still opens */ }
-        const proto = location.protocol
-        const webAppUrl = `${proto}//${app.id}--default.${location.host}/`
-        openInHostBrowser(webAppUrl, app.name, app.icon, openWindow)
-      }
-      close()
-      return
-    }
-
-    // ── ComputeWorker lane — background job, no window ───────────────────────
-    if (lane === 'ComputeWorker') {
-      fetch('/api/apps/launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '' }),
-      }).catch(() => {})
-      close()
-      return
-    }
-
-    // ── LocalOnly lane — local dispatch only ─────────────────────────────────
-    if (lane === 'LocalOnly') {
-      fetch('/api/shell/native-launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: app.id }),
-      }).catch(() => {})
-      close()
-      return
-    }
-
-    // v2 native-launch branch (D93): only when VULOS_NATIVE_MODE_V2 is set server-side
-    // and a multi-window compositor (labwc/Sway) is running. In v1 (default) bm6_isNative
-    // is always false so this block never executes — all apps stream over cage.
-    const bm6_isDesktopApp = app._desktop || app.type === 'desktop'
-    if (bm6_isNative && bm6_isDesktopApp) {
-      const bm6_binary = app._exec
-        ? app._exec.split(' ')[0]
-        : app.command?.split(' ')[0] || ''
-      const bm6_args = app._exec
-        ? app._exec.split(' ').slice(1)
-        : app.command?.split(' ').slice(1) || []
-      fetch('/api/shell/native-launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          app_id: app.id,
-          binary: bm6_binary,
-          args: bm6_args,
-        }),
-      }).catch(() => {})
-      close()
-      return
-    }
-
-    // ── CPUStream / GPURoute lanes — streamed window ──────────────────────────
-    // Also handles .desktop entries and the legacy fallback path.
-    // BROWSER-01: the "browser" app ID is now WebApp lane (caught above); this
-    // block no longer launches a streamed Chromium session for app.id === 'browser'.
-    const isStreamApp = app._desktop || app.type === 'desktop' || lane === 'CPUStream' || lane === 'GPURoute'
-    if (isStreamApp) {
-      const cmd = app._exec ? app._exec.split(' ')[0] : app.command?.split(' ')[0] || app.id
-      const args = app._exec ? app._exec.split(' ').slice(1) : app.command?.split(' ').slice(1) || []
-      const sessionId = app.id
-      const streamW = window.innerWidth
-      const streamH = window.innerHeight - 32 - 64 - 36
-      // Fire stream launch in background — don't wait
-      fetch('/api/stream/launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: sessionId,
-          name: app.name,
-          command: cmd,
-          args,
-          width: streamW,
-          height: streamH,
-          fps: 30,
-        }),
-      }).catch(() => {})
-      // Always open the viewer — it will connect when the stream is ready
-      const streamLoading = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
-        createElement('span', { className: 'flex items-center gap-2' },
-          createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
-          'Starting...'
-        )
-      )
-      openWindow({
-        appId: app.id,
-        title: app.name,
-        icon: app.icon,
-        singleton: true,
-        component: createElement(Suspense, { fallback: streamLoading },
-          createElement(StreamViewer, { sessionId })
-        ),
-      })
-      close()
-      return
-    }
-
-    try {
-      await fetch('/api/apps/launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
-      })
-      // NET-04: Use subdomain URL in {app}--default.{host} format so the
-      // gateway can parse it via ParseSubdomain (profile="default").
-      // Examples:
-      //   os.vulos.org     → transmission--default.os.vulos.org
-      //   lvh.me:8080      → transmission--default.lvh.me:8080
-      // Fallback (/app/{id}/) is preserved in the catch block for when
-      // subdomain mode is off or DNS is unavailable.
-      const proto = location.protocol
-      const net04AppUrl = `${proto}//${app.id}--default.${location.host}/`
-      openWindow({ appId: app.id, title: app.name, url: net04AppUrl, icon: app.icon })
-    } catch {
-      openWindow({ appId: app.id, title: app.name, url: `/app/${app.id}/`, icon: app.icon })
-    }
+    // All lane dispatch (builtin · web · stream · native · fallback) lives in
+    // the shared launchApp helper, which the ⌘K palette also uses.
+    await launchApp(app, { openWindow })
     close()
   }
 

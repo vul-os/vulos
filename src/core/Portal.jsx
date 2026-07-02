@@ -44,14 +44,15 @@ export default function Portal({ mode = 'panel' }) {
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Global shortcut
+  // Global shortcut — Esc closes the chat panel.
+  //
+  // WAVE-12: ⌘K/Ctrl+K is now owned by the unified OS command palette
+  // (src/shell/CommandPalette.jsx), NOT this chat panel — registering it here
+  // too would double-bind the shortcut. The palette's "Ask" section routes to
+  // the agentic assistant, superseding this panel as the ⌘K entry point; the
+  // chat panel remains reachable via its dock button (toggleChat).
   useEffect(() => {
     const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setChat(true)
-        setTimeout(() => inputRef.current?.focus(), 50)
-      }
       if (e.key === 'Escape' && chatOpen) setChat(false)
     }
     window.addEventListener('keydown', handler)
