@@ -153,10 +153,10 @@ describe('endpoint failover', () => {
 
     // Fire the online event — handler should force a fresh selection.
     onlineHandler()
-    // Yield to allow the async selectEndpoint chain to start.
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(fetchMock).toHaveBeenCalled()
+    // Deterministically wait for the async selectEndpoint chain to reach the
+    // probe fetch. A fixed number of microtask yields is flaky — the chain has a
+    // variable number of awaits before fetch, which is the pre-existing flake.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const selected = await ep.selectEndpoint()
     expect(selected).toBe(LAN)
   })
