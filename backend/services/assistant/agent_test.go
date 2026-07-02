@@ -224,6 +224,169 @@ func TestAgentProposalFromContentWarning(t *testing.T) {
 	}
 }
 
+// ---- streaming turn (Wave 17) ----------------------------------------------
+
+// collectStream runs an AgentTurnStream and captures the emitted events.
+func collectStream(t *testing.T, a *Assistant, userMsg string) ([]AgentStreamEvent, error) {
+	t.Helper()
+	var evs []AgentStreamEvent
+	err := a.AgentTurnStream(context.Background(), Auth{}, userMsg, nil, func(ev AgentStreamEvent) {
+		evs = append(evs, ev)
+	})
+	return evs, err
+}
+
+func joinTokens(evs []AgentStreamEvent) string {
+	var b strings.Builder
+	for _, e := range evs {
+		if e.Type == "token" {
+			b.WriteString(e.Content)
+		}
+	}
+	return b.String()
+}
+
+// A streaming turn with one read-only tool round: emits a status event for the
+// tool, then streams the final answer as token events (never the tool-call JSON).
+func TestAgentStreamEmitsTokensThenDone(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"search_mail","args":{"query":"invoice due"}}`,
+		"You owe $128.40 to Tigris, due July 5.",
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+
+	evs, err := collectStream(t, a, "when is my invoice due?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The final answer arrived as token events and reconstructs fully.
+	if got := joinTokens(evs); !strings.Contains(got, "128.40") {
+		t.Fatalf("streamed answer missing content, got %q", got)
+	}
+	// A status event announced the read-only tool.
+	var sawStatus bool
+	for _, e := range evs {
+		if e.Type == "status" && e.Tool == "search_mail" {
+			sawStatus = true
+		}
+	}
+	if !sawStatus {
+		t.Errorf("expected a status event for search_mail, got %+v", evs)
+	}
+	// The tool-call JSON must NEVER be forwarded as answer tokens.
+	if strings.Contains(joinTokens(evs), `"tool"`) {
+		t.Errorf("tool-call JSON leaked into the token stream: %q", joinTokens(evs))
+	}
+	// No proposal for a read-only turn.
+	for _, e := range evs {
+		if e.Type == "proposal" {
+			t.Fatalf("unexpected proposal on a read-only turn: %+v", e)
+		}
+	}
+}
+
+// A streaming turn that ends in a MUTATING action emits a terminal proposal
+// event (with an id) and executes NOTHING; the JSON is never streamed as tokens.
+func TestAgentStreamMutatingEmitsProposalNoExecute(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"send_email","args":{"to":"dana@acme.io","subject":"Signed","body":"Signed and returned."}}`,
+	}}
+	fx := NewFixtureSource()
+	a := New(m, localCfg(), fx, false)
+
+	evs, err := collectStream(t, a, "reply to Dana that it's signed and send it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prop *Proposal
+	for _, e := range evs {
+		if e.Type == "proposal" {
+			prop = e.Proposal
+		}
+		if e.Type == "token" {
+			t.Fatalf("mutating turn must not stream answer tokens, got token %q", e.Content)
+		}
+	}
+	if prop == nil || prop.Tool != "send_email" || prop.ID == "" {
+		t.Fatalf("expected a send_email proposal with an id, got %+v", prop)
+	}
+	// The confirmation gate held: nothing was sent by the stream itself.
+	if n := len(fx.Sent()); n != 0 {
+		t.Fatalf("email sent during streaming BEFORE approval — gate breached (%d)", n)
+	}
+	// Approval path is unchanged: /execute runs the stored proposal.
+	if _, err := a.ExecuteProposal(context.Background(), Auth{}, *prop); err != nil {
+		t.Fatal(err)
+	}
+	if sent := fx.Sent(); len(sent) != 1 || sent[0].To != "dana@acme.io" {
+		t.Fatalf("execute did not send correctly: %+v", sent)
+	}
+}
+
+// The egress guard fires BEFORE any streaming/model call: a non-sovereign tier
+// blocks with ErrEgressBlocked, zero model calls, zero events, zero mutations.
+func TestAgentStreamGuardBlocksBeforeAnyCall(t *testing.T) {
+	m := &fakeModel{}
+	fx := NewFixtureSource()
+	a := New(m, ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, fx, false)
+	var emitted int
+	err := a.AgentTurnStream(context.Background(), Auth{}, "send an email", nil, func(AgentStreamEvent) { emitted++ })
+	if err != ErrEgressBlocked {
+		t.Fatalf("expected ErrEgressBlocked, got %v", err)
+	}
+	if m.calls != 0 {
+		t.Fatalf("model called %d times despite blocked egress — LEAK", m.calls)
+	}
+	if emitted != 0 {
+		t.Fatalf("events emitted despite blocked egress — %d", emitted)
+	}
+	if len(fx.Sent())+len(fx.Events())+len(fx.Contacts())+len(fx.Triaged()) != 0 {
+		t.Fatal("a mutation happened despite blocked egress")
+	}
+}
+
+// PROMPT-INJECTION HARDENING holds in the streaming loop too: untrusted tool
+// results are wrapped in the data-only delimiters before being fed back.
+func TestAgentStreamWrapsToolResultsAsUntrusted(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"search_mail","args":{"query":"invoice"}}`,
+		"Here is your summary.",
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+	if _, err := collectStream(t, a, "summarize my invoices"); err != nil {
+		t.Fatal(err)
+	}
+	var framed bool
+	for _, msg := range m.lastReq.Messages {
+		if strings.Contains(msg.Content, untrustedOpen) && strings.Contains(msg.Content, untrustedClose) &&
+			strings.Contains(msg.Content, "TOOL RESULT (search_mail)") {
+			framed = true
+		}
+	}
+	if !framed {
+		t.Errorf("tool result not wrapped as untrusted in the streaming loop: %+v", m.lastReq.Messages)
+	}
+}
+
+// classifyPartial: prose streams live; JSON/fenced tool calls stay buffered.
+func TestClassifyPartial(t *testing.T) {
+	if classifyPartial("") != verdictUndecided {
+		t.Error("empty should be undecided")
+	}
+	if classifyPartial("  ") != verdictUndecided {
+		t.Error("whitespace should be undecided")
+	}
+	if classifyPartial(`{"tool"`) != verdictUndecided {
+		t.Error("leading brace (tool call) should be undecided/buffered")
+	}
+	if classifyPartial("```json") != verdictUndecided {
+		t.Error("leading fence should be undecided/buffered")
+	}
+	if classifyPartial("You owe") != verdictAnswer {
+		t.Error("prose should be a streamable answer")
+	}
+}
+
 // parseToolCall: JSON object with a tool ⇒ call; prose or tool-less JSON ⇒ final.
 func TestParseToolCall(t *testing.T) {
 	if c, ok := parseToolCall(`{"tool":"search_mail","args":{"query":"x"}}`); !ok || c.Tool != "search_mail" || c.Args["query"] != "x" {

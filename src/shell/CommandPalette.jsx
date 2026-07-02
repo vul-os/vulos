@@ -32,6 +32,7 @@ import { getApps, getAppById } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
 import { fuzzyRank } from '../core/fuzzy'
 import { classifyAsk } from '../core/askRouting'
+import { runAgentTurn } from '../core/agentStream'
 import { getCommands, subscribeCommands } from '../core/commandRegistry'
 import { setPendingSettingsSection } from '../core/settingsNav'
 
@@ -238,26 +239,27 @@ export default function CommandPalette() {
   useEffect(() => { if (selectedIdx >= rows.length) setSelectedIdx(Math.max(0, rows.length - 1)) }, [rows.length, selectedIdx])
 
   // ── Ask (agentic assistant) ───────────────────────────────────────────────
+  // STREAMED (wave-17): the answer streams token-by-token into the inline card;
+  // a mutating action still arrives as a PROPOSAL (Approve → /execute). Falls
+  // back to the non-streaming /agent if streaming can't be established.
   const runAsk = useCallback(async (prompt) => {
     const p = (prompt || '').trim()
     if (!p) return
     setAsk({ status: 'thinking', answer: '', proposal: null })
     try {
-      const res = await fetch('/api/assistant/agent', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: p, history: [] }),
+      const result = await runAgentTurn({
+        message: p,
+        history: [],
+        onToken: (_delta, full) => setAsk({ status: 'answer', answer: full }),
+        onStatus: (ev) => setAsk(a => (a && a.status === 'thinking' ? { ...a, statusLine: ev.content } : a)),
+        onProposal: (proposal) => setAsk({ status: 'proposal', answer: '', proposal, proposalState: 'pending' }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setAsk({ status: 'error', answer: data.error || `Assistant unavailable (${res.status}).` })
-        return
-      }
-      if (data.proposal) {
-        setAsk({ status: 'proposal', answer: data.answer || '', proposal: data.proposal, proposalState: 'pending' })
+      if (result.error) {
+        setAsk({ status: 'error', answer: result.error })
+      } else if (result.proposal) {
+        setAsk({ status: 'proposal', answer: result.answer || '', proposal: result.proposal, proposalState: 'pending' })
       } else {
-        setAsk({ status: 'answer', answer: data.answer || 'No response.' })
+        setAsk({ status: 'answer', answer: result.answer || 'No response.' })
       }
     } catch {
       setAsk({ status: 'error', answer: 'Could not reach the assistant. Is the box online?' })

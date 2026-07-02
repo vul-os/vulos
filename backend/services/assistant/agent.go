@@ -219,6 +219,158 @@ func (a *Assistant) AgentTurn(ctx context.Context, auth Auth, userMsg string, hi
 	return AgentResult{Answer: strings.TrimSpace(final), Steps: steps}, nil
 }
 
+// ---- streaming turn (Wave 17) ----------------------------------------------
+//
+// AgentTurnStream is the STREAMING twin of AgentTurn: same tool loop, same
+// confirmation gate, same untrusted-content framing and up-front egress Guard —
+// but the FINAL natural-language answer is streamed token-by-token instead of
+// returned whole, so the UI feels live. Only the model calls change shape (from
+// Complete to Stream); nothing about the security model moves:
+//
+//   - Guard() runs ONCE up-front, before any model call — a blocked tier streams
+//     nothing and makes zero model calls (identical to AgentTurn).
+//   - Tool-call rounds run SERVER-SIDE and are never forwarded to the client; a
+//     small {type:"status"} event announces which read-only tool is running.
+//   - Mutating tools still HALT the loop and yield a Proposal (terminal
+//     {type:"proposal"} event). Nothing is executed here — the caller stores it
+//     in the ledger and the user must approve + POST /execute, exactly as today.
+//   - Tool results are still wrapped in the untrusted-content delimiters before
+//     being fed back to the model.
+//
+// The emit callback receives events in order; the HTTP layer serializes them as
+// SSE and appends the terminal {type:"done"}/{type:"error"}.
+
+// AgentStreamEvent is one event in a streaming agent turn. Type is one of:
+// "status" (a read-only tool is running), "token" (a piece of the final answer),
+// "proposal" (terminal: a mutating action awaiting approval). The HTTP layer adds
+// "done"/"error" terminals.
+type AgentStreamEvent struct {
+	Type     string     `json:"type"`
+	Content  string     `json:"content,omitempty"`  // token text, or a human status line
+	Tool     string     `json:"tool,omitempty"`     // for status events
+	Proposal *Proposal  `json:"proposal,omitempty"` // for the terminal proposal event
+	Steps    []ToolStep `json:"steps,omitempty"`    // read-only tool trace (on terminal events)
+	Error    string     `json:"error,omitempty"`
+}
+
+// AgentTurnStream runs one tool-using turn and streams the final answer through
+// emit. See the block comment above for the security invariants (all preserved).
+func (a *Assistant) AgentTurnStream(ctx context.Context, auth Auth, userMsg string, history []ai.Message, emit func(AgentStreamEvent)) error {
+	if err := Guard(a.cfg, a.allowExternal); err != nil {
+		return err // blocked tier: zero model calls, nothing streamed
+	}
+	a.ensureIndex(ctx, auth)
+
+	cfg := a.cfg
+	cfg.System = toolSystemPrompt()
+
+	convo := append([]ai.Message{}, history...)
+	convo = append(convo, ai.Message{Role: "user", Content: userMsg})
+
+	var steps []ToolStep
+	for i := 0; i < maxToolIters; i++ {
+		// Stream this model call. We BUFFER until we can tell whether the reply is
+		// a TOOL CALL (a lone JSON object / fenced JSON — begins with '{' or '`') or
+		// the FINAL ANSWER (prose). Tool-call text is NEVER forwarded to the client;
+		// prose is streamed as {type:"token"} the instant we know it is prose.
+		var buf strings.Builder
+		answering := false
+		streamErr := a.model.Stream(ctx, cfg, ai.CompletionRequest{Messages: convo, MaxTokens: 1024}, func(c ai.StreamChunk) {
+			if c.Content == "" {
+				return
+			}
+			if answering {
+				emit(AgentStreamEvent{Type: "token", Content: c.Content})
+				return
+			}
+			buf.WriteString(c.Content)
+			if classifyPartial(buf.String()) == verdictAnswer {
+				// Decided: this is the final answer. Flush everything buffered so
+				// far as the first token, then stream subsequent chunks live.
+				answering = true
+				emit(AgentStreamEvent{Type: "token", Content: buf.String()})
+			}
+		})
+		if streamErr != nil {
+			return streamErr
+		}
+		resp := buf.String()
+
+		// Reply was streamed as prose ⇒ that WAS the final answer; we're done.
+		if answering {
+			return nil
+		}
+
+		// Buffered (looked like a tool call): classify it for real.
+		call, isCall := parseToolCall(resp)
+		if !isCall {
+			// Started with '{'/'`' but wasn't a valid tool call ⇒ treat as the
+			// final answer; emit the buffered text as one token.
+			emit(AgentStreamEvent{Type: "token", Content: strings.TrimSpace(resp)})
+			return nil
+		}
+
+		def := lookupTool(call.Tool)
+		if def == nil {
+			convo = append(convo,
+				ai.Message{Role: "assistant", Content: resp},
+				ai.Message{Role: "user", Content: fmt.Sprintf("TOOL ERROR: unknown tool %q. Use one of the listed tools, or answer in plain text.", call.Tool)})
+			continue
+		}
+
+		if def.Mutating {
+			// CONFIRMATION GATE: do not execute. Emit the proposal and stop. The
+			// caller stores it in the ledger before the client sees it.
+			p := buildProposal(call, userMsg)
+			emit(AgentStreamEvent{Type: "proposal", Proposal: &p, Steps: steps})
+			return nil
+		}
+
+		// Read-only tool: announce, execute on-instance, feed the result back.
+		emit(AgentStreamEvent{Type: "status", Tool: call.Tool, Content: "using " + call.Tool + "…"})
+		result, err := a.execReadTool(ctx, auth, call)
+		if err != nil {
+			result = "ERROR: " + err.Error()
+		}
+		steps = append(steps, ToolStep{Tool: call.Tool, Args: compactArgs(call.Args), Result: truncate(result, 400)})
+		convo = append(convo,
+			ai.Message{Role: "assistant", Content: resp},
+			ai.Message{Role: "user", Content: wrapUntrusted(call.Tool, result)})
+	}
+
+	// Loop budget exhausted: ask once more for a plain-text wrap-up, streamed live.
+	convo = append(convo, ai.Message{Role: "user", Content: "Stop using tools and give your best final answer now in plain text."})
+	return a.model.Stream(ctx, cfg, ai.CompletionRequest{Messages: convo, MaxTokens: 1024}, func(c ai.StreamChunk) {
+		if c.Content != "" {
+			emit(AgentStreamEvent{Type: "token", Content: c.Content})
+		}
+	})
+}
+
+// streamVerdict classifies a partial streamed reply so the streaming agent can
+// decide whether to forward tokens to the client.
+type streamVerdict int
+
+const (
+	verdictUndecided streamVerdict = iota // empty, or leading char looks like a tool call
+	verdictAnswer                         // definitely prose → safe to stream live
+)
+
+// classifyPartial reports whether an accumulated partial reply is already known
+// to be a natural-language answer. Tool calls (including fenced JSON) begin with
+// '{' or a code fence '`'; any other leading non-space character means prose we
+// can stream immediately. Until the first non-space char arrives it's undecided.
+func classifyPartial(s string) streamVerdict {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return verdictUndecided
+	}
+	if t[0] == '{' || t[0] == '`' {
+		return verdictUndecided
+	}
+	return verdictAnswer
+}
+
 // execReadTool runs a read-only tool and returns a text result for the model.
 func (a *Assistant) execReadTool(ctx context.Context, auth Auth, call ToolCall) (string, error) {
 	switch call.Tool {

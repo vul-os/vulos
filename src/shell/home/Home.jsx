@@ -21,6 +21,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../builtinApps'
+import { runAgentTurn } from '../../core/agentStream'
 
 // Curated quick-launch tiles — the everyday surfaces. "All apps" opens the
 // full Launchpad, so Home complements rather than replaces it.
@@ -157,7 +158,10 @@ export default function Home() {
   const openAssistant = useCallback(() => openApp('assistant'), [openApp])
   const openMail = useCallback(() => openApp('lilmail'), [openApp])
 
-  // ── agent composer (reuses wave-9 /agent + /execute proposal flow) ──────────
+  // ── agent composer (wave-9 proposal/approve flow, STREAMED in wave-17) ───────
+  // The final answer streams token-by-token into the pending bubble; a mutating
+  // action still arrives as a PROPOSAL (Approve/Reject → /execute). runAgentTurn
+  // falls back to the non-streaming /agent if streaming can't be established.
   const runAgent = useCallback(async (text) => {
     if (busy || !text.trim()) return
     const history = turns
@@ -166,22 +170,21 @@ export default function Home() {
     const uid = Math.random().toString(36).slice(2)
     const aid = Math.random().toString(36).slice(2)
     setTurns(t => [...t, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', pending: true }])
+    const patchAid = (patch) => setTurns(t => t.map(x => (x.id === aid ? { ...x, ...patch } : x)))
     setBusy(true)
     try {
-      const res = await fetch('/api/assistant/agent', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+      const result = await runAgentTurn({
+        message: text,
+        history,
+        onToken: (_delta, full) => patchAid({ content: full, pending: true }),
+        onStatus: (ev) => patchAid({ content: ev.content || 'thinking…', pending: true }),
+        onProposal: (proposal) => patchAid({ pending: false, proposal, state: 'pending' }),
       })
-      const d = await res.json().catch(() => ({}))
-      setTurns(t => t.map(x => {
-        if (x.id !== aid) return x
-        if (!res.ok) return { ...x, pending: false, content: d.error || `Assistant unavailable (${res.status}).` }
-        if (d.proposal) return { ...x, pending: false, content: d.answer || '', proposal: d.proposal, state: 'pending' }
-        return { ...x, pending: false, content: d.answer || 'No response.' }
-      }))
+      if (result.error) patchAid({ pending: false, content: result.error })
+      else if (result.proposal) patchAid({ pending: false })
+      else patchAid({ pending: false, content: result.answer || 'No response.' })
     } catch {
-      setTurns(t => t.map(x => x.id === aid ? { ...x, pending: false, content: 'Could not reach the assistant.' } : x))
+      patchAid({ pending: false, content: 'Could not reach the assistant.' })
     } finally {
       setBusy(false)
     }

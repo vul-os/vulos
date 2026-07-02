@@ -38,7 +38,22 @@ func (f *fakeModel) Stream(_ context.Context, cfg ai.Config, req ai.CompletionRe
 	f.calls++
 	f.lastCfg = cfg
 	f.lastReq = req
-	onChunk(ai.StreamChunk{Content: f.streamText})
+	// Scripted multi-turn replies (used by the streaming agent loop) take
+	// precedence, mirroring Complete; else fall back to the canned streamText.
+	text := f.streamText
+	if len(f.replies) > 0 {
+		text = f.replies[0]
+		f.replies = f.replies[1:]
+	}
+	// Emit in a couple of chunks so tests exercise real token accumulation.
+	if text != "" {
+		if mid := len(text) / 2; mid > 0 && mid < len(text) {
+			onChunk(ai.StreamChunk{Content: text[:mid]})
+			onChunk(ai.StreamChunk{Content: text[mid:]})
+		} else {
+			onChunk(ai.StreamChunk{Content: text})
+		}
+	}
 	onChunk(ai.StreamChunk{Done: true})
 	return nil
 }

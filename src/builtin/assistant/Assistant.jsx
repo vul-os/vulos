@@ -10,6 +10,7 @@
  * auditable. A minimal picker lets the operator choose the tier.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { runAgentTurn } from '../../core/agentStream'
 
 // ── Sovereignty tiers ────────────────────────────────────────────────────────
 // The tier vocabulary + labels are the shared contract with the backend Guard
@@ -308,10 +309,12 @@ export default function Assistant() {
     patchById(msgId, { state: 'rejected' })
   }, [patchById])
 
-  // Freeform chat — the TOOL-USING agent turn. The model may call read-only
-  // tools (which run on the box) and return either a final answer or a PROPOSAL
-  // for a mutating action, which we render with Approve/Reject. History is the
-  // prior user/assistant text turns (proposals are excluded).
+  // Freeform chat — the TOOL-USING agent turn, STREAMED (Wave 17). The model may
+  // call read-only tools (which run on the box; each surfaces a live "using …"
+  // status) and either STREAMS a final answer token-by-token or returns a
+  // PROPOSAL for a mutating action, which we render with Approve/Reject. History
+  // is the prior user/assistant text turns (proposals excluded). runAgentTurn
+  // falls back to the non-streaming /agent if streaming can't be established.
   const sendChat = useCallback(async (text) => {
     if (busy || !text.trim()) return
     const history = messages
@@ -322,29 +325,37 @@ export default function Assistant() {
     patchLast('', true)
     setBusy(true)
     try {
-      const res = await fetch('/api/assistant/agent', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+      const result = await runAgentTurn({
+        message: text,
+        history,
+        // Live tokens: keep the bubble pending (spinner) while text streams in.
+        onToken: (_delta, full) => patchLast(full, true),
+        // A read-only tool started: show a transient status line.
+        onStatus: (ev) => patchLast(ev.content || 'thinking…', true),
+        // A mutating action: convert the pending bubble into a proposal card.
+        onProposal: (proposal) => {
+          setMessages(m => {
+            const copy = m.slice()
+            const last = copy[copy.length - 1]
+            if (last && last.role === 'assistant') {
+              copy[copy.length - 1] = { ...last, pending: false, proposal, state: 'pending', content: last.content || '' }
+            }
+            return copy
+          })
+        },
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        patchLast(data.error || `Assistant unavailable (${res.status}).`, false)
-        return
-      }
-      if (data.proposal) {
-        // Replace the pending assistant bubble with a proposal card.
+      if (result.error) {
+        patchLast(result.error, false)
+      } else if (result.proposal) {
+        // onProposal already rendered the card; just clear the pending flag.
         setMessages(m => {
           const copy = m.slice()
           const last = copy[copy.length - 1]
-          if (last && last.role === 'assistant') {
-            copy[copy.length - 1] = { ...last, pending: false, proposal: data.proposal, state: 'pending', content: data.answer || '' }
-          }
+          if (last && last.role === 'assistant') copy[copy.length - 1] = { ...last, pending: false }
           return copy
         })
       } else {
-        patchLast(data.answer || 'No response.', false)
+        patchLast(result.answer || 'No response.', false)
       }
     } catch {
       patchLast('Could not reach the assistant.', false)

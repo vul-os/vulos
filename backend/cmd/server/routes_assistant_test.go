@@ -25,8 +25,31 @@ func (s *scriptedModel) Complete(_ context.Context, _ ai.Config, _ ai.Completion
 	return r, nil
 }
 func (s *scriptedModel) Stream(_ context.Context, _ ai.Config, _ ai.CompletionRequest, onChunk func(ai.StreamChunk)) error {
+	// The streaming agent loop drives model calls through Stream; consume the same
+	// scripted replies so /agent/stream round-trips deterministically.
+	if len(s.replies) > 0 {
+		r := s.replies[0]
+		s.replies = s.replies[1:]
+		onChunk(ai.StreamChunk{Content: r})
+	}
 	onChunk(ai.StreamChunk{Done: true})
 	return nil
+}
+
+// parseSSE extracts the JSON objects from a recorded text/event-stream body.
+func parseSSE(t *testing.T, body string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err == nil {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
 
 // testAssistantMux wires the assistant routes with an injected scripted model, a
@@ -91,6 +114,112 @@ func TestExecuteRoundTripViaID(t *testing.T) {
 	sent := fx.Sent()
 	if len(sent) != 1 || sent[0].To != "dana@acme.io" || sent[0].Subject != "Signed" {
 		t.Fatalf("server-stored args not executed: %+v", sent)
+	}
+}
+
+// STREAMING text answer: /agent/stream emits token events then a terminal done,
+// and never streams the intermediate tool-call JSON as answer tokens.
+func TestAgentStreamTextAnswer(t *testing.T) {
+	mux, _, _ := testAssistantMux(t, []string{
+		`{"tool":"search_mail","args":{"query":"invoice"}}`,
+		"You owe $128.40 to Tigris.",
+	})
+	rec, _ := doAssistantJSON(t, mux, "POST", "/api/assistant/agent/stream", "user-1",
+		`{"message":"when is my invoice due?"}`)
+	if rec.Code != 200 {
+		t.Fatalf("stream status = %d", rec.Code)
+	}
+	evs := parseSSE(t, rec.Body.String())
+	var tokens string
+	var sawDone bool
+	for _, e := range evs {
+		switch e["type"] {
+		case "token":
+			tokens += e["content"].(string)
+		case "done":
+			sawDone = true
+		case "proposal":
+			t.Fatalf("unexpected proposal on a text turn: %v", e)
+		}
+	}
+	if !strings.Contains(tokens, "128.40") {
+		t.Fatalf("streamed answer missing content: %q", tokens)
+	}
+	if strings.Contains(tokens, `"tool"`) {
+		t.Fatalf("tool-call JSON leaked into token stream: %q", tokens)
+	}
+	if !sawDone {
+		t.Fatalf("stream did not end with a done event: %v", evs)
+	}
+}
+
+// STREAMING mutating turn: /agent/stream emits a terminal proposal event carrying
+// a LEDGER id, executes nothing, and /execute then runs the server-stored args.
+func TestAgentStreamProposalGoesThroughLedger(t *testing.T) {
+	mux, fx, _ := testAssistantMux(t, []string{
+		`{"tool":"send_email","args":{"to":"dana@acme.io","subject":"Signed","body":"Done."}}`,
+	})
+	rec, _ := doAssistantJSON(t, mux, "POST", "/api/assistant/agent/stream", "user-1",
+		`{"message":"email dana@acme.io that it's signed"}`)
+	if rec.Code != 200 {
+		t.Fatalf("stream status = %d", rec.Code)
+	}
+	evs := parseSSE(t, rec.Body.String())
+	var id string
+	for _, e := range evs {
+		if e["type"] == "token" {
+			t.Fatalf("mutating turn must not stream answer tokens: %v", e)
+		}
+		if e["type"] == "proposal" {
+			prop, _ := e["proposal"].(map[string]any)
+			if prop == nil {
+				t.Fatalf("proposal event missing proposal: %v", e)
+			}
+			id, _ = prop["id"].(string)
+		}
+	}
+	if id == "" {
+		t.Fatalf("stream did not emit a proposal with a ledger id: %v", evs)
+	}
+	// Nothing sent by the stream itself — the gate held.
+	if len(fx.Sent()) != 0 {
+		t.Fatal("mail sent during streaming before approval — GATE BREACHED")
+	}
+	// The id resolves in the ledger: /execute runs the server-stored args.
+	rec2, out2 := doAssistantJSON(t, mux, "POST", "/api/assistant/execute", "user-1", `{"id":"`+id+`"}`)
+	if rec2.Code != 200 || out2["executed"] != true {
+		t.Fatalf("execute of streamed proposal failed: %d %v", rec2.Code, out2)
+	}
+	if sent := fx.Sent(); len(sent) != 1 || sent[0].To != "dana@acme.io" {
+		t.Fatalf("streamed proposal not executed correctly: %+v", sent)
+	}
+}
+
+// STREAMING egress block: a non-sovereign tier streams a single terminal error
+// event with no tokens and no proposal — and makes zero model calls.
+func TestAgentStreamEgressBlocked(t *testing.T) {
+	fx := assistant.NewFixtureSource()
+	sm := &scriptedModel{replies: []string{"should never be called"}}
+	deps := assistantDeps{
+		model:  sm,
+		cfg:    ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, // external, no opt-in
+		source: fx,
+		ledger: assistant.NewProposalLedger(),
+	}
+	mux := http.NewServeMux()
+	registerAssistantRoutesWithDeps(mux, deps)
+
+	rec, _ := doAssistantJSON(t, mux, "POST", "/api/assistant/agent/stream", "user-1", `{"message":"send an email"}`)
+	evs := parseSSE(t, rec.Body.String())
+	if len(evs) != 1 || evs[0]["type"] != "error" {
+		t.Fatalf("egress-blocked stream should emit exactly one error event, got %v", evs)
+	}
+	// Zero model calls: the scripted reply was never consumed.
+	if len(sm.replies) != 1 {
+		t.Fatalf("model was called despite blocked egress — LEAK")
+	}
+	if len(fx.Sent()) != 0 {
+		t.Fatal("a mutation happened despite blocked egress")
 	}
 }
 

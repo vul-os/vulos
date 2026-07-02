@@ -23,6 +23,7 @@ package main
 //	POST /api/assistant/attention — no body; prioritized triage
 //	POST /api/assistant/search    — body {q}
 //	POST /api/assistant/agent     — tool-using turn; body {message, history?} → {answer|proposal, steps}
+//	POST /api/assistant/agent/stream — SSE twin of /agent; streams the final answer token-by-token
 //	POST /api/assistant/execute   — run an approved proposal by id; body {id} → {executed, result}
 //	POST /api/assistant/triage    — direct user-initiated triage; body {message_id, action, ...}
 
@@ -318,6 +319,72 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 			deps.ledger.Put(r.Header.Get("X-User-ID"), *res.Proposal)
 		}
 		writeJSON(w, res)
+	})
+
+	// POST /api/assistant/agent/stream — the STREAMING twin of /agent. Same tool
+	// loop, same confirmation gate, same up-front egress Guard; the only
+	// difference is the FINAL natural-language answer is streamed token-by-token
+	// as SSE so the UI feels live. Event protocol (one JSON object per SSE data:
+	// frame):
+	//
+	//	{"type":"status","tool":"search_mail","content":"using search_mail…"}
+	//	{"type":"token","content":"…partial answer…"}   (repeated)
+	//	{"type":"proposal","proposal":{id,tool,summary,args,from_content,warning},"steps":[…]}
+	//	{"type":"done"}                                 (terminal, success)
+	//	{"type":"error","error":"…"}                    (terminal, failure)
+	//
+	// SECURITY (unchanged from /agent): mutating actions NEVER execute here — a
+	// terminal proposal is stored SERVER-SIDE in the ledger (bound to this
+	// session's user) BEFORE the client sees it, and only /execute runs it by id.
+	// Guard runs before any model call, so a blocked tier streams a single error
+	// event with zero model calls. Untrusted mail is wrapped as data in the loop.
+	mux.HandleFunc("POST /api/assistant/agent/stream", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		var body struct {
+			Message string       `json:"message"`
+			History []ai.Message `json:"history"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if strings.TrimSpace(body.Message) == "" {
+			writeErr(w, 400, "message required")
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no")
+		flusher, _ := w.(http.Flusher)
+		userID := r.Header.Get("X-User-ID")
+		send := func(v any) {
+			b, _ := json.Marshal(v)
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		emit := func(ev assistant.AgentStreamEvent) {
+			// SERVER-SIDE PROPOSAL LEDGER: a terminal mutating proposal is stored
+			// server-side, keyed by its opaque id and bound to this session's user,
+			// BEFORE it is streamed to the client — identical to POST /agent. The
+			// client never supplies the args that run; /execute reads them from the
+			// ledger by id, so a forged proposal cannot execute.
+			if ev.Type == "proposal" && ev.Proposal != nil {
+				deps.ledger.Put(userID, *ev.Proposal)
+			}
+			send(ev)
+		}
+
+		err := newAssistant().AgentTurnStream(r.Context(), authOf(r), body.Message, body.History, emit)
+		if err != nil {
+			// Egress-blocked / retrieval / model errors: terminal error event.
+			// Guard runs before any model call, so a blocked tier reaches here
+			// having streamed nothing and made zero model calls.
+			send(assistant.AgentStreamEvent{Type: "error", Error: err.Error()})
+			return
+		}
+		send(assistant.AgentStreamEvent{Type: "done"})
 	})
 
 	// POST /api/assistant/execute — run a PREVIOUSLY-PROPOSED mutating action
