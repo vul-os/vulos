@@ -6,6 +6,7 @@ import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import PostSignupWizard from './PostSignupWizard'
 import MasterKeyReveal from './MasterKeyReveal'
+import { matchState } from './matchState'
 import VulosAccountStep from '../../apps/setup-wizard/src/steps/VulosAccountStep'
 import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 
@@ -295,9 +296,9 @@ export default function Setup({ onComplete }) {
     <div className="fixed inset-0 bg-neutral-950 overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[15%] left-[25%] w-[600px] h-[600px] rounded-full bg-blue-600 opacity-[0.04] blur-[180px] animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[15%] right-[15%] w-[500px] h-[500px] rounded-full bg-violet-600 opacity-[0.04] blur-[180px] animate-pulse" style={{ animationDuration: '12s' }} />
-        <div className="absolute top-[50%] left-[60%] w-[300px] h-[300px] rounded-full bg-cyan-600 opacity-[0.02] blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} />
+        <div className="absolute top-[15%] left-[25%] w-[600px] h-[600px] rounded-full opacity-[0.05] blur-[180px] animate-pulse" style={{ animationDuration: '8s', background: 'var(--accent)' }} />
+        <div className="absolute bottom-[15%] right-[15%] w-[500px] h-[500px] rounded-full opacity-[0.04] blur-[180px] animate-pulse" style={{ animationDuration: '12s', background: 'color-mix(in srgb, var(--accent) 60%, #a855f7)' }} />
+        <div className="absolute top-[50%] left-[60%] w-[300px] h-[300px] rounded-full opacity-[0.02] blur-[120px] animate-pulse" style={{ animationDuration: '10s', background: 'color-mix(in srgb, var(--accent) 40%, #06b6d4)' }} />
       </div>
 
       <div className="relative h-full flex flex-col items-center justify-center px-6">
@@ -316,8 +317,11 @@ export default function Setup({ onComplete }) {
               <button
                 key={i}
                 onClick={() => i < step && goTo(i)}
-                className={`w-2 h-2 rounded-full transition-all duration-500
-                  ${i === step ? 'bg-blue-500 w-6' : i < step ? 'bg-blue-500/50 cursor-pointer hover:bg-blue-400' : 'bg-neutral-800'}`}
+                aria-label={`Go to step ${i + 1}`}
+                aria-current={i === step ? 'step' : undefined}
+                disabled={i > step}
+                className={`h-2 rounded-full transition-all duration-500
+                  ${i === step ? 'accent-bg w-6' : i < step ? 'accent-bg w-2 opacity-50 cursor-pointer hover:opacity-100' : 'w-2 bg-neutral-800'}`}
               />
             ))}
           </div>
@@ -428,7 +432,7 @@ function WelcomeStep({ onNext }) {
       <div className="mb-6 flex flex-col items-center">
         <img src="/icon-128.png" alt="Vula OS" className="w-20 h-20 mb-4" />
         <div className="text-5xl font-extralight text-neutral-100 tracking-[0.2em] mb-3">vula</div>
-        <div className="h-px w-16 mx-auto bg-gradient-to-r from-transparent via-blue-500 to-transparent mb-3" />
+        <div className="h-px w-16 mx-auto mb-3" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
         <p className="text-neutral-500 text-lg font-light">{t('setup.welcome.tagline')}</p>
         <p className="text-neutral-700 text-sm mt-1 italic">{t('setup.welcome.zulu')}</p>
       </div>
@@ -533,10 +537,10 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
         {/* New system card */}
         <button
           onClick={onChooseNew}
-          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-blue-500/50 hover:bg-blue-600/5 transition-all"
+          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover-accent-border hover-accent-bg-soft transition-all"
         >
-          <div className="w-14 h-14 rounded-2xl bg-blue-600/15 flex items-center justify-center group-hover:bg-blue-600/25 transition-colors">
-            <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-14 h-14 rounded-2xl accent-bg-soft accent-bg-hover flex items-center justify-center transition-colors">
+            <svg viewBox="0 0 24 24" className="w-7 h-7 accent-text" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="9" />
               <path d="M12 8v8M8 12h8" />
             </svg>
@@ -632,7 +636,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">S3 Bucket <span className="text-red-400">*</span></label>
+            <label className="block text-xs text-neutral-500 mb-1.5">S3 Bucket <span className="text-danger">*</span></label>
             <input
               value={IS09_s3Bucket}
               onChange={e => IS09_setS3Bucket(e.target.value.trim())}
@@ -652,7 +656,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
           </div>
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Access Key <span className="text-red-400">*</span></label>
+          <label className="block text-xs text-neutral-500 mb-1.5">Access Key <span className="text-danger">*</span></label>
           <input
             value={IS09_s3AccessKey}
             onChange={e => IS09_setS3AccessKey(e.target.value.trim())}
@@ -661,7 +665,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
           />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Secret Key <span className="text-red-400">*</span></label>
+          <label className="block text-xs text-neutral-500 mb-1.5">Secret Key <span className="text-danger">*</span></label>
           <input
             type="password"
             value={IS09_s3SecretKey}
@@ -671,7 +675,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
           />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Encryption Passphrase <span className="text-red-400">*</span></label>
+          <label className="block text-xs text-neutral-500 mb-1.5">Encryption Passphrase <span className="text-danger">*</span></label>
           <input
             type="password"
             value={IS09_passphrase}
@@ -681,12 +685,12 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
           />
         </div>
         {IS09_error && (
-          <div className="flex flex-col gap-2 bg-red-900/20 border border-red-800/40 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{IS09_error}</p>
+          <div className="flex flex-col gap-2 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3">
+            <p className="text-sm text-danger">{IS09_error}</p>
             {IS09_error.includes('not yet available') && (
               <button
                 onClick={IS09_handleJoin}
-                className="self-start text-xs text-red-300 underline underline-offset-2 hover:text-red-200"
+                className="self-start text-xs text-danger underline underline-offset-2 hover:opacity-80"
               >
                 Retry
               </button>
@@ -796,7 +800,7 @@ function IS09_SyncingStep({ onNext, onComplete }) {
       <div className="mb-6 flex flex-col items-center">
         <div className="w-16 h-16 rounded-2xl bg-violet-600/15 flex items-center justify-center mb-4">
           {IS09_done ? (
-            <svg viewBox="0 0 24 24" className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" className="w-8 h-8 text-success" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
           ) : (
@@ -823,7 +827,7 @@ function IS09_SyncingStep({ onNext, onComplete }) {
         </div>
         <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-violet-600 to-blue-500 rounded-full transition-all duration-700"
+            className="h-full rounded-full transition-all duration-700" style={{ background: 'linear-gradient(to right, color-mix(in srgb, var(--accent) 65%, #7c3aed), var(--accent))' }}
             style={{ width: `${IS09_progress}%` }}
           />
         </div>
@@ -839,7 +843,7 @@ function IS09_SyncingStep({ onNext, onComplete }) {
               ${isCurrent ? 'bg-violet-600/10 border border-violet-500/20' : ''}
             `}>
               <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px]
-                ${isDone ? 'bg-green-500/20 text-green-400' : isCurrent ? 'bg-violet-500/20 text-violet-400' : 'bg-neutral-800 text-neutral-600'}`}>
+                ${isDone ? 'bg-success-soft text-success' : isCurrent ? 'bg-violet-500/20 text-violet-400' : 'bg-neutral-800 text-neutral-600'}`}>
                 {isDone ? '✓' : isCurrent ? '·' : '○'}
               </span>
               <span className={`text-sm ${isDone ? 'text-neutral-400' : isCurrent ? 'text-neutral-200' : 'text-neutral-600'}`}>
@@ -858,8 +862,8 @@ function IS09_SyncingStep({ onNext, onComplete }) {
       </div>
 
       {IS09_error && (
-        <div className="mb-4 bg-red-900/20 border border-red-800/40 rounded-xl px-4 py-3">
-          <p className="text-sm text-red-400">{IS09_error}</p>
+        <div className="mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3">
+          <p className="text-sm text-danger">{IS09_error}</p>
         </div>
       )}
 
@@ -896,7 +900,7 @@ function LanguageStep({ config, update, onNext, onPrev }) {
             onClick={() => { update('locale', lang.code); setLocale(lang.code) }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all
               ${config.locale === lang.code
-                ? 'bg-blue-600/20 border border-blue-500/50 text-white'
+                ? 'accent-bg-soft accent-border text-neutral-100 border'
                 : 'bg-neutral-900/50 border border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
           >
             <span className="text-xl">{lang.flag}</span>
@@ -954,17 +958,17 @@ function TimezoneStep({ config, update, onNext, onPrev }) {
             {/* Dot */}
             <div className={`w-3 h-3 rounded-full transition-all border-2
               ${config.timezone === tz.id
-                ? 'bg-blue-500 border-blue-400 scale-150 shadow-lg shadow-blue-500/50'
-                : 'bg-neutral-600 border-neutral-500 group-hover:bg-blue-400 group-hover:border-blue-300 group-hover:scale-125'}`}
+                ? 'accent-bg accent-border scale-150 shadow-lg'
+                : 'bg-neutral-600 border-neutral-500 hover-accent-bg hover-accent-border group-hover:scale-125'}`}
             />
             {/* Label (shows on hover or when selected) */}
             <div className={`absolute left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap text-[10px] font-medium transition-opacity
-              ${config.timezone === tz.id ? 'opacity-100 text-blue-400' : 'opacity-0 group-hover:opacity-100 text-neutral-400'}`}>
+              ${config.timezone === tz.id ? 'opacity-100 accent-text' : 'opacity-0 group-hover:opacity-100 text-neutral-400'}`}>
               {tz.label}
             </div>
             {/* Pulse ring when selected */}
             {config.timezone === tz.id && (
-              <div className="absolute inset-0 w-3 h-3 rounded-full border border-blue-500 animate-ping opacity-30" />
+              <div className="absolute inset-0 w-3 h-3 rounded-full border accent-border animate-ping opacity-30" />
             )}
           </button>
         ))}
@@ -978,7 +982,7 @@ function TimezoneStep({ config, update, onNext, onPrev }) {
             onClick={() => update('timezone', tz.id)}
             className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-all whitespace-nowrap
               ${config.timezone === tz.id
-                ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50'
+                ? 'accent-bg-soft accent-text border accent-border'
                 : 'bg-neutral-900/50 text-neutral-500 border border-neutral-800/50 hover:text-neutral-300'}`}
           >
             {tz.label}
@@ -1027,11 +1031,11 @@ function NetworkStep({ config, update, onNext, onPrev }) {
         className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
           ${scanning
             ? 'bg-neutral-800 text-neutral-500'
-            : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover:border-blue-500/50 hover:text-white'}`}
+            : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover:text-white'}`}
       >
         {scanning ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-500 rounded-full animate-spin" />
+            <span className="w-4 h-4 border-2 border-neutral-600 rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
             {t('setup.network.scanning')}
           </span>
         ) : networks ? t('setup.network.scan_again') : t('setup.network.scan')}
@@ -1049,7 +1053,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
               onClick={() => { update('wifiSSID', n.ssid); setShowPassword(true) }}
               className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-neutral-800/30 transition-colors
                 ${config.wifiSSID === n.ssid
-                  ? 'bg-blue-600/10 text-white'
+                  ? 'accent-bg-soft text-neutral-100'
                   : 'text-neutral-300 hover:bg-neutral-800/40'}`}
             >
               <span className="text-[10px] font-mono text-neutral-500 w-10">{signalIcon(n.signal)}</span>
@@ -1057,7 +1061,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
                 <div className="text-sm truncate">{n.ssid || '(hidden)'}</div>
                 <div className="text-[10px] text-neutral-600">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
               </div>
-              {config.wifiSSID === n.ssid && <span className="text-blue-500 text-xs">{t('setup.network.selected')}</span>}
+              {config.wifiSSID === n.ssid && <span className="accent-text text-xs">{t('setup.network.selected')}</span>}
             </button>
           ))}
         </div>
@@ -1241,10 +1245,10 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
           {/* Local-only card */}
           <button
             onClick={pickLocal}
-            className="group flex flex-col items-start gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-blue-500/50 hover:bg-blue-600/5 transition-all"
+            className="group flex flex-col items-start gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover-accent-border hover-accent-bg-soft transition-all"
           >
-            <div className="w-14 h-14 rounded-2xl bg-blue-600/15 flex items-center justify-center group-hover:bg-blue-600/25 transition-colors">
-              <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <div className="w-14 h-14 rounded-2xl accent-bg-soft accent-bg-hover flex items-center justify-center transition-colors">
+              <svg viewBox="0 0 24 24" className="w-7 h-7 accent-text" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="3" width="20" height="14" rx="2" />
                 <path d="M8 21h8M12 17v4" />
               </svg>
@@ -1257,7 +1261,7 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
             </div>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {['Offline', 'No account required', 'Full control'].map(tag => (
-                <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-600/10 text-blue-400 border border-blue-500/20">
+                <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-full accent-bg-soft accent-text border accent-border-soft">
                   {tag}
                 </span>
               ))}
@@ -1314,12 +1318,12 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
         {/* Network name (hostname) — read-only autofill display */}
         {config.IS05_hostname && (
           <div className="flex items-center gap-3 bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-400 shrink-0">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 accent-text shrink-0">
               <path fillRule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clipRule="evenodd" />
             </svg>
             <div>
               <div className="text-[10px] text-neutral-500 uppercase tracking-wider">Network name (hostname)</div>
-              <div className="font-mono text-sm text-blue-300">{config.IS05_hostname}</div>
+              <div className="font-mono text-sm accent-text">{config.IS05_hostname}</div>
             </div>
           </div>
         )}
@@ -1370,7 +1374,7 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
           </p>
         </div>
 
-        {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+        {error && <p className="text-sm text-danger mt-3">{error}</p>}
 
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
           <button onClick={() => { setView('pick'); setError('') }} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
@@ -1490,29 +1494,18 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
             />
             <CL04_PasswordStrength password={config.CL04_createPassword} />
           </div>
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">Confirm password</label>
-            <input
-              type="password"
-              value={config.CL04_createConfirm}
-              onChange={e => { update('CL04_createConfirm', e.target.value); setError('') }}
-              placeholder="Re-enter password"
-              autoComplete="new-password"
-              className={`input text-base py-3 ${
-                config.CL04_createConfirm && config.CL04_createPassword !== config.CL04_createConfirm
-                  ? 'border-red-500/60'
-                  : config.CL04_createConfirm && config.CL04_createPassword === config.CL04_createConfirm
-                    ? 'border-green-500/40'
-                    : ''
-              }`}
-            />
-          </div>
+          <ConfirmPasswordField
+            id="confirm-pw-netb05"
+            password={config.CL04_createPassword}
+            confirm={config.CL04_createConfirm}
+            onChange={e => { update('CL04_createConfirm', e.target.value); setError('') }}
+          />
           {NB_serverHint && (
-            <div className="flex items-start gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3">
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 mt-0.5 shrink-0">
+            <div className="flex items-start gap-2 bg-warning-soft border border-warning-soft rounded-xl px-4 py-3">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-warning mt-0.5 shrink-0">
                 <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
               </svg>
-              <p className="text-sm text-amber-300">{NB_serverHint}</p>
+              <p className="text-sm text-warning">{NB_serverHint}</p>
             </div>
           )}
         </div>
@@ -1570,7 +1563,7 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+      {error && <p className="text-sm text-danger mt-3">{error}</p>}
 
       <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
         <button onClick={() => { setView('pick'); setError('') }} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
@@ -1610,32 +1603,70 @@ function CL04_PasswordStrength({ password }) {
 
   let level = 0
   let label = ''
+  // Semantic meter: extremes follow status tokens (danger/success); the two
+  // mid gradations keep a warm gradient so all four levels stay distinguishable.
   let colour = ''
 
   if (len < 12) {
-    level = 1; label = 'Too short — needs 12+ characters'; colour = 'bg-red-500'
+    level = 1; label = 'Too short — needs 12+ characters'; colour = 'var(--status-danger)'
   } else if (len < 16 && varietyBonus < 2) {
-    level = 2; label = 'Weak'; colour = 'bg-orange-500'
+    level = 2; label = 'Weak'; colour = '#fb923c'
   } else if (len < 20) {
-    level = 3; label = 'Fair'; colour = 'bg-yellow-500'
+    level = 3; label = 'Fair'; colour = 'var(--status-warning)'
   } else {
-    level = 4; label = 'Strong'; colour = 'bg-green-500'
+    level = 4; label = 'Strong'; colour = 'var(--status-success)'
   }
 
   const bars = [1, 2, 3, 4]
   return (
-    <div className="mt-1.5">
+    <div className="mt-1.5" aria-hidden="true">
       <div className="flex gap-1 mb-1">
         {bars.map(b => (
           <div
             key={b}
-            className={`h-1 flex-1 rounded-full transition-all duration-300 ${b <= level ? colour : 'bg-neutral-800'}`}
+            className="h-1 flex-1 rounded-full transition-all duration-300"
+            style={{ background: b <= level ? colour : 'var(--border-strong)' }}
           />
         ))}
       </div>
-      <p className={`text-[11px] ${level <= 1 ? 'text-red-400' : level === 2 ? 'text-orange-400' : level === 3 ? 'text-yellow-400' : 'text-green-400'}`}>
+      <p className="text-[11px]" style={{ color: colour }}>
         {label}
       </p>
+    </div>
+  )
+}
+
+// ConfirmPasswordField — a "Confirm password" input with token-driven match
+// feedback. The status border (danger / success) is now ACCOMPANIED by inline
+// text tied to the field via aria-describedby, so the state is conveyed to
+// assistive tech and to users who can't perceive the border colour.
+function ConfirmPasswordField({ id, password, confirm, onChange }) {
+  const { touched, matches, mismatch } = matchState(password, confirm)
+  const msgId = `${id}-msg`
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs text-neutral-500 mb-1.5">Confirm password</label>
+      <input
+        id={id}
+        type="password"
+        value={confirm}
+        onChange={onChange}
+        placeholder="Re-enter password"
+        autoComplete="new-password"
+        aria-describedby={touched ? msgId : undefined}
+        aria-invalid={mismatch || undefined}
+        className={`input text-base py-3 ${mismatch ? 'border-danger-soft' : matches ? 'border-success-soft' : ''}`}
+      />
+      {touched && (
+        <p
+          id={msgId}
+          role={mismatch ? 'alert' : undefined}
+          className={`text-[11px] mt-1 flex items-center gap-1 ${mismatch ? 'text-danger' : 'text-success'}`}
+        >
+          <span aria-hidden="true">{mismatch ? '✕' : '✓'}</span>
+          {mismatch ? 'Passwords do not match' : 'Passwords match'}
+        </p>
+      )}
     </div>
   )
 }
@@ -1750,7 +1781,7 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
           <path d="M2.5 13c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
         </svg>
       ),
-      activeColour: 'text-blue-400',
+      activeColour: 'accent-text',
     },
     {
       id: 'create',
@@ -1886,31 +1917,20 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
             <CL04_PasswordStrength password={config.CL04_createPassword} />
           </div>
 
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">Confirm password</label>
-            <input
-              type="password"
-              value={config.CL04_createConfirm}
-              onChange={e => { update('CL04_createConfirm', e.target.value); setError('') }}
-              placeholder="Re-enter password"
-              autoComplete="new-password"
-              className={`input text-base py-3 ${
-                config.CL04_createConfirm && config.CL04_createPassword !== config.CL04_createConfirm
-                  ? 'border-red-500/60'
-                  : config.CL04_createConfirm && config.CL04_createPassword === config.CL04_createConfirm
-                    ? 'border-green-500/40'
-                    : ''
-              }`}
-            />
-          </div>
+          <ConfirmPasswordField
+            id="confirm-pw-account"
+            password={config.CL04_createPassword}
+            confirm={config.CL04_createConfirm}
+            onChange={e => { update('CL04_createConfirm', e.target.value); setError('') }}
+          />
 
           {/* Server hint (breach / taken / etc.) */}
           {CL04_serverHint && (
-            <div className="flex items-start gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3">
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-400 mt-0.5 shrink-0">
+            <div className="flex items-start gap-2 bg-warning-soft border border-warning-soft rounded-xl px-4 py-3">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-warning mt-0.5 shrink-0">
                 <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
               </svg>
-              <p className="text-sm text-amber-300">{CL04_serverHint}</p>
+              <p className="text-sm text-warning">{CL04_serverHint}</p>
             </div>
           )}
         </div>
@@ -1960,7 +1980,7 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
         </div>
       )}
 
-      {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
+      {error && <p className="text-sm text-danger mt-2">{error}</p>}
 
       <NavBar
         onPrev={onPrev}
@@ -2006,7 +2026,7 @@ function PinStep({ config, update, onNext, onPrev }) {
         {t('setup.pin.subtitle')}
       </p>
 
-      {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+      {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
       <input
         type="password"
@@ -2020,16 +2040,30 @@ function PinStep({ config, update, onNext, onPrev }) {
       />
 
       {config.pin && (
-        <input
-          type="password"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={confirm}
-          onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setError('') }}
-          placeholder={t('setup.pin.confirm_placeholder')}
-          maxLength={8}
-          className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-3"
-        />
+        <>
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={confirm}
+            onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setError('') }}
+            placeholder={t('setup.pin.confirm_placeholder')}
+            maxLength={8}
+            aria-describedby={confirm ? 'pin-confirm-msg' : undefined}
+            aria-invalid={(confirm && config.pin !== confirm) || undefined}
+            className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-1"
+          />
+          {confirm && (
+            <p
+              id="pin-confirm-msg"
+              role={config.pin !== confirm ? 'alert' : undefined}
+              className={`text-[11px] mb-3 flex items-center gap-1 self-start ${config.pin !== confirm ? 'text-danger' : 'text-success'}`}
+            >
+              <span aria-hidden="true">{config.pin !== confirm ? '✕' : '✓'}</span>
+              {config.pin !== confirm ? t('setup.pin.error_match') : t('setup.pin.match')}
+            </p>
+          )}
+        </>
       )}
 
       <div className="flex gap-3 mt-4 w-full">
@@ -2076,20 +2110,20 @@ function AppearanceStep({ onNext, onPrev }) {
             onClick={() => setTheme(thm.value)}
             className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all
               ${theme === thm.value
-                ? 'bg-blue-600/15 border-2 border-blue-500/60 text-white shadow-lg shadow-blue-500/10'
+                ? 'accent-bg-soft border-2 accent-border text-neutral-100 shadow-lg'
                 : 'bg-neutral-900/50 border-2 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
           >
             {/* Preview swatch */}
             <div className="w-12 h-12 rounded-xl border border-neutral-700/50 flex items-center justify-center overflow-hidden"
               style={{ background: thm.preview }}>
-              <span className={theme === thm.value ? 'text-blue-400' : 'text-neutral-400'}>{thm.icon}</span>
+              <span className={theme === thm.value ? 'accent-text' : 'text-neutral-400'}>{thm.icon}</span>
             </div>
             <div>
               <div className="text-sm font-medium">{thm.label}</div>
               <div className="text-[11px] text-neutral-500 mt-0.5">{thm.desc}</div>
             </div>
             {theme === thm.value && (
-              <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+              <div className="absolute top-2 right-2 w-5 h-5 rounded-full accent-bg flex items-center justify-center">
                 <svg viewBox="0 0 16 16" className="w-3 h-3 text-white"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
               </div>
             )}
@@ -2179,7 +2213,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
           {IS05_loading ? (
             <div className="h-5 w-48 bg-neutral-800 rounded animate-pulse" />
           ) : (
-            <div className="font-mono text-sm text-blue-300 select-all break-all">
+            <div className="font-mono text-sm accent-text select-all break-all">
               {config.IS05_ulid}
             </div>
           )}
@@ -2201,7 +2235,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
           <p className="text-[11px] text-neutral-600 mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
         </div>
 
-        {IS05_error && <p className="text-sm text-red-400">{IS05_error}</p>}
+        {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
       </div>
 
       <NavBar onPrev={onPrev} onNext={handleNext} nextLabel={IS05_saving ? t('Saving...') : t('Continue')} />
@@ -2306,7 +2340,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
           </div>
           <button
             onClick={() => { update('IS05_storageEnabled', !config.IS05_storageEnabled); IS05_setError('') }}
-            className={`w-10 h-5 rounded-full transition-colors relative ${config.IS05_storageEnabled ? 'bg-blue-600' : 'bg-neutral-700'}`}
+            className={`w-10 h-5 rounded-full transition-colors relative ${config.IS05_storageEnabled ? 'accent-bg' : 'bg-neutral-700'}`}
           >
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${config.IS05_storageEnabled ? 'left-5' : 'left-0.5'}`} />
           </button>
@@ -2380,7 +2414,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-neutral-500">{t('Allocated Size')}</label>
-              <span className="text-sm font-mono text-blue-300">{config.IS05_storageSizeGb} GB</span>
+              <span className="text-sm font-mono accent-text">{config.IS05_storageSizeGb} GB</span>
             </div>
             <input
               type="range"
@@ -2389,7 +2423,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
               step="5"
               value={config.IS05_storageSizeGb}
               onChange={e => update('IS05_storageSizeGb', Number(e.target.value))}
-              className="w-full accent-blue-500"
+              className="w-full" style={{ accentColor: 'var(--accent)' }}
             />
             <div className="flex justify-between text-[10px] text-neutral-700 mt-1">
               <span>5 GB</span><span>100 GB</span>
@@ -2427,7 +2461,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
             />
           </div>
 
-          {IS05_error && <p className="text-sm text-red-400">{IS05_error}</p>}
+          {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
         </div>
       )}
 
@@ -2566,11 +2600,11 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
           className={`w-full py-3 rounded-xl text-sm font-medium transition-all
             ${IS05_generating
               ? 'bg-neutral-800 text-neutral-500'
-              : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover:border-blue-500/50 hover:text-white'}`}
+              : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover:text-white'}`}
         >
           {IS05_generating ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-500 rounded-full animate-spin" />
+              <span className="w-4 h-4 border-2 border-neutral-600 rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
               {t('Generating keypair...')}
             </span>
           ) : config.IS05_sshPubkey ? t('Regenerate Keypair') : t('Generate Ed25519 Keypair')}
@@ -2583,7 +2617,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
               <span className="text-[11px] text-amber-400 font-medium">{t('Private Key — shown once, copy now')}</span>
               <button
                 onClick={IS05_copy}
-                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-green-700/30 text-green-400' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft text-success' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
               >
                 {IS05_copied ? t('Copied!') : t('Copy')}
               </button>
@@ -2598,7 +2632,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
         {config.IS05_sshFingerprint && (
           <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
             <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">{t('Public Key Fingerprint')}</div>
-            <div className="font-mono text-xs text-green-400 break-all">{config.IS05_sshFingerprint}</div>
+            <div className="font-mono text-xs text-success break-all">{config.IS05_sshFingerprint}</div>
           </div>
         )}
 
@@ -2613,7 +2647,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
                 className="sr-only"
               />
               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
-                ${IS05_confirmed ? 'bg-blue-600 border-blue-600' : 'border-neutral-600 group-hover:border-neutral-400'}`}>
+                ${IS05_confirmed ? 'accent-bg accent-border' : 'border-neutral-600 group-hover:border-neutral-400'}`}>
                 {IS05_confirmed && (
                   <svg viewBox="0 0 16 16" className="w-3 h-3 text-white"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
                 )}
@@ -2625,7 +2659,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
           </label>
         )}
 
-        {IS05_error && <p className="text-sm text-red-400">{IS05_error}</p>}
+        {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
       </div>
 
       <NavBar
@@ -2794,7 +2828,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <div>
               <div className="text-neutral-600 mb-0.5">{t('ULID')}</div>
-              <div className="font-mono text-blue-300 text-[10px] break-all">{config.IS05_ulid || '—'}</div>
+              <div className="font-mono accent-text text-[10px] break-all">{config.IS05_ulid || '—'}</div>
             </div>
             <div>
               <div className="text-neutral-600 mb-0.5">{t('Hostname')}</div>
@@ -2808,7 +2842,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
             <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">{t('Cluster Storage')}</div>
             <div className="text-xs">
               <div className="text-neutral-600 mb-0.5">{t('Status')}</div>
-              <div className="text-green-400">{t('Enabled')} · {config.IS05_storageSizeGb} GB</div>
+              <div className="text-success">{t('Enabled')} · {config.IS05_storageSizeGb} GB</div>
               {config.IS05_s3AccessKey && (
                 <>
                   <div className="text-neutral-600 mt-2 mb-0.5">{t('S3 Access Key')}</div>
@@ -2830,7 +2864,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
         {config.IS05_sshFingerprint && (
           <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
             <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">{t('SSH Access')}</div>
-            <div className="text-[10px] font-mono text-green-400 break-all">{config.IS05_sshFingerprint}</div>
+            <div className="text-[10px] font-mono text-success break-all">{config.IS05_sshFingerprint}</div>
           </div>
         )}
       </div>
@@ -2860,14 +2894,14 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
         disabled={IS05_downloading || IK06_buildingPayload}
         className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
           ${IS05_downloaded
-            ? 'bg-green-700/20 border border-green-600/40 text-green-400'
+            ? 'bg-success-soft border border-success-soft text-success'
             : IS05_downloading
               ? 'bg-neutral-800 text-neutral-500'
-              : 'bg-blue-600/20 border border-blue-500/40 text-blue-300 hover:bg-blue-600/30 hover:text-blue-200'}`}
+              : 'accent-bg-soft border accent-border accent-text accent-bg-hover'}`}
       >
         {IS05_downloading ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-400 rounded-full animate-spin" />
+            <span className="w-4 h-4 border-2 border-neutral-600 rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
             {t('Preparing download...')}
           </span>
         ) : IS05_downloaded
@@ -2875,7 +2909,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
           : t('Download Recovery Kit')}
       </button>
 
-      {IS05_error && <p className="text-sm text-red-400 mb-3">{IS05_error}</p>}
+      {IS05_error && <p className="text-sm text-danger mb-3">{IS05_error}</p>}
 
       {/* Type-to-confirm gate — applies to ALL variants including storage-skipped */}
       <div className="bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-4 mb-2">
@@ -2888,7 +2922,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
           value={IS05_confirmText}
           onChange={e => IS05_setConfirmText(e.target.value)}
           placeholder="confirm"
-          className={`input py-2 font-mono text-sm ${IS05_canProceed ? 'border-green-500/50 text-green-400' : ''}`}
+          className={`input py-2 font-mono text-sm ${IS05_canProceed ? 'border-success-soft text-success' : ''}`}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -3006,7 +3040,7 @@ function ReadyStep({ config, onFinish, onPrev }) {
         <SummaryCard icon="🎨" label={t('setup.ready.label_theme')} value={themeLabels[theme] || theme} />
       </div>
 
-      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+      {error && <p className="text-sm text-danger mb-4">{error}</p>}
 
       <button
         onClick={handleFinish}
@@ -3030,7 +3064,7 @@ function ReadyStep({ config, onFinish, onPrev }) {
         <p className="text-xs text-neutral-500 leading-relaxed">
           <span className="text-neutral-400 font-medium">Recovery kit</span> — your credentials JSON was shown once during setup.
           You can re-download it any time as an admin via{' '}
-          <code className="text-blue-400/80 text-[11px]">GET /api/recovery/kit</code>
+          <code className="accent-text text-[11px]">GET /api/recovery/kit</code>
           {' '}from a trusted local session.
         </p>
       </div>

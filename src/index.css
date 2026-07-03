@@ -335,6 +335,38 @@ html, body, #root {
 }
 
 /* ═══════════════════════════════════════
+   Accent + status utility classes (WAVE-26)
+   Token-driven replacements for hardcoded blue/green/red/amber
+   Tailwind classes in the setup wizard and elsewhere, so accent surfaces
+   retheme with the chosen --accent and semantic states share one
+   source of truth. -soft = low-alpha tint; -border = translucent edge.
+   ═══════════════════════════════════════ */
+.accent-text        { color: var(--accent); }
+.accent-bg          { background: var(--accent); }
+.accent-bg-soft     { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.accent-bg-hover:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.accent-border      { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.accent-border-soft { border-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+.hover-accent-text:hover   { color: var(--accent); }
+.hover-accent-border:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.group:hover .group-hover-accent-bg,
+.hover-accent-bg:hover { background: var(--accent); }
+.hover-accent-bg-soft:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+
+.text-success { color: var(--status-success); }
+.text-danger  { color: var(--status-danger); }
+.text-warning { color: var(--status-warning); }
+.bg-success   { background: var(--status-success); }
+.bg-danger    { background: var(--status-danger); }
+.bg-warning   { background: var(--status-warning); }
+.bg-danger-soft  { background: var(--status-danger-soft); }
+.bg-warning-soft { background: var(--status-warning-soft); }
+.bg-success-soft { background: var(--status-success-soft); }
+.border-danger-soft  { border-color: color-mix(in srgb, var(--status-danger) 34%, transparent); }
+.border-warning-soft { border-color: color-mix(in srgb, var(--status-warning) 30%, transparent); }
+.border-success-soft { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); }
+
+/* ═══════════════════════════════════════
    Shell-wide keyboard focus ring (WAVE-23)
    A single accent-token :focus-visible default for every interactive control,
    so keyboard users get a consistent, dark-surface-visible ring instead of the

@@ -36,6 +36,7 @@
   "setup.pin.placeholder": "Enter PIN (4+ digits)",
   "setup.pin.confirm_placeholder": "Confirm PIN",
   "setup.pin.error_match": "PINs do not match",
+  "setup.pin.match": "PINs match",
   "setup.pin.error_length": "PIN must be at least 4 digits",
   "setup.pin.set": "Set PIN",
   "setup.pin.skip": "Skip",

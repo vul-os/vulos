@@ -11,8 +11,34 @@
 // only ever surfaces what the session is authorized to see.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { request, rawFetch } from '../../lib/api'
+import { request, rawFetch, apiUrl } from '../../lib/api'
 import { useFocusTrap } from '../../shell/useFocusTrap'
+import { uploadRowView } from './uploadRowView'
+
+// putWithProgress: PUT a file's bytes with byte-level upload progress via XHR
+// (fetch() exposes no upload progress). `onProgress(fraction)` receives 0..1 as
+// bytes stream; when the total is unknown it is never called and the caller
+// falls back to an indeterminate bar. `credentials` toggles the session cookie
+// (needed for the OS data plane; omitted for presigned S3 PUTs). Resolves on a
+// 2xx response and rejects with a descriptive Error otherwise.
+function putWithProgress(url, file, { headers = {}, credentials = false, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url, true)
+    xhr.withCredentials = credentials
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v)
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total) }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new Error(`upload failed (${xhr.status})`))
+    }
+    xhr.onerror = () => reject(new Error('upload failed (network error)'))
+    xhr.onabort = () => reject(new Error('upload cancelled'))
+    xhr.send(file)
+  })
+}
 
 // ── theme tokens ───────────────────────────────────────────────────────────
 const T = {
@@ -99,18 +125,28 @@ const filesApi = {
 
 // uploadExternalOne: stream a file's bytes into a writable external mount under
 // parent, then return the created node. conflict defaults to rename-on-collision.
-async function uploadExternalOne(mountId, parentId, file, conflict = 'rename') {
+async function uploadExternalOne(mountId, parentId, file, conflict = 'rename', onProgress) {
   const qs = new URLSearchParams({ mount: mountId, parent: parentId || '', name: file.name, conflict })
-  const res = await rawFetch(`/files/external/upload?${qs.toString()}`, {
-    method: 'POST',
-    body: file,
-    headers: file.type ? { 'Content-Type': file.type } : {},
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', apiUrl(`/files/external/upload?${qs.toString()}`), true)
+    xhr.withCredentials = true
+    if (file.type) xhr.setRequestHeader('Content-Type', file.type)
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total) }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText || '{}')) } catch { resolve({}) }
+      } else if (xhr.status === 409) {
+        reject(new Error('A file with that name already exists'))
+      } else {
+        reject(new Error(`upload failed (${xhr.status})`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('upload failed (network error)'))
+    xhr.send(file)
   })
-  if (!res.ok) {
-    if (res.status === 409) throw new Error('A file with that name already exists')
-    throw new Error(`upload failed (${res.status})`)
-  }
-  return res.json()
 }
 
 // downloadExternal: stream a mounted-store file's bytes through the OS and save.
@@ -131,23 +167,22 @@ async function downloadExternal(mountId, node) {
 }
 
 // uploadOne: upload-grant → PUT bytes (direct presigned, else OS data plane) →
-// commit. Returns the committed node.
-async function uploadOne(parentId, file) {
+// commit. Returns the committed node. `onProgress(fraction)` reports byte-level
+// PUT progress (0..1) when the transport can compute it.
+async function uploadOne(parentId, file, onProgress) {
   const { node, grant } = await filesApi.uploadGrant(parentId, file.name, file.type || 'application/octet-stream')
   if (grant && grant.type === 'presigned' && grant.url) {
-    const res = await fetch(grant.url, {
-      method: grant.method || 'PUT',
-      body: file,
+    await putWithProgress(grant.url, file, {
       headers: file.type ? { 'Content-Type': file.type } : {},
+      credentials: false,
+      onProgress,
     })
-    if (!res.ok) throw new Error(`upload failed (${res.status})`)
   } else {
-    const res = await rawFetch(`/files/content?node=${encodeURIComponent(node.id)}`, {
-      method: 'PUT',
-      body: file,
+    await putWithProgress(apiUrl(`/files/content?node=${encodeURIComponent(node.id)}`), file, {
       headers: file.type ? { 'Content-Type': file.type } : {},
+      credentials: true,
+      onProgress,
     })
-    if (!res.ok) throw new Error(`upload failed (${res.status})`)
   }
   await filesApi.commit(node.id, file.size, file.type || '', '')
   return node
@@ -465,7 +500,7 @@ function MoveModal({ node, onMoved, onClose }) {
       </div>
       <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, minHeight: 140, maxHeight: 240, overflow: 'auto' }}>
         {loading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: T.textFaint, fontSize: 13 }}>Loading…</div>
+          <ModalSkeleton rows={4} withGlyph />
         ) : err ? (
           <div style={{ padding: 24, textAlign: 'center', color: T.danger, fontSize: 13 }}>{err}</div>
         ) : folders.length === 0 ? (
@@ -500,7 +535,7 @@ function VersionsModal({ node, onClose }) {
   return (
     <Modal title={`Versions — ${node.name}`} onClose={onClose}>
       {err ? <div style={{ color: T.danger, fontSize: 13 }}>{err}</div>
-        : versions === null ? <div style={{ color: T.textFaint, fontSize: 13 }}>Loading…</div>
+        : versions === null ? <ModalSkeleton rows={3} />
         : versions.length === 0 ? <div style={{ color: T.textFaint, fontSize: 13 }}>No versions recorded yet.</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1061,6 +1096,10 @@ export default function Drive() {
   const [importJobs, setImportJobs] = useState([])
   const [mounts, setMounts] = useState([])
   const [busy, setBusy] = useState(null) // status text
+  // Per-file upload progress. Each entry: { id, name, size, pct (0..1|null), state }.
+  // pct === null → indeterminate (transport can't report bytes). state:
+  // 'uploading' | 'done' | 'error'. Cleared shortly after the batch settles.
+  const [uploads, setUploads] = useState([])
 
   // The active external mount, if the current view is one ("ext:<mountID>").
   const extMountId = view.startsWith('ext:') ? view.slice(4) : ''
@@ -1204,15 +1243,29 @@ export default function Drive() {
   const doUpload = async (fileList) => {
     const files = Array.from(fileList || [])
     if (files.length === 0) return
-    let done = 0
-    for (const f of files) {
-      setBusy(`Uploading ${f.name} (${++done}/${files.length})…`)
+    // Seed the progress list — one row per file, so the user sees the whole
+    // batch at once with a determinate bar filling per byte-progress.
+    const queue = files.map((f, i) => ({ id: `${Date.now()}-${i}-${f.name}`, name: f.name, size: f.size, pct: 0, state: 'uploading' }))
+    setUploads(queue)
+    const setPct = (id, pct) => setUploads((u) => u.map((x) => (x.id === id ? { ...x, pct } : x)))
+    const setState = (id, state) => setUploads((u) => u.map((x) => (x.id === id ? { ...x, state } : x)))
+    let anyError = false
+    for (const item of queue) {
+      const f = files[queue.indexOf(item)]
+      const onProgress = (frac) => setPct(item.id, Math.max(0, Math.min(1, frac)))
       try {
-        if (extMountId) await uploadExternalOne(extMountId, cur.id, f)
-        else await uploadOne(view === 'shared' ? '' : cur.id, f)
-      } catch (e) { setError(`Upload of ${f.name} failed: ${e.message || e}`) }
+        if (extMountId) await uploadExternalOne(extMountId, cur.id, f, 'rename', onProgress)
+        else await uploadOne(view === 'shared' ? '' : cur.id, f, onProgress)
+        setUploads((u) => u.map((x) => (x.id === item.id ? { ...x, pct: 1, state: 'done' } : x)))
+      } catch (e) {
+        anyError = true
+        setState(item.id, 'error')
+        setError(`Upload of ${f.name} failed: ${e.message || e}`)
+      }
     }
-    setBusy(null)
+    // Keep the completed batch visible briefly, then clear (leave errors up a
+    // little longer so the failure is noticed).
+    setTimeout(() => setUploads([]), anyError ? 5000 : 1400)
     await refresh()
   }
 
@@ -1345,6 +1398,16 @@ export default function Drive() {
             </>
           )}
         </div>
+
+        {/* upload progress — per-file determinate bars (indeterminate when the
+            transport can't report bytes). Replaces the old single status line. */}
+        {uploads.length > 0 && (
+          <div role="status" aria-live="polite" style={{ padding: '8px 16px', borderBottom: `1px solid ${T.border}`, background: T.elevated, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {uploads.map((u) => (
+              <UploadRow key={u.id} upload={u} />
+            ))}
+          </div>
+        )}
 
         {/* status / error bars */}
         {busy && <div role="status" aria-live="polite" style={{ padding: '7px 16px', fontSize: 12, color: T.accent, background: T.elevated, borderBottom: `1px solid ${T.border}` }}>{busy}</div>}
@@ -1493,10 +1556,65 @@ export default function Drive() {
       <style>{`
         @keyframes drive-shimmer { 0% { opacity: 0.5 } 50% { opacity: 0.85 } 100% { opacity: 0.5 } }
         [data-drive-skel] { animation: drive-shimmer 1.4s ease-in-out infinite; }
+        @keyframes drive-upload-indeterminate {
+          0% { transform: translateX(-100%) }
+          100% { transform: translateX(350%) }
+        }
+        [data-drive-upload="indeterminate"] { animation: drive-upload-indeterminate 1.1s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) {
           [data-drive-skel] { animation: none !important; opacity: 0.6; }
+          [data-drive-upload="indeterminate"] { animation: none !important; }
         }
       `}</style>
+    </div>
+  )
+}
+
+// ModalSkeleton — shimmer placeholder rows for modal content that's still
+// loading (Move folder list, Versions list), matching the shell's skeleton
+// pattern instead of a bare "Loading…" line. `withGlyph` adds a leading square
+// to mirror folder rows.
+function ModalSkeleton({ rows = 3, withGlyph = false }) {
+  return (
+    <div style={{ padding: withGlyph ? 8 : 4, display: 'flex', flexDirection: 'column', gap: 8 }} aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: withGlyph ? '4px 4px' : '6px 2px' }}>
+          {withGlyph && (
+            <span data-drive-skel style={{ width: 18, height: 18, borderRadius: 5, background: T.elevated, flexShrink: 0, animationDelay: `${i * 90}ms` }} />
+          )}
+          <span data-drive-skel style={{ flex: 1, height: 11, borderRadius: 4, background: T.elevated, animationDelay: `${i * 90}ms`, maxWidth: `${70 - i * 6}%` }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// UploadRow — one file's upload progress: name, a determinate accent bar filling
+// per byte-progress (or an indeterminate sweep when the size is unknown), and a
+// percentage / done ✓ / failed ✕ affordance on the right.
+function UploadRow({ upload }) {
+  const { name, size } = upload
+  const { failed, done, indeterminate, widthPct, label } = uploadRowView(upload)
+  const barColor = failed ? T.danger : done ? 'var(--status-success)' : T.accent
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+      <span style={{ color: T.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span aria-hidden="true" style={{ marginRight: 6 }}>{failed ? '⚠️' : done ? '✅' : '↑'}</span>
+        {name}
+        {size ? <span style={{ color: T.textFaint }}>{' · '}{fmtSize(size)}</span> : null}
+      </span>
+      <span style={{ width: 130, flexShrink: 0, height: 6, borderRadius: 4, background: T.bg, overflow: 'hidden', position: 'relative' }}>
+        <span
+          data-drive-upload={indeterminate ? 'indeterminate' : undefined}
+          style={{
+            display: 'block', height: '100%', borderRadius: 4, background: barColor,
+            width: `${widthPct}%`, transition: 'width .2s ease-out',
+          }}
+        />
+      </span>
+      <span style={{ width: 40, flexShrink: 0, textAlign: 'right', color: failed ? T.danger : done ? 'var(--status-success)' : T.textDim, fontVariantNumeric: 'tabular-nums' }}>
+        {label}
+      </span>
     </div>
   )
 }
