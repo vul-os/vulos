@@ -29,7 +29,12 @@ import { notify } from '../../core/notificationStore'
 // full Launchpad, so Home complements rather than replaces it.
 const QUICK_LAUNCH = ['lilmail', 'vulos-calendar', 'drive', 'assistant', 'vulos-office', 'terminal', 'persona']
 
-const TIER_DOT = { local: '#22c55e', sovereign: '#22c55e', brokered: '#f59e0b', external: '#ef4444' }
+const TIER_DOT = {
+  local: 'var(--status-success)',
+  sovereign: 'var(--status-success)',
+  brokered: 'var(--status-warning)',
+  external: 'var(--status-danger)',
+}
 
 // Module-scoped cache of the last Home payload. Home remounts each time you
 // close all windows (it's the desktop backdrop), so we render the cached brief/
@@ -374,7 +379,7 @@ export default function Home() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                        <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
                         <span className="text-[13px] text-neutral-100 font-medium truncate">{item.subject}</span>
                       </div>
                       <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate pl-3.5">{item.from_name || item.from}</div>
@@ -387,7 +392,7 @@ export default function Home() {
                       className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Reply with assistant</button>
                     {snoozing === item.uid ? (
                       <>
-                        <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md bg-amber-600/80 text-white hover:bg-amber-500 transition-colors">Confirm snooze</button>
+                        <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md text-white transition-colors" style={{ background: 'color-mix(in srgb, var(--status-warning) 80%, transparent)' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--status-warning)')} onMouseLeave={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--status-warning) 80%, transparent)')}>Confirm snooze</button>
                         <button onClick={() => setSnoozing(null)} className="text-[11px] px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Cancel</button>
                       </>
                     ) : (
@@ -443,7 +448,7 @@ export default function Home() {
               {activity.map((a, i) => (
                 <li key={a.uid || i}>
                   <button onClick={openMail} className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-800/40 transition-colors flex items-center gap-3">
-                    <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.unread ? 'bg-blue-400' : 'bg-neutral-700'}`} />
+                    <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-strong)' }} />
                     <div className="min-w-0 flex-1">
                       <div className={`text-[13px] truncate ${a.unread ? 'text-neutral-100' : 'text-neutral-300'}`}>{a.title}</div>
                       <div className="text-[11px] text-neutral-500 truncate">{a.subtitle}</div>

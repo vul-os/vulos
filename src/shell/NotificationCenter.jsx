@@ -50,11 +50,13 @@ function NC13_group(list) {
   }))
 }
 
+// Returns an inline style for the level dot. Info-level (the default) follows
+// the user's accent token; the semantic danger/warning tints stay fixed.
 function NC13_levelDot(level, read) {
-  if (read) return 'bg-neutral-700'
-  if (level === 'critical' || level === 'urgent') return 'bg-red-500'
-  if (level === 'warning') return 'bg-amber-500'
-  return 'bg-blue-400'
+  if (read) return { background: 'var(--border-strong)' }
+  if (level === 'critical' || level === 'urgent') return { background: 'var(--status-danger)' }
+  if (level === 'warning') return { background: 'var(--status-warning)' }
+  return { background: 'var(--accent)' }
 }
 
 // ---- Bell icon with badge ----
@@ -95,7 +97,8 @@ function NC13_Panel({ onClose }) {
           {unread > 0 && (
             <button
               onClick={markAllRead}
-              className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors px-1.5 py-0.5 rounded hover:bg-blue-500/10"
+              style={{ color: 'var(--accent)' }}
+              className="text-[10px] transition-colors px-1.5 py-0.5 rounded hover:brightness-125"
             >
               Mark all read
             </button>
@@ -121,11 +124,11 @@ function NC13_Panel({ onClose }) {
       {/* Body */}
       <div className="overflow-y-auto flex-1 min-h-0">
         {items.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 gap-2">
-            <svg viewBox="0 0 24 24" className="w-8 h-8 text-neutral-700" fill="currentColor">
+          <div className="flex flex-col items-center justify-center py-8 gap-2">
+            <svg viewBox="0 0 24 24" className="w-8 h-8 text-neutral-500" fill="currentColor">
               <path d="M12 2a.75.75 0 01.75.75v.75A7.25 7.25 0 0119.5 10.5v3.75l2.25 2.25a.75.75 0 01-.53 1.28H2.78a.75.75 0 01-.53-1.28L4.5 14.25V10.5A7.25 7.25 0 0111.25 3.5V2.75A.75.75 0 0112 2zm0 20a3 3 0 003-3H9a3 3 0 003 3z" />
             </svg>
-            <span className="text-xs text-neutral-600">You're all caught up</span>
+            <span className="text-xs text-neutral-500">You're all caught up</span>
           </div>
         )}
         {grouped.map(({ day, groups }) => (
@@ -152,7 +155,7 @@ function NC13_Panel({ onClose }) {
                       className="flex items-start gap-2.5 flex-1 min-w-0 text-left"
                       aria-label={n.read ? n.title : `${n.title}, unread — mark read`}
                     >
-                      <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${NC13_levelDot(n.level, n.read)}`} />
+                      <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={NC13_levelDot(n.level, n.read)} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1">
                           <span className={`text-xs font-medium truncate ${n.read ? 'text-neutral-400' : 'text-neutral-200'}`}>
@@ -188,9 +191,8 @@ function NC13_Panel({ onClose }) {
           role="switch"
           aria-checked={prefs.muted}
           aria-label="Toggle Do Not Disturb"
-          className={`relative rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-blue-400/50
-            ${prefs.muted ? 'bg-blue-500' : 'bg-neutral-700'}`}
-          style={{ height: '18px', width: '32px' }}
+          className="relative rounded-full transition-colors"
+          style={{ height: '18px', width: '32px', background: prefs.muted ? 'var(--accent)' : 'var(--border-strong)' }}
         >
           <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform
             ${prefs.muted ? 'translate-x-4' : 'translate-x-0.5'}`} />

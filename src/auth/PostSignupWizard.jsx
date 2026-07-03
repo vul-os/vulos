@@ -415,6 +415,9 @@ function CL05_StepEmailVerify({ email, onDone }) {
       setResendState('sent')
       let secs = CL05_RESEND_COOLDOWN
       setCooldown(secs)
+      // Guard against a stale interval (e.g. resend after an error) leaving two
+      // countdowns racing on setCooldown.
+      if (timerRef.current) clearInterval(timerRef.current)
       timerRef.current = setInterval(() => {
         secs -= 1
         setCooldown(secs)

@@ -500,7 +500,7 @@ function Row({ row, active, onHover, onClick, rowRef }) {
           <span className={`text-[13px] block truncate ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{m.subject || '(no subject)'}</span>
           <span className="text-[11px] text-neutral-600 block truncate">{sender}{m.preview ? ` — ${m.preview}` : ''}</span>
         </span>
-        {m.unread && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
+        {m.unread && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />}
       </div>
     )
   }

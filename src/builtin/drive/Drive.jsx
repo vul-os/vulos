@@ -27,6 +27,9 @@ const T = {
   textDim: 'var(--text-tertiary)',
   textFaint: 'var(--text-faint)',
   accent: 'var(--accent)',
+  accentSoft: 'var(--accent-soft)',
+  danger: 'var(--status-danger)',
+  dangerSoft: 'var(--status-danger-soft)',
 }
 
 // ── tiny API surface over /api/files ────────────────────────────────────────
@@ -464,7 +467,7 @@ function MoveModal({ node, onMoved, onClose }) {
         {loading ? (
           <div style={{ padding: 24, textAlign: 'center', color: T.textFaint, fontSize: 13 }}>Loading…</div>
         ) : err ? (
-          <div style={{ padding: 24, textAlign: 'center', color: '#f87171', fontSize: 13 }}>{err}</div>
+          <div style={{ padding: 24, textAlign: 'center', color: T.danger, fontSize: 13 }}>{err}</div>
         ) : folders.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: T.textFaint, fontSize: 13 }}>No sub-folders</div>
         ) : folders.map((f) => (
@@ -496,7 +499,7 @@ function VersionsModal({ node, onClose }) {
   }, [node.id])
   return (
     <Modal title={`Versions — ${node.name}`} onClose={onClose}>
-      {err ? <div style={{ color: '#f87171', fontSize: 13 }}>{err}</div>
+      {err ? <div style={{ color: T.danger, fontSize: 13 }}>{err}</div>
         : versions === null ? <div style={{ color: T.textFaint, fontSize: 13 }}>Loading…</div>
         : versions.length === 0 ? <div style={{ color: T.textFaint, fontSize: 13 }}>No versions recorded yet.</div>
         : (
@@ -605,7 +608,7 @@ function ShareModal({ node, onClose }) {
 
   return (
     <Modal title={`Share — ${node.name}`} onClose={onClose} width={520}>
-      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ color: T.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
 
       <div style={section}>Share with a person</div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -628,7 +631,7 @@ function ShareModal({ node, onClose }) {
             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 11px', background: T.elevated, borderRadius: 8, fontSize: 12 }}>
               <span style={{ flex: 1, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.principal_id}</span>
               <span style={{ color: T.textDim }}>{s.role}</span>
-              <button onClick={() => removeShare(s.principal_id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 12 }}>Remove</button>
+              <button onClick={() => removeShare(s.principal_id)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontSize: 12 }}>Remove</button>
             </div>
           ))}
       </div>
@@ -660,7 +663,7 @@ function ShareModal({ node, onClose }) {
                   </button>
                 )}
                 {!l.revoked && (
-                  <button onClick={() => killLink(l.token)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 12 }}>Revoke</button>
+                  <button onClick={() => killLink(l.token)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontSize: 12 }}>Revoke</button>
                 )}
               </div>
             )
@@ -712,7 +715,7 @@ function PeerShareModal({ node, onClose }) {
 
   return (
     <Modal title={`Share via peer — ${node.name}`} onClose={onClose} width={540}>
-      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ color: T.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
       <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14, lineHeight: 1.5 }}>
         Generate a signed, expiring capability link. The recipient redeems it on their own
         Vulos box — bytes stream box-to-box, no bucket or cloud required. Leave the recipient
@@ -759,7 +762,7 @@ function PeerShareModal({ node, onClose }) {
                   {s.revoked ? 'revoked' : expired ? 'expired' : `expires ${fmtDate(s.expires_at)}`}
                 </span>
                 {!s.revoked && (
-                  <button onClick={() => revoke(s.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 12 }}>Revoke</button>
+                  <button onClick={() => revoke(s.id)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontSize: 12 }}>Revoke</button>
                 )}
               </div>
             )
@@ -791,7 +794,7 @@ function RedeemModal({ onClose, onRedeemed }) {
 
   return (
     <Modal title="Redeem a capability link" onClose={onClose} width={520}>
-      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ color: T.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
       {!item ? (
         <>
           <div style={{ fontSize: 12, color: T.textDim, marginBottom: 10, lineHeight: 1.5 }}>
@@ -863,7 +866,7 @@ function RowMenu({ node, onAction, onClose }) {
           style={{
             display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px',
             background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer',
-            fontSize: 13, color: k === 'delete' ? '#f87171' : T.text,
+            fontSize: 13, color: k === 'delete' ? T.danger : T.text,
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = T.hover }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
@@ -901,7 +904,7 @@ function ConnectModal({ providers, onConnect, onClose }) {
 
   return (
     <Modal title="Connect an external drive" onClose={onClose} width={460}>
-      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ color: T.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
       <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14, lineHeight: 1.5 }}>
         Mount an external store as a drive. Vulos browses it using a short-lived token
         brokered by your cloud account — the provider’s long-lived credentials never
@@ -964,11 +967,11 @@ function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }) {
   }
 
   const section = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '16px 0 8px' }
-  const statusColor = (s) => s === 'done' ? '#34d399' : s === 'error' ? '#f87171' : T.accent
+  const statusColor = (s) => s === 'done' ? 'var(--status-success)' : s === 'error' ? T.danger : T.accent
 
   return (
     <Modal title="Import from Google / Microsoft" onClose={onClose} width={560}>
-      {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{err}</div>}
+      {err && <div style={{ color: T.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
       <div style={{ fontSize: 12, color: T.textDim, marginBottom: 6, lineHeight: 1.5 }}>
         <strong style={{ color: T.text }}>Import = a copy you own.</strong> Vulos pulls the files into your
         Drive. The copy stays even after you disconnect the integration or the
@@ -1033,7 +1036,7 @@ function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }) {
               {j.mode === 'sync' && j.status !== 'running' && (
                 <button onClick={() => onSync(j.id)} style={{ background: 'none', border: 'none', color: T.accent, cursor: 'pointer', fontSize: 12 }}>Sync now</button>
               )}
-              <button onClick={() => onDelete(j.id)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 12 }}>Remove</button>
+              <button onClick={() => onDelete(j.id)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontSize: 12 }}>Remove</button>
             </div>
           ))}
       </div>
@@ -1346,19 +1349,16 @@ export default function Drive() {
         {/* status / error bars */}
         {busy && <div role="status" aria-live="polite" style={{ padding: '7px 16px', fontSize: 12, color: T.accent, background: T.elevated, borderBottom: `1px solid ${T.border}` }}>{busy}</div>}
         {error && (
-          <div role="alert" style={{ padding: '7px 16px', fontSize: 12, color: '#f87171', background: 'rgba(248,113,113,0.08)', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between' }}>
+          <div role="alert" style={{ padding: '7px 16px', fontSize: 12, color: T.danger, background: T.dangerSoft, borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between' }}>
             <span>{error}</span>
-            <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}>×</button>
+            <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer' }}>×</button>
           </div>
         )}
 
         {/* listing */}
         <div style={{ flex: 1, overflow: 'auto' }}>
           {loading ? (
-            <Center>
-              <div data-drive-spinner style={{ width: 26, height: 26, border: `3px solid ${T.border}`, borderTopColor: T.accent, borderRadius: '50%', animation: 'drive-spin 0.8s linear infinite' }} />
-              <span style={{ color: T.textFaint, fontSize: 13 }}>Loading…</span>
-            </Center>
+            <DriveSkeleton />
           ) : nodes.length === 0 ? (
             <Center>
               <div style={{ fontSize: 40, opacity: 0.4 }}>{view === 'shared' ? '👥' : view === 'received' ? '📥' : '📂'}</div>
@@ -1402,7 +1402,11 @@ export default function Drive() {
               {nodes.map((node) => (
                 <div
                   key={node.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${node.is_dir ? 'Folder' : 'File'}: ${node.name}`}
                   onClick={() => onRowOpen(node)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowOpen(node) } }}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 9, cursor: 'pointer', position: 'relative' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = T.hover }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
@@ -1415,6 +1419,9 @@ export default function Drive() {
                     {!extMountId && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === node.id ? null : node.id) }}
+                        aria-label={`Actions for ${node.name}`}
+                        aria-expanded={menuFor === node.id}
+                        aria-haspopup="menu"
                         style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
                       >⋯</button>
                     )}
@@ -1431,7 +1438,7 @@ export default function Drive() {
         {/* drop overlay */}
         {dragOver && (
           <div style={{
-            position: 'absolute', inset: 0, background: 'rgba(59,130,246,0.12)',
+            position: 'absolute', inset: 0, background: T.accentSoft,
             border: `2px dashed ${T.accent}`, borderRadius: 12, display: 'flex',
             alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 20,
           }}>
@@ -1484,11 +1491,39 @@ export default function Drive() {
       )}
 
       <style>{`
-        @keyframes drive-spin { to { transform: rotate(360deg) } }
+        @keyframes drive-shimmer { 0% { opacity: 0.5 } 50% { opacity: 0.85 } 100% { opacity: 0.5 } }
+        [data-drive-skel] { animation: drive-shimmer 1.4s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) {
-          [data-drive-spinner] { animation-duration: 2.4s !important; }
+          [data-drive-skel] { animation: none !important; opacity: 0.6; }
         }
       `}</style>
+    </div>
+  )
+}
+
+// Skeleton listing — mirrors the real row layout so the transition to loaded
+// content doesn't shift. Preferred over a raw spinner for the file list.
+function DriveSkeleton() {
+  const bar = (w) => (
+    <span data-drive-skel style={{ display: 'block', height: 11, width: w, borderRadius: 4, background: T.elevated }} />
+  )
+  return (
+    <div style={{ padding: 8 }} aria-busy="true" aria-label="Loading files">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: T.textFaint }}>
+        <span style={{ flex: 1 }}>Name</span>
+        <span style={{ width: 90, textAlign: 'right' }}>Size</span>
+        <span style={{ width: 110, textAlign: 'right' }}>Modified</span>
+        <span style={{ width: 28 }} />
+      </div>
+      {[68, 52, 74, 44, 60, 58].map((w, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px' }}>
+          <span data-drive-skel style={{ width: 18, height: 18, borderRadius: 5, background: T.elevated, flexShrink: 0, animationDelay: `${i * 90}ms` }} />
+          <span style={{ flex: 1 }}>{bar(`${w}%`)}</span>
+          <span style={{ width: 90, display: 'flex', justifyContent: 'flex-end' }}>{bar(38)}</span>
+          <span style={{ width: 110, display: 'flex', justifyContent: 'flex-end' }}>{bar(64)}</span>
+          <span style={{ width: 28 }} />
+        </div>
+      ))}
     </div>
   )
 }

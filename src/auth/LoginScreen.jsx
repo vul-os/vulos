@@ -11,6 +11,7 @@ export default function LoginScreen() {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
   // Check if this is first-time setup (no users yet)
@@ -28,7 +29,9 @@ export default function LoginScreen() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (submitting) return // double-submit guard
     setError('')
+    setSubmitting(true)
 
     const endpoint = isSetup ? '/api/auth/register' : '/api/auth/login'
     const body = isSetup
@@ -70,10 +73,14 @@ export default function LoginScreen() {
         // mounts the Shell with no Chromium-side navigation.
         await checkAuth()
       } else {
-        setError(data.error || 'Login failed')
+        setError(data.error || (isSetup
+          ? 'Could not create your account. Check your details and try again.'
+          : 'Incorrect username or password.'))
       }
     } catch {
-      setError('Could not reach server')
+      setError('Could not reach the server. Check your connection and try again.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -88,8 +95,8 @@ export default function LoginScreen() {
   return (
     <div className="fixed inset-0 bg-neutral-950 flex flex-col items-center justify-center px-6">
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[30%] left-[40%] w-[400px] h-[400px] rounded-full bg-blue-600 opacity-[0.03] blur-[150px]" />
-        <div className="absolute bottom-[30%] right-[30%] w-[300px] h-[300px] rounded-full bg-violet-600 opacity-[0.03] blur-[150px]" />
+        <div className="absolute top-[30%] left-[40%] w-[400px] h-[400px] rounded-full opacity-[0.04] blur-[150px]" style={{ background: 'var(--accent)' }} />
+        <div className="absolute bottom-[30%] right-[30%] w-[300px] h-[300px] rounded-full opacity-[0.03] blur-[150px]" style={{ background: 'color-mix(in srgb, var(--accent) 60%, #a855f7)' }} />
       </div>
 
       {/* Logo */}
@@ -144,11 +151,23 @@ export default function LoginScreen() {
         </div>
 
         {error && (
-          <p className="text-sm text-red-400 text-center">{error}</p>
+          <p role="alert" className="text-sm text-center" style={{ color: 'var(--status-danger)' }}>{error}</p>
         )}
 
-        <button type="submit" className="btn-primary w-full py-3">
-          {isSetup ? 'Create Account' : 'Sign In'}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {submitting && (
+            <span
+              aria-hidden="true"
+              className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
+            />
+          )}
+          {submitting
+            ? (isSetup ? 'Creating account…' : 'Signing in…')
+            : (isSetup ? 'Create Account' : 'Sign In')}
         </button>
       </form>
 

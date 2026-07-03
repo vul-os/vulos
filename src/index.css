@@ -26,6 +26,37 @@
   --text-dim: #444444;
   --text-invisible: #333333;
   --graph-grid: #1a1a1a;
+
+  /* Semantic status tokens (WAVE-23): one source of truth for success / warning
+     / danger / info tints so panels stop hardcoding emerald-/amber-/red-/blue-
+     Tailwind classes. `-soft` variants are the low-alpha background tints. */
+  --status-success: #22c55e;
+  --status-warning: #f59e0b;
+  --status-danger: #f87171;
+  --status-info: var(--accent);
+  --status-success-soft: color-mix(in srgb, #22c55e 14%, transparent);
+  --status-warning-soft: color-mix(in srgb, #f59e0b 14%, transparent);
+  --status-danger-soft: color-mix(in srgb, #f87171 12%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+
+  /* Motion tokens (WAVE-23): one scale of durations + easings so transitions
+     across panels read as a single system. Decorative motion honours
+     prefers-reduced-motion (see @media block below). */
+  --motion-fast: 0.12s;
+  --motion-base: 0.18s;
+  --motion-slow: 0.28s;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Collapse motion-token durations under reduced-motion so any transition
+   wired to a --motion-* var becomes effectively instant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0.01ms;
+    --motion-base: 0.01ms;
+    --motion-slow: 0.01ms;
+  }
 }
 
 /* WAVE-13: shell density. Compact nudges the root font-size down so the whole
@@ -245,8 +276,16 @@ html, body, #root {
   font-size: 0.875rem;
   outline: none;
 }
+.input {
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
 .input:focus {
   border-color: var(--text-ghost);
+}
+/* Keyboard focus tints the input border toward accent for a crafted feel
+   (the shell-wide :focus-visible halo handles the ring). */
+.input:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-emphasis));
 }
 
 .btn {
@@ -258,6 +297,7 @@ html, body, #root {
   font-size: 0.8125rem;
   cursor: pointer;
 }
+.btn { transition: background var(--motion-fast) var(--ease-standard); }
 .btn:hover { background: var(--text-dim); }
 .btn:disabled { opacity: 0.4; cursor: default; }
 
@@ -270,6 +310,7 @@ html, body, #root {
   font-size: 0.8125rem;
   cursor: pointer;
 }
+.btn-ghost { transition: color var(--motion-fast) var(--ease-standard); }
 .btn-ghost:hover { color: var(--text-secondary); }
 
 .btn-primary {
@@ -281,7 +322,7 @@ html, body, #root {
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
@@ -291,6 +332,53 @@ html, body, #root {
 .focus-primary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════
+   Shell-wide keyboard focus ring (WAVE-23)
+   A single accent-token :focus-visible default for every interactive control,
+   so keyboard users get a consistent, dark-surface-visible ring instead of the
+   browser's inconsistent default. Uses :focus-visible (not :focus) so it never
+   fires on mouse/touch click — only keyboard/AT focus. The translucent halo
+   (color-mix → transparent) keeps it legible on both #0c0c0c and light surfaces
+   without hardcoding a colour. The solid outline follows --accent so it retheme
+   with the user's chosen accent.
+
+   NOTE: TV + driving profiles below are scoped more specifically
+   ([data-device-profile="tv"] / .driving-mode) and intentionally override this
+   with their high-contrast rings. Components that need a bespoke ring can still
+   opt out with .focus-primary or their own :focus-visible.
+   ═══════════════════════════════════════ */
+/* :is() (not :where()) so the selector carries enough specificity to override a
+   lone `outline-none` utility class that a control may have set to suppress the
+   browser default — otherwise keyboard focus on those controls would show no
+   ring at all. Still below the TV / driving profile rings, which are scoped
+   under a more-specific attribute/class ancestor. */
+:is(
+  button,
+  a[href],
+  input,
+  select,
+  textarea,
+  summary,
+  [role="button"],
+  [role="link"],
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"],
+  [role="switch"],
+  [role="checkbox"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--focus-radius, 4px);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+/* Belt-and-braces: kill the default focus ring only when the styled
+   focus-visible ring takes over, so mouse clicks stay ring-free. */
+:is(button, [role="button"]):focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* ═══════════════════════════════════════

@@ -132,7 +132,9 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
           </div>
           <button
             onClick={retry}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-blue-600 text-neutral-200 hover:text-white transition-colors focus-primary"
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '' }}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 text-neutral-200 transition-colors focus-primary"
           >
             Retry{attempt > 0 ? ` (${attempt})` : ''}
           </button>
@@ -300,7 +302,9 @@ export default function Window({ win, pointerBlock }) {
               data-no-drag
               onClick={() => openNativeWindow(win)}
               title="Open in native window"
-              className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-blue-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
+              onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '' }}
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 text-neutral-500 text-[9px] transition-colors mr-0.5"
             >
               <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M5 1H2a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V7" />
@@ -393,8 +397,12 @@ function SnapPreview({ zone }) {
   if (!g) return null
   return (
     <div
-      className="fixed z-[100] rounded-xl border-2 border-blue-500/40 bg-blue-500/10 pointer-events-none transition-all duration-150"
-      style={{ left: g.position.x, top: g.position.y, width: g.size.width, height: g.size.height }}
+      className="fixed z-[100] rounded-xl border-2 pointer-events-none transition-all duration-150"
+      style={{
+        left: g.position.x, top: g.position.y, width: g.size.width, height: g.size.height,
+        borderColor: 'color-mix(in srgb, var(--accent) 45%, transparent)',
+        background: 'var(--accent-soft)',
+      }}
     />
   )
 }

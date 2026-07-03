@@ -50,7 +50,13 @@ function ToastCard({ notif, onAction, onDismiss }) {
     : warn
       ? 'bg-amber-950/80 border-amber-800/50'
       : 'bg-neutral-900/90 border-neutral-700/50'
-  const dot = urgent ? 'bg-red-400 animate-pulse' : warn ? 'bg-amber-500' : 'bg-blue-500'
+  // Semantic dot: danger/warning stay fixed; info follows the user's accent.
+  const dotCls = urgent ? 'animate-pulse' : ''
+  const dotStyle = urgent
+    ? { background: 'var(--status-danger)' }
+    : warn
+      ? { background: 'var(--status-warning)' }
+      : { background: 'var(--accent)' }
 
   return (
     <div
@@ -60,7 +66,7 @@ function ToastCard({ notif, onAction, onDismiss }) {
         transition-all animate-[slideIn_0.2s_ease-out] select-none ${color}`}
     >
       <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} style={dotStyle} />
         <span className="text-sm font-medium truncate flex-1">{notif.title}</span>
         {urgent && <span className="text-[9px] uppercase tracking-wider text-red-400 font-semibold shrink-0">Urgent</span>}
         <span className="text-[10px] text-neutral-500 shrink-0">{notif.source}</span>
@@ -77,8 +83,9 @@ function ToastCard({ notif, onAction, onDismiss }) {
             <button
               key={a.id}
               onClick={() => onAction(a)}
+              style={a === primary ? { background: 'var(--accent)', color: '#fff' } : undefined}
               className={`text-[11px] px-2.5 py-1 rounded-md transition-colors
-                ${a === primary ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700'}`}
+                ${a === primary ? 'hover:brightness-110' : 'bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700'}`}
             >
               {a.label || 'Open'}
             </button>
