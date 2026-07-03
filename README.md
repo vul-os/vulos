@@ -143,7 +143,8 @@ The full list of environment variables, config files, and installer flags lives 
 npm run dev          # Vite dev server (localhost:5173)
 npm run build        # Production frontend build → dist/
 npm run lint         # ESLint
-npm run test         # Vitest unit tests
+npm run test         # Vitest unit + RTL/MSW integration tests (jsdom)
+npm run test:e2e     # Playwright real-browser E2E (chromium)
 
 go build ./backend/...                       # Compile the backend
 go test ./backend/...                        # Go tests
@@ -152,6 +153,32 @@ go run ./backend/cmd/server --env=local      # Run the backend locally
 ./dev.sh             # Go + Vite together
 ./dev.sh deploy      # Full Docker build on localhost:8080
 ```
+
+### Frontend test layers
+
+The shell has two runnable frontend test layers, both with a fully **mocked
+backend** — no Go server or database is needed to run either.
+
+| Layer | Command | Runtime | Backend mock | Lives in |
+|-------|---------|---------|--------------|----------|
+| Unit + integration | `npm run test` | vitest / jsdom | [MSW](https://mswjs.io) intercepts `fetch` (`src/__tests__/integration/msw/server.js`) | `src/**/*.test.jsx`, `src/__tests__/integration/**` |
+| End-to-end | `npm run test:e2e` | Playwright / chromium | `page.route('**/api/**', …)` (`e2e/mock-backend.js`) | `e2e/**/*.e2e.js` |
+
+- **Integration (RTL + MSW):** renders real component trees (command palette,
+  assistant panel, Drive, settings, notifications, auth) wired to their real
+  providers, with only the network boundary mocked. The assistant SSE stream is
+  answered with a real `ReadableStream`, so `agentStream.js` runs for real. These
+  run under `npm run test` alongside the unit tests.
+- **E2E (Playwright):** builds the app, serves it with `vite preview`, and drives
+  a real Chromium through boot/login, window management, and the ⌘K palette.
+  First run needs the browser: `npx playwright install --with-deps chromium`.
+  Use `npm run test:e2e:ui` for the interactive runner. CI runs it via
+  `.github/workflows/e2e.yml`.
+
+Both layers assert the **wave-13 assistant security contract** at the UI level:
+approving an AI proposal posts **only** the opaque proposal id to
+`/api/assistant/execute` (never client-supplied args), and rejecting sends
+nothing.
 
 **Frozen invariants** (enforced in review): no CGO in OSS Go code; frontend is JSX only (no `.tsx`); no Google SSO/OAuth login; billing lives in `vulos-cloud`, not here.
 

@@ -1,0 +1,61 @@
+name: E2E
+
+# Real-browser (Playwright/chromium) end-to-end tests for the Vulos OS shell.
+# The suite serves the production build via `vite preview` and mocks the entire
+# backend at the browser network layer (page.route('**/api/**')) — no Go server
+# or database is needed, so this job is self-contained on a standard runner.
+
+on:
+  push:
+    branches:
+      - main
+      - "staging/**"
+  pull_request:
+    branches:
+      - main
+      - "staging/**"
+
+jobs:
+  e2e:
+    name: Playwright E2E (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sibling packages referenced via file: in package.json (same as the CI
+      # frontend-build job): @vulos/relay-client and @vulos/office-client.
+      - name: Clone vulos-relay (relay-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
+
+      - name: Clone vulos-office (office-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
+
+      - name: Build @vulos/relay-client lib
+        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Install the chromium browser + its OS libraries.
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      # playwright.config.js's webServer runs `npm run build && vite preview`,
+      # so this single command builds, serves, and tests.
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
