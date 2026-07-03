@@ -161,10 +161,14 @@ export default function MissionControl() {
         {desktopList.map((desk, i) => {
           const isActive = desk.id === activeDesktop
           return (
-            <button
+            <div
               key={desk.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Switch to Desktop ${i + 1}`}
               onClick={() => { switchDesktop(desk.id); setMissionControl(false) }}
-              className="relative group flex flex-col items-center gap-1.5"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchDesktop(desk.id); setMissionControl(false) } }}
+              className="relative group flex flex-col items-center gap-1.5 cursor-pointer"
             >
               <div className={`w-32 h-20 rounded-lg border-2 transition-all overflow-hidden
                 ${isActive
@@ -201,7 +205,7 @@ export default function MissionControl() {
                   <span aria-hidden="true">{'\u00D7'}</span>
                 </button>
               )}
-            </button>
+            </div>
           )
         })}
         <button
