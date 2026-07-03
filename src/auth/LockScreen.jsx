@@ -20,20 +20,18 @@ export default function LockScreen({ onUnlock, userName }) {
   const date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
 
   useEffect(() => {
-    const handler = (e) => {
-      if (!showInput && e.key !== 'Escape') {
-        setShowInput(true)
-        setTimeout(() => inputRef.current?.focus(), 50)
-      }
+    const reveal = () => {
+      setShowInput(true)
+      setTimeout(() => inputRef.current?.focus(), 50)
     }
-    window.addEventListener('keydown', handler)
-    window.addEventListener('pointerdown', () => {
-      if (!showInput) {
-        setShowInput(true)
-        setTimeout(() => inputRef.current?.focus(), 50)
-      }
-    })
-    return () => window.removeEventListener('keydown', handler)
+    const onKey = (e) => { if (!showInput && e.key !== 'Escape') reveal() }
+    const onPointer = () => { if (!showInput) reveal() }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onPointer)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onPointer)
+    }
   }, [showInput])
 
   const handleSubmit = async (e) => {
@@ -91,10 +89,16 @@ export default function LockScreen({ onUnlock, userName }) {
               onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="PIN"
               maxLength={6}
+              aria-label="Unlock PIN"
+              aria-invalid={error}
+              aria-describedby={error ? 'lockscreen-error' : undefined}
               className={`w-40 text-center text-lg tracking-[0.5em] bg-neutral-900/60 border rounded-xl px-4 py-3 text-white outline-none transition-colors
                 ${error ? 'border-red-600 animate-[shake_0.3s_ease-in-out]' : 'border-neutral-800 focus:border-neutral-600'}`}
             />
           </div>
+          <p id="lockscreen-error" role="alert" className="sr-only">
+            {error ? 'Incorrect PIN, try again' : ''}
+          </p>
           <button type="submit" className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
             {pin.length > 0 ? 'Unlock' : 'Enter without PIN'}
           </button>

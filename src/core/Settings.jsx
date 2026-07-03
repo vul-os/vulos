@@ -7,6 +7,7 @@ import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 import { PamVisibilityControl } from './PublicAppsManager'
 import { useFocusTrap } from '../shell/useFocusTrap'
+import { useViewport } from '../shell/useViewport'
 import AIRouterPanel from './settings/AIRouterPanel.jsx'
 import StoragePanel from './settings/StoragePanel.jsx'
 import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
@@ -67,32 +68,97 @@ function SettingsModal({ title, onClose, children }) {
   )
 }
 
+// SettingsNav — the section list. Shared between the desktop rail and the
+// mobile drawer so aria-current + styling stay identical.
+function SettingsNav({ active, onSelect, idPrefix }) {
+  return (
+    <>
+      {sections.map(s => (
+        <button
+          key={s.id}
+          id={idPrefix ? `${idPrefix}-${s.id}` : undefined}
+          onClick={() => onSelect(s.id)}
+          aria-current={active === s.id ? 'page' : undefined}
+          className={`w-full text-left px-4 py-2 text-sm transition-colors
+            ${active === s.id ? 'bg-neutral-800/60 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/30'}`}
+        >
+          {s.label}
+        </button>
+      ))}
+    </>
+  )
+}
+
 export default function Settings({ initialSection } = {}) {
   const [active, setActive] = useState(
     initialSection && sections.some(s => s.id === initialSection) ? initialSection : 'ai',
   )
   const { profile, updateProfile, logout } = useAuth()
+  const layout = useViewport()
+  const isMobile = layout === 'mobile'
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const drawerRef = useFocusTrap(isMobile && drawerOpen)
+  const activeLabel = sections.find(s => s.id === active)?.label || 'Settings'
+
+  // Close the drawer + return focus when navigating (mobile) or on Esc.
+  const selectSection = (id) => { setActive(id); setDrawerOpen(false) }
+  useEffect(() => {
+    if (!isMobile || !drawerOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') setDrawerOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isMobile, drawerOpen])
 
   return (
-    <div className="flex h-full bg-neutral-950 text-neutral-200">
-      {/* Sidebar */}
-      <nav aria-label="Settings sections" className="w-40 sm:w-48 shrink-0 border-r border-neutral-800/50 py-4 overflow-y-auto">
+    <div className="flex flex-col sm:flex-row h-full bg-neutral-950 text-neutral-200">
+      {/* Desktop sidebar rail */}
+      <nav aria-label="Settings sections" className="hidden sm:block w-40 sm:w-48 shrink-0 border-r border-neutral-800/50 py-4 overflow-y-auto">
         <h2 className="px-4 text-sm font-semibold text-neutral-400 mb-3">Settings</h2>
-        {sections.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setActive(s.id)}
-            aria-current={active === s.id ? 'page' : undefined}
-            className={`w-full text-left px-4 py-2 text-sm transition-colors
-              ${active === s.id ? 'bg-neutral-800/60 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/30'}`}
-          >
-            {s.label}
-          </button>
-        ))}
+        <SettingsNav active={active} onSelect={selectSection} />
       </nav>
 
+      {/* Mobile top bar — opens the section drawer */}
+      <div className="sm:hidden flex items-center gap-3 shrink-0 border-b border-neutral-800/50 px-3 py-2.5">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open settings sections"
+          aria-expanded={drawerOpen}
+          className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800/50 transition-colors"
+        >
+          <span aria-hidden="true" className="text-base leading-none">☰</span>
+          <span className="font-medium truncate max-w-[60vw]">{activeLabel}</span>
+        </button>
+      </div>
+
+      {/* Mobile drawer */}
+      {isMobile && drawerOpen && (
+        <div
+          className="sm:hidden fixed inset-0 z-50 flex"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setDrawerOpen(false) }}
+        >
+          <nav
+            ref={drawerRef}
+            aria-label="Settings sections"
+            className="w-64 max-w-[80vw] h-full bg-neutral-950 border-r border-neutral-800/60 py-4 overflow-y-auto shadow-2xl animate-[fadeIn_0.12s_ease-out]"
+          >
+            <div className="flex items-center justify-between px-4 mb-3">
+              <h2 className="text-sm font-semibold text-neutral-400">Settings</h2>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                aria-label="Close settings sections"
+                className="rounded-md p-1 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/50 transition-colors"
+              >
+                <span aria-hidden="true">✕</span>
+              </button>
+            </div>
+            <SettingsNav active={active} onSelect={selectSection} idPrefix="settings-drawer" />
+          </nav>
+          <div className="flex-1 bg-black/60" aria-hidden="true" />
+        </div>
+      )}
+
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-2xl min-w-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 max-w-2xl min-w-0">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'airouter' && <AIRouterPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
@@ -496,12 +562,18 @@ function WiFiSettings() {
       )}
       <button onClick={scan} disabled={scanning} className="btn mb-4">{scanning ? 'Scanning...' : 'Scan Networks'}</button>
       {networks && networks.map(n => (
-        <div key={n.bssid || n.ssid} className="flex items-center justify-between py-2 border-b border-neutral-800/30">
-          <div>
+        <div key={n.bssid || n.ssid} className="flex items-center justify-between gap-3 py-2 border-b border-neutral-800/30">
+          <div className="min-w-0">
             <span className="text-sm">{n.ssid || '(hidden)'}</span>
-            <span className="text-xs text-neutral-600 ml-2">{n.signal}dBm · {n.band} · {n.security || 'open'}</span>
+            <span className="text-xs text-neutral-500 ml-2 block sm:inline">{n.signal}dBm · {n.band} · {n.security || 'open'}</span>
           </div>
-          <button onClick={() => setConnectSSID(n.ssid)} className="text-xs text-blue-400 hover:text-blue-300">Connect</button>
+          <button
+            onClick={() => setConnectSSID(n.ssid)}
+            aria-label={`Connect to ${n.ssid || 'hidden network'}`}
+            className="shrink-0 text-xs text-blue-400 hover:text-blue-300"
+          >
+            Connect
+          </button>
         </div>
       ))}
       {connectSSID && (
@@ -537,20 +609,23 @@ function BluetoothSettings() {
       {status?.powered && (
         <>
           <button onClick={() => scan(true)} className="btn mt-3 mb-3">Scan for Devices</button>
-          {status?.devices?.map(d => (
-            <div key={d.address} className="flex items-center justify-between py-2 border-b border-neutral-800/30">
-              <div>
-                <span className="text-sm">{d.name || d.address}</span>
-                <span className="text-xs text-neutral-600 ml-2">{d.type}{d.connected ? ' · connected' : d.paired ? ' · paired' : ''}</span>
+          {status?.devices?.map(d => {
+            const dn = d.name || d.address
+            return (
+              <div key={d.address} className="flex items-center justify-between gap-3 py-2 border-b border-neutral-800/30">
+                <div className="min-w-0">
+                  <span className="text-sm truncate block sm:inline">{dn}</span>
+                  <span className="text-xs text-neutral-500 sm:ml-2 block sm:inline">{d.type}{d.connected ? ' · connected' : d.paired ? ' · paired' : ''}</span>
+                </div>
+                <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                  {!d.paired && <button onClick={() => pair(d.address)} aria-label={`Pair with ${dn}`} className="text-xs text-blue-400 hover:text-blue-300">Pair</button>}
+                  {d.paired && !d.connected && <button onClick={() => connect(d.address)} aria-label={`Connect to ${dn}`} className="text-xs text-blue-400 hover:text-blue-300">Connect</button>}
+                  {d.connected && <button onClick={() => disconnect(d.address)} aria-label={`Disconnect from ${dn}`} className="text-xs text-amber-400 hover:text-amber-300">Disconnect</button>}
+                  {d.paired && <button onClick={() => remove(d.address)} aria-label={`Forget ${dn}`} className="text-xs text-red-400 hover:text-red-300">Remove</button>}
+                </div>
               </div>
-              <div className="flex gap-2">
-                {!d.paired && <button onClick={() => pair(d.address)} className="text-xs text-blue-400">Pair</button>}
-                {d.paired && !d.connected && <button onClick={() => connect(d.address)} className="text-xs text-blue-400">Connect</button>}
-                {d.connected && <button onClick={() => disconnect(d.address)} className="text-xs text-amber-400">Disconnect</button>}
-                {d.paired && <button onClick={() => remove(d.address)} className="text-xs text-red-400">Remove</button>}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </>
       )}
     </Section>
@@ -585,16 +660,27 @@ function AudioSettings() {
 function AudioDevice({ device, type, onVolume, onMute, onDefault }) {
   return (
     <div className="py-2 border-b border-neutral-800/30">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <button onClick={() => onDefault(device.id, type)} className={`w-3 h-3 rounded-full border ${device.default ? 'bg-blue-500 border-blue-500' : 'border-neutral-600'}`} />
-          <span className="text-sm">{device.name}</span>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => onDefault(device.id, type)}
+            aria-label={device.default ? `${device.name} is the default ${type} device` : `Set ${device.name} as default ${type} device`}
+            aria-pressed={!!device.default}
+            className={`shrink-0 w-3 h-3 rounded-full border ${device.default ? 'bg-blue-500 border-blue-500' : 'border-neutral-500'}`}
+          />
+          <span className="text-sm truncate">{device.name}</span>
         </div>
-        <button onClick={() => onMute(device.id, type, !device.muted)} className={`text-xs ${device.muted ? 'text-red-400' : 'text-neutral-500'}`}>
+        <button
+          onClick={() => onMute(device.id, type, !device.muted)}
+          aria-label={device.muted ? `Unmute ${device.name}` : `Mute ${device.name}`}
+          aria-pressed={!!device.muted}
+          className={`shrink-0 text-xs ${device.muted ? 'text-red-400' : 'text-neutral-400 hover:text-neutral-200'}`}
+        >
           {device.muted ? 'Muted' : 'Mute'}
         </button>
       </div>
       <input type="range" min="0" max="100" value={device.volume} onChange={e => onVolume(device.id, type, parseInt(e.target.value))}
+        aria-label={`${device.name} volume`}
         className="w-full h-1 appearance-none bg-neutral-800 rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white" />
     </div>
   )
@@ -1168,10 +1254,10 @@ function DevicePINSettings() {
       </div>
 
       {/* Full-auth requirement note */}
-      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+      <p id="pin-help" className="text-xs text-neutral-500 mb-5 leading-relaxed">
         Setting or changing the PIN requires a full-auth (password) session. The PIN
         never leaves this device — it is derived locally with argon2id and sealed via
-        the TPM where available.
+        the TPM where available. Use 4 to 8 digits.
       </p>
 
       {/* Set / change PIN form */}
@@ -1188,6 +1274,7 @@ function DevicePINSettings() {
             maxLength={8}
             className="input w-40"
             autoComplete="new-password"
+            aria-describedby="pin-help"
           />
         </Field>
         <Field label="Confirm PIN">
@@ -1201,6 +1288,7 @@ function DevicePINSettings() {
             maxLength={8}
             className="input w-40"
             autoComplete="new-password"
+            aria-describedby="pin-help"
           />
         </Field>
         <button
@@ -2025,6 +2113,7 @@ function UsersSettings({ profile }) {
         <h3 className="text-sm font-medium mb-2">Lock Screen PIN</h3>
         <div className="flex gap-2">
           <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+            aria-label="Lock screen PIN"
             placeholder="4-6 digit PIN" maxLength={6} className="input w-40" />
           <button onClick={savePin} className="btn">{pin ? 'Set PIN' : 'Remove PIN'}</button>
         </div>
@@ -2080,13 +2169,15 @@ function UsersSettings({ profile }) {
             }`}>{p.role}</span>
           </div>
           {isAdmin && p.user_id !== profile.user_id && (
-            <div className="flex gap-2">
-              <select value={p.role} onChange={e => setRole(p.user_id, e.target.value)} className="input text-xs py-1 w-24">
+            <div className="flex gap-2 shrink-0">
+              <select value={p.role} onChange={e => setRole(p.user_id, e.target.value)}
+                aria-label={`Role for ${p.display_name || 'user'}`}
+                className="input text-xs py-1 w-24">
                 <option value="admin">Admin</option>
                 <option value="user">User</option>
                 <option value="guest">Guest</option>
               </select>
-              <button onClick={() => removeUser(p.user_id)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
+              <button onClick={() => removeUser(p.user_id)} aria-label={`Remove ${p.display_name || 'user'}`} className="text-xs text-red-400 hover:text-red-300">Remove</button>
             </div>
           )}
         </div>
@@ -2389,9 +2480,14 @@ function Toggle({ label, checked, onChange }) {
   return (
     <div className="flex items-center justify-between py-2">
       <span className="text-sm">{label}</span>
-      <button onClick={() => onChange(!checked)}
-        className={`w-10 h-5 rounded-full transition-colors relative ${checked ? 'bg-blue-600' : 'bg-neutral-700'}`}>
-        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? 'left-5' : 'left-0.5'}`} />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={!!checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`shrink-0 w-10 h-5 rounded-full transition-colors relative ${checked ? 'bg-blue-600' : 'bg-neutral-700'}`}>
+        <span aria-hidden="true" className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? 'left-5' : 'left-0.5'}`} />
       </button>
     </div>
   )

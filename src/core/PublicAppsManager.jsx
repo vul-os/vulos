@@ -5,6 +5,7 @@
  * All identifiers are PAM- or PublicAppsManager- prefixed to avoid collisions.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useFocusTrap } from '../shell/useFocusTrap'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,12 @@ async function pamSetVisibility(appId, visibility) {
 // ── First-time public confirmation dialog ─────────────────────────────────────
 
 function PamConfirmPublicDialog({ appId, onConfirm, onCancel }) {
+  const trapRef = useFocusTrap(true)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onCancel() } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel])
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
       {/* Backdrop */}
@@ -49,7 +56,12 @@ function PamConfirmPublicDialog({ appId, onConfirm, onCancel }) {
         onClick={onCancel}
       />
       {/* Dialog */}
-      <div className="relative z-10 w-[360px] rounded-2xl bg-neutral-900 border border-neutral-700/60 shadow-2xl shadow-black/60 p-6 animate-[fadeIn_0.15s_ease-out]">
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Make app public?"
+        className="relative z-10 w-[360px] rounded-2xl bg-neutral-900 border border-neutral-700/60 shadow-2xl shadow-black/60 p-6 animate-[fadeIn_0.15s_ease-out]">
         <div className="flex items-start gap-3 mb-4">
           <div className="w-9 h-9 rounded-xl bg-green-900/30 border border-green-700/30 flex items-center justify-center shrink-0 mt-0.5">
             <svg viewBox="0 0 16 16" className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -340,6 +352,7 @@ export function PamVisibilityControl({ appId, onChanged }) {
         disabled={saving}
         className="text-[11px] bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1 text-neutral-300 focus:outline-none focus:border-blue-500/50 disabled:opacity-40 cursor-pointer"
         title="App visibility"
+        aria-label="App visibility"
       >
         {PAM_VISIBILITY_OPTIONS.map(o => (
           <option key={o.value} value={o.value}>{o.label}</option>

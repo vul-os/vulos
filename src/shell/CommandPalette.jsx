@@ -319,8 +319,19 @@ export default function CommandPalette() {
     }
   }, [askInfo, runAsk, openWindow, close, ctx, openUrl])
 
+  // A pending proposal is showing its Approve/Reject buttons.
+  const proposalPending = ask?.status === 'proposal' && ask?.proposalState === 'pending'
+
   // ── Keyboard nav ──────────────────────────────────────────────────────────
   const onKeyDown = useCallback((e) => {
+    // When a proposal awaits approval, offer explicit Y/N shortcuts and let Tab
+    // fall through to the focus trap so the Approve/Reject buttons are reachable
+    // (Tab is otherwise captured for section-cycling — see below).
+    if (proposalPending) {
+      if (e.key === 'y' || e.key === 'Y') { e.preventDefault(); approveProposal(); return }
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setAsk(a => a ? { ...a, proposalState: 'rejected' } : a); return }
+      if (e.key === 'Tab') return // don't preventDefault → focus trap cycles to the buttons
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setSelectedIdx(i => Math.min(i + 1, rows.length - 1))
@@ -350,7 +361,7 @@ export default function CommandPalette() {
       e.preventDefault()
       activate(rows[selectedIdx])
     }
-  }, [rows, selectedIdx, activate])
+  }, [rows, selectedIdx, activate, proposalPending, approveProposal])
 
   if (!open) return null
 
@@ -549,15 +560,20 @@ function AskResult({ ask, onApprove, onReject }) {
           ) : ask.proposalState === 'rejected' ? (
             <div className="text-[12px] text-neutral-500 mt-2">Rejected — nothing was done.</div>
           ) : (
-            <div className="flex gap-2 mt-2.5">
+            <div className="flex items-center gap-2 mt-2.5">
               <button type="button" disabled={ask.proposalState === 'busy'} onClick={onApprove}
+                aria-keyshortcuts="Y"
                 className="text-[12px] px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors disabled:opacity-50">
                 {ask.proposalState === 'busy' ? 'Working…' : 'Approve'}
               </button>
               <button type="button" disabled={ask.proposalState === 'busy'} onClick={onReject}
+                aria-keyshortcuts="N"
                 className="text-[12px] px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50">
                 Reject
               </button>
+              <span className="ml-1 text-[10.5px] text-neutral-500 flex items-center gap-1.5" aria-hidden="true">
+                <Kbd>Y</Kbd> approve <Kbd>N</Kbd> reject · or <Kbd>tab</Kbd> to focus
+              </span>
             </div>
           )}
         </div>

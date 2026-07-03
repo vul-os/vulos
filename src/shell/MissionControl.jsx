@@ -195,9 +195,10 @@ export default function MissionControl() {
               {desktopList.length > 1 && (
                 <button
                   onClick={(e) => { e.stopPropagation(); removeDesktop(desk.id) }}
+                  aria-label={`Remove Desktop ${i + 1}`}
                   className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-neutral-700 text-neutral-400 hover:bg-red-500 hover:text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  {'\u00D7'}
+                  <span aria-hidden="true">{'\u00D7'}</span>
                 </button>
               )}
             </button>
@@ -205,9 +206,10 @@ export default function MissionControl() {
         })}
         <button
           onClick={() => addDesktop()}
+          aria-label="Add desktop"
           className="w-32 h-20 rounded-lg border-2 border-dashed border-neutral-700/40 hover:border-neutral-600 text-neutral-600 hover:text-neutral-400 flex items-center justify-center text-2xl transition-colors"
         >
-          +
+          <span aria-hidden="true">+</span>
         </button>
       </div>
 
