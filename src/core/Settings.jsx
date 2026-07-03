@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 import { PamVisibilityControl } from './PublicAppsManager'
+import { useFocusTrap } from '../shell/useFocusTrap'
 import AIRouterPanel from './settings/AIRouterPanel.jsx'
 import StoragePanel from './settings/StoragePanel.jsx'
 import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
@@ -37,6 +38,35 @@ const sections = [
   { id: 'about', label: 'About' },
 ]
 
+// SettingsModal — a small, accessible dialog wrapper: focus trap + focus
+// restore, Esc + backdrop click to close, role/aria-modal, responsive width.
+// Shared so any Settings panel modal gets the same keyboard contract.
+function SettingsModal({ title, onClose, children }) {
+  const trapRef = useFocusTrap(true)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+      >
+        {title && <h3 className="text-base font-semibold mb-4">{title}</h3>}
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export default function Settings({ initialSection } = {}) {
   const [active, setActive] = useState(
     initialSection && sections.some(s => s.id === initialSection) ? initialSection : 'ai',
@@ -46,22 +76,23 @@ export default function Settings({ initialSection } = {}) {
   return (
     <div className="flex h-full bg-neutral-950 text-neutral-200">
       {/* Sidebar */}
-      <div className="w-48 shrink-0 border-r border-neutral-800/50 py-4 overflow-y-auto">
+      <nav aria-label="Settings sections" className="w-40 sm:w-48 shrink-0 border-r border-neutral-800/50 py-4 overflow-y-auto">
         <h2 className="px-4 text-sm font-semibold text-neutral-400 mb-3">Settings</h2>
         {sections.map(s => (
           <button
             key={s.id}
             onClick={() => setActive(s.id)}
+            aria-current={active === s.id ? 'page' : undefined}
             className={`w-full text-left px-4 py-2 text-sm transition-colors
               ${active === s.id ? 'bg-neutral-800/60 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/30'}`}
           >
             {s.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 max-w-2xl">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-2xl min-w-0">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'airouter' && <AIRouterPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
@@ -1705,9 +1736,7 @@ function StorageSettings() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-base font-semibold mb-4">Configure Object Storage</h3>
+        <SettingsModal title="Configure Object Storage" onClose={() => { setShowModal(false); setSaveMsg('') }}>
             <form onSubmit={enable} className="space-y-3">
               <Field label="Endpoint">
                 <input
@@ -1754,9 +1783,9 @@ function StorageSettings() {
                   required
                 />
               </Field>
-              {saveMsg && <p className="text-xs text-red-400">{saveMsg}</p>}
+              {saveMsg && <p role="alert" className="text-xs text-red-400">{saveMsg}</p>}
               <div className="flex gap-2 pt-1">
-                <button type="submit" disabled={saving} className="btn flex-1">
+                <button type="submit" disabled={saving} aria-busy={saving} className="btn flex-1">
                   {saving ? 'Saving…' : 'Save'}
                 </button>
                 <button type="button" onClick={() => { setShowModal(false); setSaveMsg('') }} className="btn-ghost flex-1">
@@ -1764,8 +1793,7 @@ function StorageSettings() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </SettingsModal>
       )}
     </Section>
   )

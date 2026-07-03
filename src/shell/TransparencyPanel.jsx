@@ -12,8 +12,10 @@
  *   • the tier picker  (POST /api/assistant/tier — where your AI runs)
  *   • "Download my data" (GET /api/export/data — the anti-lock-in proof)
  */
+import { useEffect } from 'react'
 import { useSovereignty } from '../core/useSovereignty'
 import { tierInfo } from '../core/sovereignty'
+import { useFocusTrap } from './useFocusTrap'
 
 // AT_REST — the honest at-rest posture. Each row is a claim we have earned or a
 // limit we admit. `state`: 'e2e' (green, content-blind), 'readable' (amber,
@@ -228,6 +230,15 @@ function ExportSection() {
 
 export default function TransparencyPanel() {
   const { panelOpen, closePanel, egress, hasMasterKey } = useSovereignty()
+  // A11Y: trap focus inside the panel while open + restore to the opener (the
+  // TrustBadge) on close. Esc dismisses, matching the shell's overlay contract.
+  const trapRef = useFocusTrap(panelOpen)
+  useEffect(() => {
+    if (!panelOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePanel() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [panelOpen, closePanel])
   if (!panelOpen) return null
   return (
     <div
@@ -235,6 +246,10 @@ export default function TransparencyPanel() {
       onClick={closePanel}
     >
       <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Transparency and sovereignty"
         onClick={e => e.stopPropagation()}
         className="w-full max-w-lg max-h-full overflow-y-auto rounded-2xl border border-neutral-700/60
           bg-neutral-900/95 backdrop-blur-xl shadow-2xl shadow-black/60"

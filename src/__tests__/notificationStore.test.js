@@ -3,7 +3,7 @@ import {
   notify, ingest, markRead, markAllRead, dismiss, clear,
   getItems, getUnreadCount, getToasts, dismissToast,
   getPrefs, setMuted, setSound, setSourceEnabled, isSourceEnabled,
-  subscribe, subscribeToasts, subscribePrefs, setRemoteSink,
+  subscribe, subscribePrefs, setRemoteSink,
   normalize, shouldLog, shouldToast, mergeById, coercePrefs,
   __resetForTests,
 } from '../core/notificationStore.js'

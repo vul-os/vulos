@@ -11,19 +11,13 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { runAgentTurn } from '../../core/agentStream'
-
-// ── Sovereignty tiers ────────────────────────────────────────────────────────
-// The tier vocabulary + labels are the shared contract with the backend Guard
-// and the llmux gateway. Ordered most → least private.
-
-const TIERS = {
-  local:     { dot: '#22c55e', label: 'On your device',                    tone: 'text-emerald-400', blurb: 'Inference runs on this box. Nothing leaves your server.' },
-  sovereign: { dot: '#22c55e', label: 'Vulos sovereign · in-region, no-train', tone: 'text-emerald-400', blurb: 'A Vulos-operated in-region endpoint inside the sovereignty boundary. No training on your data.' },
-  brokered:  { dot: '#f59e0b', label: 'Brokered · no-train',              tone: 'text-amber-400',   blurb: 'A named third-party model under a no-train agreement. Requires the egress opt-in.' },
-  external:  { dot: '#ef4444', label: 'External · not private',           tone: 'text-red-400',     blurb: 'An off-box endpoint that may mine or train on your data. Blocked unless explicitly authorized.' },
-}
-
-const tierInfo = (tier) => TIERS[tier] || TIERS.external
+import { useAutoGrow } from '../../core/useAutoGrow'
+// The tier vocabulary + labels + dot colors are the SHARED contract with the
+// backend Guard, the TrustBadge and the TransparencyPanel — import the single
+// source of truth so the same tier never renders a different green here than it
+// does in the shell chrome (they had drifted: sovereign was #22c55e locally vs
+// #34d399 shared). See core/sovereignty.js.
+import { TIERS, tierInfo } from '../../core/sovereignty'
 
 function SovereigntyBadge({ status, onClick }) {
   if (!status) return null
@@ -177,9 +171,10 @@ function Bubble({ role, content, pending }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+        style={isUser ? { background: 'var(--accent)' } : undefined}
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
           isUser
-            ? 'bg-blue-600/90 text-white rounded-br-sm'
+            ? 'text-white rounded-br-sm'
             : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'
         }`}
       >
@@ -200,7 +195,7 @@ export default function Assistant() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [tierBusy, setTierBusy] = useState(false)
   const scrollRef = useRef(null)
-  const inputRef = useRef(null)
+  const inputRef = useAutoGrow(input, { maxHeight: 128 })
 
   useEffect(() => {
     fetch('/api/assistant/status', { credentials: 'include' })
@@ -208,6 +203,14 @@ export default function Assistant() {
       .then(setStatus)
       .catch(() => {})
   }, [])
+
+  // Esc closes the tier picker (matches the shell's overlay dismissal contract).
+  useEffect(() => {
+    if (!pickerOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setPickerOpen(false) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pickerOpen])
 
   // Operator picks the sovereignty tier. The backend Guard remains
   // authoritative; the returned status carries the honest resulting tier.
@@ -416,7 +419,7 @@ export default function Assistant() {
       )}
 
       {/* Conversation */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div ref={scrollRef} aria-live="polite" aria-atomic="false" className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center gap-4 select-none">
             <div className="text-neutral-600 text-[13px] max-w-xs leading-relaxed">
@@ -478,13 +481,16 @@ export default function Assistant() {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submit(e) }}
             placeholder="Ask about your mail…"
-            className="flex-1 resize-none bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-[13px] text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-700 max-h-32"
+            aria-label="Ask about your mail"
+            className="flex-1 resize-none bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-[13px] text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-700"
           />
           <button
             type="submit"
             disabled={busy || !input.trim()}
-            className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-500 transition-colors disabled:opacity-40 disabled:hover:bg-blue-600"
+            style={{ background: 'var(--accent)' }}
+            className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
             aria-label="Send"
+            title="Send (Enter)"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
               <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />

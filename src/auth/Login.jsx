@@ -246,7 +246,7 @@ function LocalForm({ isSetup, onSuccess }) {
           />
         </div>
 
-        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+        {error && <p role="alert" className="text-sm text-red-400 text-center">{error}</p>}
 
         {/* Primary CTA: passkey */}
         <PasskeyLoginButton
@@ -313,7 +313,7 @@ function LocalForm({ isSetup, onSuccess }) {
         />
       </div>
 
-      {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+      {error && <p role="alert" className="text-sm text-red-400 text-center">{error}</p>}
 
       <button type="submit" disabled={loading} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
         {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
@@ -442,7 +442,7 @@ function CloudForm({ onSuccess }) {
           />
         </div>
 
-        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+        {error && <p role="alert" className="text-sm text-red-400 text-center">{error}</p>}
 
         <button type="submit" disabled={loading || code.replace(/\s/g, '').length < 6}
           className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50">
@@ -492,7 +492,7 @@ function CloudForm({ onSuccess }) {
         />
       </div>
 
-      {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+      {error && <p role="alert" className="text-sm text-red-400 text-center">{error}</p>}
 
       <button type="submit" disabled={loading}
         className="btn-primary w-full py-3 flex items-center justify-center gap-2">

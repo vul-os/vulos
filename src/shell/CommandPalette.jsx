@@ -25,6 +25,7 @@
 // Mail and Ask depend on the box; when unreachable they show an inline note
 // instead of failing the palette.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useFocusTrap } from './useFocusTrap'
 import { useShell } from '../providers/ShellProvider'
 import { useTheme } from '../core/ThemeProvider'
 import { useSovereignty } from '../core/useSovereignty'
@@ -95,6 +96,9 @@ export default function CommandPalette() {
   const [ask, setAsk] = useState(null) // { status, answer, proposal, proposalState }
 
   const inputRef = useRef(null)
+  const rowRefs = useRef([])
+  // A11Y: trap focus inside the dialog while open + restore to the opener on close.
+  const trapRef = useFocusTrap(open)
 
   // Re-render when apps contribute commands via registerCommand.
   useEffect(() => subscribeCommands(() => forceCmdsTick(t => t + 1)), [])
@@ -238,6 +242,13 @@ export default function CommandPalette() {
   useEffect(() => { setSelectedIdx(0) }, [query])
   useEffect(() => { if (selectedIdx >= rows.length) setSelectedIdx(Math.max(0, rows.length - 1)) }, [rows.length, selectedIdx])
 
+  // Keep the active row visible as arrow-key navigation moves the selection —
+  // long result lists could otherwise scroll the highlight out of view.
+  useEffect(() => {
+    const el = rowRefs.current[selectedIdx]
+    if (el?.scrollIntoView) el.scrollIntoView({ block: 'nearest' })
+  }, [selectedIdx, rows.length])
+
   // ── Ask (agentic assistant) ───────────────────────────────────────────────
   // STREAMED (wave-17): the answer streams token-by-token into the inline card;
   // a mutating action still arrives as a PROPOSAL (Approve → /execute). Falls
@@ -352,6 +363,7 @@ export default function CommandPalette() {
       onMouseDown={(e) => { if (e.target === e.currentTarget) close() }}
     >
       <div
+        ref={trapRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
@@ -382,7 +394,7 @@ export default function CommandPalette() {
           )}
 
           {renderSections({
-            rows, selectedIdx, setSelectedIdx, activate, mailState, showAskSection,
+            rows, selectedIdx, setSelectedIdx, activate, mailState, showAskSection, rowRefs,
           })}
 
           {!hasResults && searchText && (
@@ -411,9 +423,10 @@ export default function CommandPalette() {
 }
 
 // Render the flat row list grouped under section headers, in order.
-function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState, showAskSection }) {
+function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState, showAskSection, rowRefs }) {
   const out = []
   let lastKind = null
+  if (rowRefs) rowRefs.current = []
   rows.forEach((row, i) => {
     if (row.kind !== lastKind) {
       lastKind = row.kind
@@ -425,7 +438,9 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
       )
     }
     out.push(
-      <Row key={row.id} row={row} active={i === selectedIdx} onHover={() => setSelectedIdx(i)} onClick={() => activate(row)} />
+      <Row key={row.id} row={row} active={i === selectedIdx}
+        rowRef={rowRefs ? (el) => { rowRefs.current[i] = el } : undefined}
+        onHover={() => setSelectedIdx(i)} onClick={() => activate(row)} />
     )
   })
   // Mail degradation note (only when the user is searching and mail failed).
@@ -440,14 +455,14 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
   return out
 }
 
-function Row({ row, active, onHover, onClick }) {
+function Row({ row, active, onHover, onClick, rowRef }) {
   const base = `w-full flex items-center gap-3 px-4 py-2 text-left transition-colors cursor-pointer ${
     active ? 'bg-neutral-800/70' : 'hover:bg-neutral-800/30'
   }`
   if (row.kind === 'app') {
     const a = row.app
     return (
-      <div className={base} onMouseMove={onHover} onClick={onClick}>
+      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
         <span className="w-5 text-center text-neutral-400 shrink-0">{a.icon}</span>
         <span className={`text-[13px] ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{a.name}</span>
         <span className="ml-auto text-[11px] text-neutral-600 truncate max-w-[45%]">{a.description}</span>
@@ -457,7 +472,7 @@ function Row({ row, active, onHover, onClick }) {
   if (row.kind === 'action') {
     const c = row.cmd
     return (
-      <div className={base} onMouseMove={onHover} onClick={onClick}>
+      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
         <span className="w-5 text-center text-neutral-400 shrink-0">{c.icon || '▸'}</span>
         <span className={`text-[13px] ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{c.title}</span>
         {c.subtitle && <span className="ml-auto text-[11px] font-mono text-neutral-600 truncate max-w-[45%]">{c.subtitle}</span>}
@@ -468,7 +483,7 @@ function Row({ row, active, onHover, onClick }) {
     const m = row.msg
     const sender = m.from_name || m.from || ''
     return (
-      <div className={base} onMouseMove={onHover} onClick={onClick}>
+      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
         <span className="w-5 text-center text-neutral-500 shrink-0">✉</span>
         <span className="min-w-0 flex-1">
           <span className={`text-[13px] block truncate ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{m.subject || '(no subject)'}</span>
@@ -480,7 +495,7 @@ function Row({ row, active, onHover, onClick }) {
   }
   if (row.kind === 'ask') {
     return (
-      <div className={base} onMouseMove={onHover} onClick={onClick}>
+      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
         <span className="w-5 text-center text-neutral-400 shrink-0">✦</span>
         <span className={`text-[13px] ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>
           Ask the assistant{row.prompt ? <span className="text-neutral-500"> — “{row.prompt}”</span> : ''}
@@ -495,7 +510,7 @@ function Row({ row, active, onHover, onClick }) {
 // Inline assistant answer / proposal — a compact reuse of the wave-9 flow.
 function AskResult({ ask, onApprove, onReject }) {
   return (
-    <div className="border-t border-neutral-800/70 px-4 py-3 bg-neutral-950/40 max-h-[30vh] overflow-y-auto">
+    <div aria-live="polite" className="border-t border-neutral-800/70 px-4 py-3 bg-neutral-950/40 max-h-[30vh] overflow-y-auto">
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-neutral-400">✦</span>
         <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-600">Assistant</span>

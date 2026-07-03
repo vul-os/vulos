@@ -22,6 +22,8 @@ import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../builtinApps'
 import { runAgentTurn } from '../../core/agentStream'
+import { useAutoGrow } from '../../core/useAutoGrow'
+import { notify } from '../../core/notificationStore'
 
 // Curated quick-launch tiles — the everyday surfaces. "All apps" opens the
 // full Launchpad, so Home complements rather than replaces it.
@@ -128,6 +130,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false)
   const composerRef = useRef(null)
   const transcriptRef = useRef(null)
+  const inputRef = useAutoGrow(input, { maxHeight: 160 })
 
   const load = useCallback(() => {
     setLoading(true)
@@ -240,7 +243,11 @@ export default function Home() {
         body: JSON.stringify({ message_id: item.uid, action: 'snooze', folder: item.folder || 'INBOX' }),
       })
       if (res.ok) setDismissed(s => new Set(s).add(item.uid))
-    } catch { /* leave it in place on failure */ }
+      else notify({ title: 'Could not snooze', body: `“${item.subject}” stayed in your inbox.`, level: 'warning', source: 'assistant' })
+    } catch {
+      // Leave it in place on failure, but tell the user rather than silently no-op.
+      notify({ title: 'Could not snooze', body: 'The assistant is unreachable — nothing was changed.', level: 'warning', source: 'assistant' })
+    }
     setSnoozing(null)
   }, [])
 
@@ -295,16 +302,19 @@ export default function Home() {
             <div className="flex items-end gap-2.5">
               <span className="text-neutral-500 text-lg leading-none mb-1 select-none">✦</span>
               <textarea
+                ref={inputRef}
                 rows={1}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submitAsk(e) }}
                 placeholder="Ask your assistant, or tell it to do something…"
-                className="flex-1 resize-none bg-transparent text-[14px] text-neutral-100 placeholder-neutral-600 focus:outline-none max-h-40 leading-relaxed py-1"
+                aria-label="Ask your assistant"
+                className="flex-1 resize-none bg-transparent text-[14px] text-neutral-100 placeholder-neutral-600 focus:outline-none leading-relaxed py-1"
               />
               <button type="submit" disabled={busy || !input.trim()}
-                className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-500 transition-colors disabled:opacity-40"
-                aria-label="Send">
+                style={{ background: 'var(--accent)' }}
+                className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
+                aria-label="Send" title="Send (Enter)">
                 <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
                   <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
                 </svg>
@@ -313,7 +323,7 @@ export default function Home() {
           </form>
 
           {turns.length > 0 && (
-            <div ref={transcriptRef} className="mt-3 max-h-72 overflow-y-auto space-y-2.5 px-1">
+            <div ref={transcriptRef} aria-live="polite" className="mt-3 max-h-72 overflow-y-auto space-y-2.5 px-1">
               {turns.map(t => (
                 t.proposal ? (
                   <div key={t.id} className="space-y-2">
@@ -323,8 +333,9 @@ export default function Home() {
                   </div>
                 ) : (
                   <div key={t.id} className={`flex ${t.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap ${
-                      t.role === 'user' ? 'bg-blue-600/90 text-white rounded-br-sm' : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'}`}>
+                    <div style={t.role === 'user' ? { background: 'var(--accent)' } : undefined}
+                      className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
+                      t.role === 'user' ? 'text-white rounded-br-sm' : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'}`}>
                       {t.content}
                       {t.pending && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" />}
                     </div>

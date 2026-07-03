@@ -56,7 +56,7 @@ function ToastCard({ notif, onAction, onDismiss }) {
     <div
       role={urgent ? 'alert' : 'status'}
       aria-live={urgent ? 'assertive' : 'polite'}
-      className={`w-80 px-3.5 py-2.5 rounded-xl backdrop-blur-xl border text-neutral-200 shadow-lg shadow-black/30
+      className={`w-[min(20rem,calc(100vw-1.5rem))] px-3.5 py-2.5 rounded-xl backdrop-blur-xl border text-neutral-200 shadow-lg shadow-black/30
         transition-all animate-[slideIn_0.2s_ease-out] select-none ${color}`}
     >
       <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ export default function Toasts() {
 
       {regular.length > 0 && (
         <div
-          className="fixed top-10 right-3 z-[90] flex flex-col gap-2"
+          className="fixed top-10 right-3 z-[90] flex flex-col gap-2 max-w-[calc(100vw-1.5rem)]"
           aria-live="polite"
           aria-relevant="additions"
         >

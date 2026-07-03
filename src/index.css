@@ -153,6 +153,23 @@ html, body, #root {
 }
 
 /* ═══════════════════════════════════════
+   Reduced-motion: honour the OS preference across the shell's shared motion.
+   Decorative entrance/pulse choreography snaps to its resting state; spinners
+   keep turning (so "loading" still reads) but slowed to a calm, non-vestibular
+   pace rather than freezing (a frozen spinner looks broken).
+   ═══════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[fadeIn_0\.12s_ease-out\],
+  .animate-\[slideIn_0\.2s_ease-out\],
+  .animate-pulse {
+    animation: none !important;
+  }
+  .animate-spin {
+    animation-duration: 2.4s !important;
+  }
+}
+
+/* ═══════════════════════════════════════
    Window lifecycle motion
    Open / close (scale-pop) + minimize / restore (genie-to-dock).
    Driven by the [data-win-anim] attribute set in Window.jsx so the
@@ -264,8 +281,10 @@ html, body, #root {
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 .btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: default; }
 
 /* Primary focus rings follow accent */
 .focus-primary:focus,
@@ -301,8 +320,6 @@ html, body, #root {
   outline-width: 5px;
   outline-offset: 5px;
 }
-
-.btn-primary:hover { background: #2563eb; }
 
 /* ═══════════════════════════════════════
    DEVPROF-06: Driving mode

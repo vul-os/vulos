@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { request, rawFetch } from '../../lib/api'
+import { useFocusTrap } from '../../shell/useFocusTrap'
 
 // ── theme tokens ───────────────────────────────────────────────────────────
 const T = {
@@ -358,6 +359,8 @@ function Btn({ children, onClick, primary, disabled, title, small }) {
 }
 
 function Modal({ title, onClose, children, width = 460 }) {
+  // A11Y: trap focus while open + restore to the opener on close; Esc dismisses.
+  const trapRef = useFocusTrap(true)
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)
@@ -372,6 +375,10 @@ function Modal({ title, onClose, children, width = 460 }) {
       }}
     >
       <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' ? title : undefined}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: width, maxHeight: '85%', overflow: 'auto',
@@ -1337,9 +1344,9 @@ export default function Drive() {
         </div>
 
         {/* status / error bars */}
-        {busy && <div style={{ padding: '7px 16px', fontSize: 12, color: T.accent, background: T.elevated, borderBottom: `1px solid ${T.border}` }}>{busy}</div>}
+        {busy && <div role="status" aria-live="polite" style={{ padding: '7px 16px', fontSize: 12, color: T.accent, background: T.elevated, borderBottom: `1px solid ${T.border}` }}>{busy}</div>}
         {error && (
-          <div style={{ padding: '7px 16px', fontSize: 12, color: '#f87171', background: 'rgba(248,113,113,0.08)', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between' }}>
+          <div role="alert" style={{ padding: '7px 16px', fontSize: 12, color: '#f87171', background: 'rgba(248,113,113,0.08)', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between' }}>
             <span>{error}</span>
             <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer' }}>×</button>
           </div>
@@ -1349,7 +1356,7 @@ export default function Drive() {
         <div style={{ flex: 1, overflow: 'auto' }}>
           {loading ? (
             <Center>
-              <div style={{ width: 26, height: 26, border: `3px solid ${T.border}`, borderTopColor: T.accent, borderRadius: '50%', animation: 'drive-spin 0.8s linear infinite' }} />
+              <div data-drive-spinner style={{ width: 26, height: 26, border: `3px solid ${T.border}`, borderTopColor: T.accent, borderRadius: '50%', animation: 'drive-spin 0.8s linear infinite' }} />
               <span style={{ color: T.textFaint, fontSize: 13 }}>Loading…</span>
             </Center>
           ) : nodes.length === 0 ? (
@@ -1476,7 +1483,12 @@ export default function Drive() {
         />
       )}
 
-      <style>{`@keyframes drive-spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes drive-spin { to { transform: rotate(360deg) } }
+        @media (prefers-reduced-motion: reduce) {
+          [data-drive-spinner] { animation-duration: 2.4s !important; }
+        }
+      `}</style>
     </div>
   )
 }
