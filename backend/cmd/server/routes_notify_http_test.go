@@ -1,0 +1,318 @@
+package main
+
+// routes_notify_http_test.go — HTTP-level route tests for the previously
+// untested NOTIF-02/05/06 surface: the DND status/config endpoints, the inline
+// notification-action dispatch endpoint, and the persistent-store history/prune
+// endpoints. These are all auth-gated mutation routes that carried 0% coverage.
+//
+// Coverage target: registerNotifyExtRoutes + registerNotifyPersistRoutes (both
+// 0.0% before this file). The tests assert the real authZ contract at the
+// transport layer (X-User-ID gate on every mutation), the validation branches
+// (bad JSON, bad RFC3339 `until`, unknown action → 422), and correct behavior
+// (a registered action actually dispatches; prune falls back to defaults).
+//
+// One end-to-end test wraps the DND write in the REAL auth.Handler.Middleware
+// (reusing the wave-31 pattern) to prove the identity the handler gates on comes
+// from a validated session, not a client-supplied header.
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"vulos/backend/services/auth"
+	"vulos/backend/services/notify"
+)
+
+// newNotifyMux registers the ext (DND + action) routes against a fresh temp home
+// and returns the mux plus the *notifyExt so tests can register action handlers
+// and inspect state directly.
+func newNotifyMux(t *testing.T) (*http.ServeMux, *notifyExt) {
+	t.Helper()
+	svc := notify.New()
+	mux := http.NewServeMux()
+	ext := registerNotifyExtRoutes(mux, svc, t.TempDir(), nil)
+	return mux, ext
+}
+
+func doNotifyJSON(t *testing.T, mux *http.ServeMux, method, path, user, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if user != "" {
+		req.Header.Set("X-User-ID", user)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestNotifyDNDStatusReadable: GET /api/notifications/dnd is read-only and
+// returns the default (off) status shape.
+func TestNotifyDNDStatusReadable(t *testing.T) {
+	mux, _ := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "GET", "/api/notifications/dnd", "", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET dnd = %d, want 200", rec.Code)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out["mode"] != "off" || out["active"] != false {
+		t.Errorf("default DND should be off/inactive: %v", out)
+	}
+	if _, ok := out["effective_mode"]; !ok {
+		t.Errorf("status missing effective_mode: %v", out)
+	}
+}
+
+// TestNotifyDNDSetRequiresAuth: POST /api/notifications/dnd is a mutation and
+// must reject an unauthenticated caller with 401, changing nothing.
+func TestNotifyDNDSetRequiresAuth(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "", `{"mode":"total"}`)
+	if rec.Code != 401 {
+		t.Fatalf("unauth POST dnd = %d, want 401", rec.Code)
+	}
+	if ext.dnd.Status()["mode"] != "off" {
+		t.Fatalf("unauthenticated request mutated DND state: %v", ext.dnd.Status())
+	}
+}
+
+// TestNotifyDNDSetAndClear: an authenticated user can turn DND to total and then
+// back off; the status reflects each change.
+func TestNotifyDNDSetAndClear(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1", `{"mode":"total"}`)
+	if rec.Code != 200 {
+		t.Fatalf("set total = %d, want 200", rec.Code)
+	}
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out["mode"] != "total" || out["active"] != true {
+		t.Fatalf("mode should be total/active: %v", out)
+	}
+	if ext.dnd.Status()["mode"] != "total" {
+		t.Fatalf("underlying manager not updated: %v", ext.dnd.Status())
+	}
+
+	// Clearing back to off.
+	rec = doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1", `{"mode":"off"}`)
+	if rec.Code != 200 {
+		t.Fatalf("set off = %d, want 200", rec.Code)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out["mode"] != "off" || out["active"] != false {
+		t.Fatalf("mode should be off/inactive after clear: %v", out)
+	}
+}
+
+// TestNotifyDNDBadUntil: a mode with a malformed `until` timestamp is a 400 and
+// leaves DND unchanged (fail-safe: never silently activate "forever").
+func TestNotifyDNDBadUntil(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1",
+		`{"mode":"priority","until":"not-a-timestamp"}`)
+	if rec.Code != 400 {
+		t.Fatalf("bad until = %d, want 400", rec.Code)
+	}
+	if ext.dnd.Status()["mode"] != "off" {
+		t.Fatalf("bad-until request mutated DND: %v", ext.dnd.Status())
+	}
+}
+
+// TestNotifyDNDValidUntil: a well-formed RFC3339 `until` is accepted and the
+// status echoes a non-nil until.
+func TestNotifyDNDValidUntil(t *testing.T) {
+	mux, _ := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1",
+		`{"mode":"priority","until":"2099-01-02T03:04:05Z"}`)
+	if rec.Code != 200 {
+		t.Fatalf("valid until = %d, want 200", rec.Code)
+	}
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out["mode"] != "priority" || out["until"] == nil {
+		t.Fatalf("priority-until status wrong: %v", out)
+	}
+}
+
+// TestNotifyDNDBadJSON: a malformed body on the authenticated write path is a
+// 400 (the auth gate passes, JSON decode fails).
+func TestNotifyDNDBadJSON(t *testing.T) {
+	mux, _ := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1", `{not json`)
+	if rec.Code != 400 {
+		t.Fatalf("bad JSON = %d, want 400", rec.Code)
+	}
+}
+
+// TestNotifyDNDSchedule: a schedule payload with no mode change is applied and
+// returns 200 (exercises the SetSchedule branch).
+func TestNotifyDNDSchedule(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1",
+		`{"schedule":[{"days":[1,2,3],"start":"22:00","end":"07:00"}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("schedule = %d, want 200", rec.Code)
+	}
+	sched, _ := ext.dnd.Status()["schedule"].([]notify.ScheduleWindow)
+	if len(sched) != 1 {
+		t.Fatalf("schedule not applied: %v", ext.dnd.Status()["schedule"])
+	}
+}
+
+// --- inline action dispatch --------------------------------------------------
+
+// TestNotifyActionRequiresAuth: POST /api/notifications/{id}/action rejects an
+// unauthenticated caller.
+func TestNotifyActionRequiresAuth(t *testing.T) {
+	mux, _ := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n1/action", "", `{"action_id":"archive"}`)
+	if rec.Code != 401 {
+		t.Fatalf("unauth action = %d, want 401", rec.Code)
+	}
+}
+
+// TestNotifyActionMissingActionID: an authenticated call with no action_id is a
+// 400.
+func TestNotifyActionMissingActionID(t *testing.T) {
+	mux, _ := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n1/action", "user-1", `{}`)
+	if rec.Code != 400 {
+		t.Fatalf("missing action_id = %d, want 400", rec.Code)
+	}
+}
+
+// TestNotifyActionUnknown: dispatching an action id with no registered handler
+// is a 422 (the registry reports action-not-found).
+func TestNotifyActionUnknown(t *testing.T) {
+	mux, _ := newNotifyMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n1/action", "user-1",
+		`{"action_id":"does-not-exist"}`)
+	if rec.Code != 422 {
+		t.Fatalf("unknown action = %d, want 422", rec.Code)
+	}
+}
+
+// TestNotifyActionDispatches: a REGISTERED action handler is invoked with the
+// path's notification id and the body's action id, and returns 200 dispatched.
+func TestNotifyActionDispatches(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	var gotNotif, gotAction string
+	ext.actions.Register("archive", func(notifID, actionID string) error {
+		gotNotif, gotAction = notifID, actionID
+		return nil
+	})
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n42/action", "user-1",
+		`{"action_id":"archive"}`)
+	if rec.Code != 200 {
+		t.Fatalf("dispatch = %d, want 200", rec.Code)
+	}
+	if gotNotif != "n42" || gotAction != "archive" {
+		t.Fatalf("handler got (%q,%q), want (n42,archive)", gotNotif, gotAction)
+	}
+	if !strings.Contains(rec.Body.String(), "dispatched") {
+		t.Errorf("expected dispatched status: %s", rec.Body.String())
+	}
+}
+
+// --- persistent store: history + prune --------------------------------------
+
+func newNotifyPersistMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+	svc := notify.New()
+	mux := http.NewServeMux()
+	registerNotifyPersistRoutes(mux, svc, t.TempDir())
+	return mux
+}
+
+// TestNotifyPersistList: GET /api/notifications/persist returns a (possibly
+// empty) list without requiring auth (read-only history badge).
+func TestNotifyPersistList(t *testing.T) {
+	mux := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "GET", "/api/notifications/persist?limit=5", "", "")
+	if rec.Code != 200 {
+		t.Fatalf("persist list = %d, want 200", rec.Code)
+	}
+	// Body is a JSON array (may be null/[] when empty) — must be valid JSON.
+	var out any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("persist list not valid JSON: %v (%s)", err, rec.Body.String())
+	}
+}
+
+// TestNotifyPruneRequiresAuth: POST /api/notifications/prune is a mutation and
+// rejects an unauthenticated caller.
+func TestNotifyPruneRequiresAuth(t *testing.T) {
+	mux := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", "", `{}`)
+	if rec.Code != 401 {
+		t.Fatalf("unauth prune = %d, want 401", rec.Code)
+	}
+}
+
+// TestNotifyPruneDefaults: an empty body on the authenticated prune path falls
+// back to defaults and returns a remaining count.
+func TestNotifyPruneDefaults(t *testing.T) {
+	mux := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", "user-1", ``)
+	if rec.Code != 200 {
+		t.Fatalf("prune defaults = %d, want 200", rec.Code)
+	}
+	var out map[string]int
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := out["remaining"]; !ok {
+		t.Errorf("prune response missing remaining: %v", out)
+	}
+}
+
+// TestNotifyPruneCustom: explicit max_n / max_age_hours are accepted (exercises
+// the non-default branch).
+func TestNotifyPruneCustom(t *testing.T) {
+	mux := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", "user-1",
+		`{"max_n":10,"max_age_hours":24}`)
+	if rec.Code != 200 {
+		t.Fatalf("prune custom = %d, want 200", rec.Code)
+	}
+}
+
+// --- REAL auth middleware: identity is session-derived, not client-supplied ---
+
+// TestNotifyDNDThroughMiddleware proves the DND write's X-User-ID gate is
+// satisfied by a validated SESSION, not a forged header: a forged X-User-ID with
+// no session is 401, a valid session token is 200.
+func TestNotifyDNDThroughMiddleware(t *testing.T) {
+	store, err := auth.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	h := auth.NewHandler(store)
+	mux := http.NewServeMux()
+	registerNotifyExtRoutes(mux, notify.New(), t.TempDir(), store)
+	srv := httptest.NewServer(h.Middleware(mux))
+	t.Cleanup(srv.Close)
+
+	// Forged X-User-ID, no session ⇒ middleware strips it ⇒ 401.
+	resp := bearerReq(t, srv, "POST", "/api/notifications/dnd", "", `{"mode":"total"}`,
+		map[string]string{"X-User-ID": "attacker"})
+	resp.Body.Close()
+	if resp.StatusCode != 401 {
+		t.Fatalf("forged DND write = %d, want 401", resp.StatusCode)
+	}
+
+	// Valid session ⇒ 200.
+	tok := sessionToken(t, store, "google", "nuser", "nuser@ex.com")
+	resp = bearerReq(t, srv, "POST", "/api/notifications/dnd", tok, `{"mode":"priority"}`, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("session DND write = %d, want 200", resp.StatusCode)
+	}
+}
