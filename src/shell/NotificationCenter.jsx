@@ -91,7 +91,7 @@ function NC13_Panel({ onClose }) {
   const grouped = NC13_group(items)
 
   return (
-    <div className="w-[328px] max-h-[480px] flex flex-col overflow-hidden">
+    <div className="w-[min(328px,calc(100vw-1rem))] max-h-[480px] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-800/60 shrink-0">
         <span className="text-xs font-semibold text-neutral-200">Notifications</span>
@@ -263,7 +263,7 @@ export default function NotificationCenter() {
           role="dialog"
           aria-modal="true"
           aria-label="Notifications"
-          className="absolute top-full right-0 mt-1.5 z-[100]
+          className="absolute top-full right-0 mt-1.5 z-[100] max-w-[calc(100vw-1rem)]
             bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/50
             rounded-xl shadow-2xl shadow-black/50 overflow-hidden
             animate-[fadeIn_0.12s_ease-out]"

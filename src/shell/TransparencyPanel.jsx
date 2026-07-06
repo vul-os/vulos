@@ -54,7 +54,7 @@ function SectionTitle({ children }) {
 function EgressBanner({ egress }) {
   const leaves = egress.level === 'external'
   const sovereign = egress.level === 'sovereign'
-  const color = leaves ? '#f59e0b' : '#22c55e'
+  const color = leaves ? 'var(--status-warning)' : 'var(--status-success)'
   const bg = leaves ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/25'
   const headline = leaves
     ? 'Egress enabled'
@@ -134,7 +134,7 @@ function AtRestSection({ hasMasterKey }) {
       <div className="rounded-lg border border-neutral-800 divide-y divide-neutral-800/70 overflow-hidden">
         {AT_REST.map(r => (
           <div key={r.label} className="flex items-start gap-2.5 px-3 py-2">
-            <Dot color={r.state === 'e2e' ? '#22c55e' : '#f59e0b'} />
+            <Dot color={r.state === 'e2e' ? 'var(--status-success)' : 'var(--status-warning)'} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-neutral-200">{r.label}</span>
@@ -162,7 +162,7 @@ function KeysSection({ hasMasterKey }) {
     <div>
       <SectionTitle>Your keys</SectionTitle>
       <div className="flex items-center gap-2.5 mb-2">
-        <Dot color={hasMasterKey === false ? '#737373' : '#22c55e'} />
+        <Dot color={hasMasterKey === false ? 'var(--text-faint)' : 'var(--status-success)'} />
         <span className="text-[12px] text-neutral-200">
           {hasMasterKey === true ? 'Master key held on your device (zero-access)'
             : hasMasterKey === false ? 'Legacy account — no client-side master key'

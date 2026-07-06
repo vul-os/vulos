@@ -171,6 +171,12 @@ export default function Toasts() {
         }
       }
     }
+    // Prune the "already-chimed" set to the live queue so it can't grow without
+    // bound over a long session (toasts churn continuously; keys are one-shot).
+    if (chimedRef.current.size > 64) {
+      const live = new Set(queue.map(t => t.key))
+      for (const k of chimedRef.current) if (!live.has(k)) chimedRef.current.delete(k)
+    }
   }, [queue])
 
   // Auto-dismiss non-sticky toasts (ttl seconds; 0 = sticky for urgent/critical).

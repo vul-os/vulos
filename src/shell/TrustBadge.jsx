@@ -23,7 +23,7 @@ const SHORT = { local: 'On device', sovereign: 'Sovereign', brokered: 'Brokered'
 // arrow when something is permitted to leave; green + a contained dot when not.
 function EgressGlyph({ level }) {
   const leaves = level === 'external'
-  const color = leaves ? '#f59e0b' : '#22c55e'
+  const color = leaves ? 'var(--status-warning)' : 'var(--status-success)'
   return (
     <svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true">
       <rect x="1.5" y="3" width="8" height="10" rx="1.4" stroke={color} strokeWidth="1.2" />

@@ -73,6 +73,7 @@ const PROPOSAL_VERB = {
   create_calendar_event: 'Create event',
   add_contact: 'Add contact',
   triage: 'Change mailbox',
+  rsvp_invite: 'RSVP to invite',
 }
 
 export default function CommandPalette() {

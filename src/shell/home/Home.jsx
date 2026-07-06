@@ -42,6 +42,12 @@ const TIER_DOT = {
 // call on every return to Home.
 let cachedHome = null
 
+// Honour the OS reduced-motion preference for the composer's scroll choreography
+// (checked at call time so a mid-session preference change is respected).
+const scrollBehavior = () =>
+  (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+    ? 'auto' : 'smooth'
+
 // ── tiny date/time helpers ───────────────────────────────────────────────────
 const fmtDate = (d) => d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -148,7 +154,7 @@ export default function Home() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { const t = setInterval(() => setClock(new Date()), 30000); return () => clearInterval(t) }, [])
-  useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [turns])
+  useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: scrollBehavior() }) }, [turns])
 
   // ── app launching (shared builtin map; web apps open by url) ────────────────
   const openApp = useCallback((appId) => {
@@ -210,7 +216,7 @@ export default function Home() {
     const who = item.from_name || item.from
     const prompt = `Draft a reply to "${item.subject}" from ${who}.`
     setInput('')
-    composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    composerRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
     runAgent(prompt)
   }, [runAgent])
 
@@ -222,7 +228,7 @@ export default function Home() {
     const iv = inv.invite || {}
     const prompt = `RSVP ${response} to the calendar invite "${iv.summary || inv.subject}" (message ${inv.message_uid}).`
     setInput('')
-    composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    composerRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
     runAgent(prompt)
   }, [runAgent])
 
@@ -341,7 +347,7 @@ export default function Home() {
           </form>
 
           {turns.length > 0 && (
-            <div ref={transcriptRef} aria-live="polite" className="mt-3 max-h-72 overflow-y-auto space-y-2.5 px-1">
+            <div ref={transcriptRef} role="log" aria-label="Assistant conversation" className="mt-3 max-h-72 overflow-y-auto space-y-2.5 px-1">
               {turns.map(t => (
                 t.proposal ? (
                   <div key={t.id} className="space-y-2">
@@ -351,11 +357,15 @@ export default function Home() {
                   </div>
                 ) : (
                   <div key={t.id} className={`flex ${t.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div style={t.role === 'user' ? { background: 'var(--accent)' } : undefined}
+                    {/* Only the assistant's answer is a live region, so a screen reader
+                        announces the streamed reply once — not every prior turn per token. */}
+                    <div
+                      style={t.role === 'user' ? { background: 'var(--accent)' } : undefined}
+                      aria-live={t.role === 'assistant' ? 'polite' : undefined}
                       className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
                       t.role === 'user' ? 'text-white rounded-br-sm' : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'}`}>
                       {t.content}
-                      {t.pending && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" />}
+                      {t.pending && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" aria-hidden="true" />}
                     </div>
                   </div>
                 )
@@ -405,7 +415,7 @@ export default function Home() {
                       className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Reply with assistant</button>
                     {snoozing === item.uid ? (
                       <>
-                        <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md text-white transition-colors" style={{ background: 'color-mix(in srgb, var(--status-warning) 80%, transparent)' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--status-warning)')} onMouseLeave={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--status-warning) 80%, transparent)')}>Confirm snooze</button>
+                        <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md text-white bg-warning transition-[filter] hover:brightness-110">Confirm snooze</button>
                         <button onClick={() => setSnoozing(null)} className="text-[11px] px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Cancel</button>
                       </>
                     ) : (
