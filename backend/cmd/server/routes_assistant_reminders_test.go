@@ -81,6 +81,53 @@ func remindersHTTPMux(t *testing.T, replies []string) *http.ServeMux {
 	return mux
 }
 
+// TestRemindersDirectEndpointsRequireAuth: the two DIRECT reminder endpoints
+// (GET /reminders, POST /reminders/cancel) are session-authed — a request with no
+// X-User-ID (the middleware strips any forged one) is 401 and touches no store.
+// This locks the "derive the user STRICTLY from the session" claim at the route.
+func TestRemindersDirectEndpointsRequireAuth(t *testing.T) {
+	mux := remindersHTTPMux(t, nil)
+
+	// user="" ⇒ doAssistantJSON sends NO X-User-ID (the state after the middleware
+	// strips a forged one with no valid session).
+	rec, _ := doAssistantJSON(t, mux, "GET", "/api/assistant/reminders", "", "")
+	if rec.Code != 401 {
+		t.Fatalf("unauth GET /reminders = %d, want 401", rec.Code)
+	}
+	rec, _ = doAssistantJSON(t, mux, "POST", "/api/assistant/reminders/cancel", "", `{"id":"rem_x"}`)
+	if rec.Code != 401 {
+		t.Fatalf("unauth POST /reminders/cancel = %d, want 401", rec.Code)
+	}
+}
+
+// TestRemindersDirectCancelIsCancelOnly: the direct /cancel endpoint can ONLY
+// cancel an EXISTING own reminder — it can never CREATE or resurrect one, and an
+// unknown/foreign/already-done id is a 404 with no oracle. Together with the
+// round-trip test (which proves creation only happens through /agent→ledger→
+// /execute), this shows the direct route is not a ledger bypass for creation.
+func TestRemindersDirectCancelIsCancelOnly(t *testing.T) {
+	mux := remindersHTTPMux(t, nil)
+
+	// Cancelling a non-existent id does NOT create anything and returns 404.
+	rec, _ := doAssistantJSON(t, mux, "POST", "/api/assistant/reminders/cancel", "alice", `{"id":"rem_nope"}`)
+	if rec.Code == 200 {
+		t.Fatal("cancel of an unknown id must not succeed")
+	}
+	if rec.Code != 404 {
+		t.Fatalf("cancel of unknown id = %d, want 404 (no oracle)", rec.Code)
+	}
+	// The store is still empty — /cancel created nothing.
+	_, out := doAssistantJSON(t, mux, "GET", "/api/assistant/reminders", "alice", "")
+	if rl, _ := out["reminders"].([]any); len(rl) != 0 {
+		t.Fatalf("the direct cancel endpoint created a reminder — it must be cancel-only: %v", rl)
+	}
+	// Empty id ⇒ 400, still nothing created.
+	rec, _ = doAssistantJSON(t, mux, "POST", "/api/assistant/reminders/cancel", "alice", `{"id":""}`)
+	if rec.Code != 400 {
+		t.Fatalf("empty id = %d, want 400", rec.Code)
+	}
+}
+
 func TestRemindersHTTPRoundTrip(t *testing.T) {
 	remindAt := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
 	mux := remindersHTTPMux(t, []string{

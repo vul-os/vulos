@@ -17,6 +17,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,6 +192,108 @@ func TestReminderSchedulerFiresAtDue(t *testing.T) {
 	// The not-yet-due reminder is still pending.
 	if list, _ := s.ListReminders("alice", false, 50); len(list) != 1 || list[0].Text != "not yet" {
 		t.Fatalf("the future reminder should still be pending, got %+v", list)
+	}
+}
+
+// ── SCHEDULER: exactly-once across RACING concurrent sweeps ──────────────────
+//
+// The exactly-once guarantee (wave-62, red-team #7) must hold even when several
+// sweeps run CONCURRENTLY (e.g. an overlapping tick, or several scheduler
+// instances). MarkFired's atomic `UPDATE … WHERE done = 0` + RowsAffected==1 must
+// pick a single winner per reminder, so the notifier is invoked EXACTLY ONCE per
+// reminder no matter how many sweeps race. This is stronger than the sequential
+// second-sweep assertion above.
+func TestReminderSchedulerExactlyOnceConcurrent(t *testing.T) {
+	s := newTestRemindersStore(t)
+	const nRem = 25
+	dueAt := future(30 * time.Second)
+	for i := 0; i < nRem; i++ {
+		if _, err := s.SetReminder("alice", "fire me", dueAt); err != nil {
+			t.Fatalf("set %d: %v", i, err)
+		}
+	}
+
+	n := &syncNotifier{}
+	clock := func() time.Time { return dueAt.Add(time.Second) }
+
+	// Fan out many sweeps at once, all seeing every reminder as due. Each shares
+	// the store; only ONE sweep may win MarkFired for each reminder.
+	const nSweeps = 8
+	var wg sync.WaitGroup
+	for i := 0; i < nSweeps; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sched := NewReminderScheduler(s, n)
+			sched.now = clock
+			_, _ = sched.Sweep(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	fired := n.Fired()
+	if len(fired) != nRem {
+		t.Fatalf("exactly-once broken across racing sweeps: got %d notifications for %d reminders", len(fired), nRem)
+	}
+	// No reminder id fired twice.
+	seen := map[string]bool{}
+	for _, f := range fired {
+		if seen[f.id] {
+			t.Fatalf("reminder %s fired more than once — DOUBLE-FIRE across racing sweeps", f.id)
+		}
+		seen[f.id] = true
+	}
+	// All are now done — a subsequent sweep fires nothing.
+	sched := NewReminderScheduler(s, n)
+	sched.now = clock
+	if again, _ := sched.Sweep(context.Background()); again != 0 {
+		t.Fatalf("a post-race sweep must fire nothing, got %d", again)
+	}
+}
+
+// syncNotifier is a concurrency-safe capturing notifier for the racing-sweep test.
+type syncNotifier struct {
+	mu    sync.Mutex
+	fired []firedReminder
+}
+
+func (n *syncNotifier) NotifyReminder(userID, reminderID, text string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.fired = append(n.fired, firedReminder{userID, reminderID, text})
+}
+func (n *syncNotifier) Fired() []firedReminder {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]firedReminder, len(n.fired))
+	copy(out, n.fired)
+	return out
+}
+
+// ── SCHEDULER: MarkFired is atomic (a single winner) ─────────────────────────
+//
+// The exactly-once primitive itself: MarkFired must return true for the FIRST
+// call that flips done 0→1 and false for every subsequent call, so a notification
+// is only ever sent by the winner.
+func TestReminderMarkFiredSingleWinner(t *testing.T) {
+	s := newTestRemindersStore(t)
+	rem, err := s.SetReminder("alice", "once", future(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	won, err := s.MarkFired(rem.ID)
+	if err != nil || !won {
+		t.Fatalf("first MarkFired must win: won=%v err=%v", won, err)
+	}
+	// Every later attempt loses (already done).
+	for i := 0; i < 3; i++ {
+		if again, _ := s.MarkFired(rem.ID); again {
+			t.Fatal("a second MarkFired must NOT win — exactly-once broken")
+		}
+	}
+	// An unknown id never wins.
+	if won, _ := s.MarkFired("rem_does_not_exist"); won {
+		t.Fatal("MarkFired on an unknown id must not win")
 	}
 }
 
@@ -412,6 +515,35 @@ func TestAgentListRemindersReadOnlyAndFramed(t *testing.T) {
 	}
 	if !strings.Contains(fed, untrustedOpen) || !strings.Contains(fed, untrustedClose) {
 		t.Fatalf("reminder list NOT wrapped in untrusted delimiters: %q", fed)
+	}
+}
+
+// ── AGENT: no tool is an HTTP/endpoint escape hatch (direct-route not a bypass) ─
+//
+// The direct HTTP endpoints (/reminders/cancel) mutate WITHOUT the ledger, which
+// is only safe because the MODEL can never invoke them: the agent's entire action
+// surface is the curated toolCatalog, which contains no fetch/http/url tool. So
+// the assistant cannot use the direct route to skip its own ledger. This locks the
+// catalog against an endpoint-shaped escape hatch and reasserts that every
+// reminder mutation stays ledger-gated.
+func TestToolCatalogHasNoHTTPEscapeHatch(t *testing.T) {
+	remMutations := 0
+	for i := range toolCatalog {
+		name := strings.ToLower(toolCatalog[i].Name)
+		for _, banned := range []string{"http", "fetch", "url", "request", "endpoint", "curl", "webhook"} {
+			if strings.Contains(name, banned) {
+				t.Fatalf("tool %q looks like an HTTP/endpoint escape hatch — the model must not call endpoints directly", toolCatalog[i].Name)
+			}
+		}
+		if toolCatalog[i].Name == "set_reminder" || toolCatalog[i].Name == "cancel_reminder" {
+			remMutations++
+			if !toolCatalog[i].Mutating {
+				t.Fatalf("%s must stay ledger-gated (Mutating), not auto-run", toolCatalog[i].Name)
+			}
+		}
+	}
+	if remMutations != 2 {
+		t.Fatalf("expected exactly 2 ledger-gated reminder mutations, found %d", remMutations)
 	}
 }
 
