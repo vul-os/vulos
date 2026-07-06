@@ -140,6 +140,31 @@ func (s *Service) childByName(ownerID, parentID, name string) (*Node, error) {
 	return n, err
 }
 
+// searchOwnedByName returns up to limit non-deleted nodes OWNED by ownerID whose
+// name matches the LIKE pattern (files first, then folders; newest first). It is
+// scoped to owner_id at the SQL layer, so it can only ever surface the caller's
+// own nodes — the read-only assistant search relies on this as the primary ACL
+// boundary (owned nodes need no per-node ACL walk: ownership is viewer+). `like`
+// must already contain the wildcards; the caller escapes user input.
+func (s *Service) searchOwnedByName(ownerID, like string, limit int) ([]*Node, error) {
+	rows, err := s.db.Query(`SELECT `+nodeCols+` FROM files_nodes
+		WHERE owner_id=? AND deleted=0 AND name LIKE ? ESCAPE '\'
+		ORDER BY is_dir ASC, updated_at DESC LIMIT ?`, ownerID, like, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Node
+	for rows.Next() {
+		n, err := scanNode(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 func (s *Service) touchNode(n *Node) error {
 	_, err := s.db.Exec(`UPDATE files_nodes SET name=?, parent_id=?, path=?, object_key=?, size=?,
 		content_type=?, current_version_id=?, updated_at=? WHERE id=?`,

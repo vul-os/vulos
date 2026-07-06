@@ -954,7 +954,7 @@ func main() {
 	} else {
 		log.Printf("[assistant] no local ONNX model in %s — using sovereign lexical retrieval (no external embedding API)", modelsDir)
 	}
-	registerAssistantRoutes(mux, aiSvc, aiCfg, mailIndex)
+	registerAssistantRoutes(mux, aiSvc, aiCfg, mailIndex, filesSvc)
 
 	// Missions
 	mux.HandleFunc("GET /api/missions", func(w http.ResponseWriter, r *http.Request) {

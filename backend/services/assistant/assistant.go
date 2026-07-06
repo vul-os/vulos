@@ -37,7 +37,8 @@ type Assistant struct {
 	cfg           ai.Config
 	mail          MailSource
 	allowExternal bool
-	index         *MailIndex // optional on-instance semantic index; nil ⇒ lexical retrieval
+	index         *MailIndex  // optional on-instance semantic index; nil ⇒ lexical retrieval
+	files         FilesSource // optional READ-ONLY Drive seam (wave 55); nil ⇒ file tools unavailable
 }
 
 // New builds an assistant. model is the ai seam, cfg the model config
@@ -57,8 +58,21 @@ func (a *Assistant) WithIndex(idx *MailIndex) *Assistant {
 	return a
 }
 
+// WithFiles attaches the READ-ONLY Drive seam (wave 55) so the assistant's
+// find_file / read_file tools can search and read the user's own files from the
+// OS Files service. The seam is read-only (no write/delete/share); ACL
+// enforcement and size bounds live in the seam + backend. Returns the same
+// assistant for chaining. nil leaves the file tools unavailable.
+func (a *Assistant) WithFiles(f FilesSource) *Assistant {
+	a.files = f
+	return a
+}
+
 // Indexed reports whether a semantic index is attached (for status/telemetry).
 func (a *Assistant) Indexed() bool { return a.index != nil }
+
+// FilesEnabled reports whether the READ-ONLY files seam is attached.
+func (a *Assistant) FilesEnabled() bool { return a.files != nil }
 
 // Sovereignty reports the current no-egress state (for the status endpoint/UI).
 func (a *Assistant) Sovereignty() Sovereignty {

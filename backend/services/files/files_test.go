@@ -572,3 +572,78 @@ func TestByteMoverRealLocalFS(t *testing.T) {
 		t.Fatalf("moved file contents=%q want disk-bytes", body)
 	}
 }
+
+// TestSearchACLScoped proves the wave-55 read-only Search is ACL-safe by
+// construction: it returns a user's OWN files and files explicitly SHARED with
+// them, and NEVER another user's private files. This is the primary ACL boundary
+// the sovereign assistant's find_file tool relies on.
+func TestSearchACLScoped(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	// owner has two files; other has one private file.
+	_ = uploadFile(t, svc, owner, "", "Q3-plan.md")
+	shared := uploadFile(t, svc, owner, "", "budget-shared.csv")
+	_ = uploadFile(t, svc, other, "", "other-secret.md")
+
+	// owner searching sees only their own files, never other's.
+	res, err := svc.Search(owner, "", 25)
+	if err != nil {
+		t.Fatalf("Search(owner): %v", err)
+	}
+	for _, n := range res {
+		if n.OwnerID != owner {
+			t.Fatalf("Search leaked a non-owned node: %+v", n)
+		}
+	}
+	if len(res) != 2 {
+		t.Fatalf("owner should see 2 own files, got %d", len(res))
+	}
+
+	// other searching for the owner's file by name gets NOTHING (not shared).
+	res, err = svc.Search(other, "budget", 25)
+	if err != nil {
+		t.Fatalf("Search(other): %v", err)
+	}
+	for _, n := range res {
+		if n.OwnerID == owner {
+			t.Fatalf("CROSS-USER LEAK: other saw owner's private file %+v", n)
+		}
+	}
+
+	// Once owner shares that file with other (viewer), it surfaces in other's
+	// search — proving real grants are honored, not ignored.
+	if _, err := svc.Share(owner, shared.ID, other, RoleViewer); err != nil {
+		t.Fatalf("Share: %v", err)
+	}
+	res, err = svc.Search(other, "budget", 25)
+	if err != nil {
+		t.Fatalf("Search(other, after share): %v", err)
+	}
+	found := false
+	for _, n := range res {
+		if n.ID == shared.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("shared file did not surface in the recipient's search: %+v", res)
+	}
+}
+
+// TestSearchLikeEscaping proves a query full of LIKE metacharacters is matched
+// literally (cannot widen the pattern to match everything).
+func TestSearchLikeEscaping(t *testing.T) {
+	svc, _ := newTestService(t)
+	_ = uploadFile(t, svc, owner, "", "report.txt")
+	_ = uploadFile(t, svc, owner, "", "100%-done.txt")
+
+	// A bare "%" must NOT act as a wildcard matching every file; it should match
+	// only the file whose name literally contains "%".
+	res, err := svc.Search(owner, "%", 25)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(res) != 1 || res[0].Name != "100%-done.txt" {
+		t.Fatalf("LIKE metachar not escaped — '%%' matched %d files: %+v", len(res), res)
+	}
+}

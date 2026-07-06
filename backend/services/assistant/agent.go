@@ -75,12 +75,17 @@ type toolDef struct {
 // mutating RSVP (rsvp_invite) that replies to a calendar invite the user has.
 // Wave 48 adds one READ-ONLY contacts tool (find_contact) — no new WRITE surface;
 // add_contact stays the only contacts mutation and stays ledger-gated.
+// Wave 55 adds two READ-ONLY files tools (find_file, read_file) over the OS Files
+// service — NO new WRITE surface; the assistant reads only files the user's ACL
+// allows, and read_file is size-bounded and framed untrusted like every result.
 var toolCatalog = []toolDef{
 	{"search_mail", false, "Search the mailbox for messages relevant to a query (semantic + keyword). Returns matching messages with their ids.", `{"query":"..."}`},
 	{"read_thread", false, "Read the full body of a message/thread by its id (from a search result).", `{"id":"..."}`},
 	{"list_events", false, "List the user's calendar events for a window (READ-ONLY agenda from the local calendar). Defaults to today→+7 days; pass days for a shorter/longer window.", `{"days":7}`},
 	{"pending_invites", false, "List calendar invitations in the mailbox still awaiting the user's RSVP (READ-ONLY). Returns each invite's summary, time, organizer, and the source message id.", `{}`},
 	{"find_contact", false, "Look up contacts in the address book by name or email (READ-ONLY). Use it to resolve a person's email/phone (e.g. \"what is Jane's email\") or to find the address to compose to. Returns matching contacts (name, email, phone, notes).", `{"query":"name or email"}`},
+	{"find_file", false, "Search the user's own files/documents by name or keyword (READ-ONLY). Use it for \"find my file about X\", to locate a doc before reading it. Returns matching files with their id, name, path, type, size, and modified date.", `{"query":"name or keyword"}`},
+	{"read_file", false, "Read a text file's content by its id from find_file (READ-ONLY). Use it for \"what's in my notes doc\" / \"summarize the Q3 plan\". Only text files can be read; content is truncated for large files.", `{"id":"file id from find_file"}`},
 	{"draft_reply", false, "Draft a reply to a message. Produces reply text only — does NOT send.", `{"thread_id":"...","intent":"what the reply should say"}`},
 	{"compose", false, "Draft a brand-new email. Produces subject+body text only — does NOT send.", `{"to":"...","subject":"...","intent":"what the email should say"}`},
 	{"send_email", true, "Send an email. (confirm) Proposes the send; the user must approve before anything is sent.", `{"to":"...","subject":"...","body":"...","in_reply_to":"optional message id"}`},
@@ -445,6 +450,38 @@ func (a *Assistant) execReadTool(ctx context.Context, auth Auth, call ToolCall) 
 		}
 		return formatContacts(contacts), nil
 
+	case "find_file":
+		// READ-ONLY Drive search (wave 55). ACL is enforced by the files backend
+		// (own + shared-with-them nodes only). File names are user/other-people's
+		// text, so the result is fed back through wrapUntrusted like every result.
+		if a.files == nil {
+			return "", fmt.Errorf("files are not available")
+		}
+		refs, err := a.files.FindFiles(ctx, auth, argStr(call.Args, "query"), maxFileCandidates)
+		if err != nil {
+			return "", err
+		}
+		return formatFiles(refs), nil
+
+	case "read_file":
+		// READ-ONLY, SIZE-BOUNDED file read (wave 55). The ACL is enforced by the
+		// backend (a node the user cannot read errors, never returns bytes); the
+		// content is UNTRUSTED and framed by wrapUntrusted (by the caller) exactly
+		// like every other tool result, so prompt-injection inside a file is data,
+		// never an instruction.
+		if a.files == nil {
+			return "", fmt.Errorf("files are not available")
+		}
+		id := argStr(call.Args, "id")
+		if id == "" {
+			return "", fmt.Errorf("id is required (use find_file to get a file id)")
+		}
+		fc, err := a.files.ReadFile(ctx, auth, id, maxFileReadBytes)
+		if err != nil {
+			return "", err
+		}
+		return formatFileContent(fc), nil
+
 	case "draft_reply":
 		id := argStr(call.Args, "thread_id")
 		if id == "" {
@@ -545,6 +582,53 @@ func formatContacts(cs []Contact) string {
 			fmt.Fprintf(&b, " | note=%s", truncate(collapseWS(c.Notes), 120))
 		}
 		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// formatFiles renders looked-up Drive entries as a compact text list for the
+// model. File names/paths are user/other-people's data; the whole result is fed
+// back through wrapUntrusted like every tool result, so a filename containing
+// injected instructions is framed as data, never obeyed.
+func formatFiles(refs []FileRef) string {
+	if len(refs) == 0 {
+		return "(no matching files)"
+	}
+	var b strings.Builder
+	for _, f := range refs {
+		kind := "file"
+		if f.IsDir {
+			kind = "folder"
+		}
+		fmt.Fprintf(&b, "- id=%s | %s | %s", f.ID, kind, strEmpty(f.Name, "(no name)"))
+		if f.Path != "" {
+			fmt.Fprintf(&b, " | path=%s", f.Path)
+		}
+		if !f.IsDir {
+			fmt.Fprintf(&b, " | size=%dB", f.Size)
+		}
+		if !f.Modified.IsZero() {
+			fmt.Fprintf(&b, " | modified=%s", f.Modified.Format("2006-01-02"))
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// formatFileContent renders a bounded file read for the model. The Text is the
+// file's own bytes — untrusted content — and is framed by wrapUntrusted (by the
+// caller) exactly like every tool result. A truncation marker tells the model it
+// is seeing only the head of a larger document.
+func formatFileContent(fc FileContent) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "FILE: %s", strEmpty(fc.Ref.Name, "(no name)"))
+	if fc.Ref.Path != "" {
+		fmt.Fprintf(&b, " (%s)", fc.Ref.Path)
+	}
+	b.WriteString("\n\n")
+	b.WriteString(fc.Text)
+	if fc.Truncated {
+		b.WriteString("\n\n[content truncated — only the first part of the file is shown]")
 	}
 	return b.String()
 }

@@ -422,6 +422,70 @@ func (s *Service) GetContent(ctx context.Context, userID, nodeID string) (io.Rea
 	return rc, n, size, nil
 }
 
+// Search returns up to limit non-deleted files/folders VISIBLE to userID whose
+// name matches query (a case-insensitive substring). It is a pure READ used by
+// the sovereign assistant's read-only find_file tool. It is ACL-SAFE BY
+// CONSTRUCTION: it only ever returns (a) nodes the user OWNS — resolved by an
+// owner_id-scoped SQL query, and (b) nodes explicitly SHARED with the user —
+// resolved from that user's ACL grants via nodesSharedWith. There is no path in
+// which a node the user cannot read is returned, and no filesystem path is ever
+// walked, so a crafted name/path cannot traverse outside the user's own tree.
+// An empty query lists the user's most-recent files. Never mutates.
+func (s *Service) Search(userID, query string, limit int) ([]*Node, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, ErrForbidden
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	like := "%" + escapeLike(strings.TrimSpace(query)) + "%"
+
+	// (a) The caller's OWN files — owner_id-scoped SQL; ownership is viewer+.
+	owned, err := s.searchOwnedByName(userID, like, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := owned
+	seen := make(map[string]bool, len(owned))
+	for _, n := range owned {
+		seen[n.ID] = true
+	}
+
+	// (b) Files explicitly SHARED with the caller (ACL grants) whose name also
+	// matches. nodesSharedWith is the SAME grant lookup SharedWithMe uses, so this
+	// cannot surface anything the user is not authorized for.
+	if len(out) < limit {
+		q := strings.ToLower(strings.TrimSpace(query))
+		shared, serr := s.SharedWithMe(userID)
+		if serr == nil {
+			for _, n := range shared {
+				if seen[n.ID] || n.OwnerID == userID {
+					continue
+				}
+				if q == "" || strings.Contains(strings.ToLower(n.Name), q) {
+					out = append(out, n)
+					seen[n.ID] = true
+					if len(out) >= limit {
+						break
+					}
+				}
+			}
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// escapeLike escapes the LIKE metacharacters (%, _, and the \ escape itself) in
+// user-supplied search text so a query containing them is matched literally and
+// cannot widen the pattern. Paired with `ESCAPE '\'` in the query.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 // Versions lists a node's version history (newest first). Requires viewer+.
 func (s *Service) Versions(userID, nodeID string) ([]Version, error) {
 	n, err := s.getNode(nodeID)

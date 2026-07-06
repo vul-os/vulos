@@ -28,8 +28,10 @@ package main
 //	POST /api/assistant/triage    — direct user-initiated triage; body {message_id, action, ...}
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -39,6 +41,7 @@ import (
 
 	"vulos/backend/services/ai"
 	"vulos/backend/services/assistant"
+	"vulos/backend/services/files"
 )
 
 // assistantDeps bundles what the assistant routes need. The mail source and
@@ -51,12 +54,13 @@ type assistantDeps struct {
 	brokerHeaders map[string]string
 	index         *assistant.MailIndex      // optional on-instance semantic index; nil ⇒ lexical
 	ledger        *assistant.ProposalLedger // server-side store of mutating proposals awaiting approval
+	files         assistant.FilesSource     // optional READ-ONLY Drive seam (wave 55); nil ⇒ file tools off
 }
 
 // registerAssistantRoutes wires the assistant endpoints into mux. svc/cfg are
 // the same ai.Service + ai.DefaultConfig() used elsewhere in main. index is the
 // optional on-instance semantic mail index (nil ⇒ lexical retrieval).
-func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config, index *assistant.MailIndex) {
+func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config, index *assistant.MailIndex, filesSvc *files.Service) {
 	deps := assistantDeps{
 		model:         svc,
 		cfg:           cfg,
@@ -64,6 +68,13 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 		brokerHeaders: assistantBrokerHeaders(),
 		index:         index,
 		ledger:        assistant.NewProposalLedger(),
+	}
+	// READ-ONLY files awareness (wave 55): wrap the OS Files service in the
+	// in-process adapter so find_file/read_file can search+read the user's OWN
+	// Drive, ACL-enforced by files.Service. nil svc ⇒ the seam degrades to "no
+	// files available" (the file tools return an empty/unavailable result).
+	if filesSvc != nil {
+		deps.files = assistant.NewOSFilesSource(assistantFilesBackend{svc: filesSvc})
 	}
 	// Mail read path: the local LilMail /v1 API when configured, else an
 	// in-memory fixture inbox so the assistant is demoable/testable offline.
@@ -91,7 +102,7 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 		cfg := deps.cfg
 		allowExternal := deps.allowExternal
 		mu.RUnlock()
-		return assistant.New(deps.model, cfg, deps.source, allowExternal).WithIndex(deps.index)
+		return assistant.New(deps.model, cfg, deps.source, allowExternal).WithIndex(deps.index).WithFiles(deps.files)
 	}
 	authOf := func(r *http.Request) assistant.Auth {
 		return assistant.Auth{
@@ -558,6 +569,53 @@ func assistantErr(w http.ResponseWriter, err error) {
 		return
 	}
 	writeErr(w, 502, err.Error())
+}
+
+// assistantFilesBackend adapts *files.Service to assistant.FilesBackend — the
+// minimal READ-ONLY surface (Search + ReadContent) the assistant's find_file /
+// read_file tools use. It is a thin translation layer: it converts files.Node →
+// assistant.FileNode and files.Service.GetContent → ReadContent, and adds NO
+// authority of its own — the ACL is enforced inside files.Service (Search only
+// returns the user's own + shared-with-them nodes; GetContent 403s any node the
+// user cannot read). It exposes NO write/delete/share method, so the assistant
+// cannot mutate files through this seam.
+type assistantFilesBackend struct {
+	svc *files.Service
+}
+
+func (b assistantFilesBackend) Search(userID, query string, limit int) ([]assistant.FileNode, error) {
+	nodes, err := b.svc.Search(userID, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]assistant.FileNode, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, toAssistantFileNode(n))
+	}
+	return out, nil
+}
+
+func (b assistantFilesBackend) ReadContent(ctx context.Context, userID, nodeID string) (io.ReadCloser, assistant.FileNode, int64, error) {
+	rc, n, size, err := b.svc.GetContent(ctx, userID, nodeID)
+	if err != nil {
+		return nil, assistant.FileNode{}, 0, err
+	}
+	return rc, toAssistantFileNode(n), size, nil
+}
+
+func toAssistantFileNode(n *files.Node) assistant.FileNode {
+	if n == nil {
+		return assistant.FileNode{}
+	}
+	return assistant.FileNode{
+		ID:          n.ID,
+		Name:        n.Name,
+		Path:        n.Path,
+		IsDir:       n.IsDir,
+		Size:        n.Size,
+		ContentType: n.ContentType,
+		UpdatedAt:   n.UpdatedAt,
+	}
 }
 
 // assistantBrokerHeaders builds the X-Vulos-Mail-* header set for LilMail's
