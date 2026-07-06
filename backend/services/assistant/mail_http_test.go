@@ -405,6 +405,57 @@ func TestLilmailAddContactOmitsEmptyArrays(t *testing.T) {
 	}
 }
 
+// --- FindContacts: reads the FULL-card surface (emails[]/phones[]/note) -------
+
+func TestLilmailFindContactsReadsCards(t *testing.T) {
+	f := newFakeLilmail(t)
+	f.on("GET /v1/contacts/cards", func(r recordedReq) (int, string) {
+		// Must hit the FULL-card endpoint (which carries phone/note), not the lean
+		// /v1/contacts autocomplete form, and forward the search query + limit.
+		if got := r.Query.Get("q"); got != "jane" {
+			t.Errorf("q query = %q, want jane", got)
+		}
+		if got := r.Query.Get("limit"); got != "20" {
+			t.Errorf("limit query = %q, want 20", got)
+		}
+		return 200, `{"contacts":[
+			{"uid":"c1","name":"Jane Doe","emails":["jane@acme.io","alt@x.test"],"phones":["+1-555-0100"],"note":"CTO at Acme"},
+			{"uid":"c2","name":"Janet Roe","emails":["janet@x.test"]}
+		]}`
+	})
+	cs, err := f.source().FindContacts(bg(), Auth{}, "jane", 20)
+	if err != nil {
+		t.Fatalf("FindContacts: %v", err)
+	}
+	if req := f.last(); req.Path != "/v1/contacts/cards" {
+		t.Fatalf("wrong endpoint hit: %q (must be the full-card surface)", req.Path)
+	}
+	if len(cs) != 2 {
+		t.Fatalf("want 2 contacts, got %d: %+v", len(cs), cs)
+	}
+	// Primary email/phone + note map through; array→scalar takes index 0.
+	if cs[0].Name != "Jane Doe" || cs[0].Email != "jane@acme.io" || cs[0].Phone != "+1-555-0100" || cs[0].Notes != "CTO at Acme" {
+		t.Fatalf("first contact mapped wrong: %+v", cs[0])
+	}
+	if cs[1].Email != "janet@x.test" || cs[1].Phone != "" {
+		t.Fatalf("second (phoneless) contact mapped wrong: %+v", cs[1])
+	}
+}
+
+// An account without a CardDAV backend degrades to an empty list (lilmail returns
+// {"contacts":[]}), which the assistant surfaces as "no contacts", never an error.
+func TestLilmailFindContactsEmpty(t *testing.T) {
+	f := newFakeLilmail(t)
+	f.on("GET /v1/contacts/cards", func(r recordedReq) (int, string) { return 200, `{"contacts":[]}` })
+	cs, err := f.source().FindContacts(bg(), Auth{}, "nobody", 20)
+	if err != nil {
+		t.Fatalf("FindContacts: %v", err)
+	}
+	if len(cs) != 0 {
+		t.Fatalf("want empty result, got %+v", cs)
+	}
+}
+
 // --- ListEvents: tolerant decoding + toEvent field spellings ----------------
 
 func TestLilmailListEventsEnvelope(t *testing.T) {

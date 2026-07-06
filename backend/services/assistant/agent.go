@@ -73,11 +73,14 @@ type toolDef struct {
 // approval. Kept deliberately small — no shell/file/web tools. Wave 40 adds two
 // READ-ONLY calendar tools (list_events, pending_invites) and one ledger-gated
 // mutating RSVP (rsvp_invite) that replies to a calendar invite the user has.
+// Wave 48 adds one READ-ONLY contacts tool (find_contact) — no new WRITE surface;
+// add_contact stays the only contacts mutation and stays ledger-gated.
 var toolCatalog = []toolDef{
 	{"search_mail", false, "Search the mailbox for messages relevant to a query (semantic + keyword). Returns matching messages with their ids.", `{"query":"..."}`},
 	{"read_thread", false, "Read the full body of a message/thread by its id (from a search result).", `{"id":"..."}`},
 	{"list_events", false, "List the user's calendar events for a window (READ-ONLY agenda from the local calendar). Defaults to today→+7 days; pass days for a shorter/longer window.", `{"days":7}`},
 	{"pending_invites", false, "List calendar invitations in the mailbox still awaiting the user's RSVP (READ-ONLY). Returns each invite's summary, time, organizer, and the source message id.", `{}`},
+	{"find_contact", false, "Look up contacts in the address book by name or email (READ-ONLY). Use it to resolve a person's email/phone (e.g. \"what is Jane's email\") or to find the address to compose to. Returns matching contacts (name, email, phone, notes).", `{"query":"name or email"}`},
 	{"draft_reply", false, "Draft a reply to a message. Produces reply text only — does NOT send.", `{"thread_id":"...","intent":"what the reply should say"}`},
 	{"compose", false, "Draft a brand-new email. Produces subject+body text only — does NOT send.", `{"to":"...","subject":"...","intent":"what the email should say"}`},
 	{"send_email", true, "Send an email. (confirm) Proposes the send; the user must approve before anything is sent.", `{"to":"...","subject":"...","body":"...","in_reply_to":"optional message id"}`},
@@ -159,6 +162,7 @@ func toolSystemPrompt() string {
 	b.WriteString("- Gather facts with read-only tools (search_mail, read_thread) before acting.\n")
 	b.WriteString("- Tools marked [confirm] perform a REAL action (send/schedule/change). You only PROPOSE them; the system will ask the user to approve — do NOT ask the user for confirmation yourself, just call the tool once you have what you need.\n")
 	b.WriteString("- Never invent message ids, email addresses, dates, or amounts — take them from tool results or the user.\n")
+	b.WriteString("- When the user names a person but not an email address (e.g. \"email Jane about X\"), resolve the address with find_contact FIRST; use the address it returns — never guess one.\n")
 	b.WriteString("- Prefer draft_reply/compose to write text; only call send_email once the user clearly wants it sent.\n")
 	return b.String()
 }
@@ -431,6 +435,16 @@ func (a *Assistant) execReadTool(ctx context.Context, auth Auth, call ToolCall) 
 		}
 		return formatPendingInvites(invs), nil
 
+	case "find_contact":
+		// query is optional: empty lists recent contacts. Contact data is other
+		// people's text, so the result is fed back through wrapUntrusted (by the
+		// caller) exactly like every other tool result.
+		contacts, err := a.mail.FindContacts(ctx, auth, argStr(call.Args, "query"), 20)
+		if err != nil {
+			return "", err
+		}
+		return formatContacts(contacts), nil
+
 	case "draft_reply":
 		id := argStr(call.Args, "thread_id")
 		if id == "" {
@@ -504,6 +518,31 @@ func formatPendingInvites(invs []PendingInvite) string {
 		}
 		if iv.Organizer != "" {
 			fmt.Fprintf(&b, " | from %s", iv.Organizer)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// formatContacts renders looked-up address-book entries as a compact text list
+// for the model. Contact fields are OTHER PEOPLE's data; they are still fed back
+// through wrapUntrusted like every tool result, so a note/name containing
+// injected instructions is framed as data, never obeyed.
+func formatContacts(cs []Contact) string {
+	if len(cs) == 0 {
+		return "(no matching contacts)"
+	}
+	var b strings.Builder
+	for _, c := range cs {
+		fmt.Fprintf(&b, "- %s", strEmpty(c.Name, "(no name)"))
+		if c.Email != "" {
+			fmt.Fprintf(&b, " | email=%s", c.Email)
+		}
+		if c.Phone != "" {
+			fmt.Fprintf(&b, " | phone=%s", c.Phone)
+		}
+		if c.Notes != "" {
+			fmt.Fprintf(&b, " | note=%s", truncate(collapseWS(c.Notes), 120))
 		}
 		b.WriteByte('\n')
 	}

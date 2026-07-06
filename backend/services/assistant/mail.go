@@ -125,7 +125,12 @@ type CalendarEvent struct {
 	AllDay    bool   `json:"all_day,omitempty"`
 }
 
-// Contact is a contact-book entry the assistant proposes adding.
+// Contact is a contact-book entry. On the WRITE path it is what the assistant
+// proposes adding (ledger-gated add_contact). On the READ path (FindContacts) it
+// is a normalized address-book entry the assistant looked up — Email/Phone carry
+// the PRIMARY (first) of each, and Notes carries the card's free-text note. The
+// read path is provenance-untrusted: contact data is other people's text and is
+// fed back through wrapUntrusted like any tool result.
 type Contact struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -187,6 +192,12 @@ type MailSource interface {
 	// soonest first. It is a READ over the local /v1 calendar surface, used by the
 	// Home agenda. Sources that cannot read events may return an empty slice.
 	ListEvents(ctx context.Context, auth Auth, fromISO, toISO string) ([]CalendarEvent, error)
+	// FindContacts searches the address book for entries matching query (a name /
+	// email substring), returning up to limit normalized contacts. It is a READ
+	// over the local /v1 contacts surface — no mutation, no model call. An empty
+	// query lists recent contacts. Sources without a contacts backend return an
+	// empty slice.
+	FindContacts(ctx context.Context, auth Auth, query string, limit int) ([]Contact, error)
 
 	// --- Mutating actions (only reached AFTER explicit user confirmation via
 	// the assistant's proposal/execute round-trip; the model can PROPOSE these
@@ -452,6 +463,60 @@ func (s *LilmailSource) AddContact(ctx context.Context, auth Auth, c Contact) er
 		payload["note"] = c.Notes
 	}
 	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/contacts", payload, "add contact")
+}
+
+// lilContact mirrors the subset of lilmail models.Contact returned by
+// GET /v1/contacts/cards. The JSON tags MUST match lilmail's wire shape
+// (emails[]/phones[]/note) — a drift here silently blanks the field the
+// assistant reads. Guarded by TestContactCardWireSeam.
+type lilContact struct {
+	UID    string   `json:"uid"`
+	Name   string   `json:"name"`
+	Org    string   `json:"org,omitempty"`
+	Title  string   `json:"title,omitempty"`
+	Note   string   `json:"note,omitempty"`
+	Emails []string `json:"emails"`
+	Phones []string `json:"phones,omitempty"`
+}
+
+// toContact normalizes a lilmail card onto the assistant's Contact, taking the
+// PRIMARY (first) email/phone (lilmail treats index 0 as primary) and the note.
+func (c lilContact) toContact() Contact {
+	out := Contact{Name: c.Name, Notes: c.Note}
+	if len(c.Emails) > 0 {
+		out.Email = c.Emails[0]
+	}
+	if len(c.Phones) > 0 {
+		out.Phone = c.Phones[0]
+	}
+	return out
+}
+
+// FindContacts reads matching address-book cards from GET /v1/contacts/cards
+// (the FULL-card surface: {contacts:[{name,emails[],phones[],note,...}]}) — NOT
+// the lean /v1/contacts autocomplete form, which omits phone/note. It is a pure
+// on-box READ: no model call, no mutation. An account without a CardDAV backend
+// returns an empty list (lilmail degrades gracefully), which surfaces as "no
+// matching contacts" rather than an error.
+func (s *LilmailSource) FindContacts(ctx context.Context, auth Auth, query string, limit int) ([]Contact, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	q := url.Values{"limit": {fmt.Sprint(limit)}}
+	if strings.TrimSpace(query) != "" {
+		q.Set("q", query)
+	}
+	var out struct {
+		Contacts []lilContact `json:"contacts"`
+	}
+	if err := s.getJSON(ctx, auth, "/v1/contacts/cards?"+q.Encode(), &out); err != nil {
+		return nil, err
+	}
+	res := make([]Contact, 0, len(out.Contacts))
+	for _, c := range out.Contacts {
+		res = append(res, c.toContact())
+	}
+	return res, nil
 }
 
 // Triage maps archive/snooze/label onto lilmail's REAL /v1 surface:

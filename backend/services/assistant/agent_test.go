@@ -442,6 +442,141 @@ func TestAgentCalendarGuardBlocks(t *testing.T) {
 	}
 }
 
+// ---- contacts awareness (Wave 48) ------------------------------------------
+
+// find_contact is READ-ONLY: it runs freely (no proposal), returns the matching
+// contact's email/phone, and its result is fed back framed as UNTRUSTED content
+// (contact data is other people's text).
+func TestAgentFindContactReadOnlyWrapsUntrusted(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"find_contact","args":{"query":"Dana"}}`,
+		"Dana Whitfield's email is dana@acme.io.",
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "what's Dana's email?", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal != nil {
+		t.Fatalf("find_contact is read-only, must not propose: %+v", res.Proposal)
+	}
+	if len(res.Steps) != 1 || res.Steps[0].Tool != "find_contact" {
+		t.Fatalf("expected one find_contact step, got %+v", res.Steps)
+	}
+	var fed string
+	for _, msg := range m.lastReq.Messages {
+		if strings.Contains(msg.Content, "TOOL RESULT (find_contact)") {
+			fed = msg.Content
+		}
+	}
+	if fed == "" {
+		t.Fatalf("find_contact result not fed back: %+v", m.lastReq.Messages)
+	}
+	if !strings.Contains(fed, untrustedOpen) || !strings.Contains(fed, untrustedClose) {
+		t.Errorf("find_contact result not framed as untrusted: %q", fed)
+	}
+	if !strings.Contains(fed, "dana@acme.io") {
+		t.Errorf("looked-up contact email missing from result: %q", fed)
+	}
+	if !strings.Contains(res.Answer, "dana@acme.io") {
+		t.Errorf("final answer did not use the resolved email: %q", res.Answer)
+	}
+}
+
+// find_contact with no match returns a clean "(no matching contacts)" and still
+// runs read-only.
+func TestAgentFindContactNoMatch(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"find_contact","args":{"query":"nobody-here"}}`,
+		"I couldn't find that contact.",
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "what's Nobody's email?", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal != nil {
+		t.Fatal("find_contact must never propose")
+	}
+	var fed string
+	for _, msg := range m.lastReq.Messages {
+		if strings.Contains(msg.Content, "TOOL RESULT (find_contact)") {
+			fed = msg.Content
+		}
+	}
+	if !strings.Contains(fed, "no matching contacts") {
+		t.Errorf("expected an empty-contacts result, got %q", fed)
+	}
+}
+
+// The whole point of wave-48 compose enrichment: the user names a person (not an
+// address); the agent resolves the recipient via find_contact and PROPOSES the
+// send with the resolved address. The send stays ledger-gated (never auto-sent),
+// and because the address came from CONTACT DATA — not the user's typed message —
+// the proposal is flagged FromContent for extra scrutiny.
+func TestAgentComposeResolvesRecipientFromContactGatedAndFlagged(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"find_contact","args":{"query":"Marcus"}}`,
+		`{"tool":"send_email","args":{"to":"marcus@northwind.co","subject":"Pilot","body":"Let's expand."}}`,
+	}}
+	fx := NewFixtureSource()
+	a := New(m, localCfg(), fx, false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "email Marcus about expanding the pilot", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal == nil || res.Proposal.Tool != "send_email" {
+		t.Fatalf("expected a send_email proposal after resolving the contact, got %+v", res)
+	}
+	if to, _ := res.Proposal.Args["to"].(string); to != "marcus@northwind.co" {
+		t.Fatalf("proposal did not carry the resolved address: %q", to)
+	}
+	// GATE HELD: nothing sent before approval.
+	if n := len(fx.Sent()); n != 0 {
+		t.Fatalf("email sent BEFORE approval — gate breached (%d)", n)
+	}
+	// The recipient came from contact content (user only typed "Marcus"), so it is
+	// flagged FromContent for review — this is the injection-provenance signal.
+	if !res.Proposal.FromContent || res.Proposal.Warning == "" {
+		t.Fatalf("recipient resolved from contact data must be flagged FromContent: %+v", res.Proposal)
+	}
+	// The find_contact step ran as a read-only step before the proposal.
+	if len(res.Steps) != 1 || res.Steps[0].Tool != "find_contact" {
+		t.Fatalf("expected a find_contact step before the send proposal, got %+v", res.Steps)
+	}
+}
+
+// The egress guard still fires BEFORE any model/tool call on a contacts turn:
+// non-sovereign tier ⇒ ErrEgressBlocked, zero model calls, zero mutations. This
+// proves find_contact did not open a path around the sovereign Guard.
+func TestAgentContactsGuardBlocksBeforeAnyCall(t *testing.T) {
+	m := &fakeModel{}
+	fx := NewFixtureSource()
+	a := New(m, ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, fx, false)
+	_, err := a.AgentTurn(context.Background(), Auth{}, "what's Dana's email and send her a note", nil)
+	if err != ErrEgressBlocked {
+		t.Fatalf("expected ErrEgressBlocked, got %v", err)
+	}
+	if m.calls != 0 {
+		t.Fatalf("model called %d times despite blocked egress — LEAK", m.calls)
+	}
+	if len(fx.Sent())+len(fx.Contacts()) != 0 {
+		t.Fatal("a mutation happened despite blocked egress")
+	}
+}
+
+// find_contact adds NO mutating surface: it is registered read-only, so a turn
+// ending in find_contact can never yield a proposal. add_contact remains the only
+// contacts write and stays [confirm]/ledger-gated.
+func TestFindContactIsReadOnlyAddContactStaysGated(t *testing.T) {
+	if def := lookupTool("find_contact"); def == nil || def.Mutating {
+		t.Fatalf("find_contact must be a registered READ-ONLY tool: %+v", def)
+	}
+	if def := lookupTool("add_contact"); def == nil || !def.Mutating {
+		t.Fatalf("add_contact must stay MUTATING/ledger-gated: %+v", def)
+	}
+}
+
 // ---- streaming turn (Wave 17) ----------------------------------------------
 
 // collectStream runs an AgentTurnStream and captures the emitted events.

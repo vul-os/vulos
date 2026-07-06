@@ -18,7 +18,8 @@ type FixtureSource struct {
 	drafts   []Draft
 	sent     []Draft
 	events   []CalendarEvent
-	contacts []Contact
+	book     []Contact // read-only seed address book (FindContacts source)
+	contacts []Contact // contacts ADDED this session via add_contact
 	triaged  []TriageAction
 	rsvps    []InviteRSVP
 }
@@ -112,7 +113,15 @@ func NewFixtureSource() *FixtureSource {
 			MessageID: "<dinner-106@family.example>",
 		},
 	}
-	return &FixtureSource{msgs: msgs}
+	// A small seed address book so find_contact is demoable offline. These mirror
+	// senders in the seeded inbox so "what's Dana's email" resolves.
+	book := []Contact{
+		{Name: "Dana Whitfield", Email: "dana@acme.io", Phone: "+1-555-0142", Notes: "Acme account owner; renewal contact"},
+		{Name: "Priya Nair", Email: "priya@calendly.app", Phone: "+1-555-0177", Notes: "Weekly 1:1"},
+		{Name: "Marcus Lee", Email: "marcus@northwind.co", Notes: "Northwind pilot lead"},
+		{Name: "Mom", Email: "mom@family.example"},
+	}
+	return &FixtureSource{msgs: msgs, book: book}
 }
 
 func (f *FixtureSource) Name() string { return "fixture" }
@@ -236,6 +245,30 @@ func (f *FixtureSource) AddContact(_ context.Context, _ Auth, c Contact) error {
 	defer f.mu.Unlock()
 	f.contacts = append(f.contacts, c)
 	return nil
+}
+
+// FindContacts searches the seed address book (plus anything added this session)
+// by a case-insensitive substring over name/email/phone/notes. An empty query
+// lists everything (up to limit). Pure read — no mutation.
+func (f *FixtureSource) FindContacts(_ context.Context, _ Auth, query string, limit int) ([]Contact, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	f.mu.Lock()
+	all := append(append([]Contact(nil), f.book...), f.contacts...)
+	f.mu.Unlock()
+	var out []Contact
+	for _, c := range all {
+		hay := strings.ToLower(c.Name + " " + c.Email + " " + c.Phone + " " + c.Notes)
+		if q == "" || strings.Contains(hay, q) {
+			out = append(out, c)
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func (f *FixtureSource) Triage(_ context.Context, _ Auth, a TriageAction) error {
