@@ -67,6 +67,11 @@ function relDay(iso) {
   if (d.toDateString() === t.toDateString()) return 'Tomorrow'
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
+// A reminder's fire time as "Today · 15:00" / "Mon Jul 7 · 15:00".
+function reminderWhen(iso) {
+  const d = new Date(iso); if (isNaN(d)) return ''
+  return `${relDay(iso)} · ${fmtTime(d)}`
+}
 
 // ── proposal card (mirrors the assistant's confirmation-gate surface) ─────────
 const PROPOSAL_VERB = {
@@ -274,9 +279,33 @@ export default function Home() {
     setSnoozing(null)
   }, [])
 
+  // ── reminders: DIRECT done/cancel of a reminder the user can see (wave-62).
+  // Like snooze, this is a deterministic, session-authed action on the user's
+  // OWN reminder — NOT an LLM proposal — so it hits the dedicated endpoint
+  // (server scopes the cancel by user id). Setting a reminder still goes through
+  // the ledger-gated agent flow (the composer), never auto-created. ───────────
+  const [remindersDismissed, setRemindersDismissed] = useState(() => new Set())
+  const [remindersBusy, setRemindersBusy] = useState(null) // id being cancelled
+  const cancelReminder = useCallback(async (rem) => {
+    setRemindersBusy(rem.id)
+    try {
+      const res = await fetch('/api/assistant/reminders/cancel', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rem.id }),
+      })
+      if (res.ok) setRemindersDismissed(s => new Set(s).add(rem.id))
+      else notify({ title: 'Could not cancel reminder', body: 'It is still set.', level: 'warning', source: 'assistant' })
+    } catch {
+      notify({ title: 'Could not cancel reminder', body: 'The assistant is unreachable — nothing was changed.', level: 'warning', source: 'assistant' })
+    }
+    setRemindersBusy(null)
+  }, [])
+
   const focus = (data?.focus || []).filter(f => !dismissed.has(f.uid))
   const agenda = data?.agenda || []
   const invites = data?.invites || []
+  const reminders = (data?.reminders || []).filter(r => !remindersDismissed.has(r.id))
   const activity = data?.activity || []
   const tier = data?.sovereignty?.tier || 'local'
   const tierLabel = data?.sovereignty?.label || ''
@@ -510,6 +539,45 @@ export default function Home() {
                     </li>
                   )
                 })}
+              </ul>
+            )}
+          </Section>
+        )}
+
+        {/* Reminders awaiting — the user's OWN pending reminders (wave-62). A
+            reminder fires as a notification at its time; done/cancel here is a
+            direct, session-authed action on a reminder the user can see (not an
+            LLM proposal). SETTING a reminder happens through the composer above
+            ("remind me to …"), which arrives as a ledger-gated proposal. The
+            reminder text is user-authored and rendered ESCAPED by React ({}) —
+            never as HTML. */}
+        {(reminders.length > 0 || data?.reminders_error) && (
+          <Section label="Reminders"
+            right={reminders.length > 0 && (
+              <span className="text-[11px] font-mono text-neutral-500">
+                {reminders.length} · next {reminderWhen(reminders[0]?.remind_at)}
+              </span>
+            )}>
+            {data?.reminders_error ? (
+              <p className="text-[13px] text-neutral-500">Couldn't load your reminders right now.</p>
+            ) : (
+              <ul className="space-y-2">
+                {reminders.map((rem) => (
+                  <li key={rem.id} className="rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3.5 py-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[13px] text-neutral-100 truncate">{rem.text}</div>
+                        <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">{reminderWhen(rem.remind_at)}</div>
+                      </div>
+                      <button
+                        onClick={() => cancelReminder(rem)}
+                        disabled={remindersBusy === rem.id}
+                        className="flex-shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">
+                        {remindersBusy === rem.id ? 'Cancelling…' : 'Done'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
               </ul>
             )}
           </Section>

@@ -102,6 +102,10 @@ type toolDef struct {
 // Wave 55 adds two READ-ONLY files tools (find_file, read_file) over the OS Files
 // service — NO new WRITE surface; the assistant reads only files the user's ACL
 // allows, and read_file is size-bounded and framed untrusted like every result.
+// Wave 62 adds the sovereign REMINDERS capability: one READ-ONLY tool
+// (list_reminders) and two LEDGER-GATED mutations (set_reminder, cancel_reminder)
+// — the assistant PROPOSES a set/cancel and nothing is created/cancelled until
+// the user approves (id-only /execute), exactly like send_email.
 var toolCatalog = []toolDef{
 	{"search_mail", false, "Search the mailbox for messages relevant to a query (semantic + keyword). Returns matching messages with their ids.", `{"query":"..."}`},
 	{"read_thread", false, "Read the full body of a message/thread by its id (from a search result).", `{"id":"..."}`},
@@ -110,6 +114,7 @@ var toolCatalog = []toolDef{
 	{"find_contact", false, "Look up contacts in the address book by name or email (READ-ONLY). Use it to resolve a person's email/phone (e.g. \"what is Jane's email\") or to find the address to compose to. Returns matching contacts (name, email, phone, notes).", `{"query":"name or email"}`},
 	{"find_file", false, "Search the user's own files/documents by name or keyword (READ-ONLY). Use it for \"find my file about X\", to locate a doc before reading it. Returns matching files with their id, name, path, type, size, and modified date.", `{"query":"name or keyword"}`},
 	{"read_file", false, "Read a text file's content by its id from find_file (READ-ONLY). Use it for \"what's in my notes doc\" / \"summarize the Q3 plan\". Only text files can be read; content is truncated for large files.", `{"id":"file id from find_file"}`},
+	{"list_reminders", false, "List the user's own reminders (READ-ONLY). Use it for \"what are my reminders\". Returns each reminder's id, time, and text.", `{}`},
 	{"draft_reply", false, "Draft a reply to a message. Produces reply text only — does NOT send.", `{"thread_id":"...","intent":"what the reply should say"}`},
 	{"compose", false, "Draft a brand-new email. Produces subject+body text only — does NOT send.", `{"to":"...","subject":"...","intent":"what the email should say"}`},
 	{"send_email", true, "Send an email. (confirm) Proposes the send; the user must approve before anything is sent.", `{"to":"...","subject":"...","body":"...","in_reply_to":"optional message id"}`},
@@ -117,6 +122,8 @@ var toolCatalog = []toolDef{
 	{"rsvp_invite", true, "RSVP to a calendar invite awaiting your response. (confirm) Use the message_id from pending_invites. Proposes the reply; nothing is sent until the user approves.", `{"message_id":"...","response":"accept|decline|tentative"}`},
 	{"add_contact", true, "Add a contact to the address book. (confirm)", `{"name":"...","email":"...","phone":"..."}`},
 	{"triage", true, "Archive, snooze, or label a message. (confirm)", `{"message_id":"...","action":"archive|snooze|label","until":"ISO-8601 for snooze","label":"name for label"}`},
+	{"set_reminder", true, "Set a reminder to fire at a future time. (confirm) Use it for \"remind me to X at T\". Resolve the time to a concrete ISO-8601 datetime yourself (the box's local time) before proposing; the user must approve before it is created.", `{"text":"what to be reminded of","remind_at":"ISO-8601 datetime"}`},
+	{"cancel_reminder", true, "Cancel a reminder by its id (from list_reminders). (confirm) Proposes the cancellation; nothing is cancelled until the user approves.", `{"id":"reminder id from list_reminders"}`},
 }
 
 func lookupTool(name string) *toolDef {
@@ -193,6 +200,7 @@ func toolSystemPrompt() string {
 	b.WriteString("- Never invent message ids, email addresses, dates, or amounts — take them from tool results or the user.\n")
 	b.WriteString("- When the user names a person but not an email address (e.g. \"email Jane about X\"), resolve the address with find_contact FIRST; use the address it returns — never guess one.\n")
 	b.WriteString("- Prefer draft_reply/compose to write text; only call send_email once the user clearly wants it sent.\n")
+	b.WriteString("- For \"remind me to X at/on <time>\": resolve the time to a concrete future ISO-8601 datetime yourself (you run on the user's box, so interpret times in their local zone) and call set_reminder with {text, remind_at}. Never set a reminder for a past time.\n")
 	return b.String()
 }
 
@@ -506,6 +514,20 @@ func (a *Assistant) execReadTool(ctx context.Context, auth Auth, call ToolCall) 
 		}
 		return formatFileContent(fc), nil
 
+	case "list_reminders":
+		// READ-ONLY reminders list (wave 62). Store-scoped to auth.UserID, so a
+		// user only ever sees their OWN reminders. Reminder text is the user's own
+		// words but is still framed by wrapUntrusted (by the caller) like every
+		// tool result. Pending only — cancelled/fired reminders are not listed.
+		if a.reminders == nil {
+			return "", fmt.Errorf("reminders are not available")
+		}
+		rs, err := a.ListReminders(ctx, auth, false, maxListReminders)
+		if err != nil {
+			return "", err
+		}
+		return formatReminders(rs), nil
+
 	case "draft_reply":
 		id := argStr(call.Args, "thread_id")
 		if id == "" {
@@ -693,6 +715,19 @@ func buildProposal(call ToolCall, userMsg string) Proposal {
 		}
 	case "add_contact":
 		p.Summary = fmt.Sprintf("Add contact %s <%s>", strEmpty(argStr(call.Args, "name"), "?"), argStr(call.Args, "email"))
+	case "set_reminder":
+		text := argStr(call.Args, "text")
+		p.Summary = fmt.Sprintf("Set a reminder for %s: %q",
+			strEmpty(argStr(call.Args, "remind_at"), "(no time)"), strEmpty(text, "(no text)"))
+		// Provenance: if the reminder TEXT was not in the user's own message, it was
+		// pulled from content the model read (an email) — flag it for review, exactly
+		// like a send_email recipient that came from message content.
+		if targetFromContent(userMsg, text) {
+			p.FromContent = true
+			p.Warning = "This reminder's text came from message content, not from your request — review it before setting."
+		}
+	case "cancel_reminder":
+		p.Summary = fmt.Sprintf("Cancel reminder %s", strEmpty(argStr(call.Args, "id"), "(unknown)"))
 	case "triage":
 		id := argStr(call.Args, "message_id")
 		p.Summary = fmt.Sprintf("%s message %s", strEmpty(argStr(call.Args, "action"), "triage"), id)
@@ -793,6 +828,42 @@ func (a *Assistant) ExecuteProposal(ctx context.Context, auth Auth, p Proposal) 
 			return "", err
 		}
 		return "Contact added: " + strEmpty(c.Name, c.Email) + ".", nil
+
+	case "set_reminder":
+		// LOCAL on-box write (no model call, no egress). The store validates +
+		// bounds remind_at (future + sane horizon) and enforces the per-user cap;
+		// a past/absurd time or oversized text is rejected here, fail-closed.
+		if a.reminders == nil {
+			return "", fmt.Errorf("reminders are not available")
+		}
+		text := argStr(p.Args, "text")
+		if strings.TrimSpace(text) == "" {
+			return "", fmt.Errorf("reminder text is required")
+		}
+		when, err := parseRemindAt(argStr(p.Args, "remind_at"))
+		if err != nil {
+			return "", err
+		}
+		r, err := a.reminders.SetReminder(strings.TrimSpace(auth.UserID), text, when)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Reminder set for %s: %s.", r.RemindAt.Local().Format("Mon 2 Jan 15:04"), r.Text), nil
+
+	case "cancel_reminder":
+		if a.reminders == nil {
+			return "", fmt.Errorf("reminders are not available")
+		}
+		id := argStr(p.Args, "id")
+		if strings.TrimSpace(id) == "" {
+			return "", fmt.Errorf("reminder id is required")
+		}
+		// Store-scoped to this user: a foreign id affects zero rows → not found.
+		r, err := a.reminders.CancelReminder(strings.TrimSpace(auth.UserID), id)
+		if err != nil {
+			return "", err
+		}
+		return "Reminder cancelled: " + r.Text + ".", nil
 
 	case "triage":
 		act := TriageAction{

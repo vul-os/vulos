@@ -65,15 +65,22 @@ type HomeData struct {
 	// RSVP (wave-40). InvitesError fails this section independently like the rest.
 	Invites      []PendingInvite    `json:"invites"`
 	InvitesError string             `json:"invites_error,omitempty"`
-	Activity     []HomeActivityItem `json:"activity"`
+	// Reminders are the user's OWN pending reminders (wave-62), soonest first.
+	// RemindersError fails this section independently like the rest. A fired
+	// reminder is delivered as a notification (not shown here — this is the
+	// awaiting list); done/cancel are surfaced as actions on each item.
+	Reminders      []Reminder         `json:"reminders"`
+	RemindersError string             `json:"reminders_error,omitempty"`
+	Activity       []HomeActivityItem `json:"activity"`
 	MailError    string             `json:"mail_error,omitempty"`
 	MailSource   string             `json:"mail_source"`
 	Sovereignty  Sovereignty        `json:"sovereignty"`
 }
 
 const (
-	homeFocusMax    = 5
-	homeActivityMax = 8
+	homeFocusMax     = 5
+	homeActivityMax  = 8
+	homeRemindersMax = 10
 )
 
 // Home builds the Home payload. It never returns an error: each section fails
@@ -88,6 +95,7 @@ func (a *Assistant) Home(ctx context.Context, auth Auth) HomeData {
 		Focus:       []HomeFocusItem{},
 		Agenda:      []CalendarEvent{},
 		Invites:     []PendingInvite{},
+		Reminders:   []Reminder{},
 		Activity:    []HomeActivityItem{},
 	}
 
@@ -139,6 +147,17 @@ func (a *Assistant) Home(ctx context.Context, auth Auth) HomeData {
 		hd.InvitesError = ierr.Error()
 	} else {
 		hd.Invites = invites
+	}
+
+	// --- Reminders awaiting: the user's OWN pending reminders (wave-62) ---------
+	// Pure on-box, user-scoped store read (no model call, no egress). Fails
+	// independently into RemindersError so the rest of Home still renders.
+	if a.reminders != nil {
+		if rs, rerr := a.ListReminders(ctx, auth, false, homeRemindersMax); rerr != nil {
+			hd.RemindersError = rerr.Error()
+		} else {
+			hd.Reminders = rs
+		}
 	}
 
 	// --- Brief: the model's human "what needs you today" (guarded) -------------

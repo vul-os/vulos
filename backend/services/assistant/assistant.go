@@ -37,8 +37,9 @@ type Assistant struct {
 	cfg           ai.Config
 	mail          MailSource
 	allowExternal bool
-	index         *MailIndex  // optional on-instance semantic index; nil ⇒ lexical retrieval
-	files         FilesSource // optional READ-ONLY Drive seam (wave 55); nil ⇒ file tools unavailable
+	index         *MailIndex      // optional on-instance semantic index; nil ⇒ lexical retrieval
+	files         FilesSource     // optional READ-ONLY Drive seam (wave 55); nil ⇒ file tools unavailable
+	reminders     RemindersSource // optional durable reminders seam (wave 62); nil ⇒ reminder tools unavailable
 }
 
 // New builds an assistant. model is the ai seam, cfg the model config

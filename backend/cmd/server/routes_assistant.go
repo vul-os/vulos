@@ -42,6 +42,7 @@ import (
 	"vulos/backend/services/ai"
 	"vulos/backend/services/assistant"
 	"vulos/backend/services/files"
+	"vulos/backend/services/notify"
 )
 
 // assistantDeps bundles what the assistant routes need. The mail source and
@@ -55,12 +56,13 @@ type assistantDeps struct {
 	index         *assistant.MailIndex      // optional on-instance semantic index; nil ⇒ lexical
 	ledger        *assistant.ProposalLedger // server-side store of mutating proposals awaiting approval
 	files         assistant.FilesSource     // optional READ-ONLY Drive seam (wave 55); nil ⇒ file tools off
+	reminders     assistant.RemindersSource // optional durable reminders seam (wave 62); nil ⇒ reminder tools off
 }
 
 // registerAssistantRoutes wires the assistant endpoints into mux. svc/cfg are
 // the same ai.Service + ai.DefaultConfig() used elsewhere in main. index is the
 // optional on-instance semantic mail index (nil ⇒ lexical retrieval).
-func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config, index *assistant.MailIndex, filesSvc *files.Service) {
+func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config, index *assistant.MailIndex, filesSvc *files.Service, reminders *assistant.RemindersStore) {
 	deps := assistantDeps{
 		model:         svc,
 		cfg:           cfg,
@@ -68,6 +70,12 @@ func registerAssistantRoutes(mux *http.ServeMux, svc *ai.Service, cfg ai.Config,
 		brokerHeaders: assistantBrokerHeaders(),
 		index:         index,
 		ledger:        assistant.NewProposalLedger(),
+	}
+	// Durable REMINDERS seam (wave 62): the per-user SQLite store backs
+	// list_reminders / set_reminder / cancel_reminder. nil ⇒ the reminder tools
+	// degrade to "reminders unavailable" (they return an unavailable result).
+	if reminders != nil {
+		deps.reminders = reminders
 	}
 	// READ-ONLY files awareness (wave 55): wrap the OS Files service in the
 	// in-process adapter so find_file/read_file can search+read the user's OWN
@@ -102,7 +110,8 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 		cfg := deps.cfg
 		allowExternal := deps.allowExternal
 		mu.RUnlock()
-		return assistant.New(deps.model, cfg, deps.source, allowExternal).WithIndex(deps.index).WithFiles(deps.files)
+		return assistant.New(deps.model, cfg, deps.source, allowExternal).
+			WithIndex(deps.index).WithFiles(deps.files).WithReminders(deps.reminders)
 	}
 	authOf := func(r *http.Request) assistant.Auth {
 		return assistant.Auth{
@@ -488,6 +497,58 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 		writeJSON(w, map[string]any{"executed": true, "result": result, "at": time.Now().UTC()})
 	})
 
+	// GET /api/assistant/reminders — the user's OWN pending reminders for the
+	// shell surface (soonest first). Pure on-box, user-scoped store read: the
+	// store filters by X-User-ID, so a user only ever sees their own reminders.
+	// ?all=1 includes already-fired/cancelled ones.
+	mux.HandleFunc("GET /api/assistant/reminders", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		includeDone := r.URL.Query().Get("all") == "1"
+		rs, err := newAssistant().ListReminders(r.Context(), authOf(r), includeDone, 100)
+		if err != nil {
+			assistantErr(w, err)
+			return
+		}
+		if rs == nil {
+			rs = []assistant.Reminder{}
+		}
+		writeJSON(w, map[string]any{"reminders": rs})
+	})
+
+	// POST /api/assistant/reminders/cancel — DIRECT, user-initiated cancel/done of
+	// a reminder the user can SEE in the surface (the done/cancel affordance). Like
+	// /api/assistant/triage this is NOT an LLM proposal, so it does not go through
+	// the proposal ledger: it is a deterministic, session-authed action on the
+	// user's OWN reminder. The store scopes the cancel by X-User-ID, so a user
+	// cannot cancel another's reminder even by guessing an id. Body: {id}.
+	mux.HandleFunc("POST /api/assistant/reminders/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if !assistantAuthed(w, r) {
+			return
+		}
+		var body struct {
+			ID string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if deps.reminders == nil {
+			writeErr(w, 404, "reminders are not available")
+			return
+		}
+		id := strings.TrimSpace(body.ID)
+		if id == "" {
+			writeErr(w, 400, "id required")
+			return
+		}
+		rem, err := deps.reminders.CancelReminder(r.Header.Get("X-User-ID"), id)
+		if err != nil {
+			// Fail closed: unknown / not-this-user's / already-done → 404 (no oracle).
+			writeErr(w, 404, "reminder not found")
+			return
+		}
+		writeJSON(w, map[string]any{"cancelled": true, "reminder": rem, "at": time.Now().UTC()})
+	})
+
 	// POST /api/assistant/chat — SSE stream of the grounded answer.
 	mux.HandleFunc("POST /api/assistant/chat", func(w http.ResponseWriter, r *http.Request) {
 		if !assistantAuthed(w, r) {
@@ -616,6 +677,32 @@ func toAssistantFileNode(n *files.Node) assistant.FileNode {
 		ContentType: n.ContentType,
 		UpdatedAt:   n.UpdatedAt,
 	}
+}
+
+// reminderNotifier adapts *notify.Service to assistant.Notifier — the minimal
+// seam the reminder scheduler uses to raise an OS notification when a reminder
+// fires. It carries NO authority of its own: it just formats the fired
+// reminder's (bounded, user-authored) text into a notification. The reminder
+// text is placed in the notification Body as plain text (the notify layer and
+// the shell's NotificationCenter render it escaped, never as HTML), and the
+// target user id is carried in Subtype so a per-user client can route it.
+type reminderNotifier struct {
+	svc *notify.Service
+}
+
+func (n reminderNotifier) NotifyReminder(userID, reminderID, text string) {
+	if n.svc == nil {
+		return
+	}
+	n.svc.SendNotification(notify.Notification{
+		Title:    "Reminder",
+		Body:     text,
+		Level:    notify.LevelInfo,
+		Source:   "assistant",
+		Type:     notify.TypeAlert,
+		Subtype:  "reminder:" + userID,
+		Priority: notify.PriorityHigh,
+	})
 }
 
 // assistantBrokerHeaders builds the X-Vulos-Mail-* header set for LilMail's

@@ -115,6 +115,48 @@ describe('Home (integration)', () => {
     expect(executeBody).not.toHaveProperty('args')
   })
 
+  it('WAVE-62: renders the user\'s reminders and cancels one via the direct endpoint', async () => {
+    let cancelBody = 'NOT_CALLED'
+    server.use(
+      homeHandler({
+        ...HOME_PAYLOAD,
+        reminders: [
+          { id: 'rem_1', text: 'call the dentist', remind_at: '2999-01-01T15:00:00Z', done: false },
+        ],
+      }),
+      http.post('/api/assistant/reminders/cancel', async ({ request }) => {
+        cancelBody = await request.json()
+        return HttpResponse.json({ cancelled: true })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<Home />)
+    // The reminder surfaces in its own section.
+    expect(await screen.findByText('Reminders')).toBeInTheDocument()
+    expect(await screen.findByText('call the dentist')).toBeInTheDocument()
+    // Done/cancel hits the DIRECT, session-scoped endpoint with just the id.
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(cancelBody).not.toBe('NOT_CALLED'))
+    expect(cancelBody).toEqual({ id: 'rem_1' })
+    // After cancel it disappears from the surface.
+    await waitFor(() => expect(screen.queryByText('call the dentist')).not.toBeInTheDocument())
+  })
+
+  it('WAVE-62: reminder text is rendered ESCAPED, never as HTML (no injection)', async () => {
+    server.use(homeHandler({
+      ...HOME_PAYLOAD,
+      reminders: [
+        { id: 'rem_x', text: '<img src=x onerror=alert(1)>hack', remind_at: '2999-01-01T15:00:00Z', done: false },
+      ],
+    }))
+    render(<Home />)
+    // The literal text appears verbatim (React escapes it) and no <img> element
+    // was injected into the DOM from the reminder text.
+    const node = await screen.findByText('<img src=x onerror=alert(1)>hack')
+    expect(node).toBeInTheDocument()
+    expect(node.querySelector('img')).toBeNull()
+  })
+
   it('the streamed assistant answer is a polite live region, but the user turn is not', async () => {
     server.use(
       homeHandler(),

@@ -954,7 +954,23 @@ func main() {
 	} else {
 		log.Printf("[assistant] no local ONNX model in %s — using sovereign lexical retrieval (no external embedding API)", modelsDir)
 	}
-	registerAssistantRoutes(mux, aiSvc, aiCfg, mailIndex, filesSvc)
+	// Durable REMINDERS store + poll-based scheduler (wave 62). The store is a
+	// per-user SQLite file under the db dir; the scheduler sweeps for due
+	// reminders and fires a notification (through notifySvc) for each, exactly
+	// once, restart-safe (a reminder set before a restart is caught up on the
+	// first sweep after boot). Best-effort: if the store fails to open, the
+	// reminder tools degrade to "unavailable" rather than blocking startup.
+	var remindersStore *assistant.RemindersStore
+	if rs, rerr := assistant.OpenRemindersStore(filepath.Join(dbDir, "reminders.db")); rerr != nil {
+		log.Printf("[assistant] reminders store init failed: %v — reminders disabled", rerr)
+	} else {
+		remindersStore = rs
+		defer remindersStore.Close()
+		scheduler := assistant.NewReminderScheduler(remindersStore, reminderNotifier{svc: notifySvc})
+		go scheduler.Run(ctx)
+		log.Printf("[assistant] reminders enabled (store=%s, poll scheduler running)", filepath.Join(dbDir, "reminders.db"))
+	}
+	registerAssistantRoutes(mux, aiSvc, aiCfg, mailIndex, filesSvc, remindersStore)
 
 	// Missions
 	mux.HandleFunc("GET /api/missions", func(w http.ResponseWriter, r *http.Request) {
