@@ -489,7 +489,7 @@ func TestLilmailRecentMapsInvite(t *testing.T) {
 			{"id":"201","from":"org@x.com","subject":"Invite","flags":[],
 			 "invite":{"method":"REQUEST","summary":"Design review","start":"2026-07-10T15:00:00Z",
 			           "end":"2026-07-10T16:00:00Z","location":"Meet","organizer":"org@x.com",
-			           "uid":"evt-201","rsvp":"needs-action"}}
+			           "uid":"evt-201","myPartStat":"NEEDS-ACTION"}}
 		]}`
 	})
 	msgs, err := f.source().Recent(bg(), Auth{}, "INBOX", 5)
@@ -505,6 +505,35 @@ func TestLilmailRecentMapsInvite(t *testing.T) {
 	}
 	if !iv.AwaitsRSVP() {
 		t.Error("REQUEST/needs-action invite should await RSVP")
+	}
+}
+
+// Over-reporting regression (wave-41 seam fix): an ALREADY-ACCEPTED invite carried
+// over the REAL lilmail wire (myPartStat) must NOT be reported as pending. This
+// pins the fix at the HTTP mapping layer — a JSON-tag drift back to "rsvp" would
+// leave myPartStat unmapped (empty ⇒ pending) and re-surface every answered invite
+// as awaiting RSVP.
+func TestLilmailRecentInviteAlreadyAnsweredNotPending(t *testing.T) {
+	f := newFakeLilmail(t)
+	f.on("GET /v1/messages", func(r recordedReq) (int, string) {
+		return 200, `{"messages":[
+			{"id":"202","from":"org@x.com","subject":"Accepted","flags":[],
+			 "invite":{"method":"REQUEST","summary":"Weekly sync","organizer":"org@x.com",
+			           "uid":"evt-202","myPartStat":"ACCEPTED"}}
+		]}`
+	})
+	msgs, err := f.source().Recent(bg(), Auth{}, "INBOX", 5)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Invite == nil {
+		t.Fatalf("invite not mapped: %+v", msgs)
+	}
+	if msgs[0].Invite.RSVP != "ACCEPTED" {
+		t.Fatalf("myPartStat did not map to RSVP (tag drift?): %q", msgs[0].Invite.RSVP)
+	}
+	if msgs[0].Invite.AwaitsRSVP() {
+		t.Error("already-accepted invite reported as pending — over-reporting bug re-surfaced")
 	}
 }
 
