@@ -832,7 +832,7 @@ func main() {
 	// exposes them — calendar (.ics) / contacts (.vcf), in standard portable
 	// formats. The anti-lock-in / data-permanence half of the legible-trust
 	// surface. Session-authed; reuses the mail broker headers from the assistant.
-	registerExportRoutes(mux, filesSvc, mailBaseURLFromEnv(), assistantBrokerHeaders())
+	registerExportRoutes(mux, filesSvc, mailBaseURLFromEnv(), assistantBrokerHeaders(), safeProfileExport(authStore))
 
 	// Apps & Bots platform + MCP: give the OS an agent-operable surface over OS
 	// capabilities (Files, read-only app/system info) via the shared @vulos/apps

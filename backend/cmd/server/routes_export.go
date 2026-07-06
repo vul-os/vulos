@@ -20,6 +20,9 @@ package main
 //                 uses; only the caller's own nodes are walked.
 //   calendar.ics— iCalendar export IF the mail service exposes /v1/calendar/events.
 //   contacts.vcf— vCard export IF the mail service exposes /v1/contacts.
+//   settings.json— the caller's own OS profile/preferences, secrets SCRUBBED.
+//                 Only a fixed allowlist of non-sensitive fields is serialized;
+//                 API keys, PIN hashes and password hashes are NEVER included.
 //
 // NOT covered (and the manifest says so, rather than faking completeness):
 //   - Talk/Meet history, Board/Docs documents, app data, and anything held only
@@ -42,6 +45,7 @@ import (
 	"time"
 
 	"vulos/backend/services/assistant"
+	"vulos/backend/services/auth"
 	"vulos/backend/services/files"
 )
 
@@ -63,10 +67,19 @@ const exportMaxFileBytes = 256 << 20 // 256 MiB
 // guard against a pathological tree.
 const exportMaxFiles = 20000
 
+// settingsProvider returns the caller's own OS preferences as an already-safe,
+// secret-scrubbed map ready to serialize. It is the ONLY settings source the
+// export trusts: the implementation (see safeProfileExport in main.go) copies a
+// fixed allowlist of non-sensitive fields, so no API key / PIN hash / password
+// hash can reach the archive even if the profile struct grows new secret fields.
+// A nil provider (or a false second return) simply omits settings.json.
+type settingsProvider func(userID string) (map[string]any, bool)
+
 // registerExportRoutes wires GET /api/export/data. filesSvc may be nil (Files
 // service failed to init); in that case the files/ section is omitted and the
 // manifest records why. mailBaseURL is the LilMail base (VULOS_MAIL_URL).
-func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseURL string, brokerHeaders map[string]string) {
+// settings may be nil; when present it supplies the secret-scrubbed profile.
+func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseURL string, brokerHeaders map[string]string, settings settingsProvider) {
 	mux.HandleFunc("GET /api/export/data", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
@@ -168,6 +181,18 @@ func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseU
 			} else {
 				add("contacts: SKIPPED — mail service exposes no readable /v1/contacts")
 			}
+		}
+
+		// --- settings (the caller's own, secret-scrubbed) ----------------------
+		if settings == nil {
+			add("settings: SKIPPED — profile store unavailable on this instance")
+		} else if prefs, ok := settings(userID); ok {
+			if err := writeZipJSON(zw, "settings.json", prefs); err != nil {
+				return
+			}
+			add("settings.json: your OS preferences (secrets scrubbed — no API keys, PINs or passwords)")
+		} else {
+			add("settings: SKIPPED — no profile found for this account")
 		}
 
 		// --- manifest (written last, so it reflects everything above) ----------
@@ -516,6 +541,78 @@ func icalTime(s string) string {
 		}
 	}
 	return ""
+}
+
+// --- settings export ---------------------------------------------------------
+
+// profileStore is the tiny slice of the auth store the export needs: look up a
+// user's own profile. *auth.Store satisfies it.
+type profileStore interface {
+	GetProfile(userID string) (*auth.Profile, bool)
+}
+
+// safeProfileExport builds a settingsProvider that serializes ONLY a fixed
+// allowlist of non-sensitive preference fields. This is an ALLOWLIST by design:
+// new fields on auth.Profile (which may be secrets) are invisible to the export
+// until someone deliberately adds them here, so an accidentally-added secret can
+// never silently leak into a user's download. It explicitly never touches
+// AIAPIKey, PinHash, or the User.PasswordHash, and it drops any Settings-map
+// entry whose key looks sensitive (token/key/secret/password/pin/hash).
+//
+// The provider is owner-scoped by construction: it is only ever called with the
+// session-derived userID from the export handler, so it can only ever return the
+// caller's own preferences.
+func safeProfileExport(store profileStore) settingsProvider {
+	if store == nil {
+		return nil
+	}
+	return func(userID string) (map[string]any, bool) {
+		p, ok := store.GetProfile(userID)
+		if !ok || p == nil {
+			return nil, false
+		}
+		out := map[string]any{
+			"user_id":      p.UserID,
+			"display_name": p.DisplayName,
+			"role":         string(p.Role),
+			"theme":        p.Theme,
+			"locale":       p.Locale,
+			"timezone":     p.Timezone,
+			"ai_provider":  p.AIProvider,
+			"ai_model":     p.AIModel,
+			"initiative":   p.Initiative,
+			"created_at":   p.CreatedAt.UTC().Format(time.RFC3339),
+			"updated_at":   p.UpdatedAt.UTC().Format(time.RFC3339),
+		}
+		// The free-form Settings map is user-controlled; copy it, but drop any
+		// key that looks like a credential so a stray secret stored there never
+		// rides along in the export.
+		if len(p.Settings) > 0 {
+			safe := map[string]string{}
+			for k, v := range p.Settings {
+				if looksSensitiveKey(k) {
+					continue
+				}
+				safe[k] = v
+			}
+			if len(safe) > 0 {
+				out["settings"] = safe
+			}
+		}
+		return out, true
+	}
+}
+
+// looksSensitiveKey reports whether a settings-map key name suggests it holds a
+// credential and must be kept out of the export.
+func looksSensitiveKey(k string) bool {
+	k = strings.ToLower(k)
+	for _, needle := range []string{"token", "secret", "password", "passwd", "apikey", "api_key", "pin", "hash", "private", "credential"} {
+		if strings.Contains(k, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // mailBaseURLFromEnv resolves the LilMail base the export reads, matching

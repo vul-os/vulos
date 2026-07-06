@@ -23,6 +23,7 @@ vi.mock('../../core/PublicAppsManager', () => ({ PamVisibilityControl: () => nul
 vi.mock('../../core/settings/AIRouterPanel.jsx', () => ({ default: () => <div>AI Router Panel</div> }))
 vi.mock('../../core/settings/StoragePanel.jsx', () => ({ default: () => null }))
 vi.mock('../../core/settings/PlanBillingPanel.jsx', () => ({ default: () => null }))
+vi.mock('../../core/settings/DataExportPanel.jsx', () => ({ default: () => null }))
 
 import Settings from '../../core/Settings.jsx'
 import { getPrefs, __resetForTests } from '../../core/notificationStore.js'

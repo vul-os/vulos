@@ -11,6 +11,7 @@ import { useViewport } from '../shell/useViewport'
 import AIRouterPanel from './settings/AIRouterPanel.jsx'
 import StoragePanel from './settings/StoragePanel.jsx'
 import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
+import DataExportPanel from './settings/DataExportPanel.jsx'
 
 const sections = [
   { id: 'ai', label: 'AI Assistant' },
@@ -34,6 +35,7 @@ const sections = [
   { id: 'pin', label: 'Device PIN' },
   { id: 'fingerprint', label: 'Fingerprint' },
   { id: 'account', label: 'Account' },
+  { id: 'dataexport', label: 'Export My Data' },
   { id: 'plan', label: 'Plan & Billing' },
   { id: 'osupdate', label: 'OS Update' },
   { id: 'about', label: 'About' },
@@ -180,6 +182,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'pin' && <DevicePINSettings />}
         {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
+        {active === 'dataexport' && <DataExportPanel />}
         {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'about' && <AboutSettings />}

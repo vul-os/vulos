@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"vulos/backend/services/assistant"
+	"vulos/backend/services/auth"
 )
 
 // readZip unzips a response body into a name→contents map.
@@ -46,7 +47,7 @@ func doExport(t *testing.T, mux *http.ServeMux, userID string) *httptest.Respons
 // TestExportRequiresSession: no X-User-ID ⇒ 401, no zip.
 func TestExportRequiresSession(t *testing.T) {
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil)
+	registerExportRoutes(mux, nil, "", nil, nil)
 	rr := doExport(t, mux, "")
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rr.Code)
@@ -58,7 +59,7 @@ func TestExportRequiresSession(t *testing.T) {
 // never a silent lie of completeness.
 func TestExportEmptyStillHonest(t *testing.T) {
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil)
+	registerExportRoutes(mux, nil, "", nil, nil)
 	rr := doExport(t, mux, "user-1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -94,7 +95,7 @@ func TestExportMail(t *testing.T) {
 	defer mail.Close()
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, mail.URL, nil)
+	registerExportRoutes(mux, nil, mail.URL, nil, nil)
 	rr := doExport(t, mux, "user-1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -158,6 +159,123 @@ func TestICalTime(t *testing.T) {
 	}
 	if got := icalTime("garbage"); got != "" {
 		t.Errorf("icalTime(garbage) = %q, want empty", got)
+	}
+}
+
+// fakeProfileStore is a stand-in *auth.Store for the settings-export tests. It
+// lets us hand safeProfileExport a profile that DELIBERATELY carries secrets
+// (API key, PIN hash, a token in the free-form Settings map) and then assert the
+// export scrubs every one of them.
+type fakeProfileStore struct{ profiles map[string]*auth.Profile }
+
+func (f *fakeProfileStore) GetProfile(userID string) (*auth.Profile, bool) {
+	p, ok := f.profiles[userID]
+	return p, ok
+}
+
+// TestExportSettingsScrubsSecrets: the settings.json section carries the user's
+// preferences but NEVER their API key, PIN hash, password hash, or any
+// credential-looking entry from the free-form settings map. This is the
+// no-secret-leak guarantee, tested against a profile that intentionally holds
+// every kind of secret.
+func TestExportSettingsScrubsSecrets(t *testing.T) {
+	store := &fakeProfileStore{profiles: map[string]*auth.Profile{
+		"user-1": {
+			UserID:      "user-1",
+			DisplayName: "Ada Lovelace",
+			Theme:       "dark",
+			Locale:      "en-ZA",
+			Timezone:    "Africa/Johannesburg",
+			AIProvider:  "claude",
+			AIModel:     "claude-sonnet-4",
+			AIAPIKey:    "sk-SUPER-SECRET-KEY",      // must NOT appear
+			PinHash:     "argon2id$SECRET-PIN-HASH", // must NOT appear
+			Initiative:  "balanced",
+			Settings: map[string]string{
+				"favorite_color":  "teal",           // safe → kept
+				"session_token":   "TOKEN-LEAK-123", // sensitive → dropped
+				"backup_password": "hunter2",        // sensitive → dropped
+			},
+		},
+	}}
+
+	mux := http.NewServeMux()
+	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store))
+	rr := doExport(t, mux, "user-1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	files := readZip(t, rr.Body.Bytes())
+
+	settings, ok := files["settings.json"]
+	if !ok {
+		t.Fatalf("settings.json missing; got %v", keys(files))
+	}
+	// Preferences the user WOULD want to take with them are present.
+	for _, want := range []string{"Ada Lovelace", "Africa/Johannesburg", "claude", "favorite_color", "teal"} {
+		if !strings.Contains(settings, want) {
+			t.Errorf("settings.json missing expected pref %q\n---\n%s", want, settings)
+		}
+	}
+	// SECRETS: none of these may appear anywhere in the ENTIRE archive.
+	whole := rr.Body.String()
+	for _, secret := range []string{
+		"sk-SUPER-SECRET-KEY", "SECRET-PIN-HASH", "TOKEN-LEAK-123", "hunter2",
+		"session_token", "backup_password", "ai_api_key", "pin_hash", "password_hash",
+	} {
+		if strings.Contains(whole, secret) {
+			t.Errorf("SECRET LEAK: %q found in the export archive", secret)
+		}
+	}
+}
+
+// TestExportSettingsOwnerScoped: the provider only ever returns the caller's own
+// profile — a different user's preferences can never appear in the export. The
+// handler always calls it with the session-derived X-User-ID.
+func TestExportSettingsOwnerScoped(t *testing.T) {
+	store := &fakeProfileStore{profiles: map[string]*auth.Profile{
+		"alice": {UserID: "alice", DisplayName: "Alice", Settings: map[string]string{"note": "alice-only"}},
+		"bob":   {UserID: "bob", DisplayName: "Bob"},
+	}}
+	mux := http.NewServeMux()
+	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store))
+
+	rr := doExport(t, mux, "bob")
+	files := readZip(t, rr.Body.Bytes())
+	settings := files["settings.json"]
+	if !strings.Contains(settings, "Bob") {
+		t.Errorf("bob's own settings missing:\n%s", settings)
+	}
+	if strings.Contains(rr.Body.String(), "Alice") || strings.Contains(rr.Body.String(), "alice-only") {
+		t.Fatalf("alice's settings leaked into bob's export:\n%s", settings)
+	}
+}
+
+// TestExportSettingsSkippedWhenNoProvider: a nil provider omits settings.json
+// but the export stays a valid, honest zip that records the skip.
+func TestExportSettingsSkippedWhenNoProvider(t *testing.T) {
+	mux := http.NewServeMux()
+	registerExportRoutes(mux, nil, "", nil, nil)
+	rr := doExport(t, mux, "user-1")
+	files := readZip(t, rr.Body.Bytes())
+	if _, ok := files["settings.json"]; ok {
+		t.Errorf("settings.json should be absent with a nil provider")
+	}
+	if man := files["MANIFEST.txt"]; !strings.Contains(man, "settings: SKIPPED") {
+		t.Errorf("manifest should honestly record the skipped settings section:\n%s", man)
+	}
+}
+
+func TestLooksSensitiveKey(t *testing.T) {
+	for _, k := range []string{"api_key", "APIKEY", "sessionToken", "user_password", "device_pin", "pw_hash", "private_key", "aws_secret"} {
+		if !looksSensitiveKey(k) {
+			t.Errorf("looksSensitiveKey(%q) = false, want true", k)
+		}
+	}
+	for _, k := range []string{"favorite_color", "theme", "locale", "layout"} {
+		if looksSensitiveKey(k) {
+			t.Errorf("looksSensitiveKey(%q) = true, want false", k)
+		}
 	}
 }
 
