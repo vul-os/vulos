@@ -150,10 +150,12 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 
 	// GET /api/assistant/home — the proactive Home surface aggregate: a curated
 	// "what needs you today" brief (the guarded Attention skill), today's agenda
-	// (/v1 calendar), a light recent-activity feed, and the sovereignty posture —
-	// all in one round-trip. Sections fail independently into their own *_error
-	// fields so Home always renders (e.g. brief shows "assistant offline", never a
-	// crash). The single model call is Attention(), which goes through Guard().
+	// (/v1 calendar, with a freshness flag), calendar invites awaiting the user's
+	// RSVP (wave-40, READ-ONLY), a light recent-activity feed, and the sovereignty
+	// posture — all in one round-trip. Sections fail independently into their own
+	// *_error fields so Home always renders (e.g. brief shows "assistant offline",
+	// never a crash). The single model call is Attention(), which goes through
+	// Guard(); the agenda + invites are pure on-box /v1 reads (no egress).
 	mux.HandleFunc("GET /api/assistant/home", func(w http.ResponseWriter, r *http.Request) {
 		if !assistantAuthed(w, r) {
 			return

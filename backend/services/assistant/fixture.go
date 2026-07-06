@@ -20,6 +20,7 @@ type FixtureSource struct {
 	events   []CalendarEvent
 	contacts []Contact
 	triaged  []TriageAction
+	rsvps    []InviteRSVP
 }
 
 // NewFixtureSource returns a fixture mailbox seeded with a small, realistic
@@ -43,6 +44,40 @@ func NewFixtureSource() *FixtureSource {
 			Body:    "Hey — something came up on Tuesday afternoon so I can't make our usual slot. Could we shift the weekly 1:1 to Wednesday at 2pm your time? If that doesn't work, Thursday morning is also open for me. Let me know what's easiest.\n\n— Priya",
 			Date:    base.Add(-5 * time.Hour), Unread: true, Folder: "INBOX",
 			MessageID: "<sched-102@calendly.app>",
+		},
+		{
+			UID: "107", From: "marcus@northwind.co", FromName: "Marcus Lee", To: "you@vulos.host",
+			Subject: "Invitation: Pilot expansion kickoff",
+			Preview: "You're invited to the pilot expansion kickoff. Please let me know if you can make it.",
+			Body:    "You are invited to a meeting to plan the wider rollout. Agenda and dial-in attached.",
+			Date:    base.Add(-3 * time.Hour), Unread: true, Folder: "INBOX",
+			MessageID: "<invite-107@northwind.co>",
+			Invite: &MessageInvite{
+				Method:    "REQUEST",
+				Summary:   "Pilot expansion kickoff",
+				Start:     base.AddDate(0, 0, 2).Format(time.RFC3339),
+				End:       base.AddDate(0, 0, 2).Add(time.Hour).Format(time.RFC3339),
+				Location:  "Vulos Meet",
+				Organizer: "marcus@northwind.co",
+				UID:       "evt-kickoff-107@northwind.co",
+				RSVP:      "needs-action",
+			},
+		},
+		{
+			UID: "108", From: "team@northwind.co", FromName: "Northwind Team", To: "you@vulos.host",
+			Subject: "Accepted: Weekly sync",
+			Preview: "You accepted the weekly sync.",
+			Body:    "This invite has already been accepted; no action needed.",
+			Date:    base.Add(-48 * time.Hour), Unread: false, Folder: "INBOX",
+			MessageID: "<invite-108@northwind.co>",
+			Invite: &MessageInvite{
+				Method:    "REQUEST",
+				Summary:   "Weekly sync",
+				Start:     base.AddDate(0, 0, 1).Format(time.RFC3339),
+				Organizer: "team@northwind.co",
+				UID:       "evt-weekly-108@northwind.co",
+				RSVP:      "accepted", // already answered → NOT pending
+			},
 		},
 		{
 			UID: "103", From: "billing@tigris.dev", FromName: "Tigris Billing", To: "you@vulos.host",
@@ -210,6 +245,13 @@ func (f *FixtureSource) Triage(_ context.Context, _ Auth, a TriageAction) error 
 	return nil
 }
 
+func (f *FixtureSource) RSVPInvite(_ context.Context, _ Auth, r InviteRSVP) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rsvps = append(f.rsvps, r)
+	return nil
+}
+
 // Sent/Events/Contacts/Triaged expose executed mutations for test/demo assertions.
 func (f *FixtureSource) Sent() []Draft {
 	f.mu.Lock()
@@ -230,6 +272,11 @@ func (f *FixtureSource) Triaged() []TriageAction {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]TriageAction(nil), f.triaged...)
+}
+func (f *FixtureSource) RSVPs() []InviteRSVP {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]InviteRSVP(nil), f.rsvps...)
 }
 
 type sentinelError string

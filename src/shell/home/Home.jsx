@@ -65,7 +65,7 @@ function relDay(iso) {
 // ── proposal card (mirrors the assistant's confirmation-gate surface) ─────────
 const PROPOSAL_VERB = {
   send_email: 'Send email', create_calendar_event: 'Create event',
-  add_contact: 'Add contact', triage: 'Change mailbox',
+  add_contact: 'Add contact', triage: 'Change mailbox', rsvp_invite: 'RSVP to invite',
 }
 function ProposalCard({ proposal, state, onApprove, onReject }) {
   const verb = PROPOSAL_VERB[proposal.tool] || 'Action'
@@ -214,6 +214,18 @@ export default function Home() {
     runAgent(prompt)
   }, [runAgent])
 
+  // RSVP to a calendar invite. This routes through the agent so the mutating
+  // response arrives as a LEDGER-GATED proposal in the composer (Approve/Reject
+  // → /execute) — never an auto-executed action. It only names the source
+  // message id + the chosen response; the model builds the rsvp_invite proposal.
+  const rsvpInvite = useCallback((inv, response) => {
+    const iv = inv.invite || {}
+    const prompt = `RSVP ${response} to the calendar invite "${iv.summary || inv.subject}" (message ${inv.message_uid}).`
+    setInput('')
+    composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    runAgent(prompt)
+  }, [runAgent])
+
   // Approve/reject an inline proposal (send_email etc from the composer flow).
   const approve = useCallback(async (id, proposal) => {
     setTurns(t => t.map(x => x.id === id ? { ...x, state: 'busy' } : x))
@@ -258,6 +270,7 @@ export default function Home() {
 
   const focus = (data?.focus || []).filter(f => !dismissed.has(f.uid))
   const agenda = data?.agenda || []
+  const invites = data?.invites || []
   const activity = data?.activity || []
   const tier = data?.sovereignty?.tier || 'local'
   const tierLabel = data?.sovereignty?.label || ''
@@ -410,7 +423,17 @@ export default function Home() {
 
         {/* Today's agenda */}
         <Section label="Agenda"
-          right={<button onClick={() => openApp('vulos-calendar')} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-mono">calendar →</button>}>
+          right={
+            <div className="flex items-center gap-2.5">
+              {data && (
+                <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-600" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: data.agenda_fresh ? 'var(--status-success)' : 'var(--status-danger)' }} />
+                  {data.agenda_fresh ? 'live' : 'stale'}
+                </span>
+              )}
+              <button onClick={() => openApp('vulos-calendar')} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-mono">calendar →</button>
+            </div>
+          }>
           {loading && !data ? (
             <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
           ) : agenda.length === 0 ? (
@@ -435,6 +458,52 @@ export default function Home() {
             </ul>
           )}
         </Section>
+
+        {/* Invites awaiting your response — calendar invitations in the mailbox
+            still needing an RSVP (wave-40). Responding routes through the agent
+            as a ledger-gated proposal (Approve/Reject), never auto-executed. */}
+        {(invites.length > 0 || data?.invites_error) && (
+          <Section label="Invites awaiting your response"
+            right={invites.length > 0 && (
+              <span className="text-[11px] font-mono text-neutral-500">
+                {invites.length} · soonest {relDay(invites[0]?.invite?.start)}
+              </span>
+            )}>
+            {data?.invites_error ? (
+              <p className="text-[13px] text-neutral-500">Couldn't check for invites right now.</p>
+            ) : (
+              <ul className="space-y-2">
+                {invites.map((inv) => {
+                  const iv = inv.invite || {}
+                  return (
+                    <li key={inv.message_uid} className="rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3.5 py-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] text-neutral-100 font-medium truncate">{iv.summary || inv.subject || '(untitled invite)'}</div>
+                          <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">
+                            {!isNaN(new Date(iv.start)) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
+                            {iv.location ? ` · ${iv.location}` : ''}
+                          </div>
+                          <div className="text-[11px] text-neutral-600 mt-0.5 truncate">from {iv.organizer || inv.from}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <button onClick={() => rsvpInvite(inv, 'accept')} disabled={busy}
+                          className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-700/70 text-emerald-100 hover:bg-emerald-600 transition-colors disabled:opacity-40">Accept</button>
+                        <button onClick={() => rsvpInvite(inv, 'tentative')} disabled={busy}
+                          className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Tentative</button>
+                        <button onClick={() => rsvpInvite(inv, 'decline')} disabled={busy}
+                          className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Decline</button>
+                        <button onClick={openMail}
+                          className="text-[11px] px-2.5 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Open</button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </Section>
+        )}
 
         {/* Recent activity — light cross-surface feed (mail today) */}
         <Section label="Recent activity"

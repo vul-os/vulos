@@ -354,6 +354,89 @@ func (a *Assistant) ChatStream(ctx context.Context, auth Auth, userMsg string, h
 	return a.model.Stream(ctx, cfg, ai.CompletionRequest{Messages: convo, MaxTokens: 1024}, onChunk)
 }
 
+// ---- Calendar awareness (Wave 40) ------------------------------------------
+//
+// Two READ-ONLY calendar surfaces the assistant reasons over, both reached
+// through the SAME local /v1 mail service it already uses (LilmailSource): the
+// agenda (GET /v1/calendar/events) and pending calendar invites in the mailbox
+// (the wave-37 iTIP/iMIP parse surfaced on each /v1 message as Message.Invite).
+// Neither mutates anything — they only read — so they need no ledger. The
+// assistant may separately PROPOSE an RSVP or a new event, but only through the
+// existing ledger-gated mutating path (create_event / rsvp_invite proposals).
+
+// agendaWindowDays is how far ahead ListAgenda looks by default (today → +7d).
+const agendaWindowDays = 7
+
+// PendingInvite is one calendar invitation sitting in the mailbox awaiting the
+// user's RSVP. It pairs the parsed invite with the message it rode in on, so the
+// UI and the RSVP proposal can reference the source message.
+type PendingInvite struct {
+	MessageUID string        `json:"message_uid"`
+	Folder     string        `json:"folder,omitempty"`
+	From       string        `json:"from,omitempty"`
+	Subject    string        `json:"subject,omitempty"`
+	Invite     MessageInvite `json:"invite"`
+}
+
+// ListAgenda returns the user's events for [from, from+days) from the local /v1
+// calendar, soonest first. It is a pure on-box read (no model call), so it does
+// NOT go through Guard — Guard is the choke point for MODEL egress, and this
+// touches only the local mail service. Callers that render agenda into a model
+// prompt still Guard that completion separately.
+func (a *Assistant) ListAgenda(ctx context.Context, auth Auth, from time.Time, days int) ([]CalendarEvent, error) {
+	if days <= 0 {
+		days = agendaWindowDays
+	}
+	start := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
+	end := start.AddDate(0, 0, days)
+	evs, err := a.mail.ListEvents(ctx, auth, start.Format(time.RFC3339), end.Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(evs, func(i, j int) bool { return evs[i].Start < evs[j].Start })
+	return evs, nil
+}
+
+// PendingInvites scans recent inbox mail for calendar invitations still awaiting
+// the user's RSVP (iTIP METHOD:REQUEST, partstat NEEDS-ACTION), soonest event
+// first. It reuses the SAME /v1 recent-mail read the rest of the assistant uses
+// and the wave-37 Message.Invite parse — a pure on-box read, no model call, no
+// mutation. limit caps how many recent messages are scanned.
+func (a *Assistant) PendingInvites(ctx context.Context, auth Auth, limit int) ([]PendingInvite, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	msgs, err := a.mail.Recent(ctx, auth, defaultFolder, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingInvite, 0, 4)
+	for _, m := range msgs {
+		if !m.Invite.AwaitsRSVP() {
+			continue
+		}
+		out = append(out, PendingInvite{
+			MessageUID: m.UID,
+			Folder:     strEmpty(m.Folder, defaultFolder),
+			From:       m.Sender(),
+			Subject:    strEmpty(m.Subject, "(no subject)"),
+			Invite:     *m.Invite,
+		})
+	}
+	// Soonest event first; invites with an unparseable/blank start sort last.
+	sort.SliceStable(out, func(i, j int) bool {
+		si, sj := out[i].Invite.Start, out[j].Invite.Start
+		if si == "" {
+			return false
+		}
+		if sj == "" {
+			return true
+		}
+		return si < sj
+	})
+	return out, nil
+}
+
 // ---- small helpers ---------------------------------------------------------
 
 func strEmpty(s, fallback string) string {

@@ -222,6 +222,7 @@ func (emptySource) ListEvents(context.Context, Auth, string, string) ([]Calendar
 }
 func (emptySource) AddContact(context.Context, Auth, Contact) error        { return nil }
 func (emptySource) Triage(context.Context, Auth, TriageAction) error       { return nil }
+func (emptySource) RSVPInvite(context.Context, Auth, InviteRSVP) error     { return nil }
 
 func subjects(msgs []Message) []string {
 	out := make([]string, len(msgs))

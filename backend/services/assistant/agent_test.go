@@ -224,6 +224,151 @@ func TestAgentProposalFromContentWarning(t *testing.T) {
 	}
 }
 
+// ---- calendar awareness (Wave 40) ------------------------------------------
+
+// The read-only list_events tool runs freely (no proposal) and its agenda result
+// is fed back to the model framed as UNTRUSTED content.
+func TestAgentListEventsReadOnlyWrapsUntrusted(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"list_events","args":{"days":7}}`,
+		"You have a team standup and a 1:1 with Priya today.",
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "what's on my calendar?", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal != nil {
+		t.Fatalf("list_events is read-only, must not propose: %+v", res.Proposal)
+	}
+	if len(res.Steps) != 1 || res.Steps[0].Tool != "list_events" {
+		t.Fatalf("expected one list_events step, got %+v", res.Steps)
+	}
+	var framed bool
+	for _, msg := range m.lastReq.Messages {
+		if strings.Contains(msg.Content, "TOOL RESULT (list_events)") &&
+			strings.Contains(msg.Content, untrustedOpen) && strings.Contains(msg.Content, untrustedClose) {
+			framed = true
+		}
+	}
+	if !framed {
+		t.Errorf("list_events result not wrapped as untrusted: %+v", m.lastReq.Messages)
+	}
+}
+
+// The read-only pending_invites tool returns the invite awaiting RSVP (the
+// fixture's kickoff invite) and NOT the already-accepted one, framed untrusted.
+func TestAgentPendingInvitesReadOnly(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"pending_invites","args":{}}`,
+		"You have one invite awaiting a reply: the Pilot expansion kickoff.",
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "any invites i haven't answered?", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal != nil {
+		t.Fatalf("pending_invites is read-only, must not propose: %+v", res.Proposal)
+	}
+	var fed string
+	for _, msg := range m.lastReq.Messages {
+		if strings.Contains(msg.Content, "TOOL RESULT (pending_invites)") {
+			fed = msg.Content
+		}
+	}
+	if fed == "" {
+		t.Fatalf("pending_invites result not fed back: %+v", m.lastReq.Messages)
+	}
+	if !strings.Contains(fed, "Pilot expansion kickoff") {
+		t.Errorf("pending invite missing from result: %q", fed)
+	}
+	if strings.Contains(fed, "Weekly sync") {
+		t.Errorf("already-accepted invite must NOT be pending: %q", fed)
+	}
+	if !strings.Contains(fed, untrustedOpen) || !strings.Contains(fed, "message_id=107") {
+		t.Errorf("pending invite result not framed/ided correctly: %q", fed)
+	}
+}
+
+// rsvp_invite is MUTATING: it returns a ledger-gated proposal (never executes in
+// the loop), and only ExecuteProposal — after approval — sends the RSVP.
+func TestAgentRSVPInviteGated(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"rsvp_invite","args":{"message_id":"107","response":"accept"}}`,
+	}}
+	fx := NewFixtureSource()
+	a := New(m, localCfg(), fx, false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "accept the kickoff invite in message 107", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal == nil || res.Proposal.Tool != "rsvp_invite" || res.Proposal.ID == "" {
+		t.Fatalf("expected an rsvp_invite proposal with an id, got %+v", res.Proposal)
+	}
+	// Gate held: nothing sent before approval.
+	if n := len(fx.RSVPs()); n != 0 {
+		t.Fatalf("RSVP sent BEFORE approval — gate breached (%d)", n)
+	}
+	out, err := a.ExecuteProposal(context.Background(), Auth{}, *res.Proposal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "RSVP sent") {
+		t.Errorf("unexpected execute result: %q", out)
+	}
+	rs := fx.RSVPs()
+	if len(rs) != 1 || rs[0].MessageID != "107" || rs[0].Response != "accept" {
+		t.Fatalf("RSVP not executed correctly: %+v", rs)
+	}
+}
+
+// An rsvp_invite whose target message_id did NOT appear in the user's own message
+// (so it came from invite content the model read) is flagged FromContent.
+func TestAgentRSVPFromContentWarning(t *testing.T) {
+	m := &fakeModel{replies: []string{
+		`{"tool":"rsvp_invite","args":{"message_id":"107","response":"accept"}}`,
+	}}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+	res, err := a.AgentTurn(context.Background(), Auth{}, "accept whatever invite you find", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal == nil || !res.Proposal.FromContent || res.Proposal.Warning == "" {
+		t.Fatalf("rsvp target from content should be flagged: %+v", res.Proposal)
+	}
+}
+
+// An rsvp_invite with an unrecognized response fails closed at execute (no send).
+func TestAgentRSVPRejectsBadResponse(t *testing.T) {
+	fx := NewFixtureSource()
+	a := New(&fakeModel{}, localCfg(), fx, false)
+	p := Proposal{ID: "p1", Tool: "rsvp_invite", Args: map[string]any{"message_id": "107", "response": "banana"}}
+	if _, err := a.ExecuteProposal(context.Background(), Auth{}, p); err == nil {
+		t.Fatal("expected error for unrecognized RSVP response")
+	}
+	if len(fx.RSVPs()) != 0 {
+		t.Fatal("bad RSVP response must not send anything")
+	}
+}
+
+// The egress guard still blocks a calendar-aware turn before any model/tool call.
+func TestAgentCalendarGuardBlocks(t *testing.T) {
+	m := &fakeModel{}
+	fx := NewFixtureSource()
+	a := New(m, ai.Config{Provider: ai.ProviderClaude, Model: "claude-x"}, fx, false)
+	_, err := a.AgentTurn(context.Background(), Auth{}, "what's on my calendar and any invites?", nil)
+	if err != ErrEgressBlocked {
+		t.Fatalf("expected ErrEgressBlocked, got %v", err)
+	}
+	if m.calls != 0 {
+		t.Fatalf("model called %d times despite blocked egress — LEAK", m.calls)
+	}
+	if len(fx.RSVPs())+len(fx.Events()) != 0 {
+		t.Fatal("a calendar mutation happened despite blocked egress")
+	}
+}
+
 // ---- streaming turn (Wave 17) ----------------------------------------------
 
 // collectStream runs an AgentTurnStream and captures the emitted events.

@@ -57,10 +57,18 @@ type HomeData struct {
 	Focus       []HomeFocusItem    `json:"focus"`
 	Agenda      []CalendarEvent    `json:"agenda"`
 	AgendaError string             `json:"agenda_error,omitempty"`
-	Activity    []HomeActivityItem `json:"activity"`
-	MailError   string             `json:"mail_error,omitempty"`
-	MailSource  string             `json:"mail_source"`
-	Sovereignty Sovereignty        `json:"sovereignty"`
+	// AgendaFresh is true when the agenda read succeeded (regardless of whether
+	// it returned any events), so the UI can distinguish "calendar is live but
+	// empty" from "calendar unavailable" without inspecting AgendaError.
+	AgendaFresh bool `json:"agenda_fresh"`
+	// Invites are calendar invitations in the mailbox still awaiting the user's
+	// RSVP (wave-40). InvitesError fails this section independently like the rest.
+	Invites      []PendingInvite    `json:"invites"`
+	InvitesError string             `json:"invites_error,omitempty"`
+	Activity     []HomeActivityItem `json:"activity"`
+	MailError    string             `json:"mail_error,omitempty"`
+	MailSource   string             `json:"mail_source"`
+	Sovereignty  Sovereignty        `json:"sovereignty"`
 }
 
 const (
@@ -79,6 +87,7 @@ func (a *Assistant) Home(ctx context.Context, auth Auth) HomeData {
 		Sovereignty: a.Sovereignty(),
 		Focus:       []HomeFocusItem{},
 		Agenda:      []CalendarEvent{},
+		Invites:     []PendingInvite{},
 		Activity:    []HomeActivityItem{},
 	}
 
@@ -115,13 +124,21 @@ func (a *Assistant) Home(ctx context.Context, auth Auth) HomeData {
 		}
 	}
 
-	// --- Agenda: today → +7 days ----------------------------------------------
-	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	to := from.AddDate(0, 0, 7)
-	if events, eerr := a.mail.ListEvents(ctx, auth, from.Format(time.RFC3339), to.Format(time.RFC3339)); eerr != nil {
+	// --- Agenda: today → +7 days (READ-ONLY; on-box /v1 calendar) --------------
+	if events, eerr := a.ListAgenda(ctx, auth, now, agendaWindowDays); eerr != nil {
 		hd.AgendaError = eerr.Error()
 	} else {
 		hd.Agenda = events
+		hd.AgendaFresh = true // the read succeeded (may still be empty)
+	}
+
+	// --- Invites awaiting RSVP: calendar invitations in the mailbox (wave-40) --
+	// READ-ONLY: reuses the recent-mail read + the wave-37 Message.Invite parse.
+	// Fails independently into InvitesError so the rest of Home still renders.
+	if invites, ierr := a.PendingInvites(ctx, auth, 30); ierr != nil {
+		hd.InvitesError = ierr.Error()
+	} else {
+		hd.Invites = invites
 	}
 
 	// --- Brief: the model's human "what needs you today" (guarded) -------------

@@ -33,7 +33,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"vulos/backend/services/ai"
 )
@@ -68,14 +70,19 @@ type toolDef struct {
 
 // toolCatalog is the SMALL, curated toolset. Read-only tools gather facts and
 // run freely; mutating tools are proposed and gated behind explicit user
-// approval. Deliberately kept to 8 — no shell/file/web tools.
+// approval. Kept deliberately small — no shell/file/web tools. Wave 40 adds two
+// READ-ONLY calendar tools (list_events, pending_invites) and one ledger-gated
+// mutating RSVP (rsvp_invite) that replies to a calendar invite the user has.
 var toolCatalog = []toolDef{
 	{"search_mail", false, "Search the mailbox for messages relevant to a query (semantic + keyword). Returns matching messages with their ids.", `{"query":"..."}`},
 	{"read_thread", false, "Read the full body of a message/thread by its id (from a search result).", `{"id":"..."}`},
+	{"list_events", false, "List the user's calendar events for a window (READ-ONLY agenda from the local calendar). Defaults to today→+7 days; pass days for a shorter/longer window.", `{"days":7}`},
+	{"pending_invites", false, "List calendar invitations in the mailbox still awaiting the user's RSVP (READ-ONLY). Returns each invite's summary, time, organizer, and the source message id.", `{}`},
 	{"draft_reply", false, "Draft a reply to a message. Produces reply text only — does NOT send.", `{"thread_id":"...","intent":"what the reply should say"}`},
 	{"compose", false, "Draft a brand-new email. Produces subject+body text only — does NOT send.", `{"to":"...","subject":"...","intent":"what the email should say"}`},
 	{"send_email", true, "Send an email. (confirm) Proposes the send; the user must approve before anything is sent.", `{"to":"...","subject":"...","body":"...","in_reply_to":"optional message id"}`},
 	{"create_calendar_event", true, "Create a calendar event. (confirm)", `{"title":"...","start":"ISO-8601","end":"ISO-8601","location":"...","notes":"..."}`},
+	{"rsvp_invite", true, "RSVP to a calendar invite awaiting your response. (confirm) Use the message_id from pending_invites. Proposes the reply; nothing is sent until the user approves.", `{"message_id":"...","response":"accept|decline|tentative"}`},
 	{"add_contact", true, "Add a contact to the address book. (confirm)", `{"name":"...","email":"...","phone":"..."}`},
 	{"triage", true, "Archive, snooze, or label a message. (confirm)", `{"message_id":"...","action":"archive|snooze|label","until":"ISO-8601 for snooze","label":"name for label"}`},
 }
@@ -404,6 +411,26 @@ func (a *Assistant) execReadTool(ctx context.Context, auth Auth, call ToolCall) 
 		}
 		return formatContext([]Message{m}, true), nil
 
+	case "list_events":
+		days := agendaWindowDays
+		if d := argStr(call.Args, "days"); d != "" {
+			if n, err := strconv.Atoi(d); err == nil && n > 0 && n <= 60 {
+				days = n
+			}
+		}
+		evs, err := a.ListAgenda(ctx, auth, time.Now(), days)
+		if err != nil {
+			return "", err
+		}
+		return formatAgenda(evs), nil
+
+	case "pending_invites":
+		invs, err := a.PendingInvites(ctx, auth, 30)
+		if err != nil {
+			return "", err
+		}
+		return formatPendingInvites(invs), nil
+
 	case "draft_reply":
 		id := argStr(call.Args, "thread_id")
 		if id == "" {
@@ -429,6 +456,58 @@ func (a *Assistant) execReadTool(ctx context.Context, auth Auth, call ToolCall) 
 		return fmt.Sprintf("DRAFT (not sent — call send_email to propose sending):\nTo: %s\nSubject: %s\n\n%s", to, subject, text), nil
 	}
 	return "", fmt.Errorf("tool %q is not a read-only tool", call.Tool)
+}
+
+// formatAgenda renders a calendar window as a compact text list for the model.
+// The event fields are the user's own calendar data; they are still fed back
+// through wrapUntrusted like every tool result.
+func formatAgenda(evs []CalendarEvent) string {
+	if len(evs) == 0 {
+		return "(no events in this window)"
+	}
+	var b strings.Builder
+	for _, e := range evs {
+		when := strEmpty(e.Start, "(no time)")
+		if e.AllDay {
+			when += " (all day)"
+		} else if e.End != "" {
+			when += " → " + e.End
+		}
+		fmt.Fprintf(&b, "- %s | %s", when, strEmpty(e.Title, "(untitled)"))
+		if e.Location != "" {
+			fmt.Fprintf(&b, " | at %s", e.Location)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// formatPendingInvites renders invites awaiting RSVP as a compact text list. The
+// message_id is included so the model can propose an rsvp_invite for a specific
+// invite.
+func formatPendingInvites(invs []PendingInvite) string {
+	if len(invs) == 0 {
+		return "(no calendar invites awaiting your response)"
+	}
+	var b strings.Builder
+	for _, p := range invs {
+		iv := p.Invite
+		when := strEmpty(iv.Start, "(no time)")
+		if iv.AllDay {
+			when += " (all day)"
+		} else if iv.End != "" {
+			when += " → " + iv.End
+		}
+		fmt.Fprintf(&b, "- message_id=%s | %s | %s", p.MessageUID, strEmpty(iv.Summary, p.Subject), when)
+		if iv.Location != "" {
+			fmt.Fprintf(&b, " | at %s", iv.Location)
+		}
+		if iv.Organizer != "" {
+			fmt.Fprintf(&b, " | from %s", iv.Organizer)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // buildProposal turns a mutating tool call into a user-facing proposal with a
@@ -457,6 +536,14 @@ func buildProposal(call ToolCall, userMsg string) Proposal {
 			when += " → " + e
 		}
 		p.Summary = fmt.Sprintf("Create calendar event %q %s", strEmpty(argStr(call.Args, "title"), "(untitled)"), when)
+	case "rsvp_invite":
+		id := argStr(call.Args, "message_id")
+		p.Summary = fmt.Sprintf("RSVP %s to the invite in message %s",
+			normalizeRSVP(argStr(call.Args, "response")), strEmpty(id, "(unknown)"))
+		if targetFromContent(userMsg, id) {
+			p.FromContent = true
+			p.Warning = "The invite you'd RSVP to came from message content, not from your request — check it before responding."
+		}
 	case "add_contact":
 		p.Summary = fmt.Sprintf("Add contact %s <%s>", strEmpty(argStr(call.Args, "name"), "?"), argStr(call.Args, "email"))
 	case "triage":
@@ -526,6 +613,24 @@ func (a *Assistant) ExecuteProposal(ctx context.Context, auth Auth, p Proposal) 
 			return "", err
 		}
 		return "Event created: " + ev.Title + ".", nil
+
+	case "rsvp_invite":
+		id := argStr(p.Args, "message_id")
+		resp := normalizeRSVP(argStr(p.Args, "response"))
+		if strings.TrimSpace(id) == "" {
+			return "", fmt.Errorf("message_id is required")
+		}
+		if resp == "" {
+			return "", fmt.Errorf("response must be accept, decline, or tentative")
+		}
+		if err := a.mail.RSVPInvite(ctx, auth, InviteRSVP{
+			MessageID: id,
+			Folder:    argStr(p.Args, "folder"),
+			Response:  resp,
+		}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("RSVP sent: %s to the invite in message %s.", resp, id), nil
 
 	case "add_contact":
 		c := Contact{
@@ -636,6 +741,22 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// normalizeRSVP maps a free-text RSVP response onto the three canonical values
+// (accept / decline / tentative), returning "" for anything unrecognized so the
+// executor fails closed rather than sending an ambiguous reply.
+func normalizeRSVP(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "accept", "accepted", "yes", "accept-invite":
+		return "accept"
+	case "decline", "declined", "no", "reject":
+		return "decline"
+	case "tentative", "maybe", "tentatively":
+		return "tentative"
+	default:
+		return ""
+	}
 }
 
 func newProposalID() string {

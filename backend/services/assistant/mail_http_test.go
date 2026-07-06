@@ -478,6 +478,65 @@ func TestLilmailListEventsUnrecognized(t *testing.T) {
 	}
 }
 
+// --- Invite (iTIP/iMIP) parse mapping + RSVP (Wave 40) ----------------------
+
+// A /v1 message carrying an "invite" object maps onto Message.Invite, and
+// AwaitsRSVP correctly identifies a REQUEST/needs-action invite as pending.
+func TestLilmailRecentMapsInvite(t *testing.T) {
+	f := newFakeLilmail(t)
+	f.on("GET /v1/messages", func(r recordedReq) (int, string) {
+		return 200, `{"messages":[
+			{"id":"201","from":"org@x.com","subject":"Invite","flags":[],
+			 "invite":{"method":"REQUEST","summary":"Design review","start":"2026-07-10T15:00:00Z",
+			           "end":"2026-07-10T16:00:00Z","location":"Meet","organizer":"org@x.com",
+			           "uid":"evt-201","rsvp":"needs-action"}}
+		]}`
+	})
+	msgs, err := f.source().Recent(bg(), Auth{}, "INBOX", 5)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Invite == nil {
+		t.Fatalf("invite not mapped: %+v", msgs)
+	}
+	iv := msgs[0].Invite
+	if iv.Summary != "Design review" || iv.Method != "REQUEST" || iv.Organizer != "org@x.com" || iv.UID != "evt-201" {
+		t.Errorf("invite fields wrong: %+v", iv)
+	}
+	if !iv.AwaitsRSVP() {
+		t.Error("REQUEST/needs-action invite should await RSVP")
+	}
+}
+
+// RSVPInvite POSTs the response to /v1/messages/{id}/invite/rsvp with the
+// message id path-escaped.
+func TestLilmailRSVPInvitePayload(t *testing.T) {
+	f := newFakeLilmail(t)
+	hit := false
+	f.on("POST /v1/messages/201/invite/rsvp", func(r recordedReq) (int, string) { hit = true; return 200, `{}` })
+	if err := f.source().RSVPInvite(bg(), Auth{}, InviteRSVP{MessageID: "201", Response: "accept"}); err != nil {
+		t.Fatalf("RSVPInvite: %v", err)
+	}
+	if !hit {
+		t.Fatalf("wrong rsvp route: %s", f.last().Path)
+	}
+	if f.last().Body["response"] != "accept" {
+		t.Errorf("rsvp payload wrong: %v", f.last().Body)
+	}
+}
+
+func TestLilmailRSVPInviteEscapesID(t *testing.T) {
+	f := newFakeLilmail(t)
+	hit := false
+	f.on("POST /v1/messages/a%2Fb/invite/rsvp", func(r recordedReq) (int, string) { hit = true; return 200, `{}` })
+	if err := f.source().RSVPInvite(bg(), Auth{}, InviteRSVP{MessageID: "a/b", Response: "decline"}); err != nil {
+		t.Fatalf("RSVPInvite: %v", err)
+	}
+	if !hit {
+		t.Errorf("message id with '/' not path-escaped; got %s", f.last().Path)
+	}
+}
+
 // --- Error / non-200 handling ------------------------------------------------
 
 func TestLilmailReadUnauthorized(t *testing.T) {

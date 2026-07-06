@@ -35,6 +35,54 @@ type Message struct {
 	Folder    string    `json:"folder,omitempty"`
 	MessageID string    `json:"message_id,omitempty"`
 	InReplyTo string    `json:"in_reply_to,omitempty"`
+	// Invite, when non-nil, is the calendar invitation (iTIP/iMIP) carried by this
+	// message — parsed by the mail service (wave-37 email.invite) and surfaced on
+	// the /v1 message. It is DATA the assistant reads; it is never trusted as
+	// instructions (invite fields flow back through wrapUntrusted like any body).
+	Invite *MessageInvite `json:"invite,omitempty"`
+}
+
+// MessageInvite is the calendar invitation (iTIP/iMIP) parsed from a message by
+// the mail service. It is provider-agnostic: whatever CalDAV-JSON / text/calendar
+// shape the mail service emits, the assistant reads this normalized subset. The
+// assistant treats it as READ-ONLY content; it can surface an invite and PROPOSE
+// an RSVP (ledger-gated), but the parse itself lives on the mail service.
+type MessageInvite struct {
+	// Method is the iTIP method (REQUEST for a new invite, CANCEL, REPLY, …). Only
+	// REQUEST invites can be responded to; others are informational.
+	Method string `json:"method,omitempty"`
+	// Summary/Start/End/Location describe the proposed event.
+	Summary  string `json:"summary,omitempty"`
+	Start    string `json:"start,omitempty"`
+	End      string `json:"end,omitempty"`
+	Location string `json:"location,omitempty"`
+	AllDay   bool   `json:"all_day,omitempty"`
+	// Organizer is who sent the invite; UID is the event's iCalendar UID (the
+	// stable id an RSVP replies against).
+	Organizer string `json:"organizer,omitempty"`
+	UID       string `json:"uid,omitempty"`
+	// RSVP is this attendee's current participation status, normalized to one of
+	// "needs-action" (awaiting your response), "accepted", "declined",
+	// "tentative". "needs-action" (or empty on a REQUEST) means it awaits RSVP.
+	RSVP string `json:"rsvp,omitempty"`
+}
+
+// AwaitsRSVP reports whether this invite is a live REQUEST still awaiting the
+// user's response (partstat NEEDS-ACTION or unset). CANCEL/REPLY methods and
+// already-answered invites (accepted/declined/tentative) are not pending.
+func (iv *MessageInvite) AwaitsRSVP() bool {
+	if iv == nil {
+		return false
+	}
+	if m := strings.ToUpper(strings.TrimSpace(iv.Method)); m != "" && m != "REQUEST" {
+		return false // CANCEL / REPLY / COUNTER etc. are informational, not RSVPable
+	}
+	switch strings.ToLower(strings.TrimSpace(iv.RSVP)) {
+	case "", "needs-action", "needsaction":
+		return true
+	default:
+		return false // accepted / declined / tentative — already answered
+	}
 }
 
 // Sender returns a human-friendly sender label ("Name <addr>" or the address).
@@ -93,6 +141,16 @@ type TriageAction struct {
 	Folder    string `json:"folder,omitempty"`
 }
 
+// InviteRSVP is a response (accept/decline/tentative) to a calendar invite that
+// arrived as a message. The mail service (which parsed the invite in wave-37)
+// handles emitting the iTIP REPLY / updating the attendee partstat; the
+// assistant only proposes it. Response is one of "accept"|"decline"|"tentative".
+type InviteRSVP struct {
+	MessageID string `json:"message_id"`
+	Folder    string `json:"folder,omitempty"`
+	Response  string `json:"response"`
+}
+
 // Auth carries the per-request credentials used to reach the local mail API.
 // The assistant never stores mail credentials; it forwards whatever the caller
 // provides. Cookie is the forwarded session cookie (session mode); Broker is
@@ -139,6 +197,9 @@ type MailSource interface {
 	AddContact(ctx context.Context, auth Auth, c Contact) error
 	// Triage applies a mailbox state change (archive/snooze/label) to a message.
 	Triage(ctx context.Context, auth Auth, action TriageAction) error
+	// RSVPInvite responds (accept/decline/tentative) to a calendar invite carried
+	// by a message. The mail service emits the iTIP REPLY / updates partstat.
+	RSVPInvite(ctx context.Context, auth Auth, rsvp InviteRSVP) error
 }
 
 const defaultFolder = "INBOX"
@@ -163,17 +224,18 @@ func (s *LilmailSource) Name() string { return "lilmail" }
 
 // lilEmail mirrors the subset of lilmail models.Email returned by /v1.
 type lilEmail struct {
-	ID        string    `json:"id"`
-	From      string    `json:"from"`
-	FromName  string    `json:"fromName"`
-	To        string    `json:"to"`
-	Subject   string    `json:"subject"`
-	Preview   string    `json:"preview"`
-	Body      string    `json:"body"`
-	Date      time.Time `json:"date"`
-	Flags     []string  `json:"flags"`
-	MessageID string    `json:"messageId"`
-	InReplyTo string    `json:"inReplyTo"`
+	ID        string         `json:"id"`
+	From      string         `json:"from"`
+	FromName  string         `json:"fromName"`
+	To        string         `json:"to"`
+	Subject   string         `json:"subject"`
+	Preview   string         `json:"preview"`
+	Body      string         `json:"body"`
+	Date      time.Time      `json:"date"`
+	Flags     []string       `json:"flags"`
+	MessageID string         `json:"messageId"`
+	InReplyTo string         `json:"inReplyTo"`
+	Invite    *MessageInvite `json:"invite,omitempty"` // wave-37 iTIP/iMIP parse, when present
 }
 
 func (e lilEmail) toMessage(folder string) Message {
@@ -196,6 +258,7 @@ func (e lilEmail) toMessage(folder string) Message {
 		Folder:    folder,
 		MessageID: e.MessageID,
 		InReplyTo: e.InReplyTo,
+		Invite:    e.Invite,
 	}
 }
 
@@ -412,6 +475,19 @@ func (s *LilmailSource) Triage(ctx context.Context, auth Auth, a TriageAction) e
 	default:
 		return fmt.Errorf("unknown triage action %q", a.Action)
 	}
+}
+
+// RSVPInvite responds to a calendar invite via
+// POST /v1/messages/{id}/invite/rsvp {"response":"accept|decline|tentative"}.
+// The mail service owns the iTIP REPLY / partstat update (it parsed the invite);
+// this only forwards the user's approved response. Runs only after approval.
+func (s *LilmailSource) RSVPInvite(ctx context.Context, auth Auth, rsvp InviteRSVP) error {
+	id := url.PathEscape(rsvp.MessageID)
+	payload := map[string]string{"response": rsvp.Response}
+	if strings.TrimSpace(rsvp.Folder) != "" {
+		payload["folder"] = rsvp.Folder
+	}
+	return s.writeJSON(ctx, auth, http.MethodPost, "/v1/messages/"+id+"/invite/rsvp", payload, "invite rsvp")
 }
 
 // writeJSON is the shared mutating-request helper (send/calendar/contacts/triage).

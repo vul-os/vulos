@@ -72,6 +72,70 @@ func TestHomeDegradesWhenModelBlocked(t *testing.T) {
 	}
 }
 
+// Home surfaces the new calendar-awareness sections: an agenda freshness flag
+// and the invites-awaiting-RSVP list, each degrading independently.
+func TestHomeSurfacesInvitesAndAgendaFreshness(t *testing.T) {
+	m := &fakeModel{reply: "You have an invite to reply to."}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+
+	hd := a.Home(context.Background(), Auth{UserID: "u1"})
+
+	if !hd.AgendaFresh {
+		t.Error("agenda read succeeded — AgendaFresh should be true")
+	}
+	if hd.InvitesError != "" {
+		t.Fatalf("unexpected invites error: %q", hd.InvitesError)
+	}
+	if len(hd.Invites) != 1 {
+		t.Fatalf("expected exactly one pending invite (the kickoff), got %d: %+v", len(hd.Invites), hd.Invites)
+	}
+	inv := hd.Invites[0]
+	if inv.MessageUID != "107" || inv.Invite.Summary != "Pilot expansion kickoff" {
+		t.Errorf("wrong pending invite surfaced: %+v", inv)
+	}
+	if !inv.Invite.AwaitsRSVP() {
+		t.Error("surfaced invite should still await RSVP")
+	}
+}
+
+// AwaitsRSVP: only live REQUEST invites with needs-action/blank partstat are
+// pending; CANCEL/REPLY methods and answered invites are not.
+func TestInviteAwaitsRSVP(t *testing.T) {
+	cases := []struct {
+		iv   *MessageInvite
+		want bool
+	}{
+		{nil, false},
+		{&MessageInvite{Method: "REQUEST", RSVP: "needs-action"}, true},
+		{&MessageInvite{Method: "REQUEST", RSVP: ""}, true},
+		{&MessageInvite{Method: "", RSVP: ""}, true}, // unset method treated as request
+		{&MessageInvite{Method: "REQUEST", RSVP: "accepted"}, false},
+		{&MessageInvite{Method: "REQUEST", RSVP: "declined"}, false},
+		{&MessageInvite{Method: "CANCEL", RSVP: "needs-action"}, false},
+		{&MessageInvite{Method: "REPLY", RSVP: ""}, false},
+	}
+	for i, c := range cases {
+		if got := c.iv.AwaitsRSVP(); got != c.want {
+			t.Errorf("case %d: AwaitsRSVP()=%v want %v (%+v)", i, got, c.want, c.iv)
+		}
+	}
+}
+
+// PendingInvites sorts by soonest event start and excludes answered invites.
+func TestPendingInvitesSortedAndFiltered(t *testing.T) {
+	a := New(&fakeModel{}, localCfg(), NewFixtureSource(), false)
+	invs, err := a.PendingInvites(context.Background(), Auth{}, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(invs) != 1 {
+		t.Fatalf("expected 1 pending invite, got %d", len(invs))
+	}
+	if invs[0].MessageUID != "107" {
+		t.Errorf("expected kickoff invite (107), got %s", invs[0].MessageUID)
+	}
+}
+
 // TestFixtureListEventsWindow checks the demo agenda is anchored to today and
 // respects the requested window.
 func TestFixtureListEventsWindow(t *testing.T) {
