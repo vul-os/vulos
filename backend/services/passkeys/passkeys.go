@@ -303,7 +303,23 @@ func (svc *Service) FinishAssertion(userID string, assertionResp []byte, session
 		return false, fmt.Errorf("passkeys: finish assertion: %w", err)
 	}
 
-	svc.au12UpdateLastUsed(userID, base64.RawURLEncoding.EncodeToString(cred.ID))
+	// AUTH-13 clone detection. go-webauthn's FinishLogin does NOT return an
+	// error when the authenticator's signature counter fails to advance; it
+	// merely flags cred.Authenticator.CloneWarning. Persisting the counter is
+	// the RP's responsibility, and so is refusing a counter that regressed —
+	// the classic signal that a second physical copy of the credential exists
+	// (a cloned/exfiltrated authenticator). We MUST reject here, otherwise the
+	// gate can be lifted with a replayed/stale assertion.
+	if cred.Authenticator.CloneWarning {
+		return false, fmt.Errorf("passkeys: assertion rejected — authenticator signature counter did not advance (possible cloned authenticator)")
+	}
+
+	credID := base64.RawURLEncoding.EncodeToString(cred.ID)
+	// Persist the advanced signature counter so subsequent ceremonies compare
+	// against the new high-water mark; without this the stored counter never
+	// moves and clone detection can never fire across ceremonies.
+	svc.au12PersistCounter(userID, credID, cred.Authenticator.SignCount)
+	svc.au12UpdateLastUsed(userID, credID)
 	return true, nil
 }
 
@@ -450,6 +466,54 @@ func (svc *Service) au12SealAndStore(userID string, cred *wa.Credential) error {
 		return err
 	}
 	return au12AtomicWriteJSON(path, rec)
+}
+
+// au12PersistCounter re-seals the stored credential with an advanced signature
+// counter (AUTH-13 clone detection high-water mark). The credential body is
+// sealed with the device KeyStore, so we must unseal, bump SignCount, and
+// re-seal. Best-effort: a persistence failure is logged-by-omission rather than
+// failing the (already cryptographically valid) assertion, but the in-memory
+// counter used for THIS verification already came from the freshly loaded
+// record.
+func (svc *Service) au12PersistCounter(userID, credID string, newCount uint32) {
+	svc.mu.Lock()
+	defer svc.mu.Unlock()
+
+	path, err := svc.au12CredPath(userID, credID)
+	if err != nil {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var rec au12StoredCredential
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return
+	}
+	plain, err := svc.ks.Unseal(rec.Sealed)
+	if err != nil {
+		return
+	}
+	var cred wa.Credential
+	if err := json.Unmarshal(plain, &cred); err != nil {
+		return
+	}
+	// Never let a persisted counter go backwards.
+	if newCount <= cred.Authenticator.SignCount && !(newCount == 0 && cred.Authenticator.SignCount == 0) {
+		return
+	}
+	cred.Authenticator.SignCount = newCount
+	reSealed, err := json.Marshal(&cred)
+	if err != nil {
+		return
+	}
+	sealed, err := svc.ks.Seal(reSealed)
+	if err != nil {
+		return
+	}
+	rec.Sealed = sealed
+	_ = au12AtomicWriteJSON(path, rec)
 }
 
 // au12UpdateLastUsed refreshes the LastUsed timestamp for a credential.

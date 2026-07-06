@@ -82,6 +82,30 @@ func saWebauthn_isVerified(sessID string) bool {
 	return g.verified
 }
 
+// RegisterGatedSessionForTest installs a bare, input-gated session into the
+// pool and arms its AUTH-13 gate for userID. It exists so the HTTP handlers in
+// package main (which cannot reach the unexported p.sessions map or spin up a
+// real compositor via Launch) can exercise the /api/stream/webauthn-assert
+// round-trip end to end. It is test-support only — production sessions are
+// created via Launch.
+func (p *Pool) RegisterGatedSessionForTest(sessID, userID string) *Session {
+	sess := &Session{ID: sessID, OwnerID: userID}
+	sess.inputGated = true
+	p.mu.Lock()
+	p.sessions[sessID] = sess
+	p.mu.Unlock()
+	saWebauthn_register(sessID, userID)
+	return sess
+}
+
+// IsInputGatedForTest reports whether sess's input-injection gate is still
+// active. Test-support only, so package main can observe the gate transition.
+func (s *Session) IsInputGatedForTest() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inputGated
+}
+
 // RequireAssertion verifies a WebAuthn assertion for sess and, on success,
 // flips sess.inputGated = false (lifting the input injection gate).
 //
