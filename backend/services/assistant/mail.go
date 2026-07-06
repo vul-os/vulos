@@ -56,15 +56,18 @@ type MessageInvite struct {
 	Start    string `json:"start,omitempty"`
 	End      string `json:"end,omitempty"`
 	Location string `json:"location,omitempty"`
-	AllDay   bool   `json:"all_day,omitempty"`
+	AllDay   bool   `json:"allDay,omitempty"`
 	// Organizer is who sent the invite; UID is the event's iCalendar UID (the
 	// stable id an RSVP replies against).
 	Organizer string `json:"organizer,omitempty"`
 	UID       string `json:"uid,omitempty"`
-	// RSVP is this attendee's current participation status, normalized to one of
-	// "needs-action" (awaiting your response), "accepted", "declined",
-	// "tentative". "needs-action" (or empty on a REQUEST) means it awaits RSVP.
-	RSVP string `json:"rsvp,omitempty"`
+	// RSVP is this attendee's current participation status — the raw iCalendar
+	// PARTSTAT the mail service emits as `myPartStat` (e.g. "NEEDS-ACTION",
+	// "ACCEPTED", "DECLINED", "TENTATIVE"). AwaitsRSVP normalizes case/spacing;
+	// "NEEDS-ACTION" (or empty on a REQUEST) means it awaits your response.
+	// NOTE: the JSON tag MUST match lilmail's models.CalendarInvite wire field
+	// (`myPartStat`) — a mismatch makes every REQUEST look unanswered.
+	RSVP string `json:"myPartStat,omitempty"`
 }
 
 // AwaitsRSVP reports whether this invite is a live REQUEST still awaiting the
