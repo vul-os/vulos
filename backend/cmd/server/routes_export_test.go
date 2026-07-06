@@ -279,6 +279,143 @@ func TestLooksSensitiveKey(t *testing.T) {
 	}
 }
 
+// TestLooksSensitiveKeyNonPatternSecrets is the RED-TEAM regression: keys that
+// hold a credential but do NOT contain the literal word "token"/"secret"/etc.
+// Before wave-60 these leaked into settings.json because the filter's needle
+// list missed them (e.g. oauth_refresh, session_key, a recovery phrase). The
+// filter is fail-closed and must drop every one of these.
+func TestLooksSensitiveKeyNonPatternSecrets(t *testing.T) {
+	for _, k := range []string{
+		"oauth_refresh", "oauth_access", "bearer", "authorization",
+		"session_key", "access_key", "signing_key", "encryption_key", "master_key",
+		"jwt", "cookie", "session_id", "refresh", "access", "csrf",
+		"totp_seed", "otp", "recovery_phrase", "mnemonic", "wallet_seed",
+		"kdf_salt", "webhook_url", "client_cert", "request_signature",
+		"smtpPassword", "SMTP_PASSWORD", "OAuthRefreshToken",
+	} {
+		if !looksSensitiveKey(k) {
+			t.Errorf("looksSensitiveKey(%q) = false, want true (fail-closed): this key would leak a credential into the export", k)
+		}
+	}
+	// A handful that must still survive so the export stays useful.
+	for _, k := range []string{"favorite_color", "language", "density", "sidebar_width"} {
+		if looksSensitiveKey(k) {
+			t.Errorf("looksSensitiveKey(%q) = true, want false (benign pref wrongly dropped)", k)
+		}
+	}
+}
+
+// TestExportSettingsScrubsNonPatternSecrets drives the WHOLE handler and asserts
+// none of the non-pattern-matching credential values (a value whose KEY doesn't
+// literally say "token"/"secret") appears anywhere in the produced archive.
+func TestExportSettingsScrubsNonPatternSecrets(t *testing.T) {
+	store := &fakeProfileStore{profiles: map[string]*auth.Profile{
+		"user-1": {
+			UserID:      "user-1",
+			DisplayName: "Ada Lovelace",
+			Settings: map[string]string{
+				"favorite_color":    "teal", // safe → kept
+				"oauth_refresh":     "OAUTH-REFRESH-LEAK",
+				"session_key":       "SESSION-KEY-LEAK",
+				"signing_key":       "SIGNING-KEY-LEAK",
+				"bearer":            "BEARER-LEAK",
+				"recovery_phrase":   "correct horse battery staple",
+				"totp_seed":         "TOTP-SEED-LEAK",
+				"webhook_url":       "https://hooks.example.com/T00/B11/WEBHOOK-TOKEN-LEAK",
+				"authorization":     "Bearer AUTHZ-LEAK",
+				"client_cert":       "-----BEGIN CERTIFICATE-----CERT-LEAK",
+				"request_signature": "SIG-LEAK",
+			},
+		},
+	}}
+
+	mux := http.NewServeMux()
+	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store))
+	rr := doExport(t, mux, "user-1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	files := readZip(t, rr.Body.Bytes())
+	if !strings.Contains(files["settings.json"], "teal") {
+		t.Errorf("benign pref dropped; settings.json=\n%s", files["settings.json"])
+	}
+	whole := rr.Body.String()
+	for _, secret := range []string{
+		"OAUTH-REFRESH-LEAK", "SESSION-KEY-LEAK", "SIGNING-KEY-LEAK", "BEARER-LEAK",
+		"correct horse battery staple", "TOTP-SEED-LEAK", "WEBHOOK-TOKEN-LEAK",
+		"AUTHZ-LEAK", "CERT-LEAK", "SIG-LEAK",
+		// the KEYS themselves must be gone too:
+		"oauth_refresh", "session_key", "signing_key", "recovery_phrase", "totp_seed",
+	} {
+		if strings.Contains(whole, secret) {
+			t.Errorf("SECRET LEAK (non-pattern key): %q found in the export archive", secret)
+		}
+	}
+}
+
+// TestExportMiddlewareStripsForgedUserID is the cross-user auth regression: the
+// export identity must be strictly SESSION-derived. Behind the real auth
+// middleware, an attacker-supplied X-User-ID is dropped, so:
+//   - a forged header with NO valid session ⇒ 401 (no export at all), and
+//   - a forged "alice" header on BOB's session ⇒ bob's data, never alice's.
+// This preserves the C1/SEC-A boundary (handlers.go: r.Header.Del("X-User-ID")).
+func TestExportMiddlewareStripsForgedUserID(t *testing.T) {
+	store, err := auth.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	h := auth.NewHandler(store)
+
+	// Two real users; the settings provider returns each one's own profile.
+	alice := store.FindOrCreateUser("dev", "alice", "alice@ex.com", "Alice", "", true)
+	bob := store.FindOrCreateUser("dev", "bob", "bob@ex.com", "Bob", "", true)
+	prov := safeProfileExport(&fakeProfileStore{profiles: map[string]*auth.Profile{
+		alice.ID: {UserID: alice.ID, DisplayName: "Alice", Settings: map[string]string{"note": "alice-only-secret"}},
+		bob.ID:   {UserID: bob.ID, DisplayName: "Bob", Settings: map[string]string{"note": "bob-note"}},
+	}})
+
+	mux := http.NewServeMux()
+	registerExportRoutes(mux, nil, "", nil, prov)
+	srv := httptest.NewServer(h.Middleware(mux))
+	defer srv.Close()
+
+	// (a) Forged X-User-ID, no session ⇒ 401. The middleware strips the header.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/export/data", nil)
+	req.Header.Set("X-User-ID", alice.ID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("forged-header/no-session status = %d, want 401; body=%s", resp.StatusCode, body)
+	}
+
+	// (b) Bob's real session BUT a forged X-User-ID: alice header. Identity must
+	// resolve to bob; alice's private note must never enter the archive.
+	sess := store.CreateSession(bob, "dev-bob")
+	req2, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/export/data", nil)
+	req2.Header.Set("Authorization", "Bearer "+sess.Token)
+	req2.Header.Set("X-User-ID", alice.ID) // forged — must be ignored
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	zbytes, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("bob-session status = %d, want 200", resp2.StatusCode)
+	}
+	if strings.Contains(string(zbytes), "alice-only-secret") || strings.Contains(string(zbytes), alice.ID) {
+		t.Fatalf("CROSS-USER LEAK: alice's data appeared in bob's export despite forged X-User-ID")
+	}
+	files := readZip(t, zbytes)
+	if !strings.Contains(files["settings.json"], "Bob") {
+		t.Errorf("bob's own settings missing from his export:\n%s", files["settings.json"])
+	}
+}
+
 func keys(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

@@ -605,9 +605,44 @@ func safeProfileExport(store profileStore) settingsProvider {
 
 // looksSensitiveKey reports whether a settings-map key name suggests it holds a
 // credential and must be kept out of the export.
+//
+// The free-form Settings map is user-controlled, so this filter is the ONLY
+// gate on it. It is therefore deliberately BROAD and FAIL-CLOSED: it errs
+// toward dropping a benign preference rather than letting a secret ride along.
+// Any substring match on a credential-ish token drops the entry. In particular
+// a bare "key" (catching every *_key: session_key, signing_key, master_key,
+// encryption_key, …), "bearer"/"auth"/"oauth"/"jwt"/"cookie" (session
+// material), "refresh"/"access"/"session" (token names that don't contain the
+// word "token"), and "seed"/"salt"/"otp"/"mnemonic"/"phrase"/"recovery"
+// (2FA/recovery material) are all excluded. Missing any of these previously
+// leaked e.g. `oauth_refresh`, `session_key`, or a recovery phrase into the
+// user's download.
 func looksSensitiveKey(k string) bool {
 	k = strings.ToLower(k)
-	for _, needle := range []string{"token", "secret", "password", "passwd", "apikey", "api_key", "pin", "hash", "private", "credential"} {
+	for _, needle := range []string{
+		"token", "secret", "password", "passwd", "apikey", "api_key",
+		"pin", "hash", "private", "credential",
+		// broadened, fail-closed additions:
+		"key",       // catches every *_key (signing_key, session_key, master_key, …)
+		"bearer",    // Authorization: Bearer …
+		"auth",      // auth / authorization / oauth
+		"oauth",     // oauth_refresh, oauth_access, …
+		"jwt",       // raw JSON Web Tokens
+		"cookie",    // session cookies
+		"csrf",      // CSRF tokens
+		"session",   // session_id / session_key
+		"refresh",   // refresh tokens by any name
+		"access",    // access_key / access_token
+		"cert",      // certificates / cert material
+		"signature", // request signatures
+		"salt",      // KDF salts
+		"seed",      // TOTP / wallet seeds
+		"otp",       // otp / totp secrets
+		"mnemonic",  // recovery mnemonics
+		"phrase",    // recovery phrases
+		"recovery",  // recovery material
+		"webhook",   // webhook URLs commonly embed a token
+	} {
 		if strings.Contains(k, needle) {
 			return true
 		}
