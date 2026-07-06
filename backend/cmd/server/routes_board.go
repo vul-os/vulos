@@ -21,9 +21,14 @@ package main
 // checks `exp` and that `room` matches the room the client is joining. This
 // endpoint only SIGNS; verification is the board server's job.
 //
-// Env gating: if BOARD_AUTH_SECRET is unset, the board server runs in open/dev
-// mode (no token required), so we return {"token":""} (no error) to keep local
-// builds working. The secret is never logged and never returned to the client.
+// Env gating (FAIL CLOSED): if BOARD_AUTH_SECRET is unset, the board sync server
+// runs in open/anonymous mode (no token required, any websocket accepted). That
+// is only acceptable off production. In VULOS_ENV=prod an unset secret means the
+// board server would accept UNAUTHENTICATED collab connections, so we refuse to
+// serve the token route at all (503) rather than hand back an empty "open-mode"
+// token — mirroring the board-ui standalone server's own prod guard. In non-prod
+// we still hand back {"token":""} so local/dev builds work without a secret.
+// The secret is never logged and never returned to the client.
 
 import (
 	"crypto/hmac"
@@ -33,6 +38,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"vulos/backend/services/env"
 )
 
 // boardTokenTTL is the lifetime of a minted board token. Short by design — the
@@ -85,7 +92,11 @@ func validBoardRoom(room string) bool {
 // registerBoardRoutes wires GET /api/board/token onto mux. It uses the same
 // session auth as other /api/* control-plane endpoints: the global auth
 // middleware injects X-User-ID, and an empty value means "not signed in".
-func registerBoardRoutes(mux *http.ServeMux) {
+//
+// activeEnv drives the fail-closed guard: in prod an unset BOARD_AUTH_SECRET
+// means the board sync server would accept anonymous collab connections, so we
+// refuse to serve the token route rather than hand out an "open-mode" token.
+func registerBoardRoutes(mux *http.ServeMux, activeEnv env.Env) {
 	mux.HandleFunc("GET /api/board/token", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
@@ -99,10 +110,18 @@ func registerBoardRoutes(mux *http.ServeMux) {
 			return
 		}
 
-		// Open/dev mode: no secret configured → board server requires no token.
-		// Hand back an empty token (not an error) so the client still connects.
 		secret := os.Getenv("BOARD_AUTH_SECRET")
 		if secret == "" {
+			// FAIL CLOSED in prod: an unset secret means the board sync server
+			// runs in anonymous/open mode. Issuing an "open-mode" empty token
+			// here would sanction UNAUTHENTICATED collab connections in prod, so
+			// refuse the route entirely (mirrors board-ui's standalone guard).
+			if activeEnv.IsProd() {
+				writeErr(w, 503, "board sync disabled: BOARD_AUTH_SECRET unset")
+				return
+			}
+			// Non-prod (local/dev): explicit open mode. Hand back an empty token
+			// (not an error) so local builds connect to an open board server.
 			writeJSON(w, map[string]any{"token": ""})
 			return
 		}

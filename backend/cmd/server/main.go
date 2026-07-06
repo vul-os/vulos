@@ -808,7 +808,8 @@ func main() {
 	registerMailRoutes(mux)
 
 	// Board: mint short-lived HMAC tokens for the Vulos Board sync server.
-	registerBoardRoutes(mux)
+	// Fails closed in prod when BOARD_AUTH_SECRET is unset (no anonymous collab).
+	registerBoardRoutes(mux, activeEnv)
 
 	// Files: OS Files metadata/control-plane API (Drive index, ACL-gated
 	// object-scoped grants, shares, share links, versions). Session-authed.
