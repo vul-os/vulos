@@ -404,6 +404,55 @@ func TestCustomDomainAPI_Verify_Success(t *testing.T) {
 	}
 }
 
+// TestCustomDomainAPI_Verify_ProxyWriteFailsClosed is the wave-34 fail-open
+// regression: DNS verification succeeds but the Caddy (proxy-config) snippet
+// write fails. The domain would never route, so the handler must NOT flip
+// status to Verified — it must return an error and leave status untouched.
+func TestCustomDomainAPI_Verify_ProxyWriteFailsClosed(t *testing.T) {
+	orig := dnsLookupTXT
+	defer func() { dnsLookupTXT = orig }()
+	token := "verifiedtoken12345"
+	dnsLookupTXT = func(name string) ([]string, error) {
+		return []string{token}, nil
+	}
+
+	// Seed the deployment + domain under a working (noop) caddy dir.
+	mux, cs, p := newCustomDomainTestEnv(t)
+	preProvision(t, p, "shop")
+	_ = cs.Set(&CustomDomain{
+		AppID:          "shop",
+		Domain:         "shop.myco.io",
+		ChallengeToken: token,
+		Status:         CustomDomainStatusPending,
+		CreatedAt:      time.Now().UTC(),
+	})
+
+	// Now point the caddy dir (read at handler time via caddyDirFromEnv) at an
+	// unwritable path so the snippet write fails.
+	base := t.TempDir()
+	notADir := filepath.Join(base, "iamafile")
+	if err := os.WriteFile(notADir, []byte("x"), 0600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Setenv("VULOS_CADDY_DIR", filepath.Join(notADir, "caddy"))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/apps/shop/domain/verify", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code == http.StatusOK {
+		t.Fatalf("expected non-200 on proxy-config write failure, got 200 (fail-open): %s", rr.Body)
+	}
+
+	// Status must NOT have advanced to Verified.
+	stored := cs.Get("shop")
+	if stored == nil {
+		t.Fatal("domain record vanished")
+	}
+	if stored.Status == CustomDomainStatusVerified {
+		t.Errorf("status advanced to Verified despite proxy-config write failure (fail-open)")
+	}
+}
+
 func TestCustomDomainAPI_Verify_AlreadyVerified_Idempotent(t *testing.T) {
 	mux, cs, p := newCustomDomainTestEnv(t)
 	preProvision(t, p, "blog")

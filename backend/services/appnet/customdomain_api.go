@@ -173,12 +173,16 @@ func RegisterCustomDomainHandlers(
 			return
 		}
 
-		// Verification succeeded — write Caddy snippet and persist.
+		// Verification succeeded — write Caddy snippet, THEN persist as Verified.
+		// FAIL CLOSED: if the proxy-config write fails, the domain will never
+		// actually route, so we must NOT flip status to Verified (that would
+		// report success while silently black-holing the domain). Surface the
+		// error and leave status untouched so the client can retry.
 		upstream := upstreamAddrForApp(appID, netMgr)
 		caddyDir := caddyDirFromEnv()
 		if err := writeCustomDomainCaddySnippet(caddyDir, appID, cd.Domain, upstream); err != nil {
-			// Non-fatal: log but do not abort activation.
-			_ = err
+			cdWriteErr(w, http.StatusInternalServerError, "write proxy config: "+err.Error())
+			return
 		}
 
 		cd.Status = CustomDomainStatusVerified

@@ -271,6 +271,42 @@ func TestProvisioner_WriteCaddySnippet(t *testing.T) {
 	}
 }
 
+// TestProvisioner_ProvisionSubdomain_CaddyWriteFailsClosed is the wave-34
+// fail-open regression: when the Caddy (proxy-config) snippet write fails, the
+// subdomain silently would never route, so ProvisionSubdomain must FAIL — it
+// must NOT swallow the error and persist a Deployment record (which would also
+// poison the idempotency short-circuit on retry).
+func TestProvisioner_ProvisionSubdomain_CaddyWriteFailsClosed(t *testing.T) {
+	// Make caddyDir unwritable: point it at a path whose parent is a regular
+	// file, so os.MkdirAll inside writeCaddySnippet fails.
+	base := t.TempDir()
+	notADir := filepath.Join(base, "iamafile")
+	if err := os.WriteFile(notADir, []byte("x"), 0600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	caddyDir := filepath.Join(notADir, "caddy") // parent is a file → MkdirAll fails
+
+	t.Setenv("VULOS_DNS_API", "noop")
+	t.Setenv("VULOS_INSTANCE_ID", "testulid")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_CADDY_DIR", caddyDir)
+
+	ds := newTestDeploymentStore(t)
+	p := NewProvisioner(ds, nil)
+
+	_, err := p.ProvisionSubdomain(context.Background(), "myapp", "default", "127.0.0.1:9000")
+	if err == nil {
+		t.Fatal("expected error when proxy-config write fails, got nil (fail-open)")
+	}
+	if !strings.Contains(err.Error(), "proxy config") {
+		t.Errorf("error should mention proxy config, got: %v", err)
+	}
+	// Deployment must NOT have been persisted (idempotency must not be poisoned).
+	if got := ds.Get("myapp", "default"); got != nil {
+		t.Errorf("Deployment persisted despite write failure: %+v", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handlers
 // ---------------------------------------------------------------------------

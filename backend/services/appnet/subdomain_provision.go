@@ -353,9 +353,15 @@ func (p *Provisioner) ProvisionSubdomain(ctx context.Context, appID, profile, up
 		return nil, fmt.Errorf("provision subdomain for %s: %w", appID, err)
 	}
 
+	// FAIL CLOSED: the Caddy snippet is what actually routes the subdomain. If
+	// this write fails we must NOT persist the Deployment record — doing so would
+	// (a) report a provisioned subdomain that silently never routes, and (b) poison
+	// the idempotency short-circuit above so a later retry returns the broken
+	// deployment instead of re-attempting. (writeCaddySnippet is a no-op that
+	// returns nil when caddyDir is unset/"noop", so dev/test behaviour is
+	// unchanged.) Surface the error so the caller can retry.
 	if err := p.writeCaddySnippet(appID, profile, fqdn, upstreamAddr); err != nil {
-		// Non-fatal: log but don't fail the whole provision.
-		_ = err // caller can check via CaddyDir inspection if needed
+		return nil, fmt.Errorf("provision subdomain for %s: write proxy config: %w", appID, err)
 	}
 
 	d := &Deployment{
