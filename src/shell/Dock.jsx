@@ -39,7 +39,8 @@ export default function Dock() {
               onClick={() => onClick(win)}
               title={win.title}
               aria-label={`${win.title}${win.minimized ? ' (minimized)' : ''}`}
-              className="group relative flex flex-col items-center"
+              aria-pressed={active}
+              className="focus-primary rounded-xl group relative flex flex-col items-center"
             >
               <span
                 className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150

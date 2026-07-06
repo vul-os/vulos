@@ -137,7 +137,7 @@ export default function Launchpad() {
             <button
               onClick={() => setSearch('')}
               aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 text-lg"
+              className="focus-primary rounded absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 text-lg"
             >
               {'\u00D7'}
             </button>
@@ -199,7 +199,7 @@ export default function Launchpad() {
             <button
               type="submit"
               disabled={!chatInput.trim()}
-              className="px-3 py-2 rounded-lg text-xs font-medium bg-neutral-700/50 text-neutral-400 hover:bg-neutral-600/50 hover:text-neutral-200 disabled:opacity-30 disabled:cursor-default transition-colors"
+              className="focus-primary px-3 py-2 rounded-lg text-xs font-medium bg-neutral-700/50 text-neutral-400 hover:bg-neutral-600/50 hover:text-neutral-200 disabled:opacity-30 disabled:cursor-default transition-colors"
             >
               Send
             </button>
@@ -241,7 +241,7 @@ function AppTile({ app, onLaunch }) {
     <button
       onClick={() => onLaunch(app)}
       aria-label={`Open ${app.name}`}
-      className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl hover:bg-white/5 transition-colors group"
+      className="focus-primary flex flex-col items-center gap-1.5 p-2.5 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors group"
     >
       <AppIconTile id={app.id} size={48} unicode={app.icon} />
       <span className="text-[11px] text-neutral-400 group-hover:text-neutral-200 text-center truncate w-full transition-colors">{app.name}</span>

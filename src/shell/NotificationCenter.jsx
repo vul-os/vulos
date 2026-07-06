@@ -100,7 +100,7 @@ function NC13_Panel({ onClose }) {
             <button
               onClick={markAllRead}
               style={{ color: 'var(--accent)' }}
-              className="text-[10px] transition-colors px-1.5 py-0.5 rounded hover:brightness-125"
+              className="focus-primary text-[10px] transition-colors px-1.5 py-0.5 rounded hover:brightness-125"
             >
               Mark all read
             </button>
@@ -108,7 +108,7 @@ function NC13_Panel({ onClose }) {
           {items.length > 0 && (
             <button
               onClick={clear}
-              className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-500/10"
+              className="focus-primary text-[10px] text-neutral-500 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-500/10"
             >
               Clear
             </button>
@@ -116,7 +116,7 @@ function NC13_Panel({ onClose }) {
           <button
             onClick={onClose}
             aria-label="Close notifications"
-            className="w-5 h-5 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors text-xs"
+            className="focus-primary w-5 h-5 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors text-xs"
           >
             ✕
           </button>
@@ -154,7 +154,7 @@ function NC13_Panel({ onClose }) {
                   >
                     <button
                       onClick={() => { if (!n.read) markRead(n.id) }}
-                      className="flex items-start gap-2.5 flex-1 min-w-0 text-left"
+                      className="focus-primary rounded flex items-start gap-2.5 flex-1 min-w-0 text-left"
                       aria-label={n.read ? n.title : `${n.title}, unread — mark read`}
                     >
                       <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={NC13_levelDot(n.level, n.read)} />
@@ -173,7 +173,7 @@ function NC13_Panel({ onClose }) {
                     <button
                       onClick={() => dismiss(n.id)}
                       aria-label="Dismiss notification"
-                      className="opacity-0 group-hover/row:opacity-100 focus:opacity-100 w-4 h-4 flex items-center justify-center rounded text-neutral-600 hover:text-red-400 hover:bg-neutral-800/60 transition-all text-[10px] shrink-0 mt-0.5"
+                      className="focus-primary opacity-0 group-hover/row:opacity-100 focus:opacity-100 w-4 h-4 flex items-center justify-center rounded text-neutral-600 hover:text-red-400 hover:bg-neutral-800/60 transition-all text-[10px] shrink-0 mt-0.5"
                     >
                       ✕
                     </button>
@@ -193,7 +193,7 @@ function NC13_Panel({ onClose }) {
           role="switch"
           aria-checked={prefs.muted}
           aria-label="Toggle Do Not Disturb"
-          className="relative rounded-full transition-colors"
+          className="focus-primary relative rounded-full transition-colors"
           style={{ height: '18px', width: '32px', background: prefs.muted ? 'var(--accent)' : 'var(--border-strong)' }}
         >
           <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform

@@ -230,13 +230,18 @@ export default function Window({ win, pointerBlock }) {
     const vw = window.innerWidth
     const vh = window.innerHeight
 
+    // Track the live snap zone in a local (the `snapZone` state is stale inside
+    // these closures — it's captured at drag-start), so pointerup applies the
+    // zone the pointer was actually over.
+    let liveZone = null
     const onMove = (ev) => {
       moveWindow(win.id, { x: Math.max(0, ev.clientX - ox), y: Math.max(0, ev.clientY - oy) })
-      setSnapZone(snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW))
+      liveZone = snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
+      setSnapZone(liveZone)
     }
     const onUp = (ev) => {
       setDragging(false)
-      const zone = snapZone || snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
+      const zone = liveZone || snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
       setSnapZone(null)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
@@ -270,14 +275,20 @@ export default function Window({ win, pointerBlock }) {
     <div
       data-window-id={win.id}
       data-win-anim={reduceMotion ? undefined : phase}
-      className={`win-anim absolute flex flex-col rounded-lg overflow-hidden
-        ${isActive ? 'ring-1 ring-neutral-600 shadow-2xl shadow-black/60' : 'ring-1 ring-neutral-800 shadow-lg shadow-black/30'}`}
+      data-active={isActive ? '' : undefined}
+      className="win-anim absolute flex flex-col rounded-lg overflow-hidden transition-shadow"
       style={{
         left: win.position.x, top: win.position.y, width: win.size.width, height: win.size.height,
         zIndex: closing ? zBase + 5 : zBase,
         transformOrigin: genieOrigin,
         pointerEvents: animating ? 'none' : undefined,
         display: hidden ? 'none' : undefined,
+        // Active-window affordance: an accent-tinted inset ring + deeper shadow so
+        // the focused window is unmistakable and retints with the user's accent.
+        // Inactive windows get a subtle neutral ring and a lighter drop shadow.
+        boxShadow: isActive
+          ? '0 0 0 1px color-mix(in srgb, var(--accent) 55%, var(--border-strong)), 0 25px 50px -12px rgba(0,0,0,0.6)'
+          : '0 0 0 1px var(--border-strong), 0 10px 15px -3px rgba(0,0,0,0.3)',
       }}
       onPointerDown={() => focusWindow(win.id)}
     >
@@ -286,11 +297,12 @@ export default function Window({ win, pointerBlock }) {
           compositor provides SSD (server-side decoration) for all windows. */}
       {!isBrowser && !thinWM && (
         <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart} onDoubleClick={() => maximizeWindow(win.id)}>
-          {/* Traffic lights */}
+          {/* Traffic lights — focus-primary gives keyboard users a visible ring
+              so a window can be focused + closed entirely from the keyboard. */}
           <div className="flex items-center gap-1.5" data-no-drag>
-            <button onClick={animatedClose} aria-label="Close window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
-            <button onClick={() => minimizeWindow(win.id)} aria-label="Minimize window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
-            <button onClick={() => maximizeWindow(win.id)} aria-label="Maximize window" className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
+            <button onClick={animatedClose} aria-label="Close window" className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
+            <button onClick={() => minimizeWindow(win.id)} aria-label="Minimize window" className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
+            <button onClick={() => maximizeWindow(win.id)} aria-label="Maximize window" className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
           </div>
           <div className="flex-1 flex items-center justify-center gap-1.5 text-xs text-neutral-500 truncate">
             <AppIcon id={win.appId} size={12} color="#737373" />
@@ -304,7 +316,7 @@ export default function Window({ win, pointerBlock }) {
               title="Open in native window"
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '' }}
-              className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 text-neutral-500 text-[9px] transition-colors mr-0.5"
+              className="focus-primary w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 text-neutral-500 text-[9px] transition-colors mr-0.5"
             >
               <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M5 1H2a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V7" />
@@ -326,7 +338,7 @@ export default function Window({ win, pointerBlock }) {
                 if (el) { el.textContent = '\u2713'; setTimeout(() => { el.textContent = '\uD83D\uDCBE' }, 1000) }
               }}
               title="Save this AI app"
-              className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-green-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
+              className="focus-primary w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-green-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
             >
               {'\uD83D\uDCBE'}
             </button>
@@ -371,16 +383,17 @@ export default function Window({ win, pointerBlock }) {
       {/* Browser overlay controls — top right, matching Chrome's title bar */}
       {isBrowser && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5" data-no-drag>
-          <button onClick={() => minimizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" title="Minimize" aria-label="Minimize window" />
-          <button onClick={() => maximizeWindow(win.id)} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" title="Maximize" aria-label="Maximize window" />
-          <button onClick={animatedClose} className="w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" title="Close" aria-label="Close window" />
+          <button onClick={() => minimizeWindow(win.id)} className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" title="Minimize" aria-label="Minimize window" />
+          <button onClick={() => maximizeWindow(win.id)} className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" title="Maximize" aria-label="Maximize window" />
+          <button onClick={animatedClose} className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" title="Close" aria-label="Close window" />
         </div>
       )}
 
-      {/* Resize handle — suppressed in thin WM mode (labwc SSD provides resize grips) */}
+      {/* Resize handle — suppressed in thin WM mode (labwc SSD provides resize grips).
+          Brightens on hover so the grip reads as interactive rather than dead chrome. */}
       {!thinWM && (
-        <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart}>
-          <svg className="w-3 h-3 text-neutral-700 absolute bottom-0.5 right-0.5" viewBox="0 0 10 10">
+        <div className="group/resize absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart} aria-hidden="true">
+          <svg className="w-3 h-3 text-neutral-700 group-hover/resize:text-neutral-400 transition-colors absolute bottom-0.5 right-0.5" viewBox="0 0 10 10">
             <path d="M9 1L1 9M9 5L5 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
           </svg>
         </div>

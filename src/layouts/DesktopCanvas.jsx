@@ -34,7 +34,8 @@ function DesktopIndicator() {
       <button
         onClick={() => removeDesktop(activeDesktop)}
         title="Close desktop (windows move to next)"
-        className="w-4 h-4 flex items-center justify-center rounded text-neutral-600 hover:text-red-400 hover:bg-neutral-800/60 transition-colors text-[10px]"
+        aria-label="Close desktop"
+        className="focus-primary w-4 h-4 flex items-center justify-center rounded text-neutral-600 hover:text-red-400 hover:bg-neutral-800/60 transition-colors text-[10px]"
       >
         {'\u00D7'}
       </button>
@@ -133,7 +134,8 @@ export default function DesktopCanvas() {
           <button
             onClick={toggleLaunchpad}
             title="Applications"
-            className="ml-1 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 transition-colors"
+            aria-label="Applications"
+            className="focus-primary ml-1 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 transition-colors"
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.3">
               <path d="M8 1.5c0 0-3 3-3 7.5h6c0-4.5-3-7.5-3-7.5z" fill="currentColor" opacity="0.5" stroke="none" />
@@ -148,7 +150,8 @@ export default function DesktopCanvas() {
           <button
             onClick={toggleMissionControl}
             title="Mission Control (F3)"
-            className="ml-0.5 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 transition-colors"
+            aria-label="Mission Control"
+            className="focus-primary ml-0.5 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 transition-colors"
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.2">
               <rect x="1" y="4" width="8" height="6" rx="1" fill="currentColor" opacity="0.25" />
@@ -169,8 +172,11 @@ export default function DesktopCanvas() {
           <button
             onClick={toggleChat}
             title="Chat (Ctrl+K)"
-            className={`mr-1 w-6 h-6 flex items-center justify-center rounded transition-colors
-              ${chatOpen ? 'bg-blue-600/40 text-blue-400' : 'hover:bg-neutral-700/50 text-neutral-400'}`}
+            aria-label="Chat"
+            aria-pressed={chatOpen}
+            style={chatOpen ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : undefined}
+            className={`focus-primary mr-1 w-6 h-6 flex items-center justify-center rounded transition-colors
+              ${chatOpen ? '' : 'hover:bg-neutral-700/50 text-neutral-400'}`}
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5">
               <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" fill="currentColor" opacity="0.7" />
@@ -183,7 +189,8 @@ export default function DesktopCanvas() {
               else document.documentElement.requestFullscreen()
             }}
             title="Toggle fullscreen"
-            className="mr-1 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 text-neutral-400 transition-colors"
+            aria-label="Toggle fullscreen"
+            className="focus-primary mr-1 w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-700/50 text-neutral-400 transition-colors"
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
@@ -231,7 +238,8 @@ export default function DesktopCanvas() {
               {mc && (
                 <button
                   onClick={(e) => { e.stopPropagation(); minimizeWindow(win.id) }}
-                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-neutral-700/90 text-neutral-300 hover:bg-red-500 hover:text-white text-xs flex items-center justify-center z-[53] transition-colors"
+                  aria-label={`Minimize ${win.title || 'window'}`}
+                  className="focus-primary absolute -top-2 -right-2 w-5 h-5 rounded-full bg-neutral-700/90 text-neutral-300 hover:bg-red-500 hover:text-white text-xs flex items-center justify-center z-[53] transition-colors"
                   style={{ transform: `scale(${1/mc.scale})`, transformOrigin: 'center' }}
                 >
                   {'\u00D7'}

@@ -103,7 +103,7 @@ export default function DataExportPanel() {
         {COVERED.map(item => (
           <div key={item.label} className="px-4 py-3 bg-neutral-900/40">
             <div className="flex items-center gap-2 mb-0.5">
-              <span aria-hidden="true" className="text-green-400 text-xs">✓</span>
+              <span aria-hidden="true" className="text-success text-xs">✓</span>
               <span className="text-sm font-medium text-neutral-200">{item.label}</span>
             </div>
             <p className="text-xs text-neutral-500 leading-relaxed">{item.detail}</p>
@@ -111,12 +111,13 @@ export default function DataExportPanel() {
         ))}
       </div>
 
-      {/* Download affordance */}
+      {/* Download affordance — primary CTA (this is the whole point of the panel).
+          focus-primary + a pending cursor so keyboard + busy states read clearly. */}
       <button
         onClick={download}
         disabled={preparing}
         aria-busy={preparing}
-        className="btn text-sm disabled:opacity-60"
+        className="btn-primary focus-primary text-sm disabled:opacity-60 disabled:cursor-progress"
       >
         {preparing ? 'Preparing your archive…' : 'Download My Data'}
       </button>
@@ -128,18 +129,18 @@ export default function DataExportPanel() {
       <div aria-live="polite" className="mt-3">
         {preparing && (
           <div className="flex items-center gap-2 text-xs text-neutral-400">
-            <span className="inline-block w-3 h-3 rounded-full border-2 border-neutral-600 border-t-neutral-300 animate-spin" aria-hidden="true" />
+            <span className="inline-block w-3 h-3 spinner" aria-hidden="true" />
             Gathering your mail, files, calendar, contacts and settings…
           </div>
         )}
         {status === 'done' && (
-          <div className="text-xs rounded px-3 py-2 bg-green-900/30 text-green-400">
+          <div className="text-xs rounded px-3 py-2 bg-success-soft text-success">
             Your archive is downloading. Check the MANIFEST.txt inside for the full contents.
           </div>
         )}
         {status === 'error' && (
-          <div className="text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">
-            {error} <button onClick={download} className="underline hover:no-underline ml-1">Retry</button>
+          <div className="text-xs rounded px-3 py-2 bg-danger-soft text-danger">
+            {error} <button onClick={download} className="focus-primary rounded underline hover:no-underline ml-1">Retry</button>
           </div>
         )}
       </div>
@@ -152,7 +153,7 @@ export default function DataExportPanel() {
       <ul className="space-y-2 mb-2">
         {NOT_COVERED.map((line, i) => (
           <li key={i} className="flex items-start gap-2 text-xs text-neutral-500 leading-relaxed">
-            <span aria-hidden="true" className="text-amber-500/80 mt-px">•</span>
+            <span aria-hidden="true" className="text-warning mt-px">•</span>
             <span>{line}</span>
           </li>
         ))}
