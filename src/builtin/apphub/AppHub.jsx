@@ -118,7 +118,7 @@ function InstallProgress({ label }) {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2.5">
-        <span className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin flex-shrink-0" />
+        <span className="w-4 h-4 spinner flex-shrink-0" />
         <span className="text-[13px] font-medium text-blue-300">{label || 'Installing...'}</span>
       </div>
       <div className="h-1.5 rounded-full bg-neutral-800/80 overflow-hidden">
@@ -470,7 +470,7 @@ export default function AppHub() {
                     <div className="flex-shrink-0 ml-1">
                       {isBeingInstalled ? (
                         <span className="w-7 h-7 flex items-center justify-center">
-                          <span className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                          <span className="w-4 h-4 spinner" />
                         </span>
                       ) : isBeingRemoved ? (
                         <span className="w-7 h-7 flex items-center justify-center">

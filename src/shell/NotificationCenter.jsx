@@ -72,8 +72,10 @@ function NC13_BellIcon({ unread, muted }) {
         </span>
       )}
       {!muted && unread > 0 && (
-        <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 flex items-center justify-center
-          rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+        <span
+          style={{ background: 'var(--status-danger)' }}
+          className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 flex items-center justify-center
+          rounded-full text-white text-[9px] font-bold leading-none">
           {unread > 99 ? '99+' : unread}
         </span>
       )}

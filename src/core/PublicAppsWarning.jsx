@@ -38,9 +38,9 @@ export default function PublicAppsWarning() {
 
   if (count === 0) return null
 
-  const visColor = hasPublic
-    ? 'bg-red-500/90 text-white'
-    : 'bg-yellow-400/90 text-neutral-900'
+  const visStyle = hasPublic
+    ? { background: 'var(--status-danger)', color: '#fff' }
+    : { background: 'var(--status-warning)', color: '#1a1a1a' }
 
   const visLabel = hasPublic
     ? `${count} public app${count !== 1 ? 's' : ''}`
@@ -50,15 +50,18 @@ export default function PublicAppsWarning() {
     window.dispatchEvent(new CustomEvent('vulos:open-public-apps'))
   }
 
+  const visTitle = `${count} non-private app${count !== 1 ? 's' : ''} — click to manage`
+
   return (
     <button
       onClick={visHandleClick}
-      title={`${count} non-private app${count !== 1 ? 's' : ''} — click to manage`}
+      title={visTitle}
+      aria-label={visTitle}
+      style={visStyle}
       className={`
         inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full
         text-[10px] font-semibold leading-none tracking-wide
         transition-opacity hover:opacity-80 cursor-pointer select-none
-        ${visColor}
       `}
     >
       <svg

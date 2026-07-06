@@ -70,7 +70,7 @@ export default function DesktopCanvas() {
           } else {
             const fallback = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
               createElement('span', { className: 'flex items-center gap-2' },
-                createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
+                createElement('span', { className: 'w-4 h-4 spinner' }),
                 'Connecting...'
               )
             )

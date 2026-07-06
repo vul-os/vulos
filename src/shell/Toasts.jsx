@@ -68,7 +68,7 @@ function ToastCard({ notif, onAction, onDismiss }) {
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} style={dotStyle} />
         <span className="text-sm font-medium truncate flex-1">{notif.title}</span>
-        {urgent && <span className="text-[9px] uppercase tracking-wider text-red-400 font-semibold shrink-0">Urgent</span>}
+        {urgent && <span style={{ color: 'var(--status-danger)' }} className="text-[9px] uppercase tracking-wider font-semibold shrink-0">Urgent</span>}
         <span className="text-[10px] text-neutral-500 shrink-0">{notif.source}</span>
         <button
           onClick={onDismiss}

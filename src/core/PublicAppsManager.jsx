@@ -245,7 +245,7 @@ function PamPopover({ onClose }) {
         <div className="overflow-y-auto flex-1 px-4 py-2">
           {entries === null && (
             <div className="flex items-center gap-2 py-6 justify-center text-neutral-600 text-xs">
-              <span className="w-3 h-3 rounded-full border-2 border-neutral-700 border-t-blue-500 animate-spin" />
+              <span className="w-3 h-3 spinner" />
               Loading...
             </div>
           )}

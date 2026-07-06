@@ -183,6 +183,17 @@ html, body, #root {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Error nudge for auth inputs (e.g. wrong PIN on the lock screen). Referenced as
+   animate-[shake_0.3s_ease-in-out]; was previously used with no keyframe defined,
+   so the intended shake never played. */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
 /* ═══════════════════════════════════════
    Reduced-motion: honour the OS preference across the shell's shared motion.
    Decorative entrance/pulse choreography snaps to its resting state; spinners
@@ -192,6 +203,7 @@ html, body, #root {
 @media (prefers-reduced-motion: reduce) {
   .animate-\[fadeIn_0\.12s_ease-out\],
   .animate-\[slideIn_0\.2s_ease-out\],
+  .animate-\[shake_0\.3s_ease-in-out\],
   .animate-pulse {
     animation: none !important;
   }
@@ -326,6 +338,38 @@ html, body, #root {
 }
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
+
+/* Secondary action button — token-driven neutral surface, pairs with .btn-primary.
+   Was referenced (ResetPasswordSignedIn) with no definition, rendering unstyled. */
+.btn-secondary {
+  padding: 0.5rem 1.25rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-emphasis);
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+.btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-dim); }
+.btn-secondary:disabled { opacity: 0.5; cursor: default; }
+
+/* Shared loading spinner — replaces ~18 copies of a hardcoded
+   `border-t-blue-500 animate-spin` span so every spinner retheme with --accent.
+   Size via width/height utility on the element; ring thickness fixed at 2px.
+   Under reduced-motion the shell slows .animate-spin rather than freezing it. */
+.spinner {
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 9999px;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+}
 
 /* Primary focus rings follow accent */
 .focus-primary:focus,

@@ -176,7 +176,7 @@ function ContactsPanel({ contacts, onUpdatePerms, onRemove, onCall, loading }) {
       {/* List */}
       {loading ? (
         <div className="flex justify-center py-10">
-          <span className="w-5 h-5 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+          <span className="w-5 h-5 spinner" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 text-neutral-600 text-sm">
@@ -288,7 +288,7 @@ function RequestsPanel({ requests, onApprove, onBlock, loading, onSent }) {
         </div>
         {loading ? (
           <div className="flex justify-center py-8">
-            <span className="w-5 h-5 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+            <span className="w-5 h-5 spinner" />
           </div>
         ) : (
           <RequestQueue
@@ -469,7 +469,7 @@ export default function Peering() {
         {tab === 'identity' && (
           loadingId && !identity ? (
             <div className="flex justify-center pt-16">
-              <span className="w-6 h-6 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+              <span className="w-6 h-6 spinner" />
             </div>
           ) : (
             <IdentityPanel identity={identity} onRefresh={fetchIdentity} />

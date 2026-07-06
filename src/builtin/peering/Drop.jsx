@@ -240,7 +240,7 @@ function TransferRow({ transfer }) {
     <div className="flex items-center gap-3 px-4 py-3 bg-neutral-900/50 border border-neutral-800/50 rounded-xl">
       {/* Spinner or icon */}
       {transfer.status === 'sending' ? (
-        <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-500 rounded-full animate-spin shrink-0" />
+        <span className="w-4 h-4 spinner shrink-0" />
       ) : transfer.status === 'done' ? (
         <span className="text-emerald-400 shrink-0"><IconCheck /></span>
       ) : (
@@ -782,7 +782,7 @@ export default function DropPanel({ onPendingCount }) {
 
         {loadingPeers ? (
           <div className="flex justify-center py-10">
-            <span className="w-5 h-5 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+            <span className="w-5 h-5 spinner" />
           </div>
         ) : peers.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">

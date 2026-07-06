@@ -568,7 +568,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     return (
       <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm">
         <div className="text-center space-y-3">
-          <span className="w-6 h-6 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin inline-block" />
+          <span className="w-6 h-6 spinner inline-block" />
           <p className="text-neutral-400">Starting app...</p>
           <p className="text-neutral-600 text-xs">{error}</p>
         </div>
@@ -605,7 +605,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       {status === 'connecting' && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-neutral-950">
           <span className="text-neutral-600 text-sm flex items-center gap-2">
-            <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-500 rounded-full animate-spin" />
+            <span className="w-4 h-4 spinner" />
             Connecting...
           </span>
         </div>

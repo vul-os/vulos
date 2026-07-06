@@ -141,7 +141,7 @@ function CallHistoryPanel({ onClose }) {
         <div className="max-h-[60vh] overflow-y-auto">
           {loading && (
             <div className="flex justify-center items-center py-10">
-              <span className="w-5 h-5 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+              <span className="w-5 h-5 spinner" />
             </div>
           )}
           {error && (

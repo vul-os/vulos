@@ -253,7 +253,7 @@ function CL05_Step2FA({ isFleetAdmin, onDone, onSkip }) {
       {/* ── enrolling ── */}
       {enrollStep === 'enrolling' && (
         <div className="flex items-center gap-3 text-sm text-neutral-500">
-          <span className="w-4 h-4 border-2 border-neutral-600 border-t-blue-500 rounded-full animate-spin flex-shrink-0" />
+          <span className="w-4 h-4 spinner flex-shrink-0" />
           Preparing your authenticator secret…
         </div>
       )}

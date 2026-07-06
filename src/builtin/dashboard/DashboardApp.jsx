@@ -14,7 +14,7 @@ const TABS = [
 
 const Spinner = () => (
   <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-600 text-xs gap-2">
-    <span className="w-3.5 h-3.5 rounded-full border-2 border-neutral-700 border-t-blue-500 animate-spin" />
+    <span className="w-3.5 h-3.5 spinner" />
     Loading...
   </div>
 )
@@ -30,9 +30,11 @@ export default function DashboardApp({ initialTab }) {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
+            aria-pressed={activeTab === tab.id}
+            style={activeTab === tab.id ? { borderColor: 'var(--accent)' } : undefined}
             className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${
               activeTab === tab.id
-                ? 'text-neutral-100 border-blue-500 bg-neutral-900/60'
+                ? 'text-neutral-100 bg-neutral-900/60'
                 : 'text-neutral-500 border-transparent hover:text-neutral-300 hover:bg-neutral-800/30'
             }`}
           >

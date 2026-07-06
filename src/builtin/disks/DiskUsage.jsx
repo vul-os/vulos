@@ -133,7 +133,7 @@ export default function DiskUsage() {
       <div className="flex-1 flex min-h-0">
 
         {/* Sidebar: filesystem list */}
-        <div className="w-52 shrink-0 flex flex-col border-r border-neutral-800/50 bg-neutral-950/80">
+        <div className="w-36 sm:w-52 shrink-0 flex flex-col border-r border-neutral-800/50 bg-neutral-950/80">
           <div className="shrink-0 px-3 pt-3 pb-2">
             <h2 className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">Volumes</h2>
           </div>
@@ -147,9 +147,11 @@ export default function DiskUsage() {
               return (
                 <button key={m.mount_point}
                   onClick={() => setSelectedMount(m)}
+                  aria-pressed={active}
+                  style={active ? { borderColor: 'var(--accent)' } : undefined}
                   className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
                     active
-                      ? 'bg-neutral-800/50 border-blue-500'
+                      ? 'bg-neutral-800/50'
                       : 'border-transparent hover:bg-neutral-900/60'
                   }`}>
                   <div className="flex items-center justify-between gap-1">

@@ -55,7 +55,7 @@ export default function ActivityMonitor() {
   if (!connected) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
-        <span className="w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin mr-2" />
+        <span className="w-4 h-4 spinner mr-2" />
         Connecting to system telemetry...
       </div>
     )

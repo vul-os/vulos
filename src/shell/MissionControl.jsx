@@ -170,9 +170,11 @@ export default function MissionControl() {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchDesktop(desk.id); setMissionControl(false) } }}
               className="relative group flex flex-col items-center gap-1.5 cursor-pointer"
             >
-              <div className={`w-32 h-20 rounded-lg border-2 transition-all overflow-hidden
+              <div
+                style={isActive ? { borderColor: 'var(--accent)' } : undefined}
+                className={`w-32 h-20 rounded-lg border-2 transition-all overflow-hidden
                 ${isActive
-                  ? 'border-blue-500 bg-neutral-800/80'
+                  ? 'bg-neutral-800/80'
                   : 'border-neutral-700/50 bg-neutral-800/40 hover:border-neutral-600'}`}
               >
                 <div className="relative w-full h-full">

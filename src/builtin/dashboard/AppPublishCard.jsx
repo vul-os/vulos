@@ -286,7 +286,7 @@ export default function AppPublishCard() {
         {/* Loading */}
         {apps === null && !error && (
           <div className="flex items-center gap-2 py-10 justify-center text-neutral-600 text-xs">
-            <span className="w-3.5 h-3.5 rounded-full border-2 border-neutral-700 border-t-blue-500 animate-spin" />
+            <span className="w-3.5 h-3.5 spinner" />
             Loading apps...
           </div>
         )}

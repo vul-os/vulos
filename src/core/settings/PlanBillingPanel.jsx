@@ -46,21 +46,29 @@ function QuotaBar({ label, used, limit, unit = 'GB', format }) {
   const exceeded = hasLimit && used >= limit
   const near = hasLimit && !exceeded && pct >= 85
 
-  const barColor = exceeded ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-blue-500'
+  const barColor = exceeded ? 'var(--status-danger)' : near ? 'var(--status-warning)' : 'var(--accent)'
+  const textColor = exceeded ? 'var(--status-danger)' : near ? 'var(--status-warning)' : undefined
 
   return (
     <div className="px-4 py-3 bg-neutral-900/40">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs text-neutral-400">{label}</span>
-        <span className={`text-xs tabular-nums ${exceeded ? 'text-red-400' : near ? 'text-amber-400' : 'text-neutral-400'}`}>
+        <span className="text-xs tabular-nums text-neutral-400" style={textColor ? { color: textColor } : undefined}>
           {fmt(used)}{hasLimit ? ` / ${fmt(limit)}` : ''}
         </span>
       </div>
       {hasLimit && (
-        <div className="h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+        <div
+          className="h-1.5 rounded-full bg-neutral-800 overflow-hidden"
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div
-            className={`h-full rounded-full transition-[width] duration-500 ${barColor}`}
-            style={{ width: `${Math.max(2, pct)}%` }}
+            className="h-full rounded-full transition-[width] duration-500"
+            style={{ width: `${Math.max(2, pct)}%`, background: barColor }}
           />
         </div>
       )}

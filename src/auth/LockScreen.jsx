@@ -88,12 +88,14 @@ export default function LockScreen({ onUnlock, userName }) {
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="PIN"
-              maxLength={6}
+              inputMode="numeric"
+              maxLength={8}
               aria-label="Unlock PIN"
               aria-invalid={error}
               aria-describedby={error ? 'lockscreen-error' : undefined}
+              style={error ? { borderColor: 'var(--status-danger)' } : undefined}
               className={`w-40 text-center text-lg tracking-[0.5em] bg-neutral-900/60 border rounded-xl px-4 py-3 text-white outline-none transition-colors
-                ${error ? 'border-red-600 animate-[shake_0.3s_ease-in-out]' : 'border-neutral-800 focus:border-neutral-600'}`}
+                ${error ? 'animate-[shake_0.3s_ease-in-out]' : 'border-neutral-800 focus:border-neutral-600'}`}
             />
           </div>
           <p id="lockscreen-error" role="alert" className="sr-only">

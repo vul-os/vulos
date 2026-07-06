@@ -50,8 +50,9 @@ export default function Dock() {
               </span>
               {/* Running indicator — a dot under the icon; bright when focused. */}
               <span
+                style={active ? { background: 'var(--accent)' } : undefined}
                 className={`absolute -bottom-0.5 w-1 h-1 rounded-full transition-colors
-                  ${active ? 'bg-blue-400' : 'bg-neutral-500 group-hover:bg-neutral-300'}`}
+                  ${active ? '' : 'bg-neutral-500 group-hover:bg-neutral-300'}`}
               />
               {/* Tooltip */}
               <span

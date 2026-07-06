@@ -2112,9 +2112,9 @@ function UsersSettings({ profile }) {
       <div className="mb-6 pb-4 border-b border-neutral-800/50">
         <h3 className="text-sm font-medium mb-2">Lock Screen PIN</h3>
         <div className="flex gap-2">
-          <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+          <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
             aria-label="Lock screen PIN"
-            placeholder="4-6 digit PIN" maxLength={6} className="input w-40" />
+            placeholder="4–8 digit PIN" maxLength={8} className="input w-40 max-w-[55vw]" />
           <button onClick={savePin} className="btn">{pin ? 'Set PIN' : 'Remove PIN'}</button>
         </div>
       </div>

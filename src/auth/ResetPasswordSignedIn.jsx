@@ -121,7 +121,7 @@ export default function ResetPasswordSignedIn({ onDone, onCancel }) {
         />
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-sm" style={{ color: 'var(--status-danger)' }}>{error}</p>}
 
       <div className="flex gap-2">
         <button type="submit" disabled={busy} className="btn-primary flex-1 py-2.5 disabled:opacity-60">
