@@ -39,6 +39,13 @@ type Pool struct {
 	nextPort         int
 	resolveUserHome  func(r *http.Request) string // resolves user home from request context
 	webAuthnVerifier A13_WebAuthnVerifier         // AUTH-13: verifier for input-injection re-auth
+	// strictInputGate (AUTH-13): when true, input-injection sessions are gated
+	// even if no real WebAuthn verifier is wired — in that case the stub verifier
+	// rejects every assertion, so input stays PERMANENTLY blocked (fail-closed).
+	// Default false: without a real verifier we do NOT arm the gate, because doing
+	// so would silently brick input with no unlock path. Operators who want
+	// strict fail-closed behaviour set this explicitly (VULOS_STREAM_STRICT_INPUT_GATE=1).
+	strictInputGate bool
 }
 
 // NewPool creates a streaming session pool.
@@ -116,6 +123,29 @@ func (p *Pool) WebAuthnVerifier() A13_WebAuthnVerifier {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.webAuthnVerifier
+}
+
+// SetStrictInputGate enables fail-closed AUTH-13 gating even when no real
+// WebAuthn verifier is configured. See the strictInputGate field for the
+// safety trade-off. Default is off.
+func (p *Pool) SetStrictInputGate(strict bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.strictInputGate = strict
+}
+
+// shouldGateInput reports whether a newly launched input-injection session
+// should start in the gated state (AUTH-13). We ONLY arm the gate when it can
+// actually be lifted — i.e. a real WebAuthn verifier is wired — unless the
+// operator has explicitly opted into strict fail-closed gating. Arming with only
+// the reject-all stub verifier would permanently block legitimate input.
+func (p *Pool) shouldGateInput() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.strictInputGate {
+		return true
+	}
+	return p.webAuthnVerifier != nil
 }
 
 // LaunchOpts configures a streaming session.
@@ -634,6 +664,26 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		delete(p.sessions, opts.ID)
 		p.mu.Unlock()
 	}()
+
+	// AUTH-13: arm the input-injection re-auth gate. When this session carries an
+	// input injector, remote mouse/keyboard/gamepad events can drive the host, so
+	// we start GATED — all injected input is dropped until the client completes a
+	// WebAuthn assertion (POST /api/stream/webauthn-assert), which flips
+	// inputGated=false. We only arm when the gate can actually be lifted (a real
+	// verifier is wired) OR the operator opted into strict fail-closed gating;
+	// otherwise the reject-all stub would block input permanently. See
+	// shouldGateInput.
+	if sess.injector != nil && p.shouldGateInput() {
+		sess.mu.Lock()
+		sess.inputGated = true
+		sess.mu.Unlock()
+		saWebauthn_register(sess.ID, opts.UserID)
+		log.Printf("[stream] AUTH-13: input injection gated for session %s until WebAuthn assertion", opts.ID)
+	} else if sess.injector != nil {
+		log.Printf("[stream] AUTH-13 WARNING: input injection is NOT gated for session %s "+
+			"(no WebAuthn verifier wired and strict gating off) — remote input flows unauthenticated. "+
+			"Wire passkeys or set VULOS_STREAM_STRICT_INPUT_GATE=1 to enforce.", opts.ID)
+	}
 
 	// STREAMWIN-03: start idle lifecycle watcher (no-op when gaming=true).
 	sess.startIdleWatcher()

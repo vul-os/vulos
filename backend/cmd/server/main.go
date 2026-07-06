@@ -1945,19 +1945,28 @@ func main() {
 	registerStreamRoutes(mux, streamPool)
 
 	// AUTH-13: WebAuthn re-auth gate for input-injection sessions.
+	//
+	// The gate is now ARMED: when a stream session carries an input injector,
+	// Pool.Launch starts it in the gated state (all injected mouse/keyboard input
+	// dropped) and the client must POST a valid WebAuthn assertion to lift it.
+	//
 	// streamVerifier is non-nil when passkeys are available (set above in the
 	// AUTH-12 block); nil when devicekey is unavailable (e.g. CI or containers
-	// without TPM). In the nil case the stub verifier rejects all assertions
-	// (safe failure mode: input injection cannot be unlocked). Prod requires
-	// passkeys to be available or the gate is permanently locked, so surface a
-	// clear log rather than crash — the operator can disable input injection
-	// if passkeys are intentionally not deployed.
-	if streamPool.WebAuthnVerifier() == nil {
+	// without TPM). To avoid PERMANENTLY bricking input, Pool.shouldGateInput only
+	// arms the gate when a REAL verifier is wired (or the operator opts into strict
+	// fail-closed gating via VULOS_STREAM_STRICT_INPUT_GATE=1). With no verifier and
+	// strict gating off, input flows UNGATED and Launch logs a loud per-session
+	// warning — an honest, non-crashing state rather than a silent permanent lock.
+	strictGate := os.Getenv("VULOS_STREAM_STRICT_INPUT_GATE") == "1"
+	streamPool.SetStrictInputGate(strictGate)
+	if streamPool.WebAuthnVerifier() == nil && !strictGate {
 		if activeEnv.IsProd() {
-			log.Printf("[stream/webauthn] WARNING: devicekey unavailable in prod — input-injection re-auth permanently gated (stub rejects all assertions). Set up a TPM or software keystore to enable passkey-gated input injection.")
+			log.Printf("[stream/webauthn] WARNING: AUTH-13 NOT ENFORCED in prod — no WebAuthn verifier wired (devicekey/passkeys unavailable) and VULOS_STREAM_STRICT_INPUT_GATE unset. Remote input injection is UNGATED. Wire passkeys or set VULOS_STREAM_STRICT_INPUT_GATE=1 (fail-closed) to enforce.")
 		} else {
-			log.Printf("[stream/webauthn] WARNING: no WebAuthn verifier wired — input injection will remain gated (stub rejects all assertions). Acceptable in dev/local.")
+			log.Printf("[stream/webauthn] WARNING: AUTH-13 not enforced — no WebAuthn verifier wired and strict gating off; input injection is ungated. Acceptable in dev/local.")
 		}
+	} else if streamPool.WebAuthnVerifier() == nil && strictGate {
+		log.Printf("[stream/webauthn] AUTH-13 strict fail-closed: input injection is gated but no real verifier is wired — assertions will be REJECTED and input stays permanently locked. Wire passkeys to unlock.")
 	}
 	registerStreamWebAuthnRoutes(mux, streamPool, authStore, streamVerifier)
 
