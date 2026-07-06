@@ -29,12 +29,18 @@ func a07ValidateID(aiAppsDir, id string) (string, error) {
 	if !a07ValidIDRe.MatchString(id) {
 		return "", fmt.Errorf("invalid id")
 	}
-	candidate := filepath.Join(aiAppsDir, id)
 	resolved, err := filepath.EvalSymlinks(aiAppsDir)
 	if err != nil {
 		// aiAppsDir not yet present – use Clean-based containment
 		resolved = filepath.Clean(aiAppsDir)
 	}
+	// Build the candidate from the RESOLVED base so a symlinked parent of
+	// aiAppsDir (e.g. macOS /var→/private/var, or a containerised data dir that
+	// is a symlink) does not make filepath.Rel below see a spurious "../…" and
+	// reject every legitimate id. Previously the candidate was joined onto the
+	// UN-resolved aiAppsDir while the base was resolved, so the two diverged and
+	// snapshot/versions/rollback failed closed (400) under any symlinked home.
+	candidate := filepath.Join(resolved, id)
 	clean := filepath.Clean(candidate)
 	// Ensure clean is strictly inside aiAppsDir
 	rel, err := filepath.Rel(resolved, clean)
