@@ -1,6 +1,6 @@
 // Package llmuxclient routes all OS LLM/AI calls through the llmux gateway.
 //
-// Architecture: OS → llmux (LLMUX_URL) → providers
+// Architecture: OS → llmux (LLMUX_URL, alias VULOS_LLMUX_URL) → providers
 //
 // The llmux gateway is OpenAI-compatible and handles provider management,
 // BYO routing, and billing/metering on behalf of the OS. The OS is
@@ -17,9 +17,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"vulos/backend/services/env"
 )
 
 // Config is the resolved llmux gateway target.
@@ -34,15 +35,21 @@ type Config struct {
 	Key string
 }
 
-// FromEnv reads LLMUX_URL and LLMUX_KEY from the environment.
-// It normalises LLMUX_URL by stripping a trailing slash then a trailing "/v1"
+// FromEnv reads the llmux gateway URL and key from the environment.
+//
+// The canonical variable is LLMUX_URL; VULOS_LLMUX_URL is accepted as an alias
+// (whichever is set non-empty wins, LLMUX_URL first) so that an operator who
+// sets either name gets the gateway wired up. The key follows the same rule:
+// LLMUX_KEY canonical, VULOS_LLMUX_KEY alias.
+//
+// It normalises the URL by stripping a trailing slash then a trailing "/v1"
 // segment so callers that append "/v1/..." build the right URL regardless of
 // whether the operator supplied ".../v1" or just the host root.
 //
-// Returns ok=false when LLMUX_URL is unset or empty. In that case the returned
-// Config is zero and Client methods will return errors.
+// Returns ok=false when neither URL variable is set or non-empty. In that case
+// the returned Config is zero and Client methods will return errors.
 func FromEnv() (Config, bool) {
-	raw := strings.TrimSpace(os.Getenv("LLMUX_URL"))
+	raw := env.FirstNonEmptyEnv("LLMUX_URL", "VULOS_LLMUX_URL")
 	if raw == "" {
 		return Config{}, false
 	}
@@ -51,7 +58,7 @@ func FromEnv() (Config, bool) {
 	base = strings.TrimRight(base, "/")
 	return Config{
 		BaseURL: base,
-		Key:     strings.TrimSpace(os.Getenv("LLMUX_KEY")),
+		Key:     env.FirstNonEmptyEnv("LLMUX_KEY", "VULOS_LLMUX_KEY"),
 	}, true
 }
 

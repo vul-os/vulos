@@ -223,3 +223,49 @@ func TestString(t *testing.T) {
 		}
 	}
 }
+
+// TestFirstNonEmptyEnv covers the alias-fallback helper used to unify the
+// LLM/llmux seam variable (LLMUX_URL canonical, VULOS_LLMUX_URL alias).
+func TestFirstNonEmptyEnv(t *testing.T) {
+	const canon, alias = "TEST_LLMUX_URL", "TEST_VULOS_LLMUX_URL"
+
+	t.Run("canonical only", func(t *testing.T) {
+		t.Setenv(canon, "http://a:4000")
+		t.Setenv(alias, "")
+		if got := env.FirstNonEmptyEnv(canon, alias); got != "http://a:4000" {
+			t.Fatalf("want canonical value, got %q", got)
+		}
+	})
+
+	t.Run("alias only", func(t *testing.T) {
+		t.Setenv(canon, "")
+		t.Setenv(alias, "http://b:4000")
+		if got := env.FirstNonEmptyEnv(canon, alias); got != "http://b:4000" {
+			t.Fatalf("want alias value, got %q", got)
+		}
+	})
+
+	t.Run("canonical wins when both set", func(t *testing.T) {
+		t.Setenv(canon, "http://a:4000")
+		t.Setenv(alias, "http://b:4000")
+		if got := env.FirstNonEmptyEnv(canon, alias); got != "http://a:4000" {
+			t.Fatalf("first key must win, got %q", got)
+		}
+	})
+
+	t.Run("neither set", func(t *testing.T) {
+		t.Setenv(canon, "")
+		t.Setenv(alias, "")
+		if got := env.FirstNonEmptyEnv(canon, alias); got != "" {
+			t.Fatalf("want empty, got %q", got)
+		}
+	})
+
+	t.Run("whitespace is trimmed and skipped", func(t *testing.T) {
+		t.Setenv(canon, "   ")
+		t.Setenv(alias, "  http://b:4000  ")
+		if got := env.FirstNonEmptyEnv(canon, alias); got != "http://b:4000" {
+			t.Fatalf("want trimmed alias value, got %q", got)
+		}
+	})
+}

@@ -97,7 +97,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	{
 		lmCfg, lmOk := llmuxclient.FromEnv()
 		if !lmOk {
-			log.Printf("[llmuxclient] LLMUX_URL unset — /api/ai/* routes will return 503 (set LLMUX_URL to enable)")
+			log.Printf("[llmuxclient] LLMUX_URL unset — /api/ai/* routes will return 503 (set LLMUX_URL, or its alias VULOS_LLMUX_URL, to enable)")
 		}
 		lmClient := llmuxclient.New(lmCfg)
 		lmStore, lmErr := llmuxclient.NewStoreFromEnv(deps.dbDir)

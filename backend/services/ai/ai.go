@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"vulos/backend/services/env"
 )
 
 // Provider identifies an AI backend.
@@ -143,19 +145,22 @@ You can control the OS by including <os-action> blocks:
 You can include multiple actions in one response alongside text and viewports.`),
 	}
 
-	// llmux sovereign gateway (opt-in). When VULOS_LLMUX_URL is set, route the
+	// llmux sovereign gateway (opt-in). When the llmux URL is set, route the
 	// assistant's completions through the on-box llmux OpenAI-compatible gateway
 	// — the single sovereign choke point that enforces default-deny egress and
 	// captures observability — instead of talking to Ollama directly. llmux runs
 	// on the instance (e.g. http://localhost:4000/v1), so the endpoint stays
 	// loopback and assistant.Guard() still classifies it as EgressOnInstance
-	// (sovereign). If VULOS_LLMUX_URL is unset, we keep today's direct-Ollama
-	// default untouched. The guard is NOT weakened: pointing this at a non-local
-	// host would (correctly) be blocked unless external egress is opted into.
-	if raw := strings.TrimSpace(os.Getenv("VULOS_LLMUX_URL")); raw != "" {
+	// (sovereign). If it is unset, we keep today's direct-Ollama default
+	// untouched. The guard is NOT weakened: pointing this at a non-local host
+	// would (correctly) be blocked unless external egress is opted into.
+	//
+	// Canonical variable: LLMUX_URL (matches internal/llmuxclient); VULOS_LLMUX_URL
+	// is accepted as an alias so setting either name works. Same for the key.
+	if raw := env.FirstNonEmptyEnv("LLMUX_URL", "VULOS_LLMUX_URL"); raw != "" {
 		cfg.Provider = ProviderCustom
 		cfg.Endpoint = normalizeOpenAIBase(raw)
-		if k := os.Getenv("VULOS_LLMUX_KEY"); k != "" {
+		if k := env.FirstNonEmptyEnv("LLMUX_KEY", "VULOS_LLMUX_KEY"); k != "" {
 			cfg.APIKey = k
 		}
 	}

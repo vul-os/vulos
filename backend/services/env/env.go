@@ -17,6 +17,7 @@ package env
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Env is the runtime environment tag.
@@ -116,6 +117,23 @@ func DefaultsFor(e Env) Defaults {
 			AllowStagingBrokerKey: false,
 		}
 	}
+}
+
+// FirstNonEmptyEnv returns the trimmed value of the first environment variable
+// in keys that is set to a non-empty (after trimming) value, or "" if none are.
+//
+// It exists to unify aliased environment variables so that setting any accepted
+// name works. For the LLM/llmux seam the canonical variable is LLMUX_URL, with
+// VULOS_LLMUX_URL kept as an accepted alias; call
+// FirstNonEmptyEnv("LLMUX_URL", "VULOS_LLMUX_URL") to read either. Keys are
+// checked in order, so list the canonical name first.
+func FirstNonEmptyEnv(keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // String returns the lower-case string representation of the environment.
