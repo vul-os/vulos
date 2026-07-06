@@ -86,8 +86,10 @@ func (realBackend) validate(ctx context.Context, cfg cluster.S3Config, passphras
 //     c. falls back to full changeset replay when no snapshot exists.
 //
 // The passphrase is NEVER written anywhere — it lives only in this call stack
-// for the lifetime of the derived SSE-C key.  cluster.SyncLoop takes over
-// normal incremental sync once the server boots in "sync" mode.
+// for the lifetime of the derived SSE-C key.  The live services/sync engine
+// (started via sync.NewFromCluster in cmd/server) takes over normal incremental
+// sync once the server boots.  (Historical note: an older cluster.SyncLoop is
+// superseded and no longer wired — see services/cluster/sync.go.)
 func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase string, progress func(phase string, pct int)) error {
 	progress("connecting", 5)
 
@@ -101,14 +103,14 @@ func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase st
 	progress("bootstrap", 20)
 
 	// noopInstall is a no-op DBInstaller: on the join path we do not yet have a
-	// local SQLite DB to restore into.  cluster.SyncLoop will apply the snapshot
-	// and changesets to the real DB once the server boots in sync mode.
+	// local SQLite DB to restore into.  The live services/sync engine will apply
+	// the snapshot and changesets to the real DB once the server boots.
 	// Bootstrap is called here to (a) validate that the snapshot + changesets are
 	// fully readable with the derived key, (b) drive progress reporting so the
 	// setup UI advances, and (c) honour the SYNC-03 contract that Bootstrap is
 	// wired into the join flow.
 	noopInstall := func(_ context.Context, _ []byte, _ int64) error {
-		log.Printf("[joinsync] snapshot readable (install deferred to SyncLoop)")
+		log.Printf("[joinsync] snapshot readable (install deferred to services/sync engine)")
 		return nil
 	}
 
