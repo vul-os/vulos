@@ -159,6 +159,35 @@ func (c *Client) GetEncrypted(ctx context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
+// ListPrefix returns S3 object keys that begin with prefix.
+// It is a thin wrapper over minio.Client.ListObjects kept in the same package
+// so external callers (e.g. services/sync) can list without needing the raw
+// minio client.
+func (c *Client) ListPrefix(ctx context.Context, prefix string) ([]string, error) {
+	opts := minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	}
+	objectCh := c.mc.ListObjects(ctx, c.bucket, opts)
+
+	var keys []string
+	for obj := range objectCh {
+		if obj.Err != nil {
+			return nil, obj.Err
+		}
+		keys = append(keys, obj.Key)
+	}
+	return keys, nil
+}
+
+// DeleteObject removes a single object from the cluster bucket. It mirrors the
+// SnapshotS3 abstraction in services/sync so *Client can drive the Compactor's
+// changeset pruning. Deleting an absent key is not treated as an error by the
+// minio client.
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	return c.mc.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+}
+
 // deriveKey returns a 32-byte AES key using Argon2id with the project parameters.
 func deriveKey(passphrase string, salt []byte) []byte {
 	return argon2.IDKey([]byte(passphrase), salt, argonTime, argonMem, argonThreads, argonKeyLen)
