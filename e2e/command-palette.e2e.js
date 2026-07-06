@@ -56,6 +56,56 @@ test('Ask streams a plain answer token-by-token', async ({ page }) => {
   await expect(page.getByText(/You owe \$128\.40\./)).toBeVisible()
 })
 
+test('palette groups results into sections and Tab jumps between them', async ({ page }) => {
+  await installBackend(page, {
+    // A mail hit so the query yields Apps + Mail + Actions sections together.
+    'GET /api/mail/search': json({ messages: [{ uid: 'm9', subject: 'Mailbox full', from_name: 'System' }] }),
+  })
+  await openPalette(page)
+  // "mail" fuzzy-matches app rows AND the "Compose email" action (keyword 'mail'),
+  // and returns a mail search hit — so all three section headers render. Section
+  // headers are the mono-uppercase labels (scoped so they don't collide with the
+  // "Mail" app row / Dock button of the same text).
+  await page.getByPlaceholder(/Search apps/).fill('mail')
+  const header = (name) => page.locator('.uppercase.font-mono', { hasText: new RegExp(`^${name}$`) })
+  await expect(header('Apps')).toBeVisible()
+  await expect(header('Mail')).toBeVisible()
+  await expect(header('Actions')).toBeVisible()
+  // The mocked mail hit renders under the Mail section.
+  await expect(page.getByText('Mailbox full')).toBeVisible()
+
+  // A default action row (from the command registry) is present.
+  const composeRow = page.getByText('Compose email')
+  await expect(composeRow).toBeVisible()
+
+  // Selection starts on the first (Apps) row; Tab jumps to the first row of the
+  // NEXT section, walking across sections until an Actions row is highlighted.
+  const activeAncestor = 'xpath=ancestor::div[contains(@class,"bg-neutral-800/70")]'
+  await expect(async () => {
+    await page.keyboard.press('Tab')
+    await expect(composeRow.locator(activeAncestor)).toBeVisible({ timeout: 500 })
+  }).toPass({ timeout: 5_000 })
+})
+
+test('palette add_contact proposal posts only the opaque id (WAVE-13)', async ({ page }) => {
+  let executeBody = null
+  await installBackend(page, {
+    'POST /api/assistant/agent/stream': sseBody([
+      { type: 'proposal', proposal: { id: 'prop_pal_contact', tool: 'add_contact', summary: 'Add Dana Ruiz to contacts', args: { name: 'Dana Ruiz', email: 'dana@acme.io' } } },
+      { type: 'done' },
+    ]),
+    'POST /api/assistant/execute': (req) => { executeBody = JSON.parse(req.postData() || '{}'); return json({ result: 'Contact added.' }) },
+  })
+  await openPalette(page)
+  await page.getByPlaceholder(/Search apps/).fill('?add dana to contacts')
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(/Needs your approval · Add contact/i)).toBeVisible()
+  await page.getByRole('button', { name: 'Approve' }).click()
+  await expect.poll(() => executeBody).not.toBeNull()
+  expect(executeBody).toEqual({ id: 'prop_pal_contact' })
+  expect(executeBody).not.toHaveProperty('args')
+})
+
 test('WAVE-13: Approve posts only the opaque id; Reject sends nothing', async ({ page }) => {
   let executeBody = null
   let executeCount = 0

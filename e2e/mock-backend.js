@@ -10,6 +10,21 @@
 
 const PROFILE = { user: { id: 'u1', username: 'ada' }, profile: { username: 'ada', display_name: 'Ada Lovelace' } }
 
+// A quiet-but-alive Home aggregate (GET /api/assistant/home). Home is the desktop
+// backdrop shown whenever no windows are open, so it renders on every boot; this
+// keeps it from falling through to the empty catch-all. Specs that exercise Home
+// pass a richer payload (brief/greeting/agenda/invites) via overrides.
+const HOME_PAYLOAD = {
+  greeting: 'Good evening, Ada',
+  brief: '',
+  focus: [],
+  agenda: [],
+  agenda_fresh: true,
+  invites: [],
+  activity: [],
+  sovereignty: { tier: 'local', label: 'On your device' },
+}
+
 const STATUS_LOCAL = {
   tier: 'local',
   label: 'On your device',
@@ -49,6 +64,7 @@ function defaults() {
     'GET /api/energy/status': json({ screen_on: true, screen_dimmed: false }),
     'POST /api/energy/wake': json({ ok: true }),
 
+    'GET /api/assistant/home': json(HOME_PAYLOAD),
     'GET /api/assistant/status': json(STATUS_LOCAL),
     'POST /api/assistant/tier': json(STATUS_LOCAL),
     'POST /api/assistant/agent/stream': sseBody([{ type: 'token', content: 'Hello.' }, { type: 'done' }]),
@@ -113,4 +129,4 @@ export async function installBackend(page, overrides = {}) {
   return { seen, json, sseBody }
 }
 
-export { json, PROFILE, STATUS_LOCAL }
+export { json, PROFILE, STATUS_LOCAL, HOME_PAYLOAD }
