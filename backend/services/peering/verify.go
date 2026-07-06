@@ -1,8 +1,11 @@
 // verify.go — vulos.org email verification for peering identities (PEER-10).
 //
 // Implements a self-contained email-address verification flow tied to the local
-// Vula identity.  No external HTTP calls are made in v1 — the one-time token is
-// logged to stderr so operators can observe it during development and testing.
+// Vula identity.  No external HTTP calls are made in v1 — in non-prod the
+// one-time token is logged to stderr so operators can observe it during
+// development and testing. In VULOS_ENV=prod the token is REDACTED from logs
+// (it is a live credential: a log reader could hijack the email→identity
+// binding by replaying it to /verify/email/confirm).
 //
 // Storage layout:
 //
@@ -27,6 +30,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"vulos/backend/services/env"
 )
 
 // ─── Storage types ─────────────────────────────────────────────────────────────
@@ -133,7 +138,15 @@ func (s *EmailVerifyService) Start(addr string) (string, error) {
 		return "", err
 	}
 
-	fmt.Fprintf(os.Stderr, "[peering] email verification token for %s: %s\n", addr, token)
+	// SECURITY: the token is a live credential — anyone who reads it can hijack
+	// the email→identity binding by hitting /verify/email/confirm?token=. Never
+	// log it verbatim in production. Off-prod (local/dev) we still print it so
+	// operators can complete the flow without a real mail sender wired up.
+	if activeEnv, _ := env.Parse(""); activeEnv.IsProd() {
+		fmt.Fprintf(os.Stderr, "[peering] email verification token issued for %s (redacted; %d chars)\n", addr, len(token))
+	} else {
+		fmt.Fprintf(os.Stderr, "[peering] email verification token for %s: %s\n", addr, token)
+	}
 	return token, nil
 }
 

@@ -39,6 +39,9 @@ func newTestSvc(t *testing.T) *EmailVerifyService {
 // ─── Start ─────────────────────────────────────────────────────────────────────
 
 func TestEmailVerifyStart_LogsToken(t *testing.T) {
+	// Non-prod: the token is printed verbatim so operators can complete the flow
+	// without a real mail sender.
+	t.Setenv("VULOS_ENV", "local")
 	svc := newTestSvc(t)
 	var tok string
 	out := captureStderr(func() {
@@ -54,6 +57,33 @@ func TestEmailVerifyStart_LogsToken(t *testing.T) {
 	want := fmt.Sprintf("[peering] email verification token for alice@vulos.org: %s", tok)
 	if !strings.Contains(out, want) {
 		t.Fatalf("stderr did not contain %q; got: %q", want, out)
+	}
+}
+
+// TestEmailVerifyStart_RedactsTokenInProd is the wave-34 fail-open regression:
+// the verification token is a live credential (replaying it to
+// /verify/email/confirm hijacks the email→identity binding). In prod it must
+// NOT appear in logs.
+func TestEmailVerifyStart_RedactsTokenInProd(t *testing.T) {
+	t.Setenv("VULOS_ENV", "prod")
+	svc := newTestSvc(t)
+	var tok string
+	out := captureStderr(func() {
+		var err error
+		tok, err = svc.Start("alice@vulos.org")
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+	})
+	if tok == "" {
+		t.Fatal("Start returned empty token")
+	}
+	if strings.Contains(out, tok) {
+		t.Fatalf("prod: token leaked to stderr; out=%q", out)
+	}
+	// It should still note that a token was issued (redacted).
+	if !strings.Contains(out, "redacted") {
+		t.Errorf("prod: expected a redacted issuance line; got: %q", out)
 	}
 }
 
