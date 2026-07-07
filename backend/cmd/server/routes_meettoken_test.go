@@ -121,6 +121,50 @@ func TestMeetToken_ConfiguredMintsAndSessionGates(t *testing.T) {
 			t.Fatalf("code=%d want 400", rec.Code)
 		}
 	})
+
+	// REGRESSION (red-team): a caller cannot smuggle a FOREIGN tenant prefix into
+	// the room grant. `<tenant>:<room>` is built server-side from the session user;
+	// a room value that itself contains the ':' separator (e.g. "victim:secret")
+	// would, if naively concatenated, yield "attacker:victim:secret" — but the SFU
+	// validator splits on the FIRST separator, so the tenant prefix always stays
+	// the session user. The minter rejects a room containing the separator outright
+	// (400) so no ambiguity can ever reach the wire.
+	t.Run("foreign-tenant-via-room rejected", func(t *testing.T) {
+		body := `{"room":"victim-tenant:secret-room"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/meet/token", strings.NewReader(body))
+		req.Header.Set("X-User-ID", "attacker")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("room-with-separator: code=%d want 400 (must not mint a foreign-prefixed room)", rec.Code)
+		}
+	})
+
+	// REGRESSION (red-team): an attacker-supplied X-User-ID header is meaningless
+	// at THIS layer only because the auth middleware strips it upstream; here we
+	// prove the handler binds strictly to whatever X-User-ID the (trusted) middleware
+	// injected. Two different injected identities produce two different, correctly
+	// bound tokens — never a shared/forged tenant.
+	t.Run("identity strictly follows injected X-User-ID", func(t *testing.T) {
+		for _, uid := range []string{"alice", "bob"} {
+			req := httptest.NewRequest(http.MethodPost, "/api/meet/token", strings.NewReader(`{"room":"standup"}`))
+			req.Header.Set("X-User-ID", uid)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("uid=%s: code=%d want 200", uid, rec.Code)
+			}
+			var resp struct {
+				Token  string `json:"token"`
+				RoomID string `json:"room_id"`
+			}
+			_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+			std, g := mtDecode(t, resp.Token)
+			if std.Subject != uid || g.Name != uid || resp.RoomID != uid+":standup" {
+				t.Fatalf("uid=%s: identity/tenant leaked: sub=%q name=%q room=%q", uid, std.Subject, g.Name, resp.RoomID)
+			}
+		}
+	})
 }
 
 func TestMeetToken_SecretsUnset503(t *testing.T) {
