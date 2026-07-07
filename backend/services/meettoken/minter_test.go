@@ -191,6 +191,34 @@ func TestMint_ExplicitGrants(t *testing.T) {
 	}
 }
 
+// TestMint_NilAndUnconfiguredMinter proves a nil/zero-value Minter cannot mint
+// (fails ErrNotConfigured rather than panicking or emitting an unsigned token).
+func TestMint_NilAndUnconfiguredMinter(t *testing.T) {
+	var m *Minter // nil
+	if _, err := m.Mint(MintParams{TenantID: "u", UserID: "u", RoomName: "r"}); err != ErrNotConfigured {
+		t.Fatalf("nil minter: got %v want ErrNotConfigured", err)
+	}
+	// A zero-value (non-nil) Minter with empty secrets must also fail closed.
+	if _, err := (&Minter{sep: DefaultTenantSeparator}).Mint(MintParams{TenantID: "u", UserID: "u", RoomName: "r"}); err != ErrNotConfigured {
+		t.Fatalf("zero-value minter: got %v want ErrNotConfigured", err)
+	}
+}
+
+// TestMint_TenantLengthBound enforces the same MaxTenantIDLen ceiling the
+// vulos-meet validator applies: a 63-char tenant mints, a 64-char one is
+// rejected at mint (the validator would reject it downstream anyway).
+func TestMint_TenantLengthBound(t *testing.T) {
+	m, _ := NewMinter(testKey, testSecret, 0)
+	okTenant := strings.Repeat("a", MaxTenantIDLen) // 63
+	if _, err := m.Mint(MintParams{TenantID: okTenant, UserID: "u", RoomName: "r"}); err != nil {
+		t.Fatalf("63-char tenant should mint: %v", err)
+	}
+	tooLong := strings.Repeat("a", MaxTenantIDLen+1) // 64
+	if _, err := m.Mint(MintParams{TenantID: tooLong, UserID: "u", RoomName: "r"}); err != ErrInvalidTenant {
+		t.Fatalf("64-char tenant: got %v want ErrInvalidTenant", err)
+	}
+}
+
 func TestNewMinter_SecretsUnset(t *testing.T) {
 	if _, err := NewMinter("", testSecret, 0); err != ErrNotConfigured {
 		t.Fatalf("empty key: got %v want ErrNotConfigured", err)
