@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vulos is a self-hosted personal operating system that runs on a single machine (bare-metal or VM/VPS) and exposes a browser-native desktop via WebSocket/WebRTC. The shell is a React SPA; the backend is a single Go binary. Native Linux apps stream into browser windows on demand — no always-on VNC, no remote desktop protocol.
+Vulos is a **sovereign personal server** with a browser-native desktop that runs on a single machine (bare-metal or VM/VPS) and exposes itself over WebSocket/WebRTC. The shell is a React SPA; the backend is a single Go binary. At its center is an on-box **sovereign assistant** — an AI agent aware of your calendar, contacts, files, and reminders that acts on your behalf under a confirmation-gated, egress-fenced security contract. Native Linux apps stream into browser windows on demand — no always-on VNC, no remote desktop protocol.
 
 ---
 
@@ -10,19 +10,22 @@ Vulos is a self-hosted personal operating system that runs on a single machine (
 
 ```mermaid
 flowchart TD
-    Browser["Browser (WebApp UI)<br/>src/ — React SPA, served from /"]
-    Browser -->|"WebSocket / HTTP"| Backend
+    Browser["Browser (React SPA)<br/>src/ — shell, AI Home, ⌘K, served from /"]
+    Browser -->|"WebSocket / HTTP / SSE"| Backend
 
     subgraph Backend["Go HTTP backend (backend/cmd/server/)"]
-        Auth["Auth services"]
-        AI["AI/Chat router"]
-        AppNet["AppNet launcher"]
-        Vault["Vault (Restic)"]
-        Recall["Recall (vector)"]
-        Stream["Stream pool"]
+        Assistant["Sovereign assistant<br/>agent · ledger · egress Guard"]
+        Auth["Auth: passkeys · PIN · TOTP · QR · recovery"]
+        Files["Files service<br/>viewer/editor/owner ACL · sealed shares"]
+        Notify["Notifications"]
+        AppNet["AppNet launcher + Stream pool"]
+        Peering["Peering / fabric (Ed25519, CRDT sync, VulaID)"]
         Obs["Observability: /metrics + OTel<br/>backend/internal/obs/"]
     end
 
+    Assistant -->|"loopback by default"| LLMux["llmux gateway (on-box)<br/>internal/llmuxclient/"]
+    Assistant -->|"/v1 mail · calendar · contacts"| Lilmail["lilmail server (separate repo)"]
+    Assistant --> Vec["on-instance embeddings<br/>internal/vecdb/"]
     Backend --> DB["SQLite DB<br/>~/.vulos/db/"]
     Backend --> NS["Namespace isolation (appnet)"]
 ```
@@ -37,7 +40,9 @@ flowchart TD
 
 **App sandboxing.** Each user app runs in its own Linux network namespace with a unique port. Traffic is proxied through the app gateway at `{app}--{profile}.{ulid}.vulos.org`. Web apps get no streaming overhead — just proxied HTTP.
 
-**Authentication.** Email + password + optional WebAuthn/TOTP. No third-party identity providers. Passkeys are the primary login for new accounts. QR/phone-approval for kiosk clients.
+**Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through the on-box `llmux` gateway by default. See [THREAT-MODEL.md](../THREAT-MODEL.md) Component 5.
+
+**Authentication.** Email + password + optional WebAuthn/TOTP. No third-party identity providers. Passkeys are the primary login for new accounts (with sign-counter clone/replay detection). Device PIN and QR/phone-approval cover kiosk and shared clients. A per-user master key is wrapped by both the password and a 24-word recovery phrase, so account recovery never needs a server-held plaintext key.
 
 **Streaming on demand.** Native Linux apps (GIMP, LibreOffice, games) launch in their own Xvfb virtual display and stream via WebRTC. Close the window, stream stops. No persistent VNC session.
 
@@ -51,11 +56,11 @@ flowchart TD
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/shell/` | Window manager, dock, Mission Control, launchpad |
+| `src/shell/` | Window manager, dock, Mission Control, launchpad, AI Home, ⌘K palette, notification center |
 | `src/auth/` | Login, passkey enrollment, QR login, setup wizard |
 | `src/core/` | App registry, settings panel, system pulse |
-| `src/builtin/` | Built-in apps: terminal, file manager, app hub, dashboard |
-| `src/apps/` | Heavier app integrations: mail, vault, authenticator |
+| `src/builtin/` | Built-in apps: assistant, terminal, files/drive, app hub, dashboard, peering, notes |
+| `src/apps/` | Heavier app integrations: vault, authenticator |
 | `src/providers/` | React context providers |
 | `src/layouts/` | Desktop and mobile layout shells |
 
@@ -64,17 +69,25 @@ flowchart TD
 | Path | Purpose |
 |------|---------|
 | `backend/cmd/server/` | HTTP server, all route handlers, middleware |
-| `backend/services/auth/` | Email/password auth, session management |
-| `backend/services/passkeys/` | WebAuthn/FIDO2 passkey registration and login |
+| `backend/services/assistant/` | Sovereign AI agent: tool catalog, proposal ledger, egress Guard, on-instance mail/RAG index |
+| `backend/services/ai/` | LLM/embeddings service seam (the assistant's `Completer`) |
+| `backend/services/auth/` | Email/password auth, sessions, device PIN, fingerprint |
+| `backend/services/passkeys/` | WebAuthn/FIDO2 passkey registration/login, QR/phone approval |
+| `backend/services/files/` | Files service: viewer/editor/owner ACL, sealed (content-blind) shares, share-by-email |
+| `backend/services/notify/` | Notifications (types, priority, TTL, DND, WebSocket delivery) |
+| `backend/services/joincode/`, `joinsync/`, `cloudenroll/` | Device/box join tokens, join ceremony, RFC 8628 enrollment |
+| `backend/services/peering/` | Ed25519 peering, VulaID key lifecycle, relay, Drop |
 | `backend/services/stream/` | WebRTC stream pool, bitrate control |
 | `backend/services/gpu/` | GPU capability detection (NVENC, VA-API, software) |
-| `backend/services/credvault/` | OAuth token vault, credential storage |
-| `backend/services/openrouter/` | AI routing (Open Router abstraction) |
+| `backend/services/credvault/` | Server-side encrypted credential store (the OS's own, not third-party OAuth) |
 | `backend/services/sync/` | CRDT rehydration and compaction |
 | `backend/services/telemetry/` | GPU usage metering |
+| `backend/internal/llmuxclient/` | Client for the on-box `llmux` LLM gateway (`LLMUX_URL`) |
 | `backend/internal/multiinstance/` | Multi-instance quorum, signed change propagation |
+| `backend/internal/safedial/` | SSRF-safe dialer (pre-dial validation + connect-time IP check) |
 | `backend/internal/gpuhost/` | GPU host capability detection |
 | `backend/internal/fabric/` | Fabric mesh identity and key management |
+| `backend/internal/vecdb/` | Local vector store for on-instance retrieval |
 | `backend/internal/obs/` | Prometheus metrics + OTel tracing |
 
 ---
@@ -107,6 +120,41 @@ sequenceDiagram
 ```
 
 Session cookies are `HttpOnly`, `Secure`, `SameSite=Strict` in `prod` mode. In `local` mode cookie flags are relaxed for development without TLS.
+
+---
+
+## Sovereign assistant flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Agent as Assistant agent
+    participant Guard as Egress Guard
+    participant Model as llmux (on-box)
+    participant Ledger as Proposal ledger
+
+    Client->>Agent: POST /api/assistant/agent {message}
+    Agent->>Guard: Guard(cfg, allowExternal)
+    Note right of Guard: classify tier; block if external & not opted-in
+    Agent->>Model: prompt (mail content framed as UNTRUSTED DATA)
+    Model-->>Agent: read-only tool calls (run server-side)
+    alt side-effecting action
+        Agent->>Ledger: Put(userID, proposal) — opaque id, single-use, TTL
+        Agent-->>Client: {id, tool, summary, args(display only)}
+        Client->>Agent: POST /api/assistant/execute {id}
+        Note right of Agent: id ONLY — never client args
+        Agent->>Ledger: Take(userID, id) → server-stored args
+        Agent->>Agent: ExecuteProposal(server args)
+    else answer
+        Agent-->>Client: SSE token stream
+    end
+```
+
+The streaming endpoint (`POST /api/assistant/agent/stream`) emits `status`,
+`token`, `proposal`, and `done`/`error` events; the `Guard` runs once up front,
+so a blocked tier makes zero model calls and streams nothing. A leaked proposal
+id is not indefinitely replayable (single-use + 10-minute TTL) and is bound to
+the calling user's session. See [THREAT-MODEL.md](../THREAT-MODEL.md) Component 5.
 
 ---
 

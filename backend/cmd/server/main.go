@@ -3839,10 +3839,3 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	w.WriteHeader(code)
 	fmt.Fprintf(w, `{"error":%q}`, msg)
 }
-
-func errStr(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}

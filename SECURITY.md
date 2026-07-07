@@ -4,7 +4,9 @@
 
 ### In scope
 - Vulos OS shell and firstboot flow
-- Vulos Mail identity management and credential handling
+- The sovereign assistant: proposal ledger / execute gate, egress Guard, prompt-injection handling
+- Identity, credential handling, and the passkey / recovery-phrase master-key flow
+- Files service ACL and content-blind (sealed) sharing
 - App sandbox and privilege separation
 - Backend API and authentication
 - Build and update pipeline (signed images, dm-verity)

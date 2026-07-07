@@ -13,6 +13,94 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-07
+
+The **sovereign assistant** release. Vulos gains an on-box AI agent that is
+aware of your calendar, contacts, files, and reminders and can act on your
+behalf — under a hard security contract: every side-effecting action is a
+confirmation-gated *proposal*, egress is fenced by a tier-aware sovereignty
+Guard, and the LLM runs through your own on-box gateway by default. Plus
+one-click account portability, passkey clone/replay hardening, content-blind
+file sharing, and a deep shell polish pass.
+
+### Added
+
+- **Sovereign assistant — read-only awareness.** The agent can read your
+  agenda and pending invites (calendar), look up contacts (`find_contact`),
+  and find/read files (`find_file` / `read_file`) — all read-only,
+  scoped to the signed-in user (`backend/services/assistant/`).
+- **Sovereign assistant — reminders.** New reminders capability with an
+  on-box poll scheduler that fires due reminders as notifications.
+- **Proposal ledger + id-only execute gate.** Any action with side effects
+  (create-event, add-contact, …) is returned as an opaque *proposal* recorded
+  in a server-side ledger. Approving posts **only** the proposal id to
+  `POST /api/assistant/execute` — never client-supplied arguments — so a
+  compromised client cannot smuggle new parameters past the confirmation
+  dialog. Rejecting sends nothing.
+- **Tiered sovereignty + egress Guard.** A tier-aware egress Guard fences what
+  the assistant may send off-box; the shell shows an honest tier badge and
+  picker so the user can see and choose their sovereignty level.
+- **On-box LLM gateway (llmux) routing.** Opt-in routing of assistant LLM/
+  embeddings traffic through the on-box `llmux` sovereign gateway
+  (`backend/internal/llmuxclient/`); canonical env var `LLMUX_URL`
+  (`VULOS_LLMUX_URL` also accepted).
+- **Streaming assistant turns (SSE).** The agentic turn streams live tokens
+  over Server-Sent Events for real-time answers.
+- **Sovereign semantic mail RAG.** On-instance embeddings + vector index over
+  mail power the assistant's retrieval, wired to the real lilmail `/v1` API.
+- **Proactive AI Home surface.** The desktop opens as a home (agenda, focus,
+  proposals), not just a launcher; unified OS `⌘K` command palette.
+- **Real notifications system** (`backend/services/notify/`) with settings
+  depth, plus a full keyboard cheat-sheet and window-control commands.
+- **Window tiling & session depth** — snap/keyboard geometry, dock/taskbar
+  with running-app indicators, persisted window sessions.
+- **Export my data (account portability).** A user-facing "Export my data"
+  flow packages the account's data for portability off the box.
+- **Content-blind file sharing (VSEAL).** Sealed folders, sealed metadata, and
+  content-key lookup complete the client-crypto file-share model
+  (`backend/services/files/`); share-by-email with locality routing.
+- **Legible-trust surface.** Visible, provable sovereignty indicators in the
+  shell; forced recovery-phrase signup with client-side master-key unwrap.
+- **Tier-2 active-session password reset** that preserves zero-access.
+- **Peering key lifecycle** — VulaID rotation/revocation, account-anchored
+  recovery, X3DH-style forward secrecy for message content, per-sender
+  one-time-prekey claim, and real Nitro `COSE_Sign1` attestation verification.
+- **Board/whiteboard integration** — embedded board surface gated by
+  `BOARD_AUTH_SECRET` (fails closed in prod when unset).
+
+### Fixed
+
+- **Passkey clone/replay (AUTH-13).** Closed a WebAuthn signature-counter
+  clone-detection gap; added a virtual-authenticator test harness that closes
+  the OS passkey/WebAuthn coverage gap.
+- Prompt-injection hardening for untrusted mail inside the agent loop — mail
+  text can no longer inject tool calls or leak as tool arguments.
+- Align assistant create-event / add-contact payloads and `MessageInvite`
+  JSON tags to the real lilmail `/v1` wire shape.
+- `appnet` fails closed when a proxy-config write fails; `stream` arms the
+  AUTH-13 input-injection gate safely.
+- Redact email-verification token from production peering logs.
+
+### Security
+
+- Default-deny attestation policy with fail-closed Nitro/noop verifiers;
+  Ed25519-signed peer profiles verified against the Vula ID.
+- Per-document ACL enforced on inbound CRDT and WebSocket collab join;
+  fail-closed on no-envelope inbound with WS authz bound to an un-spoofable
+  identity.
+- Adversarial security-review passes over the new assistant capabilities
+  (calendar, files, reminders) and expanded HTTP-route + registrar coverage
+  (join/joincode/files/aiapps, notify, assistant execute).
+
+### Changed
+
+- Files ACL role hierarchy is **viewer < editor < owner**, enforced
+  server-side on every share and collab join.
+- Deep UI/UX polish across the shell — assistant Home, `⌘K`, notifications,
+  transparency/trust surfaces, Setup/Drive papercuts, accessibility and mobile.
+
+---
+
 ## [1.0.0] - 2026-06-16
 
 Milestone release. First feature-complete, security-hardened Vula OS merged to
@@ -161,7 +249,9 @@ real hardware/live services.
 - Docker image for `linux/amd64` and `linux/arm64`
 - CI (build, vet, test, gofmt, Docker) and release pipeline (tag-triggered)
 
-[Unreleased]: https://github.com/vul-os/vulos/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/vul-os/vulos/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/vul-os/vulos/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/vul-os/vulos/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/vul-os/vulos/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/vul-os/vulos/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/vul-os/vulos/compare/v0.1.0...v0.1.1

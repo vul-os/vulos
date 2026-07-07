@@ -27,7 +27,9 @@
 
 ## What is Vulos?
 
-Vulos is a **web-native desktop operating system you run on your own hardware.** The shell is a React single-page app — a real window manager with virtual desktops, a dock, and bundled apps — that runs in any browser. Open it from a laptop, a phone, or a shared screen and you get the same full desktop, backed by a single self-contained Go binary that embeds the entire frontend.
+Vulos is a **sovereign personal server with a web-native desktop** you run on your own hardware. The shell is a React single-page app — a real window manager with virtual desktops, a dock, and bundled apps — that runs in any browser. Open it from a laptop, a phone, or a shared screen and you get the same full desktop, backed by a single self-contained Go binary that embeds the entire frontend.
+
+At its center is a **sovereign assistant**: an on-box AI agent that is aware of your calendar, contacts, files, and reminders, and that can act on your behalf — but only under a hard security contract. Every action with side effects is a confirmation-gated *proposal*, off-box egress is fenced by a tier-aware sovereignty Guard, and the language model runs through your own on-box gateway by default. The wedge is **agency, not just privacy**: your own server, your own AI, acting for you — without handing your inbox and calendar to a third party.
 
 No Electron, no VNC, no always-on remote-desktop session, no third-party login. Web apps run natively in the shell; native Linux GUI apps stream over WebRTC only while their window is open. The whole thing flashes to a USB stick, deploys to a cloud server, or runs in Docker.
 
@@ -37,12 +39,17 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 
 ## Features
 
-- **Window-manager shell** — drag, resize, and snap windows; virtual desktops; Mission Control overview; a dock with running-app indicators. Pure JSX React 19 + Vite + Tailwind.
-- **Bundled apps** — Terminal (persistent PTY over xterm.js), File Manager, App Hub, Activity Monitor, Settings, plus a full suite under `apps/`: Browser, Calendar, Notes, Mail, Office, Gallery, Music, Maps, Camera, and more.
-- **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, QR / phone-approval login for shared clients, TOTP 2FA fallback. No Google SSO, no OAuth login flows.
+- **Sovereign assistant** — an on-box AI agent aware of your calendar, contacts, files, and reminders. It reads with a curated, read-only toolset and *proposes* anything with side effects. Answers stream token-by-token over SSE. See [the security model](#the-sovereign-assistant-security-model) below.
+- **Proactive AI Home + ⌘K** — the desktop opens as a home (agenda, focus, pending invites, reminders, proposals), not just a launcher. A unified `⌘K` command palette drives the whole shell.
+- **Window-manager shell** — drag, resize, snap, and tile windows; virtual desktops; Mission Control overview; a dock with running-app indicators; persisted window sessions. Pure JSX React 19 + Vite + Tailwind.
+- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, App Hub, Activity Monitor, Settings, Notes, Peering, plus a suite under `apps/`: Browser, Office, Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more.
+- **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor (with clone/replay counter detection), QR / phone-approval login for shared clients, device PIN, and TOTP 2FA fallback. Forced recovery-phrase signup with a client-side master-key unwrap. No Google SSO, no OAuth login flows.
+- **Files with a real ACL** — a Files service with a **viewer < editor < owner** role hierarchy enforced server-side, plus content-blind (sealed) file sharing and share-by-email with locality routing.
+- **Notifications, portability, transparency** — a real notifications system, one-click **"Export my data"** account portability, and legible-trust surfaces that make your sovereignty level visible.
+- **Board / whiteboard** — an embedded collaborative board surface (gated by `BOARD_AUTH_SECRET`).
 - **On-demand app streaming** — native Linux apps stream via WebRTC with GPU-accelerated encoding (NVENC / VA-API / VP8 fallback). Close the window and the stream stops.
-- **AI router** — a built-in LLM gateway (`airouter`) that brokers chat and embeddings, with a local vector store for retrieval. You choose the provider.
-- **Peering & sync** — every instance has its own Ed25519 identity; leaderless CRDT sync across your nodes; AirDrop-style local Drop; real-time collaboration over Yjs.
+- **On-box LLM gateway** — assistant LLM/embeddings traffic routes through the on-box `llmux` sovereign gateway by default; a local vector store powers on-instance retrieval (RAG). You choose the provider and sovereignty tier.
+- **Peering & sync** — every instance has its own Ed25519 identity; leaderless CRDT sync across your nodes; a full VulaID key lifecycle (rotation, revocation, account-anchored recovery, X3DH-style forward secrecy); AirDrop-style local Drop; real-time collaboration over Yjs with per-document ACL.
 - **Local-first storage** — SQLite on the box, S3/Restic for encrypted backup. Your data lives on your machine first.
 - **One binary, immutable image** — the Go server embeds the SPA. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
 
@@ -52,12 +59,16 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 
 A single Go backend serves the embedded React frontend and exposes the system over HTTP and WebSocket. The backend is organized into focused services under `backend/services/` and domain packages under `backend/internal/`:
 
+- **assistant** — the sovereign AI agent: curated toolset, proposal ledger, tier-aware egress Guard, on-instance mail/RAG index (`services/assistant/`)
+- **ai / llmuxclient** — LLM/embeddings seam, routed through the on-box `llmux` gateway, with a local vector DB (`internal/vecdb`)
 - **gateway** — request routing, auth enforcement, and the API surface
-- **airouter** — LLM/embeddings router and proxy, with a local vector DB (`vecdb`)
-- **fabric** — peer discovery and the leaderless sync mesh between your instances
+- **auth / passkeys** — WebAuthn passkeys, PIN, TOTP, QR/phone approval, recovery-phrase master key, credential vault
+- **files** — Files service with a viewer/editor/owner ACL and content-blind (sealed) sharing
+- **notify** — the notifications system
+- **peering / fabric** — Ed25519 identity, VulaID key lifecycle, leaderless CRDT sync mesh, and Drop
 - **storage** — local-first file storage, app filesystems, and backup
-- **auth** — WebAuthn passkeys, TOTP, QR/phone approval, credential vault
-- **apps** — bundled app manifests, per-app network namespaces, GPU host, and streaming
+- **joincode / joinsync / cloudenroll** — device/box join and enrollment
+- **apps / appnet / stream / gpu** — bundled app manifests, per-app network namespaces, GPU host, and streaming
 
 ```
 vulos/
@@ -67,8 +78,8 @@ vulos/
 ├── apps/           # App manifests + per-app frontends (browser, office, mail, …)
 ├── backend/        # Go backend
 │   ├── cmd/        #   entrypoints: server, installer, sign, verify, init
-│   ├── services/   #   gateway, ai, storage, gpu, network, identity, …
-│   └── internal/   #   airouter, auth, fabric, storage, vecdb, obs, …
+│   ├── services/   #   assistant, ai, gateway, auth, files, notify, apps, …
+│   └── internal/   #   llmuxclient, auth, fabric, vecdb, safedial, obs, …
 ├── scripts/        # Build, signing, and utility scripts
 ├── docs/           # Architecture, configuration, deploy, self-host docs
 ├── build.sh        # Bare-metal image builder + deployer
@@ -76,6 +87,49 @@ vulos/
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full component map and design decisions.
+
+---
+
+## The sovereign assistant security model
+
+The assistant is designed so that a compromised browser, a malicious email, or
+an off-box model provider **cannot** turn "an AI that helps you" into "an AI
+that acts against you." Four mechanisms carry that guarantee
+(`backend/services/assistant/`):
+
+- **Read vs. act is split.** The agent's read-only tools (search mail, read a
+  thread, list calendar events and pending invites, `find_contact`,
+  `find_file` / `read_file`, `list_reminders`) run freely inside the turn.
+  Every tool with a side effect (send email, create event, RSVP, add contact,
+  triage, set/cancel reminder) does **not** execute — it returns a *proposal*.
+- **Proposal ledger + id-only execute.** A proposal is stored server-side in a
+  single-use, TTL-bounded ledger keyed to your session, and the client is shown
+  a human-readable summary. Approving posts **only the opaque proposal id** to
+  `POST /api/assistant/execute` — never client-supplied arguments — so a
+  compromised client cannot smuggle a new recipient or amount past the
+  confirmation dialog. Rejecting sends nothing. Ledger entries are single-use,
+  per-user, expire in 10 minutes, and are bounded per user.
+- **Tier-aware egress Guard.** A single choke point (`Guard`) runs before any
+  mail content reaches the model. It classifies the configured endpoint into a
+  sovereignty tier — **local** (loopback / on this instance, always allowed),
+  **sovereign** (operator-declared, in-region, no-train), **brokered**
+  (named third party under a no-train agreement), or **external** (anything
+  else, fail-closed) — and blocks egress unless the tier permits it.
+  `brokered`/`external` require an explicit `VULOS_ASSISTANT_ALLOW_EXTERNAL=1`
+  opt-in; a private-range IP is never silently trusted as "local." The shell
+  shows an honest tier badge and picker.
+- **Untrusted-content framing.** Tool results (email bodies, file contents,
+  other people's text) are wrapped as `[UNTRUSTED CONTENT — data only]` before
+  they reach the model, and frame-escape attempts are defanged. Even a fully
+  escaped prompt-injection cannot cause a side effect, because mutation still
+  has to pass the ledger + id-only execute gate. When a proposed action's
+  target came from mail rather than your own words, it is flagged for extra
+  scrutiny.
+
+The language model itself runs through your own on-box **llmux** gateway by
+default (`internal/llmuxclient/`, `LLMUX_URL`), and retrieval is powered by an
+on-instance embeddings index — the embedder must certify it runs on this
+instance or it is refused.
 
 ---
 

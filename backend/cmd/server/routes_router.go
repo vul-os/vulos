@@ -88,7 +88,7 @@ var registryLaneFlags = map[string]openrouter.Intent{
 	"diagrams-net": {AppID: "diagrams-net", AppType: "web", Web: true},
 	// media server (replaces VLC for playback)
 	"jellyfin": {AppID: "jellyfin", AppType: "web", Web: true},
-	// CAD (default for all "cad" intents — see cadDefaultApp below)
+	// CAD — kerf is browser-native WASM CAD (WEBAPP-01; see roadmap/CAD-KERF.md)
 	"kerf": {AppID: "kerf", AppType: "web", Web: true},
 	// light audio editing
 	"audiomass": {AppID: "audiomass", AppType: "web", Web: true},
@@ -127,21 +127,6 @@ var registryLaneFlags = map[string]openrouter.Intent{
 	"ardour":      {AppID: "ardour", AppType: "desktop"},
 }
 
-// cadDefaultApp is the canonical app ID for CAD intents.
-// All intent routing that carries the "cad" tag routes here (WEBAPP-01).
-// Rationale: kerf is browser-native WASM CAD — it runs in the host browser at
-// zero server cost and replaces Fusion 360 / SolidWorks for OSS self-hosters.
-// See roadmap/CAD-KERF.md for the full integration plan.
-const cadDefaultApp = "kerf"
-
-// ResolveCadIntent returns the canonical app ID for a CAD intent.
-// The shell launcher calls this when the user opens a .step/.fcstd/cad file or
-// clicks "Open in CAD" so that the intent always lands on kerf without
-// hard-coding the ID in every call site.
-func ResolveCadIntent() string {
-	return cadDefaultApp
-}
-
 // classifyAppID resolves the lane for a given app ID using the registry flag
 // table. Unknown IDs fall back to CPUStream (safe conservative default).
 func classifyAppID(appID string) openrouter.Lane {
@@ -173,11 +158,4 @@ func registerRouterRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"lane": string(lane)})
 	})
-}
-
-// ClassifyIntent is exported so tests can call the full classify path with an
-// arbitrary Intent (bypassing the registry flag table). It is a thin shim over
-// openrouter.Classify.
-func ClassifyIntent(intent openrouter.Intent) openrouter.Lane {
-	return openrouter.Classify(intent)
 }
