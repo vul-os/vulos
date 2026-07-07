@@ -658,7 +658,7 @@ func main() {
 					auth:      authStore,
 					directory: peering.DiscoveryNewService(nil),
 				},
-				&httpCapabilityDeliverer{client: &http.Client{Timeout: 10 * time.Second}},
+				newHTTPCapabilityDeliverer(),
 			)
 			// FILES-4: wire the external-store seam (Google Drive). The box mints a
 			// short-lived Drive access token on demand from the CP integration broker

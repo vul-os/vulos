@@ -33,6 +33,32 @@ type Manager struct {
 	subnet     int    // next subnet octet
 }
 
+// metadataDenyCIDRv4 is the IPv4 link-local range that contains every cloud
+// instance-metadata service (IMDS): AWS/GCP/Azure/OpenStack all answer on
+// 169.254.169.254, and the whole 169.254.0.0/16 link-local block is never a
+// legitimate egress target for a sandboxed app.  Dropping the range in each
+// app's network namespace (SSRF-APPNET-01) prevents an installed native app
+// from reaching cloud IMDS to steal instance credentials via the host's
+// masquerade route.
+const metadataDenyCIDRv4 = "169.254.0.0/16"
+
+// metadataDenyCIDRv6 lists the IPv6 ranges that reach cloud metadata or are
+// otherwise link-local: fe80::/10 (IPv6 link-local, covers ND) and
+// fd00:ec2::254 (AWS IPv6 IMDS).  Applied best-effort — a namespace with IPv6
+// disabled simply has no ip6tables to configure.
+var metadataDenyCIDRv6 = []string{
+	"fe80::/10",         // IPv6 link-local
+	"fd00:ec2::254/128", // AWS IPv6 instance metadata
+}
+
+// nsStep is a single ordered command in the namespace-setup sequence.  Kept as
+// a named type (rather than an anonymous struct) so the full ordered ruleset
+// can be produced by a pure builder and unit-tested without root/iproute2.
+type nsStep struct {
+	desc string
+	args []string
+}
+
 // net02ProfileKey returns the composite map key for a (profile, appID) pair.
 // "default" profile maps to the bare appID for backwards-compatibility.
 func net02ProfileKey(profile, appID string) string {
@@ -115,10 +141,39 @@ func (m *Manager) Create(ctx context.Context, appID, ownerID string, hostPort, a
 	run(ctx, "ip", "link", "del", ns.VethHost)
 	run(ctx, "ip", "netns", "del", ns.Name)
 
-	steps := []struct {
-		desc string
-		args []string
-	}{
+	for _, step := range namespaceSteps(ns) {
+		if err := run(ctx, step.args[0], step.args[1:]...); err != nil {
+			// Try to clean up on failure
+			m.destroy(ctx, ns)
+			return nil, fmt.Errorf("%s: %w", step.desc, err)
+		}
+	}
+
+	// SSRF-APPNET-01 (IPv6, best-effort): drop egress to IPv6 link-local /
+	// metadata ranges inside the namespace.  Applied outside the hard-failing
+	// step loop because a namespace with IPv6 disabled has no ip6tables to
+	// program — the IPv4 drop above is the load-bearing guard for cloud IMDS
+	// (169.254.169.254), and this is defence-in-depth for IPv6-enabled hosts.
+	for _, cidr := range metadataDenyCIDRv6 {
+		if err := run(ctx, "ip", "netns", "exec", ns.Name,
+			"ip6tables", "-I", "OUTPUT", "1", "-d", cidr, "-j", "DROP"); err != nil {
+			log.Printf("[appnet] ns %s: ip6tables metadata drop for %s skipped: %v", ns.Name, cidr, err)
+		}
+	}
+
+	ns.Active = true
+	m.namespaces[appID] = ns
+	log.Printf("[appnet] namespace %s created: host:%d → %s:%d", ns.Name, ns.HostPort, ns.NSIP, ns.AppPort)
+	return ns, nil
+}
+
+// namespaceSteps returns the ordered command sequence that builds a namespace's
+// networking and firewall rules.  It is a pure function of ns (no side effects)
+// so the ruleset — in particular the SSRF-APPNET-01 metadata drop and its
+// ordering relative to the ACCEPT rules — is unit-testable without root or
+// iproute2.
+func namespaceSteps(ns *Namespace) []nsStep {
+	return []nsStep{
 		// 1. Create the namespace
 		{"create netns", []string{"ip", "netns", "add", ns.Name}},
 
@@ -149,6 +204,18 @@ func (m *Manager) Create(ctx context.Context, appID, ownerID string, hostPort, a
 			"-p", "tcp", "--dport", fmt.Sprintf("%d", ns.HostPort),
 			"!", "-i", "lo", "-j", "DROP"}},
 
+		// SSRF-APPNET-01: block egress to the cloud instance-metadata range
+		// (169.254.0.0/16, incl. 169.254.169.254 IMDS) FIRST in the namespace
+		// OUTPUT chain.  The default OUTPUT policy is ACCEPT, so without this an
+		// installed app could reach the host's IMDS over the masquerade route
+		// and exfiltrate instance credentials.  Inserted at the head (-I OUTPUT
+		// 1) so it is evaluated before any subsequent rule, and neither the
+		// established/related nor gateway ACCEPT rules match a NEW connection to
+		// a metadata address anyway.
+		{"block metadata (v4)", []string{"ip", "netns", "exec", ns.Name,
+			"iptables", "-I", "OUTPUT", "1",
+			"-d", metadataDenyCIDRv4, "-j", "DROP"}},
+
 		// Allow established/related connections (so response packets to the host get through)
 		{"allow established", []string{"ip", "netns", "exec", ns.Name,
 			"iptables", "-A", "OUTPUT",
@@ -159,24 +226,13 @@ func (m *Manager) Create(ctx context.Context, appID, ownerID string, hostPort, a
 			"iptables", "-A", "OUTPUT",
 			"-d", "10.200.0.0/16", "-j", "DROP"}},
 
-		// Allow the namespace to reach the gateway (host)
+		// Allow the namespace to reach the gateway (host).  Inserted at the head,
+		// but only matches the host veth IP on :8080 — never a metadata address,
+		// so it cannot shadow the metadata drop above.
 		{"allow gateway", []string{"ip", "netns", "exec", ns.Name,
 			"iptables", "-I", "OUTPUT",
 			"-d", ns.HostIP, "-p", "tcp", "--dport", "8080", "-j", "ACCEPT"}},
 	}
-
-	for _, step := range steps {
-		if err := run(ctx, step.args[0], step.args[1:]...); err != nil {
-			// Try to clean up on failure
-			m.destroy(ctx, ns)
-			return nil, fmt.Errorf("%s: %w", step.desc, err)
-		}
-	}
-
-	ns.Active = true
-	m.namespaces[appID] = ns
-	log.Printf("[appnet] namespace %s created: host:%d → %s:%d", ns.Name, ns.HostPort, ns.NSIP, ns.AppPort)
-	return ns, nil
 }
 
 // Exec runs a command inside an app's network namespace.
