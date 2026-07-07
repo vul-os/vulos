@@ -24,6 +24,46 @@ import (
 // Pattern: starts with [a-z0-9], followed by 0-63 chars of [a-z0-9-].
 var secI_idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
+// aiAppsEditDisabled is the shared kill-switch for AI-app mutation. When
+// DISABLE_AI_APP_EDIT=1 every mutating route (save / update / delete / snapshot
+// / rollback) fails closed with 503. Read-only routes (list / html / python /
+// versions) stay available so already-saved apps remain viewable. The frontend
+// reads GET /api/ai-apps/config to surface the disabled state instead of only
+// seeing a failure toast.
+func aiAppsEditDisabled() bool {
+	return os.Getenv("DISABLE_AI_APP_EDIT") == "1"
+}
+
+// aiAppsSecurityHeaders writes defense-in-depth headers onto the served AI-app
+// HTML so the AI-generated page is inert even if it is ever loaded top-level
+// (bypassing the shell's sandboxed iframe). The CSP `sandbox` directive forces
+// the document into a unique/opaque origin at the browser level — it therefore
+// cannot script the OS origin, read the OS session cookie, or fetch the OS API,
+// regardless of how it was opened. `allow-scripts` keeps the app itself
+// functional; `allow-same-origin` is deliberately omitted so the page never
+// regains access to the serving (OS) origin. frame-ancestors + X-Frame-Options
+// keep the served page from being reframed by a hostile top-level document, and
+// nosniff stops content-type confusion. default-src 'none' blocks all network
+// egress (connect/img/font/etc.) back to the OS origin or anywhere else; inline
+// scripts/styles are allowed so a self-contained AI app still renders.
+func aiAppsSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Security-Policy",
+		"sandbox allow-scripts allow-forms allow-popups; "+
+			"default-src 'none'; "+
+			"script-src 'unsafe-inline'; "+
+			"style-src 'unsafe-inline'; "+
+			"img-src data: blob:; "+
+			"font-src data:; "+
+			"frame-ancestors 'self'; "+
+			"base-uri 'none'; "+
+			"form-action 'none'")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	// The page is untrusted AI output; never let it be cached under the OS origin.
+	w.Header().Set("Cache-Control", "no-store")
+}
+
 // secI_resolvedBase returns the resolved (realpath) base directory and caches it.
 // On systems where the aiAppsDir does not yet exist the raw cleaned path is used.
 func secI_resolvedBase(aiAppsDir string) string {
@@ -76,11 +116,23 @@ func registerAIAppsSecurityWrappers(mux *http.ServeMux, aiAppsDir string, authSt
 	// Ensure base directory exists.
 	os.MkdirAll(aiAppsDir, 0755)
 
-	// POST /api/ai-apps/save — admin-gated, audited, no exec.
+	// GET /api/ai-apps/config — surface the kill-switch state to the frontend so a
+	// disabled builder renders a banner rather than only failing on click.
+	mux.HandleFunc("GET /api/ai-apps/config", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]bool{"edit_disabled": aiAppsEditDisabled()})
+	})
+
+	// POST /api/ai-apps/save — kill-switch → admin-gated, audited, no exec.
 	mux.HandleFunc("POST /api/ai-apps/save", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 
-		// Kill-switch → admin gate.
+		// Kill-switch (fail closed before any auth/FS work).
+		if aiAppsEditDisabled() {
+			writeErr(w, 503, "ai app editing is disabled")
+			return
+		}
+
+		// Admin gate.
 		if !secI_isAdmin(r, authStore) {
 			secI_auditLog("save", "", userID, false)
 			writeErr(w, 403, "admin only")
@@ -177,7 +229,12 @@ func registerAIAppsSecurityWrappers(mux *http.ServeMux, aiAppsDir string, authSt
 			writeErr(w, 404, "not found")
 			return
 		}
-		w.Header().Set("Content-Type", "text/html")
+		// Defense-in-depth: the served HTML is AI-generated and untrusted. Ship it
+		// with a sandbox CSP so it is inert even if opened top-level (bypassing the
+		// shell's sandboxed iframe) — it cannot reach the OS origin's cookies,
+		// session, or API. Set headers BEFORE Content-Type/body.
+		aiAppsSecurityHeaders(w)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(data)
 	})
 
@@ -202,6 +259,12 @@ func registerAIAppsSecurityWrappers(mux *http.ServeMux, aiAppsDir string, authSt
 	mux.HandleFunc("DELETE /api/ai-apps/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		userID := r.Header.Get("X-User-ID")
+
+		// Kill-switch (fail closed).
+		if aiAppsEditDisabled() {
+			writeErr(w, 503, "ai app editing is disabled")
+			return
+		}
 
 		if !secI_isAdmin(r, authStore) {
 			secI_auditLog("delete", id, userID, false)

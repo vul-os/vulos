@@ -305,14 +305,23 @@ applies them consistently to all three services:
    sudo systemctl enable --now vulos-bundle.target
    ```
 
-5. **Register with Vulos Cloud:**
-   Visit [https://app.vulos.org/setup/bundle](https://app.vulos.org/setup/bundle) and
-   paste your domain + public keys to activate cloud routing and inbound mail.
-
-6. **Configure DNS:**
+5. **Configure DNS:**
    - A record → this server's IP
    - MX record → mail subdomain
-   - SPF, DKIM, DMARC records (generated and shown in the Vulos Cloud UI)
+   - SPF, DKIM, DMARC records — your `vulos keygen` output prints the exact
+     records to publish (and they are shown in Settings → Mail → DNS). No cloud
+     account is required to generate or read them.
+
+6. **(Optional) Register with Vulos Cloud:**
+   Your bundle is a **fully self-contained, sovereign server** — it routes, serves,
+   and delivers mail entirely on its own once DNS is configured above. Vulos Cloud
+   is only the *managed* billing and fleet layer (hosted routing, managed inbound
+   relay, fleet dashboards); it is **not** required to run a self-hosted instance.
+
+   If you *want* those managed conveniences, visit
+   [https://app.vulos.org/setup/bundle](https://app.vulos.org/setup/bundle) and paste
+   your domain + public keys. Skipping this step keeps you fully independent of
+   Vulos Cloud — nothing about your instance phones home or depends on it.
 
 ---
 

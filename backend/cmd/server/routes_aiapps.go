@@ -33,8 +33,8 @@ var aiEdit_idRe = regexp.MustCompile(`^[a-z0-9_-]+$`)
 func registerAIAppsRoutes(mux *http.ServeMux, aiAppsDir string, authStore *auth.Store) {
 	// POST /api/ai-apps/{id}/update — admin-gated, audit-logged, path-safe, atomic write.
 	mux.HandleFunc("POST /api/ai-apps/{id}/update", func(w http.ResponseWriter, r *http.Request) {
-		// 1. Kill-switch
-		if os.Getenv("DISABLE_AI_APP_EDIT") == "1" {
+		// 1. Kill-switch (shared with save/delete/snapshot/rollback)
+		if aiAppsEditDisabled() {
 			writeErr(w, 503, "ai app editing is disabled")
 			return
 		}
@@ -89,6 +89,14 @@ func registerAIAppsRoutes(mux *http.ServeMux, aiAppsDir string, authStore *auth.
 		// 6. Audit log (before write — mirrors SEC-B pattern)
 		log.Printf("[aiapps-audit] user=%s action=update app=%s html=%v python=%v ip=%s",
 			userID, id, req.HTML != "", req.Python != "", r.RemoteAddr)
+
+		// 6b. Auto-snapshot the CURRENT live version before overwriting it, so the
+		// rollback UI has real history to restore from. Best-effort: a snapshot
+		// failure must not block a legitimate update (it is logged), but on the
+		// happy path every update is preceded by a bounded (a07MaxVersions) snapshot.
+		if err := SnapshotVersion(aiAppsDir, id); err != nil {
+			log.Printf("[aiapps-audit] user=%s action=update app=%s WARN pre-update snapshot failed: %v", userID, id, err)
+		}
 
 		// 7. Atomic write via temp+rename
 		if req.HTML != "" {

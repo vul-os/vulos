@@ -1,6 +1,6 @@
 # Threat Model — Vulos OS
 
-STRIDE pass. Last updated: 2026-07-07 (added Component 5: Sovereign Assistant).
+STRIDE pass. Last updated: 2026-07-07 (added Component 5: Sovereign Assistant; added Component 6: AI-App Builder).
 
 ---
 
@@ -168,6 +168,41 @@ Trust boundaries:
 ### Residual risks
 - Proposal summaries are model-generated; a mismatch between summary and args is bounded by the id-only execute (args come from the ledger, not the summary) but UI must render the real args, not the prose.
 - Read-only tools still surface other people's content into the turn; a purely read-only injection (e.g. exfiltration via a crafted answer) is bounded by egress tier but worth ongoing review.
+
+---
+
+## Component 6: AI-App Builder
+
+**Principle: AI-generated code is untrusted content, and rendering it is an embedding/code-execution surface — not a document view.** The assistant can generate a self-contained app (HTML, optionally a Python backend) that is saved under `~/.vulos/ai-apps/{id}/` and later rendered in the shell. Because the HTML is authored by an LLM over hostile inputs (mail bodies, web content, the user's own prompt), the render context must be treated as if the page were written by an attacker. The Python is stored at rest for later *sandboxed* execution and is never executed by these routes.
+
+### Trust boundaries
+- **User ↔ builder**: the user's request is trusted intent; the AI's *output* is not.
+- **Rendered AI page ↔ OS origin**: the served page is untrusted; it must not reach the OS origin's cookies, session, `localStorage`, or gateway API.
+- **Client ↔ mutating routes**: the browser is untrusted; save/update/delete/snapshot/rollback are admin-gated and each `{id}`/`{version}` is charset-validated + realpath-contained before any FS operation.
+
+### Top STRIDE threats
+
+| # | Category | Threat |
+|---|----------|--------|
+| 1 | **Elevation of Privilege** | The Settings "Open" affordance renders `/api/ai-apps/{id}/html` **top-level, same-origin, unsandboxed**, so the AI page runs with the OS origin — reading the session cookie, `localStorage`, and calling privileged APIs as the admin. |
+| 2 | **Tampering** | A crafted `{id}` (`..`, slash, symlink) escapes `~/.vulos/ai-apps/` and reads/overwrites a file outside the base on save/update/delete/rollback. |
+| 3 | **Elevation of Privilege** | A non-admin (or a forged `X-User-ID`) mutates saved apps; or the kill-switch gates only `/update`, leaving save/delete/snapshot/rollback open when the operator disabled editing. |
+| 4 | **Information Disclosure** | The rendered AI page exfiltrates OS-origin data by `fetch`-ing the OS API or embedding same-origin resources. |
+
+### Mitigations in code
+- **Sandbox render, no same-origin** — the primary in-shell render is a sandboxed iframe in an *opaque* origin (`allow-scripts`, deliberately **no** `allow-same-origin`); AI apps are not in `firstPartyIds`, so `needsSameOrigin()` can never grant them the OS origin (`src/shell/Window.jsx`, `src/core/AppRegistry.js`). The Settings "Open" button no longer does `window.open(.../html)` top-level — it opens the app in the same opaque-origin sandboxed iframe (`AIAppPreview` in `src/core/Settings.jsx`).
+- **Defense-in-depth served headers** — `GET /api/ai-apps/{id}/html` ships a `Content-Security-Policy` with the `sandbox` directive (no `allow-same-origin`), `default-src 'none'` (blocks connect/img egress back to the OS API), `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, and `X-Content-Type-Options: nosniff` (`aiAppsSecurityHeaders` in `routes_aiapps_security.go`). The page is therefore inert in a unique/opaque origin **even if re-opened top-level**, independent of any caller correctly choosing a sandboxed iframe.
+- **Traversal-validated id** — every mutating and read route validates `{id}` against a lowercase charset and confirms realpath containment under `~/.vulos/ai-apps/` before any FS op (`secI_safeAppDir`, `a07ValidateID`); the wave-52 fix builds the candidate from the *resolved* base so a symlinked home does not fail closed. Rollback additionally validates the `{version}` string and contains the snapshot dir.
+- **Admin gate + audit** — save/update/delete/snapshot/rollback require an admin profile (header alone never confers admin); every call is audit-logged.
+- **Fail-closed kill-switch** — `DISABLE_AI_APP_EDIT=1` now gates **all** mutating routes (save, update, delete, snapshot, rollback), not just `/update`; read-only routes (list, html, versions) stay available so saved apps remain viewable. `GET /api/ai-apps/config` surfaces the disabled state so the UI renders a banner + disabled controls instead of only a failure toast.
+- **Bounded versioning** — `/update` auto-snapshots the current live version before overwriting (capped at `a07MaxVersions=20`, oldest pruned), so rollback restores a real prior version.
+
+### What this does NOT protect (honesty)
+- The `sandbox` CSP and opaque-origin iframe isolate the page from the *OS* origin; a self-contained AI app can still do anything *within* its own sandbox (compute, render, `allow-popups`). Isolation is about the boundary, not about vouching for the app's behaviour.
+- Python bodies are stored, not executed here; their execution safety is the sandbox-runner's responsibility (`/api/sandbox/run`), a separate boundary.
+
+### Residual risks
+- Per-app origins (rather than a shared opaque origin) would further isolate one AI app from another; today all AI apps share the null origin of their sandbox. Tracked with the same per-app-origin note as the general App Sandbox.
 
 ---
 

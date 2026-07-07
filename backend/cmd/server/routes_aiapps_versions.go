@@ -166,6 +166,10 @@ func a07RequireAdmin(w http.ResponseWriter, r *http.Request, authStore *auth.Sto
 func registerAIAppsVersionsRoutes(mux *http.ServeMux, aiAppsDir string, authStore *auth.Store) {
 	// POST /api/ai-apps/{id}/snapshot — create a snapshot of current live files
 	mux.HandleFunc("POST /api/ai-apps/{id}/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		if aiAppsEditDisabled() {
+			writeErr(w, 503, "ai app editing is disabled")
+			return
+		}
 		if !a07RequireAdmin(w, r, authStore) {
 			return
 		}
@@ -223,6 +227,10 @@ func registerAIAppsVersionsRoutes(mux *http.ServeMux, aiAppsDir string, authStor
 
 	// POST /api/ai-apps/{id}/rollback {version} — restore a snapshot to live files
 	mux.HandleFunc("POST /api/ai-apps/{id}/rollback", func(w http.ResponseWriter, r *http.Request) {
+		if aiAppsEditDisabled() {
+			writeErr(w, 503, "ai app editing is disabled")
+			return
+		}
 		if !a07RequireAdmin(w, r, authStore) {
 			return
 		}

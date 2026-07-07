@@ -318,3 +318,162 @@ func TestAIAppsWrappers_TraversalReadRejected(t *testing.T) {
 		}
 	}
 }
+
+// ── Sandbox hardening: served-HTML defense-in-depth headers ──────────────────
+
+// TestAIAppsHTML_SecurityHeaders: the served AI-app HTML carries a `sandbox` CSP
+// (opaque origin, no allow-same-origin), frame-ancestors/X-Frame-Options, and
+// X-Content-Type-Options: nosniff, so the untrusted AI page is inert and cannot
+// reach the OS origin's cookies/session/API even if opened top-level.
+func TestAIAppsHTML_SecurityHeaders(t *testing.T) {
+	store, adminID, userID := newAIAuthStore(t)
+	dir := t.TempDir()
+	mux := http.NewServeMux()
+	registerAIAppsSecurityWrappers(mux, dir, store)
+
+	// Admin saves an app so there is HTML to serve.
+	wSave := aiReq(t, mux, http.MethodPost, "/api/ai-apps/save", adminID,
+		`{"title":"Hardened","html":"<b>hi</b>"}`)
+	if wSave.Code != http.StatusOK {
+		t.Fatalf("save: expected 200, got %d (%s)", wSave.Code, wSave.Body.String())
+	}
+	var saved struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(wSave.Body.Bytes(), &saved)
+
+	w := aiReq(t, mux, http.MethodGet, "/api/ai-apps/"+saved.ID+"/html", userID, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("get html: expected 200, got %d", w.Code)
+	}
+
+	csp := w.Header().Get("Content-Security-Policy")
+	if csp == "" {
+		t.Fatal("served HTML is missing Content-Security-Policy")
+	}
+	// The sandbox directive is the load-bearing isolation primitive.
+	if !strings.Contains(csp, "sandbox") {
+		t.Fatalf("CSP is missing the sandbox directive: %q", csp)
+	}
+	// allow-same-origin would defeat the sandbox by re-granting the OS origin.
+	if strings.Contains(csp, "allow-same-origin") {
+		t.Fatalf("CSP sandbox must NOT include allow-same-origin (would re-grant OS origin): %q", csp)
+	}
+	// default-src 'none' blocks connect/img/etc. egress back to the OS API.
+	if !strings.Contains(csp, "default-src 'none'") {
+		t.Fatalf("CSP should lock default-src to 'none': %q", csp)
+	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options: nosniff, got %q", got)
+	}
+	if got := w.Header().Get("X-Frame-Options"); got == "" {
+		t.Fatal("served HTML is missing X-Frame-Options")
+	}
+	if !strings.Contains(csp, "frame-ancestors") {
+		t.Fatalf("CSP is missing frame-ancestors: %q", csp)
+	}
+}
+
+// ── Kill-switch: DISABLE_AI_APP_EDIT gates ALL mutating routes ───────────────
+
+// TestAIApps_KillSwitch_AllMutatingRoutes: with DISABLE_AI_APP_EDIT=1 every
+// mutating route (save/update/delete/snapshot/rollback) fails closed with 503,
+// while read-only routes (html/versions/config) stay available.
+func TestAIApps_KillSwitch_AllMutatingRoutes(t *testing.T) {
+	store, adminID, _ := newAIAuthStore(t)
+	dir := t.TempDir()
+	seedApp(t, dir, "ai-500")
+	mux := http.NewServeMux()
+	registerAIAppsSecurityWrappers(mux, dir, store)
+	registerAIAppsRoutes(mux, dir, store)
+	registerAIAppsVersionsRoutes(mux, dir, store)
+
+	t.Setenv("DISABLE_AI_APP_EDIT", "1")
+
+	mutating := []struct {
+		method, target, body string
+	}{
+		{http.MethodPost, "/api/ai-apps/save", `{"title":"x","html":"<b>x</b>"}`},
+		{http.MethodPost, "/api/ai-apps/ai-500/update", `{"html":"x"}`},
+		{http.MethodDelete, "/api/ai-apps/ai-500", ""},
+		{http.MethodPost, "/api/ai-apps/ai-500/snapshot", ""},
+		{http.MethodPost, "/api/ai-apps/ai-500/rollback", `{"version":"20260101T000000Z"}`},
+	}
+	for _, m := range mutating {
+		w := aiReq(t, mux, m.method, m.target, adminID, m.body)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("kill-switch %s %s: expected 503, got %d", m.method, m.target, w.Code)
+		}
+	}
+
+	// Read-only routes must still work with the kill-switch on.
+	wCfg := aiReq(t, mux, http.MethodGet, "/api/ai-apps/config", adminID, "")
+	if wCfg.Code != http.StatusOK {
+		t.Fatalf("config with kill-switch on: expected 200, got %d", wCfg.Code)
+	}
+	var cfg struct {
+		EditDisabled bool `json:"edit_disabled"`
+	}
+	json.Unmarshal(wCfg.Body.Bytes(), &cfg)
+	if !cfg.EditDisabled {
+		t.Fatal("config should report edit_disabled=true when kill-switch is on")
+	}
+	wHTML := aiReq(t, mux, http.MethodGet, "/api/ai-apps/ai-500/html", adminID, "")
+	if wHTML.Code != http.StatusOK {
+		t.Fatalf("html read with kill-switch on: expected 200, got %d", wHTML.Code)
+	}
+}
+
+// ── Auto-snapshot-on-update makes rollback actually restorable ───────────────
+
+// TestAIApps_UpdateSnapshotsAndRollbackRestores: an admin update auto-snapshots
+// the CURRENT live version before overwriting, so the versions list is non-empty
+// and a rollback restores the pre-update content.
+func TestAIApps_UpdateSnapshotsAndRollbackRestores(t *testing.T) {
+	store, adminID, _ := newAIAuthStore(t)
+	dir := t.TempDir()
+	seedApp(t, dir, "ai-600") // seeds index.html = "<h1>hi</h1>"
+	mux := http.NewServeMux()
+	registerAIAppsRoutes(mux, dir, store)
+	registerAIAppsVersionsRoutes(mux, dir, store)
+
+	// Before any update, no versions exist.
+	wList0 := aiReq(t, mux, http.MethodGet, "/api/ai-apps/ai-600/versions", adminID, "")
+	var v0 []map[string]any
+	json.Unmarshal(wList0.Body.Bytes(), &v0)
+	if len(v0) != 0 {
+		t.Fatalf("expected 0 versions before update, got %d", len(v0))
+	}
+
+	// Update → should snapshot the OLD content ("<h1>hi</h1>") first, then write new.
+	wUpd := aiReq(t, mux, http.MethodPost, "/api/ai-apps/ai-600/update", adminID,
+		`{"html":"<b>v2</b>"}`)
+	if wUpd.Code != http.StatusOK {
+		t.Fatalf("update: expected 200, got %d (%s)", wUpd.Code, wUpd.Body.String())
+	}
+
+	// Live content is now v2.
+	if b, _ := os.ReadFile(filepath.Join(dir, "ai-600", "index.html")); string(b) != "<b>v2</b>" {
+		t.Fatalf("live html after update = %q, want <b>v2</b>", string(b))
+	}
+
+	// The rollback UI history is no longer empty — exactly one snapshot exists.
+	wList := aiReq(t, mux, http.MethodGet, "/api/ai-apps/ai-600/versions", adminID, "")
+	var versions []struct {
+		Version string `json:"version"`
+	}
+	json.Unmarshal(wList.Body.Bytes(), &versions)
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 auto-snapshot after update, got %d (%s)", len(versions), wList.Body.String())
+	}
+
+	// Rollback to that snapshot restores the pre-update content.
+	wRb := aiReq(t, mux, http.MethodPost, "/api/ai-apps/ai-600/rollback", adminID,
+		`{"version":"`+versions[0].Version+`"}`)
+	if wRb.Code != http.StatusOK {
+		t.Fatalf("rollback: expected 200, got %d (%s)", wRb.Code, wRb.Body.String())
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "ai-600", "index.html")); string(b) != "<h1>hi</h1>" {
+		t.Fatalf("after rollback live html = %q, want the pre-update <h1>hi</h1>", string(b))
+	}
+}

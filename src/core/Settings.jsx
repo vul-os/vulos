@@ -1575,7 +1575,35 @@ function FingerprintSettings() {
 }
 
 // --- AI Apps Gallery ---
-function AIAppVersions({ appId, onClose }) {
+
+// AIAppPreview — opens a saved AI app inside a SANDBOXED iframe (opaque origin:
+// `allow-scripts` only, deliberately NO `allow-same-origin`) instead of the old
+// window.open('/api/ai-apps/{id}/html') escape hatch, which rendered untrusted
+// AI-generated HTML top-level and same-origin — giving it the OS session cookie,
+// localStorage, and gateway API. Here the app runs in a null origin and cannot
+// reach the OS origin. The served HTML also ships a `sandbox` CSP as
+// defense-in-depth (see routes_aiapps_security.go), so it is inert even if
+// re-opened top-level. This mirrors the shell's in-window sandbox for AI apps.
+function AIAppPreview({ app, onClose }) {
+  return (
+    <SettingsModal title={app.title || 'AI App'} onClose={onClose}>
+      <div className="w-full h-[60vh] rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
+        <iframe
+          src={`/api/ai-apps/${encodeURIComponent(app.id)}/html`}
+          title={app.title || app.id}
+          className="w-full h-full border-0"
+          sandbox="allow-scripts allow-forms allow-popups"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+      <p className="text-[10px] text-neutral-600 mt-2">
+        Runs in an isolated sandbox — no access to your session or data.
+      </p>
+    </SettingsModal>
+  )
+}
+
+function AIAppVersions({ appId, onClose, editDisabled }) {
   const [versions, setVersions] = useState([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -1596,6 +1624,7 @@ function AIAppVersions({ appId, onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version }),
       })
+      if (r.status === 503) { setMsg('AI-app editing is disabled by the administrator'); return }
       const d = await r.json()
       if (!r.ok) setMsg(d.error || 'Rollback failed')
       else setMsg('Rolled back successfully')
@@ -1621,8 +1650,9 @@ function AIAppVersions({ appId, onClose }) {
           </div>
           <button
             onClick={() => rollback(v.version)}
-            disabled={busy}
-            className="text-[10px] text-amber-400 hover:text-amber-300 disabled:opacity-50"
+            disabled={busy || editDisabled}
+            title={editDisabled ? 'Editing disabled by administrator' : 'Restore this version'}
+            className="text-[10px] text-amber-400 hover:text-amber-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Restore
           </button>
@@ -1637,11 +1667,22 @@ function AIAppsSettings() {
   const [apps, setApps] = useState([])
   const [visRefreshKey, setVisRefreshKey] = useState(0)
   const [versionsOpen, setVersionsOpen] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [editDisabled, setEditDisabled] = useState(false)
   const refresh = useCallback(() => fetch('/api/ai-apps').then(r => r.json()).then(setApps).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
+  // Surface the DISABLE_AI_APP_EDIT kill-switch so mutating actions render as
+  // clearly-disabled controls + a banner, not just a failure toast on click.
+  useEffect(() => {
+    fetch('/api/ai-apps/config')
+      .then(r => r.ok ? r.json() : null)
+      .then(c => setEditDisabled(!!(c && c.edit_disabled)))
+      .catch(() => {})
+  }, [])
 
   const remove = async (id) => {
-    await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
+    const r = await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
+    if (r.status === 503) { setEditDisabled(true); return }
     if (versionsOpen === id) setVersionsOpen(null)
     refresh()
   }
@@ -1651,7 +1692,12 @@ function AIAppsSettings() {
 
   return (
     <Section title="AI-Generated Apps">
-      <p className="text-xs text-neutral-600 mb-4">Apps created by the AI assistant. Click to reopen.</p>
+      <p className="text-xs text-neutral-600 mb-4">Apps created by the AI assistant. Open runs each app in an isolated sandbox.</p>
+      {editDisabled && (
+        <div className="mb-4 rounded border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+          AI-app editing is disabled by the administrator (DISABLE_AI_APP_EDIT). You can still open existing apps, but saving, updating, deleting, snapshotting and rollback are turned off.
+        </div>
+      )}
       {apps?.length === 0 && <p className="text-sm text-neutral-500">No saved apps yet. Ask the AI to build something visual.</p>}
       {apps?.map(app => (
         <div key={app.id} className="flex items-center justify-between py-2 border-b border-neutral-800/30 gap-2">
@@ -1663,14 +1709,22 @@ function AIAppsSettings() {
           <div className="flex items-center gap-2 shrink-0">
             <PamVisibilityControl key={`${app.id}-${visRefreshKey}`} appId={app.id} onChanged={handleVisChanged} />
             <button onClick={() => toggleVersions(app.id)} className="text-xs text-neutral-400">Versions</button>
-            <button onClick={() => window.open(`/api/ai-apps/${app.id}/html`, '_blank')} className="text-xs text-blue-400">Open</button>
-            <button onClick={() => remove(app.id)} className="text-xs text-red-400">Delete</button>
+            <button onClick={() => setPreview(app)} className="text-xs text-blue-400">Open</button>
+            <button
+              onClick={() => remove(app.id)}
+              disabled={editDisabled}
+              title={editDisabled ? 'Editing disabled by administrator' : 'Delete app'}
+              className="text-xs text-red-400 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Delete
+            </button>
           </div>
           {versionsOpen === app.id && (
-            <AIAppVersions appId={app.id} onClose={() => setVersionsOpen(null)} />
+            <AIAppVersions appId={app.id} editDisabled={editDisabled} onClose={() => setVersionsOpen(null)} />
           )}
         </div>
       ))}
+      {preview && <AIAppPreview app={preview} onClose={() => setPreview(null)} />}
     </Section>
   )
 }
