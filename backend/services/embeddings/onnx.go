@@ -112,28 +112,61 @@ func OnnxAvailable(modelsDir string) bool {
 	return false
 }
 
+// fallbackTokenizerPy defines _fallback_token_id: the DETERMINISTIC token-id
+// function used ONLY when no tokenizer.json ships beside the model. It is a
+// pure-Python FNV-1a (32-bit) hash with NO imports, so it is byte-for-byte
+// identical in every process and on every platform.
+//
+// WHY THIS EXISTS (honest note): the previous fallback used Python's builtin
+// hash(), which is SALTED PER PROCESS (PYTHONHASHSEED). That made the same word
+// map to a different id on every restart, so the same text produced a DIFFERENT
+// embedding vector each run — semantic retrieval quality silently collapsed
+// across process restarts with no error. FNV-1a is stable, so vectors are now
+// reproducible.
+//
+// This is still only a DEGRADED fallback: these hashed ids do NOT index the
+// model's trained vocabulary, so the resulting vectors are reproducible but only
+// weakly meaningful. TRUE semantic RAG needs the model's real tokenizer.json
+// next to the .onnx file. When it is absent, prefer the lexical retrieval
+// baseline (the MailIndex already falls back to lexical when the vector index is
+// empty or errors).
+const fallbackTokenizerPy = `
+def _fallback_token_id(word):
+    # FNV-1a (32-bit). No imports and no per-process salt -> deterministic across
+    # processes, restarts and platforms (unlike Python's builtin hash()).
+    h = 2166136261
+    for b in word.encode("utf-8"):
+        h = ((h ^ b) * 16777619) & 0xFFFFFFFF
+    return h % 30000
+`
+
 const onnxHelperScript = `#!/usr/bin/env python3
 """Vula OS — ONNX embedding helper. Runs a single embedding and prints JSON."""
-import sys, json, numpy as np
+import sys, json, os, numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
-
+` + fallbackTokenizerPy + `
 def embed(model_path, text):
     # Load model
     session = ort.InferenceSession(model_path)
 
-    # Simple tokenization (space-based fallback if no tokenizer.json)
-    import os
     tok_path = os.path.join(os.path.dirname(model_path), "tokenizer.json")
     if os.path.exists(tok_path):
+        # Real path: the model's own trained tokenizer -> genuine semantic tokens.
         tokenizer = Tokenizer.from_file(tok_path)
         encoded = tokenizer.encode(text)
         input_ids = encoded.ids[:512]
         attention_mask = [1] * len(input_ids)
     else:
-        # Fallback: basic word-piece-like tokenization
+        # NO tokenizer.json -> DEGRADED but DETERMINISTIC fallback. These ids are
+        # a stable hash of each word, NOT this model's vocabulary, so the vectors
+        # are reproducible but only weakly meaningful. Real semantic RAG needs
+        # tokenizer.json; without it, prefer the lexical retrieval baseline. We
+        # stay deterministic (was: per-process-randomized hash()) so retrieval
+        # never silently varies across restarts.
+        sys.stderr.write("vula-embed: no tokenizer.json found next to the model; using the deterministic DEGRADED fallback tokenizer -- semantic quality is reduced, prefer lexical retrieval\n")
         words = text.lower().split()[:512]
-        input_ids = [hash(w) % 30000 for w in words]
+        input_ids = [_fallback_token_id(w) for w in words]
         attention_mask = [1] * len(input_ids)
 
     # Pad to length

@@ -112,7 +112,7 @@ that acts against you." Four mechanisms carry that guarantee
 - **Tier-aware egress Guard.** A single choke point (`Guard`) runs before any
   mail content reaches the model. It classifies the configured endpoint into a
   sovereignty tier — **local** (loopback / on this instance, always allowed),
-  **sovereign** (operator-declared, in-region, no-train), **brokered**
+  **sovereign** (an operator-declared off-box endpoint, asserted in-region/no-train but **not operated or verified by Vulos**), **brokered**
   (named third party under a no-train agreement), or **external** (anything
   else, fail-closed) — and blocks egress unless the tier permits it.
   `brokered`/`external` require an explicit `VULOS_ASSISTANT_ALLOW_EXTERNAL=1`

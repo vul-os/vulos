@@ -66,7 +66,7 @@ describe('TransparencyPanel — open + tier picker + export (integration)', () =
     const dialog = await screen.findByRole('dialog', { name: 'Transparency and sovereignty' })
 
     // Pick the sovereign tier from the inline picker.
-    await user.click(within(dialog).getByText('Vulos sovereign · in-region, no-train'))
+    await user.click(within(dialog).getByText('Operator-declared endpoint (unverified)'))
     await waitFor(() => expect(tierBody).toEqual({ tier: 'sovereign' }))
   })
 

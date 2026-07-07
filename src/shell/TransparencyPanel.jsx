@@ -52,23 +52,27 @@ function SectionTitle({ children }) {
 
 // EgressBanner — the headline "what leaves this box" state, front and center.
 function EgressBanner({ egress }) {
-  const leaves = egress.level === 'external'
+  const external = egress.level === 'external'
   const sovereign = egress.level === 'sovereign'
-  const color = leaves ? 'var(--status-warning)' : 'var(--status-success)'
-  const bg = leaves ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/25'
-  const headline = leaves
+  // Sovereign IS off-box egress to an operator-declared, Vulos-UNVERIFIED
+  // endpoint — so it is treated as caution (amber), NOT painted safe-green like
+  // the genuinely-local tier. Only a truly-local box earns the green shield.
+  const offBox = external || sovereign
+  const color = offBox ? 'var(--status-warning)' : 'var(--status-success)'
+  const bg = offBox ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/25'
+  const headline = external
     ? 'Egress enabled'
-    : sovereign ? 'Nothing leaves — except your in-region model' : 'Nothing leaves this box'
-  const detail = leaves
+    : sovereign ? 'Off-box to a declared endpoint' : 'Nothing leaves this box'
+  const detail = external
     ? `Mail content may be sent to ${egress.dest}. Watch the network tab — this is the only thing that goes off-box.`
     : sovereign
-      ? `AI runs at your Vulos in-region, no-train endpoint (${egress.dest}). No third party, no training.`
+      ? `AI runs at an operator-declared endpoint (${egress.dest}). Vulos does not operate or verify it — this is off-box egress you have chosen to trust.`
       : 'AI runs on this instance. No mail content is permitted to leave. Verifiable in your network tab.'
   return (
     <div className={`rounded-lg border px-3.5 py-3 flex items-start gap-3 ${bg}`}>
       <svg viewBox="0 0 16 16" width="20" height="20" fill="none" className="mt-0.5 shrink-0">
         <rect x="1.5" y="3" width="8.5" height="10.5" rx="1.6" stroke={color} strokeWidth="1.3" />
-        {leaves
+        {offBox
           ? <path d="M8.5 8.25H15M12 5.5 15 8.25 12 11" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
           : <circle cx="5.75" cy="8.25" r="1.6" fill={color} />}
       </svg>

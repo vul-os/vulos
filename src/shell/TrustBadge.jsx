@@ -22,12 +22,14 @@ const SHORT = { local: 'On device', sovereign: 'Sovereign', brokered: 'Brokered'
 // Egress glyph: an outlined box (your instance) with an arrow. Amber + a leaking
 // arrow when something is permitted to leave; green + a contained dot when not.
 function EgressGlyph({ level }) {
-  const leaves = level === 'external'
-  const color = leaves ? 'var(--status-warning)' : 'var(--status-success)'
+  // Sovereign is off-box egress to an operator-declared (Vulos-unverified)
+  // endpoint, so it reads as caution — not the safe-green of a truly-local box.
+  const offBox = level === 'external' || level === 'sovereign'
+  const color = offBox ? 'var(--status-warning)' : 'var(--status-success)'
   return (
     <svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true">
       <rect x="1.5" y="3" width="8" height="10" rx="1.4" stroke={color} strokeWidth="1.2" />
-      {leaves ? (
+      {offBox ? (
         <path d="M8 8h6M11.5 5.5 14 8l-2.5 2.5" stroke={color} strokeWidth="1.2"
           strokeLinecap="round" strokeLinejoin="round" />
       ) : (
@@ -53,7 +55,9 @@ export default function TrustBadge({ compact = false }) {
   const { tier, label, egress, hasMasterKey, togglePanel } = useSovereignty()
   if (!tier) return null // no status yet — stay quiet rather than guess
   const info = tierInfo(tier)
-  const leaves = egress.level === 'external'
+  // Off-box egress (external OR the operator-declared "sovereign" endpoint) gets
+  // the amber chrome; only a truly-local instance stays green.
+  const leaves = egress.level === 'external' || egress.level === 'sovereign'
 
   const title = [
     `AI tier: ${label || info.label}`,

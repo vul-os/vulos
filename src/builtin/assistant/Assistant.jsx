@@ -185,6 +185,47 @@ function Bubble({ role, content, pending }) {
   )
 }
 
+// ── Tool-trace (steps) ───────────────────────────────────────────────────────
+// A READ-ONLY, collapsible trace of the read-only tools the agent ran during a
+// turn (search_mail, read_thread, find_contact, …). This is a transparency win:
+// the user can see WHAT the assistant looked at to reach its answer. Every field
+// is rendered as escaped React text (never innerHTML) — a tool result may quote
+// untrusted mail content, so it must never be interpreted as markup.
+
+const STEP_VERB = {
+  search_mail: 'Searched mail',
+  read_thread: 'Read a thread',
+  find_contact: 'Looked up a contact',
+  find_file: 'Searched files',
+  read_file: 'Read a file',
+  list_reminders: 'Checked reminders',
+}
+
+function StepTrace({ steps }) {
+  if (!steps || !steps.length) return null
+  return (
+    <details className="max-w-[85%] group">
+      <summary className="cursor-pointer text-[11px] text-neutral-500 hover:text-neutral-300 select-none list-none flex items-center gap-1.5">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="10" height="10" className="transition-transform group-open:rotate-90">
+          <path fillRule="evenodd" d="M7.21 5.23a.75.75 0 011.06.02l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 11-1.04-1.08L11.17 10 7.23 6.29a.75.75 0 01-.02-1.06z" clipRule="evenodd" />
+        </svg>
+        {steps.length === 1 ? '1 step' : `${steps.length} steps`}
+      </summary>
+      <ol className="mt-1.5 space-y-1.5 pl-1 border-l border-neutral-800 ml-1">
+        {steps.map((s, i) => (
+          <li key={i} className="pl-3 text-[11px] leading-snug">
+            <div className="text-neutral-300">{STEP_VERB[s.tool] || (s.tool || 'tool')}</div>
+            {s.args && <div className="text-neutral-600 font-mono break-words">{s.args}</div>}
+            {s.result && (
+              <div className="text-neutral-500 whitespace-pre-wrap break-words mt-0.5 max-h-24 overflow-y-auto">{s.result}</div>
+            )}
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
 // ── Panel ────────────────────────────────────────────────────────────────────
 
 export default function Assistant() {
@@ -327,14 +368,17 @@ export default function Assistant() {
     push('assistant', '')
     patchLast('', true)
     setBusy(true)
+    // Accumulate the read-only tool trace so we can show WHAT the assistant did.
+    const liveSteps = []
     try {
       const result = await runAgentTurn({
         message: text,
         history,
         // Live tokens: keep the bubble pending (spinner) while text streams in.
         onToken: (_delta, full) => patchLast(full, true),
-        // A read-only tool started: show a transient status line.
+        // A read-only tool started: show a transient status line + record it.
         onStatus: (ev) => patchLast(ev.content || 'thinking…', true),
+        onStep: (step) => { liveSteps.push(step) },
         // A mutating action: convert the pending bubble into a proposal card.
         onProposal: (proposal) => {
           setMessages(m => {
@@ -347,6 +391,9 @@ export default function Assistant() {
           })
         },
       })
+      // The terminal event may carry a richer trace (args + result); prefer it,
+      // else fall back to the status-derived steps collected above.
+      const finalSteps = (result.steps && result.steps.length) ? result.steps : liveSteps
       if (result.error) {
         patchLast(result.error, false)
       } else if (result.proposal) {
@@ -359,6 +406,15 @@ export default function Assistant() {
         })
       } else {
         patchLast(result.answer || 'No response.', false)
+      }
+      // Attach the tool trace to the last assistant message so it renders.
+      if (finalSteps.length) {
+        setMessages(m => {
+          const copy = m.slice()
+          const last = copy[copy.length - 1]
+          if (last && last.role === 'assistant') copy[copy.length - 1] = { ...last, steps: finalSteps }
+          return copy
+        })
       }
     } catch {
       patchLast('Could not reach the assistant.', false)
@@ -443,12 +499,18 @@ export default function Assistant() {
           m.proposal ? (
             <div key={m.id} className="flex justify-start flex-col gap-2 items-start">
               {m.content && <Bubble role="assistant" content={m.content} />}
+              <StepTrace steps={m.steps} />
               <ProposalCard
                 proposal={m.proposal}
                 state={m.state}
                 onApprove={() => approveProposal(m.id, m.proposal)}
                 onReject={() => rejectProposal(m.id)}
               />
+            </div>
+          ) : m.steps ? (
+            <div key={m.id} className="flex justify-start flex-col gap-1.5 items-start">
+              <Bubble role={m.role} content={m.content} pending={m.pending} />
+              <StepTrace steps={m.steps} />
             </div>
           ) : (
             <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} />

@@ -34,15 +34,20 @@
 //   opts.onStatus  — (ev) => void            a tool started running
 //   opts.onToken   — (delta, full) => void   a new piece of the answer arrived
 //   opts.onProposal— (proposal) => void      a mutating action awaits approval
+//   opts.onStep    — (step, steps) => void   a read-only tool ran (trace entry)
 //
-// Resolves to { answer, proposal, error, streamed }:
+// Resolves to { answer, proposal, error, streamed, steps }:
 //   answer   — the full accumulated answer text ('' if none)
 //   proposal — the mutating proposal object, or null
 //   error    — an error string if the turn failed, else null
 //   streamed — true if the live SSE path served the turn (false ⇒ fallback used)
-export async function runAgentTurn({ message, history, signal, onStatus, onToken, onProposal } = {}) {
+//   steps    — the read-only TOOL TRACE for transparency: [{tool, args?, result?}]
+//              (accumulated from status events; the terminal proposal event may
+//              carry a richer trace with args+result, which we prefer)
+export async function runAgentTurn({ message, history, signal, onStatus, onToken, onProposal, onStep } = {}) {
   let answer = ''
   let proposal = null
+  let steps = [] // read-only tool trace, surfaced to the UI (never executed)
   let progressed = false // any event received ⇒ the server is speaking; don't fall back on transport errors
 
   try {
@@ -66,9 +71,15 @@ export async function runAgentTurn({ message, history, signal, onStatus, onToken
     const handle = (ev) => {
       progressed = true
       switch (ev.type) {
-        case 'status':
+        case 'status': {
+          // A read-only tool ran on the box. Record it as a trace entry so the
+          // UI can show WHAT the assistant did (transparency), not just spin.
+          const step = { tool: ev.tool, content: ev.content }
+          steps.push(step)
           onStatus?.(ev)
+          onStep?.(step, steps)
           break
+        }
         case 'token': {
           const delta = ev.content || ''
           if (delta) {
@@ -79,6 +90,9 @@ export async function runAgentTurn({ message, history, signal, onStatus, onToken
         }
         case 'proposal':
           proposal = ev.proposal || null
+          // The terminal proposal event carries a richer trace (args + result);
+          // prefer it over the status-only entries accumulated above.
+          if (Array.isArray(ev.steps) && ev.steps.length) steps = ev.steps
           if (proposal) onProposal?.(proposal)
           break
         case 'error':
@@ -118,12 +132,12 @@ export async function runAgentTurn({ message, history, signal, onStatus, onToken
     // If the connection dropped before ANY event, the stream never really
     // started — fall back. Otherwise honour what the server told us.
     if (!progressed) throw new StreamUnavailable()
-    return { answer, proposal, error: terminalError, streamed: true }
+    return { answer, proposal, error: terminalError, streamed: true, steps }
   } catch (err) {
     if (err?.name === 'AbortError') throw err
     // Fall back to non-streaming ONLY if the stream never produced an event.
     if (progressed && !(err instanceof StreamUnavailable)) {
-      return { answer, proposal, error: 'The assistant connection was interrupted.', streamed: true }
+      return { answer, proposal, error: 'The assistant connection was interrupted.', streamed: true, steps }
     }
     return runAgentFallback({ message, history, onToken, onProposal })
   }
@@ -140,18 +154,20 @@ async function runAgentFallback({ message, history, onToken, onProposal }) {
       body: JSON.stringify({ message, history: history || [] }),
     })
     const data = await res.json().catch(() => ({}))
+    // The non-streaming /agent returns the same {answer|proposal, steps} shape.
+    const steps = Array.isArray(data.steps) ? data.steps : []
     if (!res.ok) {
-      return { answer: '', proposal: null, error: data.error || `Assistant unavailable (${res.status}).`, streamed: false }
+      return { answer: '', proposal: null, error: data.error || `Assistant unavailable (${res.status}).`, streamed: false, steps }
     }
     if (data.proposal) {
       onProposal?.(data.proposal)
-      return { answer: data.answer || '', proposal: data.proposal, error: null, streamed: false }
+      return { answer: data.answer || '', proposal: data.proposal, error: null, streamed: false, steps }
     }
     const answer = data.answer || ''
     if (answer) onToken?.(answer, answer)
-    return { answer, proposal: null, error: null, streamed: false }
+    return { answer, proposal: null, error: null, streamed: false, steps }
   } catch {
-    return { answer: '', proposal: null, error: 'Could not reach the assistant. Is the box online?', streamed: false }
+    return { answer: '', proposal: null, error: 'Could not reach the assistant. Is the box online?', streamed: false, steps: [] }
   }
 }
 

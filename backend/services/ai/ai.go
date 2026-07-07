@@ -40,8 +40,9 @@ type Config struct {
 	System   string   `json:"system"`   // system prompt
 	// Tier is the operator's DECLARATION of the sovereignty tier the endpoint
 	// sits in (one of "local"/"sovereign"/"brokered"/"external"; empty ⇒ derive
-	// from locality). It is how an operator says "this off-box endpoint is a
-	// Vulos-operated in-region sovereign pool" or "a brokered no-train provider".
+	// from locality). It is how an operator says "this off-box endpoint is an
+	// operator-declared in-region sovereign pool (unverified by Vulos)" or "a
+	// brokered no-train provider".
 	// It is NEVER used to upgrade a loopback endpoint (that stays local) and an
 	// unverifiable "local" declaration on an off-box endpoint fails closed to
 	// external. See services/assistant.Evaluate for the classification.

@@ -133,7 +133,7 @@ func TestSovereignGuard(t *testing.T) {
 func TestTierLabelsMatchContract(t *testing.T) {
 	want := map[Tier]string{
 		TierLocal:     "On your device",
-		TierSovereign: "Vulos sovereign · in-region, no-train",
+		TierSovereign: "Operator-declared endpoint (unverified)",
 		TierBrokered:  "Brokered · no-train",
 		TierExternal:  "External · not private",
 	}

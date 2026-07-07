@@ -24,11 +24,12 @@ const (
 	// TierLocal — inference on THIS box (loopback / unix socket). Mail content
 	// never leaves the instance. Always allowed.
 	TierLocal Tier = "local"
-	// TierSovereign — a Vulos-operated trusted endpoint: in-region, no-train,
-	// isolated, declared by the operator to sit inside the sovereignty boundary.
-	// Allowed by default (the operator vouched for it), but it is OFF-box, so it
-	// is only reached via an EXPLICIT operator declaration — never inferred from
-	// a private IP.
+	// TierSovereign — an OPERATOR-DECLARED off-box endpoint the operator asserts
+	// is in-region / no-train and inside their sovereignty boundary. Vulos does
+	// NOT operate or verify it; the claim is the operator's, not ours. Allowed by
+	// default (the operator vouched for it), but it is OFF-box, so it is only
+	// reached via an EXPLICIT operator declaration — never inferred from a
+	// private IP.
 	TierSovereign Tier = "sovereign"
 	// TierBrokered — a named third-party model under a no-train agreement,
 	// operator-configured. Allowed ONLY when the operator opts in.
@@ -46,7 +47,7 @@ func TierLabel(t Tier) string {
 	case TierLocal:
 		return "On your device"
 	case TierSovereign:
-		return "Vulos sovereign · in-region, no-train"
+		return "Operator-declared endpoint (unverified)"
 	case TierBrokered:
 		return "Brokered · no-train"
 	default:
@@ -105,7 +106,7 @@ func Evaluate(cfg ai.Config, allowExternal bool) Sovereignty {
 	case tier == TierLocal:
 		s.Reason = "model runs on this device; mail content never leaves the box"
 	case tier == TierSovereign:
-		s.Reason = "Vulos-operated in-region endpoint, declared inside the sovereignty boundary; no training on your data"
+		s.Reason = "operator-declared off-box endpoint (asserted in-region / no-train by the operator); not operated or verified by Vulos"
 	case tier == TierBrokered && allowed:
 		s.Reason = "named third-party under a no-train agreement; authorized by the operator"
 	case tier == TierBrokered:

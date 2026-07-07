@@ -10,8 +10,8 @@
 export const TIERS = {
   local:     { dot: '#22c55e', tone: 'text-emerald-400', label: 'On your device',
                blurb: 'Inference runs on this box. Nothing leaves your server.' },
-  sovereign: { dot: '#34d399', tone: 'text-emerald-400', label: 'Vulos sovereign · in-region, no-train',
-               blurb: 'A Vulos-operated in-region endpoint inside the sovereignty boundary. No training on your data.' },
+  sovereign: { dot: '#eab308', tone: 'text-yellow-400', label: 'Operator-declared endpoint (unverified)',
+               blurb: 'An off-box endpoint the operator declared as in-region / no-train. Vulos does not operate or verify it — treat it as off-box egress you have chosen to trust.' },
   brokered:  { dot: '#f59e0b', tone: 'text-amber-400', label: 'Brokered · no-train',
                blurb: 'A named third-party model under a no-train agreement. Requires the egress opt-in.' },
   external:  { dot: '#ef4444', tone: 'text-red-400', label: 'External · not private',
@@ -24,8 +24,9 @@ export const tierInfo = (tier) => TIERS[tier] || TIERS.external
 // box" state. This is the "watch the network tab" claim made honest and
 // continuous:
 //   none      → tier local: literally nothing leaves the instance (green).
-//   sovereign → tier sovereign: content may reach the Vulos in-region, no-train
-//               endpoint only (green, but named — it IS off-box).
+//   sovereign → tier sovereign: content may reach an OPERATOR-DECLARED off-box
+//               endpoint (unverified by Vulos). It IS off-box egress — treated as
+//               caution, NOT painted safe-green like the genuinely-local tier.
 //   external  → brokered/external: off-box egress to a named destination (amber).
 export function deriveEgress(sov, tier) {
   if (!sov) return { level: 'unknown', dest: null, text: 'Checking…' }
@@ -35,7 +36,7 @@ export function deriveEgress(sov, tier) {
     return { level: 'none', dest: null, text: 'Nothing leaves your instance' }
   }
   if (tier === 'sovereign') {
-    return { level: 'sovereign', dest, text: 'In-region only · no-train' }
+    return { level: 'sovereign', dest, text: 'Off-box to a declared endpoint' }
   }
   // brokered / external — off-box egress to a named destination.
   return { level: 'external', dest, text: `Leaves to ${dest}` }

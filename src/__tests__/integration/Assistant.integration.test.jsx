@@ -46,6 +46,24 @@ describe('Assistant panel (integration)', () => {
     expect(await screen.findByText(/Your next meeting is at 3pm\./)).toBeInTheDocument()
   })
 
+  it('renders the read-only tool trace (steps) when the stream reports tool use', async () => {
+    server.use(http.post('/api/assistant/agent/stream', () => sse([
+      { type: 'status', tool: 'search_mail', content: 'using search_mail…' },
+      { type: 'status', tool: 'read_thread', content: 'using read_thread…' },
+      { type: 'token', content: 'You owe $128.40.' },
+      { type: 'done' },
+    ])))
+    const user = userEvent.setup()
+    render(<Assistant />)
+    await ask(user, 'when is my invoice due?')
+    // The answer renders…
+    expect(await screen.findByText(/You owe \$128\.40\./)).toBeInTheDocument()
+    // …and so does the transparency trace of the read-only tools it ran.
+    expect(await screen.findByText('2 steps')).toBeInTheDocument()
+    expect(screen.getByText('Searched mail')).toBeInTheDocument()
+    expect(screen.getByText('Read a thread')).toBeInTheDocument()
+  })
+
   it('a mutating turn renders a proposal with Approve/Reject', async () => {
     server.use(http.post('/api/assistant/agent/stream', () => sse([
       { type: 'proposal', proposal: PROPOSAL }, { type: 'done' },

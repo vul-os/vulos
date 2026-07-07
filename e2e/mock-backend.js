@@ -32,7 +32,7 @@ const STATUS_LOCAL = {
   sovereignty: { tier: 'local', provider: null, model: null, endpoint: null, external_allowed: false },
   tier_options: [
     { tier: 'local', label: 'On your device' },
-    { tier: 'sovereign', label: 'Vulos sovereign · in-region, no-train' },
+    { tier: 'sovereign', label: 'Operator-declared endpoint (unverified)' },
     { tier: 'brokered', label: 'Brokered · no-train' },
   ],
 }
