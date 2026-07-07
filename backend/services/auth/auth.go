@@ -237,12 +237,21 @@ func (s *Store) CreateSession(user *User, deviceID string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Reuse existing session for same device if still valid
-	for _, sess := range s.sessions {
-		if sess.UserID == user.ID && sess.DeviceID == deviceID && sess.ExpiresAt.After(time.Now()) {
-			sess.ExpiresAt = time.Now().Add(90 * 24 * time.Hour) // extend
-			s.persistSession(sess)
-			return sess
+	// Reuse an existing session only for a KNOWN device (non-empty id). An empty
+	// device id means "unidentified device" (native password + passkey logins
+	// pass ""), and two DIFFERENT physical devices both look like "". Reusing on
+	// an empty id would hand the SAME token to different devices, so logging out
+	// one would silently log out the others, two independent sessions could never
+	// coexist, and each re-login would extend the single session indefinitely.
+	// Mint a fresh session in that case; cloud/QR logins carry a real device id
+	// and still get correct per-device reuse.
+	if deviceID != "" {
+		for _, sess := range s.sessions {
+			if sess.UserID == user.ID && sess.DeviceID == deviceID && sess.ExpiresAt.After(time.Now()) {
+				sess.ExpiresAt = time.Now().Add(90 * 24 * time.Hour) // extend
+				s.persistSession(sess)
+				return sess
+			}
 		}
 	}
 
@@ -262,6 +271,20 @@ func (s *Store) CreateSession(user *User, deviceID string) *Session {
 	s.sessions[token] = sess
 	s.persistSession(sess)
 	return sess
+}
+
+// TouchLastLogin records a successful login time for userID under the store lock
+// and persists it. External login flows (e.g. passkeys) must use this instead of
+// mutating a *User returned by the store directly — that pointer is shared with
+// the store map, so writing it without the lock is a data race with concurrent
+// readers/writers, and the change would not be persisted.
+func (s *Store) TouchLastLogin(userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u, ok := s.users[userID]; ok {
+		u.LastLogin = time.Now()
+		s.persistUser(u)
+	}
 }
 
 // ValidateToken checks a session token and returns the session if valid.

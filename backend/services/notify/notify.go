@@ -142,6 +142,20 @@ func fillDefaults(n *Notification) {
 	n.Priority = clampPriority(n.Type, n.Priority)
 }
 
+// notifyWriteWait bounds a single broadcast write to one client so a slow or
+// dead reader cannot block a sender indefinitely.
+const notifyWriteWait = 10 * time.Second
+
+// wsClient is one live notification stream. wmu SERIALIZES writes to conn:
+// gorilla/websocket permits only ONE concurrent writer per connection, so every
+// broadcast must hold wmu while writing. Without it, two goroutines emitting to
+// the same client at once (e.g. an HTTP handler and the reminder scheduler)
+// panic with "concurrent write to websocket connection" — crashing the backend.
+type wsClient struct {
+	uid string
+	wmu sync.Mutex
+}
+
 // Service manages notifications and streams them to connected clients.
 type Service struct {
 	mu      sync.RWMutex
@@ -150,7 +164,7 @@ type Service struct {
 	// (NOTIF-USER-SCOPE). The recorded id is used to route user-private
 	// notifications to their owner only; an empty id (unauthenticated stream)
 	// receives system/box notifications only.
-	clients map[*websocket.Conn]string
+	clients map[*websocket.Conn]*wsClient
 	maxHist int
 
 	// NOTIF-02 additive fields. Both are optional; the in-memory history
@@ -161,7 +175,7 @@ type Service struct {
 
 func New() *Service {
 	return &Service{
-		clients: make(map[*websocket.Conn]string),
+		clients: make(map[*websocket.Conn]*wsClient),
 		maxHist: 200,
 	}
 }
@@ -177,21 +191,13 @@ func (s *Service) SendNotification(n Notification) *Notification {
 	if len(s.history) > s.maxHist {
 		s.history = s.history[len(s.history)-s.maxHist:]
 	}
-	// Snapshot only the connections ALLOWED to see this notification: a
-	// user-private notification (non-empty UserID) goes solely to its target
-	// user's connections, never to another account on the same box.
-	clients := make([]*websocket.Conn, 0, len(s.clients))
-	for c, uid := range s.clients {
-		if deliverableTo(n, uid) {
-			clients = append(clients, c)
-		}
-	}
 	s.mu.Unlock()
 
+	// Broadcast only to connections ALLOWED to see this notification: a
+	// user-private notification (non-empty UserID) goes solely to its target
+	// user's connections, never to another account on the same box.
 	data, _ := json.Marshal(n)
-	for _, c := range clients {
-		c.WriteMessage(websocket.TextMessage, data)
-	}
+	s.broadcast(data, func(uid string) bool { return deliverableTo(n, uid) })
 
 	// NOTIF-02: additively persist to the on-disk store when configured.
 	// The in-memory history path above is unchanged; this is nil-safe and
@@ -219,14 +225,36 @@ func (s *Service) SendWithAction(title, body string, level Level, source, action
 	// Re-broadcast with action field (respecting the same per-user routing).
 	n.Action = action
 	data, _ := json.Marshal(*n)
+	s.broadcast(data, func(uid string) bool { return deliverableTo(*n, uid) })
+	return n
+}
+
+// broadcast writes data as a text frame to every connected client the deliver
+// predicate accepts. It snapshots the client set under the read lock, then
+// writes OUTSIDE the lock (so a slow/dead client cannot stall registration,
+// disconnect cleanup, or other senders) and serializes each connection's write
+// with that connection's own wmu, bounded by a write deadline. deliver==nil
+// delivers to every client.
+func (s *Service) broadcast(data []byte, deliver func(uid string) bool) {
+	type target struct {
+		conn *websocket.Conn
+		cl   *wsClient
+	}
 	s.mu.RLock()
-	for c, uid := range s.clients {
-		if deliverableTo(*n, uid) {
-			c.WriteMessage(websocket.TextMessage, data)
+	targets := make([]target, 0, len(s.clients))
+	for c, cl := range s.clients {
+		if deliver == nil || deliver(cl.uid) {
+			targets = append(targets, target{c, cl})
 		}
 	}
 	s.mu.RUnlock()
-	return n
+
+	for _, t := range targets {
+		t.cl.wmu.Lock()
+		_ = t.conn.SetWriteDeadline(time.Now().Add(notifyWriteWait))
+		_ = t.conn.WriteMessage(websocket.TextMessage, data)
+		t.cl.wmu.Unlock()
+	}
 }
 
 // Send creates and broadcasts a notification.
@@ -371,7 +399,7 @@ func (s *Service) Handler() http.HandlerFunc {
 		uid := r.Header.Get("X-User-ID")
 
 		s.mu.Lock()
-		s.clients[ws] = uid
+		s.clients[ws] = &wsClient{uid: uid}
 		s.mu.Unlock()
 
 		log.Printf("[notify] client connected")

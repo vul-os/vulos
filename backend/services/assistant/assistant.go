@@ -197,7 +197,7 @@ func formatContext(msgs []Message, bodies bool) string {
 		}
 		text = strings.TrimSpace(collapseWS(text))
 		if len(text) > maxBodyChars {
-			text = text[:maxBodyChars] + "…"
+			text = clipUTF8(text, maxBodyChars) + "…"
 		}
 		if text != "" {
 			entry += "\n" + text + "\n"

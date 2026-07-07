@@ -194,7 +194,12 @@ func (s *OSFilesSource) ReadFile(ctx context.Context, auth Auth, id string, maxB
 	}
 	truncated := false
 	if len(buf) > maxBytes {
-		buf = buf[:maxBytes]
+		// A byte-boundary cut can split a trailing multi-byte UTF-8 rune. Left in
+		// place, that dangling partial rune fails the utf8.Valid() sniff below and
+		// a perfectly valid non-ASCII text file (CJK, accented text, emoji) larger
+		// than the cap would be wrongly rejected as "binary". Drop the partial
+		// trailing rune so only genuinely-binary content is refused.
+		buf = trimPartialTrailingRune(buf[:maxBytes])
 		truncated = true
 	} else if size > int64(maxBytes) {
 		// Declared size exceeds the cap even if the reader returned less.
@@ -233,6 +238,25 @@ func isBinaryContentType(ct string) bool {
 		return false
 	}
 	return true
+}
+
+// trimPartialTrailingRune drops a dangling partial multi-byte UTF-8 rune that a
+// byte-boundary cut may have split off the end of b (at most utf8.UTFMax-1
+// bytes). It never removes more than one rune's worth of trailing bytes, so
+// genuinely-binary content (invalid bytes elsewhere, or a NUL) is still detected
+// by the looksBinary sniff — this only rescues valid UTF-8 text that happened to
+// be cut mid-rune at the size cap.
+func trimPartialTrailingRune(b []byte) []byte {
+	for i := 0; i < utf8.UTFMax-1 && len(b) > 0; i++ {
+		// DecodeLastRune returns (RuneError, 1) only for an invalid trailing
+		// encoding — exactly a rune split by the cut. A cleanly-decoding final
+		// rune (any length, incl. a real U+FFFD which decodes with size 3) stops us.
+		if r, size := utf8.DecodeLastRune(b); r != utf8.RuneError || size != 1 {
+			break
+		}
+		b = b[:len(b)-1]
+	}
+	return b
 }
 
 // looksBinary reports whether a byte slice is not safe to treat as UTF-8 text:

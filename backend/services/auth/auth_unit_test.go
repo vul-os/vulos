@@ -164,6 +164,32 @@ func TestCreateSession_ReusesSameDevice(t *testing.T) {
 	}
 }
 
+// TestCreateSession_UnknownDeviceMintsDistinct proves that logins with an empty
+// (unidentified) device id — every native password + passkey login — get their
+// OWN session token instead of collapsing onto one shared session. Regression:
+// reuse used to match on device id "" == "", so two different physical devices
+// received the same token and logging out one logged out the other.
+func TestCreateSession_UnknownDeviceMintsDistinct(t *testing.T) {
+	s := newTestStore(t)
+	u, _ := s.Register("grace", "pass1234-XXXX", "Grace")
+	sess1 := s.CreateSession(u, "") // e.g. laptop native login
+	sess2 := s.CreateSession(u, "") // e.g. phone native login
+	if sess1.Token == sess2.Token {
+		t.Fatal("unidentified-device logins collapsed onto one shared token")
+	}
+	if sess1.ID == sess2.ID {
+		t.Fatal("unidentified-device logins reused the same session")
+	}
+	// Revoking one must NOT invalidate the other (independent sessions).
+	s.RevokeSession(sess1.Token)
+	if _, ok := s.ValidateToken(sess2.Token); !ok {
+		t.Fatal("revoking one device's session wrongly killed the other")
+	}
+	if _, ok := s.ValidateToken(sess1.Token); ok {
+		t.Fatal("revoked session still validates")
+	}
+}
+
 // TestValidateToken_ExpiredRejected verifies that an already-expired session
 // is rejected.
 func TestValidateToken_ExpiredRejected(t *testing.T) {

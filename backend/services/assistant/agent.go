@@ -36,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"vulos/backend/services/ai"
 )
@@ -958,7 +959,32 @@ func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return clipUTF8(s, n) + "…"
+}
+
+// clipUTF8 returns s clipped to at most maxBytes bytes WITHOUT splitting a
+// trailing multi-byte UTF-8 rune. A naive s[:maxBytes] can cut through the
+// middle of a rune, producing invalid UTF-8 — which downstream breaks in two
+// concrete ways seen in this package: (1) the ONNX embedder helper reads the
+// text as UTF-8 on stdin and a split rune raises UnicodeDecodeError, so the
+// message is silently dropped from the semantic index; (2) a size-bounded file
+// read whose cut splits a rune fails a utf8.Valid() sniff and gets misreported
+// as "binary". Backing the cut up to a rune boundary keeps the result valid
+// UTF-8. When maxBytes <= 0 the result is empty.
+func clipUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	b := maxBytes
+	// s[b] is the first EXCLUDED byte; back up while it is a UTF-8 continuation
+	// byte so we never keep the leading bytes of a rune whose tail we dropped.
+	for b > 0 && !utf8.RuneStart(s[b]) {
+		b--
+	}
+	return s[:b]
 }
 
 // normalizeRSVP maps a free-text RSVP response onto the three canonical values

@@ -127,12 +127,10 @@ func SendAction(svc *Service, title, body string, level Level, source string, sp
 		Notification: *n,
 		Actions:      specs,
 	}
-	// Re-broadcast with action specs
+	// Re-broadcast with action specs. Serialized per-connection + written outside
+	// the lock via the shared broadcast helper (nil predicate = all clients),
+	// which prevents concurrent-writer panics on a shared WS connection.
 	data, _ := json.Marshal(ta)
-	svc.mu.RLock()
-	for c := range svc.clients {
-		c.WriteMessage(1 /*websocket.TextMessage*/, data)
-	}
-	svc.mu.RUnlock()
+	svc.broadcast(data, nil)
 	return ta
 }

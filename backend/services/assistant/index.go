@@ -303,7 +303,11 @@ func embedText(m Message) string {
 	}
 	text := strings.TrimSpace(m.Subject + "\n\n" + body)
 	if len(text) > indexEmbedChars {
-		text = text[:indexEmbedChars]
+		// Rune-safe clip: a byte-boundary cut can split a multi-byte UTF-8 rune,
+		// and the on-instance ONNX embedder reads this text as UTF-8 on stdin —
+		// invalid bytes there raise UnicodeDecodeError, silently dropping the
+		// message from the semantic index. Clip on a rune boundary instead.
+		text = clipUTF8(text, indexEmbedChars)
 	}
 	return text
 }

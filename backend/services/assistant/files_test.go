@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"vulos/backend/services/ai"
 )
@@ -206,6 +207,43 @@ func TestReadFileSizeCapEnforced(t *testing.T) {
 	fc2, _ := src.ReadFile(context.Background(), Auth{UserID: "alice"}, "big", maxFileReadBytes*10)
 	if len(fc2.Text) > maxFileReadBytes {
 		t.Fatalf("caller raised the cap past the ceiling: %d", len(fc2.Text))
+	}
+}
+
+// read_file must READ (truncated) a valid UTF-8 text file larger than the cap
+// even when the byte-boundary cut lands in the middle of a multi-byte rune —
+// NOT misreport it as binary. Regression: the old code did buf = buf[:maxBytes],
+// splitting the trailing rune, which failed the utf8.Valid() sniff so any
+// non-ASCII document (CJK/accented/emoji) over 32 KiB was rejected as "binary".
+func TestReadFileTruncatesOnRuneBoundaryNotBinary(t *testing.T) {
+	b := newFakeFilesBackend()
+	// "世" is a 3-byte rune; 20000*3 = 60000 bytes. The cut at maxFileReadBytes
+	// (32768) is not a multiple of 3, so a naive slice splits a rune.
+	content := strings.Repeat("世", 20000)
+	b.add("cjk", "alice", "notes-cjk.txt", "text/plain", []byte(content), false)
+	src := NewOSFilesSource(b)
+
+	fc, err := src.ReadFile(context.Background(), Auth{UserID: "alice"}, "cjk", maxFileReadBytes)
+	if err != nil {
+		t.Fatalf("valid UTF-8 text file wrongly rejected: %v", err)
+	}
+	if !fc.Truncated {
+		t.Fatal("oversized read should be flagged Truncated")
+	}
+	if !utf8.ValidString(fc.Text) {
+		t.Fatal("returned text is not valid UTF-8 — a rune was split at the cut")
+	}
+	if len(fc.Text) > maxFileReadBytes {
+		t.Fatalf("read exceeded the cap: %d", len(fc.Text))
+	}
+	// The rune-safe clip drops at most 2 dangling bytes here, never real content.
+	if len(fc.Text) < maxFileReadBytes-3 {
+		t.Fatalf("clip removed too much content: %d", len(fc.Text))
+	}
+	// Genuinely-binary content is still rejected (trim never masks it).
+	b.add("bin", "alice", "x.bin", "", append([]byte{0x00}, []byte(content)...), false)
+	if _, err := src.ReadFile(context.Background(), Auth{UserID: "alice"}, "bin", maxFileReadBytes); err == nil {
+		t.Fatal("NUL-byte binary must still be refused")
 	}
 }
 

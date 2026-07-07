@@ -24,7 +24,6 @@ package passkeys
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"vulos/backend/services/auth"
 )
@@ -76,8 +75,10 @@ func (ls *LoginService) FinishLogin(username string, assertionResp []byte, sessi
 		return nil, fmt.Errorf("passkeys/login: assertion not verified")
 	}
 
-	// Update last_login timestamp on the user record.
-	u.LastLogin = time.Now()
+	// Update last_login timestamp on the user record. Go through the store (under
+	// its lock + persisted) rather than mutating the shared *User directly, which
+	// would be a data race and would not survive a reload.
+	ls.store.TouchLastLogin(u.ID)
 
 	sess := ls.store.CreateSession(u, "")
 	ls.store.Flush()
