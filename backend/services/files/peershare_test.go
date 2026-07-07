@@ -309,12 +309,16 @@ func TestEndToEndOverHTTP(t *testing.T) {
 	defer srv.Close()
 
 	// Point the recipient at the real HTTP transport instead of the loopback.
-	// Bypass the SSRF validator: the test server binds to 127.0.0.1, which is
-	// intentionally a loopback address.  Production code uses validateOwnerAddr;
-	// this bypass is test-only (addrValidator is unexported and not settable via
-	// the public API).
+	// Bypass the SSRF guard: the test server binds to 127.0.0.1, which is
+	// intentionally a loopback address (a stand-in for a REMOTE owner box).
+	// Production code uses validateOwnerAddr AND a safedial dial-time Control hook
+	// baked into the client's transport, both of which block loopback — so this
+	// E2E test must opt out of BOTH: the string validator (addrValidator) and the
+	// dial-time guard (by swapping in a plain client). Both fields are unexported
+	// and not settable via the public API, so this bypass is test-only.
 	transport := NewHTTPPeerTransport()
 	transport.addrValidator = func(string) error { return nil } // test-only bypass
+	transport.http = &http.Client{}                             // test-only: plain client so loopback (stand-in remote) is dialable
 	recip.WithPeer(recip.signer, transport, t.TempDir())
 
 	cap, _, err := owner.IssueCapability("userOwner", n.ID, RoleViewer, "", srv.URL, time.Hour)

@@ -85,8 +85,40 @@ type HTTPPeerTransport struct {
 // NewHTTPPeerTransport returns an HTTPPeerTransport with a streaming-friendly
 // client (no overall client timeout — the per-request context governs the
 // deadline so a large download is not cut off mid-stream).
+//
+// SSRF-FILES-01 (defence in depth): the pre-dial validateOwnerAddr check
+// resolves the host ONCE and then discards the result, while a bare
+// http.Client would independently re-resolve at dial time and follow
+// redirects — so a rebinding DNS name (public on the pre-check, internal at
+// dial) or an HTTP 3xx to an internal target would slip past the string-level
+// guard. We close both vectors on the client itself:
+//
+//   - DialContext uses safedial's dial-time Control hook, which re-validates
+//     the ACTUAL resolved IP immediately before connect(2) on EVERY dial
+//     (initial and redirect), so a rebound/internal IP is refused even if the
+//     pre-check saw a public one.
+//   - CheckRedirect refuses to follow redirects at all (a peer /serve endpoint
+//     never legitimately redirects), so a malicious owner cannot bounce the
+//     fetch to an address the guard never inspected.
 func NewHTTPPeerTransport() *HTTPPeerTransport {
-	return &HTTPPeerTransport{http: &http.Client{}}
+	dialer := safedial.New(getPeerAllowLAN())
+	dialer.Timeout = 15 * time.Second
+	return &HTTPPeerTransport{http: &http.Client{
+		Transport: &http.Transport{
+			DialContext:           dialer.DialContext,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConns:          10,
+			IdleConnTimeout:       90 * time.Second,
+		},
+		// Fail closed: do NOT follow redirects. Fetch treats the returned 3xx as
+		// a non-200 owner response and errors out, so the peer fetch can never be
+		// bounced to an internal target. The dial-time Control hook re-validates
+		// every dial too, so this is belt-and-suspenders against DNS rebinding.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 // Fetch POSTs the fetch request to the owner box and returns the streaming body.
