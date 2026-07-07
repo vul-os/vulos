@@ -1054,10 +1054,13 @@ func main() {
 	// Notifications
 	mux.Handle("/api/notifications/stream", notifySvc.Handler())
 	mux.HandleFunc("GET /api/notifications", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, notifySvc.List(50))
+		// User-scoped: box-level notifications + this user's own private ones only,
+		// so another account's private notification (e.g. a reminder's text) is
+		// never listed here (NOTIF-USER-SCOPE).
+		writeJSON(w, notifySvc.ListForUser(r.Header.Get("X-User-ID"), 50))
 	})
 	mux.HandleFunc("GET /api/notifications/unread", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]int{"unread": notifySvc.UnreadCount()})
+		writeJSON(w, map[string]int{"unread": notifySvc.UnreadForUser(r.Header.Get("X-User-ID"))})
 	})
 	// M7 fix: notification mutation endpoints require an authenticated user
 	// (X-User-ID enforced by auth Middleware) and /send additionally requires

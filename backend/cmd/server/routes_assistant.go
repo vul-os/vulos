@@ -695,12 +695,19 @@ func (n reminderNotifier) NotifyReminder(userID, reminderID, text string) {
 		return
 	}
 	n.svc.SendNotification(notify.Notification{
-		Title:    "Reminder",
-		Body:     text,
-		Level:    notify.LevelInfo,
-		Source:   "assistant",
-		Type:     notify.TypeAlert,
-		Subtype:  "reminder:" + userID,
+		Title:   "Reminder",
+		Body:    text,
+		Level:   notify.LevelInfo,
+		Source:  "assistant",
+		Type:    notify.TypeAlert,
+		Subtype: "reminder:" + userID,
+		// UserID scopes this notification to the reminder's owner: the reminder
+		// text (the user's own words, or content pulled from an email via an
+		// approved set_reminder) is PRIVATE and must not be broadcast to other
+		// accounts sharing the box. Without this, the per-user isolation the
+		// reminders store enforces would be undone at the notification hop
+		// (NOTIF-USER-SCOPE). Delivery/list are then filtered by this id.
+		UserID:   userID,
 		Priority: notify.PriorityHigh,
 	})
 }

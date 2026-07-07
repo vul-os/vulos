@@ -666,11 +666,16 @@ func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, _ := h.store.GetProfile(sess.UserID)
+	profile, ok := h.store.GetProfile(sess.UserID)
+	var safeProfile any
+	if ok && profile != nil {
+		// Never leak the lock-screen PIN hash or the cleartext AI API key in /me.
+		safeProfile = sanitizeProfile(profile)
+	}
 	writeJSON(w, map[string]any{
 		"user":    user.Safe(),
 		"session": map[string]any{"id": sess.ID, "user_id": sess.UserID, "expires_at": sess.ExpiresAt},
-		"profile": profile,
+		"profile": safeProfile,
 	})
 }
 
@@ -879,6 +884,27 @@ func (s *stateStore) delete(state string) {
 
 // --- Profile management handlers ---
 
+// sanitizeProfile returns a COPY of p safe to serialize in an HTTP response. It
+// strips two secrets that must never leave the box in a profile payload:
+//
+//   - PinHash — the lock-screen PIN hash is a single unstretched SHA-256 over a
+//     short numeric PIN with the salt disclosed inline (see hashPIN), so leaking
+//     it is effectively leaking the PIN. It is ALWAYS cleared.
+//   - AIAPIKey — the user's model API key. It is masked (not cleared) when set so
+//     the UI can show "a key is configured" without ever revealing it.
+//
+// It copies by value first so the live in-memory *Profile in the store is never
+// mutated (GetProfile hands back the stored pointer). Callers must serialize the
+// returned value, never the original pointer.
+func sanitizeProfile(p *Profile) Profile {
+	cp := *p
+	cp.PinHash = ""
+	if cp.AIAPIKey != "" {
+		cp.AIAPIKey = "••••••"
+	}
+	return cp
+}
+
 func (h *Handler) handleListProfiles(w http.ResponseWriter, r *http.Request) {
 	// C2: Require an authenticated admin session.
 	reqUserID := r.Header.Get("X-User-ID")
@@ -892,13 +918,13 @@ func (h *Handler) handleListProfiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// C2: Scrub AIAPIKey from every profile before returning.
+	// C2 + PIN-LEAK: scrub AIAPIKey AND the lock-screen PinHash from every
+	// profile before returning (an admin listing all profiles must not receive
+	// every user's PIN hash / API key).
 	raw := h.store.ListProfiles()
 	scrubbed := make([]Profile, 0, len(raw))
 	for _, p := range raw {
-		cp := *p
-		cp.AIAPIKey = ""
-		scrubbed = append(scrubbed, cp)
+		scrubbed = append(scrubbed, sanitizeProfile(p))
 	}
 	writeJSON(w, scrubbed)
 }
@@ -925,12 +951,8 @@ func (h *Handler) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "profile not found")
 		return
 	}
-	// Scrub API key from response
-	p := *profile
-	if p.AIAPIKey != "" {
-		p.AIAPIKey = "••••••"
-	}
-	writeJSON(w, p)
+	// Scrub API key AND lock-screen PIN hash from the response.
+	writeJSON(w, sanitizeProfile(profile))
 }
 
 func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -998,7 +1020,9 @@ func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	h.store.SetProfile(existing)
 	h.store.Flush()
-	writeJSON(w, existing)
+	// Return a scrubbed copy: never echo the PIN hash or the cleartext API key
+	// back in the response (existing is the live stored profile).
+	writeJSON(w, sanitizeProfile(existing))
 }
 
 func (h *Handler) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {

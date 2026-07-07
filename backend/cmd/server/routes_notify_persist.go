@@ -45,7 +45,10 @@ func registerNotifyPersistRoutes(mux *http.ServeMux, notifySvc *notify.Service, 
 				limit = v
 			}
 		}
-		writeJSON(w, store.List(limit))
+		// User-scoped read: box-level notifications + this user's own private ones
+		// only, so the persisted history cannot leak another account's private
+		// notification (e.g. a reminder's text) (NOTIF-USER-SCOPE).
+		writeJSON(w, store.ListForUser(r.Header.Get("X-User-ID"), limit))
 	})
 
 	// POST /api/notifications/prune — manual retention trigger.

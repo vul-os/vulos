@@ -82,6 +82,25 @@ type Notification struct {
 	Subtype  string   `json:"subtype"`
 	Priority Priority `json:"priority"`
 	TTL      int      `json:"ttl"` // seconds; 0 = no expiry
+
+	// UserID is the OPTIONAL target user this notification is private to
+	// (NOTIF-USER-SCOPE). Empty ⇒ a box-level/system notification, delivered and
+	// listed to every connected client as before (DND toggles, sync conflicts,
+	// host-browser-open, etc.). Non-empty ⇒ the notification carries a specific
+	// user's private content (e.g. a fired reminder's text) and MUST only ever be
+	// delivered to, and listed for, that same user — never leaked to another
+	// account sharing the same multi-user box. Enforced by deliverableTo + the
+	// per-connection user id the WS Handler records, and by ListForUser.
+	UserID string `json:"user_id,omitempty"`
+}
+
+// deliverableTo reports whether a notification may be shown to the client
+// authenticated as clientUID. A system/box notification (empty UserID) is shown
+// to everyone; a user-private notification is shown ONLY to its target user, so
+// one account's private content (a reminder's text) never leaks to another
+// account on the same box.
+func deliverableTo(n Notification, clientUID string) bool {
+	return n.UserID == "" || n.UserID == clientUID
 }
 
 // IsExpired reports whether the notification has passed its TTL.
@@ -127,7 +146,11 @@ func fillDefaults(n *Notification) {
 type Service struct {
 	mu      sync.RWMutex
 	history []Notification
-	clients map[*websocket.Conn]bool
+	// clients maps a live WS connection to the user id it authenticated as
+	// (NOTIF-USER-SCOPE). The recorded id is used to route user-private
+	// notifications to their owner only; an empty id (unauthenticated stream)
+	// receives system/box notifications only.
+	clients map[*websocket.Conn]string
 	maxHist int
 
 	// NOTIF-02 additive fields. Both are optional; the in-memory history
@@ -138,7 +161,7 @@ type Service struct {
 
 func New() *Service {
 	return &Service{
-		clients: make(map[*websocket.Conn]bool),
+		clients: make(map[*websocket.Conn]string),
 		maxHist: 200,
 	}
 }
@@ -154,9 +177,14 @@ func (s *Service) SendNotification(n Notification) *Notification {
 	if len(s.history) > s.maxHist {
 		s.history = s.history[len(s.history)-s.maxHist:]
 	}
+	// Snapshot only the connections ALLOWED to see this notification: a
+	// user-private notification (non-empty UserID) goes solely to its target
+	// user's connections, never to another account on the same box.
 	clients := make([]*websocket.Conn, 0, len(s.clients))
-	for c := range s.clients {
-		clients = append(clients, c)
+	for c, uid := range s.clients {
+		if deliverableTo(n, uid) {
+			clients = append(clients, c)
+		}
 	}
 	s.mu.Unlock()
 
@@ -188,12 +216,14 @@ func (s *Service) SendWithAction(title, body string, level Level, source, action
 		}
 	}
 	s.mu.Unlock()
-	// Re-broadcast with action field.
+	// Re-broadcast with action field (respecting the same per-user routing).
 	n.Action = action
-	data, _ := json.Marshal(n)
+	data, _ := json.Marshal(*n)
 	s.mu.RLock()
-	for c := range s.clients {
-		c.WriteMessage(websocket.TextMessage, data)
+	for c, uid := range s.clients {
+		if deliverableTo(*n, uid) {
+			c.WriteMessage(websocket.TextMessage, data)
+		}
 	}
 	s.mu.RUnlock()
 	return n
@@ -212,7 +242,10 @@ func (s *Service) Send(title, body string, level Level, source string) *Notifica
 	})
 }
 
-// List returns notification history, newest first.
+// List returns notification history, newest first. It is UNSCOPED and must NOT
+// be used to answer a per-user HTTP request (it would expose other accounts'
+// private notifications). HTTP surfaces use ListForUser; List remains for
+// box-level/internal callers and tests.
 func (s *Service) List(limit int) []Notification {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -226,6 +259,42 @@ func (s *Service) List(limit int) []Notification {
 		result[i] = s.history[len(s.history)-1-i]
 	}
 	return result
+}
+
+// ListForUser returns notification history VISIBLE to userID, newest first:
+// box-level (untargeted) notifications plus this user's own private ones. It
+// never returns another account's user-private notifications, so the per-user
+// isolation the reminders store enforces is preserved all the way to the shell.
+func (s *Service) ListForUser(userID string, limit int) []Notification {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]Notification, 0, len(s.history))
+	// Walk newest→oldest, keeping only visible entries up to limit.
+	for i := len(s.history) - 1; i >= 0; i-- {
+		if limit > 0 && len(result) >= limit {
+			break
+		}
+		if deliverableTo(s.history[i], userID) {
+			result = append(result, s.history[i])
+		}
+	}
+	return result
+}
+
+// UnreadForUser counts unread notifications VISIBLE to userID (box-level plus
+// this user's own private ones) — the scoped counterpart of UnreadCount, so the
+// unread badge does not reveal another account's activity.
+func (s *Service) UnreadForUser(userID string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	count := 0
+	for _, n := range s.history {
+		if !n.Read && deliverableTo(n, userID) {
+			count++
+		}
+	}
+	return count
 }
 
 // MarkRead marks a notification as read.
@@ -293,8 +362,16 @@ func (s *Service) Handler() http.HandlerFunc {
 		}
 		defer ws.Close()
 
+		// Record the user this stream authenticated as (set by the auth
+		// Middleware that wraps every route). User-private notifications are then
+		// routed to this connection only when its id matches — a different account
+		// on the same box never receives another user's private notification.
+		// An empty id (e.g. an unauthenticated/system stream) sees box-level
+		// notifications only.
+		uid := r.Header.Get("X-User-ID")
+
 		s.mu.Lock()
-		s.clients[ws] = true
+		s.clients[ws] = uid
 		s.mu.Unlock()
 
 		log.Printf("[notify] client connected")

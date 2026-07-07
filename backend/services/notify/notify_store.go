@@ -123,6 +123,29 @@ func (s *Store) List(limit int) []Notification {
 	return out
 }
 
+// ListForUser returns persisted history VISIBLE to userID, newest first:
+// box-level (untargeted) notifications plus this user's own private ones. It
+// never returns another account's user-private notifications (NOTIF-USER-SCOPE),
+// so the persisted read path cannot leak a reminder's text across accounts.
+func (s *Store) ListForUser(userID string, limit int) []Notification {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]Notification, 0, len(s.items))
+	for i := len(s.items) - 1; i >= 0; i-- {
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+		if deliverableTo(s.items[i], userID) {
+			out = append(out, s.items[i])
+		}
+	}
+	return out
+}
+
 // MarkRead marks the notification with the given id as read and persists.
 // Safe on a nil receiver.
 func (s *Store) MarkRead(id string) {
