@@ -2452,6 +2452,7 @@ func main() {
 		visStore:           visStore,
 		authStore:          authStore,
 		integrationsClient: integrationsClient,
+		activeEnv:          activeEnv,
 	}, ctx)
 
 	// MinIO storage provisioning — H2 fix: admin-only + IsProvisioned guard
@@ -3696,6 +3697,20 @@ func main() {
 		log.Printf("[meet/transcribe] provider unavailable: %v — routes return 503 (set VULOS_WHISPER_URL to enable)", werr)
 	}
 	// MEET_TRANSCRIPT_WIRE END
+
+	// MEET_SELFHOST_TOKEN_WIRE BEGIN — self-host Meet join-token minter (P1).
+	//
+	// On a sovereign box there is no cloud CP to mint the LiveKit join token the
+	// Meet browser needs, so the OS backend mints a VULOS-MEET/1 token locally
+	// (signed with LIVEKIT_API_KEY/LIVEKIT_API_SECRET, the same pair the co-located
+	// vulos-meet SFU validates with). Session-gated; tenant is server-derived.
+	// When the secrets are unset the route answers 503 (Meet not configured).
+	if registerMeetTokenRoutes(mux) {
+		log.Printf("[meettoken] registered POST /api/meet/token (self-host Meet join-token minter)")
+	} else {
+		log.Printf("[meettoken] LIVEKIT_API_KEY/LIVEKIT_API_SECRET unset — POST /api/meet/token returns 503 (Meet not configured)")
+	}
+	// MEET_SELFHOST_TOKEN_WIRE END
 
 	if tlsCert != "" {
 		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, activeEnv, tlsCert)

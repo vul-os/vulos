@@ -5,6 +5,8 @@ go 1.25.6
 require (
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/fxamacker/cbor/v2 v2.9.2
+	github.com/go-jose/go-jose/v3 v3.0.5
 	github.com/go-webauthn/webauthn v0.17.3
 	github.com/google/go-tpm v0.9.8
 	github.com/gorilla/websocket v1.5.3
@@ -20,6 +22,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
+	golang.org/x/oauth2 v0.35.0
 	modernc.org/sqlite v1.50.1
 )
 
@@ -32,7 +35,6 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -35,6 +35,7 @@ import (
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/services/appnet"
 	svcauth "vulos/backend/services/auth"
+	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/integrations"
 )
 
@@ -49,6 +50,9 @@ type newFeatureDeps struct {
 	// The gateway uses the same instance to inject tokens, so they share one
 	// token cache. nil → a fresh client is created from env (e.g. tests).
 	integrationsClient *integrations.Client
+	// activeEnv gates the self-host integrations KEK fail-closed posture (prod
+	// requires INTEGRATIONS_KEK). Zero value ("") parses as prod-strict.
+	activeEnv vulenv.Env
 }
 
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
@@ -293,23 +297,30 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		}
 	}
 
-	// ── 6b. Cloud OAuth integrations consumer (services/integrations, INTEG-03) ──
+	// ── 6b. OAuth integrations (services/integrations) — CP-broker OR self-host ──
 	//
-	// Routes registered:
-	//   GET /api/integrations/google/status — connection status (via broker probe)
-	//   GET /api/integrations/google/token  — short-lived Google access token
+	// SELECTION (mail/office seam pattern, gated at this composition root):
+	//   - CP configured (VULOS_CP_URL / VULOS_CLOUD_URL set) → CLOUD path: the box
+	//     mints short-lived access tokens from the cloud broker over the device-HMAC
+	//     channel; the refresh token + fleet client secret stay in the control plane.
+	//   - CP unset → SELF-HOST path (services/integrations/selfhost): the owner
+	//     connects their OWN Google/Microsoft/Dropbox accounts with their OWN OAuth
+	//     app creds, entirely on the box. The refresh token is custodied at rest
+	//     under a LOCAL KEK (INTEGRATIONS_KEK, fail-closed in prod) and refreshed
+	//     locally. Minted access tokens have the SAME downstream shape, so no
+	//     consumer change.
 	//
-	// The box mints short-lived access tokens from the cloud broker over the
-	// device-HMAC channel (DEVICE_SHARED_SECRET + VULOS_DEVICE_ULID). The refresh
-	// token + client secret stay in the control plane. Unprovisioned boxes report
-	// configured=false and the token endpoint 503s — fail-closed.
-	{
+	// Exactly ONE path is registered so the /api/integrations/* routes never
+	// collide.
+	if cpConfigured() {
 		integClient := deps.integrationsClient
 		if integClient == nil {
 			integClient = integrations.NewClientFromEnv()
 		}
 		integrations.RegisterHandlers(mux, integClient)
-		log.Printf("[integrations] registered GET /api/integrations/google/{status,token} (configured=%v)", integClient.Configured())
+		log.Printf("[integrations] CLOUD path: registered GET /api/integrations/google/{status,token} (broker, configured=%v)", integClient.Configured())
+	} else {
+		registerSelfHostIntegrations(mux, deps.dbDir, deps.activeEnv)
 	}
 
 	// ── 7. cgroup Alerter (internal/cgroups, PUBWEB-08) ─────────────────────────
