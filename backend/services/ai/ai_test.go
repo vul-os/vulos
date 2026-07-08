@@ -538,6 +538,186 @@ func TestStreamOpenAI_ChunksAndDone(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// 10b. STREAMING error propagation (deep/os2) — a streaming completion must NOT
+// silently succeed with empty/truncated content when the upstream returns an
+// HTTP error, emits an error frame, or drops mid-stream. Before the fix all
+// three streamers skipped a non-SSE error body, ended the loop, and returned nil
+// — so AgentTurnStream streamed an EMPTY answer + {"type":"done"} and the run
+// derailed with no error surfaced (unlike the non-stream path, which fails
+// closed on non-200). These lock the fail-closed behavior.
+// ---------------------------------------------------------------------------
+
+// TestStreamOpenAI_ErrorStatusPropagates: a 401 (bad key) / 429 (rate limit) /
+// 5xx returns a JSON error body, not an SSE stream. Stream must return an error
+// mentioning the status, NOT nil-with-no-content.
+func TestStreamOpenAI_ErrorStatusPropagates(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"invalid_api_key"}}`))
+	}))
+	defer ts.Close()
+
+	svc := &Service{client: ts.Client()}
+	cfg := Config{Provider: ProviderCustom, Model: "m", Endpoint: ts.URL}
+	var gotContent string
+	err := svc.Stream(context.Background(), cfg, CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "x"}},
+	}, func(c StreamChunk) { gotContent += c.Content })
+	if err == nil {
+		t.Fatal("streamOpenAI must return an error on HTTP 401, not silently succeed")
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("error should mention status 401, got %v", err)
+	}
+	if gotContent != "" {
+		t.Errorf("no content should be emitted on an error response, got %q", gotContent)
+	}
+}
+
+// TestStreamOllama_ErrorStatusPropagates: same fail-closed guarantee for Ollama.
+func TestStreamOllama_ErrorStatusPropagates(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"model not found"}`))
+	}))
+	defer ts.Close()
+
+	svc := &Service{client: ts.Client()}
+	cfg := cfgWithEndpoint(ProviderOllama, ts.URL)
+	err := svc.Stream(context.Background(), cfg, CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "x"}},
+	}, func(StreamChunk) {})
+	if err == nil {
+		t.Fatal("streamOllama must return an error on HTTP 500, not silently succeed")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error should mention status 500, got %v", err)
+	}
+}
+
+// TestStreamOllama_MidStreamErrorFramePropagates: Ollama can return HTTP 200 and
+// then emit an {"error":...} object mid-stream. That must surface as an error,
+// not be dropped so the caller sees whatever partial content preceded it as a
+// complete answer.
+func TestStreamOllama_MidStreamErrorFramePropagates(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": "partial"}, "done": false})
+		json.NewEncoder(w).Encode(map[string]any{"error": "context length exceeded"})
+	}))
+	defer ts.Close()
+
+	svc := &Service{client: ts.Client()}
+	cfg := cfgWithEndpoint(ProviderOllama, ts.URL)
+	sawDone := false
+	err := svc.Stream(context.Background(), cfg, CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "x"}},
+	}, func(c StreamChunk) {
+		if c.Done {
+			sawDone = true
+		}
+	})
+	if err == nil {
+		t.Fatal("a mid-stream Ollama error frame must surface as an error")
+	}
+	if !strings.Contains(err.Error(), "context length exceeded") {
+		t.Errorf("error should carry the upstream message, got %v", err)
+	}
+	if sawDone {
+		t.Error("a stream that errored must NOT emit a Done chunk (would look like a clean finish)")
+	}
+}
+
+// TestStreamClaude_ErrorStatusPropagates uses a RoundTripper to intercept the
+// hardcoded api.anthropic.com URL and return a 429. streamClaude must fail
+// closed exactly like completeClaude does.
+func TestStreamClaude_ErrorStatusPropagates(t *testing.T) {
+	rt := &captureTransport{
+		captured: new(*http.Request),
+		resp: &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Body:       io.NopCloser(strings.NewReader(`{"type":"error","error":{"type":"rate_limit_error"}}`)),
+			Header:     make(http.Header),
+		},
+	}
+	svc := &Service{client: &http.Client{Transport: rt, Timeout: 5 * time.Second}}
+	cfg := Config{Provider: ProviderClaude, Model: "m", APIKey: "k"}
+	var gotContent string
+	err := svc.Stream(context.Background(), cfg, CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "x"}},
+	}, func(c StreamChunk) { gotContent += c.Content })
+	if err == nil {
+		t.Fatal("streamClaude must return an error on HTTP 429, not silently succeed")
+	}
+	if !strings.Contains(err.Error(), "429") {
+		t.Errorf("error should mention status 429, got %v", err)
+	}
+	if gotContent != "" {
+		t.Errorf("no content on an error response, got %q", gotContent)
+	}
+}
+
+// TestStreamClaude_HappyPathViaRoundTripper exercises the SSE parse path that the
+// old test t.Skip'd (the URL is hardcoded), via a RoundTripper — proving the fix
+// did not break normal streaming.
+func TestStreamClaude_HappyPathViaRoundTripper(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"content_block_delta","delta":{"text":"hi"}}`,
+		`data: {"type":"content_block_delta","delta":{"text":" there"}}`,
+		`data: {"type":"message_stop"}`,
+		"",
+	}, "\n")
+	rt := &captureTransport{
+		captured: new(*http.Request),
+		resp: &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader(sse)),
+			Header:     make(http.Header),
+		},
+	}
+	svc := &Service{client: &http.Client{Transport: rt}}
+	cfg := Config{Provider: ProviderClaude, Model: "m", APIKey: "k"}
+	var content string
+	done := 0
+	err := svc.Stream(context.Background(), cfg, CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "x"}},
+	}, func(c StreamChunk) {
+		content += c.Content
+		if c.Done {
+			done++
+		}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if content != "hi there" {
+		t.Errorf("assembled = %q, want 'hi there'", content)
+	}
+	if done != 1 {
+		t.Errorf("expected 1 done chunk, got %d", done)
+	}
+}
+
+// TestStreamOpenAI_OverLongLineSurfaces: a single SSE line larger than the raised
+// scanner cap must surface via scanner.Err() rather than silently truncating the
+// answer. We send a data line whose payload exceeds maxStreamLine.
+func TestStreamOpenAI_OverLongLineSurfaces(t *testing.T) {
+	huge := strings.Repeat("A", maxStreamLine+16)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":\"%s\"}}]}\n", huge)
+	}))
+	defer ts.Close()
+
+	svc := &Service{client: ts.Client()}
+	cfg := Config{Provider: ProviderCustom, Model: "m", Endpoint: ts.URL}
+	err := svc.Stream(context.Background(), cfg, CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "x"}},
+	}, func(StreamChunk) {})
+	if err == nil {
+		t.Fatal("an over-long SSE line must surface as a read error, not a silent truncation")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // 11. streamClaude via httptest — SSE parsing
 // ---------------------------------------------------------------------------
 

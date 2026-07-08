@@ -237,6 +237,11 @@ export default function Assistant() {
   const [tierBusy, setTierBusy] = useState(false)
   const scrollRef = useRef(null)
   const inputRef = useAutoGrow(input, { maxHeight: 128 })
+  // Aborts the in-flight streaming turn when the window is closed mid-stream.
+  // Without this the SSE fetch + its reader keep running after unmount and the
+  // token/status callbacks call setState on a gone component (React warning +
+  // a leaked reader holding the response buffer). Cleared on turn completion.
+  const streamCtl = useRef(null)
 
   useEffect(() => {
     fetch('/api/assistant/status', { credentials: 'include' })
@@ -244,6 +249,10 @@ export default function Assistant() {
       .then(setStatus)
       .catch(() => {})
   }, [])
+
+  // Abort any in-flight streaming turn on unmount (window close / view switch),
+  // so the stream is torn down instead of leaking and writing to dead state.
+  useEffect(() => () => { streamCtl.current?.abort() }, [])
 
   // Esc closes the tier picker (matches the shell's overlay dismissal contract).
   useEffect(() => {
@@ -370,10 +379,13 @@ export default function Assistant() {
     setBusy(true)
     // Accumulate the read-only tool trace so we can show WHAT the assistant did.
     const liveSteps = []
+    const ctl = new AbortController()
+    streamCtl.current = ctl
     try {
       const result = await runAgentTurn({
         message: text,
         history,
+        signal: ctl.signal,
         // Live tokens: keep the bubble pending (spinner) while text streams in.
         onToken: (_delta, full) => patchLast(full, true),
         // A read-only tool started: show a transient status line + record it.
@@ -416,10 +428,15 @@ export default function Assistant() {
           return copy
         })
       }
-    } catch {
-      patchLast('Could not reach the assistant.', false)
+    } catch (err) {
+      // Aborted by unmount/window-close: the component is gone, so do NOT touch
+      // state (that is the leak/warning we are preventing). Any other failure is
+      // surfaced in the bubble.
+      if (err?.name !== 'AbortError') patchLast('Could not reach the assistant.', false)
     } finally {
-      setBusy(false)
+      if (streamCtl.current === ctl) streamCtl.current = null
+      // Skip the state update if this turn was aborted (component unmounted).
+      if (!ctl.signal.aborted) setBusy(false)
     }
   }, [busy, messages, push, patchLast])
 

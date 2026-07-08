@@ -114,4 +114,41 @@ describe('runAgentTurn (streaming)', () => {
     expect(result.proposal).toEqual(proposal)
     expect(result.streamed).toBe(false)
   })
+
+  // Unmount/window-close mid-stream: the consumer aborts the AbortController it
+  // passed as `signal`. runAgentTurn MUST re-throw the AbortError (so the caller
+  // knows to tear down) and MUST NOT fall back to the non-streaming /agent —
+  // otherwise a closed Assistant window would keep talking to the model and then
+  // write to dead component state (the leak/warning this guards against).
+  it('re-throws AbortError on abort mid-stream and does not fall back', async () => {
+    const abortErr = new Error('aborted')
+    abortErr.name = 'AbortError'
+    global.fetch = vi.fn().mockImplementation(() => Promise.resolve({
+      ok: true,
+      body: {
+        getReader() {
+          let served = false
+          return {
+            read() {
+              if (!served) {
+                served = true
+                // One real token frame first, so `progressed` is set — proving
+                // even a mid-stream (not pre-stream) abort re-throws rather than
+                // being misclassified as "stream never started" → fallback.
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('data: {"type":"token","content":"hi"}\n\n'),
+                })
+              }
+              return Promise.reject(abortErr) // the abort surfaces here
+            },
+          }
+        },
+      },
+    }))
+    await expect(runAgentTurn({ message: 'x', signal: {} })).rejects.toMatchObject({ name: 'AbortError' })
+    // Exactly one request — no fallback to /agent after an abort.
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/assistant/agent/stream')
+  })
 })

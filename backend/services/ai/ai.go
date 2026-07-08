@@ -15,6 +15,13 @@ import (
 	"vulos/backend/services/env"
 )
 
+// maxStreamLine bounds a single SSE line the stream scanner will buffer. The
+// bufio.Scanner default (64 KiB) can be exceeded by a large content block or a
+// verbose error body, in which case Scan() stops with bufio.ErrTooLong; we raise
+// the cap to 1 MiB AND check scanner.Err() so an over-long line is surfaced as an
+// error rather than silently truncating the stream.
+const maxStreamLine = 1 << 20
+
 // Provider identifies an AI backend.
 type Provider string
 
@@ -301,7 +308,18 @@ func (s *Service) streamClaude(ctx context.Context, cfg Config, req CompletionRe
 	}
 	defer resp.Body.Close()
 
+	// A non-2xx status returns a JSON ERROR body, not an SSE stream. Without this
+	// check the scanner skips every (non-"data: ") line, the loop ends, and the
+	// function returns nil — a SILENT SUCCESS with zero content, so the caller
+	// (AgentTurnStream) streams an empty answer instead of surfacing the failure.
+	// Mirror completeClaude, which already fails closed on non-200.
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("claude stream error %d: %s", resp.StatusCode, b)
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxStreamLine)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -322,6 +340,12 @@ func (s *Service) streamClaude(ctx context.Context, cfg Config, req CompletionRe
 			onChunk(StreamChunk{Done: true})
 			return nil
 		}
+	}
+	// A mid-stream read error (dropped connection, or a line over maxStreamLine)
+	// ends the scan early. Surface it instead of silently returning a truncated
+	// answer as if it were complete.
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("claude stream read: %w", err)
 	}
 	onChunk(StreamChunk{Done: true})
 	return nil
@@ -408,7 +432,16 @@ func (s *Service) streamOpenAI(ctx context.Context, cfg Config, req CompletionRe
 	}
 	defer resp.Body.Close()
 
+	// A non-2xx status returns a JSON ERROR body, not an SSE stream — see the note
+	// in streamClaude. Without this the loop skips the error body and returns nil,
+	// so the caller streams an empty answer instead of surfacing a 401/429/5xx.
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("openai stream error %d: %s", resp.StatusCode, b)
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxStreamLine)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -428,6 +461,9 @@ func (s *Service) streamOpenAI(ctx context.Context, cfg Config, req CompletionRe
 		if len(event.Choices) > 0 && event.Choices[0].Delta.Content != "" {
 			onChunk(StreamChunk{Content: event.Choices[0].Delta.Content})
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("openai stream read: %w", err)
 	}
 	onChunk(StreamChunk{Done: true})
 	return nil
@@ -486,14 +522,31 @@ func (s *Service) streamOllama(ctx context.Context, cfg Config, req CompletionRe
 	}
 	defer resp.Body.Close()
 
+	// Non-2xx from Ollama is a plain error body, not an NDJSON stream. Surface it
+	// rather than returning an empty "success" (see streamClaude for why).
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ollama stream error %d: %s", resp.StatusCode, b)
+	}
+
 	decoder := json.NewDecoder(resp.Body)
 	for {
 		var event struct {
 			Message struct{ Content string } `json:"message"`
 			Done    bool                     `json:"done"`
+			Error   string                   `json:"error"`
 		}
 		if err := decoder.Decode(&event); err != nil {
-			break
+			// Clean end of stream (server closed after the last object) is success;
+			// a genuine read/parse error mid-stream is surfaced, not swallowed as a
+			// silent truncation.
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("ollama stream read: %w", err)
+		}
+		if event.Error != "" {
+			return fmt.Errorf("ollama stream error: %s", event.Error)
 		}
 		if event.Message.Content != "" {
 			onChunk(StreamChunk{Content: event.Message.Content})

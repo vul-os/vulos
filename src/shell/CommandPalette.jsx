@@ -98,11 +98,18 @@ export default function CommandPalette() {
 
   const inputRef = useRef(null)
   const rowRefs = useRef([])
+  // Aborts an in-flight streaming Ask turn when the palette closes/unmounts, so
+  // the SSE fetch is torn down instead of streaming into a dismissed card.
+  const askCtl = useRef(null)
   // A11Y: trap focus inside the dialog while open + restore to the opener on close.
   const trapRef = useFocusTrap(open)
 
   // Re-render when apps contribute commands via registerCommand.
   useEffect(() => subscribeCommands(() => forceCmdsTick(t => t + 1)), [])
+
+  // Abort any in-flight Ask stream on unmount so it does not leak / write to
+  // dead state after the palette is gone.
+  useEffect(() => () => { askCtl.current?.abort() }, [])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -258,10 +265,13 @@ export default function CommandPalette() {
     const p = (prompt || '').trim()
     if (!p) return
     setAsk({ status: 'thinking', answer: '', proposal: null })
+    const ctl = new AbortController()
+    askCtl.current = ctl
     try {
       const result = await runAgentTurn({
         message: p,
         history: [],
+        signal: ctl.signal,
         onToken: (_delta, full) => setAsk({ status: 'answer', answer: full }),
         onStatus: (ev) => setAsk(a => (a && a.status === 'thinking' ? { ...a, statusLine: ev.content } : a)),
         onProposal: (proposal) => setAsk({ status: 'proposal', answer: '', proposal, proposalState: 'pending' }),
@@ -273,8 +283,11 @@ export default function CommandPalette() {
       } else {
         setAsk({ status: 'answer', answer: result.answer || 'No response.' })
       }
-    } catch {
-      setAsk({ status: 'error', answer: 'Could not reach the assistant. Is the box online?' })
+    } catch (err) {
+      // Aborted by unmount/close: the card is gone — do not write dead state.
+      if (err?.name !== 'AbortError') setAsk({ status: 'error', answer: 'Could not reach the assistant. Is the box online?' })
+    } finally {
+      if (askCtl.current === ctl) askCtl.current = null
     }
   }, [])
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"vulos/backend/services/ai"
 )
@@ -753,5 +754,100 @@ func TestParseToolCall(t *testing.T) {
 	}
 	if _, ok := parseToolCall(`{"answer":"no tool here"}`); ok {
 		t.Error("tool-less JSON misread as a tool call")
+	}
+}
+
+// loopingModel always returns the SAME read-only tool call, no matter how many
+// times it is asked — the "a model that keeps calling tools" / "a tool that
+// always proposes" adversary. It records how many completions it served so the
+// test can assert the loop is BOUNDED, not infinite.
+type loopingModel struct {
+	call  string
+	calls int
+}
+
+func (m *loopingModel) Complete(_ context.Context, _ ai.Config, _ ai.CompletionRequest) (string, error) {
+	m.calls++
+	return m.call, nil
+}
+
+func (m *loopingModel) Stream(_ context.Context, _ ai.Config, _ ai.CompletionRequest, onChunk func(ai.StreamChunk)) error {
+	m.calls++
+	onChunk(ai.StreamChunk{Content: m.call})
+	onChunk(ai.StreamChunk{Done: true})
+	return nil
+}
+
+// TestAgentTurnTerminatesWhenModelAlwaysCallsTool is the LOOP-CONTROL guarantee:
+// a model that never stops emitting a (valid, read-only) tool call must not spin
+// forever. AgentTurn bounds the loop at maxToolIters and then makes ONE final
+// wrap-up completion, so the total number of model calls is exactly
+// maxToolIters+1 and the turn returns a plain answer instead of hanging.
+func TestAgentTurnTerminatesWhenModelAlwaysCallsTool(t *testing.T) {
+	m := &loopingModel{call: `{"tool":"search_mail","args":{"query":"anything"}}`}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+
+	done := make(chan struct{})
+	var res AgentResult
+	var err error
+	go func() {
+		res, err = a.AgentTurn(context.Background(), Auth{}, "loop forever?", nil)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AgentTurn did not terminate — the tool loop is unbounded")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Bounded: exactly maxToolIters tool rounds + 1 forced wrap-up completion.
+	if m.calls != maxToolIters+1 {
+		t.Fatalf("expected %d model calls (bounded loop + wrap-up), got %d", maxToolIters+1, m.calls)
+	}
+	// It must return a (final) answer, never a proposal — the tool is read-only.
+	if res.Proposal != nil {
+		t.Fatalf("read-only loop must not yield a proposal: %+v", res.Proposal)
+	}
+	// Only read-only tool steps were recorded, one per bounded iteration.
+	if len(res.Steps) != maxToolIters {
+		t.Fatalf("expected %d recorded tool steps, got %d", maxToolIters, len(res.Steps))
+	}
+}
+
+// TestAgentTurnStreamTerminatesWhenModelAlwaysCallsTool is the same loop-control
+// guarantee for the STREAMING path. The streaming loop also bounds at
+// maxToolIters and then streams one wrap-up completion, so it terminates and
+// emits token events rather than looping forever.
+func TestAgentTurnStreamTerminatesWhenModelAlwaysCallsTool(t *testing.T) {
+	m := &loopingModel{call: `{"tool":"search_mail","args":{"query":"anything"}}`}
+	a := New(m, localCfg(), NewFixtureSource(), false)
+
+	done := make(chan struct{})
+	var evs []AgentStreamEvent
+	var err error
+	go func() {
+		err = a.AgentTurnStream(context.Background(), Auth{}, "loop forever?", nil, func(ev AgentStreamEvent) {
+			evs = append(evs, ev)
+		})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AgentTurnStream did not terminate — the streaming tool loop is unbounded")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if m.calls != maxToolIters+1 {
+		t.Fatalf("expected %d model calls (bounded loop + wrap-up), got %d", maxToolIters+1, m.calls)
+	}
+	// No proposal (read-only tool); the wrap-up prose was streamed as tokens.
+	for _, e := range evs {
+		if e.Type == "proposal" {
+			t.Fatalf("read-only loop must not yield a proposal: %+v", e)
+		}
 	}
 }

@@ -147,6 +147,9 @@ export default function Home() {
   const composerRef = useRef(null)
   const transcriptRef = useRef(null)
   const inputRef = useAutoGrow(input, { maxHeight: 160 })
+  // Aborts an in-flight streaming agent turn on unmount so the SSE fetch is torn
+  // down instead of leaking and writing to dead component state.
+  const agentCtl = useRef(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -158,6 +161,7 @@ export default function Home() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => () => { agentCtl.current?.abort() }, [])
   useEffect(() => { const t = setInterval(() => setClock(new Date()), 30000); return () => clearInterval(t) }, [])
   useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: scrollBehavior() }) }, [turns])
 
@@ -191,10 +195,13 @@ export default function Home() {
     setTurns(t => [...t, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', pending: true }])
     const patchAid = (patch) => setTurns(t => t.map(x => (x.id === aid ? { ...x, ...patch } : x)))
     setBusy(true)
+    const ctl = new AbortController()
+    agentCtl.current = ctl
     try {
       const result = await runAgentTurn({
         message: text,
         history,
+        signal: ctl.signal,
         onToken: (_delta, full) => patchAid({ content: full, pending: true }),
         onStatus: (ev) => patchAid({ content: ev.content || 'thinking…', pending: true }),
         onProposal: (proposal) => patchAid({ pending: false, proposal, state: 'pending' }),
@@ -202,10 +209,12 @@ export default function Home() {
       if (result.error) patchAid({ pending: false, content: result.error })
       else if (result.proposal) patchAid({ pending: false })
       else patchAid({ pending: false, content: result.answer || 'No response.' })
-    } catch {
-      patchAid({ pending: false, content: 'Could not reach the assistant.' })
+    } catch (err) {
+      // Aborted by unmount: component is gone — do not write dead state.
+      if (err?.name !== 'AbortError') patchAid({ pending: false, content: 'Could not reach the assistant.' })
     } finally {
-      setBusy(false)
+      if (agentCtl.current === ctl) agentCtl.current = null
+      if (!ctl.signal.aborted) setBusy(false)
     }
   }, [busy, turns])
 
