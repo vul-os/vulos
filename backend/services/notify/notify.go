@@ -366,6 +366,43 @@ func (s *Service) Clear() {
 	s.history = nil
 }
 
+// Shutdown force-drains every live notification WebSocket. Hijacked WS conns are
+// NOT tracked by http.Server.Shutdown (universal Go behavior: Shutdown only waits
+// on non-hijacked connections), so their blocking ReadMessage loops — and the
+// reader goroutines running them — would otherwise linger past server shutdown.
+//
+// We send each connection a proper WebSocket close frame (best-effort, deadline-
+// bounded) and then close the underlying conn. Closing unblocks the goroutine's
+// ReadMessage, which returns an error, breaks the read loop, and lets the handler
+// unregister the client and return — draining the goroutine.
+//
+// Safe to call multiple times: after the first call the client set is emptied, so
+// subsequent calls are no-ops. The per-connection Handler still performs its own
+// delete(s.clients, ws) on exit, which is idempotent.
+func (s *Service) Shutdown() {
+	s.mu.Lock()
+	conns := make([]*websocket.Conn, 0, len(s.clients))
+	clients := make([]*wsClient, 0, len(s.clients))
+	for c, cl := range s.clients {
+		conns = append(conns, c)
+		clients = append(clients, cl)
+	}
+	s.mu.Unlock()
+
+	deadline := time.Now().Add(notifyWriteWait)
+	closeFrame := websocket.FormatCloseMessage(websocket.CloseServiceRestart, "server shutting down")
+	for i, c := range conns {
+		// Serialize the close-frame write with any concurrent broadcast writer via
+		// the per-connection wmu (gorilla permits only one writer at a time).
+		clients[i].wmu.Lock()
+		_ = c.SetWriteDeadline(deadline)
+		_ = c.WriteMessage(websocket.CloseMessage, closeFrame)
+		clients[i].wmu.Unlock()
+		// Close the conn to unblock the reader goroutine's ReadMessage.
+		_ = c.Close()
+	}
+}
+
 // NotifyOnConflict emits a toast-level notification for a sync conflict file.
 // Category "sync" is encoded in the Source field so the frontend can route it
 // to the ConflictResolver view. The deep-link payload is the relative conflict path.

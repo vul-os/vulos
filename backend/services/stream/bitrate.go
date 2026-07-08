@@ -75,11 +75,12 @@ var resolutionLadder = []resolutionStep{
 // STREAMWIN-04: when gaming=false, sustained loss/RTT also steps down
 // the resolution via resizeFn; hysteresis prevents oscillation.
 type bitrateController struct {
-	mu       sync.Mutex
-	pc       *webrtc.PeerConnection
-	current  Quality
-	onChange func(Quality)
-	stop     chan struct{}
+	mu        sync.Mutex
+	pc        *webrtc.PeerConnection
+	current   Quality
+	onChange  func(Quality)
+	stop      chan struct{}
+	closeOnce sync.Once
 
 	// STREAMWIN-04: resolution adaptation (non-gaming only).
 	gaming   bool
@@ -116,12 +117,14 @@ func newBitrateControllerFull(pc *webrtc.PeerConnection, initial Quality, onChan
 	return bc
 }
 
+// Close stops the controller's run loop. It is idempotent and
+// concurrency-safe: a double or concurrent Close is a no-op, not a panic.
+// (The previous select-on-channel form could race two goroutines into
+// close(bc.stop) simultaneously, panicking with "close of closed channel".)
 func (bc *bitrateController) Close() {
-	select {
-	case <-bc.stop:
-	default:
+	bc.closeOnce.Do(func() {
 		close(bc.stop)
-	}
+	})
 }
 
 func (bc *bitrateController) run() {

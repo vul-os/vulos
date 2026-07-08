@@ -203,6 +203,17 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		opts.ID = fmt.Sprintf("stream-%d", time.Now().UnixMilli())
 	}
 
+	// Atomically check-and-reserve the ID under one lock region to close the
+	// check-then-insert TOCTOU: two concurrent launches of the same explicit ID
+	// used to both pass the existence check (which was in a separate lock region
+	// from the final insert), each build a full session, and the second insert
+	// would overwrite — and thereby orphan — the first session's processes.
+	//
+	// We reserve the slot by inserting a placeholder Session now. A concurrent
+	// duplicate then observes the placeholder and returns it (dedupe, as before),
+	// rather than launching a second orphaning session. On any launch failure
+	// below we release the reservation (see releaseReservation) so the ID can be
+	// retried.
 	p.mu.Lock()
 	if existing, exists := p.sessions[opts.ID]; exists {
 		p.mu.Unlock()
@@ -213,18 +224,9 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	audioPort := p.nextPort + 1
 	p.nextDisplay++
 	p.nextPort += 2
-	p.mu.Unlock()
 
 	display := fmt.Sprintf(":%d", displayNum)
 	ctx, cancel := context.WithCancel(context.Background())
-	gpuInfo := gpu.Detect()
-
-	// Determine whether to use cage (headless Wayland) or fall back to Xvfb.
-	// We use cage only when:
-	//   (a) GPU tier is not software (VA-API or NVENC), AND
-	//   (b) the cage binary is present on PATH.
-	cageBin, cageErr := lookPath("cage")
-	useCage := gpuInfo.Tier != gpu.TierSoftware && cageErr == nil
 
 	sess := &Session{
 		ID:         opts.ID,
@@ -234,7 +236,6 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		Height:     opts.Height,
 		FPS:        opts.FPS,
 		Running:    true,
-		Encoder:    gpuInfo.Encoder,
 		OwnerID:    opts.UserID,
 		ctx:        ctx,
 		cancel:     cancel,
@@ -251,6 +252,33 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		normalFPS:   opts.FPS,
 		lastInputAt: time.Now(),
 	}
+	// Reserve the ID slot immediately so a concurrent same-ID Launch dedupes
+	// against this placeholder instead of building a second session. The
+	// Encoder field is filled in below once gpu.Detect() runs.
+	p.sessions[opts.ID] = sess
+	p.mu.Unlock()
+
+	// releaseReservation removes the placeholder if a later launch step fails,
+	// so a failed Launch does not permanently squat the ID. It only deletes the
+	// slot when it still points at *this* session (never clobbering a session a
+	// concurrent caller may have since installed under the same ID).
+	releaseReservation := func() {
+		p.mu.Lock()
+		if p.sessions[opts.ID] == sess {
+			delete(p.sessions, opts.ID)
+		}
+		p.mu.Unlock()
+	}
+
+	gpuInfo := gpu.Detect()
+	sess.Encoder = gpuInfo.Encoder
+
+	// Determine whether to use cage (headless Wayland) or fall back to Xvfb.
+	// We use cage only when:
+	//   (a) GPU tier is not software (VA-API or NVENC), AND
+	//   (b) the cage binary is present on PATH.
+	cageBin, cageErr := lookPath("cage")
+	useCage := gpuInfo.Tier != gpu.TierSoftware && cageErr == nil
 
 	// Resolve user home — use provided UserHome, fall back to $HOME, then /root
 	home := opts.UserHome
@@ -309,6 +337,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		sess.xvfb.Stderr = os.Stderr
 		if err := sess.xvfb.Start(); err != nil {
 			cancel()
+			releaseReservation()
 			return nil, fmt.Errorf("xvfb: %w", err)
 		}
 
@@ -324,6 +353,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		}
 		if !ready {
 			sess.Stop()
+			releaseReservation()
 			return nil, fmt.Errorf("display %s not ready", display)
 		}
 
@@ -369,6 +399,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	sess.app.Stderr = os.Stderr
 	if err := sess.app.Start(); err != nil {
 		sess.Stop()
+		releaseReservation()
 		return nil, fmt.Errorf("app %q: %w", opts.Command, err)
 	}
 
@@ -688,9 +719,11 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	// STREAMWIN-03: start idle lifecycle watcher (no-op when gaming=true).
 	sess.startIdleWatcher()
 
-	p.mu.Lock()
-	p.sessions[opts.ID] = sess
-	p.mu.Unlock()
+	// The session was already registered under opts.ID as the reservation
+	// placeholder at the top of Launch (this is the same *Session pointer), so
+	// no final insert is needed. Re-inserting unconditionally would risk
+	// resurrecting the entry if the app-exit monitor goroutine already deleted
+	// it on a fast app exit; the reservation model makes that write redundant.
 
 	log.Printf("[stream] launched %q on %s (encoder=%s, %dx%d@%dfps, gaming=%v)",
 		opts.Name, display, gpuInfo.Encoder, opts.Width, opts.Height, opts.FPS, opts.Gaming)

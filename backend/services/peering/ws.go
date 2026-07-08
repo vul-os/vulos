@@ -53,6 +53,15 @@ type conn struct {
 	send   chan []byte
 	userID string
 	done   chan struct{}
+	// closeDone guards done so it is closed at most once, even when both the
+	// normal unregister path and Hub.Shutdown race to tear the connection down.
+	closeDone sync.Once
+}
+
+// signalDone closes c.done exactly once, unblocking writePump. Idempotent and
+// concurrency-safe.
+func (c *conn) signalDone() {
+	c.closeDone.Do(func() { close(c.done) })
 }
 
 const (
@@ -125,7 +134,7 @@ func (h *Hub) unregister(c *conn) {
 			delete(h.users, c.userID)
 		}
 	}
-	close(c.done)
+	c.signalDone()
 }
 
 // Push encodes frame and delivers it to every open connection for userID.
@@ -181,6 +190,44 @@ func (h *Hub) ConnectedUsers() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// Shutdown force-drains every live peering WebSocket. Hijacked WS conns are not
+// tracked by http.Server.Shutdown (universal Go behavior), so without this their
+// readPump goroutines (blocked in ws.ReadMessage) would linger past shutdown.
+//
+// For each open connection we send a close frame via its send channel (picked up
+// by writePump), signal writePump to stop via c.done, and close the underlying
+// ws — which unblocks readPump's ReadMessage so it returns, breaks the read loop,
+// and lets streamHandler unregister and return. We snapshot the connection set
+// under the lock and act outside it so a slow write cannot stall shutdown.
+//
+// Safe to call multiple times and concurrently with normal unregister: c.done is
+// closed at most once here (guarded by the users-map membership snapshot), and
+// unregister's own close(c.done) only runs for conns still registered — a conn we
+// drain here is removed from the map first, so the two paths never double-close.
+func (h *Hub) Shutdown() {
+	h.mu.Lock()
+	var conns []*conn
+	for uid, set := range h.users {
+		for c := range set {
+			conns = append(conns, c)
+		}
+		delete(h.users, uid)
+	}
+	h.mu.Unlock()
+
+	closeFrame := websocket.FormatCloseMessage(websocket.CloseServiceRestart, "server shutting down")
+	for _, c := range conns {
+		// Best-effort close frame through the serialized writePump.
+		select {
+		case c.send <- closeFrame:
+		default:
+		}
+		// Stop writePump and unblock readPump.
+		c.signalDone()
+		_ = c.ws.Close()
+	}
 }
 
 // RegisterHandlers wires the peering endpoints into mux.

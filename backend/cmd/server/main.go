@@ -3443,6 +3443,11 @@ func main() {
 		if gpuHostSvc != nil {
 			gpuHostSvc.Stop(context.Background())
 		}
+		// Force-drain hijacked notification WebSockets: http.Server.Shutdown does
+		// not track hijacked conns, so their reader goroutines would linger. This
+		// sends a close frame and closes each live WS so those goroutines exit.
+		notifySvc.Shutdown()
+		peeringHub.Shutdown()
 		server.Shutdown(context.Background())
 	}()
 
