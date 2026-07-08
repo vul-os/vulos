@@ -440,6 +440,12 @@ func NewInjector(display string, screenW, screenH int) *Injector {
 	return inj
 }
 
+// RumbleChan returns the channel on which FF_RUMBLE events uploaded by the guest
+// game arrive (nil when the gamepad uinput device is unavailable). Exposed as an
+// accessor so the stream layer can consume it through an interface seam without
+// reaching into the struct field.
+func (inj *Injector) RumbleChan() <-chan RumbleEvent { return inj.RumbleCh }
+
 // Close destroys all virtual devices and the xdotool pipe.
 func (inj *Injector) Close() {
 	if inj.mouse != nil {

@@ -32,6 +32,25 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// inputInjector is the seam the input handlers drive. *input.Injector satisfies
+// it structurally; tests substitute a recording fake to assert that every remote
+// input event is CLAMPED/VALIDATED (GAME-INPUT-01) before it reaches injection.
+// Keeping it an interface means the cage-safety boundary is unit-testable without
+// a real /dev/uinput device or GPU hardware.
+type inputInjector interface {
+	MouseMove(x, y int)
+	MouseMoveRel(dx, dy int)
+	MouseButton(button int, pressed bool)
+	Scroll(clicks int)
+	SyncModifiers(clientMod int)
+	KeyPress(jsKey, jsCode string, pressed bool)
+	GamepadButton(index int, pressed bool)
+	GamepadAxis(index int, value float64)
+	GamepadTrigger(index int, value float64)
+	RumbleChan() <-chan input.RumbleEvent
+	Close()
+}
+
 // Session is a single streaming app: Xvfb + app process + GStreamer + WebRTC tracks.
 type Session struct {
 	ID       string `json:"id"`
@@ -67,7 +86,7 @@ type Session struct {
 	bitrate       int              // current target bitrate in kbps
 	bitrateC      chan int         // debounced bitrate change signals (SetBitrate → restart goroutine)
 	buildVideoCmd func() *exec.Cmd // rebuilds video gst cmd with current bitrate
-	injector      *input.Injector
+	injector      inputInjector
 	fpsC          chan int  // GAME-08 FPS-change debounce signals
 	mangoHudC     chan bool // GAME-08 MangoHud toggle signals
 	// AUTH-13: WebAuthn re-auth gate.
@@ -355,10 +374,10 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 			// Forward FF_RUMBLE events from uinput back to the browser over
 			// the same gamepad channel (server→client direction).
 			dc.OnOpen(func() {
-				if s.injector == nil || s.injector.RumbleCh == nil {
+				if s.injector == nil || s.injector.RumbleChan() == nil {
 					return
 				}
-				go rumbleForwardLoop(s.injector.RumbleCh, dc, s.ctx)
+				go rumbleForwardLoop(s.injector.RumbleChan(), dc, s.ctx)
 			})
 		}
 	})
@@ -435,25 +454,43 @@ func (s *Session) handleMouse(data []byte) {
 		return
 	}
 	s.noteInput()
+	// GAME-INPUT-01: clamp/validate every event against the session framebuffer
+	// and the virtual-device envelope BEFORE it reaches the injector. This is the
+	// cage-safety boundary — a remote peer cannot warp the pointer off-surface,
+	// press an unadvertised button, or drive non-finite/huge values into uinput.
+	s.mu.Lock()
+	w, h := s.Width, s.Height
+	s.mu.Unlock()
 	switch evt.T {
 	case "mm":
-		s.injector.MouseMove(int(evt.X), int(evt.Y))
+		x, y := boundAbs(int(finiteOrZero(evt.X)), int(finiteOrZero(evt.Y)), w, h)
+		s.injector.MouseMove(x, y)
 	case "mr":
 		// Raw relative delta from pointer-lock movementX/movementY.
 		// Frontend sends dx/dy; x/y are kept as aliases for forward compat.
-		dx := evt.DX
-		dy := evt.DY
+		dx := finiteOrZero(evt.DX)
+		dy := finiteOrZero(evt.DY)
 		if dx == 0 && dy == 0 {
-			dx, dy = evt.X, evt.Y
+			dx, dy = finiteOrZero(evt.X), finiteOrZero(evt.Y)
 		}
-		s.injector.MouseMoveRel(int(dx), int(dy))
+		rx, ry := boundRel(int(dx), int(dy))
+		s.injector.MouseMoveRel(rx, ry)
 	case "md":
-		s.injector.MouseMove(int(evt.X), int(evt.Y))
-		s.injector.MouseButton(evt.B, true)
+		b, ok := boundMouseButton(evt.B)
+		if !ok {
+			return
+		}
+		x, y := boundAbs(int(finiteOrZero(evt.X)), int(finiteOrZero(evt.Y)), w, h)
+		s.injector.MouseMove(x, y)
+		s.injector.MouseButton(b, true)
 	case "mu":
-		s.injector.MouseButton(evt.B, false)
+		b, ok := boundMouseButton(evt.B)
+		if !ok {
+			return
+		}
+		s.injector.MouseButton(b, false)
 	case "sc":
-		s.injector.Scroll(int(evt.Y))
+		s.injector.Scroll(boundScroll(int(finiteOrZero(evt.Y))))
 	}
 }
 
@@ -487,10 +524,15 @@ func (s *Session) handleKeyboard(data []byte) {
 	if json.Unmarshal(data, &evt) != nil {
 		return
 	}
+	// GAME-INPUT-01: drop oversized key/code strings and strip the modifier
+	// bitmask to the defined bits before touching the injector.
+	if !boundKeyString(evt.Key) || !boundKeyString(evt.Code) {
+		return
+	}
 
 	s.noteInput()
-	// Sync modifier state — reconcile held modifiers from bitmask
-	s.injector.SyncModifiers(evt.Mod)
+	// Sync modifier state — reconcile held modifiers from bitmask (bounded).
+	s.injector.SyncModifiers(boundMod(evt.Mod))
 
 	switch evt.T {
 	case "kd":
@@ -524,23 +566,45 @@ func (s *Session) handleInput(data []byte) {
 	}
 
 	s.noteInput()
+	// GAME-INPUT-01: bound the legacy combined channel exactly like the split
+	// channels — clamp coords, validate button, drop oversized key strings.
+	s.mu.Lock()
+	w, h := s.Width, s.Height
+	s.mu.Unlock()
+	x, y := boundAbs(int(finiteOrZero(evt.X)), int(finiteOrZero(evt.Y)), w, h)
+	btn, btnOK := boundMouseButton(evt.Button)
 	switch evt.Type {
 	case "mousemove":
-		s.injector.MouseMove(int(evt.X), int(evt.Y))
+		s.injector.MouseMove(x, y)
 	case "mousedown":
-		s.injector.MouseMove(int(evt.X), int(evt.Y))
-		s.injector.MouseButton(evt.Button, true)
+		if !btnOK {
+			return
+		}
+		s.injector.MouseMove(x, y)
+		s.injector.MouseButton(btn, true)
 	case "mouseup":
-		s.injector.MouseButton(evt.Button, false)
+		if !btnOK {
+			return
+		}
+		s.injector.MouseButton(btn, false)
 	case "click":
-		s.injector.MouseMove(int(evt.X), int(evt.Y))
-		s.injector.MouseButton(evt.Button, true)
-		s.injector.MouseButton(evt.Button, false)
+		if !btnOK {
+			return
+		}
+		s.injector.MouseMove(x, y)
+		s.injector.MouseButton(btn, true)
+		s.injector.MouseButton(btn, false)
 	case "scroll":
-		s.injector.Scroll(int(evt.Y))
+		s.injector.Scroll(boundScroll(int(finiteOrZero(evt.Y))))
 	case "keydown":
+		if !boundKeyString(evt.Key) || !boundKeyString(evt.Code) {
+			return
+		}
 		s.injector.KeyPress(evt.Key, evt.Code, true)
 	case "keyup":
+		if !boundKeyString(evt.Key) || !boundKeyString(evt.Code) {
+			return
+		}
 		s.injector.KeyPress(evt.Key, evt.Code, false)
 	}
 }
@@ -685,14 +749,24 @@ func (s *Session) handleGamepad(data []byte) {
 		return
 	}
 	s.noteInput()
+	// GAME-INPUT-01: bound button/axis/trigger indices and clamp analog values.
+	// Full-state snapshots from a hostile client could carry thousands of
+	// entries or NaN/Inf axis values; validate each before injection and drop
+	// anything out of the virtual gamepad's advertised envelope.
 	for i, pressed := range state.Buttons {
-		s.injector.GamepadButton(i, pressed)
+		if idx, ok := boundGamepadButton(i); ok {
+			s.injector.GamepadButton(idx, pressed)
+		}
 	}
 	for i, value := range state.Axes {
-		s.injector.GamepadAxis(i, value)
+		if idx, v, ok := boundGamepadAxis(i, value); ok {
+			s.injector.GamepadAxis(idx, v)
+		}
 	}
 	for i, value := range state.Triggers {
-		s.injector.GamepadTrigger(i, value)
+		if idx, v, ok := boundGamepadTrigger(i, value); ok {
+			s.injector.GamepadTrigger(idx, v)
+		}
 	}
 }
 
