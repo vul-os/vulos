@@ -36,6 +36,9 @@ import { classifyAsk } from '../core/askRouting'
 import { runAgentTurn } from '../core/agentStream'
 import { getCommands, subscribeCommands } from '../core/commandRegistry'
 import { setPendingSettingsSection } from '../core/settingsNav'
+// Shared confirmation-gate card — keeps the inline Ask proposal identical to the
+// Assistant panel + Home (tokenised colours, structured "what will happen").
+import { ProposalCard } from '../builtin/assistant/ProposalCard'
 
 const RECENT_KEY = 'vulos-cmdk-recent'
 const MAX_APPS = 6
@@ -67,14 +70,6 @@ function Kbd({ children }) {
 }
 
 const SECTION_LABEL = { app: 'Apps', mail: 'Mail', action: 'Actions', ask: 'Ask' }
-
-const PROPOSAL_VERB = {
-  send_email: 'Send email',
-  create_calendar_event: 'Create event',
-  add_contact: 'Add contact',
-  triage: 'Change mailbox',
-  rsvp_invite: 'RSVP to invite',
-}
 
 export default function CommandPalette() {
   const {
@@ -553,41 +548,19 @@ function AskResult({ ask, onApprove, onReject }) {
         </div>
       )}
       {ask.status === 'proposal' && ask.proposal && (
-        <div className="mt-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2.5">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
-            <span className="text-amber-300 font-medium text-[12px]">Needs your approval · {PROPOSAL_VERB[ask.proposal.tool] || 'Action'}</span>
-          </div>
-          <div className="text-neutral-200 text-[12.5px] leading-relaxed mb-1">{ask.proposal.summary}</div>
-          {ask.proposal.from_content && (
-            <div className="text-[12px] text-red-300 bg-red-950/30 border border-red-500/30 rounded-lg px-2.5 py-1.5 mt-1 mb-1">
-              ⚠ {ask.proposal.warning || "This action's target came from message content — review carefully."}
-            </div>
-          )}
-          {(ask.proposal.args?.body || ask.proposal.args?.notes) && (
-            <div className="text-[12px] text-neutral-400 whitespace-pre-wrap bg-neutral-900/50 rounded-lg px-2.5 py-2 mt-1.5 max-h-32 overflow-y-auto">
-              {ask.proposal.args.body || ask.proposal.args.notes}
-            </div>
-          )}
-          {ask.proposalState === 'done' ? (
-            <div className="text-[12px] text-emerald-400 mt-2">✓ Approved and executed.</div>
-          ) : ask.proposalState === 'rejected' ? (
-            <div className="text-[12px] text-neutral-500 mt-2">Rejected — nothing was done.</div>
-          ) : (
-            <div className="flex items-center gap-2 mt-2.5">
-              <button type="button" disabled={ask.proposalState === 'busy'} onClick={onApprove}
-                aria-keyshortcuts="Y"
-                className="text-[12px] px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors disabled:opacity-50">
-                {ask.proposalState === 'busy' ? 'Working…' : 'Approve'}
-              </button>
-              <button type="button" disabled={ask.proposalState === 'busy'} onClick={onReject}
-                aria-keyshortcuts="N"
-                className="text-[12px] px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50">
-                Reject
-              </button>
-              <span className="ml-1 text-[10.5px] text-neutral-500 flex items-center gap-1.5" aria-hidden="true">
-                <Kbd>Y</Kbd> approve <Kbd>N</Kbd> reject · or <Kbd>tab</Kbd> to focus
-              </span>
+        <div className="mt-2.5">
+          <ProposalCard
+            proposal={ask.proposal}
+            state={ask.proposalState}
+            onApprove={onApprove}
+            onReject={onReject}
+            approveKey="Y"
+            rejectKey="N"
+            compact
+          />
+          {(!ask.proposalState || ask.proposalState === 'pending') && (
+            <div className="mt-1.5 text-[10.5px] text-neutral-500 flex items-center gap-1.5" aria-hidden="true">
+              <Kbd>Y</Kbd> approve <Kbd>N</Kbd> reject · or <Kbd>tab</Kbd> to focus
             </div>
           )}
         </div>

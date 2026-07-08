@@ -18,6 +18,10 @@ import { useAutoGrow } from '../../core/useAutoGrow'
 // does in the shell chrome (they had drifted: sovereign was #22c55e locally vs
 // #34d399 shared). See core/sovereignty.js.
 import { TIERS, tierInfo } from '../../core/sovereignty'
+// The confirmation-gate + tool-trace surfaces are shared across every assistant
+// surface (this panel, Home, the Command Palette) so they stay pixel-identical
+// and retheme with the shell's --status-* tokens. See ./ProposalCard.jsx.
+import { ProposalCard, StepTrace } from './ProposalCard'
 
 function SovereigntyBadge({ status, onClick }) {
   if (!status) return null
@@ -102,71 +106,9 @@ const QUICK = [
   { id: 'summarize', label: 'Summarize my inbox', prompt: null },
 ]
 
-// ── Proposal card ────────────────────────────────────────────────────────────
-// The CONFIRMATION GATE surface. When the agent wants to DO something that
-// mutates state (send an email, schedule an event, add a contact, triage a
-// message) it returns a PROPOSAL — nothing has happened yet. The user must
-// Approve before /api/assistant/execute runs the real action, or Reject to drop
-// it. Read-only tools never reach here.
-
-const PROPOSAL_VERB = {
-  send_email: 'Send email',
-  create_calendar_event: 'Create event',
-  add_contact: 'Add contact',
-  triage: 'Change mailbox',
-}
-
-function ProposalCard({ proposal, state, onApprove, onReject }) {
-  const verb = PROPOSAL_VERB[proposal.tool] || 'Action'
-  const args = proposal.args || {}
-  return (
-    <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-amber-500/30 bg-amber-950/20 px-3.5 py-3 text-[13px]">
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
-        <span className="text-amber-300 font-medium text-[12px]">Needs your approval · {verb}</span>
-      </div>
-      <div className="text-neutral-200 leading-relaxed mb-1">{proposal.summary}</div>
-      {proposal.from_content && (
-        <div className="text-[12px] text-red-300 bg-red-950/30 border border-red-500/30 rounded-lg px-2.5 py-1.5 mt-1 mb-1">
-          ⚠ {proposal.warning || "This action's target came from message content — review carefully."}
-        </div>
-      )}
-      {(args.body || args.notes) && (
-        <div className="text-[12px] text-neutral-400 whitespace-pre-wrap bg-neutral-900/50 rounded-lg px-2.5 py-2 mt-1.5 max-h-40 overflow-y-auto">
-          {args.body || args.notes}
-        </div>
-      )}
-      {state === 'done' ? (
-        <div className="text-[12px] text-emerald-400 mt-2">✓ Approved and executed.</div>
-      ) : state === 'rejected' ? (
-        <div className="text-[12px] text-neutral-500 mt-2">Rejected — nothing was done.</div>
-      ) : (
-        <div className="flex gap-2 mt-2.5">
-          <button
-            type="button"
-            disabled={state === 'busy'}
-            onClick={onApprove}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
-          >
-            {state === 'busy' ? 'Working…' : 'Approve'}
-          </button>
-          <button
-            type="button"
-            disabled={state === 'busy'}
-            onClick={onReject}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50"
-          >
-            Reject
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Message bubble ───────────────────────────────────────────────────────────
 
-function Bubble({ role, content, pending }) {
+function Bubble({ role, content, pending, error, onRetry }) {
   const isUser = role === 'user'
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -175,54 +117,25 @@ function Bubble({ role, content, pending }) {
         className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
           isUser
             ? 'text-white rounded-br-sm'
-            : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'
+            : error
+              ? 'bg-danger-soft border border-danger-soft text-danger rounded-bl-sm'
+              : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'
         }`}
       >
-        {content}
-        {pending && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" />}
+        {error && <span aria-hidden="true" className="mr-1.5">⚠</span>}
+        {content || (pending && !isUser && <span className="text-neutral-500">Thinking…</span>)}
+        {pending && content && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" aria-hidden="true" />}
+        {error && onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="block mt-1.5 text-[12px] font-medium text-danger underline decoration-danger/40 underline-offset-2 hover:decoration-danger transition-colors"
+          >
+            Retry
+          </button>
+        )}
       </div>
     </div>
-  )
-}
-
-// ── Tool-trace (steps) ───────────────────────────────────────────────────────
-// A READ-ONLY, collapsible trace of the read-only tools the agent ran during a
-// turn (search_mail, read_thread, find_contact, …). This is a transparency win:
-// the user can see WHAT the assistant looked at to reach its answer. Every field
-// is rendered as escaped React text (never innerHTML) — a tool result may quote
-// untrusted mail content, so it must never be interpreted as markup.
-
-const STEP_VERB = {
-  search_mail: 'Searched mail',
-  read_thread: 'Read a thread',
-  find_contact: 'Looked up a contact',
-  find_file: 'Searched files',
-  read_file: 'Read a file',
-  list_reminders: 'Checked reminders',
-}
-
-function StepTrace({ steps }) {
-  if (!steps || !steps.length) return null
-  return (
-    <details className="max-w-[85%] group">
-      <summary className="cursor-pointer text-[11px] text-neutral-500 hover:text-neutral-300 select-none list-none flex items-center gap-1.5">
-        <svg viewBox="0 0 20 20" fill="currentColor" width="10" height="10" className="transition-transform group-open:rotate-90">
-          <path fillRule="evenodd" d="M7.21 5.23a.75.75 0 011.06.02l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 11-1.04-1.08L11.17 10 7.23 6.29a.75.75 0 01-.02-1.06z" clipRule="evenodd" />
-        </svg>
-        {steps.length === 1 ? '1 step' : `${steps.length} steps`}
-      </summary>
-      <ol className="mt-1.5 space-y-1.5 pl-1 border-l border-neutral-800 ml-1">
-        {steps.map((s, i) => (
-          <li key={i} className="pl-3 text-[11px] leading-snug">
-            <div className="text-neutral-300">{STEP_VERB[s.tool] || (s.tool || 'tool')}</div>
-            {s.args && <div className="text-neutral-600 font-mono break-words">{s.args}</div>}
-            {s.result && (
-              <div className="text-neutral-500 whitespace-pre-wrap break-words mt-0.5 max-h-24 overflow-y-auto">{s.result}</div>
-            )}
-          </li>
-        ))}
-      </ol>
-    </details>
   )
 }
 
@@ -290,11 +203,11 @@ export default function Assistant() {
     setMessages(m => [...m, { role, content, id: Math.random().toString(36).slice(2) }])
   }, [])
 
-  const patchLast = useCallback((content, pending) => {
+  const patchLast = useCallback((content, pending, error = false) => {
     setMessages(m => {
       const copy = m.slice()
       const last = copy[copy.length - 1]
-      if (last && last.role === 'assistant') copy[copy.length - 1] = { ...last, content, pending }
+      if (last && last.role === 'assistant') copy[copy.length - 1] = { ...last, content, pending, error }
       return copy
     })
   }, [])
@@ -319,12 +232,12 @@ export default function Assistant() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        patchLast(data.error || `Request failed (${res.status})`, false)
+        patchLast(data.error || `Request failed (${res.status})`, false, true)
         return
       }
       patchLast(data.answer ?? data.draft ?? JSON.stringify(data), false)
     } catch {
-      patchLast('Could not reach the assistant. Is the box online?', false)
+      patchLast('Could not reach the assistant. Is the box online?', false, true)
     } finally {
       setBusy(false)
     }
@@ -370,8 +283,11 @@ export default function Assistant() {
   // falls back to the non-streaming /agent if streaming can't be established.
   const sendChat = useCallback(async (text) => {
     if (busy || !text.trim()) return
+    // Errored turns (failed streams / unreachable box) are excluded from history
+    // so a Retry — which may still see the failed bubble in this closure before
+    // its removal commits — never feeds the model its own error text.
     const history = messages
-      .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.proposal && m.content)
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.proposal && m.content && !m.error)
       .map(m => ({ role: m.role, content: m.content }))
     push('user', text)
     push('assistant', '')
@@ -407,7 +323,7 @@ export default function Assistant() {
       // else fall back to the status-derived steps collected above.
       const finalSteps = (result.steps && result.steps.length) ? result.steps : liveSteps
       if (result.error) {
-        patchLast(result.error, false)
+        patchLast(result.error, false, true)
       } else if (result.proposal) {
         // onProposal already rendered the card; just clear the pending flag.
         setMessages(m => {
@@ -432,7 +348,7 @@ export default function Assistant() {
       // Aborted by unmount/window-close: the component is gone, so do NOT touch
       // state (that is the leak/warning we are preventing). Any other failure is
       // surfaced in the bubble.
-      if (err?.name !== 'AbortError') patchLast('Could not reach the assistant.', false)
+      if (err?.name !== 'AbortError') patchLast('Could not reach the assistant.', false, true)
     } finally {
       if (streamCtl.current === ctl) streamCtl.current = null
       // Skip the state update if this turn was aborted (component unmounted).
@@ -447,6 +363,23 @@ export default function Assistant() {
     setInput('')
     sendChat(text)
   }
+
+  // Retry a failed turn: drop the trailing failed user→assistant pair (so the
+  // failed error bubble + its prompt don't linger in the transcript or in the
+  // history sent to the model) and re-send the same prompt.
+  const retryLast = useCallback(() => {
+    if (busy) return
+    let text = ''
+    setMessages(m => {
+      const copy = m.slice()
+      // Trailing errored assistant bubble.
+      if (copy.length && copy[copy.length - 1].role === 'assistant') copy.pop()
+      // Its originating user turn.
+      if (copy.length && copy[copy.length - 1].role === 'user') text = copy.pop().content
+      return copy
+    })
+    if (text) setTimeout(() => sendChat(text), 0)
+  }, [busy, sendChat])
 
   const onQuick = (q) => {
     if (q.id === 'attention') runSkill('/api/assistant/attention', {}, 'What needs my attention today?')
@@ -492,11 +425,19 @@ export default function Assistant() {
       )}
 
       {/* Conversation */}
-      <div ref={scrollRef} aria-live="polite" aria-atomic="false" className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div ref={scrollRef} role="log" aria-live="polite" aria-atomic="false" aria-busy={busy}
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center gap-4 select-none">
-            <div className="text-neutral-600 text-[13px] max-w-xs leading-relaxed">
-              Ask about your mail. Everything you type and every message it reads stays on your own server.
+            <div
+              className="w-11 h-11 rounded-2xl flex items-center justify-center text-[20px] leading-none accent-bg-soft accent-text"
+              aria-hidden="true"
+            >
+              ✦
+            </div>
+            <div className="text-neutral-400 text-[13px] max-w-xs leading-relaxed">
+              Ask about your mail. Everything you type and every message it reads
+              stays on your own server.
             </div>
             <div className="flex flex-col gap-2 w-full max-w-xs">
               {QUICK.map(q => (
@@ -512,27 +453,32 @@ export default function Assistant() {
             </div>
           </div>
         )}
-        {messages.map(m => (
-          m.proposal ? (
+        {messages.map((m, i) => {
+          const isLast = i === messages.length - 1
+          return m.proposal ? (
             <div key={m.id} className="flex justify-start flex-col gap-2 items-start">
               {m.content && <Bubble role="assistant" content={m.content} />}
-              <StepTrace steps={m.steps} />
-              <ProposalCard
-                proposal={m.proposal}
-                state={m.state}
-                onApprove={() => approveProposal(m.id, m.proposal)}
-                onReject={() => rejectProposal(m.id)}
-              />
+              <StepTrace steps={m.steps} className="max-w-[85%]" />
+              <div className="max-w-[85%] w-full">
+                <ProposalCard
+                  proposal={m.proposal}
+                  state={m.state}
+                  onApprove={() => approveProposal(m.id, m.proposal)}
+                  onReject={() => rejectProposal(m.id)}
+                />
+              </div>
             </div>
           ) : m.steps ? (
             <div key={m.id} className="flex justify-start flex-col gap-1.5 items-start">
-              <Bubble role={m.role} content={m.content} pending={m.pending} />
-              <StepTrace steps={m.steps} />
+              <Bubble role={m.role} content={m.content} pending={m.pending} error={m.error}
+                onRetry={m.error && isLast ? retryLast : undefined} />
+              <StepTrace steps={m.steps} className="max-w-[85%]" />
             </div>
           ) : (
-            <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} />
+            <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} error={m.error}
+              onRetry={m.error && isLast ? retryLast : undefined} />
           )
-        ))}
+        })}
       </div>
 
       {/* Composer */}

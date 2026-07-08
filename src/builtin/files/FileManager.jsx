@@ -249,6 +249,9 @@ export default function FileManager() {
   const [cwd, setCwd] = useState('~')
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(false)
+  // Distinguishes "this directory really is empty" from "we couldn't read it"
+  // (offline box / permission denied) — the two looked identical before.
+  const [loadError, setLoadError] = useState(false)
   const [selected, setSelected] = useState(null)
   const [preview, setPreview] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -276,6 +279,7 @@ export default function FileManager() {
 
   const loadDir = useCallback(async (dir, pushHistory = true) => {
     setLoading(true)
+    setLoadError(false)
     setSearchResults(null)
     setSelected(null)
     setPreview(null)
@@ -317,6 +321,7 @@ export default function FileManager() {
       }
     } catch {
       setEntries([])
+      setLoadError(true)
     }
     setLoading(false)
   }, [hidden, histIdx])
@@ -672,7 +677,7 @@ export default function FileManager() {
                     <div
                       key={i}
                       className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
-                        ${selected === `s${i}` ? 'bg-blue-500/10 border-blue-500/20' : 'hover:bg-neutral-800/30'}`}
+                        ${selected === `s${i}` ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
                       onClick={() => { setSelected(`s${i}`); setPreview({ type: 'semantic', name, path: p, score: r.score, content: r.content }) }}
                       onDoubleClick={() => {
                         const dir = p.split('/').slice(0, -1).join('/')
@@ -698,7 +703,7 @@ export default function FileManager() {
                   <div
                     key={i}
                     className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
-                      ${selected === `f${i}` ? 'bg-blue-500/10 border-blue-500/20' : 'hover:bg-neutral-800/30'}`}
+                      ${selected === `f${i}` ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
                     onClick={() => setSelected(`f${i}`)}
                     onDoubleClick={() => {
                       const dir = r.path.split('/').slice(0, -1).join('/')
@@ -721,7 +726,7 @@ export default function FileManager() {
                 <div
                   key={entry.name}
                   className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
-                    ${selected === i ? 'bg-blue-500/10 border-blue-500/20' : 'hover:bg-neutral-800/30'}`}
+                    ${selected === i ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
                   onClick={() => selectEntry(entry, i)}
                   onDoubleClick={() => entry.isDir && navigate(entry.name)}
                   onContextMenu={(e) => {
@@ -753,10 +758,24 @@ export default function FileManager() {
             )}
 
             {!loading && !searchResults && entries.length === 0 && (
-              <div className="py-12 flex flex-col items-center gap-3 text-neutral-700 text-xs">
-                <span>Empty directory</span>
-                <AskAIButton context={`I'm browsing an empty folder at ${cwd}. What would you suggest I do here?`} label="Ask AI about this folder" />
-              </div>
+              loadError ? (
+                <div className="py-12 flex flex-col items-center gap-3 text-xs">
+                  <span className="text-warning">Couldn't read this folder.</span>
+                  <span className="text-neutral-600">It may be offline, gone, or you may not have permission.</span>
+                  <button
+                    type="button"
+                    onClick={() => loadDir(cwd, false)}
+                    className="px-3 py-1.5 rounded-md bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <div className="py-12 flex flex-col items-center gap-3 text-neutral-700 text-xs">
+                  <span>Empty directory</span>
+                  <AskAIButton context={`I'm browsing an empty folder at ${cwd}. What would you suggest I do here?`} label="Ask AI about this folder" />
+                </div>
+              )
             )}
           </div>
         </div>

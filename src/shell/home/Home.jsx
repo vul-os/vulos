@@ -24,6 +24,9 @@ import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../bui
 import { runAgentTurn } from '../../core/agentStream'
 import { useAutoGrow } from '../../core/useAutoGrow'
 import { notify } from '../../core/notificationStore'
+// Shared confirmation-gate card — one source of truth across every assistant
+// surface (the Assistant panel, this composer, the Command Palette).
+import { ProposalCard } from '../../builtin/assistant/ProposalCard'
 
 // Curated quick-launch tiles — the everyday surfaces. "All apps" opens the
 // full Launchpad, so Home complements rather than replaces it.
@@ -71,51 +74,6 @@ function relDay(iso) {
 function reminderWhen(iso) {
   const d = new Date(iso); if (isNaN(d)) return ''
   return `${relDay(iso)} · ${fmtTime(d)}`
-}
-
-// ── proposal card (mirrors the assistant's confirmation-gate surface) ─────────
-const PROPOSAL_VERB = {
-  send_email: 'Send email', create_calendar_event: 'Create event',
-  add_contact: 'Add contact', triage: 'Change mailbox', rsvp_invite: 'RSVP to invite',
-}
-function ProposalCard({ proposal, state, onApprove, onReject }) {
-  const verb = PROPOSAL_VERB[proposal.tool] || 'Action'
-  const args = proposal.args || {}
-  return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3.5 py-3 text-[13px]">
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
-        <span className="text-amber-300 font-medium text-[12px]">Needs your approval · {verb}</span>
-      </div>
-      <div className="text-neutral-200 leading-relaxed">{proposal.summary}</div>
-      {proposal.from_content && (
-        <div className="text-[12px] text-red-300 bg-red-950/30 border border-red-500/30 rounded-lg px-2.5 py-1.5 mt-1.5">
-          ⚠ {proposal.warning || "This action's target came from message content — review carefully."}
-        </div>
-      )}
-      {(args.body || args.notes) && (
-        <div className="text-[12px] text-neutral-400 whitespace-pre-wrap bg-neutral-900/50 rounded-lg px-2.5 py-2 mt-2 max-h-40 overflow-y-auto">
-          {args.body || args.notes}
-        </div>
-      )}
-      {state === 'done' ? (
-        <div className="text-[12px] text-emerald-400 mt-2">✓ Approved and executed.</div>
-      ) : state === 'rejected' ? (
-        <div className="text-[12px] text-neutral-500 mt-2">Rejected — nothing was done.</div>
-      ) : (
-        <div className="flex gap-2 mt-2.5">
-          <button type="button" disabled={state === 'busy'} onClick={onApprove}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors disabled:opacity-50">
-            {state === 'busy' ? 'Working…' : 'Approve'}
-          </button>
-          <button type="button" disabled={state === 'busy'} onClick={onReject}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50">
-            Reject
-          </button>
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ── section shell ─────────────────────────────────────────────────────────────
@@ -390,7 +348,7 @@ export default function Home() {
                 t.proposal ? (
                   <div key={t.id} className="space-y-2">
                     {t.content && <div className="text-[13px] text-neutral-300 leading-relaxed whitespace-pre-wrap">{t.content}</div>}
-                    <ProposalCard proposal={t.proposal} state={t.state}
+                    <ProposalCard proposal={t.proposal} state={t.state} compact
                       onApprove={() => approve(t.id, t.proposal)} onReject={() => reject(t.id)} />
                   </div>
                 ) : (
