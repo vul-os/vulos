@@ -35,6 +35,7 @@ import (
 	"vulos/backend/services/anchorinbox"
 	"vulos/backend/services/appfs"
 	"vulos/backend/services/appnet"
+	"vulos/backend/services/assistant"
 	"vulos/backend/services/audio"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/authvault"
@@ -44,7 +45,6 @@ import (
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
-	"vulos/backend/services/assistant"
 	"vulos/backend/services/devicekey"
 	"vulos/backend/services/disks"
 	"vulos/backend/services/display"
@@ -58,6 +58,7 @@ import (
 	"vulos/backend/services/installer"
 	"vulos/backend/services/integrations"
 	"vulos/backend/services/lease"
+	"vulos/backend/services/models"
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
 	"vulos/backend/services/osdist"
@@ -744,7 +745,30 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok", "version": Version})
 	})
-	mux.Handle("GET /metrics", obs.Handler())
+	// /metrics — Prometheus scrape endpoint. NOT public: it exposes operational
+	// counters (assistant Guard allow/block, proposal backlog, request/error
+	// totals, RAG mode) that should not leak to unauthenticated callers. Two ways
+	// in, both owner-scoped:
+	//   1. Session: the box OWNER (admin) authenticated via the OS session — the
+	//      auth middleware sets X-User-ID (after stripping any spoofed copy).
+	//   2. A scrape token: an operator sets VULOS_METRICS_TOKEN and points their
+	//      Prometheus at /metrics with `Authorization: Bearer <token>` (or
+	//      ?token=). This lets a co-located scraper poll without an OS session.
+	// No secret values are ever placed in metric names/labels (see obs.go), so a
+	// scrape never leaks credentials — only counts and gauges.
+	metricsHandler := obs.Handler()
+	metricsToken := strings.TrimSpace(os.Getenv("VULOS_METRICS_TOKEN"))
+	metricsIsOwner := func(userID string) bool {
+		p, _ := authStore.GetProfile(userID)
+		return p != nil && p.Role == auth.RoleAdmin
+	}
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		if !metricsAuthorized(r, metricsToken, metricsIsOwner) {
+			writeErr(w, 403, "metrics are owner-only")
+			return
+		}
+		metricsHandler.ServeHTTP(w, r)
+	})
 
 	// Version — public, no auth. Returns the server build version.
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
@@ -972,6 +996,29 @@ func main() {
 		log.Printf("[assistant] reminders enabled (store=%s, poll scheduler running)", filepath.Join(dbDir, "reminders.db"))
 	}
 	registerAssistantRoutes(mux, aiSvc, aiCfg, mailIndex, filesSvc, remindersStore)
+
+	// Private-AI model management (owner-only). Surfaces + manages the on-box
+	// embedding/RAG model dir (which .onnx is installed, whether the real
+	// tokenizer.json is present → semantic vs degraded RAG) and lists the chat
+	// models the llmux gateway exposes. The import flow is how an operator
+	// installs the tokenizer.json that upgrades RAG from the FNV fallback.
+	modelMgr := models.New(modelsDir)
+	var llmuxChatClient *llmuxclient.Client
+	if lcfg, ok := llmuxclient.FromEnv(); ok {
+		llmuxChatClient = llmuxclient.New(lcfg)
+	}
+	registerModelRoutes(mux, modelMgr, llmuxChatClient, func(userID string) bool {
+		p, _ := authStore.GetProfile(userID)
+		return p != nil && p.Role == auth.RoleAdmin
+	})
+	// Seed the exported RAG-mode gauge at startup so /metrics reflects reality
+	// before the first model-management page load.
+	if listing, lerr := modelMgr.List(); lerr == nil {
+		obs.SetRAGMode(listing.RAGMode)
+	}
+	// Seed the pending-proposals gauge so an operator sees a real value from
+	// boot; the assistant routes keep it live as proposals flow.
+	obs.AssistantProposalsPending.Set(0)
 
 	// Missions
 	mux.HandleFunc("GET /api/missions", func(w http.ResponseWriter, r *http.Request) {

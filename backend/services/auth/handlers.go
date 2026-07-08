@@ -129,6 +129,7 @@ var publicPaths = map[string]bool{
 	"/api/files/peer/serve":          true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
 	"/api/files/internal/content-key": true, // WAVE-7: internal cell→box content-key lookup (authed by X-Vulos-Internal-Auth shared secret, not a session)
 	"/mcp":                           true, // APPS/MCP: agent MCP server (authed by vat_ app token via the @vulos/apps platform, not a session)
+	"/metrics":                       true, // OBS: Prometheus scrape — the /metrics handler does its OWN owner-or-scrape-token gate (VULOS_METRICS_TOKEN), so the session middleware must defer to it rather than 401 a tokened scraper. NOT actually public: no auth = 403 at the handler.
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

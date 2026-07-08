@@ -39,6 +39,7 @@ import (
 	"sync"
 	"time"
 
+	"vulos/backend/internal/obs"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/assistant"
 	"vulos/backend/services/files"
@@ -339,6 +340,7 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 		// (for display) exactly as before.
 		if res.Proposal != nil {
 			deps.ledger.Put(r.Header.Get("X-User-ID"), *res.Proposal)
+			obs.AssistantProposalsPending.Set(float64(deps.ledger.Len()))
 		}
 		writeJSON(w, res)
 	})
@@ -394,6 +396,7 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 			// ledger by id, so a forged proposal cannot execute.
 			if ev.Type == "proposal" && ev.Proposal != nil {
 				deps.ledger.Put(userID, *ev.Proposal)
+				obs.AssistantProposalsPending.Set(float64(deps.ledger.Len()))
 			}
 			send(ev)
 		}
@@ -444,6 +447,9 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 			writeErr(w, 404, "proposal not found, expired, or already used")
 			return
 		}
+		// A proposal left the ledger (approved+executed) — reflect the smaller
+		// backlog in the exported gauge.
+		obs.AssistantProposalsPending.Set(float64(deps.ledger.Len()))
 		result, err := newAssistant().ExecuteProposal(r.Context(), authOf(r), p)
 		if err != nil {
 			assistantErr(w, err)
@@ -617,11 +623,18 @@ func assistantRespond(w http.ResponseWriter, answer string, err error) {
 		assistantErr(w, err)
 		return
 	}
+	// A skill produced an answer, which means its up-front sovereignty Guard let
+	// the model call through — count it (non-sensitive: no content, no user id).
+	obs.AssistantGuardAllowedTotal.Inc()
 	writeJSON(w, map[string]any{"answer": answer, "at": time.Now().UTC()})
 }
 
 func assistantErr(w http.ResponseWriter, err error) {
 	if err == assistant.ErrEgressBlocked {
+		// The sovereign guarantee fired: the model target was not on-instance and
+		// external egress was not authorized. Count it so an operator can see the
+		// Guard actively enforcing on their box.
+		obs.AssistantGuardBlockedTotal.Inc()
 		writeErr(w, 428, err.Error()) // 428 Precondition Required: configure a local model
 		return
 	}

@@ -1,0 +1,296 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useAuth } from '../../auth/AuthProvider'
+
+// ---------------------------------------------------------------------------
+// Private-AI model management (owner-only).
+//
+// Surfaces + manages what REALLY exists on the box's AI seam:
+//   • the local embeddings/RAG model dir (which .onnx is installed, and whether
+//     the model's real tokenizer.json is present → the honest difference between
+//     genuine semantic RAG and the degraded FNV-lexical fallback), and
+//   • the chat models the llmux gateway exposes (best-effort; llmux owns chat
+//     provider/model routing).
+//
+// The IMPORT flow is how an operator installs the tokenizer.json that upgrades
+// retrieval from the degraded fallback to real semantic RAG.
+//
+// Endpoints:
+//   GET  /api/models          → { embeddings: Listing, chat_models, chat_models_error? }
+//   POST /api/models/import   → multipart { kind: model|tokenizer, artifact } → { imported, embeddings }
+//
+// Both are owner-gated server-side (403 for non-owners); this panel additionally
+// hides itself for non-owners so the surface stays owner-facing.
+// ---------------------------------------------------------------------------
+
+function Section({ title, children }) {
+  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+}
+
+function humanBytes(n) {
+  if (!n || n < 0) return '—'
+  const u = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let v = n
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`
+}
+
+// RAG_MODES describes the three honest retrieval states the assistant can be in.
+const RAG_MODES = {
+  semantic: {
+    label: 'Semantic RAG active',
+    tone: 'text-green-400 bg-green-900/30 border-green-800/40',
+    dot: 'bg-green-400',
+    desc: 'A local embedding model and its real tokenizer.json are installed. Your assistant retrieves mail by meaning — genuine semantic search, entirely on your box.',
+  },
+  degraded: {
+    label: 'Degraded fallback',
+    tone: 'text-amber-400 bg-amber-900/30 border-amber-800/40',
+    dot: 'bg-amber-400',
+    desc: 'A local model is installed but its tokenizer.json is missing, so embeddings use a deterministic hash fallback. Vectors are reproducible but only weakly meaningful — retrieval quality is reduced. Import the model’s tokenizer.json below to upgrade to real semantic RAG.',
+  },
+  lexical: {
+    label: 'Lexical retrieval',
+    tone: 'text-neutral-300 bg-neutral-800/40 border-neutral-700/50',
+    dot: 'bg-neutral-400',
+    desc: 'No local embedding model is installed, so the assistant uses on-box lexical (keyword) retrieval. This is fully sovereign and needs no model, but does not find messages by meaning. Import an .onnx embedding model below to enable semantic RAG.',
+  },
+}
+
+// RAGReadinessBadge — the honest indicator of the assistant's retrieval quality.
+export function RAGReadinessBadge({ mode }) {
+  const m = RAG_MODES[mode] || RAG_MODES.lexical
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${m.tone}`}>
+      <div className="flex items-center gap-2">
+        <span className={`inline-block w-2 h-2 rounded-full ${m.dot}`} aria-hidden="true" />
+        <span className="text-sm font-medium">{m.label}</span>
+      </div>
+      <p className="text-xs mt-1.5 leading-relaxed opacity-90">{m.desc}</p>
+    </div>
+  )
+}
+
+function ImportRow({ kind, label, accept, hint, onImported }) {
+  const inputRef = useRef(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState('')
+
+  const pick = () => { setErr(''); setOk(''); inputRef.current?.click() }
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    setBusy(true); setErr(''); setOk('')
+    try {
+      const fd = new FormData()
+      fd.append('kind', kind)
+      fd.append('artifact', file)
+      const res = await fetch('/api/models/import', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd, // browser sets multipart Content-Type + boundary
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setOk(`Installed ${data.imported?.name || 'artifact'} (${humanBytes(data.imported?.size_bytes)})`)
+      onImported?.(data)
+    } catch (e2) {
+      setErr(e2.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-neutral-200">{label}</div>
+          <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{hint}</p>
+        </div>
+        <button onClick={pick} disabled={busy} className="btn text-sm shrink-0 disabled:opacity-50">
+          {busy ? 'Importing…' : 'Import…'}
+        </button>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        onChange={onFile}
+        className="hidden"
+        aria-label={`Import ${label}`}
+      />
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400">{err}</div>}
+    </div>
+  )
+}
+
+// ModelsPanel gates on ownership at RENDER time, then delegates to the
+// owner-only body. Non-owners never mount the data/effect logic, so they never
+// hit the (owner-gated) endpoint at all — the server independently 403s it.
+export default function ModelsPanel() {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'admin'
+  if (!isOwner) {
+    return (
+      <Section title="AI Models">
+        <p className="text-sm text-neutral-500">Model management is available to the box owner only.</p>
+      </Section>
+    )
+  }
+  return <ModelsPanelOwner />
+}
+
+function ModelsPanelOwner() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // load fetches the model-management view. All state writes happen in async
+  // callbacks (not synchronously in an effect body) so a Refresh click re-runs
+  // it identically to the initial load.
+  const load = useCallback(() => {
+    fetch('/api/models', { credentials: 'include' })
+      .then(r => r.status === 403
+        ? Promise.reject(new Error('Model management is available to the box owner only.'))
+        : r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then(d => { setData(d); setError('') })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const emb = data?.embeddings
+  const ragMode = emb?.rag_mode || 'lexical'
+  const chatModels = parseChatModels(data?.chat_models)
+
+  return (
+    <Section title="AI Models">
+      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+        Manage the private AI running on <strong className="text-neutral-400">your own box</strong>.
+        The embedding model powers semantic search over your mail (RAG); chat models
+        are routed through your llmux gateway. Everything here reflects what is
+        actually installed — no hidden downloads.
+      </p>
+
+      {/* -------------------------------------------------------------- */}
+      {/* RAG readiness — the honest retrieval-quality indicator          */}
+      {/* -------------------------------------------------------------- */}
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-neutral-300 mb-2">Retrieval quality</h3>
+        <RAGReadinessBadge mode={ragMode} />
+      </div>
+
+      {loading && <p className="text-sm text-neutral-500">Loading models…</p>}
+      {error && (
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">{error}</div>
+      )}
+
+      {emb && (
+        <>
+          {/* Installed embedding models */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-neutral-300">Embedding models</h3>
+              <button onClick={load} className="btn-ghost text-xs">Refresh</button>
+            </div>
+            {emb.models?.length ? (
+              <div className="space-y-2">
+                {emb.models.map(mm => (
+                  <div key={mm.name} className="rounded-lg border border-neutral-800/60 bg-neutral-900/30 px-4 py-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-neutral-200 font-mono">{mm.name}</span>
+                      {mm.active && (
+                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-900/40 text-green-400">Active</span>
+                      )}
+                      {mm.has_tokenizer
+                        ? <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-900/30 text-green-500">tokenizer ✓</span>
+                        : <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">no tokenizer</span>}
+                    </div>
+                    <div className="text-xs text-neutral-500 mt-1">
+                      {humanBytes(mm.size_bytes)}
+                      {mm.sha256 && <span className="font-mono ml-2 opacity-70">sha256:{mm.sha256.slice(0, 12)}…</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">
+                No embedding model installed — the assistant is using sovereign lexical retrieval.
+                Import an <span className="font-mono">.onnx</span> model below to enable semantic RAG.
+              </p>
+            )}
+            <p className="text-[11px] text-neutral-600 mt-2 font-mono truncate" title={emb.dir}>
+              {emb.dir}
+            </p>
+          </div>
+
+          {/* Import flow */}
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-neutral-300 mb-2">Install a model</h3>
+            {emb.needs_registry && (
+              <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-neutral-800/40 text-neutral-400 border border-neutral-700/40">
+                There is no in-app model catalog yet. Download an ONNX sentence-embedding
+                model (e.g. <span className="font-mono">all-MiniLM-L6-v2</span>) and its
+                <span className="font-mono"> tokenizer.json</span> from a source you trust,
+                then import both files here. The active model is picked up automatically.
+              </div>
+            )}
+            <div className="space-y-2">
+              <ImportRow
+                kind="model"
+                label="Embedding model (.onnx)"
+                accept=".onnx"
+                hint="A local ONNX sentence-embedding model. Installed as model.onnx and used for on-box semantic search."
+                onImported={(d) => { if (d.embeddings) setData(prev => ({ ...prev, embeddings: d.embeddings })) }}
+              />
+              <ImportRow
+                kind="tokenizer"
+                label="Tokenizer (tokenizer.json)"
+                accept=".json,application/json"
+                hint="The model's real tokenizer. Without it, embeddings fall back to a weak hash — installing it upgrades RAG to genuine semantic retrieval."
+                onImported={(d) => { if (d.embeddings) setData(prev => ({ ...prev, embeddings: d.embeddings })) }}
+              />
+            </div>
+          </div>
+
+          {/* Chat models (llmux) */}
+          <div>
+            <h3 className="text-sm font-medium text-neutral-300 mb-2">Chat models</h3>
+            {data?.chat_models_error ? (
+              <p className="text-sm text-neutral-500">{data.chat_models_error}</p>
+            ) : chatModels.length ? (
+              <div className="flex flex-wrap gap-2">
+                {chatModels.map(id => (
+                  <span key={id} className="text-xs font-mono rounded px-2 py-1 bg-neutral-800/50 text-neutral-300">{id}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">No chat models reported by the gateway.</p>
+            )}
+            <p className="text-[11px] text-neutral-600 mt-2 leading-relaxed">
+              Chat model routing and provider management are handled by your llmux gateway.
+            </p>
+          </div>
+        </>
+      )}
+    </Section>
+  )
+}
+
+// parseChatModels normalizes the llmux /v1/models proxy payload (OpenAI shape
+// { data: [{ id }] }) into a flat list of ids. Tolerates a null/odd payload.
+function parseChatModels(raw) {
+  if (!raw) return []
+  try {
+    const arr = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+    return arr.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean)
+  } catch {
+    return []
+  }
+}

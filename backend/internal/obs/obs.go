@@ -66,8 +66,65 @@ var (
 		Help:      "Running cache hit ratio (0=miss, 1=hit).",
 	})
 
+	// --- Assistant / sovereignty Guard counters ---
+	// These are non-sensitive operational counts (no mail content, no user IDs):
+	// they let an operator see that the private-AI Guard is actually enforcing the
+	// egress guarantee and that proposals are flowing through the approval ledger.
+
+	// AssistantGuardAllowedTotal counts assistant model calls the sovereignty
+	// Guard permitted (target is on-instance, or external egress was authorized).
+	AssistantGuardAllowedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "vulos",
+		Subsystem: "assistant",
+		Name:      "guard_allowed_total",
+		Help:      "Assistant model calls the sovereignty Guard allowed.",
+	})
+
+	// AssistantGuardBlockedTotal counts assistant model calls the Guard BLOCKED
+	// because the target endpoint was not on-instance and external egress was not
+	// authorized (the sovereign guarantee firing).
+	AssistantGuardBlockedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "vulos",
+		Subsystem: "assistant",
+		Name:      "guard_blocked_total",
+		Help:      "Assistant model calls the sovereignty Guard blocked (egress denied).",
+	})
+
+	// AssistantProposalsPending gauges the number of mutating proposals awaiting
+	// operator approval in the ledger. A durable non-zero value flags proposals
+	// the user has not yet approved/rejected.
+	AssistantProposalsPending = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "vulos",
+		Subsystem: "assistant",
+		Name:      "proposals_pending",
+		Help:      "Mutating assistant proposals awaiting operator approval.",
+	})
+
+	// AssistantRAGMode gauges the assistant's retrieval quality mode as a set of
+	// mutually-exclusive labelled gauges (value 1 = active). Labels: semantic,
+	// degraded, lexical. This is the machine-readable twin of the shell's RAG
+	// readiness badge — an operator can alert on rag_mode{mode="degraded"}==1.
+	AssistantRAGMode = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "vulos",
+		Subsystem: "assistant",
+		Name:      "rag_mode",
+		Help:      "Assistant retrieval mode (1=active): semantic|degraded|lexical.",
+	}, []string{"mode"})
+
 	tracer trace.Tracer = noop.NewTracerProvider().Tracer(serviceName)
 )
+
+// SetRAGMode records the assistant's current retrieval mode as one-hot gauges.
+// mode is one of "semantic", "degraded", "lexical". Unknown values set all to 0.
+func SetRAGMode(mode string) {
+	for _, m := range []string{"semantic", "degraded", "lexical"} {
+		v := 0.0
+		if m == mode {
+			v = 1.0
+		}
+		AssistantRAGMode.WithLabelValues(m).Set(v)
+	}
+}
 
 // Init registers metrics with the default registry and, when
 // OTEL_EXPORTER_OTLP_ENDPOINT is set, wires an OTLP HTTP trace exporter.

@@ -12,10 +12,15 @@ import AIRouterPanel from './settings/AIRouterPanel.jsx'
 import StoragePanel from './settings/StoragePanel.jsx'
 import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 import DataExportPanel from './settings/DataExportPanel.jsx'
+import ModelsPanel from './settings/ModelsPanel.jsx'
+import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
 
-const sections = [
+// baseSections are the settings sections everyone sees. Owner-only sections
+// (see ownerSections) are appended for the box owner/admin.
+const baseSections = [
   { id: 'ai', label: 'AI Assistant' },
   { id: 'airouter', label: 'AI Router' },
+  { id: 'models', label: 'AI Models', owner: true },
   { id: 'aiapps', label: 'AI Apps' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'notifications', label: 'Notifications' },
@@ -38,8 +43,17 @@ const sections = [
   { id: 'dataexport', label: 'Export My Data' },
   { id: 'plan', label: 'Plan & Billing' },
   { id: 'osupdate', label: 'OS Update' },
+  { id: 'boxhealth', label: 'Box Health', owner: true },
   { id: 'about', label: 'About' },
 ]
+
+// sectionsFor returns the sections visible to a given role. Owner-only sections
+// (marked owner:true) are hidden from non-owners so the surface stays owner-
+// facing; the backend independently 403s their endpoints, so this is UX, not
+// the security boundary.
+function sectionsFor(isOwner) {
+  return baseSections.filter(s => !s.owner || isOwner)
+}
 
 // SettingsModal — a small, accessible dialog wrapper: focus trap + focus
 // restore, Esc + backdrop click to close, role/aria-modal, responsive width.
@@ -72,7 +86,7 @@ function SettingsModal({ title, onClose, children }) {
 
 // SettingsNav — the section list. Shared between the desktop rail and the
 // mobile drawer so aria-current + styling stay identical.
-function SettingsNav({ active, onSelect, idPrefix }) {
+function SettingsNav({ active, onSelect, idPrefix, sections }) {
   return (
     <>
       {sections.map(s => (
@@ -92,10 +106,12 @@ function SettingsNav({ active, onSelect, idPrefix }) {
 }
 
 export default function Settings({ initialSection } = {}) {
+  const { profile, updateProfile, logout } = useAuth()
+  const isOwner = profile?.role === 'admin'
+  const sections = sectionsFor(isOwner)
   const [active, setActive] = useState(
     initialSection && sections.some(s => s.id === initialSection) ? initialSection : 'ai',
   )
-  const { profile, updateProfile, logout } = useAuth()
   const layout = useViewport()
   const isMobile = layout === 'mobile'
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -116,7 +132,7 @@ export default function Settings({ initialSection } = {}) {
       {/* Desktop sidebar rail */}
       <nav aria-label="Settings sections" className="hidden sm:block w-40 sm:w-48 shrink-0 border-r border-neutral-800/50 py-4 overflow-y-auto">
         <h2 className="px-4 text-sm font-semibold text-neutral-400 mb-3">Settings</h2>
-        <SettingsNav active={active} onSelect={selectSection} />
+        <SettingsNav active={active} onSelect={selectSection} sections={sections} />
       </nav>
 
       {/* Mobile top bar — opens the section drawer */}
@@ -153,7 +169,7 @@ export default function Settings({ initialSection } = {}) {
                 <span aria-hidden="true">✕</span>
               </button>
             </div>
-            <SettingsNav active={active} onSelect={selectSection} idPrefix="settings-drawer" />
+            <SettingsNav active={active} onSelect={selectSection} idPrefix="settings-drawer" sections={sections} />
           </nav>
           <div className="flex-1 bg-black/60" aria-hidden="true" />
         </div>
@@ -163,6 +179,7 @@ export default function Settings({ initialSection } = {}) {
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 max-w-2xl min-w-0">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'airouter' && <AIRouterPanel />}
+        {active === 'models' && <ModelsPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
         {active === 'appearance' && <AppearanceSettings />}
         {active === 'notifications' && <NotificationsSettings />}
@@ -185,6 +202,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'dataexport' && <DataExportPanel />}
         {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}
+        {active === 'boxhealth' && <BoxHealthPanel />}
         {active === 'about' && <AboutSettings />}
       </div>
     </div>
