@@ -24,6 +24,7 @@ import (
 	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/cpbilling"
+	"vulos/backend/internal/directlisten"
 	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
@@ -3427,6 +3428,9 @@ func main() {
 	// gpuHostSvc holds the opt-in STREAM-BYO-01 GPU streaming-host service
 	// (FIX-GPUHOST-WIRE-01). Declared here so shutdown can stop it.
 	var gpuHostSvc *gpuhost.Service
+	// directSvc holds the opt-in DIRECT-IP public TLS listener (high-performance
+	// mode). Declared here so shutdown can stop it.
+	var directSvc *directlisten.Service
 
 	go func() {
 		<-ctx.Done()
@@ -3442,6 +3446,9 @@ func main() {
 		}
 		if gpuHostSvc != nil {
 			gpuHostSvc.Stop(context.Background())
+		}
+		if directSvc != nil {
+			directSvc.Stop(context.Background())
 		}
 		// Force-drain hijacked notification WebSockets: http.Server.Shutdown does
 		// not track hijacked conns, so their reader goroutines would linger. This
@@ -3634,6 +3641,81 @@ func main() {
 			}
 		}
 	}
+
+	// DIRECT_IP_WIRE BEGIN — DIRECT-IP high-performance mode.
+	//
+	// When the box has a REACHABLE public endpoint (static IP / public hostname)
+	// and the operator opts in (VULOS_DIRECT_ENABLE=1), serve the OS on a PUBLIC
+	// TLS listener so clients can reach it DIRECTLY (near-native latency + full
+	// bandwidth) instead of always tunneling through the relay. Clients try direct
+	// first and fall back to the relay tunnel on failure (negotiated relay-side).
+	//
+	// SECURITY: the direct listener serves the EXACT SAME `handler` as the main /
+	// relay-fronted path — secHeadersMiddleware(authHandler.Middleware(mainHandler))
+	// — so the full auth/session/authz stack, CSRF checks, and security headers
+	// apply identically. Direct is a faster TRANSPORT, NOT a security downgrade: an
+	// unauthenticated request gets the same 401 it would through the relay. TLS is
+	// required (ACME/Let's-Encrypt for a hostname, or an operator-provided cert).
+	//
+	// OFF BY DEFAULT: most boxes are NAT'd/CGNAT and stay purely on the relay path.
+	// The box proves it controls the advertised endpoint by serving the relay's
+	// probe path on this listener (ownership proof); the relay re-verifies it over
+	// the internet before surfacing it to any client, so a box cannot advertise an
+	// endpoint it does not actually serve.
+	{
+		// SEC: honor the LAN-only network mode — never bind a public listener when
+		// the operator has set connection mode to "local" (external listeners
+		// blocked), even if VULOS_DIRECT_ENABLE is set.
+		directEnv := directlisten.FromEnv(filepath.Join(home, ".vulos", "auth", "direct-acme"))
+		if directEnv.Enabled && netSvc.ExternalListenerBlocked() {
+			log.Printf("[direct] disabled: network mode is LAN-only (external listeners blocked) — set connection mode to fabric/direct/own to use the direct fast path")
+		} else if directEnv.Enabled {
+			ds, derr := directlisten.New(directEnv.BuildConfig(handler))
+			if derr != nil {
+				log.Printf("[direct] disabled: %v", derr)
+			} else if err := ds.Start(ctx); err != nil {
+				log.Printf("[direct] failed to start public listener: %v", err)
+			} else {
+				directSvc = ds
+				log.Printf("[direct] public listener up on %s (endpoint=%s)", ds.Addr(), ds.Endpoint())
+				// Advertise the direct endpoint to a co-located relay agent via the
+				// env seam it reads (VULOS_RELAY_DIRECT_ENDPOINT). The relay agent
+				// hands it to the relay in its Register frame; the relay verifies it
+				// (reachable + ownership-proven) before surfacing it to clients. The
+				// OS does not embed the relay agent, so this env is the box→agent seam.
+				os.Setenv("VULOS_RELAY_DIRECT_ENDPOINT", ds.Endpoint())
+				// Background self-reachability pre-check: confirm the endpoint answers
+				// from outside before relying on it. This only ever probes the box's
+				// OWN endpoint (never a caller-supplied URL). A failure is logged, not
+				// fatal — the relay's authoritative probe still gates advertisement,
+				// and clients fall back to the relay if direct is unreachable.
+				go func(ep string) {
+					pctx, pcancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer pcancel()
+					if err := ds.CheckReachable(pctx, false); err != nil {
+						log.Printf("[direct] self-reachability check for %s did not pass yet (%v) — the relay will re-verify; clients fall back to the relay until it does", ep, err)
+					} else {
+						log.Printf("[direct] self-reachability check passed: %s is reachable and ownership-provable", ep)
+					}
+				}(ds.Endpoint())
+				// Expose the direct endpoint on a session-authed status route so the
+				// shell/UX can show "direct fast-path active".
+				mux.HandleFunc("GET /api/network/direct", func(w http.ResponseWriter, r *http.Request) {
+					writeJSON(w, map[string]any{
+						"enabled":  true,
+						"endpoint": ds.Endpoint(),
+						"addr":     ds.Addr(),
+					})
+				})
+			}
+		} else {
+			// Not enabled: a well-defined status route so the UI renders the toggle.
+			mux.HandleFunc("GET /api/network/direct", func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{"enabled": false})
+			})
+		}
+	}
+	// DIRECT_IP_WIRE END
 
 	// GPUHOST_WIRE BEGIN — FIX-GPUHOST-WIRE-01
 	//
