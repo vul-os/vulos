@@ -40,6 +40,15 @@ describe('uploadRowView — upload progress derivation', () => {
     expect(v.label).toBe('Failed')
   })
 
+  it('resuming state pre-seeds the bar and labels "Resuming"', () => {
+    const v = uploadRowView({ pct: 0.6, state: 'resuming' })
+    expect(v.resuming).toBe(true)
+    expect(v.done).toBe(false)
+    expect(v.failed).toBe(false)
+    expect(v.widthPct).toBe(60)
+    expect(v.label).toBe('Resuming')
+  })
+
   it('indeterminate when pct is null and still uploading', () => {
     const v = uploadRowView({ pct: null, state: 'uploading' })
     expect(v.indeterminate).toBe(true)

@@ -14,6 +14,7 @@ import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 import DataExportPanel from './settings/DataExportPanel.jsx'
 import ModelsPanel from './settings/ModelsPanel.jsx'
 import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
+import WebPushToggle from './notifiers/WebPushToggle.jsx'
 
 // baseSections are the settings sections everyone sees. Owner-only sections
 // (see ownerSections) are appended for the box owner/admin.
@@ -2525,6 +2526,15 @@ function NotificationsSettings() {
       <div className="rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 divide-y divide-neutral-800/50">
         <Toggle label="Do Not Disturb" checked={prefs.muted} onChange={setMuted} />
         <Toggle label="Notification sounds" checked={prefs.sound} onChange={setSound} />
+      </div>
+
+      <h3 className="text-sm font-medium mt-6 mb-2">This device</h3>
+      <p className="text-xs text-neutral-600 mb-3">
+        Web Push lets your box notify this device even when Vulos is closed. Your box sends it
+        directly and end-to-end encrypted — the push vendor routes it but can’t read it.
+      </p>
+      <div className="rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 divide-y divide-neutral-800/50">
+        <WebPushToggle />
       </div>
 
       <h3 className="text-sm font-medium mt-6 mb-2">Sources</h3>

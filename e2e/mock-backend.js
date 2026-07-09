@@ -92,6 +92,11 @@ function defaults() {
     'GET /api/files/shared-with-me': json({ shares: [] }),
     'GET /api/files/external/status': json({ available: false, providers: [] }),
     'GET /api/files/import/status': json({ available: false, sources: [] }),
+
+    // Web Push (PUSH-CELL-01): default to NOT configured so the settings toggle
+    // renders its honest "unavailable" state. Specs that exercise the enabled
+    // path override this with { enabled: true, publicKey: '…' }.
+    'GET /api/notifications/push/vapid-public': json({ enabled: false }),
   }
 }
 

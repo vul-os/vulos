@@ -73,10 +73,11 @@ flowchart TD
 | `backend/services/ai/` | LLM/embeddings service seam (the assistant's `Completer`) |
 | `backend/services/auth/` | Email/password auth, sessions, device PIN, fingerprint |
 | `backend/services/passkeys/` | WebAuthn/FIDO2 passkey registration/login, QR/phone approval |
-| `backend/services/files/` | Files service: viewer/editor/owner ACL, sealed (content-blind) shares, share-by-email |
-| `backend/services/notify/` | Notifications (types, priority, TTL, DND, WebSocket delivery) |
+| `backend/services/files/` | Files service: viewer/editor/owner ACL, sealed (content-blind) shares, share-by-email, resumable (tus-style) chunked upload promote |
+| `backend/services/upload/` | Resumable upload manager (tus core: Create/Head/Patch/Delete/Sweep), SQLite-persisted offset for resume-across-restart, per-chunk checksum, abandoned-partial sweep |
+| `backend/services/notify/` | Notifications (types, priority, TTL, DND, WebSocket delivery) + cell-side **Web Push** send-path (VAPID, per-owner subscription store, RFC 8291) |
 | `backend/services/joincode/`, `joinsync/`, `cloudenroll/` | Device/box join tokens, join ceremony, RFC 8628 enrollment |
-| `backend/services/peering/` | Ed25519 peering, VulaID key lifecycle, relay, Drop |
+| `backend/services/peering/` | Ed25519 peering, VulaID key lifecycle, single reachability seam (`resolvePeerBaseURL`) over the relay, Drop |
 | `backend/services/stream/` | WebRTC stream pool, bitrate control |
 | `backend/services/gpu/` | GPU capability detection (NVENC, VA-API, software) |
 | `backend/services/credvault/` | Server-side encrypted credential store (the OS's own, not third-party OAuth) |
@@ -86,6 +87,7 @@ flowchart TD
 | `backend/internal/multiinstance/` | Multi-instance quorum, signed change propagation |
 | `backend/internal/safedial/` | SSRF-safe dialer (pre-dial validation + connect-time IP check) |
 | `backend/internal/gpuhost/` | GPU host capability detection |
+| `backend/internal/meethost/` | Self-host Meet SFU registration + heartbeat (opt-in `VULOS_SFU_HOST`); big calls escalate to media on the operator's own box |
 | `backend/internal/fabric/` | Fabric mesh identity and key management |
 | `backend/internal/vecdb/` | Local vector store for on-instance retrieval |
 | `backend/internal/obs/` | Prometheus metrics + OTel tracing |
@@ -190,6 +192,17 @@ flowchart LR
 - **Cold path**: periodic durable checkpoint to the shared S3 bucket; offline instances catch up from the bucket
 - **Snapshot/compaction**: periodic compacted snapshot so new instances bootstrap from `snapshot + short tail`, not unbounded replay
 - **Coordination**: bucket-backed leases with fencing tokens (`If-Match` CAS) prevent concurrent compaction
+
+---
+
+## Cell / edge: reachability, resumable upload, push
+
+The box is always the authority for its own data; a handful of seams let it work behind NAT and across instances without a central data plane.
+
+- **Single reachability seam.** All box→box delivery resolves its target through one primitive (`resolvePeerBaseURL(toVulaID, server)` in `peering/resolve.go`). Today it's a pass-through to `https://<server>`; it's the single place to later flip to *verified-direct → relay-tunnel → contact.Server* without touching call sites. A durable outbox retries failed sends.
+- **Resumable upload through the relay.** Large files (≥16 MiB by default) upload in bounded chunks so each `PATCH` rides the relay as an ordinary ≤-cap HTTP request — the relay needs no changes. The box (`services/upload`) reassembles into the owner's own storage with an offset persisted in SQLite (so a dropped connection resumes via `HEAD` + `PATCH` from the committed offset), per-chunk + whole-file SHA-256 integrity, and an hourly sweep of abandoned partials. Additive: `nil` manager ⇒ `503`, and the UI falls back to the single-shot grant→PUT→commit path on an older box.
+- **Sovereign Web Push (PUSH-CELL-01).** When VAPID keys are configured, the box sends Web Push **directly** to browser-vendor push services (FCM/Apple/Mozilla) — outbound-only, works behind NAT, no central dependency. Payloads are RFC-8291 encrypted (vendor routes but can't read). Only owner-targeted notifications are pushed, DND/prefs are honoured by the box first, and gone (404/410) subscriptions are pruned. Flag-gated: no keys ⇒ push off, the in-app WebSocket stream is unchanged.
+- **Self-host Meet SFU (`VULOS_SFU_HOST`).** `internal/meethost` registers the box's SFU with the relay's host registry so a call escalated past the mesh cap resolves to media on the operator's own infra. E2EE is off for BYO-SFU (operator-owned media node); recording/transcription stay on the box. Inert by default — no relay / no host / relay error all degrade to the co-located Phase-1 SFU and never block the token mint.
 
 ---
 

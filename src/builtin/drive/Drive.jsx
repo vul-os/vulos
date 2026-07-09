@@ -78,7 +78,10 @@ async function sha256b64(buf) {
 // resumableUpload uploads `file` into `parentId` via the box's tus-style
 // endpoint with resume-after-interruption and per-chunk + whole-file integrity.
 // Returns { node_id }. `onProgress(fraction)` reports 0..1 as chunks commit.
-export async function resumableUpload(parentId, file, onProgress) {
+// `onResume(fraction)` (optional) fires once, before the first chunk, when the
+// box already holds a non-zero committed offset — i.e. this is a resume, not a
+// fresh upload — so the UI can say so and seed the bar at the resumed point.
+export async function resumableUpload(parentId, file, onProgress, onResume) {
   // Whole-file digest lets the box verify integrity before promoting into Drive.
   const fileSha = await sha256hex(await file.arrayBuffer())
   const meta = [
@@ -121,6 +124,13 @@ export async function resumableUpload(parentId, file, onProgress) {
   if (headRes.ok) {
     const ho = parseInt(headRes.headers.get('Upload-Offset') || '0', 10)
     if (!Number.isNaN(ho) && ho >= 0) offset = ho
+  }
+  // Resuming an interrupted upload — tell the UI and seed the bar so it doesn't
+  // appear to start from 0 and then jump. onResume seeds the pct too; we do NOT
+  // also call onProgress here (that would immediately flip the row out of the
+  // "Resuming" state before the first resumed chunk actually commits).
+  if (offset > 0 && file.size > 0 && onResume) {
+    onResume(Math.min(1, offset / file.size))
   }
 
   // 3) PATCH bounded chunks from the committed offset until complete.
@@ -289,12 +299,12 @@ async function downloadExternal(mountId, node) {
 // uploadOne: upload-grant → PUT bytes (direct presigned, else OS data plane) →
 // commit. Returns the committed node. `onProgress(fraction)` reports byte-level
 // PUT progress (0..1) when the transport can compute it.
-async function uploadOne(parentId, file, onProgress) {
+async function uploadOne(parentId, file, onProgress, onResume) {
   // Large files: chunked/resumable path (each chunk ≤ relay cap; box reassembles
   // + commits server-side). Small files keep the single-shot grant→PUT→commit.
   if (file.size >= RESUMABLE_THRESHOLD) {
     try {
-      const { node_id } = await resumableUpload(parentId, file, onProgress)
+      const { node_id } = await resumableUpload(parentId, file, onProgress, onResume)
       return { id: node_id }
     } catch (e) {
       // Fall back to single-shot when the resumable endpoint is unavailable
@@ -1380,15 +1390,21 @@ export default function Drive() {
     // batch at once with a determinate bar filling per byte-progress.
     const queue = files.map((f, i) => ({ id: `${Date.now()}-${i}-${f.name}`, name: f.name, size: f.size, pct: 0, state: 'uploading' }))
     setUploads(queue)
-    const setPct = (id, pct) => setUploads((u) => u.map((x) => (x.id === id ? { ...x, pct } : x)))
     const setState = (id, state) => setUploads((u) => u.map((x) => (x.id === id ? { ...x, state } : x)))
     let anyError = false
     for (const item of queue) {
       const f = files[queue.indexOf(item)]
-      const onProgress = (frac) => setPct(item.id, Math.max(0, Math.min(1, frac)))
+      const onProgress = (frac) => setUploads((u) => u.map((x) => (
+        x.id === item.id ? { ...x, pct: Math.max(0, Math.min(1, frac)), state: x.state === 'resuming' ? 'uploading' : x.state } : x
+      )))
+      // Mark the row as resuming when the box already holds committed bytes, so
+      // the user sees "resuming" (with the bar pre-seeded) rather than a fresh 0%.
+      const onResume = (frac) => setUploads((u) => u.map((x) => (
+        x.id === item.id ? { ...x, pct: Math.max(0, Math.min(1, frac)), state: 'resuming' } : x
+      )))
       try {
         if (extMountId) await uploadExternalOne(extMountId, cur.id, f, 'rename', onProgress)
-        else await uploadOne(view === 'shared' ? '' : cur.id, f, onProgress)
+        else await uploadOne(view === 'shared' ? '' : cur.id, f, onProgress, onResume)
         setUploads((u) => u.map((x) => (x.id === item.id ? { ...x, pct: 1, state: 'done' } : x)))
       } catch (e) {
         anyError = true
@@ -1727,12 +1743,12 @@ function ModalSkeleton({ rows = 3, withGlyph = false }) {
 // percentage / done ✓ / failed ✕ affordance on the right.
 function UploadRow({ upload }) {
   const { name, size } = upload
-  const { failed, done, indeterminate, widthPct, label } = uploadRowView(upload)
+  const { failed, done, resuming, indeterminate, widthPct, label } = uploadRowView(upload)
   const barColor = failed ? T.danger : done ? 'var(--status-success)' : T.accent
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
       <span style={{ color: T.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        <span aria-hidden="true" style={{ marginRight: 6 }}>{failed ? '⚠️' : done ? '✅' : '↑'}</span>
+        <span aria-hidden="true" style={{ marginRight: 6 }}>{failed ? '⚠️' : done ? '✅' : resuming ? '⟳' : '↑'}</span>
         {name}
         {size ? <span style={{ color: T.textFaint }}>{' · '}{fmtSize(size)}</span> : null}
       </span>
