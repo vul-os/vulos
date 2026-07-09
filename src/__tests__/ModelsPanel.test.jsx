@@ -152,4 +152,27 @@ describe('ModelsPanel — RAG readiness + management', () => {
     expect(await screen.findByText(/Semantic RAG active/i)).toBeTruthy()
     expect(fetchImpl).toHaveBeenCalledWith('/api/models/download', expect.objectContaining({ method: 'POST' }))
   })
+
+  it('surfaces a failed catalog download honestly and stays lexical', async () => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/models/download')) {
+        return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ error: 'checksum mismatch — nothing installed' }) })
+      }
+      if (String(url).includes('/api/models')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          embeddings: { dir: '/models', models: [], rag_mode: 'lexical', needs_registry: false, catalog: [catalogEntry], python_deps: { ready: true, install_hint: 'x' } },
+          chat_models: null, chat_models_error: 'x',
+        }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    })
+    render(<ModelsPanel />)
+    const btn = await screen.findByRole('button', { name: /^Download$/ })
+    fireEvent.click(btn)
+    // The error is announced (role=alert) and the badge stays honest (lexical).
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/checksum mismatch/i)
+    // The readiness badge stays honest (still lexical — nothing installed).
+    expect(screen.getByText('Lexical retrieval')).toBeTruthy()
+  })
 })

@@ -41,6 +41,24 @@ describe('BoxHealthPanel — live status', () => {
     expect(screen.getByText('live')).toBeTruthy()
   })
 
+  it('exposes utilization meters as accessible progressbars with live values', async () => {
+    mockTelemetry = {
+      connected: true,
+      stats: { cpu: 12, mem_percent: 40, mem_used: 4e9, mem_total: 8e9, load_avg: '0.5', uptime: '3h', hostname: 'box' },
+    }
+    mockEndpoints({
+      health: { status: 'ok', timestamp: '2026-07-08T10:00:00Z', checks: {} },
+      sys: { storage_total_mb: 100000, storage_used_mb: 20000, hostname: 'box' },
+    })
+    render(<BoxHealthPanel />)
+    const cpuBar = await screen.findByRole('progressbar', { name: /CPU utilization/i })
+    expect(cpuBar.getAttribute('aria-valuenow')).toBe('12')
+    expect(cpuBar.getAttribute('aria-valuemax')).toBe('100')
+    // Storage derives its percentage from system info (20 GB of 100 GB → 20%).
+    const storageBar = await screen.findByRole('progressbar', { name: /Storage utilization/i })
+    expect(storageBar.getAttribute('aria-valuenow')).toBe('20')
+  })
+
   it('shows an attention banner when a check is degraded', async () => {
     mockEndpoints({
       health: { status: 'degraded', timestamp: '2026-07-08T10:00:00Z', checks: { disk_space: 'degraded: only 100 MiB free' } },

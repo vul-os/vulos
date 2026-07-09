@@ -131,8 +131,9 @@ function StreamToolbar({
         onMouseDown={e => e.stopPropagation()}
         onClick={onStreamToolbarToggle}
         title="Show stream toolbar"
+        aria-label="Show stream toolbar"
       >
-        ⚙
+        <span aria-hidden="true">⚙</span>
       </button>
     )
   }
@@ -150,6 +151,8 @@ function StreamToolbar({
           <button
             key={fps}
             onClick={() => streamToolbarSetFps(fps)}
+            aria-pressed={streamToolbarFps === fps}
+            aria-label={`${fps} frames per second`}
             className={`px-1.5 py-0.5 rounded transition-colors ${
               streamToolbarFps === fps
                 ? 'bg-blue-600 text-white'
@@ -164,16 +167,22 @@ function StreamToolbar({
       <div className="w-px h-4 bg-neutral-700" />
 
       {/* Live RTT */}
-      <div className={`flex items-center gap-1 ${streamToolbarRttColor}`}>
-        <span className="text-neutral-500">RTT</span>
+      <div
+        className={`flex items-center gap-1 ${streamToolbarRttColor}`}
+        aria-label={`Round-trip latency ${streamToolbarRtt != null ? `${streamToolbarRtt} milliseconds` : 'unknown'}`}
+      >
+        <span className="text-neutral-500" aria-hidden="true">RTT</span>
         <span>{streamToolbarRtt != null ? `${streamToolbarRtt}ms` : '—'}</span>
       </div>
 
       <div className="w-px h-4 bg-neutral-700" />
 
       {/* Quality tier */}
-      <div className={`flex items-center gap-1 ${streamToolbarQualityColor}`}>
-        <span className="text-neutral-500">Q</span>
+      <div
+        className={`flex items-center gap-1 ${streamToolbarQualityColor}`}
+        aria-label={`Stream quality ${quality || 'unknown'}`}
+      >
+        <span className="text-neutral-500" aria-hidden="true">Q</span>
         <span>{quality || '—'}</span>
       </div>
 
@@ -182,12 +191,14 @@ function StreamToolbar({
       {/* MangoHud toggle */}
       <button
         onClick={streamToolbarToggleMangoHud}
+        aria-pressed={streamToolbarMangoHud}
         className={`px-1.5 py-0.5 rounded transition-colors ${
           streamToolbarMangoHud
             ? 'bg-orange-600 text-white'
             : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
         }`}
         title="Toggle MangoHud overlay (restarts capture)"
+        aria-label="Toggle MangoHud performance overlay"
       >
         HUD
       </button>
@@ -199,8 +210,9 @@ function StreamToolbar({
         onClick={streamToolbarToggleFullscreen}
         className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors"
         title={streamToolbarFullscreen ? 'Exit fullscreen' : 'Fullscreen + pointer lock (Esc to exit)'}
+        aria-label={streamToolbarFullscreen ? 'Exit fullscreen' : 'Enter fullscreen with pointer lock'}
       >
-        {streamToolbarFullscreen ? '⤓' : '⤢'}
+        <span aria-hidden="true">{streamToolbarFullscreen ? '⤓' : '⤢'}</span>
       </button>
 
       {/* Collapse button */}
@@ -208,8 +220,9 @@ function StreamToolbar({
         onClick={onStreamToolbarToggle}
         className="ml-auto px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500 hover:bg-neutral-700 hover:text-white transition-colors"
         title="Hide toolbar"
+        aria-label="Hide stream toolbar"
       >
-        ✕
+        <span aria-hidden="true">✕</span>
       </button>
     </div>
   )

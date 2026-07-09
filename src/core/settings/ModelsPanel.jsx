@@ -58,7 +58,7 @@ const RAG_MODES = {
 }
 
 // RAGReadinessBadge — the honest indicator of the assistant's retrieval quality.
-export function RAGReadinessBadge({ mode }) {
+function RAGReadinessBadge({ mode }) {
   const m = RAG_MODES[mode] || RAG_MODES.lexical
   return (
     <div className={`rounded-xl border px-4 py-3 ${m.tone}`}>
@@ -144,13 +144,14 @@ function CatalogRow({ entry, onDownloaded }) {
           <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{entry.description}</p>
           <p className="text-[11px] text-neutral-600 mt-0.5">Download: {humanBytes(totalBytes)} (model + tokenizer), verified by SHA-256.</p>
         </div>
-        <button onClick={download} disabled={busy} className="btn text-sm shrink-0 disabled:opacity-50">
+        <button onClick={download} disabled={busy} aria-busy={busy} className="btn text-sm shrink-0 disabled:opacity-50 flex items-center gap-1.5">
+          {busy && <span className="spinner w-3.5 h-3.5" aria-hidden="true" />}
           {busy ? 'Downloading…' : 'Download'}
         </button>
       </div>
-      {busy && <div className="mt-2 text-[11px] text-neutral-500">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
-      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400">{ok}</div>}
-      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400">{err}</div>}
+      {busy && <div className="mt-2 text-[11px] text-neutral-500" role="status">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400" role="status">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400" role="alert">{err}</div>}
     </div>
   )
 }
@@ -195,7 +196,8 @@ function ImportRow({ kind, label, accept, hint, onImported }) {
           <div className="text-sm font-medium text-neutral-200">{label}</div>
           <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{hint}</p>
         </div>
-        <button onClick={pick} disabled={busy} className="btn text-sm shrink-0 disabled:opacity-50">
+        <button onClick={pick} disabled={busy} aria-busy={busy} className="btn text-sm shrink-0 disabled:opacity-50 flex items-center gap-1.5">
+          {busy && <span className="spinner w-3.5 h-3.5" aria-hidden="true" />}
           {busy ? 'Importing…' : 'Import…'}
         </button>
       </div>
@@ -207,8 +209,8 @@ function ImportRow({ kind, label, accept, hint, onImported }) {
         className="hidden"
         aria-label={`Import ${label}`}
       />
-      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400">{ok}</div>}
-      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400">{err}</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400" role="status">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400" role="alert">{err}</div>}
     </div>
   )
 }
@@ -270,9 +272,14 @@ function ModelsPanelOwner() {
         <RAGReadinessBadge mode={ragMode} />
       </div>
 
-      {loading && <p className="text-sm text-neutral-500">Loading models…</p>}
+      {loading && (
+        <p className="text-sm text-neutral-500 flex items-center gap-2" role="status">
+          <span className="spinner w-3.5 h-3.5" aria-hidden="true" />
+          Loading models…
+        </p>
+      )}
       {error && (
-        <div className="mb-4 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">{error}</div>
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400" role="alert">{error}</div>
       )}
 
       {emb && (

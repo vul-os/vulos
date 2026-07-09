@@ -1,4 +1,14 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// These tests exercise real WebCrypto PBKDF2 at the production 600,000-iteration
+// count (some cases derive twice). That is CPU-bound, and when vitest runs the
+// full suite in parallel the derivations contend for cores — a single case can
+// take >1.5s in isolation and considerably longer under load, occasionally
+// tripping the default 5s per-test timeout (the noted masterKey/argon2 flake).
+// Raise the per-test budget file-wide so the crypto stays honest (no weakened
+// iteration count) and the suite is deterministic under parallel contention.
+vi.setConfig({ testTimeout: 30000 })
+
 import {
   unwrapMasterKeyWithPassword,
   unwrapMasterKeyWithPhrase,

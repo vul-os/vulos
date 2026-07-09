@@ -37,14 +37,23 @@ function humanBytes(n) {
 function Bar({ label, pct, right }) {
   const p = Math.max(0, Math.min(100, pct || 0))
   const tone = p > 85 ? 'bg-red-500' : p > 65 ? 'bg-amber-500' : 'bg-blue-500'
+  const readout = right ?? `${Math.round(p)}%`
   return (
     <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
       <span className="text-xs text-neutral-500">{label}</span>
       <div className="flex items-center gap-2">
-        <div className="w-32 h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+        <div
+          className="w-32 h-1.5 bg-neutral-800 rounded-full overflow-hidden"
+          role="progressbar"
+          aria-label={`${label} utilization`}
+          aria-valuenow={Math.round(p)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuetext={typeof readout === 'string' ? readout : undefined}
+        >
           <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${p}%` }} />
         </div>
-        <span className="text-xs text-neutral-400 w-16 text-right">{right ?? `${Math.round(p)}%`}</span>
+        <span className="text-xs text-neutral-400 w-16 text-right">{readout}</span>
       </div>
     </div>
   )
@@ -97,7 +106,10 @@ export default function BoxHealthPanel() {
       </p>
 
       {/* Overall status banner */}
-      <div className={`rounded-xl border px-4 py-3 mb-5 ${
+      <div
+        role="status"
+        aria-live="polite"
+        className={`rounded-xl border px-4 py-3 mb-5 ${
         healthErr ? 'border-neutral-700/50 bg-neutral-800/40 text-neutral-300'
           : degraded ? 'border-red-800/40 bg-red-900/30 text-red-400'
           : 'border-green-800/40 bg-green-900/30 text-green-400'

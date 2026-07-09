@@ -827,8 +827,11 @@ function IS09_SyncingStep({ onNext, onComplete }) {
         </div>
         <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
           <div
-            className="h-full rounded-full transition-all duration-700" style={{ background: 'linear-gradient(to right, color-mix(in srgb, var(--accent) 65%, #7c3aed), var(--accent))' }}
-            style={{ width: `${IS09_progress}%` }}
+            className="h-full rounded-full transition-all duration-700"
+            style={{
+              width: `${IS09_progress}%`,
+              background: 'linear-gradient(to right, color-mix(in srgb, var(--accent) 65%, #7c3aed), var(--accent))',
+            }}
           />
         </div>
       </div>
@@ -3114,7 +3117,10 @@ function ReadyStep({ config, onFinish, onPrev }) {
 // downloading the curated, pinned all-MiniLM-L6-v2 upgrades it to genuine
 // semantic search, entirely on the box. The model is fetched on demand from a
 // pinned source and SHA-256-verified — nothing is bundled in the image.
-function PrivateAIStep({ onDone }) {
+//
+// Exported for unit testing (its offer/downloading/done/error states); the
+// wizard renders it inline via the ReadyStep flow, not via this named import.
+export function PrivateAIStep({ onDone }) {
   const [state, setState] = useState('offer') // offer | downloading | done | error
   const [error, setError] = useState('')
   const [entry, setEntry] = useState(null) // recommended catalog entry (for size/name)
@@ -3190,14 +3196,14 @@ function PrivateAIStep({ onDone }) {
       </div>
 
       {state === 'error' && error && (
-        <div className="mx-auto max-w-md mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3 text-left">
+        <div role="alert" className="mx-auto max-w-md mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3 text-left">
           <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
       {state === 'done' ? (
-        <div className="mx-auto max-w-md mb-4 bg-green-600/10 border border-green-500/25 rounded-xl px-4 py-3 text-left">
-          <p className="text-sm text-green-300">Model installed. Semantic search is ready on your box.</p>
+        <div role="status" className="mx-auto max-w-md mb-4 bg-success-soft border border-success-soft rounded-xl px-4 py-3 text-left">
+          <p className="text-sm text-success">Model installed. Semantic search is ready on your box.</p>
         </div>
       ) : null}
 
