@@ -68,6 +68,67 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// ── Push: render the notification the cell sent (PUSH-CELL-01). ─────────────
+//
+// The cell POSTs an RFC 8291 (aes128gcm) encrypted payload DIRECTLY to the
+// browser-vendor push service; the browser decrypts it with the subscription
+// keys and delivers it here. The payload is the minimal PushPayload the cell's
+// notify service marshals: { title, body, tag, source, url }. We render it as an
+// OS notification. The payload NEVER carries a recipient id — it is E2E-encrypted
+// to this device's own subscription, so it is inherently for this user.
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      // Fall back to a plain-text body so a non-JSON payload still shows.
+      try { data = { body: event.data.text() }; } catch { data = {}; }
+    }
+  }
+  const title = typeof data.title === 'string' && data.title ? data.title : 'Vulos';
+  const options = {
+    body: typeof data.body === 'string' ? data.body : '',
+    // Coalesce same-category notifications so a burst does not stack endlessly.
+    tag: typeof data.tag === 'string' && data.tag ? data.tag : undefined,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    // Carry the deep-link + source so the click handler can focus/open it. Never
+    // include any recipient identifier here.
+    data: {
+      url: typeof data.url === 'string' ? data.url : '/',
+      source: typeof data.source === 'string' ? data.source : '',
+    },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Notification click: focus an existing window or open the deep-link. ─────
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Prefer focusing an already-open Vulos window.
+        for (const client of clientList) {
+          if ('focus' in client) {
+            if (typeof client.navigate === 'function' && target && target !== '/') {
+              client.navigate(target).catch(() => {});
+            }
+            return client.focus();
+          }
+        }
+        // None open → open a new one at the deep-link.
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(target);
+        }
+        return undefined;
+      })
+  );
+});
+
 // ── Fetch: cache-first for static, network-only for API/collab/JMAP/DAV. ────
 self.addEventListener('fetch', (event) => {
   const { request } = event;

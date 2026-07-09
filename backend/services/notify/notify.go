@@ -171,6 +171,10 @@ type Service struct {
 	// path is fully functional with either left nil.
 	store *Store    // persistent on-disk store (set via SetStore); nil = memory-only
 	dnd   *dndState // do-not-disturb state holder (lazily created by DND())
+
+	// PUSH-CELL-01 additive field: the cell-side Web Push send-path. nil = no
+	// Web Push (in-app WebSocket path unchanged). Set via SetPush.
+	push *pushBinding
 }
 
 func New() *Service {
@@ -205,6 +209,12 @@ func (s *Service) SendNotification(n Notification) *Notification {
 	if s.store != nil {
 		s.store.Append(&n)
 	}
+
+	// PUSH-CELL-01: additively fan a Web Push out to the owner's browser
+	// subscriptions (direct-to-vendor, E2E-encrypted). No-op unless SetPush has
+	// attached a live binding; only owner-targeted notifications are pushed and
+	// DND/prefs are respected inside. Runs async — never blocks this caller.
+	s.maybeWebPush(n)
 
 	log.Printf("[notify] %s (%s/%s): %s", n.Priority, n.Type, n.Subtype, n.Title)
 	return &n

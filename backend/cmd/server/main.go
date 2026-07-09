@@ -1191,7 +1191,11 @@ func main() {
 		notifySvc.Clear()
 		writeJSON(w, map[string]string{"status": "cleared"})
 	})
-	registerNotifyExtRoutes(mux, notifySvc, home, authStore) // NOTIF-05+06: DND + inline actions
+	notifyExtSvc := registerNotifyExtRoutes(mux, notifySvc, home, authStore) // NOTIF-05+06: DND + inline actions
+	// PUSH-CELL-01: cell-side DIRECT Web Push send-path + subscribe surface.
+	// Shares the DND policy from the ext routes so a user in Do-Not-Disturb is
+	// not web-pushed. Additive + flag-gated (no-op without VAPID keys).
+	registerNotifyPushRoutes(mux, notifySvc, home, notifyExtSvc.dnd)
 
 	// Open Router — GET /api/router/classify?app=<id> → {lane}
 	// Used by the shell launcher to dispatch per lane (WebApp/CPUStream/GPURoute/etc).

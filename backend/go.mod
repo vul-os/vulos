@@ -3,6 +3,7 @@ module vulos/backend
 go 1.25.6
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/fxamacker/cbor/v2 v2.9.2

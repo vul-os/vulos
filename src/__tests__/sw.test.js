@@ -82,7 +82,14 @@ function loadSW({ fetchImpl } = {}) {
   const self = {
     skipWaiting: vi.fn(),
     addEventListener: vi.fn((evt, fn) => { handlers[evt] = fn }),
-    clients: { claim: vi.fn(async () => {}) },
+    clients: {
+      claim: vi.fn(async () => {}),
+      matchAll: vi.fn(async () => []),
+      openWindow: vi.fn(async () => ({})),
+    },
+    registration: {
+      showNotification: vi.fn(async () => {}),
+    },
   }
   const caches = makeCaches()
   const fetchSpy = vi.fn(fetchImpl || (async () => makeResponse('net')))
@@ -205,5 +212,78 @@ describe('public/sw.js — OS service worker', () => {
     const evt = fireFetch(handlers, req)
     const resp = await evt._response
     expect(resp.type).toBe('error')
+  })
+
+  // ── Web Push (PUSH-CELL-01) ────────────────────────────────────────────────
+  function firePush(handlers, dataObj) {
+    const evt = {
+      data: dataObj === undefined ? null : {
+        json: () => JSON.parse(JSON.stringify(dataObj)),
+        text: () => (typeof dataObj === 'string' ? dataObj : JSON.stringify(dataObj)),
+      },
+      waitUntil: vi.fn((p) => { evt._wait = p }),
+    }
+    handlers.push(evt)
+    return evt
+  }
+
+  it('push: renders the notification from the cell payload', async () => {
+    const { handlers, self } = loadSW()
+    const evt = firePush(handlers, { title: 'New mail', body: 'from Alice', tag: 'alert', url: '/mail', source: 'mail' })
+    await evt._wait
+    expect(self.registration.showNotification).toHaveBeenCalledTimes(1)
+    const [title, options] = self.registration.showNotification.mock.calls[0]
+    expect(title).toBe('New mail')
+    expect(options.body).toBe('from Alice')
+    expect(options.tag).toBe('alert')
+    expect(options.data.url).toBe('/mail')
+  })
+
+  it('push: falls back to a default title and empty payload safely', async () => {
+    const { handlers, self } = loadSW()
+    const evt = firePush(handlers, undefined) // no data at all
+    await evt._wait
+    expect(self.registration.showNotification).toHaveBeenCalledTimes(1)
+    const [title, options] = self.registration.showNotification.mock.calls[0]
+    expect(title).toBe('Vulos')          // default title
+    expect(options.body).toBe('')        // empty body
+    expect(options.data.url).toBe('/')   // default deep-link
+  })
+
+  it('push: a non-JSON payload degrades to a text body', async () => {
+    const { handlers, self } = loadSW()
+    // json() throws → handler falls back to text().
+    const evt = {
+      data: { json: () => { throw new Error('not json') }, text: () => 'plain alert' },
+      waitUntil: vi.fn((p) => { evt._wait = p }),
+    }
+    handlers.push(evt)
+    await evt._wait
+    const [, options] = self.registration.showNotification.mock.calls[0]
+    expect(options.body).toBe('plain alert')
+  })
+
+  it('notificationclick: focuses an existing window and navigates it to the deep-link', async () => {
+    const focused = { focus: vi.fn(() => 'focused'), navigate: vi.fn(async () => {}) }
+    const { handlers, self } = loadSW()
+    self.clients.matchAll = vi.fn(async () => [focused])
+    const notification = { close: vi.fn(), data: { url: '/mail/42' } }
+    const evt = { notification, waitUntil: vi.fn((p) => { evt._wait = p }) }
+    handlers.notificationclick(evt)
+    await evt._wait
+    expect(notification.close).toHaveBeenCalled()
+    expect(focused.navigate).toHaveBeenCalledWith('/mail/42')
+    expect(focused.focus).toHaveBeenCalled()
+    expect(self.clients.openWindow).not.toHaveBeenCalled()
+  })
+
+  it('notificationclick: opens a new window when none are open', async () => {
+    const { handlers, self } = loadSW()
+    self.clients.matchAll = vi.fn(async () => [])
+    const notification = { close: vi.fn(), data: { url: '/talk' } }
+    const evt = { notification, waitUntil: vi.fn((p) => { evt._wait = p }) }
+    handlers.notificationclick(evt)
+    await evt._wait
+    expect(self.clients.openWindow).toHaveBeenCalledWith('/talk')
   })
 })
