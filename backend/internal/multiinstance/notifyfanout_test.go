@@ -51,7 +51,7 @@ func TestNotify_P0FanOutImmediately(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	// Instance needs a non-empty endpoint to be included in fan-out.
 	// Re-upsert with endpoint set.
@@ -102,7 +102,7 @@ func TestNotify_P2BufferedNotImmediatelySent(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	n := multiinstance.Notification{
@@ -186,7 +186,7 @@ func TestNotify_P0AlreadySeenNotSentAgain(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	n := multiinstance.Notification{
@@ -247,7 +247,7 @@ func TestRunBatcher_FlushesAndDeduplicates(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	nf := multiinstance.NewNotifyFanout(reg)
 
@@ -296,7 +296,7 @@ func TestNotify_OfflineInstanceSkipped(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	if err := nf.Notify(context.Background(), multiinstance.Notification{
@@ -357,7 +357,7 @@ func TestFanOut_ConcurrentNotSerial(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	nf := multiinstance.NewNotifyFanout(reg)
 
@@ -409,7 +409,7 @@ func TestFanOut_ContextCancelStopsScheduling(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer relay.Close()
-	t.Setenv("VULOS_RELAY_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	ctx, cancel := context.WithCancel(context.Background())

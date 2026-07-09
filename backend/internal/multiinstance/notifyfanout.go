@@ -10,9 +10,18 @@
 //   - P2 / P3: buffered into a 30-second batch window; the batch is
 //     deduplicated before the relay POST so redundant sends are skipped.
 //
-// Relay endpoint: POST {VULOS_RELAY_URL}/api/s2s/notify
-// Override VULOS_RELAY_URL for dev / self-hosted deployments.
+// Relay endpoint: POST {VULOS_RELAY_BASE_URL}/api/s2s/notify
+// Override VULOS_RELAY_BASE_URL for dev / self-hosted deployments.
 // Default: https://relay.vulos.org
+//
+// NOTE (seam P2-4): the base-URL env var is VULOS_RELAY_BASE_URL — the SAME
+// var the rest of the OS reachability layer (Meet host resolve, relay client)
+// reads. It was previously VULOS_RELAY_URL here, which nothing else set, so
+// the fanout always fell back to the default host. The /api/s2s/notify route
+// is a RELAY-SIDE requirement: vulos-relay does not yet serve it, so until it
+// does the fanout POSTs 404 (logged, best-effort, non-fatal — the OS already
+// delivered the notification locally). Adding the relay S2S route completes
+// cross-instance delivery.
 //
 // All relay calls degrade gracefully: if the relay is unreachable the fanout
 // logs a warning and continues — the notification is NOT retried (the OS
@@ -43,8 +52,10 @@ import (
 const defaultRelayBaseURL = "https://relay.vulos.org"
 
 // relayBaseURL returns the effective relay base URL (env override or default).
+// Unified on VULOS_RELAY_BASE_URL (seam P2-4) so it matches the rest of the OS
+// reachability layer instead of the orphaned VULOS_RELAY_URL.
 func relayBaseURL() string {
-	if v := os.Getenv("VULOS_RELAY_URL"); v != "" {
+	if v := os.Getenv("VULOS_RELAY_BASE_URL"); v != "" {
 		return v
 	}
 	return defaultRelayBaseURL
