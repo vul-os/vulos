@@ -2409,8 +2409,12 @@ func main() {
 		// ICE / TURN config for WebRTC.
 		peering.RegisterICEHandlers(peeringMux)
 
-		// Endpoint registry (multi-address routing).
-		peering.RegisterEndpointHandlers(peeringMux)
+		// CONSOLIDATION B-3: the PEER-40 endpoint registry + its four REST routes
+		// (RegisterEndpointHandlers) were deleted. They were built but never wired
+		// into any live delivery path (delivery uses the single contact.Server
+		// address via resolvePeerBaseURL + PeerClient.Post + the durable outbox).
+		// Reachability is now the relay tunnel + verified-direct endpoint, not a
+		// self-claimed in-memory host:port list.
 
 		// Relay attestation document (public evidence endpoint).
 		peering.RegisterAttestHandlers(peeringMux, peering.NewAttestStore())

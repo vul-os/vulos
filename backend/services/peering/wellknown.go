@@ -259,10 +259,6 @@ type WKIdentityResponse struct {
 	Image string `json:"image,omitempty"`
 	// Bio is included only when visibility == "public".
 	Bio string `json:"bio,omitempty"`
-	// Endpoints is the list of server addresses this node is reachable at,
-	// sorted by priority (lower = higher priority). Populated from the local
-	// endpoint registry (PEER-40). Empty when no endpoints are registered.
-	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
 	// Lifecycle, when present, publishes this identity's key-lifecycle data
 	// (rotation/recovery chain + observed revocations) so peers can follow key
 	// rotations/recoveries and honor revocations (identity_lifecycle.go). The
@@ -359,8 +355,14 @@ func wkIngestLifecycle(lc *WKLifecycle) {
 	}
 }
 
-// wkBuildPublicResponse filters the own profile down to public-only fields
-// and embeds any registered endpoints from the endpoint registry (PEER-40).
+// wkBuildPublicResponse filters the own profile down to public-only fields.
+//
+// CONSOLIDATION B-3: this no longer advertises a manual endpoint list. The old
+// PEER-40 "endpoints" array was populated from an in-memory registry that
+// nothing in production consumed for delivery (delivery uses the single
+// contact.Server address, resolved via resolvePeerBaseURL). A peer's real
+// reachability is its relay-tunnel name + verified-direct endpoint, discovered
+// via the relay (/_vulos-direct/resolve) — not a self-claimed host:port list.
 func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
 	resp := WKIdentityResponse{
 		VulaID:        p.VulaID,
@@ -373,10 +375,6 @@ func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
 	}
 	if p.Visibility.Bio == WKVisibilityPublic {
 		resp.Bio = p.Bio
-	}
-	// Embed registered endpoints so peers know all addresses for this node.
-	if eps := EPFromRegistry(p.VulaID); len(eps) > 0 {
-		resp.Endpoints = eps
 	}
 	return resp
 }
@@ -394,10 +392,6 @@ type WKPeerProfile struct {
 	VerifiedEmail bool   `json:"verified_email"`
 	Slug          string `json:"slug,omitempty"`
 	Image         string `json:"image,omitempty"`
-	// Endpoints lists the server addresses advertised by the peer in their
-	// well-known response, sorted by priority (PEER-40). May be empty when
-	// the peer has not registered any endpoints or is running an older version.
-	Endpoints []epWellKnownEndpoint `json:"endpoints,omitempty"`
 	// PreKeys is the peer's published X3DH prekey bundle, when present, enabling
 	// forward-secret content sessions to this peer (prekeys.go). The signed prekey
 	// is verified against the peer's identity before the profile is cached.
@@ -515,7 +509,6 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 		VerifiedEmail: wk.VerifiedEmail,
 		Slug:          wk.Slug,
 		Image:         wk.Image,
-		Endpoints:     wk.Endpoints,
 		PreKeys:       preKeys,
 		Signature:     wk.Signature,
 		CachedAt:      time.Now(),
@@ -598,8 +591,8 @@ func wkFetchAndVerify(ctx context.Context, vulaID, serverAddr string) (WKIdentit
 	}
 
 	// Authenticate the profile. The peer profile (VerifiedEmail, DisplayName,
-	// Endpoints, …) is otherwise attacker-mutable in transit / by a malicious
-	// server, enabling identity spoofing and endpoint redirection. A Vula ID IS
+	// …) is otherwise attacker-mutable in transit / by a malicious
+	// server, enabling identity spoofing. A Vula ID IS
 	// an Ed25519 public key, so require a valid signature over the canonical
 	// response by that key. Fail closed on any missing/invalid signature.
 	if !wkVerifyResponse(wk, vulaID) {

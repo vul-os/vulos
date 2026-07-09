@@ -197,8 +197,8 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build the inbound base URL.
-	baseURL := "https://" + targetServer
+	// Build the inbound base URL via the single reachability seam (B-0 pass-through).
+	baseURL := resolvePeerBaseURL(targetVulaID, targetServer)
 
 	// Add target to local store as pending (idempotent: ignore already-exists error).
 	if err := a.store.Add(targetVulaID, body.DisplayName, targetServer); err != nil {
@@ -565,7 +565,7 @@ func (a *ContactAPI) notifyPeerApproved(peerServer, peerVulaID string) {
 		return
 	}
 
-	baseURL := "https://" + peerServer
+	baseURL := resolvePeerBaseURL(peerVulaID, peerServer)
 
 	selfName := ""
 	if a.SelfDisplayName != nil {

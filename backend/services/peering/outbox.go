@@ -409,7 +409,11 @@ func (q *OutboxQueue) retryPeerDir(ctx context.Context, peerDir string) {
 			continue
 		}
 
-		baseURL := item.PeerServer
+		// Route through the single reachability seam (CONSOLIDATION B-0). PeerServer
+		// is stored already-resolved (a full https:// base URL from the enqueue
+		// site), so resolvePeerBaseURL is a pass-through here; keeping the call keeps
+		// the retry path on the same primitive as first-attempt delivery.
+		baseURL := resolvePeerBaseURL(item.PeerVulaID, item.PeerServer)
 		deliverErr := q.client.Post(ctx, baseURL, item.Envelope.Type, item.Envelope)
 		if deliverErr == nil {
 			// Delivered successfully — remove the processing file.

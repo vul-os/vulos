@@ -244,8 +244,9 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deliver to the remote peer.
-	baseURL := "https://" + contact.Server
+	// Deliver to the remote peer. resolvePeerBaseURL is the single reachability
+	// seam (CONSOLIDATION B-0): today a pass-through to "https://<contact.Server>".
+	baseURL := resolvePeerBaseURL(contact.VulaID, contact.Server)
 	deliveryErr := a.client.Post(r.Context(), baseURL, "message", env)
 	if deliveryErr != nil {
 		log.Printf("[peering/messages] delivery error to %s: %v", baseURL, deliveryErr)

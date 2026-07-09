@@ -652,7 +652,7 @@ func (a *GroupAPI) handleSendGroupMessage(w http.ResponseWriter, r *http.Request
 			continue
 		}
 
-		baseURL := "https://" + contact.Server
+		baseURL := resolvePeerBaseURL(contact.VulaID, contact.Server)
 		if err := a.client.Post(r.Context(), baseURL, TypeGroupMessage, env); err != nil {
 			log.Printf("[peering/groups] delivery to %s failed: %v", baseURL, err)
 			deliveryErrors = append(deliveryErrors,
@@ -862,7 +862,7 @@ func (a *GroupAPI) distributeGroupDef(ctx context.Context, def GroupDef) {
 			continue
 		}
 
-		baseURL := "https://" + contact.Server
+		baseURL := resolvePeerBaseURL(contact.VulaID, contact.Server)
 
 		// Use a background goroutine so one slow peer doesn't stall the others.
 		go func(url, mID string, e *Envelope) {

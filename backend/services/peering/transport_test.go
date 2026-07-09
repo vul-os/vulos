@@ -459,65 +459,55 @@ func TestSafedialRejectsLoopback(t *testing.T) {
 	}
 }
 
-// ─── PostToEndpoints tests (PEER-40) ─────────────────────────────────────────
+// ─── Cross-instance delivery through the consolidated primitive (B) ──────────
 
-// TestPeerClientPostToEndpoints_UsesRegistry verifies that PostToEndpoints
-// delivers to the TLS endpoint registered in the local registry for toVulaID.
-func TestPeerClientPostToEndpoints_UsesRegistry(t *testing.T) {
-	resetRegistry()
-	defer resetRegistry()
-
-	var hits int64
-	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer tlsSrv.Close()
-
-	// Override the shared HTTP client so it trusts the test TLS cert.
-	origClient := epHTTPClient
-	epHTTPClient = tlsSrv.Client()
-	defer func() { epHTTPClient = origClient }()
-
-	const toVulaID = "vula:ed25519:postto-test"
-	tlsHost := strings.TrimPrefix(tlsSrv.URL, "https://")
-	epRegistry.epRegister(&epEndpoint{
-		ID:      "pte-ep1",
-		VulaID:  toVulaID,
-		Server:  tlsHost,
-		Healthy: true,
-	})
-
-	client := NewPeerClient()
-	priv, fromID := newTestKeypair(t)
-	env := signedEnvelope(t, priv, fromID, toVulaID, TypeMessage)
-
-	ctx := context.Background()
-	err := client.PostToEndpoints(ctx, toVulaID, "", "msg-pte-001", TypeMessage, env)
-	if err != nil {
-		t.Fatalf("PostToEndpoints: %v", err)
-	}
-	if hits == 0 {
-		t.Error("expected at least one hit on TLS endpoint via registry")
-	}
-}
-
-// TestPeerClientPostToEndpoints_FallbackToBaseURL verifies that PostToEndpoints
-// falls back to a direct Post when no endpoints are registered for the peer.
-func TestPeerClientPostToEndpoints_FallbackToBaseURL(t *testing.T) {
-	resetRegistry()
-	defer resetRegistry()
-
-	client := NewPeerClient()
+// TestCrossInstanceDeliveryViaResolveSeam proves the invariant CONSOLIDATION B
+// must protect: a signed envelope still reaches the peer's
+// /api/peering/inbound/<type> when the base URL is obtained from the new
+// resolvePeerBaseURL seam and delivered by the single PeerClient.Post — i.e.
+// removing PEER-40 did not break cross-instance envelope delivery.
+//
+// peeringSSRFBypass is set by TestMain, so the httptest.Server on 127.0.0.1 is
+// reachable through PeerClient's safedial-guarded transport.
+func TestCrossInstanceDeliveryViaResolveSeam(t *testing.T) {
 	priv, fromID := newTestKeypair(t)
 	_, toID := newTestKeypair(t)
 	env := signedEnvelope(t, priv, fromID, toID, TypeMessage)
 
-	ctx := context.Background()
-	// No endpoints registered → falls back to Post(baseURL) → SSRF guard refuses localhost.
-	err := client.PostToEndpoints(ctx, toID, "https://localhost:8080", "msg-fallback-001", TypeMessage, env)
-	if err == nil {
-		t.Error("expected SSRF error for localhost fallback, got nil")
+	var gotPath, gotType string
+	var gotEnv Envelope
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotType = strings.TrimPrefix(r.URL.Path, "/api/peering/inbound/")
+		_ = json.NewDecoder(r.Body).Decode(&gotEnv)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer peer.Close()
+
+	// The peer's last-known address, exactly as stored in contact.Server: a bare
+	// host:port with no scheme. The seam turns it into the delivery base URL.
+	server := strings.TrimPrefix(peer.URL, "http://")
+	baseURL := resolvePeerBaseURL(toID, "http://"+server) // already-schemed → pass-through to peer.URL
+
+	if err := NewPeerClient().Post(context.Background(), baseURL, TypeMessage, env); err != nil {
+		t.Fatalf("cross-instance Post via seam failed: %v", err)
+	}
+
+	if gotPath != "/api/peering/inbound/"+TypeMessage {
+		t.Fatalf("delivered to %q, want /api/peering/inbound/%s", gotPath, TypeMessage)
+	}
+	if gotType != TypeMessage {
+		t.Fatalf("envelope type on the wire = %q, want %q", gotType, TypeMessage)
+	}
+	if gotEnv.From != fromID || gotEnv.To != toID {
+		t.Fatalf("envelope identity mangled: from=%q to=%q", gotEnv.From, gotEnv.To)
+	}
+	if gotEnv.Signature == "" {
+		t.Fatal("signature lost in transit — receiver could not authenticate sender")
+	}
+	// The received envelope must still verify against the sender's key.
+	if err := gotEnv.Verify(); err != nil {
+		t.Fatalf("received envelope failed signature verification: %v", err)
 	}
 }
 

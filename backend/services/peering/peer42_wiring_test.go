@@ -134,9 +134,6 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	// ICE.
 	RegisterICEHandlers(peeringMux)
 
-	// Endpoints.
-	RegisterEndpointHandlers(peeringMux)
-
 	// Relay attestation.
 	RegisterAttestHandlers(peeringMux, NewAttestStore())
 
@@ -226,9 +223,8 @@ var peer42RouteTable = []struct{ method, path, body string }{
 	{"GET", "/api/peering/discover", ""},
 	// ICE / TURN config
 	{"GET", "/api/peering/ice", ""},
-	// endpoints
-	{"GET", "/api/peering/endpoints", ""},
-	{"POST", "/api/peering/endpoints/register", `{"address":"localhost:1234","transport":"tcp"}`},
+	// endpoints: PEER-40 registry routes were deleted (CONSOLIDATION B-3) — no
+	// longer expected to be wired.
 	// collab CRDT
 	{"GET", "/api/peering/collab/documents", ""},
 	{"POST", "/api/peering/collab/share", `{"title":"test"}`},
