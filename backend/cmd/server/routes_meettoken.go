@@ -169,8 +169,23 @@ func registerMeetTokenRoutes(mux *http.ServeMux) bool {
 // never stalls a token mint — a timeout degrades to "" (client uses its own SFU).
 const sfuResolveTimeout = 3 * time.Second
 
+// meetHostRelayBaseURL resolves the relay base URL the SFU-host registry lives on.
+//
+// It reads the dedicated MEET_HOST_RELAY_URL override first, and DEFAULTS to the
+// canonical relay URL (VULOS_RELAY_BASE_URL) when that override is unset. This is a
+// deliberate default so an operator who configures the reachability relay via the
+// canonical VULOS_RELAY_BASE_URL does NOT silently disable SFU-host resolve by
+// forgetting to also set the meet-specific override. Set MEET_HOST_RELAY_URL only
+// to point SFU-host resolution at a DIFFERENT relay than the rest of reachability.
+func meetHostRelayBaseURL() string {
+	if v := strings.TrimSpace(os.Getenv("MEET_HOST_RELAY_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("VULOS_RELAY_BASE_URL")), "/")
+}
+
 // resolveSFUServerURL asks the relay's SFU-host registry
-// (GET {VULOS_RELAY_BASE_URL}/api/meet/host/resolve) for a reachable, VERIFIED
+// (GET {relay}/api/meet/host/resolve, relay = meetHostRelayBaseURL()) for a reachable, VERIFIED
 // self-host SFU endpoint to escalate a big call to (SFU Phase 2 allocation,
 // direct-first). It returns the endpoint, or "" when:
 //   - no relay is configured (VULOS_RELAY_BASE_URL unset) — inert default,
@@ -181,7 +196,7 @@ const sfuResolveTimeout = 3 * time.Second
 // ownership-proven via directprobe), so a box cannot smuggle an endpoint it does
 // not control into a client's join.
 func resolveSFUServerURL(ctx context.Context) string {
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("VULOS_RELAY_BASE_URL")), "/")
+	base := meetHostRelayBaseURL()
 	if base == "" {
 		return ""
 	}

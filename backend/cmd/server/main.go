@@ -3865,11 +3865,15 @@ func main() {
 	// E2EE: none — a self-host/BYO SFU is the operator's own media node (SFU.md §4,
 	// LOCKED). No-op when VULOS_SFU_HOST is unset.
 	if meethost.Enabled() {
-		relayBase := os.Getenv("VULOS_RELAY_BASE_URL")
+		// relayBase defaults to the canonical VULOS_RELAY_BASE_URL; MEET_HOST_RELAY_URL
+		// is an optional override for pointing SFU-host registration at a different
+		// relay. Sharing meetHostRelayBaseURL() with resolveSFUServerURL keeps register
+		// and resolve on the SAME relay so neither can silently drift.
+		relayBase := meetHostRelayBaseURL()
 		endpoint := os.Getenv("VULOS_SFU_ENDPOINT")
 		name := os.Getenv("VULOS_RELAY_NAME")
 		if endpoint == "" || relayBase == "" || name == "" {
-			log.Printf("[meethost] disabled: set VULOS_RELAY_BASE_URL, VULOS_RELAY_NAME and VULOS_SFU_ENDPOINT to advertise a self-host SFU")
+			log.Printf("[meethost] disabled: set VULOS_RELAY_BASE_URL (or MEET_HOST_RELAY_URL), VULOS_RELAY_NAME and VULOS_SFU_ENDPOINT to advertise a self-host SFU")
 		} else {
 			meetCfg := meethost.Config{
 				Enabled:      true,

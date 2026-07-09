@@ -75,6 +75,47 @@ func TestResolveSFU_NoHostRegistered_Empty(t *testing.T) {
 	}
 }
 
+// TestResolveSFU_DefaultsToCanonicalRelay proves the SFU-host resolve DEFAULTS to
+// the canonical relay URL (VULOS_RELAY_BASE_URL) when the meet-specific override
+// MEET_HOST_RELAY_URL is unset — so configuring reachability via the canonical env
+// alone does NOT silently disable SFU-host resolve.
+func TestResolveSFU_DefaultsToCanonicalRelay(t *testing.T) {
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"available":true,"server_url":"https://box1.example","host_id":"vula:box1"}`))
+	}))
+	defer relay.Close()
+
+	t.Setenv("MEET_HOST_RELAY_URL", "") // override unset — must fall back
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_NAME", "box1")
+	if got := resolveSFUServerURL(context.Background()); got != "https://box1.example" {
+		t.Fatalf("with MEET_HOST_RELAY_URL unset, resolve must default to VULOS_RELAY_BASE_URL, got %q", got)
+	}
+}
+
+// TestResolveSFU_HostRelayOverrideWins proves MEET_HOST_RELAY_URL, when set, points
+// SFU-host resolution at a DIFFERENT relay than the canonical reachability relay.
+func TestResolveSFU_HostRelayOverrideWins(t *testing.T) {
+	override := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"available":true,"server_url":"https://override.example"}`))
+	}))
+	defer override.Close()
+	canonical := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("canonical relay must NOT be called when MEET_HOST_RELAY_URL override is set")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer canonical.Close()
+
+	t.Setenv("MEET_HOST_RELAY_URL", override.URL)
+	t.Setenv("VULOS_RELAY_BASE_URL", canonical.URL)
+	t.Setenv("VULOS_RELAY_NAME", "box1")
+	if got := resolveSFUServerURL(context.Background()); got != "https://override.example" {
+		t.Fatalf("MEET_HOST_RELAY_URL override must win over VULOS_RELAY_BASE_URL, got %q", got)
+	}
+}
+
 func TestResolveSFU_RelayError_DegradesToEmpty(t *testing.T) {
 	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
