@@ -17,11 +17,21 @@
 // NOTE (seam P2-4): the base-URL env var is VULOS_RELAY_BASE_URL — the SAME
 // var the rest of the OS reachability layer (Meet host resolve, relay client)
 // reads. It was previously VULOS_RELAY_URL here, which nothing else set, so
-// the fanout always fell back to the default host. The /api/s2s/notify route
-// is a RELAY-SIDE requirement: vulos-relay does not yet serve it, so until it
-// does the fanout POSTs 404 (logged, best-effort, non-fatal — the OS already
-// delivered the notification locally). Adding the relay S2S route completes
-// cross-instance delivery.
+// the fanout always fell back to the default host.
+//
+// Cross-instance delivery contract (completed): the fanout POSTs a
+// relayEnvelope {target_ulid, target, sender, notification} with an
+// `Authorization: Bearer <VULOS_RELAY_TOKEN>` header (the box's own relay
+// token — the SAME credential the tunnel agent uses, so the relay can
+// authenticate the sender). `sender` is this box's own tunnel name
+// (VULOS_RELAY_NAME); `target` is the destination instance's tunnel name
+// (derived from its registry EndpointURL host). The relay authorizes the
+// bearer against `sender`, resolves `target` via its tunnel registry, verifies
+// the target belongs to the SAME account (cross-tenant fail-closed), and
+// forwards the BARE Notification to the target box's /api/notify/receive over
+// the existing tunnel. When the box has no tunnel identity (VULOS_RELAY_NAME /
+// VULOS_RELAY_TOKEN unset) or the target has no derivable tunnel name, the send
+// is skipped — best-effort, non-fatal (the OS already delivered locally).
 //
 // All relay calls degrade gracefully: if the relay is unreachable the fanout
 // logs a warning and continues — the notification is NOT retried (the OS
@@ -43,7 +53,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -287,15 +299,88 @@ func (nf *NotifyFanout) fanOutNow(ctx context.Context, notifications []Notificat
 	return lastErr
 }
 
+// relayEnvelope is the wrapper POSTed to the relay's /api/s2s/notify route. It
+// carries the routing metadata the relay needs to authenticate the sender and
+// forward the BARE Notification to the target box over its existing tunnel.
+//
+// The relay uses Sender + the Authorization bearer to authenticate (the token
+// must be authorized for the Sender name — the box's own tunnel), and Target to
+// look up the destination tunnel session (registry.lookup). It then forwards
+// ONLY the embedded Notification (a bare object) to the target's
+// /api/notify/receive — which is why RegisterNotifyHandlers decodes a bare
+// Notification, not this wrapper. TargetULID is informational (logging/dedup
+// correlation); Target is the routable identifier.
+type relayEnvelope struct {
+	// TargetULID is the target instance's registry ULID (informational).
+	TargetULID string `json:"target_ulid"`
+	// Target is the target instance's relay tunnel NAME — the routable identifier
+	// the relay resolves via registry.lookup to reach the box over its tunnel.
+	Target string `json:"target"`
+	// Sender is THIS box's own relay tunnel name; the relay authorizes the bearer
+	// token against it (the same grant that authorizes this box's tunnel).
+	Sender string `json:"sender"`
+	// Notification is the bare payload the relay forwards verbatim to the target's
+	// /api/notify/receive.
+	Notification Notification `json:"notification"`
+}
+
+// tunnelNameForInstance derives the target instance's relay tunnel NAME from its
+// registry EndpointURL. The relay routes by the leftmost DNS label of the tunnel
+// host (<name>.<relay-domain>), so the tunnel name is that leftmost label of the
+// instance's public endpoint host. Returns "" when no routable name can be
+// derived (empty/relative endpoint, or a bare host with no subdomain label) — in
+// which case the relay send is skipped (the relay could not route it anyway).
+func tunnelNameForInstance(inst Instance) string {
+	raw := strings.TrimSpace(inst.EndpointURL)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "" {
+		return ""
+	}
+	// The tunnel name is the leftmost subdomain label. A host with no dot (a bare
+	// hostname) or a leading empty label is not a routable tunnel target.
+	label, _, ok := strings.Cut(host, ".")
+	if !ok || label == "" {
+		return ""
+	}
+	return strings.ToLower(label)
+}
+
 // sendToRelay POSTs a single notification to the vulos-relay S2S endpoint for
 // the target instance.  Failures are logged but do not panic.
+//
+// The relay both authenticates the sender (via the box's own VULOS_RELAY_TOKEN
+// bearer, authorized against the box's own VULOS_RELAY_NAME) and routes to the
+// target box over its existing tunnel (via the derived target tunnel name). When
+// either the sender's own tunnel identity or the target's routable name is
+// missing, the relay could neither authenticate nor route the send, so it is
+// skipped (best-effort, non-fatal — local delivery already happened).
 func (nf *NotifyFanout) sendToRelay(ctx context.Context, target Instance, n Notification) error {
-	type relayEnvelope struct {
-		TargetULID   string       `json:"target_ulid"`
-		Notification Notification `json:"notification"`
+	targetName := tunnelNameForInstance(target)
+	if targetName == "" {
+		// No routable tunnel name for this target — the relay cannot forward it.
+		// Best-effort: skip silently (local delivery already occurred).
+		return nil
 	}
+
+	// The box's own relay identity: the SAME name + token the tunnel agent uses.
+	// Without them the relay cannot authenticate this sender, so skip.
+	senderName := strings.TrimSpace(os.Getenv("VULOS_RELAY_NAME"))
+	relayToken := strings.TrimSpace(os.Getenv("VULOS_RELAY_TOKEN"))
+	if senderName == "" || relayToken == "" {
+		return nil
+	}
+
 	env := relayEnvelope{
 		TargetULID:   target.ULID,
+		Target:       targetName,
+		Sender:       senderName,
 		Notification: n,
 	}
 	body, err := json.Marshal(env)
@@ -303,22 +388,23 @@ func (nf *NotifyFanout) sendToRelay(ctx context.Context, target Instance, n Noti
 		return fmt.Errorf("marshal envelope: %w", err)
 	}
 
-	url := relayBaseURL() + "/api/s2s/notify"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	endpoint := relayBaseURL() + "/api/s2s/notify"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+relayToken)
 
 	resp, err := nf.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("POST %s: %w", url, err)
+		return fmt.Errorf("POST %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s: status %d", url, resp.StatusCode)
+		return fmt.Errorf("POST %s: status %d", endpoint, resp.StatusCode)
 	}
 	return nil
 }

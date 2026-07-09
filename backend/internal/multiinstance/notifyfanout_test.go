@@ -52,6 +52,10 @@ func TestNotify_P0FanOutImmediately(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	// Instance needs a non-empty endpoint to be included in fan-out.
 	// Re-upsert with endpoint set.
@@ -82,6 +86,149 @@ func TestNotify_P0FanOutImmediately(t *testing.T) {
 	}
 }
 
+// TestNotify_RelayEnvelopeCarriesAuthAndRouting asserts the cross-instance send
+// authenticates the sender (Authorization: Bearer <VULOS_RELAY_TOKEN>) and
+// carries the routing fields the relay needs: `target` (the destination
+// instance's tunnel name, derived from its EndpointURL host's leftmost label)
+// and `sender` (this box's own VULOS_RELAY_NAME), plus the bare notification.
+func TestNotify_RelayEnvelopeCarriesAuthAndRouting(t *testing.T) {
+	reg := openTempRegistry(t)
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID:        "01HWZNOTIF0000000000000099",
+		Kind:        multiinstance.KindCloud,
+		Status:      multiinstance.StatusOnline,
+		EndpointURL: "https://peerbox.relay.vulos.org",
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	type gotEnv struct {
+		auth    string
+		target  string
+		sender  string
+		notifID string
+	}
+	ch := make(chan gotEnv, 1)
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var env struct {
+			Target       string                     `json:"target"`
+			Sender       string                     `json:"sender"`
+			Notification multiinstance.Notification `json:"notification"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &env)
+		select {
+		case ch <- gotEnv{auth: r.Header.Get("Authorization"), target: env.Target, sender: env.Sender, notifID: env.Notification.ID}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer relay.Close()
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_NAME", "myself")
+	t.Setenv("VULOS_RELAY_TOKEN", "sekret-token")
+
+	nf := multiinstance.NewNotifyFanout(reg)
+	if err := nf.Notify(context.Background(), multiinstance.Notification{ID: "envelope-001", Priority: 0}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+
+	select {
+	case g := <-ch:
+		if g.auth != "Bearer sekret-token" {
+			t.Errorf("Authorization: got %q want %q", g.auth, "Bearer sekret-token")
+		}
+		if g.target != "peerbox" {
+			t.Errorf("target: got %q want %q (leftmost label of EndpointURL host)", g.target, "peerbox")
+		}
+		if g.sender != "myself" {
+			t.Errorf("sender: got %q want %q (VULOS_RELAY_NAME)", g.sender, "myself")
+		}
+		if g.notifID != "envelope-001" {
+			t.Errorf("notification.id: got %q want %q", g.notifID, "envelope-001")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("relay never received the cross-instance POST")
+	}
+}
+
+// TestNotify_SkippedWithoutSenderIdentity asserts the send is skipped (not an
+// error, best-effort) when the box has no relay tunnel identity — the relay
+// could neither authenticate nor route it. Local delivery is unaffected.
+func TestNotify_SkippedWithoutSenderIdentity(t *testing.T) {
+	reg := openTempRegistry(t)
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID:        "01HWZNOTIF0000000000000098",
+		Kind:        multiinstance.KindCloud,
+		Status:      multiinstance.StatusOnline,
+		EndpointURL: "https://peerbox.relay.vulos.org",
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	var mu sync.Mutex
+	var received int
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		received++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer relay.Close()
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// Deliberately leave VULOS_RELAY_NAME / VULOS_RELAY_TOKEN unset.
+	t.Setenv("VULOS_RELAY_NAME", "")
+	t.Setenv("VULOS_RELAY_TOKEN", "")
+
+	nf := multiinstance.NewNotifyFanout(reg)
+	if err := nf.Notify(context.Background(), multiinstance.Notification{ID: "noident-001", Priority: 0}); err != nil {
+		t.Fatalf("Notify should be non-fatal even with no sender identity: %v", err)
+	}
+	mu.Lock()
+	count := received
+	mu.Unlock()
+	if count != 0 {
+		t.Errorf("expected 0 relay POSTs without sender identity, got %d", count)
+	}
+}
+
+// TestNotify_SkippedWhenTargetHasNoTunnelName asserts a target whose endpoint
+// host is a bare hostname (no subdomain label) yields no routable tunnel name,
+// so the relay send is skipped (best-effort, non-fatal).
+func TestNotify_SkippedWhenTargetHasNoTunnelName(t *testing.T) {
+	reg := openTempRegistry(t)
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID:        "01HWZNOTIF0000000000000097",
+		Kind:        multiinstance.KindCloud,
+		Status:      multiinstance.StatusOnline,
+		EndpointURL: "https://localhost:8080", // bare host, no subdomain label
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	var mu sync.Mutex
+	var received int
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		received++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer relay.Close()
+	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	t.Setenv("VULOS_RELAY_NAME", "myself")
+	t.Setenv("VULOS_RELAY_TOKEN", "sekret-token")
+
+	nf := multiinstance.NewNotifyFanout(reg)
+	if err := nf.Notify(context.Background(), multiinstance.Notification{ID: "notunnel-001", Priority: 0}); err != nil {
+		t.Fatalf("Notify: %v", err)
+	}
+	mu.Lock()
+	count := received
+	mu.Unlock()
+	if count != 0 {
+		t.Errorf("expected 0 relay POSTs for a bare-host target, got %d", count)
+	}
+}
+
 func TestNotify_P2BufferedNotImmediatelySent(t *testing.T) {
 	reg := openTempRegistry(t)
 	if err := reg.Upsert(multiinstance.Instance{
@@ -103,6 +250,10 @@ func TestNotify_P2BufferedNotImmediatelySent(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	n := multiinstance.Notification{
@@ -187,6 +338,10 @@ func TestNotify_P0AlreadySeenNotSentAgain(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	n := multiinstance.Notification{
@@ -248,6 +403,10 @@ func TestRunBatcher_FlushesAndDeduplicates(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	nf := multiinstance.NewNotifyFanout(reg)
 
@@ -297,6 +456,10 @@ func TestNotify_OfflineInstanceSkipped(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	if err := nf.Notify(context.Background(), multiinstance.Notification{
@@ -358,6 +521,10 @@ func TestFanOut_ConcurrentNotSerial(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	nf := multiinstance.NewNotifyFanout(reg)
 
@@ -410,6 +577,10 @@ func TestFanOut_ContextCancelStopsScheduling(t *testing.T) {
 	}))
 	defer relay.Close()
 	t.Setenv("VULOS_RELAY_BASE_URL", relay.URL)
+	// The box's own relay identity: sendToRelay requires both to authenticate the
+	// sender to the relay; without them the cross-instance send is skipped.
+	t.Setenv("VULOS_RELAY_NAME", "sender-box")
+	t.Setenv("VULOS_RELAY_TOKEN", "test-relay-token")
 
 	nf := multiinstance.NewNotifyFanout(reg)
 	ctx, cancel := context.WithCancel(context.Background())
