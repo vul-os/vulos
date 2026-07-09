@@ -40,6 +40,126 @@ function putWithProgress(url, file, { headers = {}, credentials = false, onProgr
   })
 }
 
+// ── resumable (tus-style) chunked upload ────────────────────────────────────
+// Large files upload in bounded chunks so each PATCH rides the relay as an
+// ordinary ≤-cap request (see vulos-relay CONSOLIDATION §A-2). The box tracks
+// the committed offset, so a dropped connection resumes via a HEAD + PATCH from
+// the reported offset instead of restarting. Small files keep the single-shot
+// upload-grant path (uploadOne) — this only kicks in above RESUMABLE_THRESHOLD.
+
+// Files at or above this size use the resumable/chunked path; smaller files use
+// the existing single-shot direct/OS-plane upload. 16 MiB comfortably clears the
+// relay's 256 MiB single-request cap for the common case while still chunking
+// anything genuinely large.
+const RESUMABLE_THRESHOLD = 16 * 1024 * 1024
+// Per-PATCH chunk size. Must stay ≤ the box's MaxChunkBytes (64 MiB) and the
+// relay request cap. 8 MiB balances round-trips against resume granularity.
+const RESUMABLE_CHUNK = 8 * 1024 * 1024
+
+// b64 encodes a UTF-8 string as base64 for a tus Upload-Metadata value.
+function b64utf8(s) {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(s)))
+}
+
+// sha256hex returns the lowercase hex SHA-256 of an ArrayBuffer/Uint8Array using
+// SubtleCrypto. Used for per-chunk and whole-file integrity headers.
+async function sha256hex(buf) {
+  const digest = await crypto.subtle.digest('SHA-256', buf)
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// sha256b64 returns the base64 SHA-256 (for the tus Upload-Checksum header form
+// "sha256 <base64>").
+async function sha256b64(buf) {
+  const digest = await crypto.subtle.digest('SHA-256', buf)
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+}
+
+// resumableUpload uploads `file` into `parentId` via the box's tus-style
+// endpoint with resume-after-interruption and per-chunk + whole-file integrity.
+// Returns { node_id }. `onProgress(fraction)` reports 0..1 as chunks commit.
+export async function resumableUpload(parentId, file, onProgress) {
+  // Whole-file digest lets the box verify integrity before promoting into Drive.
+  const fileSha = await sha256hex(await file.arrayBuffer())
+  const meta = [
+    `filename ${b64utf8(file.name)}`,
+    `parent ${b64utf8(parentId || '')}`,
+    `content_type ${b64utf8(file.type || 'application/octet-stream')}`,
+    `sha256 ${b64utf8(fileSha)}`,
+  ].join(',')
+
+  // 1) Create the upload.
+  const createRes = await rawFetch('/files/upload/resumable', {
+    method: 'POST',
+    headers: {
+      'Tus-Resumable': '1.0.0',
+      'Upload-Length': String(file.size),
+      'Upload-Metadata': meta,
+    },
+  })
+  if (!createRes.ok) {
+    if (createRes.status === 413) throw new Error('file too large for upload')
+    throw new Error(`could not start upload (${createRes.status})`)
+  }
+  let id
+  try {
+    id = (await createRes.clone().json()).id
+  } catch {
+    /* fall through to Location */
+  }
+  if (!id) {
+    const loc = createRes.headers.get('Location') || ''
+    id = loc.split('/').pop()
+  }
+  if (!id) throw new Error('upload id missing')
+  const path = `/files/upload/resumable/${encodeURIComponent(id)}`
+
+  // 2) Resume: ask the box how much it already has (0 for a fresh upload; >0 if
+  // we are retrying after an interruption on the same id).
+  let offset = 0
+  const headRes = await rawFetch(path, { method: 'HEAD', headers: { 'Tus-Resumable': '1.0.0' } })
+  if (headRes.ok) {
+    const ho = parseInt(headRes.headers.get('Upload-Offset') || '0', 10)
+    if (!Number.isNaN(ho) && ho >= 0) offset = ho
+  }
+
+  // 3) PATCH bounded chunks from the committed offset until complete.
+  let nodeId = ''
+  while (offset < file.size) {
+    const end = Math.min(offset + RESUMABLE_CHUNK, file.size)
+    const blob = file.slice(offset, end)
+    const buf = await blob.arrayBuffer()
+    const checksum = await sha256b64(buf)
+    const res = await rawFetch(path, {
+      method: 'PATCH',
+      headers: {
+        'Tus-Resumable': '1.0.0',
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': String(offset),
+        'Upload-Checksum': `sha256 ${checksum}`,
+      },
+      body: buf,
+    })
+    if (res.status === 409) {
+      // Offset drifted (a prior chunk actually landed): re-sync from HEAD and
+      // retry rather than fail the whole upload.
+      const h = await rawFetch(path, { method: 'HEAD', headers: { 'Tus-Resumable': '1.0.0' } })
+      const ho = parseInt(h.headers.get('Upload-Offset') || '0', 10)
+      if (!Number.isNaN(ho) && ho > offset) { offset = ho; continue }
+      throw new Error('upload offset conflict')
+    }
+    if (!res.ok) throw new Error(`chunk upload failed (${res.status})`)
+    const newOffset = parseInt(res.headers.get('Upload-Offset') || String(end), 10)
+    offset = Number.isNaN(newOffset) ? end : newOffset
+    if (onProgress) onProgress(Math.min(1, offset / file.size))
+    if (res.headers.get('Upload-Complete') === '1') {
+      nodeId = res.headers.get('Vulos-Node-Id') || ''
+    }
+  }
+  if (onProgress) onProgress(1)
+  return { node_id: nodeId }
+}
+
 // ── theme tokens ───────────────────────────────────────────────────────────
 const T = {
   bg: 'var(--bg-base)',
@@ -170,6 +290,19 @@ async function downloadExternal(mountId, node) {
 // commit. Returns the committed node. `onProgress(fraction)` reports byte-level
 // PUT progress (0..1) when the transport can compute it.
 async function uploadOne(parentId, file, onProgress) {
+  // Large files: chunked/resumable path (each chunk ≤ relay cap; box reassembles
+  // + commits server-side). Small files keep the single-shot grant→PUT→commit.
+  if (file.size >= RESUMABLE_THRESHOLD) {
+    try {
+      const { node_id } = await resumableUpload(parentId, file, onProgress)
+      return { id: node_id }
+    } catch (e) {
+      // Fall back to single-shot when the resumable endpoint is unavailable
+      // (older box: 404/503) so uploads still work; real chunk errors rethrow.
+      const msg = String(e && e.message)
+      if (!/\(404\)|\(503\)/.test(msg)) throw e
+    }
+  }
   const { node, grant } = await filesApi.uploadGrant(parentId, file.name, file.type || 'application/octet-stream')
   if (grant && grant.type === 'presigned' && grant.url) {
     await putWithProgress(grant.url, file, {

@@ -397,6 +397,58 @@ func (s *Service) PutContent(ctx context.Context, userID, nodeID string, r io.Re
 	return etag, nil
 }
 
+// StoreContent is the one-call data-plane entry the resumable-upload manager
+// uses to promote a fully-assembled file into a user's Drive: it locates or
+// creates the target node (parentID,name), streams size bytes from r into the
+// owner's bucket via the OS-mediated data plane, and records a version — the
+// same UploadGrant→PutContent→Commit sequence a single-shot upload runs, minus
+// the client round-trips. It is ACL-gated exactly like UploadGrant: editor+ on
+// the parent (or ownership of the Drive root), enforced BEFORE any bytes move,
+// so a resumable upload can never write into a Drive the caller cannot write.
+// Returns the created/updated node id.
+func (s *Service) StoreContent(ctx context.Context, userID, parentID, name, contentType string, r io.Reader, size int64) (string, error) {
+	if err := validName(name); err != nil {
+		return "", err
+	}
+	ownerID, parentPath, err := s.resolveParent(userID, parentID)
+	if err != nil {
+		return "", err
+	}
+	n, err := s.childByName(ownerID, parentID, name)
+	if errors.Is(err, ErrNotFound) {
+		now := time.Now()
+		path := joinPath(parentPath, name)
+		n = &Node{
+			ID:          ulid.NewULID(),
+			OwnerID:     ownerID,
+			ParentID:    parentID,
+			Name:        name,
+			IsDir:       false,
+			Bucket:      s.bucketFn(ownerID),
+			ObjectKey:   driveKey(ownerID, path),
+			Path:        path,
+			ContentType: contentType,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := s.insertNode(n); err != nil {
+			return "", err
+		}
+	} else if err != nil {
+		return "", err
+	} else if n.IsDir {
+		return "", fmt.Errorf("%w: target is a folder", ErrInvalid)
+	}
+	// PutContent re-checks editor+ on the node itself and streams via the broker.
+	if _, err := s.PutContent(ctx, userID, n.ID, r, size, contentType); err != nil {
+		return "", err
+	}
+	if _, err := s.Commit(userID, n.ID, size, contentType, ""); err != nil {
+		return "", err
+	}
+	return n.ID, nil
+}
+
 // GetContent opens nodeID's bytes for reading via the OS-mediated data plane.
 // Requires viewer+. The caller MUST Close the returned reader. Used by the Files
 // app to download when a direct presigned GET is unavailable (standalone / STS).

@@ -53,6 +53,7 @@ import (
 	"vulos/backend/services/energy"
 	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/files"
+	"vulos/backend/services/upload"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/installer"
@@ -839,6 +840,32 @@ func main() {
 	// Files: OS Files metadata/control-plane API (Drive index, ACL-gated
 	// object-scoped grants, shares, share links, versions). Session-authed.
 	registerFilesRoutes(mux, filesSvc)
+
+	// RESUMABLE upload (tus-style chunked): large files upload in bounded chunks
+	// (each ≤ the relay request cap) so they ride the relay unchanged, with
+	// resume-after-interruption, per-chunk + whole-file integrity, and expiry of
+	// abandoned partials. Reassembles into THIS box's own /data + bucket via the
+	// Files service (owner/ACL-checked). Additive: the single-shot upload path is
+	// untouched; the UI opts large files into this endpoint. nil manager ⇒ 503.
+	var uploadMgr *upload.Manager
+	if filesSvc != nil {
+		umgr, uerr := upload.New(
+			filepath.Join(dbDir, "uploads.db"),
+			&filesUploadSink{svc: filesSvc},
+			upload.Config{StateDir: dataDir},
+		)
+		if uerr != nil {
+			log.Printf("[files] resumable upload init warning: %v — resumable upload disabled (503)", uerr)
+		} else {
+			uploadMgr = umgr
+			defer uploadMgr.Close()
+			// Sweep abandoned partials hourly; bound to the server context so it
+			// stops on shutdown.
+			go uploadMgr.SweepLoop(ctx, time.Hour)
+			log.Printf("[files] resumable upload ready (db=%s, staging=%s)", filepath.Join(dbDir, "uploads.db"), filepath.Join(dataDir, "uploads"))
+		}
+	}
+	registerFilesResumableRoutes(mux, uploadMgr)
 
 	// FILES-2B: OS peer-share (Mechanism B). Session-authed issue/redeem/save
 	// endpoints + the PUBLIC box-to-box serve endpoint (authenticated by the
