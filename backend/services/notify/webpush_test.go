@@ -122,6 +122,48 @@ func TestValidateSubscription(t *testing.T) {
 	}
 }
 
+// TestValidateSubscription_SSRF proves a subscription endpoint can never point
+// the box's OUTBOUND push POST at a loopback/private/link-local/metadata target.
+// The box POSTs the encrypted payload to this endpoint, so an unscreened
+// endpoint is a genuine SSRF sink. Public vendor endpoints must still pass.
+func TestValidateSubscription_SSRF(t *testing.T) {
+	blocked := []string{
+		"https://127.0.0.1/push",             // loopback
+		"https://localhost/push",             // loopback name
+		"https://[::1]/push",                 // IPv6 loopback
+		"https://169.254.169.254/latest/api", // cloud metadata (link-local)
+		"https://10.0.0.5/push",              // RFC1918
+		"https://192.168.1.1/push",           // RFC1918
+		"https://172.16.0.1/push",            // RFC1918
+		"https://2130706433/push",            // decimal-encoded 127.0.0.1
+		"https://0x7f000001/push",            // hex-encoded 127.0.0.1
+		"https://box.internal/push",          // internal hostname
+		"https://svc.local/push",             // mDNS/.local
+		"https://[::ffff:127.0.0.1]/push",    // IPv4-mapped loopback
+	}
+	for _, ep := range blocked {
+		sub := PushSubscription{Endpoint: ep, P256DH: "p", Auth: "a"}
+		if err := ValidateSubscription(sub); err == nil {
+			t.Fatalf("SSRF endpoint accepted: %s", ep)
+		}
+	}
+	// A real vendor endpoint (public host) must still validate.
+	ok := PushSubscription{Endpoint: "https://fcm.googleapis.com/fcm/send/abc", P256DH: "p", Auth: "a"}
+	if err := ValidateSubscription(ok); err != nil {
+		t.Fatalf("public vendor endpoint rejected: %v", err)
+	}
+}
+
+// TestLivePushSender_RefusesInternalEndpoint proves the SEND path itself refuses
+// an internal endpoint even if a row somehow bypassed ValidateSubscription (e.g.
+// a legacy subscription persisted before the screen existed) — defense-in-depth.
+func TestLivePushSender_RefusesInternalEndpoint(t *testing.T) {
+	sub := PushSubscription{Endpoint: "https://127.0.0.1/push", P256DH: "p", Auth: "a"}
+	if _, err := (livePushSender{}).send(sub, []byte("{}"), enabledCfg()); err == nil {
+		t.Fatal("live sender POSTed to a loopback endpoint (SSRF)")
+	}
+}
+
 // ---- send pump: fake sender, prune-on-gone, owner-targeting, DND -------------
 
 type fakeSender struct {

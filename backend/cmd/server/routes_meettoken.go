@@ -28,6 +28,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -184,9 +185,19 @@ func resolveSFUServerURL(ctx context.Context) string {
 	if base == "" {
 		return ""
 	}
+	// Scope the lookup to THIS box's own tunnel name. The relay is shared across
+	// many accounts, so an unscoped resolve would hand back whatever host is first
+	// in the registry — possibly ANOTHER tenant's SFU endpoint, routing this box's
+	// meeting media to a stranger's server. With no name we cannot scope safely, so
+	// we degrade to "" (client keeps its co-located SFU) rather than risk a
+	// cross-tenant endpoint.
+	name := strings.TrimSpace(os.Getenv("VULOS_RELAY_NAME"))
+	if name == "" {
+		return ""
+	}
 	rctx, cancel := context.WithTimeout(ctx, sfuResolveTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(rctx, http.MethodGet, base+"/api/meet/host/resolve", nil)
+	req, err := http.NewRequestWithContext(rctx, http.MethodGet, base+"/api/meet/host/resolve?name="+url.QueryEscape(name), nil)
 	if err != nil {
 		return ""
 	}

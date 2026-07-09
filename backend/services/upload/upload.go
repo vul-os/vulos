@@ -75,6 +75,10 @@ var (
 	ErrAlreadyComplete = errors.New("upload: already complete")
 	// ErrSinkUnavailable: no Files sink wired (upload cannot be promoted).
 	ErrSinkUnavailable = errors.New("upload: files sink unavailable")
+	// ErrTooManyUploads: the owner already holds MaxIncompletePerOwner in-flight
+	// uploads; they must finish or cancel one before creating another (disk-fill
+	// DoS guard on a multi-user box).
+	ErrTooManyUploads = errors.New("upload: too many concurrent uploads")
 )
 
 // Sink is the seam to the Files service. On completion the manager creates the
@@ -118,6 +122,12 @@ const (
 	DefaultMaxChunk = 64 << 20
 	// DefaultTTL — abandoned-partial expiry.
 	DefaultTTL = 24 * time.Hour
+	// MaxIncompletePerOwner caps how many in-flight (incomplete) resumable uploads
+	// one owner may hold at once. It bounds staging-disk reservation per user so a
+	// single account on a multi-user box cannot open unbounded uploads and fill
+	// /data before the sweeper reaps them. Completing or cancelling an upload frees
+	// a slot immediately.
+	MaxIncompletePerOwner = 32
 )
 
 // Manager owns the resumable-upload lifecycle: create, HEAD, PATCH, finalize,
@@ -212,6 +222,14 @@ func (m *Manager) Create(userID string, p CreateParams) (*Upload, error) {
 	}
 	if p.SHA256 != "" && !validHexSHA(p.SHA256) {
 		return nil, fmt.Errorf("%w: bad sha256", ErrInvalid)
+	}
+	// Cap concurrent in-flight uploads per owner so one user cannot pin unbounded
+	// staging files (disk-fill DoS on a multi-user box). Completing/cancelling frees
+	// a slot; abandoned partials also age out via the sweeper.
+	if n, err := m.store.countIncompleteByOwner(userID); err != nil {
+		return nil, err
+	} else if n >= MaxIncompletePerOwner {
+		return nil, fmt.Errorf("%w: %d in flight (max %d)", ErrTooManyUploads, n, MaxIncompletePerOwner)
 	}
 	now := m.cfg.now()
 	u := &Upload{

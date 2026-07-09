@@ -272,6 +272,9 @@ func writeUploadErr(w http.ResponseWriter, err error) {
 		writeErr(w, 413, err.Error())
 	case errors.Is(err, upload.ErrAlreadyComplete):
 		writeErr(w, 409, "upload already complete")
+	case errors.Is(err, upload.ErrTooManyUploads):
+		// 429: the owner has too many in-flight uploads; finish/cancel one first.
+		writeErr(w, 429, "too many concurrent uploads")
 	case errors.Is(err, upload.ErrSinkUnavailable):
 		writeErr(w, 503, "files service unavailable")
 	case errors.Is(err, upload.ErrInvalid):

@@ -23,6 +23,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -31,6 +34,8 @@ import (
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 	_ "modernc.org/sqlite" // SQLite driver for the push subscription store
+
+	"vulos/backend/internal/safedial"
 )
 
 // ---- configuration -----------------------------------------------------------
@@ -160,10 +165,48 @@ func ValidateSubscription(sub PushSubscription) error {
 	if !strings.HasPrefix(sub.Endpoint, "https://") {
 		return fmt.Errorf("subscription endpoint must be https")
 	}
+	// SSRF guard (parse-time half): the box POSTs the encrypted push payload to
+	// this endpoint OUTBOUND, so a malicious owner could otherwise register an
+	// endpoint pointing at a loopback/private/link-local/metadata host and make
+	// the box probe internal services. Screen the endpoint host FORM here; the
+	// send path re-screens the RESOLVED IP at connect time (defeats DNS-rebind).
+	if err := screenPushEndpoint(sub.Endpoint); err != nil {
+		return err
+	}
 	// p256dh is a 65-byte uncompressed EC point (base64url ~88 chars); auth is a
 	// 16-byte salt (~24 chars). Bound generously.
 	if len(sub.P256DH) > 256 || len(sub.Auth) > 128 {
 		return fmt.Errorf("subscription key material too long")
+	}
+	return nil
+}
+
+// screenPushEndpoint rejects an endpoint whose host is (or literally is) a
+// non-public address, so a subscription can never point the box's outbound push
+// POST at an internal/metadata target. A bare hostname is allowed here (it is
+// re-screened against its RESOLVED IP at send time by the guarded dialer);
+// an IP LITERAL — including obfuscated decimal/hex/octal forms — must be public.
+func screenPushEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("subscription endpoint invalid")
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("subscription endpoint has no host")
+	}
+	// Block obvious internal hostnames outright (the resolved-IP re-screen at send
+	// time is the real defense for names that resolve to private space).
+	lower := strings.ToLower(strings.TrimSuffix(host, "."))
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") ||
+		strings.HasSuffix(lower, ".internal") || strings.HasSuffix(lower, ".local") {
+		return fmt.Errorf("subscription endpoint host not permitted")
+	}
+	// If the host is an IP literal (incl. obfuscated forms), it must be public.
+	if ip := safedial.NormalizeIPLiteral(host); ip != nil {
+		if safedial.IsDeniedIP(ip, false /*no LAN — push vendors are public*/) {
+			return fmt.Errorf("subscription endpoint host not permitted")
+		}
 	}
 	return nil
 }
@@ -380,15 +423,42 @@ type pushSender interface {
 
 type livePushSender struct{}
 
+// pushHTTPClient is the SSRF-guarded HTTP client the box uses to POST encrypted
+// push payloads to vendor endpoints. Its dialer re-screens the RESOLVED IP right
+// before connect(2) (safedial Control hook), so a subscription whose host
+// resolves — now or via a rebind — to a loopback/private/link-local/metadata
+// address is refused at the socket, not just at validation. Redirects are NOT
+// followed: a 30x from a vendor could otherwise bounce the POST to an internal
+// target after the parse-time screen. allowLAN=false: push vendors are public.
+var pushHTTPClient = &http.Client{
+	Timeout: pushPumpTimeout,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return fmt.Errorf("push: redirect not allowed")
+	},
+	Transport: &http.Transport{
+		DialContext:         (&net.Dialer{Control: safedial.ControlFunc(false), Timeout: 10 * time.Second}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+		DisableKeepAlives:   true,
+		MaxIdleConns:        1,
+	},
+}
+
 func (livePushSender) send(sub PushSubscription, payload []byte, cfg PushConfig) (int, error) {
 	ttl := cfg.TTL
 	if ttl <= 0 {
 		ttl = 300
 	}
+	// Defense-in-depth: re-screen the endpoint host FORM here too, so a sender is
+	// never handed a subscription that skipped ValidateSubscription (e.g. a legacy
+	// row persisted before this guard existed).
+	if err := screenPushEndpoint(sub.Endpoint); err != nil {
+		return 0, err
+	}
 	resp, err := webpush.SendNotification(payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     webpush.Keys{P256dh: sub.P256DH, Auth: sub.Auth},
 	}, &webpush.Options{
+		HTTPClient:      pushHTTPClient,
 		Subscriber:      cfg.VAPIDSubject,
 		VAPIDPublicKey:  cfg.VAPIDPublic,
 		VAPIDPrivateKey: cfg.VAPIDPrivate,

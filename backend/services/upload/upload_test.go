@@ -362,3 +362,34 @@ func TestConcurrentPatchesSerialized(t *testing.T) {
 		t.Fatalf("racing PATCHes: ok=%d conflict=%d (want 1/1)", okCount, conflictCount)
 	}
 }
+
+// TestCreate_PerOwnerCap proves one owner cannot pin unbounded in-flight uploads
+// (disk-fill DoS guard): past MaxIncompletePerOwner, Create returns
+// ErrTooManyUploads, but completing or cancelling an upload frees a slot, and a
+// DIFFERENT owner is unaffected (the cap is per-owner).
+func TestCreate_PerOwnerCap(t *testing.T) {
+	m := newMgr(t, newMemSink(), Config{})
+	var ids []string
+	for i := 0; i < MaxIncompletePerOwner; i++ {
+		u, err := m.Create("alice", CreateParams{Length: 10, Name: fmt.Sprintf("f%d", i)})
+		if err != nil {
+			t.Fatalf("create %d: %v", i, err)
+		}
+		ids = append(ids, u.ID)
+	}
+	// One past the cap → rejected.
+	if _, err := m.Create("alice", CreateParams{Length: 10, Name: "over"}); !errors.Is(err, ErrTooManyUploads) {
+		t.Fatalf("over-cap create err = %v, want ErrTooManyUploads", err)
+	}
+	// A DIFFERENT owner is unaffected (per-owner cap).
+	if _, err := m.Create("bob", CreateParams{Length: 10, Name: "bobfile"}); err != nil {
+		t.Fatalf("other owner blocked by alice's cap: %v", err)
+	}
+	// Cancelling one of alice's frees a slot.
+	if err := m.Delete("alice", ids[0]); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := m.Create("alice", CreateParams{Length: 10, Name: "after-cancel"}); err != nil {
+		t.Fatalf("create after freeing a slot failed: %v", err)
+	}
+}

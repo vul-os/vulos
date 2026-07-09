@@ -114,6 +114,18 @@ func (s *uStore) delete(id string) error {
 	return err
 }
 
+// countIncompleteByOwner returns how many INCOMPLETE (in-flight) uploads an owner
+// currently holds. Used to cap concurrent reservations so one user on a
+// multi-user box cannot pin unbounded staging files and fill /data before the
+// TTL sweep reaps them (disk-fill DoS defense).
+func (s *uStore) countIncompleteByOwner(ownerID string) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM resumable_uploads WHERE owner_id=? AND complete=0`,
+		ownerID).Scan(&n)
+	return n, err
+}
+
 // staleIDs returns the ids of uploads whose updated_at predates cutoff. Both
 // incomplete (abandoned partials) and complete (bookkeeping) rows qualify.
 func (s *uStore) staleIDs(cutoff time.Time) ([]string, error) {
