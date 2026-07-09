@@ -19,10 +19,12 @@ package main
 // The VAPID PRIVATE key is never returned by any route and never logged.
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"vulos/backend/services/notify"
 )
@@ -69,6 +71,15 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 		log.Printf("[notify] push: cell-side Web Push ENABLED (store %s)", storePath)
 	} else {
 		log.Printf("[notify] push: subscription store ready; Web Push DISABLED (no VAPID keys)")
+	}
+
+	// Managed-mode CP registration client (PUSH send-on-behalf for sleeping
+	// cells). NewCPRegistrar returns nil in self-host mode (CP URL/secret/ULID
+	// not all configured), in which case every call below is an inert no-op and
+	// the cell sends push DIRECTLY as today — self-host behaviour is unchanged.
+	cpReg := notify.NewCPRegistrar(notify.LoadCPRegistrarConfig())
+	if cpReg.Enabled() {
+		log.Printf("[notify] push: CP send-on-behalf ENABLED (registering subscriptions for sleeping-cell delivery)")
 	}
 
 	// GET vapid-public — the PUBLIC key the browser passes to
@@ -123,6 +134,20 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 			writeErr(w, http.StatusInternalServerError, "could not store subscription")
 			return
 		}
+		// Managed mode: SYNC this subscription to the CP so it can send push
+		// on-behalf while the cell sleeps. Best-effort + detached (a slow/absent CP
+		// must never block or fail the user's own subscribe — the direct send-path
+		// works regardless). Inert no-op on a nil (self-host) registrar.
+		if cpReg.Enabled() {
+			go func(sub notify.PushSubscription) {
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				if err := cpReg.Register(ctx, sub, cfg); err != nil {
+					// Never logs endpoint/key material — cpReg.Register keeps secrets out.
+					log.Printf("[notify] push: CP register sync failed: %v", err)
+				}
+			}(sub)
+		}
 		writeJSON(w, map[string]string{"status": "subscribed"})
 	})
 
@@ -145,6 +170,18 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 			log.Printf("[notify] push: delete subscription failed: %v", err)
 			writeErr(w, http.StatusInternalServerError, "could not remove subscription")
 			return
+		}
+		// Managed mode: UNREGISTER this endpoint from the CP so it stops sending
+		// on-behalf for a removed subscription. Best-effort + detached; inert no-op
+		// on a nil (self-host) registrar. Idempotent on the CP.
+		if cpReg.Enabled() {
+			go func(endpoint string) {
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				if err := cpReg.Unregister(ctx, endpoint); err != nil {
+					log.Printf("[notify] push: CP unregister sync failed: %v", err)
+				}
+			}(body.Endpoint)
 		}
 		writeJSON(w, map[string]string{"status": "unsubscribed"})
 	})
