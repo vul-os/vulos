@@ -256,21 +256,26 @@ gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 
 The image is forkable: supply your own trust-anchor key and bucket URL for a fully independent build. See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md).
 
-### Entry points: desktop shell vs. Workspace
+### The OS is the shell; Workspace is a hosted app
 
-A self-hosted box exposes two clients for the **same** apps and data:
+The Vulos **OS is the shell** — the launcher, window manager, dock, assistant,
+notification center, global ⌘K, and system apps all live here (`src/`). Opening
+`http://YOUR_BOX:8080/` serves this React window-manager desktop. It is the one
+shell for the box, whether you're local or remote.
 
-- **Desktop shell (primary, local)** — `http://YOUR_BOX:8080/` serves the React
-  window-manager shell. This is the full local experience.
-- **Vulos Workspace (browser / remote front door)** — `http://YOUR_BOX:8080/workspace`
-  redirects to the gateway-served Workspace app (`/app/vulos-workspace/`). It is
-  the lightweight browser/remote client of the box: a remote browser hitting the
-  box lands on the Workspace front door to that box's apps.
+**Vulos Workspace is one of the apps the OS hosts**, not a second shell. It is an
+opinionated productivity **hub** — a cockpit that consolidates the collaboration
+apps (Mail / Calendar / Office / Talk / Meet, plus Files / Board / Search) into a
+single integrated view. It ships as its own AGPL package (`vulos-workspace`),
+registered in the OS App Registry and loaded under the gateway like any other app
+at `/app/vulos-workspace/`; `http://YOUR_BOX:8080/workspace` opens it. It does
+**not** paint its own shell chrome (rail, app switcher, login) — the OS provides
+those — so there is no second login and no competing launcher.
 
 Workspace is served through the auth-enforcing gateway, which injects the box's
 identity headers and rewrites the app's `<base href>` so its assets resolve under
 `/app/vulos-workspace/`. Workspace's absolute `/api/*` calls bypass that base tag
-and resolve to the box's control-plane (this server), so the browser client always
+and resolve to the box's control-plane (this server), so the hosted app always
 talks to the box it was opened from.
 
 ---
