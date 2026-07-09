@@ -289,33 +289,38 @@ body.light-theme #collab-bar{background:#eff6ff;border-color:#bfdbfe}
 
 <!-- ── Scripts ─────────────────────────────────────────────────────────── -->
 <!--
-  All libraries loaded from CDN (esm.sh / unpkg) as ES modules.
-  CodeMirror 6, Yjs, y-codemirror.next, y-websocket provider.
+  SOVEREIGNTY: CodeMirror 6, Yjs, y-codemirror.next and y-websocket are vendored
+  locally (self-hosted, same-origin ./vendor/*.js bundles produced by esbuild
+  with code-splitting, so @codemirror/state & @codemirror/view stay singletons)
+  instead of being fetched from the esm.sh CDN at runtime. A self-host /
+  air-gapped Vulos OS must never depend on a third-party CDN to open an app, and
+  must not leak the user's activity to esm.sh. Same library versions; only the
+  delivery changes. Regenerate with scripts/vendor-apps.mjs.
 -->
 <script type="importmap">
 {
   "imports": {
-    "@codemirror/state":       "https://esm.sh/@codemirror/state@6.4.1",
-    "@codemirror/view":        "https://esm.sh/@codemirror/view@6.34.3",
-    "@codemirror/commands":    "https://esm.sh/@codemirror/commands@6.7.1",
-    "@codemirror/language":    "https://esm.sh/@codemirror/language@6.10.3",
-    "@codemirror/search":      "https://esm.sh/@codemirror/search@6.5.8",
-    "@codemirror/autocomplete": "https://esm.sh/@codemirror/autocomplete@6.18.4",
-    "@codemirror/lint":        "https://esm.sh/@codemirror/lint@6.8.4",
-    "@codemirror/theme-one-dark": "https://esm.sh/@codemirror/theme-one-dark@6.1.2",
-    "@codemirror/lang-javascript": "https://esm.sh/@codemirror/lang-javascript@6.2.2",
-    "@codemirror/lang-python":    "https://esm.sh/@codemirror/lang-python@6.1.6",
-    "@codemirror/lang-html":      "https://esm.sh/@codemirror/lang-html@6.4.9",
-    "@codemirror/lang-css":       "https://esm.sh/@codemirror/lang-css@6.3.1",
-    "@codemirror/lang-json":      "https://esm.sh/@codemirror/lang-json@6.0.1",
-    "@codemirror/lang-markdown":  "https://esm.sh/@codemirror/lang-markdown@6.3.1",
-    "@codemirror/lang-sql":       "https://esm.sh/@codemirror/lang-sql@6.8.0",
-    "@codemirror/lang-xml":       "https://esm.sh/@codemirror/lang-xml@6.1.0",
-    "@lezer/highlight":           "https://esm.sh/@lezer/highlight@1.2.1",
-    "yjs":                        "https://esm.sh/yjs@13.6.18",
-    "y-websocket":                "https://esm.sh/y-websocket@1.5.4",
-    "y-codemirror.next":          "https://esm.sh/y-codemirror.next@0.3.5",
-    "lib0":                       "https://esm.sh/lib0@0.2.99"
+    "@codemirror/state":       "./vendor/state.js",
+    "@codemirror/view":        "./vendor/view.js",
+    "@codemirror/commands":    "./vendor/commands.js",
+    "@codemirror/language":    "./vendor/language.js",
+    "@codemirror/search":      "./vendor/search.js",
+    "@codemirror/autocomplete": "./vendor/autocomplete.js",
+    "@codemirror/lint":        "./vendor/lint.js",
+    "@codemirror/theme-one-dark": "./vendor/theme-one-dark.js",
+    "@codemirror/lang-javascript": "./vendor/lang-javascript.js",
+    "@codemirror/lang-python":    "./vendor/lang-python.js",
+    "@codemirror/lang-html":      "./vendor/lang-html.js",
+    "@codemirror/lang-css":       "./vendor/lang-css.js",
+    "@codemirror/lang-json":      "./vendor/lang-json.js",
+    "@codemirror/lang-markdown":  "./vendor/lang-markdown.js",
+    "@codemirror/lang-sql":       "./vendor/lang-sql.js",
+    "@codemirror/lang-xml":       "./vendor/lang-xml.js",
+    "@lezer/highlight":           "./vendor/lezer-highlight.js",
+    "yjs":                        "./vendor/yjs.js",
+    "y-websocket":                "./vendor/y-websocket.js",
+    "y-codemirror.next":          "./vendor/y-codemirror.next.js",
+    "lib0":                       "./vendor/lib0.js"
   }
 }
 </script>

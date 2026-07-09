@@ -261,7 +261,12 @@ body{display:flex;flex-direction:column}
 
 <!-- ── Scripts ─────────────────────────────────────────────────────────── -->
 <!--
-  Yjs loaded from CDN (esm.sh) as ES modules.
+  SOVEREIGNTY: Yjs + y-websocket are vendored locally (self-hosted, same-origin
+  ./vendor/*.js bundles produced by esbuild) instead of being fetched from the
+  esm.sh CDN at runtime. A self-host / air-gapped Vulos OS must never depend on
+  a third-party CDN to open an app, and must not leak the user's activity to
+  esm.sh. Same library versions (yjs@13.6.18, y-websocket@1.5.4); only the
+  delivery changes. Regenerate with scripts/vendor-apps.mjs.
   Cell data is stored in a Y.Map keyed by "R<row>C<col>".
   The y-websocket provider syncs to /api/peering/collab/<docId>/sync.
   Awareness carries cursor cell positions for remote cursor highlighting.
@@ -269,8 +274,8 @@ body{display:flex;flex-direction:column}
 <script type="importmap">
 {
   "imports": {
-    "yjs":         "https://esm.sh/yjs@13.6.18",
-    "y-websocket": "https://esm.sh/y-websocket@1.5.4"
+    "yjs":         "./vendor/yjs.js",
+    "y-websocket": "./vendor/y-websocket.js"
   }
 }
 </script>
