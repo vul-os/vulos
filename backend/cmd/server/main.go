@@ -29,6 +29,7 @@ import (
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
 	"vulos/backend/internal/llmuxclient"
+	"vulos/backend/internal/meethost"
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
@@ -53,7 +54,6 @@ import (
 	"vulos/backend/services/energy"
 	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/files"
-	"vulos/backend/services/upload"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/installer"
@@ -77,6 +77,7 @@ import (
 	"vulos/backend/services/sync"
 	"vulos/backend/services/sysuser"
 	"vulos/backend/services/telemetry"
+	"vulos/backend/services/upload"
 	"vulos/backend/services/vault"
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
@@ -3506,6 +3507,9 @@ func main() {
 	// gpuHostSvc holds the opt-in STREAM-BYO-01 GPU streaming-host service
 	// (FIX-GPUHOST-WIRE-01). Declared here so shutdown can stop it.
 	var gpuHostSvc *gpuhost.Service
+	// meetHostSvc holds the opt-in SFU-host service (Vulos Meet SFU Phase 2,
+	// SFU-HOST-WIRE-01). Declared here so shutdown can stop it.
+	var meetHostSvc *meethost.Service
 	// directSvc holds the opt-in DIRECT-IP public TLS listener (high-performance
 	// mode). Declared here so shutdown can stop it.
 	var directSvc *directlisten.Service
@@ -3524,6 +3528,9 @@ func main() {
 		}
 		if gpuHostSvc != nil {
 			gpuHostSvc.Stop(context.Background())
+		}
+		if meetHostSvc != nil {
+			meetHostSvc.Stop(context.Background())
 		}
 		if directSvc != nil {
 			directSvc.Stop(context.Background())
@@ -3835,6 +3842,54 @@ func main() {
 		}
 	}
 	// GPUHOST_WIRE END
+
+	// SFU_HOST_WIRE BEGIN — SFU-HOST-WIRE-01 (Vulos Meet SFU Phase 2, BYO/self-host)
+	//
+	// On a box opted-in via VULOS_SFU_HOST, register the box's SFU as an available
+	// SFU host with the relay's /api/meet/host/* registry so BIG calls (past the
+	// mesh cap) can escalate to media on the operator's OWN infra. meethost is a
+	// near-copy of gpuhost: it advertises {endpoint, caps} + heartbeats, and the
+	// relay verifies the endpoint (reachable + ownership-proven) with the SAME
+	// SSRF-guarded directprobe verifier before surfacing it.
+	//
+	// The advertised Endpoint is the box's public SFU serverUrl (VULOS_SFU_ENDPOINT
+	// — the same public TLS listener that answers the relay's direct-probe path).
+	// When VULOS_SFU_WORKER_BINARY is set, meethost supervises that external SFU
+	// worker (a co-located vulos-meet LiveKit server); otherwise the SFU is the
+	// in-process Pion SFU (registered above) and meethost only registers + beats.
+	//
+	// E2EE: none — a self-host/BYO SFU is the operator's own media node (SFU.md §4,
+	// LOCKED). No-op when VULOS_SFU_HOST is unset.
+	if meethost.Enabled() {
+		relayBase := os.Getenv("VULOS_RELAY_BASE_URL")
+		endpoint := os.Getenv("VULOS_SFU_ENDPOINT")
+		name := os.Getenv("VULOS_RELAY_NAME")
+		if endpoint == "" || relayBase == "" || name == "" {
+			log.Printf("[meethost] disabled: set VULOS_RELAY_BASE_URL, VULOS_RELAY_NAME and VULOS_SFU_ENDPOINT to advertise a self-host SFU")
+		} else {
+			meetCfg := meethost.Config{
+				Enabled:      true,
+				Identity:     meethost.FabricIdentity{HostID: peeringSvc.VulaID(), PublicKeyB64: base64.StdEncoding.EncodeToString(peeringSvc.PublicKey()), Domain: cfg.Domain},
+				RelayBaseURL: relayBase,
+				Token:        os.Getenv("VULOS_RELAY_TOKEN"),
+				Name:         name,
+				Endpoint:     endpoint,
+				WorkerBinary: os.Getenv("VULOS_SFU_WORKER_BINARY"),
+				Capabilities: meethost.HostCapabilities{Region: os.Getenv("VULOS_SFU_REGION")},
+			}
+			if svc, err := meethost.New(meetCfg); err != nil {
+				log.Printf("[meethost] disabled: %v", err)
+			} else if err := svc.Start(ctx); err != nil {
+				log.Printf("[meethost] start failed: %v", err)
+			} else {
+				meetHostSvc = svc
+				log.Printf("[meethost] SFU host registered (host_id=%s endpoint=%s state=%s)",
+					meetCfg.Identity.HostID, endpoint, svc.State())
+				mux.Handle("/api/meethost/status", svc.StatusHandler())
+			}
+		}
+	}
+	// SFU_HOST_WIRE END
 
 	// MEET_TRANSCRIPT_WIRE BEGIN — MEET-TRANSCRIPT-01
 	//

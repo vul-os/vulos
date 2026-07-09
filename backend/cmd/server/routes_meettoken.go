@@ -22,11 +22,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"vulos/backend/services/meettoken"
@@ -134,13 +137,22 @@ func registerMeetTokenRoutes(mux *http.ServeMux) bool {
 			return
 		}
 
+		// SFU Phase 2 allocation: if a self-host SFU host is registered with the
+		// relay, resolve its VERIFIED serverUrl (direct-first) and hand it back as
+		// meet_url so a BIG call (escalated past the mesh cap) connects to media on
+		// the operator's own infra. Inert by default: with no relay configured or no
+		// host registered this stays "" and the client keeps its Phase-1 behavior
+		// (the co-located SFU it is already serving). Never fatal — a resolve error
+		// degrades to "".
+		meetURL := resolveSFUServerURL(r.Context())
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"token":   res.Token,
 			"room_id": res.RoomID,
-			// meet_url is empty on self-host: the client already knows its SFU URL
-			// (it is serving the Meet app), so no allocator-provided URL is needed.
-			"meet_url":   "",
+			// meet_url is the resolved self-host SFU serverUrl for a big call, or ""
+			// when none is registered (the client then uses its co-located SFU).
+			"meet_url":   meetURL,
 			"expires_at": res.ExpiresAt.UTC().Format(time.RFC3339),
 			// waiting/waiting_room are cloud-only (waiting-room lobby). A self-host
 			// box mints a normal full-media join token, so both are false — the meet
@@ -150,6 +162,53 @@ func registerMeetTokenRoutes(mux *http.ServeMux) bool {
 		})
 	})
 	return true
+}
+
+// sfuResolveTimeout bounds the allocation lookup so a slow/unreachable relay
+// never stalls a token mint — a timeout degrades to "" (client uses its own SFU).
+const sfuResolveTimeout = 3 * time.Second
+
+// resolveSFUServerURL asks the relay's SFU-host registry
+// (GET {VULOS_RELAY_BASE_URL}/api/meet/host/resolve) for a reachable, VERIFIED
+// self-host SFU endpoint to escalate a big call to (SFU Phase 2 allocation,
+// direct-first). It returns the endpoint, or "" when:
+//   - no relay is configured (VULOS_RELAY_BASE_URL unset) — inert default,
+//   - the registry is empty / registration is disabled (available=false),
+//   - the relay is unreachable or slow (degrade, never block the mint).
+//
+// The relay only ever returns an endpoint it independently verified (reachable +
+// ownership-proven via directprobe), so a box cannot smuggle an endpoint it does
+// not control into a client's join.
+func resolveSFUServerURL(ctx context.Context) string {
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("VULOS_RELAY_BASE_URL")), "/")
+	if base == "" {
+		return ""
+	}
+	rctx, cancel := context.WithTimeout(ctx, sfuResolveTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(rctx, http.MethodGet, base+"/api/meet/host/resolve", nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var out struct {
+		Available bool   `json:"available"`
+		ServerURL string `json:"server_url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil {
+		return ""
+	}
+	if !out.Available {
+		return ""
+	}
+	return out.ServerURL
 }
 
 // writeMeetTokenErr writes a JSON {error} body with no token contents (the meet
