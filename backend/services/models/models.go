@@ -87,10 +87,32 @@ type Listing struct {
 	//   "degraded"  — active ONNX model but NO tokenizer.json (FNV-hash fallback; weak vectors)
 	//   "lexical"   — no ONNX model installed (pure on-box lexical retrieval)
 	RAGMode string `json:"rag_mode"`
-	// NeedsRegistry flags that there is no model-download catalog backend: the
-	// UI should let the operator IMPORT artifacts they already have, and (for now)
-	// point at where to get models, rather than offer an in-app catalog download.
+	// NeedsRegistry flags whether there is a model-download catalog backend. It is
+	// now false: a curated, pinned download catalog exists (see catalog.go /
+	// Catalog()), so the UI offers a one-click "Download recommended model" in
+	// addition to importing artifacts the operator already has.
 	NeedsRegistry bool `json:"needs_registry"`
+	// Catalog is the curated, pinned set of downloadable embedding models the
+	// operator can install in one click (see catalog.go). Fetched on demand,
+	// SHA-256-verified fail-closed; no binary is committed to the repo.
+	Catalog []CatalogEntry `json:"catalog"`
+	// PythonDeps reports whether the local python3 embedding dependencies
+	// (onnxruntime + tokenizers) are importable. The embed path shells out to
+	// python3; without these the box silently degrades, so we surface an honest
+	// "install these" signal instead. Nil-safe: absence means "not checked".
+	PythonDeps PythonDepsStatus `json:"python_deps"`
+}
+
+// PythonDepsStatus is the honest report of whether the on-box python embedding
+// runtime is present. The embedder shells out to `python3` with onnxruntime +
+// tokenizers; if either is missing, a model+tokenizer are installed but the
+// embed call fails and retrieval silently falls back — so we tell the operator.
+type PythonDepsStatus struct {
+	Python3     bool   `json:"python3"`      // python3 is on PATH
+	Onnxruntime bool   `json:"onnxruntime"`  // `import onnxruntime` succeeds
+	Tokenizers  bool   `json:"tokenizers"`   // `import tokenizers` succeeds
+	Ready       bool   `json:"ready"`        // all of the above → embed can run
+	InstallHint string `json:"install_hint"` // the exact pip command to fix it
 }
 
 const (
@@ -105,7 +127,13 @@ const tokenizerName = "tokenizer.json"
 // List enumerates installed local models and derives RAG readiness. It never
 // errors on a missing directory (returns an empty, lexical-mode listing).
 func (m *Manager) List() (Listing, error) {
-	out := Listing{Dir: m.dir, NeedsRegistry: true, RAGMode: RAGModeLexical}
+	out := Listing{
+		Dir:           m.dir,
+		NeedsRegistry: false, // a curated pinned catalog now exists (catalog.go)
+		RAGMode:       RAGModeLexical,
+		Catalog:       Catalog(),
+		PythonDeps:    CheckPythonDeps(),
+	}
 
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {

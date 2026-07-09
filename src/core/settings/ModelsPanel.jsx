@@ -71,6 +71,90 @@ export function RAGReadinessBadge({ mode }) {
   )
 }
 
+// PythonDepsNotice reports whether the on-box python embedding runtime
+// (onnxruntime + tokenizers) is present. Without it, a model + tokenizer can be
+// installed yet every embed call fails and retrieval silently degrades — so we
+// surface the honest state and the exact install command. We NEVER auto-install.
+function PythonDepsNotice({ deps }) {
+  if (!deps) return null
+  const hint = deps.install_hint || 'pip install onnxruntime tokenizers numpy'
+  if (deps.ready) {
+    return (
+      <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-green-900/20 text-green-500 border border-green-800/30">
+        On-box embedding runtime detected (python3 + onnxruntime + tokenizers). Semantic embeddings can run locally.
+      </div>
+    )
+  }
+  const missing = []
+  if (!deps.python3) missing.push('python3')
+  if (!deps.onnxruntime) missing.push('onnxruntime')
+  if (!deps.tokenizers) missing.push('tokenizers')
+  return (
+    <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-amber-900/20 text-amber-400 border border-amber-800/30">
+      The on-box embedding runtime is missing ({missing.join(', ') || 'dependencies'}). A model can be installed, but
+      embeddings will not run until you install the <strong>vula-embed</strong> Python deps on the box:
+      <code className="block mt-1.5 font-mono text-amber-300 bg-neutral-950/60 rounded px-2 py-1 select-all">{hint}</code>
+      This is never installed automatically — run it yourself on the box.
+    </div>
+  )
+}
+
+// CatalogRow offers a one-click download of a CURATED, PINNED model. The bytes
+// are fetched on demand from the pinned huggingface.co URL, SHA-256-verified
+// fail-closed, and installed atomically — the model binary is never shipped in
+// the app. On success the RAG readiness badge flips to semantic.
+function CatalogRow({ entry, onDownloaded }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState('')
+
+  const totalBytes = (entry.model?.size_bytes || 0) + (entry.tokenizer?.size_bytes || 0)
+
+  const download = async () => {
+    setBusy(true); setErr(''); setOk('')
+    try {
+      const res = await fetch('/api/models/download', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: entry.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setOk(`Installed ${entry.name} (${humanBytes(totalBytes)}) — model + tokenizer verified.`)
+      onDownloaded?.(data)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-neutral-200 font-mono">{entry.name}</span>
+            {entry.recommended && (
+              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300">Recommended</span>
+            )}
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800/60 text-neutral-400">{entry.dim}-dim</span>
+          </div>
+          <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{entry.description}</p>
+          <p className="text-[11px] text-neutral-600 mt-0.5">Download: {humanBytes(totalBytes)} (model + tokenizer), verified by SHA-256.</p>
+        </div>
+        <button onClick={download} disabled={busy} className="btn text-sm shrink-0 disabled:opacity-50">
+          {busy ? 'Downloading…' : 'Download'}
+        </button>
+      </div>
+      {busy && <div className="mt-2 text-[11px] text-neutral-500">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400">{err}</div>}
+    </div>
+  )
+}
+
 function ImportRow({ kind, label, accept, hint, onImported }) {
   const inputRef = useRef(null)
   const [busy, setBusy] = useState(false)
@@ -230,17 +314,36 @@ function ModelsPanelOwner() {
             </p>
           </div>
 
-          {/* Import flow */}
-          <div className="mb-6">
-            <h3 className="text-sm font-medium text-neutral-300 mb-2">Install a model</h3>
-            {emb.needs_registry && (
-              <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-neutral-800/40 text-neutral-400 border border-neutral-700/40">
-                There is no in-app model catalog yet. Download an ONNX sentence-embedding
-                model (e.g. <span className="font-mono">all-MiniLM-L6-v2</span>) and its
-                <span className="font-mono"> tokenizer.json</span> from a source you trust,
-                then import both files here. The active model is picked up automatically.
+          {/* One-click download from the curated, pinned catalog */}
+          {emb.catalog?.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-neutral-300 mb-2">Download a recommended model</h3>
+              <p className="text-[11px] text-neutral-600 mb-3 leading-relaxed">
+                Install a curated embedding model in one click. The model is fetched on demand
+                from a pinned source and verified by SHA-256 before it is installed — nothing
+                is bundled in the app.
+              </p>
+              <PythonDepsNotice deps={emb.python_deps} />
+              <div className="space-y-2">
+                {emb.catalog.map(entry => (
+                  <CatalogRow
+                    key={entry.id}
+                    entry={entry}
+                    onDownloaded={(d) => { if (d.embeddings) setData(prev => ({ ...prev, embeddings: d.embeddings })) }}
+                  />
+                ))}
               </div>
-            )}
+            </div>
+          )}
+
+          {/* Import flow (manual) */}
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-neutral-300 mb-2">Or import a model you already have</h3>
+            <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-neutral-800/40 text-neutral-400 border border-neutral-700/40">
+              Already have an ONNX sentence-embedding model and its
+              <span className="font-mono"> tokenizer.json</span>? Import both files here.
+              The active model is picked up automatically.
+            </div>
             <div className="space-y-2">
               <ImportRow
                 kind="model"

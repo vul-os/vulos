@@ -15,6 +15,8 @@ package main
 //	                                the chat models llmux exposes (best-effort)
 //	POST /api/models/import       — install a validated .onnx or tokenizer.json
 //	                                (multipart form: field "kind", file "artifact")
+//	POST /api/models/download     — install a CURATED, PINNED catalog model in one
+//	                                click (JSON body: {"id": "<catalog id>"})
 //
 // SECURITY:
 //   - requireOwner enforces admin-only (the OS "owner"). X-User-ID is set only by
@@ -22,6 +24,10 @@ package main
 //     real session identity, not a spoofable header.
 //   - Import is bounded (per-kind byte cap), path-traversal-free (destination is
 //     a fixed allowlisted filename, never client-derived), and content-sniffed.
+//   - Download takes a catalog ID, NEVER a URL: the only addresses ever fetched
+//     are the hardcoded, https + host-pinned catalog URLs (no SSRF surface). Each
+//     artifact is SHA-256-verified fail-closed, size-bounded, content-sniffed and
+//     atomically installed — identical guarantees to import, plus integrity.
 
 import (
 	"context"
@@ -153,6 +159,64 @@ func registerModelRoutes(mux *http.ServeMux, mgr *models.Manager, llmux *llmuxcl
 			return
 		}
 		writeJSON(w, map[string]any{"imported": res})
+	}))
+
+	// POST /api/models/download — one-click install of a CURATED, PINNED model.
+	//
+	// JSON body: {"id": "<catalog id>"}
+	//
+	// SECURITY: the body carries ONLY a catalog id, never a URL. The id is looked
+	// up in the hardcoded catalog (models.CatalogEntryByID); the only URLs fetched
+	// are the pinned, https + host-pinned catalog URLs — there is no arbitrary-URL
+	// / SSRF surface. Each fetched artifact is SHA-256-verified fail-closed,
+	// size-bounded, content-sniffed and atomically installed.
+	mux.HandleFunc("POST /api/models/download", gate(func(w http.ResponseWriter, r *http.Request) {
+		// Small JSON body — a catalog id is a short string; cap it hard.
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+			writeErr(w, 400, `body must be {"id": "<catalog model id>"}`)
+			return
+		}
+
+		// Verify the id is in the curated catalog BEFORE doing any work, so an
+		// unknown id is a clean 404 rather than an opaque download failure.
+		if _, ok := models.CatalogEntryByID(req.ID); !ok {
+			writeErr(w, 404, "unknown catalog model id (see GET /api/models → catalog)")
+			return
+		}
+
+		// Bound the whole download generously; individual artifacts are bounded
+		// per-kind inside the manager.
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
+		defer cancel()
+
+		res, err := mgr.Download(ctx, req.ID, nil)
+		if err != nil {
+			switch {
+			case errors.Is(err, models.ErrUnknownModel):
+				writeErr(w, 404, "unknown catalog model id")
+			case errors.Is(err, models.ErrChecksumMismatch):
+				// Fail-closed: the fetched bytes did not match the pinned digest.
+				writeErr(w, 502, "download failed integrity check (checksum mismatch) — nothing was installed")
+			case errors.Is(err, models.ErrArtifactTooLarge):
+				writeErr(w, 502, "download exceeded its size bound — nothing was installed")
+			case errors.Is(err, models.ErrBadDownloadURL):
+				writeErr(w, 500, "catalog misconfiguration: download URL not allowed")
+			case isBadArtifact(err):
+				writeErr(w, 502, "downloaded artifact failed validation — nothing was installed")
+			default:
+				writeErr(w, 502, "download failed: "+err.Error())
+			}
+			return
+		}
+
+		// Re-derive RAG mode so the gauge + response reflect the fresh install
+		// (a full download lands model + tokenizer → semantic).
+		obs.SetRAGMode(res.Listing.RAGMode)
+		writeJSON(w, map[string]any{"downloaded": res, "embeddings": res.Listing})
 	}))
 }
 

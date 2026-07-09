@@ -61,8 +61,8 @@ func TestModelRoutes_ListLexicalByDefault(t *testing.T) {
 	if resp.Embeddings.RAGMode != models.RAGModeLexical {
 		t.Fatalf("rag_mode = %q, want lexical", resp.Embeddings.RAGMode)
 	}
-	if !resp.Embeddings.NeedsRegistry {
-		t.Fatalf("needs_registry should be true (no catalog backend)")
+	if resp.Embeddings.NeedsRegistry {
+		t.Fatalf("needs_registry should be false now (a curated catalog backend exists)")
 	}
 	if resp.ChatModelsError == "" {
 		t.Fatalf("expected chat_models_error when llmux is unconfigured")
@@ -160,5 +160,53 @@ func TestModelRoutes_ImportOwnerGate(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != 403 {
 		t.Fatalf("non-owner import: got %d, want 403", rec.Code)
+	}
+}
+
+// --- download route --------------------------------------------------------
+
+func postDownload(t *testing.T, mux *http.ServeMux, userID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/models/download", bytes.NewReader([]byte(body)))
+	req.Header.Set("X-User-ID", userID)
+	req.Header.Set("Content-Type", "application/json")
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestModelRoutes_DownloadOwnerGate(t *testing.T) {
+	mux, _ := newModelMux(t, ownerDeny)
+	rec := postDownload(t, mux, "intruder", `{"id":"all-MiniLM-L6-v2"}`)
+	if rec.Code != 403 {
+		t.Fatalf("non-owner download: got %d, want 403", rec.Code)
+	}
+}
+
+// TestModelRoutes_DownloadUnknownID: a bogus id is a clean 404 — and there is no
+// way to pass a URL, so this is also the no-arbitrary-URL contract at the route.
+func TestModelRoutes_DownloadUnknownID(t *testing.T) {
+	mux, _ := newModelMux(t, ownerOK)
+	rec := postDownload(t, mux, "owner", `{"id":"evil-model"}`)
+	if rec.Code != 404 {
+		t.Fatalf("unknown id: got %d, want 404 (body=%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestModelRoutes_DownloadRejectsURLBody proves the endpoint accepts ONLY an id:
+// a body carrying a URL field is ignored and the (missing) id makes it a 400.
+func TestModelRoutes_DownloadRejectsURLBody(t *testing.T) {
+	mux, _ := newModelMux(t, ownerOK)
+	rec := postDownload(t, mux, "owner", `{"url":"http://169.254.169.254/latest/meta-data"}`)
+	if rec.Code != 400 {
+		t.Fatalf("URL-only body: got %d, want 400 (no id) — server must never fetch a client URL (body=%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestModelRoutes_DownloadEmptyBody(t *testing.T) {
+	mux, _ := newModelMux(t, ownerOK)
+	rec := postDownload(t, mux, "owner", ``)
+	if rec.Code != 400 {
+		t.Fatalf("empty body: got %d, want 400", rec.Code)
 	}
 }

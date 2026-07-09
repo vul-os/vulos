@@ -2951,6 +2951,10 @@ function ReadyStep({ config, onFinish, onPrev }) {
   // WAVE2-RECOVERY: the 24-word master-key recovery phrase, returned once by the
   // register endpoint. When set, we FORCE the phrase-reveal screen before finishing.
   const [masterPhrase, setMasterPhrase] = useState('')
+  // MODEL-DL-01: optional "Enable private AI search" install-time offer. After the
+  // owner account exists (register set the session), we show a clearly-optional
+  // step to download the on-box embedding model before entering the desktop.
+  const [showPrivateAI, setShowPrivateAI] = useState(false)
 
   // finalize runs the post-account steps (PIN) and completes setup.
   const finalize = async () => {
@@ -3001,16 +3005,44 @@ function ReadyStep({ config, onFinish, onPrev }) {
       }
     }
 
+    // MODEL-DL-01: with an owner account now created (session established), offer
+    // the optional private-AI model download BEFORE finalizing. Only meaningful
+    // for a local OS account (a real owner session on this box); cloud-only
+    // installs skip straight to finalize.
+    if (config.username && config.password) {
+      setCreating(false)
+      setShowPrivateAI(true)
+      return
+    }
+
     await finalize()
   }
 
-  // WAVE2-RECOVERY: forced recovery-phrase reveal gate.
+  // WAVE2-RECOVERY: forced recovery-phrase reveal gate. After the phrase is saved,
+  // route into the optional private-AI offer (MODEL-DL-01) rather than finishing
+  // directly, so the model download is offered on every local-account install.
   if (masterPhrase) {
+    const afterPhrase = () => {
+      setMasterPhrase('')
+      if (config.username && config.password) { setShowPrivateAI(true); return }
+      setCreating(true); finalize()
+    }
     return (
       <MasterKeyReveal
         phrase={masterPhrase}
-        onConfirm={async () => { setMasterPhrase(''); setCreating(true); await finalize() }}
-        onSkip={async () => { setMasterPhrase(''); setCreating(true); await finalize() }}
+        onConfirm={afterPhrase}
+        onSkip={afterPhrase}
+      />
+    )
+  }
+
+  // MODEL-DL-01: optional "Enable private AI search" install-time step. Clearly
+  // optional — RAG works in lexical mode without it — and honest about the size
+  // and the one-time python deps. Both "Enable" and "Skip" proceed to finalize.
+  if (showPrivateAI) {
+    return (
+      <PrivateAIStep
+        onDone={async () => { setShowPrivateAI(false); setCreating(true); await finalize() }}
       />
     )
   }
@@ -3067,6 +3099,138 @@ function ReadyStep({ config, onFinish, onPrev }) {
           <code className="accent-text text-[11px]">GET /api/recovery/kit</code>
           {' '}from a trusted local session.
         </p>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// MODEL-DL-01: Optional private-AI (on-box embedding model) install offer
+// ═══════════════════════════════════
+//
+// Shown once, right before entering the desktop, AFTER the owner account exists
+// (so there is a real owner session for the owner-gated download endpoint). It
+// is fully OPTIONAL and honest: RAG works in lexical mode with no model at all;
+// downloading the curated, pinned all-MiniLM-L6-v2 upgrades it to genuine
+// semantic search, entirely on the box. The model is fetched on demand from a
+// pinned source and SHA-256-verified — nothing is bundled in the image.
+function PrivateAIStep({ onDone }) {
+  const [state, setState] = useState('offer') // offer | downloading | done | error
+  const [error, setError] = useState('')
+  const [entry, setEntry] = useState(null) // recommended catalog entry (for size/name)
+  const [deps, setDeps] = useState(null)
+
+  // Load the catalog + python-deps status so the offer shows the true size and an
+  // honest note about the one-time python dependencies.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/models', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d?.embeddings) return
+        const cat = d.embeddings.catalog || []
+        setEntry(cat.find(e => e.recommended) || cat[0] || null)
+        setDeps(d.embeddings.python_deps || null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const totalMB = entry
+    ? Math.round(((entry.model?.size_bytes || 0) + (entry.tokenizer?.size_bytes || 0)) / (1024 * 1024))
+    : null
+  const modelName = entry?.name || 'all-MiniLM-L6-v2'
+
+  const enable = async () => {
+    setState('downloading')
+    setError('')
+    try {
+      const res = await fetch('/api/models/download', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: entry?.id || 'all-MiniLM-L6-v2' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+      setState('done')
+    } catch (e) {
+      setError(e.message || 'Download failed. You can install the model later in Settings → AI Models.')
+      setState('error')
+    }
+  }
+
+  return (
+    <div className="text-center">
+      <div className="text-4xl mb-2">🔎</div>
+      <StepHeader
+        title="Enable private AI search?"
+        subtitle="Optional — download the on-box embedding model so your assistant can search your mail by meaning, entirely on your box."
+      />
+
+      <div className="mx-auto max-w-md text-left rounded-xl border border-neutral-800/50 bg-neutral-900/40 px-4 py-3 mb-5">
+        <p className="text-sm text-neutral-400 leading-relaxed">
+          Downloads the recommended <span className="font-mono text-neutral-300">{modelName}</span> model
+          {totalMB ? <> (~{totalMB} MB)</> : null} from a pinned source and verifies it by checksum.
+          Nothing leaves your box — this powers <span className="text-neutral-300">semantic search</span> locally.
+        </p>
+        <p className="text-xs text-neutral-500 leading-relaxed mt-2">
+          Without it, search still works in <span className="text-neutral-400">lexical/degraded mode</span> — you can
+          add the model any time in <span className="text-neutral-400">Settings → AI Models</span>.
+        </p>
+        {deps && !deps.ready && (
+          <p className="text-[11px] text-amber-400/90 leading-relaxed mt-2">
+            Note: running embeddings also needs the vula-embed Python packages on the box:
+            <code className="block mt-1 font-mono text-amber-300 bg-neutral-950/60 rounded px-2 py-1 select-all">
+              {deps.install_hint || 'pip install onnxruntime tokenizers numpy'}
+            </code>
+            These are never installed automatically.
+          </p>
+        )}
+      </div>
+
+      {state === 'error' && error && (
+        <div className="mx-auto max-w-md mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3 text-left">
+          <p className="text-sm text-danger">{error}</p>
+        </div>
+      )}
+
+      {state === 'done' ? (
+        <div className="mx-auto max-w-md mb-4 bg-green-600/10 border border-green-500/25 rounded-xl px-4 py-3 text-left">
+          <p className="text-sm text-green-300">Model installed. Semantic search is ready on your box.</p>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col items-center gap-3">
+        {state === 'done' || state === 'error' ? (
+          <button onClick={onDone} className="btn-primary px-10 py-3 text-base">
+            Continue →
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={enable}
+              disabled={state === 'downloading'}
+              className="btn-primary px-10 py-3 text-base flex items-center gap-2"
+            >
+              {state === 'downloading' ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Downloading &amp; verifying…
+                </>
+              ) : (
+                <>Enable private AI search{totalMB ? ` (~${totalMB} MB)` : ''}</>
+              )}
+            </button>
+            <button
+              onClick={onDone}
+              disabled={state === 'downloading'}
+              className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors disabled:opacity-40"
+            >
+              Skip for now
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

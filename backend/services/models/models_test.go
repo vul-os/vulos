@@ -21,8 +21,8 @@ func TestList_EmptyAndMissingDir(t *testing.T) {
 	if len(l.Models) != 0 || l.ActiveModel != "" || l.HasTokenizer {
 		t.Fatalf("empty dir listing should be empty: %+v", l)
 	}
-	if !l.NeedsRegistry {
-		t.Fatalf("NeedsRegistry should be true (no catalog backend)")
+	if l.NeedsRegistry {
+		t.Fatalf("NeedsRegistry should be false now (a curated catalog backend exists)")
 	}
 }
 
