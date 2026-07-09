@@ -131,8 +131,12 @@ func SetRAGMode(mode string) {
 // It is safe to call multiple times (subsequent calls are no-ops).
 func Init() {
 	// Register Prometheus metrics (ignore already-registered errors in tests).
+	// Every collector that is Inc()/Set() anywhere MUST appear here, or it is
+	// silently absent from /metrics (promhttp only serves the default registry).
 	for _, c := range []prometheus.Collector{
 		RequestCount, RequestDuration, ErrorCount, QueueDepth, CacheHitRatio,
+		AssistantGuardAllowedTotal, AssistantGuardBlockedTotal,
+		AssistantProposalsPending, AssistantRAGMode,
 	} {
 		_ = prometheus.DefaultRegisterer.Register(c)
 	}
