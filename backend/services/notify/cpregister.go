@@ -82,7 +82,7 @@ const (
 // CONFIG-GATED and FAIL-SAFE-OFF. With any field empty the registrar is inert.
 type CPRegistrarConfig struct {
 	// BaseURL is the CP origin the register/unregister paths are POSTed to
-	// (VULOS_PUSH_CP_REGISTER_URL), e.g. "https://cp.vulos.to". A full URL ending
+	// (VULOS_PUSH_CP_REGISTER_URL), e.g. "https://cp.vulos.org". A full URL ending
 	// in a register path is also accepted (the origin is extracted). Managed cells
 	// receive this at provisioning; self-host leaves it unset.
 	BaseURL string

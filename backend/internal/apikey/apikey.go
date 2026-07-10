@@ -47,7 +47,7 @@ const (
 	// The CP returns the products a key is entitled to in `products`.
 	ProductOS = "os"
 
-	// EnvCPBaseURL points at the control-plane base URL (e.g. https://cp.vulos.to).
+	// EnvCPBaseURL points at the control-plane base URL (e.g. https://cp.vulos.org).
 	// When unset the key path is disabled and the OS falls back to session-only
 	// auth (self-host unchanged). This is the SAME env the cloud billing seam uses.
 	EnvCPBaseURL = "VULOS_CP_BASE_URL"
