@@ -135,6 +135,32 @@ func TestPushSubscribe_DisabledReturns503(t *testing.T) {
 	}
 }
 
+// TestCPSubscribe_SelfHostInert verifies the CP-keyed send-on-behalf subscribe is
+// fail-safe-off in self-host mode: with no CP configured (registrar nil), the
+// cp-subscribe endpoint 503s and never attempts to reach a CP. This is the
+// self-host-inert guarantee for SPEC 1 — a box with no CP does everything locally.
+func TestCPSubscribe_SelfHostInert(t *testing.T) {
+	// No VULOS_PUSH_CP_REGISTER_URL / secret / ULID → registrar is nil.
+	mux, _ := newPushMux(t, true)
+	body := `{"endpoint":"https://push.example/cp","keys":{"p256dh":"p","auth":"a"}}`
+	rec := doPush(t, mux, "POST", "/api/notifications/push/cp-subscribe", "alice", body)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("cp-subscribe self-host = %d, want 503 (inert)", rec.Code)
+	}
+	rec = doPush(t, mux, "DELETE", "/api/notifications/push/cp-subscribe", "alice", body)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("cp-unsubscribe self-host = %d, want 503 (inert)", rec.Code)
+	}
+}
+
+func TestCPSubscribe_RequiresAuth(t *testing.T) {
+	mux, _ := newPushMux(t, true)
+	rec := doPush(t, mux, "POST", "/api/notifications/push/cp-subscribe", "", `{}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("cp-subscribe without X-User-ID = %d, want 401", rec.Code)
+	}
+}
+
 func TestPushUnsubscribe_RequiresEndpoint(t *testing.T) {
 	mux, _ := newPushMux(t, true)
 	rec := doPush(t, mux, "DELETE", "/api/notifications/push/subscribe", "alice", `{}`)

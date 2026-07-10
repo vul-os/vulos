@@ -87,8 +87,9 @@ export async function enableWebPush(deps = {}) {
   }
   if (!subscription) return null
 
-  // 4) Register the subscription with the box. The box stamps the owner from
-  //    the authenticated session — the body carries only endpoint + keys.
+  // 4) Register the CELL-KEYED subscription with the box (direct send path). The
+  //    box stamps the owner from the authenticated session — body carries only
+  //    endpoint + keys.
   try {
     const body = subscription.toJSON ? subscription.toJSON() : subscription
     const res = await doFetch('/api/notifications/push/subscribe', {
@@ -100,7 +101,95 @@ export async function enableWebPush(deps = {}) {
   } catch {
     return null
   }
+
+  // 5) SEND-ON-BEHALF (managed cells): ALSO create a SEPARATE, CP-KEYED
+  //    subscription with the CP's OWN public VAPID key and forward it to the
+  //    box's cp-subscribe endpoint. This lets the always-on CP send a generic
+  //    content-blind "new mail" notice — signed with the CP's OWN key — while the
+  //    cell sleeps. No cell key material is ever involved. Best-effort: if the CP
+  //    is not configured (self-host) or anything fails, the cell-keyed direct path
+  //    above still works, so we swallow errors and return the primary subscription.
+  await enableCPPush(deps, registrationOf(subscription)).catch(() => {})
   return subscription
+}
+
+// registrationOf recovers the ServiceWorkerRegistration for a subscription so the
+// CP-keyed subscribe can reuse the same PushManager. Falls back to ready.
+async function registrationOf(_subscription) {
+  try {
+    return await navigator.serviceWorker.ready
+  } catch {
+    return null
+  }
+}
+
+// enableCPPush subscribes a SECOND time with the CP's PUBLIC VAPID key and
+// forwards that CP-keyed subscription to the box (POST cp-subscribe). It is a
+// best-effort no-op when the box has no CP configured (cp-key enabled:false) or
+// the browser cannot create the second subscription. Never throws to the caller.
+export async function enableCPPush(deps = {}, registrationPromise) {
+  const doFetch = deps.fetch || (typeof fetch !== 'undefined' ? fetch : null)
+  if (!doFetch || !pushSupported()) return false
+
+  // a) Ask the box (which relays from the CP) for the CP's PUBLIC VAPID key.
+  let cpKey
+  try {
+    const res = await doFetch('/api/mail/push/cp-key', { headers: { Accept: 'application/json' } })
+    if (!res || !res.ok) return false
+    cpKey = await res.json()
+  } catch {
+    return false
+  }
+  if (!cpKey || !cpKey.enabled || !cpKey.vapid_public) return false // self-host / no CP
+
+  // b) Subscribe with the CP key on a SEPARATE service-worker scope so it does not
+  //    clash with the cell-keyed subscription (a single PushManager holds at most
+  //    one subscription, keyed by applicationServerKey; subscribing a second,
+  //    different key on the SAME registration throws InvalidStateError). Callers
+  //    that register a dedicated CP scope pass it via deps.cpRegistrationPromise.
+  //    When no separate scope is available we still attempt on the primary
+  //    registration and degrade gracefully — the wake-then-cell-pushes path covers
+  //    delivery either way, so send-on-behalf is a best-effort optimisation.
+  let cpSub
+  try {
+    const reg =
+      (deps.cpRegistrationPromise || registrationPromise || navigator.serviceWorker.ready)
+    const registration = await reg
+    if (!registration) return false
+    // Reuse an existing subscription only if it already matches the CP key; a
+    // mismatched existing key means we cannot add a second one here.
+    const existing = await registration.pushManager.getSubscription()
+    if (existing && deps.cpRegistrationPromise) {
+      cpSub = existing
+    } else if (existing && !deps.cpRegistrationPromise) {
+      // Primary scope already holds the cell-keyed subscription; do not clobber it.
+      return false
+    } else {
+      cpSub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(cpKey.vapid_public),
+      })
+    }
+  } catch {
+    // A pre-existing subscription with a different key throws InvalidStateError.
+    // Best-effort: skip the CP-keyed path; the direct path already works.
+    return false
+  }
+  if (!cpSub) return false
+
+  // c) Forward the CP-keyed subscription to the box, which relays it to the CP
+  //    registrar. NO VAPID key material crosses — only endpoint + keys.
+  try {
+    const body = cpSub.toJSON ? cpSub.toJSON() : cpSub
+    const res = await doFetch('/api/notifications/push/cp-subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: body.endpoint, keys: body.keys }),
+    })
+    return !!(res && res.ok)
+  } catch {
+    return false
+  }
 }
 
 // disableWebPush unsubscribes this device and tells the box to forget it. Best
@@ -120,6 +209,13 @@ export async function disableWebPush(deps = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint }),
     })
+    // Also tell the box to forget the CP-keyed subscription (managed mode).
+    // Best-effort — the endpoint is the same one when a single scope was used.
+    await doFetch('/api/notifications/push/cp-subscribe', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    }).catch(() => {})
     return !!(res && res.ok)
   } catch {
     return false

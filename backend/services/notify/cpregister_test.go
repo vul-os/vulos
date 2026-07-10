@@ -36,14 +36,6 @@ const (
 	testULID   = "01HZZZZULIDCELL0000000000"
 )
 
-func testCfgVAPID() PushConfig {
-	return PushConfig{
-		VAPIDPublic:  "BPub_public_key",
-		VAPIDPrivate: "priv_secret_key",
-		VAPIDSubject: "mailto:admin@vulos.to",
-	}
-}
-
 // captured records what a fake CP received.
 type captured struct {
 	method   string
@@ -105,7 +97,7 @@ func TestCPRegistrar_Disabled_SelfHost(t *testing.T) {
 			t.Fatalf("registrar unexpectedly enabled for cfg %+v", cfg)
 		}
 		// Nil-safe no-ops.
-		if err := r.Register(context.Background(), sampleSub("https://push.example/x"), testCfgVAPID()); err != nil {
+		if err := r.Register(context.Background(), sampleSub("https://push.example/x")); err != nil {
 			t.Fatalf("nil Register should be a no-op, got %v", err)
 		}
 		if err := r.Unregister(context.Background(), "https://push.example/x"); err != nil {
@@ -116,8 +108,8 @@ func TestCPRegistrar_Disabled_SelfHost(t *testing.T) {
 
 // TestCPRegistrar_Register_HMACAndBody is the core loop-closing test: the cell's
 // register POST must (1) carry a header the CP's own construction ACCEPTS, and
-// (2) carry the exact content-blind body the CP decodes (ulid + subscription +
-// VAPID material, NO mail content).
+// (2) carry the exact content-blind body the CP decodes (ulid + CP-keyed
+// subscription only — NO VAPID key material, NO mail content).
 func TestCPRegistrar_Register_HMACAndBody(t *testing.T) {
 	var cap captured
 	srv := fakeCP(t, &cap)
@@ -125,7 +117,7 @@ func TestCPRegistrar_Register_HMACAndBody(t *testing.T) {
 
 	r := liveRegistrar(t, srv)
 	sub := PushSubscription{Endpoint: "https://fcm.googleapis.com/x/abc", P256DH: "p256", Auth: "authsalt"}
-	if err := r.Register(context.Background(), sub, testCfgVAPID()); err != nil {
+	if err := r.Register(context.Background(), sub); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	if cap.method != http.MethodPost || cap.path != cpRegisterPath {
@@ -140,57 +132,56 @@ func TestCPRegistrar_Register_HMACAndBody(t *testing.T) {
 	}
 	want := registerBody{
 		ULID: testULID, Endpoint: sub.Endpoint, P256DH: sub.P256DH, Auth: sub.Auth,
-		VAPIDPublic: "BPub_public_key", VAPIDPrivate: "priv_secret_key", VAPIDSubject: "mailto:admin@vulos.to",
 	}
 	if got != want {
 		t.Fatalf("register body mismatch\n got: %+v\nwant: %+v", got, want)
 	}
 }
 
-// TestCPRegistrar_Register_ContentBlind asserts NO field other than the agreed
-// content-blind set can appear in the wire body (no subject/sender/snippet keys).
-func TestCPRegistrar_Register_ContentBlind(t *testing.T) {
+// TestCPRegistrar_Register_NoVAPIDMaterial is the SPEC 1 wire guarantee: the
+// register body carries ONLY {ulid, endpoint, p256dh, auth} — NEVER any VAPID key
+// material (the CP signs with its OWN key and must never receive the cell's).
+func TestCPRegistrar_Register_NoVAPIDMaterial(t *testing.T) {
 	var cap captured
 	srv := fakeCP(t, &cap)
 	defer srv.Close()
 	r := liveRegistrar(t, srv)
-	if err := r.Register(context.Background(), sampleSub("https://push.example/z"), testCfgVAPID()); err != nil {
+	if err := r.Register(context.Background(), sampleSub("https://push.example/z")); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	var m map[string]any
 	if err := json.Unmarshal(cap.body, &m); err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]bool{
-		"ulid": true, "endpoint": true, "p256dh": true, "auth": true,
-		"vapid_public": true, "vapid_private": true, "vapid_subject": true,
-	}
+	allowed := map[string]bool{"ulid": true, "endpoint": true, "p256dh": true, "auth": true}
 	for k := range m {
 		if !allowed[k] {
-			t.Fatalf("register body carries disallowed field %q (content-blindness leak): %s", k, cap.body)
+			t.Fatalf("register body carries disallowed field %q: %s", k, cap.body)
 		}
 	}
-	// The body must NOT contain any mail-content-shaped fields.
+	// The body must NOT contain any VAPID key material or mail-content field.
+	if strings.Contains(strings.ToLower(string(cap.body)), "vapid") {
+		t.Fatalf("register wire leaked VAPID key material: %s", cap.body)
+	}
 	for _, banned := range []string{"subject", "sender", "from", "snippet", "body", "title", "message"} {
 		if strings.Contains(string(cap.body), `"`+banned+`"`) {
-			t.Fatalf("register body leaked mail-content field %q: %s", banned, cap.body)
+			t.Fatalf("register body leaked field %q: %s", banned, cap.body)
 		}
 	}
 }
 
-// TestCPRegistrar_Register_SkipsWithoutVAPID verifies that with no VAPID material
-// the cell does NOT register (the CP couldn't sign a send-on-behalf anyway) and
-// makes no CP call.
-func TestCPRegistrar_Register_SkipsWithoutVAPID(t *testing.T) {
+// TestCPRegistrar_Register_SkipsEmptySubscription verifies that with no usable
+// subscription (empty endpoint/keys) the cell makes no CP call.
+func TestCPRegistrar_Register_SkipsEmptySubscription(t *testing.T) {
 	var cap captured
 	srv := fakeCP(t, &cap)
 	defer srv.Close()
 	r := liveRegistrar(t, srv)
-	if err := r.Register(context.Background(), sampleSub("https://push.example/z"), PushConfig{}); err != nil {
-		t.Fatalf("Register (no vapid) should be a benign no-op, got %v", err)
+	if err := r.Register(context.Background(), PushSubscription{}); err != nil {
+		t.Fatalf("Register (empty sub) should be a benign no-op, got %v", err)
 	}
 	if atomic.LoadInt32(&cap.hitCount) != 0 {
-		t.Fatalf("expected NO CP call without VAPID material, got %d", cap.hitCount)
+		t.Fatalf("expected NO CP call for an empty subscription, got %d", cap.hitCount)
 	}
 }
 
@@ -232,7 +223,7 @@ func TestCPRegistrar_WrongSecretRejected(t *testing.T) {
 		t.Fatal("registrar should build with a (wrong) secret set")
 	}
 	r.setClientForTest(srv.Client())
-	err := r.Register(context.Background(), sampleSub("https://push.example/z"), testCfgVAPID())
+	err := r.Register(context.Background(), sampleSub("https://push.example/z"))
 	if err == nil {
 		t.Fatal("expected a non-2xx error when the CP rejects the forged HMAC")
 	}
@@ -253,7 +244,7 @@ func TestCPRegistrar_OriginFromFullURL(t *testing.T) {
 		t.Fatal("registrar should build from a full register URL")
 	}
 	r.setClientForTest(srv.Client())
-	if err := r.Register(context.Background(), sampleSub("https://push.example/z"), testCfgVAPID()); err != nil {
+	if err := r.Register(context.Background(), sampleSub("https://push.example/z")); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	if cap.path != cpRegisterPath {

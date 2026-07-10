@@ -134,21 +134,61 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 			writeErr(w, http.StatusInternalServerError, "could not store subscription")
 			return
 		}
-		// Managed mode: SYNC this subscription to the CP so it can send push
-		// on-behalf while the cell sleeps. Best-effort + detached (a slow/absent CP
-		// must never block or fail the user's own subscribe — the direct send-path
-		// works regardless). Inert no-op on a nil (self-host) registrar.
-		if cpReg.Enabled() {
-			go func(sub notify.PushSubscription) {
-				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-				defer cancel()
-				if err := cpReg.Register(ctx, sub, cfg); err != nil {
-					// Never logs endpoint/key material — cpReg.Register keeps secrets out.
-					log.Printf("[notify] push: CP register sync failed: %v", err)
-				}
-			}(sub)
-		}
+		// NOTE: this CELL-KEYED subscription is for the cell's OWN direct send path
+		// only. It is NOT forwarded to the CP — send-on-behalf uses a SEPARATE
+		// CP-KEYED subscription (POST cp-subscribe below), so the CP never receives a
+		// subscription tied to the cell's VAPID identity.
 		writeJSON(w, map[string]string{"status": "subscribed"})
+	})
+
+	// POST cp-subscribe — the browser registers a SECOND, CP-KEYED subscription
+	// (created with the CP's PUBLIC VAPID key, fetched from the CP's cp-key
+	// endpoint) so the CP can send a generic content-blind "new mail" push while
+	// the cell sleeps. Body is the browser's PushSubscription.toJSON():
+	//   { "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } }
+	// The cell forwards it to the CP registrar — NO VAPID key material crosses.
+	// Fail-safe-off (503) in self-host mode where cpReg is nil.
+	mux.HandleFunc("POST /api/notifications/push/cp-subscribe", func(w http.ResponseWriter, r *http.Request) {
+		owner := r.Header.Get("X-User-ID")
+		if owner == "" {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !cpReg.Enabled() {
+			// Self-host / no CP: send-on-behalf is not available. Fail-safe-off.
+			writeErr(w, http.StatusServiceUnavailable, "cp push not configured")
+			return
+		}
+		var body struct {
+			Endpoint string `json:"endpoint"`
+			Keys     struct {
+				P256DH string `json:"p256dh"`
+				Auth   string `json:"auth"`
+			} `json:"keys"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid subscription body")
+			return
+		}
+		sub := notify.PushSubscription{
+			OwnerID:  owner,
+			Endpoint: body.Endpoint,
+			P256DH:   body.Keys.P256DH,
+			Auth:     body.Keys.Auth,
+		}
+		if err := notify.ValidateSubscription(sub); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// Best-effort + detached: a slow/absent CP must never block the user.
+		go func(sub notify.PushSubscription) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := cpReg.Register(ctx, sub); err != nil {
+				log.Printf("[notify] push: CP cp-subscribe sync failed: %v", err)
+			}
+		}(sub)
+		writeJSON(w, map[string]string{"status": "cp-subscribed"})
 	})
 
 	// DELETE subscribe — body: { "endpoint": "..." }. Idempotent; scoped to the
@@ -171,18 +211,39 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 			writeErr(w, http.StatusInternalServerError, "could not remove subscription")
 			return
 		}
-		// Managed mode: UNREGISTER this endpoint from the CP so it stops sending
-		// on-behalf for a removed subscription. Best-effort + detached; inert no-op
-		// on a nil (self-host) registrar. Idempotent on the CP.
-		if cpReg.Enabled() {
-			go func(endpoint string) {
-				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-				defer cancel()
-				if err := cpReg.Unregister(ctx, endpoint); err != nil {
-					log.Printf("[notify] push: CP unregister sync failed: %v", err)
-				}
-			}(body.Endpoint)
-		}
+		// The CELL-KEYED endpoint is never registered with the CP (only the CP-keyed
+		// one is), so there is nothing to unregister on the CP here. The CP-keyed
+		// endpoint is removed via DELETE cp-subscribe below.
 		writeJSON(w, map[string]string{"status": "unsubscribed"})
+	})
+
+	// DELETE cp-subscribe — remove the CP-KEYED endpoint from the CP so it stops
+	// sending on-behalf. Body: { "endpoint": "..." } (the CP-keyed endpoint).
+	// Best-effort + detached; fail-safe-off (503) in self-host mode.
+	mux.HandleFunc("DELETE /api/notifications/push/cp-subscribe", func(w http.ResponseWriter, r *http.Request) {
+		owner := r.Header.Get("X-User-ID")
+		if owner == "" {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !cpReg.Enabled() {
+			writeErr(w, http.StatusServiceUnavailable, "cp push not configured")
+			return
+		}
+		var body struct {
+			Endpoint string `json:"endpoint"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body); err != nil || body.Endpoint == "" {
+			writeErr(w, http.StatusBadRequest, "endpoint required")
+			return
+		}
+		go func(endpoint string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := cpReg.Unregister(ctx, endpoint); err != nil {
+				log.Printf("[notify] push: CP cp-unsubscribe sync failed: %v", err)
+			}
+		}(body.Endpoint)
+		writeJSON(w, map[string]string{"status": "cp-unsubscribed"})
 	})
 }

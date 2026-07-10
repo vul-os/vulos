@@ -34,16 +34,17 @@ package notify
 // computeEdgeCPAuth / vulos-deliver edge.cpAuthHeader). The body is the exact
 // bytes POSTed.
 //
-// # Content-blindness
+// # Dedicated CP key — NO VAPID key material is EVER sent
 //
-// The registration carries ONLY: the cell's ULID (so the CP derives the owning
-// account server-side), the browser subscription (endpoint + p256dh + auth), and
-// the cell's VAPID material (public + subject + private). NO mail content ever
-// crosses this path. The VAPID PRIVATE key IS sent because send-on-behalf is
-// literally the CP signing a Web Push in the cell's name — RFC 8292 VAPID
-// requires the private key to mint the signed JWT, and the merged CP contract
-// (cellpush.ValidateForRegister) fail-closes without it. It is a SECRET on the
-// wire (TLS to the CP) and is NEVER logged here.
+// The CP uses its OWN VAPID key (SPEC 1, dedicated-CP-VAPID rework) and NEVER
+// holds the cell's private key. This registrar forwards a SEPARATE, CP-KEYED
+// browser subscription — the one the device created with the CP's PUBLIC key
+// (fetched via GET /api/mail/push/cp-key) — used only for the offline "new mail"
+// notice. It carries ONLY: the cell's ULID (so the CP derives the owning account
+// server-side) + the CP-keyed subscription (endpoint + p256dh + auth). NO VAPID
+// key material and NO mail content ever cross this path. The cell's own direct
+// send path (webpush.go) keeps its own cell-keyed subscription and its private
+// key, which never leaves the box.
 
 import (
 	"bytes"
@@ -85,8 +86,10 @@ type CPRegistrarConfig struct {
 	// in a register path is also accepted (the origin is extracted). Managed cells
 	// receive this at provisioning; self-host leaves it unset.
 	BaseURL string
-	// Secret is the edge↔CP HMAC key (VULOS_PUSH_CP_SECRET, provisioned to the
-	// cell to equal the CP's MAIL_EDGE_CP_SECRET). It is a SECRET; never logged.
+	// Secret is the edge↔CP HMAC key. CANONICAL name = MAIL_EDGE_CP_SECRET (the
+	// SAME name the CP verifies, converged per P2-2); VULOS_PUSH_CP_SECRET is still
+	// accepted as a back-compat fallback for already-provisioned cells. It is a
+	// SECRET; never logged.
 	Secret string
 	// ULID is the cell's managed instance id (VULOS_ULID), from which the CP
 	// derives the owning account server-side. The cell never claims an account id.
@@ -96,9 +99,16 @@ type CPRegistrarConfig struct {
 // LoadCPRegistrarConfig reads the managed-mode CP registration config from the
 // environment. All values default empty → the registrar is inert (self-host).
 func LoadCPRegistrarConfig() CPRegistrarConfig {
+	// P2-2 env convergence: the CP verifies MAIL_EDGE_CP_SECRET, so the cell reads
+	// that same canonical name. VULOS_PUSH_CP_SECRET is accepted as a back-compat
+	// fallback so already-provisioned cells keep working. (Never trim a secret.)
+	secret := os.Getenv("MAIL_EDGE_CP_SECRET")
+	if secret == "" {
+		secret = os.Getenv("VULOS_PUSH_CP_SECRET")
+	}
 	return CPRegistrarConfig{
 		BaseURL: strings.TrimSpace(os.Getenv("VULOS_PUSH_CP_REGISTER_URL")),
-		Secret:  os.Getenv("VULOS_PUSH_CP_SECRET"), // never trim a secret
+		Secret:  secret,
 		ULID:    strings.TrimSpace(os.Getenv("VULOS_ULID")),
 	}
 }
@@ -183,15 +193,13 @@ func (r *CPRegistrar) setClientForTest(c *http.Client) { r.client = c }
 
 // registerBody is the register request payload. It mirrors the CP's
 // cellPushRegisterReq field-for-field (json tags MUST match). It carries the
-// cell ULID (→ CP derives the account), the subscription, and the VAPID pair.
+// cell ULID (→ CP derives the account) + the CP-KEYED subscription only. It
+// carries NO VAPID key material — the CP signs with its OWN key.
 type registerBody struct {
-	ULID         string `json:"ulid"`
-	Endpoint     string `json:"endpoint"`
-	P256DH       string `json:"p256dh"`
-	Auth         string `json:"auth"`
-	VAPIDPublic  string `json:"vapid_public"`
-	VAPIDPrivate string `json:"vapid_private"`
-	VAPIDSubject string `json:"vapid_subject"`
+	ULID     string `json:"ulid"`
+	Endpoint string `json:"endpoint"`
+	P256DH   string `json:"p256dh"`
+	Auth     string `json:"auth"`
 }
 
 // unregisterBody mirrors the CP's cellPushUnregisterReq.
@@ -200,29 +208,26 @@ type unregisterBody struct {
 	Endpoint string `json:"endpoint"`
 }
 
-// Register syncs one subscription (plus the cell's VAPID material) to the CP.
-// It is a no-op on a nil (self-host) registrar. cfg is the resolved VAPID config
-// (webpush.go) — the SAME pair the cell uses for its own direct sends, so a
-// send-on-behalf notice is indistinguishable to the vendor from a direct one.
-// Best-effort: a CP error is logged (WITHOUT key material) and returned so the
+// Register forwards ONE CP-KEYED browser subscription to the CP so the CP can
+// send a generic content-blind push ON BEHALF of a sleeping cell — signed with
+// the CP's OWN VAPID key. sub is the subscription the device created with the
+// CP's PUBLIC key (GET /api/mail/push/cp-key), NOT the cell-keyed direct-send
+// subscription. NO VAPID key material is ever sent. It is a no-op on a nil
+// (self-host) registrar. Best-effort: a CP error is logged and returned so the
 // caller can decide, but it never blocks the user's own subscribe.
-func (r *CPRegistrar) Register(ctx context.Context, sub PushSubscription, cfg PushConfig) error {
+func (r *CPRegistrar) Register(ctx context.Context, sub PushSubscription) error {
 	if !r.Enabled() {
 		return nil
 	}
-	if !cfg.Enabled() {
-		// No VAPID material → the CP cannot sign a send-on-behalf; skip (the direct
-		// path is off too). Not an error.
+	if sub.Endpoint == "" || sub.P256DH == "" || sub.Auth == "" {
+		// Nothing usable to register (e.g. the CP-keyed subscribe did not happen).
 		return nil
 	}
 	body := registerBody{
-		ULID:         r.cfg.ULID,
-		Endpoint:     sub.Endpoint,
-		P256DH:       sub.P256DH,
-		Auth:         sub.Auth,
-		VAPIDPublic:  cfg.VAPIDPublic,
-		VAPIDPrivate: cfg.VAPIDPrivate,
-		VAPIDSubject: cfg.VAPIDSubject,
+		ULID:     r.cfg.ULID,
+		Endpoint: sub.Endpoint,
+		P256DH:   sub.P256DH,
+		Auth:     sub.Auth,
 	}
 	return r.post(ctx, cpRegisterPath, body)
 }
@@ -238,8 +243,8 @@ func (r *CPRegistrar) Unregister(ctx context.Context, endpoint string) error {
 
 // post marshals payload, computes the edge↔CP HMAC over method/path/body, and
 // POSTs it to origin+path. It treats any 2xx as success; a non-2xx is an error
-// (the CP returns 204 on success for both routes). The VAPID private key and the
-// secret are NEVER logged.
+// (the CP returns 204 on success for both routes). The HMAC secret is NEVER
+// logged (and no VAPID key material is ever part of the payload).
 func (r *CPRegistrar) post(ctx context.Context, path string, payload any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {

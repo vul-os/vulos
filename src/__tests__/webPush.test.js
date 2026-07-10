@@ -7,7 +7,7 @@
 // material touched.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { urlBase64ToUint8Array, enableWebPush, disableWebPush } from '../core/notifiers/webPush'
+import { urlBase64ToUint8Array, enableWebPush, disableWebPush, enableCPPush } from '../core/notifiers/webPush'
 
 // A base64url public key (arbitrary valid-ish bytes) for the conversion test.
 const PUBKEY = 'BPabc-DEF_ghi'
@@ -110,6 +110,43 @@ describe('enableWebPush', () => {
       registrationPromise: fakeRegistration(existing),
     })
     expect(sub).toBe(existing)
+  })
+})
+
+describe('enableCPPush (send-on-behalf, CP-keyed)', () => {
+  it('forwards a CP-keyed subscription carrying only endpoint+keys, NO VAPID material', async () => {
+    const calls = []
+    const cpSub = fakeSubscription('https://push.example/cp-keyed')
+    const fetch = vi.fn(async (url, init) => {
+      calls.push({ url, init })
+      if (url.endsWith('/cp-key')) {
+        return { ok: true, json: async () => ({ enabled: true, vapid_public: PUBKEY, subject: 'mailto:cp@vulos.to' }) }
+      }
+      return { ok: true, json: async () => ({ status: 'cp-subscribed' }) }
+    })
+    // Provide a dedicated CP scope with the CP-keyed subscription pre-created.
+    const ok = await enableCPPush({ fetch, cpRegistrationPromise: fakeRegistration(cpSub) })
+    expect(ok).toBe(true)
+    const post = calls.find((c) => c.url.endsWith('/cp-subscribe') && c.init && c.init.method === 'POST')
+    expect(post).toBeTruthy()
+    const body = JSON.parse(post.init.body)
+    expect(Object.keys(body).sort()).toEqual(['endpoint', 'keys'])
+    expect(body.endpoint).toBe('https://push.example/cp-keyed')
+    // NO VAPID key material may cross the wire.
+    expect(JSON.stringify(body).toLowerCase()).not.toContain('vapid')
+    expect(body).not.toHaveProperty('vapid_private')
+  })
+
+  it('is inert (no cp-subscribe) when the box reports no CP configured (self-host)', async () => {
+    const calls = []
+    const fetch = vi.fn(async (url) => {
+      calls.push(url)
+      if (url.endsWith('/cp-key')) return { ok: true, json: async () => ({ enabled: false }) }
+      return { ok: true, json: async () => ({}) }
+    })
+    const ok = await enableCPPush({ fetch, cpRegistrationPromise: fakeRegistration() })
+    expect(ok).toBe(false)
+    expect(calls.some((u) => u.endsWith('/cp-subscribe'))).toBe(false)
   })
 })
 
