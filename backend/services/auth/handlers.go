@@ -118,7 +118,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloudlogin":            true, // CLOGIN-01: unauthenticated cloud login
 	"/api/auth/cloud/status":          true, // CLOGIN-01: enrollment status check (setup-time)
 	"/api/auth/cloud/signup":          true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
-	"/api/identity/check":             true, // IDENTITY-01: @vulos.to handle-availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
+	"/api/identity/check":             true, // IDENTITY-01: @vulos.net handle-availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
 	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":            true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)

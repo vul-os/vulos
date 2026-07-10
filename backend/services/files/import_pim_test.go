@@ -272,7 +272,7 @@ func TestPIMImportContactsFlow(t *testing.T) {
 	src.peopleBase = peopleSrv.URL
 	svc.WithExternal(&fakeTokenSource{token: "tok"})
 	svc.WithImport(src)
-	svc.WithPIMConfig(mailSrv.URL, "secret", func(string) string { return "alice@vulos.to" })
+	svc.WithPIMConfig(mailSrv.URL, "secret", func(string) string { return "alice@vulos.net" })
 
 	// First run: import two contacts.
 	job, err := svc.StartImport(ctx, "u1", "google-contacts", "", "sync")
@@ -369,7 +369,7 @@ func TestPIMImportCalendarFlow(t *testing.T) {
 	src.calBase = calSrv.URL
 	svc.WithExternal(&fakeTokenSource{token: "tok"})
 	svc.WithImport(src)
-	svc.WithPIMConfig(mailSrv.URL, "sec", func(string) string { return "alice@vulos.to" })
+	svc.WithPIMConfig(mailSrv.URL, "sec", func(string) string { return "alice@vulos.net" })
 
 	job, err := svc.StartImport(ctx, "u1", "google-calendar", "", "once")
 	if err != nil {
@@ -433,7 +433,7 @@ func TestPIMImportPersistAfterDisconnect(t *testing.T) {
 	src.peopleBase = peopleSrv.URL
 	svc.WithExternal(&fakeTokenSource{token: "live"})
 	svc.WithImport(src)
-	svc.WithPIMConfig(mailSrv.URL, "secret", func(string) string { return "u@vulos.to" })
+	svc.WithPIMConfig(mailSrv.URL, "secret", func(string) string { return "u@vulos.net" })
 
 	job, _ := svc.StartImport(ctx, "u1", "google-contacts", "", "once")
 	_ = svc.RunImportJob(ctx, job.ID)

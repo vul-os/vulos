@@ -2124,7 +2124,7 @@ function AppsStep({ config, update, onNext, onPrev }) {
   const [saving, setSaving] = useState(false)
 
   // BUNDLE-01: the @vulos email opt-in drives Mail provisioning by claiming a
-  // @vulos.to address. On cloud/create-cloud installs the mandatory cloudAccount
+  // @vulos.net address. On cloud/create-cloud installs the mandatory cloudAccount
   // step (VulosAccountStep) has already claimed it — config.cloudAccountAddress is
   // set — so we do nothing here. The gap is the LOCAL install path: cloudAccount is
   // filtered out of the step list, yet suiteEmail defaults on, so no claim has
@@ -2154,12 +2154,12 @@ function AppsStep({ config, update, onNext, onPrev }) {
       const res = await fetch('/api/identity/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle, domain: 'vulos.to' }),
+        body: JSON.stringify({ handle, domain: 'vulos.net' }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok || res.status === 201) {
         // Only record the address on a genuine claim success.
-        update('cloudAccountAddress', data.address || `${handle}@vulos.to`)
+        update('cloudAccountAddress', data.address || `${handle}@vulos.net`)
       } else {
         // Do not fabricate a claimed address; just let the install proceed.
         console.warn(`[BUNDLE-01] suiteEmail claim failed (status ${res.status}) — proceeding without a claimed address`)
@@ -2177,7 +2177,7 @@ function AppsStep({ config, update, onNext, onPrev }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, workspace }),
       }).catch(() => {})
-      // BUNDLE-01: claim the @vulos.to address if the email opt-in is on and no
+      // BUNDLE-01: claim the @vulos.net address if the email opt-in is on and no
       // address was claimed earlier. Best-effort — never blocks the install.
       await maybeClaimSuiteEmail()
     } finally {

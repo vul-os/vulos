@@ -1,6 +1,6 @@
 package main
 
-// routes_identity_claim_test.go — IDENTITY-01 coverage for the @vulos.to claim
+// routes_identity_claim_test.go — IDENTITY-01 coverage for the @vulos.net claim
 // proxies (routes_identity_claim.go):
 //
 //   GET  /api/identity/check  — forwards handle/domain + Cookie to the CP, relays
@@ -67,13 +67,13 @@ func newFakeCP(t *testing.T, status int, body string) *fakeCP {
 // ── GET /api/identity/check ─────────────────────────────────────────────────
 
 func TestIdentityCheck_ForwardsAndRelays(t *testing.T) {
-	cp := newFakeCP(t, http.StatusOK, `{"address":"alice@vulos.to","available":true}`)
+	cp := newFakeCP(t, http.StatusOK, `{"address":"alice@vulos.net","available":true}`)
 	t.Setenv("VULOS_CLOUD_API_URL", cp.srv.URL)
 
 	mux := http.NewServeMux()
 	registerIdentityClaimRoutes(mux)
 
-	r := httptest.NewRequest(http.MethodGet, "/api/identity/check?handle=alice&domain=vulos.to", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/identity/check?handle=alice&domain=vulos.net", nil)
 	r.Header.Set("Cookie", "cp_session=abc123")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -84,7 +84,7 @@ func TestIdentityCheck_ForwardsAndRelays(t *testing.T) {
 	if cp.lastPath != "/api/identity/check" {
 		t.Fatalf("CP path = %q, want /api/identity/check", cp.lastPath)
 	}
-	if !strings.Contains(cp.lastQuery, "handle=alice") || !strings.Contains(cp.lastQuery, "domain=vulos.to") {
+	if !strings.Contains(cp.lastQuery, "handle=alice") || !strings.Contains(cp.lastQuery, "domain=vulos.net") {
 		t.Fatalf("CP query = %q, want handle+domain forwarded", cp.lastQuery)
 	}
 	if cp.lastCookie != "cp_session=abc123" {
@@ -94,7 +94,7 @@ func TestIdentityCheck_ForwardsAndRelays(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("relayed body not JSON: %v", err)
 	}
-	if got["available"] != true || got["address"] != "alice@vulos.to" {
+	if got["available"] != true || got["address"] != "alice@vulos.net" {
 		t.Fatalf("relayed body = %v, want CP body verbatim", got)
 	}
 }
@@ -145,7 +145,7 @@ func TestIdentityClaim_ForwardsCookieAndRelaysStatus(t *testing.T) {
 	registerIdentityClaimRoutes(mux)
 
 	// Include a client-supplied account_id to prove the OS handler drops it.
-	body := `{"handle":"alice","domain":"vulos.to","account_id":"attacker-supplied"}`
+	body := `{"handle":"alice","domain":"vulos.net","account_id":"attacker-supplied"}`
 	r := httptest.NewRequest(http.MethodPost, "/api/identity/claim", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Cookie", "cp_session=sess-xyz")
@@ -170,7 +170,7 @@ func TestIdentityClaim_ForwardsCookieAndRelaysStatus(t *testing.T) {
 	if _, ok := forwarded["account_id"]; ok {
 		t.Fatalf("forwarded body leaked account_id: %v — OS must not trust client-supplied account", forwarded)
 	}
-	if forwarded["handle"] != "alice" || forwarded["domain"] != "vulos.to" {
+	if forwarded["handle"] != "alice" || forwarded["domain"] != "vulos.net" {
 		t.Fatalf("forwarded body = %v, want only handle+domain", forwarded)
 	}
 }
@@ -179,7 +179,7 @@ func TestIdentityClaim_MissingHandle400(t *testing.T) {
 	mux := http.NewServeMux()
 	registerIdentityClaimRoutes(mux)
 
-	r := httptest.NewRequest(http.MethodPost, "/api/identity/claim", strings.NewReader(`{"domain":"vulos.to"}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/identity/claim", strings.NewReader(`{"domain":"vulos.net"}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -193,7 +193,7 @@ func TestIdentityClaim_MissingHandle400(t *testing.T) {
 // claim proxy: without an OS session it is 401 (it is NOT in publicPaths), while
 // /api/identity/check is public (setup-time) and passes through.
 func TestIdentityClaim_RequiresLocalSession(t *testing.T) {
-	cp := newFakeCP(t, http.StatusOK, `{"address":"alice@vulos.to","claimed":true}`)
+	cp := newFakeCP(t, http.StatusOK, `{"address":"alice@vulos.net","claimed":true}`)
 	t.Setenv("VULOS_CLOUD_API_URL", cp.srv.URL)
 
 	store, err := auth.NewStore(t.TempDir())
@@ -214,7 +214,7 @@ func TestIdentityClaim_RequiresLocalSession(t *testing.T) {
 
 	// claim WITHOUT a session cookie → middleware 401 (never reaches the proxy).
 	res, err := http.Post(srv.URL+"/api/identity/claim", "application/json",
-		strings.NewReader(`{"handle":"alice","domain":"vulos.to"}`))
+		strings.NewReader(`{"handle":"alice","domain":"vulos.net"}`))
 	if err != nil {
 		t.Fatalf("post claim: %v", err)
 	}
@@ -285,7 +285,7 @@ func withIdentityDeviceAuth(t *testing.T, auther identityDeviceAuther, ulid stri
 // is a genuine device signature over the purpose-bound "identity:claim:<ulid>"
 // message — verifiable against the forwarded pubkey.
 func TestIdentityClaim_ForwardsDeviceCertOnFirstBoot(t *testing.T) {
-	cp := newFakeCP(t, http.StatusOK, `{"address":"alice@vulos.to","claimed":true}`)
+	cp := newFakeCP(t, http.StatusOK, `{"address":"alice@vulos.net","claimed":true}`)
 	t.Setenv("VULOS_CLOUD_API_URL", cp.srv.URL)
 
 	const ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
@@ -297,7 +297,7 @@ func TestIdentityClaim_ForwardsDeviceCertOnFirstBoot(t *testing.T) {
 
 	// NO Cookie header — this is the pure first-boot shape (no CP session yet).
 	r := httptest.NewRequest(http.MethodPost, "/api/identity/claim",
-		strings.NewReader(`{"handle":"alice","domain":"vulos.to"}`))
+		strings.NewReader(`{"handle":"alice","domain":"vulos.net"}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -351,7 +351,7 @@ func TestIdentityClaim_ForwardsDeviceCertOnFirstBoot(t *testing.T) {
 // installed, the claim proxy sends NO device-cert headers — the session-only path is
 // unchanged. (This is the pre-enrollment / cookie-only shape.)
 func TestIdentityClaim_NoDeviceHeadersWhenNotEnrolled(t *testing.T) {
-	cp := newFakeCP(t, http.StatusOK, `{"address":"bob@vulos.to","claimed":true}`)
+	cp := newFakeCP(t, http.StatusOK, `{"address":"bob@vulos.net","claimed":true}`)
 	t.Setenv("VULOS_CLOUD_API_URL", cp.srv.URL)
 
 	// Explicitly clear the globals for this test (no enrolled identity).
@@ -361,7 +361,7 @@ func TestIdentityClaim_NoDeviceHeadersWhenNotEnrolled(t *testing.T) {
 	registerIdentityClaimRoutes(mux)
 
 	r := httptest.NewRequest(http.MethodPost, "/api/identity/claim",
-		strings.NewReader(`{"handle":"bob","domain":"vulos.to"}`))
+		strings.NewReader(`{"handle":"bob","domain":"vulos.net"}`))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Cookie", "cp_session=sess-1")
 	w := httptest.NewRecorder()
@@ -402,7 +402,7 @@ func TestIdentityClaim_NoDeviceHeadersWhenCertUnavailable(t *testing.T) {
 
 	post := func() http.Header {
 		r := httptest.NewRequest(http.MethodPost, "/api/identity/claim",
-			strings.NewReader(`{"handle":"alice","domain":"vulos.to"}`))
+			strings.NewReader(`{"handle":"alice","domain":"vulos.net"}`))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Cookie", "cp_session=s")
 		w := httptest.NewRecorder()

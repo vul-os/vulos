@@ -2,7 +2,7 @@
 //
 // Tests:
 //   1. VulosAccountStep rejects external-domain "@gmail.com" input
-//   2. VulosAccountStep applies the "@vulos.to" suffix correctly (suffix-in-chrome pattern)
+//   2. VulosAccountStep applies the "@vulos.net" suffix correctly (suffix-in-chrome pattern)
 //   3. IntentStep persists intent choice to the wizard config state via update()
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -44,13 +44,13 @@ describe('VulosAccountStep — external-domain rejection', () => {
 
     // An error message about external domains should appear
     expect(
-      screen.getByText(/Only @vulos\.to addresses are supported/i)
+      screen.getByText(/Only @vulos\.net addresses are supported/i)
     ).toBeInTheDocument()
   })
 })
 
-describe('VulosAccountStep — @vulos.to suffix chrome', () => {
-  it('always renders the @vulos.to suffix as read-only chrome', () => {
+describe('VulosAccountStep — @vulos.net suffix chrome', () => {
+  it('always renders the @vulos.net suffix as read-only chrome', () => {
     render(
       <VulosAccountStep
         config={{ username: '' }}
@@ -61,7 +61,7 @@ describe('VulosAccountStep — @vulos.to suffix chrome', () => {
     )
 
     // The suffix label should be present (rendered as a static span)
-    expect(screen.getByText('@vulos.to')).toBeInTheDocument()
+    expect(screen.getByText('@vulos.net')).toBeInTheDocument()
   })
 
   it('accepts handle-part-only input and does not prepend the domain to the value', () => {
@@ -77,10 +77,10 @@ describe('VulosAccountStep — @vulos.to suffix chrome', () => {
     const input = screen.getByPlaceholderText('yourname')
     fireEvent.change(input, { target: { value: 'myhandle' } })
 
-    // The input value should only contain the handle, not "myhandle@vulos.to"
+    // The input value should only contain the handle, not "myhandle@vulos.net"
     expect(input.value).toBe('myhandle')
     // The suffix is still rendered separately
-    expect(screen.getByText('@vulos.to')).toBeInTheDocument()
+    expect(screen.getByText('@vulos.net')).toBeInTheDocument()
   })
 })
 
