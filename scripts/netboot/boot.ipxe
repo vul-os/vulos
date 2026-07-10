@@ -51,7 +51,10 @@ set KERNEL_URL    ${BOOT_BASE_HTTP}/kernel
 set KERNEL_SIG    ${BOOT_BASE_HTTP}/kernel.sig
 set INITRAMFS_URL ${BOOT_BASE_HTTP}/initramfs.img
 set INITRAMFS_SIG ${BOOT_BASE_HTTP}/initramfs.img.sig
-set CMDLINE       vulos.live=1
+# vulos.netboot=1 tells the initramfs (scripts/initramfs/vulos-live) that the
+# payload arrived over the network, so dm-verity + a signed roothash are
+# MANDATORY and the unverified loop-mount fallback is refused (fail closed).
+set CMDLINE       vulos.live=1 vulos.netboot=1
 
 echo
 echo ==========================================

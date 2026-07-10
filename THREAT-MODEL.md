@@ -43,12 +43,41 @@ Trust boundaries:
 
 ### Mitigations in code
 - dm-verity hash baked at build time; kernel refuses to mount tampered root.
-- Signed squashfs verified before mount in initramfs (see `scripts/verify-image`).
-- Hostname input validated against `[a-zA-Z0-9\-]{1,63}` regex in firstboot handler.
+- **Signature-first, transport-second.** Trust is enforced by an Ed25519 key
+  PINNED in the seed/iPXE binary (`/etc/vulos/trust-anchor.pub`), never by the
+  system CA bundle — TLS success alone never authorises a payload.
+- **iPXE** `imgverify`s kernel + initramfs against the pinned anchor before exec.
+- **Live/netboot squashfs** (threat #1/#3): the initramfs (`scripts/initramfs/vulos-live`)
+  binds the dm-verity root hash to the pinned anchor via a detached signature
+  (`os-core.roothash.sig`, checked by the `vulos-verify-sig` CLI) and, when
+  `vulos.netboot=1` is set, FAILS CLOSED if verity/signature inputs are absent —
+  an attacker can no longer omit the roothash files to downgrade into an
+  unverified loop mount.
+- **Netboot-to-install** (`backend/services/installer/netboot_install.go`): the
+  squashfs is signature-verified against the pinned anchor BEFORE a single byte
+  is written to the permanent slot (`verifyNetbootSquashfs`, `netboot_verify.go`);
+  when a signed `stable.json` ships beside the image, its `roothash` must match
+  and its `min_epoch` must clear the device epoch floor (downgrade protection).
+  The destructive endpoint is admin-gated.
+- Hostname input validated against a strict RFC-952 regex (`hostnameRE` in
+  `backend/cmd/server/routes_identity.go`) and written via `os.WriteFile` /
+  `syscall.Sethostname` — never through a shell — so threat #2 (hostname→shell
+  injection) has no live path.  Disk selection is `[A-Za-z0-9]{1,32}`-validated
+  (`validDiskName`) before it reaches any partition/format command.
 
 ### Residual risks
 - Key rotation for the baked dm-verity trust key is an open design question (see memory/vulos-os-distribution-architecture.md).
-- Network fetch during firstboot has no certificate pinning; relies on system CA bundle which may be stale on older boot media.
+- iPXE cannot parse JSON, so the boot-pipe manifest is `imgverify`-checked but
+  the kernel/initramfs *URLs* iPXE fetches are script constants, not read from
+  the verified manifest.  Safety is preserved because every artifact is
+  independently `imgverify`'d against the pinned anchor before exec; the residual
+  gap is version-pinning at the iPXE layer (an attacker could serve an *older
+  signed* kernel).  Version/epoch pinning is enforced at the squashfs layer
+  (manifest `min_epoch` + epoch floor), not the iPXE artifact layer.
+- The `os-core.roothash.sig` + `vulos-verify-sig` binary must be produced by the
+  build and copied into the initramfs (COPY list in the baremetal builder) for
+  the netboot fail-closed gate to have its verifier present; without it a
+  `vulos.netboot=1` boot halts (fail-closed) rather than proceeding unverified.
 
 ---
 

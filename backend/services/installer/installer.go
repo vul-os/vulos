@@ -170,6 +170,11 @@ type Service struct {
 	// admin users only.  If nil, no auth check is performed (useful in tests;
 	// the live-USB flow always supplies a real check via cmd/server/main.go).
 	isAdmin func(r *http.Request) bool
+
+	// verifyCfg optionally overrides the netboot squashfs-verification paths
+	// (trust anchor, epoch floor).  When nil, defaultNetbootVerifyConfig() (the
+	// production seed paths) is used.  Tests set this to point at a temp tree.
+	verifyCfg *netbootVerifyConfig
 }
 
 // New returns a Service backed by real OS commands.

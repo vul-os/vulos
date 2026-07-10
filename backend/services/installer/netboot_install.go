@@ -173,6 +173,16 @@ func (s *Service) handleNetbootInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SEC: netboot-to-install wipes the target disk and writes a permanent OS —
+	// a destructive privileged operation, identical in blast radius to the
+	// live-USB /install endpoint.  Gate it on the same admin predicate so an
+	// unauthenticated caller cannot trigger a wipe or point SquashfsPath at an
+	// arbitrary local file.  When isAdmin is nil (tests) no check is performed.
+	if s.isAdmin != nil && !s.isAdmin(r) {
+		http.Error(w, `{"error":"admin only"}`, http.StatusForbidden)
+		return
+	}
+
 	var req NetbootInstallRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -260,8 +270,16 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 		{name: "mount", pct: 15, fn: func() error {
 			return s.mountNetboot(ctx, espPart, rootPart)
 		}},
-		{name: "write-seed", pct: 35, fn: func() error {
+		{name: "write-seed", pct: 30, fn: func() error {
 			return s.writeSeedFiles(ctx)
+		}},
+		// SECURITY (NETB-03, THREAT-MODEL #1/#3): verify the squashfs signature
+		// against the PINNED trust anchor BEFORE any byte is written to the
+		// permanent slot.  Fail-closed — a tampered/substituted/downgraded image
+		// aborts the install with the disk left un-poisoned.  This is the
+		// verify-before-write gate the signature-first design promises.
+		{name: "verify-squashfs", pct: 35, fn: func() error {
+			return s.verifyNetbootSquashfs(req.SquashfsPath, s.netbootVerifyConfig())
 		}},
 		{name: "stage-squashfs", pct: 85, fn: func() error {
 			return s.stageFirstSquashfs(ctx, req.SquashfsPath, hub)

@@ -2796,7 +2796,12 @@ func main() {
 		p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
 		return p != nil && p.Role == auth.RoleAdmin
 	}
-	installer.RegisterHandlers(mux, installer.NewWithAdminGate(installerIsAdmin))
+	installerSvc := installer.NewWithAdminGate(installerIsAdmin)
+	installer.RegisterHandlers(mux, installerSvc)
+	// NETB-03: netboot-to-install endpoints.  Share the SAME admin-gated Service
+	// so the destructive netboot install is admin-gated and its squashfs is
+	// signature-verified against the pinned trust anchor before being written.
+	installer.RegisterNetbootHandlers(mux, installerSvc)
 
 	// BMINIT-18: wlr-foreign-toplevel-management-v1 window enumeration + control.
 	// Registers GET /api/shell/windows, POST /api/shell/windows/focus,

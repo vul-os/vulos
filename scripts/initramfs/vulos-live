@@ -78,7 +78,47 @@ mkdir -p "$LOWER" "$UPPER" "$WORK" "$MERGED"
 SQUASHFS_ABS="${rootmnt}${SQUASHFS_PATH}"
 HASHTREE_ABS="${rootmnt}${HASHTREE_PATH}"
 ROOTHASH_ABS="${rootmnt}${ROOTHASH_PATH}"
+ROOTHASH_SIG_ABS="${ROOTHASH_ABS}.sig"
+# Pinned trust anchor baked into the seed/initramfs (SEED-01).  This is the
+# SINGLE gate that authorises the dm-verity root hash — TLS/CA trust is never
+# sufficient.  A netboot fetches image.squashfs + os-core.roothash over the
+# (possibly plain-HTTP) network, so the roothash MUST be bound to this pinned
+# key or an attacker can substitute image+roothash together and defeat verity.
+TRUST_ANCHOR_ABS="/etc/vulos/trust-anchor.pub"
 LOWER_DEV=""
+
+# Netboot marker: when the machine booted over the network the payload is
+# attacker-reachable in transit, so verification MUST be fail-closed — the
+# unverified loop-mount fallback is forbidden.  A local live-USB (physical
+# medium) may still fall back on rescue/CI builds that predate verity.
+# The netboot chain (boot.ipxe) sets vulos.netboot=1 on the kernel cmdline.  A
+# local live-USB does NOT, so rescue/CI live-USB builds that predate verity keep
+# their loop-mount fallback while every network boot is strictly fail-closed.
+NETBOOT=0
+if grep -q "vulos.netboot=1" /proc/cmdline; then
+    NETBOOT=1
+fi
+
+# ── Roothash authenticity gate (signature over os-core.roothash) ──────────────
+# If a detached signature ships beside the roothash AND the pinned anchor is
+# present, the roothash MUST verify against the anchor before it is trusted.
+# Fail closed: a present-but-invalid signature always halts the boot.  A missing
+# signature is tolerated ONLY for a local live-USB; on netboot it is fatal.
+if [ -f "$ROOTHASH_ABS" ]; then
+    if [ -f "$ROOTHASH_SIG_ABS" ] && [ -f "$TRUST_ANCHOR_ABS" ] \
+            && command -v vulos-verify-sig >/dev/null 2>&1; then
+        log_begin_msg "vulos-live: verifying os-core.roothash signature against pinned anchor..."
+        if vulos-verify-sig "$TRUST_ANCHOR_ABS" "$ROOTHASH_ABS" "$ROOTHASH_SIG_ABS"; then
+            log_end_msg "vulos-live: roothash signature OK (pinned anchor)"
+        else
+            panic "vulos-live: os-core.roothash signature verification FAILED against pinned trust anchor — boot halted (fail closed)."
+        fi
+    elif [ "$NETBOOT" = "1" ]; then
+        panic "vulos-live: netboot requires a signed os-core.roothash (os-core.roothash.sig + trust anchor + vulos-verify-sig). One is missing — refusing to boot an unauthenticated image (fail closed)."
+    else
+        log_warning_msg "vulos-live: roothash signature not verified (local live-USB; no .sig/anchor/verifier). dm-verity still binds the image to this roothash."
+    fi
+fi
 
 if command -v veritysetup >/dev/null 2>&1 \
         && [ -f "$HASHTREE_ABS" ] \
@@ -86,6 +126,11 @@ if command -v veritysetup >/dev/null 2>&1 \
 
     ROOTHASH="$(cat "$ROOTHASH_ABS")"
     if [ -z "$ROOTHASH" ]; then
+        # An empty roothash cannot verify anything.  On netboot this is fatal;
+        # on a local live-USB fall back to loop with a warning.
+        if [ "$NETBOOT" = "1" ]; then
+            panic "vulos-live: os-core.roothash is empty on a netboot — refusing to boot unverified image (fail closed)."
+        fi
         log_warning_msg "vulos-live: os-core.roothash is empty — falling back to loop mount (verity inactive)"
     else
         log_begin_msg "vulos-live: opening dm-verity device (verity-root)..."
@@ -100,8 +145,13 @@ if command -v veritysetup >/dev/null 2>&1 \
         fi
     fi
 else
-    # Missing tool or companion files — warn clearly but continue.
-    # This path is expected on images built without verity support (pre-SIGN-01).
+    # Missing tool or companion files.  On a netboot this is FATAL — an attacker
+    # who controls the payload could simply omit veritysetup's inputs to force
+    # the unverified loop-mount path (fail-open downgrade).  Refuse it.
+    if [ "$NETBOOT" = "1" ]; then
+        panic "vulos-live: netboot with dm-verity inputs missing (veritysetup/hashtree/roothash) — refusing the unverified loop-mount fallback (fail closed). veritysetup=$(command -v veritysetup 2>/dev/null || echo none) hashtree=$([ -f "$HASHTREE_ABS" ] && echo ok || echo MISSING) roothash=$([ -f "$ROOTHASH_ABS" ] && echo ok || echo MISSING)"
+    fi
+    # Local live-USB / rescue / pre-verity CI build: warn clearly but continue.
     log_warning_msg "vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity (block-level verification inactive)"
     log_warning_msg "vulos-live:   veritysetup: $(command -v veritysetup 2>/dev/null || echo 'not found')"
     log_warning_msg "vulos-live:   hashtree:    ${HASHTREE_ABS} $([ -f "$HASHTREE_ABS" ] && echo 'found' || echo 'MISSING')"

@@ -383,10 +383,17 @@ func main() {
 	plymouthProgress(20) // milestone: mountAll done
 
 	// NETB-03: In a live/netboot session the root is an in-RAM overlay; there
-	// is no local slot layout and no stable.json manifest.  Skip the boot
-	// counter and OS verification — they only apply to a locally-installed system.
+	// is no local slot layout and no stable.json manifest, so the local-slot
+	// VERITY-02 gate below (which reads /var/cache/vulos/... manifest) does not
+	// apply.  This is NOT "no verification": the live/netboot squashfs is
+	// authenticated UPSTREAM of this process —
+	//   - iPXE imgverify pins kernel + initramfs to the trust anchor before exec;
+	//   - scripts/initramfs/vulos-live binds the dm-verity roothash to the pinned
+	//     anchor (os-core.roothash.sig via vulos-verify-sig) and, on netboot,
+	//     FAILS CLOSED if verity/signature inputs are absent.
+	// So the running image is already signature-gated by the time we get here.
 	if isLiveBoot() {
-		log.Println("[netboot] live-boot mode detected (vulos.live=1) — skipping OSDIST-03 counter and VERITY-02 verification")
+		log.Println("[netboot] live-boot mode — local-slot VERITY-02 N/A; image was pinned+verity-verified in iPXE+initramfs (see scripts/initramfs/vulos-live)")
 	} else {
 		// OSDIST-03: Increment the persistent boot counter immediately after mounts
 		// (so /var/cache is accessible).  If the counter exceeds the threshold the
