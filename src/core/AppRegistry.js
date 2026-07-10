@@ -496,6 +496,65 @@ const defaultWebApps = [
   },
 ]
 
+// BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
+//
+// At install/onboarding the user gets EVERYTHING pre-selected. A lean user can
+// OPT OUT of the @vulos email (→ drops Mail) and/or the Workspace bundle (→ drops
+// Office/Docs, Board, Calendar, Contacts + the Workspace shell). This map records
+// which suite tiles belong to which opt-out group so getApps() can hide them.
+//
+//   - 'email'     — Mail. Coupled to the @vulos address: declining the address is
+//                   the only way to drop Mail (an address with no mailbox is broken).
+//   - 'workspace' — the full productivity suite. Office lives HERE, not stapled to
+//                   the email; unchecking Workspace drops it.
+//
+// Anything not listed here (Files/Drive, Assistant, Talk, Meet, Messages, the
+// utilities and system apps) is always shown — it is not part of the opt-out
+// bundles. Default (no selection persisted) ⇒ every group enabled, so this is
+// invisible to existing installs.
+const suiteBundleOf = new Map([
+  ['lilmail', 'email'],
+  ['vulos-office', 'workspace'],
+  ['vulos-workspace', 'workspace'],
+  ['board', 'workspace'],
+  ['vulos-calendar', 'workspace'],
+  ['vulos-contacts', 'workspace'],
+])
+
+// suiteSelection mirrors GET /api/setup/apps. Defaults to everything-on so tiles
+// are never hidden until the selection loads and an explicit opt-out is present.
+let suiteSelection = { email: true, workspace: true, chosen: false }
+let suiteFetchPromise = null
+
+export function refreshSuiteSelection() {
+  suiteFetchPromise = fetch('/api/setup/apps')
+    .then(r => (r.ok ? r.json() : null))
+    .then(sel => {
+      // Only a real, chosen selection may hide tiles. Absent/invalid ⇒ all-on.
+      if (sel && typeof sel === 'object') {
+        suiteSelection = {
+          email: sel.email !== false,
+          workspace: sel.workspace !== false,
+          chosen: !!sel.chosen,
+        }
+      }
+      return suiteSelection
+    })
+    .catch(() => suiteSelection) // fail-open: never hide the suite on a fetch error
+  return suiteFetchPromise
+}
+
+// suiteAppEnabled returns false only when the user explicitly opted a bundled app
+// out during onboarding. Non-suite apps and the default (unchosen) state are true.
+function suiteAppEnabled(id) {
+  const bundle = suiteBundleOf.get(id)
+  if (!bundle) return true
+  if (!suiteSelection.chosen) return true // batteries-included until a choice is made
+  if (bundle === 'email') return suiteSelection.email
+  if (bundle === 'workspace') return suiteSelection.workspace
+  return true
+}
+
 // Dynamic installed apps from backend
 let installedApps = []
 let fetchPromise = null
@@ -560,13 +619,17 @@ export function refreshAIApps() {
 // Initial fetch
 refreshInstalled()
 refreshAIApps()
+refreshSuiteSelection()
 
 export function getApps() {
   // Merge defaultWebApps + AI apps; installed apps override by id; builtinRegistry unaffected.
   const installedIds = new Set(installedApps.map(a => a.id))
   const webAppsNotInstalled = defaultWebApps.filter(a => !installedIds.has(a.id))
   const ai5Deduped = ai5AIApps.filter(a => !installedIds.has(a.id) && !defaultWebApps.some(b => b.id === a.id) && !builtinRegistry.some(b => b.id === a.id))
+  // BUNDLE-01: drop suite tiles the user explicitly opted out of at onboarding.
+  // Only ever filters the email/workspace bundle members; default state is all-on.
   return [...builtinRegistry, ...webAppsNotInstalled, ...installedApps, ...ai5Deduped]
+    .filter(a => suiteAppEnabled(a.id))
 }
 
 export function getAppById(id) {

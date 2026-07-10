@@ -3212,6 +3212,11 @@ func main() {
 	// Storage status (CLUSTER-06) — reads ~/.vulos/db/storage.json, no creds leaked
 	registerStorageRoutes(mux, home)
 
+	// BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
+	// Persists the onboarding email/Workspace choice so the launcher can hide the
+	// suite tiles a lean user opted out of. Absent selection ⇒ everything on.
+	registerSuiteAppsRoutes(mux, home)
+
 	// STORE-LOCAL-01: bundle storage-mode selector (central-tigris default vs
 	// local-minio-sync opt-in). Coordinated with scripts/install-vulos.sh —
 	// when MinIO is installed the installer writes storage.yaml and creates

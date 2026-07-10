@@ -13,7 +13,12 @@ import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 // IDENTITY-01: 'cloudAccount' step ("Pick your Vulos username") is inserted after 'account' and before 'pin'.
 // 'intent' step ("How will you use Vulos?") is inserted after 'pin' and before 'appearance'.
 // The cloudAccount step is mandatory — no skip option in production (frozen invariant).
-const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'cloudAccount', 'pin', 'intent', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+// BUNDLE-01: the 'apps' step ("Your apps") reflects the default-everything
+// (batteries-included, opt-out) bundling model. It is pre-checked for EVERYTHING
+// — an @vulos email (→ Mail) + the full Workspace suite — and lets a lean user
+// opt out. Inserted after 'intent' and before 'appearance' so it shows in every
+// new-system flow (local and cloud alike; a gamer must be able to trim down).
+const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'cloudAccount', 'pin', 'intent', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
@@ -170,6 +175,12 @@ export default function Setup({ onComplete }) {
     cloudAccountAddress: '',
     // INTENT: how the user intends to use Vulos — 'none' | 'personal' | 'business'
     intent: 'none',
+    // BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
+    // Everything is pre-selected; a lean user can uncheck these to trim down.
+    //   suiteEmail     — claim @vulos email (auto-provisions Mail; coupled to the address)
+    //   suiteWorkspace — install the full Workspace suite (Office/Docs, Board, Calendar, Files)
+    suiteEmail: true,
+    suiteWorkspace: true,
   })
   const [transitioning, setTransitioning] = useState(false)
 
@@ -398,6 +409,10 @@ export default function Setup({ onComplete }) {
                   onNext={next}
                   onPrev={prev}
                 />
+              )}
+              {/* BUNDLE-01: default-everything (batteries-included, opt-out) app selection */}
+              {current === 'apps' && (
+                <AppsStep config={config} update={update} onNext={next} onPrev={prev} />
               )}
               {current === 'appearance' && <AppearanceStep onNext={next} onPrev={prev} />}
               {current === 'identity' && <IS05_IdentityStep config={config} update={update} onNext={next} onPrev={prev} />}
@@ -2087,6 +2102,120 @@ function PinStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // Appearance
 // ═══════════════════════════════════
+// ═══════════════════════════════════
+// BUNDLE-01: Your apps — default-everything (batteries-included, opt-out)
+// ═══════════════════════════════════
+//
+// The founder-confirmed model: the OS ships batteries-included. EVERYTHING is
+// pre-checked — an @vulos email (which auto-provisions Mail) plus the full
+// Workspace productivity suite (Office/Docs, Board, Calendar, Files, Home +
+// Search). A lean user (e.g. a gamer) can OPT OUT here:
+//   - uncheck Workspace  → drops Office/Docs, Board, Calendar, Contacts + shell
+//   - uncheck the email  → drops Mail (an address with no mailbox is broken, so
+//                          declining the address is the only way to drop Mail)
+// Office lives INSIDE the Workspace bundle, NOT stapled to the email.
+//
+// On advance we persist the choice to POST /api/setup/apps so the launcher hides
+// the tiles the user opted out of. Best-effort: a failed write just means the
+// batteries-included default (everything shown) — never a broken install.
+function AppsStep({ config, update, onNext, onPrev }) {
+  const email = config.suiteEmail !== false
+  const workspace = config.suiteWorkspace !== false
+  const [saving, setSaving] = useState(false)
+
+  const handleNext = async () => {
+    setSaving(true)
+    try {
+      await fetch('/api/setup/apps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, workspace }),
+      }).catch(() => {})
+    } finally {
+      setSaving(false)
+      onNext()
+    }
+  }
+
+  const OptRow = ({ checked, onToggle, title, desc, accent }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`w-full flex items-start gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all
+        ${checked
+          ? `${accent} shadow-sm`
+          : 'border-neutral-800/60 bg-neutral-900/40 hover:border-neutral-700'}`}
+    >
+      {/* Checkbox */}
+      <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center border-2 transition-colors
+        ${checked ? 'accent-bg accent-border' : 'border-neutral-600 bg-transparent'}`}>
+        {checked && (
+          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-white">
+            <path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          </svg>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-neutral-100">{title}</div>
+        <p className="text-xs text-neutral-500 leading-relaxed mt-0.5">{desc}</p>
+      </div>
+    </button>
+  )
+
+  const minimal = !email && !workspace
+
+  return (
+    <div>
+      <StepHeader
+        title="Your apps"
+        subtitle="Everything's included by default. Keep the full experience, or trim it down — you can add any of these back later."
+      />
+
+      <div className="space-y-3 mb-4">
+        <OptRow
+          checked={email}
+          onToggle={() => update('suiteEmail', !email)}
+          title="Claim your @vulos email — includes Mail"
+          desc="A ready-to-use @vulos address with Mail, calendar and contacts. Declining the address is the only way to skip Mail."
+          accent="accent-border accent-bg-soft"
+        />
+        <OptRow
+          checked={workspace}
+          onToggle={() => update('suiteWorkspace', !workspace)}
+          title="Install Workspace — the full productivity suite"
+          desc="Mail, Calendar, Files, Docs and Board, tied together with a unified Home and Search. Uncheck for a lean OS without the productivity apps."
+          accent="border-violet-500/60 bg-violet-600/10"
+        />
+      </div>
+
+      {minimal && (
+        <div className="mb-4 rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 py-3">
+          <p className="text-xs text-neutral-500 leading-relaxed">
+            <span className="text-neutral-400 font-medium">Minimal OS.</span>{' '}
+            You'll get a clean Vulos install without Mail or the Workspace suite — great for gaming or a single-purpose device. Everything stays available to add later from the App Hub.
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
+        <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+          ← Back
+        </button>
+        <button onClick={handleNext} disabled={saving} className="btn-primary flex items-center gap-2">
+          {saving ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Saving…
+            </>
+          ) : (
+            'Continue →'
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AppearanceStep({ onNext, onPrev }) {
   const { t } = useI18n()
   const { theme, setTheme, nightShiftMode, setNightShiftMode } = useTheme()
