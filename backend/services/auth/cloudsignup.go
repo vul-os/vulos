@@ -8,18 +8,26 @@
 // cloud; this handler surfaces structured errors so the UI can show specific
 // guidance.
 //
+// UNIFIED-SIGNIN fix: the CP guards its auth POSTs with a CSRF Origin
+// allowlist and a PoW CaptchaGate — a bare http.Client is hard-403'd. The
+// proxy now goes through services/cloudclient (Origin header + hashcash
+// solver). The CP is also HANDLE-based (HANDLE-01): it accepts
+// {handle,password} and mints <handle>@<domain> itself, so the proxy derives
+// the handle from the submitted email/handle field.
+//
 // Overridable via VULOS_CLOUD_API_URL for staging/dev.
 package auth
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
-	"time"
+	"strings"
+
+	"vulos/backend/services/cloudclient"
 )
 
 // defaultCloudAPIURL is the Vulos Cloud production API base.
@@ -34,8 +42,11 @@ func cloudAPIURL() string {
 }
 
 // CloudSignupRequest is the wire format sent by the frontend to
-// POST /api/auth/cloud/signup.
+// POST /api/auth/cloud/signup. Handle takes precedence; when absent the handle
+// is derived from the local part of Email (the CP mints the identity email
+// itself and rejects external addresses).
 type CloudSignupRequest struct {
+	Handle   string `json:"handle,omitempty"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	FullName string `json:"full_name"`
@@ -83,9 +94,21 @@ func (h *Handler) handleCloudSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// HANDLE-01: derive the handle — explicit field first, else the local part
+	// of the email (the CP constructs the identity email itself).
+	handle := strings.ToLower(strings.TrimSpace(req.Handle))
+	if handle == "" {
+		email := strings.ToLower(strings.TrimSpace(req.Email))
+		if at := strings.Index(email, "@"); at > 0 {
+			handle = email[:at]
+		} else {
+			handle = email
+		}
+	}
+
 	// Basic client-side pre-validation (belt-and-suspenders; cloud validates too).
-	if req.Email == "" {
-		writeErr(w, http.StatusBadRequest, "email is required")
+	if handle == "" {
+		writeErr(w, http.StatusBadRequest, "handle or email is required")
 		return
 	}
 	if len(req.Password) < 12 {
@@ -98,50 +121,24 @@ func (h *Handler) handleCloudSignup(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if req.FullName == "" {
-		writeErr(w, http.StatusBadRequest, "full_name is required")
-		return
-	}
 
-	body, err := json.Marshal(req)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
-		return
-	}
+	log.Printf("[cloudsignup] forwarding signup for handle %q to %s", handle, cloudAPIURL())
 
-	targetURL := fmt.Sprintf("%s/api/auth/signup", cloudAPIURL())
-	log.Printf("[cloudsignup] forwarding signup for %s to %s", req.Email, targetURL)
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	proxyReq.Header.Set("Content-Type", "application/json")
-	proxyReq.Header.Set("Accept", "application/json")
-	proxyReq.Header.Set("User-Agent", "vulos-os/1.0 cloudsignup")
-
-	resp, err := client.Do(proxyReq)
+	// UNIFIED-SIGNIN: go through the PoW + Origin-capable CP client — a bare
+	// POST is 403'd by the CP's CSRF/CaptchaGate.
+	status, respBody, err := newCloudSignupClient().Signup(r.Context(), handle, req.Password)
 	if err != nil {
 		log.Printf("[cloudsignup] cloud request failed: %v", err)
 		writeErr(w, http.StatusBadGateway, "could not reach Vulos Cloud — check your network connection")
 		return
 	}
-	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, "error reading cloud response")
-		return
-	}
-
-	// Relay content-type and status code, but always emit valid JSON.
+	// Relay status, but always emit valid JSON.
 	w.Header().Set("Content-Type", "application/json")
-	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
+	if status == http.StatusCreated || status == http.StatusOK {
 		w.WriteHeader(http.StatusCreated)
-		w.Write(respBody)
-		log.Printf("[cloudsignup] signup OK for %s", req.Email)
+		w.Write(respBody) //nolint:errcheck — best-effort relay
+		log.Printf("[cloudsignup] signup OK for handle %q", handle)
 		return
 	}
 
@@ -158,15 +155,25 @@ func (h *Handler) handleCloudSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	errMsg := cloudErr.Error
 	if errMsg == "" {
-		errMsg = fmt.Sprintf("signup failed (HTTP %d)", resp.StatusCode)
+		errMsg = fmt.Sprintf("signup failed (HTTP %d)", status)
 	}
 
-	w.WriteHeader(resp.StatusCode)
+	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(CloudSignupResponse{
 		Error: errMsg,
 		Code:  code,
 		Hint:  hintForCode(code),
 	})
-	log.Printf("[cloudsignup] signup failed for %s: %s (code=%s, status=%d)",
-		req.Email, errMsg, code, resp.StatusCode)
+	log.Printf("[cloudsignup] signup failed for handle %q: %s (code=%s, status=%d)",
+		handle, errMsg, code, status)
+}
+
+// cloudSignupClient is the signup slice of the CP client (test seam).
+type cloudSignupClient interface {
+	Signup(ctx context.Context, handle, password string) (int, []byte, error)
+}
+
+// newCloudSignupClient is overridable in tests.
+var newCloudSignupClient = func() cloudSignupClient {
+	return cloudclient.New(cloudAPIURL())
 }

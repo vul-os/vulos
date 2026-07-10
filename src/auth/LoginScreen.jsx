@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useAuth } from './AuthProvider'
+import { useCloudSignIn, CloudSignInFlowExtras } from './CloudSignIn'
 
 export default function LoginScreen() {
   const { checkAuth } = useAuth()
@@ -14,6 +15,16 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
+  // UNIFIED-SIGNIN: when this box is cloud-enrolled, offer "Sign in with
+  // Vulos Cloud" — one Vulos account signs you in to the cloud AND the OS.
+  const [cloudEnrolled, setCloudEnrolled] = useState(false)
+  const [cloudMode, setCloudMode] = useState(false)
+  const [cloudEmail, setCloudEmail] = useState('')
+  const [cloudPassword, setCloudPassword] = useState('')
+  const cloudFlow = useCloudSignIn({
+    onSuccess: async () => { await checkAuth() },
+  })
+
   // Check if this is first-time setup (no users yet)
   useEffect(() => {
     fetch('/api/auth/status')
@@ -23,7 +34,18 @@ export default function LoginScreen() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
+    // Cloud-enrollment check drives the "Sign in with Vulos Cloud" affordance.
+    fetch('/api/auth/cloud/status')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => setCloudEnrolled(Boolean(data?.enrolled)))
+      .catch(() => {})
   }, [])
+
+  const handleCloudSubmit = (e) => {
+    e.preventDefault()
+    if (cloudFlow.submitting) return
+    cloudFlow.submit({ email: cloudEmail, password: cloudPassword })
+  }
 
   const isSetup = hasUsers === false
 
@@ -106,7 +128,64 @@ export default function LoginScreen() {
         <p className="text-sm text-neutral-600 mt-1">open</p>
       </div>
 
-      {/* Auth form */}
+      {/* UNIFIED-SIGNIN: cloud-account form */}
+      {cloudMode ? (
+        <form onSubmit={handleCloudSubmit} className="relative w-full max-w-sm space-y-4">
+          <h2 className="text-lg text-neutral-300 text-center mb-2">Sign in with Vulos Cloud</h2>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1">Cloud email</label>
+            <input
+              type="email"
+              value={cloudEmail}
+              onChange={e => { setCloudEmail(e.target.value); cloudFlow.setError('') }}
+              placeholder="you@vulos.org"
+              required
+              autoFocus
+              autoComplete="email"
+              className="input"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1">Cloud password</label>
+            <input
+              type="password"
+              value={cloudPassword}
+              onChange={e => { setCloudPassword(e.target.value); cloudFlow.setError('') }}
+              placeholder="Password"
+              required
+              autoComplete="current-password"
+              className="input"
+            />
+          </div>
+
+          <CloudSignInFlowExtras flow={cloudFlow} />
+
+          {cloudFlow.error && (
+            <p role="alert" className="text-sm text-center" style={{ color: 'var(--status-danger)' }}>{cloudFlow.error}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={cloudFlow.submitting || cloudFlow.phase === 'enroll'}
+            className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {cloudFlow.submitting && (
+              <span aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            )}
+            {cloudFlow.submitting ? 'Signing in…' : cloudFlow.phase === 'totp' ? 'Verify code' : 'Sign In'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setCloudMode(false); cloudFlow.reset() }}
+            className="w-full text-xs text-neutral-600 hover:text-neutral-400 transition-colors"
+          >
+            ← Use a local account instead
+          </button>
+        </form>
+      ) : (
       <form onSubmit={handleSubmit} className="relative w-full max-w-sm space-y-4">
         <h2 className="text-lg text-neutral-300 text-center mb-2">
           {isSetup ? 'Create your account' : 'Sign in'}
@@ -169,7 +248,22 @@ export default function LoginScreen() {
             ? (isSetup ? 'Creating account…' : 'Signing in…')
             : (isSetup ? 'Create Account' : 'Sign In')}
         </button>
+
+        {/* UNIFIED-SIGNIN affordance: shown when this box is cloud-enrolled */}
+        {cloudEnrolled && !isSetup && (
+          <button
+            type="button"
+            onClick={() => { setCloudMode(true); setError('') }}
+            className="w-full py-2.5 rounded-xl text-sm font-medium text-violet-300 border border-violet-500/30 hover:bg-violet-600/10 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+              <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
+            </svg>
+            Sign in with Vulos Cloud
+          </button>
+        )}
       </form>
+      )}
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-4 flex items-center gap-2">

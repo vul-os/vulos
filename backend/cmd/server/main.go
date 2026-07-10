@@ -924,7 +924,14 @@ func main() {
 		// INTEG-SEC-01 method 1: if this box has completed owner-attested cloud
 		// enrollment, present its CA-signed device cert on mint (preferred over the
 		// TOFU device-key path — no first-use race).
-		enroller := cloudenroll.New(os.Getenv("VULOS_CLOUD_URL"), filepath.Join(home, ".vulos", "auth", "integrations"), deviceKS)
+		// UNIFIED-SIGNIN: the enroller base URL falls back to VULOS_CLOUD_API_URL
+		// so a box configured for the cloud API (signup proxy / unified login)
+		// enrolls against the same CP without a second env var.
+		cloudEnrollBase := os.Getenv("VULOS_CLOUD_URL")
+		if cloudEnrollBase == "" {
+			cloudEnrollBase = os.Getenv("VULOS_CLOUD_API_URL")
+		}
+		enroller := cloudenroll.New(cloudEnrollBase, filepath.Join(home, ".vulos", "auth", "integrations"), deviceKS)
 		if ident, err := enroller.Load(); err != nil {
 			log.Printf("[integrations] cloud enrollment load: %v", err)
 		} else if ident != nil {
@@ -936,6 +943,21 @@ func main() {
 			SetIdentityDeviceAuth(ident, ident.ULID)
 			log.Printf("[identity] device-cert claim auth enabled (ulid=%s)", ident.ULID)
 		}
+
+		// UNIFIED-SIGNIN: expose asynchronous enrollment + this box's device
+		// identity to the auth handler so POST /api/auth/cloud/login can mint an
+		// OS session from a Vulos Cloud account, and the setup wizard can drive
+		// the RFC 8628 user-code approval flow. When a grant completes we hot-wire
+		// the fresh device cert exactly like the boot-time Load() path above.
+		enrollMgr := cloudenroll.NewManager(enroller, func(ident *cloudenroll.Identity) {
+			integrationsClient.SetCertProvider(ident)
+			SetIdentityDeviceAuth(ident, ident.ULID)
+			if err := auth.WriteEnrollmentFlag(); err != nil {
+				log.Printf("[cloudenroll] enrollment flag: %v", err)
+			}
+			log.Printf("[cloudenroll] device enrolled (ulid=%s) — cert wired for integrations + identity claim", ident.ULID)
+		})
+		authHandler.CloudEnroll = cloudEnrollAdapter{m: enrollMgr}
 
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
 		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.

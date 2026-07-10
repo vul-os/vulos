@@ -34,6 +34,10 @@ type Handler struct {
 	// Set to a non-nil value only when VULOS_CP_BASE_URL is configured;
 	// when nil, vk_ tokens fall through to session-only auth (self-host unchanged).
 	VKIntrospector apikey.Introspector
+	// CloudEnroll is the UNIFIED-SIGNIN device-enrollment seam (cloudenroll
+	// manager, wired in main.go). nil when the device keystore is unavailable —
+	// cloud login then reports enrollment as unavailable.
+	CloudEnroll CloudEnrollment
 }
 
 func NewHandler(store *Store) *Handler {
@@ -88,6 +92,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// CLOGIN-04: cloud account creation proxy
 	mux.HandleFunc("POST /api/auth/cloud/signup", h.handleCloudSignup)
 
+	// UNIFIED-SIGNIN: one Vulos account → cloud login → OS session.
+	mux.HandleFunc("POST /api/auth/cloud/login", h.handleCloudUnifiedLogin)
+	mux.HandleFunc("POST /api/auth/cloud/enroll/start", h.handleCloudEnrollStart)
+	mux.HandleFunc("GET /api/auth/cloud/enroll/status", h.handleCloudEnrollStatus)
+
 	// CLOGIN-07: fingerprint unlock (fprintd / D-Bus).
 	mux.HandleFunc("GET /api/auth/fingerprint/status", h.handleFingerprintStatus)
 	mux.HandleFunc("POST /api/auth/fingerprint/enroll/start", h.handleFingerprintEnrollStart)
@@ -118,6 +127,9 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloudlogin":            true, // CLOGIN-01: unauthenticated cloud login
 	"/api/auth/cloud/status":          true, // CLOGIN-01: enrollment status check (setup-time)
 	"/api/auth/cloud/signup":          true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
+	"/api/auth/cloud/login":           true, // UNIFIED-SIGNIN: cloud-account login (user is not signed in yet)
+	"/api/auth/cloud/enroll/start":    true, // UNIFIED-SIGNIN: setup-time enrollment kickoff — the grant only completes when the OWNER approves the user_code in the cloud console
+	"/api/auth/cloud/enroll/status":   true, // UNIFIED-SIGNIN: enrollment progress poll (setup-time; exposes only grant state)
 	"/api/identity/check":             true, // IDENTITY-01: @vulos.net handle-availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
 	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)

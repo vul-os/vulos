@@ -7,6 +7,7 @@ import { useI18n } from '../core/i18n'
 import PostSignupWizard from './PostSignupWizard'
 import MasterKeyReveal from './MasterKeyReveal'
 import { matchState } from './matchState'
+import { useCloudSignIn, CloudSignInFlowExtras } from './CloudSignIn'
 import VulosAccountStep from '../../apps/setup-wizard/src/steps/VulosAccountStep'
 import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 
@@ -1182,8 +1183,13 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
     onNext()
   }
 
-  // ── validate cloud sign-in ────────────────────────────────────────────────
-  const validateCloudLogin = () => {
+  // ── UNIFIED-SIGNIN: cloud sign-in actually signs in ───────────────────────
+  // POST /api/auth/cloud/login establishes the OS session from the Vulos Cloud
+  // account (TOTP / verify-email / device-enrollment steps handled inline).
+  const NB_cloudFlow = useCloudSignIn({
+    onSuccess: async () => { setError(''); onNext() },
+  })
+  const submitCloudLogin = () => {
     if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
       setError('Enter a valid email address')
       return
@@ -1193,7 +1199,10 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
       return
     }
     setError('')
-    onNext()
+    NB_cloudFlow.submit({
+      email: config.CL01_cloudEmail,
+      password: config.CL01_cloudPassword,
+    })
   }
 
   // ── create cloud account ──────────────────────────────────────────────────
@@ -1442,7 +1451,7 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
         ))}
       </div>
 
-      {/* ── Sign-in form ── */}
+      {/* ── Sign-in form (UNIFIED-SIGNIN: really signs in) ── */}
       {view === 'cloud-login' && (
         <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
           <div>
@@ -1468,7 +1477,11 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
               className="input text-base py-3"
             />
           </div>
-          <p className="text-[11px] text-neutral-600">2FA will be requested after setup if enabled on your account.</p>
+          <CloudSignInFlowExtras flow={NB_cloudFlow} />
+          {NB_cloudFlow.error && <p className="text-sm text-danger" role="alert">{NB_cloudFlow.error}</p>}
+          {NB_cloudFlow.phase === 'form' && (
+            <p className="text-[11px] text-neutral-600">If 2FA is enabled on your account you’ll be asked for a code.</p>
+          )}
         </div>
       )}
 
@@ -1588,17 +1601,17 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev, onSignupComp
           ← Back
         </button>
         <button
-          onClick={view === 'cloud-create' ? handleCloudCreate : validateCloudLogin}
-          disabled={NB_cloudSubmitting}
+          onClick={view === 'cloud-create' ? handleCloudCreate : submitCloudLogin}
+          disabled={NB_cloudSubmitting || NB_cloudFlow.submitting || NB_cloudFlow.phase === 'enroll'}
           className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          {NB_cloudSubmitting ? (
+          {NB_cloudSubmitting || NB_cloudFlow.submitting ? (
             <>
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Creating account…
+              {view === 'cloud-create' ? 'Creating account…' : 'Signing in…'}
             </>
           ) : (
-            'Continue →'
+            view === 'cloud-login' && NB_cloudFlow.phase === 'totp' ? 'Verify code →' : 'Continue →'
           )}
         </button>
       </div>
@@ -1711,7 +1724,10 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
     onNext()
   }
 
-  // ── Cloud sign-in path validation ─────────────────────────────────────────
+  // ── UNIFIED-SIGNIN: cloud sign-in actually signs in ───────────────────────
+  const cloudFlow = useCloudSignIn({
+    onSuccess: async () => { setError(''); onNext() },
+  })
   const validateCloud = () => {
     if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
       setError('Enter a valid email address')
@@ -1722,7 +1738,10 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
       return
     }
     setError('')
-    onNext()
+    cloudFlow.submit({
+      email: config.CL01_cloudEmail,
+      password: config.CL01_cloudPassword,
+    })
   }
 
   // ── Create cloud account ──────────────────────────────────────────────────
@@ -1992,9 +2011,13 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
             />
           </div>
 
-          <p className="text-[11px] text-neutral-600">
-            2FA will be requested after setup if enabled on your account.
-          </p>
+          <CloudSignInFlowExtras flow={cloudFlow} />
+          {cloudFlow.error && <p className="text-sm text-danger" role="alert">{cloudFlow.error}</p>}
+          {cloudFlow.phase === 'form' && (
+            <p className="text-[11px] text-neutral-600">
+              If 2FA is enabled on your account you’ll be asked for a code.
+            </p>
+          )}
         </div>
       )}
 
@@ -2003,8 +2026,14 @@ function AccountStep({ config, update, onNext, onPrev, onSignupComplete }) {
       <NavBar
         onPrev={onPrev}
         onNext={handleNext}
-        nextLabel={mode === 'create' && CL04_submitting ? 'Creating account…' : undefined}
-        nextDisabled={mode === 'create' && CL04_submitting}
+        nextLabel={
+          mode === 'create' && CL04_submitting ? 'Creating account…' :
+          mode === 'cloud' && cloudFlow.submitting ? 'Signing in…' :
+          mode === 'cloud' && cloudFlow.phase === 'totp' ? 'Verify code' :
+          undefined
+        }
+        nextDisabled={(mode === 'create' && CL04_submitting) ||
+          (mode === 'cloud' && (cloudFlow.submitting || cloudFlow.phase === 'enroll'))}
       />
     </div>
   )
