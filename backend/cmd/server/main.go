@@ -3384,6 +3384,8 @@ func main() {
 	registerKitRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
 	registerIdentityRoutes(mux, home)
+	// IDENTITY-01: @vulos.to claim proxies (check/claim → Vulos Cloud CP)
+	registerIdentityClaimRoutes(mux)
 	// Conflict resolver (CLUSTER-10)
 	registerConflictRoutes(mux, dataDir, notifySvc)
 	// Join codes — cross-device cluster joins via short-codes / QR (INIT-10)

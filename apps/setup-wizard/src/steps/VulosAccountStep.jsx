@@ -1,4 +1,4 @@
-// VulosAccountStep.jsx — Claim your Vulos identity address (@vulos.org handle).
+// VulosAccountStep.jsx — Claim your Vulos identity address (@vulos.to handle).
 //
 // This step appears in the first-boot wizard after the account step and before
 // the intent/appearance steps.  It is shown only for cloud and create-cloud
@@ -7,9 +7,9 @@
 // rendered in local-only mode.
 //
 // UX flow:
-//  1. User types the handle part only — the @vulos.org suffix is shown as
+//  1. User types the handle part only — the @vulos.to suffix is shown as
 //     read-only chrome, Gmail-style.  Any input containing "@" that isn't
-//     "@vulos.org" is rejected client-side before any network call.
+//     "@vulos.to" is rejected client-side before any network call.
 //  2. Availability is checked live, debounced 350 ms, against the local OS
 //     proxy at GET /api/identity/check?handle=<handle> which forwards to the
 //     cloud control plane.  If the cloud is unreachable the step fails-open
@@ -20,7 +20,7 @@
 //
 // The step also supports custom domains for paid tiers: if the parent wizard
 // passes customDomain="example.com", that domain is used instead of
-// "vulos.org".  Custom domains require the user to have completed domain
+// "vulos.to".  Custom domains require the user to have completed domain
 // verification before reaching this step (enforced by the cloud dashboard).
 //
 // Dev override: if the environment variable VITE_VULOS_CLOUD_SKIP=1 is set, the step
@@ -29,7 +29,7 @@ import { useState, useEffect, useRef } from 'react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FREE_DOMAIN = 'vulos.org'
+const FREE_DOMAIN = 'vulos.to'
 const HANDLE_RE = /^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$|^[a-z0-9]{3}$/
 const CHECK_DEBOUNCE_MS = 350
 
@@ -180,12 +180,12 @@ export default function VulosAccountStep({ config, update, onNext, onPrev, custo
       <div className="mb-6">
         <h2 className="text-2xl font-light text-neutral-100">Create your Vulos account</h2>
         <p className="text-sm text-neutral-500 mt-1">
-          Your account comes with a mailbox at @vulos.org — used for mail, account recovery, and peering with other Vulos instances.
+          Your account comes with a mailbox at @vulos.to — used for mail, account recovery, and peering with other Vulos instances.
           {' '}This step is mandatory.
         </p>
       </div>
 
-      {/* Address input — Gmail-style: handle field + @vulos.org chrome */}
+      {/* Address input — Gmail-style: handle field + @vulos.to chrome */}
       <div className="mb-4">
         <label className="block text-xs text-neutral-500 mb-2 uppercase tracking-wider">
           Choose a username
@@ -202,7 +202,7 @@ export default function VulosAccountStep({ config, update, onNext, onPrev, custo
               if (raw.includes('@')) {
                 const parts = raw.split('@')
                 const afterAt = parts[1] || ''
-                // Allow if they typed exactly "@" or "@vulos.org" prefix (still typing)
+                // Allow if they typed exactly "@" or "@vulos.to" prefix (still typing)
                 if (afterAt !== '' && !`${FREE_DOMAIN}`.startsWith(afterAt)) {
                   setExternalDomainError(`Only @${FREE_DOMAIN} addresses are supported — enter the username part only.`)
                   // Strip everything from @ onwards so the handle part is kept

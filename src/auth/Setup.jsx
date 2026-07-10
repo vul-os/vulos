@@ -2123,6 +2123,52 @@ function AppsStep({ config, update, onNext, onPrev }) {
   const workspace = config.suiteWorkspace !== false
   const [saving, setSaving] = useState(false)
 
+  // BUNDLE-01: the @vulos email opt-in drives Mail provisioning by claiming a
+  // @vulos.to address. On cloud/create-cloud installs the mandatory cloudAccount
+  // step (VulosAccountStep) has already claimed it — config.cloudAccountAddress is
+  // set — so we do nothing here. The gap is the LOCAL install path: cloudAccount is
+  // filtered out of the step list, yet suiteEmail defaults on, so no claim has
+  // happened. When the user keeps the email opt-in on that path we attempt the
+  // claim here (approach (b)): POST /api/identity/claim with a handle derived from
+  // the username, exactly the endpoint VulosAccountStep uses.
+  //
+  // Defensive: the claim tolerates a network/CP failure — we log and let the user
+  // proceed rather than hard-blocking the install. But we NEVER pretend an address
+  // was claimed if it wasn't: cloudAccountAddress is only set on a real success.
+  const maybeClaimSuiteEmail = async () => {
+    if (!email) return // user opted out of Mail — nothing to claim
+    if (config.cloudAccountAddress) return // already claimed in VulosAccountStep
+
+    const handle = (config.username || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '')
+      .slice(0, 32)
+    if (!/^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$|^[a-z0-9]{3}$/.test(handle)) {
+      // No usable handle to claim (e.g. blank/too-short username) — skip silently;
+      // the user can still claim later from within Mail.
+      console.warn('[BUNDLE-01] suiteEmail on but no valid handle to claim from username')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/identity/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle, domain: 'vulos.to' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok || res.status === 201) {
+        // Only record the address on a genuine claim success.
+        update('cloudAccountAddress', data.address || `${handle}@vulos.to`)
+      } else {
+        // Do not fabricate a claimed address; just let the install proceed.
+        console.warn(`[BUNDLE-01] suiteEmail claim failed (status ${res.status}) — proceeding without a claimed address`)
+      }
+    } catch (e) {
+      console.warn('[BUNDLE-01] suiteEmail claim network error — proceeding without a claimed address', e)
+    }
+  }
+
   const handleNext = async () => {
     setSaving(true)
     try {
@@ -2131,6 +2177,9 @@ function AppsStep({ config, update, onNext, onPrev }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, workspace }),
       }).catch(() => {})
+      // BUNDLE-01: claim the @vulos.to address if the email opt-in is on and no
+      // address was claimed earlier. Best-effort — never blocks the install.
+      await maybeClaimSuiteEmail()
     } finally {
       setSaving(false)
       onNext()
