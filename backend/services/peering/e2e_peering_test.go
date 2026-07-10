@@ -466,9 +466,12 @@ func TestE2E_CollabDocLease(t *testing.T) {
 		t.Fatalf("inbound/collab-update status %d body: %s", w.Code, w.Body)
 	}
 
-	// Confirm A persisted the Yjs blob (catch-up sync round-trip).
+	// Confirm A persisted the Yjs blob (catch-up sync round-trip). Full-state read
+	// is ACL-gated (authorizeRoom); this private/untracked doc needs an
+	// authenticated session but no per-doc grant.
 	syncReq := httptest.NewRequest(http.MethodGet,
 		fmt.Sprintf("/api/peering/inbound/collab-sync?doc_id=%s", docID), nil)
+	syncReq.Header.Set("X-User-ID", "os-user")
 	sw := httptest.NewRecorder()
 	a.inboundMux.ServeHTTP(sw, syncReq)
 

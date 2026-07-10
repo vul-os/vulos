@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	stdpath "path"
 	"strings"
 	"sync"
 	"time"
@@ -99,38 +100,58 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                        true,
-	"/healthz":                       true, // trivial liveness probe (status page) — no auth
-	"/api/auth/me":                   true,
-	"/api/auth/logout":               true,
-	"/api/auth/register":             true,
-	"/api/auth/login":                true,
-	"/api/auth/status":               true,
-	"/api/setup/status":              true,
-	"/api/setup/mode":                true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
-	"/api/setup/apps":                true, // BUNDLE-01: suite selection GET/POST at onboarding (pre-account)
-	"/api/setup/join-code":           true, // INIT-10: unauthenticated join-code decode
-	"/api/setup/join":                true, // INIT-08: unauthenticated cluster join (setup-time)
-	"/api/setup/join/status":         true, // INIT-08: unauthenticated join progress poll
-	"/api/browser/status":            true,
-	"/manifest.json":                 true,
-	"/api/auth/cloudlogin":           true, // CLOGIN-01: unauthenticated cloud login
-	"/api/auth/cloud/status":         true, // CLOGIN-01: enrollment status check (setup-time)
-	"/api/auth/cloud/signup":         true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
-	"/api/auth/masterkey/recover":    true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
-	"/api/auth/pin/unlock":           true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
-	"/api/auth/pin/status":           true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
-	"/api/auth/fingerprint/status":   true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
-	"/api/auth/fingerprint/verify":   true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
-	"/api/auth/passkey/login/begin":  true, // LOGINISO-01: start passkey assertion (public — user not yet logged in)
-	"/api/auth/passkey/login/finish": true, // LOGINISO-01: finish passkey assertion + issue session (public)
-	"/api/auth/qr/begin":             true, // LOGINISO-02: kiosk requests a QR challenge (public)
-	"/api/auth/qr/poll":              true, // LOGINISO-02: kiosk polls for approval (public)
-	"/init-passphrase":               true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
-	"/api/files/peer/serve":          true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
+	"/health":                         true,
+	"/healthz":                        true, // trivial liveness probe (status page) — no auth
+	"/api/auth/me":                    true,
+	"/api/auth/logout":                true,
+	"/api/auth/register":              true,
+	"/api/auth/login":                 true,
+	"/api/auth/status":                true,
+	"/api/setup/status":               true,
+	"/api/setup/mode":                 true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
+	"/api/setup/apps":                 true, // BUNDLE-01: suite selection GET/POST at onboarding (pre-account)
+	"/api/setup/join-code":            true, // INIT-10: unauthenticated join-code decode
+	"/api/setup/join":                 true, // INIT-08: unauthenticated cluster join (setup-time)
+	"/api/setup/join/status":          true, // INIT-08: unauthenticated join progress poll
+	"/api/browser/status":             true,
+	"/manifest.json":                  true,
+	"/api/auth/cloudlogin":            true, // CLOGIN-01: unauthenticated cloud login
+	"/api/auth/cloud/status":          true, // CLOGIN-01: enrollment status check (setup-time)
+	"/api/auth/cloud/signup":          true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
+	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
+	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
+	"/api/auth/pin/status":            true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/status":    true, // CLOGIN-07: fingerprint status (unauthenticated — shown on lock screen)
+	"/api/auth/fingerprint/verify":    true, // CLOGIN-07: fingerprint verify (unauthenticated — lock screen)
+	"/api/auth/passkey/login/begin":   true, // LOGINISO-01: start passkey assertion (public — user not yet logged in)
+	"/api/auth/passkey/login/finish":  true, // LOGINISO-01: finish passkey assertion + issue session (public)
+	"/api/auth/qr/begin":              true, // LOGINISO-02: kiosk requests a QR challenge (public)
+	"/api/auth/qr/poll":               true, // LOGINISO-02: kiosk polls for approval (public)
+	"/init-passphrase":                true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
+	"/api/files/peer/serve":           true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
 	"/api/files/internal/content-key": true, // WAVE-7: internal cell→box content-key lookup (authed by X-Vulos-Internal-Auth shared secret, not a session)
-	"/mcp":                           true, // APPS/MCP: agent MCP server (authed by vat_ app token via the @vulos/apps platform, not a session)
-	"/metrics":                       true, // OBS: Prometheus scrape — the /metrics handler does its OWN owner-or-scrape-token gate (VULOS_METRICS_TOKEN), so the session middleware must defer to it rather than 401 a tokened scraper. NOT actually public: no auth = 403 at the handler.
+	"/mcp":                            true, // APPS/MCP: agent MCP server (authed by vat_ app token via the @vulos/apps platform, not a session)
+	"/metrics":                        true, // OBS: Prometheus scrape — the /metrics handler does its OWN owner-or-scrape-token gate (VULOS_METRICS_TOKEN), so the session middleware must defer to it rather than 401 a tokened scraper. NOT actually public: no auth = 403 at the handler.
+
+	// PEERING (box-to-box, server-to-server). These routes are reached by REMOTE
+	// peers (other Vulos boxes / browser peers) that have NO OS session on this box;
+	// they authenticate with their OWN peering mechanism, NOT an OS session, exactly
+	// like /api/files/peer/serve above. Without these entries the OS session
+	// middleware 401s every inbound peer request BEFORE it reaches its real gate, so
+	// all box-to-box peering (messaging, calls, media, collab, relay, prekeys) is
+	// dead. Each route below states the self-auth that gates it. Only genuinely S2S,
+	// self-authenticating routes are listed — the CLIENT-facing peering routes
+	// (contacts/*, conversations/*, groups create, call/initiate, media/upload,
+	// identity export/import/revoke, profile PUT, collab WS /sync, discover, feeds
+	// create/publish) are deliberately OMITTED so they stay OS-session-authed.
+	"/.well-known/vula-id":               true, // PEER-12: public self-certifying identity (public fields only; signature-verifiable by the embedded key)
+	"/api/peering/relay/deposit":         true, // PEER-38: store-and-forward deposit (Ed25519-signed request + mutual-trust contact check in the handler)
+	"/api/peering/relay/pickup":          true, // PEER-38: store-and-forward pickup (Ed25519-signed "<vula_id>.<ts>" Authorization header)
+	"/api/peering/relay/ack":             true, // PEER-38: store-and-forward ack (recipient-authenticated, deletes only its own blobs)
+	"/api/peering/relay/attest":          true, // relay attestation evidence document (public, read-only)
+	"/api/peering/prekeys/claim":         true, // X3DH forward secrecy: OPK claim (public by design — the signed prekey signature is the authorization; revoked identities fail closed)
+	"/api/peering/prekeys/publish":       true, // X3DH forward secrecy: browser peer publishes its PUBLIC bundle (the signed-prekey signature IS the authorization; forged/revoked bundles fail closed)
+	"/api/peering/profile/notify-change": true, // S2S cache-eviction hint from a peer (only evicts a locally-cached public profile; self-heals on next fetch)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
@@ -145,9 +166,32 @@ var publicPrefixes = []string{
 	"/mcp/",            // MCP subtree (vat_ app token authed by the @vulos/apps MCP layer)
 	"/api/apps/v1/",    // apps runtime: act / read / events / auth.test (vat_ app token authed)
 	"/api/apps/hooks/", // apps incoming webhooks (authed by the webhook-id secret in the URL)
+
+	// PEERING inbound subtree (box-to-box). Every /api/peering/inbound/* route is
+	// mounted behind peering.InboundMiddleware, which fails CLOSED: it verifies the
+	// request body is an Ed25519-signed Envelope (401 on missing/invalid signature),
+	// rejects revoked sender identities (403), and rejects senders who are not in the
+	// approved contacts list (403) — except /api/peering/inbound/request, which is
+	// intentionally open to unknown peers (still signature-verified) so a first
+	// contact request can be delivered. That middleware IS the authentication for
+	// this subtree, so the OS session gate must defer to it. This is the primary
+	// server-to-server surface (messages, calls, media, group + collab updates,
+	// presence, drop); without it every inbound peer envelope is 401'd here first.
+	"/api/peering/inbound/",
 }
 
-func isPublicPath(path string) bool {
+func isPublicPath(rawPath string) bool {
+	// SECURITY (path-traversal auth bypass): the middleware sees r.URL.Path, which
+	// retains raw ".." / "." segments (Go's http.ServeMux only cleans the path
+	// AFTER this gate runs, when it routes). Without normalising here, a request to
+	// "/api/peering/inbound/../conversations/c1/send" would (a) prefix-match the
+	// public "/api/peering/inbound/" and skip the session gate, then (b) be routed
+	// by ServeMux to the SESSION-GATED conversations handler — an auth bypass on
+	// every prefix rule below. Clean the path first so the public-prefix decision is
+	// made against the SAME path ServeMux will route. path.Clean collapses "..",
+	// so the example becomes "/api/peering/conversations/..." which no longer
+	// matches a public prefix and stays gated.
+	path := stdpath.Clean(rawPath)
 	if publicPaths[path] {
 		return true
 	}

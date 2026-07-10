@@ -1,6 +1,7 @@
 package peering
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -225,6 +226,9 @@ func TestHandleInboundSyncV2_NoStateVector(t *testing.T) {
 	_ = s.persistUpdate("sv-doc", []byte("full-state"))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab-sync-v2?doc_id=sv-doc", nil)
+	// Full-state read is now ACL-gated (authorizeRoom): an authenticated session is
+	// required. This doc is private/untracked, so any authenticated session may read it.
+	req.Header.Set("X-User-ID", "os-user")
 	rr := httptest.NewRecorder()
 	syncV2Mux(s).ServeHTTP(rr, req)
 
@@ -237,6 +241,26 @@ func TestHandleInboundSyncV2_NoStateVector(t *testing.T) {
 	}
 	if msg.Type != msgTypeSync {
 		t.Errorf("type = %q, want %q", msg.Type, msgTypeSync)
+	}
+}
+
+// TestHandleInboundSyncV2_Unauthenticated_Rejected is the disclosure-hole guard:
+// full-state read without an authenticated session must be rejected (401), never
+// return document contents. Before the ACL gate, this route returned the full
+// CRDT state to any caller that knew the doc_id.
+func TestHandleInboundSyncV2_Unauthenticated_Rejected(t *testing.T) {
+	s := newTestCollabStore(t)
+	_ = s.persistUpdate("secret-doc", []byte("secret-state"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab-sync-v2?doc_id=secret-doc", nil)
+	rr := httptest.NewRecorder()
+	syncV2Mux(s).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated full-state read must be 401, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+	if bytes.Contains(rr.Body.Bytes(), []byte("secret-state")) {
+		t.Fatal("document state leaked in an unauthorized sync response")
 	}
 }
 
@@ -260,6 +284,7 @@ func TestHandleInboundSyncV2_StateVectorMatch_ReturnsNoop(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/peering/collab-sync-v2?doc_id=noop-doc&state_vector="+sv, nil)
+	req.Header.Set("X-User-ID", "os-user")
 	rr := httptest.NewRecorder()
 	syncV2Mux(s).ServeHTTP(rr, req)
 
@@ -282,6 +307,7 @@ func TestHandleInboundSyncV2_StateVectorMismatch_ReturnsFullState(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/peering/collab-sync-v2?doc_id=diff-doc&state_vector="+encodeBase64([]byte("old-state")), nil)
+	req.Header.Set("X-User-ID", "os-user")
 	rr := httptest.NewRecorder()
 	syncV2Mux(s).ServeHTTP(rr, req)
 

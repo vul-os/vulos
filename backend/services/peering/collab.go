@@ -728,6 +728,13 @@ func (s *CollabStore) handleInboundSync(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// AUTHORIZATION (Contract 4): full-state read must be gated by the per-document
+	// ACL, identical to the /sync WebSocket. Fail closed (see handleInboundSyncV2).
+	if _, status := s.authorizeRoom(r, docID); status != 0 {
+		writeCollabErr(w, status, "unauthorized: no permission to read this document")
+		return
+	}
+
 	state, err := s.loadState(docID)
 	if err != nil {
 		writeCollabErr(w, http.StatusInternalServerError, "failed to load state")

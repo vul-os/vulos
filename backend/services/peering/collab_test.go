@@ -348,6 +348,9 @@ func TestHandleInboundSync_WithState(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/peering/inbound/collab-sync?doc_id=sync-doc", nil)
+	// Full-state read is ACL-gated (authorizeRoom); this private/untracked doc
+	// requires an authenticated session but no per-doc grant.
+	req.Header.Set("X-User-ID", "os-user")
 	rr := httptest.NewRecorder()
 	s.handleInboundSync(rr, req)
 

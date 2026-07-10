@@ -319,6 +319,18 @@ func (s *CollabStore) handleInboundSyncV2(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// AUTHORIZATION (Contract 4): returning the full CRDT state is a read of the
+	// document's contents, so it MUST be gated by the same per-document ACL as the
+	// live /sync WebSocket. Without this, any authenticated OS user on a multi-user
+	// box (or, if this route were ever made publicly reachable, any caller) could
+	// read the full state of ANY document just by knowing its ID — bypassing the
+	// share ACL. authorizeRoom fails closed: no session → 401; a tracked share with
+	// no permission for the resolved VulaID → 403.
+	if _, status := s.authorizeRoom(r, docID); status != 0 {
+		writeCollabErr(w, status, "unauthorized: no permission to read this document")
+		return
+	}
+
 	state, err := s.loadState(docID)
 	if err != nil {
 		writeCollabErr(w, http.StatusInternalServerError, "failed to load state")
