@@ -930,6 +930,11 @@ func main() {
 		} else if ident != nil {
 			integrationsClient.SetCertProvider(ident)
 			log.Printf("[integrations] using owner-attested device cert (ulid=%s)", ident.ULID)
+			// IDENTITY-CLAIM-01 (offline first-boot): let the @vulos.to claim proxy
+			// present this same device cert so the CP can authenticate the enrolled
+			// device when the wizard holds no CP session cookie yet.
+			SetIdentityDeviceAuth(ident, ident.ULID)
+			log.Printf("[identity] device-cert claim auth enabled (ulid=%s)", ident.ULID)
 		}
 
 		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)

@@ -21,11 +21,21 @@ package main
 //	                                                   account from ITS session cookie — the
 //	                                                   OS handler never supplies an account id.
 //
+// OFFLINE FIRST-BOOT (the documented remainder): in the pure first-boot wizard the
+// browser talks only to this local OS origin and may not yet hold a CP session
+// cookie, so the cookie-only proxy would 401 at the CP. When the box has completed
+// owner-attested cloud enrollment it therefore ALSO forwards its DEVICE CERTIFICATE
+// (INTEG-SEC-01) — the same X-Device-* headers the integrations token-mint uses — so
+// the CP can authenticate the enrolled device on the user's behalf and derive the
+// account from the device→account binding (never from the body). The box holds the
+// device cert + key; the browser never sees them.
+//
 // CP base URL: VULOS_CLOUD_API_URL (else https://api.vulos.org), matching the
 // convention in backend/services/auth/cloudsignup.go (cloudAPIURL()).
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
@@ -35,6 +45,68 @@ import (
 	"strings"
 	"time"
 )
+
+// identityDeviceAuther supplies this box's owner-attested device certificate
+// (INTEG-SEC-01) so the claim proxy can authenticate the enrolled device to the CP
+// on the offline first-boot path. cloudenroll.Identity satisfies it (DeviceCert +
+// SignMint), and it carries the box ULID. nil ⇒ device-auth forwarding disabled
+// (cookie-only proxy, unchanged behaviour).
+type identityDeviceAuther interface {
+	// DeviceCert returns (managementCASig, devicePubKey, ok). ok=false ⇒ no usable cert.
+	DeviceCert() (cert, pubKey []byte, ok bool)
+	// SignMint signs the purpose-bound message with the device key (ed25519).
+	SignMint(message string) ([]byte, error)
+}
+
+// identityDeviceAuth is the box's enrolled device identity used to authenticate the
+// offline first-boot claim, plus its ULID. Set once at startup (SetIdentityDeviceAuth)
+// when cloud enrollment has loaded; nil until then.
+var (
+	identityDeviceAuth     identityDeviceAuther
+	identityDeviceAuthULID string
+)
+
+// SetIdentityDeviceAuth installs the box's enrolled device identity for the claim
+// proxy. Called from main once cloudenroll.Load succeeds. auther/ulid empty ⇒ no-op.
+func SetIdentityDeviceAuth(auther identityDeviceAuther, ulid string) {
+	if auther == nil || ulid == "" {
+		return
+	}
+	identityDeviceAuth = auther
+	identityDeviceAuthULID = ulid
+}
+
+// identityClaimSigMessage is the purpose-bound message the box signs to claim over
+// the device-cert channel. MUST match the CP verifier
+// (vulos-cloud …/cmd/server/wire_vulosaddr.go vulosAddrClaimSigMessage).
+func identityClaimSigMessage(ulid string) string {
+	return "identity:claim:" + ulid
+}
+
+// setIdentityDeviceAuthHeaders attaches the X-Device-* device-cert headers to req
+// (mirroring the integrations token-mint client), returning true when it did. It is
+// a no-op returning false when no enrolled identity is present or the cert/sig is
+// unavailable — the CP then relies on the forwarded session cookie alone.
+func setIdentityDeviceAuthHeaders(req *http.Request) bool {
+	auther := identityDeviceAuth
+	ulid := identityDeviceAuthULID
+	if auther == nil || ulid == "" {
+		return false
+	}
+	cert, pub, ok := auther.DeviceCert()
+	if !ok {
+		return false
+	}
+	sig, err := auther.SignMint(identityClaimSigMessage(ulid))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("X-Device-ULID", ulid)
+	req.Header.Set("X-Device-Pubkey", base64.StdEncoding.EncodeToString(pub))
+	req.Header.Set("X-Device-Cert", base64.StdEncoding.EncodeToString(cert))
+	req.Header.Set("X-Device-Sig", base64.StdEncoding.EncodeToString(sig))
+	return true
+}
 
 // identityCloudAPIURL returns the Vulos Cloud API base, honouring VULOS_CLOUD_API_URL
 // (default https://api.vulos.org), matching auth.cloudAPIURL(). Trailing slash trimmed.
@@ -160,6 +232,13 @@ func handleIdentityClaim(w http.ResponseWriter, r *http.Request) {
 	// Forward the CP session cookie so the CP can authenticate the claim.
 	if cookie := r.Header.Get("Cookie"); cookie != "" {
 		proxyReq.Header.Set("Cookie", cookie)
+	}
+	// OFFLINE FIRST-BOOT: also present this box's owner-attested device cert so the
+	// CP can authenticate the enrolled device when no CP session cookie exists yet.
+	// The CP accepts EITHER a session OR a device cert; the account is derived
+	// server-side from the device→account binding, never from the body we send.
+	if setIdentityDeviceAuthHeaders(proxyReq) {
+		log.Printf("[identity] claim: forwarding device-cert auth (ulid=%s) for offline first-boot", identityDeviceAuthULID)
 	}
 
 	resp, err := client.Do(proxyReq)
