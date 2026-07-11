@@ -446,7 +446,7 @@ function WelcomeStep({ onNext }) {
   return (
     <div className="text-center">
       <div className="mb-6 flex flex-col items-center">
-        <img src="/icon-128.png" alt="Vula OS" className="w-20 h-20 mb-4" />
+        <img src="/icon-128.png" alt="Vulos OS" className="w-20 h-20 mb-4" />
         <div className="text-5xl font-extralight text-neutral-100 tracking-[0.2em] mb-3">vula</div>
         <div className="h-px w-16 mx-auto mb-3" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
         <p className="text-neutral-500 text-lg font-light">{t('setup.welcome.tagline')}</p>
@@ -489,7 +489,7 @@ function DeviceStep({ config, update, onNext, onPrev }) {
     <div>
       <StepHeader
         title="What kind of device is this?"
-        subtitle={loading ? 'Detecting your device…' : detected ? `Auto-detected: ${DEVICE_PROFILES.find(p => p.id === detected)?.label || detected}` : 'Choose how Vula OS should behave on this device'}
+        subtitle={loading ? 'Detecting your device…' : detected ? `Auto-detected: ${DEVICE_PROFILES.find(p => p.id === detected)?.label || detected}` : 'Choose how Vulos OS should behave on this device'}
       />
 
       <div className="grid grid-cols-2 gap-3">
@@ -547,7 +547,7 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
     <div className="text-center">
       <StepHeader
         title="How would you like to set up?"
-        subtitle="Start fresh or join an existing Vula OS installation"
+        subtitle="Start fresh or join an existing Vulos OS installation"
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 mb-6">
         {/* New system card */}
@@ -580,7 +580,7 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
           </div>
           <div>
             <div className="text-base font-semibold text-neutral-100 mb-1">Join Existing</div>
-            <div className="text-sm text-neutral-500">Connect to an existing Vula OS cluster by providing storage credentials.</div>
+            <div className="text-sm text-neutral-500">Connect to an existing Vulos OS cluster by providing storage credentials.</div>
           </div>
         </button>
       </div>
@@ -805,7 +805,7 @@ function IS09_SyncingStep({ onNext, onComplete }) {
     return (
       <div className="text-center">
         <div className="text-4xl mb-4">🔄</div>
-        <StepHeader title="Syncing in the background" subtitle="You can use Vula OS while sync continues." />
+        <StepHeader title="Syncing in the background" subtitle="You can use Vulos OS while sync continues." />
         <p className="text-sm text-neutral-500">Setup will complete automatically when sync finishes.</p>
       </div>
     )
@@ -2413,7 +2413,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
     <div>
       <StepHeader
         title={t('Your Node Identity')}
-        subtitle={t('Every Vula OS node has a unique identifier. You can customise the hostname.')}
+        subtitle={t('Every Vulos OS node has a unique identifier. You can customise the hostname.')}
       />
 
       <div className="space-y-4 mb-2">

@@ -94,7 +94,7 @@ func DefaultConfig() Config {
 		// derive from locality (loopback → local, else external), so nothing
 		// silently upgrades; sovereign/brokered are explicit declarations.
 		Tier:   strings.TrimSpace(os.Getenv("VULOS_AI_TIER")),
-		System: getenv("AI_SYSTEM_PROMPT", `You are Vula, the AI assistant built into Vula OS. You are helpful, concise, and friendly.
+		System: getenv("AI_SYSTEM_PROMPT", `You are Vula, the AI assistant built into Vulos OS. You are helpful, concise, and friendly.
 
 You can generate visual UI by including a <viewport> block in your response. The OS opens it as a window.
 
@@ -148,7 +148,6 @@ You can control the OS by including <os-action> blocks:
 - <os-action type="close-app" app_id="terminal"/> — close an app
 - <os-action type="notify" title="Done" body="Your task is complete" level="info"/>
 - <os-action type="energy-mode" mode="saver"/> — change power mode
-- <os-action type="exec" command="ls -la"/> — run a shell command
 
 You can include multiple actions in one response alongside text and viewports.`),
 	}

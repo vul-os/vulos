@@ -123,7 +123,7 @@ export default function LoginScreen() {
 
       {/* Logo */}
       <div className="relative mb-8 flex flex-col items-center">
-        <img src="/icon-96.png" alt="Vula OS" className="w-16 h-16 mb-3" />
+        <img src="/icon-96.png" alt="Vulos OS" className="w-16 h-16 mb-3" />
         <h1 className="text-3xl font-light text-neutral-200 tracking-wider">vula</h1>
         <p className="text-sm text-neutral-600 mt-1">open</p>
       </div>
@@ -293,7 +293,7 @@ export default function LoginScreen() {
           <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
             <HelpSection title="Getting Started" items={[
               isSetup
-                ? 'Create an account to get started with Vula OS.'
+                ? 'Create an account to get started with Vulos OS.'
                 : 'Sign in with your credentials. Ask your admin for an account.',
               'Your username and password are also used for the terminal (sudo).',
             ]} />
@@ -314,7 +314,7 @@ export default function LoginScreen() {
               'Sessions persist when you close the terminal window — reattach anytime.',
             ]} />
             <HelpSection title="Browser" items={[
-              'Chromium runs inside Vula OS as a remote display.',
+              'Chromium runs inside Vulos OS as a remote display.',
               'New tabs and popups open within the same browser window.',
               'Use the controls in the top-right corner to manage the window.',
             ]} />
@@ -324,7 +324,7 @@ export default function LoginScreen() {
 
       {/* Bottom branding */}
       <div className="absolute bottom-6 text-center">
-        <p className="text-[10px] text-neutral-800">Vula OS</p>
+        <p className="text-[10px] text-neutral-800">Vulos OS</p>
       </div>
     </div>
   )

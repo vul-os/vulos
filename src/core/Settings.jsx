@@ -2400,8 +2400,8 @@ function AboutSettings() {
     <div>
       {/* Branding header */}
       <div className="flex flex-col items-center text-center mb-8 pt-2">
-        <img src="/vulos.png" alt="Vula OS" className="w-20 h-20 mb-4 opacity-90" />
-        <h1 className="text-2xl font-semibold tracking-tight">Vula OS</h1>
+        <img src="/vulos.png" alt="Vulos OS" className="w-20 h-20 mb-4 opacity-90" />
+        <h1 className="text-2xl font-semibold tracking-tight">Vulos OS</h1>
         <p className="text-sm text-neutral-500 mt-1">Open OS</p>
         <p className="text-xs text-neutral-600 mt-0.5">"vula" — Zulu for "open"</p>
       </div>
