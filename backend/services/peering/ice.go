@@ -128,8 +128,3 @@ func RegisterICEHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/peering/ice", handleICEConfig)
 }
 
-// turnSecretIsSet is a helper used by tests to check whether TURN is enabled
-// without importing the network package.
-func turnSecretIsSet() bool {
-	return os.Getenv("TURN_SECRET") != ""
-}
