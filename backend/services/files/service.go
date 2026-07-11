@@ -907,9 +907,10 @@ func (s *Service) ListLinks(actorID, nodeID string) ([]ShareLink, error) {
 	return s.listLinks(nodeID)
 }
 
-// RedeemLink turns an active share-link token into a READ grant for the linked
-// file, for any authenticated redeemer (the token is the capability). The link's
-// role governs future write support; the foundation issues read grants only.
+// RedeemLink turns an active share-link token into a grant for the linked
+// file, for any authenticated redeemer (the token is the capability). The
+// grant's access level follows the link's own role: an editor link mints a
+// write grant, a viewer link mints a read grant.
 func (s *Service) RedeemLink(ctx context.Context, userID, token string, ttl time.Duration) (*Node, storage.ObjectGrant, error) {
 	l, err := s.getLink(token)
 	if err != nil {
@@ -925,7 +926,11 @@ func (s *Service) RedeemLink(ctx context.Context, userID, token string, ttl time
 	if n.IsDir {
 		return nil, storage.ObjectGrant{}, fmt.Errorf("%w: link targets a folder", ErrInvalid)
 	}
-	grant, err := s.mint(ctx, AccessRead, n, ttl)
+	access := AccessRead
+	if l.Role == RoleEditor {
+		access = AccessWrite
+	}
+	grant, err := s.mint(ctx, access, n, ttl)
 	if err != nil {
 		return nil, storage.ObjectGrant{}, err
 	}

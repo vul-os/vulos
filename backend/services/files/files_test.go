@@ -317,6 +317,39 @@ func TestShareLinkExpiryAndRevoke(t *testing.T) {
 	}
 }
 
+// TestRedeemLinkHonorsRole guards against a real bug: RedeemLink used to
+// always mint a READ grant regardless of the link's own role, so an "editor"
+// share link silently granted no writes. A viewer link must mint a read
+// grant; an editor link must mint a write grant.
+func TestRedeemLinkHonorsRole(t *testing.T) {
+	svc, _ := newTestService(t)
+	n := uploadFile(t, svc, owner, "", "linked.txt")
+
+	viewerLink, err := svc.CreateLink(owner, n.ID, RoleViewer, time.Minute)
+	if err != nil {
+		t.Fatalf("CreateLink viewer: %v", err)
+	}
+	_, g, err := svc.RedeemLink(context.Background(), other, viewerLink.Token, ttl)
+	if err != nil {
+		t.Fatalf("redeem viewer link: %v", err)
+	}
+	if g.Method != "GET" {
+		t.Fatalf("viewer link minted %s grant, want GET (read)", g.Method)
+	}
+
+	editorLink, err := svc.CreateLink(owner, n.ID, RoleEditor, time.Minute)
+	if err != nil {
+		t.Fatalf("CreateLink editor: %v", err)
+	}
+	_, g2, err := svc.RedeemLink(context.Background(), other, editorLink.Token, ttl)
+	if err != nil {
+		t.Fatalf("redeem editor link: %v", err)
+	}
+	if g2.Method != "PUT" {
+		t.Fatalf("editor link minted %s grant, want PUT (write) — editor links must not be read-only", g2.Method)
+	}
+}
+
 // TestShareManagementOwnerOnly: only the owner may grant/revoke ACLs.
 func TestShareManagementOwnerOnly(t *testing.T) {
 	svc, _ := newTestService(t)
