@@ -56,6 +56,7 @@ func (b *fbBroker) PutContent(_ context.Context, _, _, _ string, r io.Reader, _ 
 func (b *fbBroker) GetContent(_ context.Context, _, _, _ string) (io.ReadCloser, int64, error) {
 	return io.NopCloser(bytes.NewReader([]byte("hi"))), 2, nil
 }
+func (b *fbBroker) DeleteObject(_ context.Context, _, _, _ string) error { return nil }
 
 // newFilesSvc builds a real files.Service backed by a temp SQLite DB + fake
 // broker. bucketFn returns a per-owner bucket so grants have a bucket.

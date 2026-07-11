@@ -753,6 +753,109 @@ func (s *Service) Delete(userID, nodeID string) error {
 	return nil
 }
 
+// DefaultTombstoneRetention is how long a soft-deleted node's bucket bytes are
+// kept before PurgeTombstones reclaims them, absent an operator override.
+const DefaultTombstoneRetention = 30 * 24 * time.Hour
+
+// PurgeTombstones is the minimal trash/purge mechanism for soft delete: Delete
+// above only flips deleted=1 — it never frees bucket bytes and offers no
+// undelete/trash UI. Until a full trash feature exists, this sweep is what
+// keeps deleted files from occupying bucket storage forever. For every node
+// tombstoned more than `retention` ago it removes the object's bytes (and
+// every prior version's bytes) from the bucket, then hard-deletes the index
+// row (+ its versions/ACLs/share-links). A node whose byte deletion fails
+// (network, permissions) is left tombstoned for the next sweep to retry rather
+// than hard-deleting a row that might still point at live bytes. Returns the
+// number of nodes fully purged. Safe to call with a nil broker (bytes are
+// skipped; index rows still get reclaimed for dir nodes / already-byteless
+// pending nodes) or concurrently with normal Service use — it never touches an
+// undeleted row.
+func (s *Service) PurgeTombstones(ctx context.Context, retention time.Duration) (int, error) {
+	if retention <= 0 {
+		retention = DefaultTombstoneRetention
+	}
+	cutoff := time.Now().Add(-retention)
+	candidates, err := s.staleTombstones(cutoff)
+	if err != nil {
+		return 0, err
+	}
+	purged := 0
+	for _, n := range candidates {
+		if !s.purgeBytes(ctx, n) {
+			continue // leave tombstoned; retry on the next sweep
+		}
+		if err := s.hardDeleteNode(n.ID); err != nil {
+			log.Printf("[files] purge: hard-delete failed for %s: %v", n.ID, err)
+			continue
+		}
+		s.audit(n.OwnerID, "node.purge", n.ID, n.Path)
+		purged++
+	}
+	return purged, nil
+}
+
+// purgeBytes removes n's current object plus every prior version's object from
+// the bucket. Returns false (leave the row tombstoned) if any deletion failed
+// for a reason other than "already gone" — the caller must not hard-delete the
+// index row in that case, or the bytes could become permanently unreachable.
+func (s *Service) purgeBytes(ctx context.Context, n *Node) bool {
+	if s.broker == nil {
+		// No bucket wired (e.g. tests, or a degraded box) — nothing to purge;
+		// the index row can still be reclaimed.
+		return true
+	}
+	if n.IsDir {
+		return true // folders carry no bytes of their own
+	}
+	ok := true
+	if vs, err := s.listVersions(n.ID); err == nil {
+		seen := map[string]bool{}
+		for _, v := range vs {
+			if v.VersionKey == "" || seen[v.VersionKey] {
+				continue
+			}
+			seen[v.VersionKey] = true
+			if err := s.broker.DeleteObject(ctx, n.OwnerID, n.Bucket, v.VersionKey); err != nil {
+				log.Printf("[files] purge: delete version object %s failed: %v", v.VersionKey, err)
+				ok = false
+			}
+		}
+	} else {
+		log.Printf("[files] purge: list versions for %s failed: %v", n.ID, err)
+		ok = false
+	}
+	if n.ObjectKey != "" {
+		if err := s.broker.DeleteObject(ctx, n.OwnerID, n.Bucket, n.ObjectKey); err != nil {
+			log.Printf("[files] purge: delete object %s failed: %v", n.ObjectKey, err)
+			ok = false
+		}
+	}
+	return ok
+}
+
+// PurgeTombstoneLoop runs PurgeTombstones every interval until ctx is
+// cancelled. Intended to be started in a goroutine by the server wiring
+// (mirrors upload.Manager.SweepLoop).
+func (s *Service) PurgeTombstoneLoop(ctx context.Context, retention, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n, err := s.PurgeTombstones(ctx, retention); err != nil {
+				log.Printf("[files] tombstone purge sweep error: %v", err)
+			} else if n > 0 {
+				log.Printf("[files] tombstone purge: reclaimed %d node(s)", n)
+			}
+		}
+	}
+}
+
 // --- sharing --------------------------------------------------------------
 
 // Share grants principalID the role on nodeID. Only the owner may manage ACLs.

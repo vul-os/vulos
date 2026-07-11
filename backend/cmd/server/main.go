@@ -868,6 +868,25 @@ func main() {
 	}
 	registerFilesResumableRoutes(mux, uploadMgr)
 
+	// Tombstone purge sweep: Delete() only soft-deletes (deleted=1) — it never
+	// frees bucket bytes and there is no trash/undelete UI yet. Until a full
+	// trash feature exists, this hourly sweep is what reclaims bytes for nodes
+	// tombstoned past the retention window (default 30d; override with
+	// VULOS_FILES_TRASH_RETENTION, e.g. "720h"). Bound to the server context so
+	// it stops on shutdown.
+	if filesSvc != nil {
+		retention := files.DefaultTombstoneRetention
+		if v := os.Getenv("VULOS_FILES_TRASH_RETENTION"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				retention = d
+			} else {
+				log.Printf("[files] VULOS_FILES_TRASH_RETENTION=%q invalid, using default %s", v, files.DefaultTombstoneRetention)
+			}
+		}
+		go filesSvc.PurgeTombstoneLoop(ctx, retention, time.Hour)
+		log.Printf("[files] tombstone purge sweep active (retention=%s)", retention)
+	}
+
 	// FILES-2B: OS peer-share (Mechanism B). Session-authed issue/redeem/save
 	// endpoints + the PUBLIC box-to-box serve endpoint (authenticated by the
 	// signed capability + recipient fetch proof, listed in auth.publicPaths).

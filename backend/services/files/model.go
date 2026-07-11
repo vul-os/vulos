@@ -141,6 +141,12 @@ type Broker interface {
 	// ACL-gates both before calling them.
 	PutContent(ctx context.Context, ownerID, bucket, key string, r io.Reader, size int64, contentType string) (string, error)
 	GetContent(ctx context.Context, ownerID, bucket, key string) (io.ReadCloser, int64, error)
+	// DeleteObject permanently removes ONE object's bytes from the owner's store.
+	// A missing object is a no-op success (already gone, or a pending node that
+	// was never uploaded). Used by the tombstone purge sweep to reclaim bytes for
+	// nodes that were soft-deleted past the retention window — soft delete alone
+	// only marks a row deleted=1; it never frees bucket bytes without this.
+	DeleteObject(ctx context.Context, ownerID, bucket, key string) error
 }
 
 // BucketResolver returns the per-user account bucket for a user. Wired from

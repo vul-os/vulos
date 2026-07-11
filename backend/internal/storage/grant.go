@@ -368,6 +368,35 @@ func (b *GrantBroker) GetContent(ctx context.Context, ownerID, bucket, key strin
 	return obj, st.Size, nil
 }
 
+// DeleteObject permanently removes bucket/key from the owner's store. A
+// missing object (already gone, or a "pending" node that was never uploaded)
+// is treated as success — the caller only needs the bytes to be GONE, not that
+// this particular call was the one that removed them. Used by the Files
+// service's tombstone purge sweep (soft delete alone never frees bucket bytes).
+func (b *GrantBroker) DeleteObject(ctx context.Context, ownerID, bucket, key string) error {
+	if key == "" {
+		return nil
+	}
+	res := b.resolveOwner(ctx, ownerID)
+	if !res.Configured() {
+		if err := os.Remove(b.localPath(key)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	mc, err := b.client(res)
+	if err != nil {
+		return err
+	}
+	if err := mc.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return nil
+		}
+		return fmt.Errorf("remove %s/%s: %w", bucket, key, err)
+	}
+	return nil
+}
+
 // localPath maps an object key to its location under the local-FS fallback root.
 // The key is already the full Drive key ("<ownerID>/drive/..."), so the local
 // layout mirrors the bucket layout. filepath.Clean defends against traversal.

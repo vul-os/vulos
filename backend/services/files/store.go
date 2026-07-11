@@ -179,6 +179,54 @@ func (s *Service) softDelete(id string) error {
 	return err
 }
 
+// staleTombstones returns nodes soft-deleted (deleted=1) whose updated_at (set
+// at delete time) is older than cutoff — candidates for the tombstone purge
+// sweep (see Service.PurgeTombstones). Unlike getNode/listChildren this
+// deliberately selects deleted=1 rows.
+func (s *Service) staleTombstones(cutoff time.Time) ([]*Node, error) {
+	rows, err := s.db.Query(`SELECT `+nodeCols+` FROM files_nodes WHERE deleted=1 AND updated_at<?`,
+		cutoff.Format(rfc))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Node
+	for rows.Next() {
+		n, err := scanNode(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// hardDeleteNode permanently removes id's index row and its dependent rows
+// (versions, ACLs, share links) in one transaction. Called only AFTER the
+// purge sweep has removed (or confirmed absent) the node's bucket bytes —
+// this is the point of no return for the row itself. files_audit is
+// deliberately NOT touched: the audit trail of the delete/purge is retained.
+func (s *Service) hardDeleteNode(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM files_versions WHERE node_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM files_acls WHERE node_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM files_share_links WHERE node_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM files_nodes WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // --- acls ---
 
 func (s *Service) aclFor(nodeID, principalID string) (Role, bool) {

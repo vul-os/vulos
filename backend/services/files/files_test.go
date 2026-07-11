@@ -24,6 +24,8 @@ type fakeBroker struct {
 	objs          map[string]string // bucket|key -> contents (object presence)
 	moves         int               // successful MoveObject count
 	failAfter     int               // when >0, the failAfter-th MoveObject fails
+	deletes       int               // successful DeleteObject count
+	deleteFail    bool              // when true, DeleteObject always errors (non-missing)
 }
 
 func (f *fakeBroker) MintRead(_ context.Context, ownerID, bucket, key string, ttl time.Duration) (storage.ObjectGrant, error) {
@@ -91,6 +93,23 @@ func (f *fakeBroker) GetContent(_ context.Context, _ /*ownerID*/, bucket, key st
 		return nil, 0, fmt.Errorf("fakeBroker: no object %s", okey(bucket, key))
 	}
 	return io.NopCloser(strings.NewReader(body)), int64(len(body)), nil
+}
+
+// DeleteObject removes a virtual object, mirroring the real broker's
+// treat-missing-as-success behaviour. Set deleteFail to inject a non-missing
+// failure (e.g. to test that PurgeTombstones leaves the row tombstoned).
+func (f *fakeBroker) DeleteObject(_ context.Context, _ /*ownerID*/, bucket, key string) error {
+	if f.deleteFail {
+		return fmt.Errorf("fakeBroker: injected DeleteObject failure")
+	}
+	if key == "" {
+		return nil
+	}
+	if f.objs != nil {
+		delete(f.objs, okey(bucket, key))
+	}
+	f.deletes++
+	return nil
 }
 
 func newTestService(t *testing.T) (*Service, *fakeBroker) {
@@ -678,5 +697,89 @@ func TestSearchLikeEscaping(t *testing.T) {
 	}
 	if len(res) != 1 || res[0].Name != "100%-done.txt" {
 		t.Fatalf("LIKE metachar not escaped — '%%' matched %d files: %+v", len(res), res)
+	}
+}
+
+// --- tombstone purge --------------------------------------------------------
+
+// TestPurgeTombstones guards the real bug: soft delete (Delete) tombstones a
+// row but never frees bucket bytes and offers no purge. It must: (1) leave
+// bytes untouched right after a soft delete, (2) leave a too-young tombstone
+// alone, (3) once past retention, delete the bucket bytes AND hard-delete the
+// index row, and (4) if byte deletion fails, leave the row tombstoned for a
+// retry rather than losing the pointer to still-live bytes.
+func TestPurgeTombstones(t *testing.T) {
+	svc, fb := newTestService(t)
+	bucket := "vulos-" + owner
+
+	n := uploadFile(t, svc, owner, "", "trash.txt")
+	fb.put(bucket, n.ObjectKey, "bytes")
+	if _, err := svc.Commit(owner, n.ID, 5, "text/plain", "e1"); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if err := svc.Delete(owner, n.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, ok := fb.get(bucket, n.ObjectKey); !ok {
+		t.Fatalf("bytes removed by soft delete alone — bytes must only go at purge time")
+	}
+
+	// Not yet past retention: purge is a no-op.
+	if purged, err := svc.PurgeTombstones(context.Background(), time.Hour); err != nil || purged != 0 {
+		t.Fatalf("purged=%d err=%v, want 0 (tombstone not yet past retention)", purged, err)
+	}
+	if _, ok := fb.get(bucket, n.ObjectKey); !ok {
+		t.Fatalf("bytes removed before retention elapsed")
+	}
+
+	time.Sleep(5 * time.Millisecond)
+	purged, err := svc.PurgeTombstones(context.Background(), time.Millisecond)
+	if err != nil {
+		t.Fatalf("PurgeTombstones: %v", err)
+	}
+	if purged != 1 {
+		t.Fatalf("purged=%d want 1", purged)
+	}
+	if _, ok := fb.get(bucket, n.ObjectKey); ok {
+		t.Fatalf("bucket bytes still present after purge — soft-delete-forever bug not fixed")
+	}
+	stale, err := svc.staleTombstones(time.Now())
+	if err != nil {
+		t.Fatalf("staleTombstones: %v", err)
+	}
+	for _, sn := range stale {
+		if sn.ID == n.ID {
+			t.Fatalf("index row for %s still present after purge — expected hard delete", n.ID)
+		}
+	}
+
+	// A byte-deletion failure must NOT hard-delete the row (would strand
+	// unreachable-but-still-live bytes with no index pointer).
+	n2 := uploadFile(t, svc, owner, "", "trash2.txt")
+	fb.put(bucket, n2.ObjectKey, "bytes2")
+	if err := svc.Delete(owner, n2.ID); err != nil {
+		t.Fatalf("Delete n2: %v", err)
+	}
+	fb.deleteFail = true
+	time.Sleep(5 * time.Millisecond)
+	purged2, err := svc.PurgeTombstones(context.Background(), time.Millisecond)
+	if err != nil {
+		t.Fatalf("PurgeTombstones (deleteFail): %v", err)
+	}
+	if purged2 != 0 {
+		t.Fatalf("purged=%d want 0 when the broker fails to delete bytes", purged2)
+	}
+	stale2, err := svc.staleTombstones(time.Now())
+	if err != nil {
+		t.Fatalf("staleTombstones: %v", err)
+	}
+	found := false
+	for _, sn := range stale2 {
+		if sn.ID == n2.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("row for %s was hard-deleted despite a failed byte deletion", n2.ID)
 	}
 }
