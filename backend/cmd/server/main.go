@@ -1236,6 +1236,12 @@ func main() {
 
 	// Vault endpoints
 	mux.HandleFunc("GET /api/vault/status", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: status exposes snapshot hostnames/timestamps — same admin gate as
+		// the other vault endpoints (backup/sync below), not just any session.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		writeJSON(w, v.Status())
 	})
 	mux.HandleFunc("POST /api/vault/backup", func(w http.ResponseWriter, r *http.Request) {
@@ -1252,6 +1258,11 @@ func main() {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/vault/snapshots", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: snapshot list leaks hostnames/timestamps — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		snaps, err := v.Snapshots(r.Context())
 		if err != nil {
 			writeErr(w, 500, err.Error())
@@ -1261,6 +1272,11 @@ func main() {
 	})
 
 	mux.HandleFunc("GET /api/vault/sync", func(w http.ResponseWriter, r *http.Request) {
+		// SEC: sync status leaks the same snapshot/host metadata — admin only.
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only")
+			return
+		}
 		writeJSON(w, v.SyncStatus(r.Context()))
 	})
 	mux.HandleFunc("POST /api/vault/sync", func(w http.ResponseWriter, r *http.Request) {
@@ -2083,7 +2099,21 @@ func main() {
 	// fail-closed gating via VULOS_STREAM_STRICT_INPUT_GATE=1). With no verifier and
 	// strict gating off, input flows UNGATED and Launch logs a loud per-session
 	// warning — an honest, non-crashing state rather than a silent permanent lock.
+	//
+	// AUTH-13 fail-closed default: an UNSET VULOS_STREAM_STRICT_INPUT_GATE must
+	// not silently leave input ungated in production. If the operator hasn't
+	// expressed an opinion (env var not present at all) and we're running with
+	// --env prod (or VULOS_ENV=prod), default to strict so remote input injection
+	// is gated even without a WebAuthn verifier wired. An operator who explicitly
+	// sets the var (to "1" or anything else) always wins, in any environment.
 	strictGate := os.Getenv("VULOS_STREAM_STRICT_INPUT_GATE") == "1"
+	if rawGate, isSet := os.LookupEnv("VULOS_STREAM_STRICT_INPUT_GATE"); !isSet {
+		if activeEnv.IsProd() {
+			strictGate = true
+		}
+	} else {
+		strictGate = rawGate == "1"
+	}
 	streamPool.SetStrictInputGate(strictGate)
 	if streamPool.WebAuthnVerifier() == nil && !strictGate {
 		if activeEnv.IsProd() {

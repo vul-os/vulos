@@ -65,9 +65,10 @@ export default function LockScreen({ onUnlock, userName }) {
       })
       const data = await res.json().catch(() => ({}))
       if (data.valid) {
-        onUnlock()
-      } else if (!data.has_pin && pin.length === 0) {
-        // No PIN set — just unlock
+        // Server-verified. When no PIN is configured, the server's own
+        // ValidatePIN contract (SEC-PIN-01) legitimately reports valid:true —
+        // that is an intentional "quick lock, no credential" product decision,
+        // not a client-side bypass. We never decide validity on the client.
         onUnlock()
       } else if (data.permanent_lock) {
         // Server has permanently locked this device after repeated failures —
@@ -86,9 +87,10 @@ export default function LockScreen({ onUnlock, userName }) {
         )
       }
     } catch {
-      // Backend unreachable — allow unlock with empty PIN
-      if (pin.length === 0) onUnlock()
-      else flashError('Can’t reach the server. Try again.')
+      // Backend unreachable — fail CLOSED. We cannot verify a PIN (or the
+      // "no PIN configured" passthrough) without the server, so never unlock
+      // here regardless of what — if anything — was typed.
+      flashError('Can’t reach the server. Try again.')
     }
   }
 
