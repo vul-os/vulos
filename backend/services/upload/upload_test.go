@@ -281,6 +281,57 @@ func TestDeleteDiscardsPartial(t *testing.T) {
 	}
 }
 
+// TestLockMapReleasedOnDelete guards against unbounded growth of
+// Manager.locks: every Create/Patch/Sweep call adds an entry via lockFor, and
+// without cleanup the map would hold one *sync.Mutex per upload ID ever
+// created for the life of the process, even after the upload is long gone.
+// Delete (explicit cancel) must release the entry.
+func TestLockMapReleasedOnDelete(t *testing.T) {
+	m := newMgr(t, newMemSink(), Config{})
+	u, _ := m.Create("alice", CreateParams{Length: 100, Name: "x"})
+	// Force a lock entry to exist (Create already does via countIncompleteByOwner
+	// path is unrelated; Patch is what actually calls lockFor).
+	if _, err := m.Patch(context.Background(), "alice", u.ID, 0, bytes.NewReader(make([]byte, 10)), ""); err != nil {
+		t.Fatalf("Patch: %v", err)
+	}
+	m.mu.Lock()
+	_, held := m.locks[u.ID]
+	m.mu.Unlock()
+	if !held {
+		t.Fatalf("expected a lock entry for %s after Patch", u.ID)
+	}
+	if err := m.Delete("alice", u.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	m.mu.Lock()
+	_, stillHeld := m.locks[u.ID]
+	m.mu.Unlock()
+	if stillHeld {
+		t.Fatalf("lock entry for %s leaked past Delete — m.locks grows unbounded", u.ID)
+	}
+}
+
+// TestLockMapReleasedOnSweep is the same guard for the expiry path.
+func TestLockMapReleasedOnSweep(t *testing.T) {
+	now := time.Now()
+	cfg := Config{TTL: time.Hour, now: func() time.Time { return now }}
+	m := newMgr(t, newMemSink(), cfg)
+	u, _ := m.Create("alice", CreateParams{Length: 100, Name: "x"})
+	if _, err := m.Patch(context.Background(), "alice", u.ID, 0, bytes.NewReader(make([]byte, 10)), ""); err != nil {
+		t.Fatalf("Patch: %v", err)
+	}
+	now = now.Add(2 * time.Hour)
+	if n, err := m.Sweep(); err != nil || n != 1 {
+		t.Fatalf("Sweep: n=%d err=%v", n, err)
+	}
+	m.mu.Lock()
+	_, stillHeld := m.locks[u.ID]
+	m.mu.Unlock()
+	if stillHeld {
+		t.Fatalf("lock entry for %s leaked past Sweep — m.locks grows unbounded", u.ID)
+	}
+}
+
 func TestFinalizeFailureIsResumable(t *testing.T) {
 	sink := newMemSink()
 	sink.failNext = true

@@ -467,7 +467,13 @@ func (m *Manager) Delete(userID, id string) error {
 
 func (m *Manager) deleteInternal(id string) error {
 	_ = os.Remove(m.stagePath(id))
-	return m.store.delete(id)
+	err := m.store.delete(id)
+	// Release the per-upload lock entry now that the row is gone — every exit
+	// path (explicit cancel, sweep expiry) funnels through here, so without
+	// this m.locks would grow by one *sync.Mutex for every upload ID ever
+	// created for the life of the process and never shrink.
+	m.releaseLock(id)
+	return err
 }
 
 // Sweep deletes partial (incomplete) uploads whose UpdatedAt is older than TTL,
@@ -529,6 +535,16 @@ func (m *Manager) lockFor(id string) *sync.Mutex {
 		m.locks[id] = lk
 	}
 	return lk
+}
+
+// releaseLock removes id's entry from the lock map, if any. Safe to call while
+// still holding the (now orphaned) *sync.Mutex value itself — deleting it from
+// the map only stops future callers from reusing it; anyone already holding it
+// keeps a valid, unlockable reference until they Unlock.
+func (m *Manager) releaseLock(id string) {
+	m.mu.Lock()
+	delete(m.locks, id)
+	m.mu.Unlock()
 }
 
 // hashFile returns the hex sha256 of a file's full contents.
