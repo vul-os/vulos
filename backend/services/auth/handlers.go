@@ -227,6 +227,11 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 		// C1 (SEC-A): strip attacker-supplied identity headers before anything else.
 		r.Header.Del("X-User-ID")
 		r.Header.Del("X-User-Email")
+		// ENTITLE-01: strip any client-supplied entitlements claim so only the
+		// server-side vk_ introspection below (never the caller) can set it.
+		// The gateway trusts this header for entitlement gating (entitlement.go)
+		// and strips it again before an app ever sees the proxied request.
+		r.Header.Del("X-Vulos-Entitlements-Products")
 
 		// AT10 — check admin bearer token before cookie path.
 		if authHdr := r.Header.Get("Authorization"); strings.HasPrefix(authHdr, "Bearer "+AT10TokenPrefix) {
@@ -271,6 +276,12 @@ func (h *Handler) Middleware(next http.Handler) http.Handler {
 				}
 				r.Header.Set("X-User-ID", u.ID)
 				r.Header.Set("X-User-Email", u.Email)
+				// ENTITLE-01: surface the CP's resolved products for this key so
+				// downstream entitlement gating (the OS gateway's app-dispatch) can
+				// enforce premium-app access by tier without a second CP round trip.
+				if len(res.Products) > 0 {
+					r.Header.Set("X-Vulos-Entitlements-Products", strings.Join(res.Products, ","))
+				}
 			}
 		}
 

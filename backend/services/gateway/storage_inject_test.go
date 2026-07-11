@@ -32,6 +32,7 @@ func TestInjectStorage_PermittedApp(t *testing.T) {
 			Region:    "us-east-1",
 			AccessKey: "AK",
 			SecretKey: "SK",
+			Scoped:    true, // STS (or equivalent) successfully scoped these creds
 		}, true
 	})
 	g.AllowStorage("office", "office/")
@@ -83,6 +84,40 @@ func TestInjectStorage_FailsClosedWithoutBrokerSecret(t *testing.T) {
 
 	if got := r.Header.Get("X-Vulos-Storage-Access-Key"); got != "" {
 		t.Fatalf("fail-closed must inject no creds (and strip spoof), got %q", got)
+	}
+	if got := r.Header.Get("X-Vulos-Storage-Broker-Auth"); got != "" {
+		t.Fatalf("fail-closed must not emit broker-auth, got %q", got)
+	}
+}
+
+// SECURITY (fail-closed): Configured()==true (an object store IS configured,
+// there ARE credentials) but Scoped==false (no STS/scoping available) must
+// result in NO injected headers at all — never the static/unscoped
+// credential. This is the actual isolation hole this change closes.
+func TestInjectStorage_ConfiguredButUnscoped_FailsClosed(t *testing.T) {
+	g := newStorageGateway()
+	g.SetStorageResolver(func(_ context.Context, userID, prefix string) (storagepkg.Resolution, bool) {
+		return storagepkg.Resolution{
+			Endpoint:  "https://s3.example.com",
+			Bucket:    "vulos-" + userID,
+			AccessKey: "STATIC-FULL-BUCKET-AK",
+			SecretKey: "STATIC-FULL-BUCKET-SK",
+			Scoped:    false, // e.g. no STS minter, or minting failed, or cloud/Tigris
+		}, true
+	})
+	g.AllowStorage("office", "office/")
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	g.injectStorageHeaders(context.Background(), r, "user123", "office")
+
+	if got := r.Header.Get("X-Vulos-Storage-Access-Key"); got != "" {
+		t.Fatalf("must NEVER inject an unscoped/static credential, got %q", got)
+	}
+	if got := r.Header.Get("X-Vulos-Storage-Secret-Key"); got != "" {
+		t.Fatalf("must NEVER inject an unscoped/static credential, got %q", got)
+	}
+	if got := r.Header.Get("X-Vulos-Storage-Endpoint"); got != "" {
+		t.Fatalf("fail-closed should inject NOTHING (not even endpoint), got %q", got)
 	}
 	if got := r.Header.Get("X-Vulos-Storage-Broker-Auth"); got != "" {
 		t.Fatalf("fail-closed must not emit broker-auth, got %q", got)

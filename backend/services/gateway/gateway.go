@@ -63,6 +63,30 @@ type Gateway struct {
 	// VULOS_STORAGE_BROKER_SECRET. When EMPTY, the gateway refuses to inject any
 	// storage credentials (fail-closed).
 	storageBrokerSecret string
+
+	// grantBroker mints short-lived, OBJECT-scoped storage grants (presigned
+	// URL or object-scoped STS) for the PRESIGN-01 endpoint (PresignHandler).
+	// This is how storage-permitted apps get usable storage access in cloud
+	// mode (Tigris has no bucket-wide STS/AssumeRole) WITHOUT ever holding a
+	// raw AccessKey/Secret: the app requests a presign per object instead. nil
+	// disables the endpoint (503).
+	grantBroker *storagepkg.GrantBroker
+	// bucketForFunc resolves a userID to its account bucket name, used by the
+	// presign endpoint to build the (bucket, key) pair passed to grantBroker.
+	bucketForFunc func(userID string) string
+
+	// appProducts maps appID → the CP product/entitlement key required to use
+	// it (e.g. "office-pro"). Empty/absent means the app requires no
+	// entitlement (open to any authenticated user) — today's behavior for
+	// every app that does not declare one. Populated from the app manifest's
+	// "product" field.
+	appProducts map[string]string
+	// gateEntitlements, when true, enforces appProducts against the current
+	// request's vk_-introspected products (X-Vulos-Entitlements-Products,
+	// stamped by auth.Handler.Middleware) and FAILS CLOSED when a required
+	// product is missing. False (self-host/standalone) leaves every app open,
+	// matching today's all-open behavior. Set via SetEntitlementGating.
+	gateEntitlements bool
 }
 
 // rateBucket tracks request count per window for per-app rate limiting.
@@ -263,6 +287,19 @@ func (g *Gateway) injectStorageHeaders(ctx context.Context, pr *http.Request, us
 	}
 	res = res.WithPrefix(fullPrefix)
 
+	// SECURITY (fail-closed, per-app isolation): an object store IS configured
+	// (there ARE credentials to protect) but they are NOT scoped down to this
+	// app's prefix (no STS minter available, or minting failed, or — in cloud
+	// mode — the resolution is inherently unscoped, e.g. Tigris has no STS).
+	// Refuse to inject ANYTHING rather than hand out a static/unscoped
+	// full-bucket credential. The app must use the presign endpoint
+	// (PresignHandler) instead, which mints object-scoped grants regardless of
+	// STS availability.
+	if res.Configured() && !res.Scoped {
+		log.Printf("[storage] refusing to inject unscoped credentials for app %q (user %q): no per-app scoping is available — use the presign endpoint instead", appID, userID)
+		return
+	}
+
 	pr.Header.Set("X-Vulos-Storage-Endpoint", res.Endpoint)
 	pr.Header.Set("X-Vulos-Storage-Bucket", res.Bucket)
 	pr.Header.Set("X-Vulos-Storage-Prefix", res.Prefix)
@@ -356,6 +393,17 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		session := g.validateSession(r)
 		if session == nil {
 			http.Error(w, `{"error":"unauthorized"}`, 401)
+			return
+		}
+
+		// --- Entitlement gating (ENTITLE-01) ---
+		// Off by default (self-host/standalone); when enabled (cloud/os), an app
+		// that declares a required product is refused to a request that doesn't
+		// carry it (fail closed). See entitlement.go.
+		if ok, reason := g.entitlementCheck(r, appID); !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPaymentRequired)
+			fmt.Fprintf(w, `{"error":"entitlement required","detail":%q}`, reason)
 			return
 		}
 

@@ -192,19 +192,67 @@ func TestResolveScoped_MintsScopedCreds(t *testing.T) {
 	if res.Prefix != "alice/office/" {
 		t.Fatalf("prefix = %q", res.Prefix)
 	}
+	if !res.Scoped {
+		t.Fatal("expected Scoped=true when the minter succeeds")
+	}
 }
 
-// C1/C3 residual: with no minter, ResolveScoped falls back to the static
-// per-user-bucket creds (cross-user still impossible thanks to the per-user
-// bucket from C2).
-func TestResolveScoped_FallsBackToStatic(t *testing.T) {
+// SECURITY (fail-closed): with no minter installed, ResolveScoped must NOT
+// fall back to the resolver's static full-bucket credential — a storage-
+// permitted app must never receive it. Cross-user isolation still holds
+// (per-user bucket from C2); this closes the cross-app-within-one-user hole
+// unconditionally rather than depending on gateway discipline.
+func TestResolveScoped_NoMinter_FailsClosed(t *testing.T) {
 	r := NewResolver(ResolverConfig{Endpoint: "minio:9000", AccessKey: "STATIC-AK", SecretKey: "STATIC-SK"})
 	res, ok := r.ResolveScoped(context.Background(), "alice", "alice/office/")
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if res.AccessKey != "STATIC-AK" || res.Bucket != "vulos-alice" {
-		t.Fatalf("expected static per-user creds, got %+v", res)
+	if res.AccessKey != "" || res.SecretKey != "" || res.SessionToken != "" {
+		t.Fatalf("expected NO credentials without a minter, got %+v", res)
+	}
+	if res.Scoped {
+		t.Fatal("expected Scoped=false without a minter")
+	}
+	// Bucket/endpoint metadata is still harmless to report (no creds attached).
+	if res.Bucket != "vulos-alice" {
+		t.Fatalf("bucket = %q", res.Bucket)
+	}
+}
+
+// SECURITY (fail-closed): when a minter IS installed but fails to mint (e.g.
+// a transient STS outage), ResolveScoped must still NOT fall back to the
+// static credential.
+func TestResolveScoped_MinterFails_FailsClosed(t *testing.T) {
+	r := NewResolver(ResolverConfig{Endpoint: "minio:9000", AccessKey: "STATIC-AK", SecretKey: "STATIC-SK"})
+	r.SetCredentialMinter(func(_ context.Context, _, _ string) (ScopedCreds, bool) {
+		return ScopedCreds{}, false // minting failed
+	})
+	res, ok := r.ResolveScoped(context.Background(), "alice", "alice/office/")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if res.AccessKey != "" || res.SecretKey != "" {
+		t.Fatalf("expected NO credentials when minting fails, got %+v", res)
+	}
+	if res.Scoped {
+		t.Fatal("expected Scoped=false when minting fails")
+	}
+}
+
+// No object store configured at all (local-FS fallback): nothing to protect,
+// ResolveScoped reports not-configured and Scoped stays false (harmless).
+func TestResolveScoped_NoStore_LocalFallback(t *testing.T) {
+	r := NewResolver(ResolverConfig{})
+	res, ok := r.ResolveScoped(context.Background(), "alice", "alice/office/")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if res.Configured() {
+		t.Fatal("expected not configured (local-FS fallback)")
+	}
+	if res.Scoped {
+		t.Fatal("Scoped must be false when there is no store")
 	}
 }
 

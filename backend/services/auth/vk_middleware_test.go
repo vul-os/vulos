@@ -40,6 +40,7 @@ func makeTestHandler(t *testing.T, intro apikey.Introspector) (*Handler, http.Ha
 
 	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Got-User", r.Header.Get("X-User-ID"))
+		w.Header().Set("X-Got-Entitlements", r.Header.Get("X-Vulos-Entitlements-Products"))
 		w.WriteHeader(http.StatusOK)
 	})
 	return h, h.Middleware(echo)
@@ -131,6 +132,75 @@ func TestVKMiddleware_NilIntrospector_FallsThrough(t *testing.T) {
 	// No introspector → no user resolved → 401 (unchanged self-host behavior).
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 (self-host, no introspector), got %d", rr.Code)
+	}
+}
+
+// ENTITLE-01: a valid vk_ key's CP-introspected products must be surfaced on
+// X-Vulos-Entitlements-Products for downstream entitlement gating (the OS
+// gateway's app-dispatch check).
+func TestVKMiddleware_ValidKey_StampsEntitlements(t *testing.T) {
+	intro := &staticIntrospector{result: apikey.Result{
+		Valid:    true,
+		Account:  "dev@example.com",
+		Products: []string{"os", "mail", "office-pro"},
+	}}
+	_, mw := makeTestHandler(t, intro)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps", nil)
+	req.Header.Set("Authorization", "Bearer vk_live_abc123")
+	rr := httptest.NewRecorder()
+	mw.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("X-Got-Entitlements"); got != "os,mail,office-pro" {
+		t.Fatalf("expected entitlements header to be stamped, got %q", got)
+	}
+}
+
+// ENTITLE-01 (SECURITY): a client-supplied X-Vulos-Entitlements-Products must
+// NEVER survive — it is stripped unconditionally at the top of Middleware, so
+// a caller can never spoof an entitlement it was never granted, regardless of
+// whether it also presents a valid vk_ key with fewer/no products.
+func TestVKMiddleware_ClientSpoofedEntitlements_Stripped(t *testing.T) {
+	intro := &staticIntrospector{result: apikey.Result{
+		Valid:    true,
+		Account:  "dev@example.com",
+		Products: []string{"os"}, // no "office-pro"
+	}}
+	_, mw := makeTestHandler(t, intro)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps", nil)
+	req.Header.Set("Authorization", "Bearer vk_live_abc123")
+	req.Header.Set("X-Vulos-Entitlements-Products", "office-pro,everything")
+	rr := httptest.NewRecorder()
+	mw.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("X-Got-Entitlements"); got != "os" {
+		t.Fatalf("spoofed entitlements must be replaced by the CP-introspected value, got %q", got)
+	}
+}
+
+// Session-only (no vk_ key) requests must never carry an entitlements header
+// either — a plain session cannot claim an entitlement it was never given.
+func TestVKMiddleware_SessionOnly_NoSpoofedEntitlementsSurvive(t *testing.T) {
+	_, mw := makeTestHandler(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/apps", nil)
+	req.Header.Set("X-Vulos-Entitlements-Products", "office-pro")
+	rr := httptest.NewRecorder()
+	mw.ServeHTTP(rr, req)
+
+	// No session, no vk_ → 401, but the important assertion is that a
+	// legitimate request downstream would never see the spoofed value; this is
+	// covered structurally since Middleware deletes the header unconditionally
+	// before any other logic runs.
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 (no session, no vk_), got %d", rr.Code)
 	}
 }
 

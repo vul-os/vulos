@@ -24,6 +24,7 @@ import (
 	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/cpbilling"
+	"vulos/backend/internal/deploymode"
 	"vulos/backend/internal/directlisten"
 	"vulos/backend/internal/fabric"
 	"vulos/backend/internal/gpuhost"
@@ -151,6 +152,12 @@ func main() {
 	}
 
 	cfg := config.Load(activeEnv.String())
+
+	// DEPLOY_MODE: standalone|os|cloud (typed enum, read once, self-reported at
+	// boot). Unset ⇒ standalone — today's default behavior unchanged. Drives
+	// storage-isolation defaults (STS auto-default) and app entitlement gating
+	// (fail-closed on cloud/os, fully open on standalone/self-host).
+	deployMode := deploymode.Load()
 
 	// Ensure system state directory exists
 	os.MkdirAll("/var/lib/vulos", 0755)
@@ -555,10 +562,47 @@ func main() {
 	// only, per-user/app key prefix), mirroring the integration-token injection.
 	storageResolver := storage.NewResolver(storage.LoadResolverConfig())
 
-	// C1/C3: when an STS endpoint is configured, mint SHORT-LIVED, PREFIX-SCOPED
-	// credentials per app instead of handing out the box's long-lived full-bucket
-	// creds. Falls back to static per-user-bucket creds when STS is unavailable.
-	if stsEndpoint := os.Getenv("VULOS_STORAGE_STS_ENDPOINT"); stsEndpoint != "" {
+	// Scan installed app manifests ONCE, up front: the result feeds (a) the
+	// boot-time storage fail-closed check below (needs to know whether ANY
+	// app declares "storage" before deciding STS is mandatory) and (b) the
+	// integration/storage/entitlement grants loop further down. Previously
+	// this scan ran only after the STS decision, so that decision couldn't
+	// see which apps actually need scoping; scanning once here also removes
+	// a redundant second appsDir walk.
+	installedManifests, scanErr := appnet.ScanApps(appsDir)
+	if scanErr != nil {
+		log.Printf("[appnet] manifest scan warning: %v", scanErr)
+	}
+	hasStorageApp := false
+	for _, m := range installedManifests {
+		for _, p := range m.Permissions {
+			if p == "storage" {
+				hasStorageApp = true
+			}
+		}
+	}
+
+	// C1/C3 (SECURITY): mint SHORT-LIVED, PREFIX-SCOPED credentials per app
+	// instead of ever handing out the box's long-lived full-bucket creds.
+	//
+	// Self-host default: when VULOS_STORAGE_STS_ENDPOINT is unset, an object
+	// store IS configured, and this is not a cloud deployment (Tigris-style
+	// stores have no STS at all — the presign path below covers cloud
+	// instead), default the STS endpoint to the box's OWN object-store
+	// endpoint. MinIO serves its STS AssumeRole API on the SAME endpoint as
+	// its S3 API, so this "just works" for the common self-host MinIO case
+	// with zero extra operator configuration. Set VULOS_STORAGE_STS_DISABLE=1
+	// to opt out (advanced/test use only).
+	stsEndpoint := strings.TrimSpace(os.Getenv("VULOS_STORAGE_STS_ENDPOINT"))
+	stsDisabled := os.Getenv("VULOS_STORAGE_STS_DISABLE") == "1"
+	storageStaticallyConfigured := storageResolver.StaticallyConfigured()
+	if stsEndpoint == "" && !stsDisabled && deployMode != deploymode.Cloud {
+		if envEndpoint := firstNonEmpty(os.Getenv("VULOS_STORAGE_ENDPOINT"), os.Getenv("VULOS_S3_ENDPOINT")); envEndpoint != "" {
+			stsEndpoint = envEndpoint
+			log.Printf("[storage] VULOS_STORAGE_STS_ENDPOINT unset — defaulting to the box's own object-store endpoint %q (self-host default-on scoping)", stsEndpoint)
+		}
+	}
+	if stsEndpoint != "" && !stsDisabled {
 		durSec := 0
 		if v := os.Getenv("VULOS_STORAGE_STS_DURATION_SECONDS"); v != "" {
 			fmt.Sscanf(v, "%d", &durSec)
@@ -570,13 +614,22 @@ func main() {
 		}))
 		log.Printf("[storage] STS credential minting enabled (endpoint=%s) — apps receive short-lived prefix-scoped creds", stsEndpoint)
 	} else {
-		log.Printf("[storage] WARNING: STS not configured (VULOS_STORAGE_STS_ENDPOINT unset) — " +
-			"storage-permitted apps receive STATIC, FULL per-user-bucket credentials with NO per-app prefix scoping. " +
-			"Cross-app isolation WITHIN a user is NOT enforced: any storage-permitted app can read/write every other " +
-			"app's data for the same user by using the handed-out creds directly (the gateway-mediated per-user/app " +
-			"prefix only scopes gateway-proxied access, not direct object-store use of the credentials). " +
-			"Cross-USER isolation still holds via per-user buckets. " +
-			"Set VULOS_STORAGE_STS_ENDPOINT to mint short-lived prefix-scoped creds — REQUIRED for multi-app isolation.")
+		// SECURITY (fail-closed, was warn-and-continue): a storage-permitted app
+		// must NEVER receive a static full-bucket credential. When an object
+		// store is statically configured (creds exist to protect) AND at least
+		// one installed app declares the "storage" permission AND no STS is
+		// available to scope them, this is an unsafe combination we can detect
+		// fully at boot — abort rather than silently hand out unscoped creds,
+		// mirroring the C2 SharedBucketConfigured fail-closed below. (This can
+		// only happen when the operator explicitly disabled the default via
+		// VULOS_STORAGE_STS_DISABLE=1, since the default-on branch above already
+		// covers the common case.) The per-request path (ResolveScoped /
+		// gateway.injectStorageHeaders) ALSO fails closed independently, so a
+		// cloud/CloudHook-backed deployment (unknowable at boot) is covered too.
+		if storageStaticallyConfigured && hasStorageApp {
+			log.Fatalf("[storage] ABORT: app(s) declare the \"storage\" permission and an object store is configured, but no STS endpoint is available to scope per-app credentials — a storage-permitted app must NEVER receive a static full-bucket credential. Unset VULOS_STORAGE_STS_DISABLE, or set VULOS_STORAGE_STS_ENDPOINT explicitly, or remove the \"storage\" permission from the affected app(s).")
+		}
+		log.Printf("[storage] STS not configured — storage-permitted apps will NOT receive static full-bucket credentials (fail-closed); they must use the presign endpoint (POST /api/storage/presign) for object-scoped access instead.")
 	}
 
 	// C2: refuse to boot with a single shared bucket while multiple users exist —
@@ -597,18 +650,38 @@ func main() {
 	appGateway.SetStorageResolver(func(ctx context.Context, userID, prefix string) (storage.Resolution, bool) {
 		return storageResolver.ResolveScoped(ctx, userID, prefix)
 	})
-	if manifests, err := appnet.ScanApps(appsDir); err == nil {
-		for _, m := range manifests {
-			for _, prov := range m.Integrations {
-				appGateway.AllowIntegration(m.ID, prov)
-				log.Printf("[integrations] app %q granted %q integration token", m.ID, prov)
+
+	// PRESIGN-01: the cloud/no-STS storage seam. Same GrantBroker instance the
+	// Files control plane uses below (internal/storage/grant.go) — it is
+	// generic, not Files-specific: it mints presigned URLs / object-scoped STS
+	// for exactly one object, so a storage-permitted app gets USABLE access
+	// even when the header-injection seam refuses to hand out unscoped creds
+	// (e.g. Tigris in cloud mode, or self-host with STS unavailable).
+	storageGrantBroker := storage.NewGrantBroker(storageResolver, storage.STSConfig{
+		Endpoint: stsEndpoint,
+		RoleARN:  os.Getenv("VULOS_STORAGE_STS_ROLE_ARN"),
+	}, 15*time.Minute)
+	appGateway.SetGrantBroker(storageGrantBroker, storageResolver.BucketFor)
+
+	// ENTITLE-01: app entitlement gating at dispatch. Off (fully open) on
+	// standalone/self-host — matches today's all-or-nothing-open behavior.
+	// On (fail-closed for apps that declare a required product) for cloud/os
+	// deployments, driven by DEPLOY_MODE.
+	appGateway.SetEntitlementGating(deployMode.IsCloudAdjacent())
+	for _, m := range installedManifests {
+		for _, prov := range m.Integrations {
+			appGateway.AllowIntegration(m.ID, prov)
+			log.Printf("[integrations] app %q granted %q integration token", m.ID, prov)
+		}
+		for _, p := range m.Permissions {
+			if p == "storage" {
+				appGateway.AllowStorage(m.ID, m.ID+"/")
+				log.Printf("[storage] app %q granted storage headers (prefix %q)", m.ID, m.ID+"/")
 			}
-			for _, p := range m.Permissions {
-				if p == "storage" {
-					appGateway.AllowStorage(m.ID, m.ID+"/")
-					log.Printf("[storage] app %q granted storage headers (prefix %q)", m.ID, m.ID+"/")
-				}
-			}
+		}
+		if m.Product != "" {
+			appGateway.AllowApp(m.ID, m.Product)
+			log.Printf("[entitlement] app %q requires product %q (gating %s)", m.ID, m.Product, map[bool]string{true: "ENFORCED", false: "open (standalone)"}[deployMode.IsCloudAdjacent()])
 		}
 	}
 
@@ -620,11 +693,12 @@ func main() {
 	// check BEFORE calling the broker, so an unauthorized user never gets a grant.
 	var filesSvc *files.Service
 	{
-		filesSTS := storage.STSConfig{
-			Endpoint: os.Getenv("VULOS_STORAGE_STS_ENDPOINT"),
-			RoleARN:  os.Getenv("VULOS_STORAGE_STS_ROLE_ARN"),
-		}
-		filesBroker := storage.NewGrantBroker(storageResolver, filesSTS, 15*time.Minute)
+		// Reuse the SAME grant broker the presign endpoint uses (constructed
+		// above with the possibly-self-host-defaulted stsEndpoint) rather than
+		// building a second one straight from the raw env var — that used to
+		// silently miss the STS auto-default, so Files could fail to scope even
+		// when the box's own MinIO was available for it.
+		filesBroker := storageGrantBroker
 		var ferr error
 		filesSvc, ferr = files.New(
 			filepath.Join(dbDir, "files.db"),
@@ -636,7 +710,7 @@ func main() {
 			filesSvc = nil
 		} else {
 			defer filesSvc.Close()
-			log.Printf("[files] control plane ready (db=%s, sts=%v)", filepath.Join(dbDir, "files.db"), filesSTS.Endpoint != "")
+			log.Printf("[files] control plane ready (db=%s, sts=%v)", filepath.Join(dbDir, "files.db"), stsEndpoint != "")
 			// FILES-2B: wire the OS peer-share seam (Mechanism B, bucket-less
 			// box-to-box). Capabilities are signed with the peering box identity;
 			// bytes stream over HTTP to/from peer boxes; redeemed bytes stage on
@@ -774,7 +848,7 @@ func main() {
 
 	// Version — public, no auth. Returns the server build version.
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]string{"version": Version})
+		writeJSON(w, map[string]string{"version": Version, "deploy_mode": string(deployMode)})
 	})
 
 	// NET-07: cluster health (data-dir writable, disk space, sync lag) — public
@@ -1003,6 +1077,11 @@ func main() {
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
+
+	// PRESIGN-01: storage-permitted apps mint short-lived, object-scoped
+	// storage grants here instead of ever holding a raw AccessKey/Secret in
+	// cloud mode (Tigris has no STS) or when self-host STS is unavailable.
+	mux.Handle("POST /api/storage/presign", appGateway.PresignHandler())
 
 	// Chat history
 	mux.HandleFunc("GET /api/ai/history", func(w http.ResponseWriter, r *http.Request) {
@@ -3179,6 +3258,13 @@ func main() {
 		var entry appnet.StoreEntry
 		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
 			writeErr(w, 400, "invalid request")
+			return
+		}
+		// ENTITLE-01: a premium app (declares "product") can't be installed by
+		// an account that isn't entitled to it, on cloud/os deployments. Open
+		// (no-op) on self-host/standalone — SetEntitlementGating(false) there.
+		if ok, reason := appGateway.ProductAllowed(r, entry.Product); !ok {
+			writeErr(w, http.StatusPaymentRequired, "entitlement required: "+reason)
 			return
 		}
 		if err := appStore.Install(r.Context(), entry); err != nil {

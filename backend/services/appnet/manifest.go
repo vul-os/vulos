@@ -118,6 +118,15 @@ type AppManifest struct {
 	Homepage     string   `json:"homepage"`    // upstream project URL
 	Visibility   string   `json:"visibility"`  // "private" | "local" | "public"; default "private"
 	Concurrency  string   `json:"concurrency"` // "singleton" | "replicated" | "collaborative"; default "singleton"
+	// Product is the CP billing/entitlement key required to use this app (e.g.
+	// "office-pro"), consumed by the OS gateway's entitlement gating
+	// (ENTITLE-01, services/gateway/entitlement.go). Empty (the default, and
+	// every app that predates this field) means no entitlement is required —
+	// open to any authenticated user, exactly today's behavior. Gating itself
+	// is only enforced when the gateway is explicitly put into cloud/os mode;
+	// self-host/standalone always leaves every app open regardless of this
+	// field.
+	Product string `json:"product,omitempty"`
 }
 
 // Validate checks that the manifest has all required fields and conforms

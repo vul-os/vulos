@@ -83,10 +83,10 @@ func liveRegistrar(t *testing.T, srv *httptest.Server) *CPRegistrar {
 func TestCPRegistrar_Disabled_SelfHost(t *testing.T) {
 	cases := []CPRegistrarConfig{
 		{},
-		{BaseURL: "https://cp.vulos.to"},
-		{BaseURL: "https://cp.vulos.to", Secret: testSecret},       // no ULID
+		{BaseURL: "https://cp.vulos.org"},
+		{BaseURL: "https://cp.vulos.org", Secret: testSecret},      // no ULID
 		{Secret: testSecret, ULID: testULID},                       // no URL
-		{BaseURL: "https://cp.vulos.to", ULID: testULID},           // no secret
+		{BaseURL: "https://cp.vulos.org", ULID: testULID},          // no secret
 		{BaseURL: "not a url", Secret: testSecret, ULID: testULID}, // bad URL scheme
 		{BaseURL: "ftp://cp", Secret: testSecret, ULID: testULID},  // non-http scheme
 		{BaseURL: "https://", Secret: testSecret, ULID: testULID},  // no host

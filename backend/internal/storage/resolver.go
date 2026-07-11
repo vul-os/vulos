@@ -21,6 +21,16 @@ type Resolution struct {
 	AccessKey    string
 	SecretKey    string
 	SessionToken string // optional (STS / temporary credentials)
+	// Scoped reports whether AccessKey/SecretKey/SessionToken (when non-empty)
+	// are scoped DOWN to exactly Bucket/Prefix (e.g. minted via STS AssumeRole
+	// with an inline session policy) as opposed to the box's static, full-
+	// bucket credential. Only ResolveScoped ever sets this true, and only when
+	// a CredentialMinter actually succeeded. Consumers that inject credentials
+	// into a storage-permitted app (the gateway) MUST treat Scoped=false as
+	// "no usable credential" and refuse to inject anything — a storage-
+	// permitted app must never receive a static full-bucket credential
+	// (SECURITY, per-app isolation).
+	Scoped bool
 }
 
 // Configured reports whether the resolution points at a usable object store.
@@ -177,6 +187,16 @@ func (r *Resolver) SetCredentialMinter(m CredentialMinter) { r.minter = m }
 // a single shared bucket across users defeats per-user isolation (C2).
 func (r *Resolver) SharedBucketConfigured() bool { return r.cfg.Bucket != "" }
 
+// StaticallyConfigured reports whether the box has a static object-store
+// endpoint configured (VULOS_STORAGE_ENDPOINT/VULOS_S3_ENDPOINT), independent
+// of any particular user or CloudHook override. main() uses this at BOOT time
+// to decide whether a static credential exists that would need STS scoping —
+// a CloudHook-supplied (cloud/dynamic) resolution is intentionally NOT part of
+// this check since it cannot be known before any request arrives; that path
+// is covered instead by the per-request fail-closed behavior in
+// ResolveScoped/the gateway.
+func (r *Resolver) StaticallyConfigured() bool { return r.cfg.Endpoint != "" }
+
 // LocalRoot returns the local-FS fallback root used when no object store is
 // configured.
 func (r *Resolver) LocalRoot() string { return r.cfg.LocalRoot }
@@ -258,14 +278,30 @@ func (r *Resolver) osBucket() string {
 }
 
 // ResolveScoped returns the storage binding for userID with Prefix set to
-// prefix and, when a CredentialMinter is configured, credentials scoped DOWN to
-// bucket/prefix via short-lived STS (C1/C3). The gateway passes the full
-// per-user/app prefix ("<userID>/<appID>/") so the minted policy is locked to
-// that path. If minting is unavailable the static per-user-bucket credentials
-// are returned unchanged — cross-USER access is still impossible thanks to the
-// per-user bucket/prefix (C2); cross-APP-within-one-user isolation then depends
-// on STS (or gateway mediation). The bool mirrors the resolver func contract
-// (always true here; the gateway decides whether the app is permitted).
+// prefix and, when a CredentialMinter is configured AND succeeds, credentials
+// scoped DOWN to bucket/prefix via short-lived STS (C1/C3). The gateway passes
+// the full per-user/app prefix ("<userID>/<appID>/") so the minted policy is
+// locked to that path.
+//
+// SECURITY (fail-closed, per-app isolation): when an object store IS
+// configured (Configured()==true) but a scoped credential could NOT be minted
+// — either because no CredentialMinter is installed, or because minting
+// failed — the returned Resolution carries EMPTY AccessKey/SecretKey/
+// SessionToken and Scoped=false. It NEVER falls back to the resolver's static,
+// full-bucket credential. A storage-permitted app must never receive a
+// credential valid for the whole bucket; callers (the gateway) that see
+// Scoped=false alongside Configured()==true must withhold injection entirely
+// (the app can use the presign endpoint instead, or degrade to no storage).
+// Cross-USER isolation holds regardless (per-user bucket/prefix, C2); this is
+// what closes cross-APP-within-one-user isolation without depending on gateway
+// discipline alone.
+//
+// When no object store is configured at all (Configured()==false — local-FS
+// fallback), there is nothing to protect and the empty Resolution is returned
+// with Scoped left false but harmless (no headers, no credentials, no store).
+//
+// The bool mirrors the resolver func contract (always true here; the gateway
+// decides whether the app is permitted at all).
 func (r *Resolver) ResolveScoped(ctx context.Context, userID, prefix string) (Resolution, bool) {
 	res := r.Resolve(ctx, userID).WithPrefix(prefix)
 	// No object store (local-FS fallback) — nothing to scope; signal fallback.
@@ -277,9 +313,16 @@ func (r *Resolver) ResolveScoped(ctx context.Context, userID, prefix string) (Re
 			res.AccessKey = sc.AccessKey
 			res.SecretKey = sc.SecretKey
 			res.SessionToken = sc.SessionToken
+			res.Scoped = true
+			return res, true
 		}
-		// else: fall back to static per-user-bucket creds (documented residual).
 	}
+	// FAIL CLOSED: no minter installed, or minting failed. Blank the static
+	// credentials rather than falling back to them — see doc above.
+	res.AccessKey = ""
+	res.SecretKey = ""
+	res.SessionToken = ""
+	res.Scoped = false
 	return res, true
 }
 
