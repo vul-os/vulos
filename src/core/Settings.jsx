@@ -8,7 +8,6 @@ import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper.jsx'
 import { PamVisibilityControl } from './PublicAppsManager'
 import { useFocusTrap } from '../shell/useFocusTrap'
 import { useViewport } from '../shell/useViewport'
-import AIRouterPanel from './settings/AIRouterPanel.jsx'
 import StoragePanel from './settings/StoragePanel.jsx'
 import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 import DataExportPanel from './settings/DataExportPanel.jsx'
@@ -20,7 +19,6 @@ import WebPushToggle from './notifiers/WebPushToggle.jsx'
 // (see ownerSections) are appended for the box owner/admin.
 const baseSections = [
   { id: 'ai', label: 'AI Assistant' },
-  { id: 'airouter', label: 'AI Router' },
   { id: 'models', label: 'AI Models', owner: true },
   { id: 'aiapps', label: 'AI Apps' },
   { id: 'appearance', label: 'Appearance' },
@@ -179,7 +177,6 @@ export default function Settings({ initialSection } = {}) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 max-w-2xl min-w-0">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
-        {active === 'airouter' && <AIRouterPanel />}
         {active === 'models' && <ModelsPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
         {active === 'appearance' && <AppearanceSettings />}

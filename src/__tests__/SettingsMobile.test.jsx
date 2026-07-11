@@ -24,7 +24,6 @@ vi.mock('../auth/AuthProvider', () => ({
 vi.mock('../core/ThemeProvider', () => ({ useTheme: () => ({}), DEFAULT_ACCENT: '#3b82f6' }))
 vi.mock('../core/useWallpaper.jsx', () => ({ useWallpaper: () => ({ wallpaper: null, setWallpaper: vi.fn() }), DEFAULT_WALLPAPER: '' }))
 vi.mock('../core/PublicAppsManager', () => ({ PamVisibilityControl: () => null }))
-vi.mock('../core/settings/AIRouterPanel.jsx', () => ({ default: () => null }))
 vi.mock('../core/settings/StoragePanel.jsx', () => ({ default: () => null }))
 vi.mock('../core/settings/PlanBillingPanel.jsx', () => ({ default: () => null }))
 
