@@ -19,6 +19,13 @@ type TURNConfig struct {
 	Secret  string // shared secret for credential generation
 	Realm   string // e.g., "vulos"
 	Enabled bool
+	// Host is the hostname/IP clients should dial to reach this TURN server.
+	// Defaults to "localhost", which only works when the signaling client and
+	// the TURN server are the same machine (local dev). Set TURN_HOST to the
+	// box's real public hostname/IP for a usable self-hosted TURN deployment —
+	// this is part of the sovereign-federation config profile (a fully
+	// sovereign box needs no third-party STUN/TURN).
+	Host string
 }
 
 // LoadTURNConfig reads TURN config from environment.
@@ -32,6 +39,7 @@ func LoadTURNConfig() TURNConfig {
 		Secret:  os.Getenv("TURN_SECRET"),
 		Realm:   getenv("TURN_REALM", "vulos"),
 		Enabled: os.Getenv("TURN_SECRET") != "",
+		Host:    getenv("TURN_HOST", "localhost"),
 	}
 }
 
@@ -58,10 +66,14 @@ func (tc TURNConfig) GenerateCredentials(userID string) TURNCredentials {
 	mac.Write([]byte(username))
 	credential := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
+	host := tc.Host
+	if host == "" {
+		host = "localhost"
+	}
 	return TURNCredentials{
 		URLs: []string{
-			fmt.Sprintf("turn:localhost:%d?transport=udp", tc.Port),
-			fmt.Sprintf("turn:localhost:%d?transport=tcp", tc.Port),
+			fmt.Sprintf("turn:%s:%d?transport=udp", host, tc.Port),
+			fmt.Sprintf("turn:%s:%d?transport=tcp", host, tc.Port),
 		},
 		Username:   username,
 		Credential: credential,

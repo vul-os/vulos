@@ -2505,6 +2505,14 @@ func main() {
 			// even if no fresh profile fetch occurs.
 			peering.StartLifecycleRefresh(ctx, approvedPeers)
 
+			// Reachability ladder (direct → relay → contact.Server): keep the
+			// resolvePeerBaseURL cache warm for every approved contact so box→box
+			// delivery prefers a verified-direct or relay-tunnel endpoint over a
+			// possibly-stale contact.Server, without adding a synchronous network
+			// call to the hot delivery path. A no-op when VULOS_RELAY_BASE_URL is
+			// unset (self-host boxes without a relay see unchanged B-0 behavior).
+			peering.StartReachabilityRefresh(ctx, os.Getenv("VULOS_RELAY_BASE_URL"), approvedPeers)
+
 			// Messaging (conversations + inbound/message).
 			if inboxStore != nil {
 				msgAPI := peering.NewMessageAPI(contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulaID)
@@ -2595,6 +2603,11 @@ func main() {
 
 		// ICE / TURN config for WebRTC.
 		peering.RegisterICEHandlers(peeringMux)
+
+		// Sovereign-federation config profile: one coherent, self-reporting
+		// status surface over VULOS_RELAY_BASE_URL / VULOS_VERIFY_URL /
+		// VULOS_RENDEZVOUS_URL / TURN_SECRET+TURN_HOST / public-STUN opt-out.
+		peering.RegisterFederationProfileHandler(peeringMux)
 
 		// CONSOLIDATION B-3: the PEER-40 endpoint registry + its four REST routes
 		// (RegisterEndpointHandlers) were deleted. They were built but never wired

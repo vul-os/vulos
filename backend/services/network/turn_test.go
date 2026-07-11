@@ -10,6 +10,53 @@ import (
 	"time"
 )
 
+// TestGenerateCredentials_DefaultHostIsLocalhost verifies the historical
+// default (unset TURN_HOST) is unchanged for existing self-host deployments.
+func TestGenerateCredentials_DefaultHostIsLocalhost(t *testing.T) {
+	tc := TURNConfig{Port: 3478, Secret: "s", Realm: "vulos", Enabled: true}
+	creds := tc.GenerateCredentials("alice")
+	for _, u := range creds.URLs {
+		if !strings.Contains(u, "localhost:3478") {
+			t.Errorf("expected default host localhost in URL, got %q", u)
+		}
+	}
+}
+
+// TestGenerateCredentials_ConfiguredHost verifies TURN_HOST (via TURNConfig.Host)
+// produces usable URLs for a REMOTE client, fixing the previous hardcoded
+// "localhost" that only worked when signaling and TURN were co-located.
+func TestGenerateCredentials_ConfiguredHost(t *testing.T) {
+	tc := TURNConfig{Port: 3478, Secret: "s", Realm: "vulos", Enabled: true, Host: "turn.example.net"}
+	creds := tc.GenerateCredentials("bob")
+	for _, u := range creds.URLs {
+		if !strings.Contains(u, "turn.example.net:3478") {
+			t.Errorf("expected configured host in URL, got %q", u)
+		}
+		if strings.Contains(u, "localhost") {
+			t.Errorf("configured host must replace the localhost default, got %q", u)
+		}
+	}
+}
+
+// TestLoadTURNConfig_HostFromEnv verifies LoadTURNConfig reads TURN_HOST.
+func TestLoadTURNConfig_HostFromEnv(t *testing.T) {
+	t.Setenv("TURN_HOST", "box1.example.net")
+	t.Setenv("TURN_SECRET", "s")
+	tc := LoadTURNConfig()
+	if tc.Host != "box1.example.net" {
+		t.Fatalf("Host = %q, want box1.example.net", tc.Host)
+	}
+}
+
+// TestLoadTURNConfig_HostDefaultsToLocalhost verifies the unset default.
+func TestLoadTURNConfig_HostDefaultsToLocalhost(t *testing.T) {
+	t.Setenv("TURN_HOST", "")
+	tc := LoadTURNConfig()
+	if tc.Host != "localhost" {
+		t.Fatalf("Host = %q, want localhost (default)", tc.Host)
+	}
+}
+
 // TestGenerateCredentials_SHA256 verifies that GenerateCredentials uses HMAC-SHA256
 // and that a credential produced with SHA-1 would NOT match (i.e., the legacy path is gone).
 func TestGenerateCredentials_SHA256(t *testing.T) {

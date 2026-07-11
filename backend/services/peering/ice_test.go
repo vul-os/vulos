@@ -199,6 +199,103 @@ func TestICEConfigMethodNotAllowed(w *testing.T) {
 	}
 }
 
+// TestICEConfig_SelfHostedSTUN_WhenTURNEnabled verifies that a self-hosted
+// TURN deployment also gets a "stun:" entry pointing at the SAME host:port —
+// coturn answers plain STUN binding requests on the TURN port, so this is the
+// zero-extra-infra sovereign STUN option.
+func TestICEConfig_SelfHostedSTUN_WhenTURNEnabled(t *testing.T) {
+	t.Setenv("TURN_SECRET", "s3cr3t")
+	t.Setenv("TURN_HOST", "box1.example.net")
+	t.Setenv("TURN_PORT", "3478")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/ice", nil)
+	rec := httptest.NewRecorder()
+	handleICEConfig(rec, req)
+
+	var resp iceConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	found := false
+	for _, s := range resp.IceServers {
+		for _, u := range s.URLs {
+			if u == "stun:box1.example.net:3478" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a self-hosted stun:box1.example.net:3478 entry, got %+v", resp.IceServers)
+	}
+}
+
+// TestICEConfig_PublicSTUNDisabled verifies the sovereign opt-out: with
+// VULOS_STUN_DISABLE_PUBLIC set, the public Google STUN servers are absent —
+// a fully-sovereign, self-hosted-TURN box needs no third-party STUN at all.
+func TestICEConfig_PublicSTUNDisabled(t *testing.T) {
+	t.Setenv("VULOS_STUN_DISABLE_PUBLIC", "1")
+	t.Setenv("TURN_SECRET", "s3cr3t")
+	t.Setenv("TURN_HOST", "box1.example.net")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/ice", nil)
+	rec := httptest.NewRecorder()
+	handleICEConfig(rec, req)
+
+	var resp iceConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, s := range resp.IceServers {
+		for _, u := range s.URLs {
+			if strings.Contains(u, "stun.l.google.com") || strings.Contains(u, "stun1.l.google.com") {
+				t.Fatalf("public STUN must be absent when disabled, got %q", u)
+			}
+		}
+	}
+	// The self-hosted STUN entry (from TURN) must still be present — disabling
+	// PUBLIC STUN must not also disable the operator's own STUN option.
+	foundSelfHosted := false
+	for _, s := range resp.IceServers {
+		for _, u := range s.URLs {
+			if u == "stun:box1.example.net:3478" {
+				foundSelfHosted = true
+			}
+		}
+	}
+	if !foundSelfHosted {
+		t.Fatal("expected the self-hosted STUN entry to survive disabling public STUN")
+	}
+}
+
+// TestICEConfig_PublicSTUNDisabled_NoTURNMeansNoSTUNAtAll verifies the fully
+// disabled combination doesn't panic and returns a well-formed (empty, not
+// nil-crashing) list.
+func TestICEConfig_PublicSTUNDisabled_NoTURNMeansNoSTUNAtAll(t *testing.T) {
+	t.Setenv("VULOS_STUN_DISABLE_PUBLIC", "1")
+	t.Setenv("TURN_SECRET", "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/ice", nil)
+	rec := httptest.NewRecorder()
+	handleICEConfig(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp iceConfigResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.IceServers) != 0 {
+		t.Fatalf("expected zero ICE servers, got %+v", resp.IceServers)
+	}
+}
+
+func TestPublicSTUNDisabled_DefaultIsEnabled(t *testing.T) {
+	t.Setenv("VULOS_STUN_DISABLE_PUBLIC", "")
+	if publicSTUNDisabled() {
+		t.Fatal("public STUN must be enabled by default")
+	}
+}
+
 // TestRegisterICEHandlers verifies RegisterICEHandlers wires the route without
 // panicking and that the mux can dispatch to it.
 func TestRegisterICEHandlers(t *testing.T) {
