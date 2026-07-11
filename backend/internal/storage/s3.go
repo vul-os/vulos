@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -123,7 +122,3 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-func init() {
-	// Suppress unused import warnings for strings
-	_ = strings.TrimSpace
-}

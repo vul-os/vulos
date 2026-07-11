@@ -3,7 +3,6 @@ package energy
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -361,8 +360,4 @@ func fmtDuration(d time.Duration) string {
 		return "never"
 	}
 	return d.String()
-}
-
-func init() {
-	_ = fmt.Sprintf // keep import
 }

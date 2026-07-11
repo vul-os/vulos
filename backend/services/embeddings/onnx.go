@@ -2,7 +2,6 @@ package embeddings
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -230,9 +229,4 @@ func normalize(v []float32) []float32 {
 		result[i] = float32(float64(x) / norm)
 	}
 	return result
-}
-
-func init() {
-	_ = binary.LittleEndian // keep import
-	_ = strings.TrimSpace
 }

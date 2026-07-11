@@ -9,58 +9,6 @@ import (
 	"time"
 )
 
-// ---- containsDangerousCode --------------------------------------------------
-//
-// NOTE (C2): containsDangerousCode is NOT a security boundary. It is a
-// best-effort heuristic to catch accidental mistakes by the AI model. Real
-// security requires kernel-level isolation (namespaces, seccomp). The sandbox
-// is disabled by default (VULOS_SANDBOX_ENABLED=1 required). These tests
-// document the heuristic's coverage but must NOT be used to justify the
-// blocklist as an isolation mechanism.
-
-func TestContainsDangerousCode_safe(t *testing.T) {
-	safe := []string{
-		`import flask\napp = Flask(__name__)\n@app.route('/')\ndef index():\n    return 'hello'\napp.run(port=int(os.environ['VULOS_PORT']))`,
-		`import http.server\nimport os\nport = int(os.environ.get('VULOS_PORT', 8080))`,
-	}
-	for _, code := range safe {
-		if containsDangerousCode(code) {
-			t.Errorf("heuristic flagged safe code (may indicate over-blocking):\n%s", code)
-		}
-	}
-}
-
-func TestContainsDangerousCode_dangerous(t *testing.T) {
-	// These tests document the heuristic — NOT a security guarantee.
-	// The blocklist is bypassable via obfuscation. Security requires
-	// VULOS_SANDBOX_ENABLED to be unset (default) or kernel isolation.
-	cases := []struct {
-		name string
-		code string
-	}{
-		{"subprocess", "import subprocess\nsubprocess.run(['ls'])"},
-		{"os.system", "os.system('rm -rf /')"},
-		{"eval", "eval('__import__(\"os\")')"},
-		{"exec", "exec('import os')"},
-		{"importlib", "import importlib\nimportlib.import_module('os')"},
-		{"__import__", "m = __import__('os')"},
-		{"base64", "base64.b64decode('aW1wb3J0IG9z')"},
-		{"compile", "compile('import os', '<string>', 'exec')"},
-		{"globals", "print(globals())"},
-		{"ctypes", "import ctypes"},
-		{"open_etc", "open('/etc/passwd')"},
-		{"open_proc", "open('/proc/self/mem')"},
-		{"too_large", strings.Repeat("x", 101*1024)},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if !containsDangerousCode(tc.code) {
-				t.Errorf("heuristic missed pattern %q (update blocklist)", tc.name)
-			}
-		})
-	}
-}
-
 // TestSandboxDisabledByDefault confirms that Run() is refused when
 // VULOS_SANDBOX_ENABLED is not set (C2 fix: default-closed).
 func TestSandboxDisabledByDefault(t *testing.T) {

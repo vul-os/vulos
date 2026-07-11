@@ -48,10 +48,11 @@ type warmProcess struct {
 // execution. MUST be set explicitly in environments that understand and accept
 // the risk. When unset, Run() returns an error immediately (C2 fix).
 //
-// The old substring blocklist (containsDangerousCode) is NOT a security
-// boundary: it is trivially bypassed by obfuscation. Real isolation would
-// require Linux namespaces + setpriv + seccomp (the same stack the app
-// launcher uses). Until that is implemented, execution is disabled by default.
+// A prior substring blocklist (containsDangerousCode) was removed: it was NOT
+// a security boundary and was trivially bypassed by obfuscation. Real
+// isolation would require Linux namespaces + setpriv + seccomp (the same
+// stack the app launcher uses). Until that is implemented, execution is
+// disabled by default.
 const envSandboxEnabled = "VULOS_SANDBOX_ENABLED"
 
 // Sandbox manages ephemeral AI-generated scripts.
@@ -565,44 +566,3 @@ func findPython() string {
 	return ""
 }
 
-// containsDangerousCode checks for obviously harmful patterns.
-// Not a full sandbox — defense in depth alongside process isolation.
-func containsDangerousCode(code string) bool {
-	// Direct dangerous calls
-	dangerous := []string{
-		"subprocess", "os.system", "os.popen",
-		"os.exec", "os.spawn", "shutil.rmtree",
-		"eval(", "exec(",
-		"rm -rf", ":(){ :|:",
-	}
-	// Import/introspection bypasses
-	bypasses := []string{
-		"__import__", "importlib", "getattr(",
-		"base64.b64decode", "codecs.decode",
-		"compile(", "globals()", "locals()",
-		"__builtins__", "__subclasses__",
-		"chr(", "bytearray(",
-		"ctypes", "cffi", "multiprocessing",
-		"signal.signal", "pty.",
-	}
-	// Filesystem access outside data dir
-	fsAccess := []string{
-		"open('/etc", "open('/proc", "open('/sys",
-		"open('/dev", "open('/root", "open('/home",
-		"open('/var", "open('/tmp",
-		"pathlib.Path('/'",
-	}
-
-	lower := strings.ToLower(code)
-	for _, lists := range [][]string{dangerous, bypasses, fsAccess} {
-		for _, d := range lists {
-			if strings.Contains(lower, strings.ToLower(d)) {
-				return true
-			}
-		}
-	}
-	if len(code) > 100*1024 {
-		return true
-	}
-	return false
-}
