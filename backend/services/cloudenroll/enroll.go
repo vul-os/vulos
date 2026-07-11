@@ -279,7 +279,25 @@ func (e *Enroller) poll(ctx context.Context, deviceCode string) (*pollResponse, 
 	case http.StatusGone:
 		return nil, 0, errors.New("cloudenroll: enrollment grant expired")
 	case http.StatusForbidden:
-		return nil, 0, errors.New("cloudenroll: enrollment denied by owner")
+		// The CP returns 403 for two very different reasons and we must not
+		// conflate them: an actual owner denial (enroll.ErrAccessDenied →
+		// {"error":"access_denied"}) versus a generic reject — e.g. the CSRF
+		// Origin/Referer middleware ({"error":"missing Origin/Referer header"}
+		// or {"error":"origin not allowed"}), a WAF, or a proxy. Only the
+		// former is "denied by owner"; everything else must surface its own
+		// message so a misconfigured client isn't misreported as a real
+		// denial (see vulos-cloud csrfExemptPaths / UNIFIED-SIGNIN notes).
+		var eb struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&eb)
+		if eb.Error == "access_denied" {
+			return nil, 0, errors.New("cloudenroll: enrollment denied by owner")
+		}
+		if eb.Error != "" {
+			return nil, 0, fmt.Errorf("cloudenroll: poll rejected (403): %s", eb.Error)
+		}
+		return nil, 0, errors.New("cloudenroll: poll rejected (403): no error detail in response")
 	default:
 		return nil, 0, fmt.Errorf("cloudenroll: poll status %d", resp.StatusCode)
 	}
