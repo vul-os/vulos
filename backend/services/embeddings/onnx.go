@@ -30,11 +30,19 @@ type OnnxEmbedder struct {
 	dim        int
 }
 
+// onnxModelNames are the .onnx filenames auto-discovery looks for, in priority
+// order. NewOnnxEmbedder and OnnxAvailable MUST use this single shared list —
+// they previously carried two independently-maintained copies that drifted
+// (OnnxAvailable was missing "e5-small.onnx"), so a box with a valid
+// e5-small.onnx model was reported as having none and the semantic index
+// silently never activated. Also kept in sync with services/models.onnxNames.
+var onnxModelNames = []string{"all-MiniLM-L6-v2.onnx", "model.onnx", "e5-small.onnx"}
+
 // NewOnnxEmbedder creates an embedder using a local ONNX model.
 func NewOnnxEmbedder(modelsDir string) (*OnnxEmbedder, error) {
 	// Find model file
 	modelPath := ""
-	for _, name := range []string{"all-MiniLM-L6-v2.onnx", "model.onnx", "e5-small.onnx"} {
+	for _, name := range onnxModelNames {
 		p := filepath.Join(modelsDir, name)
 		if _, err := os.Stat(p); err == nil {
 			modelPath = p
@@ -104,7 +112,7 @@ func OnnxAvailable(modelsDir string) bool {
 		return false
 	}
 	// Check model exists
-	for _, name := range []string{"all-MiniLM-L6-v2.onnx", "model.onnx"} {
+	for _, name := range onnxModelNames {
 		if _, err := os.Stat(filepath.Join(modelsDir, name)); err == nil {
 			return true
 		}
