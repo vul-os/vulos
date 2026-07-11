@@ -149,7 +149,7 @@ Every variable below is read by code in this repo. "Omitting" means leaving it u
 | `VULOS_METRICS_TOKEN` | Lets a Prometheus scraper hit `/metrics` with `Authorization: Bearer <token>` | `/metrics` requires an admin session |
 | `VULOS_FABRIC_SECRET` | Enables same-LAN multi-box sync (set identically on every sibling) | Fabric sync off |
 | `VULOS_FABRIC_KEY_HEX` | Seals the fabric signing key at rest (AES-256-GCM); required in prod | Prod fails closed; dev derives a loud dev key |
-| `VULOS_STORAGE_STS_ENDPOINT` (+ `_ROLE_ARN`, `_DURATION_SECONDS`) | Apps get short-lived credentials scoped to their own `<user>/<app>/` prefix | Every storage-permitted app receives the same static per-user-bucket credentials; the server logs a `[storage] WARNING` at startup. **Required for multi-app isolation.** |
+| `VULOS_STORAGE_STS_ENDPOINT` (+ `_ROLE_ARN`, `_DURATION_SECONDS`) | Apps get short-lived credentials scoped to their own `<user>/<app>/` prefix. Self-host **defaults this automatically** to the box's own object-store endpoint when one is configured — set `VULOS_STORAGE_STS_DISABLE=1` to opt out | No fallback to a static credential: a storage-permitted app gets **no** injected credential at all (fail-closed) and must use `POST /api/storage/presign` instead. If an object store is statically configured with a storage-permitted app installed and STS ends up unavailable anyway, the server **aborts at boot**. |
 | `VULOS_S3_*` + `VULOS_CLUSTER_PASSPHRASE` | Enables encrypted cluster backup/sync to S3 (passphrase encrypts what leaves the box) | Cluster backup disabled |
 | `VULOS_MAIL_BROKER_SECRET` | Broker auth between the OS/assistant and vulos-mail (shared `LILMAIL_BROKER_SECRET`) | Mail integration falls back to per-request session-cookie auth |
 | `VULOS_PEER_ALLOW_LAN=1` | SSRF guard admits private/LAN peer addresses for cross-box shares | LAN peer addresses blocked |
@@ -194,7 +194,8 @@ Several features accept URLs or addresses that ultimately cause the *box* to mak
 The server is deliberately loud at startup about anything running in a degraded or dangerous configuration. After changing deployment config, skim the log for these markers before calling it done:
 
 ```
-[storage] WARNING: STS not configured ...        → apps share static per-user creds
+[storage] STS not configured ...                 → storage-permitted apps get NO credential (fail-closed); they must use POST /api/storage/presign
+[storage] ABORT: app(s) declare "storage" ...    → boot refused: an object store is configured with a storage-permitted app but no STS is available
 [stream/webauthn] WARNING: AUTH-13 NOT ENFORCED  → remote input gate is open (see above)
 [appnet/subdomain] DNS provisioning DISABLED ... → prod refused to fake domain provisioning
 [fabric] disabled: VULOS_FABRIC_SECRET unset     → multi-box sync off (fail-closed)
@@ -283,7 +284,7 @@ Work through this before forwarding a port or pointing public DNS at the box:
 2. **Terminate TLS.** Either the direct listener with ACME (`VULOS_DIRECT_ENABLE=1` + `VULOS_DIRECT_HOSTNAME`), certs at `/etc/vulos/tls/cert.pem|key.pem`, or your own reverse proxy. Session cookies are only `Secure` when the request actually arrives over HTTPS.
 3. **Bind passkeys to your domain.** Set `VULOS_RPID` and `VULOS_ORIGIN` (prod refuses to start otherwise) and **enroll a passkey for the admin account** before exposure, so password login is your fallback rather than your front door.
 4. **Set a device PIN policy consciously.** PIN unlock is device-local and lockout-protected, but only enroll it on physically-controlled devices.
-5. **Check the fail-closed table above** for anything you actually use: `BOARD_AUTH_SECRET` if you collaborate on boards, `VULOS_FABRIC_SECRET` (+ `VULOS_FABRIC_KEY_HEX`) for multi-box LANs, `VULOS_STORAGE_STS_ENDPOINT` if more than one storage-permitted app runs per user — without STS, apps share static per-user-bucket credentials (watch for the startup `[storage] WARNING`).
+5. **Check the fail-closed table above** for anything you actually use: `BOARD_AUTH_SECRET` if you collaborate on boards, `VULOS_FABRIC_SECRET` (+ `VULOS_FABRIC_KEY_HEX`) for multi-box LANs. `VULOS_STORAGE_STS_ENDPOINT` self-configures automatically against your own object store when one is configured — a storage-permitted app never gets a static credential either way; watch for the startup `[storage] ABORT` if you've explicitly disabled STS (`VULOS_STORAGE_STS_DISABLE=1`) while running a storage-permitted app against a configured object store.
 6. **Audit the opt-ins.** `VULOS_ASSISTANT_ALLOW_EXTERNAL`, `VULOS_SANDBOX_ENABLED`, `VULOS_PEER_ALLOW_LAN`, and every `*_ALLOW_INSECURE` variable should be unset unless you can say why not.
 7. **Probe your surface from outside.** `/metrics` must 403 without credentials; only the ports you chose in [NETWORKING.md](NETWORKING.md)'s firewall section should answer (`nmap` from a remote host, not from the LAN).
 8. **Have a way back in.** Record the recovery phrase offline, and know the backup story before you need it — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).

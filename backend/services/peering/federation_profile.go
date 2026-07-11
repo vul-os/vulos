@@ -16,12 +16,11 @@
 //	VULOS_VERIFY_URL        the directory/verify service base URL (discovery.go
 //	                        + email verification). Defaults to the central
 //	                        vulos.org directory when unset.
-//	VULOS_RENDEZVOUS_URL    reserved for a future real-time signaling rendezvous
-//	                        (Talk/Meet call setup) that is independent of the
-//	                        relay's store-and-forward/tunnel roles. No current
-//	                        code path consumes it yet; it is surfaced here so
-//	                        the profile is complete and forward-compatible —
-//	                        set it and it will report as configured.
+//	VULOS_RENDEZVOUS_URL    the Drop proximity-code rendezvous service
+//	                        (drop_proximity.go) — an unauthenticated 6-digit
+//	                        code exchange for devices on different networks.
+//	                        Defaults to the central https://rendezvous.vulos.org
+//	                        when unset.
 //	TURN_SECRET / TURN_HOST self-hosted TURN (network/turn.go); when set, the
 //	                        ICE config (ice.go) also answers plain STUN on the
 //	                        SAME port (selfHostedSTUNURLs) — zero extra infra.
@@ -55,9 +54,12 @@ type FederationProfile struct {
 	// — defaults to the central vulos.org directory).
 	VerifyURL string `json:"verify_url"`
 
-	// RendezvousConfigured reports whether VULOS_RENDEZVOUS_URL is set.
+	// RendezvousConfigured reports whether VULOS_RENDEZVOUS_URL overrides the
+	// default central rendezvous.vulos.org (drop_proximity.go).
 	RendezvousConfigured bool `json:"rendezvous_configured"`
-	RendezvousURL        string `json:"rendezvous_url,omitempty"`
+	// RendezvousURL is the effective Drop proximity-code rendezvous base URL
+	// (always non-empty — defaults to the central rendezvous.vulos.org).
+	RendezvousURL string `json:"rendezvous_url"`
 
 	// TURNEnabled reports whether self-hosted TURN is configured (TURN_SECRET set).
 	TURNEnabled bool `json:"turn_enabled"`
@@ -84,7 +86,11 @@ func LoadFederationProfile() FederationProfile {
 	if verify == "" {
 		verify = discoveryDefaultBaseURL
 	}
-	rendezvous := strings.TrimSpace(os.Getenv("VULOS_RENDEZVOUS_URL"))
+	rendezvous := strings.TrimSpace(os.Getenv(proxRendezvousEnvKey))
+	rendezvousConfigured := rendezvous != ""
+	if rendezvous == "" {
+		rendezvous = proxDefaultRendezvousBase
+	}
 	tc := network.LoadTURNConfig()
 	disablePublic := publicSTUNDisabled()
 
@@ -93,7 +99,7 @@ func LoadFederationProfile() FederationProfile {
 		RelayBaseURL:         relay,
 		VerifyConfigured:     verifyConfigured,
 		VerifyURL:            verify,
-		RendezvousConfigured: rendezvous != "",
+		RendezvousConfigured: rendezvousConfigured,
 		RendezvousURL:        rendezvous,
 		TURNEnabled:          tc.Enabled,
 		TURNHost:             tc.Host,

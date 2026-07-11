@@ -273,16 +273,17 @@ These configure the unified per-user object store (they take precedence over the
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VULOS_STORAGE_STS_ENDPOINT` | _(unset → STS off)_ | STS endpoint (e.g. your MinIO server) — setting this enables STS |
+| `VULOS_STORAGE_STS_ENDPOINT` | _(unset → self-host defaults to the box's own object-store endpoint when one is configured)_ | STS endpoint (e.g. your MinIO server) |
+| `VULOS_STORAGE_STS_DISABLE` | _(unset)_ | Set to `1` to opt out of the self-host STS auto-default |
 | `VULOS_STORAGE_STS_ROLE_ARN` | _(unset)_ | Role ARN; required for AWS STS, ignored by MinIO's AssumeRole |
 | `VULOS_STORAGE_STS_DURATION_SECONDS` | `900` | Lifetime of minted credentials |
 
-With STS configured:
+With STS available (the self-host default whenever an object store is configured):
 
 - Apps with the `storage` permission receive credentials scoped to exactly their `<userID>/<appID>/` prefix.
 - Files write grants become **object-scoped** STS credentials — read/write on exactly one key, minted only after the permission check, expiring in minutes.
 
-**Without STS you are in the static-credentials warning mode.** The server logs a prominent `[storage] WARNING` at startup: every storage-permitted app for a user receives the same static, full per-user-bucket credentials, so any such app can read or write every *other* app's data for that same user by talking to the object store directly. Cross-user isolation still holds (per-user buckets), and Files read grants are still single-object presigned URLs — but if you run more than one storage-permitted app per user, **treat STS as required**.
+**A storage-permitted app never receives a static, full-bucket credential.** If STS is unavailable — no object store configured at all (nothing to protect), `VULOS_STORAGE_STS_DISABLE=1` is set, or a mint attempt fails — the gateway injects **no** storage credential at all (fail-closed); the app must call `POST /api/storage/presign` for a short-lived, object-scoped grant instead (the same broker Files uses, generalised to any storage-permitted app). If an object store IS statically configured and at least one installed app declares the `storage` permission, the server **aborts at boot** rather than silently degrading in that combination. Cross-user isolation always holds regardless (per-user buckets); Files read grants remain single-object presigned URLs.
 
 The full variable reference, including the self-host bundle's `/etc/vulos/storage.yaml`, lives in [CONFIGURATION.md](CONFIGURATION.md); the bundle install flow is in [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md).
 

@@ -321,11 +321,11 @@ A related soft warning, `[appnet] warning: could not enable ip_forward: ...`, me
 **Symptom (boot log, storage):**
 
 ```
-[storage] WARNING: STS not configured (VULOS_STORAGE_STS_ENDPOINT unset) — storage-permitted apps receive STATIC, FULL per-user-bucket credentials with NO per-app prefix scoping. ...
+[storage] STS not configured — storage-permitted apps will NOT receive static full-bucket credentials (fail-closed); they must use the presign endpoint (POST /api/storage/presign) for object-scoped access instead.
 ```
 
-**Meaning:** without an STS endpoint, any storage-permitted app can reach every other app's data *for the same user* by using the handed-out credentials directly. Cross-user isolation still holds (per-user buckets).
-**Fix:** set `VULOS_STORAGE_STS_ENDPOINT` (and optionally `VULOS_STORAGE_STS_ROLE_ARN`, `VULOS_STORAGE_STS_DURATION_SECONDS`) so apps get short-lived, prefix-scoped credentials. Required for real multi-app isolation; see [SECURITY.md](SECURITY.md).
+**Meaning:** self-host now defaults `VULOS_STORAGE_STS_ENDPOINT` to the box's own object-store endpoint automatically whenever one is configured (MinIO serves STS on the same port), so this message normally only appears when no object store is configured at all (nothing to protect — apps fall back to local/standalone storage) or `VULOS_STORAGE_STS_DISABLE=1` is set. A storage-permitted app is never handed a static, full-bucket credential any more — without STS it simply gets no injected credential and must call `POST /api/storage/presign` for a short-lived, object-scoped grant instead. If an object store IS statically configured and at least one installed app declares the `storage` permission, the server now **aborts at boot** (`[storage] ABORT: ...`) rather than silently degrading.
+**Fix:** leave `VULOS_STORAGE_STS_ENDPOINT` unset (it self-configures against your own MinIO) or set it explicitly for a non-default STS endpoint; see [SECURITY.md](SECURITY.md).
 
 App-specific misbehavior after a successful launch: read the app's own log at `~/.vulos/logs/<appId>.log`. See [APPS.md](APPS.md).
 

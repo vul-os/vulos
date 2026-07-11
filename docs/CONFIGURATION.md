@@ -71,7 +71,8 @@ actually read and write through — do not conflate the two.
 | `VULOS_STORAGE_BUCKET_PREFIX` | `vulos-` | Prefix used when deriving a per-user bucket name |
 | `VULOS_STORAGE_OS_BUCKET` (or `VULOS_S3_BUCKET`) | `vulos-cluster` | Shared OS-level bucket (updates, cluster metadata) |
 | `VULOS_STORAGE_LOCAL_ROOT` | `~/.vulos/storage` | Local-filesystem fallback root when no object store is configured (standalone mode) |
-| `VULOS_STORAGE_STS_ENDPOINT` | _(empty)_ | STS endpoint; **required** to enable per-app credential isolation (see below) |
+| `VULOS_STORAGE_STS_ENDPOINT` | _(empty → self-host defaults to the box's own object-store endpoint)_ | STS endpoint for per-app credential isolation (see below) |
+| `VULOS_STORAGE_STS_DISABLE` | _(unset)_ | Set to `1` to opt out of the self-host STS auto-default (advanced/test use only) |
 | `VULOS_STORAGE_STS_ROLE_ARN` | _(empty)_ | Optional STS role ARN |
 | `VULOS_STORAGE_STS_DURATION_SECONDS` | minter default | Optional STS credential lifetime override |
 | `VULOS_STORAGE_BROKER_SECRET` | _(empty; fails closed)_ | Shared secret authenticating the storage gateway's own broker endpoints |
@@ -217,30 +218,38 @@ secret_key: (read from /var/lib/vulos/minio/.minio_secret at start)
 bucket: vulos
 ```
 
-#### Per-app isolation (STS) — required for multi-app deployments
+#### Per-app isolation (STS) — on by default for self-host
 
 Each user gets their own bucket (`vulos-<userID>`), so cross-**user** isolation
-always holds. Cross-**app** isolation **within a single user** is only enforced
-when short-lived, prefix-scoped credentials are minted via STS.
+always holds. Cross-**app** isolation **within a single user** is enforced by
+short-lived, prefix-scoped credentials minted via STS.
 
-Without STS, every storage-permitted app for a user receives the same **static,
-full per-user-bucket credentials**. Those creds let an app read/write *any*
-other app's data for that user when used directly against the object store (the
-gateway-mediated `<userID>/<appID>/` prefix only scopes gateway-proxied access,
-not direct use of the handed-out credentials). The backend logs a prominent
-`[storage] WARNING` at startup whenever it runs in this mode.
+**Self-host default:** when `VULOS_STORAGE_STS_ENDPOINT` is unset and an object
+store IS configured, the box automatically defaults it to its own object-store
+endpoint (MinIO serves its STS AssumeRole API on the same port as its S3 API),
+so per-app isolation is on by default with zero extra configuration. A
+storage-permitted app **never** receives a static, full-bucket credential: if
+STS is unavailable for any reason (no object store configured at all, or
+`VULOS_STORAGE_STS_DISABLE=1`), the app simply gets no injected credential
+(fail-closed) and must call `POST /api/storage/presign` for a short-lived,
+object-scoped grant instead — the same mechanism the Files control plane uses.
+If an object store IS statically configured and at least one installed app
+declares the `storage` permission, the server **aborts at boot** rather than
+silently degrading when STS ends up unavailable in that combination.
 
-To enforce per-app isolation, configure STS:
+STS can also be pointed at a non-default endpoint:
 
 ```bash
-VULOS_STORAGE_STS_ENDPOINT=https://sts.example.com   # required to enable STS
+VULOS_STORAGE_STS_ENDPOINT=https://sts.example.com   # overrides the self-host default
 VULOS_STORAGE_STS_ROLE_ARN=arn:...                   # optional
 VULOS_STORAGE_STS_DURATION_SECONDS=900               # optional (default minter value)
 ```
 
-When set, the gateway hands apps short-lived credentials scoped down to the
-app's own `<userID>/<appID>/` prefix. **STS is REQUIRED for any deployment that
-runs more than one storage-permitted app per user and needs them isolated.**
+When STS is available, the gateway hands apps short-lived credentials scoped
+down to the app's own `<userID>/<appID>/` prefix. In cloud deployments (Tigris
+and similar stores with no STS/AssumeRole), apps use the presign endpoint
+instead of header-injected credentials — see [FILES.md](FILES.md) and
+[SECURITY.md](SECURITY.md).
 
 ### `/etc/vulos/vulos.yaml`
 

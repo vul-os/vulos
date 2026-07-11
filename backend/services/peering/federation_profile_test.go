@@ -30,6 +30,9 @@ func TestLoadFederationProfile_AllUnsetDefaultsToCentral(t *testing.T) {
 	if p.RendezvousConfigured {
 		t.Fatal("expected rendezvous not configured")
 	}
+	if p.RendezvousURL != proxDefaultRendezvousBase {
+		t.Fatalf("RendezvousURL = %q, want central default %q", p.RendezvousURL, proxDefaultRendezvousBase)
+	}
 	if p.TURNEnabled {
 		t.Fatal("expected TURN disabled")
 	}
