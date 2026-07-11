@@ -21,7 +21,11 @@
 ## How to Report
 
 **Email:** security@vulos.org  
-PGP key: _placeholder — key will be published at https://vulos.org/.well-known/security.txt_
+**PGP key:** TODO — not yet published. No encryption key exists for this
+address today; treat reports over plain email as unencrypted until a key is
+published at `https://vulos.org/.well-known/security.txt` and linked here. If
+you need a private channel now, use GitHub Security Advisories below instead.
+(If no tracking issue exists yet for publishing this key, please file one.)
 
 **GitHub Security Advisories:** Use the "Report a vulnerability" button in the Security tab of this repository. This is the preferred channel for most reporters as it keeps discussion private and structured.
 

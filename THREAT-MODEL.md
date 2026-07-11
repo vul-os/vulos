@@ -109,7 +109,13 @@ Trust boundaries:
 ## Component 3: App Sandbox
 
 ### Trust boundaries
-- Installed apps run as child processes; seccomp filtering is **not currently applied** (M5: the earlier claim was incorrect — this is a known gap, tracked for a future hardening sprint).
+- Installed apps run as child processes isolated by the three-layer
+  ISOLATION-PRIV-01 model (`backend/services/appnet/launcher.go`): (1) a
+  private network namespace, (2) a private mount namespace (`CLONE_NEWNS`) so
+  mounts never propagate to/from the host, and (3) an unprivileged uid/gid
+  drop via `setpriv` before exec. **Seccomp filtering is NOT applied** — there
+  is no syscall allowlist today; this is a known gap, tracked for a future
+  hardening sprint.
 - App ↔ Backend API: HTTP over loopback, authenticated per-app token.
 - App cannot directly reach other apps' data directories.
 
@@ -117,17 +123,20 @@ Trust boundaries:
 
 | # | Category | Threat |
 |---|----------|--------|
-| 1 | **Elevation of Privilege** | No seccomp filter is applied today, so a malicious app can call unrestricted syscalls (e.g. `ptrace`, `mount`) and escalate privileges on the host. |
+| 1 | **Elevation of Privilege** | No seccomp filter is applied today, so a malicious app can call unrestricted syscalls (e.g. `ptrace`, `mount` — the last one is blocked from affecting the host by the mount namespace, but the syscall itself is not filtered) and attempt to escalate privileges within its own namespace/uid. |
 | 2 | **Tampering** | Malicious app writes to another app's data directory by exploiting a path-traversal in the backend's file API. |
-| 3 | **Information Disclosure** | App reads `/proc` or environment variables of sibling processes before sandbox is fully applied. |
+| 3 | **Information Disclosure** | App reads `/proc` or environment variables of sibling processes before namespace/uid isolation is fully applied. |
 
 ### Mitigations in code
-- Seccomp allowlist is default-deny; only safe syscalls permitted.
+- Private mount namespace (`CLONE_NEWNS`) so host bind-mounts are invisible to the app and the app cannot mount anything visible to the host.
+- Unprivileged uid/gid drop via `setpriv` before the app's command execs (where the OS supports it).
+- Private network namespace (see `backend/services/appnet/namespace.go`).
 - Backend file API resolves paths under `JAIL_ROOT` and rejects `..` traversal.
-- App process launched with distinct UID per sandbox instance (where OS supports it).
+- App process launched with a distinct UID per sandbox instance (where OS supports it).
+- **No seccomp allowlist exists yet** — do not assume syscall-level filtering; the mitigations above are namespace + privilege-drop only.
 
 ### Residual risks
-- Seccomp filter completeness depends on the kernel version; old kernels may lack certain enforcement.
+- No seccomp filter: a compromised app can call any syscall its (unprivileged, namespaced) uid is permitted to use — the namespace/uid boundary is the only backstop today. Adding a seccomp allowlist is tracked as a future hardening item.
 - App-registry trust (whether an app package is signed) is not yet enforced end-to-end (tracked in APPSTORE tasks).
 
 ---

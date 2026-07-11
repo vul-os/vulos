@@ -42,10 +42,39 @@ cd ..
 |----------|---------|-------------|
 | `VULOS_ENV` | `prod` | Runtime environment: `local`, `dev`, `prod` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTel OTLP endpoint; if unset, tracing is no-op |
-| `S3_ENDPOINT` | _(empty)_ | S3-compatible endpoint for backup vault |
-| `S3_BUCKET` | _(empty)_ | Backup bucket name |
+| `S3_ENDPOINT` | `s3.amazonaws.com` | S3-compatible endpoint for the backup vault (Restic) |
+| `S3_BUCKET` | `vulos-vault` | Backup bucket name |
 | `S3_ACCESS_KEY` | _(empty)_ | S3 credentials |
 | `S3_SECRET_KEY` | _(empty)_ | S3 credentials |
+
+See [CONFIGURATION.md](CONFIGURATION.md) for the full environment variable
+reference, including the separate per-user storage-gateway (`VULOS_STORAGE_*`),
+cloud, relay, push, and integrations variables.
+
+## TLS termination with Caddy (SSH deploy path)
+
+`./build.sh --deploy <host> --domain <yourdomain> --dns-namecheap <user> <key>`
+(the scripted SSH deploy path, distinct from the plain Docker/source-build
+steps above) provisions [Caddy](https://caddyserver.com/) in front of the
+Vulos backend:
+
+- Builds a custom `caddy` binary via `xcaddy` with the `caddy-dns/namecheap`
+  plugin, so it can complete a wildcard cert via DNS-01.
+- Creates a dedicated `caddy` system user and `/etc/caddy`, `/var/lib/caddy`.
+- Writes `/etc/caddy/Caddyfile` with an `acme_dns namecheap` block and two
+  site blocks — `$DOMAIN` and `*.$DOMAIN` — both `reverse_proxy localhost:8080`.
+  Caddy terminates TLS and forwards everything to the Go backend on `:8080`;
+  the backend itself never needs its own certificate.
+- Writes Namecheap API credentials to `/etc/caddy/env` (mode 600):
+  `NAMECHEAP_API_USER` / `NAMECHEAP_API_KEY`.
+- Installs and enables a `caddy.service` systemd unit
+  (`caddy run --config /etc/caddy/Caddyfile --adapter caddyfile`).
+- Subsequent deploys restart `caddy.service` automatically when
+  `/etc/caddy/Caddyfile` already exists.
+
+If you deploy via plain Docker or a manual source build (no `--domain`), Caddy
+is not involved — put your own reverse proxy or load balancer in front of
+`:8080` and terminate TLS there instead.
 
 ## dm-verity / Verified Boot (optional)
 

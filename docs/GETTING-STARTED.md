@@ -106,11 +106,24 @@ Or use the dev script:
 
 ## First boot
 
-When you open Vulos for the first time you will be taken through a short setup wizard:
+When you open Vulos for the first time you will be taken through a multi-step
+setup wizard (`src/auth/Setup.jsx`). Choosing **New** at the first fork takes
+you through:
 
-1. **Account** — create your admin account (email + password). Optionally enroll a passkey (WebAuthn/FIDO2) for phishing-resistant login.
-2. **Identity** — set your display name and Vulos identity (`@vulos.org` or local-only). On a local install you can skip the cloud identity step.
-3. **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
+1. **Welcome** and **New vs. Join** — start a fresh install, or join an existing Vulos box/cluster.
+2. **Device** — pick a device profile (PC/tablet, TV, car, watch) that tunes the shell layout.
+3. **Language**, **Timezone**, **Network** (WiFi, if applicable).
+4. **Account type** — local-only account or a cloud-linked Vulos account.
+5. **Account** — create your admin account (email + password). Optionally enroll a passkey (WebAuthn/FIDO2) for phishing-resistant login.
+6. **Vulos username** (`@vulos` handle) — mandatory in production; there is no skip option once cloud identity is in play.
+7. **Device PIN** — optional quick-unlock PIN for the lock screen.
+8. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
+9. **Apps** — the default-everything bundle (an `@vulos` mailbox plus the full Workspace suite) is pre-checked; opt out of anything you don't want.
+10. **Appearance**, **Identity** (display name), **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
+11. **SSH** and **Recovery kit** — download your account recovery material.
+12. **Ready** — setup completes and you land on the desktop.
+
+Choosing **Join** instead skips straight to picking up an existing installation's storage and syncing, then the shared PIN + Ready steps.
 
 After setup you land on the desktop shell. The dock at the bottom holds your running apps. Press **F3** for Mission Control (overview of all windows). Open **Settings** to configure WiFi, display, audio, and more.
 
