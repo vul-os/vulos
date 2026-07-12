@@ -1083,6 +1083,12 @@ func main() {
 	// cloud mode (Tigris has no STS) or when self-host STS is unavailable.
 	mux.Handle("POST /api/storage/presign", appGateway.PresignHandler())
 
+	// DELETE-01 (PERFECTION PASS 2026-07-12): scoped object delete. The
+	// gateway performs the delete server-side with its own credentials —
+	// apps never presign DELETE and never hold raw creds. Same auth/scoping/
+	// app_id-whitelist as presign; fails closed when no broker is configured.
+	mux.Handle("POST /api/storage/delete", appGateway.DeleteHandler())
+
 	// Chat history
 	mux.HandleFunc("GET /api/ai/history", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
