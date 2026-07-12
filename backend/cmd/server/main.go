@@ -683,7 +683,16 @@ func main() {
 	// On (fail-closed for apps that declare a required product) for cloud/os
 	// deployments, driven by DEPLOY_MODE.
 	appGateway.SetEntitlementGating(deployMode.IsCloudAdjacent())
-	for _, m := range installedManifests {
+	// wireAppGateway grants appID its manifest-declared integration/storage/
+	// entitlement permissions on appGateway. Shared by the boot-time scan
+	// below and by the store install handlers (BUG FIX 2026-07-12): those
+	// handlers used to install an app's FILES without ever calling this, so
+	// a newly-installed app got NO storage headers and — more seriously — a
+	// newly-installed PREMIUM app was never registered in appProducts, so
+	// ENTITLE-01 gating treated it as free-to-use for every user until the
+	// next process restart (a live entitlement-bypass window, not just a
+	// storage inconvenience).
+	wireAppGateway := func(m *appnet.AppManifest) {
 		for _, prov := range m.Integrations {
 			appGateway.AllowIntegration(m.ID, prov)
 			log.Printf("[integrations] app %q granted %q integration token", m.ID, prov)
@@ -698,6 +707,9 @@ func main() {
 			appGateway.AllowApp(m.ID, m.Product)
 			log.Printf("[entitlement] app %q requires product %q (gating %s)", m.ID, m.Product, map[bool]string{true: "ENFORCED", false: "open (standalone)"}[deployMode.IsCloudAdjacent()])
 		}
+	}
+	for _, m := range installedManifests {
+		wireAppGateway(m)
 	}
 
 	// FILES-FOUNDATION: OS Files metadata/control-plane (the Drive index + ACLs +
@@ -3305,6 +3317,17 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// BUG FIX (2026-07-12): wire the gateway grants (storage/integration/
+		// entitlement) for this app NOW rather than only at next process
+		// restart — see wireAppGateway's doc comment. Read the manifest back
+		// from disk (not the client-supplied `entry`) so a live install
+		// grants exactly what the EXTRACTED app.json declares, matching what
+		// a boot-time rescan would find.
+		if m, err := appStore.GetManifest(entry.ID); err == nil {
+			wireAppGateway(m)
+		} else {
+			log.Printf("[appstore] installed %q but failed to load its manifest for gateway wiring (will be picked up on next restart): %v", entry.ID, err)
+		}
 		writeJSON(w, map[string]string{"status": "installed"})
 	})
 	mux.HandleFunc("POST /api/store/uninstall", func(w http.ResponseWriter, r *http.Request) {
@@ -3323,6 +3346,12 @@ func main() {
 		launcher.Stop(ctx, req.AppID)
 		portPool.Release(req.AppID)
 		appGateway.RemoveAppSecret(req.AppID)
+		// BUG FIX (2026-07-12): clear storage/integration/entitlement grants
+		// too, not just the app secret — otherwise a DIFFERENT app installed
+		// later under the same app_id would silently inherit this app's
+		// stale grants (e.g. storage access it never declared) until the
+		// next process restart.
+		appGateway.RemoveAppGrants(req.AppID)
 		// Uninstall (removes apt packages for desktop apps + app dir)
 		if err := appStore.Uninstall(req.AppID); err != nil {
 			writeErr(w, 500, err.Error())
@@ -3369,6 +3398,14 @@ func main() {
 		if err := appStore.InstallFromRegistry(r.Context(), req.AppID, req.Version); err != nil {
 			writeErr(w, 500, err.Error())
 			return
+		}
+		// BUG FIX (2026-07-12): same live-wiring fix as POST /api/store/install
+		// — a registry-installed app's manifest can still declare storage/
+		// integration/product permissions and must not wait for a restart.
+		if m, err := appStore.GetManifest(req.AppID); err == nil {
+			wireAppGateway(m)
+		} else {
+			log.Printf("[appstore] installed %q from registry but failed to load its manifest for gateway wiring (will be picked up on next restart): %v", req.AppID, err)
 		}
 		desktopSvc.Scan()
 		writeJSON(w, map[string]string{"status": "installed", "app_id": req.AppID})

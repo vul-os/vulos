@@ -340,6 +340,23 @@ func (g *Gateway) RemoveAppSecret(appID string) {
 	delete(g.appSecrets, appID)
 }
 
+// RemoveAppGrants clears every manifest-derived grant appID holds: its
+// storage prefix (AllowStorage), integration providers (AllowIntegration),
+// and required product (AllowApp). Call this on uninstall so a later
+// reinstall of a DIFFERENT app under the same appID starts from a clean
+// slate — without this, stale grants from the previous app would silently
+// carry over (e.g. a reinstalled app that no longer declares "storage"
+// would still receive storage headers, or one that no longer requires a
+// product would still be entitlement-gated, until the next process
+// restart).
+func (g *Gateway) RemoveAppGrants(appID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.storageApps, appID)
+	delete(g.integrationApps, appID)
+	delete(g.appProducts, appID)
+}
+
 // Handler returns the HTTP handler for app traffic.
 // Supports two modes:
 //   - Subdomain: cockpit.localhost:8080/* → namespace (app gets full path, all apps work)

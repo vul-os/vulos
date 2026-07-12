@@ -381,3 +381,50 @@ func TestIsRateLimited_WindowReset(t *testing.T) {
 		t.Error("expected rate limit to reset after window expiry, but was still limited")
 	}
 }
+
+// TestRemoveAppGrants_ClearsStorageIntegrationAndEntitlement is a regression
+// test for the 2026-07-12 fix: uninstalling an app must clear ALL of its
+// manifest-derived grants (storage prefix, integration providers, required
+// product), not just its secret — otherwise a DIFFERENT app installed later
+// under the SAME appID would silently inherit the previous app's grants
+// until the next process restart.
+func TestRemoveAppGrants_ClearsStorageIntegrationAndEntitlement(t *testing.T) {
+	g := newStorageGateway()
+	g.AllowStorage("office", "office/")
+	g.AllowIntegration("office", "google")
+	g.AllowApp("office", "office-pro")
+	g.SetEntitlementGating(true)
+
+	// Sanity: grants are active before removal.
+	if _, ok := g.storageApps["office"]; !ok {
+		t.Fatal("setup: expected storage grant before removal")
+	}
+	if _, ok := g.integrationApps["office"]["google"]; !ok {
+		t.Fatal("setup: expected integration grant before removal")
+	}
+	if ok, _ := g.entitlementCheck(httptest.NewRequest(http.MethodGet, "/", nil), "office"); ok {
+		t.Fatal("setup: expected entitlementCheck to fail without the product header")
+	}
+
+	g.RemoveAppGrants("office")
+
+	g.mu.RLock()
+	_, storageStillAllowed := g.storageApps["office"]
+	_, integrationsStillPresent := g.integrationApps["office"]
+	_, productStillRequired := g.appProducts["office"]
+	g.mu.RUnlock()
+	if storageStillAllowed {
+		t.Fatal("RemoveAppGrants must clear the storage grant")
+	}
+	if integrationsStillPresent {
+		t.Fatal("RemoveAppGrants must clear the integration grants")
+	}
+	if productStillRequired {
+		t.Fatal("RemoveAppGrants must clear the required-product entry")
+	}
+	// With no required product registered anymore, entitlementCheck must now
+	// pass unconditionally (as it does for any app with no requirement).
+	if ok, reason := g.entitlementCheck(httptest.NewRequest(http.MethodGet, "/", nil), "office"); !ok {
+		t.Fatalf("expected entitlementCheck to pass after RemoveAppGrants, got reason=%q", reason)
+	}
+}
