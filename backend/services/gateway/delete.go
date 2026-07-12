@@ -18,6 +18,8 @@ package gateway
 //	  400:  invalid request (missing app_id, unsafe key)
 //	  401:  no valid session
 //	  403:  app_id was never granted the "storage" permission (AllowStorage)
+//	  402:  app_id requires a CP product entitlement the caller doesn't carry
+//	        (ENTITLE-01, same gate as app-dispatch; no-op when gating is off)
 //	  502:  delete failed
 //	  503:  no grant broker configured (e.g. no object store at all)
 //
@@ -69,6 +71,14 @@ func (g *Gateway) DeleteHandler() http.HandlerFunc {
 
 		if req.AppID == "" || !allowed {
 			presignErr(w, http.StatusForbidden, "app is not permitted to use storage")
+			return
+		}
+		// BUG FIX (2026-07-12, ENTITLE-01 gap — same as PresignHandler): don't
+		// let a caller with no entitlement for a premium app delete objects
+		// under that app's prefix just because they know its app_id. Apply
+		// the same gate app-dispatch enforces (no-op when gating is off).
+		if ok, reason := g.entitlementCheck(r, req.AppID); !ok {
+			presignErr(w, http.StatusPaymentRequired, "entitlement required: "+reason)
 			return
 		}
 		if broker == nil || bucketFor == nil {

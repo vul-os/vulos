@@ -20,6 +20,8 @@ package gateway
 //	  400:  invalid request (bad method, unsafe key, missing app_id)
 //	  401:  no valid session
 //	  403:  app_id was never granted the "storage" permission (AllowStorage)
+//	  402:  app_id requires a CP product entitlement the caller doesn't carry
+//	        (ENTITLE-01, same gate as app-dispatch; no-op when gating is off)
 //	  502:  grant minting failed
 //	  503:  no grant broker configured (e.g. no object store at all)
 //
@@ -83,6 +85,19 @@ func (g *Gateway) PresignHandler() http.HandlerFunc {
 
 		if req.AppID == "" || !allowed {
 			presignErr(w, http.StatusForbidden, "app is not permitted to use storage")
+			return
+		}
+		// BUG FIX (2026-07-12, ENTITLE-01 gap): app-dispatch (Handler(), the
+		// /app/{appId}/* proxy) refuses a request for a product-gated app that
+		// doesn't carry the required entitlement, but this endpoint used to
+		// skip that check entirely — a user with no entitlement for a premium
+		// app could still mint themselves presigned storage access under that
+		// app's prefix by calling this endpoint directly with its app_id, even
+		// though they could never reach the app itself. Apply the SAME
+		// entitlement gate the app-dispatch path enforces (still a no-op on
+		// self-host/standalone, where gating is disabled).
+		if ok, reason := g.entitlementCheck(r, req.AppID); !ok {
+			presignErr(w, http.StatusPaymentRequired, "entitlement required: "+reason)
 			return
 		}
 		if broker == nil || bucketFor == nil {

@@ -84,6 +84,48 @@ func TestDeleteHandler_EmptyAppIDRejected(t *testing.T) {
 	}
 }
 
+// BUG FIX regression (2026-07-12, ENTITLE-01 gap): same as the presign
+// endpoint — a caller with no entitlement for a premium app must not be
+// able to delete objects under that app's prefix via this endpoint.
+func TestDeleteHandler_EntitlementGating_RefusesWithoutProduct(t *testing.T) {
+	g, token, _, _ := newDeleteGateway(t)
+	g.AllowApp("office", "office-pro")
+	g.SetEntitlementGating(true)
+
+	rec := doDelete(g, token, deleteRequest{AppID: "office", Key: "a.txt"})
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteHandler_EntitlementGating_AllowsWithProduct(t *testing.T) {
+	g, token, userID, root := newDeleteGateway(t)
+	g.AllowApp("office", "office-pro")
+	g.SetEntitlementGating(true)
+	touchLocalObject(t, root, userID+"/office/a.txt")
+
+	raw, _ := json.Marshal(deleteRequest{AppID: "office", Key: "a.txt"})
+	r := httptest.NewRequest(http.MethodPost, "/api/storage/delete", bytes.NewReader(raw))
+	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("X-Vulos-Entitlements-Products", "office-pro")
+	rec := httptest.NewRecorder()
+	g.DeleteHandler().ServeHTTP(rec, r)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteHandler_EntitlementGating_OffByDefault(t *testing.T) {
+	g, token, _, _ := newDeleteGateway(t)
+	g.AllowApp("office", "office-pro")
+	// SetEntitlementGating never called — stays false.
+
+	rec := doDelete(g, token, deleteRequest{AppID: "office", Key: "a.txt"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (gating off by default), body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteHandler_NoBrokerConfigured(t *testing.T) {
 	store, mgr, pool := newTestDeps(t)
 	token, _ := seedSession(t, store)

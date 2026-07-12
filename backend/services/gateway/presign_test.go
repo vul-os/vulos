@@ -87,6 +87,53 @@ func TestPresignHandler_InvalidMethodRejected(t *testing.T) {
 	}
 }
 
+// BUG FIX regression (2026-07-12, ENTITLE-01 gap): a caller with no
+// entitlement for a premium (product-gated) app must not be able to mint
+// presigned storage access under that app's prefix by going straight to
+// this endpoint — the same gate app-dispatch (Handler()) enforces must
+// apply here too.
+func TestPresignHandler_EntitlementGating_RefusesWithoutProduct(t *testing.T) {
+	g, token, _ := newPresignGateway(t)
+	g.AllowApp("office", "office-pro")
+	g.SetEntitlementGating(true)
+
+	rec := doPresign(g, token, presignRequest{AppID: "office", Method: "GET", Key: "a.txt"})
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// The same premium app must succeed once the request carries the required
+// product entitlement.
+func TestPresignHandler_EntitlementGating_AllowsWithProduct(t *testing.T) {
+	g, token, _ := newPresignGateway(t)
+	g.AllowApp("office", "office-pro")
+	g.SetEntitlementGating(true)
+
+	raw, _ := json.Marshal(presignRequest{AppID: "office", Method: "GET", Key: "a.txt"})
+	r := httptest.NewRequest(http.MethodPost, "/api/storage/presign", bytes.NewReader(raw))
+	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("X-Vulos-Entitlements-Products", "office-pro")
+	rec := httptest.NewRecorder()
+	g.PresignHandler().ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// Entitlement gating is OFF by default (self-host/standalone) — a
+// product-gated app must still be reachable without SetEntitlementGating.
+func TestPresignHandler_EntitlementGating_OffByDefault(t *testing.T) {
+	g, token, _ := newPresignGateway(t)
+	g.AllowApp("office", "office-pro")
+	// SetEntitlementGating never called — stays false.
+
+	rec := doPresign(g, token, presignRequest{AppID: "office", Method: "GET", Key: "a.txt"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (gating off by default), body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPresignHandler_MintsGrant_GETandPUT(t *testing.T) {
 	g, token, userID := newPresignGateway(t)
 
