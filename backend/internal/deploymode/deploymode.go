@@ -106,9 +106,20 @@ func (m Mode) checkCoherence() {
 	switch m {
 	case Cloud, OS:
 		if strings.TrimSpace(os.Getenv("VULOS_CP_BASE_URL")) == "" {
+			// BUG FIX (2026-07-12): this message previously claimed entitlement
+			// gating "will be inactive (apps ungated)" — that is backwards.
+			// gateway.SetEntitlementGating is driven by DEPLOY_MODE alone (see
+			// main.go), NOT by VULOS_CP_BASE_URL, so gating stays ENFORCED
+			// (fail-closed) here. What actually breaks is vk_ introspection
+			// (VKIntrospector stays nil), so no session can ever PROVE a
+			// product entitlement — every app that declares a required
+			// product becomes permanently inaccessible (402) to every user
+			// until VULOS_CP_BASE_URL is configured. That is a worse
+			// operational trap than "ungated", so warn accurately.
 			log.Printf("[deploymode] WARNING: DEPLOY_MODE=%q but VULOS_CP_BASE_URL is unset — "+
-				"vk_ API-key auth and entitlement gating will be inactive (session-only auth, apps ungated) "+
-				"until it is configured", m)
+				"vk_ API-key auth is inactive, so no session can prove a product entitlement; "+
+				"entitlement gating stays ENFORCED (fail-closed), meaning every app that requires "+
+				"a product is now inaccessible to ALL users until VULOS_CP_BASE_URL is configured", m)
 		}
 	case Standalone:
 		if strings.TrimSpace(os.Getenv("VULOS_CP_BASE_URL")) != "" {

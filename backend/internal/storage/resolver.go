@@ -308,6 +308,19 @@ func (r *Resolver) ResolveScoped(ctx context.Context, userID, prefix string) (Re
 	if !res.Configured() {
 		return res, true
 	}
+	// BUG FIX (2026-07-12): a CloudHook may already have returned a
+	// Resolution with Scoped=true (e.g. a cloud per-bucket IAM minter that
+	// scopes credentials itself, upstream of this method). Previously the
+	// code below unconditionally fell through to "no minter installed ⇒
+	// blank the credentials" whenever r.minter was nil, which DESTROYED an
+	// already-scoped CloudHook credential the instant no self-host STS
+	// minter was ALSO configured — the two seams are independent and a
+	// cloud deployment legitimately has a CloudHook but no self-host
+	// CredentialMinter. Respect an already-scoped result and skip the
+	// minter/fail-closed logic entirely.
+	if res.Scoped {
+		return res, true
+	}
 	if r.minter != nil {
 		if sc, ok := r.minter(ctx, res.Bucket, res.Prefix); ok {
 			res.AccessKey = sc.AccessKey

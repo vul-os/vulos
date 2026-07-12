@@ -39,6 +39,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,6 +65,11 @@ const reachabilityCacheTTL = 5 * time.Minute
 // reachabilityRefreshInterval is how often StartReachabilityRefresh re-polls
 // the relay for every approved contact's current reachability.
 const reachabilityRefreshInterval = 5 * time.Minute
+
+// reachabilityResolveMaxBytes bounds the relay resolve response body read —
+// the payload is just two optional URL strings, so this is generous headroom
+// while still capping a misbehaving/compromised relay's memory impact.
+const reachabilityResolveMaxBytes = 8 * 1024
 
 // reachabilityEntry is the cached result of resolving one peer's reachability.
 type reachabilityEntry struct {
@@ -185,8 +191,13 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) e
 		return fmt.Errorf("peering: reachability resolve: relay returned %d", resp.StatusCode)
 	}
 
+	// Bound the response body read: the relay is operator-configured, not
+	// per-request attacker data, but a compromised/misbehaving relay must
+	// never be able to force unbounded memory use here (defense in depth,
+	// consistent with the SSRF-guarded dial above and the rest of this
+	// package's outbound fetches, e.g. bandwidth.go/discovery.go).
 	var out relayResolveResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, reachabilityResolveMaxBytes)).Decode(&out); err != nil {
 		return fmt.Errorf("peering: decode reachability resolve response: %w", err)
 	}
 	reachabilityCachePut(vulaID, out.Direct, out.Relay)

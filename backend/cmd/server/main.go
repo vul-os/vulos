@@ -569,7 +569,22 @@ func main() {
 	// this scan ran only after the STS decision, so that decision couldn't
 	// see which apps actually need scoping; scanning once here also removes
 	// a redundant second appsDir walk.
-	installedManifests, scanErr := appnet.ScanApps(appsDir)
+	//
+	// BUG FIX (2026-07-12 perfection pass): this used to call
+	// appnet.ScanApps(appsDir) directly, which only walks the LOCAL install
+	// dir (~/.vulos/apps) — it silently missed any BUNDLED app (shipped under
+	// /opt/vulos/apps or ./apps, see discoverBundledAppDirs) that was never
+	// separately "installed" into appsDir. A bundled app declaring the
+	// "storage" permission would then receive NO storage headers at all
+	// (silently broken, not fail-open), and — more seriously — a bundled app
+	// declaring a required "product" would NEVER get AllowApp() called,
+	// so ENTITLE-01 gating would treat it as requiring no product at all: an
+	// entitlement-bypass fail-open for exactly the apps most likely to be
+	// premium (the ones the OS ships pre-installed). appStore.Installed()
+	// merges bundledDirs + appsDir (same set the cockpit's
+	// GET /api/store/installed already reports), so gateway wiring now
+	// covers the SAME apps the box considers "installed".
+	installedManifests, scanErr := appStore.Installed()
 	if scanErr != nil {
 		log.Printf("[appnet] manifest scan warning: %v", scanErr)
 	}

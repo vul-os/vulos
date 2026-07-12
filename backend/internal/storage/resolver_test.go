@@ -197,6 +197,39 @@ func TestResolveScoped_MintsScopedCreds(t *testing.T) {
 	}
 }
 
+// BUG FIX regression (2026-07-12): a CloudHook that already returns a
+// Resolution with Scoped=true (e.g. a cloud per-bucket IAM minter, wired
+// upstream of ResolveScoped rather than as a CredentialMinter) must NOT be
+// blanked out just because no self-host CredentialMinter is ALSO installed.
+// The two seams are independent — a cloud deployment typically has a
+// CloudHook but no on-box STS minter.
+func TestResolveScoped_PreservesCloudHookScopedCreds(t *testing.T) {
+	r := NewResolver(ResolverConfig{}) // no static box config at all
+	r.SetCloudHook(func(_ context.Context, userID string) (Resolution, bool) {
+		return Resolution{
+			Endpoint:  "https://fly.storage.tigris.dev",
+			Bucket:    "vulos-" + userID,
+			AccessKey: "CP-SCOPED-AK",
+			SecretKey: "CP-SCOPED-SK",
+			Scoped:    true, // the CloudHook already scoped these itself
+		}, true
+	})
+	// Deliberately NOT calling SetCredentialMinter — this is the cloud shape.
+	res, ok := r.ResolveScoped(context.Background(), "alice", "alice/office/")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if !res.Scoped {
+		t.Fatal("expected Scoped=true to be preserved from the CloudHook")
+	}
+	if res.AccessKey != "CP-SCOPED-AK" || res.SecretKey != "CP-SCOPED-SK" {
+		t.Fatalf("CloudHook-scoped credentials must survive ResolveScoped, got %+v", res)
+	}
+	if res.Prefix != "alice/office/" {
+		t.Fatalf("prefix = %q, want alice/office/", res.Prefix)
+	}
+}
+
 // SECURITY (fail-closed): with no minter installed, ResolveScoped must NOT
 // fall back to the resolver's static full-bucket credential — a storage-
 // permitted app must never receive it. Cross-user isolation still holds
