@@ -3427,9 +3427,23 @@ func main() {
 		writeJSON(w, res)
 	})
 
-	// App filesystem persistence — sandboxed read/write under ~/.vulos/<app>/
+	// App filesystem persistence — sandboxed read/write under
+	// ~/.vulos/<userID>/<appID>/ (APPFS-01: per-user AND per-app scoped).
 	appfsBaseDir := filepath.Join(home, ".vulos")
 	appfsSvc := appfs.New(appfsBaseDir)
+	// One-time, single-user-only migration of data written under the OLD,
+	// un-scoped ~/.vulos/<appID>/ layout (pre-APPFS-01). Only runs when
+	// exactly one account exists on this box — see MigrateLegacySingleUser's
+	// doc for why an ambiguous multi-user box is left untouched instead.
+	if usernames := authStore.ListUsernames(); len(usernames) == 1 {
+		if u := authStore.GetUserByUsername(usernames[0]); u != nil {
+			if err := appfs.MigrateLegacySingleUser(appfsBaseDir, u.ID); err != nil {
+				log.Printf("[appfs] legacy migration: %v", err)
+			}
+		}
+	} else {
+		_ = appfs.MigrateLegacySingleUser(appfsBaseDir, "") // marks as handled, no-op
+	}
 	appfsSvc.Register(mux)
 
 	// TURN credentials (for WebRTC relay in remote mode)
