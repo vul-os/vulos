@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -338,6 +339,52 @@ func (g *Gateway) RemoveAppSecret(appID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.appSecrets, appID)
+}
+
+// AppSecretValid reports whether secret is the CURRENT credential the
+// gateway issued to appID via GenerateAppSecret. That secret is injected as
+// VULOS_APP_SECRET into ONLY that app's own process environment at launch
+// (main.go) — it is never exposed to the browser and never exposed to any
+// OTHER app. PresignHandler and DeleteHandler (PRESIGN-02/DELETE-02) use this
+// to bind a storage request to the app instance that is ACTUALLY making it,
+// instead of trusting the request body's "app_id" field: any app can put any
+// app_id it likes in its own JSON body, but it can never produce a secret it
+// was never issued, so this closes the cross-app storage-prefix hole where a
+// compromised/malicious app named a DIFFERENT app's app_id to mint itself a
+// grant under that other app's prefix. Uses a constant-time comparison to
+// avoid leaking secret material through timing.
+func (g *Gateway) AppSecretValid(appID, secret string) bool {
+	if appID == "" || secret == "" {
+		return false
+	}
+	g.mu.RLock()
+	want, ok := g.appSecrets[appID]
+	g.mu.RUnlock()
+	if !ok || want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(want), []byte(secret)) == 1
+}
+
+// subdomainCallerAppID derives the calling app's id from the request Host the
+// SAME way Handler() does for ordinary proxied app traffic (NET-01 subdomain
+// parsing) — used as a defense-in-depth cross-check by PresignHandler and
+// DeleteHandler when the request happens to carry a recognisable app
+// subdomain. Returns ("", false) when the host is not a recognised app
+// subdomain (e.g. no VULOS_DOMAIN configured, or a plain path-prefix/base-
+// domain request) — callers must treat that as "no signal available", not as
+// "no app", since most self-host deployments never populate this.
+func subdomainCallerAppID(r *http.Request) (string, bool) {
+	host := r.Host
+	if idx := strings.Index(host, ":"); idx > 0 {
+		host = host[:idx]
+	}
+	baseDomain := os.Getenv("VULOS_DOMAIN")
+	if baseDomain == "" || !strings.HasSuffix(strings.ToLower(host), "."+strings.ToLower(baseDomain)) {
+		return "", false
+	}
+	appID, _, ok := appnet.ParseSubdomain(host, baseDomain)
+	return appID, ok
 }
 
 // RemoveAppGrants clears every manifest-derived grant appID holds: its

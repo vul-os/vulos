@@ -14,12 +14,15 @@ package gateway
 //
 //	POST /api/storage/presign
 //	  Auth: the browser session (cookie or Bearer session token) — the SAME
-//	        session the gateway itself validates for app traffic.
+//	        session the gateway itself validates for app traffic — PLUS an
+//	        X-Vulos-App-Secret header proving the caller really is the app
+//	        named in "app_id" (see PRESIGN-02 below).
 //	  Body: {"app_id":"office","method":"GET"|"PUT","key":"documents/a.docx"}
 //	  200:  storagepkg.ObjectGrant JSON (type/method/bucket/key/url|creds/expires_at)
 //	  400:  invalid request (bad method, unsafe key, missing app_id)
 //	  401:  no valid session
-//	  403:  app_id was never granted the "storage" permission (AllowStorage)
+//	  403:  app_id was never granted the "storage" permission (AllowStorage),
+//	        OR the caller could not prove it is app_id (PRESIGN-02)
 //	  402:  app_id requires a CP product entitlement the caller doesn't carry
 //	        (ENTITLE-01, same gate as app-dispatch; no-op when gating is off)
 //	  502:  grant minting failed
@@ -29,6 +32,18 @@ package gateway
 // handler composes the full object key as "<userID>/<appPrefix><key>" itself —
 // the caller can never name an object outside its own per-user/per-app prefix
 // (the same C2/isolation boundary the header-injection seam enforces).
+//
+// PRESIGN-02 (cross-app storage-prefix hole, fixed 2026-07-12): the "app_id"
+// field alone used to be trusted outright — any app could put a DIFFERENT
+// app's id in its own request and mint itself a grant under that other app's
+// prefix, because nothing tied the HTTP request to the process that sent it.
+// The gateway now requires proof: X-Vulos-App-Secret must match the secret
+// GenerateAppSecret minted for app_id at launch (injected as VULOS_APP_SECRET
+// into ONLY that app's own environment — never exposed to the browser or to
+// any other app). A request whose app_id it cannot prove is refused outright
+// (fail closed) rather than silently trusting the claim. When the request
+// also carries a recognisable app subdomain (NET-01), that must agree with
+// app_id too, as an independent second check.
 
 import (
 	"encoding/json"
@@ -74,6 +89,19 @@ func (g *Gateway) PresignHandler() http.HandlerFunc {
 		var req presignRequest
 		if err := json.NewDecoder(io.LimitReader(r.Body, maxPresignBodyBytes)).Decode(&req); err != nil {
 			presignErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		// PRESIGN-02: the caller must PROVE it is the app named in app_id —
+		// see the package doc above. Checked before anything else app_id-
+		// dependent so an unproven claim never even reaches the storage
+		// registry lookup.
+		if !g.AppSecretValid(req.AppID, r.Header.Get("X-Vulos-App-Secret")) {
+			presignErr(w, http.StatusForbidden, "app credentials required or invalid")
+			return
+		}
+		if hostAppID, ok := subdomainCallerAppID(r); ok && hostAppID != req.AppID {
+			presignErr(w, http.StatusForbidden, "app_id does not match request host")
 			return
 		}
 

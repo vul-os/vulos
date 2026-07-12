@@ -11,13 +11,16 @@ package gateway
 //
 //	POST /api/storage/delete
 //	  Auth: the browser session (cookie or Bearer session token) — the SAME
-//	        session the gateway validates for app traffic and for presign.
+//	        session the gateway validates for app traffic and for presign —
+//	        PLUS an X-Vulos-App-Secret header proving the caller really is
+//	        the app named in "app_id" (see DELETE-02 below, same as PRESIGN-02).
 //	  Body: {"app_id":"office","key":"documents/a.docx"}
 //	  204:  deleted (or already absent — deletes are idempotent, see
 //	        GrantBroker.DeleteObject)
 //	  400:  invalid request (missing app_id, unsafe key)
 //	  401:  no valid session
-//	  403:  app_id was never granted the "storage" permission (AllowStorage)
+//	  403:  app_id was never granted the "storage" permission (AllowStorage),
+//	        OR the caller could not prove it is app_id (DELETE-02)
 //	  402:  app_id requires a CP product entitlement the caller doesn't carry
 //	        (ENTITLE-01, same gate as app-dispatch; no-op when gating is off)
 //	  502:  delete failed
@@ -28,6 +31,13 @@ package gateway
 // "<userID>/<appPrefix><key>" itself, so an app can never name (and thus
 // never delete) an object outside its own per-user/per-app prefix — the same
 // C2/isolation boundary presign.go and the header-injection seam enforce.
+//
+// DELETE-02 (cross-app storage-prefix hole, fixed 2026-07-12, same root cause
+// as PRESIGN-02): "app_id" alone used to be trusted outright, so any app
+// could name a DIFFERENT app's id and delete objects under its prefix. The
+// gateway now requires X-Vulos-App-Secret to match the secret minted for
+// app_id at launch (GenerateAppSecret / VULOS_APP_SECRET) — see presign.go's
+// package doc for the full rationale.
 
 import (
 	"encoding/json"
@@ -60,6 +70,19 @@ func (g *Gateway) DeleteHandler() http.HandlerFunc {
 		var req deleteRequest
 		if err := json.NewDecoder(io.LimitReader(r.Body, maxDeleteBodyBytes)).Decode(&req); err != nil {
 			presignErr(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		// DELETE-02: the caller must PROVE it is the app named in app_id —
+		// see the package doc above. Checked before anything else app_id-
+		// dependent so an unproven claim never even reaches the storage
+		// registry lookup.
+		if !g.AppSecretValid(req.AppID, r.Header.Get("X-Vulos-App-Secret")) {
+			presignErr(w, http.StatusForbidden, "app credentials required or invalid")
+			return
+		}
+		if hostAppID, ok := subdomainCallerAppID(r); ok && hostAppID != req.AppID {
+			presignErr(w, http.StatusForbidden, "app_id does not match request host")
 			return
 		}
 
