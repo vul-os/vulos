@@ -2,6 +2,8 @@ module vulos/backend
 
 go 1.25.6
 
+toolchain go1.25.12
+
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/creack/pty v1.1.24
@@ -98,8 +100,8 @@ require (
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.4 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/crypto v0.51.0
-	golang.org/x/net v0.53.0
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/crypto v0.52.0
+	golang.org/x/net v0.55.0
+	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 )
