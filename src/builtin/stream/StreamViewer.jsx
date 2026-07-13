@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { applyLowLatencyHints } from './lowLatency'
 
 // Cloud-gaming grade stream viewer — connects via WebRTC with split input channels.
 // Mouse: unreliable/unordered (latest-wins, high freq)
@@ -326,7 +327,10 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       const gpDc = pc.createDataChannel('gamepad', { ordered: false, maxRetransmits: 0 })
       gpDcRef.current = gpDc
 
-      pc.addTransceiver('video', { direction: 'recvonly' })
+      const videoTransceiver = pc.addTransceiver('video', { direction: 'recvonly' })
+      // Gaming sessions: minimise the receive-side jitter buffer so the browser
+      // doesn't add playout latency. Non-gaming keeps the default (stability).
+      applyLowLatencyHints(videoTransceiver, gaming)
 
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const ws = new WebSocket(`${proto}//${location.host}/api/stream/ws?id=${sessionId}`)
@@ -354,7 +358,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     } catch (err) {
       setError(err.message)
     }
-  }, [sessionId])
+  }, [sessionId, gaming])
 
   useEffect(() => {
     connect()
