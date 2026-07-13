@@ -73,6 +73,42 @@ func TestGamingEncoderArgs(t *testing.T) {
 	}
 }
 
+// TestGamingEncoderArgsKeyframeInterval verifies the keyframe-recovery mitigation:
+// gaming sessions use a 1-second GOP (keyframe interval == fps), down from the
+// former 2-second (fps*2) interval, to bound worst-case keyframe-recovery latency
+// after packet loss. This is bandwidth-neutral because all gaming tiers use CBR.
+// Each tier expresses the interval with a different property name.
+func TestGamingEncoderArgsKeyframeInterval(t *testing.T) {
+	cases := []struct {
+		name string
+		info Info
+		fps  int
+		want string // expected GOP token for a 1-second interval at this fps
+	}{
+		{"NVENC/60fps", Info{Tier: TierNVENC}, 60, "gop-size=60"},
+		{"NVENC/30fps", Info{Tier: TierNVENC}, 30, "gop-size=30"},
+		{"VAAPI/60fps", Info{Tier: TierVAAPI}, 60, "keyframe-period=60"},
+		{"Software/60fps", Info{Tier: TierSoftware}, 60, "keyframe-max-dist=60"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			args := c.info.GamingEncoderArgs(c.fps, 6000)
+			joined := strings.Join(args, " ")
+			if !strings.Contains(joined, c.want) {
+				t.Errorf("expected 1-second GOP token %q for fps=%d; got: %s", c.want, c.fps, joined)
+			}
+			// Guard against a regression back to the 2-second (fps*2) interval.
+			for _, twoSecond := range []string{
+				"gop-size=120", "keyframe-period=120", "keyframe-max-dist=120",
+			} {
+				if strings.Contains(joined, twoSecond) {
+					t.Errorf("gaming GOP must be a 1-second interval, not 2-second (%q); got: %s", twoSecond, joined)
+				}
+			}
+		})
+	}
+}
+
 // TestGamingEncoderArgsDefaultBitrate verifies that a zero bitrate falls back to 6000 kbps.
 func TestGamingEncoderArgsDefaultBitrate(t *testing.T) {
 	info := Info{Tier: TierNVENC}

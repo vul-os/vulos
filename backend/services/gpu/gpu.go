@@ -163,11 +163,22 @@ func (g *Info) EncoderArgs() []string {
 // gaming: zero-latency preset, no B-frames, no lookahead, high bitrate.
 // The fps and bitrate parameters let the caller pass session-specific values
 // (bitrate is in kbps for GPU tiers, converted to bps for VP8).
+//
+// Keyframe-recovery note: the ideal cloud-gaming pattern is on-demand IDR
+// (client reports loss → RTCP PLI/FIR → encoder emits a fresh keyframe). That
+// path is NOT wired here because the encoder runs in a separate gst-launch-1.0
+// subprocess fed over a UDP relay: gst-client/gstd can set properties (used for
+// live bitrate) but cannot inject a GstForceKeyUnit event, so there is no
+// external hook to force an IDR. A real on-demand-IDR path needs an in-process
+// GStreamer (cgo go-gst appsrc/appsink sending force-key-unit to the encoder
+// pad). As the safe, bounded mitigation we use a 1-second GOP for gaming (down
+// from 2s): under CBR (all gaming tiers use CBR) shorter GOPs are bandwidth-
+// neutral, and this halves the worst-case wait for a clean keyframe after loss.
 func (g *Info) GamingEncoderArgs(fps, bitrate int) []string {
 	if bitrate <= 0 {
 		bitrate = 6000
 	}
-	gopSize := fps * 2 // 2-second keyframe interval for gaming
+	gopSize := fps // 1-second keyframe interval for gaming (bounds keyframe-recovery latency under CBR)
 
 	switch g.Tier {
 	case TierNVENC:
