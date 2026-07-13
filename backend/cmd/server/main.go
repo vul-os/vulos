@@ -1027,6 +1027,21 @@ func main() {
 	if deviceKSErr != nil {
 		log.Printf("passkeys: devicekey unavailable, server-side passkeys disabled: %v", deviceKSErr)
 	} else {
+		// KEYSTORE-CUSTODY-01: a cloud-managed box (DEPLOY_MODE=os|cloud) must not
+		// silently run with filesystem-only key custody. If the selected keystore
+		// is the plaintext software fallback (no TPM), fail closed at boot — unless
+		// the operator explicitly opts out (VULOS_ALLOW_SOFTWARE_KEYSTORE=1), which
+		// the TPM-less Fly-hosted Cloud runtime uses. Standalone self-host is
+		// unaffected (software keystore is its legitimate fallback).
+		softwareKS := deviceKS.Status().Backend == devicekey.BackendSoftware
+		optOut := strings.EqualFold(strings.TrimSpace(os.Getenv(deploymode.SoftwareKeystoreEnvOptOut)), "1")
+		if deployMode.RefuseSoftwareKeystore(softwareKS, optOut) {
+			log.Fatalf("[keystore] ABORT: DEPLOY_MODE=%q requires hardware-backed device key custody (TPM) but "+
+				"the software (filesystem-only, plaintext-at-rest) keystore was selected — no TPM was found. "+
+				"Provision a TPM, or set %s=1 to explicitly accept filesystem-only key custody on this managed box.",
+				deployMode, deploymode.SoftwareKeystoreEnvOptOut)
+		}
+
 		// INTEG-SEC-01: bind the integrations token mint to THIS box's device
 		// identity key. Registration is best-effort and runs in the background —
 		// mint keeps working via the fleet-HMAC fallback until the key is pinned.

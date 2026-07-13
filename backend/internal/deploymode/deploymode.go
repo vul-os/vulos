@@ -66,6 +66,42 @@ func (m Mode) IsCloudAdjacent() bool {
 // String implements fmt.Stringer.
 func (m Mode) String() string { return string(m) }
 
+// SoftwareKeystoreEnvOptOut is the explicit operator acknowledgement that a
+// cloud-managed box may run with the plaintext software device keystore
+// (filesystem-only key custody). It exists because the multi-tenant Cloud
+// runtime (Fly VMs) has no TPM, so a blanket hard refusal would break that
+// legitimate deployment — the opt-out makes running without hardware key
+// custody a deliberate, auditable choice rather than a silent fallback.
+const SoftwareKeystoreEnvOptOut = "VULOS_ALLOW_SOFTWARE_KEYSTORE"
+
+// RefuseSoftwareKeystore reports whether this box must FAIL CLOSED at boot
+// rather than run with a plaintext software (filesystem-only) device keystore.
+//
+// A cloud-managed box (OS or Cloud — see IsCloudAdjacent) authenticates to the
+// control plane as a device and seals its enrolled device key at rest; doing
+// that with filesystem-only custody defeats the point, so hardware-backed key
+// custody (TPM) is required there. The refusal is bypassed only by the explicit
+// operator opt-out (SoftwareKeystoreEnvOptOut), which the Fly-hosted Cloud
+// runtime — legitimately TPM-less — uses.
+//
+// Standalone self-host is UNAFFECTED: the software keystore is its documented,
+// legitimate fallback.
+//
+// It is a pure decision (no env/OS reads) so it is exhaustively table-testable;
+// the caller passes the observed keystore kind and opt-out flag.
+func (m Mode) RefuseSoftwareKeystore(keystoreIsSoftware, operatorOptOut bool) bool {
+	if !m.IsCloudAdjacent() {
+		return false // standalone self-host: software keystore is fine
+	}
+	if !keystoreIsSoftware {
+		return false // TPM/hardware-backed custody: fine
+	}
+	if operatorOptOut {
+		return false // deliberate, auditable acknowledgement (e.g. cloud on Fly)
+	}
+	return true // managed + software + no opt-out => refuse to boot
+}
+
 // FromEnv reads DEPLOY_MODE once, validating it. An unset value returns
 // (Standalone, nil) — today's default behavior unchanged. An explicit but
 // unrecognised value returns (Standalone, err): the caller should log the
