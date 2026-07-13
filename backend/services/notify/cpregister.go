@@ -61,6 +61,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"vulos/backend/internal/safedial"
@@ -75,6 +76,7 @@ const cpAuthHeader = "X-Vulos-Edge-CP-Auth"
 const (
 	cpRegisterPath   = "/api/mail/push/register"
 	cpUnregisterPath = "/api/mail/push/unregister"
+	cpKeyPath        = "/api/mail/push/cp-key"
 )
 
 // CPRegistrarConfig is the cell-side managed-mode configuration for the CP push
@@ -146,6 +148,12 @@ type CPRegistrar struct {
 	cfg    CPRegistrarConfig
 	origin string // resolved CP origin (scheme://host[:port])
 	client *http.Client
+
+	// cachedKey holds the CP's public VAPID key between CPKey calls so every
+	// subscribing device does not re-fetch it from the CP.
+	keyMu      sync.Mutex
+	cachedKey  *CPKey
+	keyExpires time.Time
 }
 
 // NewCPRegistrar builds a registrar from cfg. It returns nil when cfg is not
@@ -230,6 +238,78 @@ func (r *CPRegistrar) Register(ctx context.Context, sub PushSubscription) error 
 		Auth:     sub.Auth,
 	}
 	return r.post(ctx, cpRegisterPath, body)
+}
+
+// CPKey is the CP's PUBLIC push identity, as relayed to the browser so it can
+// create the CP-keyed subscription (subscribe({applicationServerKey: Public})).
+// It mirrors the CP's GET /api/mail/push/cp-key response field-for-field. It
+// carries only PUBLIC material — the CP's private key is never exposed by the
+// CP and never reaches the cell.
+type CPKey struct {
+	Enabled bool   `json:"enabled"`
+	Public  string `json:"vapid_public,omitempty"`
+	Subject string `json:"subject,omitempty"`
+}
+
+// cpKeyTTL bounds how long a fetched CP key is reused. The key is effectively
+// static, so this is not about freshness but about not asking the CP again on
+// every device that subscribes; a rotation is picked up within the window.
+const cpKeyTTL = 10 * time.Minute
+
+// CPKey fetches (and briefly caches) the CP's public VAPID key so the box can
+// relay it to the browser. On a nil (self-host) registrar it reports
+// CPKey{Enabled:false} with no error and contacts nothing — the browser then
+// skips the CP-keyed subscription and the cell's own direct send path is used.
+//
+// The request is UNAUTHENTICATED at the CP (the public key is not a secret), so
+// no HMAC is computed here; the CP is still reached through the SSRF-screened,
+// redirect-refusing client used by the register path.
+func (r *CPRegistrar) CPKey(ctx context.Context) (CPKey, error) {
+	if !r.Enabled() {
+		return CPKey{Enabled: false}, nil
+	}
+
+	r.keyMu.Lock()
+	if r.cachedKey != nil && time.Now().Before(r.keyExpires) {
+		key := *r.cachedKey
+		r.keyMu.Unlock()
+		return key, nil
+	}
+	r.keyMu.Unlock()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.origin+cpKeyPath, nil)
+	if err != nil {
+		return CPKey{}, fmt.Errorf("cpregister: new request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return CPKey{}, fmt.Errorf("cpregister: GET %s: %w", cpKeyPath, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		return CPKey{}, fmt.Errorf("cpregister: CP %s returned status %d", cpKeyPath, resp.StatusCode)
+	}
+
+	var key CPKey
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&key); err != nil {
+		return CPKey{}, fmt.Errorf("cpregister: decode cp-key: %w", err)
+	}
+	// A CP that reports enabled with no key is not usable; do not pass a
+	// half-answer to the browser, which would subscribe with an empty key.
+	if key.Enabled && key.Public == "" {
+		return CPKey{}, fmt.Errorf("cpregister: CP reported push enabled with no public key")
+	}
+
+	r.keyMu.Lock()
+	cached := key
+	r.cachedKey = &cached
+	r.keyExpires = time.Now().Add(cpKeyTTL)
+	r.keyMu.Unlock()
+
+	return key, nil
 }
 
 // Unregister removes one endpoint for this cell's account on the CP. No-op on a

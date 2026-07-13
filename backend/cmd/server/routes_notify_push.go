@@ -9,6 +9,7 @@ package main
 //	GET    /api/notifications/push/vapid-public → { enabled, publicKey? }
 //	POST   /api/notifications/push/subscribe    → store a PushSubscription (per-owner)
 //	DELETE /api/notifications/push/subscribe     → remove one subscription by endpoint
+//	GET    /api/mail/push/cp-key                → relay of the CP's PUBLIC VAPID key
 //
 // The subscription is ALWAYS keyed on the VERIFIED caller (X-User-ID); the
 // request body carries no owner id, so a client can never register, overwrite,
@@ -139,6 +140,34 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 		// CP-KEYED subscription (POST cp-subscribe below), so the CP never receives a
 		// subscription tied to the cell's VAPID identity.
 		writeJSON(w, map[string]string{"status": "subscribed"})
+	})
+
+	// GET cp-key — RELAY of the CP's PUBLIC VAPID key (GET /api/mail/push/cp-key
+	// on the CP). The browser needs it as the applicationServerKey of the SECOND,
+	// CP-KEYED subscription it then posts to cp-subscribe below; it cannot reach
+	// the CP itself (the box is the only origin it is allowed to call), so the box
+	// relays. Only PUBLIC material crosses — the CP never exposes its private key.
+	//
+	// Self-host (no CP configured) reports enabled:false, which is exactly what
+	// the client treats as "no send-on-behalf": it skips the CP-keyed subscribe
+	// and the cell's own direct send path is used.
+	mux.HandleFunc("GET /api/mail/push/cp-key", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-User-ID") == "" {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		key, err := cpReg.CPKey(ctx)
+		if err != nil {
+			// The CP is configured but unreachable/bad. Say so rather than
+			// reporting enabled:false, which the client would read as a settled
+			// "this box has no CP" and silently stop trying.
+			log.Printf("[notify] push: CP cp-key relay failed: %v", err)
+			writeErr(w, http.StatusBadGateway, "cp key unavailable")
+			return
+		}
+		writeJSON(w, key)
 	})
 
 	// POST cp-subscribe — the browser registers a SECOND, CP-KEYED subscription
