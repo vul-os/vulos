@@ -12,10 +12,35 @@ const IP_RESOURCE_POLL_MS = 15_000
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
+// ipError turns a failed box response into the message the box actually sent,
+// so a refusal (403 admin-only, 409 owner, 404 gone) reaches the user instead of
+// a generic shrug.
+async function ipError(r, fallback) {
+  try {
+    const body = await r.json()
+    if (body && body.error) return new Error(body.error)
+  } catch { /* not JSON */ }
+  return new Error(fallback)
+}
+
+// ipFetchInstances reads the registry roster. The box serves the registry's own
+// shape — { instances: [{ ulid, kind, status, last_seen_at, role, … }] } — which
+// this maps onto the panel's view model.
 async function ipFetchInstances() {
   const r = await fetch('/api/instances')
-  if (!r.ok) throw new Error('instances fetch failed')
-  return r.json() // [{id, display_name, type, online, last_seen, cpu_pct, ram_pct}]
+  if (!r.ok) throw await ipError(r, 'instances fetch failed')
+  const body = await r.json()
+  const list = Array.isArray(body) ? body : (body?.instances || [])
+  return list.map(inst => ({
+    id: inst.ulid,
+    display_name: inst.display_name,
+    type: inst.kind === 'cloud' ? 'cloud' : 'device',
+    online: inst.status === 'online',
+    last_seen: inst.last_seen_at,
+    is_owner: inst.role === 'owner',
+    cpu_pct: inst.cpu_pct,
+    ram_pct: inst.ram_pct,
+  }))
 }
 
 async function ipFetchRoutingApps() {
@@ -30,19 +55,14 @@ async function ipRenameInstance(id, name) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ display_name: name }),
   })
-  if (!r.ok) throw new Error('rename failed')
+  if (!r.ok) throw await ipError(r, 'rename failed')
   return r.json()
 }
 
 async function ipRemoveInstance(id) {
   const r = await fetch(`/api/instances/${id}`, { method: 'DELETE' })
-  if (!r.ok) throw new Error('remove failed')
-}
-
-async function ipGenerateInvite() {
-  const r = await fetch('/api/instances/invite', { method: 'POST' })
-  if (!r.ok) throw new Error('invite failed')
-  return r.json() // {token, url}
+  if (!r.ok) throw await ipError(r, 'remove failed')
+  return r.json()
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -102,6 +122,7 @@ function ResourceMiniBar({ label, pct }) {
 function RenameModal({ instance, onSave, onCancel }) {
   const [name, setName] = useState(instance.display_name || '')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
   const inputRef = useRef(null)
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50) }, [])
@@ -109,10 +130,13 @@ function RenameModal({ instance, onSave, onCancel }) {
   const handleSave = useCallback(async () => {
     if (!name.trim() || saving) return
     setSaving(true)
+    setError(null)
     try {
       await ipRenameInstance(instance.id, name.trim())
       onSave(name.trim())
-    } catch { /* noop */ }
+    } catch (e) {
+      setError(e.message || 'Rename failed.')
+    }
     finally { setSaving(false) }
   }, [instance.id, name, saving, onSave])
 
@@ -129,6 +153,7 @@ function RenameModal({ instance, onSave, onCancel }) {
           className="w-full bg-neutral-800 border border-neutral-700/60 rounded-lg px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500/70 transition-colors"
           placeholder="Instance name"
         />
+        {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
         <div className="flex gap-2 mt-4 justify-end">
           <button
             onClick={onCancel}
@@ -153,14 +178,19 @@ function RenameModal({ instance, onSave, onCancel }) {
 
 function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
   const [removing, setRemoving] = useState(false)
+  const [error, setError] = useState(null)
 
   const handleConfirm = useCallback(async () => {
     if (removing) return
     setRemoving(true)
+    setError(null)
     try {
       await ipRemoveInstance(instance.id)
       onConfirm()
-    } catch { /* noop */ }
+    } catch (e) {
+      // The instance stays in the list: the box did not remove it.
+      setError(e.message || 'Remove failed.')
+    }
     finally { setRemoving(false) }
   }, [instance.id, removing, onConfirm])
 
@@ -172,6 +202,7 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
           Remove <span className="text-neutral-200 font-medium">{instance.display_name || truncateId(instance.id)}</span> from your account?
           This cannot be undone.
         </p>
+        {error && <p className="text-[11px] text-red-400 mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             onClick={onCancel}
@@ -187,79 +218,6 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
             {removing ? 'Removing...' : 'Remove'}
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ── InviteModal ───────────────────────────────────────────────────────────────
-
-function InviteModal({ onClose }) {
-  const [invite, setInvite] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    ipGenerateInvite()
-      .then(setInvite)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
-  const handleCopy = useCallback(() => {
-    if (!invite?.url) return
-    navigator.clipboard.writeText(invite.url).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [invite])
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 shadow-2xl">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-neutral-100">Add Existing Device</h3>
-          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300 text-lg leading-none">×</button>
-        </div>
-
-        {loading && (
-          <div className="flex items-center justify-center py-8 text-neutral-600 text-xs gap-2">
-            <span className="w-3.5 h-3.5 spinner" />
-            Generating invite...
-          </div>
-        )}
-
-        {!loading && invite && (
-          <>
-            {/* QR code placeholder — real QR would be rendered by backend */}
-            <div className="flex items-center justify-center mb-3">
-              <div className="w-32 h-32 bg-neutral-800 rounded-xl flex items-center justify-center text-neutral-600 text-xs border border-neutral-700/40">
-                {invite.qr_svg
-                  ? <div dangerouslySetInnerHTML={{ __html: invite.qr_svg }} />
-                  : <span className="text-center px-2">QR code<br />provisioning...</span>
-                }
-              </div>
-            </div>
-            <p className="text-[10px] text-neutral-500 text-center mb-3">
-              Scan with another Vulos device, or copy the link below.
-            </p>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-mono text-neutral-400 flex-1 truncate bg-neutral-800 rounded-lg px-2 py-1.5">
-                {invite.url || invite.token}
-              </span>
-              <button
-                onClick={handleCopy}
-                className="shrink-0 text-[10px] px-2 py-1.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 transition-colors"
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-            <p className="text-[10px] text-neutral-600 mt-2 text-center">Link expires in 10 minutes.</p>
-          </>
-        )}
-
-        {!loading && !invite && (
-          <p className="text-xs text-red-400 text-center py-4">Could not generate invite. Try again.</p>
-        )}
       </div>
     </div>
   )
@@ -348,7 +306,8 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
         </div>
       )}
 
-      {/* Actions */}
+      {/* Actions — the owner instance is this box: it cannot remove itself from
+          its own fleet (the box refuses with a 409), so it is not offered. */}
       <div className="px-3 pb-3 flex gap-2">
         <button
           onClick={onRename}
@@ -356,12 +315,14 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
         >
           Rename
         </button>
-        <button
-          onClick={onRemove}
-          className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-red-900/40 text-neutral-500 hover:text-red-400 transition-colors"
-        >
-          Remove
-        </button>
+        {!instance.is_owner && (
+          <button
+            onClick={onRemove}
+            className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-red-900/40 text-neutral-500 hover:text-red-400 transition-colors"
+          >
+            Remove
+          </button>
+        )}
       </div>
     </div>
   )
@@ -375,7 +336,6 @@ export default function InstancesPanel() {
   const [error, setError] = useState(null)
   const [renaming, setRenaming] = useState(null)   // instance object
   const [removing, setRemoving] = useState(null)   // instance object
-  const [showInvite, setShowInvite] = useState(false)
   const pollRef = useRef(null)
 
   const loadData = useCallback(async () => {
@@ -429,22 +389,13 @@ export default function InstancesPanel() {
           onCancel={() => setRemoving(null)}
         />
       )}
-      {showInvite && <InviteModal onClose={() => setShowInvite(false)} />}
 
       {/* Section header */}
-      <div className="px-5 pt-5 pb-3 border-b border-neutral-800/50 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-neutral-100">Instances</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            All devices and cloud nodes in your account. Updates every 10 s.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/50 transition-colors"
-        >
-          + Add device
-        </button>
+      <div className="px-5 pt-5 pb-3 border-b border-neutral-800/50">
+        <h2 className="text-base font-semibold text-neutral-100">Instances</h2>
+        <p className="text-xs text-neutral-500 mt-0.5">
+          All devices and cloud nodes in your account. Updates every 10 s.
+        </p>
       </div>
 
       {/* Body */}
@@ -510,7 +461,8 @@ export default function InstancesPanel() {
             <div className="text-3xl mb-3 opacity-30">◎</div>
             <p className="text-sm text-neutral-500">No instances found.</p>
             <p className="text-xs text-neutral-600 mt-1">
-              Add a device using the button above to link it to your account.
+              A new device joins this account from its own setup wizard — choose
+              “Join an existing system” there, and it appears here.
             </p>
           </div>
         )}

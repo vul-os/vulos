@@ -12,6 +12,7 @@ package multiinstance
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -229,6 +230,94 @@ func (r *Registry) List() ([]Instance, error) {
 		out = append(out, inst)
 	}
 	return out, rows.Err()
+}
+
+// ErrNotFound is returned by Rename and Delete when the ULID is not in the
+// registry. Callers map it to a 404 — a rename/remove that silently no-ops on
+// an unknown instance would report success for work that never happened.
+var ErrNotFound = errors.New("multiinstance: instance not found")
+
+// ErrIsOwner is returned by Delete for the account's own (role=owner) instance.
+// The registry describes the fleet FROM this box; removing the box from its own
+// fleet would leave a registry with no local identity to route or sync from.
+var ErrIsOwner = errors.New("multiinstance: cannot remove the owner instance")
+
+// MaxDisplayNameLen bounds a Rename. Names are shown in the dashboard, not used
+// as identifiers, so a modest bound is enough to keep the UI (and the registry)
+// from carrying an unbounded blob.
+const MaxDisplayNameLen = 64
+
+// Rename sets the display name of one instance and returns the updated row.
+// The name is trimmed and validated (non-empty, bounded, no control characters).
+// An unknown ULID yields ErrNotFound.
+func (r *Registry) Rename(ulid, displayName string) (Instance, error) {
+	name := strings.TrimSpace(displayName)
+	if name == "" {
+		return Instance{}, fmt.Errorf("multiinstance: Rename: display name must not be empty")
+	}
+	if len([]rune(name)) > MaxDisplayNameLen {
+		return Instance{}, fmt.Errorf("multiinstance: Rename: display name longer than %d characters", MaxDisplayNameLen)
+	}
+	if strings.ContainsFunc(name, func(c rune) bool { return c < 0x20 || c == 0x7f }) {
+		return Instance{}, fmt.Errorf("multiinstance: Rename: display name must not contain control characters")
+	}
+
+	r.mu.Lock()
+	res, err := r.db.Exec(`UPDATE instances SET display_name = ? WHERE ulid = ?`, name, ulid)
+	r.mu.Unlock()
+	if err != nil {
+		return Instance{}, fmt.Errorf("multiinstance: Rename %s: %w", ulid, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return Instance{}, ErrNotFound
+	}
+
+	inst, ok := r.Get(ulid)
+	if !ok {
+		return Instance{}, ErrNotFound
+	}
+	return inst, nil
+}
+
+// Delete removes one instance from the fleet: the registry row plus the app
+// inventory replicated for it (app_registry), so the removed instance stops
+// appearing in the roster, in /api/instances/{ulid}/apps, and in the routing
+// table. Both writes happen in one transaction — a half-removed instance would
+// keep routing traffic to a box the user believes is gone.
+//
+// It refuses the owner instance (ErrIsOwner) and an unknown ULID (ErrNotFound).
+func (r *Registry) Delete(ulid string) error {
+	inst, ok := r.Get(ulid)
+	if !ok {
+		return ErrNotFound
+	}
+	if inst.Role == RoleOwner {
+		return ErrIsOwner
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("multiinstance: Delete %s: begin: %w", ulid, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM app_registry WHERE instance_ulid = ?`, ulid); err != nil {
+		return fmt.Errorf("multiinstance: Delete %s: app_registry: %w", ulid, err)
+	}
+	res, err := tx.Exec(`DELETE FROM instances WHERE ulid = ?`, ulid)
+	if err != nil {
+		return fmt.Errorf("multiinstance: Delete %s: instances: %w", ulid, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("multiinstance: Delete %s: commit: %w", ulid, err)
+	}
+	return nil
 }
 
 // MarkSeen updates the status to online and records the current time as
