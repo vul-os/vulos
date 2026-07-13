@@ -46,6 +46,35 @@ The manifest also supports `integrations` (which cloud-provider credentials the 
 
 ---
 
+## Two browsers, and streamed native apps
+
+Vulos ships **two user-selectable browsers** as separate launcher tiles, so you
+can choose per task:
+
+- **Smart Browser** — a client-side web app (`apps/browser/`) that opens in your
+  host browser. No server-side session, no stream — the light option.
+- **Streaming Chrome** — a **real Chromium running on the box**, streamed to the
+  shell over WebRTC with a **persistent per-user profile** (cookies, history,
+  logins). Launched on demand via `POST /api/browser/launch`, which mints a
+  per-user streaming session (`backend/services/webbrowser/`).
+
+Streaming Chrome is one case of Vulos's general **native-app streaming**: any
+Linux GUI app can render into a shell window over WebRTC (Xvfb → GStreamer
+HW-encode → WebRTC), with the stream torn down when you close the window. Three
+tunings share that pipeline:
+
+| Mode | When | Behaviour |
+|------|------|-----------|
+| Native app window | Ordinary GUI apps (Audacity, KiCad, …) | Dirty-region capture, idle-throttled — optimised for a still desktop |
+| Gaming | Auto-detected for real games only (Wine/Lutris/Steam, or a `category: gaming` manifest) | Full-frame capture, low-latency encoder profile (no B-frames, CBR, 1s GOP), minimal client jitter buffer, pointer-lock |
+| Streaming Chrome | The browser tile above | Per-user persistent Chromium profile on the same pool |
+
+Real frame-rate, latency, and GPU behaviour depend on the deployment (hardware,
+encoder availability, network path); Streaming Chrome and gaming mode also
+require the Chromium + Xvfb/GStreamer streaming stack to be present on the box.
+
+---
+
 ## Installing apps from the App Hub
 
 The **App Hub** app in the shell is the store front. It lists a curated registry of installable self-hosted apps (Navidrome, Gitea, Jellyfin, Grafana, Jupyter, draw.io, Cinny, Cockpit, Firefox via Flatpak, and others), shows what's installed, and installs or removes with one click and a progress bar.
