@@ -31,6 +31,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -135,6 +136,43 @@ func ensureBrokerPubkey(ctx context.Context, fetch func(context.Context) (ed2551
 	default:
 		return nil, err
 	}
+}
+
+// PinBrokerPubkeyAtEnrollment pins the cloud login-broker pubkey to disk at
+// owner-approved ENROLLMENT time, closing the first-login TOFU window: by the
+// time login #1 runs, ensureBrokerPubkey finds a pinned key and takes the
+// mismatch-checked (fail-closed) branch instead of trust-on-first-use.
+//
+// Enrollment is the strictly-better trust anchor (the account owner has just
+// approved this device in-browser against their cloud account), so pinning the
+// broker key at that same moment is stronger than pinning it lazily on the
+// first login. `fetch` is an UNAUTHENTICATED read of the CP's active broker
+// pubkey (GET /api/profile/broker/pubkey), reachable during enrollment.
+//
+// Behaviour deliberately mirrors ensureBrokerPubkey's env handling: an INLINE
+// VULOS_CLOUD_BROKER_PUBKEY override wins and there is nothing to pin (disk is
+// ignored by LoadBrokerPubkey), so this is a no-op in that case. Otherwise the
+// fetched key is written via the SAME WriteBrokerPubkey path ensureBrokerPubkey
+// uses. Returning an error is NON-FATAL to enrollment — the caller logs loudly
+// and falls back to today's first-login TOFU.
+func PinBrokerPubkeyAtEnrollment(ctx context.Context, fetch func(context.Context) (ed25519.PublicKey, error)) error {
+	if env := strings.TrimSpace(os.Getenv("VULOS_CLOUD_BROKER_PUBKEY")); env != "" {
+		looksLikePath := env[0] == '/' || env[0] == '.'
+		if !looksLikePath {
+			// Inline env override wins; LoadBrokerPubkey never reads disk. Nothing
+			// to pin — leaving the override authoritative, not weakening it.
+			return nil
+		}
+		// env is a PATH: it is the pin-file location; fall through and write it.
+	}
+	served, err := fetch(ctx)
+	if err != nil {
+		return fmt.Errorf("cloudlogin: fetch broker pubkey at enrollment: %w", err)
+	}
+	if err := WriteBrokerPubkey(served); err != nil {
+		return fmt.Errorf("cloudlogin: pin broker pubkey at enrollment: %w", err)
+	}
+	return nil
 }
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────

@@ -1075,6 +1075,18 @@ func main() {
 			if err := auth.WriteEnrollmentFlag(); err != nil {
 				log.Printf("[cloudenroll] enrollment flag: %v", err)
 			}
+			// UNIFIED-SIGNIN: pin the cloud login-broker pubkey NOW (owner-approved
+			// enrollment is a strictly better trust anchor than first-login TOFU),
+			// so the very first /api/auth/cloud/login takes ensureBrokerPubkey's
+			// mismatch-checked (fail-closed) branch instead of trust-on-first-use.
+			// Non-fatal: a failure here just leaves today's first-login TOFU intact.
+			pinCtx, pinCancel := context.WithTimeout(context.Background(), 20*time.Second)
+			if err := auth.PinBrokerPubkeyAtEnrollment(pinCtx, enroller.FetchBrokerPubkey); err != nil {
+				log.Printf("[cloudenroll] broker pubkey pin at enrollment failed (%v) — will TOFU on first login", err)
+			} else {
+				log.Printf("[cloudenroll] broker pubkey pinned at enrollment (first-login TOFU window closed)")
+			}
+			pinCancel()
 			log.Printf("[cloudenroll] device enrolled (ulid=%s) — cert wired for integrations + identity claim", ident.ULID)
 		})
 		authHandler.CloudEnroll = cloudEnrollAdapter{m: enrollMgr}

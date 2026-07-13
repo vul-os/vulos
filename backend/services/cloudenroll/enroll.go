@@ -324,6 +324,43 @@ func (e *Enroller) persist(priv ed25519.PrivateKey, pub ed25519.PublicKey, res *
 	return &Identity{ULID: res.ULID, Account: res.AccountID, Pub: pub, Cert: res.DeviceCert, priv: priv}, nil
 }
 
+// FetchBrokerPubkey reads the CP's active login-broker Ed25519 public key from
+// the UNAUTHENTICATED GET /api/profile/broker/pubkey endpoint (documented as
+// public: devices need it before they hold any session). It is used to pin the
+// broker pubkey at owner-approved enrollment time, closing the first-login TOFU
+// window (UNIFIED-SIGNIN). Uses the enroller's already-resolved CP base URL and
+// HTTP client, so it targets the same control plane the grant ran against.
+func (e *Enroller) FetchBrokerPubkey(ctx context.Context) (ed25519.PublicKey, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.baseURL+"/api/profile/broker/pubkey", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := e.hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cloudenroll: broker pubkey status %d", resp.StatusCode)
+	}
+	var out struct {
+		Active struct {
+			PublicKey string `json:"public_key"`
+		} `json:"active"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("cloudenroll: decode broker pubkey: %w", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(out.Active.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("cloudenroll: decode broker pubkey base64: %w", err)
+	}
+	if len(raw) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("cloudenroll: broker pubkey must be %d bytes, got %d", ed25519.PublicKeySize, len(raw))
+	}
+	return ed25519.PublicKey(raw), nil
+}
+
 func (e *Enroller) post(ctx context.Context, path string, body []byte) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+path, bytes.NewReader(body))
 	if err != nil {
