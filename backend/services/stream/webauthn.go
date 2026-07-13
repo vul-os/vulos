@@ -38,6 +38,18 @@ func (A13_stubVerifier) Verify(_ string, _ []byte) error {
 	return errors.New("webauthn: no verifier configured — enroll a passkey first")
 }
 
+var (
+	// ErrNoGate reports that the session carries no input-injection gate, so
+	// there is nothing for an assertion to lift.  RequireAssertion returns it
+	// instead of nil: no assertion was verified, and callers must not report
+	// one as if it had been.
+	ErrNoGate = errors.New("webauthn: session has no input-injection gate")
+
+	// ErrNotSessionOwner reports that the caller does not own the session whose
+	// gate they are trying to lift.
+	ErrNotSessionOwner = errors.New("webauthn: caller does not own this session")
+)
+
 // saWebauthn_gateState tracks per-session WebAuthn gate state.
 // It lives in a package-level sidecar map keyed by session ID so that
 // stream.go's Session struct only gains the single `inputGated bool` field
@@ -89,12 +101,22 @@ func saWebauthn_isVerified(sessID string) bool {
 // round-trip end to end. It is test-support only — production sessions are
 // created via Launch.
 func (p *Pool) RegisterGatedSessionForTest(sessID, userID string) *Session {
-	sess := &Session{ID: sessID, OwnerID: userID}
+	sess := p.RegisterSessionForTest(sessID, userID)
+	sess.mu.Lock()
 	sess.inputGated = true
+	sess.mu.Unlock()
+	saWebauthn_register(sessID, userID)
+	return sess
+}
+
+// RegisterSessionForTest installs a bare session with NO AUTH-13 gate — the
+// shape a session without an input injector has. Test-support only, so package
+// main can exercise the no-gate branch of the assert endpoint.
+func (p *Pool) RegisterSessionForTest(sessID, userID string) *Session {
+	sess := &Session{ID: sessID, OwnerID: userID}
 	p.mu.Lock()
 	p.sessions[sessID] = sess
 	p.mu.Unlock()
-	saWebauthn_register(sessID, userID)
 	return sess
 }
 
@@ -106,16 +128,26 @@ func (s *Session) IsInputGatedForTest() bool {
 	return s.inputGated
 }
 
-// RequireAssertion verifies a WebAuthn assertion for sess and, on success,
-// flips sess.inputGated = false (lifting the input injection gate).
+// RequireAssertion verifies a WebAuthn assertion from callerID for sess and, on
+// success, flips sess.inputGated = false (lifting the input injection gate).
 //
-// It is called by the POST /api/stream/webauthn-assert handler.
-func RequireAssertion(sess *Session, assertion []byte, verifier A13_WebAuthnVerifier) error {
+// It is called by the POST /api/stream/webauthn-assert handler.  A nil return
+// means one thing only: a passkey belonging to callerID was verified against
+// this session's gate.  Every other outcome is an error — in particular a
+// session with no gate yields ErrNoGate rather than a success no assertion
+// earned, and a caller who is not the gate's owner yields ErrNotSessionOwner.
+func RequireAssertion(sess *Session, callerID string, assertion []byte, verifier A13_WebAuthnVerifier) error {
 	if sess == nil {
 		return errors.New("webauthn: nil session")
 	}
+	if callerID == "" {
+		return ErrNotSessionOwner
+	}
 	if len(assertion) == 0 {
 		return errors.New("webauthn: assertion is empty")
+	}
+	if sess.OwnerID != "" && sess.OwnerID != callerID {
+		return ErrNotSessionOwner
 	}
 
 	saWebauthn_mu.Lock()
@@ -123,14 +155,17 @@ func RequireAssertion(sess *Session, assertion []byte, verifier A13_WebAuthnVeri
 	saWebauthn_mu.Unlock()
 
 	if !ok {
-		// Session has no injector — gate not applicable. Treat as success so the
-		// caller can still respond 200 without confusing the client.
-		return nil
+		return ErrNoGate
 	}
 
 	g.mu.Lock()
 	userID := g.userID
 	g.mu.Unlock()
+
+	// The gate names the user whose passkey can lift it; nobody else may try.
+	if userID != callerID {
+		return ErrNotSessionOwner
+	}
 
 	if verifier == nil {
 		verifier = A13_stubVerifier{}

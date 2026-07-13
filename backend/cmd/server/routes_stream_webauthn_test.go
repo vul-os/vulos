@@ -262,3 +262,92 @@ func TestStreamWebAuthn_AssertUnknownSession(t *testing.T) {
 		t.Fatalf("assert unknown session: got %d want 404", rec.Code)
 	}
 }
+
+// TestStreamWebAuthn_AssertUngatedSessionIsNotOK pins the honesty contract of the
+// endpoint: a session with no input-injection gate verified no passkey, so the
+// endpoint must NOT answer 200 {"status":"ok"} — which is what it used to do,
+// because RequireAssertion returned nil for the no-gate case.
+func TestStreamWebAuthn_AssertUngatedSessionIsNotOK(t *testing.T) {
+	mux, pool, svc := newStreamWATestMux(t)
+	userID := "sw-ungated"
+	enrollStreamUser(t, svc, userID)
+	pool.RegisterSessionForTest("sess-ungated", userID)
+
+	// Garbage assertion, real assertion — it does not matter: nothing is gated,
+	// so nothing can be verified and the answer can never be "ok".
+	rec := streamPost(t, mux, "/api/stream/webauthn-assert?id=sess-ungated", userID,
+		[]byte(`{"session_data":"x","assertion_response":{}}`))
+	if rec.Code == 200 {
+		t.Fatalf("AUTH-13 REGRESSION: ungated session reported a verified assertion: %s", rec.Body)
+	}
+	if rec.Code != 409 {
+		t.Fatalf("ungated assert: got %d want 409 body=%s", rec.Code, rec.Body)
+	}
+	var body map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &body)
+	if _, isOK := body["status"]; isOK {
+		t.Fatalf(`ungated assert must not report a status; got %s`, rec.Body)
+	}
+	if body["error"] == "" {
+		t.Fatalf("ungated assert: expected an error message, got %s", rec.Body)
+	}
+}
+
+// TestStreamWebAuthn_AssertRequiresSessionOwnership pins that the assert endpoint
+// checks who owns the session: another user — even one holding a perfectly valid
+// passkey of their own — cannot address, or lift, someone else's gate.
+func TestStreamWebAuthn_AssertRequiresSessionOwnership(t *testing.T) {
+	mux, pool, svc := newStreamWATestMux(t)
+	owner, mallory := "sw-alice", "sw-mallory"
+	enrollStreamUser(t, svc, owner)
+	mva := enrollStreamUser(t, svc, mallory)
+	sess := pool.RegisterGatedSessionForTest("sess-alice", owner)
+
+	// Mallory begins an assertion against her OWN session so she holds a valid,
+	// freshly-signed envelope, then aims it at Alice's gated session.
+	pool.RegisterGatedSessionForTest("sess-mallory", mallory)
+	rec := streamPost(t, mux, "/api/stream/webauthn-begin?id=sess-mallory", mallory, nil)
+	if rec.Code != 200 {
+		t.Fatalf("mallory begin: got %d body=%s", rec.Code, rec.Body)
+	}
+	var begin struct {
+		Challenge   json.RawMessage `json:"challenge"`
+		SessionData string          `json:"session_data"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &begin)
+	mva.signCount++
+	body, _ := json.Marshal(map[string]any{
+		"session_data":       begin.SessionData,
+		"assertion_response": mva.assertion(t, pkAssertOpts{challenge: pkChallengeFrom(t, begin.Challenge)}),
+	})
+
+	rec = streamPost(t, mux, "/api/stream/webauthn-assert?id=sess-alice", mallory, body)
+	if rec.Code != 404 {
+		t.Fatalf("cross-user assert: got %d want 404 body=%s", rec.Code, rec.Body)
+	}
+	if !sess.IsInputGatedForTest() {
+		t.Fatal("AUTH-13 REGRESSION: another user's assertion lifted the owner's input gate")
+	}
+
+	// Same for the JSON-body variant, which resolves the session from the body.
+	jsonBody, _ := json.Marshal(map[string]string{
+		"id":        "sess-alice",
+		"assertion": base64.RawURLEncoding.EncodeToString(body),
+	})
+	rec = streamPost(t, mux, "/api/stream/webauthn-assert", mallory, jsonBody)
+	if rec.Code != 404 {
+		t.Fatalf("cross-user assert (json body): got %d want 404 body=%s", rec.Code, rec.Body)
+	}
+	if !sess.IsInputGatedForTest() {
+		t.Fatal("AUTH-13 REGRESSION: json-body cross-user assertion lifted the owner's input gate")
+	}
+
+	// And an unauthenticated caller cannot even reach the gate.
+	rec = streamPost(t, mux, "/api/stream/webauthn-assert?id=sess-alice", "", body)
+	if rec.Code != 401 {
+		t.Fatalf("anonymous assert: got %d want 401 body=%s", rec.Code, rec.Body)
+	}
+	if !sess.IsInputGatedForTest() {
+		t.Fatal("AUTH-13 REGRESSION: anonymous assertion lifted the input gate")
+	}
+}

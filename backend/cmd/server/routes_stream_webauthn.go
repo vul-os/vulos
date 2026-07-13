@@ -11,12 +11,17 @@
 //     {"session_data":"<from step 2>","assertion_response":{...WebAuthn response...}}
 //  5. On success the input gate is lifted and the response is {"status":"ok"}.
 //
-// On failure the gate remains active and the response is 403 {"error":"..."}.
+// 200 {"status":"ok"} means exactly one thing: the caller's passkey was verified
+// against this session's gate, and the gate is now down. Anything else is an
+// error — 401 when the caller is unauthenticated, 404 when the session does not
+// exist or is not theirs, 409 when the session has no gate to lift (nothing was
+// verified), 403 when the assertion itself is rejected and the gate holds.
 package main
 
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -45,15 +50,14 @@ func registerStreamWebAuthnRoutes(mux *http.ServeMux, pool *stream.Pool, authSto
 			return
 		}
 
-		sess := pool.Get(sessionID)
-		if sess == nil {
-			writeErr(w, 404, "session not found")
-			return
-		}
-
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			writeErr(w, 401, "not authenticated")
+			return
+		}
+
+		if sess := pool.GetForUser(sessionID, userID); sess == nil {
+			writeErr(w, 404, "session not found")
 			return
 		}
 
@@ -74,6 +78,12 @@ func registerStreamWebAuthnRoutes(mux *http.ServeMux, pool *stream.Pool, authSto
 	mux.HandleFunc("POST /api/stream/webauthn-assert", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			writeErr(w, 401, "not authenticated")
+			return
+		}
+
 		// Resolve session from query param ?id=<session-id>
 		sessionID := r.URL.Query().Get("id")
 		if sessionID == "" {
@@ -84,7 +94,7 @@ func registerStreamWebAuthnRoutes(mux *http.ServeMux, pool *stream.Pool, authSto
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.ID != "" {
 				sessionID = body.ID
-				handleAssertionJSON(w, pool, sessionID, body.Assertion)
+				handleAssertionJSON(w, pool, sessionID, userID, body.Assertion)
 				return
 			}
 			writeErr(w, 400, "id parameter required")
@@ -98,13 +108,13 @@ func registerStreamWebAuthnRoutes(mux *http.ServeMux, pool *stream.Pool, authSto
 			return
 		}
 
-		handleAssertionBytes(w, pool, sessionID, assertionBytes)
+		handleAssertionBytes(w, pool, sessionID, userID, assertionBytes)
 	})
 }
 
 // handleAssertionJSON handles the JSON body variant where the assertion is
 // base64url-encoded inside a JSON envelope.
-func handleAssertionJSON(w http.ResponseWriter, pool *stream.Pool, sessionID, assertionB64 string) {
+func handleAssertionJSON(w http.ResponseWriter, pool *stream.Pool, sessionID, userID, assertionB64 string) {
 	var assertionBytes []byte
 	var err error
 	if assertionB64 != "" {
@@ -118,24 +128,31 @@ func handleAssertionJSON(w http.ResponseWriter, pool *stream.Pool, sessionID, as
 			}
 		}
 	}
-	handleAssertionBytes(w, pool, sessionID, assertionBytes)
+	handleAssertionBytes(w, pool, sessionID, userID, assertionBytes)
 }
 
 // handleAssertionBytes calls RequireAssertion and writes the HTTP response.
-func handleAssertionBytes(w http.ResponseWriter, pool *stream.Pool, sessionID string, assertion []byte) {
-	sess := pool.Get(sessionID)
+// The session is resolved through GetForUser, so a session the caller does not
+// own is indistinguishable from one that does not exist.
+func handleAssertionBytes(w http.ResponseWriter, pool *stream.Pool, sessionID, userID string, assertion []byte) {
+	sess := pool.GetForUser(sessionID, userID)
 	if sess == nil {
 		writeErr(w, 404, "session not found")
 		return
 	}
 
 	verifier := pool.WebAuthnVerifier()
-	if err := stream.RequireAssertion(sess, assertion, verifier); err != nil {
+	switch err := stream.RequireAssertion(sess, userID, assertion, verifier); {
+	case err == nil:
+		writeJSON(w, map[string]string{"status": "ok"})
+	case errors.Is(err, stream.ErrNoGate):
+		// Nothing was verified, so we must not answer "ok".
+		writeErr(w, 409, "session has no input-injection gate; no assertion required")
+	case errors.Is(err, stream.ErrNotSessionOwner):
+		writeErr(w, 404, "session not found")
+	default:
 		writeErr(w, 403, err.Error())
-		return
 	}
-
-	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 // sawaJSONString JSON-encodes b as a JSON string for the session_data field.
