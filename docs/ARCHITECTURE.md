@@ -94,11 +94,37 @@ flowchart TD
 
 ---
 
-## Browser architecture (BROWSER-01/02)
+## Browser architecture (BROWSER-03)
 
-Browsing is **host-browser-native**: `POST /api/open` returns a `{"action":"open_in_host_browser","url":"..."}` instruction. The frontend shell opens the URL in the kiosk Chromium (bare-metal) or the user's desktop browser (remote). No server-side Chromium session is created.
+Vulos ships **two user-selectable browsers**, side by side in the launcher, so
+you can pick per task (both are registered in `src/core/AppRegistry.js`):
 
-The `services/webbrowser` package (server-side Chromium streaming) was removed in decision BROWSER-02. The `xvfb`, `chromium`, and `xdotool` streaming-only packages are no longer installed. The kiosk Chromium and its enterprise-policy files (`/etc/chromium/policies/managed/vulos.json`) remain intact — the kiosk Chromium *is* the host browser on bare metal.
+1. **Smart Browser** (`id: browser`) — the client-side web app under
+   `apps/browser/`. It opens in the host browser as an in-shell web-app lane
+   entry and creates **no** server-side session. This is the light,
+   zero-stream option; `POST /api/open` returns a
+   `{"action":"open_in_host_browser","url":"..."}` instruction so the shell can
+   also hand a URL off to the host/kiosk Chromium.
+2. **Streaming Chrome** (`id: browser-stream`) — a **real Chromium instance
+   running on the box**, streamed to the shell over WebRTC (Xvfb → GStreamer
+   HW-encode → pion), with a **persistent per-user profile**
+   (cookies/history/logins) derived from the authenticated user id. It is
+   launched on demand via `POST /api/browser/launch`, which mints a per-user
+   `stream.Session` rendered by `StreamViewer`.
+
+The `services/webbrowser` package (server-side Chromium streaming) was removed
+in the old decision BROWSER-02 and has since been **restored** (BROWSER-03,
+`backend/services/webbrowser/chrome.go`). Unlike the original boot-time single
+persistent session, it is now an **on-demand, per-user** launcher over the
+shared `stream.Pool`: it owns a virtual PulseAudio sound card for audio capture,
+manages tabs over the Chrome DevTools Protocol, and isolates each user's profile
+directory under their own home. The kiosk Chromium and its enterprise-policy
+files (`/etc/chromium/policies/managed/vulos.json`) remain the host browser on
+bare metal, independent of either launcher app.
+
+> Whether Streaming Chrome is usable in a given deployment depends on the box
+> having Chromium plus the Xvfb/GStreamer streaming stack installed and a GPU
+> or software-encode path available; see the [Streaming pipeline](#streaming-pipeline).
 
 Isolated/Disposable Browsing (RBI) is not implemented; the stub and its flag (`VULOS_ENABLE_ISOLATED_BROWSER`) have been removed.
 
@@ -170,12 +196,41 @@ flowchart TD
     D --> E["Browser MediaStream"]
 ```
 
-Stream pool (`backend/services/stream/pool.go`) manages the lifecycle: one stream per open native app window, ref-counted. When the last viewer closes the browser window the stream is torn down and the virtual display released.
+Stream pool (`backend/services/stream/pool.go`) manages the lifecycle: one stream per open native app window, ref-counted. When the last viewer closes the browser window the stream is torn down and the virtual display released. The same pool backs all three streaming surfaces below.
 
 GPU tier auto-detection (`backend/services/gpu/gpu.go`):
 1. NVIDIA (NVENC) — `nvidia-smi` + GStreamer `nvh264enc`/`nvav1enc`
 2. Intel/AMD (VA-API) — `/dev/dri` + `vainfo` + GStreamer `vaapih264enc`
 3. Software (VP8) — always available fallback
+
+### Three streaming modes
+
+All three ride the same pool + GPU encoder seam, but with different tunings:
+
+1. **Native app-window streaming** (default). Ordinary Linux GUI apps
+   (Audacity, KiCad, legacy X11 apps). `gpu.CaptureArgs` uses
+   **dirty-region capture** (`use-damage=true`), so a static window produces
+   near-zero frames, and idle streams are throttled — optimised for a
+   still desktop, not motion.
+2. **Gaming mode** (`opts.Gaming`). Auto-engaged **only for real games** —
+   the launch handler classifies the command via `wine.IsGamingCommand`
+   (wine/wine64/lutris/steam/steam-runtime) or an app manifest whose
+   `category == "gaming"` (`backend/cmd/server/gaming_detect.go`); plain
+   GPU-accelerated apps like Blender do **not** trip it. Gaming switches to
+   full-frame capture (`use-damage=false`), a low-latency encoder profile
+   (`GamingEncoderArgs`: `zerolatency`/`preset=low-latency-hp`, no B-frames,
+   no lookahead, CBR, a 1-second GOP to bound keyframe-recovery latency), and
+   a minimal receive-side jitter buffer on the client
+   (`RTCRtpReceiver.playoutDelayHint = 0`, Chromium only —
+   `src/builtin/stream/lowLatency.js`). The resolved `gaming` flag is echoed
+   back to `StreamViewer` so gaming input behaviour (pointer-lock) activates.
+3. **Streaming Chrome** (`services/webbrowser`). A per-user persistent-profile
+   Chromium session on the pool, launched via `POST /api/browser/launch` — see
+   [Browser architecture](#browser-architecture-browser-03).
+
+Actual frame-rate, latency, and GPU behaviour are **deployment-dependent**
+(hardware, encoder availability, network path) and are not fixed guarantees;
+the numbers above describe encoder *configuration*, not measured performance.
 
 ---
 
