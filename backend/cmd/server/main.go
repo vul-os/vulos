@@ -3665,6 +3665,11 @@ func main() {
 	mux.HandleFunc("/workspace", workspaceFrontDoor)
 	mux.HandleFunc("/workspace/", workspaceFrontDoor)
 
+	// Terminal /api/ handler — a real JSON 404/405 for anything the API routes
+	// above did not claim. Registered BEFORE the SPA catch-all so an unmatched
+	// API call can never be answered with index.html (200 text/html).
+	registerAPIFallbackRoutes(mux)
+
 	// Serve frontend static files (production build)
 	webrootDir := ""
 	for _, dir := range []string{"/opt/vulos/webroot", "./dist", "../dist", "../../dist"} {
