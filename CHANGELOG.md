@@ -13,6 +13,48 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Streaming Chrome, restored.** A real Chromium instance running on the box,
+  streamed to the shell over WebRTC with a **persistent per-user profile**
+  (cookies/history/logins), launched on demand via `POST /api/browser/launch`
+  (`backend/services/webbrowser/`). It ships **alongside** the client-side
+  "Smart Browser" as a second, user-selectable launcher tile — pick per task.
+- **Gaming mode for streamed apps.** Streaming now engages a low-latency gaming
+  profile automatically, but **only for real games** — the launcher classifies
+  the command (Wine / Lutris / Steam / steam-runtime) or an app manifest with
+  `category: gaming` (`backend/cmd/server/gaming_detect.go`). Gaming uses
+  full-frame capture, a zero-latency encoder profile (no B-frames/lookahead,
+  CBR, 1-second GOP), and a minimal client-side jitter buffer (Chromium
+  `playoutDelayHint = 0`). Ordinary desktop/GPU apps (e.g. Blender) keep the
+  dirty-region, idle-throttled profile. Real latency/GPU behaviour is
+  deployment-dependent.
+- **Real instance rename/remove.** Multi-instance management endpoints make
+  device rename and removal actually work (`routes_instances_manage.go`),
+  replacing an invite flow that could not complete.
+- **Live per-app resource usage.** The dashboard's per-app CPU/RAM figures are
+  now served from live cgroup data (`internal/cgroups/governor_http.go`).
+
+### Changed
+
+- **Setup wizard trimmed.** Dropped the post-signup wizard whose steps hit
+  CP-only routes that a self-hosted box cannot serve.
+
+### Security
+
+- **Cloud broker pubkey pinned at enrollment.** The cloud login-broker public
+  key is now pinned when the box enrolls, instead of trust-on-first-use at first
+  login (`services/cloudenroll/`).
+- **Software keystore refused in cloud-managed mode.** A plaintext software
+  keystore is rejected on cloud-managed boxes; those deployments must use a
+  hardware-backed keystore (`internal/deploymode/`).
+- **Per-user app-filesystem scoping.** The app filesystem sandbox is scoped
+  per-user, not just per-app (`services/appfs/`), and storage presign/delete
+  bind the `app_id` to the calling app's own secret (`services/gateway/`).
+- **Instance-management authorization** enforced on rename/remove endpoints.
+- **Honest stream auth reporting.** Stopped reporting passkey assertions that
+  never actually happened in the stream WebAuthn gate.
+
 ## [1.1.0] - 2026-07-07
 
 The **sovereign assistant** release. Vulos gains an on-box AI agent that is
