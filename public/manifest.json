@@ -1,7 +1,7 @@
 {
-  "name": "Vula OS",
-  "short_name": "Vula",
-  "description": "A web-first operating system built on Debian Linux",
+  "name": "Vulos",
+  "short_name": "Vulos",
+  "description": "A self-hostable, web-native operating system with a browser desktop and an on-box AI assistant",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",

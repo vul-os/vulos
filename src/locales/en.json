@@ -69,7 +69,7 @@
   "setup.ready.theme_light": "Light",
   "setup.ready.theme_auto": "Auto",
   "setup.ready.theme_schedule": "Scheduled",
-  "setup.ready.enter": "Enter Vula OS",
+  "setup.ready.enter": "Enter Vulos",
   "setup.ready.setting_up": "Setting up...",
   "setup.ready.error_server": "Could not reach server",
   "setup.ready.go_back": "Go back",
