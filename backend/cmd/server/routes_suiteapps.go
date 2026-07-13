@@ -30,6 +30,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"vulos/backend/services/auth"
 )
 
 // suiteSelection is the JSON persisted to ~/.vulos/db/suite-selection.json.
@@ -58,9 +60,35 @@ func defaultSuiteSelection() suiteSelection {
 //	GET  /api/setup/apps — returns the current suite selection (defaults=all-on)
 //	POST /api/setup/apps — persists the user's opt-out choices at onboarding time
 //
-// Both are setup-time endpoints (see publicPaths in services/auth/handlers.go).
-func registerSuiteAppsRoutes(mux *http.ServeMux, home string) {
+// Both are setup-time endpoints (see publicPaths in services/auth/handlers.go),
+// so neither is behind the auth middleware's 401. The GET is public-safe (two
+// booleans). The POST is a PERMANENT, REPEATABLE write that can strip Mail and
+// the whole Workspace suite from the launcher, so it carries its own gate — the
+// same one handleRegister uses for the other unauthenticated setup-time write:
+// unauthenticated ONLY while the box has no users (first-boot onboarding, where
+// the wizard's apps step may run before any account exists); once an account
+// exists the caller must be an authenticated ADMIN. Anonymous reachability of
+// the box's HTTP port is then no longer enough to rewrite the launcher.
+func registerSuiteAppsRoutes(mux *http.ServeMux, authStore *auth.Store, home string) {
 	selPath := filepath.Join(home, ".vulos", "db", "suite-selection.json")
+
+	// writeGate mirrors handleRegister: open pre-account, admin-only afterwards.
+	writeGate := func(w http.ResponseWriter, r *http.Request) bool {
+		if !authStore.HasAnyUsers() {
+			return true // first-boot onboarding: no account exists to authenticate as
+		}
+		userID := r.Header.Get("X-User-ID") // stamped by the auth middleware; never client-supplied
+		if userID == "" {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return false
+		}
+		p, _ := authStore.GetProfile(userID)
+		if p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, http.StatusForbidden, "admin only")
+			return false
+		}
+		return true
+	}
 
 	readSelection := func() suiteSelection {
 		sel := defaultSuiteSelection()
@@ -85,6 +113,9 @@ func registerSuiteAppsRoutes(mux *http.ServeMux, home string) {
 	// Workspace implies its own tiles; Mail is coupled to Email. We store exactly
 	// what we're told (with Chosen=true) so the launcher can honour opt-outs.
 	mux.HandleFunc("POST /api/setup/apps", func(w http.ResponseWriter, r *http.Request) {
+		if !writeGate(w, r) {
+			return
+		}
 		var req struct {
 			Email     *bool `json:"email"`
 			Workspace *bool `json:"workspace"`

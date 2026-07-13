@@ -3462,7 +3462,7 @@ func main() {
 	// BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
 	// Persists the onboarding email/Workspace choice so the launcher can hide the
 	// suite tiles a lean user opted out of. Absent selection ⇒ everything on.
-	registerSuiteAppsRoutes(mux, home)
+	registerSuiteAppsRoutes(mux, authStore, home)
 
 	// STORE-LOCAL-01: bundle storage-mode selector (central-tigris default vs
 	// local-minio-sync opt-in). Coordinated with scripts/install-vulos.sh —
