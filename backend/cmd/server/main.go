@@ -2311,6 +2311,13 @@ func main() {
 	}
 	registerStreamWebAuthnRoutes(mux, streamPool, authStore, streamVerifier)
 
+	// GAME-SESSION-01: wire the gaming-session HTTP surface (previously orphaned).
+	// GamingManager enforces the one-active-gaming-session-per-user GPU-contention
+	// policy the plain launch path lacks, and exposes GET /api/stream/gaming/
+	// capability so the UI can read the box's NVENC/VA-API hardware-encode tier.
+	// The endpoints are session-authed via X-User-ID like the base stream handlers.
+	stream.NewGamingManager(streamPool).RegisterGamingHandlers(mux)
+
 	// GAME-07: manifest-aware stream launch — detects gaming sessions automatically.
 	// Sets LaunchOpts.Gaming=true when the manifest category=="gaming" OR the
 	// command starts with wine/wine64/lutris/steam/steam-runtime.
@@ -2354,15 +2361,8 @@ func main() {
 			}
 		}
 
-		// GAME-07: auto-detect gaming mode.
-		// Check manifest category first (if app_id provided and manifest exists).
-		g07Gaming := wine.IsGamingCommand(req.Command)
-		if !g07Gaming && req.AppID != "" {
-			manifestPath := filepath.Join(appsDir, req.AppID, "app.json")
-			if m, err := appnet.LoadManifest(manifestPath); err == nil {
-				g07Gaming = (m.Category == "gaming")
-			}
-		}
+		// GAME-07: auto-detect gaming mode (command launcher OR manifest category).
+		g07Gaming := detectGamingLaunch(req.Command, req.AppID, appsDir)
 
 		// BILLING GATE (surface 1: GPU/stream). A stream session is a billable
 		// GPU/compute surface. Enforces: gpu_enabled, suspended, and the

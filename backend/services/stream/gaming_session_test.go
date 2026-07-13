@@ -78,7 +78,7 @@ func TestGamingManager_OnePerUser(t *testing.T) {
 	m := NewGamingManager(pool)
 
 	// Seed an existing, live gaming session for "user-a".
-	sess := &Session{ID: "g1", OwnerID: "user-a", Running: true, gaming: true}
+	sess := &Session{ID: "g1", OwnerID: "user-a", Running: true, Gaming: true}
 	pool.mu.Lock()
 	pool.sessions["g1"] = sess
 	pool.mu.Unlock()
@@ -110,7 +110,7 @@ func TestGamingManager_OnePerUser(t *testing.T) {
 func TestGamingManager_StopFreesSlot(t *testing.T) {
 	pool := NewPool()
 	m := NewGamingManager(pool)
-	sess := &Session{ID: "g1", OwnerID: "user-a", Running: true, gaming: true, cancel: func() {}}
+	sess := &Session{ID: "g1", OwnerID: "user-a", Running: true, Gaming: true, cancel: func() {}}
 	pool.mu.Lock()
 	pool.sessions["g1"] = sess
 	pool.mu.Unlock()

@@ -248,7 +248,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		fpsC:      make(chan int, 1),
 		mangoHudC: make(chan bool, 1),
 		// STREAMWIN-03: idle lifecycle.
-		gaming:      opts.Gaming,
+		Gaming:      opts.Gaming,
 		normalFPS:   opts.FPS,
 		lastInputAt: time.Now(),
 	}

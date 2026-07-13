@@ -67,6 +67,12 @@ type Session struct {
 	// Set from X-User-ID at launch time; used to enforce per-user session isolation.
 	// Empty only for sessions launched without an authenticated context (e.g. CLI).
 	OwnerID string `json:"owner_id,omitempty"`
+	// Gaming reports whether this session runs the low-latency gaming-mode profile
+	// (zero-latency encoder, gaming bitrate tiers, no idle/throttle/step-down).
+	// Set from LaunchOpts.Gaming; exposed so the client can engage gaming input
+	// behaviour (pointer-lock, split unreliable input channels) for real games only.
+	// STREAMWIN-03: gaming=true makes all idle/throttle logic a no-op.
+	Gaming bool `json:"gaming"`
 
 	mu            sync.Mutex
 	ctx           context.Context
@@ -99,8 +105,6 @@ type Session struct {
 	videoStartFn func() // called on 0→1 transition; assigned by Launch
 
 	// STREAMWIN-03: idle lifecycle fields.
-	// gaming=true makes all idle/throttle logic a no-op.
-	gaming      bool
 	lastInputAt time.Time // updated by noteInput on every input event
 	normalFPS   int       // baseline FPS to restore after idle-fps throttle
 	idleFPS     bool      // true while we are in the low-fps idle state
@@ -306,7 +310,7 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 	// Adaptive bitrate + resolution controller (STREAMWIN-04).
 	// resizeFn is nil-safe — Resize only applies when gaming=false.
 	var resizeFn func(w, h int)
-	if !s.gaming {
+	if !s.Gaming {
 		resizeFn = func(w, h int) { s.Resize(w, h) }
 	}
 	bc := newBitrateControllerFull(pc, QualityMedium, func(q Quality) {
@@ -315,7 +319,7 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 		s.Quality = q.String()
 		s.mu.Unlock()
 		s.SetBitrate(q.Bitrate())
-	}, s.gaming, resizeFn)
+	}, s.Gaming, resizeFn)
 	defer bc.Close()
 
 	var wsMu sync.Mutex
@@ -615,7 +619,7 @@ func (s *Session) noteInput() {
 	s.mu.Lock()
 	s.lastInputAt = time.Now()
 	// If we are in idle-FPS mode, ramp back to normal immediately.
-	if s.idleFPS && !s.gaming {
+	if s.idleFPS && !s.Gaming {
 		s.idleFPS = false
 		fps := s.normalFPS
 		s.mu.Unlock()
@@ -642,7 +646,7 @@ const idleSuspendDuration = 5 * time.Minute
 // recency and applies idle-FPS throttle and idle-suspend logic.
 // Must be called once during Launch (with gaming flag already set on sess).
 func (s *Session) startIdleWatcher() {
-	if s.gaming {
+	if s.Gaming {
 		return // STREAMWIN-03 guardrail: no-op for gaming sessions
 	}
 	go func() {
@@ -654,7 +658,7 @@ func (s *Session) startIdleWatcher() {
 				return
 			case <-ticker.C:
 				s.mu.Lock()
-				if s.gaming {
+				if s.Gaming {
 					// Safety re-check — if gaming flag was toggled on, bail.
 					s.mu.Unlock()
 					return

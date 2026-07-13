@@ -23,7 +23,7 @@ func TestIdleFPSDropAndRampNonGaming(t *testing.T) {
 	// Build a minimal Session that records SetFPS calls via the fpsC channel reader.
 	sess := &Session{
 		Name:        "test-idle",
-		gaming:      false,
+		Gaming:      false,
 		normalFPS:   30,
 		lastInputAt: time.Now(),
 		fpsC:        make(chan int, 4),
@@ -89,7 +89,7 @@ func TestIdleFPSDropAndRampNonGaming(t *testing.T) {
 func TestIdleFPSGamingNoOp(t *testing.T) {
 	sess := &Session{
 		Name:        "test-gaming-idle",
-		gaming:      true,
+		Gaming:      true,
 		normalFPS:   144,
 		lastInputAt: time.Now().Add(-(idleStaticSeconds + time.Minute)),
 		fpsC:        make(chan int, 4),
