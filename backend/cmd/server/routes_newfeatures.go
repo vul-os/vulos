@@ -280,7 +280,9 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	// ── 6. Cloud-sync instance list (internal/multiinstance, MINST-02) ────────────
 	//
 	// Routes registered:
-	//   GET /api/instances — merged registry list (graceful offline fallback)
+	//   GET    /api/instances               — merged registry list (graceful offline fallback)
+	//   PATCH  /api/instances/{ulid}/rename — set an instance's display name (admin)
+	//   DELETE /api/instances/{ulid}        — remove an instance from the fleet (admin)
 	//
 	// CloudSyncer contacts VULOS_CLOUD_URL (default https://api.vulos.org).  When
 	// the cloud is unreachable it returns the last-known local registry state.
@@ -291,7 +293,8 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			// deviceToken is empty at startup; it is updated on successful cloud login.
 			syncer := multiinstance.NewCloudSyncer(reg, "")
 			multiinstance.RegisterSyncHandlers(mux, syncer)
-			log.Printf("[multiinstance/sync] registered GET /api/instances (cloud_url=%s)", multiinstance.DefaultCloudBaseURL)
+			registerInstanceManageRoutes(mux, reg, deps.authStore)
+			log.Printf("[multiinstance/sync] registered GET /api/instances, PATCH /api/instances/{ulid}/rename, DELETE /api/instances/{ulid} (cloud_url=%s)", multiinstance.DefaultCloudBaseURL)
 		} else {
 			log.Printf("[multiinstance/sync] registry unavailable — /api/instances disabled")
 		}
@@ -327,6 +330,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//
 	// Routes registered:
 	//   GET /api/cgroups/alerts/status — per-app throttle/alert state
+	//   GET /api/cgroups/status        — per-app LIVE usage (dashboard CPU/RAM bars)
 	//
 	// The Governor uses the shared cgroups DB in dbDir.  The Alerter background
 	// loop starts in a goroutine tied to a background context (it runs for the
@@ -348,7 +352,8 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			alerter := cgroups.NewAlerter(gov)
 			go alerter.Start(bgCtx)
 			alerter.RegisterRoutes(mux)
-			log.Printf("[cgroups/alerter] registered GET /api/cgroups/alerts/status")
+			cgroups.NewStatusHandler(gov).RegisterStatusRoutes(mux)
+			log.Printf("[cgroups/alerter] registered GET /api/cgroups/{alerts/status,status}")
 		}
 	}
 
