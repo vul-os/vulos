@@ -2313,12 +2313,21 @@ func main() {
 		// BILLING GATE (surface 1: GPU/stream). A stream session is a billable
 		// GPU/compute surface. Enforces: gpu_enabled, suspended, and the
 		// gpu_session_cap concurrent-session limit (tracked locally via the stream
-		// pool — no cp round-trip for the live count). Fail-open/degraded on a
-		// cold cp outage. No-op when billing is disabled (standalone OS).
+		// pool — no cp round-trip for the live count). A cold cp outage REFUSES
+		// (cpbilling fails closed on an unverified account); a stale cached
+		// entitlement still serves, so a cp blip does not black out a known
+		// account. No-op when billing is disabled (standalone OS).
 		gpuAccount := r.Header.Get("X-User-ID")
 		if billingClient.Enabled() {
 			activeSessions := len(streamPool.List())
 			if d := billingClient.GateGPU(r.Context(), gpuAccount, activeSessions); !d.Allowed {
+				// Distinguish "we could not verify you" (cp down → retryable 503)
+				// from "you are not entitled" (authoritative 402).
+				if d.Degraded {
+					w.Header().Set("Retry-After", "30")
+					writeErr(w, http.StatusServiceUnavailable, "entitlement check unavailable — try again shortly")
+					return
+				}
 				writeErr(w, http.StatusPaymentRequired, "account not entitled: "+d.Reason)
 				return
 			}

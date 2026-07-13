@@ -139,7 +139,8 @@ func (p *Provisioner) Provision(ctx context.Context, account, region, plan strin
 	// BILLING GATE (surface 2: compute). Enforces compute_enabled, suspended,
 	// and compute_box_cap. The active box count is read from the local Registry
 	// (authoritative for this OS instance) before calling the cloud endpoint.
-	// Fail-open + degraded on a cold cp outage. No-op when billing is disabled
+	// A cold cp outage REFUSES (cpbilling fails closed on an unverified account);
+	// a stale cached entitlement still serves. No-op when billing is disabled
 	// (standalone OS).
 	//
 	// NOTE: compute_storage_gb is not enforced here — storage quota enforcement
@@ -150,6 +151,11 @@ func (p *Provisioner) Provision(ctx context.Context, account, region, plan strin
 			activeBoxes = len(instances)
 		}
 		if d := p.billing.GateCompute(ctx, account, activeBoxes); !d.Allowed {
+			// "refused:" is mapped to 402 by the HTTP layer. A cp outage is not a
+			// payment problem — surface it as a retryable failure (→ 503) instead.
+			if d.Degraded {
+				return nil, fmt.Errorf("provision: entitlement check unavailable (%s) — try again shortly", d.Reason)
+			}
 			return nil, fmt.Errorf("provision: refused: %s", d.Reason)
 		}
 	}

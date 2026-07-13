@@ -16,13 +16,25 @@
 //	       → 200 {tier, suspended, llm_enabled, llm_budget_usd, ...}
 //	POST /api/usage  {product, account_id, kind, count, bytes, cost_usd}
 //
-// # FAIL-OPEN, NOT FAIL-BLIND
+// # DEGRADE GRACEFULLY, BUT FAIL CLOSED ON THE SECURITY DECISION
 //
 // Entitlement lookups are cached with a short TTL. On a cp error we serve the
-// last-known entitlement if we have one (even if its TTL lapsed); only on a
-// COLD cache (never seen this account/product) do we allow-but-log "degraded".
-// This avoids hard-downing the OS when cp blips, while still letting a KNOWN
-// suspension stay authoritative: a cached suspended=true refuses.
+// last-known entitlement if we have one (EVEN IF ITS TTL LAPSED) — that stale
+// cache is the availability valve, and it is what keeps a cp blip from downing
+// the OS: every account the box has ever verified keeps working, and a KNOWN
+// suspension stays authoritative (a cached suspended=true refuses).
+//
+// A COLD cache (this account/product was NEVER verified) plus a cp error is a
+// different situation: we have no evidence of entitlement at all. Allowing there
+// grants the paid, metered capability to an account that may be suspended, over
+// budget, or not entitled — and a cold cache is trivially arranged (any fresh
+// account/product pair, or a box simply kept away from cp). So the gate REFUSES
+// (Reason "cp_unverified", Degraded=true) rather than fail open. The refusal is
+// logged loudly and surfaces to the caller as a normal not-allowed decision, so
+// the request path degrades (402/503-style refusal) instead of crashing.
+//
+// A box with no cp configured at all (self-host) is unaffected: Enabled() is
+// false and every gate allows.
 package cpbilling
 
 import (
@@ -236,7 +248,10 @@ type Decision struct {
 	// Reason is a short machine-ish reason ("ok", "suspended", "llm_disabled",
 	// "llm_budget_exhausted", "disabled", "degraded").
 	Reason string
-	// Degraded is true when we allowed on a cold-cache cp error (fail-open).
+	// Degraded is true when the decision was made without a usable entitlement
+	// because cp was unreachable on a COLD cache. Such a decision is NOT allowed
+	// (see [Gate]); the flag lets a caller distinguish "cp is down" from a
+	// substantive refusal like suspension, and surface a different message.
 	Degraded bool
 	// Entitlement is the entitlement the decision was based on (zero when the
 	// client is disabled or the cache was cold and cp errored).
@@ -279,19 +294,25 @@ func (c *Client) Entitlement(ctx context.Context, accountID, product string) (En
 }
 
 // Gate is the suspension-authoritative entitlement check used by every surface.
-// It honors suspension (refuse when known-suspended) and is fail-open on a cold
-// cp outage (allow-but-log "degraded"). Product-specific caps (e.g. LLM budget)
-// are layered on by [GateLLM]; for surfaces where cp returns no caps this still
-// enforces suspension + presence.
+// It honors suspension (refuse when known-suspended) and REFUSES on a cold cp
+// outage — see the package doc: a stale cached entitlement is served happily (so
+// a cp blip never downs a verified account), but an account/product we have
+// NEVER verified is not handed a paid, metered capability on the strength of a
+// failed lookup. Product-specific caps (e.g. LLM budget) are layered on by
+// [GateLLM]; for surfaces where cp returns no caps this still enforces
+// suspension + presence.
 func (c *Client) Gate(ctx context.Context, accountID, product string) Decision {
 	if !c.Enabled() {
 		return Decision{Allowed: true, Reason: "disabled"}
 	}
 	ent, err := c.Entitlement(ctx, accountID, product)
 	if err != nil {
-		// Cold-cache cp error: fail-open but flag degraded so it's visible.
-		log.Printf("[cpbilling] gate %s/%s: cold-cache cp error %v — allowing (degraded)", product, accountID, err)
-		return Decision{Allowed: true, Reason: "degraded", Degraded: true}
+		// Cold cache + cp error: no evidence of entitlement — fail CLOSED. Logged
+		// loudly (this is an outage signal, not a routine refusal). Degraded flags
+		// it so a caller can tell "cp is down" from "you are suspended".
+		log.Printf("[cpbilling] gate %s/%s: cold-cache cp error %v — REFUSING (unverified; cp unreachable and no last-known entitlement)",
+			product, accountID, err)
+		return Decision{Allowed: false, Reason: "cp_unverified", Degraded: true}
 	}
 	if ent.Suspended {
 		return Decision{Allowed: false, Reason: "suspended", Entitlement: ent}
@@ -305,7 +326,7 @@ func (c *Client) Gate(ctx context.Context, accountID, product string) Decision {
 // the LLM path.
 func (c *Client) GateLLM(ctx context.Context, accountID string) Decision {
 	d := c.Gate(ctx, accountID, ProductLLM)
-	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+	if !d.Allowed || d.Reason == "disabled" {
 		return d
 	}
 	ent := d.Entitlement
@@ -335,7 +356,7 @@ func (c *Client) GateLLM(ctx context.Context, accountID string) Decision {
 //   - gpu_session_cap concurrent cap: ENFORCED locally (activeSessions arg)
 func (c *Client) GateGPU(ctx context.Context, accountID string, activeSessions int) Decision {
 	d := c.Gate(ctx, accountID, ProductGPU)
-	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+	if !d.Allowed || d.Reason == "disabled" {
 		return d
 	}
 	ent := d.Entitlement
@@ -364,7 +385,7 @@ func (c *Client) GateGPU(ctx context.Context, accountID string, activeSessions i
 //     control plane (it owns the Fly API token and enforces disk quotas).
 func (c *Client) GateCompute(ctx context.Context, accountID string, activeBoxes int) Decision {
 	d := c.Gate(ctx, accountID, ProductCompute)
-	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+	if !d.Allowed || d.Reason == "disabled" {
 		return d
 	}
 	ent := d.Entitlement
@@ -395,7 +416,7 @@ func (c *Client) GateCompute(ctx context.Context, accountID string, activeBoxes 
 //     or suspended=true when the budget is exhausted).
 func (c *Client) GateRelay(ctx context.Context, accountID string) Decision {
 	d := c.Gate(ctx, accountID, ProductRelay)
-	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+	if !d.Allowed || d.Reason == "disabled" {
 		return d
 	}
 	ent := d.Entitlement
@@ -428,7 +449,7 @@ func (c *Client) GateRelay(ctx context.Context, accountID string) Decision {
 //     must enforce the running balance at source.
 func (c *Client) GateMeet(ctx context.Context, accountID string, activeRooms int) Decision {
 	d := c.Gate(ctx, accountID, ProductMeet)
-	if !d.Allowed || d.Degraded || d.Reason == "disabled" {
+	if !d.Allowed || d.Reason == "disabled" {
 		return d
 	}
 	ent := d.Entitlement

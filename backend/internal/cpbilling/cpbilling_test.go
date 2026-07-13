@@ -155,7 +155,7 @@ func TestUsagePostShape(t *testing.T) {
 	}
 }
 
-func TestBoundedCacheFailOpenStaleAndCold(t *testing.T) {
+func TestBoundedCacheStaleServesAndColdRefuses(t *testing.T) {
 	var fail atomic.Bool
 	var hits atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -182,10 +182,65 @@ func TestBoundedCacheFailOpenStaleAndCold(t *testing.T) {
 		t.Fatalf("stale-but-present gate should serve last-known (allowed, NOT degraded), got %+v", d)
 	}
 
-	// Cold cache + cp error → allow but flagged degraded.
+	// Cold cache + cp error → REFUSE. We have never verified this account/product,
+	// so there is no evidence it is entitled (or not suspended) and we must not
+	// hand out a paid, metered capability on the strength of a failed lookup.
 	cold := c.Gate(context.Background(), "never-seen@x.com", ProductRelay)
-	if !cold.Allowed || !cold.Degraded || cold.Reason != "degraded" {
-		t.Fatalf("cold-cache cp error should allow-degraded, got %+v", cold)
+	if cold.Allowed || !cold.Degraded || cold.Reason != "cp_unverified" {
+		t.Fatalf("cold-cache cp error must refuse (cp_unverified, degraded), got %+v", cold)
+	}
+}
+
+// TestColdCacheCPErrorRefusesEveryProductGate pins the fail-CLOSED contract at
+// the product gates. Before the fix, Gate returned Allowed+Degraded on a
+// cold-cache cp error and EVERY product wrapper short-circuited on Degraded — so
+// llm_enabled=false, an exhausted budget, and even account SUSPENSION were all
+// skipped for any never-warmed (account, product). A cold cache is trivially
+// arranged (a fresh account, or a box simply kept away from cp), so that was a
+// free pass to every metered capability.
+func TestColdCacheCPErrorRefusesEveryProductGate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c := newTestClient(srv.URL)
+
+	const acct = "never-seen@x.com"
+	gates := map[string]Decision{
+		"llm":     c.GateLLM(context.Background(), acct),
+		"gpu":     c.GateGPU(context.Background(), acct, 0),
+		"compute": c.GateCompute(context.Background(), acct, 0),
+		"relay":   c.GateRelay(context.Background(), acct),
+		"meet":    c.GateMeet(context.Background(), acct, 0),
+	}
+	for name, d := range gates {
+		if d.Allowed {
+			t.Errorf("Gate%s on cold-cache cp error must refuse, got %+v", name, d)
+		}
+		if !d.Degraded || d.Reason != "cp_unverified" {
+			t.Errorf("Gate%s should report the cp outage (degraded, cp_unverified), got %+v", name, d)
+		}
+	}
+}
+
+// TestDisabledClientStillAllows pins the self-host escape hatch: a box with no cp
+// configured is NOT affected by the fail-closed gate above — it allows everything,
+// exactly as before.
+func TestDisabledClientStillAllows(t *testing.T) {
+	c := New(Config{})
+	if c.Enabled() {
+		t.Fatal("client with no base URL must be disabled")
+	}
+	for name, d := range map[string]Decision{
+		"llm":     c.GateLLM(context.Background(), "a@x.com"),
+		"gpu":     c.GateGPU(context.Background(), "a@x.com", 99),
+		"compute": c.GateCompute(context.Background(), "a@x.com", 99),
+		"relay":   c.GateRelay(context.Background(), "a@x.com"),
+		"meet":    c.GateMeet(context.Background(), "a@x.com", 99),
+	} {
+		if !d.Allowed || d.Reason != "disabled" {
+			t.Errorf("Gate%s on a disabled (self-host) client must allow, got %+v", name, d)
+		}
 	}
 }
 
