@@ -146,11 +146,40 @@ export async function launchApp(app, { openWindow }) {
     const sessionId = app.id
     const streamW = window.innerWidth
     const streamH = window.innerHeight - 32 - 64 - 36
-    fetch('/api/stream/launch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: sessionId, name: app.name, command: cmd, args, width: streamW, height: streamH, fps: 30 }),
-    }).catch(() => {})
+    // FPS: no longer hardcoded to 30 — honour an app/session preference and let
+    // the pool clamp to its allowed set {30,60,90,120,144} (default 60). The
+    // in-viewer toolbar can change FPS live after connect.
+    const fps = app.fps || app._fps || 60
+
+    // GAME-07: gaming mode must engage ONLY for real games. The GPURoute lane
+    // covers BOTH games (steam/lutris/wine) AND GPU-accelerated non-games
+    // (blender/kdenlive/darktable/obs/shotcut), so we do NOT blanket-force
+    // gaming. Instead, GPURoute launches go through the auto-detecting
+    // POST /api/stream/launch-app, which sets Gaming=true only when the command
+    // is a gaming launcher or the manifest declares category=="gaming". We read
+    // the resolved `gaming` back from the response and pass it to the viewer so
+    // gaming input behaviour (pointer-lock, split unreliable channels) activates
+    // for real games only. Plain CPUStream desktop apps keep the standard path.
+    let gaming = false
+    if (lane === 'GPURoute') {
+      try {
+        const res = await fetch('/api/stream/launch-app', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_id: sessionId, name: app.name, command: cmd, args, width: streamW, height: streamH, fps }),
+        })
+        if (res.ok) {
+          const data = await res.json().catch(() => null)
+          if (data && data.gaming) gaming = true
+        }
+      } catch { /* non-fatal — viewer connects when the session becomes ready */ }
+    } else {
+      fetch('/api/stream/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId, name: app.name, command: cmd, args, width: streamW, height: streamH, fps }),
+      }).catch(() => {})
+    }
     const streamLoading = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
       createElement('span', { className: 'flex items-center gap-2' },
         createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
@@ -162,7 +191,7 @@ export async function launchApp(app, { openWindow }) {
       title: app.name,
       icon: app.icon,
       singleton: true,
-      component: createElement(Suspense, { fallback: streamLoading }, createElement(StreamViewer, { sessionId })),
+      component: createElement(Suspense, { fallback: streamLoading }, createElement(StreamViewer, { sessionId, gaming })),
     })
     return
   }
