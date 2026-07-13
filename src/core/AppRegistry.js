@@ -155,9 +155,14 @@ const builtinRegistry = [
   // Vulos Talk, video meetings are served by the gateway-proxied `vulos-meet`
   // web app registered below (/app/vulos-meet/); the builtin is retired.
 
-  // BROWSER-01: "Smart Browser" is the client-side web app (apps/browser/).
-  // It opens in the host browser as a WebApp lane entry — zero stream.Session.
-  // The server-side streamed Chromium ("browser" via stream pool) is retired.
+  // Two user-selectable browsers, side by side:
+  //
+  //  1. "Smart Browser" (id: browser) — the client-side web app (apps/browser/),
+  //     opens in the host browser as a WebApp lane entry, zero stream.Session.
+  //  2. "Streaming Chrome" (id: browser-stream) — a REAL Chromium instance
+  //     running on the box, streamed over WebRTC (Xvfb + GStreamer + pion), with
+  //     a persistent PER-USER profile (cookies/history/logins). Restored from
+  //     the services/webbrowser package; launched via POST /api/browser/launch.
   {
     id: 'browser',
     name: 'Smart Browser',
@@ -168,6 +173,18 @@ const builtinRegistry = [
     builtin: true,
     type: 'web',
     url: '/apps/browser/',
+  },
+  {
+    id: 'browser-stream',
+    name: 'Streaming Chrome',
+    icon: 'chrome',
+    description: 'Real Chromium streamed from your box, with your own persistent profile',
+    keywords: ['browser', 'web', 'internet', 'chrome', 'chromium', 'streaming', 'stream', 'remote'],
+    category: 'internet',
+    builtin: true,
+    // stream_browser marks the dedicated launch path in launchApp.js:
+    // POST /api/browser/launch → per-user stream.Session → StreamViewer.
+    stream_browser: true,
   },
 
   // --- Installed app services (have implementations in /apps/) ---

@@ -65,24 +65,34 @@ export default function DesktopCanvas() {
         try {
           const msg = JSON.parse(e.data)
           if (msg.source !== 'xdg-open') return
-          const browserWin = windowsRef.current.find(w => w.appId === 'browser' || w.appId?.startsWith('browser'))
+          const browserWin = windowsRef.current.find(w => w.appId === 'browser-stream' || w.appId?.startsWith('browser-stream'))
           if (browserWin) {
             focusWindow(browserWin.id)
           } else {
+            // Create the per-user streaming Chrome session, then connect the
+            // viewer to the returned session ID. Previously this opened a
+            // StreamViewer for a hardcoded 'browser' session that nothing
+            // created (orphaned); now /api/browser/launch actually spawns it.
             const fallback = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
               createElement('span', { className: 'flex items-center gap-2' },
                 createElement('span', { className: 'w-4 h-4 spinner' }),
-                'Connecting...'
+                'Starting Chrome...'
               )
             )
-            openWindow({
-              appId: 'browser',
-              title: 'Browser',
-              icon: '🌐',
-              component: createElement(Suspense, { fallback },
-                createElement(StreamViewer, { sessionId: 'browser' })
-              ),
-            })
+            fetch('/api/browser/launch', { method: 'POST' })
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null)
+              .then(data => {
+                const sessionId = (data && data.id) || 'browser'
+                openWindow({
+                  appId: 'browser-stream',
+                  title: 'Streaming Chrome',
+                  icon: 'chrome',
+                  component: createElement(Suspense, { fallback },
+                    createElement(StreamViewer, { sessionId })
+                  ),
+                })
+              })
           }
         } catch { /* noop */ }
       }

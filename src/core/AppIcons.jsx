@@ -8,6 +8,7 @@ import { useState } from 'react'
 export const APP_LOGOS = {
   chrome: '/icons/chrome.svg',
   browser: '/icons/chrome.svg',
+  'browser-stream': '/icons/chrome.svg',
   firefox: '/icons/firefox.svg',
   gimp: '/icons/gimp.svg',
   blender: '/icons/blender.svg',
@@ -31,7 +32,7 @@ export const APP_LOGOS = {
 export const APP_COLORS = {
   // Builtins
   terminal: '#4EC9B0', activity: '#3B82F6', files: '#F59E0B', persona: '#8B5CF6',
-  browser: '#4285F4', apphub: '#EC4899', library: '#F97316', gallery: '#06B6D4',
+  browser: '#4285F4', 'browser-stream': '#4285F4', apphub: '#EC4899', library: '#F97316', gallery: '#06B6D4',
   disks: '#EF4444', packages: '#10B981', drivers: '#6366F1', chat: '#3B82F6',
   // Desktop apps
   firefox: '#FF7139', gimp: '#5C5543', blender: '#EA7600',
@@ -236,8 +237,9 @@ export function AppIconTile({ id, size = 48, unicode }) {
     )
   }
 
-  // Browser specifically — use the Chrome SVG logo
-  if (id === 'browser' && logo && !logoFailed) {
+  // Browser specifically — use the Chrome SVG logo (both the iframe Smart
+  // Browser and the streaming-Chrome app show the Chrome logo).
+  if ((id === 'browser' || id === 'browser-stream') && logo && !logoFailed) {
     return (
       <div
         onMouseEnter={() => setHover(true)}

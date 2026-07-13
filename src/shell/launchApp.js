@@ -51,6 +51,36 @@ export async function launchApp(app, { openWindow }) {
     return
   }
 
+  // ── Streaming Chrome lane — REAL Chromium on the box, streamed over WebRTC ─
+  // Distinct from the iframe "Smart Browser" (type:'web', handled below). This
+  // launches a per-user stream.Session via POST /api/browser/launch (the box
+  // derives a persistent per-user Chrome profile) and connects the StreamViewer
+  // to the returned session ID.
+  if (app.stream_browser || app.id === 'browser-stream') {
+    let sessionId = 'browser'
+    try {
+      const res = await fetch('/api/browser/launch', { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        if (data && data.id) sessionId = data.id
+      }
+    } catch { /* non-fatal — viewer connects when the session becomes ready */ }
+    const browserLoading = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
+      createElement('span', { className: 'flex items-center gap-2' },
+        createElement('span', { className: 'w-4 h-4 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin' }),
+        'Starting Chrome...'
+      )
+    )
+    openWindow({
+      appId: app.id,
+      title: app.name,
+      icon: app.icon,
+      singleton: true,
+      component: createElement(Suspense, { fallback: browserLoading }, createElement(StreamViewer, { sessionId })),
+    })
+    return
+  }
+
   // ROUTER-02: Consult Open Router to get the execution lane.
   const lane = await fetchLane(app.id)
 
