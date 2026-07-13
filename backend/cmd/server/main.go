@@ -80,6 +80,7 @@ import (
 	"vulos/backend/services/telemetry"
 	"vulos/backend/services/upload"
 	"vulos/backend/services/vault"
+	"vulos/backend/services/webbrowser"
 	"vulos/backend/services/webproxy"
 	"vulos/backend/services/wifi"
 	"vulos/backend/services/wine"
@@ -490,6 +491,27 @@ func main() {
 
 	// Resolve user home from auth context for per-user data isolation in streamed apps
 	streamPool.SetUserHomeResolver(func(r *http.Request) string {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
+			return "/root"
+		}
+		if u, ok := authStore.GetUser(userID); ok {
+			if sysU := sysUserSvc.Lookup(u.Username); sysU != nil {
+				return sysU.HomeDir
+			}
+		}
+		return "/root"
+	})
+
+	// Streaming Chrome browser (real Chromium on the box via the stream pool),
+	// offered ALONGSIDE the iframe "Smart Browser". Launched on-demand per user
+	// with a persistent, isolated per-user Chrome profile (cookies/history/
+	// logins). Session lifecycle + WebRTC are handled by streamPool; this service
+	// only owns the virtual sound card and Chrome-specific launch/CDP concerns.
+	// Restored from commit 12e7507^ (deleted in 12e7507) and adapted to the
+	// current stream.Pool.Launch(LaunchOpts) API.
+	browserSvc := webbrowser.New(streamPool)
+	browserSvc.SetHomeResolver(func(r *http.Request) string {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			return "/root"
@@ -2244,6 +2266,11 @@ func main() {
 	// Stream toolbar endpoints (FPS selector, MangoHud toggle — GAME-08)
 	registerStreamRoutes(mux, streamPool)
 
+	// Streaming Chrome browser endpoints (POST /api/browser/launch|stop,
+	// GET /api/browser/status, CDP tab management). WebRTC signaling reuses the
+	// generic /api/stream/ws endpoint above with the per-user session ID.
+	browserSvc.RegisterHandlers(mux)
+
 	// AUTH-13: WebAuthn re-auth gate for input-injection sessions.
 	//
 	// The gate is now ARMED: when a stream session carries an input injector,
@@ -3821,6 +3848,7 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		log.Println("shutting down...")
+		browserSvc.StopAll()
 		streamPool.StopAll()
 		sandboxSvc.StopAll()
 		netSvc.Stop()
