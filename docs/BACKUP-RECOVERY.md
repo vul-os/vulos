@@ -1,12 +1,12 @@
 # Backup, restore & disaster recovery
 
-What state your Vulos box holds and where, the three built-in backup mechanisms (the Restic vault, database snapshots, and the recovery kit), the data export, what the recovery phrase can and cannot save you from, and how to move a box to new hardware.
+What state your Vulos box holds and where, the four built-in backup mechanisms (the Restic vault, database snapshots, OS object-store snapshots, and the recovery kit), the data export, what the recovery phrase can and cannot save you from, and how to move a box to new hardware.
 
 ---
 
 ## The one-paragraph model
 
-A Vulos box keeps everything under three roots: `~/.vulos` in the service user's home (databases, keys, app data, staged files), your object-store bucket(s) (Drive documents and app storage — see [FILES.md](FILES.md)), and, for the self-host bundle, `/etc/vulos` + `/var/lib/vulos` (config and per-service data). Backup is not one switch: the **Restic vault** snapshots user data to S3, the **database snapshot** tool backs up a SQLite database to encrypted S3, and the **recovery kit** is a small JSON you download once and keep offline. Each uses a *different* secret. Know all three before you need them.
+A Vulos box keeps everything under three roots: `~/.vulos` in the service user's home (databases, keys, app data, staged files), your object-store bucket(s) (Drive documents and app storage — see [FILES.md](FILES.md)), and, for the self-host bundle, `/etc/vulos` + `/var/lib/vulos` (config and per-service data). Backup is not one switch: the **Restic vault** snapshots user data to S3, the **database snapshot** tool backs up a SQLite database to encrypted S3, **OS Snapshots** capture point-in-time, restorable copies of your object-store bucket, and the **recovery kit** is a small JSON you download once and keep offline. Each uses a *different* secret (or none). Know all four before you need them.
 
 ## What state lives where
 
@@ -36,7 +36,7 @@ Everything below is created by the Go backend (verified against the code, not as
 
 ### The object store
 
-With S3/MinIO/Tigris configured, your actual documents live in per-user buckets (`vulos-<userID>`, keys `<userID>/drive/...` and `<userID>/<appID>/...`) and the OS's own cluster data in `vulos-cluster`. Bucket durability is your storage provider's job — none of the box-side backup mechanisms below copy bucket contents.
+With S3/MinIO/Tigris configured, your actual documents live in per-user buckets (`vulos-<userID>`, keys `<userID>/drive/...` and `<userID>/<appID>/...`) and the OS's own cluster data in `vulos-cluster`. Bucket durability is primarily your storage provider's job. Of the box-side mechanisms below only **OS Snapshots** (mechanism 3) copies bucket contents — the Restic vault and the DB snapshot tool do not.
 
 ### Self-host bundle roots
 
@@ -127,7 +127,32 @@ vulos backup --db ~/.vulos/db/files.db
 
 Note the default covers **one** database — `auth.db`. If you care about your Drive index, back up `files.db` too (`--db` or a second periodic job with `VULOS_BACKUP_DB`).
 
-## Backup mechanism 3: the recovery kit
+## Backup mechanism 3: OS Snapshots (object-store point-in-time restore)
+
+The mechanisms above copy `~/.vulos` state; **OS Snapshots** are the box-side way to protect the *bucket* itself — your Drive documents and per-app object storage. A snapshot is a point-in-time record of every live object under the box's data prefix, and a restore rolls the bucket back to it.
+
+**How it works** (verified against `services/snapshot`):
+
+- **Content-addressed & incremental.** Each object's bytes are stored once, keyed by SHA-256 and gzip-compressed; a new snapshot only uploads blobs whose content isn't already present, so repeated snapshots are cheap. Every snapshot still carries a *complete* manifest, so each one restores independently.
+- **In-bucket, self-scoped.** Artifacts live under a reserved `…/_snapshots/` sub-prefix of the same bucket+prefix (and are excluded from capture, so snapshots never snapshot themselves). A snapshotter is bound to one box's (bucket, prefix) and cannot reach another account's data.
+- **Fail-closed restore.** `Restore` first **verifies the entire snapshot** — manifest hash, every referenced blob present, every blob's decompressed content re-hashed to its recorded value, every key path-traversal-checked — and aborts **untouched** on any failure. Only then does it take an automatic **pre-restore safety snapshot** of the current state (so a bad restore is itself reversible) before writing the verified objects and reconciling deletions. An integrity failure surfaces as HTTP **422** with the box unmodified.
+- **Retention + scheduling.** The default retention policy keeps the last **7 daily** and **4 weekly** snapshots; `POST …/prune` (and the scheduler) apply it. Automatic snapshots are **opt-in** via `VULOS_SNAPSHOT_INTERVAL` (e.g. `24h`); unset means manual-only. Snapshot storage is metered through the control plane when billing is configured.
+
+**Availability:** the endpoints are wired to the box's own object store, so they exist only when an object store is configured; without one they return **503** (exactly like the DB backup routes). Standalone boxes with no S3 have no OS Snapshots.
+
+**HTTP surface** (admin-only; restore is additionally confirm-gated):
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/admin/snapshots` | Snapshot the bucket now |
+| `GET /api/admin/snapshots` | List snapshots (id, kind, object count, sizes) |
+| `GET /api/admin/snapshots/usage` | Snapshot storage usage (the metered figure) |
+| `POST /api/admin/snapshots/prune` | Apply the retention policy now |
+| `POST /api/admin/snapshots/{id}/restore` | **DESTRUCTIVE** — roll the bucket back; requires body `{"confirm":"RESTORE"}` on top of admin auth |
+
+Every create/prune/restore is written to the exec audit trail. OS Snapshots protect against accidental deletion or corruption *within* the bucket; they are not a substitute for your storage provider's own durability, and (like the other mechanisms) they do not cover `~/.vulos` databases and key stores.
+
+## Backup mechanism 4: the recovery kit
 
 `GET /api/recovery/kit` (admin session required) downloads `vulos-recovery-kit-<instance>-<date>.json`: the instance ULID, hostname, and — when the box provisioned its own storage — the storage endpoint, bucket, and access/secret keys from `storage.json`.
 
@@ -248,6 +273,9 @@ VULOS_S3_SECRET_KEY=...
 VULOS_S3_USE_SSL=true
 VULOS_CLUSTER_PASSPHRASE='<long unique passphrase #2>'
 VULOS_BACKUP_INTERVAL=1h
+
+# --- OS Snapshots: point-in-time restore points of the object-store bucket ---
+VULOS_SNAPSHOT_INTERVAL=24h   # opt-in; unset = manual-only (POST /api/admin/snapshots)
 
 VULOS_ENV=prod   # enforces "no dev-default Restic key" fail-closed
 ```
