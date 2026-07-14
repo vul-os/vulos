@@ -74,6 +74,23 @@ COPY --from=frontend /app/dist /app/dist
 COPY deploy/managed/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
+# Trust anchor + release cert (REGISTRY-SIGN-01). PUBLIC keys only — the root
+# private key never leaves offline storage. signing.DefaultAnchorPath resolves
+# to /etc/vulos/trust-anchor.pub, which is what the App Hub chains registry
+# entry signatures to.
+#
+# This image runs VULOS_ENV=prod, where the repo's DEV anchor is REFUSED
+# outright (signing.RefuseDevKeyInProd) — app installs will fail closed until
+# these files are replaced with real ceremony output and registry.json is
+# re-signed. See docs/KEY-CEREMONY.md.
+RUN mkdir -p /etc/vulos
+COPY keys/trust-anchor.pub /etc/vulos/trust-anchor.pub
+COPY keys/release-cert.json /etc/vulos/release-cert.json
+RUN chmod 0444 /etc/vulos/trust-anchor.pub /etc/vulos/release-cert.json
+COPY registry.json /app/registry.json
+RUN chmod 0444 /app/registry.json
+ENV VULOS_REGISTRY=/app/registry.json
+
 # Static frontend served from /app/dist; the Go server reads VULOS_STATIC_DIR.
 ENV VULOS_STATIC_DIR=/app/dist
 

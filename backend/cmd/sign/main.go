@@ -35,6 +35,10 @@
 //	issue-release-cert    Offline root operation: root key signs a release cert.
 //	sign-image            Sign an OS image payload with the release key.
 //	sign-manifest         Sign a stable.json manifest payload with the release key.
+//	export-anchor         Write a ROOT public key out as trust-anchor.pub.
+//	sign-registry         Sign every registry.json entry with the release key.
+//	verify-registry       Verify registry.json against the anchor + release cert
+//	                      (public keys only — this is what CI runs).
 //
 // # Exit codes
 //
@@ -44,6 +48,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -69,6 +74,12 @@ func main() {
 		cmdSignImage(os.Args[2:])
 	case "sign-manifest":
 		cmdSignManifest(os.Args[2:])
+	case "export-anchor":
+		cmdExportAnchor(os.Args[2:])
+	case "sign-registry":
+		cmdSignRegistry(os.Args[2:])
+	case "verify-registry":
+		cmdVerifyRegistry(os.Args[2:])
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -91,8 +102,32 @@ Subcommands:
       Generate an Ed25519 keypair and write two files to disk:
         -out-priv  path for the private-key JSON file (default: key.priv.json)
         -out-pub   path for the public-key JSON file  (default: key.pub.json)
+        -dev-seed  DEV ONLY: derive the key deterministically from a published
+                   seed string instead of the CSPRNG.  The resulting key is NOT
+                   secret — anyone with the seed can reproduce it.  Used only to
+                   regenerate the repo's checked-in dev keys (make dev-keys).
       The private key file must be protected by OS permissions or HSM custody.
       Label the output clearly (e.g. root.priv.json vs release.priv.json).
+
+  export-anchor
+      Convert a ROOT public-key JSON file into the single-line base64
+      trust-anchor.pub format that the OS image bakes in.
+        -pub  path to the ROOT public-key JSON file
+        -out  output path (default: trust-anchor.pub)
+
+  sign-registry  [RELEASE-KEY OPERATION]
+      Sign every entry in registry.json with the release key and rewrite the
+      file in place, then re-verify the result before exiting.
+        -release-priv  path to release private-key JSON file
+        -registry      path to registry.json (default: registry.json)
+
+  verify-registry
+      Verify every entry in registry.json against the trust anchor (and, if
+      given, the root-signed release cert that authorises the signing key).
+      Needs no private key — this is the check CI runs.
+        -anchor    path to trust-anchor public key (default: `+signing.DefaultAnchorPath+`)
+        -cert      path to release cert JSON (omit for the single-key model)
+        -registry  path to registry.json (default: registry.json)
 
   issue-release-cert  [OFFLINE ROOT OPERATION]
       Root key signs a release-key certificate.
@@ -137,10 +172,24 @@ func cmdGenKey(args []string) {
 	fs := flag.NewFlagSet("gen-key", flag.ExitOnError)
 	outPriv := fs.String("out-priv", "key.priv.json", "output path for private-key JSON file")
 	outPub := fs.String("out-pub", "key.pub.json", "output path for public-key JSON file")
+	devSeed := fs.String("dev-seed", "", "DEV ONLY: derive the key from this published seed instead of the CSPRNG")
 	_ = fs.Parse(args)
 
-	pub, priv, err := generateKey()
-	if err != nil {
+	var (
+		pub  ed25519.PublicKey
+		priv ed25519.PrivateKey
+		err  error
+	)
+	if *devSeed != "" {
+		// Deterministic, reproducible, and therefore NOT secret. This exists so
+		// that a fresh clone can regenerate the repo's dev keys and verify the
+		// committed registry signatures offline. signing.RefuseDevKeyInProd
+		// makes sure the result can never be trusted by a production box.
+		pub, priv = signing.DeriveDevKey(*devSeed)
+		fmt.Fprintf(os.Stderr,
+			"gen-key: WARNING: -dev-seed %q derives a NON-SECRET key. Never use it for a real release.\n",
+			*devSeed)
+	} else if pub, priv, err = generateKey(); err != nil {
 		fatalf(2, "gen-key: generate: %v", err)
 	}
 

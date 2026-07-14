@@ -34,7 +34,9 @@ flowchart TD
 
 ## Key design decisions
 
-**Single binary.** The Go backend embeds the entire frontend SPA at build time via `go:embed`. One binary to deploy, one process to supervise.
+**One process.** The Go backend is a single binary and a single process to supervise — API, app gateway, peering and the static frontend all served from it. The SPA is *not* compiled into the binary: at startup the server looks for a web root on disk (first match of `/opt/vulos/webroot`, `./dist`, `../dist`, `../../dist`) and serves it with `http.FileServer`, falling back to `index.html` for client-side routes (`backend/cmd/server/main.go`). With no build present it logs `no frontend build found — API only mode` and runs headless. So a deploy is two artifacts — the binary and `dist/` — which is what the Dockerfile copies (`COPY --from=frontend /dist /opt/vulos/webroot`) and what lets the UI be rebuilt or replaced without recompiling Go.
+
+**Signed app registry.** Every `registry.json` entry carries an Ed25519 signature from the release key, which is itself certified by the offline root key baked into the image at `/etc/vulos/trust-anchor.pub`. Installs fail closed: unsigned, tampered, or foreign-signed entries are refused, and the `VULOS_REGISTRY_INSECURE` escape hatch is rejected outright in production. See [KEY-CEREMONY.md](KEY-CEREMONY.md).
 
 **Local-first storage.** SQLite for auth/config; S3 (optional, via Restic) for encrypted backup. No external database required for a basic install.
 

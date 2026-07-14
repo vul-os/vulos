@@ -189,10 +189,31 @@ RUN plymouth-set-default-theme vulos 2>/dev/null || \
 # Layer 4: Frontend build output (changes with UI work)
 COPY --from=frontend /dist /opt/vulos/webroot
 
-# Layer 5: Registry (changes when apps are added/removed)
+# Layer 5: Trust anchor + release cert (SEED-01 / REGISTRY-SIGN-01)
+#
+# These are PUBLIC keys. The root private key never leaves offline storage and
+# the release private key never enters CI — see docs/KEY-CEREMONY.md.
+#
+#   trust-anchor.pub  — the offline ROOT public key. signing.DefaultAnchorPath
+#                       resolves here, so the App Hub, the A/B slot updater and
+#                       the netboot verifier all have something to chain to.
+#   release-cert.json — the root-signed cert authorising the RELEASE key that
+#                       actually signed registry.json's entries.
+#
+# The repo ships the DEV anchor by default. A production box refuses it
+# (signing.RefuseDevKeyInProd) — replace both files with ceremony output and
+# re-run `make sign-registry` before shipping with VULOS_ENV=prod.
+RUN mkdir -p /etc/vulos
+COPY keys/trust-anchor.pub /etc/vulos/trust-anchor.pub
+COPY keys/release-cert.json /etc/vulos/release-cert.json
+RUN chmod 0444 /etc/vulos/trust-anchor.pub /etc/vulos/release-cert.json
+
+# Layer 6: Registry (changes when apps are added/removed)
+# Every entry is Ed25519-signed by the release key above; installs are refused
+# for any entry that is unsigned or fails verification.
 COPY registry.json /opt/vulos/registry.json
 
-# Layer 6: Go binary (changes most often — last for fast rebuilds)
+# Layer 7: Go binary (changes most often — last for fast rebuilds)
 COPY --from=backend /vulos-server /usr/local/bin/vulos-server
 COPY --from=backend /vulos-init /usr/local/bin/vulos-init
 COPY scripts/xdg-open /usr/local/bin/xdg-open

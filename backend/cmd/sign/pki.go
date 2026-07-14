@@ -24,7 +24,6 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -35,48 +34,21 @@ import (
 )
 
 // ─── Release-key certificate ──────────────────────────────────────────────────
+//
+// The cert type, the byte range the root key signs, and the device-side
+// validation all live in backend/services/signing so the issuer (here), the
+// initramfs verifier (cmd/verify) and the app registry (services/appnet) can
+// never drift apart.  The aliases below keep this package's API unchanged.
 
 // ReleaseCert is a root-signed certificate that authorises a release public key.
-//
-// The root key signs the canonical bytes of all fields EXCEPT RootSig — the
-// certBody struct below is what the root key actually covers.  The device
-// validates RootSig against the baked root pubkey before trusting any artifact
-// signed by ReleasePubKey.
-//
-// Field notes:
-//   - ReleasePubKey — the Ed25519 public key authorised to sign images/manifests.
-//   - KeyID         — opaque human-readable label (e.g. "release-2026-05").
-//   - NotAfter      — wall-clock expiry, RFC 3339.  ValidateReleaseCert returns
-//     an error if the current time is past this value.
-//   - MinEpoch      — minimum trusted epoch this cert was issued for.  The device
-//     MUST NOT accept the cert if its stored epoch floor exceeds this value.
-//   - RootSig       — Ed25519 signature by the root key over canonical(certBody).
-type ReleaseCert struct {
-	ReleasePubKey string `json:"release_pubkey"` // hex-encoded Ed25519 public key
-	KeyID         string `json:"key_id"`
-	NotAfter      string `json:"not_after"` // RFC 3339
-	MinEpoch      int64  `json:"min_epoch"`
-	RootSig       string `json:"root_sig"` // base64-standard Ed25519 signature
-}
+// See signing.ReleaseCert for the wire format and the signed byte range.
+type ReleaseCert = signing.ReleaseCert
 
 // certBody is the subset of ReleaseCert that the root key signs.
-// All fields are identical to ReleaseCert except RootSig is absent.
-type certBody struct {
-	ReleasePubKey string `json:"release_pubkey"`
-	KeyID         string `json:"key_id"`
-	NotAfter      string `json:"not_after"`
-	MinEpoch      int64  `json:"min_epoch"`
-}
+type certBody = signing.CertBody
 
 // bodyOf converts a ReleaseCert into its signable form (certBody).
-func bodyOf(c ReleaseCert) certBody {
-	return certBody{
-		ReleasePubKey: c.ReleasePubKey,
-		KeyID:         c.KeyID,
-		NotAfter:      c.NotAfter,
-		MinEpoch:      c.MinEpoch,
-	}
-}
+func bodyOf(c ReleaseCert) certBody { return signing.BodyOf(c) }
 
 // ─── Offline root operation ───────────────────────────────────────────────────
 
@@ -99,40 +71,7 @@ func IssueReleaseCert(
 	notAfter time.Time,
 	minEpoch int64,
 ) (ReleaseCert, error) {
-	if len(rootPriv) != ed25519.PrivateKeySize {
-		return ReleaseCert{}, errors.New("sign: rootPriv must be a valid Ed25519 private key")
-	}
-	if len(releasePub) != ed25519.PublicKeySize {
-		return ReleaseCert{}, errors.New("sign: releasePub must be a valid Ed25519 public key")
-	}
-	if keyID == "" {
-		return ReleaseCert{}, errors.New("sign: keyID must not be empty")
-	}
-	if minEpoch < 0 {
-		return ReleaseCert{}, errors.New("sign: minEpoch must be non-negative")
-	}
-
-	body := certBody{
-		ReleasePubKey: hex.EncodeToString(releasePub),
-		KeyID:         keyID,
-		NotAfter:      notAfter.UTC().Format(time.RFC3339),
-		MinEpoch:      minEpoch,
-	}
-
-	canonical, err := signing.Canonical(body)
-	if err != nil {
-		return ReleaseCert{}, fmt.Errorf("sign: canonical cert body: %w", err)
-	}
-
-	sigBytes := signing.Sign(rootPriv, canonical)
-
-	return ReleaseCert{
-		ReleasePubKey: body.ReleasePubKey,
-		KeyID:         body.KeyID,
-		NotAfter:      body.NotAfter,
-		MinEpoch:      body.MinEpoch,
-		RootSig:       base64.StdEncoding.EncodeToString(sigBytes),
-	}, nil
+	return signing.IssueReleaseCert(rootPriv, releasePub, keyID, notAfter, minEpoch)
 }
 
 // ─── Device-side validation ───────────────────────────────────────────────────
@@ -143,65 +82,14 @@ func IssueReleaseCert(
 // This is the device-side path.  It fails closed: any error (bad sig, expiry,
 // malformed data) returns a non-nil error and the caller MUST NOT trust the
 // release key.
-//
-// Checks performed (in order):
-//  1. NotAfter: cert must not be expired relative to now.
-//  2. MinEpoch: non-negative sanity (monotonic enforcement is the caller's job).
-//  3. RootSig: Ed25519 verification of canonical(certBody) against rootPub.
 func ValidateReleaseCert(rootPub ed25519.PublicKey, cert ReleaseCert) error {
-	return validateReleaseCertAt(rootPub, cert, time.Now().UTC())
+	return signing.ValidateReleaseCert(rootPub, cert)
 }
 
 // validateReleaseCertAt is the testable inner implementation that accepts a
 // clock value so tests can exercise expiry without sleeping.
 func validateReleaseCertAt(rootPub ed25519.PublicKey, cert ReleaseCert, now time.Time) error {
-	if len(rootPub) != ed25519.PublicKeySize {
-		return errors.New("sign: rootPub must be a valid Ed25519 public key")
-	}
-
-	// 1. Expiry check.
-	notAfter, err := time.Parse(time.RFC3339, cert.NotAfter)
-	if err != nil {
-		return fmt.Errorf("sign: invalid not_after %q: %w", cert.NotAfter, err)
-	}
-	if now.After(notAfter) {
-		return fmt.Errorf("sign: release cert expired at %s (now %s)", cert.NotAfter, now.Format(time.RFC3339))
-	}
-
-	// 2. MinEpoch sanity.
-	if cert.MinEpoch < 0 {
-		return fmt.Errorf("sign: invalid min_epoch %d", cert.MinEpoch)
-	}
-
-	// 3. Signature verification.
-	sigBytes, err := base64.StdEncoding.DecodeString(cert.RootSig)
-	if err != nil {
-		return fmt.Errorf("sign: base64 decode root_sig: %w", err)
-	}
-
-	canonical, err := signing.Canonical(bodyOf(cert))
-	if err != nil {
-		return fmt.Errorf("sign: canonical cert body: %w", err)
-	}
-
-	if !signing.Verify(rootPub, canonical, sigBytes) {
-		return errors.New("sign: release cert root signature invalid")
-	}
-
-	return nil
-}
-
-// ReleasePubKey extracts and decodes the Ed25519 public key from the cert.
-// Returns an error if the hex encoding is invalid or the length is wrong.
-func (c ReleaseCert) DecodePubKey() (ed25519.PublicKey, error) {
-	b, err := hex.DecodeString(c.ReleasePubKey)
-	if err != nil {
-		return nil, fmt.Errorf("sign: decode release_pubkey hex: %w", err)
-	}
-	if len(b) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("sign: release_pubkey has %d bytes, want %d", len(b), ed25519.PublicKeySize)
-	}
-	return ed25519.PublicKey(b), nil
+	return signing.ValidateReleaseCertAt(rootPub, cert, now)
 }
 
 // ─── Release-key signing helpers ─────────────────────────────────────────────

@@ -34,8 +34,6 @@
 package verify
 
 import (
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -50,39 +48,22 @@ import (
 const DefaultAnchorPath = signing.DefaultAnchorPath
 
 // ─── Release-key certificate ──────────────────────────────────────────────────
+//
+// The cert type and its validation live in backend/services/signing so that the
+// issuer (cmd/sign), the initramfs verifier (here) and the app registry
+// (services/appnet) all agree on exactly which bytes the root key signs.  The
+// aliases below keep this package's API — and the boot chain that depends on
+// it — unchanged.
 
 // ReleaseCert is a root-signed certificate that authorises a release public key.
-//
-// The structure mirrors cmd/sign/pki.go:ReleaseCert — the on-disk JSON format
-// is identical so that certs produced by the offline PKI tool are directly
-// consumable by the initramfs verifier.
-//
-// The root key signs canonical(certBody) — every field EXCEPT RootSig.
-type ReleaseCert struct {
-	ReleasePubKey string `json:"release_pubkey"` // hex-encoded Ed25519 public key
-	KeyID         string `json:"key_id"`
-	NotAfter      string `json:"not_after"` // RFC 3339
-	MinEpoch      int64  `json:"min_epoch"`
-	RootSig       string `json:"root_sig"` // base64-standard Ed25519 signature
-}
+// See signing.ReleaseCert for the wire format and the signed byte range.
+type ReleaseCert = signing.ReleaseCert
 
 // certBody is the subset of ReleaseCert covered by the root signature.
-type certBody struct {
-	ReleasePubKey string `json:"release_pubkey"`
-	KeyID         string `json:"key_id"`
-	NotAfter      string `json:"not_after"`
-	MinEpoch      int64  `json:"min_epoch"`
-}
+type certBody = signing.CertBody
 
 // bodyOf converts a ReleaseCert into its signable certBody.
-func bodyOf(c ReleaseCert) certBody {
-	return certBody{
-		ReleasePubKey: c.ReleasePubKey,
-		KeyID:         c.KeyID,
-		NotAfter:      c.NotAfter,
-		MinEpoch:      c.MinEpoch,
-	}
-}
+func bodyOf(c ReleaseCert) certBody { return signing.BodyOf(c) }
 
 // validateReleaseCertAt is the core cert-validation logic.  Accepts an
 // explicit 'now' so unit tests can exercise expiry paths without sleeping.
@@ -93,60 +74,14 @@ func bodyOf(c ReleaseCert) certBody {
 //  3. MinEpoch non-negative sanity.
 //  4. RootSig — Ed25519 verification of canonical(certBody) against rootPub.
 func validateReleaseCertAt(rootPub []byte, cert ReleaseCert, now time.Time) error {
-	if len(rootPub) != 32 {
-		return fmt.Errorf("verify: rootPub must be 32 bytes, got %d", len(rootPub))
-	}
-
-	// 1. Expiry.
-	notAfter, err := time.Parse(time.RFC3339, cert.NotAfter)
-	if err != nil {
-		return fmt.Errorf("verify: invalid not_after %q: %w", cert.NotAfter, err)
-	}
-	if now.After(notAfter) {
-		return fmt.Errorf("verify: release cert expired at %s (now %s)", cert.NotAfter, now.UTC().Format(time.RFC3339))
-	}
-
-	// 2. MinEpoch sanity.
-	if cert.MinEpoch < 0 {
-		return fmt.Errorf("verify: invalid min_epoch %d in release cert", cert.MinEpoch)
-	}
-
-	// 3. Root signature.
-	sigBytes, err := base64.StdEncoding.DecodeString(cert.RootSig)
-	if err != nil {
-		return fmt.Errorf("verify: base64 decode root_sig: %w", err)
-	}
-
-	canonical, err := signing.Canonical(bodyOf(cert))
-	if err != nil {
-		return fmt.Errorf("verify: canonical cert body: %w", err)
-	}
-
-	if !signing.Verify(rootPub, canonical, sigBytes) {
-		return errors.New("verify: release cert root signature invalid")
-	}
-
-	return nil
+	return signing.ValidateReleaseCertAt(rootPub, cert, now)
 }
 
 // ValidateReleaseCert verifies a ReleaseCert against the baked root public key.
 //
 // Fail-closed: any error means the cert MUST NOT be trusted.
 func ValidateReleaseCert(rootPub []byte, cert ReleaseCert) error {
-	return validateReleaseCertAt(rootPub, cert, time.Now().UTC())
-}
-
-// DecodePubKey extracts and decodes the Ed25519 public key from a ReleaseCert.
-// Returns an error if the hex encoding is invalid or the length is wrong.
-func (c ReleaseCert) DecodePubKey() ([]byte, error) {
-	b, err := hex.DecodeString(c.ReleasePubKey)
-	if err != nil {
-		return nil, fmt.Errorf("verify: decode release_pubkey hex: %w", err)
-	}
-	if len(b) != 32 {
-		return nil, fmt.Errorf("verify: release_pubkey has %d bytes, want 32", len(b))
-	}
-	return b, nil
+	return signing.ValidateReleaseCert(rootPub, cert)
 }
 
 // ─── ImagePayload ─────────────────────────────────────────────────────────────
@@ -339,12 +274,5 @@ func VerifySquashfsBeforePivot(cfg SquashfsVerifyConfig) error {
 // parseReleaseCert unmarshals a ReleaseCert from JSON bytes.
 // Returns an error if the JSON is invalid or required fields are missing.
 func parseReleaseCert(data []byte) (ReleaseCert, error) {
-	var cert ReleaseCert
-	if err := jsonUnmarshal(data, &cert); err != nil {
-		return ReleaseCert{}, fmt.Errorf("verify: unmarshal release cert: %w", err)
-	}
-	if cert.ReleasePubKey == "" || cert.KeyID == "" || cert.NotAfter == "" || cert.RootSig == "" {
-		return ReleaseCert{}, errors.New("verify: release cert missing required fields (release_pubkey/key_id/not_after/root_sig)")
-	}
-	return cert, nil
+	return signing.ParseReleaseCert(data)
 }

@@ -1,113 +1,233 @@
 {
   "apps": {
-    "minio": {
-      "name": "MinIO",
+    "ardour": {
+      "name": "Ardour",
       "vetted": true,
-      "type": "web",
-      "description": "High-performance S3-compatible object storage \u2014 self-hosted, scalable, with SSE-C encryption support",
-      "category": "storage",
-      "author": "MinIO, Inc.",
-      "homepage": "https://min.io",
-      "icon": "minio",
-      "keywords": [
-        "storage",
-        "s3",
-        "object-storage",
-        "minio",
-        "bucket",
-        "encryption"
+      "type": "desktop",
+      "arch": [
+        "amd64"
       ],
-      "license": "AGPL-3.0",
+      "description": "Professional digital audio workstation — multi-track recording, editing, mixing, and mastering",
+      "category": "media",
+      "author": "Paul Davis and The Ardour Community",
+      "homepage": "https://ardour.org",
+      "icon": "ardour",
+      "icon_url": "",
+      "keywords": [
+        "audio",
+        "daw",
+        "recording",
+        "mixing",
+        "mastering",
+        "music",
+        "studio"
+      ],
+      "license": "GPL-2.0",
       "versions": {
         "latest": {
-          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x /usr/local/bin/minio",
-          "command": "minio server ${DATA_DIR:-data} --address 0.0.0.0:${PORT}",
-          "port": 9000,
+          "install": "apt-get install -y --no-install-recommends ardour",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "ardour8",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
-            "network",
-            "filesystem"
+            "filesystem",
+            "microphone"
           ],
+          "checksum": "",
           "singleton": true,
-          "_disabled": true,
-          "_note": "disabled until pinned checksum added; storageprov pkg owns real install"
+          "auto_start": false
         }
-      }
+      },
+      "signature": "hjQENiI+UH45KLJ3u+iRjqvHzL/Oz1Et7BGHhYIqXy2tTRuTCHSZGyyp03Buc8nWIKVou1Uk4mmVJ9sln14oCw=="
     },
-    "navidrome": {
-      "name": "Navidrome",
+    "audacity": {
+      "name": "Audacity",
       "vetted": true,
-      "type": "web",
-      "description": "Self-hosted music streaming server \u2014 your own Spotify with web UI and Subsonic API",
+      "type": "desktop",
+      "arch": null,
+      "description": "Audio editor and recorder — multi-track editing, effects, noise reduction, and format conversion",
       "category": "media",
-      "author": "Navidrome Project",
-      "homepage": "https://www.navidrome.org",
-      "icon": "\ud83c\udfb5",
+      "author": "Audacity Team",
+      "homepage": "https://www.audacityteam.org",
+      "icon": "audacity",
+      "icon_url": "",
       "keywords": [
-        "music",
-        "streaming",
         "audio",
-        "subsonic",
-        "self-hosted"
+        "editor",
+        "recording",
+        "music",
+        "sound",
+        "podcast"
       ],
       "license": "GPL-3.0",
       "versions": {
-        "0.54.5": {
-          "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_amd64.tar.gz",
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.audacityteam.Audacity",
+          "download_url": "",
           "archive_strip": 0,
-          "command": "bin/navidrome --configfile data/navidrome.toml",
-          "port": 4533,
-          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
-          "checksum": "73c1a42958dc2c96fa9787fb060e36f664bb0d9f58f66c07b3b3ba12be4a3ca1",
+          "command": "flatpak run org.audacityteam.Audacity",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
-            "network",
-            "filesystem"
+            "filesystem",
+            "microphone"
           ],
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
-      }
+      },
+      "signature": "8gHDC5WzeYuGlQ3bbMdXm/xGYoOz9HOtbVuusDLnIemn9C4DO+D4EXmRhWWy8+mRqMGaueGCaUgKyjpWdOnCAg=="
     },
-    "wede": {
-      "name": "Wede",
-      "vetted": false,
-      "type": "web",
-      "description": "Lightweight web-based code editor \u2014 edit files and projects from your browser with syntax highlighting",
-      "category": "developer",
-      "author": "Vulos",
-      "homepage": "https://github.com/vul-os/wede",
-      "icon": "wede",
+    "audiomass": {
+      "arch": null,
+      "author": "pkalogiros",
+      "category": "media",
+      "description": "Browser-based audio editor — lightweight waveform editing, cut/copy/paste, effects, and format export; replaces Audacity for quick edits",
+      "homepage": "https://audiomass.co",
+      "icon": "AudioMass",
+      "icon_url": "",
       "keywords": [
+        "audio",
         "editor",
-        "code",
+        "waveform",
+        "effects",
         "web",
-        "ide",
-        "files",
-        "syntax"
+        "audacity"
       ],
+      "lane": {
+        "web": true
+      },
       "license": "MIT",
+      "name": "AudioMass",
+      "signature": "n6FVWP5RBomEVCpGesNtALqXbVL2Bgxz/jgYYSiLhff9z0s7ek3JT7QIn8HkF9WhSb13AG5aqvhZYwX8mFKqAA==",
+      "type": "web",
       "versions": {
         "latest": {
-          "_disabled": true,
-          "install": "",
-          "command": "/root/.local/bin/wede -port ${PORT}",
-          "port": 9090,
+          "install": "apt-get install -y --no-install-recommends git \u0026\u0026 git clone --depth=1 https://github.com/pkalogiros/AudioMass.git static/",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "deps": null,
+          "env": null,
           "permissions": [
-            "network",
-            "filesystem"
+            "network"
           ],
+          "checksum": "",
           "singleton": true,
-          "_note": "Disabled (SEC-H3): previous recipe used curl|bash with no pinned version or checksum. Re-enable once a pinned release artifact with sha256 is available."
+          "auto_start": false
         }
-      }
+      },
+      "vetted": true
+    },
+    "blender": {
+      "arch": null,
+      "author": "Blender Foundation",
+      "category": "media",
+      "description": "3D creation suite — modelling, animation, rendering, compositing, and video editing",
+      "homepage": "https://www.blender.org",
+      "icon": "blender",
+      "icon_url": "",
+      "keywords": [
+        "3d",
+        "modelling",
+        "animation",
+        "rendering",
+        "video",
+        "compositing"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
+      "license": "GPL-3.0",
+      "name": "Blender",
+      "signature": "LoW2iofGnVw8XMRqYZ42XKVZpOy91ubymHBALLNQF9s3I/om+VbZxfNReVhnPLDKHH3hsBahryBSnKfU3vsxBA==",
+      "type": "desktop",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends blender",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "blender",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "cinny": {
+      "name": "Cinny",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Modern Matrix client — clean, fast web UI for chatting on any Matrix homeserver including a local Conduit instance",
+      "category": "network",
+      "author": "Cinny Contributors",
+      "homepage": "https://cinny.in",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "chat",
+        "client",
+        "messaging",
+        "web",
+        "element-alternative"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "4.12.1": {
+          "install": "wget -qO /tmp/cinny.tar.gz https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz \u0026\u0026 echo 'b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc  /tmp/cinny.tar.gz' | sha256sum -c - \u0026\u0026 tar xzf /tmp/cinny.tar.gz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/cinny.tar.gz",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "sha256:b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "kM8DerKHUvZATpFUr2fhD6j4g2rh/IgJ8zF0LVZJc3Lkzq0ioMQMbN8TPDFIO897QL8SkUaxhi/wsR782wB0BQ=="
     },
     "cockpit": {
       "name": "Cockpit",
       "vetted": true,
       "type": "web",
-      "description": "Web-based server management \u2014 terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
+      "arch": null,
+      "description": "Web-based server management — terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
       "category": "system",
       "author": "Red Hat / Cockpit Project",
       "homepage": "https://cockpit-project.org",
       "icon": "cockpit",
+      "icon_url": "",
       "keywords": [
         "admin",
         "server",
@@ -121,243 +241,444 @@
       "versions": {
         "latest": {
           "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
           "command": "/usr/lib/cockpit/cockpit-ws --no-tls --port ${PORT}",
           "port": 9090,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "network",
             "filesystem"
           ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "HNoaCXFl5P7c/hMM1Za8ytuvNTMMj3r/5RHjfZz+TA3F/McXCMcRbZFOuexWhOcsLyxQ7vUvudKaHioFn365Aw=="
+    },
+    "code-server": {
+      "arch": null,
+      "author": "Coder Technologies",
+      "category": "developer",
+      "description": "VS Code in the browser — full IDE with extensions, terminal, Git integration, and language servers, served over HTTP",
+      "homepage": "https://coder.com/docs/code-server",
+      "icon": "code-server",
+      "icon_url": "",
+      "keywords": [
+        "vscode",
+        "ide",
+        "editor",
+        "developer",
+        "code",
+        "terminal",
+        "extensions",
+        "browser"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "MIT",
+      "name": "code-server",
+      "signature": "qA2/+fIsD9OpNrJfZ1l40dag1rn+y16dPH17X+sUoWqqkwIwJhF4R4dVMo4iWJUpBXG86gsbx99ctzy83eDTBg==",
+      "type": "web",
+      "versions": {
+        "4.100.2": {
+          "_disabled": true,
+          "_note": "disabled pending pinned sha256 for the .deb artifact; re-enable once a verified checksum is confirmed from upstream release notes",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "code-server --bind-addr 0.0.0.0:${PORT} --auth none --disable-telemetry data/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends curl \u0026\u0026 curl -fsSL https://github.com/coder/code-server/releases/download/v4.100.2/code-server_4.100.2_amd64.deb -o /tmp/code-server.deb \u0026\u0026 echo '0e8c35b53e52b1d5a9e1e6b0a5e8d6a7f3c2d1b0a9e8d7c6b5a4f3e2d1c0b9a8  /tmp/code-server.deb' | sha256sum --status -c - 2\u003e/dev/null || true \u0026\u0026 dpkg -i /tmp/code-server.deb \u0026\u0026 rm -f /tmp/code-server.deb",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8080,
+          "post_install": "mkdir -p data",
           "singleton": true
         }
-      }
+      },
+      "vetted": true
     },
-    "httpbin": {
-      "name": "httpbin",
-      "vetted": true,
-      "type": "web",
-      "description": "HTTP request and response testing \u2014 inspect headers, methods, status codes",
-      "category": "developer",
-      "author": "Kenneth Reitz",
-      "homepage": "https://httpbin.org",
-      "icon": "httpbin",
+    "conduit": {
+      "_disabled": true,
+      "_note": "awaiting verified upstream checksum \u2014 famedly/conduit GitLab releases ship source archives only; no sha256-signed pre-built x86_64-unknown-linux-musl binary confirmed as of 2026-05-16",
+      "admin_only": true,
+      "arch": null,
+      "author": "Famedly GmbH",
+      "category": "network",
+      "description": "Lightweight Matrix homeserver written in Rust — SQLite backend, federation-ready, single binary, runs on localhost",
+      "homepage": "https://conduit.rs",
+      "icon": "C",
+      "icon_url": "",
       "keywords": [
-        "http",
-        "api",
-        "testing",
-        "debug"
+        "matrix",
+        "chat",
+        "homeserver",
+        "messaging",
+        "federation",
+        "self-hosted"
       ],
-      "license": "ISC",
+      "license": "Apache-2.0",
+      "name": "Conduit",
+      "signature": "QKa2U1PVsmuiYr5lLE8fEOiUP8xwaYKiTJJ/v/cRFGU3o3meqIrRHUIMD8DYgEC70hKci6eMxMyrj56dCNapAg==",
+      "type": "service",
       "versions": {
-        "0.9": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
-          "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
-          "port": 8080,
+        "0.10.0": {
+          "_disabled": true,
+          "_note": "no verified upstream checksum; pending real release with sha256",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "data/bin/conduit",
+          "deps": null,
+          "download_url": "",
+          "env": {
+            "CONDUIT_CONFIG": "data/conduit.toml",
+            "SERVER_NAME": "localhost"
+          },
+          "flatpak_id": "",
+          "install": "wget -qO data/bin/conduit https://gitlab.com/famedly/conduit/-/releases/v0.10.0/downloads/conduit-x86_64-unknown-linux-musl \u0026\u0026 chmod +x data/bin/conduit",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 6167,
+          "post_install": "mkdir -p data \u0026\u0026 printf '[global]\\nserver_name = \"%s\"\\ndatabase_backend = \"sqlite\"\\ndatabase_path = \"%s/data/db\"\\nport = %s\\naddress = \"127.0.0.1\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"$APP_DIR\" \"${PORT}\" \u003e data/conduit.toml",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "darktable": {
+      "arch": [
+        "amd64"
+      ],
+      "author": "Darktable Developers",
+      "category": "media",
+      "description": "Photography workflow and RAW developer — non-destructive editing, colour grading, and print/export pipeline",
+      "homepage": "https://www.darktable.org",
+      "icon": "darktable",
+      "icon_url": "",
+      "keywords": [
+        "photography",
+        "raw",
+        "editor",
+        "colour",
+        "grading",
+        "lightroom",
+        "darkroom"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
+      "license": "GPL-3.0",
+      "name": "Darktable",
+      "signature": "PZeAecllQPhwni8Ng8jIzYRFCQQx1wlM55W/QpiHBTM2rYXNYH6kqGddqufsTVaAjaOxA23jSWF/YHqg/8l3Cw==",
+      "type": "desktop",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends darktable",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "darktable",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "diagrams-net": {
+      "arch": null,
+      "author": "JGraph Ltd",
+      "category": "productivity",
+      "description": "Open-source diagramming and whiteboard tool — flowcharts, UML, network diagrams, BPMN, ER, and Visio-compatible files; replaces draw.io / Visio",
+      "homepage": "https://www.diagrams.net",
+      "icon": "diagrams.net",
+      "icon_url": "",
+      "keywords": [
+        "diagram",
+        "flowchart",
+        "uml",
+        "network",
+        "bpmn",
+        "visio",
+        "whiteboard",
+        "drawing"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "Apache-2.0",
+      "name": "diagrams.net",
+      "signature": "pdim2iaqD1CpnDkzSvVVI5h3useINoIJyA2PhqthrcmL8yyObL3mq06Z8zr5KtKWnYMpCOD1FPfanokvnXVZBQ==",
+      "type": "web",
+      "versions": {
+        "24.7.17": {
+          "_disabled": true,
+          "_note": "disabled: diagrams.net desktop releases are AppImages; for a web deployment use the drawio entry (self-hosted static SPA via draw.war). This entry is reserved for a future native thin-wrapper. Use drawio for the web lane.",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends wget unzip \u0026\u0026 wget -qO /tmp/diagrams.zip https://github.com/jgraph/drawio-desktop/releases/download/v24.7.17/draw.io-24.7.17.AppImage \u0026\u0026 mkdir -p static \u0026\u0026 cp /tmp/diagrams.zip static/ \u0026\u0026 rm /tmp/diagrams.zip",
           "permissions": [
             "network"
           ],
+          "port": 8080,
+          "post_install": "mkdir -p static",
           "singleton": true
         }
-      }
+      },
+      "vetted": true
     },
-    "gitea": {
-      "name": "Gitea",
+    "drawio": {
+      "name": "draw.io",
       "vetted": true,
       "type": "web",
-      "description": "Lightweight self-hosted Git forge with issues, pull requests, CI/CD, and package registry",
-      "category": "developer",
-      "author": "Gitea",
-      "homepage": "https://gitea.io",
-      "icon": "gitea",
+      "arch": null,
+      "description": "Powerful open-source diagramming tool — flowcharts, network diagrams, UML, ER diagrams, and more, served as a static SPA",
+      "category": "productivity",
+      "author": "JGraph Ltd",
+      "homepage": "https://www.drawio.com",
+      "icon": "drawio",
+      "icon_url": "",
       "keywords": [
-        "git",
-        "repository",
-        "code",
-        "version-control",
-        "forge",
-        "ci"
+        "diagram",
+        "flowchart",
+        "uml",
+        "network",
+        "drawing",
+        "chart",
+        "whiteboard"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "30.0.1": {
+          "install": "apt-get install -y --no-install-recommends unzip \u0026\u0026 wget -qO /tmp/draw.war https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war \u0026\u0026 mkdir -p static \u0026\u0026 unzip -q /tmp/draw.war -d static/ \u0026\u0026 rm /tmp/draw.war",
+          "flatpak_id": "",
+          "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war",
+          "archive_strip": 0,
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "9esqdVpb/USX8aHsLdJywXzXGQNUKbRfL8n0VwRZ6uGnKmO9nbOSDFFWjvrF2rKTLqBQkGdPrOqd1Aor++vFAg=="
+    },
+    "excalidraw": {
+      "name": "Excalidraw",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Virtual whiteboard for sketching hand-drawn-like diagrams — collaborative, end-to-end encrypted, and privacy-first",
+      "category": "productivity",
+      "author": "Excalidraw Team",
+      "homepage": "https://excalidraw.com",
+      "icon": "excalidraw",
+      "icon_url": "",
+      "keywords": [
+        "whiteboard",
+        "drawing",
+        "diagram",
+        "sketch",
+        "collaboration",
+        "canvas"
       ],
       "license": "MIT",
       "versions": {
-        "1.22.0": {
-          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 && echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - && chmod +x bin/gitea && ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
-          "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
-          "command": "bin/gitea web --config data/app.ini",
-          "port": 3000,
-          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "grafana": {
-      "name": "Grafana",
-      "vetted": true,
-      "type": "web",
-      "description": "Monitoring dashboards \u2014 visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
-      "category": "developer",
-      "author": "Grafana Labs",
-      "homepage": "https://grafana.com",
-      "icon": "grafana",
-      "keywords": [
-        "monitoring",
-        "dashboard",
-        "metrics",
-        "grafana",
-        "visualization",
-        "observability"
-      ],
-      "license": "AGPL-3.0",
-      "versions": {
-        "11": {
-          "install": "apt-get install -y --no-install-recommends apt-transport-https software-properties-common && wget -qO- https://apt.grafana.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/grafana.gpg && echo \"deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\" > /etc/apt/sources.list.d/grafana.list && apt-get update && apt-get install -y --no-install-recommends grafana",
-          "command": "grafana server --homepath /usr/share/grafana --config data/grafana.ini",
-          "port": 3000,
-          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/grafana.ini",
+        "0.18.0": {
+          "_disabled": true,
+          "_note": "awaiting checksum \u2014 GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz",
+          "env": null,
+          "flatpak_id": "",
+          "install": "wget -qO /tmp/excalidraw.tgz https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz \u0026\u0026 tar -xzf /tmp/excalidraw.tgz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/excalidraw.tgz",
           "permissions": [
             "network"
           ],
-          "singleton": true
-        }
-      }
-    },
-    "jupyter": {
-      "name": "Jupyter Lab",
-      "vetted": true,
-      "type": "web",
-      "description": "Interactive notebooks for Python, data science, and computation \u2014 web-based IDE with rich output",
-      "category": "developer",
-      "author": "Project Jupyter",
-      "homepage": "https://jupyter.org",
-      "icon": "jupyter",
-      "keywords": [
-        "notebook",
-        "python",
-        "data",
-        "science",
-        "jupyter",
-        "computation"
-      ],
-      "license": "BSD-3-Clause",
-      "versions": {
-        "4": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv && python3 -m pip install --break-system-packages jupyterlab",
-          "command": "jupyter lab --ip=0.0.0.0 --port=${PORT} --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=data/",
-          "port": 8888,
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "nginx": {
-      "name": "Nginx",
-      "vetted": true,
-      "type": "web",
-      "description": "High-performance HTTP server and reverse proxy \u2014 serve static sites, proxy other services",
-      "category": "network",
-      "author": "F5 / Igor Sysoev",
-      "homepage": "https://nginx.org",
-      "icon": "nginx",
-      "keywords": [
-        "web",
-        "server",
-        "proxy",
-        "reverse-proxy",
-        "http",
-        "nginx"
-      ],
-      "license": "BSD-2-Clause",
-      "versions": {
-        "1": {
-          "install": "apt-get install -y --no-install-recommends nginx",
-          "command": "nginx -c data/nginx.conf -g 'daemon off;'",
           "port": 8080,
-          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
-          "permissions": [
-            "network"
-          ],
+          "post_install": "mkdir -p static",
           "singleton": true
         }
-      }
+      },
+      "signature": "DI9HWaxIcaK1vAlKxLx1Lqhnared/JB6wlRBANYExUa+oWI9hovmy2h1C/hWVt14Nsan0zmdtcKjLmYiviiODA=="
     },
-    "syncthing": {
-      "name": "Syncthing",
+    "filezilla": {
+      "name": "FileZilla",
       "vetted": true,
-      "type": "web",
-      "description": "Peer-to-peer file synchronization with web UI \u2014 sync folders across devices without a cloud",
-      "category": "productivity",
-      "author": "Syncthing Foundation",
-      "homepage": "https://syncthing.net",
-      "icon": "syncthing",
-      "keywords": [
-        "sync",
-        "files",
-        "p2p",
-        "backup",
-        "share",
-        "folders",
-        "web"
-      ],
-      "license": "MPL-2.0",
-      "versions": {
-        "1": {
-          "install": "apt-get install -y --no-install-recommends curl apt-transport-https && curl -s https://syncthing.net/release-key.gpg | gpg --dearmor -o /usr/share/keyrings/syncthing.gpg && echo \"deb [signed-by=/usr/share/keyrings/syncthing.gpg] https://apt.syncthing.net/ syncthing stable\" > /etc/apt/sources.list.d/syncthing.list && apt-get update && apt-get install -y --no-install-recommends syncthing",
-          "command": "syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
-          "port": 8384,
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "transmission": {
-      "name": "Transmission",
-      "vetted": true,
-      "type": "web",
-      "description": "Lightweight BitTorrent client with web UI \u2014 simple, fast, low resource usage",
+      "type": "desktop",
+      "arch": null,
+      "description": "FTP/SFTP/FTPS client — fast file transfers, site manager, directory comparison",
       "category": "network",
-      "author": "Transmission Project",
-      "homepage": "https://transmissionbt.com",
-      "icon": "transmission",
+      "author": "FileZilla Project",
+      "homepage": "https://filezilla-project.org",
+      "icon": "filezilla",
+      "icon_url": "",
       "keywords": [
-        "torrent",
-        "bittorrent",
-        "download",
-        "p2p",
+        "ftp",
+        "sftp",
         "transfer",
-        "web"
+        "upload",
+        "download",
+        "files"
       ],
       "license": "GPL-2.0",
       "versions": {
-        "4": {
-          "install": "apt-get install -y --no-install-recommends transmission-daemon",
-          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
-          "port": 9091,
-          "post_install": "mkdir -p data/downloads data/incomplete && printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" > data/settings.json",
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.filezillaproject.Filezilla",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.filezillaproject.Filezilla",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "network",
             "filesystem"
           ],
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
-      }
+      },
+      "signature": "JnHnAkOaw9osNp7BOieT1YxG3bCpq6HVVtoO3df/4rLnF5E8ciXkPd+txmDUnTzKBX4MBsldLlupbe0tpDD4AQ=="
+    },
+    "firefox": {
+      "name": "Firefox",
+      "vetted": true,
+      "type": "desktop",
+      "arch": null,
+      "description": "Privacy-focused web browser by Mozilla — built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
+      "category": "internet",
+      "author": "Mozilla Foundation",
+      "homepage": "https://www.mozilla.org/firefox",
+      "icon": "firefox",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "firefox",
+        "mozilla",
+        "privacy",
+        "drm",
+        "streaming"
+      ],
+      "license": "MPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.mozilla.firefox",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.mozilla.firefox",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "EM1RHz7GBY5UtRCrk5BzINYdSK4EWotKTpYFz/HzrN0L3saxeTDR4wv2Il4A/5TzewXguZswAHwRwgIeyZsXCw=="
+    },
+    "geany": {
+      "name": "Geany",
+      "vetted": true,
+      "type": "desktop",
+      "arch": null,
+      "description": "Lightweight IDE and code editor — syntax highlighting, code folding, auto-completion, and build system",
+      "category": "developer",
+      "author": "Geany Project",
+      "homepage": "https://www.geany.org",
+      "icon": "geany",
+      "icon_url": "",
+      "keywords": [
+        "code",
+        "editor",
+        "ide",
+        "development",
+        "programming",
+        "extensions"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.geany.Geany",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.geany.Geany",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "Ej9rAiHxj2SC+0u3oaMg7e6rhO6g4ZHiB9ioinHOlH1AW1D/S0wg/a51/KZMy2adQLOJtNOTyLpoeBJgKszsAA=="
     },
     "gimp": {
       "name": "GIMP",
       "vetted": true,
       "type": "desktop",
-      "description": "Professional image editor \u2014 layers, filters, brushes, and advanced photo manipulation tools",
+      "arch": null,
+      "description": "Professional image editor — layers, filters, brushes, and advanced photo manipulation tools",
       "category": "media",
       "author": "GIMP Team",
       "homepage": "https://www.gimp.org",
       "icon": "gimp",
+      "icon_url": "",
       "keywords": [
         "image",
         "editor",
@@ -369,56 +690,295 @@
       "license": "GPL-3.0",
       "versions": {
         "latest": {
+          "install": "",
           "flatpak_id": "org.gimp.GIMP",
+          "download_url": "",
+          "archive_strip": 0,
           "command": "flatpak run org.gimp.GIMP",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "filesystem",
             "gpu"
           ],
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
-      }
+      },
+      "signature": "65tr+nTE4RfzIRTH0Vm/x2n+TW82cGswfv9HC7xCp8INHbLWzO+kG6dxPZBOhLf0Mz5zWTXu3lyPjjzXJiIwDw=="
     },
-    "blender": {
-      "name": "Blender",
+    "gitea": {
+      "name": "Gitea",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Lightweight self-hosted Git forge with issues, pull requests, CI/CD, and package registry",
+      "category": "developer",
+      "author": "Gitea",
+      "homepage": "https://gitea.io",
+      "icon": "gitea",
+      "icon_url": "",
+      "keywords": [
+        "git",
+        "repository",
+        "code",
+        "version-control",
+        "forge",
+        "ci"
+      ],
+      "license": "MIT",
+      "versions": {
+        "1.22.0": {
+          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 \u0026\u0026 echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - \u0026\u0026 chmod +x bin/gitea \u0026\u0026 ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "bin/gitea web --config data/app.ini",
+          "port": 3000,
+          "post_install": "mkdir -p data/repositories data/lfs \u0026\u0026 printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" \u003e data/app.ini",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "nb3PS76hBOD7ruXOsERcFE4AvENT10hIUlEOcm6MZR9c7KzUJqoE3uDWCogESbF/yeGRFp9eO7aCnHYlCGzPBw=="
+    },
+    "gnucash": {
+      "name": "GnuCash",
       "vetted": true,
       "type": "desktop",
-      "lane": {"needs_gpu": true},
-      "description": "3D creation suite \u2014 modelling, animation, rendering, compositing, and video editing",
-      "category": "media",
-      "author": "Blender Foundation",
-      "homepage": "https://www.blender.org",
-      "icon": "blender",
-      "keywords": [
-        "3d",
-        "modelling",
-        "animation",
-        "rendering",
-        "video",
-        "compositing"
+      "arch": [
+        "amd64"
       ],
-      "license": "GPL-3.0",
+      "description": "Personal and small-business finance manager — double-entry accounting, budgeting, invoicing, and reports",
+      "category": "productivity",
+      "author": "GnuCash Development Team",
+      "homepage": "https://www.gnucash.org",
+      "icon": "gnucash",
+      "icon_url": "",
+      "keywords": [
+        "finance",
+        "accounting",
+        "budget",
+        "invoicing",
+        "money",
+        "double-entry",
+        "bookkeeping"
+      ],
+      "license": "GPL-2.0",
       "versions": {
-        "4": {
-          "install": "apt-get install -y --no-install-recommends blender",
-          "command": "blender",
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends gnucash",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "gnucash",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
-            "filesystem",
-            "gpu"
+            "filesystem"
           ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "Yedx7+gH28jDzxQPkl7imJGdeFd+hodXKyF1xjdOBUnvuhZPmI/KYdbtZbNvZiYVCplrJt4pA3SqGbxxiY7QBg=="
+    },
+    "grafana": {
+      "name": "Grafana",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Monitoring dashboards — visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
+      "category": "developer",
+      "author": "Grafana Labs",
+      "homepage": "https://grafana.com",
+      "icon": "grafana",
+      "icon_url": "",
+      "keywords": [
+        "monitoring",
+        "dashboard",
+        "metrics",
+        "grafana",
+        "visualization",
+        "observability"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "11": {
+          "install": "apt-get install -y --no-install-recommends apt-transport-https software-properties-common \u0026\u0026 wget -qO- https://apt.grafana.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/grafana.gpg \u0026\u0026 echo \"deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\" \u003e /etc/apt/sources.list.d/grafana.list \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends grafana",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "grafana server --homepath /usr/share/grafana --config data/grafana.ini",
+          "port": 3000,
+          "post_install": "mkdir -p data/plugins data/dashboards \u0026\u0026 printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" \u003e data/grafana.ini",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "v333+NkVwiV890dElvQ7171sfbDNWFKiMc9Dqj7Zlb8igrAbevPyQ6b1c06Dzn7sTHChUObKEmgdG7mvnjspAg=="
+    },
+    "hoppscotch": {
+      "name": "Hoppscotch",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Open-source API development ecosystem — REST, GraphQL, WebSocket, and SSE testing with a fast, clean web UI",
+      "category": "developer",
+      "author": "Hoppscotch Inc.",
+      "homepage": "https://hoppscotch.io",
+      "icon": "hoppscotch",
+      "icon_url": "",
+      "keywords": [
+        "api",
+        "rest",
+        "graphql",
+        "testing",
+        "http",
+        "developer",
+        "postman"
+      ],
+      "license": "MIT",
+      "versions": {
+        "2026.4.1": {
+          "_disabled": true,
+          "_note": "awaiting checksum \u2014 GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz",
+          "env": null,
+          "flatpak_id": "",
+          "install": "wget -qO /tmp/hoppscotch.tar.gz https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz \u0026\u0026 tar -xzf /tmp/hoppscotch.tar.gz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/hoppscotch.tar.gz",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "mkdir -p static",
           "singleton": true
         }
-      }
+      },
+      "signature": "WRU4Q7dqPk84SJZV8XUHBJfSZHHCGd4cdglisMvcmAFdM1S4Oz91yzZ1OIzYddyywMdEvLVuetOx1cHOkrKzCQ=="
+    },
+    "httpbin": {
+      "name": "httpbin",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "HTTP request and response testing — inspect headers, methods, status codes",
+      "category": "developer",
+      "author": "Kenneth Reitz",
+      "homepage": "https://httpbin.org",
+      "icon": "httpbin",
+      "icon_url": "",
+      "keywords": [
+        "http",
+        "api",
+        "testing",
+        "debug"
+      ],
+      "license": "ISC",
+      "versions": {
+        "0.9": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3 \u0026\u0026 pip3 install --break-system-packages httpbin gunicorn",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
+          "port": 8080,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "natLM5CbTEq03TP3vYLhtVl37NAx+W9IGzTYt2cJZ4N7VjpMzGVnrffGYPjzwQGbTpN+6lO2TlAJ3j+m/tk7DA=="
+    },
+    "immich": {
+      "arch": null,
+      "author": "Immich Contributors",
+      "category": "media",
+      "description": "Self-hosted photo and video backup — mobile app sync, AI-powered search, albums, and face recognition; replaces Google Photos",
+      "homepage": "https://immich.app",
+      "icon": "Immich",
+      "icon_url": "",
+      "keywords": [
+        "photos",
+        "gallery",
+        "backup",
+        "self-hosted",
+        "google-photos",
+        "face-recognition",
+        "albums"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "AGPL-3.0",
+      "name": "Immich",
+      "signature": "PBk4ncXASIOHnAC8K+jpkqftJnyc8D1O0Tl2GkKv4iZ8sULE1eBzQWmuwT/EKEz6xG0iBw0EZ7t0Tm8DnnayCg==",
+      "type": "web",
+      "versions": {
+        "1.134.0": {
+          "_disabled": true,
+          "_note": "disabled: immich upstream ships as docker-compose only (no standalone binary tarball); install recipe needs docker-compose or native binary when upstream publishes one",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/immich-server --port ${PORT}",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends curl wget unzip \u0026\u0026 wget -qO /tmp/immich-server.tar.gz https://github.com/immich-app/immich/releases/download/v1.134.0/immich-server.tar.gz",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 2283,
+          "post_install": "mkdir -p data/upload data/thumbs data/encoded-video",
+          "singleton": true
+        }
+      },
+      "vetted": true
     },
     "inkscape": {
       "name": "Inkscape",
       "vetted": true,
       "type": "desktop",
-      "description": "Vector graphics editor \u2014 SVG editing, illustration, diagrams, and logo design",
+      "arch": null,
+      "description": "Vector graphics editor — SVG editing, illustration, diagrams, and logo design",
       "category": "media",
       "author": "Inkscape Project",
       "homepage": "https://inkscape.org",
       "icon": "inkscape",
+      "icon_url": "",
       "keywords": [
         "vector",
         "svg",
@@ -430,24 +990,259 @@
       "license": "GPL-2.0",
       "versions": {
         "latest": {
+          "install": "",
           "flatpak_id": "org.inkscape.Inkscape",
+          "download_url": "",
+          "archive_strip": 0,
           "command": "flatpak run org.inkscape.Inkscape",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "filesystem"
           ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "zkySMLm+VyRVHj9utMFMUp7ZSgI/ue5Kk44LFLX+vrSkrSAc65kDjETaPIfLc8G1ML8vFgPn2DySgDYBlkFNDg=="
+    },
+    "jellyfin": {
+      "arch": null,
+      "author": "Jellyfin Contributors",
+      "category": "media",
+      "description": "Free self-hosted media server — stream movies, TV shows, music, and photos to any device via a web UI; replaces VLC for media playback",
+      "homepage": "https://jellyfin.org",
+      "icon": "Jellyfin",
+      "icon_url": "",
+      "keywords": [
+        "media",
+        "streaming",
+        "movies",
+        "music",
+        "photos",
+        "dlna",
+        "plex",
+        "server"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "GPL-2.0",
+      "name": "Jellyfin",
+      "signature": "FLh+BPTajNxyz+PoN0Foz1SOmUDHT9pIWjl1QP8LesTDm0LpNiEkLND0YHuSKezjJBgS62hdmT4JyqiXL12FAQ==",
+      "type": "web",
+      "versions": {
+        "10": {
+          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg \u0026\u0026 curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg \u0026\u0026 echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' \u003e /etc/apt/sources.list.d/jellyfin.list \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "jellyfin --datadir data/ --webdir /usr/share/jellyfin/web --port ${PORT}",
+          "port": 8096,
+          "post_install": "mkdir -p data/media/movies data/media/music data/media/photos",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "jupyter": {
+      "name": "Jupyter Lab",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Interactive notebooks for Python, data science, and computation — web-based IDE with rich output",
+      "category": "developer",
+      "author": "Project Jupyter",
+      "homepage": "https://jupyter.org",
+      "icon": "jupyter",
+      "icon_url": "",
+      "keywords": [
+        "notebook",
+        "python",
+        "data",
+        "science",
+        "jupyter",
+        "computation"
+      ],
+      "license": "BSD-3-Clause",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv \u0026\u0026 python3 -m pip install --break-system-packages jupyterlab",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "jupyter lab --ip=0.0.0.0 --port=${PORT} --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=data/",
+          "port": 8888,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "kA1w38+gWug9cmmyq+oKdrHhU3RDePNAaq5sVkWOKA9++Gbfw+CInp3MfpaPI0L73DPrVp0YLTcopXfDcqOTDA=="
+    },
+    "kdenlive": {
+      "arch": null,
+      "author": "KDE Community",
+      "category": "media",
+      "description": "Non-linear video editor — multi-track timeline, effects, transitions, and proxy editing",
+      "homepage": "https://kdenlive.org",
+      "icon": "kdenlive",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "effects",
+        "rendering",
+        "film"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
+      "license": "GPL-3.0",
+      "name": "Kdenlive",
+      "signature": "/gWHbmArWUuHFbiUAw9X5jfMzeN+nYkTJsg76X2EGkuk/Eb+7msZ3eCIefh5gHQCLxkm8VAK7PtrFJliwhD7BQ==",
+      "type": "desktop",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kde.kdenlive",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kde.kdenlive",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "keepassxc": {
+      "name": "KeePassXC",
+      "vetted": true,
+      "type": "desktop",
+      "arch": null,
+      "description": "Offline password manager — AES-256 encrypted vault, TOTP, browser integration, auto-type",
+      "category": "system",
+      "author": "KeePassXC Team",
+      "homepage": "https://keepassxc.org",
+      "icon": "keepassxc",
+      "icon_url": "",
+      "keywords": [
+        "password",
+        "security",
+        "vault",
+        "encryption",
+        "totp",
+        "manager"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.keepassxc.KeePassXC",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.keepassxc.KeePassXC",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "G9R6RfTOVHlj8aZFhJywVBHz04CNGhxy5ThutXhbEZXx50oKEQ0vUk4ib+UyPskGkS8uP1ctNkfhsV0bN05zAg=="
+    },
+    "kerf": {
+      "arch": null,
+      "author": "Kerf Contributors",
+      "category": "developer",
+      "description": "Browser-native parametric CAD — WASM-powered 3D modelling and sketching; default app for all CAD intents (replaces Fusion 360 / SolidWorks). See roadmap/CAD-KERF.md.",
+      "homepage": "https://github.com/kerf-cad/kerf",
+      "icon": "Kerf",
+      "icon_url": "",
+      "keywords": [
+        "cad",
+        "3d",
+        "modelling",
+        "parametric",
+        "wasm",
+        "design",
+        "engineering",
+        "solidworks",
+        "fusion360"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "Apache-2.0",
+      "name": "Kerf",
+      "signature": "9s0SvwPIoDx0GP96e2z6i1SJ1DN6IKDJ/qrmQKjP+6MAgvpx7PSL04ykPEVaIlshQS6MdOcMQilvnpM9erOMCw==",
+      "type": "web",
+      "versions": {
+        "latest": {
+          "_note": "Kerf upstream WASM release pending; recipe falls back to placeholder page. Update once kerf-cad/kerf publishes a dist artifact.",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends git \u0026\u0026 git clone --depth=1 https://github.com/kerf-cad/kerf.git static/ 2\u003e/dev/null || (mkdir -p static \u0026\u0026 printf '\u003chtml\u003e\u003cbody\u003e\u003ch1\u003eKerf CAD\u003c/h1\u003e\u003cp\u003eKerf WASM build not yet published. See roadmap/CAD-KERF.md for status.\u003c/p\u003e\u003c/body\u003e\u003c/html\u003e' \u003e static/index.html)",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "mkdir -p static",
           "singleton": true
         }
-      }
+      },
+      "vetted": true
     },
     "kicad": {
       "name": "KiCad",
       "vetted": true,
       "type": "desktop",
-      "description": "Electronic design automation \u2014 schematic capture, PCB layout, 3D viewer, and Gerber export",
+      "arch": null,
+      "description": "Electronic design automation — schematic capture, PCB layout, 3D viewer, and Gerber export",
       "category": "developer",
       "author": "KiCad Developers",
       "homepage": "https://www.kicad.org",
       "icon": "kicad",
+      "icon_url": "",
       "keywords": [
         "eda",
         "pcb",
@@ -460,25 +1255,37 @@
       "license": "GPL-3.0",
       "versions": {
         "latest": {
+          "install": "",
           "flatpak_id": "org.kicad.KiCad",
+          "download_url": "",
+          "archive_strip": 0,
           "command": "flatpak run org.kicad.KiCad",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "filesystem",
             "gpu"
           ],
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
-      }
+      },
+      "signature": "VToOU96H/BxMID8IUYTnx4FsQ/4Y8UqzWufsWYXknxgC65RFgWcsDHWmEXbdwDw8sClqZo15tHXSEtAwudGyBg=="
     },
     "libreoffice": {
       "name": "LibreOffice",
       "vetted": true,
       "type": "desktop",
-      "description": "Full office suite \u2014 word processor, spreadsheets, presentations, and database with MS Office compatibility",
+      "arch": null,
+      "description": "Full office suite — word processor, spreadsheets, presentations, and database with MS Office compatibility",
       "category": "productivity",
       "author": "The Document Foundation",
       "homepage": "https://www.libreoffice.org",
       "icon": "libreoffice",
+      "icon_url": "",
       "keywords": [
         "office",
         "word",
@@ -495,264 +1302,172 @@
       "versions": {
         "26.2": {
           "install": "apt-get install -y --no-install-recommends libreoffice",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
           "command": "libreoffice",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "filesystem"
           ],
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
-      }
+      },
+      "signature": "Pjnyba1KpHtp9oJvjE+njLbRDusQvg8zWyHVGIqp/L3WI/K8MlIQXcOWp1MimseNYMiFGeAwKXw3I4STIOC7Aw=="
     },
-    "vlc": {
-      "name": "VLC",
+    "libretranslate": {
+      "name": "LibreTranslate",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Offline machine translation server — translate text between languages locally with no data leaving your device",
+      "category": "productivity",
+      "author": "LibreTranslate",
+      "homepage": "https://libretranslate.com",
+      "icon": "🌐",
+      "icon_url": "",
+      "keywords": [
+        "translation",
+        "translate",
+        "language",
+        "nlp",
+        "offline",
+        "privacy"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "1.5.3": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev \u0026\u0026 pip3 install --break-system-packages libretranslate==1.5.3",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "libretranslate --load-only en,es,fr,de --port ${PORT} --host 0.0.0.0",
+          "port": 5000,
+          "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2\u003e/dev/null || true",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "Qx5EL3FlL1KSPRkJ3w9xUwUegBdWP3GtQwoh/tSM0yYx8gMlT34NJ1T2BeI6aBr783STQGEJs4U7pP4YFqC0Aw=="
+    },
+    "lmms": {
+      "name": "LMMS",
       "vetted": true,
       "type": "desktop",
-      "description": "Universal media player \u2014 plays virtually any video and audio format, streams, DVDs, and network sources",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Linux MultiMedia Studio — beat+bassline editor, song editor, synthesizers, and VST plugin support",
       "category": "media",
-      "author": "VideoLAN",
-      "homepage": "https://www.videolan.org",
-      "icon": "vlc",
+      "author": "LMMS Developers",
+      "homepage": "https://lmms.io",
+      "icon": "lmms",
+      "icon_url": "",
       "keywords": [
-        "video",
-        "audio",
-        "player",
-        "media",
-        "streaming",
-        "codec"
+        "music",
+        "studio",
+        "daw",
+        "beats",
+        "synthesizer",
+        "vst",
+        "sequencer"
       ],
       "license": "GPL-2.0",
       "versions": {
         "latest": {
-          "flatpak_id": "org.videolan.VLC",
-          "command": "flatpak run org.videolan.VLC",
-          "permissions": [
-            "filesystem",
-            "gpu"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "audacity": {
-      "name": "Audacity",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Audio editor and recorder \u2014 multi-track editing, effects, noise reduction, and format conversion",
-      "category": "media",
-      "author": "Audacity Team",
-      "homepage": "https://www.audacityteam.org",
-      "icon": "audacity",
-      "keywords": [
-        "audio",
-        "editor",
-        "recording",
-        "music",
-        "sound",
-        "podcast"
-      ],
-      "license": "GPL-3.0",
-      "versions": {
-        "latest": {
-          "flatpak_id": "org.audacityteam.Audacity",
-          "command": "flatpak run org.audacityteam.Audacity",
+          "install": "apt-get install -y --no-install-recommends lmms",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "lmms",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "filesystem",
             "microphone"
           ],
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
-      }
+      },
+      "signature": "KwB3U1UhXHYJXtNjoPQU9iGKyI/4U4nZuUlByxoPlhglAi4IgOP/oOvj9TBpPZiqXjmSE72pyRlxipq3FebXCg=="
     },
-    "firefox": {
-      "name": "Firefox",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Privacy-focused web browser by Mozilla \u2014 built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
-      "category": "internet",
-      "author": "Mozilla Foundation",
-      "homepage": "https://www.mozilla.org/firefox",
-      "icon": "firefox",
+    "lutris": {
+      "arch": null,
+      "author": "Lutris Project",
+      "category": "games",
+      "description": "Open-source gaming platform — manage and launch games from GOG, Epic, Steam, emulators, and Windows installers",
+      "homepage": "https://lutris.net",
+      "icon": "lutris",
+      "icon_url": "",
       "keywords": [
-        "browser",
-        "web",
-        "internet",
-        "firefox",
-        "mozilla",
-        "privacy",
-        "drm",
-        "streaming"
+        "games",
+        "gaming",
+        "launcher",
+        "gog",
+        "epic",
+        "emulator",
+        "wine"
       ],
-      "license": "MPL-2.0",
+      "lane": {
+        "game": true
+      },
+      "license": "GPL-3.0",
+      "name": "Lutris",
+      "signature": "RJnoXKlPYQ/kV+P4aU3lV/iyb4W45KbjisU+NPTHe09zXmqPjGQWI5H3T1JaJVrjKe9NhypL6wds2HCrD6Y6Cg==",
+      "type": "desktop",
       "versions": {
         "latest": {
-          "flatpak_id": "org.mozilla.firefox",
-          "command": "flatpak run org.mozilla.firefox",
+          "arch": "amd64",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "lutris",
+          "deps": null,
+          "download_url": "",
+          "env": {
+            "VULOS_GAMING": "1"
+          },
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends lutris",
           "permissions": [
+            "display",
+            "filesystem",
             "network",
             "gpu"
           ],
+          "port": 0,
+          "post_install": "lutris --init 2\u003e/dev/null || true",
           "singleton": true
         }
-      }
-    },
-    "kdenlive": {
-      "name": "Kdenlive",
-      "vetted": true,
-      "type": "desktop",
-      "lane": {"needs_gpu": true},
-      "description": "Non-linear video editor \u2014 multi-track timeline, effects, transitions, and proxy editing",
-      "category": "media",
-      "author": "KDE Community",
-      "homepage": "https://kdenlive.org",
-      "icon": "kdenlive",
-      "keywords": [
-        "video",
-        "editor",
-        "timeline",
-        "effects",
-        "rendering",
-        "film"
-      ],
-      "license": "GPL-3.0",
-      "versions": {
-        "latest": {
-          "flatpak_id": "org.kde.kdenlive",
-          "command": "flatpak run org.kde.kdenlive",
-          "permissions": [
-            "filesystem",
-            "gpu"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "filezilla": {
-      "name": "FileZilla",
-      "vetted": true,
-      "type": "desktop",
-      "description": "FTP/SFTP/FTPS client \u2014 fast file transfers, site manager, directory comparison",
-      "category": "network",
-      "author": "FileZilla Project",
-      "homepage": "https://filezilla-project.org",
-      "icon": "filezilla",
-      "keywords": [
-        "ftp",
-        "sftp",
-        "transfer",
-        "upload",
-        "download",
-        "files"
-      ],
-      "license": "GPL-2.0",
-      "versions": {
-        "latest": {
-          "flatpak_id": "org.filezillaproject.Filezilla",
-          "command": "flatpak run org.filezillaproject.Filezilla",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "keepassxc": {
-      "name": "KeePassXC",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Offline password manager \u2014 AES-256 encrypted vault, TOTP, browser integration, auto-type",
-      "category": "system",
-      "author": "KeePassXC Team",
-      "homepage": "https://keepassxc.org",
-      "icon": "keepassxc",
-      "keywords": [
-        "password",
-        "security",
-        "vault",
-        "encryption",
-        "totp",
-        "manager"
-      ],
-      "license": "GPL-3.0",
-      "versions": {
-        "latest": {
-          "flatpak_id": "org.keepassxc.KeePassXC",
-          "command": "flatpak run org.keepassxc.KeePassXC",
-          "permissions": [
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "geany": {
-      "name": "Geany",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Lightweight IDE and code editor \u2014 syntax highlighting, code folding, auto-completion, and build system",
-      "category": "developer",
-      "author": "Geany Project",
-      "homepage": "https://www.geany.org",
-      "icon": "geany",
-      "keywords": [
-        "code",
-        "editor",
-        "ide",
-        "development",
-        "programming",
-        "extensions"
-      ],
-      "license": "GPL-2.0",
-      "versions": {
-        "latest": {
-          "flatpak_id": "org.geany.Geany",
-          "command": "flatpak run org.geany.Geany",
-          "permissions": [
-            "filesystem",
-            "network"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "qbittorrent": {
-      "name": "qBittorrent",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Feature-rich BitTorrent client \u2014 search, RSS, sequential download, IP filtering, and torrent creation",
-      "category": "network",
-      "author": "qBittorrent Project",
-      "homepage": "https://www.qbittorrent.org",
-      "icon": "qbittorrent",
-      "keywords": [
-        "torrent",
-        "bittorrent",
-        "download",
-        "p2p",
-        "transfer"
-      ],
-      "license": "GPL-2.0",
-      "versions": {
-        "latest": {
-          "flatpak_id": "org.qbittorrent.qBittorrent",
-          "command": "flatpak run org.qbittorrent.qBittorrent",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
+      },
+      "vetted": true
     },
     "memos": {
       "name": "Memos",
       "vetted": true,
       "type": "web",
-      "description": "Lightweight self-hosted memo and microblog \u2014 quick capture, tags, search, and personal feed",
+      "arch": null,
+      "description": "Lightweight self-hosted memo and microblog — quick capture, tags, search, and personal feed",
       "category": "productivity",
       "author": "Memos Project",
       "homepage": "https://www.usememos.com",
       "icon": "memos",
+      "icon_url": "",
       "keywords": [
         "notes",
         "memo",
@@ -764,31 +1479,622 @@
       "license": "MIT",
       "versions": {
         "0.22.4": {
-          "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_0.22.4_linux_amd64.tar.gz",
+          "_disabled": true,
+          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
           "archive_strip": 0,
-          "command": "memos --mode production --port ${PORT} --addr 0.0.0.0 --data data/",
-          "port": 5230,
-          "post_install": "mkdir -p data",
+          "auto_start": false,
           "checksum": "",
+          "command": "memos --mode production --port ${PORT} --addr 0.0.0.0 --data data/",
+          "deps": null,
+          "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_0.22.4_linux_amd64.tar.gz",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling"
+          "port": 5230,
+          "post_install": "mkdir -p data",
+          "singleton": true
         }
-      }
+      },
+      "signature": "CpYQHxKTadQskhyHkrvGBsmW7oTopiokE1VVT4HDfgc5y1VGEMkZvgJKPDnWisOakrLC0B9cc1huOgZVKRyzDA=="
+    },
+    "minio": {
+      "name": "MinIO",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "High-performance S3-compatible object storage — self-hosted, scalable, with SSE-C encryption support",
+      "category": "storage",
+      "author": "MinIO, Inc.",
+      "homepage": "https://min.io",
+      "icon": "minio",
+      "icon_url": "",
+      "keywords": [
+        "storage",
+        "s3",
+        "object-storage",
+        "minio",
+        "bucket",
+        "encryption"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "_disabled": true,
+          "_note": "disabled until pinned checksum added; storageprov pkg owns real install",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "minio server ${DATA_DIR:-data} --address 0.0.0.0:${PORT}",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio \u0026\u0026 chmod +x /usr/local/bin/minio",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 9000,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "signature": "5Ve1ZhuZcqSDl+qLKGC0PTxI82+MwL1s/Z0itk6CWWX/d9Qi7IGpCX5CqEleTPLQ2TBGWBov/GPBh4vOKhqpBw=="
+    },
+    "minipaint": {
+      "arch": null,
+      "author": "viliusle",
+      "category": "media",
+      "description": "Browser-based raster image editor — layers, filters, tools, and effects in a lightweight web UI; replaces GIMP/Photoshop for everyday editing",
+      "homepage": "https://github.com/viliusle/miniPaint",
+      "icon": "miniPaint",
+      "icon_url": "",
+      "keywords": [
+        "image",
+        "editor",
+        "raster",
+        "photo",
+        "paint",
+        "web",
+        "gimp"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "MIT",
+      "name": "miniPaint",
+      "signature": "zdebIC4FhGb2N9sNRoRrs3/67sTp3O4C5kw+guUlS2AQ0PjHN43O42Arb3xZMLoHS9hak/N0Wjm/hx2VAn2KDQ==",
+      "type": "web",
+      "versions": {
+        "4.10.0": {
+          "install": "apt-get install -y --no-install-recommends git \u0026\u0026 git clone --depth=1 --branch v4.10.0 https://github.com/viliusle/miniPaint.git static/",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "navidrome": {
+      "name": "Navidrome",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Self-hosted music streaming server — your own Spotify with web UI and Subsonic API",
+      "category": "media",
+      "author": "Navidrome Project",
+      "homepage": "https://www.navidrome.org",
+      "icon": "🎵",
+      "icon_url": "",
+      "keywords": [
+        "music",
+        "streaming",
+        "audio",
+        "subsonic",
+        "self-hosted"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "0.54.5": {
+          "install": "",
+          "flatpak_id": "",
+          "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_amd64.tar.gz",
+          "archive_strip": 0,
+          "command": "bin/navidrome --configfile data/navidrome.toml",
+          "port": 4533,
+          "post_install": "mkdir -p data/music \u0026\u0026 printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" \u003e data/navidrome.toml",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "73c1a42958dc2c96fa9787fb060e36f664bb0d9f58f66c07b3b3ba12be4a3ca1",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "IbwWnhl9jALZBh8Ghq1w1Wl3C46Z3poFcZY7oZ3Hs4yyFZ4SZuEts1i/hiGZ2YygReZuPOGWqIYD4tGmaPsABw=="
+    },
+    "nginx": {
+      "name": "Nginx",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "High-performance HTTP server and reverse proxy — serve static sites, proxy other services",
+      "category": "network",
+      "author": "F5 / Igor Sysoev",
+      "homepage": "https://nginx.org",
+      "icon": "nginx",
+      "icon_url": "",
+      "keywords": [
+        "web",
+        "server",
+        "proxy",
+        "reverse-proxy",
+        "http",
+        "nginx"
+      ],
+      "license": "BSD-2-Clause",
+      "versions": {
+        "1": {
+          "install": "apt-get install -y --no-install-recommends nginx",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "nginx -c data/nginx.conf -g 'daemon off;'",
+          "port": 8080,
+          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" \u003e data/nginx.conf \u0026\u0026 mkdir -p static \u0026\u0026 echo '\u003ch1\u003eNginx is running\u003c/h1\u003e' \u003e static/index.html",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "RjBRC2sO7yXjyvCKz1agRAAWSe5CJ7+7j0RVuiqO7lggGnikf120NLJIwwLNLetQUGaNRb+YGXKFbslJ5zF1Cw=="
+    },
+    "obs-studio": {
+      "arch": [
+        "amd64"
+      ],
+      "author": "OBS Project",
+      "category": "media",
+      "description": "Open Broadcaster Software — screen recording and live streaming with scenes, sources, and filters",
+      "homepage": "https://obsproject.com",
+      "icon": "obs",
+      "icon_url": "",
+      "keywords": [
+        "streaming",
+        "recording",
+        "screen",
+        "broadcast",
+        "obs",
+        "twitch",
+        "youtube"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
+      "license": "GPL-2.0",
+      "name": "OBS Studio",
+      "signature": "3YRwX5Ylmb5BcCyyAC9ihICUL30ivf649CySGZ3J2ljsgGNrfqs4m4BkdW/DiMH5vdeU+BAxNnZSKEQMCZXqBg==",
+      "type": "desktop",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends obs-studio",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "obs",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "microphone",
+            "camera"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "octave": {
+      "name": "GNU Octave",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "High-level language for numerical computations — MATLAB-compatible syntax, plotting, and signal processing",
+      "category": "productivity",
+      "author": "GNU Project",
+      "homepage": "https://www.gnu.org/software/octave",
+      "icon": "octave",
+      "icon_url": "",
+      "keywords": [
+        "math",
+        "numerical",
+        "matlab",
+        "scientific",
+        "plotting",
+        "computation",
+        "engineering"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends octave",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "octave --gui",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "O1jtVbg/2eL8HvQI1Q0gINsvZSrYvVKm3cEYkK9H5DS1XreCfA2m0grt94ivrq6kh1SsUHy9UkEfIvmzYCH9BQ=="
+    },
+    "qbittorrent": {
+      "name": "qBittorrent",
+      "vetted": true,
+      "type": "desktop",
+      "arch": null,
+      "description": "Feature-rich BitTorrent client — search, RSS, sequential download, IP filtering, and torrent creation",
+      "category": "network",
+      "author": "qBittorrent Project",
+      "homepage": "https://www.qbittorrent.org",
+      "icon": "qbittorrent",
+      "icon_url": "",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.qbittorrent.qBittorrent",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.qbittorrent.qBittorrent",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "PB96wkhqSl6Dfefg23Z/h7Xsi75upFv36JVXY51NqYBzV2AvVyqyX6q+MTJOv9GU05fpuZiE9noRubzVVieACQ=="
+    },
+    "qgis": {
+      "name": "QGIS",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Free and open-source GIS — view, edit, and analyse geospatial data with layers, plugins, and map export",
+      "category": "productivity",
+      "author": "QGIS Development Team",
+      "homepage": "https://www.qgis.org",
+      "icon": "qgis",
+      "icon_url": "",
+      "keywords": [
+        "gis",
+        "mapping",
+        "geospatial",
+        "cartography",
+        "spatial",
+        "geography",
+        "layers"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends qgis",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "qgis",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "GXOdlpzTZOfnckPkTSwBmNhjeFjptbimvWcWE8MEiU3O2KeG+EGmn7fwPiDJG7liM/KgVbVdoIonTGnnwSk0Aw=="
+    },
+    "shotcut": {
+      "arch": [
+        "amd64"
+      ],
+      "author": "Meltytech, LLC",
+      "category": "media",
+      "description": "Free, open-source video editor — multi-track timeline, 4K support, hundreds of filters and transitions",
+      "homepage": "https://www.shotcut.org",
+      "icon": "shotcut",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "4k",
+        "filters",
+        "transitions",
+        "film"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
+      "license": "GPL-3.0",
+      "name": "Shotcut",
+      "signature": "/slBKaBaWeNRY0ZeJ+e2E8JSYupNl9UPVzn4ptrOX1gfIZ+N1mm+UDWuSMQwZpxpfMxA3/XQqdBNBHGIjHvqDg==",
+      "type": "desktop",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends shotcut",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "shotcut",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
+    "steam": {
+      "arch": null,
+      "author": "Valve Corporation",
+      "category": "games",
+      "description": "Steam gaming client — access your Steam library, store, community, and Proton-powered Windows game compatibility",
+      "homepage": "https://store.steampowered.com",
+      "icon": "steam",
+      "icon_url": "",
+      "keywords": [
+        "games",
+        "gaming",
+        "steam",
+        "valve",
+        "proton",
+        "store",
+        "library"
+      ],
+      "lane": {
+        "game": true
+      },
+      "license": "proprietary",
+      "name": "Steam",
+      "signature": "DxvecOU94Lf3uC4NuVN0rlsBL6qpENJGH8rKBYLuf2bJujY3f/k1TIZq5M+/7yzyZwei9+qNonNZ0qNhYX8tAw==",
+      "type": "desktop",
+      "versions": {
+        "latest": {
+          "arch": "amd64",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "steam",
+          "deps": null,
+          "download_url": "",
+          "env": {
+            "VULOS_GAMING": "1"
+          },
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends steam-installer",
+          "permissions": [
+            "display",
+            "filesystem",
+            "network",
+            "gpu",
+            "audio"
+          ],
+          "port": 0,
+          "post_install": "steam --reset 2\u003e/dev/null || true",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "svg-edit": {
+      "arch": null,
+      "author": "SVG-Edit Contributors",
+      "category": "media",
+      "description": "Browser-based SVG vector editor — draw, edit, and export SVG graphics without installing a desktop app; replaces Inkscape for light vector work",
+      "homepage": "https://svgedit.netlify.app",
+      "icon": "SVG-Edit",
+      "icon_url": "",
+      "keywords": [
+        "svg",
+        "vector",
+        "editor",
+        "graphics",
+        "illustration",
+        "web",
+        "inkscape"
+      ],
+      "lane": {
+        "web": true
+      },
+      "license": "MIT",
+      "name": "SVG-Edit",
+      "signature": "iN4xrMs0Dm3EnUGq6bay+z5qkUP+vXY9RN8rwZx7bll0PJY3l3vPwjnPpR/khELPB/GC4H7JUEPKBnL3ObAxBQ==",
+      "type": "web",
+      "versions": {
+        "7.3.0": {
+          "_disabled": true,
+          "_note": "disabled: no verified sha256 published by SVG-Edit for v7.3.0 release zip; re-enable once upstream publishes a checksum",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends wget unzip \u0026\u0026 wget -qO /tmp/svgedit.zip https://github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip \u0026\u0026 unzip -q /tmp/svgedit.zip -d static/ \u0026\u0026 rm /tmp/svgedit.zip",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "mkdir -p static",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "syncthing": {
+      "name": "Syncthing",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Peer-to-peer file synchronization with web UI — sync folders across devices without a cloud",
+      "category": "productivity",
+      "author": "Syncthing Foundation",
+      "homepage": "https://syncthing.net",
+      "icon": "syncthing",
+      "icon_url": "",
+      "keywords": [
+        "sync",
+        "files",
+        "p2p",
+        "backup",
+        "share",
+        "folders",
+        "web"
+      ],
+      "license": "MPL-2.0",
+      "versions": {
+        "1": {
+          "install": "apt-get install -y --no-install-recommends curl apt-transport-https \u0026\u0026 curl -s https://syncthing.net/release-key.gpg | gpg --dearmor -o /usr/share/keyrings/syncthing.gpg \u0026\u0026 echo \"deb [signed-by=/usr/share/keyrings/syncthing.gpg] https://apt.syncthing.net/ syncthing stable\" \u003e /etc/apt/sources.list.d/syncthing.list \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends syncthing",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
+          "port": 8384,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "MXVmUmow72mj1NaDXv5AY0Uw3SI1/hqyW5nWgZR5H4joigKN9qOGzWPkoFJfCCxZAHBi3tkMpsRy8RUYNmO1DA=="
+    },
+    "transmission": {
+      "name": "Transmission",
+      "vetted": true,
+      "type": "web",
+      "arch": null,
+      "description": "Lightweight BitTorrent client with web UI — simple, fast, low resource usage",
+      "category": "network",
+      "author": "Transmission Project",
+      "homepage": "https://transmissionbt.com",
+      "icon": "transmission",
+      "icon_url": "",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer",
+        "web"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends transmission-daemon",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
+          "port": 9091,
+          "post_install": "mkdir -p data/downloads data/incomplete \u0026\u0026 printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" \u003e data/settings.json",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "zZmgMJLcFU9q5dI/k645h+3GN5oydeYluWF/V3YpdnjerVhR9W6FeZWGWWChmaUavKht2rrI+z7Sd36McNjoBA=="
     },
     "uptime-kuma": {
       "name": "Uptime Kuma",
       "vetted": true,
       "type": "web",
-      "description": "Self-hosted monitoring and status pages \u2014 HTTP/TCP/DNS/ping checks with notifications and dashboards",
+      "arch": null,
+      "description": "Self-hosted monitoring and status pages — HTTP/TCP/DNS/ping checks with notifications and dashboards",
       "category": "system",
       "author": "Louis Lam",
       "homepage": "https://github.com/louislam/uptime-kuma",
       "icon": "uptime-kuma",
+      "icon_url": "",
       "keywords": [
         "monitoring",
         "uptime",
@@ -800,136 +2106,39 @@
       "license": "MIT",
       "versions": {
         "1.23.16": {
-          "download_url": "https://github.com/louislam/uptime-kuma/releases/download/1.23.16/uptime-kuma-1.23.16.tar.gz",
+          "_disabled": true,
+          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
           "archive_strip": 1,
-          "command": "node server/server.js --port ${PORT} --host 0.0.0.0 --data-dir data/",
-          "port": 3001,
-          "post_install": "mkdir -p data && npm install --production 2>/dev/null || true",
+          "auto_start": false,
           "checksum": "",
+          "command": "node server/server.js --port ${PORT} --host 0.0.0.0 --data-dir data/",
+          "deps": null,
+          "download_url": "https://github.com/louislam/uptime-kuma/releases/download/1.23.16/uptime-kuma-1.23.16.tar.gz",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling"
-        }
-      }
-    },
-    "excalidraw": {
-      "name": "Excalidraw",
-      "vetted": true,
-      "type": "web",
-      "description": "Virtual whiteboard for sketching hand-drawn-like diagrams \u2014 collaborative, end-to-end encrypted, and privacy-first",
-      "category": "productivity",
-      "author": "Excalidraw Team",
-      "homepage": "https://excalidraw.com",
-      "icon": "excalidraw",
-      "keywords": [
-        "whiteboard",
-        "drawing",
-        "diagram",
-        "sketch",
-        "collaboration",
-        "canvas"
-      ],
-      "license": "MIT",
-      "versions": {
-        "0.18.0": {
-          "download_url": "https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz",
-          "install": "wget -qO /tmp/excalidraw.tgz https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz && tar -xzf /tmp/excalidraw.tgz -C static/ --strip-components=1 && rm /tmp/excalidraw.tgz",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "checksum": "",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "awaiting checksum \u2014 GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz"
-        }
-      }
-    },
-    "drawio": {
-      "name": "draw.io",
-      "vetted": true,
-      "type": "web",
-      "description": "Powerful open-source diagramming tool \u2014 flowcharts, network diagrams, UML, ER diagrams, and more, served as a static SPA",
-      "category": "productivity",
-      "author": "JGraph Ltd",
-      "homepage": "https://www.drawio.com",
-      "icon": "drawio",
-      "keywords": [
-        "diagram",
-        "flowchart",
-        "uml",
-        "network",
-        "drawing",
-        "chart",
-        "whiteboard"
-      ],
-      "license": "Apache-2.0",
-      "versions": {
-        "30.0.1": {
-          "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war",
-          "install": "apt-get install -y --no-install-recommends unzip && wget -qO /tmp/draw.war https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war && mkdir -p static && unzip -q /tmp/draw.war -d static/ && rm /tmp/draw.war",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
-          "permissions": [
-            "network"
-          ],
+          "port": 3001,
+          "post_install": "mkdir -p data \u0026\u0026 npm install --production 2\u003e/dev/null || true",
           "singleton": true
         }
-      }
-    },
-    "hoppscotch": {
-      "name": "Hoppscotch",
-      "vetted": true,
-      "type": "web",
-      "description": "Open-source API development ecosystem \u2014 REST, GraphQL, WebSocket, and SSE testing with a fast, clean web UI",
-      "category": "developer",
-      "author": "Hoppscotch Inc.",
-      "homepage": "https://hoppscotch.io",
-      "icon": "hoppscotch",
-      "keywords": [
-        "api",
-        "rest",
-        "graphql",
-        "testing",
-        "http",
-        "developer",
-        "postman"
-      ],
-      "license": "MIT",
-      "versions": {
-        "2026.4.1": {
-          "download_url": "https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz",
-          "install": "wget -qO /tmp/hoppscotch.tar.gz https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz && tar -xzf /tmp/hoppscotch.tar.gz -C static/ --strip-components=1 && rm /tmp/hoppscotch.tar.gz",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "checksum": "",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "awaiting checksum \u2014 GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum"
-        }
-      }
+      },
+      "signature": "c1DvlUcqv78+ZXB9HqOwrjP6l40jwK7RRSNwBfyOUrzH8agJ+BPZKuQIRTu4xukplZbpqkFRs2QdosDBD766DQ=="
     },
     "vaultwarden": {
       "name": "Vaultwarden",
       "vetted": true,
       "type": "web",
-      "description": "Bitwarden-compatible self-hosted password vault \u2014 end-to-end encrypted, supports all Bitwarden clients and browser extensions",
+      "arch": null,
+      "description": "Bitwarden-compatible self-hosted password vault — end-to-end encrypted, supports all Bitwarden clients and browser extensions",
       "category": "system",
       "author": "dani-garcia",
       "homepage": "https://github.com/dani-garcia/vaultwarden",
-      "icon": "\ud83d\udd11",
+      "icon": "🔑",
+      "icon_url": "",
       "keywords": [
         "password",
         "vault",
@@ -944,416 +2153,125 @@
         "1.32.7": {
           "_disabled": true,
           "_note": "awaiting verified upstream checksum \u2014 pin a sha256 from https://github.com/dani-garcia/vaultwarden/releases before enabling",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "bin/vaultwarden",
-          "port": 8080,
+          "deps": null,
+          "download_url": "",
           "env": {
             "DATA_FOLDER": "data/",
-            "ROCKET_PORT": "${PORT}",
             "ROCKET_ADDRESS": "0.0.0.0",
+            "ROCKET_PORT": "${PORT}",
             "WEBSOCKET_ENABLED": "true"
           },
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "singleton": true,
-          "checksum": ""
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
         }
-      }
+      },
+      "signature": "o227RvqWqcSI2FA69a4RGtmRHRk+GXUTBVr088OmQGV6k5W8VXIUjO9G9hOqx0mvPbWIZJMfScz9ah6w+KQHDQ=="
     },
-    "libretranslate": {
-      "name": "LibreTranslate",
-      "vetted": true,
-      "type": "web",
-      "description": "Offline machine translation server \u2014 translate text between languages locally with no data leaving your device",
-      "category": "productivity",
-      "author": "LibreTranslate",
-      "homepage": "https://libretranslate.com",
-      "icon": "\ud83c\udf10",
-      "keywords": [
-        "translation",
-        "translate",
-        "language",
-        "nlp",
-        "offline",
-        "privacy"
-      ],
-      "license": "AGPL-3.0",
-      "versions": {
-        "1.5.3": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev && pip3 install --break-system-packages libretranslate==1.5.3",
-          "command": "libretranslate --load-only en,es,fr,de --port ${PORT} --host 0.0.0.0",
-          "port": 5000,
-          "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2>/dev/null || true",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true,
-          "checksum": ""
-        }
-      }
-    },
-    "shotcut": {
-      "name": "Shotcut",
+    "vlc": {
+      "name": "VLC",
       "vetted": true,
       "type": "desktop",
-      "lane": {"needs_gpu": true},
-      "description": "Free, open-source video editor \u2014 multi-track timeline, 4K support, hundreds of filters and transitions",
+      "arch": null,
+      "description": "Universal media player — plays virtually any video and audio format, streams, DVDs, and network sources",
       "category": "media",
-      "author": "Meltytech, LLC",
-      "homepage": "https://www.shotcut.org",
-      "icon": "shotcut",
+      "author": "VideoLAN",
+      "homepage": "https://www.videolan.org",
+      "icon": "vlc",
+      "icon_url": "",
       "keywords": [
         "video",
-        "editor",
-        "timeline",
-        "4k",
-        "filters",
-        "transitions",
-        "film"
-      ],
-      "license": "GPL-3.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends shotcut",
-          "command": "shotcut",
-          "permissions": [
-            "filesystem",
-            "gpu"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "ardour": {
-      "name": "Ardour",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Professional digital audio workstation \u2014 multi-track recording, editing, mixing, and mastering",
-      "category": "media",
-      "author": "Paul Davis and The Ardour Community",
-      "homepage": "https://ardour.org",
-      "icon": "ardour",
-      "keywords": [
         "audio",
-        "daw",
-        "recording",
-        "mixing",
-        "mastering",
-        "music",
-        "studio"
+        "player",
+        "media",
+        "streaming",
+        "codec"
       ],
       "license": "GPL-2.0",
-      "arch": [
-        "amd64"
-      ],
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends ardour",
-          "command": "ardour8",
-          "permissions": [
-            "filesystem",
-            "microphone"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "lmms": {
-      "name": "LMMS",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Linux MultiMedia Studio \u2014 beat+bassline editor, song editor, synthesizers, and VST plugin support",
-      "category": "media",
-      "author": "LMMS Developers",
-      "homepage": "https://lmms.io",
-      "icon": "lmms",
-      "keywords": [
-        "music",
-        "studio",
-        "daw",
-        "beats",
-        "synthesizer",
-        "vst",
-        "sequencer"
-      ],
-      "license": "GPL-2.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends lmms",
-          "command": "lmms",
-          "permissions": [
-            "filesystem",
-            "microphone"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "darktable": {
-      "name": "Darktable",
-      "vetted": true,
-      "type": "desktop",
-      "lane": {"needs_gpu": true},
-      "description": "Photography workflow and RAW developer \u2014 non-destructive editing, colour grading, and print/export pipeline",
-      "category": "media",
-      "author": "Darktable Developers",
-      "homepage": "https://www.darktable.org",
-      "icon": "darktable",
-      "keywords": [
-        "photography",
-        "raw",
-        "editor",
-        "colour",
-        "grading",
-        "lightroom",
-        "darkroom"
-      ],
-      "license": "GPL-3.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends darktable",
-          "command": "darktable",
+          "install": "",
+          "flatpak_id": "org.videolan.VLC",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.videolan.VLC",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
             "filesystem",
             "gpu"
           ],
-          "singleton": true
-        }
-      }
-    },
-    "obs-studio": {
-      "name": "OBS Studio",
-      "vetted": true,
-      "type": "desktop",
-      "lane": {"needs_gpu": true},
-      "description": "Open Broadcaster Software \u2014 screen recording and live streaming with scenes, sources, and filters",
-      "category": "media",
-      "author": "OBS Project",
-      "homepage": "https://obsproject.com",
-      "icon": "obs",
-      "keywords": [
-        "streaming",
-        "recording",
-        "screen",
-        "broadcast",
-        "obs",
-        "twitch",
-        "youtube"
-      ],
-      "license": "GPL-2.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends obs-studio",
-          "command": "obs",
-          "permissions": [
-            "filesystem",
-            "gpu",
-            "microphone",
-            "camera"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "qgis": {
-      "name": "QGIS",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Free and open-source GIS \u2014 view, edit, and analyse geospatial data with layers, plugins, and map export",
-      "category": "productivity",
-      "author": "QGIS Development Team",
-      "homepage": "https://www.qgis.org",
-      "icon": "qgis",
-      "keywords": [
-        "gis",
-        "mapping",
-        "geospatial",
-        "cartography",
-        "spatial",
-        "geography",
-        "layers"
-      ],
-      "license": "GPL-2.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends qgis",
-          "command": "qgis",
-          "permissions": [
-            "filesystem",
-            "network"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "octave": {
-      "name": "GNU Octave",
-      "vetted": true,
-      "type": "desktop",
-      "description": "High-level language for numerical computations \u2014 MATLAB-compatible syntax, plotting, and signal processing",
-      "category": "productivity",
-      "author": "GNU Project",
-      "homepage": "https://www.gnu.org/software/octave",
-      "icon": "octave",
-      "keywords": [
-        "math",
-        "numerical",
-        "matlab",
-        "scientific",
-        "plotting",
-        "computation",
-        "engineering"
-      ],
-      "license": "GPL-3.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends octave",
-          "command": "octave --gui",
-          "permissions": [
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "gnucash": {
-      "name": "GnuCash",
-      "vetted": true,
-      "type": "desktop",
-      "description": "Personal and small-business finance manager \u2014 double-entry accounting, budgeting, invoicing, and reports",
-      "category": "productivity",
-      "author": "GnuCash Development Team",
-      "homepage": "https://www.gnucash.org",
-      "icon": "gnucash",
-      "keywords": [
-        "finance",
-        "accounting",
-        "budget",
-        "invoicing",
-        "money",
-        "double-entry",
-        "bookkeeping"
-      ],
-      "license": "GPL-2.0",
-      "arch": [
-        "amd64"
-      ],
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends gnucash",
-          "command": "gnucash",
-          "permissions": [
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "conduit": {
-      "name": "Conduit",
-      "vetted": true,
-      "type": "service",
-      "admin_only": true,
-      "_disabled": true,
-      "_note": "awaiting verified upstream checksum \u2014 famedly/conduit GitLab releases ship source archives only; no sha256-signed pre-built x86_64-unknown-linux-musl binary confirmed as of 2026-05-16",
-      "description": "Lightweight Matrix homeserver written in Rust \u2014 SQLite backend, federation-ready, single binary, runs on localhost",
-      "category": "network",
-      "author": "Famedly GmbH",
-      "homepage": "https://conduit.rs",
-      "icon": "C",
-      "keywords": [
-        "matrix",
-        "chat",
-        "homeserver",
-        "messaging",
-        "federation",
-        "self-hosted"
-      ],
-      "license": "Apache-2.0",
-      "versions": {
-        "0.10.0": {
-          "install": "wget -qO data/bin/conduit https://gitlab.com/famedly/conduit/-/releases/v0.10.0/downloads/conduit-x86_64-unknown-linux-musl && chmod +x data/bin/conduit",
           "checksum": "",
-          "command": "data/bin/conduit",
-          "port": 6167,
-          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"%s\"\\ndatabase_backend = \"sqlite\"\\ndatabase_path = \"%s/data/db\"\\nport = %s\\naddress = \"127.0.0.1\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"$APP_DIR\" \"${PORT}\" > data/conduit.toml",
-          "env": {
-            "CONDUIT_CONFIG": "data/conduit.toml",
-            "SERVER_NAME": "localhost"
-          },
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true,
-          "auto_start": false,
-          "_disabled": true,
-          "_note": "no verified upstream checksum; pending real release with sha256"
-        }
-      }
-    },
-    "cinny": {
-      "name": "Cinny",
-      "vetted": true,
-      "type": "web",
-      "description": "Modern Matrix client \u2014 clean, fast web UI for chatting on any Matrix homeserver including a local Conduit instance",
-      "category": "network",
-      "author": "Cinny Contributors",
-      "homepage": "https://cinny.in",
-      "icon": "C",
-      "keywords": [
-        "matrix",
-        "chat",
-        "client",
-        "messaging",
-        "web",
-        "element-alternative"
-      ],
-      "license": "AGPL-3.0",
-      "versions": {
-        "4.12.1": {
-          "install": "wget -qO /tmp/cinny.tar.gz https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz && echo 'b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc  /tmp/cinny.tar.gz' | sha256sum -c - && tar xzf /tmp/cinny.tar.gz -C static/ --strip-components=1 && rm /tmp/cinny.tar.gz",
-          "checksum": "sha256:b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "permissions": [
-            "network"
-          ],
           "singleton": true,
           "auto_start": false
         }
-      }
+      },
+      "signature": "SCO84NADBLdr2AJCYe5Uh/zMCOVLE+DJ/ROIVkxSNoq90QQWj9tS0bkTzA26VUrVv15NFENoQa0BskrP79CiCA=="
+    },
+    "wede": {
+      "name": "Wede",
+      "vetted": false,
+      "type": "web",
+      "arch": null,
+      "description": "Lightweight web-based code editor — edit files and projects from your browser with syntax highlighting",
+      "category": "developer",
+      "author": "Vulos",
+      "homepage": "https://github.com/vul-os/wede",
+      "icon": "wede",
+      "icon_url": "",
+      "keywords": [
+        "editor",
+        "code",
+        "web",
+        "ide",
+        "files",
+        "syntax"
+      ],
+      "license": "MIT",
+      "versions": {
+        "latest": {
+          "_disabled": true,
+          "_note": "Disabled (SEC-H3): previous recipe used curl|bash with no pinned version or checksum. Re-enable once a pinned release artifact with sha256 is available.",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "/root/.local/bin/wede -port ${PORT}",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 9090,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "signature": "uT82l5JYV6rx63+jmOMV2011yZUBlrUgFzXJwn/eZk2kz6mR34efMjv/pL/DpDq5sFc9nYHTuggeaYrYQfDLDg=="
     },
     "wine": {
-      "name": "Wine",
-      "vetted": true,
-      "type": "desktop",
-      "lane": {"game": true},
-      "description": "Windows compatibility layer \u2014 run Windows applications and games on Linux without a virtual machine",
-      "category": "games",
+      "arch": null,
       "author": "WineHQ Project",
+      "category": "games",
+      "description": "Windows compatibility layer — run Windows applications and games on Linux without a virtual machine",
       "homepage": "https://www.winehq.org",
       "icon": "wine",
+      "icon_url": "",
       "keywords": [
         "windows",
         "compatibility",
@@ -1362,383 +2280,38 @@
         "exe",
         "win32"
       ],
+      "lane": {
+        "game": true
+      },
       "license": "LGPL-2.1",
+      "name": "Wine",
+      "signature": "hbZQ7SHqUwW89SBfNvAAlKfGEsDdny8RX7p2aJY53Z70BMtQcKqeKFBOVkmmmGJhnMMtu2dyvj4gTSITJJKlAg==",
+      "type": "desktop",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends wine winetricks",
+          "arch": "amd64",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "wine",
-          "arch": "amd64",
+          "deps": null,
+          "download_url": "",
+          "env": {
+            "VULOS_GAMING": "1"
+          },
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends wine winetricks",
           "permissions": [
             "display",
             "filesystem",
             "network"
           ],
-          "singleton": false,
+          "port": 0,
           "post_install": "wineboot --init",
-          "env": {
-            "VULOS_GAMING": "1"
-          }
+          "singleton": false
         }
-      }
-    },
-    "lutris": {
-      "name": "Lutris",
-      "vetted": true,
-      "type": "desktop",
-      "lane": {"game": true},
-      "description": "Open-source gaming platform \u2014 manage and launch games from GOG, Epic, Steam, emulators, and Windows installers",
-      "category": "games",
-      "author": "Lutris Project",
-      "homepage": "https://lutris.net",
-      "icon": "lutris",
-      "keywords": [
-        "games",
-        "gaming",
-        "launcher",
-        "gog",
-        "epic",
-        "emulator",
-        "wine"
-      ],
-      "license": "GPL-3.0",
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends lutris",
-          "command": "lutris",
-          "arch": "amd64",
-          "permissions": [
-            "display",
-            "filesystem",
-            "network",
-            "gpu"
-          ],
-          "singleton": true,
-          "post_install": "lutris --init 2>/dev/null || true",
-          "env": {
-            "VULOS_GAMING": "1"
-          }
-        }
-      }
-    },
-    "minipaint": {
-      "name": "miniPaint",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Browser-based raster image editor — layers, filters, tools, and effects in a lightweight web UI; replaces GIMP/Photoshop for everyday editing",
-      "category": "media",
-      "author": "viliusle",
-      "homepage": "https://github.com/viliusle/miniPaint",
-      "icon": "miniPaint",
-      "keywords": [
-        "image",
-        "editor",
-        "raster",
-        "photo",
-        "paint",
-        "web",
-        "gimp"
-      ],
-      "license": "MIT",
-      "versions": {
-        "4.10.0": {
-          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 --branch v4.10.0 https://github.com/viliusle/miniPaint.git static/",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "code-server": {
-      "name": "code-server",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "VS Code in the browser — full IDE with extensions, terminal, Git integration, and language servers, served over HTTP",
-      "category": "developer",
-      "author": "Coder Technologies",
-      "homepage": "https://coder.com/docs/code-server",
-      "icon": "code-server",
-      "keywords": [
-        "vscode",
-        "ide",
-        "editor",
-        "developer",
-        "code",
-        "terminal",
-        "extensions",
-        "browser"
-      ],
-      "license": "MIT",
-      "versions": {
-        "4.100.2": {
-          "install": "apt-get install -y --no-install-recommends curl && curl -fsSL https://github.com/coder/code-server/releases/download/v4.100.2/code-server_4.100.2_amd64.deb -o /tmp/code-server.deb && echo '0e8c35b53e52b1d5a9e1e6b0a5e8d6a7f3c2d1b0a9e8d7c6b5a4f3e2d1c0b9a8  /tmp/code-server.deb' | sha256sum --status -c - 2>/dev/null || true && dpkg -i /tmp/code-server.deb && rm -f /tmp/code-server.deb",
-          "command": "code-server --bind-addr 0.0.0.0:${PORT} --auth none --disable-telemetry data/",
-          "port": 8080,
-          "post_install": "mkdir -p data",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "disabled pending pinned sha256 for the .deb artifact; re-enable once a verified checksum is confirmed from upstream release notes"
-        }
-      }
-    },
-    "immich": {
-      "name": "Immich",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Self-hosted photo and video backup — mobile app sync, AI-powered search, albums, and face recognition; replaces Google Photos",
-      "category": "media",
-      "author": "Immich Contributors",
-      "homepage": "https://immich.app",
-      "icon": "Immich",
-      "keywords": [
-        "photos",
-        "gallery",
-        "backup",
-        "self-hosted",
-        "google-photos",
-        "face-recognition",
-        "albums"
-      ],
-      "license": "AGPL-3.0",
-      "versions": {
-        "1.134.0": {
-          "install": "apt-get install -y --no-install-recommends curl wget unzip && wget -qO /tmp/immich-server.tar.gz https://github.com/immich-app/immich/releases/download/v1.134.0/immich-server.tar.gz",
-          "command": "bin/immich-server --port ${PORT}",
-          "port": 2283,
-          "post_install": "mkdir -p data/upload data/thumbs data/encoded-video",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "disabled: immich upstream ships as docker-compose only (no standalone binary tarball); install recipe needs docker-compose or native binary when upstream publishes one"
-        }
-      }
-    },
-    "diagrams-net": {
-      "name": "diagrams.net",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Open-source diagramming and whiteboard tool — flowcharts, UML, network diagrams, BPMN, ER, and Visio-compatible files; replaces draw.io / Visio",
-      "category": "productivity",
-      "author": "JGraph Ltd",
-      "homepage": "https://www.diagrams.net",
-      "icon": "diagrams.net",
-      "keywords": [
-        "diagram",
-        "flowchart",
-        "uml",
-        "network",
-        "bpmn",
-        "visio",
-        "whiteboard",
-        "drawing"
-      ],
-      "license": "Apache-2.0",
-      "versions": {
-        "24.7.17": {
-          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/diagrams.zip https://github.com/jgraph/drawio-desktop/releases/download/v24.7.17/draw.io-24.7.17.AppImage && mkdir -p static && cp /tmp/diagrams.zip static/ && rm /tmp/diagrams.zip",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "disabled: diagrams.net desktop releases are AppImages; for a web deployment use the drawio entry (self-hosted static SPA via draw.war). This entry is reserved for a future native thin-wrapper. Use drawio for the web lane."
-        }
-      }
-    },
-    "jellyfin": {
-      "name": "Jellyfin",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Free self-hosted media server — stream movies, TV shows, music, and photos to any device via a web UI; replaces VLC for media playback",
-      "category": "media",
-      "author": "Jellyfin Contributors",
-      "homepage": "https://jellyfin.org",
-      "icon": "Jellyfin",
-      "keywords": [
-        "media",
-        "streaming",
-        "movies",
-        "music",
-        "photos",
-        "dlna",
-        "plex",
-        "server"
-      ],
-      "license": "GPL-2.0",
-      "versions": {
-        "10": {
-          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg && curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg && echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' > /etc/apt/sources.list.d/jellyfin.list && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
-          "command": "jellyfin --datadir data/ --webdir /usr/share/jellyfin/web --port ${PORT}",
-          "port": 8096,
-          "post_install": "mkdir -p data/media/movies data/media/music data/media/photos",
-          "permissions": [
-            "network",
-            "filesystem"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "kerf": {
-      "name": "Kerf",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Browser-native parametric CAD — WASM-powered 3D modelling and sketching; default app for all CAD intents (replaces Fusion 360 / SolidWorks). See roadmap/CAD-KERF.md.",
-      "category": "developer",
-      "author": "Kerf Contributors",
-      "homepage": "https://github.com/kerf-cad/kerf",
-      "icon": "Kerf",
-      "keywords": [
-        "cad",
-        "3d",
-        "modelling",
-        "parametric",
-        "wasm",
-        "design",
-        "engineering",
-        "solidworks",
-        "fusion360"
-      ],
-      "license": "Apache-2.0",
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 https://github.com/kerf-cad/kerf.git static/ 2>/dev/null || (mkdir -p static && printf '<html><body><h1>Kerf CAD</h1><p>Kerf WASM build not yet published. See roadmap/CAD-KERF.md for status.</p></body></html>' > static/index.html)",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true,
-          "_note": "Kerf upstream WASM release pending; recipe falls back to placeholder page. Update once kerf-cad/kerf publishes a dist artifact."
-        }
-      }
-    },
-    "audiomass": {
-      "name": "AudioMass",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Browser-based audio editor — lightweight waveform editing, cut/copy/paste, effects, and format export; replaces Audacity for quick edits",
-      "category": "media",
-      "author": "pkalogiros",
-      "homepage": "https://audiomass.co",
-      "icon": "AudioMass",
-      "keywords": [
-        "audio",
-        "editor",
-        "waveform",
-        "effects",
-        "web",
-        "audacity"
-      ],
-      "license": "MIT",
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 https://github.com/pkalogiros/AudioMass.git static/",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true
-        }
-      }
-    },
-    "svg-edit": {
-      "name": "SVG-Edit",
-      "vetted": true,
-      "type": "web",
-      "lane": {"web": true},
-      "description": "Browser-based SVG vector editor — draw, edit, and export SVG graphics without installing a desktop app; replaces Inkscape for light vector work",
-      "category": "media",
-      "author": "SVG-Edit Contributors",
-      "homepage": "https://svgedit.netlify.app",
-      "icon": "SVG-Edit",
-      "keywords": [
-        "svg",
-        "vector",
-        "editor",
-        "graphics",
-        "illustration",
-        "web",
-        "inkscape"
-      ],
-      "license": "MIT",
-      "versions": {
-        "7.3.0": {
-          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/svgedit.zip https://github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip && unzip -q /tmp/svgedit.zip -d static/ && rm /tmp/svgedit.zip",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "permissions": [
-            "network"
-          ],
-          "singleton": true,
-          "_disabled": true,
-          "_note": "disabled: no verified sha256 published by SVG-Edit for v7.3.0 release zip; re-enable once upstream publishes a checksum"
-        }
-      }
-    },
-    "steam": {
-      "name": "Steam",
-      "vetted": true,
-      "type": "desktop",
-      "lane": {"game": true},
-      "description": "Steam gaming client \u2014 access your Steam library, store, community, and Proton-powered Windows game compatibility",
-      "category": "games",
-      "author": "Valve Corporation",
-      "homepage": "https://store.steampowered.com",
-      "icon": "steam",
-      "keywords": [
-        "games",
-        "gaming",
-        "steam",
-        "valve",
-        "proton",
-        "store",
-        "library"
-      ],
-      "license": "proprietary",
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends steam-installer",
-          "command": "steam",
-          "arch": "amd64",
-          "permissions": [
-            "display",
-            "filesystem",
-            "network",
-            "gpu",
-            "audio"
-          ],
-          "singleton": true,
-          "post_install": "steam --reset 2>/dev/null || true",
-          "env": {
-            "VULOS_GAMING": "1"
-          }
-        }
-      }
+      },
+      "vetted": true
     }
   }
 }

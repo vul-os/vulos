@@ -145,6 +145,59 @@ cp "$ANCHOR_SRC" "$DEST_KEY"
 chmod 0444 "$DEST_KEY"   # read-only for all users — it's a public key
 ok "Installed trust anchor → $DEST_KEY (mode 0444)"
 
+# ── Install the root-signed release cert ──────────────────────────────────────
+#
+# The anchor alone is not enough: it is the offline ROOT key, and the root never
+# signs artifacts directly.  The release cert is what binds the online RELEASE
+# key to that root, and it is what the App Hub (REGISTRY-SIGN-01) and the
+# manifest verifier chain through.  Without it a box with a valid anchor still
+# refuses every signed artifact, which looks like a mysterious outage rather
+# than a missing file — so resolve it here and fail loudly if it is absent.
+#
+# Resolved in order:
+#   1. $VULOS_RELEASE_CERT      — explicit path (production builds)
+#   2. keys/release-cert.json   — repo dev cert (warns, like the dev anchor)
+DEV_CERT_PATH="$REPO_ROOT/keys/release-cert.json"
+DEST_CERT="$DEST_DIR/release-cert.json"
+
+if [ -n "${VULOS_RELEASE_CERT:-}" ]; then
+    CERT_SRC="$VULOS_RELEASE_CERT"
+    if [ ! -f "$CERT_SRC" ]; then
+        die "VULOS_RELEASE_CERT is set to '$CERT_SRC' but the file does not exist."
+    fi
+    info "Using release cert from VULOS_RELEASE_CERT: $CERT_SRC"
+elif [ -f "$DEV_CERT_PATH" ]; then
+    CERT_SRC="$DEV_CERT_PATH"
+    if [ "$IS_DEV_KEY" = "1" ]; then
+        warn "Release cert is the repo DEV cert ($DEV_CERT_PATH) — DO NOT SHIP."
+    else
+        # Production anchor + dev cert cannot chain: the cert would not validate.
+        die "A production trust anchor was supplied but the release cert is the repo DEV cert.
+Set VULOS_RELEASE_CERT to the cert issued by your root key (docs/KEY-CEREMONY.md)."
+    fi
+else
+    die "$(cat <<'EOF'
+No release cert found.  A trust anchor without a release cert cannot verify
+anything — the box would refuse every app install and every OS update.
+
+Provide one via:
+  export VULOS_RELEASE_CERT=/path/to/release-cert.json   # production
+  keys/release-cert.json in the repo root                # dev (make dev-keys)
+
+Issue a production cert with the offline root key:
+  vulos-sign issue-release-cert -root-priv <root.priv.json> \
+      -release-pub <release.pub.json> -key-id release-YYYY-MM \
+      -not-after <RFC3339> -min-epoch <n> -out release-cert.json
+
+See docs/KEY-CEREMONY.md.
+EOF
+)"
+fi
+
+cp "$CERT_SRC" "$DEST_CERT"
+chmod 0444 "$DEST_CERT"
+ok "Installed release cert → $DEST_CERT (mode 0444)"
+
 # ── Install initramfs hook ────────────────────────────────────────────────────
 #
 # The hook is a standard initramfs-tools "hooks/" script.  When update-initramfs
@@ -171,17 +224,24 @@ esac
 . /usr/share/initramfs-tools/hook-functions
 
 KEY_SRC="/etc/vulos/trust-anchor.pub"
-if [ ! -f "$KEY_SRC" ]; then
-    echo "ERROR: vulos-trust-anchor hook: $KEY_SRC not found — aborting initramfs build" >&2
-    exit 1
-fi
+CERT_SRC="/etc/vulos/release-cert.json"
+for f in "$KEY_SRC" "$CERT_SRC"; do
+    if [ ! -f "$f" ]; then
+        echo "ERROR: vulos-trust-anchor hook: $f not found — aborting initramfs build" >&2
+        exit 1
+    fi
+done
 
 # Ensure /etc/vulos exists inside the initramfs working tree
 mkdir -p "${DESTDIR}/etc/vulos"
 
-# Copy the key into the initramfs
+# Copy the anchor AND the release cert into the initramfs. The pre-pivot verifier
+# needs both: the anchor to trust, the cert to know which release key that trust
+# extends to.
 cp "$KEY_SRC" "${DESTDIR}/etc/vulos/trust-anchor.pub"
 chmod 0444 "${DESTDIR}/etc/vulos/trust-anchor.pub"
+cp "$CERT_SRC" "${DESTDIR}/etc/vulos/release-cert.json"
+chmod 0444 "${DESTDIR}/etc/vulos/release-cert.json"
 HOOK_BODY
 
 chmod 0755 "$HOOK_DIR/vulos-trust-anchor"

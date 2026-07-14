@@ -11,7 +11,18 @@ SHELL := /bin/bash
 BACKEND := backend
 SCRIPTS := scripts
 
-.PHONY: build test-local test-dev test-all coverage help
+# Signing (docs/KEY-CEREMONY.md).
+#   ANCHOR / CERT — the PUBLIC trust material shipped in the image. Overridable
+#   so a release build can point at real ceremony output instead of the dev keys.
+#   RELEASE_PRIV  — the RELEASE private key. Never in CI, never committed.
+KEYS         := keys
+ANCHOR       := $(KEYS)/trust-anchor.pub
+CERT         := $(KEYS)/release-cert.json
+RELEASE_PRIV := $(KEYS)/release.priv.json
+REGISTRY     := registry.json
+
+.PHONY: build test-local test-dev test-all coverage help \
+        dev-keys sign-registry verify-registry
 
 ## build: compile backend and build frontend assets.
 build:
@@ -33,6 +44,34 @@ test-dev:
 ## Equivalent to running scripts/test-all.sh directly.
 test-all:
 	$(SCRIPTS)/test-all.sh
+
+## dev-keys: regenerate the repo's DEVELOPMENT signing keys (not secret; refused in prod).
+dev-keys:
+	$(SCRIPTS)/signing/dev-keys.sh
+
+## sign-registry: sign every registry.json entry with the RELEASE key, then verify.
+## Defaults to the dev release key. For a real release, run the ceremony first and
+## point RELEASE_PRIV at the key on your offline signing machine:
+##   make sign-registry RELEASE_PRIV=/media/signing/release.priv.json
+## This is a HUMAN operation — CI never holds a private key (docs/KEY-CEREMONY.md).
+sign-registry:
+	@if [ ! -f "$(RELEASE_PRIV)" ]; then \
+	  if [ "$(RELEASE_PRIV)" = "keys/release.priv.json" ]; then \
+	    echo "▸ dev release key missing — regenerating (make dev-keys)"; \
+	    $(SCRIPTS)/signing/dev-keys.sh >/dev/null; \
+	  else \
+	    echo "ERROR: release key not found: $(RELEASE_PRIV)"; exit 1; \
+	  fi; \
+	fi
+	cd $(BACKEND) && go run ./cmd/sign sign-registry \
+	  -release-priv ../$(RELEASE_PRIV) -registry ../$(REGISTRY)
+	@$(MAKE) --no-print-directory verify-registry
+
+## verify-registry: verify every registry.json entry against the shipped anchor.
+## Public keys only — no private key required. This is what CI runs.
+verify-registry:
+	cd $(BACKEND) && go run ./cmd/sign verify-registry \
+	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY)
 
 ## coverage: run tests with coverage and print a per-package summary.
 coverage:

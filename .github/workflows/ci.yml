@@ -93,6 +93,43 @@ jobs:
             exit 1
           fi
 
+  registry-signatures:
+    name: REGISTRY-SIGN — Every registry.json entry is signed
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@v4
+
+      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
+      - name: Clone vulos-apps (local replace)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # VERIFY-ONLY. CI holds NO private key — not the root key, not the release
+      # key. Signing is a human operation on an offline machine and the signatures
+      # are committed to the repo (docs/KEY-CEREMONY.md § Custody). This job proves
+      # that what was committed actually verifies against the anchor we ship.
+      #
+      # It fails if any entry is unsigned, tampered with, signed by a key the
+      # anchor never certified, or added without running `make sign-registry`.
+      - name: Verify registry signatures against the shipped trust anchor
+        run: make verify-registry
+
+      # A private key must never reach a CI runner. If one is ever committed, this
+      # is where we find out — not after it has been published in a release.
+      - name: Assert no private key is committed
+        run: |
+          if git ls-files | grep -E '\.(priv\.json|key|pem)$'; then
+            echo "::error::A private key is tracked in git. Remove it and rotate the key."
+            exit 1
+          fi
+          echo "OK — no private key material tracked in git."
+
   smoke-peering:
     name: SMOKE-01 — Peering Route Regression
     runs-on: ubuntu-latest
@@ -143,7 +180,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [frontend, backend, gofmt, smoke-peering]
+    needs: [frontend, backend, gofmt, smoke-peering, registry-signatures]
     strategy:
       matrix:
         platform: [linux/amd64, linux/arm64]

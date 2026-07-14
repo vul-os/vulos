@@ -12,7 +12,7 @@ import (
 // directly without a checksum is refused with a hard error (SEC-H3).
 func TestRejectEmptyChecksum(t *testing.T) {
 	// Signature check is bypassed (INSECURE=1) so we can reach the checksum gate.
-	t.Setenv(envRegistryInsecure, "1")
+	withInsecureRegistry(t)
 	reg := &Registry{
 		Apps: map[string]*RegistryEntry{
 			"testapp": {
@@ -46,7 +46,7 @@ func TestRejectEmptyChecksum(t *testing.T) {
 // TestRejectCurlBashRecipe verifies that a curl|bash pipe-to-shell install recipe
 // is unconditionally refused (SEC-H3).
 func TestRejectCurlBashRecipe(t *testing.T) {
-	t.Setenv(envRegistryInsecure, "1")
+	withInsecureRegistry(t)
 	reg := &Registry{
 		Apps: map[string]*RegistryEntry{
 			"badapp": {
@@ -77,7 +77,7 @@ func TestRejectCurlBashRecipe(t *testing.T) {
 
 // TestRejectWgetBashRecipe verifies that a wget|bash pipe-to-shell pattern is also refused.
 func TestRejectWgetBashRecipe(t *testing.T) {
-	t.Setenv(envRegistryInsecure, "1")
+	withInsecureRegistry(t)
 	reg := &Registry{
 		Apps: map[string]*RegistryEntry{
 			"badapp2": {
@@ -108,7 +108,7 @@ func TestRejectWgetBashRecipe(t *testing.T) {
 
 // TestRejectDisabledEntry verifies that a recipe with _disabled:true is refused.
 func TestRejectDisabledEntry(t *testing.T) {
-	t.Setenv(envRegistryInsecure, "1")
+	withInsecureRegistry(t)
 	reg := &Registry{
 		Apps: map[string]*RegistryEntry{
 			"disabledapp": {
@@ -142,7 +142,7 @@ func TestRejectDisabledEntry(t *testing.T) {
 // and proceeds to actual execution (mocked by using a non-existent curl command that
 // fails for reasons other than the security check).
 func TestValidChecksumNonShellPipeRecipe(t *testing.T) {
-	t.Setenv(envRegistryInsecure, "1")
+	withInsecureRegistry(t)
 	// This recipe mimics the pinned-artifact shape: it downloads a binary, verifies
 	// its sha256, and chmod's it. It has a non-empty Checksum field. The security gate
 	// should pass; the actual shell command will fail because we're in a test environment
@@ -190,7 +190,7 @@ func TestValidChecksumNonShellPipeRecipe(t *testing.T) {
 // TestAptGetRecipeNoChecksumAllowed verifies that apt-get install recipes (which use
 // package-manager integrity, not a sha256 field) are not required to have a Checksum.
 func TestAptGetRecipeNoChecksumAllowed(t *testing.T) {
-	t.Setenv(envRegistryInsecure, "1")
+	withInsecureRegistry(t)
 	reg := &Registry{
 		Apps: map[string]*RegistryEntry{
 			"nginx": {
@@ -290,7 +290,7 @@ func TestRejectShCPipePattern(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(envRegistryInsecure, "1")
+			withInsecureRegistry(t)
 			reg := &Registry{
 				Apps: map[string]*RegistryEntry{
 					"shcapp": {

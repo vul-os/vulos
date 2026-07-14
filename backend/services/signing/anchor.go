@@ -40,6 +40,13 @@ func LoadAnchor(path string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
+// EncodeAnchor renders pub in the trust-anchor.pub wire format: a single line
+// of standard Base64, newline-terminated.  It is the exact inverse of
+// LoadAnchor, so anything this writes, that reads.
+func EncodeAnchor(pub ed25519.PublicKey) string {
+	return base64.StdEncoding.EncodeToString(pub) + "\n"
+}
+
 // VerifyWithAnchor loads the trust-anchor public key from anchorPath and
 // verifies that sig is a valid Ed25519 signature over canonicalBytes.
 //

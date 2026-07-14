@@ -8,17 +8,21 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"vulos/backend/services/env"
 	"vulos/backend/services/packages"
 	"vulos/backend/services/signing"
 )
@@ -51,31 +55,42 @@ type Registry struct {
 
 // RegistryEntry is a single app in the registry.
 //
-// Registry signing trust model (REGISTRY-SIGN-01):
+// # Registry signing trust model (REGISTRY-SIGN-01)
 //
-//	A publisher holds an Ed25519 private key and signs each RegistryEntry
-//	(including its app ID) using signing.Canonical for deterministic byte order.
-//	The OS is configured with the publisher's Ed25519 public key via either:
-//	  - /etc/vulos/trust-anchor.pub  (priority 1, raw base64)
-//	  - VULOS_REGISTRY_PUBKEY env var (priority 2, raw base64)
+// Every entry is signed by the RELEASE key, which the offline ROOT key certifies.
+// The root public key is the trust anchor baked into the image; the box chains
+// through the root-signed release cert to get the key that entries must verify
+// against.  See docs/KEY-CEREMONY.md and resolveRegistryTrust.
 //
-//	DEFAULT-CLOSED (REGISTRY-SIGN-01 rev): every install MUST be signed by the
-//	trusted publisher.  If no trust anchor is found and VULOS_REGISTRY_INSECURE
-//	is not set, the install is refused.
+//	ROOT (offline)  →  /etc/vulos/trust-anchor.pub   (the anchor)
+//	     │ signs
+//	     ▼
+//	RELEASE cert    →  /etc/vulos/release-cert.json
+//	     │ signs
+//	     ▼
+//	each RegistryEntry.Signature
 //
-//	VULOS_REGISTRY_INSECURE=1:
-//	  - Allows unsigned / unverified installs.
-//	  - Loudly logged at WARNING level.
-//	  - Must never be set in production.
+// The signature covers signing.Canonical of
+// {"app_id": <id>, "entry": <entry-without-signature>} — the app ID is inside
+// the signed bytes, so a signed entry cannot be relocated to another app slot
+// (M4 re-key protection).  The ENTIRE entry is signed, including fields this
+// struct does not model; see Extra.
 //
-//	A present-but-malformed key (either source) is treated as FATAL — the
-//	process aborts rather than silently fail-open.
+// DEFAULT-CLOSED.  Every path that cannot prove authenticity refuses the install:
+// no anchor, unreadable anchor, cert that does not chain, expired cert, missing
+// signature, invalid signature.  There is no fall-open.
 //
-//	The sha256 artifact integrity check (Checksum field on VersionRecipe) is
-//	independent and always enforced for binary downloads.
+// VULOS_REGISTRY_INSECURE=1 skips verification, is loudly logged, and is REFUSED
+// outright when VULOS_ENV=prod — which is also the default when VULOS_ENV is
+// unset (services/env).  The repo's development keys are likewise refused in
+// prod (signing.RefuseDevKeyInProd).
 //
-//	Downgrade protection: MinVersion (if non-empty) is enforced — requesting a
-//	version lower than MinVersion is refused.
+// The sha256 artifact integrity check (Checksum on VersionRecipe) is independent
+// and always enforced for binary downloads.
+//
+// Downgrade protection: MinVersion (if non-empty) is enforced — requesting a
+// version lower than MinVersion is refused.  Disabled entries are refused
+// outright.
 type RegistryEntry struct {
 	Name        string                    `json:"name"`
 	Vetted      bool                      `json:"vetted"` // true = reviewed and approved by Vulos team
@@ -90,11 +105,110 @@ type RegistryEntry struct {
 	Keywords    []string                  `json:"keywords"`
 	License     string                    `json:"license"`
 	MinVersion  string                    `json:"min_version,omitempty"` // downgrade floor — installing below this is refused
+	Disabled    bool                      `json:"_disabled,omitempty"`   // true = app is administratively disabled; install is refused
 	Versions    map[string]*VersionRecipe `json:"versions"`
 	// Signature is a base64-encoded Ed25519 signature over signing.Canonical of
 	// {"app_id": <id>, "entry": <entry-without-signature>}.
 	// Required unless VULOS_REGISTRY_INSECURE=1 is set.
 	Signature string `json:"signature,omitempty"`
+
+	// Extra preserves registry fields this struct does not model (today:
+	// "_note", "lane", "admin_only").  It is NOT optional bookkeeping — it is
+	// load-bearing for the signature.  signablePayload signs the marshalled
+	// entry, so any field dropped on unmarshal would be a field the publisher
+	// signature does not cover, and an attacker could add or rewrite it in a
+	// signed registry undetected.  Round-tripping the unmodelled keys verbatim
+	// closes that gap and keeps SaveRegistry lossless.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// knownEntryKeys / knownRecipeKeys are the JSON keys each struct models,
+// derived by reflection so that adding a field can never leave it double-
+// counted in Extra.
+var (
+	knownEntryKeys  = jsonKeySet(reflect.TypeOf(RegistryEntry{}))
+	knownRecipeKeys = jsonKeySet(reflect.TypeOf(VersionRecipe{}))
+)
+
+// jsonKeySet returns the set of JSON object keys a struct type serialises to.
+func jsonKeySet(t reflect.Type) map[string]struct{} {
+	keys := make(map[string]struct{}, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		keys[name] = struct{}{}
+	}
+	return keys
+}
+
+// splitExtraJSON returns the top-level keys of data that known does not model.
+func splitExtraJSON(data []byte, known map[string]struct{}) (map[string]json.RawMessage, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	var extra map[string]json.RawMessage
+	for k, v := range raw {
+		if _, ok := known[k]; ok {
+			continue
+		}
+		if extra == nil {
+			extra = make(map[string]json.RawMessage, len(raw))
+		}
+		extra[k] = v
+	}
+	return extra, nil
+}
+
+// mergeExtraJSON re-serialises the modelled fields (base) with the unmodelled
+// ones merged back in.  A modelled key always wins: an "extra" can never shadow
+// a field the code actually reads.
+func mergeExtraJSON(base []byte, extra map[string]json.RawMessage, known map[string]struct{}) ([]byte, error) {
+	if len(extra) == 0 {
+		return base, nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(base, &obj); err != nil {
+		return nil, err
+	}
+	for k, v := range extra {
+		if _, modelled := known[k]; modelled {
+			continue
+		}
+		obj[k] = v
+	}
+	return json.Marshal(obj)
+}
+
+// registryEntryAlias strips the custom JSON methods so the marshaller below can
+// recurse into the plain struct without infinite recursion.
+type registryEntryAlias RegistryEntry
+
+// UnmarshalJSON decodes an entry, preserving any unmodelled fields in Extra.
+func (e *RegistryEntry) UnmarshalJSON(data []byte) error {
+	var base registryEntryAlias
+	if err := json.Unmarshal(data, &base); err != nil {
+		return err
+	}
+	extra, err := splitExtraJSON(data, knownEntryKeys)
+	if err != nil {
+		return err
+	}
+	*e = RegistryEntry(base)
+	e.Extra = extra
+	return nil
+}
+
+// MarshalJSON re-encodes an entry, restoring any unmodelled fields from Extra
+// so the bytes we sign (and save) are the bytes we loaded.
+func (e RegistryEntry) MarshalJSON() ([]byte, error) {
+	base, err := json.Marshal(registryEntryAlias(e))
+	if err != nil {
+		return nil, err
+	}
+	return mergeExtraJSON(base, e.Extra, knownEntryKeys)
 }
 
 // VersionRecipe defines how to install and run a specific version of an app.
@@ -113,6 +227,39 @@ type VersionRecipe struct {
 	Singleton    bool              `json:"singleton"`           // only one instance allowed
 	AutoStart    bool              `json:"auto_start"`          // start on boot
 	Disabled     bool              `json:"_disabled,omitempty"` // true = entry is administratively disabled; install is refused
+
+	// Extra preserves recipe fields this struct does not model (today: "_note",
+	// per-recipe "arch").  Same rationale as RegistryEntry.Extra: the publisher
+	// signature covers the marshalled recipe, so anything dropped here would be
+	// outside the signature.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// versionRecipeAlias strips the custom JSON methods (see registryEntryAlias).
+type versionRecipeAlias VersionRecipe
+
+// UnmarshalJSON decodes a recipe, preserving any unmodelled fields in Extra.
+func (v *VersionRecipe) UnmarshalJSON(data []byte) error {
+	var base versionRecipeAlias
+	if err := json.Unmarshal(data, &base); err != nil {
+		return err
+	}
+	extra, err := splitExtraJSON(data, knownRecipeKeys)
+	if err != nil {
+		return err
+	}
+	*v = VersionRecipe(base)
+	v.Extra = extra
+	return nil
+}
+
+// MarshalJSON re-encodes a recipe, restoring any unmodelled fields from Extra.
+func (v VersionRecipe) MarshalJSON() ([]byte, error) {
+	base, err := json.Marshal(versionRecipeAlias(v))
+	if err != nil {
+		return nil, err
+	}
+	return mergeExtraJSON(base, v.Extra, knownRecipeKeys)
 }
 
 // pipeToShellRe matches curl|bash and wget|bash patterns (pipe-to-shell install anti-pattern).
@@ -232,17 +379,35 @@ func LoadRegistry(path string) (*Registry, error) {
 	return &r, nil
 }
 
-// envRegistryPubKey is the environment variable that holds the trusted Ed25519
-// publisher public key (base64-encoded raw 32-byte key).
-const envRegistryPubKey = "VULOS_REGISTRY_PUBKEY"
+// Environment variables that configure registry trust.
+const (
+	// envRegistryPubKey holds a trusted Ed25519 entry-verification public key
+	// directly (base64-encoded raw 32-byte key), bypassing the release-cert
+	// chain.  Intended for forks and private registries that sign with a single
+	// key.  Consulted only when no pinned trust-anchor file is present.
+	envRegistryPubKey = "VULOS_REGISTRY_PUBKEY"
 
-// envRegistryInsecure, when set to "1", allows installs without a trust anchor.
-// MUST NOT be set in production — loudly logged when active.
-const envRegistryInsecure = "VULOS_REGISTRY_INSECURE"
+	// envRegistryInsecure, when set to "1", skips signature verification
+	// entirely.  DEV ONLY: refused outright when VULOS_ENV=prod (which is also
+	// the default when VULOS_ENV is unset — see services/env).
+	envRegistryInsecure = "VULOS_REGISTRY_INSECURE"
 
-// trustAnchorPath is the well-known file location for the pinned trust anchor.
-// Takes priority over VULOS_REGISTRY_PUBKEY.
-const trustAnchorPath = "/etc/vulos/trust-anchor.pub"
+	// envTrustAnchor overrides the pinned trust-anchor file path.  Exists so a
+	// container or test can point at a staged /etc/vulos equivalent.
+	envTrustAnchor = "VULOS_TRUST_ANCHOR"
+
+	// envReleaseCert overrides the root-signed release-cert file path.
+	envReleaseCert = "VULOS_RELEASE_CERT"
+)
+
+// devKeyDirs are the repo-relative directories probed for the checked-in dev
+// trust anchor + release cert when running from a source checkout, so that
+// `make dev` and `go test` verify real signatures with no flags set.  This
+// probe is skipped entirely in prod — see resolveRegistryTrust.
+//
+// It mirrors the webroot probe in cmd/server (./dist, ../dist, …): the same
+// "walk up until the repo root shows up" idiom.
+var devKeyDirs = []string{"keys", "../keys", "../../keys", "../../../keys", "../../../../keys"}
 
 // parseEd25519PubKey decodes a base64-encoded raw Ed25519 public key (32 bytes).
 func parseEd25519PubKey(s string) (ed25519.PublicKey, error) {
@@ -256,67 +421,270 @@ func parseEd25519PubKey(s string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
-// registryInsecureActive reports whether VULOS_REGISTRY_INSECURE=1 is set.
-func registryInsecureActive() bool {
+// isProdEnv resolves the active runtime environment via the shared env package.
+// An unset VULOS_ENV means prod (env.Parse's default), so every escape hatch in
+// this file is closed unless someone deliberately opts out of production.
+func isProdEnv() (bool, error) {
+	activeEnv, err := env.Parse("")
+	if err != nil {
+		// Unrecognised VULOS_ENV — treat as fatal rather than guessing.
+		return true, fmt.Errorf("registry: %w", err)
+	}
+	return activeEnv.IsProd(), nil
+}
+
+// registryInsecureRequested reports whether VULOS_REGISTRY_INSECURE=1 is set,
+// regardless of whether it is permitted.
+func registryInsecureRequested() bool {
 	return strings.TrimSpace(os.Getenv(envRegistryInsecure)) == "1"
 }
 
-// LoadTrustedPublicKey loads the Ed25519 publisher trust anchor.
+// registryInsecureActive reports whether signature verification may be skipped.
 //
-// Priority order:
-//  1. /etc/vulos/trust-anchor.pub   — pinned file (base64, raw 32-byte key)
-//  2. VULOS_REGISTRY_PUBKEY env var — base64, raw 32-byte key
-//
-// DEFAULT-CLOSED (C1 fix):
-//   - If a key source is found but malformed, log.Fatalf aborts the process —
-//     a misconfiguration must never silently fall open.
-//   - If no key is found and VULOS_REGISTRY_INSECURE=1 is set, returns nil
-//     with a loud warning (insecure mode, dev/test only).
-//   - If no key is found and INSECURE is not set, returns nil — callers
-//     (VerifyEntrySignature) will fail-closed, refusing any install.
-func LoadTrustedPublicKey() ed25519.PublicKey {
-	// 1. Try the pinned trust-anchor file.
-	if data, err := os.ReadFile(trustAnchorPath); err == nil {
-		v := strings.TrimSpace(string(data))
-		key, parseErr := parseEd25519PubKey(v)
-		if parseErr != nil {
-			// FATAL: file is present but unreadable — never silently fall open.
-			log.Fatalf("[registry] FATAL: trust anchor file %s is present but malformed: %v — "+
-				"fix or remove the file before starting the service", trustAnchorPath, parseErr)
+// REGISTRY-SIGN-02: the insecure escape hatch is DEV-ONLY.  It is honoured only
+// outside production; in prod it is refused (and resolveRegistryTrust turns the
+// request into a hard, loud error before any install can start).
+func registryInsecureActive() bool {
+	if !registryInsecureRequested() {
+		return false
+	}
+	prod, err := isProdEnv()
+	if err != nil || prod {
+		return false
+	}
+	return true
+}
+
+// findDevKeyFile returns the first existing devKeyDirs/<name>, or "".
+func findDevKeyFile(name string) string {
+	for _, dir := range devKeyDirs {
+		p := filepath.Join(dir, name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
 		}
-		log.Printf("[registry] trust anchor loaded from %s", trustAnchorPath)
-		return key
+	}
+	return ""
+}
+
+// registryTrust is the resolved answer to "which key must have signed each
+// registry entry, and may verification be skipped at all?".
+type registryTrust struct {
+	// key is the Ed25519 public key every entry signature must verify against.
+	// nil only when insecure is true.
+	key ed25519.PublicKey
+
+	// insecure is true when verification is deliberately skipped
+	// (VULOS_REGISTRY_INSECURE=1, non-prod only).
+	insecure bool
+
+	// source describes where key came from, for logging.
+	source string
+}
+
+// resolveRegistryTrust resolves the registry trust chain, fail-closed.
+//
+// Trust chain (REGISTRY-SIGN-01 / docs/KEY-CEREMONY.md):
+//
+//	offline ROOT key  →  trust anchor baked at /etc/vulos/trust-anchor.pub
+//	     │ signs (offline, at ceremony time)
+//	     ▼
+//	RELEASE cert      →  /etc/vulos/release-cert.json
+//	     │ signs (routinely)
+//	     ▼
+//	registry.json entry signatures
+//
+// Resolution order:
+//
+//  1. VULOS_REGISTRY_INSECURE=1 in prod → hard error.  The escape hatch is dev-only.
+//  2. VULOS_REGISTRY_INSECURE=1 outside prod → verification skipped, loudly.
+//  3. Trust anchor: $VULOS_TRUST_ANCHOR, else /etc/vulos/trust-anchor.pub.
+//     Present-but-unreadable is a hard error — never fall through to a weaker source.
+//  4. Else VULOS_REGISTRY_PUBKEY: a direct entry-verification key (no cert chain).
+//  5. Else, non-prod only: the repo's checked-in dev anchor (keys/trust-anchor.pub).
+//  6. A dev key resolved in prod → hard error (signing.RefuseDevKeyInProd).
+//  7. With an anchor from a file, a release cert (if present) is validated against
+//     it and its release key becomes the entry-verification key.  Without a cert,
+//     the anchor verifies entries directly (single-key fork model).
+//  8. No key at all → hard error.  Installs are refused.
+func resolveRegistryTrust() (registryTrust, error) {
+	prod, err := isProdEnv()
+	if err != nil {
+		return registryTrust{}, err
 	}
 
-	// 2. Try the environment variable.
-	v := strings.TrimSpace(os.Getenv(envRegistryPubKey))
-	if v != "" {
-		key, parseErr := parseEd25519PubKey(v)
-		if parseErr != nil {
-			// FATAL: variable is set but malformed — never silently fall open.
-			log.Fatalf("[registry] FATAL: %s is set but malformed: %v — "+
-				"correct the key or unset the variable", envRegistryPubKey, parseErr)
-		}
-		log.Printf("[registry] trust anchor loaded from %s", envRegistryPubKey)
-		return key
+	// 1. The insecure escape hatch is refused in production, loudly, before
+	// anything else can happen.  Unset VULOS_ENV counts as prod.
+	if prod && registryInsecureRequested() {
+		log.Printf("[registry] REFUSED: %s=1 is set but VULOS_ENV=prod — "+
+			"the insecure escape hatch is dev-only and is IGNORED here. Installs will be refused "+
+			"until a real trust anchor is configured.", envRegistryInsecure)
+		return registryTrust{}, fmt.Errorf(
+			"registry: %s=1 is set in a production environment (VULOS_ENV=prod) — refusing to skip "+
+				"publisher signature verification. Unset %s and install a trust anchor at %s "+
+				"(see docs/KEY-CEREMONY.md)",
+			envRegistryInsecure, envRegistryInsecure, signing.DefaultAnchorPath)
 	}
 
-	// 3. No trust anchor configured. If INSECURE=1, skip with a loud warning.
+	// 2. Insecure mode, outside production. Honoured here rather than only as a
+	// fallback for "no anchor found", so the flag means what it says: with the
+	// repo's dev anchor present, a developer testing an as-yet-unsigned entry
+	// would otherwise find the flag silently doing nothing.
+	//
+	// This cannot weaken production: prod already returned an error above.
 	if registryInsecureActive() {
-		log.Printf("[registry] WARNING: *** SECURITY DISABLED *** VULOS_REGISTRY_INSECURE=1 is set. " +
-			"Registry signature verification is SKIPPED. This MUST NOT be used in production.")
-		return nil
+		log.Printf("[registry] WARNING: *** SECURITY DISABLED *** %s=1 is set (VULOS_ENV is not prod). "+
+			"Registry signature verification is SKIPPED. This MUST NOT be used in production.",
+			envRegistryInsecure)
+		return registryTrust{insecure: true, source: envRegistryInsecure + "=1"}, nil
 	}
 
-	// 4. No anchor, INSECURE not set: return nil. VerifyEntrySignature will
-	// fail-closed (no install without a trust anchor). Log at warning level so
-	// operators see a clear message in the first failed install attempt.
-	log.Printf("[registry] WARNING: no trust anchor configured "+
-		"(set %s or place a key at %s). "+
-		"Registry installs will be refused until a trust anchor is added. "+
-		"Set %s=1 only for dev/test environments.",
-		envRegistryPubKey, trustAnchorPath, envRegistryInsecure)
-	return nil
+	anchor, anchorSrc, fromFile, err := loadRegistryAnchor(prod)
+	if err != nil {
+		return registryTrust{}, err
+	}
+
+	if anchor == nil {
+		return registryTrust{}, fmt.Errorf(
+			"registry: no trust anchor configured — install refused (REGISTRY-SIGN-01). "+
+				"Bake a root public key at %s (see docs/KEY-CEREMONY.md), or set %s. "+
+				"%s=1 skips verification but only outside production",
+			signing.DefaultAnchorPath, envRegistryPubKey, envRegistryInsecure)
+	}
+
+	// The dev keys are derived from a published seed — anyone can forge with
+	// them. They must never be trusted by a production box, whichever source
+	// they arrived from.
+	if err := signing.RefuseDevKeyInProd(anchor, prod); err != nil {
+		return registryTrust{}, fmt.Errorf("registry: trust anchor from %s: %w", anchorSrc, err)
+	}
+
+	// A direct VULOS_REGISTRY_PUBKEY is the entry-verification key itself —
+	// there is no cert to chain from.
+	if !fromFile {
+		return registryTrust{key: anchor, source: anchorSrc}, nil
+	}
+
+	cert, certSrc, found, err := loadRegistryReleaseCert(prod)
+	if err != nil {
+		return registryTrust{}, err
+	}
+	if !found {
+		// Single-key model: the anchor signs entries directly. Legal, but it
+		// means the root key has to come online to publish a registry — say so.
+		log.Printf("[registry] trust anchor loaded from %s; no release cert present — "+
+			"entries must be signed by the anchor key itself", anchorSrc)
+		return registryTrust{key: anchor, source: anchorSrc}, nil
+	}
+
+	releaseKey, err := signing.ReleaseKeyFromCert(anchor, cert)
+	if err != nil {
+		return registryTrust{}, fmt.Errorf(
+			"registry: release cert %s does not chain to the trust anchor %s: %w — install refused",
+			certSrc, anchorSrc, err)
+	}
+	if err := signing.RefuseDevKeyInProd(releaseKey, prod); err != nil {
+		return registryTrust{}, fmt.Errorf("registry: release key from %s: %w", certSrc, err)
+	}
+
+	log.Printf("[registry] trust anchor %s → release key %q (cert %s, expires %s)",
+		anchorSrc, cert.KeyID, certSrc, cert.NotAfter)
+	return registryTrust{key: releaseKey, source: fmt.Sprintf("release cert %s (key-id %s)", certSrc, cert.KeyID)}, nil
+}
+
+// loadRegistryAnchor resolves the root trust anchor.  fromFile reports whether
+// it came from a pinned anchor file (and may therefore chain to a release cert)
+// as opposed to a direct VULOS_REGISTRY_PUBKEY key.
+//
+// A key source that is present but unusable is a hard error: falling through to
+// a weaker source on a malformed anchor is exactly the fail-open this whole
+// mechanism exists to prevent.
+func loadRegistryAnchor(prod bool) (key ed25519.PublicKey, source string, fromFile bool, err error) {
+	// 1. Pinned anchor file (baked into the image at build time).
+	pinned := strings.TrimSpace(os.Getenv(envTrustAnchor))
+	path := pinned
+	if path == "" {
+		path = signing.DefaultAnchorPath
+	}
+	switch anchor, loadErr := signing.LoadAnchor(path); {
+	case loadErr == nil:
+		return anchor, path, true, nil
+	case !errors.Is(loadErr, fs.ErrNotExist):
+		return nil, "", false, fmt.Errorf(
+			"registry: trust anchor %q is present but unusable: %w — fix or remove the file "+
+				"before starting the service", path, loadErr)
+	}
+
+	// 2. Direct public key from the environment.
+	if v := strings.TrimSpace(os.Getenv(envRegistryPubKey)); v != "" {
+		anchor, parseErr := parseEd25519PubKey(v)
+		if parseErr != nil {
+			return nil, "", false, fmt.Errorf(
+				"registry: %s is set but malformed: %w — correct the key or unset the variable",
+				envRegistryPubKey, parseErr)
+		}
+		return anchor, envRegistryPubKey, false, nil
+	}
+
+	// 3. Dev fallback: the repo's checked-in anchor. Never consulted in prod,
+	// and never when the operator named an explicit anchor path — an explicit
+	// path is authoritative, so "not there" means "no anchor", not "look
+	// somewhere weaker".
+	if !prod && pinned == "" {
+		if p := findDevKeyFile("trust-anchor.pub"); p != "" {
+			anchor, loadErr := signing.LoadAnchor(p)
+			if loadErr != nil {
+				return nil, "", false, fmt.Errorf("registry: dev trust anchor %q is unusable: %w", p, loadErr)
+			}
+			return anchor, p, true, nil
+		}
+	}
+
+	return nil, "", false, nil
+}
+
+// loadRegistryReleaseCert resolves the root-signed release certificate that
+// authorises the key which signs registry entries.  A missing cert is not an
+// error (the single-key model is legal); a malformed one is.
+func loadRegistryReleaseCert(prod bool) (cert signing.ReleaseCert, source string, found bool, err error) {
+	pinned := strings.TrimSpace(os.Getenv(envReleaseCert))
+	path := pinned
+	if path == "" {
+		path = signing.DefaultReleaseCertPath
+	}
+	switch c, loadErr := signing.LoadReleaseCert(path); {
+	case loadErr == nil:
+		return c, path, true, nil
+	case !errors.Is(loadErr, fs.ErrNotExist):
+		return signing.ReleaseCert{}, "", false, fmt.Errorf(
+			"registry: release cert %q is present but unusable: %w — fix or remove the file", path, loadErr)
+	}
+
+	if !prod && pinned == "" {
+		if p := findDevKeyFile("release-cert.json"); p != "" {
+			c, loadErr := signing.LoadReleaseCert(p)
+			if loadErr != nil {
+				return signing.ReleaseCert{}, "", false, fmt.Errorf("registry: dev release cert %q is unusable: %w", p, loadErr)
+			}
+			return c, p, true, nil
+		}
+	}
+
+	return signing.ReleaseCert{}, "", false, nil
+}
+
+// TrustedKey resolves the Ed25519 public key that every registry entry
+// signature must verify against.
+//
+// It returns (nil, nil) ONLY when verification is legitimately skipped
+// (VULOS_REGISTRY_INSECURE=1 outside production).  Every other failure returns
+// a non-nil error, and callers MUST refuse the install — there is no path that
+// returns a nil key and a nil error in production.
+func TrustedKey() (ed25519.PublicKey, error) {
+	trust, err := resolveRegistryTrust()
+	if err != nil {
+		return nil, err
+	}
+	return trust.key, nil
 }
 
 // signablePayload returns the canonical bytes over which the Ed25519 signature
@@ -353,8 +721,8 @@ func SignEntry(entry *RegistryEntry, appID string, privKey ed25519.PrivateKey) e
 // VerifyEntrySignature verifies the Ed25519 publisher signature on entry.
 //
 //   - pubKey nil + VULOS_REGISTRY_INSECURE=1: skip (returns nil, loudly logged).
-//   - pubKey nil + INSECURE not set: fail closed (should not occur if
-//     LoadTrustedPublicKey is called at startup, but defence in depth).
+//   - pubKey nil + INSECURE not permitted: fail closed (defence in depth —
+//     resolveRegistryTrust already errors before reaching here).
 //   - pubKey set + entry.Signature empty: error (fail-closed).
 //   - pubKey set + signature invalid: error (fail-closed).
 //   - pubKey set + signature over wrong appID: error (M4 re-key protection).
@@ -363,16 +731,16 @@ func SignEntry(entry *RegistryEntry, appID string, privKey ed25519.PrivateKey) e
 // any install proceeds — they are independent integrity/authenticity layers.
 func VerifyEntrySignature(entry *RegistryEntry, appID string, pubKey ed25519.PublicKey) error {
 	if pubKey == nil {
-		// nil means either: (a) INSECURE=1 is active (skip), or (b) no trust
-		// anchor is configured (fail-closed). DEFAULT-CLOSED: reject unless
-		// VULOS_REGISTRY_INSECURE=1 is explicitly set.
+		// nil means either: (a) insecure mode is active and permitted (skip), or
+		// (b) no trust anchor is configured (fail-closed). DEFAULT-CLOSED:
+		// reject unless VULOS_REGISTRY_INSECURE=1 is set AND we are not in prod.
 		if registryInsecureActive() {
-			return nil // explicit insecure mode — skip verification
+			return nil // explicit insecure mode, non-prod — skip verification
 		}
 		return fmt.Errorf("registry: no trust anchor configured for entry %q and "+
-			"%s is not set — install refused (C1/REGISTRY-SIGN-01). "+
+			"%s is not usable here — install refused (C1/REGISTRY-SIGN-01). "+
 			"Configure a trust anchor (%s or %s) before installing apps.",
-			appID, envRegistryInsecure, envRegistryPubKey, trustAnchorPath)
+			appID, envRegistryInsecure, envRegistryPubKey, signing.DefaultAnchorPath)
 	}
 	if entry.Signature == "" {
 		return fmt.Errorf("registry entry %q has no publisher signature — "+
@@ -397,12 +765,16 @@ func VerifyEntrySignature(entry *RegistryEntry, appID string, pubKey ed25519.Pub
 }
 
 // SaveRegistry writes a registry.json file.
+//
+// The output is lossless: RegistryEntry/VersionRecipe round-trip unmodelled
+// fields through Extra, so re-signing the registry cannot silently drop a key
+// that the previous signature covered.
 func SaveRegistry(path string, r *Registry) error {
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, append(data, '\n'), 0644)
 }
 
 // InstallFromRegistry installs an app from the registry into appsDir.
@@ -423,12 +795,24 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 			version, appID, strings.Join(availableVersions(entry), ", "))
 	}
 
-	// REGISTRY-SIGN-01 (C1): verify Ed25519 publisher signature before touching
-	// the filesystem. DEFAULT-CLOSED — requires a trust anchor or explicit
-	// VULOS_REGISTRY_INSECURE=1. The signature covers appID+entry via
+	// REGISTRY-SIGN-01 (C1): verify the Ed25519 publisher signature before
+	// touching the filesystem. DEFAULT-CLOSED — resolveRegistryTrust chains the
+	// baked trust anchor to the root-signed release cert and errors on every
+	// path that would otherwise fall open. The signature covers appID+entry via
 	// signing.Canonical so entries cannot be re-keyed (M4).
-	if err := VerifyEntrySignature(entry, appID, LoadTrustedPublicKey()); err != nil {
+	trustedKey, err := TrustedKey()
+	if err != nil {
+		return fmt.Errorf("registry entry %q: %w", appID, err)
+	}
+	if err := VerifyEntrySignature(entry, appID, trustedKey); err != nil {
 		return fmt.Errorf("registry entry %q failed publisher signature check: %w", appID, err)
+	}
+
+	// Administratively disabled entries are refused outright. The flag lives on
+	// the entry (not just the recipe) so a whole app can be pulled without
+	// touching each version.
+	if entry.Disabled {
+		return fmt.Errorf("registry entry %q is administratively disabled (_disabled) — install refused", appID)
 	}
 
 	// Downgrade protection (M4): enforce per-app minimum version.

@@ -13,6 +13,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -30,16 +31,35 @@ func generateTestKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 // withInsecureRegistry sets VULOS_REGISTRY_INSECURE=1 for the test duration.
 // Used by tests that need to bypass signature checks (e.g. testing pipe-to-shell
 // rejection which is independent of signing).
+//
+// VULOS_ENV=local is required: the insecure escape hatch is dev-only and is
+// refused whenever the environment resolves to prod (REGISTRY-SIGN-02) — which
+// includes VULOS_ENV being unset. Tests that assert the refusal itself are in
+// registry_prodgate_test.go.
 func withInsecureRegistry(t *testing.T) {
 	t.Helper()
+	t.Setenv("VULOS_ENV", "local")
 	t.Setenv(envRegistryInsecure, "1")
+	isolateTrustSources(t)
 }
 
 // withTrustAnchor injects a trust anchor via VULOS_REGISTRY_PUBKEY.
 func withTrustAnchor(t *testing.T, pub ed25519.PublicKey) {
 	t.Helper()
+	t.Setenv("VULOS_ENV", "local")
 	t.Setenv(envRegistryPubKey, base64.StdEncoding.EncodeToString([]byte(pub)))
 	t.Setenv(envRegistryInsecure, "") // ensure insecure mode is off
+	isolateTrustSources(t)
+}
+
+// isolateTrustSources points the anchor/cert paths at a directory that does not
+// exist, so a test never accidentally picks up a real /etc/vulos anchor or the
+// repo's checked-in dev keys. Tests that WANT those sources set them explicitly.
+func isolateTrustSources(t *testing.T) {
+	t.Helper()
+	missing := filepath.Join(t.TempDir(), "absent")
+	t.Setenv(envTrustAnchor, filepath.Join(missing, "trust-anchor.pub"))
+	t.Setenv(envReleaseCert, filepath.Join(missing, "release-cert.json"))
 }
 
 // TestRegistrySignAndVerify confirms the happy path: sign an entry, verify OK.
@@ -212,6 +232,7 @@ func TestInstallFromRegistryRejectsUnsignedEntryByDefault(t *testing.T) {
 	// No VULOS_REGISTRY_PUBKEY, no trust-anchor file, no INSECURE flag.
 	t.Setenv(envRegistryPubKey, "")
 	t.Setenv(envRegistryInsecure, "")
+	isolateTrustSources(t)
 
 	reg := &Registry{
 		Apps: map[string]*RegistryEntry{

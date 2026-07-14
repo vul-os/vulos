@@ -1,0 +1,7 @@
+{
+  "release_pubkey": "ba8b1e8be03cb3cdc23acbb40812239827f81f83e9c576934096abeeb51a7f01",
+  "key_id": "dev-release-DO-NOT-TRUST",
+  "not_after": "2099-01-01T00:00:00Z",
+  "min_epoch": 0,
+  "root_sig": "sbqL94E5aMZOw1F+AwVDByFesyvJA0dfzNa2Yx0VccUEJWeaXcoSowu0DmJb6qX21DeakjjCzxXXxIRBSAUDCg=="
+}

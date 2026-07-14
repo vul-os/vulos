@@ -19,6 +19,8 @@ __pycache__/
 backend/init
 backend/server
 backend/vulos-server
+backend/sign
+backend/verify
 /results.csv
 
 # Playwright E2E
@@ -26,3 +28,11 @@ backend/vulos-server
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# ── Signing keys ──────────────────────────────────────────────────────────────
+# NEVER commit a private key. The public halves (keys/trust-anchor.pub,
+# keys/release-cert.json, keys/*.pub.json) ARE committed — they are what the
+# image ships and what CI verifies against. See docs/KEY-CEREMONY.md.
+keys/*.priv.json
+keys/*.key
+keys/*.pem

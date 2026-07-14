@@ -381,6 +381,51 @@ download_and_verify() {
   info "Installed: ${dest_path}"
 }
 
+# download_data_and_verify <name> <url> <checksum_url> <dest_path>
+#
+# Same mandatory SHA-256 contract as download_and_verify, but installs a
+# read-only DATA file (0444 root:root) rather than an executable.  Used for the
+# trust anchor and release cert, which must be world-readable (the vulos user
+# reads them) and writable by nobody.
+download_data_and_verify() {
+  local name="$1"
+  local url="$2"
+  local checksum_url="$3"
+  local dest_path="$4"
+
+  local tmp_file="${BUNDLE_TMPDIR}/${name}"
+  local tmp_checksum="${BUNDLE_TMPDIR}/${name}.checksums.txt"
+
+  info "Fetching: ${url}"
+  if ! curl -fsSL -o "${tmp_file}" "${url}"; then
+    fatal "Download failed for ${name}.\nCheck network or download manually from:\n  ${url}"
+  fi
+
+  info "Fetching checksums: ${checksum_url}"
+  if ! curl -fsSL -o "${tmp_checksum}" "${checksum_url}"; then
+    fatal "Could not fetch checksums for ${name} from:\n  ${checksum_url}\nNetwork failure or release artefact missing — aborting for security."
+  fi
+
+  local expected
+  expected="$(grep "${name}" "${tmp_checksum}" | awk '{print $1}' | head -1)"
+  if [ -z "${expected}" ]; then
+    fatal "No checksum entry for '${name}' in checksums.txt — aborting.\nThis may indicate a release packaging error or tampered artefact."
+  fi
+
+  local actual
+  actual="$(sha256sum "${tmp_file}" | awk '{print $1}')"
+
+  if [ "${actual}" != "${expected}" ]; then
+    fatal "SHA-256 mismatch for ${name}!\n  Expected: ${expected}\n  Got:      ${actual}\nDO NOT use this file — aborting for security."
+  fi
+
+  info "SHA-256 OK (${name}): ${actual}"
+  cp "${tmp_file}" "${dest_path}"
+  chown root:root "${dest_path}"
+  chmod 444 "${dest_path}"
+  info "Installed: ${dest_path}"
+}
+
 # ── Shared temp directory ─────────────────────────────────────────────────────
 
 BUNDLE_TMPDIR="$(mktemp -d)"
@@ -681,6 +726,35 @@ if [ ! -f "${FAB_PRIV}" ]; then
   chown "${VULOS_USER}:${VULOS_GROUP}" "${FAB_PRIV}"
   chmod 600 "${FAB_PRIV}"
 fi
+
+# ── Install the signing trust anchor + release cert ───────────────────────────
+#
+# REGISTRY-SIGN-01 / SEED-01. These are PUBLIC keys, but they are the root of
+# every trust decision the box makes: which App Hub entries it will install and
+# which OS images it will boot.
+#
+#   /etc/vulos/trust-anchor.pub   — the offline ROOT public key. This is the path
+#                                   signing.DefaultAnchorPath resolves to.
+#   /etc/vulos/release-cert.json  — root-signed cert authorising the RELEASE key
+#                                   that signs registry.json and OS manifests.
+#
+# Without these the backend fails CLOSED: app installs are refused rather than
+# performed unverified (there is no fall-open path in VULOS_ENV=prod, which is
+# the default). They are fetched with the same mandatory SHA-256 verification as
+# the binaries — an unverified anchor would defeat the entire point of having one.
+
+step "Installing signing trust anchor"
+download_data_and_verify \
+  "trust-anchor.pub" \
+  "${GITHUB_VULOS}/download/${TAG_VULOS}/trust-anchor.pub" \
+  "${GITHUB_VULOS}/download/${TAG_VULOS}/checksums.txt" \
+  "${CONFIG_DIR}/trust-anchor.pub"
+
+download_data_and_verify \
+  "release-cert.json" \
+  "${GITHUB_VULOS}/download/${TAG_VULOS}/release-cert.json" \
+  "${GITHUB_VULOS}/download/${TAG_VULOS}/checksums.txt" \
+  "${CONFIG_DIR}/release-cert.json"
 
 # ── Download + verify all three binaries ──────────────────────────────────────
 

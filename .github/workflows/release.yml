@@ -227,6 +227,8 @@ jobs:
             ${{ steps.changelog.outputs.NOTES }}
           files: |
             vulos-*.img.gz
+            keys/trust-anchor.pub
+            keys/release-cert.json
           draft: false
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-alpha') || contains(steps.version.outputs.VERSION, '-beta') || contains(steps.version.outputs.VERSION, '-rc') }}
         env:

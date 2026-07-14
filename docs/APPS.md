@@ -124,7 +124,9 @@ The registry pipeline is deliberately strict:
 
 - **Pinned SHA-256 required.** Any recipe that downloads a binary must carry a `checksum`; the download is verified against it before anything runs. Entries in the public registry without a pinned hash are shipped disabled.
 - **No pipe-to-shell.** Recipes containing `curl … | bash`-style patterns are rejected outright.
-- **Ed25519 publisher signatures.** Registry entries can be signed; when a trust anchor is configured (`VULOS_REGISTRY_PUBKEY`) verification is fail-closed — a missing or invalid signature blocks the install. `VULOS_REGISTRY` points the box at an alternative registry source (for forks and private registries), and `VULOS_REGISTRY_INSECURE` skips verification for development only — never set it in production.
+- **Ed25519 publisher signatures — mandatory.** Every registry entry is signed by the release key, which is certified by the offline root key baked into the image at `/etc/vulos/trust-anchor.pub`. Verification is fail-closed: an unsigned, tampered, or foreign-signed entry blocks the install, and a box with no trust anchor refuses to install anything at all. The signature covers the entry's app ID, so a signed entry cannot be moved to another app slot. See [KEY-CEREMONY.md](KEY-CEREMONY.md).
+- **`VULOS_REGISTRY_INSECURE` is dev-only and refused in production.** It skips verification, and it is rejected outright when `VULOS_ENV=prod` — which is also the default when `VULOS_ENV` is unset. There is no way to turn signature checking off on a production box.
+- **Forks.** `VULOS_REGISTRY` points the box at an alternative registry source, and `VULOS_REGISTRY_PUBKEY` supplies a single verification key directly for forks that sign without a release cert.
 - **Safe extraction.** Archives are unpacked with path-containment checks, so a malicious tarball cannot write outside the app directory.
 
 Debian packages are a separate surface: the App Hub also exposes the system package cache (`GET /api/packages/cache`, `POST /api/packages/update`) for keeping the base system current.
@@ -323,8 +325,10 @@ If it is off (the default), asking the assistant for an interactive app still yi
 |----------|---------|---------|
 | `VULOS_APPS` | on | `off` disables the Apps & Bots platform and `/mcp` |
 | `VULOS_REGISTRY` | built-in | Alternative app-registry source |
-| `VULOS_REGISTRY_PUBKEY` | _(empty)_ | Ed25519 trust anchor; makes signature checks fail-closed |
-| `VULOS_REGISTRY_INSECURE` | unset | Skip registry signature verification (dev only) |
+| `VULOS_TRUST_ANCHOR` | `/etc/vulos/trust-anchor.pub` | Path to the root public key (the trust anchor) |
+| `VULOS_RELEASE_CERT` | `/etc/vulos/release-cert.json` | Path to the root-signed release cert |
+| `VULOS_REGISTRY_PUBKEY` | _(empty)_ | Direct Ed25519 verification key (forks; bypasses the cert chain) |
+| `VULOS_REGISTRY_INSECURE` | unset | Skip signature verification. **Refused when `VULOS_ENV=prod`** |
 | `VULOS_APP_CATALOG` | _(empty)_ | Remote catalog URL for the base app store |
 | `VULOS_BUNDLED_APPS` | _(empty)_ | Override path to the bundled apps directory |
 | `VULOS_DNS_API` | `https://api.vulos.org/dns/provision` | Subdomain provisioning endpoint |
