@@ -29,6 +29,8 @@ VULOS_ENV=local go run ./backend/cmd/server
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VULOS_ENV` | `prod` | Runtime environment: `local`, `dev`, `prod` |
+| `DEPLOY_MODE` | `standalone` (unset) | Which deployment shape this box runs as: `standalone`, `os`, or `cloud`. Drives entitlement enforcement — `os`/`cloud` gate `vk_`-keyed app dispatch fail-closed; `standalone` leaves every app open — and selects the object-storage seam (`cloud` uses presigned URLs, the others mint STS prefix-scoped creds). An unrecognised value logs a warning and falls back to `standalone` rather than failing boot. See [ARCHITECTURE.md → Deployment modes](ARCHITECTURE.md#deployment-modes). |
+| `VULOS_ALLOW_SOFTWARE_KEYSTORE` | _(empty)_ | Set `1` to let a cloud-adjacent box (`DEPLOY_MODE=os`/`cloud`) boot with the plaintext software device keystore instead of a TPM. Required only for the TPM-less Fly cloud runtime; ignored in `standalone`, where the software keystore is the documented fallback. |
 | `PORT` | `8080` | HTTP server listen port |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTel OTLP endpoint; unset = tracing no-op |
 | `S3_ENDPOINT` | `s3.amazonaws.com` | S3-compatible endpoint for the **backup vault** (Restic) |

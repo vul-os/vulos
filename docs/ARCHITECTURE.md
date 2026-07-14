@@ -6,6 +6,29 @@ Vulos is a **sovereign personal server** with a browser-native desktop that runs
 
 ---
 
+## Deployment modes
+
+Vulos is one binary that runs in one of three shapes, selected by the `DEPLOY_MODE` environment variable (`backend/internal/deploymode/`). Unset ⇒ `standalone`. The mode changes **who owns the machine, who pays, and a few fail-closed security seams — not the feature set of the software.** This is the canonical framing the rest of the Vulos suite echoes.
+
+| Mode | Who runs it | Control plane | Entitlement gating | Object storage |
+|---|---|---|---|---|
+| `standalone` (default) | You, on your own hardware — fully sovereign, off-grid | None. No cloud is contacted unless you set a cloud env var | Off — every installed app is open, no billing | Local FS, or your own S3/MinIO with short-lived **STS prefix-scoped** creds minted per app |
+| `os` | A self-hosted box you link to Vulos Cloud, **or** a box Vulos manages for you — identical software either way | CP-adjacent: optional cloud login, integrations broker, `vk_` API keys, managed-cell push | **Enforced, fail-closed** for `vk_`-keyed requests | Same STS prefix-scoped creds as standalone |
+| `cloud` | Vulos, multi-tenant, on shared infra (Fly) | This *is* the cloud runtime | **Enforced, fail-closed** | **Per-object presigned URLs** (Tigris has no STS) — never raw bucket creds |
+
+The one truth to hold onto: **a self-hosted box and a Vulos-managed box run the exact same OS image in `os` mode.** The only difference is who owns the hardware and is therefore billed. "Self-host" itself has two flavors — the full OS box above, or a single standalone app binary (see the sibling app repos, which read the same `DEPLOY_MODE` enum). "Cloud" is the same code operated multi-tenant by Vulos.
+
+Two independent switches distinguish `standalone` from `os`:
+
+- **`DEPLOY_MODE`** governs entitlement enforcement. `os`/`cloud` are treated as cloud-adjacent (`Mode.IsCloudAdjacent()`) and gate `vk_`-keyed app dispatch fail-closed; `standalone` leaves every app open.
+- **The control-plane URL** (`VULOS_CLOUD_URL` / `VULOS_CP_URL`) governs which optional cloud seams are live — unified sign-in, the integrations broker, managed-cell push. With no cloud URL set, those seams are inert regardless of mode.
+
+Either way, per-user **storage isolation always applies** — it protects the box's own users from each other and is enforced on-box, never requiring a control plane. Linking a box to the cloud is a set of narrow, opt-in seams, each of which fails closed back to the sovereign path when the cloud is unreachable; see [CLOUD.md](CLOUD.md) for every one.
+
+> Cloud-adjacent modes (`os`, `cloud`) refuse to boot with a plaintext software device keystore unless the operator sets `VULOS_ALLOW_SOFTWARE_KEYSTORE=1` — the TPM-less Fly cloud runtime uses that opt-out. `standalone` is unaffected: the software keystore is its documented fallback.
+
+---
+
 ## System diagram
 
 ```mermaid

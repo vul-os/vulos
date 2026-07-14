@@ -38,9 +38,18 @@ cd ..
 
 ## Environment Variables
 
+This guide covers the **self-host** deployment shapes — a sovereign box on your
+own hardware. That box runs as `DEPLOY_MODE=standalone` (default: no control
+plane, every app open) or, once you link it to Vulos Cloud, as `DEPLOY_MODE=os`.
+Both run the identical OS image; a Vulos-**managed** box is the same `os` image
+on hardware Vulos owns, and `cloud` is the same code operated multi-tenant by
+Vulos. See [ARCHITECTURE.md → Deployment modes](ARCHITECTURE.md#deployment-modes)
+for the canonical breakdown and [CLOUD.md](CLOUD.md) for the linking seams.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VULOS_ENV` | `prod` | Runtime environment: `local`, `dev`, `prod` |
+| `DEPLOY_MODE` | `standalone` (unset) | Deployment shape: `standalone` (sovereign, all apps open) or `os` (linked to a control plane, entitlement gating enforced). See [CONFIGURATION.md](CONFIGURATION.md) and the note above. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTel OTLP endpoint; if unset, tracing is no-op |
 | `S3_ENDPOINT` | `s3.amazonaws.com` | S3-compatible endpoint for the backup vault (Restic) |
 | `S3_BUCKET` | `vulos-vault` | Backup bucket name |
