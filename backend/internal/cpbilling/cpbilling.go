@@ -63,6 +63,7 @@ const (
 	ProductRelay   = "relay"
 	ProductGPU     = "gpu"
 	ProductMeet    = "meet"
+	ProductStorage = "storage"
 )
 
 // Usage kinds used on the wire.
@@ -73,6 +74,7 @@ const (
 	KindGPUSession     = "gpu_session"
 	KindMeetMinutes    = "meet_minutes"
 	KindMeetRoom       = "meet_room"
+	KindSnapshotBytes  = "snapshot_bytes"
 )
 
 // Entitlement is the decoded GET /api/entitlements response. cp returns a
