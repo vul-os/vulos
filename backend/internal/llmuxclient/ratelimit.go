@@ -56,10 +56,6 @@ func newAIRateLimiterWithCtx(ctx context.Context) *aiRateLimiter {
 	return rl
 }
 
-func newAIRateLimiter() *aiRateLimiter {
-	return newAIRateLimiterWithCtx(context.Background())
-}
-
 // sweepLoop runs in a goroutine and periodically evicts idle buckets.
 func (rl *aiRateLimiter) sweepLoop(ctx context.Context) {
 	nowFn := rl.now

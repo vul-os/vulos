@@ -3,10 +3,8 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -50,46 +48,6 @@ func (c *S3Config) ResticEnv() []string {
 // Configured returns true if credentials are present.
 func (c *S3Config) Configured() bool {
 	return c.AccessKey != "" && c.SecretKey != "" && c.Bucket != ""
-}
-
-// LocalStore provides local filesystem storage as fallback.
-type LocalStore struct {
-	Root string
-}
-
-func NewLocalStore(root string) *LocalStore {
-	os.MkdirAll(root, 0755)
-	return &LocalStore{Root: root}
-}
-
-func (s *LocalStore) Put(key string, r io.Reader) error {
-	p := filepath.Join(s.Root, key)
-	os.MkdirAll(filepath.Dir(p), 0755)
-	f, err := os.Create(p)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = io.Copy(f, r)
-	return err
-}
-
-func (s *LocalStore) Get(key string) (io.ReadCloser, error) {
-	return os.Open(filepath.Join(s.Root, key))
-}
-
-func (s *LocalStore) List(prefix string) ([]string, error) {
-	var results []string
-	root := filepath.Join(s.Root, prefix)
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(s.Root, path)
-		results = append(results, rel)
-		return nil
-	})
-	return results, nil
 }
 
 // HealthCheck verifies S3 connectivity with a simple HEAD request.
