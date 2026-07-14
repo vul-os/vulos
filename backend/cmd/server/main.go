@@ -416,6 +416,28 @@ func main() {
 
 	go proactiveAgent.Run(ctx, 60*time.Second)
 
+	// Registry trust preflight (REGISTRY-SIGN-03).
+	//
+	// Resolve the app-signing trust chain HERE, at boot, rather than lazily on the
+	// first install. A production box that has had signature verification switched
+	// off must not start at all — a silent downgrade that only shows up when a user
+	// clicks "Install" is exactly the failure this gate exists to prevent.
+	switch pf := appnet.PreflightTrust(); {
+	case pf.Fatal != nil:
+		log.Fatalf("[registry] REFUSING TO START: %v\n"+
+			"        App signature verification is mandatory in production.\n"+
+			"        See docs/KEY-CEREMONY.md.", pf.Fatal)
+	case pf.Degraded != nil:
+		log.Printf("[registry] *** APP INSTALLS ARE DISABLED *** the trust chain did not resolve: %v", pf.Degraded)
+		log.Printf("[registry] Signature verification is ON and refusing every entry. " +
+			"Run the key ceremony (docs/KEY-CEREMONY.md) and re-sign registry.json to enable the App Hub.")
+	case pf.Insecure:
+		log.Printf("[registry] *** SECURITY DISABLED *** app signature verification is SKIPPED (%s). "+
+			"This is permitted outside production ONLY. Never run a real box like this.", pf.Source)
+	default:
+		log.Printf("[registry] app signature verification active — trusted key: %s", pf.Source)
+	}
+
 	// App store
 	appsDir := filepath.Join(home, ".vulos", "apps")
 	appStore := appnet.NewAppStore(appsDir)

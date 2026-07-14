@@ -133,6 +133,8 @@ func cmdVerifyRegistry(args []string) {
 	anchorPath := fs.String("anchor", signing.DefaultAnchorPath, "path to the trust-anchor public key (root)")
 	certPath := fs.String("cert", "", "path to the root-signed release cert (omit for the single-key model)")
 	registryPath := fs.String("registry", "registry.json", "path to registry.json")
+	requireProd := fs.Bool("require-prod-keys", false,
+		"fail if the trust material is the well-known DEV keypair (use in release builds)")
 	_ = fs.Parse(args)
 
 	anchor, err := signing.LoadAnchor(*anchorPath)
@@ -164,11 +166,36 @@ func cmdVerifyRegistry(args []string) {
 	}
 
 	fmt.Printf("verify-registry: OK — all %d entries in %s are signed by %s\n", n, *registryPath, keyDesc)
+
+	if err := releaseKeyGate(verifyKey, *requireProd, *registryPath); err != nil {
+		fatalf(2, "verify-registry: %v", err)
+	}
 	if signing.IsDevKey(verifyKey) {
 		fmt.Fprintf(os.Stderr,
 			"verify-registry: NOTE: this is the DEVELOPMENT key. A production box (VULOS_ENV=prod)\n"+
 				"  will refuse it. Run the ceremony in docs/KEY-CEREMONY.md before shipping.\n")
 	}
+}
+
+// releaseKeyGate refuses a dev-signed registry when the caller demands
+// production keys (-require-prod-keys, used by the release workflow).
+//
+// A dev-signed registry verifies perfectly well — that is the point of the
+// checked-in dev keypair. It just must never be what we SHIP: the dev private key
+// is derived from a published seed, so anyone can sign an app for it. The runtime
+// already refuses these keys in prod, which means a dev-signed image would boot
+// with the App Hub dead. This gate stops us cutting that image at all, the same
+// way netboot halts without os-core.roothash.sig: no founder signature, no release.
+func releaseKeyGate(verifyKey ed25519.PublicKey, requireProd bool, registryPath string) error {
+	if !requireProd || !signing.IsDevKey(verifyKey) {
+		return nil
+	}
+	return fmt.Errorf("REFUSING TO RELEASE — %s is signed by the DEVELOPMENT key, whose\n"+
+		"  private half is derived from a published seed (anyone can forge app signatures with it).\n"+
+		"  A production box will refuse this registry and ship with the App Hub disabled.\n"+
+		"  Run the offline key ceremony (docs/KEY-CEREMONY.md), install the real trust anchor at\n"+
+		"  keys/trust-anchor.pub, and re-sign with: make sign-registry RELEASE_PRIV=...",
+		registryPath)
 }
 
 // ─── shared ───────────────────────────────────────────────────────────────────

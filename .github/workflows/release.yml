@@ -60,6 +60,18 @@ jobs:
       - name: Clone vulos-apps (go.mod local replace)
         run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
+      # ── The release must not ship a forgeable registry ────────────────────────
+      # The repo ships a DEV trust anchor so a fresh clone verifies real signatures
+      # with no flags. Its private half is derived from a published seed, so anyone
+      # can sign an app for it. A box refuses these keys in prod (it would boot with
+      # the App Hub dead) — this halts the build instead, so we never cut the image.
+      # Same contract as netboot's os-core.roothash.sig: no founder signature, no
+      # release. Run the ceremony (docs/KEY-CEREMONY.md) to make this pass.
+      - name: REGISTRY-SIGN — release is signed with production keys, not the dev key
+        env:
+          GOTOOLCHAIN: auto
+        run: make verify-registry-prod
+
       # ── Verify tag matches binary --version ───────────────────────────────────
       - name: Verify tag matches binary version
         env:

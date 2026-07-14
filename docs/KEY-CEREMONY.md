@@ -311,6 +311,21 @@ every step:
    directly (the single-key fork model).
 7. No key at all → hard error. Installs are refused.
 
+This resolution runs **once at boot** (`appnet.PreflightTrust`, called from
+`cmd/server`), not lazily on the first install, so a misconfigured box is caught
+before it serves anything. The verdict is one of three:
+
+- **Refuse to start.** `VULOS_REGISTRY_INSECURE=1` in prod, or an unrecognised
+  `VULOS_ENV`. The process `log.Fatal`s. It is not possible to boot a production
+  box with app signature verification switched off — the escape hatch is a startup
+  failure, never a silent downgrade that only surfaces when a user clicks Install.
+- **Degraded — App Hub disabled.** No anchor, an unusable anchor, or the dev anchor
+  in prod. Verification stays **on** and refuses every entry, so installs fail
+  closed; the rest of the box keeps serving (mail and meetings do not owe their
+  availability to the app registry). This is the state a box is in until the
+  ceremony in §4 is run. The boot log says so, loudly.
+- **Healthy.** A trusted key resolved; the boot log names it.
+
 Then each entry's Ed25519 signature is checked over
 `Canonical({"app_id": <id>, "entry": <entry-without-signature>})`. The `app_id`
 is inside the signed bytes, so a signed entry cannot be moved to a different app
@@ -345,8 +360,20 @@ the box's `/etc/vulos` and asserts, with **no insecure flag anywhere**:
 
 `registry_prodgate_test.go` pins the `VULOS_REGISTRY_INSECURE` prod refusal,
 including the unset-`VULOS_ENV` and typo'd-`VULOS_ENV` cases.
+`registry_preflight_test.go` pins the boot-time gate: insecure-in-prod is a
+refusal to **start**, a missing anchor degrades to "installs refused" without
+bricking the box, and the dev anchor is refused in prod.
 
 ```bash
 make verify-registry                       # public-key check, no secrets
+make verify-registry-prod                  # the release gate — fails on the dev key
 cd backend && go test ./services/appnet/   # the acceptance suite
 ```
+
+### The release build halts until the ceremony is run
+
+`make verify-registry-prod` (run by `.github/workflows/release.yml` on every tag)
+**refuses to build a release** whose registry is signed by the dev key. Today, on
+an un-ceremonied repo, tagging a release fails with `REFUSING TO RELEASE`. That is
+deliberate and it is the same contract as netboot's `os-core.roothash.sig`: no
+founder signature, no image. Completing §4 is what turns it green.

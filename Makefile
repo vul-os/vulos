@@ -22,7 +22,7 @@ RELEASE_PRIV := $(KEYS)/release.priv.json
 REGISTRY     := registry.json
 
 .PHONY: build test-local test-dev test-all coverage help \
-        dev-keys sign-registry verify-registry
+        dev-keys sign-registry verify-registry verify-registry-prod
 
 ## build: compile backend and build frontend assets.
 build:
@@ -71,6 +71,14 @@ sign-registry:
 ## Public keys only — no private key required. This is what CI runs.
 verify-registry:
 	cd $(BACKEND) && go run ./cmd/sign verify-registry \
+	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY)
+
+## verify-registry-prod: as above, but REFUSES the dev keypair. Run by the release
+## workflow so a tag cannot ship an image whose registry is signed by a key whose
+## private half is derived from a published seed. Halts the release until the
+## founder runs the ceremony — the same contract as netboot's os-core.roothash.sig.
+verify-registry-prod:
+	cd $(BACKEND) && go run ./cmd/sign verify-registry -require-prod-keys \
 	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY)
 
 ## coverage: run tests with coverage and print a per-package summary.
