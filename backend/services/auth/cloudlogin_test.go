@@ -194,7 +194,11 @@ func TestCloudLogin_DeviceBindingEnforced(t *testing.T) {
 	// A token bound to THIS device's ULID is accepted.
 	tok2 := freshToken()
 	tok2.ULID = "01HZTHISDEVICE999"
-	tok2.JTI = "jti-match-1"
+	// Unique JTI per run: the replay guard (cloudLoginReplay) is a package-level
+	// global that outlives a single test invocation, so a hardcoded jti would be
+	// seen as a replay on the second pass under `go test -count=2`. The
+	// device-binding assertion below is independent of the jti value.
+	tok2.JTI = "jti-match-" + base64.RawURLEncoding.EncodeToString([]byte(time.Now().String()))
 	tb2, sig2 := signToken(t, priv, tok2)
 	if _, err := verifier.Login(tb2, sig2); err != nil {
 		t.Errorf("expected success for token bound to this device, got %v", err)
