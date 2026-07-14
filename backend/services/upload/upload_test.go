@@ -19,8 +19,8 @@ import (
 // deterministic node id. It also lets a test force an error to exercise the
 // finalize-failure path.
 type memSink struct {
-	mu      sync.Mutex
-	stored  map[string][]byte
+	mu       sync.Mutex
+	stored   map[string][]byte
 	failNext bool
 }
 

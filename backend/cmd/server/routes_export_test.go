@@ -358,6 +358,7 @@ func TestExportSettingsScrubsNonPatternSecrets(t *testing.T) {
 // middleware, an attacker-supplied X-User-ID is dropped, so:
 //   - a forged header with NO valid session ⇒ 401 (no export at all), and
 //   - a forged "alice" header on BOB's session ⇒ bob's data, never alice's.
+//
 // This preserves the C1/SEC-A boundary (handlers.go: r.Header.Del("X-User-ID")).
 func TestExportMiddlewareStripsForgedUserID(t *testing.T) {
 	store, err := auth.NewStore(t.TempDir())

@@ -35,10 +35,10 @@ type recordedReq struct {
 // fakeLilmail is a scriptable httptest server speaking the /v1 contract. Each
 // handler records the request and returns whatever the test configured.
 type fakeLilmail struct {
-	t      *testing.T
-	srv    *httptest.Server
-	mu     chan struct{} // 1-slot lock without importing sync
-	got    []recordedReq
+	t   *testing.T
+	srv *httptest.Server
+	mu  chan struct{} // 1-slot lock without importing sync
+	got []recordedReq
 	// responder is keyed by "METHOD /path" (path without query); it returns the
 	// status and body to write. A nil responder for a route yields 200 "{}".
 	responder map[string]func(r recordedReq) (int, string)

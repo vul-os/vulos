@@ -38,33 +38,33 @@ type HomeFocusItem struct {
 // Today it is mail-only (the real surface we have); the shape is intentionally
 // product-tagged so other products can extend it later without a schema change.
 type HomeActivityItem struct {
-	Kind    string    `json:"kind"` // "mail" for now
-	UID     string    `json:"uid,omitempty"`
-	Title   string    `json:"title"`   // subject
-	Subtitle string   `json:"subtitle"` // sender
-	Preview string    `json:"preview,omitempty"`
-	Date    time.Time `json:"date"`
-	Unread  bool      `json:"unread,omitempty"`
+	Kind     string    `json:"kind"` // "mail" for now
+	UID      string    `json:"uid,omitempty"`
+	Title    string    `json:"title"`    // subject
+	Subtitle string    `json:"subtitle"` // sender
+	Preview  string    `json:"preview,omitempty"`
+	Date     time.Time `json:"date"`
+	Unread   bool      `json:"unread,omitempty"`
 }
 
 // HomeData is the whole Home payload. Per-section *Error fields let the shell
 // render a partial Home when the model or a /v1 read is unavailable.
 type HomeData struct {
-	Now         time.Time          `json:"now"`
-	Greeting    string             `json:"greeting"`
-	Brief       string             `json:"brief,omitempty"`
-	BriefError  string             `json:"brief_error,omitempty"`
-	Focus       []HomeFocusItem    `json:"focus"`
-	Agenda      []CalendarEvent    `json:"agenda"`
-	AgendaError string             `json:"agenda_error,omitempty"`
+	Now         time.Time       `json:"now"`
+	Greeting    string          `json:"greeting"`
+	Brief       string          `json:"brief,omitempty"`
+	BriefError  string          `json:"brief_error,omitempty"`
+	Focus       []HomeFocusItem `json:"focus"`
+	Agenda      []CalendarEvent `json:"agenda"`
+	AgendaError string          `json:"agenda_error,omitempty"`
 	// AgendaFresh is true when the agenda read succeeded (regardless of whether
 	// it returned any events), so the UI can distinguish "calendar is live but
 	// empty" from "calendar unavailable" without inspecting AgendaError.
 	AgendaFresh bool `json:"agenda_fresh"`
 	// Invites are calendar invitations in the mailbox still awaiting the user's
 	// RSVP (wave-40). InvitesError fails this section independently like the rest.
-	Invites      []PendingInvite    `json:"invites"`
-	InvitesError string             `json:"invites_error,omitempty"`
+	Invites      []PendingInvite `json:"invites"`
+	InvitesError string          `json:"invites_error,omitempty"`
 	// Reminders are the user's OWN pending reminders (wave-62), soonest first.
 	// RemindersError fails this section independently like the rest. A fired
 	// reminder is delivered as a notification (not shown here — this is the
@@ -72,9 +72,9 @@ type HomeData struct {
 	Reminders      []Reminder         `json:"reminders"`
 	RemindersError string             `json:"reminders_error,omitempty"`
 	Activity       []HomeActivityItem `json:"activity"`
-	MailError    string             `json:"mail_error,omitempty"`
-	MailSource   string             `json:"mail_source"`
-	Sovereignty  Sovereignty        `json:"sovereignty"`
+	MailError      string             `json:"mail_error,omitempty"`
+	MailSource     string             `json:"mail_source"`
+	Sovereignty    Sovereignty        `json:"sovereignty"`
 }
 
 const (

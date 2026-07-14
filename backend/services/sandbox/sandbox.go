@@ -565,4 +565,3 @@ func findPython() string {
 	}
 	return ""
 }
-

@@ -220,12 +220,12 @@ func (emptySource) CreateEvent(context.Context, Auth, CalendarEvent) error { ret
 func (emptySource) ListEvents(context.Context, Auth, string, string) ([]CalendarEvent, error) {
 	return nil, nil
 }
-func (emptySource) AddContact(context.Context, Auth, Contact) error        { return nil }
+func (emptySource) AddContact(context.Context, Auth, Contact) error { return nil }
 func (emptySource) FindContacts(context.Context, Auth, string, int) ([]Contact, error) {
 	return nil, nil
 }
-func (emptySource) Triage(context.Context, Auth, TriageAction) error       { return nil }
-func (emptySource) RSVPInvite(context.Context, Auth, InviteRSVP) error     { return nil }
+func (emptySource) Triage(context.Context, Auth, TriageAction) error   { return nil }
+func (emptySource) RSVPInvite(context.Context, Auth, InviteRSVP) error { return nil }
 
 func subjects(msgs []Message) []string {
 	out := make([]string, len(msgs))

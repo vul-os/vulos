@@ -14,7 +14,7 @@
 //   - POST /api/profile/login/issue minting a REAL signed login token in the
 //     "base64std(payload).base64std(sig)" wire format with the unified-signin
 //     claims (email, name, email_verified, jti, issued_at), enforcing session
-//     + ULID ownership, mirroring the relaxed 2FA gate (fresh-session rule is
+//   - ULID ownership, mirroring the relaxed 2FA gate (fresh-session rule is
 //     collapsed to "full session" here — freshness is a CP-side unit concern).
 //
 // NOT a mock that waves requests through: PoW is actually verified bit-for-bit

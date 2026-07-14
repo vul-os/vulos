@@ -37,10 +37,13 @@ import (
 // suiteSelection is the JSON persisted to ~/.vulos/db/suite-selection.json.
 //
 // Email      — the user claimed an @vulos address. Coupled to Mail: keeping the
-//              address keeps Mail; declining it is how Mail is dropped.
+//
+//	address keeps Mail; declining it is how Mail is dropped.
+//
 // Workspace  — the user kept the full Workspace bundle (Office/Docs, Board,
-//              Calendar, Contacts, unified Workspace shell). Unchecking it drops
-//              those tiles. Office lives in this bundle, NOT stapled to the email.
+//
+//	Calendar, Contacts, unified Workspace shell). Unchecking it drops
+//	those tiles. Office lives in this bundle, NOT stapled to the email.
 type suiteSelection struct {
 	Email     bool `json:"email"`
 	Workspace bool `json:"workspace"`

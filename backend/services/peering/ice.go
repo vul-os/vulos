@@ -127,4 +127,3 @@ func handleICEConfig(w http.ResponseWriter, r *http.Request) {
 func RegisterICEHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/peering/ice", handleICEConfig)
 }
-

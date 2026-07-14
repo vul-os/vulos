@@ -215,7 +215,7 @@ func TestSealedTargetsIsContentBlind(t *testing.T) {
 func TestParseSealedRejectsGarbage(t *testing.T) {
 	cases := [][]byte{
 		nil,
-		[]byte("VSEAL1\n"),                 // no length
+		[]byte("VSEAL1\n"),                    // no length
 		append([]byte(SealMagic), 0, 0, 0, 0), // zero header length
 		[]byte("plain plaintext file"),
 	}

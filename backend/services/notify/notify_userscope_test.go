@@ -129,9 +129,9 @@ func TestWSDelivery_AnonymousStreamGetsSystemOnly(t *testing.T) {
 // TestListForUser_ScopesHistory proves the in-memory history read path is scoped.
 func TestListForUser_ScopesHistory(t *testing.T) {
 	svc := New()
-	svc.SendNotification(Notification{Title: "sys", Body: "sys", Source: "system"})     // untargeted
-	svc.SendNotification(Notification{Title: "a", Body: "a-secret", UserID: "alice"})   // alice-private
-	svc.SendNotification(Notification{Title: "b", Body: "b-secret", UserID: "bob"})     // bob-private
+	svc.SendNotification(Notification{Title: "sys", Body: "sys", Source: "system"})   // untargeted
+	svc.SendNotification(Notification{Title: "a", Body: "a-secret", UserID: "alice"}) // alice-private
+	svc.SendNotification(Notification{Title: "b", Body: "b-secret", UserID: "bob"})   // bob-private
 
 	alice := svc.ListForUser("alice", 0)
 	if len(alice) != 2 {

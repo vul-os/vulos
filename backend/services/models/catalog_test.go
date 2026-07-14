@@ -89,12 +89,12 @@ func TestCatalogEntryByID_UnknownIsRejected(t *testing.T) {
 
 func TestCheckDownloadURL(t *testing.T) {
 	bad := []string{
-		"http://huggingface.co/x",             // not https
-		"https://evil.example.com/x",          // off-allowlist host
-		"https://huggingface.co.evil.com/x",   // lookalike host
-		"ftp://huggingface.co/x",              // wrong scheme
-		"file:///etc/passwd",                  // local file
-		"http://169.254.169.254/latest/meta",  // SSRF metadata target
+		"http://huggingface.co/x",            // not https
+		"https://evil.example.com/x",         // off-allowlist host
+		"https://huggingface.co.evil.com/x",  // lookalike host
+		"ftp://huggingface.co/x",             // wrong scheme
+		"file:///etc/passwd",                 // local file
+		"http://169.254.169.254/latest/meta", // SSRF metadata target
 	}
 	for _, u := range bad {
 		if err := checkDownloadURL(u); err == nil {
@@ -314,6 +314,8 @@ func TestDownload_RejectsBadContent(t *testing.T) {
 	}
 }
 
-func isChecksumMismatch(err error) bool { return err != nil && strings.Contains(err.Error(), "checksum") }
-func isBadURL(err error) bool           { return err != nil && strings.Contains(err.Error(), "not an allowed") }
-func isTooLarge(err error) bool         { return err != nil && strings.Contains(err.Error(), "size limit") }
+func isChecksumMismatch(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "checksum")
+}
+func isBadURL(err error) bool   { return err != nil && strings.Contains(err.Error(), "not an allowed") }
+func isTooLarge(err error) bool { return err != nil && strings.Contains(err.Error(), "size limit") }

@@ -41,7 +41,7 @@ func TestFromEnv_ValidValues(t *testing.T) {
 		{"standalone", Standalone},
 		{"os", OS},
 		{"cloud", Cloud},
-		{"OS", OS},    // case-insensitive
+		{"OS", OS}, // case-insensitive
 		{"Cloud", Cloud},
 	}
 	for _, c := range cases {

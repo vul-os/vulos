@@ -206,7 +206,9 @@ func (f *FixtureSource) CreateEvent(_ context.Context, _ Auth, ev CalendarEvent)
 func (f *FixtureSource) ListEvents(_ context.Context, _ Auth, fromISO, toISO string) ([]CalendarEvent, error) {
 	now := time.Now()
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	at := func(h, m int) string { return day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute).Format(time.RFC3339) }
+	at := func(h, m int) string {
+		return day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute).Format(time.RFC3339)
+	}
 	seeded := []CalendarEvent{
 		{ID: "demo-standup", Title: "Team standup", Start: at(9, 30), End: at(9, 45), Location: "Meet"},
 		{ID: "demo-1on1", Title: "1:1 with Priya", Start: at(14, 0), End: at(14, 30), Location: "Calendly"},

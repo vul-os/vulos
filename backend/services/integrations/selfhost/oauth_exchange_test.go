@@ -115,7 +115,7 @@ func TestProdExchanger_Exchange_FullTokenCustody(t *testing.T) {
 		t.Fatalf("auth code not forwarded: %q", got)
 	}
 	// Expiry is in the future (~1h).
-	if !tok.Expiry.After(time.Now().Add(30*time.Minute)) {
+	if !tok.Expiry.After(time.Now().Add(30 * time.Minute)) {
 		t.Fatalf("expiry not honoured: %v", tok.Expiry)
 	}
 }
