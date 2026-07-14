@@ -3,7 +3,22 @@ import { useState } from 'react'
 // SVG app icons for builtin and registry apps.
 // Each icon is a 16x16 viewBox SVG rendered inline.
 
-// Logo URLs for installed apps (shared with AppHub)
+// Logo URLs for installed apps (shared with AppHub).
+//
+// SOVEREIGNTY / LICENCE: these must be SAME-ORIGIN only. Runtime-hotlinking
+// third-party logos (previously from upload.wikimedia.org and githubusercontent)
+// was three problems at once: (1) many of those logo files are non-free /
+// trademarked and not licensed for redistribution by a commercial OS; (2) it
+// leaked a signal to those hosts on every launcher render — the opposite of what
+// a sovereign OS should do; (3) it broke offline/air-gapped installs. So we only
+// reference logos we actually ship under public/icons/. Apps without a bundled
+// logo fall through to the locally-installed system icon (/api/desktop/icon/<id>,
+// read from the Debian icon theme) and then to a generated letter tile — see
+// AppIconTile below.
+//
+// Do NOT add a third-party logo here without shipping the file under
+// public/icons/ AND confirming (with a lawyer, for trademarked marks) that we
+// may redistribute it. A generic icon is the safe default.
 // eslint-disable-next-line react-refresh/only-export-components
 export const APP_LOGOS = {
   chrome: '/icons/chrome.svg',
@@ -14,18 +29,6 @@ export const APP_LOGOS = {
   blender: '/icons/blender.svg',
   inkscape: '/icons/inkscape.svg',
   libreoffice: '/icons/libreoffice.svg',
-  vlc: 'https://upload.wikimedia.org/wikipedia/commons/e/e6/VLC_Icon.svg',
-  audacity: 'https://upload.wikimedia.org/wikipedia/commons/f/f6/Audacity_Logo.svg',
-  kicad: 'https://upload.wikimedia.org/wikipedia/commons/5/59/KiCad-Logo.svg',
-  keepassxc: 'https://upload.wikimedia.org/wikipedia/commons/c/1/KeePassXC_icon.svg',
-  filezilla: 'https://upload.wikimedia.org/wikipedia/commons/0/01/FileZilla_logo.svg',
-  transmission: 'https://upload.wikimedia.org/wikipedia/commons/6/6d/Transmission_icon.png',
-  nginx: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/Nginx_logo.svg',
-  grafana: 'https://upload.wikimedia.org/wikipedia/commons/a/a1/Grafana_logo.svg',
-  jupyter: 'https://upload.wikimedia.org/wikipedia/commons/3/38/Jupyter_logo.svg',
-  gitea: 'https://upload.wikimedia.org/wikipedia/commons/b/bb/Gitea_Logo.svg',
-  syncthing: 'https://upload.wikimedia.org/wikipedia/commons/8/83/SyncthingAugworGraphic.png',
-  wede: 'https://raw.githubusercontent.com/vul-os/wede/main/public/icon.svg',
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

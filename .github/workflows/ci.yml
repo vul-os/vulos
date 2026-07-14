@@ -93,6 +93,50 @@ jobs:
             exit 1
           fi
 
+  licenses:
+    name: LICENCES — THIRD_PARTY_NOTICES.md matches the dependency graph
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@v4
+
+      # gen-notices reads the Go module cache AND node_modules, so this job needs
+      # both toolchains and both dependency trees resolved — mirroring the
+      # frontend + backend jobs' clone/setup.
+      - name: Clone vulos-apps (go.mod local replace)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
+
+      - name: Clone vulos-relay (relay-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
+
+      - name: Clone vulos-office (office-client)
+        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build @vulos/relay-client lib
+        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
+
+      - name: Resolve dependencies (populates the licence sources)
+        run: |
+          npm ci
+          cd backend && go mod download
+
+      # Fails if a dependency was added/removed/bumped without regenerating the
+      # notices — i.e. if we would ship an attribution file that no longer matches
+      # what is actually in the image. Fix: node scripts/licensing/gen-notices.mjs
+      - name: Check notices are up to date
+        run: node scripts/licensing/gen-notices.mjs --check
+
   registry-signatures:
     name: REGISTRY-SIGN — Every registry.json entry is signed
     runs-on: ubuntu-latest

@@ -652,6 +652,50 @@ cp -r "$OUTDIR/webroot" "$ROOTFS/opt/vulos/webroot"
 cp -r "$OUTDIR/apps" "$ROOTFS/opt/vulos/apps"
 cp "$OUTDIR/registry.json" "$ROOTFS/opt/vulos/registry.json"
 
+# ═══════════════════════════════════
+# LICENCE COMPLIANCE — notices + GPL/LGPL source offer land in the image
+#
+# The image ships GPL/LGPL/Apache binaries. Two obligations, both wired here so
+# they cannot be forgotten:
+#   1. Attribution notices (THIRD_PARTY_NOTICES.md) — generated from the ACTUAL
+#      dependency graph + the Debian packages installed into THIS rootfs, and
+#      served by Settings → About (GET /api/system/licenses reads it from
+#      /opt/vulos/legal/).
+#   2. Corresponding-source producibility — SOURCES.manifest records the exact
+#      source package versions in this image, pinned to a snapshot.debian.org
+#      instant, so the WRITTEN-OFFER can actually be honoured.
+# ═══════════════════════════════════
+echo "${BLUE}▸ Assembling licence notices + source offer (LICENCE COMPLIANCE)...${NC}"
+mkdir -p "$ROOTFS/opt/vulos/legal"
+
+# Inventory the installed packages and pin the snapshot (manifest only here;
+# --fetch, which downloads the actual source, is a release step run separately
+# so a routine image build is not gated on a multi-GB source pull).
+if command -v chroot >/dev/null 2>&1 && [ -x "$ROOTFS/usr/bin/dpkg-query" ]; then
+  "$ROOT_DIR/scripts/licensing/collect-corresponding-source.sh" \
+      --rootfs "$ROOTFS" --out "$OUTDIR" || \
+    echo "  ${DIM}source-manifest step failed — continuing (fix before release)${NC}"
+  [ -f "$OUTDIR/SOURCES.manifest" ] && cp "$OUTDIR/SOURCES.manifest" "$ROOTFS/opt/vulos/legal/"
+  [ -f "$OUTDIR/sources.list.snapshot" ] && cp "$OUTDIR/sources.list.snapshot" "$ROOTFS/opt/vulos/legal/"
+fi
+
+# Generate the notices from the real graph + the Debian manifest of this image.
+if command -v node >/dev/null 2>&1; then
+  node "$ROOT_DIR/scripts/licensing/gen-notices.mjs" \
+      --out "$ROOTFS/opt/vulos/legal/THIRD_PARTY_NOTICES.md" \
+      ${SOURCES_MANIFEST_ARG:-} \
+      $([ -f "$OUTDIR/SOURCES.manifest" ] && echo "--deb-manifest $OUTDIR/SOURCES.manifest") || \
+    echo "  ${DIM}notices generation failed — continuing (fix before release)${NC}"
+else
+  # No node on the build host: fall back to the committed repo copy (no Debian
+  # section, but the Debian packages carry their own copyright files in the image).
+  cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$ROOTFS/opt/vulos/legal/THIRD_PARTY_NOTICES.md" 2>/dev/null || true
+fi
+
+# The GPL/LGPL written offer (DRAFT — pending founder/lawyer per its banner).
+cp "$ROOT_DIR/WRITTEN-OFFER.md" "$ROOTFS/opt/vulos/legal/WRITTEN-OFFER.md" 2>/dev/null || true
+echo "  ${GREEN}✓${NC} /opt/vulos/legal: notices + written offer + source manifest"
+
 # BMINIT-07: Plymouth boot splash — vulos theme
 # Kernel cmdline: quiet splash plymouth.theme=vulos
 mkdir -p "$ROOTFS/usr/share/plymouth/themes/vulos"

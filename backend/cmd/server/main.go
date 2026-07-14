@@ -1922,6 +1922,13 @@ func main() {
 		writeJSON(w, telemetry.SystemInfo())
 	})
 
+	// Open-source licence notices, surfaced by Settings → About. Served from the
+	// generated THIRD_PARTY_NOTICES.md that build.sh writes into the image at
+	// /opt/vulos/legal/; falls back to the repo copy in development. The written
+	// offer for GPL/LGPL source (WRITTEN-OFFER.md) is served the same way.
+	mux.HandleFunc("GET /api/system/licenses", legalDocHandler(defaultLegalDirs, "THIRD_PARTY_NOTICES.md"))
+	mux.HandleFunc("GET /api/system/written-offer", legalDocHandler(defaultLegalDirs, "WRITTEN-OFFER.md"))
+
 	// System processes and network connections
 	mux.HandleFunc("GET /api/system/processes", telemetry.ProcessHandler())
 	mux.HandleFunc("GET /api/system/network", telemetry.NetworkHandler())
@@ -4462,6 +4469,34 @@ func validDisplayMode(mode string) bool {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
+}
+
+// defaultLegalDirs is where licence notices / the GPL source offer are looked
+// for, in order: the location build.sh writes them to in a real image, then the
+// repo tree for local development.
+var defaultLegalDirs = []string{"/opt/vulos/legal", ".", "..", "../..", "/opt/vulos"}
+
+// legalDocHandler serves the first of `names` found under one of `dirs`, as
+// inline UTF-8 text. It backs Settings → About (GET /api/system/licenses and
+// /api/system/written-offer): the OS must be able to show the third-party
+// notices it is obliged to carry, and the GPL/LGPL written offer.
+func legalDocHandler(dirs []string, names ...string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, d := range dirs {
+			for _, n := range names {
+				p := filepath.Join(d, n)
+				if info, err := os.Stat(p); err == nil && !info.IsDir() {
+					// text/plain so the browser renders it inline rather than
+					// offering to download a .md file; nosniff so it stays text.
+					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+					w.Header().Set("X-Content-Type-Options", "nosniff")
+					http.ServeFile(w, r, p)
+					return
+				}
+			}
+		}
+		http.Error(w, "licence notices not found on this system", http.StatusNotFound)
+	}
 }
 
 func writeErr(w http.ResponseWriter, code int, msg string) {

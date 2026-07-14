@@ -2385,11 +2385,26 @@ function OSUpdateSettings() {
 function AboutSettings() {
   const [health, setHealth] = useState(null)
   const [sys, setSys] = useState(null)
+  // Open-source licence notices + GPL/LGPL written offer, fetched on demand.
+  const [legal, setLegal] = useState(null)      // { title, text } or null
+  const [legalErr, setLegalErr] = useState(null)
+  const [legalLoading, setLegalLoading] = useState(false)
 
   useEffect(() => {
     fetch('/health').then(r => r.json()).then(setHealth).catch(() => {})
     fetch('/api/system/info').then(r => r.json()).then(setSys).catch(() => {})
   }, [])
+
+  const openLegal = (title, url) => {
+    setLegalErr(null)
+    setLegalLoading(true)
+    setLegal({ title, text: '' })
+    fetch(url)
+      .then(r => r.ok ? r.text() : Promise.reject(new Error(`${r.status}`)))
+      .then(text => setLegal({ title, text }))
+      .catch(() => { setLegal(null); setLegalErr('Licence notices are not available on this system.') })
+      .finally(() => setLegalLoading(false))
+  }
 
   const fmtMB = (mb) => {
     if (!mb) return '—'
@@ -2481,6 +2496,43 @@ function AboutSettings() {
         <InfoRow label="Shell" value="React 19 + Tailwind 4 + Vite" />
         <InfoRow label="Backend" value="Go + Debian Linux" />
       </div>
+
+      {/* Legal / open source */}
+      <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">Legal</h3>
+      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-2">
+        <button
+          onClick={() => openLegal('Open source licences', '/api/system/licenses')}
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-neutral-900/40 hover:bg-neutral-800/50 transition-colors text-left"
+        >
+          <span className="text-xs text-neutral-500">Open source licences</span>
+          <span className="text-sm text-blue-400">View →</span>
+        </button>
+        <button
+          onClick={() => openLegal('Written offer for source code', '/api/system/written-offer')}
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-neutral-900/40 hover:bg-neutral-800/50 transition-colors text-left"
+        >
+          <span className="text-xs text-neutral-500">Source code for GPL/LGPL components</span>
+          <span className="text-sm text-blue-400">View offer →</span>
+        </button>
+      </div>
+      <p className="text-[11px] text-neutral-600 mb-6">
+        Vulos includes open-source software. The notices reproduce each component's licence;
+        the written offer covers how to obtain the corresponding source of the GPL/LGPL parts.
+      </p>
+      {legalErr && (
+        <div className="mb-6 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">{legalErr}</div>
+      )}
+      {legal && (
+        <div className="mb-6 rounded-xl border border-neutral-800/50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/60 border-b border-neutral-800/50">
+            <span className="text-xs text-neutral-400 font-medium">{legal.title}</span>
+            <button onClick={() => setLegal(null)} className="text-xs text-neutral-500 hover:text-neutral-300">Close ✕</button>
+          </div>
+          <pre className="max-h-96 overflow-auto px-4 py-3 text-[11px] leading-relaxed text-neutral-400 whitespace-pre-wrap break-words">
+            {legalLoading ? 'Loading…' : legal.text}
+          </pre>
+        </div>
+      )}
 
       {/* Powered by */}
       <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-neutral-800/30">

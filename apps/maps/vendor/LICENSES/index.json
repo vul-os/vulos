@@ -1,0 +1,9 @@
+[
+  {
+    "name": "leaflet",
+    "version": "1.9.4",
+    "declared": "BSD-2-Clause",
+    "spdx": "BSD-2-Clause",
+    "file": "leaflet.txt"
+  }
+]
