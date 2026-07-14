@@ -136,6 +136,21 @@ type MintParams struct {
 	// (normal participant convenience default).
 	CanPublish   bool
 	CanSubscribe bool
+	// Host adds the RoomAdmin grant — the HOST authority every vulos-meet
+	// meeting control gates on (record, mute-others, remove, mute-all, end,
+	// lock, waiting-room admit, spotlight, lower-hands, AI summary), and the one
+	// the browser reads off the token to decide whether to offer the control.
+	// Without it the host role does not exist at runtime, however complete the
+	// UI looks.
+	//
+	// The caller decides, and on this box the answer follows from the 1:1
+	// user↔tenant binding: the token's tenant audience IS the session user, and
+	// the validator only accepts a token whose room is prefixed by that tenant,
+	// so every room a user can mint for is a room inside their own tenant. The
+	// box owner is host of their own rooms; there is no cross-tenant participant
+	// this could over-grant to. It is room-scoped regardless (never
+	// RoomList/RoomCreate).
+	Host bool
 }
 
 // MintResult is the minted token plus the derived room id and absolute expiry.
@@ -152,6 +167,7 @@ type MintResult struct {
 type videoGrant struct {
 	RoomJoin     bool   `json:"roomJoin,omitempty"`
 	Room         string `json:"room,omitempty"`
+	RoomAdmin    bool   `json:"roomAdmin,omitempty"`
 	CanPublish   *bool  `json:"canPublish,omitempty"`
 	CanSubscribe *bool  `json:"canSubscribe,omitempty"`
 }
@@ -211,6 +227,7 @@ func (m *Minter) Mint(p MintParams) (MintResult, error) {
 		Video: &videoGrant{
 			Room:         roomID,
 			RoomJoin:     true,
+			RoomAdmin:    p.Host,
 			CanPublish:   &canPub,
 			CanSubscribe: &canSub,
 		},

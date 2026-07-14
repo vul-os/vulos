@@ -115,12 +115,22 @@ func registerMeetTokenRoutes(mux *http.ServeMux) bool {
 
 		// Tenant AND identity are the session user id — server-derived, never from
 		// the body. The room comes from the request; the tenant binding does not.
+		//
+		// HOST GRANT (MEET-HOST-01): the session user is the host of the rooms they
+		// mint for. That is not a policy choice, it follows from the 1:1 user↔tenant
+		// binding two lines below — the token's tenant audience is this user, and the
+		// SFU validator only accepts a token whose room is prefixed by its own tenant,
+		// so the only rooms this token can ever open are rooms inside the caller's own
+		// tenant. Granting host here cannot reach another tenant's meeting. Without it
+		// a box owner has no host controls in their own call: every one of them (record,
+		// mute, remove, end, lock, admit, spotlight, summary) gates on RoomAdmin.
 		res, err := minter.Mint(meettoken.MintParams{
 			TenantID:     userID,
 			UserID:       userID,
 			RoomName:     req.Room,
 			CanPublish:   canPub,
 			CanSubscribe: canSub,
+			Host:         true,
 		})
 		if err != nil {
 			switch {
