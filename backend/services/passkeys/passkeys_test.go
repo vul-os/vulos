@@ -512,12 +512,20 @@ func TestFinishRegistrationUserMismatch(t *testing.T) {
 func marshalCOSEKey(t *testing.T, key *ecdsa.PrivateKey) []byte {
 	t.Helper()
 	pub := key.PublicKey
+	// COSE EC2 keys require fixed 32-byte big-endian coordinates. big.Int.Bytes()
+	// strips leading zero bytes, so a coordinate with a high zero byte (~1/256 of
+	// keys) would be <32 bytes and produce a malformed COSE key — a real, if rare,
+	// source of flaky registration failures. FillBytes left-pads to a fixed width.
+	xb := make([]byte, 32)
+	yb := make([]byte, 32)
+	pub.X.FillBytes(xb)
+	pub.Y.FillBytes(yb)
 	m := map[int]interface{}{
-		1:  2,             // kty: EC2
-		3:  -7,            // alg: ES256
-		-1: 1,             // crv: P-256
-		-2: pub.X.Bytes(), // x
-		-3: pub.Y.Bytes(), // y
+		1:  2,  // kty: EC2
+		3:  -7, // alg: ES256
+		-1: 1,  // crv: P-256
+		-2: xb, // x
+		-3: yb, // y
 	}
 	b, err := cborMarshal(m)
 	if err != nil {
