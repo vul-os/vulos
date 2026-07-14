@@ -17,6 +17,7 @@ import PublicAppBanner from '../shell/PublicAppBanner'
 import TrustBadge from '../shell/TrustBadge'
 import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
+import CalendarWidget from '../shell/CalendarWidget'
 import Dock from '../shell/Dock'
 import { useWindowShortcuts } from '../shell/useWindowShortcuts'
 
@@ -263,6 +264,15 @@ export default function DesktopCanvas() {
           )
         })}
       </div>
+
+      {/* Ambient Calendar widget — an always-on "what's next" glance on the
+          RHS (macOS style). It fills the gap when open windows cover the Home
+          backdrop: Home already surfaces the full agenda when it's the visible
+          backdrop (no windows), so the widget only mounts once a window covers
+          Home — keeping the agenda visible either way without double-rendering
+          the same events. Also hidden while the chat panel or Mission Control
+          occupies the same right-side z-30 layer, so they never overlap. */}
+      {windows.filter(w => !w.minimized).length > 0 && !chatOpen && !missionControlOpen && <CalendarWidget />}
 
       {/* Chat panel — right side */}
       {chatOpen && (
