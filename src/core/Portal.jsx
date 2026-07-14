@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, createElement, lazy, Suspense
 import { useShell } from '../providers/ShellProvider'
 import { classifyIntent } from './IntentRouter'
 import { searchApps } from './AppRegistry'
+import { appFrameURLFor } from './AppOrigins'
 import { useVoice } from './useVoice'
 import Settings from './Settings'
 // Lazy-loaded so it stays in its own chunk (Launchpad also lazy-loads it).
@@ -274,11 +275,9 @@ Only output the viewport block — no explanations outside it.`
         // subdomain form and rely on the gateway to fall back if needed.
         // The /app/{id}/ path-prefix fallback is preserved in Launchpad's
         // catch block and in the gateway itself.
-        {
-          const net04Proto = location.protocol
-          const net04AppUrl = `${net04Proto}//${intent.service.id}--default.${location.host}/`
-          openWindow({ appId: intent.service.id, title: intent.service.name, url: net04AppUrl, icon: intent.service.icon })
-        }
+        // ORIGIN-01: appFrameURLFor mints the app's own origin when this
+        // deployment can serve one, else the /app/{id}/ path prefix.
+        openWindow({ appId: intent.service.id, title: intent.service.name, url: appFrameURLFor(intent.service.id), icon: intent.service.icon })
         break
       case 'service_suggestions':
         addMessage('user', input)

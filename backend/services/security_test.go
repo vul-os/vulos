@@ -741,36 +741,157 @@ func TestShellCSP_ContentSecurityPolicyPresent(t *testing.T) {
 	}
 }
 
-// ─── SEC-HARD-13: installed apps cannot opt into allow-same-origin ───────────
+// ─── ORIGIN-01: no app may be granted allow-same-origin on the shell's origin ──
 
-// TestSandbox_InstalledAppsCannotGetSameOrigin is a structural regression test
-// for SANDBOX-02.  It verifies that the needsSameOrigin() gating in AppRegistry
-// is restricted to first-party apps; we encode this as a backend-side invariant
-// by checking that the gate logic would reject a representative installed-app ID
-// that declares needs_same_origin.
+// TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck is a STRUCTURAL guard
+// on the JS shell, and it replaces the old SANDBOX-02 stub.
 //
-// This test is intentionally a policy check (logic, not browser isolation) —
-// the browser-level isolation requires a frontend test harness.  The structural
-// invariant being tested is: "installed apps CANNOT set needsSameOrigin via any
-// path in the JS registry", enforced by the firstPartyIds Set in AppRegistry.js.
+// SANDBOX-02 tried to make `allow-same-origin` safe by restricting it to an
+// allowlist of first-party apps (firstPartyIds in AppRegistry.js). That never
+// closed the hole: those apps were served from /app/{id}/ — the SHELL's own
+// origin — so the grant handed each of them the shell's localStorage, cookies,
+// DOM and the gateway's injected auth headers. Narrowing WHO could abuse it is
+// not a boundary. (It also missed Popout.jsx, which hardcoded the token for any
+// app at all.)
 //
-// We represent this in the backend test as a documentation+invariant comment
-// so that SANDBOX-02 is traceable in the test suite.
-func TestSandbox_InstalledAppsCannotGetSameOrigin(t *testing.T) {
-	// SANDBOX-02: The JS registry (AppRegistry.js) restricts needsSameOrigin()
-	// to firstPartyIds — a Set of builtinRegistry + defaultWebApps IDs built at
-	// module load time.  Installed apps from /api/store/installed are filtered out
-	// even if they declare needs_same_origin: true in app.json.
-	//
-	// This test verifies the policy is documented and testable; the actual JS
-	// enforcement is in AppRegistry.js needsSameOrigin() and is covered by the
-	// frontend test suite (src/core/AppRegistry.test.js if present).
-	//
-	// If this test is reached, the SANDBOX-02 implementation is in place.
-	// A regression would be removing firstPartyIds from AppRegistry.js — that
-	// change would allow any installed app to reach the shell's localStorage,
-	// cookies, and gateway-injected auth headers.
-	t.Log("SANDBOX-02: needsSameOrigin() is restricted to firstPartyIds in AppRegistry.js; installed apps cannot opt in")
+// ORIGIN-01 replaces the allowlist with a structural rule: the sandbox is derived
+// from the frame URL's ORIGIN, and `allow-same-origin` is granted only when that
+// origin is not the shell's (see src/core/AppOrigins.js). This test enforces that
+// there is exactly ONE place in the shell that can emit the token, so nobody can
+// reintroduce a hardcoded grant in a component — which is precisely how the
+// Popout.jsx bypass happened.
+// stripJSComments blanks out // line comments and /* */ block comments (which is
+// also how JSX {/* … */} is spelled), preserving line numbering so offender
+// reports still point at the right line. It is not a full JS parser — it does not
+// need to be: it only has to stop a COMMENT that mentions allow-same-origin from
+// being mistaken for a grant of it.
+func stripJSComments(src string) string {
+	var b strings.Builder
+	b.Grow(len(src))
+	inLine, inBlock := false, false
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if c == '\n' {
+			inLine = false
+			b.WriteByte(c)
+			continue
+		}
+		switch {
+		case inLine:
+			b.WriteByte(' ')
+		case inBlock:
+			if c == '*' && i+1 < len(src) && src[i+1] == '/' {
+				inBlock = false
+				b.WriteString("  ")
+				i++
+				continue
+			}
+			b.WriteByte(' ')
+		case c == '/' && i+1 < len(src) && src[i+1] == '/':
+			inLine = true
+			b.WriteString("  ")
+			i++
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			inBlock = true
+			b.WriteString("  ")
+			i++
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// origin01RepoRoot walks up from the test's working directory (backend/services)
+// until it finds the repo root — the directory holding both src/ and backend/.
+func origin01RepoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "src", "core", "AppOrigins.js")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	t.Fatal("could not locate repo root (no src/core/AppOrigins.js above the test dir)")
+	return ""
+}
+
+func TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck(t *testing.T) {
+	root := origin01RepoRoot(t)
+	srcDir := filepath.Join(root, "src")
+
+	// The single sanctioned site: AppOrigins.js, inside the origin-comparison gate.
+	const sanctioned = "src/core/AppOrigins.js"
+
+	var offenders []string
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		if ext := filepath.Ext(path); ext != ".js" && ext != ".jsx" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		if rel == sanctioned || strings.Contains(rel, "__tests__") {
+			return nil
+		}
+		// Comments explaining the rule are fine (and there are several, including
+		// multi-line JSX {/* … */} blocks whose continuation lines are plain text).
+		// Only CODE may not grant the token, so strip comments before scanning.
+		for i, line := range strings.Split(stripJSComments(string(data)), "\n") {
+			if strings.Contains(line, "allow-same-origin") {
+				offenders = append(offenders, fmt.Sprintf("%s:%d: %s", rel, i+1, strings.TrimSpace(line)))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk src: %v", err)
+	}
+
+	if len(offenders) > 0 {
+		t.Errorf("ORIGIN-01 REGRESSION: `allow-same-origin` is granted outside %s.\n"+
+			"An app frame on the shell's origin with allow-same-origin can read the shell's\n"+
+			"localStorage and cookies and script window.top — it is a full shell compromise.\n"+
+			"The sandbox must be derived from the frame URL's origin via iframeSandboxForURL().\n"+
+			"Offending sites:\n  %s", sanctioned, strings.Join(offenders, "\n  "))
+	}
+
+	// And the gate itself must still be a comparison against the shell's origin,
+	// not an unconditional grant.
+	gate, err := os.ReadFile(filepath.Join(root, sanctioned))
+	if err != nil {
+		t.Fatalf("read %s: %v", sanctioned, err)
+	}
+	if !strings.Contains(string(gate), "isDistinctOrigin(url) ? `${BASE_SANDBOX} allow-same-origin` : BASE_SANDBOX") {
+		t.Error("ORIGIN-01 REGRESSION: iframeSandboxForURL() no longer gates allow-same-origin " +
+			"on the frame origin differing from the shell's")
+	}
+
+	// The dead needsSameOrigin() allowlist must not come back as a sandbox input.
+	for _, f := range []string{"src/shell/Window.jsx", "src/layouts/MobileStack.jsx", "src/shell/Popout.jsx"} {
+		data, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		if strings.Contains(string(data), "import { needsSameOrigin }") {
+			t.Errorf("%s imports needsSameOrigin — the allowlist approach was removed; "+
+				"the sandbox must come from iframeSandboxForURL(url)", f)
+		}
+	}
 }
 
 // TestSecurityHeaders_PresentOnEveryServedResponse asserts that the middleware

@@ -18,6 +18,7 @@ import Popout from './shell/Popout'
 import Screensaver from './shell/Screensaver'
 import ShortcutsLegend from './shell/ShortcutsLegend'
 import OfflineIndicator from './components/OfflineIndicator'
+import { loadOriginConfig } from './core/AppOrigins'
 import { startNotificationBridge } from './core/notificationBridge'
 import { startAttentionNotifier } from './core/notifiers/attentionNotifier'
 
@@ -88,31 +89,34 @@ function useEnergyState() {
   return { locked, screensaver, unlock, dismissScreensaver }
 }
 
-// SEC: Defensive postMessage guard — reject any cross-origin message that does
-// not come from the same origin (app iframes run same-origin under the gateway).
-// If apps ever need to message the shell, they MUST use this same-origin channel.
-function usePostMessageGuard() {
-  useEffect(() => {
-    const handler = (e) => {
-      // Reject messages from any origin other than our own.
-      if (e.origin !== window.location.origin) {
-        // Silently discard — do not expose internal state to unknown origins.
-        return
-      }
-      // Shell currently handles no postMessage commands; drop all same-origin
-      // messages too unless a specific handler is registered here.
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [])
+// ORIGIN-01: load the per-app origin config once at shell boot. It tells us
+// whether this deployment can serve each app from its own origin. It is only ever
+// used to BUILD app frame URLs — never to decide an iframe's sandbox, which is
+// derived from the resulting URL's actual origin (see core/AppOrigins.js). A
+// missing or wrong answer here therefore costs an app its own origin; it can
+// never hand an app the shell's.
+function useOriginConfig() {
+  useEffect(() => { loadOriginConfig() }, [])
 }
+
+// SEC: the shell registers NO global postMessage command handler. Every
+// shell↔app message is handled by the per-frame bridge in core/AppBridge.js,
+// which validates the sending frame's identity (event.source must be that app's
+// contentWindow) AND its origin before it will accept anything — see the trust
+// model documented there. A global handler here would be a second, weaker door
+// into the shell, so there deliberely isn't one.
+//
+// (This used to be a no-op guard that dropped every message. Dropping messages in
+// a listener grants nothing, but neither did it protect anything — the real
+// control is that no handler acts on untrusted input. Keeping a listener that
+// does nothing only invites someone to "just add one case" to it later.)
 
 function Shell() {
   const { layout, popout } = useShell()
   const { profile } = useAuth()
   const { profile: deviceProfile } = useDeviceProfile()
   const { locked, screensaver, unlock, dismissScreensaver } = useEnergyState()
-  usePostMessageGuard()
+  useOriginConfig()
   // MOBILE-06: device profile overrides the viewport-only `layout` value;
   // 'mobile' and 'tablet' both collapse to single-column MobileStack.
   // Known profiles: 'pc' | 'tablet' | 'mobile' | 'tv' | 'car' | 'watch'

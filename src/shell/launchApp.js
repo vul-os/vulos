@@ -12,6 +12,7 @@
 import { createElement, lazy, Suspense } from 'react'
 import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from './builtinApps'
 import { getNativeMode } from '../core/useNativeMode'
+import { resolveAppFrameURL, appFrameURLFor } from '../core/AppOrigins'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -87,7 +88,11 @@ export async function launchApp(app, { openWindow }) {
   // ── WebApp lane — open in host browser, ZERO stream.Session ───────────────
   if (lane === 'WebApp' || app.type === 'web' || app.lane_web) {
     if (app.url) {
-      openWindow({ appId: app.id, title: app.name, url: app.url, icon: app.icon })
+      // ORIGIN-01: a registry url of /app/{id}/ is rehomed onto the app's own
+      // origin when this deployment can serve one; otherwise it is left on the
+      // path prefix and the frame runs opaque. Non-gateway urls (AI apps, suite
+      // deep links) pass through untouched.
+      openWindow({ appId: app.id, title: app.name, url: resolveAppFrameURL(app.url), icon: app.icon })
     } else {
       try {
         await fetch('/api/apps/launch', {
@@ -96,9 +101,7 @@ export async function launchApp(app, { openWindow }) {
           body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
         })
       } catch { /* non-fatal — window still opens */ }
-      const proto = location.protocol
-      const webAppUrl = `${proto}//${app.id}--default.${location.host}/`
-      openInHostBrowser(webAppUrl, app.name, app.icon, openWindow)
+      openInHostBrowser(appFrameURLFor(app.id), app.name, app.icon, openWindow)
     }
     return
   }
@@ -203,9 +206,7 @@ export async function launchApp(app, { openWindow }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_id: app.id, app_port: app.port || 80, command: app.command || '', work_dir: app.workDir || '' }),
     })
-    const proto = location.protocol
-    const net04AppUrl = `${proto}//${app.id}--default.${location.host}/`
-    openWindow({ appId: app.id, title: app.name, url: net04AppUrl, icon: app.icon })
+    openWindow({ appId: app.id, title: app.name, url: appFrameURLFor(app.id), icon: app.icon })
   } catch {
     openWindow({ appId: app.id, title: app.name, url: `/app/${app.id}/`, icon: app.icon })
   }

@@ -112,6 +112,25 @@ const shellCSP = "default-src 'self' blob: data: https:; " +
 	"form-action 'self'; " +
 	"frame-ancestors 'self'"
 
+// shellCSPFor returns shellCSP widened just enough to frame the per-app origins
+// (ORIGIN-01). frame-src already allows https:, which covers app origins on any
+// TLS deployment; a plaintext deployment (dev on lvh.me, or a box behind a proxy
+// that terminates TLS) would otherwise have its own app frames blocked by its own
+// CSP. We add ONLY the app-subdomain wildcard for the configured base domain —
+// not a blanket http:, which would let the shell frame any plaintext origin.
+//
+// Nothing else in the policy moves: the structural directives (object-src,
+// base-uri, form-action, frame-ancestors 'self') are untouched.
+func shellCSPFor(baseDomain string) string {
+	if !appnet.Enabled(baseDomain) {
+		return shellCSP
+	}
+	appSrc := "https://*." + baseDomain + " http://*." + baseDomain
+	return strings.Replace(shellCSP,
+		"frame-src 'self' blob: https:;",
+		"frame-src 'self' blob: https: "+appSrc+";", 1)
+}
+
 func main() {
 	obs.Init()
 
@@ -1153,6 +1172,21 @@ func main() {
 
 	// App gateway — /app/{appId}/* proxied with auth
 	mux.HandleFunc("/app/", appGateway.Handler())
+
+	// ORIGIN-01: tells the shell whether this deployment can serve each app from
+	// its OWN origin ({app}--{profile}.{base}) instead of from the shell's origin.
+	// The shell uses it to build app frame URLs; it does NOT use it to decide the
+	// iframe sandbox — that is derived from the frame URL's actual origin, so a
+	// wrong answer here can only cost an app its own origin, never hand it the
+	// shell's. See services/appnet/origin.go and src/core/AppOrigins.js.
+	mux.HandleFunc("GET /api/apps/origins", func(w http.ResponseWriter, r *http.Request) {
+		base := appnet.BaseDomain()
+		writeJSON(w, map[string]any{
+			"enabled":     appnet.Enabled(base),
+			"base_domain": base,
+			"profile":     appnet.DefaultProfile,
+		})
+	})
 
 	// PRESIGN-01: storage-permitted apps mint short-lived, object-scoped
 	// storage grants here instead of ever holding a raw AccessKey/Secret in
@@ -3760,7 +3794,7 @@ func main() {
 			// The structural protections — frame-ancestors 'self', object-src
 			// 'none', base-uri 'self', form-action 'self' — are the load-bearing
 			// hardening and are strict.
-			w.Header().Set("Content-Security-Policy", shellCSP)
+			w.Header().Set("Content-Security-Policy", shellCSPFor(appnet.BaseDomain()))
 			filePath := filepath.Join(webrootDir, filepath.Clean(r.URL.Path))
 			if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
 				fs.ServeHTTP(w, r)

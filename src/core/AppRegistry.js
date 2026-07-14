@@ -347,8 +347,8 @@ const defaultWebApps = [
     category: 'utilities',
     url: '/app/calculator/',
     port: 80,
-    // SANDBOX-01: persists history/mode in localStorage at load — needs a
-    // real (non-opaque) origin. See needsSameOrigin() below.
+    // ORIGIN-01: persists history/mode in localStorage at load. Storage now
+    // arrives over the shell↔app bridge (core/AppBridge.js); this flag is inert.
     needsSameOrigin: true,
   },
   // UNIFIED-STORAGE de-dup: the standalone `calendar` web app is retired here
@@ -366,7 +366,7 @@ const defaultWebApps = [
     category: 'utilities',
     url: '/app/clock/',
     port: 80,
-    // SANDBOX-01: reads world-clock config from localStorage at load.
+    // ORIGIN-01: reads world-clock config from localStorage at load (bridge-backed).
     needsSameOrigin: true,
   },
   {
@@ -378,7 +378,7 @@ const defaultWebApps = [
     category: 'productivity',
     url: '/app/pdf-viewer/',
     port: 80,
-    // SANDBOX-01: stores per-doc notes/annotations + recents in localStorage.
+    // ORIGIN-01: stores per-doc notes/annotations + recents in localStorage (bridge-backed).
     needsSameOrigin: true,
   },
   {
@@ -390,7 +390,7 @@ const defaultWebApps = [
     category: 'productivity',
     url: '/app/text-editor/',
     port: 80,
-    // SANDBOX-01: persists theme/font/wrap/last-file in localStorage.
+    // ORIGIN-01: persists theme/font/wrap/last-file in localStorage (bridge-backed).
     needsSameOrigin: true,
   },
   {
@@ -412,7 +412,7 @@ const defaultWebApps = [
     category: 'utilities',
     url: '/app/weather/',
     port: 80,
-    // SANDBOX-01: reads unit/location prefs from localStorage at load.
+    // ORIGIN-01: reads unit/location prefs from localStorage at load (bridge-backed).
     needsSameOrigin: true,
   },
   // ORPHAN-FIX: these apps ship full builds under apps/ (app.json + server.py)
@@ -653,45 +653,28 @@ export function getAppById(id) {
   return getApps().find(app => app.id === id)
 }
 
-// SANDBOX-01: iframe origin isolation.
+// ORIGIN-01 supersedes SANDBOX-01/02/03. The needsSameOrigin() allowlist that
+// used to live here is GONE, along with the `needsSameOrigin` manifest flag's
+// power to do anything.
 //
-// App iframes are served from SAME-ORIGIN paths (/app/<id>/, /apps/browser/…).
-// A same-origin iframe with `allow-scripts` is NOT a security boundary: it can
-// reach window.top, the shell's localStorage/cookies, and any gateway-injected
-// auth headers. The correct long-term fix is to serve each app from its own
-// origin (e.g. <id>.apps.host) so the browser enforces isolation for us.
+// What it did: it granted `allow-same-origin` to five first-party apps
+// (calculator, clock, pdf-viewer, text-editor, weather) that read localStorage at
+// load — localStorage throws in an opaque origin, which white-screened them. But
+// those apps were served from /app/<id>/, i.e. the SHELL's own origin, so the
+// grant handed each of them the shell's storage, cookies, DOM and gateway auth
+// headers. Restricting the grant to first-party apps narrowed who could abuse it;
+// it did not make the boundary real. And it could not survive third-party apps.
 //
-// SANDBOX-02 (security hardening): `allow-same-origin` is now restricted to
-// FIRST-PARTY apps only (apps shipped with the OS in builtinRegistry or
-// defaultWebApps).  Third-party installed apps from /api/store/installed are
-// NEVER granted allow-same-origin even if they declare needs_same_origin: true
-// in their app.json — a malicious or compromised store app could otherwise read
-// the shell's localStorage, cookies, and gateway-injected auth headers.
+// What replaces it: apps are served from their OWN origin where the deployment
+// can do it ({app}--{profile}.{base}), and the sandbox is derived from the frame
+// URL's actual origin rather than from any flag — see core/AppOrigins.js. An app
+// on the shell's origin now NEVER receives allow-same-origin, first-party or not.
+// The five apps get their storage back over the shell↔app postMessage bridge in
+// core/AppBridge.js.
 //
-// The only first-party apps that currently opt in are those that read/write
-// localStorage at load (calculator, clock, pdf-viewer, text-editor, weather) —
-// an opaque origin makes localStorage throw, white-screening them.  All other
-// first-party apps run in opaque-origin sandboxes.
-//
-// Follow-up (SANDBOX-03): serve each app from its own subdomain origin
-// (<id>--default.<host>) using the gateway's existing subdomain routing.  When
-// that lands, allow-same-origin will mean a per-app origin (not the shell), and
-// the restriction below can be relaxed.  See backend/services/gateway/gateway.go
-// and appnet/subdomain.go for the routing infrastructure.
-
-// firstPartyIds is the set of app IDs shipped with the OS.  Only these apps may
-// receive the allow-same-origin sandbox token.
-const firstPartyIds = new Set([
-  ...builtinRegistry.map(a => a.id),
-  ...defaultWebApps.map(a => a.id),
-])
-
-export function needsSameOrigin(appId) {
-  const app = getAppById(appId)
-  // SANDBOX-02: installed (third-party) apps are never granted same-origin,
-  // regardless of what their manifest declares.
-  return !!(app && app.needsSameOrigin && firstPartyIds.has(appId))
-}
+// The `needsSameOrigin` / `needs_same_origin` fields are still parsed off app
+// manifests (below) so old manifests keep loading, but nothing reads them. They
+// grant NOTHING. Do not reintroduce a consumer.
 
 export function getAppsByCategory() {
   const cats = {}
