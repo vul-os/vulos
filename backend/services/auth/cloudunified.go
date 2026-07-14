@@ -98,8 +98,7 @@ var ErrBrokerKeyMismatch = errors.New("cloudlogin: cloud broker key does not mat
 //   - nothing pinned yet → fetch and TOFU-pin (WriteBrokerPubkey) once.
 func ensureBrokerPubkey(ctx context.Context, fetch func(context.Context) (ed25519.PublicKey, error)) (ed25519.PublicKey, error) {
 	if env := strings.TrimSpace(os.Getenv("VULOS_CLOUD_BROKER_PUBKEY")); env != "" {
-		looksLikePath := env[0] == '/' || env[0] == '.'
-		if !looksLikePath {
+		if brokerEnvIsInlineKey(env) {
 			return LoadBrokerPubkey() // inline env key: override wins; error if malformed
 		}
 		// env is a PATH: treat it as the pin file location (fall through).
@@ -157,8 +156,7 @@ func ensureBrokerPubkey(ctx context.Context, fetch func(context.Context) (ed2551
 // and falls back to today's first-login TOFU.
 func PinBrokerPubkeyAtEnrollment(ctx context.Context, fetch func(context.Context) (ed25519.PublicKey, error)) error {
 	if env := strings.TrimSpace(os.Getenv("VULOS_CLOUD_BROKER_PUBKEY")); env != "" {
-		looksLikePath := env[0] == '/' || env[0] == '.'
-		if !looksLikePath {
+		if brokerEnvIsInlineKey(env) {
 			// Inline env override wins; LoadBrokerPubkey never reads disk. Nothing
 			// to pin — leaving the override authoritative, not weakening it.
 			return nil

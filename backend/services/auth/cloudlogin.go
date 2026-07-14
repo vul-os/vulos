@@ -57,18 +57,29 @@ const defaultBrokerPubkeyPath = "/var/lib/vulos/cloud/broker.pub"
 // this as "cloud login not configured on this device".
 func LoadBrokerPubkey() (ed25519.PublicKey, error) {
 	// 1. Check env override.
-	if env := os.Getenv("VULOS_CLOUD_BROKER_PUBKEY"); env != "" {
-		// If the value looks like a path (contains / or starts with .),
-		// treat it as a file path; otherwise try inline base64.
-		looksLikePath := len(env) > 0 && (env[0] == '/' || env[0] == '.')
-		if looksLikePath {
-			return readPubkeyFile(env)
+	if env := strings.TrimSpace(os.Getenv("VULOS_CLOUD_BROKER_PUBKEY")); env != "" {
+		// An inline key base64-decodes to exactly an Ed25519 public key; anything
+		// else is a file path. (A first-char `/`/`.` heuristic is unsafe: a
+		// std-base64 key can legitimately begin with `/`, ~1/64 of the time.)
+		if brokerEnvIsInlineKey(env) {
+			return decodePubkeyB64(env)
 		}
-		return decodePubkeyB64(env)
+		return readPubkeyFile(env)
 	}
 
 	// 2. Well-known path.
 	return readPubkeyFile(defaultBrokerPubkeyPath)
+}
+
+// brokerEnvIsInlineKey reports whether a VULOS_CLOUD_BROKER_PUBKEY value is an
+// inline base64-encoded key (vs a filesystem path). An inline key decodes to
+// exactly an Ed25519 public key (32 bytes); a path does not. This replaces the
+// former first-char (`/`/`.`) heuristic, under which a std-base64 key beginning
+// with `/` was misread as a path (falling through to TOFU instead of enforcing
+// the operator-supplied override) roughly 1 time in 64.
+func brokerEnvIsInlineKey(env string) bool {
+	_, err := decodePubkeyB64(strings.TrimSpace(env))
+	return err == nil
 }
 
 // ErrNoBrokerPubkey is returned when no broker public key is configured on

@@ -231,6 +231,37 @@ func TestLoadBrokerPubkey_Missing(t *testing.T) {
 	}
 }
 
+// Regression: an INLINE std-base64 broker key whose first byte is 0xFF encodes
+// to a string starting with '/'. The old first-char heuristic misclassified it
+// as a file path (falling through to TOFU instead of honouring the override) —
+// a ~1/64 flake and a real operator-facing bug. The classifier must treat it as
+// an inline key by decode-success, not by leading character.
+func TestLoadBrokerPubkey_InlineKeyStartingWithSlash(t *testing.T) {
+	pub := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	pub[0] = 0xFF // top 6 bits = 63 → base64-std first char '/'
+	b64 := base64.StdEncoding.EncodeToString(pub)
+	if b64[0] != '/' {
+		t.Fatalf("test precondition: expected leading '/', got %q", b64)
+	}
+	if !brokerEnvIsInlineKey(b64) {
+		t.Fatalf("a valid inline key starting with '/' must be classified as inline, not a path")
+	}
+
+	t.Setenv("VULOS_CLOUD_BROKER_PUBKEY", b64)
+	loaded, err := LoadBrokerPubkey()
+	if err != nil {
+		t.Fatalf("LoadBrokerPubkey: %v (the '/' key was misread as a path)", err)
+	}
+	if !loaded.Equal(pub) {
+		t.Error("loaded inline key does not match")
+	}
+
+	// A genuine path (contains '.', not base64) must still be treated as a path.
+	if brokerEnvIsInlineKey("/var/lib/vulos/cloud/broker.pub") {
+		t.Error("a filesystem path must not be classified as an inline key")
+	}
+}
+
 func TestWriteAndLoadBrokerPubkey(t *testing.T) {
 	pub, _ := makeTestKeyPair(t)
 	dir := t.TempDir()
