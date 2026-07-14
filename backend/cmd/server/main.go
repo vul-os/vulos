@@ -73,6 +73,7 @@ import (
 	"vulos/backend/services/recall"
 	"vulos/backend/services/sandbox"
 	"vulos/backend/services/signing"
+	"vulos/backend/services/snapshot"
 	"vulos/backend/services/storageprov"
 	"vulos/backend/services/stream"
 	"vulos/backend/services/sync"
@@ -3331,6 +3332,49 @@ func main() {
 	}
 	log.Printf("[storage] OS storage namespace=%q bucket=%q object-store=%v",
 		osStore.Prefix, osStore.Bucket, osStore.Configured())
+
+	// OS SNAPSHOTS — point-in-time restore points for the box's bucket
+	// (services/snapshot). Available whenever the box has an object store
+	// configured (independent of cluster sync / passphrase). Snapshot artifacts
+	// live INSIDE the box's own bucket under the OS data prefix, so they work
+	// identically for provisioned and bring-your-own-bucket boxes.
+	snapPolicy := snapshot.DefaultPolicy
+	snapDeps := snapshotDeps{authStore: authStore, policy: snapPolicy}
+	if osStore.Configured() {
+		snapAccount := os.Getenv("VULOS_ACCOUNT_ID") // box billing account (metering); may be empty on self-host
+		snapRes := osStore
+		snapDeps.newSnapshotter = func() (*snapshot.Snapshotter, error) {
+			st, err := snapshot.NewS3Store(snapRes)
+			if err != nil {
+				return nil, err
+			}
+			s := snapshot.New(st, snapshot.Config{DataPrefix: snapRes.Prefix, AccountID: snapAccount})
+			if billingClient.Enabled() {
+				s = s.WithMeter(snapshot.CPMeter{Client: billingClient})
+			}
+			return s, nil
+		}
+		// Optional scheduled snapshots + retention. Enable by setting
+		// VULOS_SNAPSHOT_INTERVAL (e.g. "24h"). Disabled by default.
+		if iv := os.Getenv("VULOS_SNAPSHOT_INTERVAL"); iv != "" {
+			if d, perr := time.ParseDuration(iv); perr == nil && d > 0 {
+				go func() {
+					s, err := snapDeps.newSnapshotter()
+					if err != nil {
+						log.Printf("[snapshot] scheduler init failed: %v", err)
+						return
+					}
+					snapshot.NewScheduler(s, d, snapPolicy).Start(ctx)
+				}()
+				log.Printf("[snapshot] scheduled snapshots enabled (interval=%s)", d)
+			} else {
+				log.Printf("[snapshot] invalid VULOS_SNAPSHOT_INTERVAL %q: %v", iv, perr)
+			}
+		}
+	}
+	registerSnapshotRoutes(mux, snapDeps)
+	log.Printf("[snapshot] admin snapshot endpoints registered (available=%v)", snapDeps.newSnapshotter != nil)
+
 	if clusterS3Cfg.Configured() && clusterPassphrase != "" {
 		if clusterInst, clusterErr := cluster.New(clusterS3Cfg, clusterPassphrase); clusterErr == nil {
 			go clusterInst.Start(ctx)
