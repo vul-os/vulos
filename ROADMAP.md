@@ -24,6 +24,7 @@ Settled invariants:
 - **Login isolates the credential, not the browsing.** Passkeys + a server-side token vault, never a streamed login. See §12.
 - **One uniform isolation model:** a Firecracker microVM per tenant on Fly Machines, scale-to-zero. See §18.
 - **CAD and DAW are separate tools**, parallel to the OS — designed but not built into the OS. See `roadmap/CAD-KERF.md` and `roadmap/REALTIME-AUDIO-DAW.md`.
+- **Remote Assist** (TeamViewer-class: co-presence/shared cursors, screen view, remote control, and delegated *temp* profile access) is **part of the OS, not a separate repo** — it composes the existing WebRTC session-stream lane, per-profile isolation, and the capability-grant/gateway-auth model. Capability-first, consent-visible, time-boxed, fail-closed. Designed, not built. See `roadmap/REMOTE-ASSIST.md`.
 
 ---
 
