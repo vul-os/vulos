@@ -360,3 +360,77 @@ func TestFiles_UploadDownloadGrant_Owner(t *testing.T) {
 		t.Fatalf("expected exactly 1 read mint for authorized download, got %d", broker.reads)
 	}
 }
+
+// TestFiles_CrossUserMoveDeleteBlocked pins the mutation-side of the isolation
+// boundary (a companion to CrossUserRead404, which only covers reads): a user
+// with NO grant on another user's node cannot MOVE, RENAME, or DELETE it, and
+// cannot read its version history. Each is a route-layer 403, and — crucially —
+// the node must still exist and be usable by its owner afterward (the failed
+// attempts left no side effect). This is the regression guard against an IDOR
+// where the body-supplied node_id is trusted over the session identity.
+func TestFiles_CrossUserMoveDeleteBlocked(t *testing.T) {
+	svc, _ := newFilesSvc(t)
+	mux := http.NewServeMux()
+	registerFilesRoutes(mux, svc)
+
+	// Alice owns a folder with a child folder inside it.
+	parent := mkFolder(t, mux, "alice", "alice-private")
+	childW := filesReq(t, mux, http.MethodPost, "/api/files/folder", "alice",
+		map[string]string{"parent_id": parent, "name": "child"})
+	if childW.Code != http.StatusOK {
+		t.Fatalf("owner create child: expected 200, got %d (%s)", childW.Code, childW.Body.String())
+	}
+	var child struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(childW.Body.Bytes(), &child); err != nil || child.ID == "" {
+		t.Fatalf("child create response missing id: %s", childW.Body.String())
+	}
+
+	// Bob has no grant anywhere in Alice's tree. Every mutation is forbidden.
+	forbid := func(target string, body any) {
+		t.Helper()
+		w := filesReq(t, mux, http.MethodPost, target, "bob", body)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("cross-user %s: expected 403, got %d (%s)", target, w.Code, w.Body.String())
+		}
+	}
+	forbid("/api/files/delete", map[string]string{"node_id": child.ID})
+	forbid("/api/files/move", map[string]string{"node_id": child.ID, "new_name": "pwned"})
+	// Move the child OUT of Alice's tree into Bob's own root — also forbidden
+	// (Bob is not an editor of the source node).
+	forbid("/api/files/move", map[string]string{"node_id": child.ID, "new_parent_id": ""})
+
+	// Version history of Alice's node is not readable by Bob → 403.
+	wv := filesReq(t, mux, http.MethodGet, "/api/files/versions?node="+child.ID, "bob", nil)
+	if wv.Code != http.StatusForbidden {
+		t.Fatalf("cross-user versions: expected 403, got %d (%s)", wv.Code, wv.Body.String())
+	}
+
+	// The node is untouched: Alice can still list her folder and see the child.
+	wl := filesReq(t, mux, http.MethodGet, "/api/files/list?parent="+parent, "alice", nil)
+	if wl.Code != http.StatusOK {
+		t.Fatalf("owner list after blocked mutations: expected 200, got %d (%s)", wl.Code, wl.Body.String())
+	}
+	var listing struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(wl.Body.Bytes(), &listing); err != nil {
+		t.Fatalf("decode listing: %v", err)
+	}
+	found := false
+	for _, n := range listing.Nodes {
+		if n.ID == child.ID {
+			found = true
+			if n.Name != "child" {
+				t.Fatalf("child name changed to %q — a blocked rename leaked through", n.Name)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("child folder missing after blocked mutations — a cross-user delete/move leaked through")
+	}
+}
