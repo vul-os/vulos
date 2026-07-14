@@ -412,25 +412,42 @@ func (g *Gateway) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var appID, appPath string
 
+		// ORIGIN-01: per-app origins. When the deployment can serve them (a real
+		// base domain whose wildcard DNS/TLS covers {app}--{profile}.{base}), an
+		// app is addressed by its OWN origin and the shell's origin must never
+		// serve app content. See services/appnet/origin.go for availability rules.
+		baseDomain := appnet.BaseDomain()
+		originsOn := appnet.Enabled(baseDomain)
+		scheme := requestScheme(r)
+		_, reqPort := appnet.SplitHostPort(r.Host)
+
 		// Try subdomain: {appId}.lvh.me or {appId}.vula.example.com
 		// With NET-02, subdomain may carry a profile prefix:
 		//   {profile}--{appId}.{baseDomain}  →  profile=profile, appID=appId
 		//   {appId}.{baseDomain}             →  profile=default, appID=appId
 		var net02Profile string
+		var onAppOrigin bool
 		host := r.Host
 		if idx := strings.Index(host, ":"); idx > 0 {
 			host = host[:idx]
 		}
-		if baseDomain := os.Getenv("VULOS_DOMAIN"); baseDomain != "" && strings.HasSuffix(host, "."+baseDomain) {
+		if baseDomain != "" && strings.HasSuffix(strings.ToLower(host), "."+strings.ToLower(baseDomain)) {
 			// ParseSubdomain (NET-01) handles both plain and profile-prefixed subdomains:
 			//   {profile}--{appId}.{baseDomain}  →  profile=profile, appID=appId
 			//   {appId}.{baseDomain}             →  profile="default", appID=appId
 			if parsedApp, parsedProfile, ok := appnet.ParseSubdomain(host, baseDomain); ok {
 				appID = parsedApp
 				net02Profile = parsedProfile
+				onAppOrigin = true
 			} else {
-				// Shouldn't happen given HasSuffix check above, but degrade gracefully.
-				appID = strings.TrimSuffix(host, "."+baseDomain)
+				// ORIGIN-01: the host is under the base domain but its label does not
+				// parse as a valid app label. Previously this "degraded gracefully" by
+				// trusting the raw label as an app id — which would serve an app from a
+				// host we cannot reproduce as a canonical origin (origin confusion).
+				// Refuse instead: an app is only ever served from a label we ourselves
+				// would mint.
+				http.Error(w, `{"error":"unknown app origin"}`, http.StatusNotFound)
+				return
 			}
 			appPath = r.URL.Path
 		}
@@ -451,6 +468,28 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		if appID == "" {
 			http.Error(w, `{"error":"missing app id"}`, 400)
 			return
+		}
+
+		// ORIGIN-01 (origin confusion, part 1 of 2): when per-app origins are
+		// available, the path-prefix route on the SHELL's origin must not serve app
+		// content — a document served there executes on the shell's origin and can
+		// read the shell's storage and cookies directly, which is the entire hole
+		// this change closes. Send the caller to the app's own origin instead.
+		//
+		// A redirect (not a 403) keeps every existing deep link working: bookmarks,
+		// the /workspace front door, and any app that hardcoded /app/{id}/ paths all
+		// continue to resolve — they just land on the correct origin.
+		if originsOn && !onAppOrigin {
+			if origin, ok := appnet.AppOrigin(scheme, appID, appnet.DefaultProfile, baseDomain, reqPort); ok {
+				target := origin + appPath
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				// 307 preserves method and body, so a POST to /app/{id}/x is not
+				// silently downgraded to a GET on the app's origin.
+				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+				return
+			}
 		}
 
 		// --- Auth check ---
@@ -563,7 +602,11 @@ func (g *Gateway) Handler() http.HandlerFunc {
 
 		w.Header().Del("Set-Cookie")
 		w.Header().Del("X-Powered-By")
-		w.Header().Del("X-Frame-Options") // Allow embedding in Vula OS shell iframe
+		// X-Frame-Options cannot express "only this one other origin may frame me"
+		// — SAMEORIGIN would block the shell once the app is on its own origin, and
+		// ALLOW-FROM is dead in every current browser. It is dropped and the policy
+		// is carried entirely by CSP frame-ancestors below, which CAN name an origin.
+		w.Header().Del("X-Frame-Options")
 		w.Header().Set("X-Vulos-App", appID)
 
 		// Security hardening headers applied to all proxied responses.
@@ -571,27 +614,47 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()")
 
-		// For HTML responses served via path prefix, inject <base> tag so
-		// the app's absolute paths resolve relative to /app/{appId}/
+		// ORIGIN-01 (origin confusion, part 2 of 2): pin who may frame this app.
+		//
+		// secHeadersMiddleware sets `frame-ancestors 'self'` on every response. Once
+		// an app is served from its own origin, 'self' means the APP's origin — which
+		// would (a) stop the shell from framing it at all, and (b) let any OTHER app
+		// frame it, since each app origin is 'self' to its own document. Name the
+		// shell's origin explicitly instead: exactly one origin may frame an app, and
+		// no app may frame another.
+		//
+		// On the path-prefix fallback the app is on the shell's origin already, so
+		// 'self' is both correct and unchanged from the previous posture.
+		shellOrigin := scheme + "://" + r.Host
+		if onAppOrigin {
+			if so, ok := appnet.ShellOrigin(scheme, baseDomain, reqPort); ok {
+				shellOrigin = so
+				w.Header().Set("Content-Security-Policy", "frame-ancestors "+so)
+			} else {
+				// Cannot name the shell origin → refuse to be framed at all rather
+				// than fall back to a policy that permits app-frames-app.
+				shellOrigin = ""
+				w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+			}
+		} else {
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+		}
+
+		// HTML responses get the ORIGIN-01 bridge client injected, plus (on the
+		// path-prefix fallback only) a <base> tag so the app's absolute paths resolve
+		// under /app/{appId}/. On an app origin the app owns the whole path space, so
+		// no <base> rewrite is needed or wanted.
 		ct := resp.Header.Get("Content-Type")
 		isPathPrefix := strings.HasPrefix(r.URL.Path, "/app/")
-		if isPathPrefix && strings.Contains(ct, "text/html") {
+		if strings.Contains(ct, "text/html") {
 			body, err := io.ReadAll(resp.Body)
 			if err == nil {
-				baseTag := fmt.Sprintf(`<base href="/app/%s/">`, appID)
-				html := string(body)
-				// Inject after <head> or at the start of the document
-				if idx := strings.Index(strings.ToLower(html), "<head>"); idx >= 0 {
-					html = html[:idx+6] + baseTag + html[idx+6:]
-				} else if idx := strings.Index(strings.ToLower(html), "<html"); idx >= 0 {
-					end := strings.Index(html[idx:], ">")
-					if end >= 0 {
-						pos := idx + end + 1
-						html = html[:pos] + "<head>" + baseTag + "</head>" + html[pos:]
-					}
-				} else {
-					html = baseTag + html
+				var head string
+				if isPathPrefix && !onAppOrigin {
+					head = fmt.Sprintf(`<base href="/app/%s/">`, appID)
 				}
+				head += bridgeScript(shellOrigin)
+				html := injectIntoHead(string(body), head)
 				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(html)))
 				w.WriteHeader(resp.StatusCode)
 				w.Write([]byte(html))

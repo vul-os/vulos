@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
 import Portal from '../core/Portal'
@@ -7,14 +7,12 @@ import Toasts from '../shell/Toasts'
 import TrustBadge from '../shell/TrustBadge'
 import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
-import { needsSameOrigin } from '../core/AppRegistry'
+import { iframeSandboxForURL } from '../core/AppOrigins'
+import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
 
-// SANDBOX-01: same-origin app iframes are opt-in (see AppRegistry.js). Apps that
-// don't declare needsSameOrigin run in an opaque origin, isolated from the shell.
-function iframeSandbox(appId) {
-  const base = 'allow-scripts allow-forms allow-popups'
-  return needsSameOrigin(appId) ? `${base} allow-same-origin` : base
-}
+// ORIGIN-01: identical rule to the desktop shell (src/shell/Window.jsx) —
+// allow-same-origin is derived from the frame URL's origin and is granted only
+// when that origin is not the shell's. See core/AppOrigins.js.
 
 export default function MobileStack() {
   const { windows, conversation, toggleLaunchpad } = useShell()
@@ -99,6 +97,14 @@ export default function MobileStack() {
 
 function MobileCard({ win }) {
   const { closeWindow } = useShell()
+  const frameRef = useRef(null)
+
+  useEffect(() => {
+    if (win.html || !frameRef.current || !win.appId) return undefined
+    return attachAppBridge(frameRef.current, { appId: win.appId, frameUrl: win.url })
+  }, [win.appId, win.url, win.html])
+
+  const src = win.html ? undefined : (win.appId ? appFrameSrc(win.url, win.appId) : win.url)
 
   return (
     <div className="rounded-xl overflow-hidden border border-neutral-800/50 bg-neutral-900">
@@ -111,11 +117,12 @@ function MobileCard({ win }) {
           <div className="absolute inset-0 overflow-y-auto">{win.component}</div>
         ) : (
           <iframe
-            src={win.html ? undefined : win.url}
+            ref={frameRef}
+            src={src}
             srcDoc={win.html || undefined}
             title={win.title}
             className="absolute inset-0 w-full h-full border-0"
-            sandbox={win.html ? 'allow-scripts' : iframeSandbox(win.appId)}
+            sandbox={win.html ? 'allow-scripts' : iframeSandboxForURL(win.url)}
             referrerPolicy="no-referrer"
           />
         )}

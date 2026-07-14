@@ -2,19 +2,22 @@ import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
-import { needsSameOrigin } from '../core/AppRegistry'
+import { iframeSandboxForURL } from '../core/AppOrigins'
+import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
 import { tileGeometry, snapZoneForPoint, MENU_BAR_H } from './windowTiling'
 
-// SANDBOX-01: build the iframe sandbox for a URL-loaded app. App pages are
-// served same-origin, so `allow-same-origin` here defeats the sandbox (the app
-// can reach window.top, shell localStorage/cookies, gateway auth headers). It
-// is therefore opt-in per app via AppRegistry's needsSameOrigin(); apps that do
-// not opt in run in an opaque origin and are isolated from the shell.
-// The real fix is per-app origins — see the note in AppRegistry.js.
-function iframeSandbox(appId) {
-  const base = 'allow-scripts allow-forms allow-popups'
-  return needsSameOrigin(appId) ? `${base} allow-same-origin` : base
-}
+// ORIGIN-01: the iframe sandbox is derived from the frame URL's ORIGIN, not from
+// an app-registry flag. `allow-same-origin` is granted only when that origin is
+// distinct from the shell's — i.e. when the app is served from its own origin
+// ({app}--{profile}.{base}), where "same origin" means the app itself. An app on
+// the shell's own origin (the /app/{id}/ path-prefix fallback) NEVER gets it and
+// runs opaque, so it cannot reach window.top, the shell's localStorage/cookies,
+// or the gateway's auth headers. Apps that need persistent storage in that mode
+// get it over the postMessage bridge (core/AppBridge.js).
+//
+// The old needsSameOrigin() allowlist is gone: it granted the shell's own origin
+// to five first-party apps, which meant any one of them — or anything that could
+// impersonate one — owned the shell.
 
 // WINDOW MOTION — read the user's reduced-motion preference at call time so the
 // open/close/minimize choreography can collapse to instant state changes.
@@ -86,6 +89,7 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
   const [status, setStatus] = useState('loading') // 'loading' | 'ok' | 'error'
   const [attempt, setAttempt] = useState(0)
   const timerRef = useRef(null)
+  const frameRef = useRef(null)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -98,19 +102,32 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
     return () => clearTimeout(timerRef.current)
   }, [url, attempt])
 
+  // ORIGIN-01: bind the shell↔app bridge to THIS frame. The bridge accepts
+  // messages only from this frame's contentWindow and only from the origin this
+  // URL implies, so a message from any other frame or origin is dropped. It is
+  // attached for every app: it is the only storage an opaque-origin app has, and
+  // it is harmless for an app that also has its own origin.
+  useEffect(() => {
+    if (!frameRef.current || !appId) return undefined
+    return attachAppBridge(frameRef.current, { appId, frameUrl: url })
+  }, [appId, url, attempt])
+
   const retry = useCallback(() => {
     setStatus('loading')
     setAttempt(a => a + 1)
   }, [])
 
   // Cache-bust on retry so a transiently-down app re-fetches rather than
-  // serving a stale failed response.
-  const src = attempt === 0 ? url : `${url}${url.includes('?') ? '&' : '?'}_r=${attempt}`
+  // serving a stale failed response. The bridge seed goes in the fragment, so it
+  // survives the query-string cache-bust and never reaches the server.
+  const busted = attempt === 0 ? url : `${url}${url.includes('?') ? '&' : '?'}_r=${attempt}`
+  const src = appId ? appFrameSrc(busted, appId) : busted
 
   return (
     <>
       <iframe
         key={attempt}
+        ref={frameRef}
         src={src}
         title={title}
         className="absolute inset-0 w-full h-full border-0"
@@ -373,7 +390,7 @@ export default function Window({ win, pointerBlock }) {
             url={win.url}
             title={win.title}
             appId={win.appId}
-            sandbox={iframeSandbox(win.appId)}
+            sandbox={iframeSandboxForURL(win.url)}
             dragging={dragging}
           />
         )}

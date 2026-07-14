@@ -1,8 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useShell } from '../providers/ShellProvider'
+import { iframeSandboxForURL } from '../core/AppOrigins'
+import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
 
 export default function Popout() {
   const { popout, closePopout } = useShell()
+  const frameRef = useRef(null)
 
   // ESC to exit fullscreen
   useEffect(() => {
@@ -17,6 +20,13 @@ export default function Popout() {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [popout, closePopout])
+
+  // ORIGIN-01: same bridge the windowed view gets, so a popped-out app keeps its
+  // storage without ever being handed the shell's origin.
+  useEffect(() => {
+    if (!popout || !frameRef.current || !popout.appId) return undefined
+    return attachAppBridge(frameRef.current, { appId: popout.appId, frameUrl: popout.url })
+  }, [popout])
 
   if (!popout) return null
 
@@ -38,12 +48,19 @@ export default function Popout() {
         <span className="text-[10px] text-neutral-600">Press ESC to exit</span>
       </div>
 
-      {/* Full-viewport iframe */}
+      {/* Full-viewport iframe.
+          ORIGIN-01: this frame used to hardcode `allow-same-origin` for ANY url —
+          a straight bypass of the (then) needsSameOrigin allowlist, since popping
+          out a third-party app handed it the shell's origin even though the
+          windowed view had correctly refused it. The sandbox is now derived from
+          the URL's origin exactly as in Window.jsx, so the popout view can never
+          be laxer than the windowed one. */}
       <iframe
-        src={popout.url}
+        ref={frameRef}
+        src={popout.appId ? appFrameSrc(popout.url, popout.appId) : popout.url}
         title={popout.title}
         className="flex-1 w-full border-0"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        sandbox={iframeSandboxForURL(popout.url)}
         referrerPolicy="no-referrer"
       />
     </div>
