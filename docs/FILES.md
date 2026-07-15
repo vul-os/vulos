@@ -196,7 +196,7 @@ UI: sidebar → *Connect*. API: `/api/files/external/status`, `/connect`, `/disc
 
 A mount is a window into the provider; an **import** copies files *into* your Drive so they persist after you disconnect:
 
-- Sources: Google Drive and OneDrive for files (Google-native docs are exported to Office formats on the way in), plus Google Contacts and Google Calendar, which import into Vulos Mail rather than your Drive.
+- Sources: Google Drive and OneDrive for files (Google-native docs are exported to Office formats on the way in), plus Google Contacts and Google Calendar, which import via the mail connector (CalDAV/CardDAV) rather than your Drive.
 - Two modes: **Import once** (a single copy) or **Keep in sync** (re-pulls add new files; your copies are never deleted).
 - API: `POST /api/files/import`, `GET /api/files/import/jobs`, `POST /api/files/import/jobs/{id}/sync`, `DELETE /api/files/import/jobs/{id}`.
 

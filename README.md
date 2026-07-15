@@ -266,7 +266,7 @@ shell for the box, whether you're local or remote.
 
 **Vulos Workspace is one of the apps the OS hosts**, not a second shell. It is an
 opinionated productivity **hub** — a cockpit that consolidates the collaboration
-apps (Mail / Calendar / Office / Talk / Meet, plus Files / Board / Search) into a
+surfaces (the mail connector, Calendar, Office, Talk, Meet, plus Files / Board / Search) into a
 single integrated view. It ships as its own AGPL package (`vulos-workspace`),
 registered in the OS App Registry and loaded under the gateway like any other app
 at `/app/vulos-workspace/`; `http://YOUR_BOX:8080/workspace` opens it. It does

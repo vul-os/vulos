@@ -225,7 +225,7 @@ flowchart TD
     Minio["vulos-minio.service<br/>(optional — only with --storage=minio)"]
     Fabric["vulos-fabric.service<br/>(oneshot — generates keypairs if absent)"]
     OS["vulos.service<br/>(OS backend, port 8443)"]
-    Mail["vulos-mail.service<br/>(mail server, ports 25/587/8444)"]
+    Mail["vulos-mail.service<br/>(opt-in mail-connector engine, --with-mail; ports 25/587/8444)"]
     Office["vulos-office.service<br/>(office backend, port 8445)"]
     Bundle["vulos-bundle.target<br/>(all-up sentinel)"]
 
