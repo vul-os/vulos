@@ -48,13 +48,15 @@ The relay itself — the server that terminates tunnels and forwards clients to 
 
 - **The env seam.** When the direct listener comes up, the OS publishes its advertised endpoint to a co-located relay agent by setting `VULOS_RELAY_DIRECT_ENDPOINT` in the process environment. The agent hands that endpoint to the relay in its Register frame; the relay verifies it before ever telling a client about it.
 - **The ownership probe.** The box serves an unauthenticated well-known path, `/_vulos-direct/probe`, on its direct listener. The relay GETs it with a one-time nonce in the `X-Vulos-Direct-Probe` header and the box echoes the nonce back. Only a box that actually controls the advertised endpoint can answer, so a box cannot advertise an endpoint it does not serve. This is the *only* unauthenticated route on the direct listener, and it carries no user data.
-- **Host registration.** Opt-in host roles (self-hosted SFU for big calls, BYO GPU streaming host) register with a relay over HTTPS using:
+- **Host registration.** Opt-in host roles (BYO GPU streaming host, cross-instance notify fan-out) register with a relay over HTTPS using:
 
 | Variable | Purpose |
 |---|---|
-| `VULOS_RELAY_BASE_URL` | HTTPS base URL of the vulos-relay node to register with |
+| `VULOS_RELAY_BASE_URL` | HTTPS base URL of the vulos-relay node to register with. **Config-driven, never hardcoded** — set it to your OWN `vulos-relay` instance to self-host the relay; unset falls back to the managed relay (`https://relay.vulos.org`). |
 | `VULOS_RELAY_NAME` | The name this box registers under |
-| `VULOS_RELAY_TOKEN` | Bearer token the relay authorizes the registration with |
+| `VULOS_RELAY_TOKEN` | Bearer token the relay authorizes the box's registration/fan-out with |
+
+The relay endpoint is fully config-driven: a self-hoster running their own `vulos-relay` points the box at it with `VULOS_RELAY_BASE_URL` (+ `VULOS_RELAY_TOKEN` for auth), and the managed relay is only the default when neither is set. No relay hostname is baked into the box wiring.
 
 Because the relay path is outbound-only from the box, it works behind NAT, CGNAT, and hotel Wi-Fi. It is the mode that "always works"; everything else is an optimization.
 

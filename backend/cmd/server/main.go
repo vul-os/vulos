@@ -30,7 +30,6 @@ import (
 	"vulos/backend/internal/gpuhost"
 	"vulos/backend/internal/lan"
 	"vulos/backend/internal/llmuxclient"
-	"vulos/backend/internal/meethost"
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
@@ -3933,9 +3932,6 @@ func main() {
 	// gpuHostSvc holds the opt-in STREAM-BYO-01 GPU streaming-host service
 	// (FIX-GPUHOST-WIRE-01). Declared here so shutdown can stop it.
 	var gpuHostSvc *gpuhost.Service
-	// meetHostSvc holds the opt-in SFU-host service (Vulos Meet SFU Phase 2,
-	// SFU-HOST-WIRE-01). Declared here so shutdown can stop it.
-	var meetHostSvc *meethost.Service
 	// directSvc holds the opt-in DIRECT-IP public TLS listener (high-performance
 	// mode). Declared here so shutdown can stop it.
 	var directSvc *directlisten.Service
@@ -3955,9 +3951,6 @@ func main() {
 		}
 		if gpuHostSvc != nil {
 			gpuHostSvc.Stop(context.Background())
-		}
-		if meetHostSvc != nil {
-			meetHostSvc.Stop(context.Background())
 		}
 		if directSvc != nil {
 			directSvc.Stop(context.Background())
@@ -4270,101 +4263,13 @@ func main() {
 	}
 	// GPUHOST_WIRE END
 
-	// SFU_HOST_WIRE BEGIN — SFU-HOST-WIRE-01 (Vulos Meet SFU Phase 2, BYO/self-host)
-	//
-	// On a box opted-in via VULOS_SFU_HOST, register the box's SFU as an available
-	// SFU host with the relay's /api/meet/host/* registry so BIG calls (past the
-	// mesh cap) can escalate to media on the operator's OWN infra. meethost is a
-	// near-copy of gpuhost: it advertises {endpoint, caps} + heartbeats, and the
-	// relay verifies the endpoint (reachable + ownership-proven) with the SAME
-	// SSRF-guarded directprobe verifier before surfacing it.
-	//
-	// The advertised Endpoint is the box's public SFU serverUrl (VULOS_SFU_ENDPOINT
-	// — the same public TLS listener that answers the relay's direct-probe path).
-	// When VULOS_SFU_WORKER_BINARY is set, meethost supervises that external SFU
-	// worker (a co-located vulos-meet LiveKit server); otherwise the SFU is the
-	// in-process Pion SFU (registered above) and meethost only registers + beats.
-	//
-	// E2EE: none — a self-host/BYO SFU is the operator's own media node (SFU.md §4,
-	// LOCKED). No-op when VULOS_SFU_HOST is unset.
-	if meethost.Enabled() {
-		// relayBase defaults to the canonical VULOS_RELAY_BASE_URL; MEET_HOST_RELAY_URL
-		// is an optional override for pointing SFU-host registration at a different
-		// relay. Sharing meetHostRelayBaseURL() with resolveSFUServerURL keeps register
-		// and resolve on the SAME relay so neither can silently drift.
-		relayBase := meetHostRelayBaseURL()
-		endpoint := os.Getenv("VULOS_SFU_ENDPOINT")
-		name := os.Getenv("VULOS_RELAY_NAME")
-		if endpoint == "" || relayBase == "" || name == "" {
-			log.Printf("[meethost] disabled: set VULOS_RELAY_BASE_URL (or MEET_HOST_RELAY_URL), VULOS_RELAY_NAME and VULOS_SFU_ENDPOINT to advertise a self-host SFU")
-		} else {
-			meetCfg := meethost.Config{
-				Enabled:      true,
-				Identity:     meethost.FabricIdentity{HostID: peeringSvc.VulaID(), PublicKeyB64: base64.StdEncoding.EncodeToString(peeringSvc.PublicKey()), Domain: cfg.Domain},
-				RelayBaseURL: relayBase,
-				Token:        os.Getenv("VULOS_RELAY_TOKEN"),
-				Name:         name,
-				Endpoint:     endpoint,
-				WorkerBinary: os.Getenv("VULOS_SFU_WORKER_BINARY"),
-				Capabilities: meethost.HostCapabilities{Region: os.Getenv("VULOS_SFU_REGION")},
-			}
-			if svc, err := meethost.New(meetCfg); err != nil {
-				log.Printf("[meethost] disabled: %v", err)
-			} else if err := svc.Start(ctx); err != nil {
-				log.Printf("[meethost] start failed: %v", err)
-			} else {
-				meetHostSvc = svc
-				log.Printf("[meethost] SFU host registered (host_id=%s endpoint=%s state=%s)",
-					meetCfg.Identity.HostID, endpoint, svc.State())
-				mux.Handle("/api/meethost/status", svc.StatusHandler())
-			}
-		}
-	}
-	// SFU_HOST_WIRE END
-
-	// MEET_TRANSCRIPT_WIRE BEGIN — MEET-TRANSCRIPT-01
-	//
-	// Per-room Whisper transcription endpoints (POST /api/meet/transcribe/start,
-	// /audio, /stop and GET /api/meet/transcribe/stream/{room_id}). The same
-	// WhisperProvider wraps a hosted Whisper API (VULOS_WHISPER_URL pointed at
-	// api.openai.com or similar) AND a self-hosted whisper.cpp HTTP server
-	// (VULOS_WHISPER_URL pointed at localhost). Both speak the OpenAI-compatible
-	// /v1/audio/transcriptions multipart shape.
-	//
-	// Privacy gate:
-	//   - cloud / Pro tier: VULOS_MEET_TRANSCRIBE_ENABLE flipped on by tier hint
-	//     (see meetTranscribeEnvFromTier).
-	//   - self-host / Free: default-off unless the operator sets
-	//     VULOS_MEET_TRANSCRIBE_ENABLE=1 explicitly.
-	//
-	// Routes are still registered when the provider/env is absent — they reply
-	// 503 so the office UI can render the toggle as disabled cleanly rather
-	// than getting 404s.
-	meetTranscribeEnvFromTier(os.Getenv("VULOS_TIER"))
-	if whisper, werr := llmuxclient.NewWhisperProviderFromEnv(); werr == nil {
-		registerMeetTranscriptRoutes(mux, whisper, authStore)
-		log.Printf("[meet/transcribe] registered POST /api/meet/transcribe/{start,audio,stop}, GET /api/meet/transcribe/stream/{room_id} (provider=%s)", whisper.Name())
-	} else {
-		// Register with a nil provider so the endpoints exist and return 503;
-		// keeps the office UI well-defined when transcription is off.
-		registerMeetTranscriptRoutes(mux, nil, authStore)
-		log.Printf("[meet/transcribe] provider unavailable: %v — routes return 503 (set VULOS_WHISPER_URL to enable)", werr)
-	}
-	// MEET_TRANSCRIPT_WIRE END
-
-	// MEET_SELFHOST_TOKEN_WIRE BEGIN — self-host Meet join-token minter (P1).
-	//
-	// On a sovereign box there is no cloud CP to mint the LiveKit join token the
-	// Meet browser needs, so the OS backend mints a VULOS-MEET/1 token locally
-	// (signed with LIVEKIT_API_KEY/LIVEKIT_API_SECRET, the same pair the co-located
-	// vulos-meet SFU validates with). Session-gated; tenant is server-derived.
-	// When the secrets are unset the route answers 503 (Meet not configured).
-	if registerMeetTokenRoutes(mux) {
-		log.Printf("[meettoken] registered POST /api/meet/token (self-host Meet join-token minter)")
-	} else {
-		log.Printf("[meettoken] LIVEKIT_API_KEY/LIVEKIT_API_SECRET unset — POST /api/meet/token returns 503 (Meet not configured)")
-	}
-	// MEET_SELFHOST_TOKEN_WIRE END
+	// NOTE: First-party Vulos Meet is retired — comms (video/chat) are 3rd-party
+	// app-store apps (Matrix/Element, Jitsi) reached as external services. The
+	// former Meet-SFU host registry (internal/meethost + VULOS_SFU_HOST), the
+	// self-host LiveKit join-token minter (/api/meet/token) and the per-room
+	// Whisper transcription endpoints (/api/meet/transcribe/*) were removed with
+	// that pivot. The sovereign P2P Messages builtin keeps its own in-process
+	// Pion SFU (registered above at /api/sfu/*) for peer group calls.
 
 	if tlsCert != "" {
 		log.Printf("vulos server listening on %s with TLS (env=%s, cert=%s)", addr, activeEnv, tlsCert)

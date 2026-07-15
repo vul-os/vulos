@@ -132,6 +132,67 @@ func TestPIMProxy_RejectsNonPIMPath(t *testing.T) {
 	}
 }
 
+func TestPIMProxy_AllowlistRejectsPrefixConfusion(t *testing.T) {
+	f := newFakeLilmail(t)
+	mux := pimTestMux(f.srv.URL, nil)
+
+	// Paths that merely START with the allowed word but are NOT the calendar/
+	// or contacts/ subtree must 404 — an attacker must not reach e.g.
+	// /v1/calendar-secrets by prefixing an allowed name.
+	for _, p := range []string{
+		"/api/pim/calendarfoo", "/api/pim/calendar-secrets",
+		"/api/pim/contactsX", "/api/pim/contacts-export/all",
+		"/api/pim/CALENDAR/events", // case-sensitive: not the allowed subtree
+	} {
+		req := httptest.NewRequest("GET", p, nil)
+		req.Header.Set("X-User-ID", "u1")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s status = %d, want 404 (allowlist prefix confusion)", p, rec.Code)
+		}
+	}
+	if f.lastPath != "" {
+		t.Errorf("a non-PIM prefix-confusion request reached lilmail (%q)", f.lastPath)
+	}
+}
+
+func TestPIMProxy_ForwardsWriteMethods(t *testing.T) {
+	// PUT/PATCH/DELETE on an allowed subtree must proxy through unchanged (full
+	// CRUD, not read-only), with the rewritten /v1 path.
+	for _, m := range []string{"PUT", "PATCH", "DELETE"} {
+		f := newFakeLilmail(t)
+		mux := pimTestMux(f.srv.URL, nil)
+		req := httptest.NewRequest(m, "/api/pim/contacts/u1", nil)
+		req.Header.Set("X-User-ID", "u1")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s status = %d, want 200", m, rec.Code)
+		}
+		if f.lastMethod != m || f.lastPath != "/v1/contacts/u1" {
+			t.Errorf("%s proxied as %s %q, want %s /v1/contacts/u1", m, f.lastMethod, f.lastPath, m)
+		}
+	}
+}
+
+func TestPIMProxy_UnreachableMailReturns502(t *testing.T) {
+	// A lilmail that parses as a valid base but is DOWN must degrade to 502 (the
+	// widget's honest "unavailable" state), never a hang or a 200.
+	f := newFakeLilmail(t)
+	base := f.srv.URL
+	f.srv.Close() // kill lilmail so the proxy's dial is refused
+	mux := pimTestMux(base, nil)
+
+	req := httptest.NewRequest("GET", "/api/pim/calendar/events", nil)
+	req.Header.Set("X-User-ID", "u1")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 for an unreachable mail service", rec.Code)
+	}
+}
+
 func TestPIMProxy_RequiresAuth(t *testing.T) {
 	f := newFakeLilmail(t)
 	mux := pimTestMux(f.srv.URL, nil)

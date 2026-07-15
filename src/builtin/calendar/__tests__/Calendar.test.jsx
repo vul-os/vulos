@@ -66,10 +66,60 @@ it('opens the editor and creates an event via the /v1 seam', async () => {
   expect(api.createEvent.mock.calls[0][0]).toMatchObject({ title: 'Dentist' })
 })
 
+it('edits an existing event via the /v1 update seam', async () => {
+  const start = new Date(Date.now() + 60 * 60 * 1000)
+  api.listEvents.mockResolvedValue([
+    { id: 'e1', title: 'Launch review', start: start.toISOString(), _start: start, _end: null, location: '', notes: '', allDay: false },
+  ])
+  render(<Calendar />)
+  const evt = await screen.findAllByText('Launch review')
+  fireEvent.click(evt[0])
+  // The editor opens on the existing event (Edit mode, Delete affordance shown).
+  const title = await screen.findByDisplayValue('Launch review')
+  fireEvent.change(title, { target: { value: 'Launch review v2' } })
+  fireEvent.click(screen.getByText('Save'))
+  await waitFor(() => expect(api.updateEvent).toHaveBeenCalled())
+  expect(api.updateEvent.mock.calls[0][0]).toBe('e1')
+  expect(api.updateEvent.mock.calls[0][1]).toMatchObject({ title: 'Launch review v2' })
+})
+
+it('deletes an existing event via the /v1 seam', async () => {
+  const start = new Date(Date.now() + 60 * 60 * 1000)
+  api.listEvents.mockResolvedValue([
+    { id: 'e1', title: 'Dentist', start: start.toISOString(), _start: start, _end: null, location: '', notes: '', allDay: false },
+  ])
+  render(<Calendar />)
+  const evt = await screen.findAllByText('Dentist')
+  fireEvent.click(evt[0])
+  fireEvent.click(await screen.findByText('Delete'))
+  await waitFor(() => expect(api.deleteEvent).toHaveBeenCalledWith('e1'))
+})
+
 it('degrades to an honest Connect Mail state when /v1 is down', async () => {
   api.listEvents.mockRejectedValue(new Error('mail service not configured'))
   render(<Calendar />)
   await waitFor(() => expect(screen.getByText('Calendar unavailable.')).toBeInTheDocument())
   fireEvent.click(screen.getByText('Connect Mail →'))
   expect(launchApp).toHaveBeenCalled()
+})
+
+it('honours the ?action=new deep-link by pre-opening the new-event editor', async () => {
+  // ⌘K "New event" launches the builtin with initialQuery="action=new"; the
+  // Calendar must open its editor on mount (not just show the month grid).
+  render(<Calendar initialQuery="action=new" />)
+  const editor = await screen.findByPlaceholderText('Event title')
+  expect(editor).toBeInTheDocument()
+  expect(screen.getByText('New event')).toBeInTheDocument()
+})
+
+it('does NOT open the editor for a plain launch (no deep-link query)', async () => {
+  render(<Calendar />)
+  await waitFor(() => expect(api.listEvents).toHaveBeenCalled())
+  expect(screen.queryByPlaceholderText('Event title')).not.toBeInTheDocument()
+})
+
+it('ignores an unknown ?action value (opens the plain month view)', async () => {
+  render(<Calendar initialQuery="action=bogus" />)
+  await waitFor(() => expect(api.listEvents).toHaveBeenCalled())
+  expect(screen.queryByPlaceholderText('Event title')).not.toBeInTheDocument()
 })

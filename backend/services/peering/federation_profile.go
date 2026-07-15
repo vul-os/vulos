@@ -11,7 +11,7 @@
 //
 //	VULOS_RELAY_BASE_URL    the box's configured vulos-relay instance — used
 //	                        both for reachability resolve (resolve.go) and, by
-//	                        other subsystems (gpuhost/meethost), for capability
+//	                        other subsystems (gpuhost), for capability
 //	                        registration. Self-hostable (see vulos-relay).
 //	VULOS_VERIFY_URL        the directory/verify service base URL (discovery.go
 //	                        + email verification). Defaults to the central

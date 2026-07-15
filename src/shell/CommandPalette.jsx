@@ -36,6 +36,8 @@ import { classifyAsk } from '../core/askRouting'
 import { runAgentTurn } from '../core/agentStream'
 import { getCommands, subscribeCommands } from '../core/commandRegistry'
 import { setPendingSettingsSection } from '../core/settingsNav'
+import { setPendingLaunchQuery } from '../core/launchParams'
+import { isBuiltinComponent } from './builtinApps'
 // Shared confirmation-gate card — keeps the inline Ask proposal identical to the
 // Assistant panel + Home (tokenised colours, structured "what will happen").
 import { ProposalCard } from '../builtin/assistant/ProposalCard'
@@ -148,6 +150,11 @@ export default function CommandPalette() {
       if (opts.hash) url += '#' + opts.hash
       openWindow({ appId: app.id, title: app.name, url, icon: app.icon })
     } else {
+      // Deep-link a BUILTIN app: it has no URL, so stash the query for its
+      // factory to consume on mount (e.g. Calendar honours ?action=new by
+      // pre-opening the new-event editor). Must be set BEFORE launchApp, which
+      // instantiates the builtin component synchronously.
+      if (opts.query && isBuiltinComponent(app.id)) setPendingLaunchQuery(app.id, opts.query)
       launchApp(app, { openWindow })
     }
     close()

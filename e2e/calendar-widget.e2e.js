@@ -2,7 +2,8 @@
 // features shipped in this change:
 //
 //   1. the ambient right-hand-side Calendar widget renders on the desktop,
-//      shows "what's next" from GET /api/assistant/home, and expands to the week
+//      shows "what's next" from GET /api/pim/calendar/events (the PIM proxy —
+//      the widget is decoupled from /api/assistant/home), and expands to the week
 //   2. the bucket-backed Files app (Drive, over /api/files/*) opens as a window
 //
 // Every test fails on ANY uncaught page error — this shell has a blank-screen
@@ -13,23 +14,16 @@
 import { test, expect } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
 
-// A home aggregate carrying two future calendar events so the widget has a
-// concrete "next up" plus a second event to reveal on expand.
-function homeWithAgenda() {
+// A PIM calendar payload carrying two future events (lilmail /v1 shape) so the
+// widget has a concrete "next up" plus a second event to reveal on expand.
+function agendaEvents() {
   const soon = new Date(Date.now() + 60 * 60 * 1000).toISOString()      // +1h
   const later = new Date(Date.now() + 25 * 60 * 60 * 1000).toISOString() // +25h
   return json({
-    greeting: 'Good evening, Ada',
-    brief: '',
-    focus: [],
-    agenda: [
-      { id: 'e1', title: 'Launch review', start: soon, location: 'War room' },
-      { id: 'e2', title: 'Team sync', start: later },
+    events: [
+      { uid: 'e1', title: 'Launch review', start: soon, location: 'War room' },
+      { uid: 'e2', title: 'Team sync', start: later },
     ],
-    agenda_fresh: true,
-    invites: [],
-    activity: [],
-    sovereignty: { tier: 'local', label: 'On your device' },
   })
 }
 
@@ -59,7 +53,7 @@ async function openAWindow(page, appName = 'Calculator') {
 }
 
 test('the RHS Calendar widget renders "what\'s next" and expands to the week', async ({ page }) => {
-  const errors = await boot(page, { 'GET /api/assistant/home': homeWithAgenda() })
+  const errors = await boot(page, { 'GET /api/pim/calendar/events': agendaEvents() })
   await openAWindow(page)
 
   // The widget is mounted on the desktop RHS and shows the soonest event.
@@ -80,10 +74,10 @@ test('the RHS Calendar widget renders "what\'s next" and expands to the week', a
 })
 
 test('the Calendar widget degrades honestly when the calendar backend is down', async ({ page }) => {
-  // 503 on the home aggregate → widget shows an honest unavailable state,
+  // 503 on the PIM calendar read → widget shows an honest unavailable state,
   // never a crash and never invented events.
   const errors = await boot(page, {
-    'GET /api/assistant/home': json({ error: 'unavailable' }, 503),
+    'GET /api/pim/calendar/events': json({ error: 'unavailable' }, 503),
   })
   await openAWindow(page)
 

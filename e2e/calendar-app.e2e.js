@@ -76,6 +76,30 @@ test('the Calendar app creates an event through the /v1 write path', async ({ pa
   expect(errors, `uncaught page errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+test('⌘K "New event" opens Calendar with the new-event editor pre-opened', async ({ page }) => {
+  // The command-registry action deep-links the builtin with ?action=new; the
+  // Calendar must honour it by pre-opening the editor (not just the month grid).
+  const errors = await boot(page, { 'GET /api/pim/calendar/events': json({ events: [] }) })
+
+  const input = page.getByPlaceholder(/Search apps/)
+  await expect(async () => {
+    await page.keyboard.press('Meta+k')
+    await expect(input).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 10_000 })
+  await input.fill('New event')
+  // The "New event" Actions row (title text, exact) — click it to run the action.
+  const action = page.getByText('New event', { exact: true }).first()
+  await expect(action).toBeVisible()
+  await action.click()
+
+  // Calendar launches AND its editor is already open on the new-event form.
+  const editor = page.locator('[data-event-editor]')
+  await expect(editor).toBeVisible()
+  await expect(editor.getByPlaceholder('Event title')).toBeVisible()
+
+  expect(errors, `uncaught page errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 test('the Calendar app degrades honestly when /v1 is unavailable', async ({ page }) => {
   const errors = await boot(page, {
     'GET /api/pim/calendar/events': json({ error: 'mail service not configured' }, 503),

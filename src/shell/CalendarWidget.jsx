@@ -5,40 +5,35 @@
  * agenda. Clicking the header (or "Open Calendar") launches the full standalone
  * Calendar app (the `vulos-calendar` builtin over lilmail's /v1).
  *
- * DATA: it reads the SAME on-box aggregate the Home surface uses —
- * GET /api/assistant/home — and consumes only its calendar fields:
- *   agenda        []{ title, start, end, location, all_day }  (today → +7d)
- *   agenda_fresh  bool  — the read succeeded (may still be empty)
- *   agenda_error  string — why the read failed (mail/cal backend unreachable)
- * The agenda is a pure on-box /v1 calendar read (no new egress) scoped to the
- * caller's own session — it can never surface another account's events.
+ * DATA: it reads the SAME PIM seam the standalone Calendar app uses —
+ * GET /api/pim/calendar/events (via the box's credential-brokering proxy to
+ * lilmail's /v1 calendar) — through the shared calendarApi.listEvents(). This
+ * fully decouples the widget from the assistant Home aggregate
+ * (/api/assistant/home): the agenda no longer depends on the assistant service
+ * being up, only on the mail/calendar backend. The read is scoped to the
+ * caller's own session (the proxy 401s otherwise), so it can never surface
+ * another account's events.
  *
  * DEGRADES HONESTLY: when the mail/calendar backend is unconfigured or
  * unreachable, the widget shows a "Connect Mail" / "Calendar unavailable"
  * state — never a crash, never a skeleton forever, and never invented events.
- * Every date value is parsed defensively so a malformed event can't white-screen
- * the shell.
+ * Every date value is parsed defensively (in calendarApi) so a malformed event
+ * can't white-screen the shell.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { getAppById } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
+import { listEvents } from '../builtin/calendar/calendarApi'
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 // Module-scoped cache so the widget paints its last-known agenda instantly on
 // remount (it lives on the desktop, which tears down/rebuilds) and refreshes in
 // the background — no skeleton flash on every return to the desktop.
-let cachedHome = null
+let cachedEvents = null
 
-const reduceMotion = () =>
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
-// ── defensive date helpers (never throw on a bad ISO string) ─────────────────
-function parseDate(iso) {
-  if (!iso) return null
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? null : d
-}
+// ── display helpers ──────────────────────────────────────────────────────────
 function fmtTime(d) {
   return d ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''
 }
@@ -53,16 +48,18 @@ function relDay(d, now) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 // Event's display time: all-day → "All day", else HH:MM. Guards a null date.
-function eventWhen(ev, d) {
-  if (ev.all_day) return 'All day'
-  return fmtTime(d) || '—'
+function eventWhen(ev) {
+  if (ev.allDay) return 'All day'
+  return fmtTime(ev._start) || '—'
 }
 
 export default function CalendarWidget() {
   const { openWindow } = useShell()
-  const [data, setData] = useState(cachedHome)
-  const [loading, setLoading] = useState(!cachedHome)
-  const [offline, setOffline] = useState(false)
+  const [events, setEvents] = useState(cachedEvents || [])
+  const [loading, setLoading] = useState(!cachedEvents)
+  // fresh = the last read succeeded (the agenda is live, even if empty).
+  const [fresh, setFresh] = useState(!!cachedEvents)
+  const [error, setError] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [now, setNow] = useState(() => new Date())
 
@@ -71,10 +68,12 @@ export default function CalendarWidget() {
   // keeps the mount effect free of a synchronous setState (no cascading render)
   // and means the 5-min background refresh doesn't flash a skeleton.
   const load = useCallback(() => {
-    fetch('/api/assistant/home', { credentials: 'include' })
-      .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() })
-      .then(d => { cachedHome = d; setData(d); setOffline(false) })
-      .catch(() => setOffline(true))
+    // Read today → +8 days so "the week ahead" is covered with a day of slack.
+    const from = new Date(); from.setHours(0, 0, 0, 0)
+    const to = new Date(from.getTime() + 8 * DAY_MS)
+    listEvents(from, to)
+      .then((evs) => { cachedEvents = evs; setEvents(evs); setFresh(true); setError(false) })
+      .catch(() => { setFresh(false); setError(true) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -92,28 +91,20 @@ export default function CalendarWidget() {
     if (app) launchApp(app, { openWindow })
   }, [openWindow])
 
-  // Normalise the raw agenda into parsed, sorted, still-relevant events. An
-  // event with an unparseable start is dropped rather than rendered blank.
-  const events = useMemo(() => {
-    const raw = Array.isArray(data?.agenda) ? data.agenda : []
-    return raw
-      .map(ev => ({ ...ev, _d: parseDate(ev.start) }))
-      .filter(ev => ev._d)
-      .sort((a, b) => a._d - b._d)
-  }, [data])
-
-  // "What's next": the soonest event that hasn't ended (or all-day today+).
+  // "What's next": events that haven't ended yet (all-day today+ counts).
+  // calendarApi already parsed + sorted them by start ascending.
   const upcoming = useMemo(() => {
-    return events.filter(ev => {
-      if (ev.all_day) return ev._d >= new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const end = parseDate(ev.end) || ev._d
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    return events.filter((ev) => {
+      if (!ev._start) return false
+      if (ev.allDay) return ev._start >= midnight
+      const end = ev._end || ev._start
       return end >= now
     })
   }, [events, now])
 
   const next = upcoming[0] || null
-  const agendaFresh = data?.agenda_fresh
-  const hasError = !!data?.agenda_error || offline
+  const hasError = error
   // "Not configured" — the read failed AND there is nothing cached to show.
   const notConfigured = hasError && events.length === 0
 
@@ -142,15 +133,15 @@ export default function CalendarWidget() {
           </div>
           <span
             className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider text-neutral-600 shrink-0"
-            title={agendaFresh ? 'Calendar is live' : hasError ? 'Calendar unavailable' : ''}
+            title={fresh ? 'Calendar is live' : hasError ? 'Calendar unavailable' : ''}
           >
-            {data && !notConfigured && (
+            {!loading && !notConfigured && (
               <>
                 <span
                   className="inline-block w-1.5 h-1.5 rounded-full"
-                  style={{ background: agendaFresh ? 'var(--status-success)' : 'var(--status-danger)' }}
+                  style={{ background: fresh ? 'var(--status-success)' : 'var(--status-danger)' }}
                 />
-                {agendaFresh ? 'live' : 'stale'}
+                {fresh ? 'live' : 'stale'}
               </>
             )}
           </span>
@@ -158,7 +149,7 @@ export default function CalendarWidget() {
 
         {/* Next-up strip — the always-visible "what's next" answer */}
         <div className="px-3.5 pb-2.5">
-          {loading && !data ? (
+          {loading && events.length === 0 ? (
             <div className="h-8 rounded-lg bg-neutral-800/50 animate-pulse" />
           ) : notConfigured ? (
             <div className="text-[12px] text-neutral-500 leading-snug">
@@ -178,8 +169,8 @@ export default function CalendarWidget() {
               className="w-full flex items-center gap-2.5 rounded-lg text-left hover:bg-neutral-800/40 -mx-1 px-1 py-1 transition-colors focus-primary"
             >
               <div className="w-14 shrink-0 text-right">
-                <div className="text-[12px] font-mono text-neutral-200">{eventWhen(next, next._d)}</div>
-                <div className="text-[9px] font-mono text-neutral-600">{relDay(next._d, now)}</div>
+                <div className="text-[12px] font-mono text-neutral-200">{eventWhen(next)}</div>
+                <div className="text-[9px] font-mono text-neutral-600">{relDay(next._start, now)}</div>
               </div>
               <div className="w-px self-stretch bg-neutral-800" />
               <div className="min-w-0">
@@ -194,17 +185,14 @@ export default function CalendarWidget() {
 
         {/* Expanded agenda — the week ahead */}
         {expanded && (
-          <div
-            className="border-t border-neutral-800/60 max-h-72 overflow-y-auto"
-            style={reduceMotion() ? undefined : { animation: 'none' }}
-          >
-            {upcoming.length <= 1 && !notConfigured ? (
-              <div className="px-3.5 py-3 text-[12px] text-neutral-500">
-                {upcoming.length === 0 ? 'Nothing on your calendar for the week ahead.' : 'No further events this week.'}
-              </div>
-            ) : notConfigured ? (
+          <div className="border-t border-neutral-800/60 max-h-72 overflow-y-auto">
+            {notConfigured ? (
               <div className="px-3.5 py-3 text-[12px] text-neutral-500">
                 Connect Mail to see your agenda here.
+              </div>
+            ) : upcoming.length <= 1 ? (
+              <div className="px-3.5 py-3 text-[12px] text-neutral-500">
+                {upcoming.length === 0 ? 'Nothing on your calendar for the week ahead.' : 'No further events this week.'}
               </div>
             ) : (
               <ul className="py-1">
@@ -216,8 +204,8 @@ export default function CalendarWidget() {
                       className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-left hover:bg-neutral-800/40 transition-colors focus-primary"
                     >
                       <div className="w-14 shrink-0 text-right">
-                        <div className="text-[11.5px] font-mono text-neutral-300">{eventWhen(ev, ev._d)}</div>
-                        <div className="text-[9px] font-mono text-neutral-600">{relDay(ev._d, now)}</div>
+                        <div className="text-[11.5px] font-mono text-neutral-300">{eventWhen(ev)}</div>
+                        <div className="text-[9px] font-mono text-neutral-600">{relDay(ev._start, now)}</div>
                       </div>
                       <div className="w-px self-stretch bg-neutral-800" />
                       <div className="min-w-0">

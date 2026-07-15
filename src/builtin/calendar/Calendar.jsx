@@ -63,7 +63,7 @@ function blankEvent(day) {
   return { id: '', title: '', allDay: false, start, end, location: '', notes: '' }
 }
 
-export default function Calendar() {
+export default function Calendar({ initialQuery = '' } = {}) {
   const { openWindow } = useShell()
   const [now, setNow] = useState(() => new Date())
   const [month, setMonth] = useState(() => startOfDay(new Date()))
@@ -95,6 +95,16 @@ export default function Calendar() {
     const t = setInterval(() => setNow(new Date()), 60 * 1000)
     return () => clearInterval(t)
   }, [])
+
+  // Deep-link: ⌘K "New event" launches Calendar with ?action=new — honour it by
+  // pre-opening the new-event editor (seeded at the next hour). Runs once on
+  // mount; the query is already consumed by the builtin factory.
+  useEffect(() => {
+    if (!initialQuery) return
+    let action = ''
+    try { action = new URLSearchParams(initialQuery).get('action') || '' } catch { action = '' }
+    if (action === 'new') setEditing(blankEvent(null))
+  }, [initialQuery])
 
   // events grouped by their day key (local yyyy-mm-dd) for the month grid.
   const byDay = useMemo(() => {

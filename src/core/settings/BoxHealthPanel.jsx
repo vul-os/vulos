@@ -79,9 +79,6 @@ export default function BoxHealthPanel() {
   const [health, setHealth] = useState(null)
   const [sys, setSys] = useState(null)
   const [healthErr, setHealthErr] = useState(false)
-  // SFU host (Meet Phase 2): opt-in on the box. `null` until probed; `false`
-  // when the endpoint isn't wired (feature off) — we then hide the section.
-  const [sfu, setSfu] = useState(null)
 
   const loadHealth = useCallback(() => {
     // /api/health returns 200 (ok) or 503 (degraded) — both carry a JSON body.
@@ -90,22 +87,12 @@ export default function BoxHealthPanel() {
       .catch(() => setHealthErr(true))
   }, [])
 
-  const loadSfu = useCallback(() => {
-    // /api/meethost/status is mounted only when VULOS_SFU_HOST is enabled; a
-    // 404/network error means the feature is off, so hide the section entirely.
-    fetch('/api/meethost/status', { credentials: 'include' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(s => setSfu(s || false))
-      .catch(() => setSfu(false))
-  }, [])
-
   useEffect(() => {
     loadHealth()
-    loadSfu()
     fetch('/api/system/info', { credentials: 'include' }).then(r => r.json()).then(setSys).catch(() => {})
-    const id = setInterval(() => { loadHealth(); loadSfu() }, 15000)
+    const id = setInterval(() => { loadHealth() }, 15000)
     return () => clearInterval(id)
-  }, [loadHealth, loadSfu])
+  }, [loadHealth])
 
   const degraded = health?.status && health.status !== 'ok'
   const storagePct = sys?.storage_total_mb ? (sys.storage_used_mb / sys.storage_total_mb) * 100 : 0
@@ -173,37 +160,6 @@ export default function BoxHealthPanel() {
                 <span className="text-xs text-neutral-500 text-right truncate max-w-[55%]" title={value}>{value}</span>
               </div>
             ))}
-          </div>
-        </>
-      )}
-
-      {/* Self-host Meet SFU (Phase 2) — shown only when the operator enabled it. */}
-      {sfu && (
-        <>
-          <h3 className="text-sm font-medium text-neutral-300 mb-2 mt-5">Meet SFU host</h3>
-          <p className="text-[11px] text-neutral-600 mb-2 leading-relaxed">
-            Big calls that outgrow the peer mesh escalate to media on your own box — no third-party
-            SFU. Media rides your infra; recording and transcription stay local.
-          </p>
-          <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
-              <span className="text-xs text-neutral-500">Status</span>
-              <span className="text-xs flex items-center gap-2">
-                <span className={`inline-block w-1.5 h-1.5 rounded-full ${sfu.ready ? 'bg-green-400' : 'bg-amber-400'}`} aria-hidden="true" />
-                <span className={sfu.ready ? 'text-green-400' : 'text-amber-400'}>
-                  {sfu.ready ? 'Registered & ready' : (sfu.state || 'starting')}
-                </span>
-              </span>
-            </div>
-            <InfoRow label="Media" value={sfu.in_process ? 'In-process (Pion)' : 'External worker'} />
-            <InfoRow label="Max participants" value={sfu.max_participants || '—'} />
-            <InfoRow label="End-to-end encryption" value={sfu.has_e2ee ? 'Yes' : 'No (operator-owned media)'} />
-            {sfu.last_error && (
-              <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40 gap-3">
-                <span className="text-xs text-red-400">Last error</span>
-                <span className="text-xs text-neutral-500 text-right truncate max-w-[55%]" title={sfu.last_error}>{sfu.last_error}</span>
-              </div>
-            )}
           </div>
         </>
       )}

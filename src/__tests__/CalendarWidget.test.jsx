@@ -1,14 +1,20 @@
 // CalendarWidget.test.jsx — the ambient RHS Calendar widget.
 //
-// Proves the four behaviours the shell depends on:
-//   1. renders the soonest upcoming event ("what's next") from /api/assistant/home
+// Proves the behaviours the shell depends on, now that the widget reads the PIM
+// seam (GET /api/pim/calendar/events via calendarApi.listEvents) instead of the
+// assistant Home aggregate — it is fully decoupled from /api/assistant/home:
+//   1. renders the soonest upcoming event ("what's next")
 //   2. expands to show the rest of the week's agenda on click
 //   3. degrades honestly (no crash, no invented events) when the calendar
 //      backend is unreachable — it shows "Calendar unavailable" / "Connect Mail"
 //   4. clicking an event launches the full Calendar app (vulos-calendar)
+//   5. an honest empty state on a successful-but-empty read, and a malformed
+//      event (unparseable date) is dropped, never rendered blank
 //
-// The network boundary (/api/assistant/home) is stubbed; the shell's openWindow
-// and the shared launchApp lane are mocked so the assertion is about the widget.
+// The network boundary (/api/pim/calendar/events) is stubbed at fetch; the
+// shell's openWindow and the shared launchApp lane are mocked so the assertion
+// is about the widget. The stub mirrors the box's proxy: a text body the
+// calendarApi decodes (never res.json()), so the widget-vs-API contract is real.
 
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -34,20 +40,26 @@ async function loadWidget() {
 
 // Two events in the future so the widget shows one as "next" and the other
 // under the expanded agenda. Kept relative to now so the future-filter passes.
-function homePayload() {
+// Shape is lilmail's /v1 event (uid/title/start), which calendarApi normalizes.
+function eventsPayload() {
   const soon = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   const later = new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString()
   return {
-    agenda: [
-      { id: 'e1', title: 'Standup', start: soon, location: 'HQ' },
-      { id: 'e2', title: 'Design review', start: later },
+    events: [
+      { uid: 'e1', title: 'Standup', start: soon, location: 'HQ' },
+      { uid: 'e2', title: 'Design review', start: later },
     ],
-    agenda_fresh: true,
   }
 }
 
-function stubFetch(impl) {
-  vi.stubGlobal('fetch', vi.fn(impl))
+// stubFetch mirrors the box proxy: a Response whose body is read via res.text()
+// (calendarApi never calls res.json()). `status` <300 ⇒ ok.
+function stubFetch(status, body) {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: status < 300,
+    status,
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body ?? '')),
+  }))
 }
 
 beforeEach(() => {
@@ -62,7 +74,7 @@ afterEach(() => {
 
 describe('CalendarWidget', () => {
   it('renders the next upcoming event and expands to the week agenda', async () => {
-    stubFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve(homePayload()) }))
+    stubFetch(200, eventsPayload())
     const CalendarWidget = await loadWidget()
     render(<CalendarWidget />)
 
@@ -78,7 +90,7 @@ describe('CalendarWidget', () => {
   })
 
   it('launches the Calendar app when the next event is clicked', async () => {
-    stubFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve(homePayload()) }))
+    stubFetch(200, eventsPayload())
     const CalendarWidget = await loadWidget()
     render(<CalendarWidget />)
 
@@ -90,7 +102,7 @@ describe('CalendarWidget', () => {
 
   it('degrades honestly when the calendar backend is unreachable', async () => {
     // 503 → widget shows an unavailable / connect-mail state, never a crash.
-    stubFetch(() => Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) }))
+    stubFetch(503, 'mail service not configured')
     const CalendarWidget = await loadWidget()
     render(<CalendarWidget />)
 
@@ -101,7 +113,7 @@ describe('CalendarWidget', () => {
   })
 
   it('shows an honest empty state when the agenda read succeeds but is empty', async () => {
-    stubFetch(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ agenda: [], agenda_fresh: true }) }))
+    stubFetch(200, { events: [] })
     const CalendarWidget = await loadWidget()
     render(<CalendarWidget />)
 
@@ -110,14 +122,11 @@ describe('CalendarWidget', () => {
   })
 
   it('does not crash on a malformed event with an unparseable date', async () => {
-    stubFetch(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ agenda: [{ id: 'x', title: 'Broken', start: 'not-a-date' }], agenda_fresh: true }),
-    }))
+    stubFetch(200, { events: [{ uid: 'x', title: 'Broken', start: 'not-a-date' }] })
     const CalendarWidget = await loadWidget()
     render(<CalendarWidget />)
 
-    // Bad event is dropped, not rendered blank → empty state.
+    // Bad event has no parseable start → dropped from the agenda → empty state.
     await screen.findByText('Nothing on your calendar.')
     expect(screen.queryByText('Broken')).not.toBeInTheDocument()
   })

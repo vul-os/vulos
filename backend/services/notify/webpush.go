@@ -15,8 +15,8 @@ package notify
 // takes exactly its prior path. The private VAPID key is a secret and is never
 // logged nor returned in any response.
 //
-// The design mirrors the proven vulos-talk implementation (backend/notify) but
-// is self-contained in the OS notify package.
+// The Web Push (VAPID) design is a standard, self-contained implementation in
+// the OS notify package.
 
 import (
 	"context"

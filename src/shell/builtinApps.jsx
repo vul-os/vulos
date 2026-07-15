@@ -10,6 +10,7 @@
 import { createElement, lazy, Suspense } from 'react'
 import Settings from '../core/Settings'
 import { consumePendingSettingsSection } from '../core/settingsNav'
+import { consumePendingLaunchQuery } from '../core/launchParams'
 
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
@@ -28,7 +29,7 @@ const Calendar = lazy(() => import('../builtin/calendar/Calendar'))
 const Contacts = lazy(() => import('../builtin/contacts/Contacts'))
 
 const loadingEl = () => createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
-const wrap = (Cmp) => createElement(Suspense, { fallback: loadingEl() }, createElement(Cmp))
+const wrap = (Cmp, props) => createElement(Suspense, { fallback: loadingEl() }, createElement(Cmp, props))
 
 // BUILTIN_COMPONENTS maps app.id → a factory returning a fresh React element.
 export const BUILTIN_COMPONENTS = {
@@ -47,7 +48,10 @@ export const BUILTIN_COMPONENTS = {
   dashboard: () => wrap(DashboardApp),
   assistant: () => wrap(Assistant),
   // PIM: standalone Calendar + Contacts over lilmail's /v1 (via /api/pim/*).
-  'vulos-calendar': () => wrap(Calendar),
+  // Calendar honours a deep-link query (e.g. ⌘K "New event" → ?action=new,
+  // which pre-opens the new-event editor). consumePendingLaunchQuery clears it
+  // so a later plain launch opens the plain month view.
+  'vulos-calendar': () => wrap(Calendar, { initialQuery: consumePendingLaunchQuery('vulos-calendar') }),
   'vulos-contacts': () => wrap(Contacts),
 }
 
