@@ -25,13 +25,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
+
+	dbmigrate "vulos/backend/internal/migrate"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo — D23)
 )
 
-//go:embed schema.sql
-var schemaFS embed.FS
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 // crrTables lists tables that should be registered as conflict-free replicated
 // relations (CRRs) when the cr-sqlite extension is available.
@@ -228,93 +229,8 @@ func registerCRRs(db *sql.DB) error {
 
 // ── Migration runner ──────────────────────────────────────────────────────────
 
-// migration is a single versioned schema change.
-type migration struct {
-	id  string
-	sql string
-}
-
-// migrations is the ordered list of schema migrations.
-// Each migration is applied exactly once, guarded by the _migrations table.
-// IDs must be stable — never change an ID after it has been applied.
-var migrations []migration
-
-func init() {
-	schemaSQL, err := schemaFS.ReadFile("schema.sql")
-	if err != nil {
-		panic(fmt.Sprintf("store: cannot read embedded schema.sql: %v", err))
-	}
-	migrations = []migration{
-		{
-			id:  "001_initial_schema",
-			sql: string(schemaSQL),
-		},
-	}
-}
-
-// migrate runs all pending migrations inside a transaction.
-// It is idempotent: already-applied migrations are skipped.
+// migrate applies the embedded schema via the shared forward-only runner
+// (version-tracked in schema_migrations, transactional, fail-closed).
 func migrate(db *sql.DB) error {
-	// Ensure the bookkeeping table exists before anything else.
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS _migrations (
-        id         TEXT PRIMARY KEY,
-        applied_at TEXT NOT NULL
-    )`)
-	if err != nil {
-		return fmt.Errorf("create _migrations: %w", err)
-	}
-
-	for _, m := range migrations {
-		applied, err := isMigrationApplied(db, m.id)
-		if err != nil {
-			return err
-		}
-		if applied {
-			continue
-		}
-
-		if err := applyMigration(db, m); err != nil {
-			return fmt.Errorf("apply migration %q: %w", m.id, err)
-		}
-		log.Printf("store: applied migration %q", m.id)
-	}
-	return nil
-}
-
-func isMigrationApplied(db *sql.DB, id string) (bool, error) {
-	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, id).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("check migration %q: %w", id, err)
-	}
-	return count > 0, nil
-}
-
-func applyMigration(db *sql.DB, m migration) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	// Execute the SQL statements in the migration.
-	if _, err = tx.Exec(m.sql); err != nil {
-		return fmt.Errorf("exec: %w", err)
-	}
-
-	// Record that this migration has been applied.
-	_, err = tx.Exec(
-		`INSERT INTO _migrations (id, applied_at) VALUES (?, ?)`,
-		m.id,
-		time.Now().UTC().Format(time.RFC3339),
-	)
-	if err != nil {
-		return fmt.Errorf("record migration: %w", err)
-	}
-
-	return tx.Commit()
+	return dbmigrate.Apply(db, migrationsFS, "migrations")
 }

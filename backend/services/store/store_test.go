@@ -72,10 +72,10 @@ func TestMigrationsIdempotent(t *testing.T) {
 	}
 	defer db2.Close()
 
-	// _migrations table must contain exactly one row per migration.
-	rows, err := db2.Query(`SELECT id FROM _migrations ORDER BY id`)
+	// schema_migrations table must contain exactly one row per migration.
+	rows, err := db2.Query(`SELECT version FROM schema_migrations ORDER BY version`)
 	if err != nil {
-		t.Fatalf("query _migrations: %v", err)
+		t.Fatalf("query schema_migrations: %v", err)
 	}
 	defer rows.Close()
 
@@ -92,17 +92,17 @@ func TestMigrationsIdempotent(t *testing.T) {
 	}
 
 	if len(ids) == 0 {
-		t.Fatal("expected at least one migration recorded in _migrations")
+		t.Fatal("expected at least one migration recorded in schema_migrations")
 	}
 	// Verify the initial schema migration is present exactly once.
 	count := 0
 	for _, id := range ids {
-		if id == "001_initial_schema" {
+		if id == "0001_initial.sql" {
 			count++
 		}
 	}
 	if count != 1 {
-		t.Errorf("expected 001_initial_schema exactly once in _migrations, got %d", count)
+		t.Errorf("expected 0001_initial.sql exactly once in schema_migrations, got %d", count)
 	}
 }
 
@@ -117,7 +117,7 @@ func TestSchema(t *testing.T) {
 		"settings",
 		"installed_apps",
 		"local_app_status",
-		"_migrations",
+		"schema_migrations",
 	}
 
 	for _, table := range tables {

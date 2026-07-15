@@ -308,6 +308,40 @@ func TestRunNetbootInstall_UnverifiedSquashfs_AbortsBeforeStage(t *testing.T) {
 	}
 }
 
+// TestRunNetbootInstall_UnverifiedSquashfs_DoesNotWipeDisk pins the ordering
+// guarantee: because verify-squashfs runs FIRST (before partition/format), an
+// image that fails verification must abort with the target disk NEVER touched —
+// no parted, no mkfs, no mount. A bad or unsigned image can never cost the
+// operator their existing disk.
+func TestRunNetbootInstall_UnverifiedSquashfs_DoesNotWipeDisk(t *testing.T) {
+	f := newVerifyFixture(t)
+	c := f.cfg() // no .sig written → verification fails closed
+
+	mc := newMockCmd()
+	svc := newWithCommander(mc)
+	svc.verifyCfg = &c
+
+	hub := newProgressHub()
+	req := NetbootInstallRequest{Disk: "sda", Confirm: true, SquashfsPath: f.squashfsPath}
+	svc.runNetbootInstall(req, hub)
+
+	done, err := hub.isDone()
+	if !done || err == nil {
+		t.Fatalf("expected failed completion, done=%v err=%v", done, err)
+	}
+	if !contains(err.Error(), "verify-squashfs") {
+		t.Fatalf("must fail at verify-squashfs, got: %v", err)
+	}
+	// No external command may have run — the disk is pristine.
+	for _, dangerous := range []string{"parted", "mkfs", "mkfs.fat", "mkfs.vfat", "mkfs.ext4", "sgdisk", "wipefs", "dd", "mount"} {
+		for _, call := range mc.calls {
+			if strings.HasPrefix(call, dangerous) {
+				t.Fatalf("destructive command %q ran despite failed verification (call=%q) — verify must gate before any disk write", dangerous, call)
+			}
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Admin gate: the destructive netboot-install endpoint must reject non-admins.
 // ---------------------------------------------------------------------------

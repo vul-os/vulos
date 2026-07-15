@@ -1,16 +1,10 @@
--- Vulos SQLite schema with cr-sqlite CRDT support.
--- This file is embedded into the binary and applied by the migration runner.
--- All tables are registered as CRRs (conflict-free replicated relations) so
+-- Vulos SQLite schema with cr-sqlite CRDT support — clean baseline.
+-- This file is embedded into the binary and applied by the shared forward-only
+-- migration runner (internal/migrate); applied migrations are recorded in the
+-- schema_migrations bookkeeping table that the runner owns. All tables are
+-- registered as CRRs (conflict-free replicated relations) after migration so
 -- cr-sqlite can merge changes from multiple nodes automatically.
---
--- Migration IDs are recorded in the _migrations table.
 -- Every statement is idempotent: CREATE TABLE IF NOT EXISTS, etc.
-
--- ── Migration bookkeeping ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS _migrations (
-    id         TEXT PRIMARY KEY,
-    applied_at TEXT NOT NULL
-);
 
 -- ── Auth: users ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (

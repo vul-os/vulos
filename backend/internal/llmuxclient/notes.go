@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	dbmigrate "vulos/backend/internal/migrate"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -312,21 +314,5 @@ func openDB(path string) (*sql.DB, error) {
 }
 
 func runMigrations(db *sql.DB) error {
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
-		return fmt.Errorf("llmuxclient: read migrations dir: %w", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		sqlBytes, err := migrationsFS.ReadFile("migrations/" + e.Name())
-		if err != nil {
-			return fmt.Errorf("llmuxclient: read migration %s: %w", e.Name(), err)
-		}
-		if _, err := db.Exec(string(sqlBytes)); err != nil {
-			return fmt.Errorf("llmuxclient: exec migration %s: %w", e.Name(), err)
-		}
-	}
-	return nil
+	return dbmigrate.Apply(db, migrationsFS, "migrations")
 }

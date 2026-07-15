@@ -6,6 +6,23 @@ Vulos runs fully standalone — but you can optionally link your box to Vulos Cl
 
 Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md) for install, [CONFIGURATION.md](CONFIGURATION.md) for the full env-var reference, [PEERING.md](PEERING.md) for box-to-box identity and relay sharing, [SECURITY.md](SECURITY.md) for the broader security model, and [TROUBLESHOOTING.md](TROUBLESHOOTING.md) when something in this chapter fails.
 
+### Where Vulos Cloud runs, and what it is
+
+Vulos Cloud is deliberately small. Its whole job is **coordination**: it is the
+Control Plane (CP) plus the relay and box provisioning. It is **not** where your
+apps run — Mail, Office, Meet, Talk, Board and Files all run on your box (self-host
+at $0, or a Vulos-managed box). The cloud's scope is exactly three things:
+
+- **Relay** — reachability fallback for boxes behind NAT.
+- **Provisioning** — standing up a managed box for you.
+- **Control Plane (CP)** — the coordination metadata described throughout this
+  chapter (device identities, OAuth grant existence, push handles, billing).
+
+The CP is a **single EU region** backed by **one Neon Postgres** database. There
+is no multi-region CP fan-out and no per-region database sprawl — one region, one
+control-plane database, content-blind by design. Billing is **per box** (self-host
+is $0).
+
 ---
 
 ## What connecting gives you — and what it costs

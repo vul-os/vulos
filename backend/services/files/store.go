@@ -10,11 +10,10 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
-	"sort"
-	"strings"
 	"time"
+
+	dbmigrate "vulos/backend/internal/migrate"
 
 	_ "modernc.org/sqlite"
 )
@@ -38,30 +37,11 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	// Apply every embedded migration in lexicographic (filename) order. Each
-	// file is idempotent (IF NOT EXISTS), so re-running is safe.
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
+	// Apply every embedded migration in ascending filename order via the shared
+	// forward-only runner (version-tracked, transactional, fail-closed).
+	if err := dbmigrate.Apply(db, migrationsFS, "migrations"); err != nil {
 		db.Close()
 		return nil, err
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		sqlBytes, rerr := migrationsFS.ReadFile("migrations/" + name)
-		if rerr != nil {
-			db.Close()
-			return nil, rerr
-		}
-		if _, eerr := db.Exec(string(sqlBytes)); eerr != nil {
-			db.Close()
-			return nil, fmt.Errorf("files: migration %s: %w", name, eerr)
-		}
 	}
 	return db, nil
 }

@@ -165,6 +165,16 @@ sudo systemctl restart vulos-bundle.target
 
 Vulos uses A/B slots with auto-rollback. A signed update is fetched from `os.vulos.org` and staged to the inactive slot. On next boot the slot activates; if services do not come up cleanly within the threshold the bootloader flips back automatically.
 
+### Database schema
+
+Every upgrade path is safe for the local databases: the OS applies schema
+migrations automatically on boot, **forward-only** and **fail-closed** (a bad
+migration aborts boot rather than running on a half-migrated database). Self-host
+and Vulos-managed boxes use the identical runner. You never run migrations by
+hand — but `vulos migrate up` / `vulos migrate status` are available for
+out-of-band provisioning. See [MIGRATIONS.md](MIGRATIONS.md) for the upgrade model
+and how to add the next migration.
+
 ---
 
 ## Troubleshooting

@@ -316,6 +316,12 @@ func TestCopyWithProgress_ProgressRange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunNetbootInstall_PartitionFailure(t *testing.T) {
+	// verify-squashfs runs first, so the image must pass verification for the
+	// pipeline to reach the partition step under test.
+	f := newVerifyFixture(t)
+	f.writeSig(t, f.squashfsPath+".sig", f.image)
+	c := f.cfg()
+
 	mc := newMockCmd()
 	// Fail the partition step.
 	mc.set("", fmt.Errorf("disk not found"),
@@ -326,12 +332,13 @@ func TestRunNetbootInstall_PartitionFailure(t *testing.T) {
 		"mkpart", "root", "ext4", "513MiB", "100%")
 
 	svc := newWithCommander(mc)
+	svc.verifyCfg = &c
 	hub := newProgressHub()
 
 	req := NetbootInstallRequest{
 		Disk:         "sdc",
 		Confirm:      true,
-		SquashfsPath: "/nonexistent/os-core.squashfs",
+		SquashfsPath: f.squashfsPath,
 	}
 	svc.runNetbootInstall(req, hub)
 
@@ -348,6 +355,12 @@ func TestRunNetbootInstall_PartitionFailure(t *testing.T) {
 }
 
 func TestRunNetbootInstall_NVMePartitionSuffix(t *testing.T) {
+	// verify-squashfs runs first; provide a valid signed image so the pipeline
+	// proceeds to partitioning.
+	f := newVerifyFixture(t)
+	f.writeSig(t, f.squashfsPath+".sig", f.image)
+	c := f.cfg()
+
 	mc := newMockCmd()
 	// The partition step for nvme0n1 should use 'p1'/'p2' suffixes.
 	// We fail at mount (after partition) to keep the test short.
@@ -355,12 +368,13 @@ func TestRunNetbootInstall_NVMePartitionSuffix(t *testing.T) {
 		"mount", "/dev/nvme0n1p2", netbootInstallMount)
 
 	svc := newWithCommander(mc)
+	svc.verifyCfg = &c
 	hub := newProgressHub()
 
 	req := NetbootInstallRequest{
 		Disk:         "nvme0n1",
 		Confirm:      true,
-		SquashfsPath: "/nonexistent/os-core.squashfs",
+		SquashfsPath: f.squashfsPath,
 	}
 	svc.runNetbootInstall(req, hub)
 

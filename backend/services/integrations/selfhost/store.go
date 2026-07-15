@@ -3,13 +3,19 @@ package selfhost
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
 
+	dbmigrate "vulos/backend/internal/migrate"
+
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo — matches services/store)
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 // Connection is one owner-account ↔ provider link. The refresh token and cached
 // access token are stored ENCRYPTED (base64 AES-GCM ciphertext) — the plaintext
@@ -56,23 +62,7 @@ func OpenStore(dbDir string) (*Store, error) {
 }
 
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(`
-CREATE TABLE IF NOT EXISTS integrations_conn (
-  user_id            TEXT NOT NULL,
-  provider           TEXT NOT NULL,
-  refresh_token_enc  TEXT NOT NULL,
-  access_token_enc   TEXT NOT NULL DEFAULT '',
-  access_expiry      INTEGER NOT NULL DEFAULT 0,
-  scopes             TEXT NOT NULL DEFAULT '',
-  account_email      TEXT NOT NULL DEFAULT '',
-  created_at         INTEGER NOT NULL,
-  updated_at         INTEGER NOT NULL,
-  PRIMARY KEY (user_id, provider)
-);`)
-	if err != nil {
-		return fmt.Errorf("selfhost: migrate: %w", err)
-	}
-	return nil
+	return dbmigrate.Apply(s.db, migrationsFS, "migrations")
 }
 
 // Close closes the underlying DB.

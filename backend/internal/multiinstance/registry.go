@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	dbmigrate "vulos/backend/internal/migrate"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -416,24 +418,8 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-// migrate applies all embedded SQL migration files in lexicographic order.
-// Every statement uses IF NOT EXISTS so running the migrations repeatedly is safe.
+// migrate applies all embedded SQL migrations via the shared forward-only
+// runner (version-tracked, transactional, fail-closed).
 func migrate(db *sql.DB) error {
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
-		return fmt.Errorf("migrate: read migrations dir: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		sqlBytes, err := migrationsFS.ReadFile("migrations/" + entry.Name())
-		if err != nil {
-			return fmt.Errorf("migrate: read %s: %w", entry.Name(), err)
-		}
-		if _, err := db.Exec(string(sqlBytes)); err != nil {
-			return fmt.Errorf("migrate: exec %s: %w", entry.Name(), err)
-		}
-	}
-	return nil
+	return dbmigrate.Apply(db, migrationsFS, "migrations")
 }

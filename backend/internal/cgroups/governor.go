@@ -15,10 +15,12 @@ import (
 	"os"
 	"time"
 
+	dbmigrate "vulos/backend/internal/migrate"
+
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/0001_cgroups.sql
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 // Visibility controls which limit profile a slice receives.
@@ -267,12 +269,7 @@ func openDB(path string) (*sql.DB, error) {
 }
 
 func runMigrations(db *sql.DB) error {
-	sqlBytes, err := migrationsFS.ReadFile("migrations/0001_cgroups.sql")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec(string(sqlBytes))
-	return err
+	return dbmigrate.Apply(db, migrationsFS, "migrations")
 }
 
 // defaultULID is a simple timestamp-based ID used when no custom generator is

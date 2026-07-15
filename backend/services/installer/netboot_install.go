@@ -258,6 +258,18 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 	}
 
 	steps := []step{
+		// SECURITY (NETB-03, THREAT-MODEL #1/#3): verify the squashfs signature
+		// against the PINNED trust anchor BEFORE anything destructive happens.
+		// This runs FIRST — before the disk is even partitioned — because the
+		// image + pinned anchor are already in RAM on the live medium and depend
+		// on nothing we write. Fail-closed: a tampered/substituted/downgraded
+		// image aborts the install with the TARGET DISK STILL INTACT (no wipe, no
+		// format), and of course before any byte reaches the permanent slot. This
+		// is strictly stronger than verifying after partitioning: a bad image can
+		// no longer cost the operator their existing disk contents.
+		{name: "verify-squashfs", pct: 3, fn: func() error {
+			return s.verifyNetbootSquashfs(req.SquashfsPath, s.netbootVerifyConfig())
+		}},
 		{name: "partition", pct: 5, fn: func() error {
 			return s.partition(ctx, dev)
 		}},
@@ -272,14 +284,6 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 		}},
 		{name: "write-seed", pct: 30, fn: func() error {
 			return s.writeSeedFiles(ctx)
-		}},
-		// SECURITY (NETB-03, THREAT-MODEL #1/#3): verify the squashfs signature
-		// against the PINNED trust anchor BEFORE any byte is written to the
-		// permanent slot.  Fail-closed — a tampered/substituted/downgraded image
-		// aborts the install with the disk left un-poisoned.  This is the
-		// verify-before-write gate the signature-first design promises.
-		{name: "verify-squashfs", pct: 35, fn: func() error {
-			return s.verifyNetbootSquashfs(req.SquashfsPath, s.netbootVerifyConfig())
 		}},
 		{name: "stage-squashfs", pct: 85, fn: func() error {
 			return s.stageFirstSquashfs(ctx, req.SquashfsPath, hub)

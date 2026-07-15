@@ -23,10 +23,12 @@ import (
 	"log"
 	"time"
 
+	dbmigrate "vulos/backend/internal/migrate"
+
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/0001_auth.sql
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 // legacyImportSentinel marks (in the meta table) that the one-time auth.json
@@ -53,15 +55,9 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-// migrate applies the embedded schema. Every statement is IF NOT EXISTS so
-// running it repeatedly is safe.
+// migrate applies the embedded schema via the shared forward-only runner.
 func migrate(db *sql.DB) error {
-	sqlBytes, err := migrationsFS.ReadFile("migrations/0001_auth.sql")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec(string(sqlBytes))
-	return err
+	return dbmigrate.Apply(db, migrationsFS, "migrations")
 }
 
 // --- write-through helpers (all no-op when db == nil) ---
