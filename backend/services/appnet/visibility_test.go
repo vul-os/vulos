@@ -267,7 +267,10 @@ func newVisAPITestEnv(t *testing.T) (*http.ServeMux, *VisibilityStore) {
 	}
 	appStore := &AppStore{appsDir: filepath.Join(dir, "apps")}
 	mux := http.NewServeMux()
-	RegisterVisibilityHandlers(mux, appStore, vis)
+	// nil authorizer ⇒ publishing open (self-host posture) so these tests focus on
+	// validation/system-app behaviour; the publish-authz path is covered by
+	// TestVisibilityAPI_PublishAuthz below.
+	RegisterVisibilityHandlers(mux, appStore, vis, nil)
 	return mux, vis
 }
 

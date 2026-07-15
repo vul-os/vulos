@@ -229,15 +229,21 @@ func writeCustomDomainCaddySnippet(caddyDir, appID, domain, upstreamAddr string)
 		return fmt.Errorf("caddy custom domain: mkdir %s: %w", caddyDir, err)
 	}
 
+	// SECURITY (Finding 1, HIGH): custom domains route through the auth gateway's
+	// anonymous public entrypoint (rewrite to PubwebPathPrefix+{appID}), never
+	// straight at the app namespace — same reasoning as the subdomain snippet.
+	// upstreamAddr is the gateway loopback address (see upstreamAddrForApp).
 	snippet := fmt.Sprintf(`# Vulos auto-generated — do not edit manually.
 # App: %s  Custom domain: %s
 %s {
 	tls {
 		# ACME (Let's Encrypt) — Caddy requests certs automatically.
 	}
+	# Route through the Vulos auth gateway's anonymous public entrypoint.
+	rewrite * %s{uri}
 	reverse_proxy %s
 }
-`, appID, domain, domain, upstreamAddr)
+`, appID, domain, domain, PubwebUpstreamPath(appID), upstreamAddr)
 
 	snippetPath := filepath.Join(caddyDir, appID+"--custom.caddy")
 	tmp := snippetPath + ".tmp"

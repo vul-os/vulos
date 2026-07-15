@@ -31,6 +31,18 @@ func visWriteErr(w http.ResponseWriter, code int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+// PublishAuthorizer decides whether the current request may set appID to a
+// NON-private visibility (i.e. publish it to the local network or the public
+// web). It is called only for local/public writes; reverting to private is
+// always allowed for any authenticated caller. Returning false makes the
+// handler answer 403. It is the right place to also audit-log publish events.
+//
+// nil authorizer ⇒ publishing is open to any authenticated caller (self-host /
+// standalone posture — the same "gating off by default" convention the
+// entitlement layer uses). main.go always installs a real authorizer that
+// requires RoleAdmin OR app ownership (Finding 2, HIGH).
+type PublishAuthorizer func(r *http.Request, appID, visibility string) bool
+
 // RegisterVisibilityHandlers registers the app-visibility API endpoints onto mux.
 //
 //	GET   /api/apps/visibility         — list all apps with their visibility (default private)
@@ -39,8 +51,10 @@ func visWriteErr(w http.ResponseWriter, code int, msg string) {
 //
 // System apps (settings, files, terminal) reject any non-private visibility.
 // Both write routes share the same auth as all other /api/* endpoints
-// (enforced by the global auth middleware in main.go).
-func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *VisibilityStore) {
+// (enforced by the global auth middleware in main.go). A non-private write is
+// additionally gated by authorizePublish (Finding 2): before this, ANY
+// authenticated user could publish ANY non-system app to the public internet.
+func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *VisibilityStore, authorizePublish PublishAuthorizer) {
 	// GET /api/apps/visibility — returns every known app id + current visibility.
 	// Apps with no explicit setting are listed as "private" (the default).
 	mux.HandleFunc("GET /api/apps/visibility", func(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +130,17 @@ func RegisterVisibilityHandlers(mux *http.ServeMux, store *AppStore, vis *Visibi
 		if IsSystemApp(appID) && req.Visibility != VisibilityPrivate {
 			visWriteErr(w, http.StatusForbidden, "system apps cannot be published")
 			return
+		}
+
+		// Finding 2 (HIGH): publishing an app (any non-private visibility) exposes
+		// it beyond this device — to the LAN ("local") or the public internet
+		// ("public"). That must be gated on admin/ownership, not merely on being
+		// authenticated. Reverting to "private" is always allowed.
+		if req.Visibility != VisibilityPrivate && authorizePublish != nil {
+			if !authorizePublish(r, appID, req.Visibility) {
+				visWriteErr(w, http.StatusForbidden, "only an admin or the app owner may publish an app")
+				return
+			}
 		}
 
 		if err := vis.Set(appID, req.Visibility); err != nil {

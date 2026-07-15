@@ -12,6 +12,7 @@ import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
 import { useTheme } from '../core/ThemeProvider'
 import AIFirstRun from '../core/AIFirstRun'
 import PublicAppsManager from '../core/PublicAppsManager'
+import AdoptPortManager from '../core/AdoptPortManager'
 import IncomingCall from '../builtin/peering/call/IncomingCall'
 import PublicAppBanner from '../shell/PublicAppBanner'
 import TrustBadge from '../shell/TrustBadge'
@@ -304,6 +305,8 @@ export default function DesktopCanvas() {
       <AIFirstRun />
       {/* Public apps manager popover — listens for vulos:open-public-apps */}
       <PublicAppsManager />
+      {/* Adopt-a-port manager popover — listens for vulos:open-adopt-port */}
+      <AdoptPortManager />
       {/* Incoming call modal + call history — shell-wide, z-[300] (PEER-24) */}
       <IncomingCall />
       {/* Legible-trust transparency panel — opened from the TrustBadge */}

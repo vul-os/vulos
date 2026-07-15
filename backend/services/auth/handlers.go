@@ -180,6 +180,16 @@ var publicPrefixes = []string{
 	"/api/apps/v1/",    // apps runtime: act / read / events / auth.test (vat_ app token authed)
 	"/api/apps/hooks/", // apps incoming webhooks (authed by the webhook-id secret in the URL)
 
+	// PUBWEB anonymous public entrypoint. The public-web edge (Caddy/nginx)
+	// proxies published apps here over loopback. The gateway's PublicHandler IS
+	// the authorization for this subtree: it serves ONLY apps whose visibility is
+	// "public" (opt-in), strips every client X-Vulos-* header, and injects NO
+	// identity — so a public visitor is always anonymous and can never spoof a
+	// user. The OS session gate must defer to it (otherwise every public visitor
+	// is 401'd before reaching the app). Private/local apps are 404'd by the
+	// handler, so listing this prefix exposes nothing that isn't already public.
+	"/__pubweb__/",
+
 	// PEERING inbound subtree (box-to-box). Every /api/peering/inbound/* route is
 	// mounted behind peering.InboundMiddleware, which fails CLOSED: it verifies the
 	// request body is an Ed25519-signed Envelope (401 on missing/invalid signature),

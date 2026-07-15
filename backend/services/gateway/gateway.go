@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"strings"
 	"sync"
@@ -88,6 +91,28 @@ type Gateway struct {
 	// product is missing. False (self-host/standalone) leaves every app open,
 	// matching today's all-open behavior. Set via SetEntitlementGating.
 	gateEntitlements bool
+
+	// sessionSalt keys the per-app session correlator (M3). It is a random,
+	// per-process value so the X-Vulos-Session header injected to an app is
+	// HMAC(sessionSalt, sessionID || appID) rather than the raw session id —
+	// two different apps therefore see two UNLINKABLE opaque correlators for the
+	// same logged-in user, so a set of colluding apps can no longer join their
+	// logs on a shared session identifier, and no app ever receives the raw
+	// session token (which is also a bearer credential).
+	sessionSalt []byte
+
+	// publicVisibility, when set, reports whether appID is published to the
+	// public web (visibility == "public"). It gates PublicHandler: the anonymous
+	// public entrypoint serves an app ONLY when this returns true, so private /
+	// local apps can never be reached over the public-web path even if the edge
+	// (Caddy/nginx) is pointed at the gateway. nil ⇒ nothing is public.
+	publicVisibility func(appID string) bool
+
+	// reverseProxy is the shared streaming reverse proxy for the authenticated
+	// app hot path (see proxy.go). One instance, one pooled transport, one buffer
+	// pool — reused across every request. All security transforms live in its
+	// Director / ModifyResponse.
+	reverseProxy *httputil.ReverseProxy
 }
 
 // rateBucket tracks request count per window for per-app rate limiting.
@@ -97,27 +122,40 @@ type rateBucket struct {
 }
 
 func New(authStore *auth.Store, netMgr *appnet.Manager, portPool *appnet.PortPool) *Gateway {
+	salt := make([]byte, 32)
+	if _, err := rand.Read(salt); err != nil {
+		// rand.Read never fails on supported platforms; if it somehow does, fall
+		// back to a time-seeded value so the correlator is still non-empty (it
+		// only needs to be unpredictable-per-process, not cryptographically
+		// perfect — it protects correlation, not a secret).
+		salt = []byte(fmt.Sprintf("vulos-session-salt-%d", time.Now().UnixNano()))
+	}
+	// One shared, pooled transport for BOTH the plain client (health checks,
+	// public path) and the reverse proxy — keep-alive + a bounded idle pool keeps
+	// upstream connections warm instead of dialing per request.
+	sharedTransport := newSharedTransport()
 	g := &Gateway{
-		authStore:  authStore,
-		netMgr:     netMgr,
-		portPool:   portPool,
-		appSecrets: make(map[string]string),
-		appHits:    make(map[string]*rateBucket),
+		authStore:   authStore,
+		netMgr:      netMgr,
+		portPool:    portPool,
+		appSecrets:  make(map[string]string),
+		appHits:     make(map[string]*rateBucket),
+		sessionSalt: salt,
 		client: &http.Client{
-			Timeout: 60 * time.Second,
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: 20,
-				IdleConnTimeout:     90 * time.Second,
-				DialContext: (&net.Dialer{
-					Timeout:   5 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-			},
+			Timeout:   60 * time.Second,
+			Transport: sharedTransport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse // don't follow redirects — let the browser handle them
 			},
 		},
 	}
+	// The reverse proxy uses a retrying round-tripper over the same pooled
+	// transport so a just-launched app still serves the first request.
+	g.reverseProxy = g.newReverseProxy(&retryRoundTripper{
+		base:     sharedTransport,
+		attempts: 3,
+		delay:    time.Second,
+	})
 
 	// Periodically clean stale rate limit buckets
 	go func() {
@@ -180,11 +218,41 @@ func (g *Gateway) applyTrustedHeaders(ctx context.Context, pr *http.Request, ses
 	stripInboundVulosHeaders(pr.Header)
 	pr.Header.Set("X-Vulos-User-ID", session.UserID)
 	pr.Header.Set("X-Vulos-Email", session.Email)
-	pr.Header.Set("X-Vulos-Session", session.ID)
+	// M3: never hand the raw session id (a bearer credential AND a cross-app
+	// correlator) to an app. Inject a per-app, per-process derived correlator so
+	// a single logged-in user is a STABLE id within one app (for the app's own
+	// session bookkeeping) but an UNLINKABLE opaque value across apps.
+	pr.Header.Set("X-Vulos-Session", g.perAppSession(session.ID, appID))
 	pr.Header.Set("X-Vulos-App-ID", appID)
 	pr.Header.Del("Cookie")
 	g.injectIntegrationTokens(ctx, pr, session.UserID, appID)
 	g.injectStorageHeaders(ctx, pr, session.UserID, appID)
+}
+
+// perAppSession derives the opaque per-app session correlator injected as
+// X-Vulos-Session. It is HMAC-SHA256(sessionSalt, sessionID || 0x00 || appID),
+// hex-encoded and truncated: deterministic for a given (session, app) pair so an
+// app can key its own per-session state, but not reversible to the real session
+// token and not equal across apps for the same session (M3 — cross-app
+// correlation + raw-credential leak fix).
+func (g *Gateway) perAppSession(sessionID, appID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, g.sessionSalt)
+	mac.Write([]byte(sessionID))
+	mac.Write([]byte{0x00})
+	mac.Write([]byte(appID))
+	return hex.EncodeToString(mac.Sum(nil))[:32]
+}
+
+// SetPublicVisibility installs the callback that reports whether an app is
+// published to the public web (visibility == "public"). It gates PublicHandler.
+// Pass nil (the default) to keep every app private on the public-web path.
+func (g *Gateway) SetPublicVisibility(fn func(appID string) bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.publicVisibility = fn
 }
 
 // injectIntegrationTokens adds X-Vulos-Integration-<Provider> headers for every
@@ -526,145 +594,36 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			return
 		}
 
-		// --- Build upstream URL (full path forwarded) ---
-		upstream := fmt.Sprintf("http://%s:%d%s", ns.NSIP, ns.AppPort, appPath)
-		if r.URL.RawQuery != "" {
-			upstream += "?" + r.URL.RawQuery
-		}
-
 		// --- WebSocket upgrade ---
+		// Kept on the dedicated hijack path (proxyWebSocket): it already streams
+		// bidirectionally and applies the same X-Vulos-* strip+inject.
 		if isWebSocketUpgrade(r) {
 			g.proxyWebSocket(w, r, ns, appPath, appID, session)
 			return
 		}
 
-		// --- Proxy HTTP request ---
-		proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, upstream, r.Body)
-		if err != nil {
-			http.Error(w, `{"error":"proxy error"}`, 500)
-			return
+		// --- Proxy HTTP request through the shared streaming reverse proxy ---
+		// Every per-request value the security transforms need rides in the
+		// context (proxyCtx); nothing is re-parsed. proxyDirector applies the
+		// request-side transforms (X-Vulos-* strip + trusted inject, Host rewrite,
+		// Cookie strip) and proxyModifyResponse the response-side ones (X-Vulos-*
+		// strip, Set-Cookie/X-Powered-By/X-Frame-Options drop, hardening headers,
+		// per-app frame-ancestors CSP, HTML bridge injection). Bodies stream via a
+		// pooled buffer with FlushInterval, so nothing is buffered except the HTML
+		// document the bridge injection inherently needs. See proxy.go.
+		pc := &proxyCtx{
+			session:      session,
+			appID:        appID,
+			ns:           ns,
+			appPath:      appPath,
+			onAppOrigin:  onAppOrigin,
+			isPathPrefix: strings.HasPrefix(r.URL.Path, "/app/"),
+			scheme:       scheme,
+			reqHost:      r.Host,
+			baseDomain:   baseDomain,
+			reqPort:      reqPort,
 		}
-
-		for k, vv := range r.Header {
-			for _, v := range vv {
-				proxyReq.Header.Add(k, v)
-			}
-		}
-
-		// applyVulosHeaders strips all inbound X-Vulos-* (anti-spoof, H1), stamps
-		// trusted identity + integration + storage headers, and clears
-		// client-controlled hop headers. Applied on every (re)build of proxyReq
-		// so the retry path below doesn't drop these (previously it did).
-		applyVulosHeaders := func(pr *http.Request) {
-			g.applyTrustedHeaders(pr.Context(), pr, session, appID)
-			pr.Header.Del("Host")
-			pr.Host = fmt.Sprintf("localhost:%d", ns.AppPort)
-		}
-		applyVulosHeaders(proxyReq)
-
-		// Retry up to 3 times — app may still be starting
-		var resp *http.Response
-		var proxyErr error
-		for attempt := 0; attempt < 3; attempt++ {
-			if attempt > 0 {
-				time.Sleep(time.Second)
-				// Rebuild request (body may be consumed)
-				proxyReq, _ = http.NewRequestWithContext(r.Context(), r.Method, upstream, r.Body)
-				for k, vv := range r.Header {
-					for _, v := range vv {
-						proxyReq.Header.Add(k, v)
-					}
-				}
-				applyVulosHeaders(proxyReq)
-			}
-			resp, proxyErr = g.client.Do(proxyReq)
-			if proxyErr == nil {
-				break
-			}
-		}
-		if proxyErr != nil {
-			log.Printf("[gateway] proxy to %s failed: %v", appID, proxyErr)
-			http.Error(w, `{"error":"app unreachable"}`, 502)
-			return
-		}
-		defer resp.Body.Close()
-
-		for k, vv := range resp.Header {
-			for _, v := range vv {
-				w.Header().Add(k, v)
-			}
-		}
-
-		// M2: strip ALL X-Vulos-* from the app's response so an app can never
-		// leak (or forge) seam headers — storage creds, broker-auth, identity —
-		// back to the browser. Done before the gateway sets its own X-Vulos-App.
-		stripInboundVulosHeaders(w.Header())
-
-		w.Header().Del("Set-Cookie")
-		w.Header().Del("X-Powered-By")
-		// X-Frame-Options cannot express "only this one other origin may frame me"
-		// — SAMEORIGIN would block the shell once the app is on its own origin, and
-		// ALLOW-FROM is dead in every current browser. It is dropped and the policy
-		// is carried entirely by CSP frame-ancestors below, which CAN name an origin.
-		w.Header().Del("X-Frame-Options")
-		w.Header().Set("X-Vulos-App", appID)
-
-		// Security hardening headers applied to all proxied responses.
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()")
-
-		// ORIGIN-01 (origin confusion, part 2 of 2): pin who may frame this app.
-		//
-		// secHeadersMiddleware sets `frame-ancestors 'self'` on every response. Once
-		// an app is served from its own origin, 'self' means the APP's origin — which
-		// would (a) stop the shell from framing it at all, and (b) let any OTHER app
-		// frame it, since each app origin is 'self' to its own document. Name the
-		// shell's origin explicitly instead: exactly one origin may frame an app, and
-		// no app may frame another.
-		//
-		// On the path-prefix fallback the app is on the shell's origin already, so
-		// 'self' is both correct and unchanged from the previous posture.
-		shellOrigin := scheme + "://" + r.Host
-		if onAppOrigin {
-			if so, ok := appnet.ShellOrigin(scheme, baseDomain, reqPort); ok {
-				shellOrigin = so
-				w.Header().Set("Content-Security-Policy", "frame-ancestors "+so)
-			} else {
-				// Cannot name the shell origin → refuse to be framed at all rather
-				// than fall back to a policy that permits app-frames-app.
-				shellOrigin = ""
-				w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
-			}
-		} else {
-			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
-		}
-
-		// HTML responses get the ORIGIN-01 bridge client injected, plus (on the
-		// path-prefix fallback only) a <base> tag so the app's absolute paths resolve
-		// under /app/{appId}/. On an app origin the app owns the whole path space, so
-		// no <base> rewrite is needed or wanted.
-		ct := resp.Header.Get("Content-Type")
-		isPathPrefix := strings.HasPrefix(r.URL.Path, "/app/")
-		if strings.Contains(ct, "text/html") {
-			body, err := io.ReadAll(resp.Body)
-			if err == nil {
-				var head string
-				if isPathPrefix && !onAppOrigin {
-					head = fmt.Sprintf(`<base href="/app/%s/">`, appID)
-				}
-				head += bridgeScript(shellOrigin)
-				html := injectIntoHead(string(body), head)
-				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(html)))
-				w.WriteHeader(resp.StatusCode)
-				w.Write([]byte(html))
-			} else {
-				w.WriteHeader(resp.StatusCode)
-			}
-		} else {
-			w.WriteHeader(resp.StatusCode)
-			io.Copy(w, resp.Body)
-		}
+		g.reverseProxy.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), proxyCtxKey{}, pc)))
 	}
 }
 

@@ -297,6 +297,13 @@ func (p *Provisioner) writeCaddySnippet(appID, profile, fqdn, upstreamAddr strin
 
 	snippetPath := filepath.Join(p.caddyDir, fmt.Sprintf("%s--%s.caddy", appID, profile))
 
+	// SECURITY (Finding 1, HIGH): route through the auth gateway's anonymous
+	// public entrypoint, NOT straight at the app namespace. The `rewrite` prepends
+	// PubwebPathPrefix+{appID} so the gateway's PublicHandler enforces the
+	// visibility=public opt-in, strips ALL client X-Vulos-* headers, and injects
+	// no identity — a public visitor can never spoof X-Vulos-User-ID to the app.
+	// upstreamAddr is the gateway's loopback address (see upstreamAddrForApp).
+	//
 	// Use ACME (Let's Encrypt) TLS by default — Caddy handles this automatically
 	// when a hostname is specified without an explicit tls directive.
 	snippet := fmt.Sprintf(`# Vulos auto-generated — do not edit manually.
@@ -305,9 +312,11 @@ func (p *Provisioner) writeCaddySnippet(appID, profile, fqdn, upstreamAddr strin
 	tls {
 		# ACME (Let's Encrypt) — Caddy requests certs automatically.
 	}
+	# Route through the Vulos auth gateway's anonymous public entrypoint.
+	rewrite * %s{uri}
 	reverse_proxy %s
 }
-`, appID, profile, fqdn, upstreamAddr)
+`, appID, profile, fqdn, PubwebUpstreamPath(appID), upstreamAddr)
 
 	tmp := snippetPath + ".tmp"
 	if err := os.WriteFile(tmp, []byte(snippet), 0640); err != nil {

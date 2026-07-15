@@ -2860,8 +2860,79 @@ func main() {
 	sfuSvc := sfu.New().WithBilling(billingClient)
 	sfu.RegisterSFUHandlers(mux, sfuSvc)
 
-	// App visibility (private|local|public)
-	appnet.RegisterVisibilityHandlers(mux, appStore, visStore)
+	// App visibility (private|local|public).
+	//
+	// Finding 2 (HIGH): publishing an app (any non-private visibility) exposes it
+	// beyond this device, so it is gated on RoleAdmin OR app ownership — not mere
+	// authentication. Ownership = the user has a running namespace for the app
+	// (the launcher records OwnerID). Publish events are audit-logged.
+	publishAuthorizer := func(r *http.Request, appID, visibility string) bool {
+		userID := r.Header.Get("X-User-ID") // stamped by auth middleware; never client-supplied
+		if userID == "" {
+			return false
+		}
+		isAdmin := false
+		if p, _ := authStore.GetProfile(userID); p != nil && p.Role == auth.RoleAdmin {
+			isAdmin = true
+		}
+		isOwner := false
+		if !isAdmin {
+			if ns, ok := netMgr.GetForUser(appID, userID); ok && ns.OwnerID == userID {
+				isOwner = true
+			}
+		}
+		if isAdmin || isOwner {
+			execAuditLog(r, "PUBLISH /api/apps/"+appID+"/visibility",
+				fmt.Sprintf("app_id=%s visibility=%s user=%s admin=%v owner=%v", appID, visibility, userID, isAdmin, isOwner))
+			return true
+		}
+		return false
+	}
+	appnet.RegisterVisibilityHandlers(mux, appStore, visStore, publishAuthorizer)
+
+	// PUBWEB anonymous public entrypoint (Finding 1, HIGH). The public-web edge
+	// (Caddy / nginx) proxies published apps HERE, over loopback, instead of
+	// straight at the app namespace. PublicHandler serves an app only when its
+	// visibility is "public", strips all client X-Vulos-* headers, and injects no
+	// identity. Adopted ports are never resolvable here (GetAnyForApp ignores the
+	// external-upstream registry). The route is a public prefix (see
+	// services/auth publicPrefixes) so the session middleware defers to it.
+	appGateway.SetPublicVisibility(func(appID string) bool {
+		return visStore.Get(appID) == appnet.VisibilityPublic
+	})
+	mux.HandleFunc(appnet.PubwebPathPrefix, appGateway.PublicHandler())
+
+	// ADOPT-A-PORT: register + rehydrate adopted loopback upstreams. These are
+	// reachable ONLY through the :8080 gateway (never the PUBWEB path above), so
+	// they inherit session auth, entitlement gating, X-Vulos-* strip+inject and
+	// rate limiting with no new trust path.
+	if extStore, extErr := appnet.NewExternalUpstreamStore(); extErr != nil {
+		log.Printf("[appnet/adopt] external-upstream store unavailable: %v — adopt-a-port disabled", extErr)
+	} else {
+		for _, u := range extStore.All() {
+			if err := netMgr.RegisterExternalUpstream(u); err != nil {
+				log.Printf("[appnet/adopt] skipping persisted upstream %s: %v", u.AppID, err)
+				continue
+			}
+			if u.Product != "" {
+				appGateway.AllowApp(u.AppID, u.Product)
+			}
+		}
+		appnet.RegisterProxyAdoptHandlers(mux, appnet.ProxyAdoptDeps{
+			Mgr:   netMgr,
+			Store: extStore,
+			OnRegister: func(appID, product string) {
+				if product != "" {
+					appGateway.AllowApp(appID, product)
+				}
+			},
+			OnRemove: func(appID string) {
+				appGateway.RemoveAppSecret(appID)
+				appGateway.RemoveAppGrants(appID)
+			},
+		})
+		log.Printf("[appnet/adopt] registered POST/GET /api/apps/proxy, DELETE /api/apps/proxy/{id}")
+	}
 
 	// New-feature routes: airouter, identity, multiinstance, appnet subdomain
 	// provisioning, recovery handlers, cloud-sync, edge-cache.
@@ -3870,6 +3941,14 @@ func main() {
 	// Wrap mux with subdomain routing — if request comes on {appId}.host, route to gateway
 	appHandler := appGateway.Handler()
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// PUBWEB anonymous entrypoint (Finding 1): the public-web edge rewrites to
+		// this path. Route it to the mux (where PublicHandler is mounted) BEFORE
+		// the host-subdomain check, so it works even when the box's own base domain
+		// would otherwise capture the request into the authenticated appHandler.
+		if strings.HasPrefix(r.URL.Path, appnet.PubwebPathPrefix) {
+			mux.ServeHTTP(w, r)
+			return
+		}
 		host := r.Host
 		if idx := strings.Index(host, ":"); idx > 0 {
 			host = host[:idx]

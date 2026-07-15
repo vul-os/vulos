@@ -76,9 +76,13 @@ server {
 
     # -----------------------------------------------------------------------
     # Pass-through: API routes and authenticated requests are never cached.
+    # SECURITY (Finding 1, HIGH): {{.Upstream}} is the Vulos auth gateway (not the
+    # app namespace) and {{.PubPrefix}} routes into its anonymous public
+    # entrypoint, which strips all client X-Vulos-* headers and enforces the
+    # visibility=public opt-in. $request_uri carries the original path+query.
     # -----------------------------------------------------------------------
     location /api/ {
-        proxy_pass http://{{.Upstream}};
+        proxy_pass http://{{.Upstream}}{{.PubPrefix}}$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -103,7 +107,7 @@ server {
         proxy_ignore_headers Cache-Control;
         proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
 
-        proxy_pass http://{{.Upstream}};
+        proxy_pass http://{{.Upstream}}{{.PubPrefix}}$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -134,6 +138,7 @@ type EdgeCacheConfig struct {
 	Profile   string
 	FQDN      string
 	Upstream  string
+	PubPrefix string // gateway public-entrypoint path prefix (PubwebPathPrefix+appID)
 	CacheZone string // Nginx shared-memory zone name
 	CachePath string // on-disk cache directory
 }
@@ -151,6 +156,7 @@ func buildEdgeCacheConfig(d *Deployment, upstream, cacheBaseDir string) EdgeCach
 		Profile:   profile,
 		FQDN:      d.FQDN,
 		Upstream:  upstream,
+		PubPrefix: PubwebUpstreamPath(d.AppID),
 		CacheZone: zoneName,
 		CachePath: cachePath,
 	}

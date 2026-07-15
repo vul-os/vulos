@@ -36,8 +36,14 @@ func TestApplyTrustedHeaders_StripsAllInboundVulos(t *testing.T) {
 	if got := r.Header.Get("X-Vulos-User-ID"); got != "real-user" {
 		t.Fatalf("user-id = %q, want real-user (spoof must be replaced)", got)
 	}
-	if got := r.Header.Get("X-Vulos-Session"); got != "sess-1" {
-		t.Fatalf("session = %q, want sess-1", got)
+	// M3: X-Vulos-Session is now a per-app DERIVED correlator, never the raw
+	// session id — so it must NOT equal the forged value NOR the real session id,
+	// and must match perAppSession for (session, app).
+	if got := r.Header.Get("X-Vulos-Session"); got == "forged-session" || got == "sess-1" {
+		t.Fatalf("session = %q, must be a derived correlator (not raw / not forged)", got)
+	}
+	if got := r.Header.Get("X-Vulos-Session"); got != g.perAppSession("sess-1", "office") {
+		t.Fatalf("session = %q, want derived correlator for (sess-1, office)", got)
 	}
 	if got := r.Header.Get("X-Vulos-App-ID"); got != "office" {
 		t.Fatalf("app-id = %q, want office", got)

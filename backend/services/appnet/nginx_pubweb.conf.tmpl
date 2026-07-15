@@ -15,9 +15,12 @@ server {
 
     # -----------------------------------------------------------------------
     # Pass-through: API routes and authenticated requests are never cached.
+    # SECURITY: {{.Upstream}} is the Vulos auth gateway and {{.PubPrefix}} routes
+    # into its anonymous public entrypoint (strips client X-Vulos-*, enforces the
+    # visibility=public opt-in). Never proxy straight to an app namespace.
     # -----------------------------------------------------------------------
     location /api/ {
-        proxy_pass http://{{.Upstream}};
+        proxy_pass http://{{.Upstream}}{{.PubPrefix}}$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -42,7 +45,7 @@ server {
         proxy_ignore_headers Cache-Control;
         proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
 
-        proxy_pass http://{{.Upstream}};
+        proxy_pass http://{{.Upstream}}{{.PubPrefix}}$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -31,6 +31,12 @@ type Manager struct {
 	namespaces map[string]*Namespace
 	bridge     string // bridge interface name
 	subnet     int    // next subnet octet
+
+	// externalUpstreams holds ADOPT-A-PORT registrations: owner-scoped loopback
+	// services the gateway proxies to as if they were namespaced apps. Keyed the
+	// same way GetForProfile keys namespaces (userID + "-" + profileKey) so it
+	// resolves in the SAME lookup, right after the real-namespace miss.
+	externalUpstreams map[string]*ExternalUpstream
 }
 
 // metadataDenyCIDRv4 is the IPv4 link-local range that contains every cloud
@@ -347,6 +353,13 @@ func (m *Manager) GetForProfile(appID, userID, profile string) (*Namespace, bool
 		if ns.OwnerID == userID && strings.HasSuffix(ns.AppID, "-"+appKey) {
 			return ns, true
 		}
+	}
+	// ADOPT-A-PORT: after a real-namespace miss, resolve an owner-scoped external
+	// (loopback) upstream. Returning a synthetic namespace here means the gateway
+	// proxies to the adopted port through its full auth/entitlement/header/rate
+	// pipeline with zero gateway changes — no new trust path.
+	if u, ok := m.externalUpstreams[key]; ok {
+		return externalNamespace(u), true
 	}
 	return nil, false
 }

@@ -269,6 +269,27 @@ func TestProvisioner_WriteCaddySnippet(t *testing.T) {
 	if !strings.Contains(content, "tls") {
 		t.Errorf("snippet missing TLS directive: %s", content)
 	}
+	// Finding 1 (HIGH): the snippet must route through the gateway's anonymous
+	// public entrypoint (rewrite to the pubweb path), never straight at a
+	// namespace, so the gateway strips X-Vulos-* and enforces visibility.
+	if !strings.Contains(content, "rewrite * /__pubweb__/myapp{uri}") {
+		t.Errorf("snippet does not route through the gateway public path: %s", content)
+	}
+}
+
+// TestUpstreamAddrForApp_IsGateway verifies Finding 1 at the resolver: the
+// public-web upstream is the auth gateway loopback address, not a namespace
+// host port (which would bypass the gateway entirely).
+func TestUpstreamAddrForApp_IsGateway(t *testing.T) {
+	got := upstreamAddrForApp("anyapp", NewManager())
+	if got != GatewayLoopbackAddr() {
+		t.Fatalf("upstreamAddrForApp = %q, want gateway addr %q", got, GatewayLoopbackAddr())
+	}
+	// The env override still wins (tests / bespoke deployments).
+	t.Setenv("VULOS_UPSTREAM_anyapp", "127.0.0.1:12345")
+	if got := upstreamAddrForApp("anyapp", nil); got != "127.0.0.1:12345" {
+		t.Fatalf("env override ignored: got %q", got)
+	}
 }
 
 // TestProvisioner_ProvisionSubdomain_CaddyWriteFailsClosed is the wave-34

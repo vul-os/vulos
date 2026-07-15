@@ -55,22 +55,27 @@ func toDeploymentResponse(d *Deployment) deploymentResponse {
 	}
 }
 
-// upstreamAddrForApp builds the local reverse-proxy upstream address for an
-// app.  For now this resolves to the loopback:hostPort that the network
-// namespace exposes.  When no namespace is present (dev / test) it falls back
-// to the VULOS_UPSTREAM_<APPID> env var or a localhost placeholder.
+// upstreamAddrForApp returns the reverse-proxy upstream the public-web edge
+// (Caddy / nginx) must target for an app.
+//
+// SECURITY (Finding 1, HIGH): this is the auth gateway's loopback address — NOT
+// the app's namespace host port. Previously this returned 127.0.0.1:{hostPort},
+// which pointed the public edge straight at the app namespace and BYPASSED the
+// :8080 gateway: attacker-supplied X-Vulos-* headers were never stripped and
+// visibility was never enforced. Routing through the gateway (which rewrites to
+// PubwebPathPrefix+{appID} — see the Caddy/nginx snippet builders) makes the
+// gateway's anonymous PublicHandler the single choke point: it strips all seam
+// headers, injects no identity, and serves only apps published "public".
+//
+// The netMgr parameter is retained for signature compatibility (callers pass it)
+// but is no longer consulted — the upstream is always the gateway. The
+// VULOS_UPSTREAM_<APPID> override still wins for tests / bespoke deployments.
 func upstreamAddrForApp(appID string, netMgr *Manager) string {
 	envKey := fmt.Sprintf("VULOS_UPSTREAM_%s", appID)
 	if v := os.Getenv(envKey); v != "" {
 		return v
 	}
-	if netMgr != nil {
-		if ns, ok := netMgr.Get(appID); ok {
-			return fmt.Sprintf("127.0.0.1:%d", ns.HostPort)
-		}
-	}
-	// Placeholder for when no live namespace exists.
-	return "127.0.0.1:0"
+	return GatewayLoopbackAddr()
 }
 
 // RegisterSubdomainHandlers registers the PUBWEB-02 endpoints on mux.
