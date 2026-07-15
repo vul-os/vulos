@@ -501,26 +501,29 @@ export default function FileManager() {
         {/* Nav buttons */}
         <div className="flex gap-0.5">
           <button
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400 transition-colors"
             onClick={goBack}
             disabled={histIdx <= 0}
             title="Back"
+            aria-label="Back"
           >
             <IconBack />
           </button>
           <button
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400 transition-colors"
             onClick={goForward}
             disabled={histIdx >= history.length - 1}
             title="Forward"
+            aria-label="Forward"
           >
             <IconForward />
           </button>
           <button
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-400 transition-colors"
             onClick={goUp}
             disabled={cwd === '/'}
             title="Up"
+            aria-label="Up one folder"
           >
             <IconUp />
           </button>
@@ -559,7 +562,7 @@ export default function FileManager() {
         </div>
 
         {/* Search */}
-        <div className="flex items-center gap-1.5 bg-neutral-950/80 border border-neutral-800/50 rounded-lg px-2.5 py-1.5 w-44 shrink-0 focus-within:border-blue-500/40 transition-colors">
+        <div className="flex items-center gap-1.5 bg-neutral-950/80 border border-neutral-800/50 rounded-lg px-2.5 py-1.5 w-28 sm:w-44 shrink-0 focus-within:accent-border-soft transition-colors">
           <IconSearch className="text-neutral-600 shrink-0" />
           <input
             ref={searchRef}
@@ -581,27 +584,30 @@ export default function FileManager() {
 
         {/* Hidden files toggle */}
         <button
-          className={`w-7 h-7 flex items-center justify-center rounded-lg text-[10px] font-bold transition-colors
-            ${hidden ? 'bg-blue-500/20 text-blue-400' : 'text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300'}`}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-bold transition-colors
+            ${hidden ? 'accent-bg-soft accent-text' : 'text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300'}`}
           onClick={() => { setHidden(!hidden); loadDir(cwd, false) }}
           title="Show hidden files"
+          aria-label="Toggle hidden files"
         >
           .*
         </button>
 
         {/* Refresh */}
         <button
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
           onClick={() => loadDir(cwd, false)}
           title="Refresh"
+          aria-label="Refresh"
         >
           <IconRefresh />
         </button>
       </div>
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-44 shrink-0 border-r border-neutral-800/40 bg-neutral-900/50 overflow-y-auto overflow-x-hidden py-3 flex flex-col gap-1">
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
+        {/* Sidebar — hidden on phones (nav via toolbar back/up/breadcrumb); the
+            fixed 44/64 rails would otherwise overflow a ~360px viewport. */}
+        <div className="hidden sm:flex w-44 shrink-0 border-r border-neutral-800/40 bg-neutral-900/50 overflow-y-auto overflow-x-hidden py-3 flex-col gap-1">
           {/* Places */}
           <div className="flex flex-col">
             <div className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
@@ -616,7 +622,7 @@ export default function FileManager() {
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
                 onClick={() => loadDir(place.path)}
               >
-                <place.Icon className={`shrink-0 ${isActive(place) ? 'text-blue-400' : 'text-neutral-600'}`} />
+                <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-600'}`} />
                 <span>{place.label}</span>
               </button>
             ))}
@@ -638,7 +644,7 @@ export default function FileManager() {
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
                 onClick={() => loadDir(place.path)}
               >
-                <place.Icon className={`shrink-0 ${isActive(place) ? 'text-blue-400' : 'text-neutral-600'}`} />
+                <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-600'}`} />
                 <span>{place.label}</span>
               </button>
             ))}
@@ -685,9 +691,9 @@ export default function FileManager() {
                       }}
                     >
                       <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
-                        <IconCode className="text-purple-400 shrink-0" />
+                        <IconCode className="accent-text shrink-0" />
                         <span className="truncate">{name}</span>
-                        <span className="bg-purple-500/20 text-purple-300 text-[9px] px-1.5 py-0.5 rounded-full ml-1 shrink-0">
+                        <span className="accent-bg-soft accent-text text-[9px] px-1.5 py-0.5 rounded-full ml-1 shrink-0">
                           {Math.round((r.score || 0) * 100)}%
                         </span>
                       </span>
@@ -780,9 +786,10 @@ export default function FileManager() {
           </div>
         </div>
 
-        {/* Preview pane */}
+        {/* Preview pane — a fixed rail on desktop; a full-screen overlay sheet on
+            phones (side-by-side would overflow), dismissed with its close button. */}
         {preview && (
-          <div className="w-64 border-l border-neutral-800/40 flex flex-col shrink-0 overflow-hidden bg-neutral-900/30">
+          <div className="absolute inset-0 z-20 w-full sm:static sm:z-auto sm:w-64 border-l border-neutral-800/40 flex flex-col shrink-0 overflow-hidden bg-neutral-950 sm:bg-neutral-900/30">
             {/* Preview header */}
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-800/40 shrink-0">
               <div className="flex items-center gap-2 min-w-0 overflow-hidden">
@@ -796,8 +803,9 @@ export default function FileManager() {
                 </span>
               </div>
               <button
-                className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
                 onClick={() => { setPreview(null); setSelected(null) }}
+                aria-label="Close preview"
               >
                 <IconClose />
               </button>
@@ -843,7 +851,7 @@ export default function FileManager() {
               <div className="px-3 py-2.5 border-b border-neutral-800/30 shrink-0 space-y-1">
                 <div className="flex justify-between text-[11px]">
                   <span className="text-neutral-600">Match</span>
-                  <span className="text-purple-400">{Math.round((preview.score || 0) * 100)}%</span>
+                  <span className="accent-text">{Math.round((preview.score || 0) * 100)}%</span>
                 </div>
                 <div className="flex justify-between text-[11px]">
                   <span className="text-neutral-600">Path</span>
@@ -895,7 +903,7 @@ export default function FileManager() {
             </div>
             <button
               onClick={handleAskAIAboutFile}
-              className="w-full text-left px-3 py-1.5 text-[13px] text-violet-300 hover:bg-neutral-700/60 hover:text-violet-200 transition-colors"
+              className="w-full text-left px-3 py-1.5 text-[13px] accent-text hover:bg-neutral-700/60 transition-colors"
             >
               Ask AI about this
             </button>

@@ -37,7 +37,7 @@ const EXPORT_COVERS = [
   'Calendar (.ics) & Contacts (.vcf) — if your mail service exposes them',
 ]
 const EXPORT_NOT = [
-  'Talk / Meet history, Board & Docs documents (not yet exportable here)',
+  'Talk / Meet history, Office documents (docs, sheets, slides, whiteboards) — not yet exportable here',
   'Content held only on a peer instance behind an end-to-end share — that stays',
   'encrypted server-side, so you export it from the box that holds the keys',
 ]

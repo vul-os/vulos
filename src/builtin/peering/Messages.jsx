@@ -1,6 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePeering, Channel } from '../../core/usePeering.js'
 
+// MOBILE-ADAPTIVE (WAVE-30): below this width the two-pane layout (conversation
+// list + thread) collapses to a single pane that shows the list OR the open
+// thread, with a back affordance — the desktop metaphor adapts, it does not
+// shrink to an unusable ~80px thread column.
+const NARROW_QUERY = '(max-width: 640px)'
+function useNarrow() {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.(NARROW_QUERY).matches
+  )
+  useEffect(() => {
+    if (!window.matchMedia) return undefined
+    const mq = window.matchMedia(NARROW_QUERY)
+    const on = (e) => setNarrow(e.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatTime(iso) {
@@ -81,6 +100,12 @@ const IconX = () => (
   </svg>
 )
 
+const IconBack = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+    <path d="M12 4l-6 6 6 6" />
+  </svg>
+)
+
 const IconMessages = () => (
   <svg viewBox="0 0 20 20" fill="currentColor" width="32" height="32">
     <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
@@ -94,8 +119,8 @@ const S = {
   root: {
     display: 'flex',
     height: '100%',
-    background: 'var(--bg, #0d0d0d)',
-    color: 'var(--text, #e5e5e5)',
+    background: 'var(--bg-base, #0d0d0d)',
+    color: 'var(--text-primary, #e5e5e5)',
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
     fontSize: 13,
     overflow: 'hidden',
@@ -104,15 +129,15 @@ const S = {
     width: 280,
     minWidth: 220,
     flexShrink: 0,
-    borderRight: '1px solid var(--border, #1e1e1e)',
+    borderRight: '1px solid var(--border-default, #1e1e1e)',
     display: 'flex',
     flexDirection: 'column',
-    background: 'var(--sidebar-bg, #111)',
+    background: 'var(--bg-surface, #111)',
     overflow: 'hidden',
   },
   sidebarHeader: {
     padding: '16px 16px 12px',
-    borderBottom: '1px solid var(--border, #1e1e1e)',
+    borderBottom: '1px solid var(--border-default, #1e1e1e)',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
@@ -127,7 +152,7 @@ const S = {
     width: 8,
     height: 8,
     borderRadius: '50%',
-    background: '#22c55e',
+    background: 'var(--status-success)',
     flexShrink: 0,
   },
   offlineDot: {
@@ -149,7 +174,7 @@ const S = {
     padding: '9px 14px',
     cursor: 'pointer',
     background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
-    borderLeft: active ? '2px solid #7c3aed' : '2px solid transparent',
+    borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
     transition: 'background 0.1s',
   }),
   avatar: (seed) => {
@@ -182,7 +207,7 @@ const S = {
   },
   convPreview: {
     fontSize: 11,
-    color: 'var(--muted, #666)',
+    color: 'var(--text-faint, #666)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -190,13 +215,13 @@ const S = {
   },
   convTime: {
     fontSize: 11,
-    color: 'var(--muted, #555)',
+    color: 'var(--text-ghost, #555)',
     flexShrink: 0,
     alignSelf: 'flex-start',
     marginTop: 2,
   },
   unreadBadge: {
-    background: '#7c3aed',
+    background: 'var(--accent)',
     borderRadius: 10,
     fontSize: 10,
     fontWeight: 700,
@@ -212,11 +237,11 @@ const S = {
   },
   threadHeader: {
     padding: '12px 18px',
-    borderBottom: '1px solid var(--border, #1e1e1e)',
+    borderBottom: '1px solid var(--border-default, #1e1e1e)',
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    background: 'var(--header-bg, #111)',
+    background: 'var(--bg-surface, #111)',
     flexShrink: 0,
   },
   threadTitle: {
@@ -225,7 +250,7 @@ const S = {
   },
   threadSub: {
     fontSize: 11,
-    color: 'var(--muted, #666)',
+    color: 'var(--text-faint, #666)',
     marginTop: 1,
   },
   messageArea: {
@@ -239,7 +264,7 @@ const S = {
   dateSep: {
     textAlign: 'center',
     fontSize: 11,
-    color: 'var(--muted, #555)',
+    color: 'var(--text-ghost, #555)',
     margin: '12px 0 6px',
     position: 'relative',
   },
@@ -267,8 +292,8 @@ const S = {
     maxWidth: '65%',
     padding: '8px 12px',
     borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-    background: mine ? '#7c3aed' : 'var(--bubble-bg, #1e1e1e)',
-    color: mine ? '#fff' : 'var(--text, #e5e5e5)',
+    background: mine ? 'var(--accent)' : 'var(--bg-elevated, #1e1e1e)',
+    color: mine ? '#fff' : 'var(--text-primary, #e5e5e5)',
     lineHeight: 1.45,
     wordBreak: 'break-word',
     fontSize: 13,
@@ -283,7 +308,7 @@ const S = {
   }),
   metaText: {
     fontSize: 10,
-    color: 'var(--muted, #555)',
+    color: 'var(--text-ghost, #555)',
   },
   mediaAttachment: {
     marginTop: 6,
@@ -312,12 +337,12 @@ const S = {
   },
   composer: {
     padding: '12px 18px',
-    borderTop: '1px solid var(--border, #1e1e1e)',
-    background: 'var(--header-bg, #111)',
+    borderTop: '1px solid var(--border-default, #1e1e1e)',
+    background: 'var(--bg-surface, #111)',
     flexShrink: 0,
   },
   dropZone: (dragging) => ({
-    border: dragging ? '2px dashed #7c3aed' : '2px dashed transparent',
+    border: dragging ? '2px dashed var(--accent)' : '2px dashed transparent',
     borderRadius: 10,
     transition: 'border 0.15s',
     padding: dragging ? 8 : 0,
@@ -349,7 +374,7 @@ const S = {
     height: 60,
     fontSize: 10,
     gap: 4,
-    color: 'var(--muted, #666)',
+    color: 'var(--text-faint, #666)',
     padding: 4,
     textAlign: 'center',
     overflow: 'hidden',
@@ -377,8 +402,8 @@ const S = {
   },
   textInput: {
     flex: 1,
-    background: 'var(--input-bg, #1a1a1a)',
-    border: '1px solid var(--border, #2a2a2a)',
+    background: 'var(--bg-elevated, #1a1a1a)',
+    border: '1px solid var(--border-strong, #2a2a2a)',
     borderRadius: 22,
     padding: '9px 16px',
     color: 'inherit',
@@ -393,9 +418,11 @@ const S = {
   iconBtn: (disabled) => ({
     background: 'none',
     border: 'none',
-    color: disabled ? 'var(--muted, #444)' : 'var(--muted, #888)',
+    color: disabled ? 'var(--text-dim, #444)' : 'var(--text-muted, #888)',
     cursor: disabled ? 'default' : 'pointer',
-    padding: 6,
+    // ≥44px touch target (WCAG 2.5.8) while the glyph stays 18px.
+    width: 44,
+    height: 44,
     borderRadius: 8,
     display: 'flex',
     alignItems: 'center',
@@ -404,11 +431,12 @@ const S = {
     flexShrink: 0,
   }),
   sendBtn: (canSend) => ({
-    background: canSend ? '#7c3aed' : '#2a2a2a',
+    background: canSend ? 'var(--accent)' : 'var(--bg-elevated, #2a2a2a)',
     border: 'none',
     color: canSend ? '#fff' : '#555',
     cursor: canSend ? 'pointer' : 'default',
-    padding: '8px 10px',
+    width: 44,
+    height: 44,
     borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
@@ -416,9 +444,23 @@ const S = {
     transition: 'background 0.15s',
     flexShrink: 0,
   }),
+  backBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-muted, #888)',
+    cursor: 'pointer',
+    width: 36,
+    height: 36,
+    marginLeft: -6,
+    borderRadius: 8,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   uploadProgress: {
     fontSize: 11,
-    color: '#7c3aed',
+    color: 'var(--accent)',
     marginBottom: 4,
   },
   empty: {
@@ -428,12 +470,12 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    color: 'var(--muted, #555)',
+    color: 'var(--text-ghost, #555)',
   },
   emptyTitle: {
     fontSize: 15,
     fontWeight: 600,
-    color: 'var(--text, #e5e5e5)',
+    color: 'var(--text-primary, #e5e5e5)',
   },
   emptyNote: {
     fontSize: 12,
@@ -445,17 +487,17 @@ const S = {
     width: 20,
     height: 20,
     border: '2px solid #333',
-    borderTopColor: '#7c3aed',
+    borderTopColor: 'var(--accent)',
     borderRadius: '50%',
     animation: 'spin 0.7s linear infinite',
   },
   errorBanner: {
-    background: 'rgba(220,38,38,0.12)',
-    border: '1px solid rgba(220,38,38,0.3)',
+    background: 'var(--status-danger-soft)',
+    border: '1px solid color-mix(in srgb, var(--status-danger) 34%, transparent)',
     borderRadius: 8,
     padding: '8px 12px',
     fontSize: 12,
-    color: '#f87171',
+    color: 'var(--status-danger)',
     margin: '8px 18px 0',
   },
 }
@@ -482,9 +524,12 @@ function normalizeConversation(raw) {
 
 // ── ConversationList ──────────────────────────────────────────────────────────
 
-function ConversationList({ conversations, activeId, onSelect, loading, wsConnected }) {
+function ConversationList({ conversations, activeId, onSelect, loading, wsConnected, narrow }) {
+  const sidebarStyle = narrow
+    ? { ...S.sidebar, width: '100%', minWidth: 0, borderRight: 'none' }
+    : S.sidebar
   return (
-    <aside style={S.sidebar}>
+    <aside style={sidebarStyle}>
       <div style={S.sidebarHeader}>
         <div style={S.sidebarTitle}>Messages</div>
         <div
@@ -499,7 +544,7 @@ function ConversationList({ conversations, activeId, onSelect, loading, wsConnec
         </div>
       ) : conversations.length === 0 ? (
         <div style={{
-          padding: 24, textAlign: 'center', color: 'var(--muted, #555)', fontSize: 12, lineHeight: 1.6,
+          padding: 24, textAlign: 'center', color: 'var(--text-ghost, #555)', fontSize: 12, lineHeight: 1.6,
         }}>
           No conversations yet.
           <br />Start messaging a contact.
@@ -579,7 +624,7 @@ function MediaThumb({ attachment }) {
           {attachment.filename || 'file'}
         </div>
         {attachment.size && (
-          <div style={{ fontSize: 10, color: 'var(--muted, #666)' }}>{humanFileSize(attachment.size)}</div>
+          <div style={{ fontSize: 10, color: 'var(--text-faint, #666)' }}>{humanFileSize(attachment.size)}</div>
         )}
       </div>
     </a>
@@ -608,7 +653,7 @@ function MessageBubble({ msg, isMine, peerName }) {
       <div style={S.bubbleMeta(isMine)}>
         <span style={S.metaText}>{formatTime(msg.timestamp)}</span>
         {isMine && msg.delivered && (
-          <span style={{ color: '#7c3aed' }}><IconCheck /></span>
+          <span style={{ color: 'var(--accent)' }}><IconCheck /></span>
         )}
       </div>
     </div>
@@ -784,7 +829,7 @@ function Composer({ convId, onSent, disabled }) {
                       Failed
                     </div>
                   )}
-                  <button style={S.attachRemove} onClick={() => removeAttachment(a.key)}>
+                  <button style={S.attachRemove} aria-label="Remove attachment" onClick={() => removeAttachment(a.key)}>
                     <IconX />
                   </button>
                 </div>
@@ -808,6 +853,7 @@ function Composer({ convId, onSent, disabled }) {
           <button
             style={S.iconBtn(disabled)}
             title="Attach file"
+            aria-label="Attach file"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
           >
@@ -826,6 +872,7 @@ function Composer({ convId, onSent, disabled }) {
           <button
             style={S.sendBtn(canSend)}
             title="Send"
+            aria-label="Send message"
             onClick={send}
             disabled={!canSend}
           >
@@ -843,7 +890,7 @@ function Composer({ convId, onSent, disabled }) {
 // so the WS subscriber can deliver inbound frames without mutating a component.
 const incomingCallbackRef = { current: null }
 
-function ThreadView({ conversation, myVulaId }) {
+function ThreadView({ conversation, myVulaId, onBack }) {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -934,6 +981,11 @@ function ThreadView({ conversation, myVulaId }) {
     <>
       {/* Thread header */}
       <div style={S.threadHeader}>
+        {onBack && (
+          <button style={S.backBtn} aria-label="Back to conversations" onClick={onBack}>
+            <IconBack />
+          </button>
+        )}
         <div style={S.avatar(seed)}>
           {initials(peerName)}
         </div>
@@ -964,7 +1016,7 @@ function ThreadView({ conversation, myVulaId }) {
 
         {!loading && messages.length === 0 && !error && (
           <div style={{ ...S.empty, flex: 'none', padding: 32 }}>
-            <div style={{ ...S.emptyNote, color: 'var(--muted, #555)' }}>
+            <div style={{ ...S.emptyNote, color: 'var(--text-ghost, #555)' }}>
               No messages yet. Say hello!
             </div>
           </div>
@@ -1083,22 +1135,35 @@ export default function Messages() {
     return () => style.remove()
   }, [])
 
+  // MOBILE-ADAPTIVE: on a phone show ONE pane — the list, or (once a
+  // conversation is picked) the thread with a back button. On wider screens
+  // keep the classic two-pane messenger layout.
+  const narrow = useNarrow()
+  const showList = !narrow || !activeConv
+  const showThread = !narrow || !!activeConv
+
   return (
     <div style={S.root}>
-      <ConversationList
-        conversations={conversations}
-        activeId={activeConv?.id}
-        onSelect={handleSelectConv}
-        loading={loadingConvs}
-        wsConnected={wsConnected}
-      />
-      <div style={S.main}>
-        <ThreadView
-          ref={threadRef}
-          conversation={activeConv}
-          myVulaId={myVulaId}
+      {showList && (
+        <ConversationList
+          conversations={conversations}
+          activeId={activeConv?.id}
+          onSelect={handleSelectConv}
+          loading={loadingConvs}
+          wsConnected={wsConnected}
+          narrow={narrow}
         />
-      </div>
+      )}
+      {showThread && (
+        <div style={S.main}>
+          <ThreadView
+            ref={threadRef}
+            conversation={activeConv}
+            myVulaId={myVulaId}
+            onBack={narrow ? () => setActiveConv(null) : undefined}
+          />
+        </div>
+      )}
     </div>
   )
 }

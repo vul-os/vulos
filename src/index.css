@@ -173,9 +173,50 @@ html, body, #root {
   background: #555;
 }
 
+/* ═══════════════════════════════════════
+   MOBILE-ADAPTIVE shell (WAVE-30)
+   Safe-area insets (notches / home indicators / rounded corners) + touch
+   ergonomics. env(safe-area-inset-*) resolves to 0 on hardware without insets,
+   so these are inert on desktop and non-notched devices. Requires
+   `viewport-fit=cover` in the <meta viewport> (set in index.html).
+   ═══════════════════════════════════════ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Minimum comfortable touch target — WCAG 2.5.8 (Target Size, 24px min) with
+     headroom to the platform-recommended 44px. */
+  --touch-min: 44px;
+}
+
+/* Padding helpers that add the device's safe-area inset on top of any existing
+   padding. Applied to the mobile status bar (top) and bottom nav (bottom). */
+.safe-pt { padding-top: var(--safe-top); }
+.safe-pb { padding-bottom: var(--safe-bottom); }
+.safe-px { padding-left: var(--safe-left); padding-right: var(--safe-right); }
+
+/* Guarantees a control is at least a full finger tall/wide without forcing the
+   glyph to grow — pairs with flex centering. */
+.touch-target { min-width: var(--touch-min); min-height: var(--touch-min); }
+
+/* The mobile shell must never scroll the page sideways. Individual app surfaces
+   own their internal scrolling; the shell frame is locked. */
+[data-shell="mobile"] { overflow-x: hidden; }
+
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(20px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* Bottom-sheet / app entrance for the mobile shell — slides up from the dock. */
+@keyframes sheetUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim-sheet-up { animation: sheetUp var(--motion-base) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .anim-sheet-up { animation: none; }
 }
 
 @keyframes fadeIn {

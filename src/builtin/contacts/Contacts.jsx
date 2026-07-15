@@ -16,7 +16,15 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
+import { useNarrow } from '../../shell/useNarrow'
 import { listContacts, createContact, updateContact, deleteContact } from './contactsApi'
+
+// Back chevron for the mobile single-pane view.
+function BackChevron() {
+  return (
+    <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
+  )
+}
 
 function initials(name) {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean)
@@ -109,6 +117,15 @@ export default function Contacts() {
 
   const unavailable = !!error && contacts.length === 0
 
+  // MOBILE-ADAPTIVE: below `sm` show ONE pane — the list, or the detail/editor
+  // (with a back button) once a contact is picked. The desktop layout keeps
+  // both panes side by side.
+  const narrow = useNarrow()
+  const hasDetail = !!editing || !!selected
+  const showList = !narrow || !hasDetail
+  const showDetail = !narrow || hasDetail
+  const backToList = () => { setEditing(null); setSelectedId(null) }
+
   if (unavailable) {
     return (
       <div className="h-full grid place-items-center bg-neutral-950 text-center px-6" data-contacts-app>
@@ -128,18 +145,19 @@ export default function Contacts() {
 
   return (
     <div className="h-full flex bg-neutral-950 text-neutral-100 select-none" data-contacts-app>
-      {/* List pane */}
-      <div className="w-64 shrink-0 border-r border-neutral-800/70 flex flex-col min-h-0">
+      {/* List pane — full width on mobile, fixed rail on desktop */}
+      {showList && (
+      <div className={`${narrow ? 'w-full' : 'w-64 shrink-0 border-r border-neutral-800/70'} flex flex-col min-h-0`}>
         <div className="p-2.5 border-b border-neutral-800/70 flex items-center gap-2">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search contacts"
             aria-label="Search contacts"
-            className="flex-1 min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[12px] focus-primary"
+            className="flex-1 min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-2 text-[12px] focus-primary"
           />
           <button type="button" onClick={startCreate} aria-label="New contact"
-            className="w-8 h-8 shrink-0 grid place-items-center rounded-md text-white focus-primary"
+            className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md text-white text-lg focus-primary"
             style={{ background: 'var(--accent)' }}>+</button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -166,21 +184,32 @@ export default function Contacts() {
           )}
         </div>
       </div>
+      )}
 
       {/* Detail / editor pane */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        {editing ? (
-          <ContactEditor form={editing} setForm={setEditing} onSave={save}
-            onCancel={() => setEditing(null)} saving={saving} />
-        ) : selected ? (
-          <ContactDetail contact={selected} onEdit={() => startEdit(selected)}
-            onDelete={() => remove(selected)} saving={saving} />
-        ) : (
-          <div className="h-full grid place-items-center text-neutral-600 text-[13px]">
-            Select a contact, or add a new one.
-          </div>
+      {showDetail && (
+      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
+        {narrow && hasDetail && (
+          <button type="button" onClick={backToList}
+            className="shrink-0 flex items-center gap-1.5 px-3 h-11 text-[13px] text-neutral-400 border-b border-neutral-800/70 focus-primary">
+            <BackChevron /> Contacts
+          </button>
         )}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {editing ? (
+            <ContactEditor form={editing} setForm={setEditing} onSave={save}
+              onCancel={() => { narrow ? backToList() : setEditing(null) }} saving={saving} />
+          ) : selected ? (
+            <ContactDetail contact={selected} onEdit={() => startEdit(selected)}
+              onDelete={() => remove(selected)} saving={saving} />
+          ) : (
+            <div className="h-full grid place-items-center text-neutral-600 text-[13px]">
+              Select a contact, or add a new one.
+            </div>
+          )}
+        </div>
       </div>
+      )}
     </div>
   )
 }
@@ -201,9 +230,9 @@ function ContactDetail({ contact, onEdit, onDelete, saving }) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button type="button" onClick={onEdit}
-            className="text-[12px] px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary">Edit</button>
+            className="text-[12px] px-3 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary">Edit</button>
           <button type="button" onClick={onDelete} disabled={saving}
-            className="text-[12px] px-3 py-1.5 rounded-md text-red-300 hover:bg-red-500/10 focus-primary disabled:opacity-50">Delete</button>
+            className="text-[12px] px-3 py-2 rounded-md text-danger hover:bg-danger-soft focus-primary disabled:opacity-50">Delete</button>
         </div>
       </div>
 
@@ -255,7 +284,7 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }) {
       <div className="text-[15px] font-semibold mb-4">{form.id ? 'Edit contact' : 'New contact'}</div>
       <div className="flex flex-col gap-3">
         <Input label="Name" value={form.name} onChange={(v) => set({ name: v })} autoFocus />
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Input label="Title" value={form.title} onChange={(v) => set({ title: v })} />
           <Input label="Organization" value={form.org} onChange={(v) => set({ org: v })} />
         </div>

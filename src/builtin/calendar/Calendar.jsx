@@ -197,20 +197,20 @@ export default function Calendar({ initialQuery = '' } = {}) {
 
   return (
     <div className="h-full flex flex-col bg-neutral-950 text-neutral-100 select-none" data-calendar-app>
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-neutral-800/70 shrink-0">
+      {/* Toolbar — wraps on narrow screens; larger touch targets on mobile */}
+      <div className="flex items-center flex-wrap gap-2 gap-y-2 px-3 sm:px-4 py-2.5 border-b border-neutral-800/70 shrink-0">
         <button
           type="button"
           onClick={() => setMonth(startOfDay(new Date()))}
-          className="text-[12px] font-mono px-2.5 py-1 rounded-md border border-neutral-700 hover:bg-neutral-800/60 transition-colors focus-primary"
+          className="text-[12px] font-mono px-3 py-2 sm:py-1 rounded-md border border-neutral-700 hover:bg-neutral-800/60 transition-colors focus-primary"
         >
           Today
         </button>
         <div className="flex items-center gap-0.5">
           <button type="button" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}
-            className="w-7 h-7 grid place-items-center rounded-md hover:bg-neutral-800/60 focus-primary">‹</button>
+            className="w-11 h-11 sm:w-7 sm:h-7 text-lg sm:text-base grid place-items-center rounded-md hover:bg-neutral-800/60 focus-primary">‹</button>
           <button type="button" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}
-            className="w-7 h-7 grid place-items-center rounded-md hover:bg-neutral-800/60 focus-primary">›</button>
+            className="w-11 h-11 sm:w-7 sm:h-7 text-lg sm:text-base grid place-items-center rounded-md hover:bg-neutral-800/60 focus-primary">›</button>
         </div>
         <div className="text-[15px] font-semibold min-w-0 truncate" data-calendar-title>
           {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
@@ -225,14 +225,15 @@ export default function Calendar({ initialQuery = '' } = {}) {
         <div className="ml-auto flex items-center gap-2">
           <div className="flex rounded-md border border-neutral-700 overflow-hidden text-[11px] font-mono">
             <button type="button" onClick={() => setView('month')}
-              className={`px-2.5 py-1 ${view === 'month' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/40'}`}>Month</button>
+              className={`px-3 py-2 sm:py-1 ${view === 'month' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/40'}`}>Month</button>
             <button type="button" onClick={() => setView('agenda')}
-              className={`px-2.5 py-1 ${view === 'agenda' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/40'}`}>Agenda</button>
+              className={`px-3 py-2 sm:py-1 ${view === 'agenda' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/40'}`}>Agenda</button>
           </div>
           <button
             type="button"
             onClick={() => openEditorForDay(view === 'month' ? month : now)}
-            className="text-[12px] px-2.5 py-1 rounded-md text-white transition-colors focus-primary"
+            aria-label="New event"
+            className="text-[12px] px-3 py-2 sm:py-1 rounded-md text-white transition-colors focus-primary whitespace-nowrap"
             style={{ background: 'var(--accent)' }}
           >
             + New event
@@ -444,7 +445,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
         <div className="px-4 py-3 border-t border-neutral-800 flex items-center gap-2">
           {form.id && (
             <button type="button" onClick={onDelete} disabled={saving}
-              className="text-[12px] px-2.5 py-1.5 rounded-md text-red-300 hover:bg-red-500/10 focus-primary disabled:opacity-50">
+              className="text-[12px] px-2.5 py-1.5 rounded-md text-danger hover:bg-danger-soft focus-primary disabled:opacity-50">
               Delete
             </button>
           )}

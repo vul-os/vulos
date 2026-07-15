@@ -178,7 +178,7 @@ export default function Setup({ onComplete }) {
     // BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
     // Everything is pre-selected; a lean user can uncheck these to trim down.
     //   suiteEmail     — claim @vulos email (auto-provisions Mail; coupled to the address)
-    //   suiteWorkspace — install the full Workspace suite (Office/Docs, Board, Calendar, Files)
+    //   suiteWorkspace — install the Office productivity app (Docs/Sheets/Slides/PDF/Whiteboards)
     suiteEmail: true,
     suiteWorkspace: true,
   })
@@ -2091,9 +2091,10 @@ function PinStep({ config, update, onNext, onPrev }) {
 //
 // The founder-confirmed model: the OS ships batteries-included. EVERYTHING is
 // pre-checked — Mail (the lilmail connector, which also backs the built-in
-// Calendar/Contacts widgets) plus the owned productivity apps (Office/Docs,
-// Board). A lean user (e.g. a gamer) can OPT OUT here:
-//   - uncheck productivity apps → drops Office/Docs + Board
+// Calendar/Contacts widgets) plus the owned productivity app (Office/Docs,
+// which now includes whiteboards as a document type). A lean user (e.g. a
+// gamer) can OPT OUT here:
+//   - uncheck productivity apps → drops Office/Docs
 //   - uncheck Mail              → drops the Mail connector
 // There is no "Workspace" shell — the OS IS the shell. Files, Calendar and
 // Contacts are always present (Calendar/Contacts degrade to "Connect Mail" when
@@ -2216,8 +2217,8 @@ function AppsStep({ config, update, onNext, onPrev }) {
         <OptRow
           checked={workspace}
           onToggle={() => update('suiteWorkspace', !workspace)}
-          title="Install the productivity apps — Office & Board"
-          desc="Vulos Office (Docs, Sheets, Slides) and Board (whiteboard). Uncheck for a lean OS without the productivity apps. Files, Calendar and Contacts are always included."
+          title="Install the productivity app — Office"
+          desc="Vulos Office — Docs, Sheets, Slides, PDF and Whiteboards. Uncheck for a lean OS without the productivity app. Files, Calendar and Contacts are always included."
           accent="border-violet-500/60 bg-violet-600/10"
         />
       </div>

@@ -235,8 +235,8 @@ const builtinRegistry = [
     id: 'vulos-office',
     name: 'Office',
     icon: '⊟',
-    description: 'Docs, Sheets, Slides, and PDF — collaborative editing with per-user file storage',
-    keywords: ['docs', 'sheets', 'slides', 'pdf', 'word', 'excel', 'spreadsheet', 'presentation', 'document', 'office'],
+    description: 'Docs, Sheets, Slides, PDF, and Whiteboards — collaborative editing with per-user file storage',
+    keywords: ['docs', 'sheets', 'slides', 'pdf', 'word', 'excel', 'spreadsheet', 'presentation', 'document', 'office', 'whiteboard', 'board', 'canvas', 'draw', 'diagram'],
     category: 'office',
     type: 'web',
     url: '/app/vulos-office/',
@@ -245,27 +245,18 @@ const builtinRegistry = [
   },
   // WORKSPACE REMOVED: the standalone "Workspace" shell app is dead — the OS IS
   // the shell. Its launcher tile, gateway deep-link, and hub embedding are gone.
-  // Office and Board are standalone owned apps (registered above / below).
+  //
+  // BOARD FOLDED INTO OFFICE: the standalone "Board" app is gone as its own
+  // launcher tile — a whiteboard is now just another Office document type
+  // (docs/sheets/slides/pdf/whiteboards), so there is ONE productivity app.
+  // Its keywords (whiteboard/canvas/draw/diagram) are folded into Office above so
+  // searching "whiteboard" still surfaces Office.
   //
   // COMMS ARE THIRD-PARTY: Talk and Meet are no longer first-party built-ins.
   // Real-time chat/video is delegated to established third-party platforms
   // (Talk → Matrix/Element; Meet → Element-Call/Jitsi, final pick TBD), reached
   // as external services rather than shipped as OS apps. The OS keeps its own
   // sovereign peer-to-peer `messages` builtin for direct encrypted messaging.
-  {
-    id: 'board',
-    name: 'Board',
-    icon: '▦',
-    description: 'Vulos Board — collaborative infinite whiteboard with realtime sync',
-    keywords: ['board', 'whiteboard', 'canvas', 'draw', 'diagram', 'sketch', 'collaborate', 'realtime'],
-    category: 'productivity',
-    type: 'web',
-    url: '/app/board/',
-    port: 80,
-    // No storage permission: the board *sync server* uses the storage seam
-    // itself (it is not gateway header-injected). The OS mints its websocket
-    // auth token via GET /api/board/token (see backend routes_board.go).
-  },
   // MAIL-PIM (GNOME model): Calendar and Contacts are STANDALONE built-in OS
   // surfaces (React components in src/builtin/), the "GNOME Calendar/Contacts" of
   // Vulos. They read/write lilmail's stable /v1 (CalDAV/CardDAV + any OAuth-
@@ -474,8 +465,8 @@ const defaultWebApps = [
 // BUNDLE-01: default-everything (batteries-included, opt-out) app selection.
 //
 // At install/onboarding the user gets EVERYTHING pre-selected. A lean user can
-// OPT OUT of Mail (declining the mail connector) and/or the productivity apps
-// bundle (→ drops the owned Office + Board apps). This map records which tiles
+// OPT OUT of Mail (declining the mail connector) and/or the productivity app
+// bundle (→ drops the owned Office app). This map records which tiles
 // belong to which opt-out group so getApps() can hide them. The persisted flag
 // for the productivity group is still named `workspace` for backend-contract
 // compatibility, but there is no "Workspace" shell any more — the OS IS the shell.
@@ -483,7 +474,8 @@ const defaultWebApps = [
 //   - 'email'     — Mail (lilmail connector). Also the backend for the built-in
 //                   Calendar/Contacts PIM widgets, which are always shown and
 //                   degrade honestly to "Connect Mail" when no account is linked.
-//   - 'workspace' — the owned productivity apps (Office/Docs, Board).
+//   - 'workspace' — the owned productivity app (Office/Docs, which now includes
+//                   whiteboards as a document type; Board is no longer separate).
 //
 // Anything not listed here (Files/Drive, Assistant, Calendar, Contacts, Messages,
 // the utilities and system apps) is always shown. Default (no selection
@@ -491,7 +483,6 @@ const defaultWebApps = [
 const suiteBundleOf = new Map([
   ['lilmail', 'email'],
   ['vulos-office', 'workspace'],
-  ['board', 'workspace'],
 ])
 
 // suiteSelection mirrors GET /api/setup/apps. Defaults to everything-on so tiles

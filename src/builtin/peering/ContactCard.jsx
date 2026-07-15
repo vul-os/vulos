@@ -8,9 +8,9 @@ const PERMISSIONS = [
 ]
 
 const STATE_COLORS = {
-  approved: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  pending:  'bg-amber-500/15  text-amber-400  border-amber-500/30',
-  blocked:  'bg-red-500/15    text-red-400    border-red-500/30',
+  approved: 'bg-success-soft text-success border-success-soft',
+  pending:  'bg-warning-soft text-warning border-warning-soft',
+  blocked:  'bg-danger-soft  text-danger  border-danger-soft',
 }
 
 const STATE_LABEL = {
@@ -28,10 +28,14 @@ function Avatar({ name, size = 10 }) {
     .slice(0, 2)
   const hue = [...(name || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffffff, 0)
   const bg = `hsl(${hue % 360}, 55%, 30%)`
+  // Tailwind can't see dynamically-built class names (`w-${size}`), so the size
+  // was never emitted and the avatar collapsed. Size is a Tailwind spacing unit
+  // (×0.25rem), applied inline so any size renders.
+  const px = `${size * 0.25}rem`
   return (
     <div
-      className={`w-${size} h-${size} rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0`}
-      style={{ background: bg }}
+      className="rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0"
+      style={{ background: bg, width: px, height: px }}
     >
       {initials}
     </div>
@@ -46,7 +50,7 @@ function PermToggle({ perm, active, onChange, disabled }) {
       title={perm.label}
       className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors
         ${active
-          ? 'bg-blue-600/20 border-blue-500/40 text-blue-300'
+          ? 'accent-bg-soft accent-border text-white'
           : 'bg-neutral-800/60 border-neutral-700/40 text-neutral-500 hover:text-neutral-400'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
@@ -127,7 +131,7 @@ export default function ContactCard({ contact, onUpdatePerms, onRemove, onCall }
           {/* Permission toggles */}
           <div>
             <p className="text-[10px] text-neutral-600 mb-2 uppercase tracking-wider">
-              Permissions {saving && <span className="text-blue-500 ml-1">saving…</span>}
+              Permissions {saving && <span className="accent-text ml-1">saving…</span>}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {PERMISSIONS.map(p => (
@@ -147,14 +151,14 @@ export default function ContactCard({ contact, onUpdatePerms, onRemove, onCall }
             {onCall && perms.includes('call') && (
               <button
                 onClick={() => onCall(contact.vula_id)}
-                className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors"
+                className="flex items-center gap-1 text-[11px] text-success hover:opacity-80 transition-colors"
               >
                 <span>📞</span> Voice call
               </button>
             )}
             <button
               onClick={() => onRemove(contact.vula_id)}
-              className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
+              className="text-[11px] text-danger hover:opacity-80 transition-colors"
             >
               Remove contact
             </button>
