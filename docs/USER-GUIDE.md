@@ -30,7 +30,7 @@ The new-system flow walks through these steps (a few are skippable):
 | Vulos username | Choose a username for your Vulos account (cloud identity). Sign-in uses your email/password or a linked Google/Microsoft account. |
 | Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; you can set it later in Settings. |
 | How will you use Vulos? | Intent question that tunes defaults (relay, AI tokens, backup quota, dedicated IP). |
-| Your apps | Everything is pre-checked by default — Mail plus the owned productivity apps (Office, Board). Opt out of anything; you can add it back later. Files, Calendar and Contacts are always included. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) — there is no Vulos-hosted mailbox and no `@vulos.net` address. See [APPS.md](APPS.md). |
+| Your apps | Everything is pre-checked by default — the owned productivity app Office (Docs/Sheets/Slides/PDF/whiteboards) plus the PIM apps. Opt out of anything; you can add it back later. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP, via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address. See [APPS.md](APPS.md). |
 | Appearance | Dark / Light / Auto theme. |
 | Node identity | Shows your instance's read-only ULID and lets you set a hostname (lowercase letters, numbers, hyphens). |
 | Storage | Optionally connect S3-compatible storage with an encryption passphrase. |

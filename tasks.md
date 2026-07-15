@@ -5,11 +5,12 @@
 > **PIM follows the GNOME model:** **lilmail** connects the user's IMAP/CalDAV/CardDAV (OAuth
 > Google/Microsoft supported) and exposes stable `/v1`; the OS ships standalone built-in
 > **Calendar** + **Contacts** apps over that `/v1` via the box PIM proxy (`/api/pim/*`) — DONE.
-> **No hosted mail, no `@vulos.net`.** Owned apps are **Office** and **Board** (standalone).
+> **No hosted mail, no Vulos-hosted email address.** The owned app is **Office**
+> (Docs/Sheets/Slides/PDF/whiteboards — the whiteboard is an Office document type, not a separate Board product), standalone.
 > **Comms are third-party:** Talk → Matrix/Element, Meet → Element-Call/Jitsi (TBD) — not
 > first-party OS apps. **Files (+ P2P) live in the OS.** Any older backlog line that assumes a
 > `vulos-workspace` shell, a first-party `vulos-talk`/`vulos-meet` app, `vulos-mail`/`mail-ui`,
-> or an `@vulos.net` mailbox is a "past way" and is superseded by this note.
+> or a Vulos-hosted mailbox is a "past way" and is superseded by this note.
 
 **Status: native-first re-architecture (v8 — 2026-05-26) is the ACTIVE track.** All legacy
 tasks (AIROT, IDENTITY, PUBWEB, MINST, STORE, OFFLINE, MEET, audit waves) are `done` — see the
