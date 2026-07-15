@@ -9,7 +9,7 @@ package appnet
 //
 // Subdomain scheme (from roadmap/NETWORK.md):
 //
-//	{app}--{profile}.{ulid}.vulos.net
+//	{app}--{profile}.{ulid}.vulos.org
 //
 // The ulid is the instance ULID read from VULOS_INSTANCE_ID (defaults to
 // "local" for dev/testing).  The profile defaults to "default" when empty.
@@ -34,7 +34,7 @@ const (
 	defaultDNSAPI = "https://api.vulos.org/dns/provision"
 
 	// defaultBaseDomain is the public-web TLD used in FQDN construction.
-	defaultBaseDomain = "vulos.net"
+	defaultBaseDomain = "vulos.org"
 
 	// deploymentDBFilename is the filename for the deployment persistence file.
 	deploymentDBFilename = "app_deployments.json"
@@ -44,7 +44,7 @@ const (
 type Deployment struct {
 	AppID       string    `json:"app_id"`
 	Profile     string    `json:"profile"` // "default" when not specified
-	FQDN        string    `json:"fqdn"`    // e.g. notes--default.01h5t3.vulos.net
+	FQDN        string    `json:"fqdn"`    // e.g. notes--default.01h5t3.vulos.org
 	Provisioned time.Time `json:"provisioned"`
 	TLSObtained bool      `json:"tls_obtained"` // true once ACME cert is issued
 }
@@ -183,7 +183,7 @@ type Provisioner struct {
 	store      *DeploymentStore
 	httpClient *http.Client
 	dnsAPI     string // POST endpoint for DNS provisioning
-	baseDomain string // e.g. "vulos.net"
+	baseDomain string // e.g. "vulos.org"
 	instanceID string // ULID of this instance
 	caddyDir   string // dir where Caddyfile snippets are written
 }

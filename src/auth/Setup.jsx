@@ -369,7 +369,6 @@ export default function Setup({ onComplete }) {
                 update={update}
                 onNext={next}
                 onPrev={prev}
-                customDomain={config.NETB05_choice === 'cloud' ? undefined : undefined}
               />
             )}
             {/* INTENT: Business / Personal intent + Vulos Cloud add-on pitch */}
@@ -2107,30 +2106,30 @@ function AppsStep({ config, update, onNext, onPrev }) {
   const workspace = config.suiteWorkspace !== false
   const [saving, setSaving] = useState(false)
 
-  // BUNDLE-01: the @vulos email opt-in drives Mail provisioning by claiming a
-  // @vulos.net address. On cloud/create-cloud installs the mandatory cloudAccount
-  // step (VulosAccountStep) has already claimed it — config.cloudAccountAddress is
-  // set — so we do nothing here. The gap is the LOCAL install path: cloudAccount is
-  // filtered out of the step list, yet suiteEmail defaults on, so no claim has
-  // happened. When the user keeps the email opt-in on that path we attempt the
-  // claim here (approach (b)): POST /api/identity/claim with a handle derived from
-  // the username, exactly the endpoint VulosAccountStep uses.
+  // BUNDLE-01: on cloud/create-cloud installs the mandatory cloudAccount step
+  // (VulosAccountStep) already reserved the account username — config.cloudAccountAddress
+  // is set — so we do nothing here. The gap is the LOCAL install path: cloudAccount is
+  // filtered out of the step list, yet suiteEmail defaults on, so no username has been
+  // reserved. When the user keeps the email opt-in on that path we reserve one here
+  // (approach (b)): POST /api/identity/claim with a handle derived from the username,
+  // exactly the endpoint VulosAccountStep uses. (Mail itself is a bring-your-own
+  // connector — this only reserves the account username, it provisions no mailbox.)
   //
   // Defensive: the claim tolerates a network/CP failure — we log and let the user
-  // proceed rather than hard-blocking the install. But we NEVER pretend an address
-  // was claimed if it wasn't: cloudAccountAddress is only set on a real success.
+  // proceed rather than hard-blocking the install. But we NEVER pretend a username
+  // was reserved if it wasn't: cloudAccountAddress is only set on a real success.
   const maybeClaimSuiteEmail = async () => {
-    if (!email) return // user opted out of Mail — nothing to claim
-    if (config.cloudAccountAddress) return // already claimed in VulosAccountStep
+    if (!email) return // user opted out of Mail — nothing to reserve
+    if (config.cloudAccountAddress) return // already reserved in VulosAccountStep
 
     const handle = (config.username || '')
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '')
       .slice(0, 32)
     if (!/^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$|^[a-z0-9]{3}$/.test(handle)) {
-      // No usable handle to claim (e.g. blank/too-short username) — skip silently;
-      // the user can still claim later from within Mail.
-      console.warn('[BUNDLE-01] suiteEmail on but no valid handle to claim from username')
+      // No usable handle to reserve (e.g. blank/too-short username) — skip silently;
+      // the user can still reserve one later from Settings.
+      console.warn('[BUNDLE-01] suiteEmail on but no valid handle to reserve from username')
       return
     }
 
@@ -2138,18 +2137,18 @@ function AppsStep({ config, update, onNext, onPrev }) {
       const res = await fetch('/api/identity/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle, domain: 'vulos.net' }),
+        body: JSON.stringify({ handle }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok || res.status === 201) {
-        // Only record the address on a genuine claim success.
-        update('cloudAccountAddress', data.address || `${handle}@vulos.net`)
+        // Only record the username on a genuine claim success.
+        update('cloudAccountAddress', data.address || handle)
       } else {
-        // Do not fabricate a claimed address; just let the install proceed.
-        console.warn(`[BUNDLE-01] suiteEmail claim failed (status ${res.status}) — proceeding without a claimed address`)
+        // Do not fabricate a reserved username; just let the install proceed.
+        console.warn(`[BUNDLE-01] suiteEmail username reservation failed (status ${res.status}) — proceeding without one`)
       }
     } catch (e) {
-      console.warn('[BUNDLE-01] suiteEmail claim network error — proceeding without a claimed address', e)
+      console.warn('[BUNDLE-01] suiteEmail username reservation network error — proceeding without one', e)
     }
   }
 
@@ -2161,8 +2160,8 @@ function AppsStep({ config, update, onNext, onPrev }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, workspace }),
       }).catch(() => {})
-      // BUNDLE-01: claim the @vulos.net address if the email opt-in is on and no
-      // address was claimed earlier. Best-effort — never blocks the install.
+      // BUNDLE-01: reserve the account username if the email opt-in is on and none
+      // was reserved earlier. Best-effort — never blocks the install.
       await maybeClaimSuiteEmail()
     } finally {
       setSaving(false)

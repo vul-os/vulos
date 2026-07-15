@@ -190,10 +190,10 @@ System apps (Settings, Files, Terminal) refuse anything but `private`.
 Setting an app `public` provisions a subdomain of the form:
 
 ```
-{app}--{profile}.{instance-id}.vulos.net
+{app}--{profile}.{instance-id}.vulos.org
 ```
 
-(e.g. `notes--default.01h5t3.vulos.net`). Provisioning goes through the Vulos DNS API (`VULOS_DNS_API`, default `https://api.vulos.org/dns/provision`); forks can point `VULOS_BASE_DOMAIN` elsewhere. TLS certificates are obtained automatically via ACME once DNS resolves. Check or tear down a deployment with `GET /api/apps/{id}/deployment` and `POST /api/apps/{id}/deprovision`. See [CLOUD.md](CLOUD.md) for how your box relates to the Vulos cloud services.
+(e.g. `notes--default.01h5t3.vulos.org`). Provisioning goes through the Vulos DNS API (`VULOS_DNS_API`, default `https://api.vulos.org/dns/provision`); forks can point `VULOS_BASE_DOMAIN` elsewhere. TLS certificates are obtained automatically via ACME once DNS resolves. Check or tear down a deployment with `GET /api/apps/{id}/deployment` and `POST /api/apps/{id}/deprovision`. See [CLOUD.md](CLOUD.md) for how your box relates to the Vulos cloud services.
 
 ### Custom domains
 
@@ -332,7 +332,7 @@ If it is off (the default), asking the assistant for an interactive app still yi
 | `VULOS_APP_CATALOG` | _(empty)_ | Remote catalog URL for the base app store |
 | `VULOS_BUNDLED_APPS` | _(empty)_ | Override path to the bundled apps directory |
 | `VULOS_DNS_API` | `https://api.vulos.org/dns/provision` | Subdomain provisioning endpoint |
-| `VULOS_BASE_DOMAIN` | `vulos.net` | Base domain for app subdomains |
+| `VULOS_BASE_DOMAIN` | `vulos.org` | Base domain for app subdomains |
 | `VULOS_CADDY_DIR` | _(empty)_ | Emit Caddyfile snippets for custom domains |
 | `VULOS_NGINX_DIR` | `/etc/nginx/vulos-apps` | Edge-cache config directory |
 | `VULOS_CP_BASE_URL` | _(empty)_ | Control plane for `vk_` key introspection (unset = disabled) |

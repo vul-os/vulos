@@ -1,8 +1,8 @@
 // wizard-steps.test.jsx — vitest unit tests for VulosAccountStep + IntentStep.
 //
 // Tests:
-//   1. VulosAccountStep rejects external-domain "@gmail.com" input
-//   2. VulosAccountStep applies the "@vulos.net" suffix correctly (suffix-in-chrome pattern)
+//   1. VulosAccountStep rejects email-address ("@gmail.com") input — usernames only
+//   2. VulosAccountStep keeps the input to the username part only
 //   3. IntentStep persists intent choice to the wizard config state via update()
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -22,8 +22,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('VulosAccountStep — external-domain rejection', () => {
-  it('shows an error and strips the @ when user types a gmail.com address', () => {
+describe('VulosAccountStep — email-address rejection', () => {
+  it('shows a hint and strips the @ when user types an email address', () => {
     const update = vi.fn()
     render(
       <VulosAccountStep
@@ -39,32 +39,18 @@ describe('VulosAccountStep — external-domain rejection', () => {
     // Simulate typing "alice@gmail.com"
     fireEvent.change(input, { target: { value: 'alice@gmail.com' } })
 
-    // The input value should be stripped to "alice" (the handle part)
+    // The input value should be stripped to "alice" (the username part)
     expect(input.value).toBe('alice')
 
-    // An error message about external domains should appear
+    // A hint that this is a username, not an email address, should appear
     expect(
-      screen.getByText(/Only @vulos\.net addresses are supported/i)
+      screen.getByText(/Enter a username, not an email address/i)
     ).toBeInTheDocument()
   })
 })
 
-describe('VulosAccountStep — @vulos.net suffix chrome', () => {
-  it('always renders the @vulos.net suffix as read-only chrome', () => {
-    render(
-      <VulosAccountStep
-        config={{ username: '' }}
-        update={vi.fn()}
-        onNext={vi.fn()}
-        onPrev={vi.fn()}
-      />
-    )
-
-    // The suffix label should be present (rendered as a static span)
-    expect(screen.getByText('@vulos.net')).toBeInTheDocument()
-  })
-
-  it('accepts handle-part-only input and does not prepend the domain to the value', () => {
+describe('VulosAccountStep — username-only input', () => {
+  it('keeps the input to the username part only (no email suffix)', () => {
     render(
       <VulosAccountStep
         config={{ username: '' }}
@@ -77,10 +63,10 @@ describe('VulosAccountStep — @vulos.net suffix chrome', () => {
     const input = screen.getByPlaceholderText('yourname')
     fireEvent.change(input, { target: { value: 'myhandle' } })
 
-    // The input value should only contain the handle, not "myhandle@vulos.net"
+    // The input value should only contain the username
     expect(input.value).toBe('myhandle')
-    // The suffix is still rendered separately
-    expect(screen.getByText('@vulos.net')).toBeInTheDocument()
+    // There is no email-domain suffix chrome in the username step
+    expect(screen.queryByText(/@vulos\./)).not.toBeInTheDocument()
   })
 })
 

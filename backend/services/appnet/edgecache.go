@@ -55,7 +55,7 @@ import (
 //
 //	.AppID      — e.g. "notes"
 //	.Profile    — e.g. "default"
-//	.FQDN       — e.g. "notes--default.01h5t3.vulos.net"
+//	.FQDN       — e.g. "notes--default.01h5t3.vulos.org"
 //	.Upstream   — e.g. "127.0.0.1:9000"
 //	.CacheZone  — e.g. "vulos_notes_default"
 //	.CachePath  — e.g. "/var/cache/nginx/vulos/notes_default"

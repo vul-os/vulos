@@ -120,7 +120,7 @@ describe('enableCPPush (send-on-behalf, CP-keyed)', () => {
     const fetch = vi.fn(async (url, init) => {
       calls.push({ url, init })
       if (url.endsWith('/cp-key')) {
-        return { ok: true, json: async () => ({ enabled: true, vapid_public: PUBKEY, subject: 'mailto:cp@vulos.net' }) }
+        return { ok: true, json: async () => ({ enabled: true, vapid_public: PUBKEY, subject: 'mailto:cp@example.com' }) }
       }
       return { ok: true, json: async () => ({ status: 'cp-subscribed' }) }
     })

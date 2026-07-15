@@ -50,7 +50,7 @@ func TestProvision_ReturnsRequestAndUpserts(t *testing.T) {
 		"request_id":    "req-001",
 		"instance_ulid": "01HWZPROV0000000000000001",
 		"status":        "provisioning",
-		"endpoint_url":  "https://fly-instance.vulos.net",
+		"endpoint_url":  "https://fly-instance.vulos.org",
 	}
 	url, cleanup := startProvisionStub(t, cloudResp, nil)
 	defer cleanup()
@@ -174,7 +174,7 @@ func TestPollStatus_ReadyUpdatesRegistry(t *testing.T) {
 	statusResp := map[string]interface{}{
 		"instance_ulid": ulid,
 		"status":        "ready",
-		"endpoint_url":  "https://ready.vulos.net",
+		"endpoint_url":  "https://ready.vulos.org",
 	}
 	url, cleanup := startProvisionStub(t, nil, statusResp)
 	defer cleanup()
@@ -196,8 +196,8 @@ func TestPollStatus_ReadyUpdatesRegistry(t *testing.T) {
 	if inst.Status != multiinstance.StatusOnline {
 		t.Errorf("Status: got %q want %q", inst.Status, multiinstance.StatusOnline)
 	}
-	if inst.EndpointURL != "https://ready.vulos.net" {
-		t.Errorf("EndpointURL: got %q want %q", inst.EndpointURL, "https://ready.vulos.net")
+	if inst.EndpointURL != "https://ready.vulos.org" {
+		t.Errorf("EndpointURL: got %q want %q", inst.EndpointURL, "https://ready.vulos.org")
 	}
 }
 
@@ -313,7 +313,7 @@ func TestRegisterProvisionHandlers_StatusEndpoint(t *testing.T) {
 	statusResp := map[string]interface{}{
 		"instance_ulid": ulid,
 		"status":        "ready",
-		"endpoint_url":  "https://ready2.vulos.net",
+		"endpoint_url":  "https://ready2.vulos.org",
 	}
 	url, cleanup := startProvisionStub(t, nil, statusResp)
 	defer cleanup()

@@ -40,7 +40,7 @@ func TestBuildEdgeCacheConfig(t *testing.T) {
 	d := &Deployment{
 		AppID:   "notes",
 		Profile: "default",
-		FQDN:    "notes--default.local.vulos.net",
+		FQDN:    "notes--default.local.vulos.org",
 	}
 	cfg := buildEdgeCacheConfig(d, "127.0.0.1:9000", "/var/cache/nginx/vulos")
 
@@ -50,7 +50,7 @@ func TestBuildEdgeCacheConfig(t *testing.T) {
 	if cfg.Profile != "default" {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "default")
 	}
-	if cfg.FQDN != "notes--default.local.vulos.net" {
+	if cfg.FQDN != "notes--default.local.vulos.org" {
 		t.Errorf("FQDN = %q", cfg.FQDN)
 	}
 	if cfg.Upstream != "127.0.0.1:9000" {
@@ -91,7 +91,7 @@ func TestEdgeCacheManager_WriteConfig(t *testing.T) {
 	d := &Deployment{
 		AppID:       "myapp",
 		Profile:     "prod",
-		FQDN:        "myapp--prod.testulid.vulos.net",
+		FQDN:        "myapp--prod.testulid.vulos.org",
 		Provisioned: time.Now().UTC(),
 	}
 
@@ -110,7 +110,7 @@ func TestEdgeCacheManager_WriteConfig(t *testing.T) {
 		needle string
 		desc   string
 	}{
-		{"myapp--prod.testulid.vulos.net", "FQDN"},
+		{"myapp--prod.testulid.vulos.org", "FQDN"},
 		{"127.0.0.1:9090", "upstream"},
 		{"proxy_cache", "proxy_cache directive"},
 		{"proxy_cache_valid 200 5m", "5-minute cache TTL"},
@@ -128,7 +128,7 @@ func TestEdgeCacheManager_WriteConfig(t *testing.T) {
 
 func TestEdgeCacheManager_WriteConfig_Idempotent(t *testing.T) {
 	ecm := newTestEdgeCacheManager(t)
-	d := &Deployment{AppID: "app", Profile: "default", FQDN: "app--default.x.vulos.net"}
+	d := &Deployment{AppID: "app", Profile: "default", FQDN: "app--default.x.vulos.org"}
 
 	if err := ecm.WriteConfig(d, "127.0.0.1:9000"); err != nil {
 		t.Fatalf("first WriteConfig: %v", err)
@@ -145,7 +145,7 @@ func TestEdgeCacheManager_WriteConfig_Idempotent(t *testing.T) {
 
 func TestEdgeCacheManager_WriteConfig_Noop(t *testing.T) {
 	ecm := &EdgeCacheManager{nginxDir: "noop", nginxReloader: func() error { return nil }}
-	d := &Deployment{AppID: "a", Profile: "default", FQDN: "a--default.x.vulos.net"}
+	d := &Deployment{AppID: "a", Profile: "default", FQDN: "a--default.x.vulos.org"}
 	if err := ecm.WriteConfig(d, "127.0.0.1:0"); err != nil {
 		t.Errorf("WriteConfig(noop): unexpected error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestEdgeCacheManager_WriteConfig_Noop(t *testing.T) {
 
 func TestEdgeCacheManager_RemoveConfig(t *testing.T) {
 	ecm := newTestEdgeCacheManager(t)
-	d := &Deployment{AppID: "rm", Profile: "default", FQDN: "rm--default.x.vulos.net"}
+	d := &Deployment{AppID: "rm", Profile: "default", FQDN: "rm--default.x.vulos.org"}
 
 	if err := ecm.WriteConfig(d, "127.0.0.1:9000"); err != nil {
 		t.Fatalf("WriteConfig: %v", err)
@@ -262,7 +262,7 @@ func newCacheTestEnv(t *testing.T) (*http.ServeMux, *Provisioner, *EdgeCacheMana
 	t.Helper()
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	dir := t.TempDir()
@@ -313,7 +313,7 @@ func TestCacheAPI_Purge_OK(t *testing.T) {
 	if resp["app_id"] != "notes" {
 		t.Errorf("app_id = %q, want %q", resp["app_id"], "notes")
 	}
-	if resp["fqdn"] != "notes--default.testulid.vulos.net" {
+	if resp["fqdn"] != "notes--default.testulid.vulos.org" {
 		t.Errorf("fqdn = %q", resp["fqdn"])
 	}
 }
@@ -380,7 +380,7 @@ func TestCacheAPI_PurgeWritesNginxConf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nginx conf at %s after purge, got: %v", confPath, err)
 	}
-	if !strings.Contains(string(data), "blog--default.testulid.vulos.net") {
+	if !strings.Contains(string(data), "blog--default.testulid.vulos.org") {
 		t.Errorf("nginx conf does not contain expected FQDN: %s", data)
 	}
 }

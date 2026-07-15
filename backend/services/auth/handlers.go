@@ -130,7 +130,7 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloud/login":           true, // UNIFIED-SIGNIN: cloud-account login (user is not signed in yet)
 	"/api/auth/cloud/enroll/start":    true, // UNIFIED-SIGNIN: setup-time enrollment kickoff — the grant only completes when the OWNER approves the user_code in the cloud console
 	"/api/auth/cloud/enroll/status":   true, // UNIFIED-SIGNIN: enrollment progress poll (setup-time; exposes only grant state)
-	"/api/identity/check":             true, // IDENTITY-01: @vulos.net handle-availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
+	"/api/identity/check":             true, // IDENTITY-01: account-username availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
 	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":            true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)

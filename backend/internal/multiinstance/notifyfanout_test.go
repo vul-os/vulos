@@ -63,7 +63,7 @@ func TestNotify_P0FanOutImmediately(t *testing.T) {
 		ULID:        ulid,
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOnline,
-		EndpointURL: "https://instance.vulos.net",
+		EndpointURL: "https://instance.vulos.org",
 	}); err != nil {
 		t.Fatalf("Upsert with endpoint: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestNotify_P2BufferedNotImmediatelySent(t *testing.T) {
 		ULID:        "01HWZNOTIF0000000000000002",
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOnline,
-		EndpointURL: "https://instance.vulos.net",
+		EndpointURL: "https://instance.vulos.org",
 	}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestNotify_P0AlreadySeenNotSentAgain(t *testing.T) {
 		ULID:        "01HWZNOTIF0000000000000010",
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOnline,
-		EndpointURL: "https://instance.vulos.net",
+		EndpointURL: "https://instance.vulos.org",
 	}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestRunBatcher_FlushesAndDeduplicates(t *testing.T) {
 		ULID:        "01HWZNOTIF0000000000000020",
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOnline,
-		EndpointURL: "https://instance.vulos.net",
+		EndpointURL: "https://instance.vulos.org",
 	}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestNotify_OfflineInstanceSkipped(t *testing.T) {
 		ULID:        "01HWZNOTIF0000000000000030",
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOffline, // offline → skip
-		EndpointURL: "https://instance.vulos.net",
+		EndpointURL: "https://instance.vulos.org",
 	}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -494,7 +494,7 @@ func TestFanOut_ConcurrentNotSerial(t *testing.T) {
 			ULID:        fmt.Sprintf("01HWZFANOUT%015d", i),
 			Kind:        multiinstance.KindCloud,
 			Status:      multiinstance.StatusOnline,
-			EndpointURL: "https://instance.vulos.net",
+			EndpointURL: "https://instance.vulos.org",
 		}); err != nil {
 			t.Fatalf("Upsert %d: %v", i, err)
 		}
@@ -566,7 +566,7 @@ func TestFanOut_ContextCancelStopsScheduling(t *testing.T) {
 			ULID:        fmt.Sprintf("01HWZFANCAN%015d", i),
 			Kind:        multiinstance.KindCloud,
 			Status:      multiinstance.StatusOnline,
-			EndpointURL: "https://instance.vulos.net",
+			EndpointURL: "https://instance.vulos.org",
 		}); err != nil {
 			t.Fatalf("Upsert %d: %v", i, err)
 		}

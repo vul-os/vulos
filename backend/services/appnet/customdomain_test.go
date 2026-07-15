@@ -221,7 +221,7 @@ func newCustomDomainTestEnv(t *testing.T) (*http.ServeMux, *CustomDomainStore, *
 	t.Helper()
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	dir := t.TempDir()

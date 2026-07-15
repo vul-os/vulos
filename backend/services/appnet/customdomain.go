@@ -16,7 +16,7 @@ package appnet
 //     - On failure: returns 409 with {status:"pending", error:"..."}.
 //  3. DELETE /api/apps/{id}/domain
 //     - Removes the custom domain record and its Caddy snippet.
-//     - The app reverts to its default vulos.net subdomain.
+//     - The app reverts to its default vulos.org subdomain.
 //  4. GET /api/apps/{id}/domain
 //     - Returns the current CustomDomain record (pending or verified).
 //

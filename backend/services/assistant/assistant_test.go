@@ -80,7 +80,7 @@ func TestSovereignGuard(t *testing.T) {
 		{"loopback-ignores-declaration", ai.Config{Provider: ai.ProviderCustom, Endpoint: "http://localhost:4000/v1", Tier: "external"}, false, TierLocal, false},
 
 		// sovereign — an EXPLICIT off-box operator declaration; allowed by default.
-		{"declared-sovereign-allowed", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://eu.sovereign.vulos.net/v1", Tier: "sovereign"}, false, TierSovereign, false},
+		{"declared-sovereign-allowed", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://eu.sovereign.vulos.org/v1", Tier: "sovereign"}, false, TierSovereign, false},
 
 		// brokered — blocked until opted in, then allowed.
 		{"declared-brokered-blocked", ai.Config{Provider: ai.ProviderCustom, Endpoint: "https://broker.example/v1", Tier: "brokered"}, false, TierBrokered, true},

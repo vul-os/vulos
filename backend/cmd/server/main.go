@@ -1136,7 +1136,7 @@ func main() {
 		} else if ident != nil {
 			integrationsClient.SetCertProvider(ident)
 			log.Printf("[integrations] using owner-attested device cert (ulid=%s)", ident.ULID)
-			// IDENTITY-CLAIM-01 (offline first-boot): let the @vulos.net claim proxy
+			// IDENTITY-CLAIM-01 (offline first-boot): let the account-username claim proxy
 			// present this same device cert so the CP can authenticate the enrolled
 			// device when the wizard holds no CP session cookie yet.
 			SetIdentityDeviceAuth(ident, ident.ULID)
@@ -3801,7 +3801,7 @@ func main() {
 	registerKitRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
 	registerIdentityRoutes(mux, home)
-	// IDENTITY-01: @vulos.net claim proxies (check/claim → Vulos Cloud CP)
+	// IDENTITY-01: account-username claim proxies (check/claim → Vulos Cloud CP)
 	registerIdentityClaimRoutes(mux)
 	// Conflict resolver (CLUSTER-10)
 	registerConflictRoutes(mux, dataDir, notifySvc)

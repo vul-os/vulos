@@ -23,31 +23,31 @@ func TestFQDN(t *testing.T) {
 			app:     "browser",
 			profile: "work",
 			ulid:    "01HWZTEST0000000000000001",
-			base:    "vulos.net",
-			want:    "browser--work.01HWZTEST0000000000000001.vulos.net",
+			base:    "vulos.org",
+			want:    "browser--work.01HWZTEST0000000000000001.vulos.org",
 		},
 		{
 			app:     "notes",
 			profile: "personal",
 			ulid:    "01HWZTEST0000000000000002",
-			base:    "vulos.net",
-			want:    "notes--personal.01HWZTEST0000000000000002.vulos.net",
+			base:    "vulos.org",
+			want:    "notes--personal.01HWZTEST0000000000000002.vulos.org",
 		},
 		{
 			// Upper-case app/profile are normalised to lower-case.
 			app:     "BROWSER",
 			profile: "Work",
 			ulid:    "01HWZTEST0000000000000003",
-			base:    "vulos.net",
-			want:    "browser--work.01HWZTEST0000000000000003.vulos.net",
+			base:    "vulos.org",
+			want:    "browser--work.01HWZTEST0000000000000003.vulos.org",
 		},
 		{
-			// Empty base falls back to the package constant "vulos.net".
+			// Empty base falls back to the package constant "vulos.org".
 			app:     "terminal",
 			profile: "default",
 			ulid:    "01HWZTEST0000000000000004",
 			base:    "",
-			want:    "terminal--default.01HWZTEST0000000000000004.vulos.net",
+			want:    "terminal--default.01HWZTEST0000000000000004.vulos.org",
 		},
 	}
 
@@ -63,9 +63,9 @@ func TestFQDN(t *testing.T) {
 // TestFQDNSanitisesDoubleDash verifies that "--" embedded in app/profile slugs
 // is collapsed to prevent ambiguity with the scheme separator.
 func TestFQDNSanitisesDoubleDash(t *testing.T) {
-	got := multiinstance.FQDN("my--app", "my--profile", "ULID1", "vulos.net")
+	got := multiinstance.FQDN("my--app", "my--profile", "ULID1", "vulos.org")
 	// "--" inside the slug components should become "-"
-	if got != "my-app--my-profile.ULID1.vulos.net" {
+	if got != "my-app--my-profile.ULID1.vulos.org" {
 		t.Errorf("unexpected FQDN with double-dash slug: %q", got)
 	}
 }
@@ -88,7 +88,7 @@ func TestBuildTablePinnedInstance(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 
-	ar := multiinstance.NewAppRouter(r, "vulos.net")
+	ar := multiinstance.NewAppRouter(r, "vulos.org")
 	apps := []multiinstance.PublishedApp{
 		{App: "browser", Profile: "work", InstanceULID: inst.ULID},
 	}
@@ -117,7 +117,7 @@ func TestBuildTablePinnedInstance(t *testing.T) {
 	if e.InstanceEndpoint != inst.EndpointURL {
 		t.Errorf("InstanceEndpoint: got %q want %q", e.InstanceEndpoint, inst.EndpointURL)
 	}
-	wantFQDN := multiinstance.FQDN("browser", "work", inst.ULID, "vulos.net")
+	wantFQDN := multiinstance.FQDN("browser", "work", inst.ULID, "vulos.org")
 	if e.FQDN != wantFQDN {
 		t.Errorf("FQDN: got %q want %q", e.FQDN, wantFQDN)
 	}
@@ -141,7 +141,7 @@ func TestBuildTableExpandsAcrossAllInstances(t *testing.T) {
 		}
 	}
 
-	ar := multiinstance.NewAppRouter(r, "vulos.net")
+	ar := multiinstance.NewAppRouter(r, "vulos.org")
 	// InstanceULID empty → expand across all instances.
 	apps := []multiinstance.PublishedApp{
 		{App: "notes", Profile: "default"},
@@ -158,7 +158,7 @@ func TestBuildTableExpandsAcrossAllInstances(t *testing.T) {
 	// Verify each entry has the correct FQDN for its instance.
 	seen := make(map[string]bool)
 	for _, e := range table {
-		want := multiinstance.FQDN("notes", "default", e.InstanceULID, "vulos.net")
+		want := multiinstance.FQDN("notes", "default", e.InstanceULID, "vulos.org")
 		if e.FQDN != want {
 			t.Errorf("FQDN for instance %s: got %q want %q", e.InstanceULID, e.FQDN, want)
 		}
@@ -174,7 +174,7 @@ func TestBuildTableExpandsAcrossAllInstances(t *testing.T) {
 func TestBuildTableUnknownInstanceSkipped(t *testing.T) {
 	r := openTempRegistry(t)
 	// Registry is empty — pinned ULID will not be found.
-	ar := multiinstance.NewAppRouter(r, "vulos.net")
+	ar := multiinstance.NewAppRouter(r, "vulos.org")
 	apps := []multiinstance.PublishedApp{
 		{App: "browser", Profile: "work", InstanceULID: "01HWZTEST9999999999999999"},
 	}
@@ -190,7 +190,7 @@ func TestBuildTableUnknownInstanceSkipped(t *testing.T) {
 
 func TestBuildTableEmptyAppsEmptyTable(t *testing.T) {
 	r := openTempRegistry(t)
-	ar := multiinstance.NewAppRouter(r, "vulos.net")
+	ar := multiinstance.NewAppRouter(r, "vulos.org")
 
 	table, err := ar.BuildTable(nil)
 	if err != nil {
@@ -219,7 +219,7 @@ func TestRegisterHandlersRoutingTable(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 
-	ar := multiinstance.NewAppRouter(r, "vulos.net").
+	ar := multiinstance.NewAppRouter(r, "vulos.org").
 		WithAppProvider(func() []multiinstance.PublishedApp {
 			return []multiinstance.PublishedApp{
 				{App: "browser", Profile: "work", InstanceULID: inst.ULID},
@@ -262,7 +262,7 @@ func TestRegisterHandlersRoutingTable(t *testing.T) {
 
 func TestRegisterHandlersEmptyProviderReturnsEmptyArray(t *testing.T) {
 	r := openTempRegistry(t)
-	ar := multiinstance.NewAppRouter(r, "vulos.net")
+	ar := multiinstance.NewAppRouter(r, "vulos.org")
 
 	mux := http.NewServeMux()
 	multiinstance.RegisterHandlers(mux, ar)
@@ -287,7 +287,7 @@ func TestRegisterHandlersEmptyProviderReturnsEmptyArray(t *testing.T) {
 // TestStubDNSResolvesToCorrectEndpoint verifies the "stub DNS" AC: the FQDN
 // built for a pinned instance embeds that instance's ULID, and the table row
 // also carries the instance's endpoint URL.  A real DNS resolver would be
-// configured to point {ulid}.vulos.net → that endpoint; here we assert the
+// configured to point {ulid}.vulos.org → that endpoint; here we assert the
 // routing-table row carries all the data needed to populate such a mapping.
 func TestStubDNSResolvesToCorrectEndpoint(t *testing.T) {
 	r := openTempRegistry(t)
@@ -296,14 +296,14 @@ func TestStubDNSResolvesToCorrectEndpoint(t *testing.T) {
 		{
 			ULID:        "01HWZTEST0000000000000040",
 			DisplayName: "Device A",
-			EndpointURL: "https://device-a.vulos.net",
+			EndpointURL: "https://device-a.vulos.org",
 			Kind:        multiinstance.KindDevice,
 			Status:      multiinstance.StatusOnline,
 		},
 		{
 			ULID:        "01HWZTEST0000000000000041",
 			DisplayName: "Device B",
-			EndpointURL: "https://device-b.vulos.net",
+			EndpointURL: "https://device-b.vulos.org",
 			Kind:        multiinstance.KindDevice,
 			Status:      multiinstance.StatusOnline,
 		},
@@ -314,7 +314,7 @@ func TestStubDNSResolvesToCorrectEndpoint(t *testing.T) {
 		}
 	}
 
-	ar := multiinstance.NewAppRouter(r, "vulos.net")
+	ar := multiinstance.NewAppRouter(r, "vulos.org")
 	apps := []multiinstance.PublishedApp{
 		{App: "browser", Profile: "work", InstanceULID: instances[0].ULID},
 		{App: "browser", Profile: "work", InstanceULID: instances[1].ULID},
@@ -331,7 +331,7 @@ func TestStubDNSResolvesToCorrectEndpoint(t *testing.T) {
 	// Verify: FQDN for entry[i] embeds instances[i].ULID, and the row carries
 	// instances[i].EndpointURL — the data needed by stub or real DNS.
 	for i, e := range table {
-		wantFQDN := multiinstance.FQDN("browser", "work", instances[i].ULID, "vulos.net")
+		wantFQDN := multiinstance.FQDN("browser", "work", instances[i].ULID, "vulos.org")
 		if e.FQDN != wantFQDN {
 			t.Errorf("[%d] FQDN: got %q want %q", i, e.FQDN, wantFQDN)
 		}

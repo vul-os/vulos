@@ -145,11 +145,11 @@ One grant runs at a time; calling start again while a grant is pending returns t
 | `/var/lib/vulos/cloud/broker.pub` | 0600 | The pinned login-broker public key (written on first unified sign-in) |
 | `/var/lib/vulos/cloud/enrolled` | 0600 | Enrollment sentinel flag |
 
-The device certificate is what the box later presents when minting integration tokens and claiming identities — see the next sections.
+The device certificate is what the box later presents when minting integration tokens and reserving your account username — see the next sections.
 
-### Claiming a @vulos.net address
+### Reserving your Vulos account username
 
-During setup, the wizard can check and claim a **@vulos.net handle** for you. The box proxies these calls to the control plane (`GET /api/identity/check?handle=...` and `POST /api/identity/claim`) so your browser only ever talks to your own box. Two details matter:
+During setup, the wizard can check and reserve a unique **Vulos account username** for you (your account identity; sign-in itself uses your email/password or a linked Google/Microsoft account). The box proxies these calls to the control plane (`GET /api/identity/check?handle=...` and `POST /api/identity/claim`) so your browser only ever talks to your own box. Two details matter:
 
 - The account performing the claim is derived by the cloud from *its* session — or, on a freshly enrolled box where no cloud session cookie exists yet, from the **device certificate** the box presents (the same enrollment cert as above). The account is never taken from the request body.
 - If the cloud is unreachable, the availability check returns a soft `{"offline": true}` rather than failing the wizard — you can claim later.

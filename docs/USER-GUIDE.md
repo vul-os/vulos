@@ -27,7 +27,7 @@ The new-system flow walks through these steps (a few are skippable):
 | Network | Scan and join WiFi, or skip if you are on Ethernet. |
 | Manage this device | Local-only account, or connect Vulos Cloud. "You can always connect to Vulos Cloud later from Settings." |
 | Your Vulos account | Display name, username, password. This becomes the **administrator** account, and the same credentials work for `sudo` in the Terminal. |
-| Vulos username | Choose a username for your `@vulos.net` address (cloud identity). |
+| Vulos username | Choose a username for your Vulos account (cloud identity). Sign-in uses your email/password or a linked Google/Microsoft account. |
 | Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; you can set it later in Settings. |
 | How will you use Vulos? | Intent question that tunes defaults (relay, AI tokens, backup quota, dedicated IP). |
 | Your apps | Everything is pre-checked by default — the full Workspace suite. Opt out of anything; you can add it back later. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP); a Vulos-hosted mailbox is an optional, separately-billed add-on, not provisioned by default. See [APPS.md](APPS.md). |

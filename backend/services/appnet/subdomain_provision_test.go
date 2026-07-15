@@ -32,7 +32,7 @@ func TestDeploymentStore_SetAndGet(t *testing.T) {
 	d := &Deployment{
 		AppID:       "notes",
 		Profile:     "default",
-		FQDN:        "notes--default.local.vulos.net",
+		FQDN:        "notes--default.local.vulos.org",
 		Provisioned: time.Now().UTC(),
 		TLSObtained: false,
 	}
@@ -57,7 +57,7 @@ func TestDeploymentStore_GetMissingReturnsNil(t *testing.T) {
 
 func TestDeploymentStore_Delete(t *testing.T) {
 	ds := newTestDeploymentStore(t)
-	_ = ds.Set(&Deployment{AppID: "app", Profile: "default", FQDN: "app--default.x.vulos.net"})
+	_ = ds.Set(&Deployment{AppID: "app", Profile: "default", FQDN: "app--default.x.vulos.org"})
 	if err := ds.Delete("app", "default"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -69,22 +69,22 @@ func TestDeploymentStore_Delete(t *testing.T) {
 func TestDeploymentStore_RoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dep.json")
 	ds1, _ := NewDeploymentStoreAt(path)
-	_ = ds1.Set(&Deployment{AppID: "calc", Profile: "default", FQDN: "calc--default.x.vulos.net", Provisioned: time.Now().UTC()})
+	_ = ds1.Set(&Deployment{AppID: "calc", Profile: "default", FQDN: "calc--default.x.vulos.org", Provisioned: time.Now().UTC()})
 
 	ds2, err := NewDeploymentStoreAt(path)
 	if err != nil {
 		t.Fatalf("re-open: %v", err)
 	}
 	got := ds2.Get("calc", "default")
-	if got == nil || got.FQDN != "calc--default.x.vulos.net" {
+	if got == nil || got.FQDN != "calc--default.x.vulos.org" {
 		t.Errorf("round-trip FQDN mismatch: %+v", got)
 	}
 }
 
 func TestDeploymentStore_All(t *testing.T) {
 	ds := newTestDeploymentStore(t)
-	_ = ds.Set(&Deployment{AppID: "a", Profile: "default", FQDN: "a--default.x.vulos.net"})
-	_ = ds.Set(&Deployment{AppID: "b", Profile: "work", FQDN: "b--work.x.vulos.net"})
+	_ = ds.Set(&Deployment{AppID: "a", Profile: "default", FQDN: "a--default.x.vulos.org"})
+	_ = ds.Set(&Deployment{AppID: "b", Profile: "work", FQDN: "b--work.x.vulos.org"})
 	all := ds.All()
 	if len(all) != 2 {
 		t.Fatalf("All() len = %d, want 2", len(all))
@@ -100,7 +100,7 @@ func newNoopProvisioner(t *testing.T) *Provisioner {
 	ds := newTestDeploymentStore(t)
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 	return NewProvisioner(ds, nil)
 }
@@ -113,9 +113,9 @@ func TestProvisioner_BuildFQDN(t *testing.T) {
 		profile string
 		want    string
 	}{
-		{"notes", "default", "notes--default.testulid.vulos.net"},
-		{"notes", "", "notes--default.testulid.vulos.net"},
-		{"calc", "work", "calc--work.testulid.vulos.net"},
+		{"notes", "default", "notes--default.testulid.vulos.org"},
+		{"notes", "", "notes--default.testulid.vulos.org"},
+		{"calc", "work", "calc--work.testulid.vulos.org"},
 	}
 	for _, c := range cases {
 		got := p.BuildFQDN(c.app, c.profile)
@@ -142,8 +142,8 @@ func TestProvisioner_ProvisionSubdomain_Noop(t *testing.T) {
 	if d.Profile != "default" {
 		t.Errorf("Profile = %q, want %q", d.Profile, "default")
 	}
-	if d.FQDN != "notes--default.testulid.vulos.net" {
-		t.Errorf("FQDN = %q, want %q", d.FQDN, "notes--default.testulid.vulos.net")
+	if d.FQDN != "notes--default.testulid.vulos.org" {
+		t.Errorf("FQDN = %q, want %q", d.FQDN, "notes--default.testulid.vulos.org")
 	}
 	if d.Provisioned.IsZero() {
 		t.Error("Provisioned timestamp is zero")
@@ -179,7 +179,7 @@ func TestProvisioner_ProvisionSubdomain_DNSError(t *testing.T) {
 
 	t.Setenv("VULOS_DNS_API", srv.URL)
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	ds := newTestDeploymentStore(t)
@@ -196,7 +196,7 @@ func TestProvisioner_ProvisionSubdomain_DNSOK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(dnsProvisionResponse{
-			FQDN:   "calc--default.testulid.vulos.net",
+			FQDN:   "calc--default.testulid.vulos.org",
 			Status: "ok",
 		})
 	}))
@@ -204,7 +204,7 @@ func TestProvisioner_ProvisionSubdomain_DNSOK(t *testing.T) {
 
 	t.Setenv("VULOS_DNS_API", srv.URL)
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	ds := newTestDeploymentStore(t)
@@ -214,7 +214,7 @@ func TestProvisioner_ProvisionSubdomain_DNSOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProvisionSubdomain: %v", err)
 	}
-	if d.FQDN != "calc--default.testulid.vulos.net" {
+	if d.FQDN != "calc--default.testulid.vulos.org" {
 		t.Errorf("FQDN = %q", d.FQDN)
 	}
 }
@@ -243,7 +243,7 @@ func TestProvisioner_WriteCaddySnippet(t *testing.T) {
 
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", caddyDir)
 
 	ds := newTestDeploymentStore(t)
@@ -260,7 +260,7 @@ func TestProvisioner_WriteCaddySnippet(t *testing.T) {
 		t.Fatalf("read caddy snippet: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "myapp--prod.testulid.vulos.net") {
+	if !strings.Contains(content, "myapp--prod.testulid.vulos.org") {
 		t.Errorf("snippet missing FQDN: %s", content)
 	}
 	if !strings.Contains(content, "reverse_proxy 127.0.0.1:9090") {
@@ -288,7 +288,7 @@ func TestProvisioner_ProvisionSubdomain_CaddyWriteFailsClosed(t *testing.T) {
 
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", caddyDir)
 
 	ds := newTestDeploymentStore(t)
@@ -315,7 +315,7 @@ func newProvisionTestEnv(t *testing.T) (*http.ServeMux, *VisibilityStore, *Provi
 	t.Helper()
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	dir := t.TempDir()
@@ -361,7 +361,7 @@ func TestSubdomainAPI_GetDeployment_Found(t *testing.T) {
 	if resp.AppID != "notes" {
 		t.Errorf("AppID = %q, want %q", resp.AppID, "notes")
 	}
-	if resp.FQDN != "notes--default.testulid.vulos.net" {
+	if resp.FQDN != "notes--default.testulid.vulos.org" {
 		t.Errorf("FQDN = %q", resp.FQDN)
 	}
 }
@@ -397,7 +397,7 @@ func TestSubdomainAPI_Deprovision(t *testing.T) {
 func TestSetVisibilityWithProvisioning_PublicProvisions(t *testing.T) {
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	dir := t.TempDir()
@@ -412,7 +412,7 @@ func TestSetVisibilityWithProvisioning_PublicProvisions(t *testing.T) {
 	if d == nil {
 		t.Fatal("expected non-nil Deployment for public visibility")
 	}
-	if d.FQDN != "calc--default.testulid.vulos.net" {
+	if d.FQDN != "calc--default.testulid.vulos.org" {
 		t.Errorf("FQDN = %q", d.FQDN)
 	}
 	if vis.Get("calc") != VisibilityPublic {
@@ -423,7 +423,7 @@ func TestSetVisibilityWithProvisioning_PublicProvisions(t *testing.T) {
 func TestSetVisibilityWithProvisioning_PrivateDeProvisions(t *testing.T) {
 	t.Setenv("VULOS_DNS_API", "noop")
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	dir := t.TempDir()
@@ -459,7 +459,7 @@ func TestSetVisibilityWithProvisioning_DNSErrorRollsBackVisibility(t *testing.T)
 
 	t.Setenv("VULOS_DNS_API", srv.URL)
 	t.Setenv("VULOS_INSTANCE_ID", "testulid")
-	t.Setenv("VULOS_BASE_DOMAIN", "vulos.net")
+	t.Setenv("VULOS_BASE_DOMAIN", "vulos.org")
 	t.Setenv("VULOS_CADDY_DIR", "noop")
 
 	dir := t.TempDir()

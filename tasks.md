@@ -331,7 +331,7 @@ AC: [ ] contacts table migration adds vulos_address [ ] contact card shows mail 
 _Roadmap: ROADMAP.md § Public Webapps & Resource Governance_  ·  _Prefix: `PUBWEB-*`_
 
 > Any installed Vulos webapp can be published to a public subdomain.
-> Subdomain scheme: `{app}--{profile}.{ulid}.vulos.net` (or custom domain).
+> Subdomain scheme: `{app}--{profile}.{ulid}.vulos.org` (or custom domain).
 > cgroup v2 reservation: OS system services (sync, mail) get a protected CPU+RAM
 > slice that no published webapp can starve. Edge cache (Nginx micro-cache or CDN
 > push) for static assets. Dashboard publish toggle with resource usage.
@@ -343,7 +343,7 @@ AC: [ ] `app.json` with `visibility` field passes schema validation [ ] toggle c
 
 ### [PUBWEB-02] Subdomain provisioning for published apps
 `done` · P0 · M · dep: PUBWEB-01 · parallel: yes — backend/services/appnet/subdomain.go, backend/cmd/server/routes_apps.go
-Scope: When an app's visibility is set to `public`, provision a subdomain `{app}--{profile}.{ulid}.vulos.net` via the Vulos cloud DNS API (`POST https://api.vulos.org/dns/provision`). Store the provisioned FQDN in `app_deployments` SQLite table. The OS reverse proxy (Caddy or Nginx config generator) adds a virtual host entry for the subdomain, TLS via ACME (Let's Encrypt). PUBWEB-04 (cgroup) must be applied before the subdomain goes live. Self-hosted: emit a Caddy Caddyfile snippet so users can point their own domain.
+Scope: When an app's visibility is set to `public`, provision a subdomain `{app}--{profile}.{ulid}.vulos.org` via the Vulos cloud DNS API (`POST https://api.vulos.org/dns/provision`). Store the provisioned FQDN in `app_deployments` SQLite table. The OS reverse proxy (Caddy or Nginx config generator) adds a virtual host entry for the subdomain, TLS via ACME (Let's Encrypt). PUBWEB-04 (cgroup) must be applied before the subdomain goes live. Self-hosted: emit a Caddy Caddyfile snippet so users can point their own domain.
 AC: [ ] `PATCH /api/apps/:id/visibility` provisions subdomain on publish [ ] reverse proxy config is regenerated and reloaded [ ] TLS certificate is obtained [ ] FQDN stored in DB and returned in API response [ ] `go test ./cmd/server/...`
 
 ### [PUBWEB-04] cgroup v2 resource governance: system reservation + per-app limits
@@ -399,7 +399,7 @@ AC: [ ] registry CRUD survives restart [ ] Upsert deduplicates by ULID [ ] `go t
 Scope: After the OS device authenticates with the Vulos cloud control plane (CLOGIN-* done), pull the list of instances enrolled under the same account: `GET https://api.vulos.org/api/instances` (auth: device cert). Upsert each instance into the local registry. Subscribe to `wss://api.vulos.org/ws/instances` for real-time presence updates (instance comes online / goes offline). Re-sync on cloud reconnect. Expose `GET /api/instances` on the local OS server returning the merged list.
 AC: [ ] instance list pulled on login and stored in registry [ ] WebSocket presence updates are applied [ ] `GET /api/instances` returns current list [ ] offline mode: uses last-known registry [ ] `go test ./internal/multiinstance/...`
 
-### [MINST-03] App routing: `{app}--{profile}.{ulid}.vulos.net` per instance
+### [MINST-03] App routing: `{app}--{profile}.{ulid}.vulos.org` per instance
 `done` · P0 · M · dep: MINST-01, PUBWEB-02 · parallel: yes — backend/internal/multiinstance/router.go
 Scope: Each instance has a unique ULID. The OS reverse proxy config generator (PUBWEB-02) already handles the current instance's subdomains. Extend it to generate `{app}--{profile}.{ulid}` subdomains for every instance in the registry that has the given app published. The cloud DNS plane routes these to the correct instance's WireGuard/relay endpoint. Locally, `GET /api/routing/apps` returns a table of `{app, ulid, fqdn, instance_display_name}` for all reachable published apps across all account instances.
 AC: [ ] routing table lists apps across all account instances [ ] subdomains resolve to correct instance endpoints (tested with stub DNS) [ ] `go test ./internal/multiinstance/...`

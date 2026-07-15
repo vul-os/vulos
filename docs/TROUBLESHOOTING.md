@@ -333,7 +333,7 @@ App-specific misbehavior after a successful launch: read the app's own log at `~
 
 ## DNS write failures (public app subdomains)
 
-Publishing an app publicly provisions `{app}--{profile}.{instanceID}.vulos.net` through a DNS API (`VULOS_DNS_API`, default `https://api.vulos.org/dns/provision`; base domain `VULOS_BASE_DOMAIN`; instance from `VULOS_INSTANCE_ID`) and writes a Caddy vhost snippet under `/etc/caddy/vulos-apps` (`VULOS_CADDY_DIR`).
+Publishing an app publicly provisions `{app}--{profile}.{instanceID}.vulos.org` through a DNS API (`VULOS_DNS_API`, default `https://api.vulos.org/dns/provision`; base domain `VULOS_BASE_DOMAIN`; instance from `VULOS_INSTANCE_ID`) and writes a Caddy vhost snippet under `/etc/caddy/vulos-apps` (`VULOS_CADDY_DIR`).
 
 **Symptom:** in production the publish/deployment routes are simply missing (404), and the boot log shows:
 

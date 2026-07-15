@@ -44,7 +44,7 @@ The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert
 
 ## 2. Identity — Vulos Account (decoupled from mail)
 
-At install/onboarding every user creates or claims a **Vulos account** — a handle-based identity (`@vulos.net`) that is the account's persistent, portable anchor across the Vulos ecosystem. **Identity is decoupled from mail.** You do not need a mailbox to have an account (a free account needs only email/OAuth); authentication is passkeys + TOTP + recovery codes + a backup email, never a mail-server login. A mailbox is an optional, separately-billed add-on (see the billing section), not the account anchor.
+At install/onboarding every user creates a **Vulos account** — an email/OAuth-anchored identity (your registered email address, or a linked Google/Microsoft account) plus a chosen username, the account's persistent, portable anchor across the Vulos ecosystem. **Identity is decoupled from mail.** You do not need a mailbox to have an account (a free account needs only email/OAuth); authentication is passkeys + TOTP + recovery codes + a backup email, never a mail-server login. Mail is a bring-your-own connector to a mailbox you already own; a Vulos-hosted mailbox is an optional, separately-billed add-on (see the billing section), not the account anchor.
 
 The account identity cross-references:
 - **Mail is a connector, not a service the OS runs.** The bundled inbox (**LilMail** + `@vulos/mail-ui`, see `docs/MAIL-LILMAIL.md`) connects to whatever mailbox the user already has — Gmail, Outlook, or any IMAP/SMTP account. The Vulos-hosted mail engine (`vulos-mail`, OSS, separate repo) is **dormant/experimental** — resurrectable, but not a primary on-box mail server and not the identity anchor.
@@ -399,9 +399,10 @@ services (OS, vulos-office, and optionally the dormant vulos-mail engine). A uni
 Identity is always cloud-held regardless of storage or compute choice — but it is **anchored by
 a handle, not a mailbox**:
 
-- The `@vulos.net` handle, login credential, and account recovery live in the Vulos cloud control
-  plane (keydir/identity service). This applies to both hosted and complete-BYO accounts. A free
-  account needs only email/OAuth — **no mailbox is required or provisioned**.
+- The account identity (registered email / linked OAuth + username), login credential, and account
+  recovery live in the Vulos cloud control plane (keydir/identity service). This applies to both
+  hosted and complete-BYO accounts. A free account needs only email/OAuth — **no mailbox is required
+  or provisioned**.
 - **There is no central "anchor inbox."** Mail is a connector (bring your own Gmail/Outlook/IMAP);
   the cloud does not run a mailbox for you as an identity backstop. A mailbox is a separately-billed
   optional add-on, never the account anchor.
@@ -499,8 +500,8 @@ and mail keep working by talking to the box directly over the LAN. The box adver
 cert (issued by the control plane, key lives on the box), and the web clients fail over between cloud and
 LAN endpoints automatically. An opt-in `local-minio-sync` storage mode makes a local MinIO the source of
 truth (offline-capable), syncing its CRDT index + blobs via a central Tigris rendezvous (v1) and direct
-fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; the `@vulos.net`
-account identity stays cloud-held (handle-based, decoupled from mail). Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
+fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; the Vulos
+account identity stays cloud-held (email/OAuth-based, decoupled from mail). Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
 
 **FABRIC-P2P-01 (same-LAN P2P CRDT sync) — now REAL, not a stub.** Task #119 previously shipped only the
 transport-agnostic merge (`internal/multiinstance/appsync.go`) with no peer discovery and no peer-to-peer

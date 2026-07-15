@@ -1,4 +1,4 @@
-// MINST-03: per-instance app routing — {app}--{profile}.{ulid}.vulos.net
+// MINST-03: per-instance app routing — {app}--{profile}.{ulid}.vulos.org
 //
 // AppRouter builds a cross-instance routing table from the local instance
 // Registry and a list of published apps. It exposes:
@@ -8,7 +8,7 @@
 // Each row in the table describes one (app, profile, instance) tuple with
 // the canonical FQDN derived from the subdomain scheme:
 //
-//	{app}--{profile}.{ulid}.vulos.net
+//	{app}--{profile}.{ulid}.vulos.org
 //
 // The cloud DNS plane uses these FQDNs to route requests to the correct
 // instance's WireGuard / relay endpoint.  Locally the table lets the OS
@@ -30,7 +30,7 @@ import (
 // BaseDomain is the top-level domain used for per-instance subdomains.
 // Override with the VULOS_BASE_DOMAIN environment variable (or supply a
 // custom base when constructing the AppRouter).
-const BaseDomain = "vulos.net"
+const BaseDomain = "vulos.org"
 
 // AppEntry describes one published app reachable across all account instances.
 type AppEntry struct {
@@ -71,7 +71,7 @@ type AppRouter struct {
 }
 
 // NewAppRouter creates an AppRouter backed by reg, using baseDomain as the
-// TLD (e.g. "vulos.net").  Pass an empty string to fall back to BaseDomain.
+// TLD (e.g. "vulos.org").  Pass an empty string to fall back to BaseDomain.
 func NewAppRouter(reg *Registry, baseDomain string) *AppRouter {
 	if baseDomain == "" {
 		baseDomain = BaseDomain

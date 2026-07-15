@@ -1,10 +1,10 @@
 package main
 
 // routes_identity_claim.go — IDENTITY-01: thin authenticated proxies for the
-// @vulos.net identity-claim flow.
+// Vulos account-username claim flow.
 //
-// The OS install wizard (VulosAccountStep) needs to check handle availability
-// and claim a @vulos.net address. Both operations live on the Vulos Cloud control
+// The OS install wizard (VulosAccountStep) needs to check username availability
+// and reserve a unique Vulos account username. Both operations live on the Vulos Cloud control
 // plane (CP); the OS server only proxies to it so the wizard can talk to a
 // same-origin local endpoint (and so any CP session cookie flows through).
 //
@@ -182,7 +182,7 @@ func handleIdentityCheck(w http.ResponseWriter, r *http.Request) {
 	w.Write(respBody)
 }
 
-// handleIdentityClaim proxies a @vulos.net address claim to the CP.
+// handleIdentityClaim proxies a Vulos account-username claim to the CP.
 //
 // SECURITY: this is a state-changing, authenticated call.
 //   - The OS auth middleware gates it (it is NOT in publicPaths), so the caller
