@@ -162,7 +162,7 @@ Apps every OS needs out of the box.
 - [ ] Auto-save drafts
 - [ ] Notification badge on dock icon
 - [ ] Credentials stored encrypted in `~/.vulos/mail/`
-- Tech: Go backend handles IMAP/SMTP, frontend renders mail. Or integrate with Thunderbird (already in registry as apt package)
+- Tech: mail is a **connector** — the bundled inbox (LilMail + `@vulos/mail-ui`) connects to the mailbox the user already owns (Gmail/Outlook/any IMAP/SMTP). Vulos does not run a mail server by default; the `vulos-mail` engine is dormant/experimental. (Thunderbird was removed from the registry.)
 
 ### Contacts
 - [ ] Contact list with name, email, phone, address, notes, photo

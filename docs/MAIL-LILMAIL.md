@@ -1,13 +1,25 @@
-# Mail (LilMail integration)
+# Mail (LilMail connector)
 
-Vulos's default mail client is **LilMail**
-(github.com/exolutionza/lilmail) — a lightweight, database-free IMAP/SMTP
-webmail client. It is the bundled default mail client for Vulos; the mail
-server itself is the separate **vulos-mail** repository.
+**Mail in Vulos is a connector, not a service Vulos runs.** The OS/Workspace
+inbox connects to whatever mailbox the user already has — Gmail, Outlook, or
+any IMAP/SMTP account. There is no requirement to host mail on the box, and a
+mailbox is not the account anchor (identity is decoupled from mail; see
+[CLOUD.md](CLOUD.md)).
+
+The connector client is **LilMail** (github.com/exolutionza/lilmail) — a
+lightweight, database-free IMAP/SMTP webmail client, paired with the
+`@vulos/mail-ui` surface. It is the bundled inbox for Vulos; it points at an
+external mail server (the one hosting your existing mailbox).
+
+The Vulos-hosted mail **engine** — the separate **vulos-mail** repository —
+is **dormant/experimental**: resurrectable, but not a primary on-box mail
+server and not the default. Most users bring their own mailbox and never run
+it. A Vulos-connected mailbox is an optional, separately-billed add-on
+($2/mailbox/mo under the box billing model).
 
 LilMail lives in its own repository and is consumed by the OS as a service,
-the same way the mail server (`vulos-mail`) and office suite (`vulos-office`)
-are kept separate. No LilMail source is vendored into this repo.
+the same way the office suite (`vulos-office`) is kept separate. No LilMail
+source is vendored into this repo.
 
 ## How it is wired
 

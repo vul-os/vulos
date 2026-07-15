@@ -1,12 +1,18 @@
 # Vulos Bundle — Self-Host Guide
 
-One command installs **Vulos OS backend + vulos-mail + vulos-office** on a single Linux
+One command installs the **Vulos OS backend + vulos-office** on a single Linux
 machine, supervised by systemd (or OpenRC on Alpine), sharing one config dir,
 one data dir, one fabric identity, and one S3 storage backend.
 
 ```
 curl -fsSL https://get.vulos.org | sudo bash
 ```
+
+> **Mail is a connector, not a bundled server.** By default the Vulos inbox
+> connects to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) via LilMail
+> + `@vulos/mail-ui` — see [MAIL-LILMAIL.md](MAIL-LILMAIL.md). The Vulos-hosted
+> mail **engine** (`vulos-mail`) is **dormant/experimental** and is installed only
+> when you opt in with `--with-mail` (off by default). Nothing below requires it.
 
 ---
 
@@ -31,11 +37,13 @@ curl -fsSL https://get.vulos.org | sudo bash
 | Service | Binary | Port(s) | Purpose |
 |---|---|---|---|
 | vulos | `/usr/local/bin/vulos` | 8443 | OS backend — API gateway, app fabric |
-| vulos-mail | `/usr/local/bin/vulos-mail` | 25, 587, 8444 | Encrypted self-hosted mail |
 | vulos-office | `/usr/local/bin/vulos-office` | 8445 | Collaborative office suite |
+| vulos-mail (opt-in) | `/usr/local/bin/vulos-mail` | 25, 587, 8444 | Dormant/experimental self-hosted mail engine — installed only with `--with-mail` |
 | minio (optional) | `/usr/local/bin/minio` | 9000 (loopback) | Local S3-compatible storage |
 
 All services run as the `vulos` system user (UID < 1000, no login shell).
+By default the bundle installs `vulos` + `vulos-office`; `vulos-mail` is opt-in
+because mail is normally a connector to an existing mailbox, not a hosted server.
 
 ---
 
@@ -167,6 +175,7 @@ endpoint and credentials.
 | Flag | Default | Description |
 |---|---|---|
 | `--dry-run` | off | Print the install plan without making changes |
+| `--with-mail` | off | Also install the dormant/experimental `vulos-mail` engine (ports 25/587/8444). Omit it and mail stays a connector to your existing mailbox |
 | `--storage=tigris` | on | Use Tigris S3-compatible hosted storage |
 | `--storage=minio` | off | Install + use local MinIO (`--storage=local` is an alias) |
 | `--no-enable` | off | Install units but do not enable/start services (useful in CI or containers) |

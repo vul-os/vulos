@@ -42,17 +42,17 @@ The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert
 
 ---
 
-## 2. Identity — Vulos Mail Identity
+## 2. Identity — Vulos Account (decoupled from mail)
 
-At install/onboarding every user creates or claims a **Vulos mail identity**. There is no external email provider connected at OS level. The Vulos mail identity is the account's persistent, portable address across the Vulos ecosystem.
+At install/onboarding every user creates or claims a **Vulos account** — a handle-based identity (`@vulos.net`) that is the account's persistent, portable anchor across the Vulos ecosystem. **Identity is decoupled from mail.** You do not need a mailbox to have an account (a free account needs only email/OAuth); authentication is passkeys + TOTP + recovery codes + a backup email, never a mail-server login. A mailbox is an optional, separately-billed add-on (see the billing section), not the account anchor.
 
-The mail identity cross-references:
-- **vulos-mail** (OSS mail server, separate repo) — the SMTP/IMAP backend that handles actual mail delivery, peering authentication, and notification routing. The bundled default mail client in the OS is **LilMail** (see `docs/MAIL-LILMAIL.md`), which connects to vulos-mail or any IMAP/SMTP server.
+The account identity cross-references:
+- **Mail is a connector, not a service the OS runs.** The bundled inbox (**LilMail** + `@vulos/mail-ui`, see `docs/MAIL-LILMAIL.md`) connects to whatever mailbox the user already has — Gmail, Outlook, or any IMAP/SMTP account. The Vulos-hosted mail engine (`vulos-mail`, OSS, separate repo) is **dormant/experimental** — resurrectable, but not a primary on-box mail server and not the identity anchor.
 - **circuit relay** (`vulos-cloud/backend/circuit`) — media/TURN PoP for WebRTC NAT traversal; not a mail transport. (The retired `vulos-relay` mail-delivery daemon is distinct and no longer in use.)
 
-The Vulos mail identity also anchors the Ed25519 peering keypair (PEERING.md), so one identity covers messaging, notifications, mail, and peer trust — no separate accounts.
+The account identity also anchors the Ed25519 peering keypair (PEERING.md), so one identity covers messaging, notifications, peering, and (optionally) a connected mailbox — no separate accounts.
 
-**Outstanding:** Vulos account provisioning in the first-boot wizard; tie the peering identity email-verification flow to Vulos Mail rather than external addresses.
+**Outstanding:** Vulos account provisioning in the first-boot wizard; keep the peering identity verification flow decoupled from any mailbox (use the account's backup email).
 
 ---
 
@@ -133,7 +133,7 @@ Multiple instances share state via cr-sqlite CRDTs over S3/MinIO. No primary nod
 
 Users can publish apps to a public domain from their instance. The visibility system (`private | local | public`) lives in the app manifest and is enforced by the reverse proxy.
 
-**Resource governance:** OS sync, Vulos Mail, and core system services hold a protected cgroup reservation that no webapp can starve. Published webapps receive a fair share of the remaining headroom. The reservation is enforced by cgroups at the OS level — not by app cooperation.
+**Resource governance:** OS sync, the mail connector, and core system services hold a protected cgroup reservation that no webapp can starve. Published webapps receive a fair share of the remaining headroom. The reservation is enforced by cgroups at the OS level — not by app cooperation.
 
 **Edge cache:** published apps are served through an edge cache. The cache is transparent to the app; invalidation is triggered by the app's publish toggle. Bandwidth monitoring and auto-disable on low-power/mobile-data conditions protect users from accidental overuse.
 
@@ -298,7 +298,7 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 
 **Multi-tenant posture.** The microVM boundary (§18) is the *easy* part — Fly/Firecracker gives a best-in-class one. The real multi-tenant risk lives in our own code: tenant-routing, data-partitioning, auth, and the control plane (where CRDT-QUORUM-01-class bugs come from). The attacker-style pentest suites therefore target the **app-level multi-tenancy layer** (tenant isolation, IDOR, auth, open-relay, quorum); every cross-tenant code path is treated as the primary attack surface and the VM boundary is defense-in-depth, not the whole defense.
 
-**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, Vulos Mail, GPU route); extend pentest coverage of the multi-tenancy layer (PENTEST-01); ZK audit proofs for compliance extensions.
+**Outstanding:** periodic re-audit as new surfaces ship (public webapps, AI router, mail connector, GPU route); extend pentest coverage of the multi-tenancy layer (PENTEST-01); ZK audit proofs for compliance extensions.
 
 ---
 
@@ -341,7 +341,15 @@ Security is structural, not bolted on. Key invariants: no remote code execution 
 
 ---
 
-## Storage Backend, Multi-Location, Co-location & Identity (finalized 2026-05-24)
+## Storage Backend, Multi-Location, Co-location & Identity
+
+> **Superseded in part (2026-07-15).** The storage-backend, multi-location, and
+> co-location mechanics below (§A–§C) still hold. But the **identity/anchor-inbox**
+> framing (§D) and the **2-track per-active-user billing** (§E) are **retired** and
+> replaced by the finalized **box model**: a free account (email/OAuth, no mailbox
+> needed) + metered relay/storage/compute + per-unit mailbox and box charges.
+> Identity is decoupled from mail; mail is a connector, not a central Vulos service.
+> See the rewritten §D and §E.
 
 ### A. Storage-backend choice (per account)
 
@@ -351,7 +359,7 @@ two backends — customer's choice at account setup:
 | Backend | Who it suits | How it works |
 |---|---|---|
 | **Tigris (default)** | Hosted + self-host customers who want managed storage | Per-org bucket prefix on our Tigris tenant; durable, replicated, geo-selectable |
-| **MinIO local (complete BYO)** | Complete-BYO customers with their own hardware | Customer runs MinIO; data never touches Vulos storage (except the anchor inbox — see §D) |
+| **MinIO local (complete BYO)** | Complete-BYO customers with their own hardware | Customer runs MinIO; data never touches Vulos storage |
 
 Both backends expose the same S3-compatible API surface. The only code-level difference is
 endpoint + credentials. The OS, mail server, and office suite all consume this unified interface.
@@ -377,89 +385,86 @@ Multi-location implementation requires: enrollment flow for joining box #2 and #
 
 ### C. Co-located single-instance bundle
 
-OS + office + mail share one bucket, one CRDT/peering fabric, and one identity. They can all
-run on ONE instance. The BYO story is: **"one box = your whole Vulos."**
+OS + office share one bucket, one CRDT/peering fabric, and one identity, and can all run on ONE
+instance. The BYO story is: **"one box = your whole Vulos."** Mail is a connector to your existing
+mailbox rather than a co-located service; the dormant/experimental `vulos-mail` engine can
+optionally join the same box (see "Self-hosted mail support" below).
 
-Roadmap item: a `vulos` meta-bundle/installer that installs and supervises all three co-located
-services (OS, vulos-mail, vulos-office). Today's installer is mail-only. A unified installer
-(`BUNDLE-01`) removes the multi-step setup currently required. Hosted multi-tenant co-locates
-small tenants on shared infrastructure and splits per-service at scale.
+Roadmap item: a `vulos` meta-bundle/installer that installs and supervises the co-located
+services (OS, vulos-office, and optionally the dormant vulos-mail engine). A unified installer
+(`BUNDLE-01`) removes the multi-step setup currently required.
 
-### D. @vulos.org centralized identity + anchor inbox
+### D. Cloud-held identity (decoupled from mail)
 
-Identity is always cloud-held regardless of storage or compute choice:
+Identity is always cloud-held regardless of storage or compute choice — but it is **anchored by
+a handle, not a mailbox**:
 
-- `@vulos.org` handle, login credential, and account recovery live in the Vulos cloud control
-  plane (keydir/identity service). This applies to both hosted and complete-BYO accounts.
-- Every account (including complete-BYO) receives a small (~1 GB) **always-on central anchor
-  inbox** on Vulos Tigris. This means you can never be fully locked out or unreachable, even if
-  your MinIO goes offline or your compute instances are down.
-- **Recovery ladder:** (1) password reset via email, (2) TOTP + recovery codes, (3) 14-day
-  ID-verified recovery as the ultimate backstop. No account can become permanently inaccessible.
-- A compute instance going offline is never data loss: Tigris is durable; for complete-BYO,
+- The `@vulos.net` handle, login credential, and account recovery live in the Vulos cloud control
+  plane (keydir/identity service). This applies to both hosted and complete-BYO accounts. A free
+  account needs only email/OAuth — **no mailbox is required or provisioned**.
+- **There is no central "anchor inbox."** Mail is a connector (bring your own Gmail/Outlook/IMAP);
+  the cloud does not run a mailbox for you as an identity backstop. A mailbox is a separately-billed
+  optional add-on, never the account anchor.
+- **Recovery ladder:** (1) passkeys, (2) TOTP + recovery codes, (3) a backup email, (4) ID-verified
+  recovery as the ultimate backstop. No account can become permanently inaccessible.
+- A compute instance (box) going offline is never data loss: Tigris is durable; for complete-BYO,
   customers must back up their MinIO (their responsibility — documented at onboarding).
 
-**The "never lose your @vulos.org account" guarantee:** As long as the Vulos control plane is
-reachable, your identity, your handle, and your anchor inbox are intact — independent of
-what happens to your local hardware.
+**The "never lose your Vulos account" guarantee:** As long as the Vulos control plane is
+reachable, your identity and your handle are intact — independent of what happens to your local
+hardware and independent of any connected mailbox.
 
-### E. 2-track billing model (finalized)
+### E. Billing model — pure box model (finalized 2026-07-15)
 
-**Per active user. One switch: Self-Host or Hosted.**
+**Flat per-active-user tiers are killed.** There is no Free/Personal/Pro/Team ladder and no
+per-active-user charge. Billing is a **box model**: a free account plus metered infrastructure
+and per-unit add-ons.
 
-**Track A — Self-Host (your hardware + your MinIO or Tigris):** R3/active-user/mo, R9/mo account
-minimum. You run OS + office + mail; Vulos provides identity, relay, MX gateway, peering, spam
-filtering, and reputation management. Your data never touches Vulos storage (except the anchor
-inbox and encrypted-in-transit relay). See below for Tigris vs MinIO choice within Self-Host.
-
-**Track B — Hosted (Vulos Fly.io + co-located Tigris, per-org bucket, durable):**
-
-| Tier | R/active user/mo | Includes |
+| Component | Price | Notes |
 |---|---|---|
-| Free | R0 (1 user) | @vulos.org, relay, hosted |
-| Mail | R19 | Hosted mail only |
-| Suite (Starter) | R39 | Mail + office + spaces + calendar + OS |
-| Pro | R99 | + AI, custom domain, more storage |
-| Team | R139 | + admin console, SCIM |
-| Enterprise | R1,500 base + R149/user | Dedicated infra, SLA, compliance |
+| **Account** | Free | Email/OAuth sign-in; no mailbox needed. Passkeys + TOTP + recovery codes + backup email. |
+| **Mailbox (optional)** | $2 / mailbox / mo | Only if you want a Vulos-connected mailbox; most users bring their own Gmail/Outlook/IMAP for $0. |
+| **Managed box** | $10 / $30 / $450 per box / mo | Size tiers for a Vulos-provisioned managed box. Self-host on your own hardware is **$0**. |
+| **Storage** | $0.05 / GB-mo | Metered object storage (Tigris). |
+| **Relay** | $0.05 / GB (EU; region-scaled) | Metered reachability. **25 GB/mo free relay is included with any box.** |
+| **Compute** | Metered | GPU-seconds / compute workers, provider-agnostic (see §11, §18). |
 
-Relay, peering, identity, and deliverability fabric are always Vulos-operated — this is the
-product in both tracks. Self-Host saves hosting cost; Hosted saves hardware and ops overhead.
+Relay, peering, identity, and provisioning fabric are always Vulos-operated — that is the product.
+Self-host saves hosting cost (box = $0); a managed box saves hardware and ops overhead. Everything
+above scales with actual usage, not seat count.
 
-**Storage-backend note within Track A (Self-Host):** Self-Host customers may choose either
-Tigris (simpler, managed) or MinIO local (complete BYO, strongest data sovereignty) as their
-storage backend. The billing tier is the same; the only difference is the endpoint configuration.
+**Storage-backend note:** any account may choose either Tigris (simpler, managed) or MinIO local
+(complete BYO, strongest data sovereignty) as its storage backend. The billing is the same metered
+$0.05/GB-mo on Tigris, or $0 on your own MinIO; the only difference is the endpoint configuration.
 
 ---
 
-## Self-Host Mail support (in progress — parallel implementation)
+## Self-hosted mail support (dormant/experimental)
 
-The Vulos OS first-boot wizard gains a new optional step: install `vulos-mail` as a built-in
-service on the same hardware as the OS user. This closes the loop on "OS-level self-hosting" —
-you install Vulos OS, the wizard asks if you want mail service on this instance, and a single
-setup flow provisions both the OS identity and the Vulos Mail Self-Host setup.
+**Mail is a connector, not a service the OS runs by default.** The primary path is the bundled
+inbox (LilMail + `@vulos/mail-ui`) connecting to a mailbox the user already owns
+(Gmail/Outlook/any IMAP/SMTP). Most users need no Vulos-hosted mailbox at all.
 
-**Pricing context:** Vulos Mail Self-Host (R3/user/mo + R9/mo account floor) is the cloud tier
-that corresponds to running vulos-mail on your own hardware. Vulos provides the deliverability
-stack (MX gateway, warm-up relay, spam, reputation, encrypted queue, health monitoring).
-No static IP or port forwarding required. See `vulos-cloud/billingmodel/TIERS.md` for the
-full tier specification.
+Running the Vulos-hosted mail **engine** (`vulos-mail`) on your own box is a **dormant/experimental**
+option — the code exists and is resurrectable, but it is not a first-class first-boot step and not the
+account anchor. If you opt in, Vulos can provide the deliverability stack (MX gateway, warm-up relay,
+spam, reputation, encrypted queue, health monitoring); no static IP or port forwarding required.
+Billing follows the box model (metered relay/storage + the optional $2/mailbox add-on), **not** a
+per-active-user mail tier.
 
-**OS integration points:**
+**OS integration points (experimental):**
 
-- **Installer step:** After the "Networking" step in the first-boot wizard, add an optional
-  "Mail service" step. If selected: runs `vulos-mail byo setup` (see `vulos-mail` MAIL-BYO-04),
-  registers the instance as a BYO Mail server, and uploads the X25519 public key.
-- **Dashboard surface:** The OS dashboard shows vulos-mail service status (running/stopped/offline)
-  alongside other Vulos OS services. Health from the cloud BYO health-check (BYO-CP-04) is
-  reflected here.
-- **Notification routing:** The cloud's offline->30-min alert (BYO-CP-04) routes to the OS
-  notification system if the OS is online at another node (e.g., mobile companion).
+- **Installer step:** an optional "Mail service" step could run `vulos-mail byo setup` and register
+  the instance as a BYO mail server — kept behind the experimental flag, off by default.
+- **Dashboard surface:** if enabled, the OS dashboard shows vulos-mail service status
+  (running/stopped/offline) alongside other services, with health from the cloud BYO health-check.
+- **Notification routing:** the cloud's offline alert routes to the OS notification system if the
+  OS is online at another node (e.g., mobile companion).
 
-**Self-host distribution:** The bash installer and GHCR Docker image (MAIL-BYO-04) are the
-primary distribution channels for vulos-mail outside of the OS installer flow.
+**Distribution:** the bash installer and GHCR Docker image (MAIL-BYO-04) remain the channels for
+anyone who wants to run the dormant engine.
 
-Cross-repo: see `vulos-mail/ROADMAP.md §BYO Mail support` and `vulos-cloud/ROADMAP.md §BYO Mail support`.
+Cross-repo: see `vulos-mail/ROADMAP.md` and `vulos-cloud/ROADMAP.md` (mail engine kept dormant).
 
 ---
 
@@ -494,8 +499,8 @@ and mail keep working by talking to the box directly over the LAN. The box adver
 cert (issued by the control plane, key lives on the box), and the web clients fail over between cloud and
 LAN endpoints automatically. An opt-in `local-minio-sync` storage mode makes a local MinIO the source of
 truth (offline-capable), syncing its CRDT index + blobs via a central Tigris rendezvous (v1) and direct
-fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; `@vulos.org` identity
-+ anchor inbox stay central. Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
+fabric-P2P (fast-follow, incl. same-LAN offline sync). Default stays central Tigris; the `@vulos.net`
+account identity stays cloud-held (handle-based, decoupled from mail). Tasks: `OFFLINE-01..03`, `STORE-LOCAL-01`, `STREAM-BYO-01`.
 
 **FABRIC-P2P-01 (same-LAN P2P CRDT sync) — now REAL, not a stub.** Task #119 previously shipped only the
 transport-agnostic merge (`internal/multiinstance/appsync.go`) with no peer discovery and no peer-to-peer

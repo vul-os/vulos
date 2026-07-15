@@ -10,8 +10,11 @@ Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md) for install, [CONFIGU
 
 Vulos Cloud is deliberately small. Its whole job is **coordination**: it is the
 Control Plane (CP) plus the relay and box provisioning. It is **not** where your
-apps run — Mail, Office, Meet, Talk, Board and Files all run on your box (self-host
-at $0, or a Vulos-managed box). The cloud's scope is exactly three things:
+apps run — Office, Talk, Board and Files all run on your box (self-host
+at $0, or a Vulos-managed box). Two exceptions: **Meet** is the one app still run
+centrally (SFU/media), and **Mail is a connector** — the inbox talks to a mailbox
+you already own (Gmail/Outlook/any IMAP/SMTP), so Vulos runs no mail server for you
+by default. The cloud's scope is exactly three things:
 
 - **Relay** — reachability fallback for boxes behind NAT.
 - **Provisioning** — standing up a managed box for you.

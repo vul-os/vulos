@@ -280,6 +280,11 @@ Both subtrees talk to the **control plane (CP)**, not the box:
   API keys `/developer/keys` (`GeneralApiKeys.jsx:35,67,90`); vesend
   `/vesend/*` (`VesendDashboard.jsx:75,94,113,132`).
 
+> **Note (2026-07-15):** `vesend` is a **deprioritized/experimental** product. Its
+> dashboard surface is retained here only as an existing developer view; it is not a
+> shipped primary product and should not gain new investment. Likewise, `wede` is
+> deprioritized/experimental. Neither is load-bearing for the Workspace-as-app plan.
+
 **Recommendation: keep BOTH inside the Workspace app as a "Suite admin" area — NOT
 in OS Settings.** Rationale:
 1. **They are account/org/CP concerns, not box/system concerns.** OS Settings

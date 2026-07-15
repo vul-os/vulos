@@ -41,7 +41,7 @@ Apps available for install from the Vulos app store. These are not bundled with 
 | **Office** | LibreOffice | Streamed | Yes | Yes | Done |
 | **Dev Tools** | VS Code (code-server) | Web-native | No | Yes (WEB-APPS) | Planned |
 | | Gitea | Web-native | Yes | Yes | Done |
-| | Wede (code editor) | Web-native | Yes | Yes | Done |
+| | Wede (code editor) | Web-native | Yes | Yes | Done (deprioritized/experimental) |
 | | Geany | Streamed | Yes | Yes | Done |
 | | Grafana | Web-native | Yes | Yes | Done |
 | **CAD / EDA** | KiCad | Streamed | Yes | Yes | Done |
@@ -51,7 +51,7 @@ Apps available for install from the Vulos app store. These are not bundled with 
 | | qBittorrent | Streamed | Yes | Yes | Done |
 | | Transmission | Web-native | Yes | Yes | Done |
 | **Productivity** | Syncthing | Web-native | Yes | Yes | Done |
-| | Thunderbird | Streamed | Yes | Yes | Done |
+| | Thunderbird | Streamed | No | No | Removed — mail is a connector (LilMail + `@vulos/mail-ui` → your own Gmail/Outlook/IMAP) |
 | | KeePassXC | Streamed | Yes | Yes | Done |
 | | Vaultwarden | Web-native | No | Yes (WEB-APPS) | Planned |
 | | Excalidraw | Web-native | No | Yes (WEB-APPS) | Planned |
@@ -73,7 +73,7 @@ Apps available for install from the Vulos app store. These are not bundled with 
 | **Developer** | Hoppscotch (API testing) | Web-native | No | Yes | Planned |
 | **Translation** | LibreTranslate | Web-native | No | Yes | Planned |
 
-**Summary: 17 Done, 31 Planned**
+**Summary: 16 Done, 31 Planned** (Thunderbird removed — mail is a connector, not a bundled mail client)
 
 ---
 

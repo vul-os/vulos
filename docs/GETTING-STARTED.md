@@ -71,13 +71,13 @@ Or use [Balena Etcher](https://etcher.balena.io/) — drag and drop the `.img.gz
 
 Vulos boots into a fullscreen kiosk browser running the React shell. Native Linux apps stream into browser windows via WebRTC — no VNC, no remote desktop.
 
-### Option 4 — Full self-hosted bundle (OS + mail + office)
+### Option 4 — Full self-hosted bundle (OS + office)
 
 ```bash
 curl -fsSL https://get.vulos.org | sudo bash
 ```
 
-Installs `vulos`, `vulos-mail`, and `vulos-office` as systemd services with shared config under `/etc/vulos/`. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup, DNS records, and post-install steps.
+Installs `vulos` and `vulos-office` as systemd services with shared config under `/etc/vulos/`. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP), so no mail server is installed by default; the dormant/experimental `vulos-mail` engine is opt-in via `--with-mail`. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup, DNS records, and post-install steps.
 
 ### Option 5 — Build from source (development)
 
@@ -118,7 +118,7 @@ you through:
 6. **Vulos username** (`@vulos` handle) — mandatory in production; there is no skip option once cloud identity is in play.
 7. **Device PIN** — optional quick-unlock PIN for the lock screen.
 8. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
-9. **Apps** — the default-everything bundle (an `@vulos` mailbox plus the full Workspace suite) is pre-checked; opt out of anything you don't want.
+9. **Apps** — the default-everything bundle (the full Workspace suite) is pre-checked; opt out of anything you don't want. Mail connects to a mailbox you already own; a Vulos-hosted mailbox is an optional, separately-billed add-on rather than a default.
 10. **Appearance**, **Identity** (display name), **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
 11. **SSH** and **Recovery kit** — download your account recovery material.
 12. **Ready** — setup completes and you land on the desktop.

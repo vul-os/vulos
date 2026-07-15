@@ -30,7 +30,7 @@ The new-system flow walks through these steps (a few are skippable):
 | Vulos username | Choose a username for your `@vulos.net` address (cloud identity). |
 | Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; you can set it later in Settings. |
 | How will you use Vulos? | Intent question that tunes defaults (relay, AI tokens, backup quota, dedicated IP). |
-| Your apps | Everything is pre-checked by default — your `@vulos` email (which provisions Mail) and the full Workspace suite. Opt out of anything; you can add it back later. See [APPS.md](APPS.md). |
+| Your apps | Everything is pre-checked by default — the full Workspace suite. Opt out of anything; you can add it back later. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP); a Vulos-hosted mailbox is an optional, separately-billed add-on, not provisioned by default. See [APPS.md](APPS.md). |
 | Appearance | Dark / Light / Auto theme. |
 | Node identity | Shows your instance's read-only ULID and lets you set a hostname (lowercase letters, numbers, hyphens). |
 | Storage | Optionally connect S3-compatible storage with an encryption passphrase. |
