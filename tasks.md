@@ -1,5 +1,16 @@
 # Vulos OS — Task Backlog
 
+> **ARCHITECTURE PIVOT (founder, 2026-07-15) — supersedes stale entries below.**
+> The OS **is the shell** — there is no separate "Vulos Workspace" app/front-end (retired).
+> **PIM follows the GNOME model:** **lilmail** connects the user's IMAP/CalDAV/CardDAV (OAuth
+> Google/Microsoft supported) and exposes stable `/v1`; the OS ships standalone built-in
+> **Calendar** + **Contacts** apps over that `/v1` via the box PIM proxy (`/api/pim/*`) — DONE.
+> **No hosted mail, no `@vulos.net`.** Owned apps are **Office** and **Board** (standalone).
+> **Comms are third-party:** Talk → Matrix/Element, Meet → Element-Call/Jitsi (TBD) — not
+> first-party OS apps. **Files (+ P2P) live in the OS.** Any older backlog line that assumes a
+> `vulos-workspace` shell, a first-party `vulos-talk`/`vulos-meet` app, `vulos-mail`/`mail-ui`,
+> or an `@vulos.net` mailbox is a "past way" and is superseded by this note.
+
 **Status: native-first re-architecture (v8 — 2026-05-26) is the ACTIVE track.** All legacy
 tasks (AIROT, IDENTITY, PUBWEB, MINST, STORE, OFFLINE, MEET, audit waves) are `done` — see the
 lower sections. The new work is in **§ Native-first re-architecture** below.

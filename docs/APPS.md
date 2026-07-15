@@ -46,6 +46,31 @@ The manifest also supports `integrations` (which cloud-provider credentials the 
 
 ---
 
+## Calendar & Contacts (PIM, the GNOME model)
+
+Vulos follows the GNOME desktop's split between a **data server** and thin
+front-ends. [lilmail](MAIL-LILMAIL.md) is the "Evolution-Data-Server": it connects
+the user's IMAP/CalDAV/CardDAV — directly, or via an OAuth-linked Google/Microsoft
+account (the "online accounts" step) — and exposes a stable **`/v1`** contract
+(`/v1/calendar/*`, `/v1/contacts/*`). The OS ships two standalone built-in apps,
+the "GNOME Calendar/Contacts" of Vulos:
+
+- **Calendar** — a month grid + agenda with full event CRUD. Also an always-on
+  desktop agenda widget ("what's next"). Launcher id `vulos-calendar`.
+- **Contacts** — a list + detail/edit address book with full CRUD. Launcher id
+  `vulos-contacts`.
+
+Both are React components in `src/builtin/{calendar,contacts}/` — they own no
+storage of their own. They read/write lilmail through the box's **PIM proxy**:
+the browser calls `/api/pim/{calendar,contacts}/*` with its own session cookie,
+and the box rewrites that to lilmail `/v1/*`, injecting the brokered mail
+credentials (`X-Vulos-Mail-*`) server-side. **Mail credentials never reach the
+browser**, and the proxy only exposes the calendar/contacts subtrees of `/v1` —
+nothing else on the mailbox. When no account is connected, both apps degrade to an
+honest "Connect Mail" state rather than an error. See `backend/cmd/server/routes_pim.go`.
+
+---
+
 ## Two browsers, and streamed native apps
 
 Vulos ships **two user-selectable browsers** as separate launcher tiles, so you

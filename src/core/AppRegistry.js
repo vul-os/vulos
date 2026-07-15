@@ -137,23 +137,16 @@ const builtinRegistry = [
     builtin: true,
   },
 
-  // UNIFIED-STORAGE de-dup: the embedded `mail`, `office`, and `calendar`
-  // builtins are RETIRED. Each is superseded by its gateway-proxied suite app
-  // registered below — `lilmail`, `vulos-office`, and `vulos-calendar`
-  // respectively — which are the canonical entries going forward. Keeping both
-  // produced duplicate launcher tiles (and a colliding `calendar` id shared with
-  // defaultWebApps). ORPHAN-FIX: the retired `apps/mail/` and `apps/calendar/`
-  // build dirs have since been deleted so they are no longer shipped.
-
-  // Spaces was extracted out of vulos-office into the standalone Vulos Talk
-  // product. The embedded builtin (which imported @vulos/office-client/spaces)
-  // is retired; users reach chat/channels via the gateway-proxied `vulos-talk`
-  // web app registered below (/app/vulos-talk/).
-
-  // The embedded "meet" builtin also relied on @vulos/office-client/spaces
-  // (the spaces lib provided the call/meeting components). With Spaces moved to
-  // Vulos Talk, video meetings are served by the gateway-proxied `vulos-meet`
-  // web app registered below (/app/vulos-meet/); the builtin is retired.
+  // The old embedded `mail`/`office`/`calendar` builtins are RETIRED. Mail is the
+  // gateway-proxied `lilmail` connector; Office is the standalone `vulos-office`
+  // app; Calendar/Contacts are standalone OS builtins over lilmail's /v1 (see the
+  // MAIL-PIM block below).
+  //
+  // Real-time comms (chat/video) are THIRD-PARTY now, not first-party OS apps:
+  // Talk → Matrix/Element, Meet → Element-Call/Jitsi (final pick TBD). They are
+  // reached as external services, so no `vulos-talk`/`vulos-meet` launcher tiles
+  // are registered here. The OS keeps its own sovereign peer-to-peer `messages`
+  // builtin for direct encrypted messaging.
 
   // Two user-selectable browsers, side by side:
   //
@@ -250,42 +243,15 @@ const builtinRegistry = [
     port: 80,
     permissions: ['storage'], // file-bearing: documents persisted to the object store
   },
-  {
-    id: 'vulos-workspace',
-    name: 'Workspace',
-    icon: '⊞',
-    description: 'Unified workspace shell that ties the suite together',
-    keywords: ['workspace', 'suite', 'home', 'shell', 'launcher'],
-    category: 'office',
-    type: 'web',
-    url: '/app/vulos-workspace/',
-    port: 80,
-    // No storage permission: Workspace is a stateless shell — it owns no files.
-  },
-  {
-    id: 'vulos-talk',
-    name: 'Talk',
-    icon: '☷',
-    description: 'Channels, DMs, and threads with file sharing',
-    keywords: ['talk', 'chat', 'channels', 'dm', 'direct', 'threads', 'messaging', 'spaces'],
-    category: 'internet',
-    type: 'web',
-    url: '/app/vulos-talk/',
-    port: 80,
-    permissions: ['storage'], // file-bearing: shared files/attachments
-  },
-  {
-    id: 'vulos-meet',
-    name: 'Meet',
-    icon: '◉',
-    description: 'Video meetings with recordings and shared files',
-    keywords: ['meet', 'video', 'call', 'meeting', 'join', 'conference', 'recording'],
-    category: 'internet',
-    type: 'web',
-    url: '/app/vulos-meet/',
-    port: 80,
-    permissions: ['storage'], // file-bearing: recordings/shared files
-  },
+  // WORKSPACE REMOVED: the standalone "Workspace" shell app is dead — the OS IS
+  // the shell. Its launcher tile, gateway deep-link, and hub embedding are gone.
+  // Office and Board are standalone owned apps (registered above / below).
+  //
+  // COMMS ARE THIRD-PARTY: Talk and Meet are no longer first-party built-ins.
+  // Real-time chat/video is delegated to established third-party platforms
+  // (Talk → Matrix/Element; Meet → Element-Call/Jitsi, final pick TBD), reached
+  // as external services rather than shipped as OS apps. The OS keeps its own
+  // sovereign peer-to-peer `messages` builtin for direct encrypted messaging.
   {
     id: 'board',
     name: 'Board',
@@ -300,38 +266,30 @@ const builtinRegistry = [
     // itself (it is not gateway header-injected). The OS mints its websocket
     // auth token via GET /api/board/token (see backend routes_board.go).
   },
-  // MAIL-PIM: Calendar and Contacts are surfaces of the Mail product now (Office
-  // stopped serving them). They are NOT separate gateway apps — there is no
-  // `vulos-calendar`/`vulos-contacts` namespace to proxy to (that backend was
-  // removed, which left these tiles 404'ing). Instead they deep-link into the
-  // already-running Mail app (`lilmail`), whose webmail serves the standalone
-  // /calendar and /contacts surfaces (@vulos/mail-ui <Calendar/>/<Contacts/>).
-  // Reusing the lilmail gateway route means no dangling app/grant of their own.
+  // MAIL-PIM (GNOME model): Calendar and Contacts are STANDALONE built-in OS
+  // surfaces (React components in src/builtin/), the "GNOME Calendar/Contacts" of
+  // Vulos. They read/write lilmail's stable /v1 (CalDAV/CardDAV + any OAuth-
+  // connected Google/Outlook accounts lilmail aggregates) through the box's PIM
+  // proxy — /api/pim/{calendar,contacts}/* — so mail credentials never reach the
+  // browser (see backend routes_pim.go). lilmail is the Evolution-Data-Server;
+  // these widgets are just the view. They own no object store of their own.
   {
     id: 'vulos-calendar',
     name: 'Calendar',
     icon: '⊡',
-    description: 'Calendar — a surface of the Mail product (events via CalDAV)',
-    keywords: ['calendar', 'events', 'schedule', 'caldav', 'reminders', 'mail'],
-    category: 'office',
-    type: 'web',
-    url: '/app/lilmail/calendar',
-    port: 80,
-    // No storage permission: CalDAV-backed (server is the store). Served by the
-    // Mail app (lilmail), so no separate gateway grant for this id.
+    description: 'Calendar — month + agenda, event CRUD over your connected calendars (CalDAV / Google / Outlook)',
+    keywords: ['calendar', 'events', 'schedule', 'caldav', 'reminders', 'agenda', 'month'],
+    category: 'productivity',
+    builtin: true,
   },
   {
     id: 'vulos-contacts',
     name: 'Contacts',
     icon: '☻',
-    description: 'Contacts — a surface of the Mail product (address book via CardDAV)',
-    keywords: ['contacts', 'address', 'book', 'carddav', 'people', 'mail'],
-    category: 'office',
-    type: 'web',
-    url: '/app/lilmail/contacts',
-    port: 80,
-    // No storage permission: CardDAV-backed (server is the store). Served by the
-    // Mail app (lilmail), so no separate gateway grant for this id.
+    description: 'Contacts — your address book over your connected accounts (CardDAV / Google / Outlook)',
+    keywords: ['contacts', 'address', 'book', 'carddav', 'people'],
+    category: 'productivity',
+    builtin: true,
   },
 ]
 
@@ -513,29 +471,27 @@ const defaultWebApps = [
   },
 ]
 
-// BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
+// BUNDLE-01: default-everything (batteries-included, opt-out) app selection.
 //
 // At install/onboarding the user gets EVERYTHING pre-selected. A lean user can
-// OPT OUT of the @vulos email (→ drops Mail) and/or the Workspace bundle (→ drops
-// Office/Docs, Board, Calendar, Contacts + the Workspace shell). This map records
-// which suite tiles belong to which opt-out group so getApps() can hide them.
+// OPT OUT of Mail (declining the mail connector) and/or the productivity apps
+// bundle (→ drops the owned Office + Board apps). This map records which tiles
+// belong to which opt-out group so getApps() can hide them. The persisted flag
+// for the productivity group is still named `workspace` for backend-contract
+// compatibility, but there is no "Workspace" shell any more — the OS IS the shell.
 //
-//   - 'email'     — Mail. Coupled to the @vulos address: declining the address is
-//                   the only way to drop Mail (an address with no mailbox is broken).
-//   - 'workspace' — the full productivity suite. Office lives HERE, not stapled to
-//                   the email; unchecking Workspace drops it.
+//   - 'email'     — Mail (lilmail connector). Also the backend for the built-in
+//                   Calendar/Contacts PIM widgets, which are always shown and
+//                   degrade honestly to "Connect Mail" when no account is linked.
+//   - 'workspace' — the owned productivity apps (Office/Docs, Board).
 //
-// Anything not listed here (Files/Drive, Assistant, Talk, Meet, Messages, the
-// utilities and system apps) is always shown — it is not part of the opt-out
-// bundles. Default (no selection persisted) ⇒ every group enabled, so this is
-// invisible to existing installs.
+// Anything not listed here (Files/Drive, Assistant, Calendar, Contacts, Messages,
+// the utilities and system apps) is always shown. Default (no selection
+// persisted) ⇒ every group enabled, so this is invisible to existing installs.
 const suiteBundleOf = new Map([
   ['lilmail', 'email'],
   ['vulos-office', 'workspace'],
-  ['vulos-workspace', 'workspace'],
   ['board', 'workspace'],
-  ['vulos-calendar', 'workspace'],
-  ['vulos-contacts', 'workspace'],
 ])
 
 // suiteSelection mirrors GET /api/setup/apps. Defaults to everything-on so tiles

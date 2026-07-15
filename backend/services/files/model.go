@@ -6,7 +6,7 @@
 //
 // This is PHASE 1 (foundation): the index + ACL + ACL-gated object-scoped broker
 // grants + the session-authed HTTP control plane that Phase 2 (Files OS app,
-// Workspace surface, OS peer-share) builds on. It deliberately does NOT include
+// OS peer-share) builds on. It deliberately does NOT include
 // the Files UI, peer-share/p2p, the org/tenant directory, or external mounts —
 // those are later phases. See the canonical design: vulos-files-architecture.
 package files

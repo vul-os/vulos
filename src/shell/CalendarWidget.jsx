@@ -2,8 +2,8 @@
  * CalendarWidget — an ambient, always-on Calendar widget pinned to the
  * right-hand side of the desktop (macOS-style). It answers "what's next today"
  * at a glance without launching an app, and expands on click into the week's
- * agenda. Clicking the header (or "Open Calendar") launches the full Calendar
- * surface (the Mail product's /calendar view via `vulos-calendar`).
+ * agenda. Clicking the header (or "Open Calendar") launches the full standalone
+ * Calendar app (the `vulos-calendar` builtin over lilmail's /v1).
  *
  * DATA: it reads the SAME on-box aggregate the Home surface uses —
  * GET /api/assistant/home — and consumes only its calendar fields:

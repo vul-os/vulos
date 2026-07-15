@@ -7,10 +7,10 @@ import { useFocusTrap } from './useFocusTrap'
 
 // The full lane-dispatch launch logic lives in the shared ./launchApp module so
 // the Launchpad and the ⌘K command palette open apps identically.
-// UNIFIED-STORAGE de-dup: the embedded Mail / Office / Calendar builtins were
-// retired in favour of the gateway-proxied suite apps (lilmail, vulos-office,
-// vulos-calendar). Like Spaces/Meet (Vulos Talk / Vulos Meet), they now launch
-// as type:'web' registry entries, not embedded React components.
+// Mail is the gateway-proxied `lilmail` connector; Office is the standalone
+// `vulos-office` web app; Calendar and Contacts are standalone builtin React
+// apps over lilmail's /v1 (via /api/pim/*). Real-time comms (Talk/Meet) are
+// third-party now and are not registered as OS apps.
 
 const categoryLabels = {
   internet: 'Internet',

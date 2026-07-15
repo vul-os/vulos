@@ -476,9 +476,9 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		// read the shell's storage and cookies directly, which is the entire hole
 		// this change closes. Send the caller to the app's own origin instead.
 		//
-		// A redirect (not a 403) keeps every existing deep link working: bookmarks,
-		// the /workspace front door, and any app that hardcoded /app/{id}/ paths all
-		// continue to resolve — they just land on the correct origin.
+		// A redirect (not a 403) keeps every existing deep link working: bookmarks
+		// and any app that hardcoded /app/{id}/ paths all continue to resolve — they
+		// just land on the correct origin.
 		if originsOn && !onAppOrigin {
 			if origin, ok := appnet.AppOrigin(scheme, appID, appnet.DefaultProfile, baseDomain, reqPort); ok {
 				target := origin + appPath

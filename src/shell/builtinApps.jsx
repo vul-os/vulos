@@ -24,6 +24,8 @@ const Vault = lazy(() => import('../apps/Vault/Vault'))
 const Messages = lazy(() => import('../builtin/peering/Messages'))
 const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
 const Assistant = lazy(() => import('../builtin/assistant/Assistant'))
+const Calendar = lazy(() => import('../builtin/calendar/Calendar'))
+const Contacts = lazy(() => import('../builtin/contacts/Contacts'))
 
 const loadingEl = () => createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
 const wrap = (Cmp) => createElement(Suspense, { fallback: loadingEl() }, createElement(Cmp))
@@ -44,6 +46,9 @@ export const BUILTIN_COMPONENTS = {
   messages: () => wrap(Messages),
   dashboard: () => wrap(DashboardApp),
   assistant: () => wrap(Assistant),
+  // PIM: standalone Calendar + Contacts over lilmail's /v1 (via /api/pim/*).
+  'vulos-calendar': () => wrap(Calendar),
+  'vulos-contacts': () => wrap(Contacts),
 }
 
 // Apps that should only ever have one window open at a time.

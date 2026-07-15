@@ -42,7 +42,7 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 - **Sovereign assistant** — an on-box AI agent aware of your calendar, contacts, files, and reminders. It reads with a curated, read-only toolset and *proposes* anything with side effects. Answers stream token-by-token over SSE. See [the security model](#the-sovereign-assistant-security-model) below.
 - **Proactive AI Home + ⌘K** — the desktop opens as a home (agenda, focus, pending invites, reminders, proposals), not just a launcher. A unified `⌘K` command palette drives the whole shell.
 - **Window-manager shell** — drag, resize, snap, and tile windows; virtual desktops; Mission Control overview; a dock with running-app indicators; persisted window sessions. Pure JSX React 19 + Vite + Tailwind.
-- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, App Hub, Activity Monitor, Settings, Notes, Peering, both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Office, Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more.
+- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, standalone **Calendar** and **Contacts** (over lilmail's `/v1` via the box PIM proxy), App Hub, Activity Monitor, Settings, Notes, Messages (peer-to-peer), both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Office, Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more.
 - **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor (with clone/replay counter detection), QR / phone-approval login for shared clients, device PIN, and TOTP 2FA fallback. Forced recovery-phrase signup with a client-side master-key unwrap. No Google SSO, no OAuth login flows.
 - **Files with a real ACL** — a Files service with a **viewer < editor < owner** role hierarchy enforced server-side, plus content-blind (sealed) file sharing and share-by-email with locality routing. Large files use a **resumable, chunked upload** (tus-style): each chunk rides the relay as an ordinary bounded request, the box reassembles into your own storage with per-chunk + whole-file integrity, and an interrupted upload **resumes from the committed offset** instead of restarting.
 - **Notifications + sovereign Web Push** — a real notifications system, plus opt-in **Web Push** where *your box* sends notifications directly to your device's browser vendor (FCM/Apple/Mozilla). It's outbound-only (works behind NAT, no central relay), and payloads are end-to-end encrypted per RFC 8291 — the vendor routes but can't read them. Enable it per-device under **Settings → Notifications**; Do Not Disturb is honoured by the box before any push is sent.
@@ -50,7 +50,7 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 - **Board / whiteboard** — an embedded collaborative board surface (gated by `BOARD_AUTH_SECRET`).
 - **On-demand app streaming** — native Linux apps stream into shell windows via WebRTC with GPU-accelerated encoding (NVENC / VA-API / VP8 fallback). Three modes share one pipeline: **native app windows** (dirty-region capture, idle-throttled — tuned for a still desktop), a low-latency **gaming mode** that auto-engages only for real games (Wine / Lutris / Steam, or a `category: gaming` manifest) with a zero-latency encoder profile and a minimal client jitter buffer, and **Streaming Chrome** (below). Close the window and the stream stops. Real frame-rate/latency/GPU behaviour is deployment-dependent, not a fixed guarantee.
 - **Two browsers, your choice** — a lightweight **Smart Browser** (a client-side web app that opens in your host browser, no server session) sits alongside **Streaming Chrome**: a real Chromium running *on the box*, streamed over WebRTC, with a persistent per-user profile (cookies/history/logins). Pick per task; both are launcher tiles.
-- **Sovereign big calls (self-host SFU)** — small Meet calls run peer-to-peer; a call that outgrows the mesh cap can escalate to media on **your own box's SFU** (opt-in `VULOS_SFU_HOST`) rather than a third-party server. Media rides your infra; recording and transcription stay local. The owner sees host status under **Settings → Box Health**.
+- **Comms are third-party** — real-time chat and video are delegated to established platforms rather than shipped as first-party OS apps: **Talk → Matrix/Element**, **Meet → Element-Call/Jitsi** (final pick pending). The OS integrates/links out to them; it keeps its own sovereign peer-to-peer **Messages** for direct encrypted messaging. (A box can still self-host the media/SFU for those platforms via `VULOS_SFU_HOST` where supported.)
 - **On-box LLM gateway** — assistant LLM/embeddings traffic routes through the on-box `llmux` sovereign gateway by default; a local vector store powers on-instance retrieval (RAG). You choose the provider and sovereignty tier.
 - **Peering & sync** — every instance has its own Ed25519 identity; leaderless CRDT sync across your nodes; a full VulaID key lifecycle (rotation, revocation, account-anchored recovery, X3DH-style forward secrecy); AirDrop-style local Drop; real-time collaboration over Yjs with per-document ACL.
 - **Local-first storage** — SQLite on the box, S3/Restic for encrypted backup. Your data lives on your machine first.
@@ -257,27 +257,31 @@ gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 
 The image is forkable: supply your own trust-anchor key and bucket URL for a fully independent build. See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md).
 
-### The OS is the shell; Workspace is a hosted app
+### The OS is the shell
 
 The Vulos **OS is the shell** — the launcher, window manager, dock, assistant,
 notification center, global ⌘K, and system apps all live here (`src/`). Opening
 `http://YOUR_BOX:8080/` serves this React window-manager desktop. It is the one
-shell for the box, whether you're local or remote.
+shell for the box, whether you're local or remote. There is no separate
+"Workspace" front end — that concept is retired; the OS *is* the workspace.
 
-**Vulos Workspace is one of the apps the OS hosts**, not a second shell. It is an
-opinionated productivity **hub** — a cockpit that consolidates the collaboration
-surfaces (the mail connector, Calendar, Office, Talk, Meet, plus Files / Board / Search) into a
-single integrated view. It ships as its own AGPL package (`vulos-workspace`),
-registered in the OS App Registry and loaded under the gateway like any other app
-at `/app/vulos-workspace/`; `http://YOUR_BOX:8080/workspace` opens it. It does
-**not** paint its own shell chrome (rail, app switcher, login) — the OS provides
-those — so there is no second login and no competing launcher.
+**PIM follows the GNOME model.** [lilmail](docs/MAIL-LILMAIL.md) is the
+"Evolution-Data-Server": it connects the user's IMAP/CalDAV/CardDAV (directly or
+via an OAuth-linked Google/Microsoft account) and exposes a stable **`/v1`**
+contract. The OS ships thin, standalone **Calendar** and **Contacts** apps (the
+"GNOME Calendar/Contacts") that read/write that data through the box's
+credential-brokering PIM proxy — `/api/pim/{calendar,contacts}/*` → lilmail
+`/v1/*` — so mail credentials never reach the browser. Calendar is also an
+always-on desktop agenda widget. There is no hosted mailbox and no `@vulos.net`
+address: your account is email + password, plus OAuth and passkeys.
 
-Workspace is served through the auth-enforcing gateway, which injects the box's
-identity headers and rewrites the app's `<base href>` so its assets resolve under
-`/app/vulos-workspace/`. Workspace's absolute `/api/*` calls bypass that base tag
-and resolve to the box's control-plane (this server), so the hosted app always
-talks to the box it was opened from.
+**Owned apps** are **Office** (Docs/Sheets/Slides) and **Board** (whiteboard),
+served as standalone apps under the auth-enforcing gateway. **Files** (and P2P
+sharing) live in the OS. **Real-time comms are third-party**: chat and video are
+delegated to established platforms (Talk → Matrix/Element; Meet →
+Element-Call/Jitsi, final pick pending) rather than shipped as first-party OS
+apps. The OS keeps its own sovereign peer-to-peer **Messages** for direct
+encrypted messaging.
 
 ---
 

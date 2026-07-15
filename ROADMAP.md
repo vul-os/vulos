@@ -47,7 +47,7 @@ The subdomain scheme is `{app}--{profile}.{ulid}.vulos.org`. A wildcard TLS cert
 At install/onboarding every user creates a **Vulos account** — an email/OAuth-anchored identity (your registered email address, or a linked Google/Microsoft account) plus a chosen username, the account's persistent, portable anchor across the Vulos ecosystem. **Identity is decoupled from mail.** You do not need a mailbox to have an account (a free account needs only email/OAuth); authentication is passkeys + TOTP + recovery codes + a backup email, never a mail-server login. Mail is a bring-your-own connector to a mailbox you already own; a Vulos-hosted mailbox is an optional, separately-billed add-on (see the billing section), not the account anchor.
 
 The account identity cross-references:
-- **Mail is a connector, not a service the OS runs.** The bundled inbox (**LilMail** + `@vulos/mail-ui`, see `docs/MAIL-LILMAIL.md`) connects to whatever mailbox the user already has — Gmail, Outlook, or any IMAP/SMTP account. The Vulos-hosted mail engine (`vulos-mail`, OSS, separate repo) is **dormant/experimental** — resurrectable, but not a primary on-box mail server and not the identity anchor.
+- **Mail/PIM is a connector, not a service the OS runs (the GNOME model).** **lilmail** (see `docs/MAIL-LILMAIL.md`) is the "Evolution-Data-Server": it connects whatever mailbox/calendar/address-book the user already has — Gmail, Outlook, or any IMAP/CalDAV/CardDAV account — and exposes a stable `/v1` contract. The OS ships thin standalone **Calendar** and **Contacts** apps (plus a Calendar desktop widget) over that `/v1`, brokered through the box's PIM proxy (`/api/pim/*`) so mail credentials never reach the browser. There is no Vulos-hosted mailbox and no `@vulos.net` address; the retired `vulos-mail` engine and the old `mail-ui` package are archived and not used.
 - **circuit relay** (`vulos-cloud/backend/circuit`) — media/TURN PoP for WebRTC NAT traversal; not a mail transport. (The retired `vulos-relay` mail-delivery daemon is distinct and no longer in use.)
 
 The account identity also anchors the Ed25519 peering keypair (PEERING.md), so one identity covers messaging, notifications, peering, and (optionally) a connected mailbox — no separate accounts.
@@ -471,12 +471,14 @@ Cross-repo: see `vulos-mail/ROADMAP.md` and `vulos-cloud/ROADMAP.md` (mail engin
 
 ## Future work
 
-### OS app wrappers for office / spaces / calendar / meet
-Add installable OS app wrappers for `vulos-office` surfaces (docs, sheets, slides, spaces,
-calendar, meet) following the existing `vulos/apps/mail/` pattern. Each app wrapper registers
-with the OS launcher, gets a `{app}--{profile}.{ulid}.vulos.org` subdomain, and integrates
-with the OS notification and session system. Wrappers are thin JSX shells — the app logic
-lives in the respective repos.
+### OS app surfaces — status
+- **Calendar & Contacts** — DONE. Standalone built-in OS apps (`src/builtin/{calendar,contacts}/`)
+  over lilmail's `/v1`, brokered via the box PIM proxy (`/api/pim/*`). Not app wrappers.
+- **Office** — the standalone `vulos-office` app, gateway-proxied. **Board** — the standalone
+  `board` app.
+- **Talk / Meet (spaces, chat, video)** — NOT first-party OS apps. Delegated to third-party
+  platforms (Talk → Matrix/Element; Meet → Element-Call/Jitsi, final pick pending); reached as
+  external services, linked/integrated rather than shipped as OS launcher tiles.
 
 ### airouter mail-specific endpoints
 `airouter` already ships smart-compose, summarize, reply-suggestions, and extract-actions for

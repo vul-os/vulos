@@ -999,6 +999,12 @@ func main() {
 	// Mail: URL of the embedded LilMail service (built-in Mail app).
 	registerMailRoutes(mux)
 
+	// PIM: credential-brokering proxy behind the standalone Calendar + Contacts
+	// widgets. Browser → /api/pim/{calendar,contacts}/* → lilmail /v1/* with the
+	// caller's cookie forwarded and the broker creds injected (never exposed to
+	// the browser). See routes_pim.go.
+	registerPIMRoutes(mux, mailBaseURLFromEnv(), assistantBrokerHeaders())
+
 	// Board: mint short-lived HMAC tokens for the Vulos Board sync server.
 	// Fails closed in prod when BOARD_AUTH_SECRET is unset (no anonymous collab).
 	registerBoardRoutes(mux, activeEnv)
@@ -3812,28 +3818,10 @@ func main() {
 	// Persistent notification store + prune endpoint (NOTIF-02)
 	registerNotifyPersistRoutes(mux, notifySvc, home)
 
-	// Box-serves-Workspace: friendly browser front door.
-	//
-	// The OS desktop shell (served from "/" below) is the primary LOCAL client.
-	// Vulos Workspace is the BROWSER/REMOTE client of the same box: a remote
-	// browser hitting the box gets the Workspace front door to that box's apps.
-	//
-	// Workspace is a gateway-proxied web app (registered as `vulos-workspace`,
-	// served at /app/vulos-workspace/). The gateway enforces auth, injects the
-	// box identity headers, and rewrites the app's <base href> so its relative
-	// assets resolve under the prefix. Workspace's ABSOLUTE /api/* calls are not
-	// affected by that <base> tag, so they hit the box control-plane (this mux)
-	// directly — exactly the box whose Workspace was opened.
-	//
-	// We expose a stable, human-friendly entry point (/workspace) that redirects
-	// to the gateway-served SPA. Registered before the "/" catch-all; Go's
-	// most-specific-wins ServeMux routing keeps it from shadowing the desktop.
-	const workspaceApp = "/app/vulos-workspace/"
-	workspaceFrontDoor := func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, workspaceApp, http.StatusFound)
-	}
-	mux.HandleFunc("/workspace", workspaceFrontDoor)
-	mux.HandleFunc("/workspace/", workspaceFrontDoor)
+	// WORKSPACE REMOVED: the standalone "Vulos Workspace" browser shell is dead —
+	// the OS desktop shell (served from "/" below) IS the shell, for both the local
+	// and the remote/browser client of the box. The old /workspace front door that
+	// redirected to /app/vulos-workspace/ has been removed along with the app.
 
 	// Terminal /api/ handler — a real JSON 404/405 for anything the API routes
 	// above did not claim. Registered BEFORE the SPA catch-all so an unmatched

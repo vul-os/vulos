@@ -2090,13 +2090,15 @@ function PinStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 //
 // The founder-confirmed model: the OS ships batteries-included. EVERYTHING is
-// pre-checked — an @vulos email (which auto-provisions Mail) plus the full
-// Workspace productivity suite (Office/Docs, Board, Calendar, Files, Home +
-// Search). A lean user (e.g. a gamer) can OPT OUT here:
-//   - uncheck Workspace  → drops Office/Docs, Board, Calendar, Contacts + shell
-//   - uncheck the email  → drops Mail (an address with no mailbox is broken, so
-//                          declining the address is the only way to drop Mail)
-// Office lives INSIDE the Workspace bundle, NOT stapled to the email.
+// pre-checked — Mail (the lilmail connector, which also backs the built-in
+// Calendar/Contacts widgets) plus the owned productivity apps (Office/Docs,
+// Board). A lean user (e.g. a gamer) can OPT OUT here:
+//   - uncheck productivity apps → drops Office/Docs + Board
+//   - uncheck Mail              → drops the Mail connector
+// There is no "Workspace" shell — the OS IS the shell. Files, Calendar and
+// Contacts are always present (Calendar/Contacts degrade to "Connect Mail" when
+// no account is linked). The persisted flag is still `workspace` for
+// backend-contract compatibility.
 //
 // On advance we persist the choice to POST /api/setup/apps so the launcher hides
 // the tiles the user opted out of. Best-effort: a failed write just means the
@@ -2214,8 +2216,8 @@ function AppsStep({ config, update, onNext, onPrev }) {
         <OptRow
           checked={workspace}
           onToggle={() => update('suiteWorkspace', !workspace)}
-          title="Install Workspace — the full productivity suite"
-          desc="Mail, Calendar, Files, Docs and Board, tied together with a unified Home and Search. Uncheck for a lean OS without the productivity apps."
+          title="Install the productivity apps — Office & Board"
+          desc="Vulos Office (Docs, Sheets, Slides) and Board (whiteboard). Uncheck for a lean OS without the productivity apps. Files, Calendar and Contacts are always included."
           accent="border-violet-500/60 bg-violet-600/10"
         />
       </div>
@@ -2224,7 +2226,7 @@ function AppsStep({ config, update, onNext, onPrev }) {
         <div className="mb-4 rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 py-3">
           <p className="text-xs text-neutral-500 leading-relaxed">
             <span className="text-neutral-400 font-medium">Minimal OS.</span>{' '}
-            You'll get a clean Vulos install without Mail or the Workspace suite — great for gaming or a single-purpose device. Everything stays available to add later from the App Hub.
+            You'll get a clean Vulos install without Mail or the productivity apps — great for gaming or a single-purpose device. Everything stays available to add later from the App Hub.
           </p>
         </div>
       )}
