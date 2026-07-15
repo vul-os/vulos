@@ -186,7 +186,7 @@ Full backend suite green (`CGO_ENABLED=0 go test ./...`), frontend builds, pente
 |---|---|---:|
 | BMINIT legacy | § Boot, Init & Bare Metal | 1 / 1 |
 | AI Router | § AI Router | 8 / 8 |
-| Vulos Mail Identity | § Identity | 7 / 7 |
+| Vulos Account Identity (was "Vulos Mail Identity") | § Identity | 7 / 7 |
 | Public Webapps | § Public Webapps | 8 / 8 |
 | Multi-Instance Routing | § Multi-Instance | 7 / 7 |
 | Storage / Offline / MEET / audit waves | §§ Storage, Offline, Video meetings | all `done` |
@@ -275,15 +275,19 @@ AC: [ ] embed endpoint returns valid float32 vector [ ] cache hit skips provider
 
 ---
 
-## Area: Vulos Mail Identity
+## Area: Vulos Account Identity (historical — was "Vulos Mail Identity")
 
 _Roadmap: ROADMAP.md § Identity_  ·  _Prefix: `IDENTITY-*`_
 
-> Every Vulos instance has a mandatory mail identity created at install/first-boot.
+> **Historical note (reconciled 2026-07):** this area was written when a Vulos mailbox
+> *was* the account identity. Identity is now the **Vulos account** (unified sign-in);
+> mail is an experimental **connector** (bring your own Gmail/Outlook/IMAP), not a
+> product Vulos runs or bills. The tasks below are historical (`done`).
+>
+> Every Vulos instance has a mandatory account identity created at install/first-boot.
 > The identity is a `user@vulos.org` address (or `user@custom-domain` for self-hosted).
-> The mail server is vulos-mail (OSS, separate repo). Delivery relay is vulos-relay.
-> No external email provider. Vulos Mail is the identity backbone for account recovery,
-> inter-instance peering contact cards, and notification delivery.
+> Delivery relay is vulos-relay. The Vulos account is the identity backbone for account
+> recovery, inter-instance peering contact cards, and notification delivery.
 
 ### [IDENTITY-01] First-boot wizard: Vulos account creation step
 `done` · P0 · M · dep: none · parallel: no — apps/setup-wizard/src/steps/VulosAccountStep.jsx, backend/internal/identity/identity.go
@@ -518,7 +522,8 @@ _Cross-repo: [`vulos-mail`](https://github.com/vul-os/vulos-mail) (MAIL-BYO-04) 
 `in-progress` · P2 · M · dep: none · parallel: yes — apps/firstboot/src/steps/MailService.jsx (new), backend/internal/installer/
 Scope: Add an optional "Mail service" step to the first-boot wizard (after the "Networking" step).
 Presents two choices: (a) set up vulos-mail on this instance (BYO mode — calls MAIL-BYO-04 bash
-installer integration), or (b) use hosted Vulos Mail (redirects to signup). If (a) is selected,
+installer integration), or (b) connect an existing mailbox via the Vulos mail connector
+(bring your own Gmail/Outlook/IMAP — lilmail). If (a) is selected,
 calls `vulos-mail byo setup` as a sub-process and waits for pubkey upload confirmation.
 JSX only — no new .tsx; no changes to existing wizard step components.
 AC: [ ] "Mail service" step renders in wizard (skippable) [ ] BYO choice triggers installer integration [ ] hosted choice routes to signup [ ] wizard advances on success [ ] npm run build
@@ -535,16 +540,17 @@ AC: [ ] card renders service state [ ] "last seen" shown when cloud signal avail
 `in-progress` · P3 · S · dep: OS-BYO-02 · parallel: yes — backend/internal/notify/byo_alert.go (new)
 Scope: When the cloud BYO health-check (BYO-CP-04) emits an offline >30-min alert, route it to
 the OS notification system on any online instance in the account (via MINST-06 fan-out). Priority:
-`high`. Body: "Your Vulos Mail instance has been offline for 30+ minutes. Inbound mail is queued
+`high`. Body: "Your mail server instance has been offline for 30+ minutes. Inbound mail is queued
 for up to 5 days." Action button: "View mail dashboard."
 AC: [ ] alert delivered to OS notification system on online instance [ ] not repeated more than once per 4h [ ] action button links to mail dashboard [ ] go build ./...
 
 ### [OS-BYO-04] "Install vulos-mail" entry in OS App Store
 `in-progress` · P3 · S · dep: none · parallel: yes — registry.json
 Scope: Add a `vulos-mail` entry to `registry.json` so the OS App Store shows "Mail Server" as an
-installable service. Recipe type: `bash-installer` with the `curl ... | bash` URL. Tier gate: visible
-to all paid tiers (Vulos Mail+); greyed out on Free with "Requires Vulos Mail tier" note.
-AC: [ ] registry.json entry added for vulos-mail [ ] App Store renders it [ ] tier gate applied [ ] no .go or .jsx changes beyond registry.json [ ] npm run build
+installable service. Recipe type: `bash-installer` with the `curl ... | bash` URL. No tier gate —
+mail is an experimental connector, not a billed product; the entry is visible to everyone (billing
+is compute+storage+relay, and self-hosting the mail server on your own box costs nothing).
+AC: [ ] registry.json entry added for vulos-mail [ ] App Store renders it [ ] entry visible to all (no tier gate) [ ] no .go or .jsx changes beyond registry.json [ ] npm run build
 
 ---
 

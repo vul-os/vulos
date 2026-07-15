@@ -159,7 +159,7 @@ Every Vulos instance is a server. Direct communication between instances uses Ed
 
 **Extensions (advanced, designed):** relay peers (offline delivery via trusted mutual contacts or TEE-backed relays); cluster anycast (multiple endpoints per identity for HA); signed feeds (append-only public/link publishing); gossip protocol (O(log N) fan-out for large groups); MLS group encryption (RFC 9420, O(1) encrypt for N-member groups); ring signatures (anonymous group participation); ZK discovery (find peers by domain/location without revealing identity); compliance extensions (threshold key escrow, ZK audit proofs, legal hold).
 
-**Notifications:** structured, prioritized (low/normal/high/critical), signed, TTL-based. Per-contact permission granularity. DND with schedule and per-contact overrides. Inline action buttons. The notification system feeds Vulos Mail alerts, peering events, and system alerts through one pipe.
+**Notifications:** structured, prioritized (low/normal/high/critical), signed, TTL-based. Per-contact permission granularity. DND with schedule and per-contact overrides. Inline action buttons. The notification system feeds mail connector alerts, peering events, and system alerts through one pipe.
 
 ---
 
@@ -169,7 +169,7 @@ Built-in apps that ship with the OS — no streaming, no apt packages. They open
 
 **Shipped:** Notes (knowledge base + Recall indexing), Gallery (photos/video organized by Recall), Smart Browser (ad-free + AI summaries), Calculator, Calendar, Weather, Clock, Text Editor (CodeMirror 6), PDF Viewer (PDF.js), Music Player, Video Player, Image Editor, Screenshot/Screen Capture, Voice Recorder, Camera, Maps (Leaflet + OSM).
 
-**Outstanding:** Docs (TipTap rich-text word processor), Sheets (spreadsheet), Slides (presentation), Email client (IMAP/SMTP, or integrate with Vulos Mail), Contacts (vCard + CardDAV).
+**Outstanding:** Docs (TipTap rich-text word processor), Sheets (spreadsheet), Slides (presentation), Email client (IMAP/SMTP, or integrate with the Vulos mail connector — lilmail/`@vulos/mail-ui`), Contacts (vCard + CardDAV).
 
 Every default app can integrate with the AI router: Docs gets summarize/rewrite/translate, Sheets gets formula generation, Email gets draft/summarize, Calendar gets scheduling inference, Text Editor gets code explanation/refactor.
 
