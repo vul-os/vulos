@@ -19,7 +19,7 @@ seam with a no-op default, so **self-hosting is fully functional and free.**
 [![Tests](https://img.shields.io/badge/tests-passing-14B8A6.svg)](docs/)
 [![Release](https://img.shields.io/badge/release-v0.1.2-2DD4BF.svg)](CHANGELOG.md)
 
-[**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Deploy the CP**](docs/DEPLOY-CP.md) · [**Deploy a relay**](docs/DEPLOY-RELAY.md) · [**Admin console**](docs/ADMIN-CONSOLE.md)
+[**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Admin console**](docs/ADMIN-CONSOLE.md)
 
 </div>
 
@@ -153,7 +153,7 @@ The single most important decision for a sovereign deployment: **leave
 `VULOS_CP_URL` unset.** That one absence makes the box its own identity
 authority, uses BYO-OAuth, and mints tokens locally — no managed layer, nothing
 to pay. See [docs/SELF-HOST.md](docs/SELF-HOST.md) for the full env surface, and
-[docs/DEPLOY-CP.md](docs/DEPLOY-CP.md) / [docs/DEPLOY-RELAY.md](docs/DEPLOY-RELAY.md)
+[docs/SELF-HOST.md](docs/SELF-HOST.md)
 for a production, internet-reachable deployment.
 
 ## The seams (free by default)
