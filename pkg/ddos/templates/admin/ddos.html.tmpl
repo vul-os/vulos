@@ -50,10 +50,10 @@
 {{if .TopIPs}}
 <div class="table-wrap">
 <table>
-<thead><tr><th>Client IP</th><th>Requests</th><th></th></tr></thead>
+<thead><tr><th>Client IP</th><th class="right">Requests</th></tr></thead>
 <tbody>
 {{range .TopIPs}}
-<tr><td class="mono">{{.Key}}</td><td class="mono">{{.Count}}</td><td></td></tr>
+<tr><td class="mono">{{.Key}}</td><td class="num-cell">{{.Count}}</td></tr>
 {{end}}
 </tbody>
 </table>
@@ -64,10 +64,10 @@
 {{if .Top4xxRoutes}}
 <div class="table-wrap">
 <table>
-<thead><tr><th>Route</th><th>4xx count</th></tr></thead>
+<thead><tr><th>Route</th><th class="right">4xx count</th></tr></thead>
 <tbody>
 {{range .Top4xxRoutes}}
-<tr><td class="mono">{{.Key}}</td><td class="mono">{{.Count}}</td></tr>
+<tr><td class="mono">{{.Key}}</td><td class="num-cell">{{.Count}}</td></tr>
 {{end}}
 </tbody>
 </table>

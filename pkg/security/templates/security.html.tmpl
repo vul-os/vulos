@@ -150,15 +150,15 @@
 {{if .EgressAnomalies}}
 <div class="table-wrap">
 <table>
-<thead><tr><th>Time</th><th>User</th><th>Bytes/hr</th><th>Baseline mean</th><th>Std dev</th></tr></thead>
+<thead><tr><th>Time</th><th>User</th><th>Bytes/hr</th><th class="right">Baseline mean</th><th class="right">Std dev</th></tr></thead>
 <tbody>
 {{range .EgressAnomalies}}
 <tr>
-  <td class="mono">{{.Ts.Format "2006-01-02 15:04"}}</td>
+  <td class="mono muted">{{.Ts.Format "2006-01-02 15:04"}}</td>
   <td><a href="/superadmin/accounts?q={{.UserID}}">{{.UserID}}</a></td>
   <td class="mono"><span class="pill danger">{{.BytesHr}}</span></td>
-  <td class="mono">{{printf "%.0f" .Baseline}}</td>
-  <td class="mono">{{printf "%.0f" .Sigma}}</td>
+  <td class="num-cell">{{printf "%.0f" .Baseline}}</td>
+  <td class="num-cell">{{printf "%.0f" .Sigma}}</td>
 </tr>
 {{end}}
 </tbody>

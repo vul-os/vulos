@@ -18,21 +18,21 @@ aggregating relay PoP health (self-hosted, or dev without a relay-status store).
 <h2>PoP health by region</h2>
 <div class="table-wrap">
 <table>
-<thead><tr><th>Region</th><th>PoPs (healthy / total)</th><th>Status</th><th>GB this month</th></tr></thead>
+<thead><tr><th>Region</th><th class="right">PoPs (healthy / total)</th><th>Status</th><th class="right">GB this month</th></tr></thead>
 <tbody>
 {{range .Overview.PoPs}}
 <tr>
   <td><code>{{.Region}}</code></td>
-  <td class="mono">{{.Healthy}} / {{.Total}}</td>
+  <td class="num-cell">{{.Healthy}} / {{.Total}}</td>
   <td>
     {{if eq .Status "up"}}<span class="pill ok">up</span>
     {{else if eq .Status "degraded"}}<span class="pill warn">degraded</span>
     {{else}}<span class="pill danger">down</span>{{end}}
   </td>
-  <td class="mono">{{printf "%.1f" .RelayGBMonth}}</td>
+  <td class="num-cell">{{printf "%.1f" .RelayGBMonth}}</td>
 </tr>
 {{else}}
-<tr><td colspan="4" class="empty">No PoP data.</td></tr>
+<tr><td colspan="4"><div class="empty">No PoP data reported by the relay fleet.</div></td></tr>
 {{end}}
 </tbody>
 </table>

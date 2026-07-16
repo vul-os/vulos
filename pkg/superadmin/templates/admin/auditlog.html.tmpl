@@ -13,22 +13,25 @@
 {{if .Rows}}
 <div class="table-wrap">
 <table>
-<thead><tr><th>Seq</th><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th class="wrap">Metadata</th></tr></thead>
+<thead><tr><th class="right">Seq</th><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th class="wrap">Metadata</th></tr></thead>
 <tbody>
 {{range .Rows}}
 <tr>
-  <td>{{.Seq}}</td>
-  <td>{{.Ts}}</td>
+  <td class="num-cell">{{.Seq}}</td>
+  <td class="mono muted">{{.Ts}}</td>
   <td>{{.Actor}}</td>
-  <td>{{.Action}}</td>
-  <td>{{.Target}}</td>
-  <td class="wrap">{{.MetadataJSON}}</td>
+  <td class="mono">{{.Action}}</td>
+  <td class="mono">{{.Target}}</td>
+  <td class="wrap mono muted">{{.MetadataJSON}}</td>
 </tr>
 {{end}}
 </tbody>
 </table>
 </div>
 {{else}}
-<div class="empty">No entries found.</div>
+<div class="empty">
+  <span class="empty-t">No matching audit entries</span>
+  <span class="empty-d">Adjust the actor, action or time-window filters, or clear them to see the full chain.</span>
+</div>
 {{end}}
 {{end}}

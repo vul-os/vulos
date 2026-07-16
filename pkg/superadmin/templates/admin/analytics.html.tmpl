@@ -41,7 +41,7 @@
 <table>
 <thead><tr>
   <th>Product</th>
-  <th>7-day total</th>
+  <th class="right">7-day total</th>
   <th>Unit</th>
   <th class="col-trend">Daily trend</th>
 </tr></thead>
@@ -49,7 +49,7 @@
 {{range .ProductTrends}}
 <tr>
   <td>{{.Product}}</td>
-  <td class="mono">{{humanInt64 .Total7d}}</td>
+  <td class="num-cell">{{humanInt64 .Total7d}}</td>
   <td class="muted">{{.Unit}}</td>
   <td>
     {{if .ChartBars}}

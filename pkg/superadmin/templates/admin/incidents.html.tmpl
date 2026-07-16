@@ -22,9 +22,9 @@ durable status store, so incidents cannot be authored here.</div>
 <tbody>
 {{range .Incidents}}
 <tr>
-  <td>{{.Title}}<br><span class="ro">{{.ID}}</span></td>
-  <td>{{.Severity}}</td>
-  <td>{{.StartedAt}}</td>
+  <td>{{.Title}}<br><span class="ro mono">{{.ID}}</span></td>
+  <td>{{if eq .Severity "critical"}}<span class="pill danger">critical</span>{{else if eq .Severity "major"}}<span class="pill warn">major</span>{{else if eq .Severity "maintenance"}}<span class="pill neutral">maintenance</span>{{else}}<span class="pill">{{.Severity}}</span>{{end}}</td>
+  <td class="mono muted">{{.StartedAt}}</td>
   <td>{{if .Resolved}}<span class="pill active">resolved {{.ResolvedAt}}</span>{{else}}<span class="pill warn">open</span>{{end}}</td>
   <td>
     {{range .Updates}}<div class="ro">{{.PostedAt}} — {{.Status}}: {{.Body}}</div>{{else}}<span class="ro">—</span>{{end}}

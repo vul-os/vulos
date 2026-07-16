@@ -60,6 +60,9 @@
 </div>
 <p class="ro feed-more"><a href="/superadmin/auditlog">View the full audit log →</a></p>
 {{else}}
-<div class="empty">No audit events yet.</div>
+<div class="empty">
+  <span class="empty-t">No operator actions yet</span>
+  <span class="empty-d">Every suspend, reset and refund performed from this console is appended to the hash-chained audit log and surfaced here.</span>
+</div>
 {{end}}
 {{end}}

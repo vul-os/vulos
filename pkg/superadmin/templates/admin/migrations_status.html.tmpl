@@ -16,8 +16,8 @@
 <thead><tr>
   <th>Product</th>
   <th>Status</th>
-  <th>Applied</th>
-  <th>Pending</th>
+  <th class="right">Applied</th>
+  <th class="right">Pending</th>
   <th>Latest migration</th>
   <th>Message / Error</th>
 </tr></thead>
@@ -26,9 +26,9 @@
 <tr>
   <td>{{.Product}}</td>
   <td><span class="{{migrateClass .Status}}">{{.Status}}</span></td>
-  <td>{{if gt .Applied 0}}{{.Applied}}{{else}}<span class="muted">—</span>{{end}}</td>
-  <td>{{if gt .Pending 0}}<span class="pill warn">{{.Pending}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
-  <td class="muted">{{if .Latest}}{{.Latest}}{{else}}—{{end}}</td>
+  <td class="num-cell">{{if gt .Applied 0}}{{.Applied}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td class="num-cell">{{if gt .Pending 0}}<span class="pill warn">{{.Pending}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
+  <td class="mono muted">{{if .Latest}}{{.Latest}}{{else}}—{{end}}</td>
   <td>
     {{if .PollError}}<span class="warn">{{.PollError}}</span>{{end}}
     {{if .Message}}<span class="muted">{{.Message}}</span>{{end}}
