@@ -216,9 +216,9 @@ func (p *Pages) RefundConfirm(w http.ResponseWriter, r *http.Request) {
 		Lines: []string{
 			"Account: " + detail.Email,
 			"Transaction: " + txnID,
-			"This calls Paystack to refund the transaction and CANNOT be undone.",
+			"This refunds the transaction via the payment provider and CANNOT be undone.",
 		},
-		Warn:         "Paystack refunds are irreversible.",
+		Warn:         "Refunds are irreversible.",
 		ActionURL:    back + "/refund",
 		CancelURL:    back,
 		CSRFToken:    p.csrf(w, r),
@@ -264,7 +264,7 @@ func (p *Pages) RefundExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := callPaystackRefund(r.Context(), txnID); err != nil {
+	if _, err := RefundProcessor(r.Context(), txnID); err != nil {
 		auditFromRequest(r, p.al, actor, "admin.billing.refund.failed", id,
 			map[string]string{"txn_id": txnID, "error": err.Error()})
 		redirectErr(w, r, back, "Refund failed at the payment provider.")
@@ -272,7 +272,7 @@ func (p *Pages) RefundExecute(w http.ResponseWriter, r *http.Request) {
 	}
 	auditFromRequest(r, p.al, actor, "admin.billing.refund", id,
 		map[string]string{"txn_id": txnID})
-	redirectFlash(w, r, back, "Refund submitted to Paystack.")
+	redirectFlash(w, r, back, "Refund submitted to the payment provider.")
 }
 
 // ─── Reserved handles ────────────────────────────────────────────────────────

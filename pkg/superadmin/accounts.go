@@ -350,10 +350,10 @@ func HandleReset2FA(store *Store, al *auditlog.Logger) http.HandlerFunc {
 }
 
 // HandleRefund handles POST /api/superadmin/accounts/{id}/refund?txn_id=<x>
-// Calls the Paystack refund API and records the action.
+// Calls the injected RefundProcessor seam and records the action.
 //
 // AUTHZ: txn_id is verified to belong to the account identified by {id} before
-// calling Paystack. This prevents an admin from using one account's URL path
+// calling the processor. This prevents an admin from using one account's URL path
 // to trigger a refund against an unrelated transaction reference.
 func HandleRefund(store *Store, al *auditlog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -382,7 +382,7 @@ func HandleRefund(store *Store, al *auditlog.Logger) http.HandlerFunc {
 			return
 		}
 
-		result, err := callPaystackRefund(r.Context(), txnID)
+		result, err := RefundProcessor(r.Context(), txnID)
 		if err != nil {
 			auditAction(r.Context(), al, actorEmail, "admin.billing.refund.failed", id,
 				map[string]string{"txn_id": txnID, "error": err.Error()})
