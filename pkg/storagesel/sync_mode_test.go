@@ -85,7 +85,7 @@ func TestSetSyncModePreservesBackend(t *testing.T) {
 }
 
 // TestSetSyncModeCreatesRowForNewAccount: an account with no prior backend row
-// gets one (Tigris default) when only the sync mode is set.
+// gets one (the managed store default) when only the sync mode is set.
 func TestSetSyncModeCreatesRowForNewAccount(t *testing.T) {
 	ctx := context.Background()
 	sel := openTest(t)
@@ -97,8 +97,8 @@ func TestSetSyncModeCreatesRowForNewAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Kind != storagesel.KindTigris {
-		t.Fatalf("new row kind = %q, want tigris", got.Kind)
+	if got.Kind != storagesel.KindManaged {
+		t.Fatalf("new row kind = %q, want managed", got.Kind)
 	}
 	if got.SyncMode != storagesel.SyncModeLocal {
 		t.Fatalf("new row sync mode = %q, want local", got.SyncMode)

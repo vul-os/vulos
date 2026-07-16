@@ -261,7 +261,7 @@ func TestPullHydratesManifest(t *testing.T) {
 // any sentinel string from the plaintext. We assert by pushing ciphertext
 // that does not contain a marker present in the plaintext, then checking
 // that:
-//  1. the Tigris-side bytes are exactly the ciphertext (no decryption),
+//  1. the the managed store-side bytes are exactly the ciphertext (no decryption),
 //  2. the pull payload echoes the ciphertext bit-for-bit,
 //  3. /api/sync/blob/<hash> returns the ciphertext, not the plaintext.
 //

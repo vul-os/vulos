@@ -4,7 +4,7 @@
 // Architecture:
 //
 //	An org's multiple boxes (locations) all point at ONE shared bucket
-//	(Tigris for hosted, or a single MinIO for complete-BYO).
+//	(the managed store for hosted, or a single MinIO for complete-BYO).
 //	CRDT + bucket-lease coordinator (already exist) handle concurrent writes.
 //	This package manages the locations table and the routing logic that picks
 //	a healthy destination for inbound mail.

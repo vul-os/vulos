@@ -18,7 +18,7 @@
 //
 // Environment variables:
 //
-//	AUDIT_BUCKET      name of the Tigris retention bucket (required in prod)
+//	AUDIT_BUCKET      name of the the managed store retention bucket (required in prod)
 //	AUDIT_DB_PATH     path to the spool SQLite file (optional; default: <db_dir>/audit.db)
 package audit
 
@@ -101,7 +101,7 @@ type Entry struct {
 // ---------------------------------------------------------------------------
 
 // BucketSink is the minimal interface the Flusher needs to ship NDJSON blobs
-// to object storage. storage.TigrisProvider satisfies this via PutObject.
+// to object storage. storage.S3Provider satisfies this via PutObject.
 type BucketSink interface {
 	// EnsureBucket creates the bucket if it does not already exist (idempotent).
 	EnsureBucket(ctx context.Context, name string) error

@@ -39,15 +39,15 @@ func DefaultBudgetConfig() BudgetConfig {
 type BudgetReaders struct {
 	// FlyInstanceCount returns the current number of running Fly instances.
 	FlyInstanceCount func(ctx context.Context) (int, error)
-	// TigrisEgressGB returns the current hour's Tigris egress in GB.
-	TigrisEgressGB func(ctx context.Context) (float64, error)
+	// ManagedEgressGB returns the current hour's the managed store egress in GB.
+	ManagedEgressGB func(ctx context.Context) (float64, error)
 }
 
 // BudgetState tracks the current watermark and halt flag.
 type BudgetState struct {
 	mu             sync.RWMutex
 	FlyMachines    int
-	TigrisEgressGB float64
+	ManagedEgressGB float64
 	HaltAutoscale  bool
 	TrippedAt      *time.Time
 }
@@ -86,10 +86,10 @@ func (b *BudgetCircuitBreaker) Poll(ctx context.Context) {
 			machines = n
 		}
 	}
-	if b.readers.TigrisEgressGB != nil {
-		g, err := b.readers.TigrisEgressGB(ctx)
+	if b.readers.ManagedEgressGB != nil {
+		g, err := b.readers.ManagedEgressGB(ctx)
 		if err != nil {
-			log.Printf("[ddos/budget] TigrisEgressGB: %v", err)
+			log.Printf("[ddos/budget] ManagedEgressGB: %v", err)
 		} else {
 			egressGB = g
 		}
@@ -97,7 +97,7 @@ func (b *BudgetCircuitBreaker) Poll(ctx context.Context) {
 
 	b.State.mu.Lock()
 	b.State.FlyMachines = machines
-	b.State.TigrisEgressGB = egressGB
+	b.State.ManagedEgressGB = egressGB
 	b.State.mu.Unlock()
 
 	// Estimate hourly cost: $0.02/machine-hour + $0.02/GB egress (rough).
@@ -168,7 +168,7 @@ func (b *BudgetCircuitBreaker) RunHourly(ctx context.Context) {
 func (b *BudgetCircuitBreaker) Snapshot() (machines int, egressGB float64, halt bool, trippedAt *time.Time) {
 	b.State.mu.RLock()
 	defer b.State.mu.RUnlock()
-	return b.State.FlyMachines, b.State.TigrisEgressGB, b.State.HaltAutoscale, b.State.TrippedAt
+	return b.State.FlyMachines, b.State.ManagedEgressGB, b.State.HaltAutoscale, b.State.TrippedAt
 }
 
 // SetHaltAutoscale is the super-admin override for the halt flag.

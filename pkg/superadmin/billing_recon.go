@@ -2,7 +2,7 @@
 //
 // The reconciliation view answers: for each tenant (or tier in aggregate):
 //   - What usage did we meter?  (metered_events)
-//   - What does that usage cost us? (grounded cost model: Fly / Tigris / SES /
+//   - What does that usage cost us? (grounded cost model: Fly / the managed store / SES /
 //     Linode / LLM pass-through)
 //   - What did we charge them? (subscriptions + billing_transactions)
 //   - What is the gross margin?
@@ -16,8 +16,8 @@
 // Cost model (grounded, 2026-06 published rates):
 //
 //	Fly.io machines  $0.0018/min shared-cpu-1x@256MB  (≈ $2.59/mo)
-//	Tigris storage   $0.021/GB-month
-//	Tigris egress    $0.05/GB
+//	the managed store storage   $0.021/GB-month
+//	the managed store egress    $0.05/GB
 //	AWS SES          $0.10 / 1000 emails
 //	Linode/Akamai    $6/mo per nanode (fallback compute)
 //	LLM              pass-through (vendor cost per 1k tokens stored in events)
@@ -42,16 +42,16 @@ import (
 const (
 	// FlyMachineMinUSD is cost per Fly machine-minute for shared-cpu-1x@256 MB.
 	FlyMachineMinUSD = 0.0018 // USD
-	// TigrisStorageGBMonthUSD is Tigris storage cost per GB-month.
-	TigrisStorageGBMonthUSD = 0.021 // USD
-	// TigrisEgressGBUSD is Tigris egress cost per GB.
-	TigrisEgressGBUSD = 0.05 // USD
+	// ManagedStorageGBMonthUSD is the managed store storage cost per GB-month.
+	ManagedStorageGBMonthUSD = 0.021 // USD
+	// ManagedEgressGBUSD is the managed store egress cost per GB.
+	ManagedEgressGBUSD = 0.05 // USD
 	// SESPer1000USD is AWS SES cost per 1 000 outbound emails.
 	SESPer1000USD = 0.10 // USD
 	// MeetParticipantMinUSD is the Livekit Cloud ceiling cost per participant-minute.
 	MeetParticipantMinUSD = 0.01 // USD
-	// StorageGBMonthUSD is the general Tigris storage rate (alias for template use).
-	StorageGBMonthUSD = TigrisStorageGBMonthUSD
+	// StorageGBMonthUSD is the general the managed store storage rate (alias for template use).
+	StorageGBMonthUSD = ManagedStorageGBMonthUSD
 
 	// Tier list prices in USD/user/month per TIERS.md (FINAL, 2026-06-28).
 	// Tier IDs in the billing store: "free" | "pro" | "team".
@@ -158,10 +158,10 @@ func (p *Pages) BillingReconciliation(w http.ResponseWriter, r *http.Request) {
 	d := billingReconPageData{
 		CSRFToken: p.csrf(w, r),
 		CostModelNote: fmt.Sprintf(
-			"Cost model: Fly $%.4f/machine-min · Tigris $%.3f/GB-mo · "+
+			"Cost model: Fly $%.4f/machine-min · Storage $%.3f/GB-mo · "+
 				"SES $%.2f/1k emails · Meet $%.2f/participant-min · "+
 				"LLM pass-through. Source: billingmodel/model.py (blended model margin %.1f%%).",
-			FlyMachineMinUSD, TigrisStorageGBMonthUSD, SESPer1000USD,
+			FlyMachineMinUSD, ManagedStorageGBMonthUSD, SESPer1000USD,
 			MeetParticipantMinUSD, 62.4,
 		),
 	}
@@ -184,8 +184,8 @@ func (p *Pages) BillingReconciliation(w http.ResponseWriter, r *http.Request) {
 // All USD amounts are float64. The function is pure / stateless.
 //
 //   - mailSends: count of outbound emails (SES cost)
-//   - storageGBMo: GB-months of object storage (Tigris cost)
-//   - egressGB: GB of object egress (Tigris egress cost)
+//   - storageGBMo: GB-months of object storage (the managed store cost)
+//   - egressGB: GB of object egress (the managed store egress cost)
 //   - machineMinutes: Fly machine minutes consumed (Fly cost)
 //   - meetMinutes: participant-minutes (Meet cost)
 //   - llmCostUSD: direct LLM vendor cost (pass-through)
@@ -200,9 +200,9 @@ func ReconcileTenant(
 	// Estimated COGS from metered usage.
 	sesCost := float64(mailSends) / 1000.0 * SESPer1000USD
 	flyCost := float64(machineMinutes) * FlyMachineMinUSD
-	tigrisCost := storageGBMo*TigrisStorageGBMonthUSD + egressGB*TigrisEgressGBUSD
+	storageCostUSD := storageGBMo*ManagedStorageGBMonthUSD + egressGB*ManagedEgressGBUSD
 	meetCost := float64(meetMinutes) * MeetParticipantMinUSD
-	cogsTotalUSD := sesCost + flyCost + tigrisCost + meetCost + llmCostUSD
+	cogsTotalUSD := sesCost + flyCost + storageCostUSD + meetCost + llmCostUSD
 
 	// Gross margin.
 	marginPct := 0.0

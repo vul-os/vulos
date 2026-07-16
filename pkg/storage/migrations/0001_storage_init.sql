@@ -7,12 +7,12 @@
 --
 -- home_region is the logical region the bucket is homed to (e.g. 'eu'),
 -- distinct from the 'region' column which carries the S3-compatible region code
--- used when provisioning the Tigris bucket (e.g. 'eu-west-1', 'auto').
+-- used when provisioning the the managed store bucket (e.g. 'eu-west-1', 'auto').
 -- home_region is denormalised from the owning account for fast placement
 -- without cross-store joins.
 CREATE TABLE IF NOT EXISTS storage_configs (
   account_id    TEXT PRIMARY KEY,                  -- cross-ref auth.users.id
-  byo           INTEGER NOT NULL DEFAULT 0,        -- 0 = vulos-managed Tigris bucket
+  byo           INTEGER NOT NULL DEFAULT 0,        -- 0 = vulos-managed the managed store bucket
   endpoint      TEXT,                              -- nullable when byo=0
   region        TEXT NOT NULL DEFAULT 'auto',
   bucket        TEXT NOT NULL,

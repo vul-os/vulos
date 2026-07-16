@@ -39,7 +39,7 @@ const (
 	EnvLocal Env = "local"
 
 	// EnvDev is the staging environment hosted on Fly. Real Paystack test
-	// keys are required, a real Tigris staging bucket is used, and email
+	// keys are required, a real managed staging bucket is used, and email
 	// verification is enforced. Secure cookies are on (served over HTTPS).
 	EnvDev Env = "dev"
 
@@ -344,7 +344,7 @@ type Defaults struct {
 	SMTPPort string
 
 	// S3Endpoint is the S3-compatible endpoint for managed object storage.
-	// In local mode this points at MinIO; in dev/prod it is the Tigris endpoint.
+	// In local mode this points at MinIO; in dev/prod it is the deployment.s managed S3 endpoint.
 	S3Endpoint string
 
 	// S3Region is the S3 region to advertise to the storage SDK.
@@ -418,7 +418,7 @@ func get(e Env) Defaults {
 			BindAddr:            ":8081",
 			SMTPHost:            "smtp.eu.mailgun.org",
 			SMTPPort:            "587",
-			S3Endpoint:          "https://fly.storage.tigris.dev",
+			S3Endpoint:          "", // deployment supplies the managed S3 endpoint
 			S3Region:            "auto",
 			SecureCookie:        true,
 			CORSOrigins:         derivedCORS,
@@ -427,14 +427,14 @@ func get(e Env) Defaults {
 			RequireDeviceSig:    false, // relaxed for staging test devices
 			PaystackBaseURL:     "https://api.paystack.co",
 			AllowAllRelayQuotas: false,
-			OTAPublicBucketBase: "https://fly.storage.tigris.dev/vulos-ota-dev",
+			OTAPublicBucketBase: "", // deployment supplies the OTA public base
 		}
 	default: // prod
 		return Defaults{
 			BindAddr:            ":8081",
 			SMTPHost:            "smtp.eu.mailgun.org",
 			SMTPPort:            "587",
-			S3Endpoint:          "https://fly.storage.tigris.dev",
+			S3Endpoint:          "", // deployment supplies the managed S3 endpoint
 			S3Region:            "auto",
 			SecureCookie:        true,
 			CORSOrigins:         derivedCORS,
@@ -443,7 +443,7 @@ func get(e Env) Defaults {
 			RequireDeviceSig:    true,
 			PaystackBaseURL:     "https://api.paystack.co",
 			AllowAllRelayQuotas: false,
-			OTAPublicBucketBase: "https://fly.storage.tigris.dev/vulos-ota-artifacts",
+			OTAPublicBucketBase: "", // deployment supplies the OTA public base
 		}
 	}
 }

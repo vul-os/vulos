@@ -23,29 +23,29 @@ func openTest(t *testing.T) *storagesel.Selector {
 	return sel
 }
 
-// TestGetDefaultTigris: accounts with no row return the Tigris default.
-func TestGetDefaultTigris(t *testing.T) {
+// TestGetDefaultManaged: accounts with no row return the the managed store default.
+func TestGetDefaultManaged(t *testing.T) {
 	sel := openTest(t)
 	b, err := sel.Get(context.Background(), "acct-new")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if b.Kind != storagesel.KindTigris {
-		t.Fatalf("default kind = %q, want %q", b.Kind, storagesel.KindTigris)
+	if b.Kind != storagesel.KindManaged {
+		t.Fatalf("default kind = %q, want %q", b.Kind, storagesel.KindManaged)
 	}
 	if b.AccountID != "acct-new" {
 		t.Fatalf("account_id = %q, want %q", b.AccountID, "acct-new")
 	}
 }
 
-// TestSetGetRoundtripTigris: Set+Get round-trip for Tigris.
-func TestSetGetRoundtripTigris(t *testing.T) {
+// TestSetGetRoundtripManaged: Set+Get round-trip for the managed store.
+func TestSetGetRoundtripManaged(t *testing.T) {
 	sel := openTest(t)
 	want := storagesel.Backend{
-		Kind:    storagesel.KindTigris,
-		Bucket:  "my-tigris-bucket",
+		Kind:    storagesel.KindManaged,
+		Bucket:  "my-managed-bucket",
 		Region:  "us-east-1",
-		CredRef: "env:TIGRIS_ACCESS_KEY_ID",
+		CredRef: "env:S3_ACCESS_KEY_ID",
 	}
 	if err := sel.Set(context.Background(), "acct-t1", want); err != nil {
 		t.Fatalf("Set: %v", err)
@@ -193,7 +193,7 @@ func TestUpdateIsUpsert(t *testing.T) {
 	}
 }
 
-// TestDeleteResetsToDefault: after Delete, Get returns Tigris default.
+// TestDeleteResetsToDefault: after Delete, Get returns the managed store default.
 func TestDeleteResetsToDefault(t *testing.T) {
 	sel := openTest(t)
 	if err := sel.Set(context.Background(), "acct-del", storagesel.Backend{
@@ -210,8 +210,8 @@ func TestDeleteResetsToDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after delete: %v", err)
 	}
-	if b.Kind != storagesel.KindTigris {
-		t.Errorf("after delete kind = %q, want tigris", b.Kind)
+	if b.Kind != storagesel.KindManaged {
+		t.Errorf("after delete kind = %q, want managed", b.Kind)
 	}
 }
 

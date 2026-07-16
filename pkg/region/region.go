@@ -4,7 +4,7 @@
 // strings between them untranslated:
 //
 //	compute/Fly  — "jnb", "fra", "iad"        (Fly machine regions)
-//	storage/S3   — "eu-west-1", "af-south-1"  (Tigris/S3 location constraints)
+//	storage/S3   — "eu-west-1", "af-south-1"  (the managed store/S3 location constraints)
 //	georoute     — "eu", "us", "af"           (coarse families)
 //
 // The default managed region was the S3 slug "eu-west-1", and it was handed
@@ -38,7 +38,7 @@ type Region struct {
 	Key string
 	// Fly is the Fly.io machine region code.
 	Fly string
-	// S3 is the Tigris/S3 LocationConstraint for buckets placed in this region.
+	// S3 is the the managed store/S3 LocationConstraint for buckets placed in this region.
 	S3 string
 	// Family is the coarse continental grouping (georoute's vocabulary).
 	Family string
@@ -47,7 +47,7 @@ type Region struct {
 }
 
 // table is the closed set of regions Vulos runs in. Every row must be a region
-// that BOTH Fly and Tigris actually serve — that pairing is the whole point of
+// that BOTH Fly and the managed store actually serve — that pairing is the whole point of
 // the table, and it is what makes a residency promise enforceable.
 var table = []Region{
 	{Key: "eu-west", Fly: "ams", S3: "eu-west-1", Family: "eu", Label: "EU West (Amsterdam)"},
@@ -119,7 +119,7 @@ func Fly(s string) (string, error) {
 	return r.Fly, nil
 }
 
-// S3 returns the Tigris/S3 LocationConstraint for any accepted spelling.
+// S3 returns the the managed store/S3 LocationConstraint for any accepted spelling.
 func S3(s string) (string, error) {
 	r, err := Lookup(s)
 	if err != nil {

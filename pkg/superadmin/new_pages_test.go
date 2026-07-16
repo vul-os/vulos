@@ -499,9 +499,9 @@ func TestCostModelConstants(t *testing.T) {
 	if superadmin.FlyMachineMinUSD != 0.0018 {
 		t.Errorf("FlyMachineMinUSD mismatch: got %v", superadmin.FlyMachineMinUSD)
 	}
-	// Tigris: $0.021/GB-month
-	if superadmin.TigrisStorageGBMonthUSD != 0.021 {
-		t.Errorf("TigrisStorageGBMonthUSD mismatch: got %v", superadmin.TigrisStorageGBMonthUSD)
+	// the managed store: $0.021/GB-month
+	if superadmin.ManagedStorageGBMonthUSD != 0.021 {
+		t.Errorf("ManagedStorageGBMonthUSD mismatch: got %v", superadmin.ManagedStorageGBMonthUSD)
 	}
 	// SES: $0.10/1k emails
 	if superadmin.SESPer1000USD != 0.10 {

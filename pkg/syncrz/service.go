@@ -13,7 +13,7 @@ import (
 const DefaultPullLimit = 200
 
 // Service is the syncrz orchestrator. It composes a Store (metadata,
-// pure-Go SQLite) with an ObjectStore (opaque bytes in Tigris/Mem) and
+// pure-Go SQLite) with an ObjectStore (opaque bytes in the managed store/Mem) and
 // applies the opacity + content-address invariants documented in the
 // package doc.
 //
@@ -40,7 +40,7 @@ func NewService(st Store, obj ObjectStore) *Service {
 	}
 }
 
-// BucketForAccount returns the per-account Tigris bucket name. Mirrors the
+// BucketForAccount returns the per-account the managed store bucket name. Mirrors the
 // rest of cp's "vulos-{account_id_lower}" convention (see storage.managedBucketName).
 func (s *Service) BucketForAccount(accountID string) string {
 	return s.BucketPrefix + lower(accountID)
@@ -245,7 +245,7 @@ func (s *Service) FetchBlob(ctx context.Context, accountID, contentHash string) 
 	if err != nil {
 		return nil, err
 	}
-	// Defence in depth: verify on the way out so a corrupted Tigris object
+	// Defence in depth: verify on the way out so a corrupted the managed store object
 	// cannot poison a peer's CAS verification.
 	if sha256Hex(data) != lower(contentHash) {
 		return nil, ErrHashMismatch

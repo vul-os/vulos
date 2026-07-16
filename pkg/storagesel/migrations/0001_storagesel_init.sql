@@ -4,17 +4,17 @@
 -- migration declares the final schema directly in the CREATE TABLE (no ALTER);
 -- it supersedes the former 0002_sync_mode.sql (sync_mode column), now folded in.
 --
--- kind is 'tigris' (managed default) or 'minio' (customer-provided BYO).
+-- kind is 'managed' (managed default) or 'minio' (customer-provided BYO).
 -- cred_ref is an opaque env-var or vault reference for credentials (not stored plaintext).
 -- sync_mode is the orthogonal central/local axis the org-admin Backup tab toggles:
---   'central' → the box writes to the central bucket (Tigris) as source of truth
+--   'central' → the box writes to the central bucket (the managed store) as source of truth
 --   'local'   → the box runs local-MinIO as source of truth + syncs to the
 --               central rendezvous (syncrz) opportunistically
 -- Default 'central' preserves the historical behaviour for any account that
 -- never toggled the setting.
 CREATE TABLE IF NOT EXISTS account_storage (
   account_id  TEXT NOT NULL PRIMARY KEY,
-  kind        TEXT NOT NULL DEFAULT 'tigris',  -- 'tigris' | 'minio'
+  kind        TEXT NOT NULL DEFAULT 'managed',  -- 'managed' | 'minio'
   endpoint    TEXT NOT NULL DEFAULT '',
   region      TEXT NOT NULL DEFAULT 'auto',
   bucket      TEXT NOT NULL DEFAULT '',

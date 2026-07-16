@@ -10,7 +10,7 @@
 --
 -- Tables owned by this package:
 --   org_backup_mode    — cloud-side record of the STORE-LOCAL-01 storage-mode
---                        toggle (central-tigris | local-minio-sync), per tenant.
+--                        toggle (central-managed | local-minio-sync), per tenant.
 --   org_invites        — pending invite tokens (standalone fallback store),
 --                        carrying the invited user's display name.
 --   orgs               — one row per org (ORG-MULTI-01), free root mailbox

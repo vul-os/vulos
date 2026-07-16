@@ -1,4 +1,4 @@
-// Package syncrz is the cloud-side central-Tigris rendezvous sync
+// Package syncrz is the cloud-side central-the managed store rendezvous sync
 // coordinator for CRDT delta + content-addressed blob exchange between an
 // org's boxes (SYNC-RENDEZVOUS-01).
 //
@@ -64,7 +64,7 @@
 //	  resp: { cursor: "<new opaque>", deltas: [{codec_version, payload_b64, refs:[hash], box_id}], manifest: [hash] }
 //
 //	GET  /api/sync/blob/<hash>?account_id=...
-//	  resp: 200 octet-stream (proxied from Tigris)
+//	  resp: 200 octet-stream (proxied from the managed store)
 //	        404 if unknown
 //
 // # Invariants (FROZEN)
@@ -117,7 +117,7 @@ var (
 // ---------------------------------------------------------------------------
 
 // DeltaRef is one opaque, versioned delta the box pushed (or that pull
-// returns). The coordinator carries Payload bytes through Tigris verbatim
+// returns). The coordinator carries Payload bytes through the managed store verbatim
 // and NEVER parses them.
 type DeltaRef struct {
 	// ID is the coordinator-assigned auto-increment row id; it is the value
@@ -130,7 +130,7 @@ type DeltaRef struct {
 	// box. Opaque string.
 	BoxID string `json:"box_id"`
 	// PayloadSHA256 is the lowercase-hex sha256 of Payload. Used as the dedup
-	// key (idempotent push) and the Tigris object name.
+	// key (idempotent push) and the the managed store object name.
 	PayloadSHA256 string `json:"payload_sha256"`
 	// Payload is the OPAQUE delta bytes. Populated on pull/get; on push the
 	// caller streams this through PushDelta.
@@ -176,7 +176,7 @@ type PullResult struct {
 
 // ---------------------------------------------------------------------------
 // Object store seam — the coordinator persists opaque bytes via this
-// interface. In production it is satisfied by storage.Provider (Tigris S3);
+// interface. In production it is satisfied by storage.Provider (the managed store S3);
 // in tests by an in-memory implementation.
 // ---------------------------------------------------------------------------
 
@@ -206,7 +206,7 @@ type Store interface {
 	// inserted=false. refs are the content hashes the delta references
 	// (extracted and provided by the BOX, NOT parsed from payload — the
 	// coordinator stays opaque).
-	AppendDelta(ctx context.Context, accountID, syncKey, boxID string, codecVersion int, payloadBytes int64, payloadSHA256, tigrisKey string, refs []string, now time.Time) (id int64, inserted bool, err error)
+	AppendDelta(ctx context.Context, accountID, syncKey, boxID string, codecVersion int, payloadBytes int64, payloadSHA256, objectKey string, refs []string, now time.Time) (id int64, inserted bool, err error)
 
 	// PullDeltas returns deltas for (account, sync_key) with id > since,
 	// excluding any pushed by excludeBoxID (no-echo). limit caps the response.
@@ -220,9 +220,9 @@ type Store interface {
 	LastSeen(ctx context.Context, accountID, syncKey, boxID string) (int64, error)
 
 	// AppendBlob records one blob put. Idempotent on (account, content_hash).
-	AppendBlob(ctx context.Context, accountID, contentHash string, sizeBytes int64, tigrisKey string, now time.Time) (inserted bool, err error)
+	AppendBlob(ctx context.Context, accountID, contentHash string, sizeBytes int64, objectKey string, now time.Time) (inserted bool, err error)
 
-	// GetBlobKey returns the tigris key for (account, content_hash), or
+	// GetBlobKey returns the managed key for (account, content_hash), or
 	// ErrUnknown.
 	GetBlobKey(ctx context.Context, accountID, contentHash string) (string, error)
 
@@ -235,7 +235,7 @@ type Store interface {
 
 // ---------------------------------------------------------------------------
 // Compile-time assertion the io package is referenced (kept for streaming
-// blob fetch fallback when proxied directly from Tigris — see routes.go).
+// blob fetch fallback when proxied directly from the managed store — see routes.go).
 // ---------------------------------------------------------------------------
 
 var _ = io.EOF

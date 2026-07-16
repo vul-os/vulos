@@ -2,7 +2,7 @@
 //
 // This is the user-facing path that lets a Vulos Cloud customer point their
 // per-user unified bucket at THEIR OWN S3-compatible object storage instead of
-// our managed Tigris bucket. When a BYO config is stored (byo=true) the
+// our managed object storage bucket. When a BYO config is stored (byo=true) the
 // Service.ProviderForAccount resolver (wired in cmd/server) builds a per-account
 // provider from the stored credentials, so the customer's data never lives in
 // our infrastructure — the core "no lock-in / easy escape" guarantee.
@@ -53,13 +53,13 @@ func SetBYOProviderFactoryForTest(f func(Config) (Provider, error)) func() {
 
 // NewBYOProvider constructs a Provider for an account's BYO bucket from its
 // stored Config. BYO buckets are S3-compatible, so we reuse the same S3 driver
-// that backs managed Tigris (TigrisProvider) pointed at the user's endpoint.
+// that backs managed object storage (S3Provider) pointed at the user's endpoint.
 func NewBYOProvider(cfg Config) (Provider, error) {
 	region := cfg.Region
 	if region == "" {
 		region = "auto"
 	}
-	return NewTigrisProvider(TigrisConfig{
+	return NewS3Provider(S3Config{
 		AccessKeyID:     cfg.AccessKey,
 		SecretAccessKey: cfg.SecretKey,
 		Endpoint:        cfg.Endpoint,

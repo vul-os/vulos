@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS meet_recordings (
     account_id      TEXT NOT NULL,
     started_at      TEXT NOT NULL,
     stopped_at      TEXT,
-    tigris_path     TEXT NOT NULL,
+    object_path     TEXT NOT NULL,
     size_bytes      INTEGER NOT NULL DEFAULT 0,
     status          TEXT NOT NULL,
     error           TEXT,

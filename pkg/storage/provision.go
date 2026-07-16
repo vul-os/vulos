@@ -1,4 +1,4 @@
-// provision.go — per-tenant Tigris bucket provisioning.
+// provision.go — per-tenant the S3 backend bucket provisioning.
 //
 // ProvisionManagedBucket is called at account signup (or lazily on first
 // storage request) to:
@@ -14,7 +14,7 @@
 // ProvisionOptions.  When Region is non-empty the bucket is PLACED there, and
 // the stored row records the region that was actually enforced.  Previously the
 // region was written to storage_configs but never passed to the provider — every
-// bucket was created in the global TIGRIS_REGION ("auto") while the row claimed
+// bucket was created in the global the configured region ("auto") while the row claimed
 // a residency the data did not have.  A region we cannot enforce is now an
 // error, not a record.
 package storage
@@ -72,8 +72,8 @@ type ProvisionOptions struct {
 	Region string
 }
 
-// ProvisionManagedBucket ensures a managed Tigris bucket exists for the given
-// account and ULID.  It always calls EnsureBucket (idempotent at Tigris level)
+// ProvisionManagedBucket ensures a managed object storage bucket exists for the given
+// account and ULID.  It always calls EnsureBucket (idempotent at the S3 backend level)
 // and always upserts the config row.  Use this at signup.
 //
 // bucket name convention: "vulos-{ulid_lower}".

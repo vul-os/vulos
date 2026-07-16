@@ -2,14 +2,14 @@
 // (TASK: STORE-BYO-01, CP-STORE-01).
 //
 // Each account has a StorageBackend record that specifies whether it uses the
-// Vulos-managed Tigris bucket (default) or a customer-provided MinIO/S3
+// Vulos-managed backend bucket (default) or a customer-provided MinIO/S3
 // endpoint (BYO). The selector is backed by cpdb (SQLite or Postgres).
 //
 // Usage:
 //
 //	db, _ := cpdb.Open("storagesel")
 //	sel, err := storagesel.Open(db)
-//	backend, err := sel.Get(ctx, accountID)   // defaults to Tigris if absent
+//	backend, err := sel.Get(ctx, accountID)   // defaults to the managed store if absent
 //	err = sel.Set(ctx, accountID, b)           // validates + upserts
 package storagesel
 
@@ -29,7 +29,7 @@ import (
 type Kind string
 
 const (
-	KindTigris Kind = "tigris" // Vulos-managed Tigris (default)
+	KindManaged Kind = "managed" // Vulos-managed backend (default)
 	KindMinIO  Kind = "minio"  // Customer-provided MinIO / S3-compatible
 )
 
@@ -39,17 +39,17 @@ const (
 type SyncMode string
 
 const (
-	SyncModeCentral SyncMode = "central" // central bucket (Tigris) is source of truth (default)
+	SyncModeCentral SyncMode = "central" // central bucket (managed backend) is source of truth (default)
 	SyncModeLocal   SyncMode = "local"   // local MinIO is source of truth + syncs to central rendezvous
 )
 
 // Backend holds the storage backend configuration for one account.
 type Backend struct {
 	AccountID string   `json:"account_id"`
-	Kind      Kind     `json:"kind"`       // 'tigris' | 'minio'
-	Endpoint  string   `json:"endpoint"`   // required for MinIO; empty for Tigris
+	Kind      Kind     `json:"kind"`       // 'managed' | 'minio'
+	Endpoint  string   `json:"endpoint"`   // required for MinIO; empty for the managed backend
 	Region    string   `json:"region"`     // default "auto"
-	Bucket    string   `json:"bucket"`     // required for MinIO; empty = use Tigris default
+	Bucket    string   `json:"bucket"`     // required for MinIO; empty = use the managed default
 	CredRef   string   `json:"cred_ref"`   // opaque env/vault ref for credentials
 	SyncMode  SyncMode `json:"sync_mode"`  // 'central' | 'local' (STORE-LOCAL-01)
 	UpdatedAt string   `json:"updated_at"` // RFC3339 UTC
@@ -58,7 +58,7 @@ type Backend struct {
 // Sentinel errors.
 var (
 	ErrNotFound        = errors.New("storagesel: account not found")
-	ErrInvalidKind     = errors.New("storagesel: kind must be 'tigris' or 'minio'")
+	ErrInvalidKind     = errors.New("storagesel: kind must be 'managed' or 'minio'")
 	ErrInvalidEndpt    = errors.New("storagesel: minio endpoint must be https://…")
 	ErrBucketRequired  = errors.New("storagesel: bucket is required for minio")
 	ErrInvalidSyncMode = errors.New("storagesel: sync_mode must be 'central' or 'local'")
@@ -88,7 +88,7 @@ func Open(db *cpdb.DB) (*Selector, error) {
 func (s *Selector) Close() error { return s.db.Close() }
 
 // Get returns the storage backend for accountID.  If no record exists the
-// Tigris default backend is returned (so new accounts default to managed
+// the managed store default backend is returned (so new accounts default to managed
 // storage without needing an explicit row).
 func (s *Selector) Get(ctx context.Context, accountID string) (Backend, error) {
 	if accountID == "" {
@@ -102,10 +102,10 @@ func (s *Selector) Get(ctx context.Context, accountID string) (Backend, error) {
 	var syncMode string
 	err := row.Scan(&b.Kind, &b.Endpoint, &b.Region, &b.Bucket, &b.CredRef, &syncMode, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		// Default: Tigris-managed, central sync, no explicit config needed.
+		// Default: the managed store-managed, central sync, no explicit config needed.
 		return Backend{
 			AccountID: accountID,
-			Kind:      KindTigris,
+			Kind:      KindManaged,
 			Region:    "auto",
 			SyncMode:  SyncModeCentral,
 			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -130,7 +130,7 @@ func (s *Selector) GetSyncMode(ctx context.Context, accountID string) (SyncMode,
 
 // SetSyncMode upserts ONLY the central/local sync mode for accountID, leaving
 // the BYO endpoint config (kind/endpoint/bucket/…) untouched. A row is created
-// with the Tigris default backend if none exists yet.
+// with the the managed store default backend if none exists yet.
 func (s *Selector) SetSyncMode(ctx context.Context, accountID string, mode SyncMode) error {
 	if accountID == "" {
 		return fmt.Errorf("storagesel: account_id required")
@@ -143,7 +143,7 @@ func (s *Selector) SetSyncMode(ctx context.Context, accountID string, mode SyncM
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := s.db.ExecContext(ctx,
 		s.db.Rebind(`INSERT INTO account_storage (account_id, kind, endpoint, region, bucket, cred_ref, sync_mode, updated_at)
-	            VALUES (?, 'tigris', '', 'auto', '', '', ?, ?)
+	            VALUES (?, 'managed', '', 'auto', '', '', ?, ?)
 	            ON CONFLICT(account_id) DO UPDATE SET
 	              sync_mode=excluded.sync_mode,
 	              updated_at=excluded.updated_at`),
@@ -165,7 +165,7 @@ func normaliseSyncMode(m SyncMode) SyncMode {
 // Set validates and upserts the storage backend for accountID.
 //
 // Validation rules:
-//   - kind must be "tigris" or "minio"
+//   - kind must be "managed" or "minio"
 //   - for minio: endpoint must be non-empty and start with "https://"
 //   - for minio: bucket must be non-empty
 func (s *Selector) Set(ctx context.Context, accountID string, b Backend) error {
@@ -176,7 +176,7 @@ func (s *Selector) Set(ctx context.Context, accountID string, b Backend) error {
 
 	// Validate kind.
 	switch b.Kind {
-	case KindTigris, KindMinIO:
+	case KindManaged, KindMinIO:
 	default:
 		return ErrInvalidKind
 	}
@@ -214,7 +214,7 @@ func (s *Selector) Set(ctx context.Context, accountID string, b Backend) error {
 }
 
 // Delete removes the account's storage backend record (if present).
-// After deletion, Get will again return the Tigris default.
+// After deletion, Get will again return the the managed store default.
 func (s *Selector) Delete(ctx context.Context, accountID string) error {
 	_, err := s.db.ExecContext(ctx,
 		s.db.Rebind(`DELETE FROM account_storage WHERE account_id = ?`), accountID)

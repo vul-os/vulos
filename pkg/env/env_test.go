@@ -54,8 +54,8 @@ func TestDevDefaults(t *testing.T) {
 	if d.BindAddr != ":8081" {
 		t.Errorf("dev BindAddr = %q, want :8081", d.BindAddr)
 	}
-	if d.S3Endpoint != "https://fly.storage.tigris.dev" {
-		t.Errorf("dev S3Endpoint = %q, want Tigris endpoint", d.S3Endpoint)
+	if d.S3Endpoint != "" {
+		t.Errorf("dev S3Endpoint = %q, want empty (deployment-supplied)", d.S3Endpoint)
 	}
 	if !d.SecureCookie {
 		t.Error("dev SecureCookie should be true")
@@ -93,8 +93,8 @@ func TestProdDefaults(t *testing.T) {
 	if d.AllowAllRelayQuotas {
 		t.Error("prod AllowAllRelayQuotas must be false")
 	}
-	if d.S3Endpoint != "https://fly.storage.tigris.dev" {
-		t.Errorf("prod S3Endpoint = %q, want Tigris endpoint", d.S3Endpoint)
+	if d.S3Endpoint != "" {
+		t.Errorf("prod S3Endpoint = %q, want empty (deployment-supplied)", d.S3Endpoint)
 	}
 }
 

@@ -23,7 +23,7 @@ type Placer struct {
 	store       Store
 	orgResolver OrgResolver
 	// defaultRegion is returned when the org has no residency row yet. "auto"
-	// means "no residency constraint" (Tigris automatic placement); a client may
+	// means "no residency constraint" (the managed store automatic placement); a client may
 	// then request any region.
 	defaultRegion string
 }

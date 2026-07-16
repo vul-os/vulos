@@ -61,7 +61,7 @@ func TestPG_AppendDeltaIdempotent(t *testing.T) {
 	hash := shaStr(payload)
 
 	id1, inserted1, err := st.AppendDelta(ctx, "acct-pg1", "mailbox/1", "box-1",
-		1, int64(len(payload)), hash, "tigris/key1", nil, now)
+		1, int64(len(payload)), hash, "obj/key1", nil, now)
 	if err != nil {
 		t.Fatalf("AppendDelta 1: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestPG_AppendDeltaIdempotent(t *testing.T) {
 
 	// Re-push same payload — must return same id, inserted=false.
 	id2, inserted2, err := st.AppendDelta(ctx, "acct-pg1", "mailbox/1", "box-1",
-		1, int64(len(payload)), hash, "tigris/key1", nil, now)
+		1, int64(len(payload)), hash, "obj/key1", nil, now)
 	if err != nil {
 		t.Fatalf("AppendDelta 2: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestPG_AppendBlobIdempotent(t *testing.T) {
 	blob := []byte("pg-blob")
 	hash := shaStr(blob)
 
-	ok1, err := st.AppendBlob(ctx, "acct-pg4", hash, int64(len(blob)), "tigris/b1", now)
+	ok1, err := st.AppendBlob(ctx, "acct-pg4", hash, int64(len(blob)), "obj/b1", now)
 	if err != nil {
 		t.Fatalf("AppendBlob 1: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestPG_AppendBlobIdempotent(t *testing.T) {
 		t.Error("expected true on first append")
 	}
 
-	ok2, err := st.AppendBlob(ctx, "acct-pg4", hash, int64(len(blob)), "tigris/b1", now)
+	ok2, err := st.AppendBlob(ctx, "acct-pg4", hash, int64(len(blob)), "obj/b1", now)
 	if err != nil {
 		t.Fatalf("AppendBlob 2: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestPG_GetBlobKey(t *testing.T) {
 	blob := []byte("pg-blob-key")
 	hash := shaStr(blob)
 
-	if _, err := st.AppendBlob(ctx, "acct-pg5", hash, int64(len(blob)), "tigris/bkey", now); err != nil {
+	if _, err := st.AppendBlob(ctx, "acct-pg5", hash, int64(len(blob)), "obj/bkey", now); err != nil {
 		t.Fatalf("AppendBlob: %v", err)
 	}
 
@@ -185,8 +185,8 @@ func TestPG_GetBlobKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetBlobKey: %v", err)
 	}
-	if key != "tigris/bkey" {
-		t.Errorf("expected tigris/bkey, got %q", key)
+	if key != "obj/bkey" {
+		t.Errorf("expected obj/bkey, got %q", key)
 	}
 }
 

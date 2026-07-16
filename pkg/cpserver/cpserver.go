@@ -9,7 +9,7 @@
 //	err = srv.Run(ctx)                    // serve until ctx is cancelled
 //
 //   - Config is populated from plain env/flags/file by whoever builds the
-//     server. It carries NO provider-specific knowledge (no Fly, no Tigris, no
+//     server. It carries NO provider-specific knowledge (no Fly, no the managed store, no
 //     Paystack) — just an address, a domain, a database DSN, and the like.
 //   - Deps carries the pluggable providers. A self-hoster leaves them nil and
 //     New fills in the free no-op / bring-your-own defaults from pkg/billingport

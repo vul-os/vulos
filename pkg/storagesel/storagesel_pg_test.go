@@ -34,14 +34,14 @@ func openPGSelector(t *testing.T) *storagesel.Selector {
 	return sel
 }
 
-func TestPG_Storagesel_DefaultTigris(t *testing.T) {
+func TestPG_Storagesel_DefaultManaged(t *testing.T) {
 	sel := openPGSelector(t)
 	b, err := sel.Get(context.Background(), "pg-acct-new")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if b.Kind != storagesel.KindTigris {
-		t.Errorf("default kind = %q, want tigris", b.Kind)
+	if b.Kind != storagesel.KindManaged {
+		t.Errorf("default kind = %q, want managed", b.Kind)
 	}
 }
 
@@ -111,8 +111,8 @@ func TestPG_Storagesel_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after delete: %v", err)
 	}
-	if b.Kind != storagesel.KindTigris {
-		t.Errorf("after delete kind = %q, want tigris (default)", b.Kind)
+	if b.Kind != storagesel.KindManaged {
+		t.Errorf("after delete kind = %q, want managed (default)", b.Kind)
 	}
 }
 

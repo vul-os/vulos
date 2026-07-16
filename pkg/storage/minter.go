@@ -1,22 +1,22 @@
 // minter.go — CredentialMinter seam (STORAGE-ISOLATION.md §1.2).
 //
-// The CP holds ONE master Tigris credential that can read/write EVERY bucket.
+// The CP holds ONE master the S3 backend credential that can read/write EVERY bucket.
 // Handing that master credential to a managed cell (see the historical TODO in
 // managed/mailcell.go) means a single leaked cell env exposes every tenant's
 // bucket. CredentialMinter closes that gap: it mints a credential scoped to ONE
 // bucket, so a compromised cell touches one bucket, not all of them.
 //
 // Three tiers, in preference order (§1.2):
-//   - Tier 1: TigrisIAMMinter — a real bucket-scoped access key via the Tigris
+//   - Tier 1: the IAM minter (cloud) — a real bucket-scoped access key via the managed S3 IAM API
 //     IAM API (create access key + attach a policy pinned to arn:.../vulos-{ulid}/*).
-//     Primary, used when TIGRIS_IAM_ENDPOINT / minting is configured.
+//     Primary, used when the configured credentials / minting is configured.
 //   - Tier 2: STS/session token — same seam, SessionToken populated, short TTL.
-//     Kept as a future CredentialMinter backend swap (Tigris does not yet expose
-//     an AssumeRole surface — verified 2026-07, see minter_tigris.go).
+//     Kept as a future CredentialMinter backend swap (the S3 backend does not yet expose
+//     an AssumeRole surface — verified 2026-07, see the cloud IAM minter).
 //   - Tier 3: presigned-URL fallback FLOOR — no minter at all. When
 //     CredentialMinter is nil the cell gets NO key and uses the existing
 //     presign-broker path (routes_storage.go). This is the guaranteed floor and
-//     is the shipped default until a Tigris IAM master key is configured.
+//     is the shipped default until a the S3 backend IAM master key is configured.
 //
 // This file is additive: it does NOT modify the frozen contract.go. MemMinter
 // and StaticFallbackMinter are the reference implementations.
@@ -40,7 +40,7 @@ type ScopedCred struct {
 	AccessKeyID     string    // S3 access key id
 	SecretAccessKey string    // S3 secret — NEVER serialised to JSON (see json:"-")
 	SessionToken    string    // empty for long-lived scoped keys
-	Endpoint        string    // S3 endpoint (e.g. https://fly.storage.tigris.dev)
+	Endpoint        string    // S3 endpoint (e.g. https://s3.example.invalid)
 	Region          string    // S3 region
 	Bucket          string    // the ONE bucket this cred is scoped to
 	PolicyID        string    // provider policy id (for revoke cleanup); may be empty
@@ -58,7 +58,7 @@ func (c ScopedCred) Redacted() ScopedCred {
 // CredentialMinter mints a bucket-scoped, time-limited S3 credential.
 //
 // Implementations:
-//   - TigrisIAMMinter    — Tier 1, real scoped access key (production).
+//   - the IAM minter (cloud)    — Tier 1, real scoped access key (production).
 //   - StaticFallbackMinter — dev/self-host only: returns the master cred as-is
 //     (== today's behaviour). NOT least-privilege; use only where the IAM API is
 //     unavailable and the presign-broker floor is not desired.
@@ -82,7 +82,7 @@ type CredentialMinter interface {
 
 // StaticFallbackMinter is a CredentialMinter that returns the master credential
 // unchanged for every bucket. It provides NO isolation — it exists only so the
-// mint seam can be wired in environments without the Tigris IAM API while still
+// mint seam can be wired in environments without the managed S3 IAM API IAM API while still
 // injecting a (non-scoped) key, and for the interim direct-inject path. Prefer
 // the presign-broker floor (nil minter) over this where isolation matters.
 type StaticFallbackMinter struct {

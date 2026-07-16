@@ -42,7 +42,7 @@ func roundTrip(t *testing.T, store CellCredStore) {
 		PolicyID:  "arn:pol",
 		AccessKey: "AKIDXYZ",
 		Secret:    "super-secret-value",
-		Endpoint:  "https://fly.storage.tigris.dev",
+		Endpoint:  "https://s3.example.invalid",
 		Region:    "auto",
 		ExpiresAt: time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second),
 	}

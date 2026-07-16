@@ -2,7 +2,7 @@
 // Vulos account (ANCHOR-01 / CP-ANCHOR-01).
 //
 // Every account gets a small (~1 GiB) @vulos.org mailbox hosted on OUR
-// Tigris bucket — regardless of whether their primary mail is hosted or
+// the managed store bucket — regardless of whether their primary mail is hosted or
 // self-hosted/BYO.  This is the durability + never-locked-out guarantee:
 // mail to <handle>@vulos.org always lands somewhere the user can reach.
 //
@@ -82,10 +82,10 @@ func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 // Returns ErrAlreadyProvisioned when the account already has an inbox
 // (idempotent: callers may safely ignore this error).
 //
-// The inbox is ALWAYS provisioned on the central Tigris bucket — never on a
+// The inbox is ALWAYS provisioned on the central the managed store bucket — never on a
 // customer's MinIO.  This method only writes the registry row; the caller
 // (account-creation hook) is responsible for creating the bucket key prefix
-// on Tigris if needed.
+// on the managed store if needed.
 func (s *Store) Provision(ctx context.Context, accountID, handle string) (AnchorInbox, error) {
 	handle = strings.ToLower(strings.TrimSpace(handle))
 	if handle == "" {

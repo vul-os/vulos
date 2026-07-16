@@ -3,13 +3,13 @@
 // THIS FILE IS THE FROZEN CONTRACT. Do not edit it in feature branches —
 // every storage agent builds against these types, this Store/Provider
 // interface, the reference MemProvider/MemStore (which DEFINE semantics),
-// and sentinel errors. SQL and TigrisProvider implementations must match
+// and sentinel errors. SQL and S3Provider implementations must match
 // the in-memory reference behaviourally; handlers depend only on the
 // interfaces.
 //
-// Risk callout (R-B): TigrisProvider relies on Tigris S3-compatible API
-// contracts at https://fly.storage.tigris.dev. If Tigris changes its API
-// surface the TigrisProvider must be updated; MemProvider is unaffected.
+// Risk callout (R-B): S3Provider relies on the S3 backend S3-compatible API
+// contracts at https://fly.storage.managed.dev. If the S3 backend changes its API
+// surface the S3Provider must be updated; MemProvider is unaffected.
 package storage
 
 import (
@@ -31,7 +31,7 @@ import (
 // in-memory from secret_key_enc; it is NEVER serialised to JSON.
 type Config struct {
 	AccountID string `json:"account_id"`
-	BYO       bool   `json:"byo"`      // false = vulos-managed Tigris bucket
+	BYO       bool   `json:"byo"`      // false = vulos-managed object storage bucket
 	Endpoint  string `json:"endpoint"` // empty when byo=false
 	Region    string `json:"region"`   // default "auto"
 	Bucket    string `json:"bucket"`
@@ -84,7 +84,7 @@ type Store interface {
 // Provider interface
 // ---------------------------------------------------------------------------
 
-// Provider wraps the S3 operations the cp actually needs. TigrisProvider
+// Provider wraps the S3 operations the cp actually needs. S3Provider
 // is the production implementation; MemProvider is the test double.
 type Provider interface {
 	EnsureBucket(ctx context.Context, name string) error
@@ -133,7 +133,7 @@ type SnapshotURLer interface {
 type Service struct {
 	Store
 	// ProviderForAccount returns the Provider for the given accountID.
-	// It must consult the store config and return TigrisProvider (for managed)
+	// It must consult the store config and return S3Provider (for managed)
 	// or a provider built from the BYO config.
 	ProviderForAccount func(ctx context.Context, accountID string) (Provider, error)
 	// KEK is the 32-byte AES-GCM key-encryption key read from STORAGE_KEK env.
@@ -144,7 +144,7 @@ type Service struct {
 // maxSnapshotTTL is the maximum TTL for snapshot presigned URLs (5 minutes).
 const maxSnapshotTTL = 5 * time.Minute
 
-// managedBucketName returns the canonical Tigris bucket name for a ULID.
+// managedBucketName returns the canonical the S3 backend bucket name for a ULID.
 // Convention: "vulos-{ulid_lower}".
 func managedBucketName(ulid string) string {
 	return "vulos-" + strings.ToLower(ulid)

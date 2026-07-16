@@ -84,7 +84,7 @@
   <h2>Cost Circuit Breaker</h2>
   <p>
     Fly machines: <strong>{{.FlyMachines}}</strong> / {{.BudgetMaxMachines}} max &nbsp;|&nbsp;
-    Tigris egress: <strong>{{printf "%.2f" .TigrisEgressGB}} GB</strong> &nbsp;|&nbsp;
+    Managed egress: <strong>{{printf "%.2f" .ManagedEgressGB}} GB</strong> &nbsp;|&nbsp;
     Hourly budget: <strong>${{printf "%.2f" .BudgetMaxUSD}}</strong>
   </p>
   {{if .TrippedAt}}

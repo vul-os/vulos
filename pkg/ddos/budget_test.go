@@ -9,7 +9,7 @@ func TestBudgetCircuitBreaker_UnderThreshold(t *testing.T) {
 	cfg := BudgetConfig{MaxFlyMachines: 10, HourlyBudgetUSD: 50}
 	readers := BudgetReaders{
 		FlyInstanceCount: func(_ context.Context) (int, error) { return 2, nil },
-		TigrisEgressGB:   func(_ context.Context) (float64, error) { return 10.0, nil },
+		ManagedEgressGB:   func(_ context.Context) (float64, error) { return 10.0, nil },
 	}
 	b := NewBudgetCircuitBreaker(cfg, readers, nil, nil)
 	b.Poll(context.Background())
@@ -30,7 +30,7 @@ func TestBudgetCircuitBreaker_ExceedsMachineCount(t *testing.T) {
 	cfg := BudgetConfig{MaxFlyMachines: 3, HourlyBudgetUSD: 9999}
 	readers := BudgetReaders{
 		FlyInstanceCount: func(_ context.Context) (int, error) { return 5, nil },
-		TigrisEgressGB:   func(_ context.Context) (float64, error) { return 0, nil },
+		ManagedEgressGB:   func(_ context.Context) (float64, error) { return 0, nil },
 	}
 	b := NewBudgetCircuitBreaker(cfg, readers, nil, nil)
 	b.Poll(context.Background())

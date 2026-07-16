@@ -26,7 +26,7 @@
 //
 // Persistence (this package owns): backup-mode + invite-token rows in a
 // pure-Go modernc.org/sqlite database (CGO_ENABLED=0). The storage-mode
-// (central-tigris vs local-minio-sync, STORE-LOCAL-01) lives in the OS repo
+// (central-managed vs local-minio-sync, STORE-LOCAL-01) lives in the OS repo
 // today, so the backup-mode store here is the cloud-side record of intent;
 // see the TODO(wire-storagesel) in store.go.
 package orgadmin
@@ -173,7 +173,7 @@ type QuotasResponse struct {
 
 // ── Backup mode ───────────────────────────────────────────────────────────────
 
-// Backup-mode values. central → Tigris (default); local → MinIO sync.
+// Backup-mode values. central → the managed store (default); local → MinIO sync.
 const (
 	BackupModeCentral = "central"
 	BackupModeLocal   = "local"

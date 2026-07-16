@@ -70,10 +70,10 @@ CREATE INDEX IF NOT EXISTS ix_meet_usage_account ON meet_usage(account_id, recor
 CREATE INDEX IF NOT EXISTS ix_meet_usage_room    ON meet_usage(room_id, recorded_at);
 
 -- meet_recordings (MEET-RECORDING-01): per-room composite-egress recording
--- artifacts written to Tigris (or BYO object store). One row per recording
--- attempt. tigris_path is the canonical destination key under the shared
+-- artifacts written to object storage (or BYO object store). One row per recording
+-- attempt. object_path is the canonical destination key under the shared
 -- bucket. deleted_at (MEET-RECORDING-DELETE-01) is set when the cloud
--- performs the actual S3/Tigris DeleteObject on retention expiry; status
+-- performs the actual S3 DeleteObject on retention expiry; status
 -- gains a terminal 'deleted' value (CHECK is comment-level, not a constraint).
 CREATE TABLE IF NOT EXISTS meet_recordings (
     id              TEXT PRIMARY KEY,         -- ULID-shaped recording id
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS meet_recordings (
     account_id      TEXT NOT NULL,
     started_at      TEXT NOT NULL,            -- RFC3339 UTC
     stopped_at      TEXT,                     -- RFC3339 UTC; NULL while active
-    tigris_path     TEXT NOT NULL,
+    object_path     TEXT NOT NULL,
     size_bytes      INTEGER NOT NULL DEFAULT 0,
     status          TEXT NOT NULL,            -- starting|active|stopped|failed
     error           TEXT

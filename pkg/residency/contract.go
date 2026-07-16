@@ -2,7 +2,7 @@
 // first-class control-plane setting.
 //
 // The region is stored in org_residency (SQLite, WAL, no-CGO) and is wired
-// into bucket provisioning so new managed Tigris buckets land in the chosen
+// into bucket provisioning so new managed the managed store buckets land in the chosen
 // region instead of "auto".
 //
 // Supported regions and data-flow annotations are published via DataFlowMap()
@@ -68,7 +68,7 @@ type DataFlow struct {
 // ---------------------------------------------------------------------------
 
 // SupportedRegions is the canonical list of region slugs accepted by the API.
-// Values are S3-compatible region identifiers as used by Tigris (which still
+// Values are S3-compatible region identifiers as used by the managed store (which still
 // uses the historical AWS-style codes regardless of the underlying compute
 // provider). The list is intentionally small; add entries here + to
 // DataFlowMap when a new PoP is provisioned.
@@ -77,7 +77,7 @@ var SupportedRegions = []string{
 	"eu-west-1",      // Europe (Ireland)      — eu-west
 	"us-east-1",      // US East (Virginia)    — us-east
 	"ap-southeast-1", // Asia Pacific (Singapore)
-	"auto",           // Tigris automatic placement (default, no residency guarantee)
+	"auto",           // automatic placement (default, no residency guarantee)
 }
 
 // IsValidRegion reports whether r is in SupportedRegions.

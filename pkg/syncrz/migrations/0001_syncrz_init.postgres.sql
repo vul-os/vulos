@@ -1,4 +1,4 @@
--- syncrz: central Tigris rendezvous coordinator for CRDT delta + blob
+-- syncrz: central object-store rendezvous coordinator for CRDT delta + blob
 -- manifest exchange between an org's boxes (SYNC-RENDEZVOUS-01).
 --
 -- Postgres variant: BIGSERIAL for auto-increment primary key.
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS syncrz_deltas (
     codec_version   BIGINT NOT NULL,
     payload_bytes   BIGINT NOT NULL,
     payload_sha256  TEXT NOT NULL,
-    tigris_key      TEXT NOT NULL,
+    object_key      TEXT NOT NULL,
     pushed_at       BIGINT NOT NULL
 );
 
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS syncrz_blobs (
     account_id      TEXT NOT NULL,
     content_hash    TEXT NOT NULL,
     size_bytes      BIGINT NOT NULL,
-    tigris_key      TEXT NOT NULL,
+    object_key      TEXT NOT NULL,
     first_seen_at   BIGINT NOT NULL,
     PRIMARY KEY (account_id, content_hash)
 );

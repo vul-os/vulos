@@ -3,7 +3,7 @@
 // meet.vulos.org.
 //
 // Decision (per account):
-//   - hosted  → our Tigris-backed JMAP endpoint at the cloud service.
+//   - hosted  → our the managed store-backed JMAP endpoint at the cloud service.
 //   - selfhost → user has a BYO vulos-mail box registered; the cloud proxies
 //     API calls to it over the peering/relay fabric (NAT-friendly outbound
 //     tunnel). The fabric route is opaque: the cloud forwards bytes without

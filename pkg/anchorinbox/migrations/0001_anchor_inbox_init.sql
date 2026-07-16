@@ -3,11 +3,11 @@
 -- Idempotent: all DDL uses IF NOT EXISTS.
 --
 -- Every Vulos account gets exactly one anchor inbox: a small always-on
--- @vulos.org mailbox hosted on OUR Tigris bucket.  It is the durability
+-- @vulos.org mailbox hosted on OUR the managed store bucket.  It is the durability
 -- guarantee — "you can never lose access to your @vulos.org account".
 --
 -- This table records which accounts have been provisioned and their quota.
--- The actual mail is stored in the Tigris anchor bucket; this row is the
+-- The actual mail is stored in the the managed store anchor bucket; this row is the
 -- authoritative registry entry the CP reads at provisioning and lookup time.
 --
 -- quota_mb: default 1024 MB (1 GiB). Enforcement is on the delivery side.

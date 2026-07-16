@@ -45,8 +45,8 @@ func (s *SQLStore) PingDB(ctx context.Context) error {
 
 // AppendDelta implements Store. Idempotent on (account, sync_key, payload_sha256):
 // re-push returns the existing row id with inserted=false.
-func (s *SQLStore) AppendDelta(ctx context.Context, accountID, syncKey, boxID string, codecVersion int, payloadBytes int64, payloadSHA256, tigrisKey string, refs []string, now time.Time) (int64, bool, error) {
-	if accountID == "" || syncKey == "" || boxID == "" || payloadSHA256 == "" || tigrisKey == "" {
+func (s *SQLStore) AppendDelta(ctx context.Context, accountID, syncKey, boxID string, codecVersion int, payloadBytes int64, payloadSHA256, objectKey string, refs []string, now time.Time) (int64, bool, error) {
+	if accountID == "" || syncKey == "" || boxID == "" || payloadSHA256 == "" || objectKey == "" {
 		return 0, false, ErrInvalidInput
 	}
 
@@ -57,7 +57,7 @@ func (s *SQLStore) AppendDelta(ctx context.Context, accountID, syncKey, boxID st
 	`)
 	insertDeltaQ := s.db.Rebind(`
 		INSERT INTO syncrz_deltas
-		  (account_id, sync_key, box_id, codec_version, payload_bytes, payload_sha256, tigris_key, pushed_at)
+		  (account_id, sync_key, box_id, codec_version, payload_bytes, payload_sha256, object_key, pushed_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
 	`)
 	insertRefQ := s.db.Rebind(`
@@ -87,7 +87,7 @@ func (s *SQLStore) AppendDelta(ctx context.Context, accountID, syncKey, boxID st
 
 	var id int64
 	if err := tx.QueryRowContext(ctx, insertDeltaQ,
-		accountID, syncKey, boxID, codecVersion, payloadBytes, payloadSHA256, tigrisKey, now.UTC().Unix(),
+		accountID, syncKey, boxID, codecVersion, payloadBytes, payloadSHA256, objectKey, now.UTC().Unix(),
 	).Scan(&id); err != nil {
 		return 0, false, fmt.Errorf("syncrz: insert delta: %w", err)
 	}
@@ -204,17 +204,17 @@ func (s *SQLStore) LastSeen(ctx context.Context, accountID, syncKey, boxID strin
 }
 
 // AppendBlob implements Store. Idempotent on (account, content_hash).
-func (s *SQLStore) AppendBlob(ctx context.Context, accountID, contentHash string, sizeBytes int64, tigrisKey string, now time.Time) (bool, error) {
-	if accountID == "" || contentHash == "" || tigrisKey == "" {
+func (s *SQLStore) AppendBlob(ctx context.Context, accountID, contentHash string, sizeBytes int64, objectKey string, now time.Time) (bool, error) {
+	if accountID == "" || contentHash == "" || objectKey == "" {
 		return false, ErrInvalidInput
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res, err := s.db.ExecContext(ctx, s.db.Rebind(`
-		INSERT INTO syncrz_blobs (account_id, content_hash, size_bytes, tigris_key, first_seen_at)
+		INSERT INTO syncrz_blobs (account_id, content_hash, size_bytes, object_key, first_seen_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT DO NOTHING
-	`), accountID, contentHash, sizeBytes, tigrisKey, now.UTC().Unix())
+	`), accountID, contentHash, sizeBytes, objectKey, now.UTC().Unix())
 	if err != nil {
 		return false, fmt.Errorf("syncrz: insert blob: %w", err)
 	}
@@ -232,7 +232,7 @@ func (s *SQLStore) GetBlobKey(ctx context.Context, accountID, contentHash string
 	}
 	var k string
 	err := s.db.QueryRowContext(ctx, s.db.Rebind(`
-		SELECT tigris_key FROM syncrz_blobs WHERE account_id = ? AND content_hash = ?
+		SELECT object_key FROM syncrz_blobs WHERE account_id = ? AND content_hash = ?
 	`), accountID, contentHash).Scan(&k)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrUnknown

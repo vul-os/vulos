@@ -8,7 +8,7 @@
 //  3. BYO config validated: bucket non-empty, endpoint scheme=https.
 //  4. SnapshotURL: fixed bucket name format "vulos-{ulid_lower}", key
 //     "latest.snap.enc", TTL clamped to ≤300s.
-//  5. TigrisProvider unit test against httptest S3-shaped mock:
+//  5. S3Provider unit test against httptest S3-shaped mock:
 //     EnsureBucket → PUT bucket; PresignGet returns URL with
 //     X-Amz-Algorithm=AWS4-HMAC-SHA256.
 package storage
@@ -313,7 +313,7 @@ func TestManagedBucketName(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. TigrisProvider against httptest S3-shaped mock
+// 5. S3Provider against httptest S3-shaped mock
 // ---------------------------------------------------------------------------
 
 // mockS3Server returns an httptest.Server that responds to:
@@ -340,18 +340,18 @@ func mockS3Server(t *testing.T) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-func TestTigrisProvider_EnsureBucket(t *testing.T) {
+func TestS3Provider_EnsureBucket(t *testing.T) {
 	srv := mockS3Server(t)
 	defer srv.Close()
 
-	tp, err := NewTigrisProvider(TigrisConfig{
+	tp, err := NewS3Provider(S3Config{
 		AccessKeyID:     "test-key",
 		SecretAccessKey: "test-secret",
 		Endpoint:        srv.URL,
 		Region:          "auto",
 	})
 	if err != nil {
-		t.Fatalf("NewTigrisProvider: %v", err)
+		t.Fatalf("NewS3Provider: %v", err)
 	}
 
 	if err := tp.EnsureBucket(ctx, "test-bucket"); err != nil {
@@ -359,18 +359,18 @@ func TestTigrisProvider_EnsureBucket(t *testing.T) {
 	}
 }
 
-func TestTigrisProvider_PresignGetHasAlgorithm(t *testing.T) {
+func TestS3Provider_PresignGetHasAlgorithm(t *testing.T) {
 	srv := mockS3Server(t)
 	defer srv.Close()
 
-	tp, err := NewTigrisProvider(TigrisConfig{
+	tp, err := NewS3Provider(S3Config{
 		AccessKeyID:     "test-key",
 		SecretAccessKey: "test-secret",
 		Endpoint:        srv.URL,
 		Region:          "auto",
 	})
 	if err != nil {
-		t.Fatalf("NewTigrisProvider: %v", err)
+		t.Fatalf("NewS3Provider: %v", err)
 	}
 
 	url, err := tp.PresignGet(ctx, "my-bucket", "my-key", time.Minute)
@@ -382,8 +382,8 @@ func TestTigrisProvider_PresignGetHasAlgorithm(t *testing.T) {
 	}
 }
 
-func TestTigrisProvider_MissingCreds(t *testing.T) {
-	_, err := NewTigrisProvider(TigrisConfig{})
+func TestS3Provider_MissingCreds(t *testing.T) {
+	_, err := NewS3Provider(S3Config{})
 	if !isStorageErr(err, ErrProviderFailed) {
 		t.Fatalf("expected ErrProviderFailed for missing creds, got %v", err)
 	}

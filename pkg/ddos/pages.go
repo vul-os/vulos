@@ -32,7 +32,7 @@ type ddosDashData struct {
 	CaptchaEverywhere bool
 	HaltAutoscale     bool
 	FlyMachines       int
-	TigrisEgressGB    float64
+	ManagedEgressGB    float64
 	BudgetMaxMachines int
 	BudgetMaxUSD      float64
 	TrippedAt         *time.Time
@@ -57,7 +57,7 @@ func (p *DDoSPages) HandleDDoSDashboard(w http.ResponseWriter, r *http.Request) 
 		CaptchaEverywhere: p.Captcha.CaptchaEverywhere(),
 		HaltAutoscale:     halt,
 		FlyMachines:       machines,
-		TigrisEgressGB:    egress,
+		ManagedEgressGB:    egress,
 		BudgetMaxMachines: cfg.MaxFlyMachines,
 		BudgetMaxUSD:      cfg.HourlyBudgetUSD,
 		TrippedAt:         trippedAt,
