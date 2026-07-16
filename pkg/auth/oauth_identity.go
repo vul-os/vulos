@@ -107,6 +107,81 @@ func (s *Store) LinkOAuthIdentity(ctx context.Context, provider, subject, userID
 	return nil
 }
 
+// LinkedIdentity is one social provider linked to a Vulos account, for the
+// account-settings "connected accounts" surface (never carries a credential).
+type LinkedIdentity struct {
+	Provider      string    `json:"provider"`
+	Email         string    `json:"email"`
+	EmailVerified bool      `json:"email_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// ListOAuthIdentities returns every social provider linked to userID, newest
+// first. Empty (not an error) when the account has none. Drives the
+// connect/disconnect account-settings surface (multi-provider linking).
+func (s *Store) ListOAuthIdentities(ctx context.Context, userID string) ([]LinkedIdentity, error) {
+	rows, err := s.db.QueryContext(ctx,
+		s.db.Rebind(`SELECT provider, email, email_verified, created_at
+		             FROM oauth_identities WHERE user_id = ? ORDER BY created_at DESC`),
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("auth: list oauth identities: %w", err)
+	}
+	defer rows.Close()
+	var out []LinkedIdentity
+	for rows.Next() {
+		var (
+			li      LinkedIdentity
+			ev      int
+			email   sql.NullString
+			created string
+		)
+		if err := rows.Scan(&li.Provider, &email, &ev, &created); err != nil {
+			return nil, fmt.Errorf("auth: list oauth identities: %w", err)
+		}
+		li.Email = email.String
+		li.EmailVerified = ev != 0
+		if t, perr := time.Parse(time.RFC3339, created); perr == nil {
+			li.CreatedAt = t
+		}
+		out = append(out, li)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("auth: list oauth identities: %w", err)
+	}
+	return out, nil
+}
+
+// UnlinkOAuthIdentity removes the (provider) link owned by userID. It is scoped
+// to the caller's own account (user_id in the WHERE clause) so one account can
+// never unlink another's identity. Returns ErrNotFound when the account has no
+// link for that provider.
+//
+// SAFE BY CONSTRUCTION: email+password is the mandatory centre of every account
+// (a social account cannot exist without having run SetInitialPassword), so
+// removing a social link never strands an account without a sign-in method.
+func (s *Store) UnlinkOAuthIdentity(ctx context.Context, userID, provider string) error {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if userID == "" || provider == "" {
+		return fmt.Errorf("auth: unlink oauth identity: user_id and provider are required")
+	}
+	s.mu.Lock()
+	res, err := s.db.ExecContext(ctx,
+		s.db.Rebind(`DELETE FROM oauth_identities WHERE user_id = ? AND provider = ?`),
+		userID, provider,
+	)
+	s.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("auth: unlink oauth identity: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateOAuthUser creates a NEW account for a social sign-up. The account has NO
 // usable password: password_hash is the LockedPasswordHash sentinel, so a password
 // login is impossible until SetInitialPassword runs. email is the verified provider

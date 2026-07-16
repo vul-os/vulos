@@ -24,6 +24,7 @@ package cproutes
 // rejects any request whose `state` param does not match the signed cookie.
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -54,18 +55,37 @@ var oauthLoginSecureCookie = true
 func SetOAuthLoginSecureCookie(secure bool) { oauthLoginSecureCookie = secure }
 
 const (
-	oauthFlowCookie = "vc_oauth"       // transient state+verifier cookie
-	oauthFlowTTL    = 10 * time.Minute // authorize→callback window
-	oauthLinkTTL    = 10 * time.Minute // link-token validity
-	setPasswordPath = "/onboarding/set-password"
-	linkAccountPath = "/onboarding/link-account"
+	oauthFlowCookie       = "vc_oauth"       // transient state+verifier cookie
+	oauthFlowTTL          = 10 * time.Minute // authorize→callback window
+	oauthLinkTTL          = 10 * time.Minute // link-token validity
+	setPasswordPath       = "/onboarding/set-password"
+	linkAccountPath       = "/onboarding/link-account"
+	oauthEmailPath        = "/onboarding/oauth-email" // mandatory-email entry page
+	connectedAccountsPath = "/account/social"         // connect/disconnect surface
 )
+
+// oauthFlowMode distinguishes the two authorize→callback flows carried by the
+// transient cookie: "" / "login" (sign in or sign up) vs "connect" (link an
+// additional provider to the ALREADY-authenticated account in UserID).
+const oauthFlowModeConnect = "connect"
 
 // oauthFlowState is the payload of the signed transient cookie.
 type oauthFlowState struct {
 	Provider string `json:"p"`
 	State    string `json:"s"`
 	Verifier string `json:"v"`
+	Next     string `json:"n"`
+	Mode     string `json:"m,omitempty"`   // "" | "connect"
+	UserID   string `json:"uid,omitempty"` // connect mode: the account to link onto
+	Exp      int64  `json:"e"`
+}
+
+// oauthEmailToken is the signed token handed to the mandatory-email entry page
+// when a provider returns NO email. It authorises finishing sign-in/up for
+// (provider, subject) ONCE the user supplies an email (which is unverified).
+type oauthEmailToken struct {
+	Provider string `json:"p"`
+	Subject  string `json:"sub"`
 	Next     string `json:"n"`
 	Exp      int64  `json:"e"`
 }
@@ -170,6 +190,24 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 			return
 		}
 
+		// CONNECT mode (multi-provider linking): when ?mode=connect the caller must
+		// already hold a live session — the callback binds the new provider to THAT
+		// account rather than creating/logging in. A connect request with no session
+		// is refused (you cannot connect a provider to "nobody").
+		mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
+		var connectUID string
+		if mode == oauthFlowModeConnect {
+			if tok := auth.SessionFromRequest(r); tok != "" {
+				if u, uerr := st.LookupSession(r.Context(), tok); uerr == nil && u != nil {
+					connectUID = u.ID
+				}
+			}
+			if connectUID == "" {
+				httpx.Err(w, http.StatusUnauthorized, "sign in before connecting a social account")
+				return
+			}
+		}
+
 		state, err := randToken(32)
 		if err != nil {
 			httpx.Err(w, http.StatusInternalServerError, "internal error")
@@ -188,6 +226,8 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 			State:    state,
 			Verifier: verifier,
 			Next:     safeNextPath(r.URL.Query().Get("return")),
+			Mode:     mode,
+			UserID:   connectUID,
 			Exp:      time.Now().Add(oauthFlowTTL).Unix(),
 		}
 		payload, _ := json.Marshal(flow)
@@ -259,8 +299,31 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 			redirectLoginError(w, r, "oauth_exchange_failed")
 			return
 		}
+
+		// CONNECT mode: bind this provider to the already-authenticated account and
+		// return to the connected-accounts surface. No email is required here — the
+		// account already exists.
+		if flow.Mode == oauthFlowModeConnect && flow.UserID != "" {
+			handleConnectLink(w, r, st, flow.UserID, ident)
+			return
+		}
+
+		// MANDATORY-EMAIL rule: if the provider returned no email, block completion
+		// and force the user to type one before any account is created or linked.
+		// Redirect to the email-entry page with a signed token that authorises
+		// finishing THIS (provider, subject).
 		if ident.Email == "" {
-			redirectLoginError(w, r, "oauth_no_email")
+			et := oauthEmailToken{
+				Provider: ident.Provider,
+				Subject:  ident.Subject,
+				Next:     flow.Next,
+				Exp:      time.Now().Add(oauthLinkTTL).Unix(),
+			}
+			payload, _ := json.Marshal(et)
+			q := url.Values{}
+			q.Set("provider", ident.Provider)
+			q.Set("token", signBlob(secret, payload))
+			http.Redirect(w, r, oauthEmailPath+"?"+q.Encode(), http.StatusFound)
 			return
 		}
 
@@ -386,89 +449,290 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 		}
 		httpx.JSON(w, map[string]any{"ok": true, "recovery_codes": codes})
 	})
-}
 
-// resolveSocialLogin maps a verified external identity to a Vulos account and drives
-// the correct outcome (sign-in / set-password / safe-link).
-func resolveSocialLogin(w http.ResponseWriter, r *http.Request, st *auth.Store, secret []byte, ident *oauthclient.Identity, next, ip, ua string) {
-	ctx := r.Context()
+	// POST /api/auth/oauth/complete-email  {email_token, email}
+	// The mandatory-email completion for a provider that returned NO email. The
+	// user-typed email is UNVERIFIED, so it can create its OWN account or, on a
+	// collision, be routed to the safe-link flow (which still requires the existing
+	// account's password) — it can never silently take over an account.
+	mux.HandleFunc("POST /api/auth/oauth/complete-email", func(w http.ResponseWriter, r *http.Request) {
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if !rl.Allow(ip) {
+			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
+			return
+		}
+		var body struct {
+			EmailToken string `json:"email_token"`
+			Email      string `json:"email"`
+		}
+		if !httpx.DecodeJSON(w, r, &body) {
+			return
+		}
+		payload, ok := verifyBlob(secret, body.EmailToken)
+		if !ok {
+			httpx.Err(w, http.StatusBadRequest, "invalid email token")
+			return
+		}
+		var et oauthEmailToken
+		if err := json.Unmarshal(payload, &et); err != nil || et.Provider == "" || et.Subject == "" {
+			httpx.Err(w, http.StatusBadRequest, "invalid email token")
+			return
+		}
+		if time.Now().Unix() > et.Exp {
+			httpx.Err(w, http.StatusBadRequest, "email token expired")
+			return
+		}
+		email := strings.ToLower(strings.TrimSpace(body.Email))
+		if !looksLikeEmail(email) {
+			httpx.Err(w, http.StatusBadRequest, "a valid email address is required")
+			return
+		}
+		ident := &oauthclient.Identity{
+			Provider:      et.Provider,
+			Subject:       et.Subject,
+			Email:         email,
+			EmailVerified: false, // user-typed → never provider-verified
+		}
+		ua := r.UserAgent()
+		jsonSocialOutcome(w, r, st, secret, ident, ip, ua)
+	})
 
-	// 1) Already linked → sign in (or finish set-password if the account never set one).
-	if userID, err := st.FindOAuthIdentity(ctx, ident.Provider, ident.Subject); err == nil {
-		if hasPw, _ := st.HasPassword(ctx, userID); !hasPw {
-			// Linked but password-less → force set-password.
-			token, serr := st.IssueOAuthSignupSession(ctx, userID, ip, ua)
-			if serr != nil {
-				redirectLoginError(w, r, "internal_error")
+	// GET /api/auth/oauth/identities — the caller's linked social providers plus
+	// the providers still available to connect. Drives the account-settings
+	// connect/disconnect surface (multi-provider linking).
+	mux.HandleFunc("GET /api/auth/oauth/identities", func(w http.ResponseWriter, r *http.Request) {
+		u := st.RequireSession(r.Context(), w, r)
+		if u == nil {
+			return
+		}
+		list, err := st.ListOAuthIdentities(r.Context(), u.ID)
+		if err != nil {
+			log.Printf("[oauth-login] list identities: %v", err)
+			httpx.Err(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if list == nil {
+			list = []auth.LinkedIdentity{}
+		}
+		httpx.JSON(w, map[string]any{"identities": list, "available": reg.Configured()})
+	})
+
+	// DELETE /api/auth/oauth/identities/{provider} — disconnect one provider from
+	// the caller's account. Always safe: email+password is mandatory, so removing a
+	// social link never strands the account without a sign-in method.
+	mux.HandleFunc("DELETE /api/auth/oauth/identities/{provider}", func(w http.ResponseWriter, r *http.Request) {
+		u := st.RequireSession(r.Context(), w, r)
+		if u == nil {
+			return
+		}
+		provider := strings.ToLower(r.PathValue("provider"))
+		if err := st.UnlinkOAuthIdentity(r.Context(), u.ID, provider); err != nil {
+			if err == auth.ErrNotFound {
+				httpx.Err(w, http.StatusNotFound, "no such linked account")
 				return
 			}
-			auth.SetSessionCookie(w, token)
-			http.Redirect(w, r, setPasswordPath, http.StatusFound)
+			log.Printf("[oauth-login] unlink identity: %v", err)
+			httpx.Err(w, http.StatusInternalServerError, "internal error")
 			return
+		}
+		httpx.JSON(w, map[string]any{"ok": true})
+	})
+}
+
+// looksLikeEmail is a minimal syntactic gate for a user-typed email in the
+// mandatory-email completion flow. Authoritative validation happens in the auth
+// store (CreateOAuthUser); this only rejects the obviously-malformed early.
+func looksLikeEmail(s string) bool {
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || at == len(s)-1 || strings.ContainsAny(s, " \t\r\n") {
+		return false
+	}
+	return strings.IndexByte(s[at+1:], '.') >= 0
+}
+
+// Social-outcome kinds — the pure result of mapping a verified external identity
+// to a Vulos account, turned into a response by the adapters below.
+const (
+	outcomeSignIn      = "signin"      // account exists + has password → issue session
+	outcomeSetPassword = "setpassword" // password-less account (new or linked) → force set-password
+	outcomeCollision   = "collision"   // email matches a pre-existing account → prove password to link
+)
+
+// socialOutcome is the resolution of a social identity with NO HTTP side effects
+// (the adapters below emit the browser-redirect or JSON response). computeSocialOutcome
+// may still perform DB writes (create/link a brand-new sign-up).
+type socialOutcome struct {
+	kind    string
+	login   *auth.LoginResult // outcomeSignIn
+	session string            // outcomeSetPassword: full session cookie value
+	userID  string            // outcomeCollision: the pre-existing account id
+}
+
+// computeSocialOutcome resolves ident to an account. ident.Email MUST be non-empty
+// (callers enforce the mandatory-email rule). It never writes to the ResponseWriter.
+func computeSocialOutcome(ctx context.Context, st *auth.Store, ident *oauthclient.Identity, ip, ua string) (socialOutcome, error) {
+	// 1) Already linked → sign in (or finish set-password if never set one).
+	if userID, err := st.FindOAuthIdentity(ctx, ident.Provider, ident.Subject); err == nil {
+		if hasPw, _ := st.HasPassword(ctx, userID); !hasPw {
+			tok, serr := st.IssueOAuthSignupSession(ctx, userID, ip, ua)
+			if serr != nil {
+				return socialOutcome{}, serr
+			}
+			return socialOutcome{kind: outcomeSetPassword, session: tok}, nil
 		}
 		res, serr := st.IssuePostAuthSession(ctx, userID, ip, ua)
 		if serr != nil {
-			redirectLoginError(w, r, "internal_error")
-			return
+			return socialOutcome{}, serr
 		}
-		redirectLoginResult(w, r, res, next)
-		return
+		return socialOutcome{kind: outcomeSignIn, login: res}, nil
 	}
 
-	// 2) Not linked. Does a Vulos account already exist for this email?
+	// 2) Not linked. A pre-existing account for this email → collision (link path).
 	existingID, err := st.UserIDByEmail(ctx, ident.Email)
 	if err == nil {
-		// COLLISION. Never silently take over a pre-existing account. Only offer the
-		// link path when the provider VERIFIED the email; otherwise refuse.
-		if !ident.EmailVerified {
-			redirectLoginError(w, r, "email_unverified")
-			return
-		}
-		tok := oauthLinkToken{
-			Provider: ident.Provider,
-			Subject:  ident.Subject,
-			Email:    ident.Email,
-			UserID:   existingID,
-			Exp:      time.Now().Add(oauthLinkTTL).Unix(),
-		}
-		payload, _ := json.Marshal(tok)
-		linkToken := signBlob(secret, payload)
-		q := url.Values{}
-		q.Set("provider", ident.Provider)
-		q.Set("email", ident.Email)
-		q.Set("token", linkToken)
-		http.Redirect(w, r, linkAccountPath+"?"+q.Encode(), http.StatusFound)
-		return
+		return socialOutcome{kind: outcomeCollision, userID: existingID}, nil
 	}
 	if err != auth.ErrNotFound {
-		redirectLoginError(w, r, "internal_error")
-		return
+		return socialOutcome{}, err
 	}
 
 	// 3) Brand-new social sign-up. Create a password-less account, link, and force
-	// the set-password step. Mandatory-password rule: the account is NOT usable
-	// until POST /api/auth/password/set-initial runs.
+	// the set-password step (mandatory-password rule: not usable until then).
 	newID, err := st.CreateOAuthUser(ctx, ident.Email, ident.EmailVerified)
 	if err != nil {
+		return socialOutcome{}, err
+	}
+	if err := st.LinkOAuthIdentity(ctx, ident.Provider, ident.Subject, newID, ident.Email, ident.EmailVerified); err != nil {
+		return socialOutcome{}, err
+	}
+	tok, err := st.IssueOAuthSignupSession(ctx, newID, ip, ua)
+	if err != nil {
+		return socialOutcome{}, err
+	}
+	return socialOutcome{kind: outcomeSetPassword, session: tok}, nil
+}
+
+// buildLinkToken signs the collision link-token that /api/auth/oauth/link/confirm
+// consumes after the existing account's password is proven.
+func buildLinkToken(secret []byte, ident *oauthclient.Identity, userID string) string {
+	tok := oauthLinkToken{
+		Provider: ident.Provider,
+		Subject:  ident.Subject,
+		Email:    ident.Email,
+		UserID:   userID,
+		Exp:      time.Now().Add(oauthLinkTTL).Unix(),
+	}
+	payload, _ := json.Marshal(tok)
+	return signBlob(secret, payload)
+}
+
+// resolveSocialLogin is the BROWSER (redirect) adapter for a provider-asserted
+// identity from the callback. On a collision it only offers the link path when the
+// provider VERIFIED the email (the typed-email JSON path relaxes this — see
+// jsonSocialOutcome — because there the password proof is the security gate).
+func resolveSocialLogin(w http.ResponseWriter, r *http.Request, st *auth.Store, secret []byte, ident *oauthclient.Identity, next, ip, ua string) {
+	out, err := computeSocialOutcome(r.Context(), st, ident, ip, ua)
+	if err != nil {
 		if err == auth.ErrEmailTaken {
-			// Raced with another signup on the same email — fall back to safe-link.
 			redirectLoginError(w, r, "email_taken")
 			return
 		}
 		redirectLoginError(w, r, "internal_error")
 		return
 	}
-	if err := st.LinkOAuthIdentity(ctx, ident.Provider, ident.Subject, newID, ident.Email, ident.EmailVerified); err != nil {
-		redirectLoginError(w, r, "internal_error")
-		return
+	switch out.kind {
+	case outcomeSignIn:
+		redirectLoginResult(w, r, out.login, next)
+	case outcomeSetPassword:
+		auth.SetSessionCookie(w, out.session)
+		http.Redirect(w, r, setPasswordPath, http.StatusFound)
+	case outcomeCollision:
+		if !ident.EmailVerified {
+			redirectLoginError(w, r, "email_unverified")
+			return
+		}
+		q := url.Values{}
+		q.Set("provider", ident.Provider)
+		q.Set("email", ident.Email)
+		q.Set("token", buildLinkToken(secret, ident, out.userID))
+		http.Redirect(w, r, linkAccountPath+"?"+q.Encode(), http.StatusFound)
 	}
-	token, err := st.IssueOAuthSignupSession(ctx, newID, ip, ua)
+}
+
+// jsonSocialOutcome is the JSON (fetch) adapter used by the mandatory-email
+// completion endpoint. The typed email is unverified, but the collision path still
+// requires proving the existing account's password, so it is offered regardless.
+func jsonSocialOutcome(w http.ResponseWriter, r *http.Request, st *auth.Store, secret []byte, ident *oauthclient.Identity, ip, ua string) {
+	out, err := computeSocialOutcome(r.Context(), st, ident, ip, ua)
 	if err != nil {
-		redirectLoginError(w, r, "internal_error")
+		if err == auth.ErrEmailTaken {
+			httpx.Err(w, http.StatusConflict, "an account with that email already exists")
+			return
+		}
+		if isValidationErr(err) {
+			httpx.Err(w, http.StatusBadRequest, "a valid email address is required")
+			return
+		}
+		log.Printf("[oauth-login] complete-email resolve: %v", err)
+		httpx.Err(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	auth.SetSessionCookie(w, token)
-	http.Redirect(w, r, setPasswordPath, http.StatusFound)
+	switch out.kind {
+	case outcomeSignIn:
+		writeLoginResult(w, out.login)
+	case outcomeSetPassword:
+		auth.SetSessionCookie(w, out.session)
+		httpx.JSON(w, map[string]string{"step": "set_password"})
+	case outcomeCollision:
+		httpx.JSON(w, map[string]string{
+			"step":       "link",
+			"provider":   ident.Provider,
+			"email":      ident.Email,
+			"link_token": buildLinkToken(secret, ident, out.userID),
+		})
+	}
+}
+
+// handleConnectLink binds a provider identity to the already-authenticated account
+// (multi-provider linking). It re-verifies the live session still matches the
+// account captured at authorize-time (defence in depth) before linking, and always
+// returns to the connected-accounts surface with a result code.
+func handleConnectLink(w http.ResponseWriter, r *http.Request, st *auth.Store, userID string, ident *oauthclient.Identity) {
+	tok := auth.SessionFromRequest(r)
+	if tok == "" {
+		redirectConnect(w, r, "", "not_authenticated")
+		return
+	}
+	u, err := st.LookupSession(r.Context(), tok)
+	if err != nil || u == nil || u.ID != userID {
+		redirectConnect(w, r, "", "not_authenticated")
+		return
+	}
+	if err := st.LinkOAuthIdentity(r.Context(), ident.Provider, ident.Subject, userID, ident.Email, ident.EmailVerified); err != nil {
+		if err == auth.ErrOAuthIdentityLinked {
+			redirectConnect(w, r, ident.Provider, "already_linked")
+			return
+		}
+		log.Printf("[oauth-login] connect link: %v", err)
+		redirectConnect(w, r, ident.Provider, "connect_failed")
+		return
+	}
+	redirectConnect(w, r, ident.Provider, "")
+}
+
+// redirectConnect sends the browser back to the connected-accounts surface with a
+// success (?connected=<provider>) or error (?error=<code>) marker.
+func redirectConnect(w http.ResponseWriter, r *http.Request, provider, errCode string) {
+	q := url.Values{}
+	if errCode != "" {
+		q.Set("error", errCode)
+		if provider != "" {
+			q.Set("provider", provider)
+		}
+	} else {
+		q.Set("connected", provider)
+	}
+	http.Redirect(w, r, connectedAccountsPath+"?"+q.Encode(), http.StatusFound)
 }
 
 // redirectLoginResult issues cookies for a LoginResult from a browser (redirect)

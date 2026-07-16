@@ -52,15 +52,33 @@ type Identity struct {
 	EmailVerified bool
 }
 
-// Provider is a single configured OAuth/OIDC identity provider.
+// Provider kinds. OIDC providers return a signed id_token from the token
+// endpoint (identity read from its claims); API providers return only an OAuth2
+// access_token, and the identity + verified email are fetched from the provider's
+// REST API with that token.
+const (
+	KindOIDC    = "oidc"    // Google, Microsoft — id_token
+	KindGitHub  = "github"  // GET /user + /user/emails
+	KindDiscord = "discord" // GET /users/@me
+)
+
+// Provider is a single configured OAuth/OIDC identity provider. New providers are
+// added by appending a config block in NewRegistryFromEnv (env-gated) plus, for a
+// non-OIDC provider, an identity-fetch branch in Exchange — nothing else changes.
 type Provider struct {
-	ID           string // stable lowercase key: "google", "microsoft"
-	DisplayName  string // human label for the button: "Google", "Microsoft"
+	ID           string // stable lowercase key: "google", "microsoft", "github", "discord"
+	DisplayName  string // human label for the button: "Google", "Microsoft", …
+	Kind         string // KindOIDC (default) | KindGitHub | KindDiscord
 	ClientID     string
 	ClientSecret string
 	AuthURL      string
 	TokenURL     string
 	Scopes       []string
+	// UserInfoURL / EmailsURL are the REST endpoints hit for API-kind providers
+	// (GitHub, Discord). Fields (not constants) so tests can retarget them at an
+	// httptest server via Register.
+	UserInfoURL string
+	EmailsURL   string
 	// issuerPrefix, when non-empty, is required to be a prefix of the id_token
 	// `iss` claim. Left loose (Microsoft's issuer is tenant-specific).
 	issuerPrefix string
@@ -87,6 +105,13 @@ type Registry struct {
 //	Microsoft  — MS_OAUTH_CLIENT_ID / MS_OAUTH_CLIENT_SECRET
 //	             (MICROSOFT_OAUTH_CLIENT_ID / _SECRET accepted as aliases;
 //	              MS_OAUTH_TENANT overrides the tenant, default "common")
+//	GitHub     — GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET
+//	Discord    — DISCORD_OAUTH_CLIENT_ID / DISCORD_OAUTH_CLIENT_SECRET
+//
+// EVERY provider is chosen so we can obtain the user's EMAIL: Google/Microsoft
+// request the `email` scope (OIDC id_token), GitHub requests `user:email` (read
+// via /user/emails), and Discord requests `email` (read from /users/@me). A
+// provider that cannot yield an email is never added here.
 func NewRegistryFromEnv() *Registry {
 	r := &Registry{
 		providers: map[string]Provider{},
@@ -97,6 +122,7 @@ func NewRegistryFromEnv() *Registry {
 		r.providers["google"] = Provider{
 			ID:           "google",
 			DisplayName:  "Google",
+			Kind:         KindOIDC,
 			ClientID:     id,
 			ClientSecret: sec,
 			AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
@@ -113,12 +139,46 @@ func NewRegistryFromEnv() *Registry {
 		r.providers["microsoft"] = Provider{
 			ID:           "microsoft",
 			DisplayName:  "Microsoft",
+			Kind:         KindOIDC,
 			ClientID:     msID,
 			ClientSecret: msSec,
 			AuthURL:      "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/authorize",
 			TokenURL:     "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token",
 			Scopes:       []string{"openid", "email", "profile"},
 			issuerPrefix: "https://login.microsoftonline.com/",
+		}
+	}
+
+	if id, sec := os.Getenv("GITHUB_OAUTH_CLIENT_ID"), os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"); id != "" && sec != "" {
+		r.providers["github"] = Provider{
+			ID:           "github",
+			DisplayName:  "GitHub",
+			Kind:         KindGitHub,
+			ClientID:     id,
+			ClientSecret: sec,
+			AuthURL:      "https://github.com/login/oauth/authorize",
+			TokenURL:     "https://github.com/login/oauth/access_token",
+			// user:email is REQUIRED so /user/emails returns the primary verified
+			// address even when the profile email is private.
+			Scopes:      []string{"read:user", "user:email"},
+			UserInfoURL: "https://api.github.com/user",
+			EmailsURL:   "https://api.github.com/user/emails",
+		}
+	}
+
+	if id, sec := os.Getenv("DISCORD_OAUTH_CLIENT_ID"), os.Getenv("DISCORD_OAUTH_CLIENT_SECRET"); id != "" && sec != "" {
+		r.providers["discord"] = Provider{
+			ID:           "discord",
+			DisplayName:  "Discord",
+			Kind:         KindDiscord,
+			ClientID:     id,
+			ClientSecret: sec,
+			AuthURL:      "https://discord.com/api/oauth2/authorize",
+			TokenURL:     "https://discord.com/api/oauth2/token",
+			// `email` is REQUIRED so /users/@me returns the address; `identify`
+			// yields the stable user id (subject).
+			Scopes:      []string{"identify", "email"},
+			UserInfoURL: "https://discord.com/api/users/@me",
 		}
 	}
 
@@ -144,7 +204,7 @@ func (r *Registry) Get(id string) (Provider, bool) {
 // "or continue with" buttons.
 func (r *Registry) Configured() []Info {
 	var out []Info
-	order := []string{"google", "microsoft"}
+	order := []string{"google", "microsoft", "github", "discord"}
 	seen := map[string]bool{}
 	for _, id := range order {
 		if p, ok := r.providers[id]; ok {
@@ -176,9 +236,13 @@ func (p Provider) AuthCodeURL(redirectURI, state, codeChallenge string) string {
 	q.Set("state", state)
 	q.Set("code_challenge", codeChallenge)
 	q.Set("code_challenge_method", "S256")
-	// Ask Google to return a stable, verified email + prompt account choice.
-	q.Set("access_type", "online")
-	q.Set("prompt", "select_account")
+	// OIDC-only hints (Google/Microsoft): ask for a stable, verified email and
+	// prompt account choice. GitHub/Discord don't understand these params, so we
+	// omit them there to avoid a rejected authorize request.
+	if p.Kind == "" || p.Kind == KindOIDC {
+		q.Set("access_type", "online")
+		q.Set("prompt", "select_account")
+	}
 	sep := "?"
 	if strings.Contains(p.AuthURL, "?") {
 		sep = "&"
@@ -237,6 +301,16 @@ func (r *Registry) Exchange(ctx context.Context, p Provider, redirectURI, code, 
 		}
 		return nil, fmt.Errorf("oauthclient: token endpoint rejected exchange (%s)", msg)
 	}
+
+	// Non-OIDC providers return only an access_token; the identity + verified
+	// email are read from the provider's REST API with that bearer token.
+	switch p.Kind {
+	case KindGitHub:
+		return r.fetchGitHubIdentity(ctx, p, tr.AccessToken)
+	case KindDiscord:
+		return r.fetchDiscordIdentity(ctx, p, tr.AccessToken)
+	}
+
 	if tr.IDToken == "" {
 		return nil, fmt.Errorf("oauthclient: token response has no id_token")
 	}
@@ -257,6 +331,119 @@ func (r *Registry) Exchange(ctx context.Context, p Provider, redirectURI, code, 
 		Subject:       claims.Sub,
 		Email:         strings.ToLower(strings.TrimSpace(claims.Email)),
 		EmailVerified: claims.emailVerifiedBool(),
+	}, nil
+}
+
+// apiGet performs an authenticated GET against a provider REST endpoint and
+// decodes the JSON body into out. Bearer-token auth; 1 MiB response cap.
+func (r *Registry) apiGet(ctx context.Context, url, accessToken, accept string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("oauthclient: build api request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if accept == "" {
+		accept = "application/json"
+	}
+	req.Header.Set("Accept", accept)
+	// GitHub requires a User-Agent; a static one is fine and provider-neutral.
+	req.Header.Set("User-Agent", "vulos-oauthclient")
+	resp, err := r.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("oauthclient: api request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("oauthclient: read api response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("oauthclient: api endpoint %s returned status %d", url, resp.StatusCode)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("oauthclient: decode api response: %w", err)
+	}
+	return nil
+}
+
+// fetchGitHubIdentity reads the GitHub profile (stable numeric id = subject) and
+// resolves the PRIMARY VERIFIED email from /user/emails (the profile email may be
+// private/absent). EmailVerified is true only for a GitHub-verified address.
+func (r *Registry) fetchGitHubIdentity(ctx context.Context, p Provider, accessToken string) (*Identity, error) {
+	if accessToken == "" {
+		return nil, fmt.Errorf("oauthclient: github token response has no access_token")
+	}
+	var profile struct {
+		ID    int64  `json:"id"`
+		Login string `json:"login"`
+	}
+	if err := r.apiGet(ctx, p.UserInfoURL, accessToken, "application/vnd.github+json", &profile); err != nil {
+		return nil, err
+	}
+	if profile.ID == 0 {
+		return nil, fmt.Errorf("oauthclient: github profile has no id")
+	}
+
+	email, verified := "", false
+	if p.EmailsURL != "" {
+		var emails []struct {
+			Email    string `json:"email"`
+			Primary  bool   `json:"primary"`
+			Verified bool   `json:"verified"`
+		}
+		// Best-effort: if the emails call fails, fall through with an empty email so
+		// the route layer forces the user to type one (mandatory-email rule).
+		if err := r.apiGet(ctx, p.EmailsURL, accessToken, "application/vnd.github+json", &emails); err == nil {
+			// Prefer the primary verified address, else any verified address.
+			for _, e := range emails {
+				if e.Verified && e.Primary {
+					email, verified = e.Email, true
+					break
+				}
+			}
+			if email == "" {
+				for _, e := range emails {
+					if e.Verified {
+						email, verified = e.Email, true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return &Identity{
+		Provider:      p.ID,
+		Subject:       fmt.Sprintf("%d", profile.ID),
+		Email:         strings.ToLower(strings.TrimSpace(email)),
+		EmailVerified: verified,
+	}, nil
+}
+
+// fetchDiscordIdentity reads /users/@me: the stable snowflake id (subject), the
+// account email, and Discord's own `verified` flag (email verification).
+func (r *Registry) fetchDiscordIdentity(ctx context.Context, p Provider, accessToken string) (*Identity, error) {
+	if accessToken == "" {
+		return nil, fmt.Errorf("oauthclient: discord token response has no access_token")
+	}
+	var me struct {
+		ID       string `json:"id"`
+		Email    string `json:"email"`
+		Verified bool   `json:"verified"`
+	}
+	if err := r.apiGet(ctx, p.UserInfoURL, accessToken, "application/json", &me); err != nil {
+		return nil, err
+	}
+	if me.ID == "" {
+		return nil, fmt.Errorf("oauthclient: discord profile has no id")
+	}
+	return &Identity{
+		Provider:      p.ID,
+		Subject:       me.ID,
+		Email:         strings.ToLower(strings.TrimSpace(me.Email)),
+		// Discord only returns an email at all when the `email` scope was granted;
+		// `verified` reflects whether Discord verified it.
+		EmailVerified: me.Verified && me.Email != "",
 	}, nil
 }
 
