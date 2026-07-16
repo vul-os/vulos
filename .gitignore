@@ -21,6 +21,11 @@ vendor/
 *.sqlite
 *.sqlite3
 data/
+# Exception: pkg/security/data holds legit_ja3.txt, a REQUIRED `//go:embed
+# data/legit_ja3.txt` asset in pkg/security/bot.go. Without it the module fails
+# to build for any external consumer (e.g. vulos-cloud): "pattern
+# data/legit_ja3.txt: no matching files found". It must be committed.
+!/pkg/security/data/
 /secrets/
 
 # ---- Node / frontend ----
