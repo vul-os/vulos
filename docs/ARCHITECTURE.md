@@ -19,7 +19,7 @@ Everything else follows from that.
 |---|---|---|
 | License | MIT | Proprietary |
 | Role | The complete operational control plane + admin console | The commercial layer only |
-| Ships | accounts / auth / 2FA / OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP registry/heartbeats + fleet health, admin + org-admin console, status pages, the `BillingProvider` **interface + no-op default** | the Paystack `BillingProvider` impl, commercial pricing/catalog, billing-only admin panels, the hosted marketing site |
+| Ships | accounts / auth / 2FA / OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP registry/heartbeats + fleet health, admin + org-admin console, status pages, the `BillingProvider` **interface + no-op default** | the a commercial `BillingProvider` impl, commercial pricing/catalog, billing-only admin panels, the hosted marketing site |
 | Runs standalone? | Yes — fully functional, metered-but-free | No — it's a thin wrapper that imports vulos-management |
 
 The important consequence: **there is no forked control plane.** The OSS control
@@ -38,7 +38,7 @@ those events. That difference is isolated behind one seam.
    (this repo)                                       │
                                      ┌───────────────┴────────────────┐
                                      ▼                                ▼
-                          Noop BillingProvider              Paystack BillingProvider
+                          Noop BillingProvider              a commercial BillingProvider
                           (this repo, default)              (vulos-cloud, injected)
                           charges nothing,                  real recurring + overage
                           verifies nothing,                 charging, commercial
@@ -49,7 +49,7 @@ those events. That difference is isolated behind one seam.
   still recorded and visible to the operator, but the provider charges nothing,
   verifies nothing, and makes **no network call off the box**. Self-hosting is
   metered-but-free with zero phone-home.
-- **Paystack provider (cloud):** injected at the composition root in the private
+- **the commercial billing provider (cloud):** injected at the composition root in the private
   build. Adds real recurring + overage + add-on charging and commercial pricing.
 
 Both builds compile against the **same interface**; only the injected
@@ -60,14 +60,14 @@ processor directly — the charge/verify hot paths go through the seam.
 
 Today, in vulos-cloud, the seam is expressed as the `payments.PaymentRail`
 interface (`InitTransaction` / `VerifyTransaction` / `VerifyWebhookSignature`)
-with three concrete rails: `PaystackRail`, `StubRail` (network-free, used by
+with three concrete rails: `a commercial PaymentRail`, `StubRail` (network-free, used by
 tests and dev), and rail selection via `payments.Default()` reading
 `CP_PAYMENT_RAIL`. The richer billing state machine lives in
 `internal/billing`. In the extracted layout:
 
 - The **interface** (`BillingProvider` / `PaymentRail`) and a **no-op/stub
   default** move into vulos-management as a public package.
-- The **Paystack implementation** and the **commercial pricing/catalog** stay in
+- The **a commercial billing provider implementation** and the **commercial pricing/catalog** stay in
   vulos-cloud and register themselves into the seam at wire-time.
 
 See [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md) for exactly which packages move and
@@ -120,7 +120,7 @@ overrides billing at the composition root.
    replace github.com/vul-os/vulos-management => ../vulos-management
    ```
 3. vulos-cloud's `cmd/server` (the thin commercial main) builds the
-   vulos-management server and **injects** the Paystack `BillingProvider` and
+   vulos-management server and **injects** the a commercial `BillingProvider` and
    commercial pricing into it before starting — the same way the OSS `cmd/server`
    injects the no-op provider.
 
@@ -128,7 +128,7 @@ overrides billing at the composition root.
 flowchart LR
     subgraph cloud["vulos-cloud (private)"]
         cmain["cmd/server (thin main)"]
-        pay["Paystack BillingProvider"]
+        pay["a commercial BillingProvider"]
         price["commercial pricing"]
     end
     subgraph mgmt["vulos-management (OSS, imported as library)"]
@@ -143,7 +143,7 @@ flowchart LR
 
 The OSS `cmd/server` in this repo wires the no-op provider and is a
 fully-working control plane on its own. The cloud `cmd/server` is the *only*
-place the Paystack provider is constructed.
+place the the commercial billing provider is constructed.
 
 ## Deployment shapes
 
@@ -154,7 +154,7 @@ for the cloud pricing tables). Its shape is defined by whether a real
 | Shape | How | Billing |
 |---|---|---|
 | **Self-hosted** (default, this repo) | run the vulos-management binary | metered-but-free no-op; no phone-home |
-| **Commercial** (vulos-cloud build) | run the cloud binary that injects Paystack | real recurring + overage charging |
+| **Commercial** (vulos-cloud build) | run the cloud binary that injects its own billing provider | real recurring + overage charging |
 
 Both are the same control-plane code; the cloud build only *adds* a billing
 provider on top.

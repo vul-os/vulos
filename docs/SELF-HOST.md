@@ -10,7 +10,7 @@ office, board, talk, meet and a private-AI gateway alongside — all under one
 > functional on its own — accounts, routing, relay autoscaling, and the
 > admin console — with billing behind a `BillingProvider` seam whose
 > **default is a no-op** (metered but free, no phone-home). The only thing the
-> private `vulos-cloud` layer adds on top is commercial billing (Paystack), a
+> private `vulos-cloud` layer adds on top is commercial billing (a commercial provider), a
 > few billing-only admin panels, and the hosted marketing site. **The suite is
 > fully functional without any of that.** This guide is the single source of
 > truth for running Vulos sovereignly.
@@ -199,7 +199,7 @@ Three options, in order of simplicity:
 ## Where the CP fits (and why you don't need it)
 
 The Vulos Cloud layer is the **optional commercial layer** for people who don't
-want to run infrastructure: hosted billing (Paystack) injected into the
+want to run infrastructure: hosted billing (a commercial provider) injected into the
 `BillingProvider` seam, plus the hosted marketing site. The fleet/admin
 console and the multi-tenant OAuth broker are **part of this OSS
 vulos-management repo**, not the paid layer. Managed enrollment plugs in on top

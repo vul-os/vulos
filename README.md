@@ -69,8 +69,8 @@ Vulos is split into two repositories along one honest line:
 |---|---|---|
 | **License** | MIT, open source | Proprietary |
 | **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
-| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (Paystack), commercial pricing, **Tigris bucket provisioning**, billing-only admin panels, the hosted marketing site |
-| **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a Paystack `BillingProvider` |
+| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (a commercial provider), commercial pricing, **Tigris bucket provisioning**, billing-only admin panels, the hosted marketing site |
+| **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a a commercial `BillingProvider` |
 | **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a Tigris auto-provisioner |
 | **Relationship** | Stands alone, fully functional | `require`s + `replace`s this repo as a library, then injects the commercial impls |
 
@@ -106,7 +106,7 @@ flowchart TD
 
     subgraph cloud["vulos-cloud · private, optional"]
         direction TB
-        paystack["Paystack BillingProvider"]
+        paystack["a commercial BillingProvider"]
         tigris["Tigris bucket provisioner"]
         pricing["commercial pricing + panels"]
     end
@@ -119,7 +119,7 @@ flowchart TD
 The seams are the only intentional holes. The OSS build fills them with the
 no-op billing provider (metered-but-free) and the BYOB storage provisioner (you
 supply a bucket). The private cloud build fills the *same* interfaces with the
-Paystack provider and the Tigris auto-provisioner. **Management never provisions
+the commercial billing provider and the Tigris auto-provisioner. **Management never provisions
 buckets** — that's a Cloud-only concern. Everything else is identical. Full
 detail, including the Go module strategy that lets cloud consume this repo, is in
 [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
@@ -165,7 +165,7 @@ provision anything off your box.
 
 | Seam | Self-host default (OSS) | Cloud build (private) |
 |---|---|---|
-| `BillingProvider` | **No-op** — records usage, charges nothing, no network call | Paystack — real recurring + overage charging |
+| `BillingProvider` | **No-op** — records usage, charges nothing, no network call | a commercial billing provider — real recurring + overage charging |
 | `StorageProvisioner` | **BYOB** — you point it at your own S3-compatible bucket | Tigris — auto-provisions per-account buckets |
 
 Both builds compile against the same interfaces; only the injected implementation

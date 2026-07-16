@@ -5,7 +5,7 @@
 > (Accounts, Orgs, Fleet, Relay & usage, Incidents, Reserved handles, Migrations,
 > Audit log) are fully OSS. The **billing-adjacent pages — Pricing, Regions, and
 > Billing recon — render commercial pricing/COGS data and are only meaningfully
-> populated in the private `vulos-cloud` build**, which injects a Paystack
+> populated in the private `vulos-cloud` build**, which injects a a commercial billing provider
 > `BillingProvider`; in a pure vulos-management deployment with the no-op billing
 > provider they show the free/empty catalog. The package layout below refers to
 > the control-plane Go module (`cmd/server`, `internal/superadmin`); once the
