@@ -198,8 +198,8 @@ database, environment) is in [**docs/SELF-HOST.md**](docs/SELF-HOST.md).
 ## The seams (free by default)
 
 Self-hosting is **metered but free**, and **bring-your-own-bucket**. The control
-plane records every billable event (storage sampled, relay GB, mailboxes,
-box-hours) so operators see usage — but the defaults never charge and never
+plane records every billable event (storage sampled, relay GB, box-hours)
+so operators see usage — but the defaults never charge and never
 provision anything off your box.
 
 | Seam | Self-host default (OSS) | Cloud build (private) |

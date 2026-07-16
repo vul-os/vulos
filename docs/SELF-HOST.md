@@ -152,13 +152,13 @@ at composition time — see [ARCHITECTURE.md](ARCHITECTURE.md). No package in th
 module imports a payment processor or a bucket provider directly; a boundary test
 enforces it.
 
-## Mail and other products
+## Applications behind the control plane
 
-This repo is the **control plane**, not a mail server or an application suite.
-Mail, chat, documents, and similar products are **bring-your-own connectors**:
-the control plane authenticates users and points routing at your boxes, and you
-run whichever application backends you choose behind it. There are no first-party
-application products bundled in this module.
+This repo is the **control plane**, not an application server or an application
+suite. Chat, documents, and similar application backends are **bring-your-own
+connectors**: the control plane authenticates users and points routing at your
+boxes, and you run whichever application backends you choose behind it. There are
+no first-party application products bundled in this module.
 
 ## Upgrading
 
