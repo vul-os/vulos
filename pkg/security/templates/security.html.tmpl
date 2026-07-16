@@ -1,180 +1,191 @@
 {{define "security_page"}}
-<h1>Security Dashboard</h1>
+<div class="page-head">
+  <h1>Security dashboard</h1>
+  <p class="page-sub">Live edge-defence signals — WAF rule hits, bot fingerprints, credential-stuffing step-ups, account-takeover reviews, certificate-transparency observations, egress anomalies and honeypot hits.</p>
+</div>
 
 {{/* ── Summary tiles ───────────────────────────────────────────────────── */}}
-<div style="margin-bottom:16px">
-  <div class="tile">
-    <div class="num {{if gt (len .WAFEvents) 0}}badge-warn{{else}}badge-ok{{end}}">{{len .WAFEvents}}</div>
-    <div class="lbl">WAF hits (24h)</div>
+<div class="tiles">
+  <div class="tile {{if gt (len .WAFEvents) 0}}warn{{else}}accent{{end}}">
+    <div class="num">{{len .WAFEvents}}</div><div class="lbl">WAF hits (24h)</div>
+  </div>
+  <div class="tile {{if gt (len .BotEvents) 0}}warn{{end}}">
+    <div class="num">{{len .BotEvents}}</div><div class="lbl">Bot flags (24h)</div>
   </div>
   <div class="tile">
-    <div class="num {{if gt (len .BotEvents) 0}}badge-warn{{else}}badge-ok{{end}}">{{len .BotEvents}}</div>
-    <div class="lbl">Bot flags (24h)</div>
+    <div class="num">{{len .StepUpEvents}}</div><div class="lbl">Step-ups (24h)</div>
+  </div>
+  <div class="tile {{if gt (len .ATOEvents) 0}}danger{{end}}">
+    <div class="num">{{len .ATOEvents}}</div><div class="lbl">ATO pending</div>
   </div>
   <div class="tile">
-    <div class="num">{{len .StepUpEvents}}</div>
-    <div class="lbl">Step-ups (24h)</div>
+    <div class="num">{{len .HoneypotHits}}</div><div class="lbl">Honeypot hits</div>
   </div>
-  <div class="tile">
-    <div class="num {{if gt (len .ATOEvents) 0}}badge-bad{{else}}badge-ok{{end}}">{{len .ATOEvents}}</div>
-    <div class="lbl">ATO pending</div>
-  </div>
-  <div class="tile">
-    <div class="num">{{len .HoneypotHits}}</div>
-    <div class="lbl">Honeypot hits</div>
-  </div>
-  <div class="tile">
-    <div class="num {{if gt (len .EgressAnomalies) 0}}badge-warn{{else}}badge-ok{{end}}">{{len .EgressAnomalies}}</div>
-    <div class="lbl">Egress flags (7d)</div>
+  <div class="tile {{if gt (len .EgressAnomalies) 0}}warn{{end}}">
+    <div class="num">{{len .EgressAnomalies}}</div><div class="lbl">Egress flags (7d)</div>
   </div>
 </div>
 
 {{/* ── WAF ─────────────────────────────────────────────────────────────── */}}
-<div class="section">
-<h2>WAF — Rule Hits (last 24h)</h2>
+<h2>WAF — rule hits (last 24h)</h2>
 {{if .WAFEvents}}
+<div class="table-wrap">
 <table>
-<tr><th>Time</th><th>Rule ID</th><th>Pattern</th><th>Client IP</th><th>Path</th></tr>
+<thead><tr><th>Time</th><th>Rule ID</th><th>Pattern</th><th>Client IP</th><th>Path</th></tr></thead>
+<tbody>
 {{range .WAFEvents}}
 <tr>
-  <td>{{.Ts.Format "15:04:05"}}</td>
-  <td class="badge-bad">{{.RuleID}}</td>
+  <td class="mono">{{.Ts.Format "15:04:05"}}</td>
+  <td><span class="pill danger">{{.RuleID}}</span></td>
   <td><code>{{.Pattern}}</code></td>
-  <td>{{.ClientIP}}</td>
-  <td>{{.Path}}</td>
+  <td class="mono">{{.ClientIP}}</td>
+  <td class="mono">{{.Path}}</td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p class="badge-ok">No WAF violations in the last 24 hours.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No WAF violations in the last 24 hours.</div>
+{{end}}
 
 {{/* ── Bot ─────────────────────────────────────────────────────────────── */}}
-<div class="section">
-<h2>Bot Detection — Fingerprint Flags (last 24h)</h2>
+<h2>Bot detection — fingerprint flags (last 24h)</h2>
 {{if .BotEvents}}
+<div class="table-wrap">
 <table>
-<tr><th>Time</th><th>Client IP</th><th>Score</th><th>Reason</th><th>UA</th></tr>
+<thead><tr><th>Time</th><th>Client IP</th><th>Score</th><th>Reason</th><th class="wrap">User-agent</th></tr></thead>
+<tbody>
 {{range .BotEvents}}
 <tr>
-  <td>{{.Ts.Format "15:04:05"}}</td>
-  <td>{{.ClientIP}}</td>
-  <td class="{{if ge .Score 0.8}}badge-bad{{else}}badge-warn{{end}}">{{printf "%.2f" .Score}}</td>
+  <td class="mono">{{.Ts.Format "15:04:05"}}</td>
+  <td class="mono">{{.ClientIP}}</td>
+  <td><span class="pill {{if ge .Score 0.8}}danger{{else}}warn{{end}}">{{printf "%.2f" .Score}}</span></td>
   <td>{{.Reason}}</td>
-  <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{{.UA}}</td>
+  <td class="wrap muted">{{.UA}}</td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p class="badge-ok">No bot flags in the last 24 hours.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No bot flags in the last 24 hours.</div>
+{{end}}
 
 {{/* ── Credential Stuffing ─────────────────────────────────────────────── */}}
-<div class="section">
-<h2>Credential Stuffing — Risk Step-Ups (last 24h)</h2>
+<h2>Credential stuffing — risk step-ups (last 24h)</h2>
 {{if .StepUpEvents}}
+<div class="table-wrap">
 <table>
-<tr><th>Time</th><th>User</th><th>Client IP</th><th>Risk Score</th></tr>
+<thead><tr><th>Time</th><th>User</th><th>Client IP</th><th>Risk score</th></tr></thead>
+<tbody>
 {{range .StepUpEvents}}
 <tr>
-  <td>{{.Ts.Format "15:04:05"}}</td>
+  <td class="mono">{{.Ts.Format "15:04:05"}}</td>
   <td>{{.UserID}}</td>
-  <td>{{.ClientIP}}</td>
-  <td class="{{if ge .RiskScore 0.8}}badge-bad{{else}}badge-warn{{end}}">{{printf "%.2f" .RiskScore}}</td>
+  <td class="mono">{{.ClientIP}}</td>
+  <td><span class="pill {{if ge .RiskScore 0.8}}danger{{else}}warn{{end}}">{{printf "%.2f" .RiskScore}}</span></td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p class="badge-ok">No risk step-ups in the last 24 hours.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No risk step-ups in the last 24 hours.</div>
+{{end}}
 
 {{/* ── ATO ─────────────────────────────────────────────────────────────── */}}
-<div class="section">
-<h2>Account Takeover — Pending Reviews</h2>
+<h2>Account takeover — pending reviews</h2>
 {{if .ATOEvents}}
+<div class="table-wrap">
 <table>
-<tr><th>Time</th><th>User</th><th>Action</th><th>Client IP</th><th>Action</th></tr>
+<thead><tr><th>Time</th><th>User</th><th>Signal</th><th>Client IP</th><th>Action</th></tr></thead>
+<tbody>
 {{range .ATOEvents}}
 <tr>
-  <td>{{.Ts.Format "2006-01-02 15:04:05"}}</td>
+  <td class="mono">{{.Ts.Format "2006-01-02 15:04:05"}}</td>
   <td>{{.UserID}}</td>
-  <td class="badge-warn">{{.Action}}</td>
-  <td>{{.ClientIP}}</td>
+  <td><span class="pill warn">{{.Action}}</span></td>
+  <td class="mono">{{.ClientIP}}</td>
   <td>
-    <form method="post" action="/superadmin/security/ato/dismiss?id={{.ID}}" style="display:inline">
-      <button type="submit">Dismiss</button>
+    <form method="post" action="/superadmin/security/ato/dismiss?id={{.ID}}" class="inline-form">
+      <button type="submit" class="sm">Dismiss</button>
     </form>
   </td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p class="badge-ok">No pending ATO reviews.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No pending ATO reviews.</div>
+{{end}}
 
 {{/* ── CT ─────────────────────────────────────────────────────────────── */}}
-<div class="section">
-<h2>Certificate Transparency — Recent Issuances</h2>
+<h2>Certificate transparency — recent issuances</h2>
 {{if .CTCerts}}
+<div class="table-wrap">
 <table>
-<tr><th>Observed</th><th>Common Name</th><th>Issuer</th><th>Valid From</th><th>Valid To</th><th>Status</th></tr>
+<thead><tr><th>Observed</th><th>Common name</th><th>Issuer</th><th>Valid from</th><th>Valid to</th><th>Status</th></tr></thead>
+<tbody>
 {{range .CTCerts}}
 <tr>
-  <td>{{.Ts.Format "2006-01-02"}}</td>
-  <td>{{.CommonName}}</td>
+  <td class="mono">{{.Ts.Format "2006-01-02"}}</td>
+  <td class="mono">{{.CommonName}}</td>
   <td>{{.Issuer}}</td>
-  <td>{{.NotBefore}}</td>
-  <td>{{.NotAfter}}</td>
-  <td>{{if .Recognized}}<span class="badge-ok">OK</span>{{else}}<span class="badge-bad">UNKNOWN</span>{{end}}</td>
+  <td class="mono">{{.NotBefore}}</td>
+  <td class="mono">{{.NotAfter}}</td>
+  <td>{{if .Recognized}}<span class="pill ok">recognised</span>{{else}}<span class="pill danger">unknown CA</span>{{end}}</td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p>No certificate issuances recorded yet. CT monitoring runs daily.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No certificate issuances recorded yet. CT monitoring runs daily.</div>
+{{end}}
 
 {{/* ── Egress ───────────────────────────────────────────────────────────── */}}
-<div class="section">
-<h2>Egress Anomalies — Flagged Accounts (last 7d)</h2>
+<h2>Egress anomalies — flagged accounts (last 7d)</h2>
 {{if .EgressAnomalies}}
+<div class="table-wrap">
 <table>
-<tr><th>Time</th><th>User</th><th>Bytes/hr</th><th>Baseline Mean</th><th>Std Dev</th></tr>
+<thead><tr><th>Time</th><th>User</th><th>Bytes/hr</th><th>Baseline mean</th><th>Std dev</th></tr></thead>
+<tbody>
 {{range .EgressAnomalies}}
 <tr>
-  <td>{{.Ts.Format "2006-01-02 15:04"}}</td>
+  <td class="mono">{{.Ts.Format "2006-01-02 15:04"}}</td>
   <td><a href="/superadmin/accounts?q={{.UserID}}">{{.UserID}}</a></td>
-  <td class="badge-bad">{{.BytesHr}}</td>
-  <td>{{printf "%.0f" .Baseline}}</td>
-  <td>{{printf "%.0f" .Sigma}}</td>
+  <td class="mono"><span class="pill danger">{{.BytesHr}}</span></td>
+  <td class="mono">{{printf "%.0f" .Baseline}}</td>
+  <td class="mono">{{printf "%.0f" .Sigma}}</td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p class="badge-ok">No egress anomalies in the last 7 days.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No egress anomalies in the last 7 days.</div>
+{{end}}
 
 {{/* ── Honeypot ─────────────────────────────────────────────────────────── */}}
-<div class="section">
-<h2>Honeypot Accounts — Recent Hits</h2>
+<h2>Honeypot accounts — recent hits</h2>
 {{if .HoneypotHits}}
+<div class="table-wrap">
 <table>
-<tr><th>Time</th><th>Honeypot Email</th><th>Source IP</th></tr>
+<thead><tr><th>Time</th><th>Honeypot email</th><th>Source IP</th></tr></thead>
+<tbody>
 {{range .HoneypotHits}}
 <tr>
-  <td>{{.Ts.Format "2006-01-02 15:04:05"}}</td>
-  <td class="badge-bad">{{.Email}}</td>
-  <td>{{.ClientIP}}</td>
+  <td class="mono">{{.Ts.Format "2006-01-02 15:04:05"}}</td>
+  <td><span class="pill danger">{{.Email}}</span></td>
+  <td class="mono">{{.ClientIP}}</td>
 </tr>
 {{end}}
+</tbody>
 </table>
-{{else}}
-<p class="badge-ok">No honeypot hits recorded.</p>
-{{end}}
 </div>
+{{else}}
+<div class="empty">No honeypot hits recorded.</div>
+{{end}}
 {{end}}

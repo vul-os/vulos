@@ -22,8 +22,8 @@ func TestSecurityDashboardRendersHTML(t *testing.T) {
 		t.Errorf("want 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Security Dashboard") {
-		t.Error("want 'Security Dashboard' in rendered HTML")
+	if !strings.Contains(body, "Security dashboard") {
+		t.Error("want 'Security dashboard' in rendered HTML")
 	}
 }
 

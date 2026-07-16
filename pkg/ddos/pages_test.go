@@ -40,12 +40,12 @@ func TestDDoSDashboard_RendersWithoutError(t *testing.T) {
 	pages.HandleDDoSDashboard(w, r)
 
 	body := w.Body.String()
-	// The template may fail to load (no layout file in test env) — we accept
-	// either a rendered body with known content or a 500 with "template" in the error.
-	if w.Code != 200 && w.Code != 500 {
-		t.Fatalf("unexpected status %d", w.Code)
+	// The dashboard template is now embedded and self-contained (defines its own
+	// "layout"), so it renders deterministically in every environment.
+	if w.Code != 200 {
+		t.Fatalf("unexpected status %d: %s", w.Code, body)
 	}
-	if w.Code == 500 && !strings.Contains(body, "template") {
-		t.Fatalf("500 response without template error: %s", body)
+	if !strings.Contains(body, "DDoS defence") {
+		t.Errorf("want 'DDoS defence' heading in rendered dashboard")
 	}
 }

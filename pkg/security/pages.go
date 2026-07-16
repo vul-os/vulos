@@ -14,50 +14,47 @@ import (
 //go:embed templates/security.html.tmpl
 var tplSecurityPage string
 
-// securityLayout is the outer layout (mirrors superadmin's _layout.html.tmpl
-// structure — we re-define it here so the security package is self-contained).
+// securityLayout is the outer layout. It reuses the SAME Vulos "instrument-panel"
+// stylesheet and sticky top bar the rest of the operator console ships
+// (/superadmin/admin.css), so the security dashboard is visually part of the
+// console rather than a bolt-on panel. Served same-origin under the same strict
+// CSP (style-src 'self'); no inline styles, no remote fonts.
 const securityLayout = `{{define "security_layout"}}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{.Title}} — Vulos Admin</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:monospace;font-size:13px;background:#f5f5f5;color:#111}
-nav{background:#222;color:#eee;padding:8px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-nav a{color:#ccc;text-decoration:none}
-nav a:hover{color:#fff;text-decoration:underline}
-nav .brand{font-weight:bold;color:#fff;margin-right:16px}
-main{padding:16px}
-h1{font-size:16px;margin-bottom:12px}
-h2{font-size:14px;margin:16px 0 8px;border-bottom:1px solid #ccc;padding-bottom:4px}
-table{border-collapse:collapse;width:100%;background:#fff;margin-bottom:12px}
-th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}
-th{background:#eee;font-weight:bold}
-tr:nth-child(even){background:#fafafa}
-.badge-ok{color:#080;font-weight:bold}
-.badge-warn{color:#a60;font-weight:bold}
-.badge-bad{color:#900;font-weight:bold}
-.tile{display:inline-block;background:#fff;border:1px solid #ccc;padding:10px 16px;margin:4px;min-width:120px;vertical-align:top}
-.tile .num{font-size:22px;font-weight:bold}
-.tile .lbl{font-size:11px;color:#666}
-button{font-family:monospace;font-size:12px;padding:3px 8px;cursor:pointer;background:#333;color:#fff;border:1px solid #555}
-button:hover{background:#555}
-.section{margin-bottom:24px}
-</style>
+<meta name="color-scheme" content="dark">
+<title>{{.Title}} — Vulos Operator Console</title>
+<link rel="stylesheet" href="/superadmin/admin.css">
 </head>
 <body>
-<nav>
-  <span class="brand">&#9881; Vulos Admin</span>
-  <a href="/superadmin/">Dashboard</a>
-  <a href="/superadmin/accounts">Accounts</a>
-  <a href="/superadmin/reserved-handles">Reserved Handles</a>
-  <a href="/superadmin/auditlog">Audit Log</a>
-  <a href="/superadmin/maintenance">Maintenance</a>
-  <a href="/superadmin/security" style="color:#ff9">Security</a>
-  <a href="/superadmin/logout" style="margin-left:auto;color:#f88">Logout</a>
-</nav>
+<header class="topbar">
+  <a class="tb-brand" href="/superadmin/">
+    <span class="tb-mark">V</span>
+    <span class="tb-word">Vulos</span>
+    <span class="tb-tag">Operator</span>
+  </a>
+  <nav class="tb-nav" aria-label="Primary">
+    <span class="tb-group">
+      <a href="/superadmin/">Overview</a>
+      <a href="/superadmin/analytics">Analytics</a>
+    </span>
+    <span class="tb-group">
+      <a href="/superadmin/accounts">Accounts</a>
+      <a href="/superadmin/orgs">Orgs</a>
+    </span>
+    <span class="tb-group">
+      <a href="/superadmin/security" class="active">Security</a>
+      <a href="/superadmin/auditlog">Audit Log</a>
+      <a href="/superadmin/maintenance">Maintenance</a>
+    </span>
+  </nav>
+  <div class="tb-right">
+    <span class="tb-op"><span class="dot"></span>operator</span>
+    <a class="tb-logout" href="/superadmin/logout">Log out</a>
+  </div>
+</header>
 <main>
 {{.Body}}
 </main>

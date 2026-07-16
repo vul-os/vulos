@@ -1,14 +1,16 @@
 package ddos
 
 import (
+	_ "embed"
 	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 )
+
+//go:embed templates/admin/ddos.html.tmpl
+var tplDDoS string
 
 // DDoSPages bundles all the dependencies for the DDoS super-admin dashboard.
 type DDoSPages struct {
@@ -180,47 +182,15 @@ func (p *DDoSPages) HandleDDoSGeoBlockUpdate(w http.ResponseWriter, r *http.Requ
 // ── Template loading ───────────────��──────────────────────────────────────────
 
 func loadDDoSTemplate() (*template.Template, error) {
-	// Candidates for the layout file (same search order as wire_superadmin_data.go).
-	layoutCandidates := []string{
-		"templates/admin/_layout.html.tmpl",
-		"cmd/server/templates/admin/_layout.html.tmpl",
-		"templates/admin/_layout_fallback.html.tmpl",
-		"cmd/server/templates/admin/_layout_fallback.html.tmpl",
-	}
-	pageCandidates := []string{
-		"internal/ddos/templates/admin/ddos.html.tmpl",
-		"templates/admin/ddos.html.tmpl",
-	}
-
-	layout := ""
-	for _, c := range layoutCandidates {
-		if _, err := os.Stat(c); err == nil {
-			layout = c
-			break
-		}
-	}
-	pageFile := ""
-	for _, c := range pageCandidates {
-		if _, err := os.Stat(c); err == nil {
-			pageFile = c
-			break
-		}
-	}
-	if pageFile == "" {
-		// Last resort: use the embedded template path.
-		pageFile = "internal/ddos/templates/admin/ddos.html.tmpl"
-	}
-
+	// The dashboard template is embedded (go:embed) and self-contained — it
+	// defines its own "layout" block that links the shared /superadmin/admin.css
+	// and the Vulos operator top bar. No filesystem lookup, so it renders
+	// identically in every deployment (self-host, dev, container).
 	funcMap := template.FuncMap{
 		"boolStr": boolStr,
 		"joinStr": joinStrings,
 	}
-
-	if layout != "" {
-		return template.New(filepath.Base(layout)).Funcs(funcMap).ParseFiles(layout, pageFile)
-	}
-	// No layout — parse page only (page defines its own layout block).
-	return template.New(filepath.Base(pageFile)).Funcs(funcMap).ParseFiles(pageFile)
+	return template.New("ddos").Funcs(funcMap).Parse(tplDDoS)
 }
 
 // ── helpers ────────────────────────��──────────────────────���───────────────────

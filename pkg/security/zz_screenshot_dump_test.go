@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -63,8 +64,12 @@ func TestScreenshotDumpSecurityDashboard(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("security dashboard status %d\n%s", rr.Code, rr.Body.String())
 	}
+	// The dashboard now shares the console's /superadmin/admin.css. In the flat
+	// screenshot dir that asset is served as admin.css (written next to the .html
+	// files by the superadmin dump), so rewrite the server-absolute href.
+	html := strings.ReplaceAll(rr.Body.String(), "/superadmin/admin.css", "admin.css")
 	dst := filepath.Join(outDir, "security-dashboard.html")
-	if err := os.WriteFile(dst, rr.Body.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(dst, []byte(html), 0o644); err != nil {
 		t.Fatalf("write %s: %v", dst, err)
 	}
 	t.Logf("dumped security dashboard to %s", dst)
