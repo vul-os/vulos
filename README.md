@@ -54,23 +54,22 @@ time with **`make screenshots`** (see [below](#regenerating-the-screenshots)).
 
 <div align="center">
 
-<img src="docs/assets/screenshots/dashboard.png" alt="Admin dashboard — fleet billing cockpit and live audit feed" width="900" />
+<img src="docs/assets/screenshots/dashboard.png" alt="Operator console — fleet health, counts and the live hash-chained audit feed" width="900" />
 
-<em>Dashboard — fleet billing cockpit (MRR, per-product cost rollup) over the live, hash-chained audit feed.</em>
+<em>The operator cockpit — fleet-health beacon, account / super-admin counts and open-incident state over the live, hash-chained audit feed, with jump cards to every section.</em>
 
 </div>
 
 | | |
 |:---:|:---:|
-| <img src="docs/assets/screenshots/security-dashboard.png" width="420" alt="Security dashboard" /><br/><sub><b>Security dashboard</b> — WAF hits, bot scores, ATO reviews, CT-log certs, egress anomalies</sub> | <img src="docs/assets/screenshots/billing-recon.png" width="420" alt="Billing reconciliation" /><br/><sub><b>Billing reconciliation</b> — revenue vs COGS per tier, blended margin, drift flags</sub> |
-| <img src="docs/assets/screenshots/analytics.png" width="420" alt="Analytics" /><br/><sub><b>Analytics</b> — DAU/MAU and per-product 7-day usage sparklines</sub> | <img src="docs/assets/screenshots/relay.png" width="420" alt="Relay & usage" /><br/><sub><b>Relay &amp; usage</b> — PoP health per region, per-account GB &amp; overage</sub> |
-| <img src="docs/assets/screenshots/accounts.png" width="420" alt="Accounts" /><br/><sub><b>Accounts</b> — search + suspend/refund/reset, every action audit-logged</sub> | <img src="docs/assets/screenshots/pricing.png" width="420" alt="Pricing" /><br/><sub><b>Pricing</b> — SKU catalogue with USD list price and the live ZAR actually charged</sub> |
-| <img src="docs/assets/screenshots/regions.png" width="420" alt="Regions" /><br/><sub><b>Regions</b> — per-region egress cost, relay price, compute multiplier, real spend</sub> | <img src="docs/assets/screenshots/incidents.png" width="420" alt="Incidents" /><br/><sub><b>Incidents</b> — status-page incidents and scheduled maintenance</sub> |
+| <img src="docs/assets/screenshots/security-dashboard.png" width="420" alt="Security dashboard" /><br/><sub><b>Security dashboard</b> — WAF hits, bot scores, ATO reviews, CT-log certs, egress anomalies</sub> | <img src="docs/assets/screenshots/analytics.png" width="420" alt="Analytics" /><br/><sub><b>Analytics</b> — DAU/MAU and per-product 7-day usage sparklines (usage only)</sub> |
+| <img src="docs/assets/screenshots/relay.png" width="420" alt="Relay health" /><br/><sub><b>Relay health</b> — per-region PoP health and data-plane throughput</sub> | <img src="docs/assets/screenshots/accounts.png" width="420" alt="Accounts" /><br/><sub><b>Accounts</b> — search + suspend / force-reset / reset-2FA, every action audit-logged</sub> |
+| <img src="docs/assets/screenshots/orgs.png" width="420" alt="Organisations" /><br/><sub><b>Organisations</b> — directory of members, seats, tier and suspension state</sub> | <img src="docs/assets/screenshots/incidents.png" width="420" alt="Incidents" /><br/><sub><b>Incidents</b> — status-page incidents and scheduled maintenance</sub> |
 | <img src="docs/assets/screenshots/auditlog.png" width="420" alt="Audit log" /><br/><sub><b>Audit log</b> — tamper-evident, hash-chained, actor/action filters</sub> | <img src="docs/assets/screenshots/login.png" width="420" alt="Operator login" /><br/><sub><b>Operator login</b> — password + TOTP, then a WebAuthn hardware-key step-up</sub> |
 
-<sub>The full gallery (orgs, org detail, migrations, reserved handles, account detail, maintenance) lives in
-[`docs/assets/screenshots/`](docs/assets/screenshots/). The console ships a single deliberate dark theme; the
-security dashboard is light — neither themes dynamically, so each is shown in its canonical look.</sub>
+<sub>The full gallery (org detail, account detail, migrations, reserved handles, maintenance) lives in
+[`docs/assets/screenshots/`](docs/assets/screenshots/). The whole console — including the security dashboard —
+ships a single deliberate dark "instrument-panel" theme, and does not theme dynamically.</sub>
 
 ## Features
 

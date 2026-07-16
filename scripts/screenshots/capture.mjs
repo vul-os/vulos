@@ -16,9 +16,9 @@
  *   2. Serves that HTML directory over a throwaway localhost static server.
  *   3. Drives headless Chromium (Playwright) to shoot each page at retina.
  *
- * The console ships a single deliberate dark theme (admin.css is dark-only); the
- * security dashboard ships a light theme. Neither themes dynamically, so each is
- * captured in its canonical look — we do not fake a second variant.
+ * The whole console — including the security and DDoS dashboards — ships a
+ * single deliberate dark instrument-panel theme (admin.css is dark-only) and does
+ * not theme dynamically, so each page is captured in its one canonical look.
  *
  * Usage:
  *   npm install && npx playwright install chromium   # first time
@@ -41,23 +41,20 @@ const PNG_OUT = path.join(ROOT, 'docs', 'assets', 'screenshots')
 
 // ── Page catalogue: order, theme (native — not a toggle) and captions ──────────
 const PAGES = [
-  { name: 'dashboard',        theme: 'dark',  title: 'Dashboard',            desc: 'Fleet billing cockpit — MRR, account counts, per-product cost rollup and the live audit feed.' },
-  { name: 'accounts',         theme: 'dark',  title: 'Accounts',             desc: 'Account search + admin — suspend, refund, force-reset, with every action audit-logged.' },
-  { name: 'account-detail',   theme: 'dark',  title: 'Account detail',       desc: 'A single account: verification / TOTP / session state and its billing transactions.' },
-  { name: 'analytics',        theme: 'dark',  title: 'Analytics',            desc: 'Users, DAU / MAU and per-product 7-day usage trends drawn as inline SVG sparklines.' },
-  { name: 'orgs',             theme: 'dark',  title: 'Orgs',                 desc: 'Organisation directory — members, seats, tier and suspension state.' },
+  { name: 'dashboard',        theme: 'dark',  title: 'Operator console',     desc: 'The central cockpit — fleet health beacon, account / super-admin counts, open-incident state and the live hash-chained audit feed, with jump cards to every section.' },
+  { name: 'accounts',         theme: 'dark',  title: 'Accounts',             desc: 'Account search + admin — suspend, force-reset and reset 2FA, with every action audit-logged.' },
+  { name: 'account-detail',   theme: 'dark',  title: 'Account detail',       desc: 'A single account: verification / TOTP / session state, entitlements and recorded usage.' },
+  { name: 'analytics',        theme: 'dark',  title: 'Analytics',            desc: 'Users, DAU / MAU and per-product 7-day usage trends drawn as inline SVG sparklines. Usage signals only.' },
+  { name: 'orgs',             theme: 'dark',  title: 'Organisations',        desc: 'Organisation directory — members, seats, tier and suspension state.' },
   { name: 'org-detail',       theme: 'dark',  title: 'Org detail',           desc: 'One organisation: member roster, roles and a usage summary.' },
-  { name: 'relay',            theme: 'dark',  title: 'Relay & usage',        desc: 'Relay data-plane overview — PoP health per region and per-account GB / overage.' },
-  { name: 'billing-recon',    theme: 'dark',  title: 'Billing reconciliation', desc: 'Revenue vs estimated COGS per tier, blended margin and drift-flagged tenants.' },
-  { name: 'pricing',          theme: 'dark',  title: 'Pricing',              desc: 'The SKU price catalogue — USD list price and the live ZAR the card is actually charged.' },
-  { name: 'regions',          theme: 'dark',  title: 'Regions',              desc: 'Per-region economics — egress cost, relay price, compute multiplier and real spend.' },
+  { name: 'relay',            theme: 'dark',  title: 'Relay health',         desc: 'Relay data-plane health — per-region PoP status and throughput. Operational signals only.' },
   { name: 'incidents',        theme: 'dark',  title: 'Incidents',            desc: 'Status-page incidents and scheduled maintenance windows.' },
   { name: 'migrations',       theme: 'dark',  title: 'Migrations',           desc: 'Aggregate schema state polled across every product in the suite.' },
   { name: 'auditlog',         theme: 'dark',  title: 'Audit log',            desc: 'The tamper-evident, hash-chained audit log with actor / action filters.' },
   { name: 'reserved-handles', theme: 'dark',  title: 'Reserved handles',     desc: 'Reserved-username registry (postmaster, abuse, brand handles …).' },
   { name: 'maintenance',      theme: 'dark',  title: 'Maintenance',          desc: 'Operator tools — verify the audit chain, check secret rotation.' },
   { name: 'login',            theme: 'dark',  title: 'Operator login',       desc: 'The console sign-in: password + TOTP, then a WebAuthn hardware-key step-up.' },
-  { name: 'security-dashboard', theme: 'light', title: 'Security dashboard', file: 'security-dashboard.html', desc: 'WAF hits, bot scores, step-up / ATO events, CT-log certs, egress anomalies and honeypot hits.' },
+  { name: 'security-dashboard', theme: 'dark', title: 'Security dashboard', file: 'security-dashboard.html', desc: 'WAF hits, bot scores, step-up / ATO events, CT-log certs, egress anomalies and honeypot hits.' },
 ]
 
 const fileFor = (p) => p.file ?? `admin-${p.name}.html`
@@ -130,12 +127,12 @@ async function main() {
     'Each image is the **real** server-rendered console page (the same',
     '`pkg/superadmin` / `pkg/security` templates + CSS the control plane serves),',
     'seeded with fabricated demo data by the Go dump harness — no operator data is',
-    'ever captured. Retina (1440-wide @2x). The console is dark-themed; the',
-    'security dashboard is light-themed. Neither themes dynamically.',
+    'ever captured. Retina (1440-wide @2x). The whole console — including the',
+    'security dashboard — ships a single deliberate dark instrument-panel theme.',
     '',
-    '| Image | Surface | Theme |',
-    '|-------|---------|-------|',
-    ...results.map((r) => `| \`${r.name}.png\` | ${r.title} — ${r.desc} | ${r.theme} |`),
+    '| Image | Surface |',
+    '|-------|---------|',
+    ...results.map((r) => `| \`${r.name}.png\` | ${r.title} — ${r.desc} |`),
     '',
     'Regenerate: `npm run screenshots`',
   ].join('\n')
