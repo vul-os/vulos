@@ -216,9 +216,9 @@ type BillingStore interface {
 	ExchangeRate(ctx context.Context) (float64, error)
 }
 
-// PaystackInitializer initialises a Paystack transaction.
-// Implemented by billing.PaystackClient.
-type PaystackInitializer interface {
+// TopUpInitializer initialises a wallet top-up transaction with the configured
+// payment processor. Implemented by the billing layer's payment client.
+type TopUpInitializer interface {
 	InitTopup(ctx context.Context, accountID, email string, amountZAR int64) (authURL, reference string, err error)
 }
 

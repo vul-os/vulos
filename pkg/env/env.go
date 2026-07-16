@@ -371,12 +371,12 @@ type Defaults struct {
 	// enroll / boot flows. Always true in prod; false in local.
 	RequireDeviceSig bool
 
-	// PaystackBaseURL is the Paystack API base URL. Identical for all envs —
-	// the key prefix (sk_test_ vs sk_live_) determines live vs. test mode.
+	// PaystackBaseURL is the payment-processor API base URL. Identical for all
+	// envs — the key prefix (test vs. live) determines live vs. test mode.
 	PaystackBaseURL string
 
-	// AllowAllRelayQuotas bypasses Paystack-backed quota checks in the relay
-	// forwarder. Only true in local; false in dev and prod.
+	// AllowAllRelayQuotas bypasses payment-processor-backed quota checks in the
+	// relay forwarder. Only true in local; false in dev and prod.
 	AllowAllRelayQuotas bool
 
 	// OTAPublicBucketBase is the default public base URL for OTA artifacts.

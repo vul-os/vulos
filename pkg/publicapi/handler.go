@@ -21,7 +21,7 @@ type Handler struct {
 	rl       *RateLimiter
 	accts    AccountStore
 	billing  BillingStore
-	topup    PaystackInitializer
+	topup    TopUpInitializer
 	mboxes   MailboxLister
 	devices  DeviceLister
 	webhooks WebhookManager
@@ -32,7 +32,7 @@ func NewHandler(
 	store *Store,
 	accts AccountStore,
 	billing BillingStore,
-	topup PaystackInitializer,
+	topup TopUpInitializer,
 	mboxes MailboxLister,
 	devices DeviceLister,
 	wh WebhookManager,
@@ -183,7 +183,7 @@ func (h *Handler) postTopup(w http.ResponseWriter, r *http.Request, accountID st
 	}
 	authURL, reference, err := h.topup.InitTopup(r.Context(), accountID, req.Email, req.AmountZAR)
 	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("paystack error: %v", err))
+		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("payment processor error: %v", err))
 		return
 	}
 	writeJSON(w, http.StatusOK, TopupResponse{

@@ -200,7 +200,7 @@ func RouteClass(path string) string {
 		return "api_relay"
 	case strings.HasPrefix(path, "/api/quota"):
 		return "api_quota"
-	case strings.HasPrefix(path, "/api/billing/") || strings.HasPrefix(path, "/api/paystack"):
+	case strings.HasPrefix(path, "/api/billing/") || strings.HasPrefix(path, "/api/payments"):
 		return "api_billing"
 	case strings.Contains(path, "/webhook"):
 		return "webhook"
