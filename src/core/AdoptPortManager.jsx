@@ -5,9 +5,9 @@
  * (never the public-web path). Opens via window CustomEvent `vulos:open-adopt-port`.
  *
  * Backend seam (all session-authed, owner-scoped):
- *   GET    /api/apps/proxy        — list the caller's adopted upstreams (+ health)
- *   POST   /api/apps/proxy        — adopt {name, port, requires_product?}
- *   DELETE /api/apps/proxy/{id}   — revoke
+ *   GET    /api/proxyadopt        — list the caller's adopted upstreams (+ health)
+ *   POST   /api/proxyadopt        — adopt {name, port, requires_product?}
+ *   DELETE /api/proxyadopt/{id}   — revoke
  *
  * All identifiers are APM- / AdoptPort- prefixed to avoid collisions.
  */
@@ -18,13 +18,13 @@ const APM_EVENT = 'vulos:open-adopt-port'
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 async function apmList() {
-  const res = await fetch('/api/apps/proxy')
+  const res = await fetch('/api/proxyadopt')
   if (!res.ok) throw new Error('list failed')
   return res.json() // [{id, name, port, url, healthy, requires_product}]
 }
 
 async function apmAdopt({ name, port, requiresProduct }) {
-  const res = await fetch('/api/apps/proxy', {
+  const res = await fetch('/api/proxyadopt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -39,7 +39,7 @@ async function apmAdopt({ name, port, requiresProduct }) {
 }
 
 async function apmRevoke(id) {
-  const res = await fetch(`/api/apps/proxy/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await fetch(`/api/proxyadopt/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('revoke failed')
   return res.json()
 }

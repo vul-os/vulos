@@ -41,7 +41,7 @@ func adoptReq(t *testing.T, mux *http.ServeMux, method, path, userID string, bod
 // callers (no X-User-ID stamped by the middleware).
 func TestAdopt_RequiresAuth(t *testing.T) {
 	mux, _, _ := newAdoptEnv(t)
-	rr := adoptReq(t, mux, http.MethodPost, "/api/apps/proxy", "", map[string]any{"name": "grafana", "port": 3000})
+	rr := adoptReq(t, mux, http.MethodPost, "/api/proxyadopt", "", map[string]any{"name": "grafana", "port": 3000})
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated adopt: got %d, want 401", rr.Code)
 	}
@@ -53,7 +53,7 @@ func TestAdopt_LoopbackReservedPortsRejected(t *testing.T) {
 	mux, _, _ := newAdoptEnv(t)
 	bad := []int{0, 22, 80, 443, 1023, 7070, 7999, 8080, 70000}
 	for _, p := range bad {
-		rr := adoptReq(t, mux, http.MethodPost, "/api/apps/proxy", "user1", map[string]any{"name": "svc", "port": p})
+		rr := adoptReq(t, mux, http.MethodPost, "/api/proxyadopt", "user1", map[string]any{"name": "svc", "port": p})
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("adopt reserved/invalid port %d: got %d, want 400 (%s)", p, rr.Code, rr.Body.String())
 		}
@@ -65,7 +65,7 @@ func TestAdopt_LoopbackReservedPortsRejected(t *testing.T) {
 func TestAdopt_RegisterResolveRevoke(t *testing.T) {
 	mux, mgr, store := newAdoptEnv(t)
 
-	rr := adoptReq(t, mux, http.MethodPost, "/api/apps/proxy", "user1",
+	rr := adoptReq(t, mux, http.MethodPost, "/api/proxyadopt", "user1",
 		map[string]any{"name": "My Grafana", "port": 33000, "requires_product": "obs-pro"})
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("adopt: got %d, want 201 (%s)", rr.Code, rr.Body.String())
@@ -98,13 +98,13 @@ func TestAdopt_RegisterResolveRevoke(t *testing.T) {
 	}
 
 	// A different user cannot revoke it.
-	rr = adoptReq(t, mux, http.MethodDelete, "/api/apps/proxy/my-grafana", "user2", nil)
+	rr = adoptReq(t, mux, http.MethodDelete, "/api/proxyadopt/my-grafana", "user2", nil)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("non-owner revoke: got %d, want 404", rr.Code)
 	}
 
 	// Owner revokes.
-	rr = adoptReq(t, mux, http.MethodDelete, "/api/apps/proxy/my-grafana", "user1", nil)
+	rr = adoptReq(t, mux, http.MethodDelete, "/api/proxyadopt/my-grafana", "user1", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner revoke: got %d, want 200 (%s)", rr.Code, rr.Body.String())
 	}
@@ -120,7 +120,7 @@ func TestAdopt_RegisterResolveRevoke(t *testing.T) {
 // system app id.
 func TestAdopt_SystemAppNameRejected(t *testing.T) {
 	mux, _, _ := newAdoptEnv(t)
-	rr := adoptReq(t, mux, http.MethodPost, "/api/apps/proxy", "user1", map[string]any{"name": "settings", "port": 33001})
+	rr := adoptReq(t, mux, http.MethodPost, "/api/proxyadopt", "user1", map[string]any{"name": "settings", "port": 33001})
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("adopt system-app name: got %d, want 403", rr.Code)
 	}

@@ -91,7 +91,7 @@ export const defaultHandlers = [
   http.post('/api/apps/launch', () => HttpResponse.json({ ok: true })),
   http.post('/api/apps/stop', () => HttpResponse.json({ ok: true })),
   // Adopt-a-port (empty by default; individual tests override with server.use)
-  http.get('/api/apps/proxy', () => HttpResponse.json([])),
+  http.get('/api/proxyadopt', () => HttpResponse.json([])),
   http.get('/api/store/installed', () => HttpResponse.json([])),
   http.get('/api/ai-apps', () => HttpResponse.json([])),
 

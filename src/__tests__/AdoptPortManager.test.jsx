@@ -10,10 +10,10 @@ function mockBackend(initial = []) {
   global.fetch = vi.fn((url, opts = {}) => {
     const u = String(url)
     const method = (opts.method || 'GET').toUpperCase()
-    if (u.endsWith('/api/apps/proxy') && method === 'GET') {
+    if (u.endsWith('/api/proxyadopt') && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(state.items) })
     }
-    if (u.endsWith('/api/apps/proxy') && method === 'POST') {
+    if (u.endsWith('/api/proxyadopt') && method === 'POST') {
       state.posted = JSON.parse(opts.body)
       const item = {
         id: 'my-grafana', name: state.posted.name, port: state.posted.port,
@@ -22,8 +22,8 @@ function mockBackend(initial = []) {
       state.items = [...state.items, item]
       return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(item) })
     }
-    if (u.includes('/api/apps/proxy/') && method === 'DELETE') {
-      state.deleted = decodeURIComponent(u.split('/api/apps/proxy/')[1])
+    if (u.includes('/api/proxyadopt/') && method === 'DELETE') {
+      state.deleted = decodeURIComponent(u.split('/api/proxyadopt/')[1])
       state.items = state.items.filter(i => i.id !== state.deleted)
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ status: 'revoked' }) })
     }
@@ -57,7 +57,7 @@ describe('AdoptPortManager', () => {
     expect(link.getAttribute('href')).toBe('/app/grafana/')
   })
 
-  it('adopts a port via POST /api/apps/proxy and refreshes the list', async () => {
+  it('adopts a port via POST /api/proxyadopt and refreshes the list', async () => {
     const state = mockBackend()
     render(<AdoptPortManager />)
     open()
