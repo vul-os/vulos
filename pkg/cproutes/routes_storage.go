@@ -753,8 +753,8 @@ func (h *storageHandlers) mapErr(w http.ResponseWriter, err error) {
 		httpx.Err(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, storage.ErrProviderFailed):
 		// Check if it's a missing-creds 503 vs generic 502.
-		if strings.Contains(err.Error(), "TIGRIS_ACCESS_KEY_ID") ||
-			strings.Contains(err.Error(), "TIGRIS_SECRET_ACCESS_KEY") ||
+		if strings.Contains(err.Error(), "S3_ACCESS_KEY_ID") ||
+			strings.Contains(err.Error(), "S3_SECRET_ACCESS_KEY") ||
 			strings.Contains(err.Error(), "are required") {
 			httpx.Err(w, http.StatusServiceUnavailable, "storage provider not configured")
 			return
