@@ -104,7 +104,7 @@ func RegisterProxyAdoptHandlers(mux *http.ServeMux, deps ProxyAdoptDeps) {
 	}
 
 	// POST /api/apps/proxy — adopt a loopback port.
-	mux.HandleFunc("POST /api/apps/proxy", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/proxyadopt", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID") // stamped by auth middleware; never client-supplied
 		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -177,7 +177,7 @@ func RegisterProxyAdoptHandlers(mux *http.ServeMux, deps ProxyAdoptDeps) {
 	})
 
 	// GET /api/apps/proxy — list the caller's adopted upstreams.
-	mux.HandleFunc("GET /api/apps/proxy", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/proxyadopt", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -200,7 +200,7 @@ func RegisterProxyAdoptHandlers(mux *http.ServeMux, deps ProxyAdoptDeps) {
 	})
 
 	// DELETE /api/apps/proxy/{id} — revoke an adopted upstream.
-	mux.HandleFunc("DELETE /api/apps/proxy/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE /api/proxyadopt/{id}", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
