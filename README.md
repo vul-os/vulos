@@ -70,7 +70,7 @@ Vulos is split into two repositories along one honest line:
 | **License** | MIT, open source | Proprietary |
 | **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
 | **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (a commercial provider), commercial pricing, **Tigris bucket provisioning**, billing-only admin panels, the hosted marketing site |
-| **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a a commercial `BillingProvider` |
+| **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a commercial `BillingProvider` |
 | **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a Tigris auto-provisioner |
 | **Relationship** | Stands alone, fully functional | `require`s + `replace`s this repo as a library, then injects the commercial impls |
 
@@ -106,13 +106,13 @@ flowchart TD
 
     subgraph cloud["vulos-cloud · private, optional"]
         direction TB
-        paystack["a commercial BillingProvider"]
+        billprovider["a commercial BillingProvider"]
         tigris["Tigris bucket provisioner"]
         pricing["commercial pricing + panels"]
     end
 
     cloud -->|require + replace, injects at wire-time| mgmt
-    paystack -.fills.-> billseam
+    billprovider -.fills.-> billseam
     tigris -.fills.-> storeseam
 ```
 
