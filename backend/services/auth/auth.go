@@ -307,6 +307,35 @@ func (s *Store) GetUser(userID string) (*User, bool) {
 	return u, ok
 }
 
+// VerifyUserPassword reports whether password is userID's current account
+// password.
+//
+// This is the STEP-UP primitive for sensitive operations that a session cookie
+// alone must not authorise — today: exporting the TOTP vault (every 2FA seed the
+// user owns). Unlike Login it takes a user id (the caller is already
+// authenticated; we are re-proving possession, not identifying), has no side
+// effects, and never touches LastLogin or the session table.
+//
+// Fails closed: unknown user, or a user with no usable bcrypt hash (an
+// OAuth-only account), returns false. A dummy compare keeps the cost of those
+// paths equal to the success path so this cannot be turned into a user-existence
+// oracle.
+func (s *Store) VerifyUserPassword(userID, password string) bool {
+	s.mu.RLock()
+	u, ok := s.users[userID]
+	var hash string
+	if ok {
+		hash = u.PasswordHash
+	}
+	s.mu.RUnlock()
+
+	if !ok || !isbcryptHash(hash) {
+		bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
+		return false
+	}
+	return verifyPassword(hash, password)
+}
+
 // RevokeSession removes a session.
 func (s *Store) RevokeSession(token string) {
 	s.mu.Lock()

@@ -398,11 +398,333 @@ function AddAccountForm({ onAdd, onCancel }) {
   )
 }
 
+// ── Import / Export ──────────────────────────────────────────────────────────
+//
+// Import accepts the otpauth-migration:// payload that Google Authenticator puts
+// in its "Transfer accounts" QR code, or a Vulos backup file.
+//
+// Export writes an encrypted backup that is decryptable with the PASSPHRASE the
+// user chooses — deliberately not with any key held by this box, because the
+// scenario a 2FA backup exists for is "the box is gone".
+function TransferPanel({ onDone, onCancel }) {
+  const [tab, setTab] = useState('import')
+
+  const [uri, setUri] = useState('')
+  const [backupFile, setBackupFile] = useState(null)
+  const [importPassphrase, setImportPassphrase] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importErr, setImportErr] = useState('')
+  const [result, setResult] = useState(null)
+
+  const [accountPassword, setAccountPassword] = useState('')
+  const [passphrase, setPassphrase] = useState('')
+  const [passphrase2, setPassphrase2] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
+  const [exportDone, setExportDone] = useState(false)
+
+  const inputStyle = {
+    width: '100%',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 8,
+    color: '#f5f5f5',
+    fontSize: 13,
+    padding: '8px 12px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  }
+  const labelStyle = { fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }
+  const primaryBtn = (disabled) => ({
+    width: '100%', padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+    background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc',
+  })
+  const noteStyle = {
+    fontSize: 11, lineHeight: 1.5, color: 'rgba(251,191,36,0.85)',
+    background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)',
+    borderRadius: 8, padding: '8px 10px',
+  }
+  const errStyle = {
+    fontSize: 12, color: '#fca5a5', background: 'rgba(239,68,68,0.1)',
+    border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 10px',
+  }
+  const tabStyle = (t) => ({
+    flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+    background: tab === t ? 'rgba(255,255,255,0.1)' : 'transparent',
+    border: 'none',
+    color: tab === t ? '#f5f5f5' : 'rgba(255,255,255,0.4)',
+  })
+
+  const submitImport = async (e) => {
+    e.preventDefault()
+    setImporting(true)
+    setImportErr('')
+    setResult(null)
+    try {
+      let payload
+      if (backupFile) {
+        const text = await backupFile.text()
+        let blob
+        try { blob = JSON.parse(text) } catch { throw new Error('That file is not a Vulos backup') }
+        payload = { blob, passphrase: importPassphrase }
+      } else {
+        if (!uri.trim()) { setImportErr('Paste the otpauth-migration:// link, or choose a backup file'); setImporting(false); return }
+        payload = { uri: uri.trim() }
+      }
+      const res = await fetch('/api/auth/totp/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setImportErr(body.error || `Import failed (${res.status})`)
+      } else {
+        setResult(body)
+        onDone()
+      }
+    } catch (err) {
+      setImportErr(err.message || 'Could not read that file')
+    }
+    setImporting(false)
+  }
+
+  const submitExport = async (e) => {
+    e.preventDefault()
+    setExportErr('')
+    setExportDone(false)
+    if (passphrase !== passphrase2) { setExportErr('The two backup passwords do not match'); return }
+    if (passphrase.length < 8) { setExportErr('Backup password must be at least 8 characters'); return }
+    setExporting(true)
+    try {
+      const res = await fetch('/api/auth/totp/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_password: accountPassword, passphrase }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setExportErr(body.error || `Export failed (${res.status})`)
+      } else {
+        const stamp = new Date().toISOString().slice(0, 10)
+        const url = URL.createObjectURL(new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' }))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `vulos-2fa-${stamp}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        setExportDone(true)
+        setAccountPassword('')
+        setPassphrase('')
+        setPassphrase2('')
+      }
+    } catch {
+      setExportErr('Could not reach the TOTP service')
+    }
+    setExporting(false)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div role="tablist" style={{
+        display: 'flex', gap: 4, padding: 4, borderRadius: 9,
+        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <button role="tab" aria-selected={tab === 'import'} style={tabStyle('import')} onClick={() => setTab('import')}>Import</button>
+        <button role="tab" aria-selected={tab === 'export'} style={tabStyle('export')} onClick={() => setTab('export')}>Export</button>
+      </div>
+
+      {tab === 'import' && (
+        <form onSubmit={submitImport} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
+            In Google Authenticator, tap <strong>Transfer accounts → Export</strong>, scan the QR
+            code it shows, and paste the <code>otpauth-migration://</code> link here.
+          </p>
+
+          <div>
+            <label style={labelStyle} htmlFor="totp-migration-uri">Migration link</label>
+            <input
+              id="totp-migration-uri"
+              type="text"
+              value={uri}
+              onChange={(e) => { setUri(e.target.value); setBackupFile(null); setResult(null); setImportErr('') }}
+              placeholder="otpauth-migration://offline?data=..."
+              style={inputStyle}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="totp-backup-file">…or restore a Vulos backup</label>
+            <input
+              id="totp-backup-file"
+              type="file"
+              accept=".json"
+              onChange={(e) => { setBackupFile(e.target.files?.[0] || null); setUri(''); setResult(null); setImportErr('') }}
+              style={{ ...inputStyle, padding: '6px 10px', fontSize: 12 }}
+            />
+          </div>
+
+          {backupFile && (
+            <div>
+              <label style={labelStyle} htmlFor="totp-backup-pass">Backup password</label>
+              <input
+                id="totp-backup-pass"
+                type="password"
+                value={importPassphrase}
+                onChange={(e) => setImportPassphrase(e.target.value)}
+                placeholder="The password you set when exporting"
+                style={inputStyle}
+                autoComplete="off"
+              />
+            </div>
+          )}
+
+          {importErr && <div role="alert" style={errStyle}>{importErr}</div>}
+
+          {/* Honest accounting: what landed, what did not. */}
+          {result && (
+            <div role="status" style={{
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 9, padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>Import finished</div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: '#4ade80' }}>{result.imported ?? 0}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Imported</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: (result.failed ?? 0) > 0 ? '#f87171' : 'rgba(255,255,255,0.7)' }}>
+                    {result.failed ?? 0}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Skipped</div>
+                </div>
+                {result.parsed != null && (
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{result.parsed}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Found</div>
+                  </div>
+                )}
+              </div>
+              {Array.isArray(result.warnings) && result.warnings.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {result.warnings.map((wmsg, i) => (
+                    <li key={i} style={{ fontSize: 11, color: 'rgba(251,191,36,0.85)' }}>{wmsg}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={onCancel} style={{
+              flex: 1, padding: '9px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.6)',
+            }}>
+              Done
+            </button>
+            <button type="submit" disabled={importing} style={primaryBtn(importing)}>
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {tab === 'export' && (
+        <form onSubmit={submitExport} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
+            Download an encrypted backup of your 2FA seeds. Without one, losing this
+            box means losing access to every account these codes protect.
+          </p>
+
+          <div>
+            <label style={labelStyle} htmlFor="totp-acct-pass">Your account password</label>
+            <input
+              id="totp-acct-pass"
+              type="password"
+              value={accountPassword}
+              onChange={(e) => setAccountPassword(e.target.value)}
+              placeholder="Confirm it's really you"
+              style={inputStyle}
+              autoComplete="current-password"
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="totp-exp-pass">Password for the backup file</label>
+            <input
+              id="totp-exp-pass"
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="At least 8 characters"
+              style={inputStyle}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="totp-exp-pass2">Repeat backup password</label>
+            <input
+              id="totp-exp-pass2"
+              type="password"
+              value={passphrase2}
+              onChange={(e) => setPassphrase2(e.target.value)}
+              placeholder="Repeat it"
+              style={inputStyle}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <div style={noteStyle}>
+            This password is not stored anywhere. If you lose it, the backup cannot
+            be opened — not even by us.
+          </div>
+
+          {exportErr && <div role="alert" style={errStyle}>{exportErr}</div>}
+          {exportDone && (
+            <div role="status" style={{
+              fontSize: 12, color: '#4ade80', background: 'rgba(74,222,128,0.1)',
+              border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8, padding: '8px 10px',
+            }}>
+              Backup downloaded.
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={onCancel} style={{
+              flex: 1, padding: '9px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.6)',
+            }}>
+              Done
+            </button>
+            <button
+              type="submit"
+              disabled={exporting || !accountPassword || !passphrase || !passphrase2}
+              style={primaryBtn(exporting || !accountPassword || !passphrase || !passphrase2)}
+            >
+              {exporting ? 'Exporting…' : 'Export'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}
+
 // Main Authenticator component
 export default function Authenticator() {
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showTransfer, setShowTransfer] = useState(false)
   const [fetchErr, setFetchErr] = useState(false)
 
   const loadAccounts = useCallback(async () => {
@@ -488,22 +810,52 @@ export default function Authenticator() {
             </div>
           </div>
         </div>
-        {!showAdd && (
-          <button
-            style={addBtn}
-            onClick={() => setShowAdd(true)}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.35)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
-          >
-            <span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span>
-            Add account
-          </button>
+        {!showAdd && !showTransfer && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '6px 12px', borderRadius: 8,
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.6)',
+                fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                transition: 'background 0.15s',
+              }}
+              onClick={() => setShowTransfer(true)}
+              title="Import or export your 2FA accounts"
+              aria-label="Import or export your 2FA accounts"
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+            >
+              ⇄ Import / Export
+            </button>
+            <button
+              style={addBtn}
+              onClick={() => setShowAdd(true)}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.35)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span>
+              Add account
+            </button>
+          </div>
         )}
       </div>
 
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
-        {showAdd ? (
+        {showTransfer ? (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 14 }}>
+              Import &amp; export accounts
+            </div>
+            <TransferPanel
+              onDone={loadAccounts}
+              onCancel={() => setShowTransfer(false)}
+            />
+          </div>
+        ) : showAdd ? (
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 14 }}>
               Add new account
@@ -551,16 +903,28 @@ export default function Authenticator() {
           }}>
             <div style={{ fontSize: 36 }}>⊛</div>
             <div style={{ fontSize: 13 }}>No accounts yet</div>
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{
-                marginTop: 4, padding: '7px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-                background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.35)',
-                color: '#a5b4fc', fontWeight: 500,
-              }}
-            >
-              + Add your first account
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                onClick={() => setShowAdd(true)}
+                style={{
+                  padding: '7px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                  background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.35)',
+                  color: '#a5b4fc', fontWeight: 500,
+                }}
+              >
+                + Add your first account
+              </button>
+              <button
+                onClick={() => setShowTransfer(true)}
+                style={{
+                  padding: '7px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.6)', fontWeight: 500,
+                }}
+              >
+                Import from Google Authenticator
+              </button>
+            </div>
           </div>
         ) : (
           accounts.map(account => (

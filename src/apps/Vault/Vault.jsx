@@ -137,6 +137,336 @@ const IconWand = () => (
   </svg>
 )
 
+const IconTransfer = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+    <path fillRule="evenodd" d="M3 5a1 1 0 011-1h9.586l-1.293-1.293a1 1 0 111.414-1.414l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L13.586 6H4a1 1 0 01-1-1zm14 10a1 1 0 01-1 1H6.414l1.293 1.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 111.414 1.414L6.414 14H16a1 1 0 011 1z" clipRule="evenodd" />
+  </svg>
+)
+
+// ── Import / Export helpers ──────────────────────────────────────────────────
+
+// The formats a user can bring a vault in from. `ext` drives the file picker.
+const IMPORT_FORMATS = [
+  { value: 'bitwarden', label: 'Bitwarden (.json)', ext: '.json' },
+  { value: 'chrome-csv', label: 'Chrome / Chromium (.csv)', ext: '.csv' },
+  { value: 'keepass-csv', label: 'KeePass (.csv)', ext: '.csv' },
+  { value: '1password-csv', label: '1Password (.csv)', ext: '.csv' },
+  { value: '1password-1pif', label: '1Password (.1pif)', ext: '.1pif' },
+  { value: 'encrypted', label: 'Vulos encrypted backup', ext: '.vault' },
+]
+
+// fileToBase64 reads a File into base64 without blowing the call stack on a
+// large file (String.fromCharCode(...bytes) overflows well before our size cap).
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Could not read that file'))
+    reader.onload = () => {
+      const bytes = new Uint8Array(reader.result)
+      let binary = ''
+      const CHUNK = 0x8000
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK))
+      }
+      resolve(btoa(binary))
+    }
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+// downloadBlob triggers a browser download of `data` (a Uint8Array).
+function downloadBlob(data, filename) {
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(b64)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+// ── Import / Export panel ────────────────────────────────────────────────────
+//
+// Import shows EXACTLY what happened — imported, skipped (duplicates) and failed,
+// plus any warnings the server returned. A password import that quietly drops
+// rows leaves the user believing they migrated when they did not, so there is no
+// "success" state here that hides a partial result.
+function TransferPanel({ onBack, onImported }) {
+  const [tab, setTab] = useState('import') // 'import' | 'export'
+
+  // --- import state ---
+  const [format, setFormat] = useState('bitwarden')
+  const [file, setFile] = useState(null)
+  const [filePassword, setFilePassword] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importErr, setImportErr] = useState('')
+  const [result, setResult] = useState(null)
+
+  // --- export state ---
+  const [masterPassword, setMasterPassword] = useState('')
+  const [exportPassword, setExportPassword] = useState('')
+  const [exportConfirm, setExportConfirm] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
+  const [exportDone, setExportDone] = useState(false)
+
+  const selected = IMPORT_FORMATS.find(f => f.value === format)
+
+  const handleImport = async (e) => {
+    e.preventDefault()
+    if (!file) { setImportErr('Choose a file to import'); return }
+    setImporting(true)
+    setImportErr('')
+    setResult(null)
+    try {
+      const data = await fileToBase64(file)
+      const res = await fetch('/api/auth/vault/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format, data, password: filePassword }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setImportErr(body.error || `Import failed (${res.status})`)
+      } else {
+        setResult(body)
+        onImported()
+      }
+    } catch (err) {
+      setImportErr(err.message || 'Could not read that file')
+    }
+    setImporting(false)
+  }
+
+  const handleExport = async (e) => {
+    e.preventDefault()
+    setExportErr('')
+    setExportDone(false)
+    if (exportPassword !== exportConfirm) { setExportErr('The two backup passwords do not match'); return }
+    if (exportPassword.length < 8) { setExportErr('Backup password must be at least 8 characters'); return }
+    setExporting(true)
+    try {
+      const res = await fetch('/api/auth/vault/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ master_password: masterPassword, password: exportPassword }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setExportErr(body.error || `Export failed (${res.status})`)
+      } else {
+        const stamp = new Date().toISOString().slice(0, 10)
+        downloadBlob(base64ToBytes(body.data), `vulos-vault-${stamp}.vault`)
+        setExportDone(true)
+        setMasterPassword('')
+        setExportPassword('')
+        setExportConfirm('')
+      }
+    } catch {
+      setExportErr('Could not reach the vault service')
+    }
+    setExporting(false)
+  }
+
+  const tabCls = (t) =>
+    `flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+      tab === t ? 'bg-neutral-700/70 text-white' : 'text-neutral-500 hover:text-neutral-300'
+    }`
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 shrink-0">
+        <button onClick={onBack} className="text-neutral-500 hover:text-neutral-200 transition-colors" aria-label="Back">
+          <IconBack />
+        </button>
+        <h3 className="text-sm font-semibold text-white">Import &amp; Export</h3>
+      </div>
+
+      <div className="px-4 py-3 flex flex-col gap-3">
+        {/* Tabs */}
+        <div role="tablist" className="flex gap-1 bg-neutral-900 border border-neutral-800 rounded-xl p-1">
+          <button role="tab" aria-selected={tab === 'import'} onClick={() => setTab('import')} className={tabCls('import')}>
+            Import
+          </button>
+          <button role="tab" aria-selected={tab === 'export'} onClick={() => setTab('export')} className={tabCls('export')}>
+            Export
+          </button>
+        </div>
+
+        {/* ── Import ── */}
+        {tab === 'import' && (
+          <form onSubmit={handleImport} className="flex flex-col gap-3">
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              Bring your passwords over from another password manager. Duplicates
+              (same site and username) are skipped, never overwritten.
+            </p>
+
+            <Field label="Where are they coming from?">
+              <select
+                value={format}
+                onChange={(e) => { setFormat(e.target.value); setResult(null); setImportErr('') }}
+                className={inputCls}
+              >
+                {IMPORT_FORMATS.map(f => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="File" required>
+              <input
+                type="file"
+                accept={selected?.ext}
+                onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setImportErr('') }}
+                className="w-full text-xs text-neutral-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-neutral-700 file:text-neutral-200 hover:file:bg-neutral-600 file:cursor-pointer"
+              />
+            </Field>
+
+            {format === 'encrypted' && (
+              <Field label="Backup password" required>
+                <input
+                  type="password"
+                  value={filePassword}
+                  onChange={(e) => setFilePassword(e.target.value)}
+                  placeholder="The password you set when exporting"
+                  className={inputCls}
+                  autoComplete="off"
+                />
+              </Field>
+            )}
+
+            {importErr && (
+              <p role="alert" className="text-red-400 text-xs bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+                {importErr}
+              </p>
+            )}
+
+            {/* Full, honest accounting — never a bare "success". */}
+            {result && (
+              <div role="status" className="bg-neutral-850 border border-neutral-700/60 rounded-xl p-3 flex flex-col gap-2">
+                <span className="text-xs font-medium text-neutral-300">Import finished</span>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-neutral-900 rounded-lg py-2">
+                    <div className="text-green-400 text-sm font-semibold">{result.imported ?? 0}</div>
+                    <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Imported</div>
+                  </div>
+                  <div className="bg-neutral-900 rounded-lg py-2">
+                    <div className="text-neutral-300 text-sm font-semibold">{result.skipped ?? 0}</div>
+                    <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Skipped</div>
+                  </div>
+                  <div className="bg-neutral-900 rounded-lg py-2">
+                    <div className={`text-sm font-semibold ${result.errors ? 'text-red-400' : 'text-neutral-300'}`}>
+                      {result.errors ?? 0}
+                    </div>
+                    <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Failed</div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-neutral-600">
+                  {result.parsed ?? 0} entr{(result.parsed ?? 0) === 1 ? 'y' : 'ies'} found in the file.
+                  {(result.skipped ?? 0) > 0 && ' Skipped entries were already in your vault.'}
+                </p>
+                {Array.isArray(result.warnings) && result.warnings.length > 0 && (
+                  <ul className="flex flex-col gap-1 mt-1">
+                    {result.warnings.map((wmsg, i) => (
+                      <li key={i} className="text-[11px] text-amber-400/90 bg-amber-900/15 border border-amber-800/30 rounded-md px-2 py-1">
+                        {wmsg}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={importing || !file}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default text-white rounded-lg py-2 text-sm font-medium transition-colors"
+            >
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          </form>
+        )}
+
+        {/* ── Export ── */}
+        {tab === 'export' && (
+          <form onSubmit={handleExport} className="flex flex-col gap-3">
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              Download an encrypted copy of every credential in your vault. Keep it
+              somewhere safe — anyone who has the file <em>and</em> its password has
+              your passwords.
+            </p>
+
+            <Field label="Master password" required>
+              <input
+                type="password"
+                value={masterPassword}
+                onChange={(e) => setMasterPassword(e.target.value)}
+                placeholder="Confirm it's really you"
+                className={inputCls}
+                autoComplete="current-password"
+              />
+            </Field>
+
+            <Field label="Password for the backup file" required>
+              <input
+                type="password"
+                value={exportPassword}
+                onChange={(e) => setExportPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                className={inputCls}
+                autoComplete="new-password"
+              />
+            </Field>
+
+            <Field label="Repeat backup password" required>
+              <input
+                type="password"
+                value={exportConfirm}
+                onChange={(e) => setExportConfirm(e.target.value)}
+                placeholder="Repeat it"
+                className={inputCls}
+                autoComplete="new-password"
+              />
+            </Field>
+
+            <p className="text-[11px] text-amber-400/80 bg-amber-900/15 border border-amber-800/30 rounded-lg px-3 py-2">
+              This password is not stored anywhere. If you lose it, the backup
+              cannot be opened — not even by us.
+            </p>
+
+            {exportErr && (
+              <p role="alert" className="text-red-400 text-xs bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+                {exportErr}
+              </p>
+            )}
+            {exportDone && (
+              <p role="status" className="text-green-400 text-xs bg-green-900/20 border border-green-800/40 rounded-lg px-3 py-2">
+                Backup downloaded.
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={exporting || !masterPassword || !exportPassword || !exportConfirm}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default text-white rounded-lg py-2 text-sm font-medium transition-colors"
+            >
+              {exporting ? 'Exporting…' : 'Export vault'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Unlock screen ─────────────────────────────────────────────────────────────
 function UnlockScreen({ onUnlock }) {
   const [password, setPassword] = useState('')
@@ -449,14 +779,18 @@ function EntryForm({ existing, onSave, onCancel }) {
   )
 }
 
+// Field wraps its control INSIDE the <label>. The label used to be a sibling
+// with no htmlFor, so it was associated with nothing: screen readers announced
+// the inputs as unlabelled. Wrapping gives implicit association for every form
+// control (input, select, textarea) with no id plumbing.
 function Field({ label, required, children }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-neutral-500 font-medium">
+    <label className="flex flex-col gap-1">
+      <span className="text-xs text-neutral-500 font-medium">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+      </span>
       {children}
-    </div>
+    </label>
   )
 }
 
@@ -674,7 +1008,15 @@ export default function Vault() {
       const res = await fetch('/api/auth/vault/entries')
       if (res.ok) {
         const data = await res.json()
-        setEntries(data.entries || data || [])
+        // GET /api/auth/vault/entries returns a BARE JSON ARRAY.
+        //
+        // The old code here was `setEntries(data.entries || data || [])`, which
+        // blank-screened the whole app on every unlock: for an array, `.entries`
+        // is not undefined — it is the built-in Array.prototype.entries METHOD,
+        // which is truthy. React then took that function to be a state-updater,
+        // invoked it with no receiver, and threw "Cannot convert undefined or
+        // null to object", tearing down the tree. Check the shape explicitly.
+        setEntries(Array.isArray(data) ? data : (data?.entries ?? []))
       }
     } catch { /* ignore */ }
     setLoadingEntries(false)
@@ -791,8 +1133,19 @@ export default function Vault() {
               onClick={() => setView('generator')}
               className="p-2 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-white/5 transition-colors"
               title="Password Generator"
+              aria-label="Password Generator"
             >
               <IconWand />
+            </button>
+
+            {/* Import / Export */}
+            <button
+              onClick={() => setView('transfer')}
+              className="p-2 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-white/5 transition-colors"
+              title="Import / Export"
+              aria-label="Import or export vault"
+            >
+              <IconTransfer />
             </button>
 
             {/* Add */}
@@ -831,13 +1184,22 @@ export default function Vault() {
                       <p className="text-neutral-500 text-sm font-medium">Vault is empty</p>
                       <p className="text-neutral-600 text-xs mt-1">Add your first credential to get started</p>
                     </div>
-                    <button
-                      onClick={() => setView('add')}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
-                    >
-                      <IconPlus />
-                      Add credential
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setView('add')}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+                      >
+                        <IconPlus />
+                        Add credential
+                      </button>
+                      <button
+                        onClick={() => setView('transfer')}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 text-neutral-200 text-sm font-medium transition-colors"
+                      >
+                        <IconTransfer />
+                        Import
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <p className="text-neutral-600 text-sm">No results for "{search}"</p>
@@ -867,6 +1229,11 @@ export default function Vault() {
             </div>
           )}
         </>
+      )}
+
+      {/* Import / export view */}
+      {view === 'transfer' && (
+        <TransferPanel onBack={handleBack} onImported={loadEntries} />
       )}
 
       {/* Standalone generator view */}

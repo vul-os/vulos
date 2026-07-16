@@ -22,16 +22,115 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/crypto/argon2"
+)
+
+// ─── Hostile-input bounds ────────────────────────────────────────────────────
+//
+// The import side parses an attacker-supplyable protobuf (the user pastes a QR
+// payload they scanned from *somewhere*). Every limit below closes a way to
+// exhaust the box:
+//
+//   - maxTOTPBody:          unbounded json.Decoder on r.Body is an OOM primitive.
+//   - maxMigrationAccounts: repeated field 1 lets one URI declare millions of
+//     accounts; each one is a keychain re-encrypt.
+//   - minExportPassphrase:  the export blob is every 2FA seed the user has.
+const (
+	maxTOTPBody          = 4 << 20 // 4 MiB request body
+	maxMigrationAccounts = 1000    // accounts per otpauth-migration:// payload
+	minExportPassphrase  = 8
 )
 
 // ─── RegisterMigrationHandlers ───────────────────────────────────────────────
 
 // RegisterMigrationHandlers wires the 2 migration endpoints into mux.
-// The orchestrator calls this alongside the existing RegisterHandlers so that
-// handlers.go is never modified.
+//
+// AUTHORISATION. Mounted on the SAME mux as the rest of the TOTP surface, so
+// both routes sit behind auth.Handler.Middleware: it deletes any client-supplied
+// X-User-ID and re-sets it from the validated session, 401s any non-public path
+// without one, and applies the CSRF content-type/Origin check to cookie-authed
+// POSTs. The store these handlers open is keyed by that SERVER-DERIVED user id —
+// no account id is read from the request, so no caller can address another
+// user's seeds.
+//
+// /export additionally requires an account-password STEP-UP (see handleExport).
 func RegisterMigrationHandlers(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc("POST /api/auth/totp/import", h.handleImport)
 	mux.HandleFunc("POST /api/auth/totp/export", h.handleExport)
+}
+
+// noStoreAV marks a response as never-cacheable. A TOTP export body is every 2FA
+// seed the user has; it must not be written to any cache.
+func noStoreAV(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+}
+
+// ─── Step-up gate ────────────────────────────────────────────────────────────
+
+// Reauthenticator verifies a user's PRIMARY account password (the OS login
+// password), given the server-derived user id. Wired in main.go from the auth
+// store; see Handler.SetReauthenticator.
+type Reauthenticator func(userID, password string) bool
+
+// stepUpGate throttles failed step-up attempts — both to stop an online
+// brute-force of the account password and to bound the bcrypt work one caller
+// can force. Fails closed.
+type stepUpGate struct {
+	mu    sync.Mutex
+	fails map[string]*stepUpState
+}
+
+type stepUpState struct {
+	count int
+	until time.Time
+}
+
+const (
+	stepUpMaxFailures = 5
+	stepUpLockout     = 15 * time.Minute
+)
+
+func (g *stepUpGate) locked(userID string) (bool, time.Duration) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	st, ok := g.fails[userID]
+	if !ok {
+		return false, 0
+	}
+	if time.Now().After(st.until) {
+		delete(g.fails, userID)
+		return false, 0
+	}
+	if st.count >= stepUpMaxFailures {
+		return true, time.Until(st.until)
+	}
+	return false, 0
+}
+
+func (g *stepUpGate) fail(userID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.fails == nil {
+		g.fails = make(map[string]*stepUpState)
+	}
+	st, ok := g.fails[userID]
+	if !ok || time.Now().After(st.until) {
+		st = &stepUpState{}
+		g.fails[userID] = st
+	}
+	st.count++
+	st.until = time.Now().Add(stepUpLockout)
+}
+
+func (g *stepUpGate) success(userID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.fails, userID)
 }
 
 // ─── Proto hand-decoder ──────────────────────────────────────────────────────
@@ -69,13 +168,21 @@ func (p *protoReader) readVarint() (uint64, error) {
 }
 
 // readBytes reads a length-delimited bytes field (wire type 2).
+//
+// SECURITY: the length is an attacker-controlled varint, i.e. any uint64. The
+// bounds check MUST be done in uint64 against the bytes actually remaining.
+// Doing it as `p.pos + int(n) > len(p.buf)` is a classic integer-overflow hole:
+// for n = 2^63 the int conversion goes NEGATIVE, the comparison passes, and the
+// following make([]byte, n) either panics or tries to allocate exabytes. A
+// 40-byte otpauth-migration:// URI is then enough to take the box down.
 func (p *protoReader) readBytes() ([]byte, error) {
 	n, err := p.readVarint()
 	if err != nil {
 		return nil, err
 	}
-	if p.pos+int(n) > len(p.buf) {
-		return nil, fmt.Errorf("authvault/proto: LEN field truncated (need %d, have %d)", n, len(p.buf)-p.pos)
+	remaining := uint64(len(p.buf) - p.pos)
+	if n > remaining {
+		return nil, fmt.Errorf("authvault/proto: LEN field truncated (need %d, have %d)", n, remaining)
 	}
 	out := make([]byte, n)
 	copy(out, p.buf[p.pos:p.pos+int(n)])
@@ -258,6 +365,12 @@ func decodeMigrationPayload(data []byte) (*migrationPayload, error) {
 		case 1: // otp_parameters (repeated, length-delimited)
 			if wt != 2 {
 				return nil, fmt.Errorf("authvault/proto: field 1 wrong wire type %d", wt)
+			}
+			// Bound the repeat count. Each account costs a keychain re-encrypt on
+			// import; an unbounded repeated field is a cheap way to make one
+			// request do unbounded work.
+			if len(mp.OtpParameters) >= maxMigrationAccounts {
+				return nil, fmt.Errorf("authvault/proto: too many accounts (limit %d)", maxMigrationAccounts)
 			}
 			raw, err := r.readBytes()
 			if err != nil {
@@ -489,19 +602,123 @@ type exportEntry struct {
 }
 
 // ExportBlob is the encrypted export payload returned by POST /api/auth/totp/export.
+//
+// TWO VERSIONS, and the difference is the whole point of having an export:
+//
+//	v1 — encrypted with the store's keychainKey, which is derived from
+//	     ~/.vulos/auth/totp/<user>/keyfile. That key never leaves this box, so a
+//	     v1 blob is ONLY decryptable ON THIS BOX. As a backup it is worthless:
+//	     the scenario an export exists for is "the box is gone", and in that
+//	     scenario the key is gone too. v1 is still accepted on IMPORT (a
+//	     same-box restore is legitimate) but is no longer produced.
+//
+//	v2 — encrypted with a key derived (Argon2id) from a passphrase the USER
+//	     supplies. Survives the box. This is what /export now emits.
 type ExportBlob struct {
 	// Nonce is the 12-byte GCM nonce, base64-encoded.
 	Nonce string `json:"nonce"`
 	// Ciphertext is the AES-256-GCM encrypted JSON of []exportEntry, base64-encoded.
 	Ciphertext string `json:"ciphertext"`
-	// Version is always 1 for this format.
+	// Version is 1 (box keychain key) or 2 (user passphrase).
 	Version int `json:"version"`
 	// Count is the number of accounts in the blob.
 	Count int `json:"count"`
+	// Salt is the base64 Argon2id salt. v2 only.
+	Salt string `json:"salt,omitempty"`
+}
+
+// Export blob versions.
+const (
+	exportVersionBoxKey     = 1 // legacy: AES key = store keychain key (box-bound)
+	exportVersionPassphrase = 2 // portable: AES key = Argon2id(passphrase, salt)
+)
+
+// Argon2id parameters for passphrase-derived export keys. Matched to credvault's
+// vault KDF (OWASP minimums): 64 MiB, t=3, p=4, 32-byte key.
+const (
+	expArgonMemory      uint32 = 64 * 1024
+	expArgonTime        uint32 = 3
+	expArgonParallelism uint8  = 4
+	expArgonKeyLen      uint32 = 32
+	expSaltLen                 = 32
+)
+
+func deriveExportKey(passphrase string, salt []byte) []byte {
+	return argon2.IDKey([]byte(passphrase), salt, expArgonTime, expArgonMemory, expArgonParallelism, expArgonKeyLen)
+}
+
+// collectExportEntries snapshots every account + secret in the store.
+func collectExportEntries(store *Store) []exportEntry {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	entries := make([]exportEntry, 0, len(store.accounts))
+	for id, acc := range store.accounts {
+		secret, ok := store.secrets[id]
+		if !ok {
+			continue
+		}
+		entries = append(entries, exportEntry{
+			ID:        id,
+			Service:   acc.Service,
+			Issuer:    acc.Issuer,
+			AccountID: acc.AccountID,
+			Algorithm: acc.Algorithm,
+			Digits:    acc.Digits,
+			Period:    acc.Period,
+			Secret:    secret,
+		})
+	}
+	return entries
+}
+
+// buildPortableExportBlob encrypts every TOTP seed under a key derived from the
+// user's passphrase, producing a blob that can be restored on a DIFFERENT box.
+func buildPortableExportBlob(store *Store, passphrase string) (*ExportBlob, error) {
+	if len(passphrase) < minExportPassphrase {
+		return nil, fmt.Errorf("authvault/export: passphrase must be at least %d characters", minExportPassphrase)
+	}
+	entries := collectExportEntries(store)
+
+	plaintext, err := json.Marshal(entries)
+	if err != nil {
+		return nil, fmt.Errorf("authvault/export: marshal: %w", err)
+	}
+
+	salt := make([]byte, expSaltLen)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return nil, fmt.Errorf("authvault/export: salt: %w", err)
+	}
+	key := deriveExportKey(passphrase, salt)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("authvault/export: AES: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("authvault/export: GCM: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("authvault/export: nonce: %w", err)
+	}
+	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
+
+	return &ExportBlob{
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+		Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+		Version:    exportVersionPassphrase,
+		Count:      len(entries),
+		Salt:       base64.StdEncoding.EncodeToString(salt),
+	}, nil
 }
 
 // buildExportBlob serialises all accounts (including their secrets) into an
 // AES-256-GCM encrypted blob using the store's keychain key.
+//
+// Deprecated for the HTTP surface: this produces a v1 (box-bound) blob — see
+// ExportBlob. /api/auth/totp/export emits v2 via buildPortableExportBlob.
+// Retained for same-box snapshot/restore.
 func buildExportBlob(store *Store) (*ExportBlob, error) {
 	store.mu.RLock()
 	entries := make([]exportEntry, 0, len(store.accounts))
@@ -550,36 +767,72 @@ func buildExportBlob(store *Store) (*ExportBlob, error) {
 	}, nil
 }
 
-// importExportBlob decrypts an ExportBlob and adds all entries into a store.
+// importExportBlob decrypts a v1 (box-key) ExportBlob and adds all entries into
+// a store. Same-box restore only — see ExportBlob.
 func importExportBlob(store *Store, blob *ExportBlob) ([]*Account, error) {
+	accounts, _, err := importBlob(store, blob, "")
+	return accounts, err
+}
+
+// importBlob decrypts an ExportBlob of either version and adds its entries.
+//
+// v2 needs the passphrase the user chose at export time; v1 is unwrapped with
+// this box's keychain key. Returns the accounts that landed AND the per-account
+// failures — a blob whose 5th seed is malformed must not report "error" while
+// silently having stored the first four with no word about it.
+func importBlob(store *Store, blob *ExportBlob, passphrase string) ([]*Account, []string, error) {
 	nonce, err := base64.StdEncoding.DecodeString(blob.Nonce)
 	if err != nil {
-		return nil, fmt.Errorf("authvault/import-blob: nonce decode: %w", err)
+		return nil, nil, fmt.Errorf("authvault/import-blob: nonce decode: %w", err)
 	}
 	ct, err := base64.StdEncoding.DecodeString(blob.Ciphertext)
 	if err != nil {
-		return nil, fmt.Errorf("authvault/import-blob: ciphertext decode: %w", err)
+		return nil, nil, fmt.Errorf("authvault/import-blob: ciphertext decode: %w", err)
 	}
 
-	block, err := aes.NewCipher(store.keychainKey)
+	var key []byte
+	switch blob.Version {
+	case exportVersionPassphrase:
+		if passphrase == "" {
+			return nil, nil, fmt.Errorf("authvault/import-blob: passphrase required for this export")
+		}
+		salt, err := base64.StdEncoding.DecodeString(blob.Salt)
+		if err != nil || len(salt) != expSaltLen {
+			return nil, nil, fmt.Errorf("authvault/import-blob: malformed salt")
+		}
+		key = deriveExportKey(passphrase, salt)
+	case exportVersionBoxKey, 0:
+		// Legacy same-box blob: unwrap with this box's keychain key.
+		key = store.keychainKey
+	default:
+		return nil, nil, fmt.Errorf("authvault/import-blob: unsupported export version %d", blob.Version)
+	}
+
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("authvault/import-blob: AES: %w", err)
+		return nil, nil, fmt.Errorf("authvault/import-blob: AES: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("authvault/import-blob: GCM: %w", err)
+		return nil, nil, fmt.Errorf("authvault/import-blob: GCM: %w", err)
 	}
 	plaintext, err := gcm.Open(nil, nonce, ct, nil)
 	if err != nil {
-		return nil, fmt.Errorf("authvault/import-blob: decrypt: %w", err)
+		// AEAD failure — wrong passphrase, wrong box, or tampered blob. Do not
+		// distinguish: that difference is an oracle.
+		return nil, nil, fmt.Errorf("authvault/import-blob: decrypt: wrong passphrase or corrupted export")
 	}
 
 	var entries []exportEntry
 	if err := json.Unmarshal(plaintext, &entries); err != nil {
-		return nil, fmt.Errorf("authvault/import-blob: unmarshal: %w", err)
+		return nil, nil, fmt.Errorf("authvault/import-blob: unmarshal: %w", err)
+	}
+	if len(entries) > maxMigrationAccounts {
+		return nil, nil, fmt.Errorf("authvault/import-blob: export contains %d accounts, limit is %d", len(entries), maxMigrationAccounts)
 	}
 
 	var imported []*Account
+	var failures []string
 	for _, e := range entries {
 		acc := &Account{
 			ID:        generateID(),
@@ -592,11 +845,12 @@ func importExportBlob(store *Store, blob *ExportBlob) ([]*Account, error) {
 		}
 		a, err := store.addAccount(acc, e.Secret)
 		if err != nil {
-			return imported, fmt.Errorf("authvault/import-blob: account %q: %w", e.Service, err)
+			failures = append(failures, fmt.Sprintf("%s: could not be stored", e.Service))
+			continue
 		}
 		imported = append(imported, a)
 	}
-	return imported, nil
+	return imported, failures, nil
 }
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
@@ -607,17 +861,27 @@ func importExportBlob(store *Store, blob *ExportBlob) ([]*Account, error) {
 //	{ "uri": "otpauth-migration://offline?data=..." }  — Google Authenticator export
 //	{ "blob": { "nonce":..., "ciphertext":..., "version":1 } } — encrypted Vula blob
 func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
+	// SERVER-DERIVED identity: the auth middleware stripped any attacker-supplied
+	// X-User-ID and re-set it from the session. No account id is read from the
+	// body, so a caller cannot write into someone else's TOTP store.
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
 		writeJSONErr(w, 401, "unauthorized")
 		return
 	}
+	noStoreAV(w)
 
 	var req struct {
-		URI  string      `json:"uri"`
-		Blob *ExportBlob `json:"blob"`
+		URI        string      `json:"uri"`
+		Blob       *ExportBlob `json:"blob"`
+		Passphrase string      `json:"passphrase"` // for a v2 (portable) blob
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// Bound the body before decoding — an unbounded decoder is an OOM primitive.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTOTPBody)).Decode(&req); err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			writeJSONErr(w, 413, fmt.Sprintf("import too large (limit %d MiB)", maxTOTPBody>>20))
+			return
+		}
 		writeJSONErr(w, 400, "invalid request body")
 		return
 	}
@@ -628,20 +892,22 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 
 	store, err := h.storeFor(userID)
 	if err != nil {
-		writeJSONErr(w, 500, err.Error())
+		writeJSONErr(w, 500, "totp store unavailable")
 		return
 	}
 
 	if req.Blob != nil {
-		// Encrypted blob import (Vula → Vula).
-		accounts, err := importExportBlob(store, req.Blob)
+		// Encrypted blob import (Vulos → Vulos), v1 box-key or v2 passphrase.
+		accounts, failures, err := importBlob(store, req.Blob, req.Passphrase)
 		if err != nil {
 			writeJSONErr(w, 400, err.Error())
 			return
 		}
 		writeJSONOK(w, map[string]any{
 			"imported": len(accounts),
+			"failed":   len(failures),
 			"accounts": accounts,
+			"warnings": failures,
 		})
 		return
 	}
@@ -649,41 +915,100 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 	// Google Authenticator otpauth-migration:// import.
 	mp, err := ParseMigrationURI(req.URI)
 	if err != nil {
-		writeJSONErr(w, 400, err.Error())
+		// Generic: a decoder error can quote payload bytes, and those bytes are
+		// 2FA seeds.
+		writeJSONErr(w, 400, "could not read migration QR payload — expected otpauth-migration://offline?data=…")
 		return
 	}
 
 	accounts, errs := importIntoStore(store, mp.OtpParameters)
-	var errStrings []string
+	// Report EVERYTHING: parsed, imported, skipped/failed. A migration that
+	// silently drops 3 of 12 seeds locks the user out of 3 accounts and they
+	// find out months later.
+	errStrings := make([]string, 0, len(errs))
 	for _, e := range errs {
 		errStrings = append(errStrings, e.Error())
 	}
 
 	writeJSONOK(w, map[string]any{
+		"parsed":   len(mp.OtpParameters),
 		"imported": len(accounts),
+		"failed":   len(errStrings),
 		"accounts": accounts,
 		"warnings": errStrings,
 	})
 }
 
 // handleExport handles POST /api/auth/totp/export.
-// Returns an encrypted blob that can be re-imported via handleImport.
+//
+// Request body (JSON):
+//
+//	{
+//	  "account_password": "<the user's OS login password — STEP-UP>",
+//	  "passphrase":       "<passphrase that will encrypt the export file>"
+//	}
+//
+// SECURITY. The response is every TOTP seed the user owns — a full 2FA
+// compromise for every account they protect. A session cookie is not sufficient
+// authorisation for that: XSS and CSRF both ride the cookie. So export demands
+// the account password again, via the Reauthenticator wired in main.go, and
+// FAILS CLOSED (503) if no reauthenticator was wired — an unwired gate must
+// never degrade into an open one. Failed attempts are throttled.
+//
+// The blob is encrypted with a key derived from `passphrase`, NOT with the box's
+// keychain key, so the backup is still readable after the box is gone. That is
+// the entire reason an export exists.
 func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
 		writeJSONErr(w, 401, "unauthorized")
 		return
 	}
+	noStoreAV(w)
 
-	store, err := h.storeFor(userID)
-	if err != nil {
-		writeJSONErr(w, 500, err.Error())
+	var req struct {
+		AccountPassword string `json:"account_password"`
+		Passphrase      string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
+		writeJSONErr(w, 400, "invalid request body")
+		return
+	}
+	if len(req.Passphrase) < minExportPassphrase {
+		writeJSONErr(w, 400, fmt.Sprintf("export passphrase must be at least %d characters", minExportPassphrase))
 		return
 	}
 
-	blob, err := buildExportBlob(store)
+	// Step-up. Fail CLOSED when unwired.
+	reauth := h.reauthenticator()
+	if reauth == nil {
+		writeJSONErr(w, 503, "export unavailable: re-authentication is not configured")
+		return
+	}
+	if req.AccountPassword == "" {
+		writeJSONErr(w, 401, "account password is required to export your 2FA seeds")
+		return
+	}
+	if locked, retry := h.stepUp().locked(userID); locked {
+		writeJSONErr(w, 429, fmt.Sprintf("too many failed attempts — try again in %d minute(s)", int(retry.Minutes())+1))
+		return
+	}
+	if !reauth(userID, req.AccountPassword) {
+		h.stepUp().fail(userID)
+		writeJSONErr(w, 401, "wrong account password")
+		return
+	}
+	h.stepUp().success(userID)
+
+	store, err := h.storeFor(userID)
 	if err != nil {
-		writeJSONErr(w, 500, err.Error())
+		writeJSONErr(w, 500, "totp store unavailable")
+		return
+	}
+
+	blob, err := buildPortableExportBlob(store, req.Passphrase)
+	if err != nil {
+		writeJSONErr(w, 500, "export failed")
 		return
 	}
 
