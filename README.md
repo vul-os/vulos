@@ -130,9 +130,8 @@ detail, including the Go module strategy that lets cloud consume this repo, is i
 > SQLite out of the box; the cloud pricing tables Postgres carries are simply
 > absent, so every metered path is free.
 
-The fastest way to see the whole suite — Workspace front door, the OS as your
-local control plane, mail, office, board, talk, meet, and a private-AI gateway —
-is the sovereign `docker compose` stack in [**docs/SELF-HOST.md**](docs/SELF-HOST.md):
+The fastest way to bring up the control plane alongside the OS and app suite is
+the sovereign `docker compose` stack in [**docs/SELF-HOST.md**](docs/SELF-HOST.md):
 
 ```sh
 docker compose -f docker-compose.sovereign.yml up --build
