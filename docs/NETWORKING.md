@@ -12,13 +12,14 @@ If you remember one thing: **you never *have* to port-forward a Vulos box.** Eve
 
 A quick map of the paths a request can take:
 
-```
-                       ┌─────────────────────────────┐
-  client ── internet ──┤ vulos-relay (fallback path)  │──outbound tunnel──┐
-                       └─────────────────────────────┘                    │
-  client ── internet ────────── direct TLS :443 (opt-in) ────────────────┤
-                                                                          ▼
-  client ── LAN ─────────────── vulos.local / box.<id>.lan.vulos.org ──▶ box
+```mermaid
+flowchart LR
+  C(["client"]) -->|"internet · default"| R["vulos-relay<br/>(fallback path)"]
+  C -->|"internet · opt-in"| D["direct TLS :443"]
+  C -->|"LAN"| L["vulos.local /<br/>box.&lt;id&gt;.lan.vulos.org"]
+  R -->|"outbound tunnel"| B["your box<br/>one authenticated HTTP handler"]
+  D --> B
+  L --> B
 ```
 
 All three paths land on the **same** authenticated HTTP handler. There is no "trusted because it came from the LAN" or "trusted because it came direct" bypass anywhere in the chain.

@@ -289,17 +289,13 @@ The full variable reference, including the self-host bundle's `/etc/vulos/storag
 
 ### How a grant is minted (mental model)
 
-```
-Files app ── POST /api/files/download-grant ──▶ Files service
-                                                  │ 1. permission check (viewer+ ?)
-                                                  ▼
-                                            Grant broker
-                              ┌───────────────────┼──────────────────────┐
-                              ▼                   ▼                      ▼
-                     presigned GET URL   object-scoped STS creds   local path under
-                     (reads, any S3)     (writes, STS on)          ~/.vulos/storage
-                                                                   (standalone; OS
-                                                                    serves the bytes)
+```mermaid
+flowchart TD
+  A["Files app"] -->|"POST /api/files/download-grant"| S["Files service"]
+  S -->|"1. permission check (viewer+ ?)"| GB["Grant broker"]
+  GB --> P["presigned GET URL<br/>(reads, any S3)"]
+  GB --> STS["object-scoped STS creds<br/>(writes, STS on)"]
+  GB --> LP["local path under ~/.vulos/storage<br/>(standalone; OS serves the bytes)"]
 ```
 
 Every grant carries an expiry (15 minutes by default) and names exactly one object. The permission check always happens before the mint — an unauthorized caller never receives a grant of any kind.
