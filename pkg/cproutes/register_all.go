@@ -128,9 +128,6 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// NOT wired by this zero-config default (each is fail-closed on a required
 	// secret / needs a store-opening Wire* helper that still lives in the
 	// commercial module — a configured or commercial composition root mounts them):
-	//   - OIDC provider (WireOAuthProvider): refuses to run without INTEGRATIONS_KEK
-	//     (it will not sign id_tokens with an ephemeral key). Wire it explicitly
-	//     once the key is set.
 	//   - fleet + invite-accept, enroll + boot-enroll, integrations, the storage
 	//     service (RegisterStorage/RegisterFiles/RegisterAccountExport), storagesel,
 	//     DNS plane, routing/relay status, CDN, edge, compliance, cloud-home,

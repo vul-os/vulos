@@ -50,10 +50,9 @@ func (s *Store) EmailForUserID(ctx context.Context, userID string) (string, erro
 	return email, nil
 }
 
-// ProfileByID returns the email + verification flag for a user ULID, used by
-// the OIDC provider (internal/oauthprovider) to populate id_token / userinfo
-// claims. It returns ErrNotFound when no such account exists so the provider
-// can fail closed rather than minting a token for a deleted user.
+// ProfileByID returns the email + verification flag for a user ULID. It returns
+// ErrNotFound when no such account exists so callers can fail closed rather than
+// acting on a deleted user.
 func (s *Store) ProfileByID(ctx context.Context, userID string) (email string, emailVerified bool, err error) {
 	var verified int
 	err = s.db.QueryRowContext(ctx,
