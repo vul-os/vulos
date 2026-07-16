@@ -10,7 +10,7 @@ CP_BIN   ?= $(BIN_DIR)/cp
 VERSION  ?= $(shell cat VERSION 2>/dev/null || echo dev)
 LDFLAGS  := -X main.version=$(VERSION)
 
-.PHONY: all build run test vet tidy fmt clean
+.PHONY: all build run test vet tidy fmt clean screenshots
 
 all: build
 
@@ -43,3 +43,7 @@ fmt:
 ## clean: remove build artifacts
 clean:
 	rm -rf $(BIN_DIR)
+
+## screenshots: render the admin console to docs/assets/screenshots/ (needs Node + Playwright)
+screenshots:
+	cd scripts/screenshots && npm install --silent && npx playwright install chromium && npm run screenshots

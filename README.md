@@ -44,6 +44,34 @@ that exist only because we charge money.
 > box. Want commercial billing? The private `vulos-cloud` layer injects a real
 > provider into that same seam — see [the two-repo model](#the-two-repo-model).
 
+## Screenshots
+
+The operator console is **server-rendered** (plain `html/template`, no JS
+framework) and ships in this repo — the same `pkg/superadmin` and `pkg/security`
+handlers + `admin.css` the control plane serves. Every image below is that real
+UI, seeded with fabricated demo data and captured headlessly. Regenerate any
+time with **`make screenshots`** (see [below](#regenerating-the-screenshots)).
+
+<div align="center">
+
+<img src="docs/assets/screenshots/dashboard.png" alt="Admin dashboard — fleet billing cockpit and live audit feed" width="900" />
+
+<em>Dashboard — fleet billing cockpit (MRR, per-product cost rollup) over the live, hash-chained audit feed.</em>
+
+</div>
+
+| | |
+|:---:|:---:|
+| <img src="docs/assets/screenshots/security-dashboard.png" width="420" alt="Security dashboard" /><br/><sub><b>Security dashboard</b> — WAF hits, bot scores, ATO reviews, CT-log certs, egress anomalies</sub> | <img src="docs/assets/screenshots/billing-recon.png" width="420" alt="Billing reconciliation" /><br/><sub><b>Billing reconciliation</b> — revenue vs COGS per tier, blended margin, drift flags</sub> |
+| <img src="docs/assets/screenshots/analytics.png" width="420" alt="Analytics" /><br/><sub><b>Analytics</b> — DAU/MAU and per-product 7-day usage sparklines</sub> | <img src="docs/assets/screenshots/relay.png" width="420" alt="Relay & usage" /><br/><sub><b>Relay &amp; usage</b> — PoP health per region, per-account GB &amp; overage</sub> |
+| <img src="docs/assets/screenshots/accounts.png" width="420" alt="Accounts" /><br/><sub><b>Accounts</b> — search + suspend/refund/reset, every action audit-logged</sub> | <img src="docs/assets/screenshots/pricing.png" width="420" alt="Pricing" /><br/><sub><b>Pricing</b> — SKU catalogue with USD list price and the live ZAR actually charged</sub> |
+| <img src="docs/assets/screenshots/regions.png" width="420" alt="Regions" /><br/><sub><b>Regions</b> — per-region egress cost, relay price, compute multiplier, real spend</sub> | <img src="docs/assets/screenshots/incidents.png" width="420" alt="Incidents" /><br/><sub><b>Incidents</b> — status-page incidents and scheduled maintenance</sub> |
+| <img src="docs/assets/screenshots/auditlog.png" width="420" alt="Audit log" /><br/><sub><b>Audit log</b> — tamper-evident, hash-chained, actor/action filters</sub> | <img src="docs/assets/screenshots/login.png" width="420" alt="Operator login" /><br/><sub><b>Operator login</b> — password + TOTP, then a WebAuthn hardware-key step-up</sub> |
+
+<sub>The full gallery (orgs, org detail, migrations, reserved handles, account detail, maintenance) lives in
+[`docs/assets/screenshots/`](docs/assets/screenshots/). The console ships a single deliberate dark theme; the
+security dashboard is light — neither themes dynamically, so each is shown in its canonical look.</sub>
+
 ## Features
 
 Everything below ships as Go packages in this repo. The self-host binary
@@ -191,6 +219,24 @@ provider directly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingpr
 | [Architecture](docs/ARCHITECTURE.md) | The two-repo split, the `cpserver` builder, the seams, and how vulos-cloud consumes this repo |
 | [Self-host](docs/SELF-HOST.md) | Build, configure, and run the control-plane binary on your own host |
 | [Admin console](docs/ADMIN-CONSOLE.md) | The hardened operator surface — gates, pages, provider registry, audit |
+
+### Regenerating the screenshots
+
+The screenshotter lives in [`scripts/screenshots/`](scripts/screenshots/) — an
+isolated Node tool (its own `package.json`; not part of the Go module). It
+drives the real console templates through the same `pkg/superadmin` /
+`pkg/security` handlers the server mounts, seeded with fabricated demo data in
+an in-memory database (a Go dump harness gated behind `SCREENSHOT_DUMP=1`), then
+captures each page with headless Chromium. **No operator data is ever touched.**
+
+```sh
+make screenshots
+# or, manually:
+cd scripts/screenshots && npm install && npx playwright install chromium
+node capture.mjs            # → docs/assets/screenshots/*.png
+```
+
+Requires Go on `PATH` (to render the pages) and Chromium (via Playwright).
 
 ## Contributing
 

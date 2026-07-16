@@ -50,3 +50,6 @@ playwright-report/
 *.swp
 tmp/
 .claude
+
+# screenshotter tooling deps
+scripts/screenshots/node_modules/

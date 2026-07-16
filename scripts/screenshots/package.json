@@ -1,0 +1,14 @@
+{
+  "name": "vulos-management-screenshots",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Playwright screenshotter for the vulos-management OSS admin console. Isolated Node tooling — not part of the Go module.",
+  "scripts": {
+    "screenshots": "node capture.mjs",
+    "postinstall-hint": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}
