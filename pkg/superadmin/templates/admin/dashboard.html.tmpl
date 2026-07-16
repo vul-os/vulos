@@ -1,0 +1,54 @@
+{{define "dashboard"}}
+<h1>Dashboard</h1>
+<div class="tiles">
+  <div class="tile"><div class="num">{{humanInt .SuperAdminCount}}</div><div class="lbl">Super-admins</div></div>
+  <div class="tile"><div class="num">{{humanInt .AccountCount}}</div><div class="lbl">Accounts</div></div>
+  {{if .HasFleet}}
+  <div class="tile"><div class="num">{{.MRRZAR}}</div><div class="lbl">Est. MRR (ZAR)</div></div>
+  <div class="tile"><div class="num">{{humanInt .Fleet.SuspendedCount}}</div><div class="lbl">Suspended</div></div>
+  {{end}}
+</div>
+
+{{if .HasFleet}}
+<h2>Billing Cockpit — Fleet-wide Usage &amp; Cost</h2>
+{{$maxCost := maxProductCost .Fleet.Products}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Product</th><th class="wrap">Aggregate usage (all accounts)</th><th>Est. cost (USD)</th><th style="width:42%">Cost share</th></tr></thead>
+<tbody>
+{{range .Fleet.Products}}
+<tr>
+  <td>{{.Product}}</td>
+  <td class="wrap">{{.Usage}}</td>
+  <td>{{if gt .EstCostUSDCts 0}}${{printf "%.2f" (centsToDollars .EstCostUSDCts)}}{{else}}—{{end}}</td>
+  <td>
+    {{$pct := barPct .EstCostUSDCts $maxCost}}
+    <svg class="bar" height="14" viewBox="0 0 100 14" preserveAspectRatio="none" role="img" aria-label="{{printf "%d%%" $pct}} of fleet cost">
+      <rect x="0" y="2" width="100" height="10" fill="#1a1a1a" stroke="#333" stroke-width="0.5"></rect>
+      {{if gt $pct 0}}<rect x="0" y="2" width="{{$pct}}" height="10" fill="#3b82f6"></rect>{{end}}
+    </svg>
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p class="ro">Usage summed from the same metered_events store enforcement reads; costs are estimates from published per-unit rates (LLM as recorded, meet at 1¢/participant-min).</p>
+{{end}}
+
+<h2>Recent Audit Events</h2>
+{{if .AuditRows}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead>
+<tbody>
+{{range .AuditRows}}
+<tr><td>{{.Ts}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Target}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<div class="empty">No audit events yet.</div>
+{{end}}
+{{end}}

@@ -1,0 +1,128 @@
+{{define "billing_recon"}}
+<h1>Billing Reconciliation</h1>
+
+{{if .HasData}}
+<div class="tiles">
+  <div class="tile"><div class="num">${{fmtFloat2 .Result.TotalRevenueUSD}}</div><div class="lbl">Revenue (USD, period)</div></div>
+  <div class="tile"><div class="num">${{fmtFloat2 .Result.TotalCOGSUSD}}</div><div class="lbl">Est. COGS (USD)</div></div>
+  <div class="tile">
+    <div class="num {{driftClass .Result.BlendedStatus}}">{{fmtFloat1 .Result.BlendedMarginPct}}%</div>
+    <div class="lbl">Blended margin (model: {{fmtFloat1 .Result.ModelMarginPct}}%)</div>
+  </div>
+  <div class="tile"><div class="num">{{.Result.UncollectedPastDue}}</div><div class="lbl">past_due uncollected</div></div>
+</div>
+
+{{if .Result.ByTier}}
+<h2>Per-tier summary</h2>
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Tier</th>
+  <th>Accounts</th>
+  <th>Revenue (USD)</th>
+  <th>COGS (USD)</th>
+  <th>Margin %</th>
+  <th>Model %</th>
+  <th>Delta pp</th>
+  <th>Status</th>
+</tr></thead>
+<tbody>
+{{range .Result.ByTier}}
+<tr>
+  <td>{{.Tier}}</td>
+  <td>{{.AccountCount}}</td>
+  <td>${{fmtFloat2 .TotalRevenueUSD}}</td>
+  <td>${{fmtFloat2 .TotalCOGSUSD}}</td>
+  <td>{{fmtFloat1 .MarginPct}}%</td>
+  <td>{{fmtFloat1 .ModelMarginPct}}%</td>
+  <td>{{fmtFloat1 .DeltaPP}}pp</td>
+  <td><span class="{{driftClass .Status}}">{{.Status}}</span></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+
+{{if .Result.Drifted}}
+<h2>Drift Flags — anomalous tenants</h2>
+<p class="warn-note">These accounts have usage-cost drift from the billing model. Review and action as appropriate.</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Account</th>
+  <th>Tier</th>
+  <th>State</th>
+  <th>Revenue</th>
+  <th>Est. COGS</th>
+  <th>Margin</th>
+  <th>Flags</th>
+</tr></thead>
+<tbody>
+{{range .Result.Drifted}}
+<tr>
+  <td><a href="/superadmin/accounts/{{.AccountID}}">{{.Email}}</a></td>
+  <td>{{.Tier}}</td>
+  <td>{{.State}}</td>
+  <td>${{fmtFloat2 .RevenueUSD}}</td>
+  <td>${{fmtFloat2 .COGSEstUSD}}</td>
+  <td>{{fmtFloat1 .MarginPct}}%</td>
+  <td class="warn">{{joinStrings .DriftFlags " · "}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+
+{{if .Result.Tenants}}
+<h2>Tenant reconciliation (top {{len .Result.Tenants}} by COGS)</h2>
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Account</th>
+  <th>Tier</th>
+  <th>State</th>
+  <th>Revenue (USD)</th>
+  <th>Price/mo (USD)</th>
+  <th>Est. COGS (USD)</th>
+  <th>Margin %</th>
+  <th>Drift</th>
+</tr></thead>
+<tbody>
+{{range .Result.Tenants}}
+<tr {{if hasDrift .DriftFlags}}class="row-warn"{{end}}>
+  <td><a href="/superadmin/accounts/{{.AccountID}}">{{.Email}}</a></td>
+  <td>{{.Tier}}</td>
+  <td>{{.State}}</td>
+  <td>${{fmtFloat2 .RevenueUSD}}</td>
+  <td>${{fmtFloat2 .PriceUSD}}</td>
+  <td>${{fmtFloat2 .COGSEstUSD}}</td>
+  <td>{{fmtFloat1 .MarginPct}}%</td>
+  <td>{{if hasDrift .DriftFlags}}<span class="pill suspended">⚠ {{len .DriftFlags}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+
+<h2>Cost model reference</h2>
+<p class="ro">{{.CostModelNote}}</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Provider</th><th>Resource</th><th>Rate</th></tr></thead>
+<tbody>
+<tr><td>Fly.io</td><td>Compute (shared-cpu-1x@256 MB)</td><td>$0.0018/machine-min</td></tr>
+<tr><td>Tigris</td><td>Object storage</td><td>$0.021/GB-month</td></tr>
+<tr><td>Tigris</td><td>Egress</td><td>$0.05/GB</td></tr>
+<tr><td>AWS SES</td><td>Outbound email</td><td>$0.10/1 000 emails</td></tr>
+<tr><td>Meet (Livekit)</td><td>Participant-minutes</td><td>$0.01/min ceiling</td></tr>
+<tr><td>LLM</td><td>Token cost</td><td>Pass-through (recorded in events)</td></tr>
+</tbody>
+</table>
+</div>
+{{else}}
+<div class="empty">Billing reconciliation data not available. Wire a BillingReconProvider in cmd/server.</div>
+{{end}}
+{{end}}

@@ -1,0 +1,46 @@
+{{define "migrations_status"}}
+<h1>Migrations Status</h1>
+
+{{if not .HasManifest}}
+<div class="empty">
+  No migration manifest configured. Set <code>VULOS_MIGRATE_MANIFEST_JSON</code> to a JSON array of
+  <code>[{"product":"cp","status_url":"http://…/internal/migrate/status"},…]</code> entries.
+</div>
+{{else}}
+<p class="ro">Polling {{len .Products}} product(s). Total poll time: {{.PollDuration}}.</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Product</th>
+  <th>Status</th>
+  <th>Applied</th>
+  <th>Pending</th>
+  <th>Latest migration</th>
+  <th>Message / Error</th>
+</tr></thead>
+<tbody>
+{{range .Products}}
+<tr>
+  <td>{{.Product}}</td>
+  <td><span class="{{migrateClass .Status}}">{{.Status}}</span></td>
+  <td>{{if gt .Applied 0}}{{.Applied}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{if gt .Pending 0}}<span class="pill warn">{{.Pending}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
+  <td class="muted">{{if .Latest}}{{.Latest}}{{else}}—{{end}}</td>
+  <td>
+    {{if .PollError}}<span class="warn">{{.PollError}}</span>{{end}}
+    {{if .Message}}<span class="muted">{{.Message}}</span>{{end}}
+    {{if and (not .PollError) (not .Message)}}<span class="muted">—</span>{{end}}
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p class="ro">
+  Status values: <span class="pill active">ok</span> all migrations applied ·
+  <span class="pill warn">pending</span> unapplied migrations exist ·
+  <span class="pill suspended">error</span> migration failed ·
+  <span class="pill suspended">unreachable</span> endpoint did not respond.
+</p>
+{{end}}
+{{end}}

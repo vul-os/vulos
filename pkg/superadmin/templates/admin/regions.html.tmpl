@@ -1,0 +1,72 @@
+{{define "regions"}}
+<h1>Regions</h1>
+{{if not .Available}}<div class="note"><strong>Cloud only.</strong> This control plane runs a self-hosted (SQLite) backend, which charges no one — there is no price list to manage here. Pricing and regions are a managed-cloud (Postgres) subsystem.</div>{{else}}
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+
+<p class="note">
+  <strong>A region is a price, not a placement.</strong> Fly's egress costs
+  <strong>six times</strong> more out of Africa ($0.12/GB) than Europe ($0.02/GB), and its
+  machines cost more in Johannesburg than Frankfurt. A flat cross-region price loses money on
+  every customer in the expensive region — and since we settle in rands, that is the home
+  market, not a minority. So each region carries its own egress cost, its own relay price, its
+  own free allowance, and its own machine-price multiplier.
+  <br><br>
+  The relay price <strong>must exceed the egress cost</strong> — the store refuses anything else.
+  The free allowance is scaled by <em>cost</em>, not by gigabytes: 25 GB of EU egress costs us
+  $0.50, but the same 25 GB out of Africa costs $3.00.
+</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Region</th><th>Egress cost<br>(ours)</th><th>Relay price<br>(theirs)</th><th>Markup</th>
+  <th>Free relay<br>(with a box)</th><th>Machine<br>multiplier</th>
+  <th>Accounts</th><th>Boxes</th><th>Fly spend</th><th>Est. relay cost</th><th>Status</th>
+</tr></thead>
+<tbody>
+{{range .Regions}}
+<tr>
+  <td><code>{{.ID}}</code><br><span class="ro">{{.Name}}</span></td>
+  <td>{{.EgressCostCentsGB}}c/GB</td>
+  <td>{{.RelayPriceCentsGB}}c/GB</td>
+  <td>{{.MarkupX}}</td>
+  <td>{{.FreeRelayGB}} GB</td>
+  <td>{{.ComputeMult}}</td>
+  <td>{{.Accounts}}</td>
+  <td>{{.Boxes}}</td>
+  <td>
+    {{/* An honest blank beats a confident zero: if the cost poller has no data,
+         say so rather than render $0.00 and imply the region is free. */}}
+    {{if .HasSpendData}}${{.SpendUSD}}{{else}}<span class="ro">no data yet</span>{{end}}
+  </td>
+  <td>${{.EstRelayCostUSD}}<br><span class="ro">{{printf "%.1f" .RelayGBMonth}} GB</span></td>
+  <td>{{if .Active}}<span class="ok">open</span>{{else}}<span class="warn">closed</span>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+
+<h2>Open or edit a region</h2>
+<p class="note">
+  Use the Fly region slug (<code>fra</code>, <code>jnb</code>, <code>ams</code>, <code>syd</code>…).
+  Egress cost is what <em>Fly charges us</em> per GB out of that region — look it up on Fly's
+  current price list and do not guess: a cost basis that is too low silently inflates every
+  margin we compute, in our favour, which is the direction nobody investigates.
+  Machine multiplier is in basis points against the European basis (10000 = 1.0x, 18000 = 1.8x).
+  Closing a region stops new provisioning there immediately.
+</p>
+<form method="POST" action="/superadmin/regions" class="stack-form">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <label>Slug <input type="text" name="id" placeholder="syd" required></label>
+  <label>Name <input type="text" name="name" placeholder="Australia (Sydney)" required></label>
+  <label>Egress cost (cents/GB, what Fly charges us) <input type="number" name="egress_cost_cents_gb" min="1" required></label>
+  <label>Relay price (cents/GB, what we charge — must exceed the cost) <input type="number" name="relay_cents_gb" min="1" required></label>
+  <label>Free relay with an enrolled box (GB/month) <input type="number" name="free_relay_gb" min="0" value="25" required></label>
+  <label>Machine multiplier (basis points, 10000 = 1.0x) <input type="number" name="compute_mult_bps" min="1" value="10000" required></label>
+  <label><input type="checkbox" name="active" value="1" checked> Open for new provisioning</label>
+  <button type="submit" class="primary">Save region</button>
+</form>
+{{end}}{{/* Available */}}
+{{end}}

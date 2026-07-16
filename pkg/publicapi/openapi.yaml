@@ -1,0 +1,279 @@
+openapi: "3.0.3"
+info:
+  title: Vulos Cloud Public API
+  version: "1.0.0"
+  description: |
+    Versioned REST API for Vulos Cloud accounts.
+    Auth: Bearer token (per-account, separate scope from session cookies and SCIM tokens).
+    Rate limit: 60 requests/minute per token.
+    Billing: Paystack/ZAR only (no Stripe).
+
+servers:
+  - url: https://app.vulos.org/api/v1
+    description: Production
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Per-account API token generated via the dashboard or /api/v1/tokens.
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    Account:
+      type: object
+      properties:
+        account_id:   { type: string }
+        email:        { type: string, format: email }
+        plan:         { type: string, enum: [free, pro, team, enterprise] }
+        created_at:   { type: string, format: date-time }
+      required: [account_id, email, plan, created_at]
+
+    AccountUsage:
+      type: object
+      properties:
+        account_id:       { type: string }
+        mailbox_count:    { type: integer }
+        device_count:     { type: integer }
+        storage_used_mb:  { type: integer, format: int64 }
+        billing_cycle_end: { type: string, format: date-time }
+      required: [account_id, mailbox_count, device_count, storage_used_mb]
+
+    Wallet:
+      type: object
+      properties:
+        account_id:    { type: string }
+        balance_zar:   { type: number }
+        balance_usd:   { type: number }
+        exchange_rate: { type: number }
+        last_topup:    { type: string, format: date-time, nullable: true }
+      required: [account_id, balance_zar, balance_usd, exchange_rate]
+
+    TopupRequest:
+      type: object
+      properties:
+        amount_zar:
+          type: integer
+          format: int64
+          description: ZAR subunits (e.g. 1000 = R10.00)
+        email:
+          type: string
+          format: email
+      required: [amount_zar, email]
+
+    TopupResponse:
+      type: object
+      properties:
+        authorization_url: { type: string, format: uri }
+        reference:         { type: string }
+      required: [authorization_url, reference]
+
+    Mailbox:
+      type: object
+      properties:
+        id:         { type: string }
+        address:    { type: string, format: email }
+        active:     { type: boolean }
+        created_at: { type: string, format: date-time }
+      required: [id, address, active, created_at]
+
+    MailboxUsage:
+      type: object
+      properties:
+        mailbox_id:  { type: string }
+        sent_today:  { type: integer, format: int64 }
+        sent_month:  { type: integer, format: int64 }
+        recv_today:  { type: integer, format: int64 }
+        daily_cap:   { type: integer }
+      required: [mailbox_id, sent_today, sent_month, recv_today, daily_cap]
+
+    Device:
+      type: object
+      properties:
+        id:           { type: string }
+        name:         { type: string }
+        platform:     { type: string }
+        enrolled_at:  { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+      required: [id, name, platform, enrolled_at]
+
+    WebhookSubscription:
+      type: object
+      properties:
+        id:         { type: string }
+        account_id: { type: string }
+        url:        { type: string, format: uri }
+        topics:
+          type: array
+          items:
+            type: string
+            enum: [mail.delivered, mail.bounced, account.suspended, billing.topup, device.enrolled]
+        active:     { type: boolean }
+        created_at: { type: string, format: date-time }
+      required: [id, account_id, url, topics, active, created_at]
+
+    WebhookCreateRequest:
+      type: object
+      properties:
+        url:    { type: string, format: uri }
+        topics:
+          type: array
+          items:
+            type: string
+      required: [url, topics]
+
+paths:
+  /account/me:
+    get:
+      summary: Get current account
+      operationId: getAccountMe
+      responses:
+        "200":
+          description: Account info
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "401": { description: Unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /account/usage:
+    get:
+      summary: Get account usage summary
+      operationId: getAccountUsage
+      responses:
+        "200":
+          description: Usage summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountUsage" }
+        "401": { description: Unauthorized }
+
+  /billing/wallet:
+    get:
+      summary: Get wallet balance
+      operationId: getWallet
+      responses:
+        "200":
+          description: Wallet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+        "401": { description: Unauthorized }
+
+  /billing/wallet/topup:
+    post:
+      summary: Initialise a Paystack top-up (ZAR only)
+      operationId: topupWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TopupRequest" }
+      responses:
+        "200":
+          description: Paystack authorisation URL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopupResponse" }
+        "400": { description: Bad request }
+        "401": { description: Unauthorized }
+        "429": { description: Rate limit exceeded }
+
+  /mailboxes:
+    get:
+      summary: List mailboxes
+      operationId: listMailboxes
+      responses:
+        "200":
+          description: List of mailboxes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Mailbox" }
+        "401": { description: Unauthorized }
+
+  /mailboxes/{id}/usage:
+    get:
+      summary: Get mailbox usage
+      operationId: getMailboxUsage
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Mailbox usage
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MailboxUsage" }
+        "401": { description: Unauthorized }
+        "404": { description: Not found }
+
+  /devices:
+    get:
+      summary: List enrolled devices
+      operationId: listDevices
+      responses:
+        "200":
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Device" }
+        "401": { description: Unauthorized }
+
+  /webhooks:
+    get:
+      summary: List webhook subscriptions
+      operationId: listWebhooks
+      responses:
+        "200":
+          description: Webhook subscriptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WebhookSubscription" }
+        "401": { description: Unauthorized }
+    post:
+      summary: Create a webhook subscription
+      operationId: createWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookCreateRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookSubscription" }
+        "400": { description: Bad request }
+        "401": { description: Unauthorized }
+
+  /webhooks/{id}:
+    delete:
+      summary: Delete a webhook subscription
+      operationId: deleteWebhook
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "401": { description: Unauthorized }
+        "404": { description: Not found }

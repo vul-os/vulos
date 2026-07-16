@@ -1,0 +1,52 @@
+{{define "orgs_list"}}
+<h1>Orgs</h1>
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+<form method="GET" action="/superadmin/orgs" class="filter-bar">
+  <input type="search" name="q" value="{{.Q}}" placeholder="search slug / name / owner email">
+  <button type="submit" class="primary">Search</button>
+</form>
+{{if .Orgs}}
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Slug</th>
+  <th>Name</th>
+  <th>Owner</th>
+  <th>Members</th>
+  <th>Tier</th>
+  <th>Status</th>
+  <th>Created</th>
+  <th>Actions</th>
+</tr></thead>
+<tbody>
+{{range .Orgs}}
+<tr>
+  <td><a href="/superadmin/orgs/{{.ID}}">{{.Slug}}</a></td>
+  <td>{{.Name}}</td>
+  <td class="muted">{{.OwnerEmail}}</td>
+  <td>{{.MemberCount}}</td>
+  <td>{{.Tier}}</td>
+  <td>{{if .Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td>
+  <td class="muted">{{.CreatedAt}}</td>
+  <td>
+    {{if .Suspended}}
+    <a class="btn" href="/superadmin/orgs/{{.ID}}/confirm?action=restore">Restore</a>
+    {{else}}
+    <a class="btn danger" href="/superadmin/orgs/{{.ID}}/confirm?action=suspend">Suspend</a>
+    {{end}}
+    <a class="btn" href="/superadmin/orgs/{{.ID}}">Detail</a>
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<div class="pager">
+  {{if gt .Offset 0}}<a href="?q={{.Q}}&offset={{.PrevOffset}}&limit={{.Limit}}">&larr; Prev</a>{{end}}
+  {{if .HasMore}}<a href="?q={{.Q}}&offset={{.NextOffset}}&limit={{.Limit}}">Next &rarr;</a>{{end}}
+</div>
+{{else}}
+<div class="empty">No orgs found{{if .Q}} matching "{{.Q}}"{{end}}. Org data requires the org store to be wired.</div>
+{{end}}
+{{end}}

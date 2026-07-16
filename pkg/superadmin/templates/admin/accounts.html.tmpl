@@ -1,0 +1,48 @@
+{{define "accounts"}}
+<h1>Accounts</h1>
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+<form method="GET" action="/superadmin/accounts" class="filter-bar">
+  <input type="search" name="q" value="{{.Q}}" placeholder="search email / handle / ID">
+  <button type="submit" class="primary">Search</button>
+</form>
+{{if .Accounts}}
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>ID</th><th>Email</th><th>Status</th><th>Fleet Admin</th><th>Created</th><th>Actions</th>
+</tr></thead>
+<tbody>
+{{range .Accounts}}
+<tr>
+  <td><a href="/superadmin/accounts/{{.ID}}">{{.ID}}</a></td>
+  <td>{{.Email}}</td>
+  <td>{{if .Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td>
+  <td>{{if .FleetAdmin}}yes{{else}}<span class="muted">no</span>{{end}}</td>
+  <td>{{.CreatedAt}}</td>
+  <td>
+    {{if .Suspended}}
+    <form class="inline-form" method="POST" action="/superadmin/accounts/{{.ID}}/action">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="action" value="unsuspend">
+      <button type="submit">Unsuspend</button>
+    </form>
+    {{else}}
+    <a class="btn danger" href="/superadmin/accounts/{{.ID}}/confirm?action=suspend">Suspend</a>
+    {{end}}
+    <a class="btn" href="/superadmin/accounts/{{.ID}}/confirm?action=force-password-reset">Force Reset</a>
+    <a class="btn danger" href="/superadmin/accounts/{{.ID}}/confirm?action=2fa-reset">Reset 2FA</a>
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<div class="pager">
+  {{if gt .Offset 0}}<a href="?q={{.Q}}&offset={{.PrevOffset}}&limit={{.Limit}}">&larr; Prev</a>{{end}}
+  {{if .HasMore}}<a href="?q={{.Q}}&offset={{.NextOffset}}&limit={{.Limit}}">Next &rarr;</a>{{end}}
+</div>
+{{else}}
+<div class="empty">No accounts found.</div>
+{{end}}
+{{end}}

@@ -1,0 +1,180 @@
+{{define "security_page"}}
+<h1>Security Dashboard</h1>
+
+{{/* ── Summary tiles ───────────────────────────────────────────────────── */}}
+<div style="margin-bottom:16px">
+  <div class="tile">
+    <div class="num {{if gt (len .WAFEvents) 0}}badge-warn{{else}}badge-ok{{end}}">{{len .WAFEvents}}</div>
+    <div class="lbl">WAF hits (24h)</div>
+  </div>
+  <div class="tile">
+    <div class="num {{if gt (len .BotEvents) 0}}badge-warn{{else}}badge-ok{{end}}">{{len .BotEvents}}</div>
+    <div class="lbl">Bot flags (24h)</div>
+  </div>
+  <div class="tile">
+    <div class="num">{{len .StepUpEvents}}</div>
+    <div class="lbl">Step-ups (24h)</div>
+  </div>
+  <div class="tile">
+    <div class="num {{if gt (len .ATOEvents) 0}}badge-bad{{else}}badge-ok{{end}}">{{len .ATOEvents}}</div>
+    <div class="lbl">ATO pending</div>
+  </div>
+  <div class="tile">
+    <div class="num">{{len .HoneypotHits}}</div>
+    <div class="lbl">Honeypot hits</div>
+  </div>
+  <div class="tile">
+    <div class="num {{if gt (len .EgressAnomalies) 0}}badge-warn{{else}}badge-ok{{end}}">{{len .EgressAnomalies}}</div>
+    <div class="lbl">Egress flags (7d)</div>
+  </div>
+</div>
+
+{{/* ── WAF ─────────────────────────────────────────────────────────────── */}}
+<div class="section">
+<h2>WAF — Rule Hits (last 24h)</h2>
+{{if .WAFEvents}}
+<table>
+<tr><th>Time</th><th>Rule ID</th><th>Pattern</th><th>Client IP</th><th>Path</th></tr>
+{{range .WAFEvents}}
+<tr>
+  <td>{{.Ts.Format "15:04:05"}}</td>
+  <td class="badge-bad">{{.RuleID}}</td>
+  <td><code>{{.Pattern}}</code></td>
+  <td>{{.ClientIP}}</td>
+  <td>{{.Path}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p class="badge-ok">No WAF violations in the last 24 hours.</p>
+{{end}}
+</div>
+
+{{/* ── Bot ─────────────────────────────────────────────────────────────── */}}
+<div class="section">
+<h2>Bot Detection — Fingerprint Flags (last 24h)</h2>
+{{if .BotEvents}}
+<table>
+<tr><th>Time</th><th>Client IP</th><th>Score</th><th>Reason</th><th>UA</th></tr>
+{{range .BotEvents}}
+<tr>
+  <td>{{.Ts.Format "15:04:05"}}</td>
+  <td>{{.ClientIP}}</td>
+  <td class="{{if ge .Score 0.8}}badge-bad{{else}}badge-warn{{end}}">{{printf "%.2f" .Score}}</td>
+  <td>{{.Reason}}</td>
+  <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{{.UA}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p class="badge-ok">No bot flags in the last 24 hours.</p>
+{{end}}
+</div>
+
+{{/* ── Credential Stuffing ─────────────────────────────────────────────── */}}
+<div class="section">
+<h2>Credential Stuffing — Risk Step-Ups (last 24h)</h2>
+{{if .StepUpEvents}}
+<table>
+<tr><th>Time</th><th>User</th><th>Client IP</th><th>Risk Score</th></tr>
+{{range .StepUpEvents}}
+<tr>
+  <td>{{.Ts.Format "15:04:05"}}</td>
+  <td>{{.UserID}}</td>
+  <td>{{.ClientIP}}</td>
+  <td class="{{if ge .RiskScore 0.8}}badge-bad{{else}}badge-warn{{end}}">{{printf "%.2f" .RiskScore}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p class="badge-ok">No risk step-ups in the last 24 hours.</p>
+{{end}}
+</div>
+
+{{/* ── ATO ─────────────────────────────────────────────────────────────── */}}
+<div class="section">
+<h2>Account Takeover — Pending Reviews</h2>
+{{if .ATOEvents}}
+<table>
+<tr><th>Time</th><th>User</th><th>Action</th><th>Client IP</th><th>Action</th></tr>
+{{range .ATOEvents}}
+<tr>
+  <td>{{.Ts.Format "2006-01-02 15:04:05"}}</td>
+  <td>{{.UserID}}</td>
+  <td class="badge-warn">{{.Action}}</td>
+  <td>{{.ClientIP}}</td>
+  <td>
+    <form method="post" action="/superadmin/security/ato/dismiss?id={{.ID}}" style="display:inline">
+      <button type="submit">Dismiss</button>
+    </form>
+  </td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p class="badge-ok">No pending ATO reviews.</p>
+{{end}}
+</div>
+
+{{/* ── CT ─────────────────────────────────────────────────────────────── */}}
+<div class="section">
+<h2>Certificate Transparency — Recent Issuances</h2>
+{{if .CTCerts}}
+<table>
+<tr><th>Observed</th><th>Common Name</th><th>Issuer</th><th>Valid From</th><th>Valid To</th><th>Status</th></tr>
+{{range .CTCerts}}
+<tr>
+  <td>{{.Ts.Format "2006-01-02"}}</td>
+  <td>{{.CommonName}}</td>
+  <td>{{.Issuer}}</td>
+  <td>{{.NotBefore}}</td>
+  <td>{{.NotAfter}}</td>
+  <td>{{if .Recognized}}<span class="badge-ok">OK</span>{{else}}<span class="badge-bad">UNKNOWN</span>{{end}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p>No certificate issuances recorded yet. CT monitoring runs daily.</p>
+{{end}}
+</div>
+
+{{/* ── Egress ───────────────────────────────────────────────────────────── */}}
+<div class="section">
+<h2>Egress Anomalies — Flagged Accounts (last 7d)</h2>
+{{if .EgressAnomalies}}
+<table>
+<tr><th>Time</th><th>User</th><th>Bytes/hr</th><th>Baseline Mean</th><th>Std Dev</th></tr>
+{{range .EgressAnomalies}}
+<tr>
+  <td>{{.Ts.Format "2006-01-02 15:04"}}</td>
+  <td><a href="/superadmin/accounts?q={{.UserID}}">{{.UserID}}</a></td>
+  <td class="badge-bad">{{.BytesHr}}</td>
+  <td>{{printf "%.0f" .Baseline}}</td>
+  <td>{{printf "%.0f" .Sigma}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p class="badge-ok">No egress anomalies in the last 7 days.</p>
+{{end}}
+</div>
+
+{{/* ── Honeypot ─────────────────────────────────────────────────────────── */}}
+<div class="section">
+<h2>Honeypot Accounts — Recent Hits</h2>
+{{if .HoneypotHits}}
+<table>
+<tr><th>Time</th><th>Honeypot Email</th><th>Source IP</th></tr>
+{{range .HoneypotHits}}
+<tr>
+  <td>{{.Ts.Format "2006-01-02 15:04:05"}}</td>
+  <td class="badge-bad">{{.Email}}</td>
+  <td>{{.ClientIP}}</td>
+</tr>
+{{end}}
+</table>
+{{else}}
+<p class="badge-ok">No honeypot hits recorded.</p>
+{{end}}
+</div>
+{{end}}

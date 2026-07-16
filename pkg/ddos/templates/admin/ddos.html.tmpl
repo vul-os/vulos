@@ -1,0 +1,100 @@
+{{define "title"}}DDoS Defense{{end}}
+{{define "body"}}
+<h1>DDoS Defense Dashboard</h1>
+
+<section>
+  <h2>Live Traffic (last 5 min)</h2>
+  <p>Requests/sec: <strong>{{printf "%.2f" .ReqPerSec}}</strong></p>
+  <pre style="font-family:monospace;letter-spacing:2px;font-size:1.4em;">{{.Sparkline}}</pre>
+</section>
+
+<section>
+  <h2>Top 10 IPs — last hour</h2>
+  {{if .TopIPs}}
+  <table border="1" cellpadding="4">
+    <tr><th>IP</th><th>Requests</th></tr>
+    {{range .TopIPs}}
+    <tr><td>{{.Key}}</td><td>{{.Count}}</td></tr>
+    {{end}}
+  </table>
+  {{else}}<p>(no data)</p>{{end}}
+</section>
+
+<section>
+  <h2>Top 10 Routes by 4xx Rate — last hour</h2>
+  {{if .Top4xxRoutes}}
+  <table border="1" cellpadding="4">
+    <tr><th>Route</th><th>4xx Count</th></tr>
+    {{range .Top4xxRoutes}}
+    <tr><td>{{.Key}}</td><td>{{.Count}}</td></tr>
+    {{end}}
+  </table>
+  {{else}}<p>(no data)</p>{{end}}
+</section>
+
+<section>
+  <h2>Recent Honeypot Hits</h2>
+  {{if .HoneypotHits}}
+  <table border="1" cellpadding="4">
+    <tr><th>IP</th><th>Path</th><th>At</th></tr>
+    {{range .HoneypotHits}}
+    <tr>
+      <td>{{.IP}}</td>
+      <td>{{.Path}}</td>
+      <td>{{.At.Format "2006-01-02 15:04:05"}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p>(no hits)</p>{{end}}
+</section>
+
+<section>
+  <h2>IP Blocklist</h2>
+  <p>Active entries: <strong>{{.BlocklistSize}}</strong></p>
+  <form method="POST" action="/api/superadmin/ddos/blocklist-form">
+    <input type="text" name="cidr" placeholder="1.2.3.4 or 10.0.0.0/8" size="20">
+    <input type="text" name="reason" placeholder="reason" size="30">
+    <button type="submit">Block</button>
+  </form>
+  <p><a href="/api/superadmin/ddos/blocklist">View full blocklist (JSON)</a></p>
+</section>
+
+<section>
+  <h2>Geo-Block Countries</h2>
+  {{if .GeoBlockCountries}}
+  <p>Blocked: <strong>{{joinStr .GeoBlockCountries}}</strong></p>
+  {{else}}<p>No countries blocked.</p>{{end}}
+  <form method="POST" action="/api/superadmin/ddos/geo-block-form">
+    <input type="text" name="countries" placeholder="KP,CU,IR" size="20"
+           value="{{joinStr .GeoBlockCountries}}">
+    <button type="submit">Update</button>
+  </form>
+</section>
+
+<section>
+  <h2>Captcha-Everywhere</h2>
+  <p>Status: <strong>{{if .CaptchaEverywhere}}ENABLED{{else}}disabled{{end}}</strong></p>
+  <form method="POST" action="/superadmin/ddos/toggle-captcha">
+    <button type="submit">Toggle</button>
+  </form>
+  <p><small>When enabled, PoW is required on ALL POST routes, not just auth routes.</small></p>
+</section>
+
+<section>
+  <h2>Cost Circuit Breaker</h2>
+  <p>
+    Fly machines: <strong>{{.FlyMachines}}</strong> / {{.BudgetMaxMachines}} max &nbsp;|&nbsp;
+    Tigris egress: <strong>{{printf "%.2f" .TigrisEgressGB}} GB</strong> &nbsp;|&nbsp;
+    Hourly budget: <strong>${{printf "%.2f" .BudgetMaxUSD}}</strong>
+  </p>
+  {{if .TrippedAt}}
+  <p class="warn">&#9888; Budget exceeded — halt-autoscale tripped at {{.TrippedAt.Format "2006-01-02 15:04:05 UTC"}}</p>
+  {{end}}
+  <p>Halt autoscale: <strong>{{if .HaltAutoscale}}HALTED{{else}}running{{end}}</strong></p>
+  <form method="POST" action="/superadmin/ddos/toggle-halt">
+    <button type="submit">{{if .HaltAutoscale}}Resume autoscale{{else}}Halt autoscale{{end}}</button>
+  </form>
+</section>
+
+<p><small>All state-changing actions are audit-logged. &mdash; Vulos DDoS Layer</small></p>
+{{end}}

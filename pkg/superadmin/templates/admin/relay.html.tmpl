@@ -1,0 +1,63 @@
+{{define "relay"}}
+<h1>Relay &amp; usage</h1>
+{{if not .Available}}
+<div class="note"><strong>Relay usage not wired.</strong> This control plane is not
+tracking relay usage (self-hosted, or dev without a relay-usage store).</div>
+{{else}}
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+
+<p class="note">
+  The relay is the one bandwidth-bound service we run. Period
+  <strong>{{.Overview.Period}}</strong>.
+</p>
+
+<div class="tiles">
+  <div class="tile"><span class="num">{{printf "%.1f" .Overview.TotalGBMonth}}</span><span class="lbl">GB relayed (month)</span></div>
+  <div class="tile"><span class="num">{{printf "%.1f" .Overview.TotalOverageGB}}</span><span class="lbl">GB over allowance</span></div>
+  <div class="tile"><span class="num">{{len .Overview.PoPs}}</span><span class="lbl">regions</span></div>
+</div>
+
+<h2>PoP health by region</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Region</th><th>PoPs (healthy/total)</th><th>Status</th><th>GB this month</th></tr></thead>
+<tbody>
+{{range .Overview.PoPs}}
+<tr>
+  <td><code>{{.Region}}</code></td>
+  <td>{{.Healthy}} / {{.Total}}</td>
+  <td>
+    {{if eq .Status "up"}}<span class="pill active">up</span>
+    {{else if eq .Status "degraded"}}<span class="pill warn">degraded</span>
+    {{else}}<span class="pill suspended">down</span>{{end}}
+  </td>
+  <td>{{printf "%.1f" .RelayGBMonth}}</td>
+</tr>
+{{else}}
+<tr><td colspan="4" class="empty">No PoP data.</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+
+<h2>Relay usage by account</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Account</th><th>GB</th><th>Sessions</th><th>Over allowance</th></tr></thead>
+<tbody>
+{{range .Overview.Accounts}}
+<tr>
+  <td>{{if .Email}}<a href="/superadmin/accounts/{{.AccountID}}">{{.Email}}</a>{{else}}<span class="ro">{{.AccountID}}</span>{{end}}</td>
+  <td>{{printf "%.2f" .GB}}</td>
+  <td>{{.Sessions}}</td>
+  <td>{{if gt .OverageGB 0.0}}<span class="warn">{{printf "%.2f" .OverageGB}} GB</span>{{else}}<span class="ro">—</span>{{end}}</td>
+</tr>
+{{else}}
+<tr><td colspan="4" class="empty">No relay usage this period.</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+{{end}}

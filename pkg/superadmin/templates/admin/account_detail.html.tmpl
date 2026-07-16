@@ -1,0 +1,58 @@
+{{define "account_detail"}}
+<h1>Account: {{.Account.Email}}</h1>
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+<table class="kv">
+  <tr><th>ID</th><td>{{.Account.ID}}</td></tr>
+  <tr><th>Email</th><td>{{.Account.Email}}</td></tr>
+  <tr><th>Status</th><td>{{if .Account.Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td></tr>
+  <tr><th>Email Verified</th><td>{{.Account.EmailVerified}}</td></tr>
+  <tr><th>TOTP Enabled</th><td>{{.Account.TOTPEnabled}}</td></tr>
+  <tr><th>Active Sessions</th><td>{{.Account.Sessions}}</td></tr>
+  <tr><th>Created</th><td>{{.Account.CreatedAt}}</td></tr>
+</table>
+
+<h2>Actions</h2>
+{{if .Account.Suspended}}
+<form class="inline-form" method="POST" action="/superadmin/accounts/{{.Account.ID}}/action">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input type="hidden" name="action" value="unsuspend">
+  <button type="submit">Unsuspend</button>
+</form>
+{{else}}
+<a class="btn danger" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=suspend">Suspend</a>
+{{end}}
+<a class="btn" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=force-password-reset">Force Password Reset</a>
+<a class="btn danger" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=2fa-reset">Reset 2FA</a>
+
+<h2>Billing (read-only)</h2>
+<p id="billing-tier"><span class="muted">Loading entitlements + recorded usage…</span></p>
+<div class="table-wrap">
+<table id="billing-table" data-account-id="{{.Account.ID}}" hidden>
+  <thead><tr><th>Product</th><th>Entitlement</th><th>Recorded usage (this account)</th></tr></thead>
+</table>
+</div>
+<script src="/superadmin/account_detail.js" defer></script>
+
+<h2>Recent Transactions</h2>
+{{if .Account.Transactions}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Txn ID</th><th>Amount (ZAR cents)</th><th>Status</th><th>Created</th><th>Refund</th></tr></thead>
+<tbody>
+{{range .Account.Transactions}}
+<tr>
+  <td>{{.TxnID}}</td>
+  <td>{{.AmountZAR}}</td>
+  <td>{{.Status}}</td>
+  <td>{{.CreatedAt}}</td>
+  <td><a class="btn danger" href="/superadmin/accounts/{{$.Account.ID}}/refund/confirm?txn_id={{.TxnID}}">Refund</a></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<div class="empty">No transactions found.</div>
+{{end}}
+{{end}}

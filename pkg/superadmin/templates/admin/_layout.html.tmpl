@@ -1,0 +1,32 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} — Vulos Admin</title>
+<link rel="stylesheet" href="/superadmin/admin.css">
+</head>
+<body>
+<nav>
+  <span class="brand">Vulos Admin</span>
+  <a href="/superadmin/">Dashboard</a>
+  <a href="/superadmin/analytics">Analytics</a>
+  <a href="/superadmin/accounts">Accounts</a>
+  <a href="/superadmin/orgs">Orgs</a>
+  <a href="/superadmin/relay">Relay &amp; Usage</a>
+  <a href="/superadmin/billing-recon">Billing Recon</a>
+  <a href="/superadmin/pricing">Pricing</a>
+  <a href="/superadmin/regions">Regions</a>
+  <a href="/superadmin/incidents">Incidents</a>
+  <a href="/superadmin/reserved-handles">Handles</a>
+  <a href="/superadmin/migrations">Migrations</a>
+  <a href="/superadmin/auditlog">Audit Log</a>
+  <a href="/superadmin/maintenance">Maintenance</a>
+  <a href="/superadmin/logout" class="logout spacer">Logout</a>
+</nav>
+<main>
+{{.Body}}
+</main>
+</body>
+</html>
+{{end}}
