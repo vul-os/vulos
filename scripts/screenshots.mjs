@@ -1,505 +1,449 @@
 #!/usr/bin/env node
 /**
- * Vulos screenshot capture script.
+ * Vulos OS marketing screenshot generator.
  *
- * Uses Playwright (Chromium) to capture defined routes/views at 1440x900.
- * Screenshots are saved to docs/screenshots/<name>.png.
+ * PHILOSOPHY (privacy-first, no faking):
+ *   This drives the REAL shipping React shell (the production `vite build`
+ *   bundle served by `vite preview`) and mocks the entire backend at the
+ *   browser network layer — exactly like the Playwright E2E suite
+ *   (e2e/mock-backend.js). There is NO Go server and NO real $HOME, so it is
+ *   IMPOSSIBLE for real user data (files, mail, calendar) to leak into a shot:
+ *   every byte the shell renders comes from the deterministic DEMO fixtures
+ *   below (user "Ada Lovelace", home /home/ada, a seeded file tree, agenda,
+ *   installed-app catalogue, instances roster, …).
+ *
+ *   The shell UI is real; only the data behind it is a fixture. The Terminal is
+ *   the real xterm.js widget rendering a scripted PTY stream mocked over a fake
+ *   WebSocket — no image is ever hand-drawn.
+ *
+ * Output: docs/screenshots/<name>.png            (dark theme, canonical)
+ *         docs/screenshots/<name>-light.png      (light theme, where supported)
+ * Captured at 1440x900 @ 2x (deviceScaleFactor:2 → 2880x1800 retina PNGs).
  *
  * Usage:
  *   npm run screenshots
- *   BASE_URL=http://localhost:8080 npm run screenshots
- *
- * Prerequisites:
- *   npm install
- *   npx playwright install chromium
+ *   PORT=5310 npm run screenshots
  */
 
-import { chromium } from 'playwright';
-import { mkdir } from 'fs/promises';
-import { fileURLToPath } from 'url';
-import path from 'path';
+import { chromium } from 'playwright'
+import { spawn } from 'node:child_process'
+import { mkdir, readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import http from 'node:http'
+import { installBackend, json } from '../e2e/mock-backend.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, '..');
-const OUT_DIR = path.join(REPO_ROOT, 'docs', 'screenshots');
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(__dirname, '..')
+const OUT_DIR = path.join(REPO_ROOT, 'docs', 'screenshots')
+const PORT = Number(process.env.PORT || 5317)
+const BASE_URL = `http://localhost:${PORT}`
+// 1600x1000 @ dsf:1. NOTE: deviceScaleFactor:2 was tried for retina crispness
+// but headless Chromium intermittently captures a BLACK GPU frame for the
+// heavier maximized apps (App Hub's 52 cards, Dashboard) at 2x — a known
+// high-DPI compositor glitch. dsf:1 with a larger viewport renders every view
+// reliably, so we trade nominal retina density for correctness.
+const VIEWPORT = { width: 1600, height: 1000 }
 
-const BASE_URL = process.env.BASE_URL || 'https://localhost:8080';
-const VIEWPORT = { width: 1440, height: 900 };
+// ── DEMO fixtures ────────────────────────────────────────────────────────────
+// Everything the shell can render is derived from these. No real host state.
 
-// Credentials for demo/dev account used in screenshots.
-// Matches the seeded dev account created by `--env=local` first-boot.
-const DEV_EMAIL = process.env.SCREENSHOT_EMAIL || 'admin@localhost';
-const DEV_PASSWORD = process.env.SCREENSHOT_PASSWORD || 'password';
+const NOW = Date.now()
+const iso = (ms) => new Date(ms).toISOString()
+const todayAt = (h, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
+const dayMs = 86_400_000
 
-/**
- * Routes to capture.
- * Each entry: { name, description, capture(page) }
- *
- * capture() receives a Playwright Page already navigated to BASE_URL and
- * authenticated (where applicable). It should navigate/interact to reach the
- * desired state, then resolve — the caller takes the screenshot.
- */
-const ROUTES = [
-  {
-    name: 'login',
-    description: 'Login screen (unauthenticated)',
-    authenticated: false,
-    async capture(page) {
-      await page.goto(BASE_URL, { waitUntil: 'networkidle' });
-      // Wait for the login form to appear
-      await page.waitForSelector('input[type="email"], input[type="text"], form', {
-        timeout: 10_000,
-      }).catch(() => {}); // best-effort
+// The 18 store apps we present as "installed" (recognisable, well-iconed).
+const INSTALLED_IDS = [
+  'firefox', 'libreoffice', 'gimp', 'vlc', 'jellyfin', 'code-server',
+  'jupyter', 'blender', 'inkscape', 'obs-studio', 'syncthing', 'gitea',
+  'grafana', 'keepassxc', 'immich', 'navidrome', 'qbittorrent', 'darktable',
+]
+
+// A demo home-directory listing in `ls -lA` long format (already stripped of the
+// leading `total` line, as the app's `| tail -n +2` would). Parsed by the File
+// Explorer into folder/file rows.
+const DEMO_HOME_LS = [
+  'drwxr-xr-x   6 ada  ada   4096 Jul 15 09:12 Desktop',
+  'drwxr-xr-x   8 ada  ada   4096 Jul 16 14:20 Documents',
+  'drwxr-xr-x   4 ada  ada   4096 Jul 14 18:03 Downloads',
+  'drwxr-xr-x  12 ada  ada   4096 Jul 12 11:47 Pictures',
+  'drwxr-xr-x   3 ada  ada   4096 Jul 10 20:55 Music',
+  'drwxr-xr-x   3 ada  ada   4096 Jul 09 21:30 Videos',
+  'drwxr-xr-x   5 ada  ada   4096 Jul 15 08:00 Projects',
+  'drwxr-xr-x   4 ada  ada   4096 Jul 11 13:15 .vulos',
+  '-rw-r--r--   1 ada  ada  18452 Jul 16 13:05 welcome.md',
+  '-rw-r--r--   1 ada  ada   2304 Jul 15 22:41 todo.txt',
+  '-rw-r--r--   1 ada  ada 104857 Jul 14 16:20 budget-2026.ods',
+  '-rw-r--r--   1 ada  ada 884213 Jul 13 10:02 sovereign-notes.pdf',
+].join('\n')
+
+const HOME_PAYLOAD = {
+  greeting: 'Welcome back, Ada',
+  brief:
+    "You're mostly clear this morning. Two threads want a reply before noon, and " +
+    "the design review moved to 2pm. Nothing else is on fire.",
+  focus: [
+    { uid: 'f1', subject: 'Re: Q3 roadmap sign-off', from_name: 'Priya Menon',
+      preview: 'Looks good — just need your ack on the timeline before I send it upstairs.' },
+    { uid: 'f2', subject: 'Invoice #2043 is due Friday', from_name: 'Billing · Hetzner',
+      preview: 'Your monthly invoice is ready. Auto-pay is on, no action needed unless you want to review.' },
+  ],
+  agenda: [
+    { id: 'e1', start: iso(todayAt(14, 0)), title: 'Design review', location: 'Meet · war-room' },
+    { id: 'e2', start: iso(todayAt(16, 30)), title: '1:1 with Sam', location: '' },
+    { id: 'e3', start: iso(todayAt(9, 0) + dayMs), title: 'Sprint planning', location: 'Office' },
+  ],
+  agenda_fresh: true,
+  invites: [
+    { message_uid: 'i1', subject: 'Team offsite', from: 'events@acme.io',
+      invite: { summary: 'Team offsite — Lisbon', start: iso(NOW + 3 * dayMs), location: 'Lisbon', organizer: 'events@acme.io' } },
+  ],
+  activity: [
+    { id: 'a1', kind: 'mail', text: 'Priya replied to “Q3 roadmap sign-off”', ts: iso(NOW - 22 * 60_000) },
+    { id: 'a2', kind: 'file', text: 'sovereign-notes.pdf synced to Cloud · eu-central', ts: iso(NOW - 95 * 60_000) },
+  ],
+  sovereignty: { tier: 'local', label: 'On your device' },
+}
+
+const INST_DEVICE = '01JQ9Z6MACBOOKADA0000000001'
+const INST_CLOUD = '01JQ9Z6CLOUDEUCENTRAL000002'
+const INST_PI = '01JQ9Z6HOMESERVERPI5000003'
+
+const INSTANCES = {
+  instances: [
+    { ulid: INST_DEVICE, display_name: "Ada's MacBook", kind: 'device', status: 'online',
+      last_seen_at: iso(NOW - 8_000), role: 'owner', cpu_pct: 22, ram_pct: 41 },
+    { ulid: INST_CLOUD, display_name: 'Cloud · eu-central', kind: 'cloud', status: 'online',
+      last_seen_at: iso(NOW - 4_000), role: 'member', cpu_pct: 9, ram_pct: 33 },
+    { ulid: INST_PI, display_name: 'Home Server (Pi 5)', kind: 'device', status: 'offline',
+      last_seen_at: iso(NOW - 3 * 3_600_000), role: 'member', cpu_pct: 0, ram_pct: 0 },
+  ],
+}
+
+const ROUTING_APPS = [
+  { app_id: 'lilmail', instance_id: INST_CLOUD, fqdn: 'mail.ada.vulos.app' },
+  { app_id: 'vulos-office', instance_id: INST_DEVICE, fqdn: 'office.ada.vulos.app' },
+  { app_id: 'jellyfin', instance_id: INST_PI, fqdn: 'media.ada.vulos.app' },
+]
+
+const APP_VISIBILITY = [
+  { app_id: 'lilmail', visibility: 'public' },
+  { app_id: 'vulos-office', visibility: 'public' },
+  { app_id: 'jellyfin', visibility: 'private' },
+  { app_id: 'gitea', visibility: 'private' },
+  { app_id: 'grafana', visibility: 'private' },
+]
+
+const CGROUPS = [
+  { app_id: 'lilmail', cpu_pct: 3.2, mem_current: 148 * 1e6, mem_high: 512 * 1e6, mem_max: 1024 * 1e6 },
+  { app_id: 'vulos-office', cpu_pct: 11.7, mem_current: 386 * 1e6, mem_high: 768 * 1e6, mem_max: 1536 * 1e6 },
+  { app_id: 'jellyfin', cpu_pct: 6.4, mem_current: 512 * 1e6, mem_high: 1024 * 1e6, mem_max: 2048 * 1e6 },
+  { app_id: 'gitea', cpu_pct: 0.8, mem_current: 96 * 1e6, mem_high: 256 * 1e6, mem_max: 512 * 1e6 },
+  { app_id: 'grafana', cpu_pct: 1.5, mem_current: 132 * 1e6, mem_high: 384 * 1e6, mem_max: 768 * 1e6 },
+]
+
+// Build the App Hub registry (`/api/store/registry`) + installed tiles
+// (`/api/store/installed`) from the real registry.json so the catalogue is
+// faithful and Browse is populated (not empty), with Installed(18).
+async function buildStoreFixtures() {
+  const reg = JSON.parse(await readFile(path.join(REPO_ROOT, 'registry.json'), 'utf8'))
+  const installedSet = new Set(INSTALLED_IDS)
+  const registry = Object.entries(reg.apps).map(([id, a]) => ({
+    id,
+    name: a.name,
+    type: a.type || 'web',
+    arch: a.arch || [],
+    flatpak_id: '',
+    description: a.description || '',
+    category: a.category || 'other',
+    author: a.author || '',
+    icon: a.icon || id,
+    vetted: !!a.vetted,
+    versions: Object.keys(a.versions || { latest: {} }),
+    latest: 'latest',
+    installed: installedSet.has(id),
+    homepage: a.homepage || '',
+    license: a.license || '',
+  }))
+  const installed = registry
+    .filter((a) => installedSet.has(a.id))
+    .map((a) => ({ id: a.id, name: a.name, description: a.description, category: a.category, icon: a.icon }))
+  return { registry, installed }
+}
+
+// A scripted, honest Terminal session rendered by the REAL xterm widget over a
+// mocked PTY WebSocket. Pure ANSI bytes — nothing is drawn by hand.
+const E = '\x1b'
+const TERM_SESSION = [
+  `${E}[1;35mVulos OS${E}[0m  ${E}[90mada@vulos-box · sovereign instance${E}[0m\r\n`,
+  `${E}[90mType 'vulos help' for the box control CLI.${E}[0m\r\n\r\n`,
+  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ vulos status\r\n`,
+  `  instance   ${E}[32m●${E}[0m online     region eu-central\r\n`,
+  `  reachable  relay + direct (wss/yamux)\r\n`,
+  `  apps       18 installed · 3 published\r\n`,
+  `  storage    12.4 GB / 50 GB\r\n`,
+  `  assistant  ${E}[35mlocal${E}[0m · llama3 (on-device)\r\n\r\n`,
+  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ vulos apps ls --published\r\n`,
+  `  ${E}[32mmail${E}[0m       mail.ada.vulos.app\r\n`,
+  `  ${E}[32moffice${E}[0m     office.ada.vulos.app\r\n`,
+  `  ${E}[32mjellyfin${E}[0m   media.ada.vulos.app\r\n\r\n`,
+  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ ${E}[7m ${E}[0m\r\n`,
+].join('')
+
+// Common overrides applied to every capture.
+async function demoOverrides() {
+  const { registry, installed } = await buildStoreFixtures()
+  return {
+    'GET /api/auth/me': json({ user: { id: 'u1', username: 'ada' }, profile: { username: 'ada', display_name: 'Ada Lovelace' } }),
+    'GET /api/assistant/home': json(HOME_PAYLOAD),
+    // Calendar: return live events so the agenda badge reads "live" and no
+    // "Calendar unavailable" toast fires.
+    'GET /api/pim/calendar/events': json({
+      events: [
+        { uid: 'e1', summary: 'Design review', start: iso(todayAt(14, 0)), end: iso(todayAt(15, 0)), location: 'Meet · war-room', allDay: false },
+        { uid: 'e2', summary: '1:1 with Sam', start: iso(todayAt(16, 30)), end: iso(todayAt(17, 0)), location: '', allDay: false },
+      ],
+    }),
+    // File Explorer runs `ls`/`echo $HOME` through /api/exec — feed it the demo tree.
+    'POST /api/exec': (req) => {
+      let cmd = ''
+      try { cmd = (JSON.parse(req.postData() || '{}').command) || '' } catch { /* noop */ }
+      if (cmd.includes('echo $HOME')) return json({ output: '/home/ada\n' })
+      if (cmd.trimStart().startsWith('ls')) return json({ output: DEMO_HOME_LS })
+      return json({ output: '' })
     },
-  },
+    // App Hub catalogue.
+    'GET /api/store/registry': json(registry),
+    'GET /api/store/installed': json(installed),
+    'GET /api/packages/cache': json({ ready: true, arch: 'amd64' }),
+    // Dashboard — Web + Instances tabs.
+    'GET /api/apps/visibility': json(APP_VISIBILITY),
+    'GET /api/cgroups/status': json(CGROUPS),
+    'GET /api/instances': json(INSTANCES),
+    'GET /api/routing/apps': json(ROUTING_APPS),
+    // AI status for Settings → AI Assistant.
+    'GET /api/ai/status': json({ available: true, mode: 'byo', provider: 'ollama', model: 'llama3', providers: [{ id: 'ollama', label: 'Ollama (on-device)', ready: true }], tier: 'local' }),
+  }
+}
+
+// ── shot definitions ─────────────────────────────────────────────────────────
+// drive(page) navigates the shell to the desired state; the runner screenshots.
+
+async function openPalette(page) {
+  const input = page.getByPlaceholder(/Search apps/)
+  // Focus the desktop (far-left edge, clear of the menu bar and of the default
+  // top-left window position) so the global ⌘K listener receives the keypress.
+  await page.locator('body').click({ position: { x: 12, y: 520 } }).catch(() => {})
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Meta+k')
+    if (await input.isVisible().catch(() => false)) return input
+    await page.waitForTimeout(250)
+  }
+  return input
+}
+
+// Launch an app by exact name via ⌘K (the reliable launch path) and maximize
+// its window so the app UI fills the desktop for a crisp shot.
+async function launchApp(page, name, { maximize = true } = {}) {
+  const input = await openPalette(page)
+  await input.fill(name)
+  await page.getByText(name, { exact: true }).first().waitFor({ timeout: 6_000 }).catch(() => {})
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(1_400)
+  if (maximize) {
+    const maxBtn = page.getByRole('button', { name: 'Maximize window' }).first()
+    if (await maxBtn.isVisible().catch(() => false)) {
+      await maxBtn.click().catch(() => {})
+      await page.waitForTimeout(700)
+    }
+  }
+  // The always-on menu-bar calendar widget (z-30) legitimately floats above
+  // windows, but over a maximized app it clips the top-right content. Hide it
+  // for clean app-focused shots — it is kept on the desktop/Home hero, where
+  // it belongs. (The app UI itself is untouched and fully real.)
+  await page.addStyleTag({ content: '[data-calendar-widget]{display:none !important}' }).catch(() => {})
+  await page.waitForTimeout(150)
+}
+
+const SHOTS = [
   {
     name: 'hero',
-    description: 'Desktop shell (authenticated, all windows closed)',
-    authenticated: true,
-    async capture(page) {
-      // Suppress + dismiss the AI first-run onboarding overlay before anything else.
-      // It appears 800ms after DesktopCanvas mounts, so we set localStorage to
-      // suppress it and click it away if it has already appeared.
-      await page.evaluate(() => {
-        try { localStorage.setItem('vulos-ai-firstrun-done', '1'); } catch { /* noop */ }
-      }).catch(() => {});
-      // Wait for the dialog's 800ms timer
-      await page.waitForTimeout(1_000);
-      const aiDialog = page.locator('[aria-label="Introducing the AI assistant"]').first();
-      if (await aiDialog.isVisible().catch(() => false)) {
-        const box = await aiDialog.boundingBox().catch(() => null);
-        if (box) {
-          await page.mouse.click(box.x + 10, box.y + 10);
-        } else {
-          await aiDialog.click({ force: true }).catch(() => {});
-        }
-        await page.waitForTimeout(500);
-      }
-      // Wait for the dock or shell root to appear
-      await page.waitForSelector(
-        '[data-testid="dock"], [class*="Dock"], [class*="dock"], [class*="shell"], [class*="Desktop"]',
-        { timeout: 8_000 }
-      ).catch(() => {});
-      await page.waitForTimeout(400);
-    },
-  },
-  {
-    name: 'launchpad',
-    description: 'Launchpad — full-screen app grid',
-    authenticated: true,
-    async capture(page) {
-      // Vulos launchpad button sits in the menu bar with title="Applications"
-      // Try that title first, then fall back to generic aria-label / F4.
-      const launchpadBtn = page.locator(
-        'button[title="Applications"], [data-testid="launchpad-btn"], ' +
-        '[aria-label*="Launchpad"], [aria-label*="launchpad"], button[title*="Launchpad"]'
-      ).first();
-      const visible = await launchpadBtn.isVisible().catch(() => false);
-      if (visible) {
-        await launchpadBtn.click();
-      } else {
-        await page.keyboard.press('F4');
-      }
-      await page.waitForTimeout(900);
-    },
-  },
-  {
-    name: 'settings',
-    description: 'Settings panel (opened via Launchpad → Settings app)',
-    authenticated: true,
-    async capture(page) {
-      // Close anything open
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(400);
-      // Open launchpad
-      const launchpadBtn = page.locator('button[title="Applications"], [data-testid="launchpad-btn"]').first();
-      const lpVisible = await launchpadBtn.isVisible().catch(() => false);
-      if (lpVisible) {
-        await launchpadBtn.click();
-      } else {
-        await page.keyboard.press('F4');
-      }
-      await page.waitForTimeout(600);
-      // Click Settings (app id: "persona", displayed name: "Settings")
-      const settingsApp = page.locator(
-        '[aria-label="Open Settings"], button:has-text("Settings"), [data-appid="persona"]'
-      ).first();
-      const settingsVisible = await settingsApp.isVisible().catch(() => false);
-      if (settingsVisible) {
-        await settingsApp.click();
-      } else {
-        // fallback: search for "Settings" in launchpad search
-        const searchBox = page.locator('input[placeholder*="Search"], input[type="search"]').first();
-        if (await searchBox.isVisible().catch(() => false)) {
-          await searchBox.fill('Settings');
-          await page.waitForTimeout(400);
-          await page.locator('button:has-text("Settings")').first().click().catch(() => {});
-        }
-      }
-      await page.waitForTimeout(900);
-    },
-  },
-  {
-    name: 'settings-storage',
-    description: 'Settings — Storage panel',
-    authenticated: true,
-    async capture(page) {
-      // Settings window should already be open from previous route; click Storage in sidebar
-      // If not, re-open it.
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
-      const launchpadBtn = page.locator('button[title="Applications"], [data-testid="launchpad-btn"]').first();
-      const lpVisible = await launchpadBtn.isVisible().catch(() => false);
-      if (lpVisible) {
-        await launchpadBtn.click();
-        await page.waitForTimeout(500);
-        await page.locator('[aria-label="Open Settings"], button:has-text("Settings")').first().click().catch(() => {});
-        await page.waitForTimeout(700);
-      }
-      // Click "Storage" in the Settings sidebar
-      await page.locator('button:has-text("Storage")').first().click().catch(() => {});
-      await page.waitForTimeout(700);
-    },
-  },
-  {
-    name: 'terminal',
-    description: 'Terminal app open in a window',
-    authenticated: true,
-    async capture(page) {
-      // Close any open windows by clicking window close buttons
-      const closeButtons = page.locator('[title="Close"], button[aria-label="Close window"]');
-      const count = await closeButtons.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        await closeButtons.first().click().catch(() => {});
-        await page.waitForTimeout(200);
-      }
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
-      // Open launchpad, then click Terminal
-      const launchpadBtn = page.locator('button[title="Applications"], [data-testid="launchpad-btn"]').first();
-      if (await launchpadBtn.isVisible().catch(() => false)) {
-        await launchpadBtn.click();
-      } else {
-        await page.keyboard.press('F4');
-      }
-      await page.waitForTimeout(500);
-      const termBtn = page.locator('[aria-label="Open Terminal"]').first();
-      if (await termBtn.isVisible().catch(() => false)) {
-        await termBtn.click();
-      }
-      await page.waitForTimeout(1_500);
+    light: true,
+    desc: 'Desktop / Home — the sovereign-instance backdrop',
+    async drive(page) {
+      // No windows: the Home backdrop is the desktop.
+      await page.waitForTimeout(900)
     },
   },
   {
     name: 'files',
-    description: 'File Manager app',
-    authenticated: true,
-    async capture(page) {
-      // Close any open windows
-      const closeButtons = page.locator('[title="Close"], button[aria-label="Close window"]');
-      const count = await closeButtons.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        await closeButtons.first().click().catch(() => {});
-        await page.waitForTimeout(200);
-      }
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
-      const launchpadBtn = page.locator('button[title="Applications"], [data-testid="launchpad-btn"]').first();
-      if (await launchpadBtn.isVisible().catch(() => false)) {
-        await launchpadBtn.click();
-      } else {
-        await page.keyboard.press('F4');
-      }
-      await page.waitForTimeout(500);
-      const filesBtn = page.locator('[aria-label="Open File Explorer"]').first();
-      if (await filesBtn.isVisible().catch(() => false)) {
-        await filesBtn.click();
-      }
-      await page.waitForTimeout(1_500);
+    light: true,
+    desc: 'File Explorer — seeded demo home directory',
+    async drive(page) { await launchApp(page, 'File Explorer') },
+  },
+  {
+    name: 'settings',
+    light: true,
+    desc: 'Settings — AI Assistant panel',
+    async drive(page) { await launchApp(page, 'Settings') },
+  },
+  {
+    name: 'settings-appearance',
+    light: true,
+    desc: 'Settings — Appearance (theme + accent colours)',
+    async drive(page) {
+      await launchApp(page, 'Settings')
+      await page.getByRole('button', { name: 'Appearance' }).first().click().catch(() => {})
+      await page.waitForTimeout(600)
     },
   },
   {
     name: 'apphub',
-    description: 'App Hub (App Store)',
-    authenticated: true,
-    async capture(page) {
-      // Close any open windows
-      const closeButtons = page.locator('[title="Close"], button[aria-label="Close window"]');
-      const count = await closeButtons.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        await closeButtons.first().click().catch(() => {});
-        await page.waitForTimeout(200);
-      }
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
-      const launchpadBtn = page.locator('button[title="Applications"], [data-testid="launchpad-btn"]').first();
-      if (await launchpadBtn.isVisible().catch(() => false)) {
-        await launchpadBtn.click();
-      } else {
-        await page.keyboard.press('F4');
-      }
-      await page.waitForTimeout(500);
-      const appHubBtn = page.locator('[aria-label="Open App Hub"]').first();
-      if (await appHubBtn.isVisible().catch(() => false)) {
-        await appHubBtn.click();
-      }
-      await page.waitForTimeout(1_500);
+    light: false,
+    desc: 'App Hub — Browse (populated catalogue)',
+    async drive(page) { await launchApp(page, 'App Hub') },
+  },
+  {
+    name: 'apphub-installed',
+    light: false,
+    desc: 'App Hub — Installed (18 apps)',
+    async drive(page) {
+      await launchApp(page, 'App Hub')
+      await page.getByRole('button', { name: /Installed/ }).first().click().catch(() => {})
+      await page.waitForTimeout(600)
     },
   },
   {
-    name: 'activity',
-    description: 'Activity Monitor',
-    authenticated: true,
-    async capture(page) {
-      // Close any open windows
-      const closeButtons = page.locator('[title="Close"], button[aria-label="Close window"]');
-      const count = await closeButtons.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        await closeButtons.first().click().catch(() => {});
-        await page.waitForTimeout(200);
-      }
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
-      const launchpadBtn = page.locator('button[title="Applications"], [data-testid="launchpad-btn"]').first();
-      if (await launchpadBtn.isVisible().catch(() => false)) {
-        await launchpadBtn.click();
-      } else {
-        await page.keyboard.press('F4');
-      }
-      await page.waitForTimeout(500);
-      const actBtn = page.locator('[aria-label="Open Activity Monitor"]').first();
-      if (await actBtn.isVisible().catch(() => false)) {
-        await actBtn.click();
-      }
-      await page.waitForTimeout(1_500);
+    name: 'dashboard',
+    light: false,
+    desc: 'Dashboard — Web publishing + per-app resources',
+    async drive(page) { await launchApp(page, 'Dashboard') },
+  },
+  {
+    name: 'instances',
+    light: false,
+    desc: 'Dashboard — Instances (routing across device + cloud)',
+    async drive(page) {
+      await launchApp(page, 'Dashboard')
+      await page.getByRole('button', { name: 'Instances' }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
     },
   },
-];
+  {
+    name: 'terminal',
+    light: false,
+    desc: 'Terminal — real xterm over a scripted demo PTY',
+    async drive(page) {
+      await launchApp(page, 'Terminal')
+      await page.waitForTimeout(900)
+    },
+  },
+]
 
-/**
- * Attempt to log in using the Vulos local auth form (username + password).
- *
- * The local login form uses type="text" with placeholder "Username" — NOT
- * type="email".  After a user exists the passkey-first layout shows first;
- * we click "Use password instead" to get to the password form.
- *
- * Returns true on success (or if already authenticated), false on failure.
- */
-async function login(page) {
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(800);
+// ── runner ───────────────────────────────────────────────────────────────────
 
-  // ── detect whether we're already authenticated ────────────────────────────
-  // The shell root / dock is present when authenticated.
-  const shellPresent = await page.locator(
-    '[data-testid="dock"], [class*="Dock"], [class*="shell"], [class*="Desktop"]'
-  ).first().isVisible().catch(() => false);
-  if (shellPresent) return true;
-
-  // ── handle passkey-first layout: click "Use password instead" ─────────────
-  const usePasswordBtn = page.locator('button:has-text("Use password instead")').first();
-  if (await usePasswordBtn.isVisible().catch(() => false)) {
-    await usePasswordBtn.click();
-    await page.waitForTimeout(400);
-  }
-
-  // ── fill in username (type="text", placeholder="Username", autocomplete="username") ─
-  const usernameInput = page.locator(
-    'input[autocomplete="username"], input[placeholder*="Username" i], input[placeholder*="username" i]'
-  ).first();
-  const usernameVisible = await usernameInput.isVisible().catch(() => false);
-
-  if (!usernameVisible) {
-    // Fall back: maybe cloud/email form — try email input as before
-    const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="email" i]').first();
-    const emailVisible = await emailInput.isVisible().catch(() => false);
-    if (!emailVisible) {
-      console.warn('    WARN: no login form detected — page may already be authenticated or form changed');
-      return true;
+function waitForServer(url, timeoutMs = 60_000) {
+  const start = Date.now()
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      const req = http.get(url, (res) => { res.resume(); resolve() })
+      req.once('error', () => {
+        if (Date.now() - start > timeoutMs) reject(new Error(`server ${url} did not start`))
+        else setTimeout(tick, 400)
+      })
+      req.setTimeout(2_000, () => req.destroy())
     }
-    await emailInput.fill(DEV_EMAIL);
-  } else {
-    await usernameInput.fill(DEV_EMAIL);
+    tick()
+  })
+}
+
+function run(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { cwd: REPO_ROOT, stdio: 'inherit', ...opts })
+    p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`))))
+    p.on('error', reject)
+  })
+}
+
+async function captureTheme(browser, theme, overrides, results) {
+  const suffix = theme === 'light' ? '-light' : ''
+  for (const shot of SHOTS) {
+    if (theme === 'light' && !shot.light) continue
+    // FRESH context per shot: the shell persists open-window state to
+    // localStorage, so a shared context would restore prior shots' windows.
+    // Isolation guarantees each shot starts from a clean desktop.
+    const context = await browser.newContext({
+      viewport: VIEWPORT,
+      deviceScaleFactor: 1,
+      reducedMotion: 'reduce', // kills window open/maximize animations → no mid-transition black frames
+      ignoreHTTPSErrors: true,
+    })
+    const page = await context.newPage()
+    try {
+      await page.addInitScript((t) => {
+        try {
+          localStorage.setItem('vulos-theme', t)
+          localStorage.setItem('vulos-ai-firstrun-done', '1')
+        } catch { /* noop */ }
+      }, theme)
+      await installBackend(page, overrides)
+      // Mock the Terminal PTY WebSocket with a scripted demo session.
+      await page.routeWebSocket(/\/api\/pty/, (ws) => {
+        ws.onMessage(() => { /* swallow client keystrokes */ })
+        ws.send(TERM_SESSION)
+      })
+      await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
+      await page.getByTitle('Applications').first().waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(600)
+      await shot.drive(page)
+      // Force two paint frames to settle before capture (belt-and-braces
+      // against a black GPU frame).
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))).catch(() => {})
+      await page.waitForTimeout(250)
+      const out = path.join(OUT_DIR, `${shot.name}${suffix}.png`)
+      await page.screenshot({ path: out, fullPage: false })
+      console.log(`  ✓ ${theme.padEnd(5)} ${path.relative(REPO_ROOT, out)}`)
+      results.push({ name: `${shot.name}${suffix}`, status: 'ok' })
+    } catch (err) {
+      console.error(`  ✗ ${theme} ${shot.name}: ${err.message}`)
+      results.push({ name: `${shot.name}${suffix}`, status: 'failed', error: err.message })
+    } finally {
+      await page.close()
+      await context.close()
+    }
   }
-
-  // ── fill in password ───────────────────────────────────────────────────────
-  const passwordInput = page.locator('input[type="password"]').first();
-  const passVisible = await passwordInput.isVisible().catch(() => false);
-  if (passVisible) {
-    await passwordInput.fill(DEV_PASSWORD);
-  }
-
-  // ── submit ─────────────────────────────────────────────────────────────────
-  const submitBtn = page.locator(
-    'button[type="submit"], button:has-text("Sign In"), button:has-text("Sign in"), ' +
-    'button:has-text("Log in"), button:has-text("Login"), button:has-text("Create Account")'
-  ).first();
-  const submitVisible = await submitBtn.isVisible().catch(() => false);
-  if (submitVisible) {
-    await submitBtn.click();
-  } else {
-    await page.keyboard.press('Enter');
-  }
-
-  // ── wait for shell to appear ───────────────────────────────────────────────
-  await page.waitForSelector(
-    '[data-testid="dock"], [class*="Dock"], [class*="shell"], [class*="Desktop"]',
-    { timeout: 10_000 }
-  ).catch(() => {});
-  await page.waitForTimeout(1_200);
-
-  // ── suppress the AI first-run onboarding overlay ──────────────────────────
-  // It appears 800ms after the desktop renders on first visit. Setting the
-  // localStorage flag before it fires prevents it from showing at all, and
-  // clicking it dismisses it if we race.
-  await page.evaluate(() => {
-    try { localStorage.setItem('vulos-ai-firstrun-done', '1'); } catch { /* noop */ }
-  }).catch(() => {});
-  // Dismiss the dialog if it already appeared
-  const aiDialog = page.locator('[aria-label="Introducing the AI assistant"]').first();
-  if (await aiDialog.isVisible().catch(() => false)) {
-    await page.keyboard.press('Escape');
-    await aiDialog.click().catch(() => {});
-    await page.waitForTimeout(400);
-  }
-
-  return true;
 }
 
 async function main() {
-  await mkdir(OUT_DIR, { recursive: true });
+  await mkdir(OUT_DIR, { recursive: true })
+  const overrides = await demoOverrides()
 
-  console.log(`Capturing screenshots from ${BASE_URL}`);
-  console.log(`Output directory: ${OUT_DIR}`);
-  console.log('');
+  console.log('Building production bundle (vite build)…')
+  await run('npx', ['vite', 'build'])
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: VIEWPORT,
-    deviceScaleFactor: 1,
-    // Accept self-signed certs for local dev
-    ignoreHTTPSErrors: true,
-  });
-
-  // Authenticated session reused for auth routes
-  let authenticatedPage = null;
-
-  const results = [];
-
-  /**
-   * Wake the screen / dismiss screensaver and any blocking modals before a capture.
-   * - Jogs mouse (prevents energy service dimming)
-   * - Dismisses the AI first-run onboarding overlay (uses localStorage flag)
-   * - Clicks away screensaver clock overlay if present
-   * - Calls /api/energy/wake
-   */
-  async function wakeScreen(page) {
-    // Jog the mouse — prevents the energy service from dimming
-    await page.mouse.move(700, 450);
-    await page.waitForTimeout(100);
-    await page.mouse.move(710, 440);
-
-    // Suppress AI first-run overlay via localStorage + dismiss if already shown
-    await page.evaluate(() => {
-      try { localStorage.setItem('vulos-ai-firstrun-done', '1'); } catch { /* noop */ }
-    }).catch(() => {});
-
-    // Wait briefly to let React re-render after localStorage change
-    await page.waitForTimeout(300);
-
-    // Click away the AI first-run dialog if it's visible.
-    // The outer backdrop has onClick={handleDismiss}; click its center to dismiss.
-    const aiDialog = page.locator('[aria-label="Introducing the AI assistant"]').first();
-    if (await aiDialog.isVisible().catch(() => false)) {
-      // Click the top-left corner of the backdrop (outside the inner card) to trigger dismiss
-      const box = await aiDialog.boundingBox().catch(() => null);
-      if (box) {
-        await page.mouse.click(box.x + 10, box.y + 10);
-      } else {
-        await aiDialog.click({ force: true }).catch(() => {});
-      }
-      await page.waitForTimeout(500);
-      // Verify it's gone; if not, try keyboard
-      if (await aiDialog.isVisible().catch(() => false)) {
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(300);
-      }
-    }
-
-    // If the screensaver clock is visible, click to dismiss
-    const hasClock = await page.locator('text=/\\d{1,2}:\\d{2}\\s*(AM|PM)/').first().isVisible().catch(() => false);
-    if (hasClock) {
-      await page.mouse.click(700, 450);
-      await page.waitForTimeout(600);
-    }
-
-    // Hit the wake endpoint (best-effort; may 401 if not auth-wired)
-    await page.evaluate(async (url) => {
-      try { await fetch(url + '/api/energy/wake', { method: 'POST', credentials: 'include' }); } catch { /* noop */ }
-    }, BASE_URL).catch(() => {});
-    await page.waitForTimeout(200);
+  console.log(`Starting vite preview on :${PORT}…`)
+  const preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    cwd: REPO_ROOT, stdio: 'ignore', detached: false,
+  })
+  const results = []
+  let browser
+  try {
+    await waitForServer(BASE_URL)
+    browser = await chromium.launch({ headless: true, args: ['--disable-gpu'] })
+    console.log(`\nCapturing → ${path.relative(REPO_ROOT, OUT_DIR)}`)
+    await captureTheme(browser, 'dark', overrides, results)
+    await captureTheme(browser, 'light', overrides, results)
+  } finally {
+    if (browser) await browser.close()
+    preview.kill('SIGTERM')
   }
 
-  for (const route of ROUTES) {
-    const { name, description, authenticated, capture } = route;
-    console.log(`  [${name}] ${description}`);
-
-    try {
-      let page;
-      if (authenticated) {
-        if (!authenticatedPage) {
-          authenticatedPage = await context.newPage();
-          const ok = await login(authenticatedPage);
-          if (!ok) {
-            console.warn(`    WARN: login failed — capturing ${name} unauthenticated`);
-          }
-        }
-        page = authenticatedPage;
-      } else {
-        page = await context.newPage();
-      }
-
-      if (authenticated) {
-        await wakeScreen(page);
-      }
-      await capture(page);
-      const outPath = path.join(OUT_DIR, `${name}.png`);
-      await page.screenshot({ path: outPath, fullPage: false });
-      console.log(`    ✓ saved ${path.relative(REPO_ROOT, outPath)}`);
-      results.push({ name, status: 'ok', path: outPath });
-
-      // Close unauthenticated pages; keep the authenticated one
-      if (!authenticated) {
-        await page.close();
-      }
-    } catch (err) {
-      console.error(`    ✗ failed: ${err.message}`);
-      results.push({ name, status: 'failed', error: err.message });
-    }
-  }
-
-  if (authenticatedPage) await authenticatedPage.close();
-  await context.close();
-  await browser.close();
-
-  console.log('');
-  console.log('Summary:');
-  const ok = results.filter((r) => r.status === 'ok');
-  const failed = results.filter((r) => r.status === 'failed');
-  console.log(`  ${ok.length} captured, ${failed.length} failed`);
-  if (failed.length > 0) {
-    console.log('  Failed:');
-    for (const r of failed) {
-      console.log(`    - ${r.name}: ${r.error}`);
-    }
-    console.log('');
-    console.log('  See docs/screenshots/README.md for which screenshots need a live instance.');
-  }
-
-  process.exit(failed.length > 0 ? 1 : 0);
+  const ok = results.filter((r) => r.status === 'ok')
+  const failed = results.filter((r) => r.status === 'failed')
+  console.log(`\n${ok.length} captured, ${failed.length} failed`)
+  for (const r of failed) console.log(`  - ${r.name}: ${r.error}`)
+  process.exit(failed.length ? 1 : 0)
 }
 
-main().catch((err) => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});
+main().catch((err) => { console.error('Fatal:', err); process.exit(1) })
