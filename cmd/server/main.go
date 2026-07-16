@@ -30,6 +30,7 @@ import (
 
 	"github.com/vul-os/vulos-management/pkg/cproutes"
 	"github.com/vul-os/vulos-management/pkg/cpserver"
+	"github.com/vul-os/vulos-management/web"
 )
 
 func main() {
@@ -51,6 +52,17 @@ func main() {
 	// LAST (least-specific) so every concrete API/health pattern wins over it.
 	srv, err := cpserver.New(cfg, cpserver.Deps{
 		Routes: []cpserver.RouteRegistrar{
+			// The embedded management console SPA (sign-in + console), served at
+			// /console/. Mounted before the apex fallback below; its prefix is
+			// more specific so it wins over the "/" catch-all. In the OSS build
+			// its commercial seam is NoOp — no billing/pricing UI is present.
+			func(mux *http.ServeMux, _ *cpserver.Runtime) error {
+				web.Register(mux)
+				return nil
+			},
+			// Apex same-host SPA fallback (the marketing/landing dist, if any is
+			// present on disk). MUST be LAST (least-specific "/" catch-all) so
+			// every concrete API/health/console pattern wins over it.
 			func(mux *http.ServeMux, _ *cpserver.Runtime) error {
 				cproutes.RegisterSPAFallback(mux)
 				return nil

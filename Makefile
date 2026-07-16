@@ -10,9 +10,14 @@ CP_BIN   ?= $(BIN_DIR)/cp
 VERSION  ?= $(shell cat VERSION 2>/dev/null || echo dev)
 LDFLAGS  := -X main.version=$(VERSION)
 
-.PHONY: all build run test vet tidy fmt clean screenshots
+.PHONY: all build run test vet tidy fmt clean screenshots console
 
 all: build
+
+## console: build the management console SPA into web/dist (embedded by the binary)
+console:
+	cd web && npm ci && npm run build
+	@echo "built web/dist (embedded via web/embed.go)"
 
 ## build: compile the control-plane binary to ./bin/cp
 build:
