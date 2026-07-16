@@ -1,19 +1,25 @@
 # Admin operator console
 
 > Part of [vulos-management](https://github.com/vul-os/vulos-management), the OSS
-> control plane. The console and its access gate ship in this repo. Most pages
-> (Accounts, Orgs, Fleet, Relay & usage, Incidents, Reserved handles, Migrations,
-> Audit log) are fully OSS. The **billing-adjacent pages — Pricing, Regions, and
-> Billing recon — render commercial pricing/COGS data and are only meaningfully
-> populated in the private `vulos-cloud` build**, which injects a a commercial billing provider
-> `BillingProvider`; in a pure vulos-management deployment with the no-op billing
-> provider they show the free/empty catalog. The package layout below refers to
-> the control-plane Go module (`cmd/server`, `internal/superadmin`); once the
-> extraction lands (see [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md)) the OSS packages
-> move to public import paths in this repo.
+> control plane. The console and its access gate ship in this repo as
+> `pkg/superadmin` (operator console) and `pkg/orgadmin` (per-org console). Most
+> pages (Accounts, Orgs, Fleet, Relay & usage, Incidents, Reserved handles,
+> Migrations, Audit log) are fully OSS. The **billing-adjacent pages — Pricing,
+> Regions, and Billing recon — render commercial pricing/COGS data and are only
+> meaningfully populated in the private `vulos-cloud` build**, which injects a
+> commercial `BillingProvider`; in a pure vulos-management deployment with the
+> no-op billing provider they show the free/empty catalogue.
+>
+> **Wiring status:** the packages, pages, and access-gate middleware described
+> below are extracted and live in this repo, but `cmd/server`'s default
+> composition root does not mount the console yet — see
+> [SELF-HOST.md#whats-in-the-module-not-yet-wired-into-the-default-binary](SELF-HOST.md#whats-in-the-module-not-yet-wired-into-the-default-binary).
+> Until a composition root calls `superadmin.RegisterSuperAdminStore` during
+> startup, `superadmin.SuperAdminStore()` returns `nil` and the gate below fails
+> closed (denies every request) rather than exposing an unauthenticated console.
 >
 > **Naming:** the console is the **admin console**. Its route prefix
-> (`/superadmin/*`), Go package (`internal/superadmin`), gate function
+> (`/superadmin/*`), Go package (`pkg/superadmin`), gate function
 > (`RequireSuperAdmin`), and the `superadmins` table keep the `superadmin`
 > identifier in code — those are literal code tokens shown here for accuracy, not
 > the product name.
@@ -25,8 +31,11 @@ their machines run, and who has access), so it gets the hardened, minimal,
 no-client-framework treatment — strict CSP (`script-src 'self'`, no inline JS),
 CSRF-protected POSTs, audit-logged mutations, and a triple gate on every request.
 
-Code lives in `internal/superadmin/` (pages, stores, templates) with the data
-assemblers that need other stores in `cmd/server/wire_superadmin*.go`.
+Code lives in `pkg/superadmin/` (pages, stores, templates) with the composition
+that wires it against the rest of the control plane — registering the singleton
+store and mounting the page routes — expected in a `wire_superadmin*.go` file in
+whichever binary's composition root does the wiring (see the wiring status note
+above).
 
 ## Access gate (fail-closed)
 
@@ -60,7 +69,7 @@ console pages reuse this existing gate — no page invents its own auth.
 | Pricing | `GET/POST /superadmin/pricing` | billing catalog (box-model SKUs) |
 | Regions | `GET/POST /superadmin/regions` | billing regions + Fly cost poller |
 | **Providers** | `GET/POST /superadmin/providers` | `provider_registry` (see below) |
-| **Incidents** | `GET/POST /superadmin/incidents/*` | `internal/status` store (what the public status page reads) |
+| **Incidents** | `GET/POST /superadmin/incidents/*` | `pkg/status` store (what the public status page reads) |
 | Reserved handles | `GET/POST /superadmin/reserved-handles` | `additional_reserved_handles` |
 | Migrations | `GET /superadmin/migrations` | polled product migration-status endpoints |
 | Audit log | `GET /superadmin/auditlog` | `auditlog_entries` (searchable by actor/action/date) |
@@ -85,7 +94,7 @@ in each region.
 ### Incidents
 
 The public status page already reads `GET /api/status/incidents`. The incidents
-page is the HTML author surface over the same `internal/status` store: open an
+page is the HTML author surface over the same `pkg/status` store: open an
 incident, post timeline updates, resolve it, and schedule maintenance windows.
 Every mutation is CSRF-protected and audit-logged (`incident.create`,
 `incident.update`, `incident.resolve`, `maintenance.schedule`).
@@ -95,7 +104,7 @@ Every mutation is CSRF-protected and audit-logged (`incident.create`,
 The registry is the operator-editable catalogue of compute/relay **lanes** the
 cloud can place managed boxes on. Each row is one `(provider, region)` lane.
 
-Migration: `internal/superadmin/migrations/0002_provider_registry.{postgres,sqlite}.sql`
+Migration: `pkg/superadmin/migrations/0002_provider_registry.{postgres,sqlite}.sql`
 — an **additive, CREATE-only** baseline (it adds one table and alters nothing
 0001 created; applying 0001+0002 to a fresh DB yields 0001's schema plus this
 table). Both dialects carry the same column set (proved by

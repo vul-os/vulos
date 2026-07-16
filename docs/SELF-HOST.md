@@ -85,23 +85,57 @@ Put the binary behind your own TLS-terminating reverse proxy (Caddy, nginx,
 Traefik) for an internet-reachable deployment. The control plane speaks plain
 HTTP and expects the proxy to handle TLS and forward the client IP.
 
-## What you get
+## What's wired in today
 
-Once running, the control plane provides:
+The composition root is `pkg/cproutes.RegisterOperational` (called from
+`pkg/cpserver.New`, called from `cmd/server`). It mounts, against the injected
+seams, and never opens a commercial store or charges money:
 
 - **Accounts & auth** — registration, sessions, TOTP 2FA, WebAuthn hardware
-  keys, OPAQUE password auth, and linked OAuth sign-in.
-- **Device enrollment** — the RFC-8628 device-authorization flow so a box or
-  headless device enrolls against your control plane and mints short-lived,
-  audience-bound tokens.
-- **OS routing & directory** — resolves your OS hostname to the best box in your
-  cluster and tracks who owns what, where.
-- **Relay autoscaler & PoP fleet** — a point-of-presence registry with
-  heartbeats and health flags, failover routing, and an autoscaler that grows
-  and shrinks the fleet against a provider registry you configure.
-- **Admin & org-admin consoles** — a hardened, server-rendered operator surface
-  (see [ADMIN-CONSOLE.md](ADMIN-CONSOLE.md)) and per-organization administration.
-- **Status pages** — a public status/incidents surface plus per-user status.
+  keys, OPAQUE password auth, and linked OAuth sign-in (Google / Microsoft).
+- **Account recovery** — gated behind `RECOVERY_KEK`; absent that secret the
+  recovery routes are simply not mounted (fail-closed, not fail-open).
+- **Developer & LLM API keys** — issuance, listing, and revocation.
+- **Mobile push** — subscriber registry + dispatch.
+- **DDoS / abuse / security** — the honeypot, captcha, rate limiting, IP
+  reputation, and the fail-closed security dashboard gate.
+- **Legal pages** — ToS / privacy / DPA acceptance tracking.
+- **Public product catalogue** — the read-only `GET` surface.
+- **Boot / first-run endpoints**, plus the always-on `/healthz`, `/readyz`,
+  and `/version` operational endpoints and the SPA fallback.
+
+### What's in the module, not yet wired into the default binary
+
+These packages and their `pkg/cproutes` route handlers already live in this
+repo — they were extracted at the same time as everything above — but
+`cmd/server` does not mount them yet. Each needs a `RouteRegistrar` wired into
+`RegisterOperational` (or your own thin `main`, built the same way
+`vulos-cloud`'s is, against `pkg/cpserver`):
+
+- **Device enrollment** (`pkg/enroll`, `pkg/cproutes/routes_enroll.go`) — the
+  RFC-8628 device-authorization flow.
+- **OS routing & directory** (`pkg/osrouter`, `pkg/routing`,
+  `pkg/cproutes/routes_routing_enroll.go`, `dnsplane.go`, `relaystatus.go`) —
+  resolves your OS hostname to the best box in your cluster.
+- **Relay autoscaler & PoP fleet** (`pkg/servingpool`, `pkg/fleet`,
+  `pkg/cproutes/fleet.go`) — PoP registry, heartbeats, failover, autoscaling.
+- **Admin & org-admin consoles** (`pkg/superadmin`, `pkg/orgadmin`) — the
+  hardened operator surface described in [ADMIN-CONSOLE.md](ADMIN-CONSOLE.md).
+  Only the security dashboard's gate (`pkg/superadmin.RequireSuperAdmin`) is
+  reachable today, and it fails closed (deny-all) until the console's own
+  composition root registers the superadmin store singleton.
+- **Storage / files** (`pkg/storage`, `pkg/storagesel`, `pkg/files`) — object
+  storage serving against whatever bucket you configure via
+  `StorageProvisioner`.
+- **Status pages** (`pkg/status`, `pkg/cloudstatus`) — the public
+  status/incidents surface.
+
+None of this is a licensing gate or a commercial hold-back — it's a mechanical
+migration checklist. Track it in
+[CHANGELOG.md](../CHANGELOG.md#unreleased). If you need one of these route
+groups today, mounting it yourself is a few lines: call the package's
+`Wire*`/`Register*` helper from a `cpserver.RouteRegistrar` you pass in
+`cpserver.Deps.Routes`, the same hook `cmd/server` uses for the SPA fallback.
 
 ## The seams (free by default)
 

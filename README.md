@@ -17,7 +17,7 @@ seam with a no-op default, so **self-hosting is fully functional and free.**
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-free-14B8A6.svg)](docs/SELF-HOST.md)
 [![Tests](https://img.shields.io/badge/tests-passing-14B8A6.svg)](docs/)
-[![Release](https://img.shields.io/badge/release-v0.1.2-2DD4BF.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.1.3-2DD4BF.svg)](CHANGELOG.md)
 
 [**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Admin console**](docs/ADMIN-CONSOLE.md)
 
@@ -45,6 +45,12 @@ that exist only because we charge money.
 > provider into that same seam — see [the two-repo model](#the-two-repo-model).
 
 ## Features
+
+Everything below ships as Go packages in this repo. The self-host binary
+(`cmd/server`) wires a growing subset of it by default today — see
+[**What's wired in today**](docs/SELF-HOST.md#whats-wired-in-today) for the
+exact split, or build your own thin `main` against `pkg/cpserver` (the same way
+`vulos-cloud` does) to mount whichever route groups you need right now.
 
 | | |
 |---|---|
@@ -149,6 +155,18 @@ With no `DATABASE_URL` set, the control plane opens a local SQLite database — 
 fully sovereign, billing-free deployment. Point `DATABASE_URL` at Postgres for a
 durable production database. The full configuration surface (address, domain,
 database, environment) is in [**docs/SELF-HOST.md**](docs/SELF-HOST.md).
+
+> **What's wired in today:** `cmd/server` mounts accounts/auth (sessions, TOTP
+> 2FA, WebAuthn, OAuth sign-in), account recovery, developer & LLM API keys,
+> mobile push, the DDoS/abuse/security layer, legal pages, the public product
+> catalogue, and boot endpoints out of the box. The rest of the operational
+> surface — device enrollment, OS routing, the relay autoscaler + PoP fleet,
+> the admin/org-admin consoles, and storage/files — already lives in this repo
+> as `pkg/` packages with route handlers in `pkg/cproutes`; wiring each into
+> the default binary via the same `RouteRegistrar` hook is tracked in
+> [CHANGELOG.md](CHANGELOG.md#unreleased). See
+> [docs/SELF-HOST.md#whats-wired-in-today](docs/SELF-HOST.md#whats-wired-in-today)
+> for the exact route-by-route breakdown.
 
 ## The seams (free by default)
 

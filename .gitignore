@@ -6,12 +6,13 @@ dist/
 *.out
 *.prof
 vendor/
-# Compiled control-plane binaries
-cp
-server
-migrate
-idp
-cloudlet
+# Compiled control-plane binaries (root-anchored so they never match the
+# cmd/server source directory or any nested package named the same).
+/cp
+/server
+/migrate
+/idp
+/cloudlet
 
 # ---- Databases / local state ----
 *.db
