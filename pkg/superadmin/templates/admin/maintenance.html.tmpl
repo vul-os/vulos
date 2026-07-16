@@ -1,5 +1,8 @@
 {{define "maintenance"}}
-<h1>Maintenance</h1>
+<div class="page-head">
+  <h1>Maintenance</h1>
+  <p class="page-sub">Operator tooling — verify the integrity of the audit-log hash chain, review secret rotation and inspect the sub-processor changelog.</p>
+</div>
 {{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
 {{if .Error}}<div class="flash-err">{{.Error}}</div>{{end}}
 

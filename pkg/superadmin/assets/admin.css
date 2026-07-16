@@ -589,7 +589,22 @@ tr.row-warn:hover td { background: rgba(245,179,66,.09); }
 }
 .card.wide { max-width: 660px; }
 .card h1 { text-align: left; font-size: 20px; }
-.card .sub { color: var(--text-3); margin-bottom: 22px; font-size: 13px; }
+.card .sub { color: var(--text-3); margin-bottom: 22px; font-size: 13px; line-height: 1.6; }
+.card-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.card-brand .tb-mark { width: 30px; height: 30px; font-size: 16px; }
+.card-brand-word {
+  font-weight: 650;
+  letter-spacing: .3px;
+  font-size: 14px;
+  color: var(--text-2);
+}
 .card button[type=submit], .card .btn { width: 100%; padding: 11px; text-align: center; }
 .card input { max-width: none; }
 .confirm-detail {

@@ -522,8 +522,8 @@ func TestLoginPage_Renders(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 	body, _ := io.ReadAll(rr.Body)
-	if !strings.Contains(string(body), "Admin Login") {
-		t.Fatal("expected 'Admin Login' in login page")
+	if !strings.Contains(string(body), "Sign in") {
+		t.Fatal("expected 'Sign in' in login page")
 	}
 }
 

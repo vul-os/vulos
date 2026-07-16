@@ -1,5 +1,8 @@
 {{define "migrations_status"}}
-<h1>Migrations Status</h1>
+<div class="page-head">
+  <h1>Migrations status</h1>
+  <p class="page-sub">Aggregate schema state polled live across every product in the suite — applied, pending and the latest migration per service.</p>
+</div>
 
 {{if not .HasManifest}}
 <div class="empty">

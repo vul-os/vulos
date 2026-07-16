@@ -1,5 +1,8 @@
 {{define "accounts"}}
-<h1>Accounts</h1>
+<div class="page-head">
+  <h1>Accounts</h1>
+  <p class="page-sub">Search member accounts and act on them — suspend, force a password reset or reset 2FA. Every action is written to the hash-chained audit log.</p>
+</div>
 {{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
 {{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
 <form method="GET" action="/superadmin/accounts" class="filter-bar">

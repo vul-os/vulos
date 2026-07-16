@@ -1,5 +1,8 @@
 {{define "orgs_list"}}
-<h1>Orgs</h1>
+<div class="page-head">
+  <h1>Organisations</h1>
+  <p class="page-sub">The org directory — members, seats, tier and suspension state. Open one to see its member roster and usage.</p>
+</div>
 {{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
 {{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
 <form method="GET" action="/superadmin/orgs" class="filter-bar">

@@ -1,5 +1,8 @@
 {{define "account_detail"}}
-<h1>Account: {{.Account.Email}}</h1>
+<div class="page-head">
+  <h1>{{.Account.Email}}</h1>
+  <p class="page-sub">Account detail — verification / TOTP / session state, entitlements and recorded usage. Every operator action is audit-logged.</p>
+</div>
 {{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
 {{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
 <table class="kv">
@@ -25,7 +28,7 @@
 <a class="btn" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=force-password-reset">Force Password Reset</a>
 <a class="btn danger" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=2fa-reset">Reset 2FA</a>
 
-<h2>Billing (read-only)</h2>
+<h2>Entitlements &amp; recorded usage</h2>
 <p id="billing-tier"><span class="muted">Loading entitlements + recorded usage…</span></p>
 <div class="table-wrap">
 <table id="billing-table" data-account-id="{{.Account.ID}}" hidden>

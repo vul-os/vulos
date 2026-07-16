@@ -1,5 +1,8 @@
 {{define "auditlog"}}
-<h1>Audit Log</h1>
+<div class="page-head">
+  <h1>Audit log</h1>
+  <p class="page-sub">The tamper-evident, hash-chained record of every operator action. Filter by actor, action or time window. Verify the chain from Maintenance.</p>
+</div>
 <form method="GET" action="/superadmin/auditlog" class="filter-bar">
   <input type="text" name="actor" value="{{.Actor}}" placeholder="actor">
   <input type="text" name="action" value="{{.Action}}" placeholder="action">

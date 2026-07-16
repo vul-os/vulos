@@ -1,5 +1,8 @@
 {{define "reserved_handles"}}
-<h1>Reserved Handles</h1>
+<div class="page-head">
+  <h1>Reserved handles</h1>
+  <p class="page-sub">The reserved-username registry — RFC&nbsp;2142 mailboxes, platform and brand handles that cannot be claimed by members.</p>
+</div>
 {{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
 {{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
 <form method="POST" action="/superadmin/reserved-handles" class="filter-bar">

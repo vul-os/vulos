@@ -1,6 +1,9 @@
 {{define "org_detail"}}
 {{if .Org}}
-<h1>Org: {{.Org.Slug}}</h1>
+<div class="page-head">
+  <h1>{{.Org.Name}} <span class="ro">/ {{.Org.Slug}}</span></h1>
+  <p class="page-sub">Organisation detail — member roster, roles, seats and suspension state.</p>
+</div>
 {{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
 {{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
 
@@ -10,8 +13,8 @@
   <tr><th>Name</th><td>{{.Org.Name}}</td></tr>
   <tr><th>Owner</th><td>{{.Org.OwnerEmail}}</td></tr>
   <tr><th>Members</th><td>{{.Org.MemberCount}}</td></tr>
-  <tr><th>Seats (paid)</th><td>{{.Org.SeatCount}}</td></tr>
-  <tr><th>Billing tier</th><td>{{.Org.Tier}}</td></tr>
+  <tr><th>Seats</th><td>{{.Org.SeatCount}}</td></tr>
+  <tr><th>Tier</th><td><span class="pill neutral">{{.Org.Tier}}</span></td></tr>
   <tr><th>Status</th><td>{{if .Org.Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td></tr>
   <tr><th>Created</th><td>{{.Org.CreatedAt}}</td></tr>
 </table>

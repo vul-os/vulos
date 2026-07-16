@@ -1,7 +1,8 @@
 {{define "login"}}
 <div class="card">
-<h1>Admin Login</h1>
-<p class="sub">Restricted operator console. All access is logged.</p>
+<div class="card-brand"><span class="tb-mark">V</span><span class="card-brand-word">Vulos Operator</span></div>
+<h1>Sign in</h1>
+<p class="sub">Restricted control-plane console. Password + TOTP, then a hardware-key step-up. All access is audit-logged.</p>
 {{if .Error}}<div class="flash-err">{{.Error}}</div>{{end}}
 
 {{if eq .Stage "main"}}
