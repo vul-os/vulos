@@ -14,11 +14,44 @@ import (
 type Handler struct {
 	mu     sync.Mutex
 	stores map[string]*Store // userID → *Store
+
+	// reauth verifies the user's account password for the /export step-up
+	// (migration.go). nil ⇒ export FAILS CLOSED with 503; it never degrades to
+	// session-only.
+	reauth Reauthenticator
+
+	// gate throttles failed step-up attempts.
+	gate *stepUpGate
 }
 
 // NewHandler creates a TOTP HTTP handler.
 func NewHandler() *Handler {
 	return &Handler{stores: make(map[string]*Store)}
+}
+
+// SetReauthenticator wires the step-up verifier used by POST /api/auth/totp/export.
+// Until this is called, export is refused (503) rather than served unguarded.
+func (h *Handler) SetReauthenticator(fn Reauthenticator) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reauth = fn
+}
+
+func (h *Handler) reauthenticator() Reauthenticator {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.reauth
+}
+
+// stepUp returns the handler's step-up throttle, creating it on first use so a
+// zero-value Handler can never silently run without one.
+func (h *Handler) stepUp() *stepUpGate {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.gate == nil {
+		h.gate = &stepUpGate{fails: make(map[string]*stepUpState)}
+	}
+	return h.gate
 }
 
 // RegisterHandlers wires the 4 TOTP endpoints into mux.

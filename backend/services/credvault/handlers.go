@@ -29,6 +29,20 @@ type Handler struct {
 	mu     sync.Mutex
 	vaults map[string]*Vault // keyed by userID
 	newDir func(userID string) string
+
+	// gate throttles failed master-password step-ups on /export (see import.go).
+	gate *stepUpGate
+}
+
+// stepUp returns the handler's step-up throttle, creating it on first use so a
+// zero-value Handler can never silently run without one.
+func (h *Handler) stepUp() *stepUpGate {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.gate == nil {
+		h.gate = &stepUpGate{fails: make(map[string]*stepUpState)}
+	}
+	return h.gate
 }
 
 // NewHandler returns an HTTP handler for the credential vault.

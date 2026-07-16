@@ -948,11 +948,26 @@ func main() {
 	totpHandler := authvault.NewHandler()
 	totpHandler.RegisterHandlers(mux)
 
+	// TOTP migration routes (/api/auth/totp/import|export). These were written,
+	// tested and then never mounted — the endpoints did not exist at runtime, so
+	// nobody could bring Google Authenticator seeds IN, and nobody could get
+	// their seeds OUT before losing the box. Same mux ⇒ same session gate as
+	// every other TOTP route. Export additionally re-checks the account password
+	// (step-up); without a reauthenticator wired it fails closed with 503, so
+	// this SetReauthenticator call is load-bearing, not decoration.
+	totpHandler.SetReauthenticator(authStore.VerifyUserPassword)
+	authvault.RegisterMigrationHandlers(mux, totpHandler)
+
 	// Credential vault HTTP API (password manager, per-user, AES-256-GCM)
 	credVaultHandler := credvault.NewHandler(func(userID string) string {
 		return filepath.Join(home, ".vulos", "auth", "vault", userID)
 	})
 	credVaultHandler.RegisterHandlers(mux)
+
+	// Credential vault import/export (/api/auth/vault/import|export). Same story:
+	// complete, tested, never mounted — a password manager with no export is data
+	// lock-in. Same mux ⇒ same session gate; export re-checks the master password.
+	credvault.RegisterImportHandlers(mux, credVaultHandler)
 
 	// Mail: URL of the embedded LilMail service (built-in Mail app).
 	registerMailRoutes(mux)

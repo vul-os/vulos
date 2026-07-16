@@ -10,6 +10,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -248,6 +249,85 @@ func (v *Vault) AddEntry(e Entry) error {
 	v.entries[e.ID] = &e
 	v.touch()
 	return v.saveLocked()
+}
+
+// AddEntries adds many entries in ONE encrypt-and-write.
+//
+// AddEntry re-serialises, re-encrypts and rewrites the ENTIRE vault file on
+// every single call. Importing N credentials one-by-one is therefore O(N²) disk
+// work — a 10k-entry password-manager export (an ordinary migration, never mind
+// a hostile file) would rewrite an ever-growing encrypted blob 10,000 times and
+// wedge the box for minutes. Bulk import MUST come through here: entries land in
+// the in-memory map first and the vault is persisted exactly once.
+//
+// On persist failure every entry in the batch is rolled back, so the vault is
+// never left half-written (no silent partial success).
+func (v *Vault) AddEntries(es []Entry) (int, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	if v.key == nil {
+		return 0, ErrLocked
+	}
+
+	added := make([]string, 0, len(es))
+	now := time.Now().UTC()
+	for _, e := range es {
+		if _, exists := v.entries[e.ID]; exists {
+			continue // ID collision — skip rather than clobber.
+		}
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = now
+		}
+		e.UpdatedAt = now
+		v.entries[e.ID] = &e
+		added = append(added, e.ID)
+	}
+	if len(added) == 0 {
+		v.touch()
+		return 0, nil
+	}
+
+	if err := v.saveLocked(); err != nil {
+		// Roll the whole batch back — an import either lands or it does not.
+		for _, id := range added {
+			delete(v.entries, id)
+		}
+		return 0, err
+	}
+	v.touch()
+	return len(added), nil
+}
+
+// VerifyMasterPassword reports whether pw is this vault's master password.
+//
+// This is the STEP-UP primitive for sensitive operations (bulk export). It is
+// deliberately independent of the unlocked/locked state: an attacker riding a
+// stolen session cookie (CSRF) or injected script (XSS) can reach an unlocked
+// vault, but cannot produce the master password. The comparison re-derives the
+// Argon2id key from the on-disk salt and constant-time-compares it against the
+// live key, so it never touches the plaintext password store and leaks no
+// timing signal.
+//
+// Returns false when the vault is locked (nothing to compare against) — callers
+// must treat that as "not stepped up", never as "no gate required".
+func (v *Vault) VerifyMasterPassword(pw string) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	if v.key == nil || pw == "" {
+		return false
+	}
+	salt, err := v.loadOrCreateSalt()
+	if err != nil {
+		return false
+	}
+	candidate := deriveKey(pw, salt)
+	ok := subtle.ConstantTimeCompare(candidate, v.key) == 1
+	for i := range candidate {
+		candidate[i] = 0
+	}
+	return ok
 }
 
 // GetEntry returns the entry with the given ID.
