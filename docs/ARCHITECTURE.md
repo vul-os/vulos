@@ -65,7 +65,7 @@ flowchart TD
 
 **App sandboxing.** Each user app runs in its own Linux network namespace with a unique port. Traffic is proxied through the app gateway at `{app}--{profile}.{ulid}.vulos.org`. Web apps get no streaming overhead — just proxied HTTP.
 
-**Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through the on-box `llmux` gateway by default. See [THREAT-MODEL.md](../THREAT-MODEL.md) Component 5.
+**Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through the on-box `llmux` gateway by default. See [THREAT-MODEL.md](THREAT-MODEL.md) Component 5.
 
 **Authentication.** Email + password + optional WebAuthn/TOTP. No third-party identity providers. Passkeys are the primary login for new accounts (with sign-counter clone/replay detection). Device PIN and QR/phone-approval cover kiosk and shared clients. A per-user master key is wrapped by both the password and a 24-word recovery phrase, so account recovery never needs a server-held plaintext key.
 
@@ -207,7 +207,7 @@ The streaming endpoint (`POST /api/assistant/agent/stream`) emits `status`,
 `token`, `proposal`, and `done`/`error` events; the `Guard` runs once up front,
 so a blocked tier makes zero model calls and streams nothing. A leaked proposal
 id is not indefinitely replayable (single-use + 10-minute TTL) and is bound to
-the calling user's session. See [THREAT-MODEL.md](../THREAT-MODEL.md) Component 5.
+the calling user's session. See [THREAT-MODEL.md](THREAT-MODEL.md) Component 5.
 
 ---
 
@@ -318,5 +318,5 @@ flowchart TD
 - [GETTING-STARTED.md](GETTING-STARTED.md) — install and first boot
 - [CONFIGURATION.md](CONFIGURATION.md) — all environment variables and config files
 - [REPRODUCIBLE-BUILDS.md](REPRODUCIBLE-BUILDS.md) — deterministic build + dm-verity signing
-- [THREAT-MODEL.md](../THREAT-MODEL.md) — STRIDE threat model
+- [THREAT-MODEL.md](THREAT-MODEL.md) — STRIDE threat model
 - [ROADMAP.md](../ROADMAP.md) — design roadmap

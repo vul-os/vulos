@@ -261,7 +261,7 @@ AI_PROVIDER=claude AI_API_KEY=sk-ant-… VULOS_AI_TIER=brokered VULOS_ASSISTANT_
 | Reminder notifications via Web Push (opt-in) | An end-to-end-encrypted payload goes from your box directly to your browser vendor's push relay; the vendor routes it but cannot read it |
 | Model downloads | Outbound fetch from the pinned Hugging Face catalog only, hash-verified |
 
-Everything in the first row is enforced by code (the Guard choke point plus the on-instance embedder certification), not by policy. The threat model behind this design is written up in [THREAT-MODEL.md](../THREAT-MODEL.md), and the broader box hardening picture in [SECURITY.md](SECURITY.md).
+Everything in the first row is enforced by code (the Guard choke point plus the on-instance embedder certification), not by policy. The threat model behind this design is written up in [THREAT-MODEL.md](THREAT-MODEL.md), and the broader box hardening picture in [SECURITY.md](SECURITY.md).
 
 ---
 

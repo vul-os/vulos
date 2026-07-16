@@ -37,43 +37,12 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 
 ---
 
-## Part of VulOS
-
-This repo is the **Vulos OS** — the web-native desktop shell (launcher, windows,
-dock, assistant) that hosts the apps. It is the heart of **VulOS**, an open,
-self-hostable web OS + app suite.
-
-**Vulos = free, open-source software + two paid services.** The OS, all its apps,
-and the app store are OSS and free — **you self-host them** on your own box (Fly /
-Hetzner / any VPS / home server). Vulos does not host or provision boxes. Vulos
-bills for only two things: **Vulos Relay** (reachability) and **backup storage**
-(buckets). There is **no compute, mail, or app-store billing**. Apps are listed
-on the main site by **path** (`vulos.org/products/…`) and their source lives on
-GitHub (`github.com/vul-os`) — there are no per-product subdomains.
-
-The suite (each free, OSS, and independently self-hostable):
-
-- **Vulos OS** — the web-native desktop shell that hosts the apps *(this repo)*
-- **Vulos Office** — documents: docs, sheets, slides, PDF, and **whiteboards** (the Excalidraw-based whiteboard is an Office document type — there is no separate Board product)
-- **Vulos Files** — file storage + P2P sharing, built into the OS
-- **Vulos Relay** — sovereign connectivity / reachability fabric — one of the two paid services
-- **llmux** — sovereign on-box AI gateway
-
-**PIM is bring-your-own** via **lilmail** (an independent connect-your-own-mailbox
-engine exposing `/v1`, incl. `/v1/calendar` + `/v1/contacts`); the OS adds
-standalone **Calendar** and **Contacts** widgets over it. Vulos hosts no mail.
-**Comms are third-party** — chat and video use established open protocols/apps
-(Matrix/Element for chat; Element Call / Jitsi for video), not products built by
-Vulos. Products never import each other — they link across clean seams.
-
----
-
 ## Features
 
 - **Sovereign assistant** — an on-box AI agent aware of your calendar, contacts, files, and reminders. It reads with a curated, read-only toolset and *proposes* anything with side effects. Answers stream token-by-token over SSE. See [the security model](#the-sovereign-assistant-security-model) below.
 - **Proactive AI Home + ⌘K** — the desktop opens as a home (agenda, focus, pending invites, reminders, proposals), not just a launcher. A unified `⌘K` command palette drives the whole shell.
 - **Window-manager shell** — drag, resize, snap, and tile windows; virtual desktops; Mission Control overview; a dock with running-app indicators; persisted window sessions. Pure JSX React 19 + Vite + Tailwind.
-- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, standalone **Calendar** and **Contacts** (over lilmail's `/v1` via the box PIM proxy), App Hub, Activity Monitor, Settings, Notes, Messages (peer-to-peer), both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Office, Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more.
+- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, standalone **Calendar** and **Contacts** (over lilmail's `/v1` via the box PIM proxy), App Hub, Activity Monitor, Settings, Notes, Messages (peer-to-peer), both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more. **Office** (docs/sheets/slides/PDF/whiteboards) is the standalone `vulos-office`, reached through the App Hub.
 - **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor (with clone/replay counter detection), QR / phone-approval login for shared clients, device PIN, and TOTP 2FA fallback. Forced recovery-phrase signup with a client-side master-key unwrap. No Google SSO, no OAuth login flows.
 - **Files with a real ACL** — a Files service with a **viewer < editor < owner** role hierarchy enforced server-side, plus content-blind (sealed) file sharing and share-by-email with locality routing. Large files use a **resumable, chunked upload** (tus-style): each chunk rides the relay as an ordinary bounded request, the box reassembles into your own storage with per-chunk + whole-file integrity, and an interrupted upload **resumes from the committed offset** instead of restarting.
 - **Notifications + sovereign Web Push** — a real notifications system, plus opt-in **Web Push** where *your box* sends notifications directly to your device's browser vendor (FCM/Apple/Mozilla). It's outbound-only (works behind NAT, no central relay), and payloads are end-to-end encrypted per RFC 8291 — the vendor routes but can't read them. Enable it per-device under **Settings → Notifications**; Do Not Disturb is honoured by the box before any push is sent.
@@ -319,7 +288,7 @@ encrypted messaging.
 
 ## Security
 
-We take security seriously and welcome good-faith research under a documented safe-harbor policy. Report vulnerabilities via GitHub Security Advisories or `security@vulos.org`. See [SECURITY.md](SECURITY.md) and the [THREAT-MODEL.md](THREAT-MODEL.md).
+We take security seriously and welcome good-faith research under a documented safe-harbor policy. Report vulnerabilities via GitHub Security Advisories or `security@vulos.org`. See [SECURITY.md](SECURITY.md) and the [THREAT-MODEL.md](docs/THREAT-MODEL.md).
 
 ---
 
@@ -333,8 +302,8 @@ Contributions are welcome. Pick a task, branch as `task/<ID>` or `feat/`/`fix/`/
 
 MIT — see [LICENSE](LICENSE).
 
+---
+
 <p align="center">
-  <br/>
-  <img src="public/icon-48.png" width="24" alt="" /><br/>
-  <em>Built with purpose. Open by design.</em>
+  <sub><img src="docs/assets/vulos-logo.png" height="16" alt="VulOS" /> · <strong>Built with purpose. Open by design.</strong></sub>
 </p>

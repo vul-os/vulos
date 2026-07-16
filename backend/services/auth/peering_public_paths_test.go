@@ -145,11 +145,9 @@ func TestPeeringPublicPrefix_NoTraversalBypass(t *testing.T) {
 func TestPublicPrefixesStillMatch(t *testing.T) {
 	cases := map[string]bool{
 		"/api/peering/inbound/message": true,  // real inbound route — public
-		"/api/apps/v1/act":             true,  // apps runtime — public
-		"/mcp/tool":                    true,  // MCP subtree — public
 		"/assets/app.js":               true,  // static — public
 		"/api/peering/conversations":   false, // gated
-		"/api/apps/commands":           false, // apps MANAGEMENT API — gated
+		"/api/apps/running":            false, // apps API — gated
 	}
 	for p, want := range cases {
 		if got := isPublicPath(p); got != want {

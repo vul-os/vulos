@@ -2,7 +2,7 @@
 
 A practical guide to running a Vulos box securely: what the auth surface actually is, which defaults fail closed, which environment variables gate risky features, how verified boot works, and what to check before you expose the box to the internet.
 
-This chapter is operational. For the formal analysis (STRIDE, trust boundaries, honest residual risks) read [../THREAT-MODEL.md](../THREAT-MODEL.md). To report a vulnerability, see the security policy at [../SECURITY.md](../SECURITY.md).
+This chapter is operational. For the formal analysis (STRIDE, trust boundaries, honest residual risks) read [THREAT-MODEL.md](THREAT-MODEL.md). To report a vulnerability, see the security policy at [../SECURITY.md](../SECURITY.md).
 
 ---
 
@@ -294,7 +294,7 @@ Work through this before forwarding a port or pointing public DNS at the box:
 
 ## See also
 
-- [../THREAT-MODEL.md](../THREAT-MODEL.md) — formal threat model, including the sovereign assistant and AI-app builder
+- [THREAT-MODEL.md](THREAT-MODEL.md) — formal threat model, including the sovereign assistant and AI-app builder
 - [../SECURITY.md](../SECURITY.md) — vulnerability reporting, SLA, safe harbor
 - [NETWORKING.md](NETWORKING.md) — ports, firewall modes, TLS termination
 - [CONFIGURATION.md](CONFIGURATION.md) — full configuration reference

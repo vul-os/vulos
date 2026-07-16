@@ -1,14 +1,14 @@
 # Vulos Roadmap
 
-This directory holds the design documents — one per system area. Each document explains *what* a part of Vulos is meant to do and *how* it's structured, but **not** the day-to-day "what's left to ship" view. That lives in [`../tasks.md`](../tasks.md), with one task per `### [ID]` entry pointing back here.
+This directory holds the design documents — one per system area. Each document explains *what* a part of Vulos is meant to do and *how* it's structured, but **not** the day-to-day "what's left to ship" view. That lives in [GitHub Issues](https://github.com/vul-os/vulos/issues); the high-level themes are in [`../ROADMAP.md`](../ROADMAP.md).
 
 Read it like this:
 
 1. Start with the area that interests you.
 2. Skim the **Goal** + **Non-goals** at the top of the file.
-3. If you want to *do* something rather than just read, jump to `tasks.md`, find that area's section, and pick a `todo` task.
+3. If you want to *do* something rather than just read, browse [GitHub Issues](https://github.com/vul-os/vulos/issues) filtered to that area, or open one.
 
-> **Most roadmap areas are fully implemented** (see [`../tasks.md`](../tasks.md)).
+> **Most roadmap areas are fully implemented.**
 > Remaining shipped-area work is intentional later-phase *depth*, tracked as
 > explicit notes inside the relevant design docs (CLUSTER → full cr-sqlite CRDT;
 > NOTIFICATIONS → push-over-peering). The Ladybird browser spike has been
@@ -20,8 +20,7 @@ Read it like this:
 > with a leaderless multi-instance data layer: **OS-DISTRIBUTION.md**,
 > **SEED-TRUST.md**, **NETBOOT.md**, **SIGNING.md**, **COORDINATION.md**,
 > **SYNC.md**, **CONCURRENCY.md**, plus the extracted **APP-MANIFEST.md**. Their
-> tasks (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COLLAB-) are
-> `todo`. Cloud/control-plane features are developed in a separate (non-public)
+> work is tracked in GitHub Issues. Cloud/control-plane features are developed in a separate (non-public)
 > repository and are out of scope for this roadmap — the OSS side works
 > correctly without any external control plane.
 
@@ -45,7 +44,7 @@ Read it like this:
 
 ### Image-based OS distribution & multi-instance data (planned)
 
-The OS distribution model is moving from "flash a disk, patch over SSH" to "pull a signed immutable image from a public bucket, verify it, A/B-update it." These docs are designs with `todo` tasks in `../tasks.md`.
+The OS distribution model is moving from "flash a disk, patch over SSH" to "pull a signed immutable image from a public bucket, verify it, A/B-update it." These docs are designs; open work is tracked in [GitHub Issues](https://github.com/vul-os/vulos/issues).
 
 | Area | File | What it's about | Status |
 |---|---|---|---|
@@ -85,8 +84,6 @@ The rest you can pick up as you need them.
 
 The badge column above uses three values:
 
-- **shipped** — design and implementation are both complete; every `tasks.md`
-  entry in the area reads `done`. Later-phase depth (if any) is noted inside
-  that area's design doc, not tracked as open tasks.
-
-For the precise done/total count per area, see the **At-a-glance** table at the top of [`../tasks.md`](../tasks.md).
+- **shipped** — design and implementation are both complete. Later-phase depth
+  (if any) is noted inside that area's design doc rather than tracked as open
+  issues.

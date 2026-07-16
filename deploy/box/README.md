@@ -1,34 +1,34 @@
-# Vulos OS — Managed (headless) cloud box
+# Vulos OS — Headless box image (self-provisioned)
 
-This directory contains the build definition for the `vulos-managed` container image: a headless OS backend serving the shell, web terminal, and embedded web apps (office/lilmail/wede). **No GPU, no desktop streaming, no Xvfb.**
+This directory contains the build definition for the `vulos-box` container image: a headless OS backend serving the shell, web terminal, and web apps. **No GPU, no desktop streaming, no Xvfb.** Run it on your own server (any VPS or home box) — Vulos does not host or provision boxes.
+
+For a full desktop box with native app streaming, use the top-level `Dockerfile` instead. This headless image is the lean option for a server you SSH into and reach over the web.
 
 ## Image architecture
 
 ```mermaid
 flowchart TD
-    Managed["vulos-managed<br/>OS backend (port 8080)<br/>Static frontend (/dist)"]
-    Managed --> Office["vulos-office"]
-    Managed --> Lilmail["lilmail"]
-    Managed --> Wede["wede"]
+    Box["vulos-box<br/>OS backend (port 8080)<br/>Static frontend (/dist)"]
+    Box --> Office["vulos-office"]
+    Box --> Lilmail["lilmail (PIM)"]
     Office -.- Note["separate deployments, configured via env"]
     Lilmail -.- Note
-    Wede -.- Note
 ```
 
-The image runs the Go OS backend only. Peer services (office, lilmail, wede) are independent deployments; their URLs are injected at runtime via environment variables that the OS backend already reads.
+The image runs the Go OS backend only. Owned apps (Office) and PIM (lilmail) are independent deployments reached through the App Hub / PIM proxy; their URLs are injected at runtime via environment variables that the OS backend already reads.
 
 ## Build
 
 From the repo root:
 
 ```sh
-docker build -f deploy/managed/Dockerfile -t ghcr.io/vulos/vulos-managed:latest .
+docker build -f deploy/box/Dockerfile -t ghcr.io/vul-os/vulos-box:latest .
 ```
 
 To publish (CI does this — do not push manually from dev):
 
 ```sh
-docker push ghcr.io/vulos/vulos-managed:latest
+docker push ghcr.io/vul-os/vulos-box:latest
 ```
 
 ## Required environment variables
@@ -56,7 +56,7 @@ The server refuses to start in `VULOS_ENV=prod` (the default) without these:
 
 ## `/init-passphrase` contract
 
-The cloud control plane calls this endpoint after booting a fresh managed VM to deliver the data-encryption passphrase and unlock the vault.
+Your provisioning process calls this endpoint after booting a fresh box to deliver the data-encryption passphrase and unlock the vault (rather than baking the secret into the image).
 
 ### Request
 

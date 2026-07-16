@@ -1,5 +1,5 @@
 #!/bin/sh
-# entrypoint.sh — Vulos managed box startup script.
+# entrypoint.sh — Vulos headless box startup script.
 # Runs inside the debian:bookworm-slim runtime image under tini.
 # All configuration is via environment variables.
 set -eu
@@ -18,5 +18,5 @@ fatal() {
 # Ensure data directory exists and is writable.
 mkdir -p "${VULOS_DATA_DIR:-/data}"
 
-echo "[entrypoint] starting Vulos OS (managed, headless) — env=${VULOS_ENV:-prod}"
+echo "[entrypoint] starting Vulos OS (headless box) — env=${VULOS_ENV:-prod}"
 exec /app/vulos -env "${VULOS_ENV:-prod}"

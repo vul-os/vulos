@@ -54,11 +54,7 @@ jobs:
           fi
           echo "Version check passed: $TAG == $PKG_VERSION"
 
-      # ── Clone vulos-apps before any Go build steps ───────────────────────────
-      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
       # All `go build` / `go test` / `go vet` steps below require this sibling.
-      - name: Clone vulos-apps (go.mod local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
       # ── The release must not ship a forgeable registry ────────────────────────
       # The repo ships a DEV trust anchor so a fresh clone verifies real signatures
@@ -124,9 +120,6 @@ jobs:
       # (FROM --platform=$BUILDPLATFORM golang:trixie) handles cross-compilation:
       # Go runs natively on the amd64 builder; GOOS/GOARCH from TARGETOS/TARGETARCH
       # (set automatically by buildx) target each platform's binary.
-      # vulos-apps is provided as a named BuildKit build-context (--build-context)
-      # so the go.mod replace directive resolves inside Docker without widening the
-      # primary build context from '.'.
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -135,8 +128,6 @@ jobs:
           build-args: |
             BINARY_SOURCE=built
             VERSION=${{ steps.version.outputs.VERSION }}
-          build-contexts: |
-            vulos-apps=../vulos-apps
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}

@@ -6,7 +6,7 @@
 #     cd ../vulos-relay/client && npm install && npm run build:lib
 #     npm ci && npm run build
 #
-#   Step 2 — build the Go binary for the target platform (requires vulos-apps):
+#   Step 2 — build the Go binary for the target platform:
 #     mkdir -p bin
 #     cd backend
 #     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
@@ -19,15 +19,11 @@
 #
 # ── Standalone / multi-arch build (Go compiled inside Docker) ─────────────────
 #
-#   Resolves the go.mod `replace github.com/vul-os/vulos-apps => ../../vulos-apps`
-#   by supplying vulos-apps as a named BuildKit build-context.  WORKDIR mirrors
-#   the local checkout layout so ../../vulos-apps resolves inside the container.
 #   FROM --platform=$BUILDPLATFORM compiles Go natively; GOOS/GOARCH env vars
 #   handle cross-compilation for the target platform.
 #
 #     docker build \
 #       --build-arg BINARY_SOURCE=built \
-#       --build-context vulos-apps=../vulos-apps \
 #       --build-arg VERSION=vX.Y.Z \
 #       -t vulos .
 #
@@ -45,7 +41,7 @@
 #   Each CI matrix job builds for exactly one platform, so a flat bin/ dir
 #   is sufficient (no per-arch subdirectory needed).
 # 'built'   (standalone / release multi-arch):  builds Go from source inside
-#   Docker.  Requires --build-context vulos-apps=../vulos-apps.
+#   Docker.
 ARG BINARY_SOURCE=prebuilt
 
 # ── Stage 1: Frontend (pre-built) ─────────────────────────────────────────────
@@ -59,23 +55,14 @@ FROM scratch AS frontend
 COPY dist/ /dist/
 
 # ── Stage 2a: Pre-built Go backend (CI / default path) ────────────────────────
-# go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
-# This path resolves on the runner (sibling cloned) but not inside the Docker
-# build context.  Binaries are compiled on the runner (CGO_ENABLED=0, so
-# cross-compilation is trivial) and placed in bin/ before docker build.
+# Binaries are compiled on the runner (CGO_ENABLED=0, so cross-compilation is
+# trivial) and placed in bin/ before docker build.
 # Each CI matrix job builds for one platform and owns bin/ exclusively.
 FROM scratch AS backend-prebuilt
 COPY bin/ /
 
 # ── Stage 2b: Go source build (standalone / release multi-arch path) ──────────
 # Used when --build-arg BINARY_SOURCE=built is passed.
-# vulos-apps must be provided as a named BuildKit build-context:
-#   --build-context vulos-apps=../vulos-apps
-#
-# The WORKDIR mirrors the local checkout layout so the replace directive
-#   replace github.com/vul-os/vulos-apps => ../../vulos-apps
-# resolves correctly inside Docker:
-#   /workspace/vulos/backend + ../../vulos-apps = /workspace/vulos-apps ✓
 #
 # FROM --platform=$BUILDPLATFORM runs the Go compiler on the native builder
 # platform (fast); GOOS/GOARCH from TARGETOS/TARGETARCH handle cross-compilation
@@ -88,7 +75,6 @@ ARG VERSION=dev
 ENV GOTOOLCHAIN=auto
 WORKDIR /workspace/vulos/backend
 COPY backend/go.mod backend/go.sum ./
-COPY --from=vulos-apps . /workspace/vulos-apps/
 RUN go mod download
 COPY backend/ .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \

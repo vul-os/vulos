@@ -343,16 +343,6 @@ const defaultWebApps = [
     needsSameOrigin: true,
   },
   {
-    id: 'sheets',
-    name: 'Sheets',
-    icon: '⊞',
-    description: 'Collaborative spreadsheet with live multi-user editing via Yjs',
-    keywords: ['sheets', 'spreadsheet', 'collab', 'table', 'data', 'collaborate'],
-    category: 'productivity',
-    url: '/app/sheets/',
-    port: 80,
-  },
-  {
     id: 'weather',
     name: 'Weather',
     icon: '☀',

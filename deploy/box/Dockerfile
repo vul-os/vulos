@@ -1,20 +1,16 @@
-# Vulos OS — Managed (headless) cloud box
+# Vulos OS — Headless box image (self-provisioned)
 #
-# Headless terminal + web-apps only. NO GPU, NO desktop streaming,
-# NO Xvfb, NO GStreamer, NO Wine, NO DXVK.
+# The image you run on your own server for a headless box: terminal + web-apps
+# only. NO GPU, NO desktop streaming, NO Xvfb, NO GStreamer, NO Wine, NO DXVK.
+# (For a full desktop box with app streaming, use the top-level Dockerfile.)
 #
-# Runs:
-#   - Vulos OS backend (./vulos server)
-#   - Office (vulos-office, configured via env)
-#   - LilMail (configured via env, served as iframe)
-#   - Wede (configured via env)
-#
-# Peer services (office, lilmail, wede) are separate deployments.
-# This image only runs the OS backend and serves the static frontend.
-# Their URLs are injected at runtime via environment variables.
+# Runs the Vulos OS backend (./vulos server) and serves the static frontend.
+# Owned apps like Office (vulos-office) are separate deployments reached through
+# the App Hub; PIM (lilmail) is likewise configured via env. Their URLs are
+# injected at runtime via environment variables.
 #
 # Build (from repo root):
-#   docker build -f deploy/managed/Dockerfile -t vulos-managed .
+#   docker build -f deploy/box/Dockerfile -t vulos-box .
 #
 # Run (requires real secrets — will refuse to start with dev defaults):
 #   docker run -p 8080:8080 \
@@ -26,7 +22,7 @@
 #     -e S3_SECRET_KEY=<secret> \
 #     -e S3_BUCKET=<bucket> \
 #     -e BURST_HEARTBEAT_SECRET=<secret> \
-#     vulos-managed
+#     vulos-box
 
 # ── Stage 1: Frontend build ───────────────────────────────────────────────────
 FROM node:22-slim AS frontend
@@ -71,7 +67,7 @@ RUN mkdir -p /data && chown vulos:vulos /data
 WORKDIR /app
 COPY --from=gobuild /vulos-server /app/vulos
 COPY --from=frontend /app/dist /app/dist
-COPY deploy/managed/entrypoint.sh /app/entrypoint.sh
+COPY deploy/box/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # Trust anchor + release cert (REGISTRY-SIGN-01). PUBLIC keys only — the root

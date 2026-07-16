@@ -59,10 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # backend/go.mod has `replace github.com/vul-os/vulos-apps => ../../vulos-apps`
       # — clone the sibling so the module resolves on the CI runner.
-      - name: Clone vulos-apps (local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps "${{ github.workspace }}/../vulos-apps"
 
       - uses: actions/setup-go@v5
         with:

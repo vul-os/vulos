@@ -51,10 +51,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
-      - name: Clone vulos-apps (local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
@@ -104,8 +100,6 @@ jobs:
       # gen-notices reads the Go module cache AND node_modules, so this job needs
       # both toolchains and both dependency trees resolved — mirroring the
       # frontend + backend jobs' clone/setup.
-      - name: Clone vulos-apps (go.mod local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
       - name: Clone vulos-relay (relay-client)
         run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
@@ -145,10 +139,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
-      - name: Clone vulos-apps (local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
@@ -182,9 +172,6 @@ jobs:
       GOTOOLCHAIN: auto
     steps:
       - uses: actions/checkout@v4
-
-      - name: Clone vulos-apps (local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
       - uses: actions/setup-go@v5
         with:
@@ -232,8 +219,6 @@ jobs:
       - uses: actions/checkout@v4
 
       # Clone sibling packages required by go.mod replace + npm file: deps.
-      - name: Clone vulos-apps (go.mod local replace)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-apps ../vulos-apps
 
       - name: Clone vulos-relay (relay-client)
         run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
@@ -256,10 +241,8 @@ jobs:
         run: npm ci && npm run build
 
       # ── Backend: build Go binary on the runner, COPY into the Docker image ───
-      # go.mod has: replace github.com/vul-os/vulos-apps => ../../vulos-apps
-      # This path resolves on the runner (../vulos-apps cloned above) but not
-      # inside the Docker build context (context: .).  Mirroring the frontend
-      # pattern: compile on the runner, COPY the prebuilt binary into the image.
+      # Mirroring the frontend pattern: compile on the runner, COPY the prebuilt
+      # binary into the image (avoids widening the Docker build context).
       # Binaries land at bin/${GOOS}_${GOARCH}/ so the Dockerfile's
       # COPY bin/${TARGETOS}_${TARGETARCH}/ / picks up the right arch automatically.
       - uses: actions/setup-go@v5

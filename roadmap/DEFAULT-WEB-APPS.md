@@ -6,7 +6,7 @@ Each app lives in `/apps/<id>/` with an `app.json` manifest + a small Python/Go 
 
 > **Goal.** A small, useful set of bundled apps that demonstrates the web-native model: calculator, calendar, clock, weather, PDF viewer, text editor, music, video, gallery, maps, camera, voice recorder, screenshot, system info.
 > **Non-goals.** Replacing professional desktop apps. Anything with heavy native dependencies — those go through the App Store.
-> **Status.** All 15 default apps are shipping; follow-ups (better calendar persistence, AppRegistry surfacing) are in `tasks.md` under `WEBAPP-*`.
+> **Status.** All 15 default apps are shipping; follow-ups (better calendar persistence, AppRegistry surfacing) are tracked in GitHub Issues.
 
 ---
 

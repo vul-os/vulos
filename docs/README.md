@@ -12,10 +12,10 @@ This directory contains architecture, deployment, and API documentation for the 
 | [REPRODUCIBLE-BUILDS.md](REPRODUCIBLE-BUILDS.md) | Verifying image builds from source |
 | [RELEASING.md](RELEASING.md) | Versioning and release policy |
 | [security/](security/) | Security audits and hardening-test notes |
-| [../SLOs.md](../SLOs.md) | Service level objectives |
+| [SLOs.md](SLOs.md) | Service level objectives |
 | [../ROADMAP.md](../ROADMAP.md) | Feature roadmap |
 | [../SECURITY.md](../SECURITY.md) | Security policy |
-| [../THREAT-MODEL.md](../THREAT-MODEL.md) | Threat model (incl. the sovereign assistant) |
+| [THREAT-MODEL.md](THREAT-MODEL.md) | Threat model (incl. the sovereign assistant) |
 
 ## Quick links
 

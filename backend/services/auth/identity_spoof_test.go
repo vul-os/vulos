@@ -41,9 +41,9 @@ func TestMiddleware_SpoofedIdentityStrippedOnPublicPath(t *testing.T) {
 	h := NewHandler(store)
 	mw := h.Middleware(echoIdentityHandler())
 
-	// /api/apps/v1/ is a public prefix (vat_ app-token authed downstream), so the
-	// request passes through — the ideal probe for what reaches the app layer.
-	req := httptest.NewRequest(http.MethodGet, "/api/apps/v1/ping", nil)
+	// /assets/ is a public prefix (static assets), so the request passes through —
+	// the ideal probe for what reaches the app layer.
+	req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
 	req.Header.Set("X-User-ID", "victim-owner-id")
 	req.Header.Set("X-User-Email", "victim@example.com")
 	rr := httptest.NewRecorder()

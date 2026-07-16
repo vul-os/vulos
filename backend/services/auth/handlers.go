@@ -1,8 +1,6 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,8 +10,6 @@ import (
 	"os"
 	stdpath "path"
 	"strings"
-	"sync"
-	"time"
 
 	"vulos/backend/internal/apikey"
 )
@@ -21,7 +17,6 @@ import (
 // Handler wires local password, PIN, and fingerprint auth routes into an http.ServeMux.
 type Handler struct {
 	store         *Store
-	states        *stateStore
 	limiter       *RateLimiter
 	OnUserCreated func(username, password, role string) // called after a new user is registered
 	OnUserLogin   func(username, password, role string) // called on every successful login to sync credentials
@@ -43,7 +38,6 @@ type Handler struct {
 func NewHandler(store *Store) *Handler {
 	return &Handler{
 		store:   store,
-		states:  newStateStore(),
 		limiter: DefaultRateLimiter(),
 	}
 }
@@ -143,7 +137,6 @@ var publicPaths = map[string]bool{
 	"/init-passphrase":                true, // managed-box vault unlock (gated by X-Burst-Secret header, not session cookie)
 	"/api/files/peer/serve":           true, // FILES-2B: box-to-box capability fetch (authed by signed capability + fetch proof, not a session)
 	"/api/files/internal/content-key": true, // WAVE-7: internal cell→box content-key lookup (authed by X-Vulos-Internal-Auth shared secret, not a session)
-	"/mcp":                            true, // APPS/MCP: agent MCP server (authed by vat_ app token via the @vulos/apps platform, not a session)
 	"/metrics":                        true, // OBS: Prometheus scrape — the /metrics handler does its OWN owner-or-scrape-token gate (VULOS_METRICS_TOKEN), so the session middleware must defer to it rather than 401 a tokened scraper. NOT actually public: no auth = 403 at the handler.
 
 	// PEERING (box-to-box, server-to-server). These routes are reached by REMOTE
@@ -168,17 +161,8 @@ var publicPaths = map[string]bool{
 }
 
 // publicPrefixes are path prefixes that don't require authentication.
-//
-// APPS/MCP NOTE: the @vulos/apps runtime/webhook/MCP routes authenticate with a
-// vat_ app token (or the webhook-id secret), NOT an OS session, so the session
-// middleware must DEFER to the platform's own constant-time token auth here. Only
-// these token-authed subtrees are public; the apps MANAGEMENT API (/api/apps,
-// /api/apps/{id}, /api/apps/commands) is NOT listed and stays OS-session-authed.
 var publicPrefixes = []string{
 	"/assets/",
-	"/mcp/",            // MCP subtree (vat_ app token authed by the @vulos/apps MCP layer)
-	"/api/apps/v1/",    // apps runtime: act / read / events / auth.test (vat_ app token authed)
-	"/api/apps/hooks/", // apps incoming webhooks (authed by the webhook-id secret in the URL)
 
 	// PUBWEB anonymous public entrypoint. The public-web edge (Caddy/nginx)
 	// proxies published apps here over loopback. The gateway's PublicHandler IS
@@ -904,64 +888,6 @@ func cookieDomain(r *http.Request) string {
 	return "." + strings.Join(parts[1:], ".")
 }
 
-// stateStore manages CSRF state tokens with expiry.
-type stateStore struct {
-	mu     sync.Mutex
-	states map[string]*stateEntry
-}
-
-type stateEntry struct {
-	createdAt time.Time
-	meta      map[string]string
-}
-
-func newStateStore() *stateStore {
-	return &stateStore{states: make(map[string]*stateEntry)}
-}
-
-func (s *stateStore) create() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	state := base64.RawURLEncoding.EncodeToString(b)
-	s.mu.Lock()
-	s.states[state] = &stateEntry{createdAt: time.Now(), meta: map[string]string{}}
-	s.mu.Unlock()
-	return state
-}
-
-func (s *stateStore) validate(state string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry, ok := s.states[state]
-	if !ok {
-		return false
-	}
-	return time.Since(entry.createdAt) < 10*time.Minute
-}
-
-func (s *stateStore) setMeta(state, key, value string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if e, ok := s.states[state]; ok {
-		e.meta[key] = value
-	}
-}
-
-func (s *stateStore) getMeta(state, key string) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if e, ok := s.states[state]; ok {
-		return e.meta[key]
-	}
-	return ""
-}
-
-func (s *stateStore) delete(state string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.states, state)
-}
-
 // --- Profile management handlers ---
 
 // sanitizeProfile returns a COPY of p safe to serialize in an HTTP response. It
@@ -1251,12 +1177,6 @@ func (h *Handler) handleValidatePIN(w http.ResponseWriter, r *http.Request) {
 		h.limiter.RecordSuccess(ip)
 	}
 	writeJSON(w, map[string]any{"valid": valid, "has_pin": h.store.HasPIN(userID)})
-}
-
-func generateRandomPassword() string {
-	b := make([]byte, 24)
-	rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // ─── CLOGIN-06: device-local PIN handlers ────────────────────────────────────
