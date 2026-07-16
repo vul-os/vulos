@@ -5,17 +5,17 @@
 //
 // The contract is deliberately small:
 //
-//	srv, err := cpserver.New(cfg, deps)   // cfg = generic config, deps = seams
-//	err = srv.Run(ctx)                    // serve until ctx is cancelled
+//		srv, err := cpserver.New(cfg, deps)   // cfg = generic config, deps = seams
+//		err = srv.Run(ctx)                    // serve until ctx is cancelled
 //
-//   - Config is populated from plain env/flags/file by whoever builds the
-//     server. It carries NO provider-specific knowledge (no Fly, no the managed store, no
-//     Paystack) — just an address, a domain, a database DSN, and the like.
-//   - Deps carries the pluggable providers. A self-hoster leaves them nil and
-//     New fills in the free no-op / bring-your-own defaults from pkg/billingport
-//     and pkg/storageport. A commercial distributor injects real
-//     implementations (a payment rail, a tier/quota resolver, a bucket
-//     provisioner) built in its own module.
+//	  - Config is populated from plain env/flags/file by whoever builds the
+//	    server. It carries NO provider-specific knowledge (no Fly, no the managed store, no
+//	    Paystack) — just an address, a domain, a database DSN, and the like.
+//	  - Deps carries the pluggable providers. A self-hoster leaves them nil and
+//	    New fills in the free no-op / bring-your-own defaults from pkg/billingport
+//	    and pkg/storageport. A commercial distributor injects real
+//	    implementations (a payment rail, a tier/quota resolver, a bucket
+//	    provisioner) built in its own module.
 //
 // Deps is a struct of interfaces so new injected providers scale cleanly: add a
 // field, default it in applyDefaults, expose it on Runtime. Composition code
@@ -39,8 +39,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/vul-os/vulos-management/pkg/auth"
 	"github.com/vul-os/vulos-management/pkg/billingport"
 	"github.com/vul-os/vulos-management/pkg/cpdb"
+	"github.com/vul-os/vulos-management/pkg/cproutes"
+	"github.com/vul-os/vulos-management/pkg/env"
 	"github.com/vul-os/vulos-management/pkg/storageport"
 )
 
@@ -55,18 +58,19 @@ type Config struct {
 	// zone). Defaults to "vulos.org" when empty, matching env.Domain().
 	Domain string
 
-	// DatabaseDSN selects the control-plane database. When empty the server
-	// opens a local SQLite database (DBSQLitePath, or an in-memory DB) — the
-	// zero-config self-host default. A Postgres DSN selects Postgres.
+	// DatabaseDSN selects the control-plane database backend. When set, every
+	// subsystem opens a Postgres schema via this DSN. When empty, subsystems open
+	// per-subsystem SQLite files under DBDir — the zero-config self-host default.
 	DatabaseDSN string
 
-	// DBLogicalName is the logical schema/namespace passed to the database
-	// backend (Postgres schema name). Defaults to "cp".
-	DBLogicalName string
+	// DBDir is the directory for per-subsystem SQLite files when DatabaseDSN is
+	// empty. Defaults to "./cpdata".
+	DBDir string
 
-	// DBSQLitePath is the on-disk SQLite path used when DatabaseDSN is empty.
-	// Empty means an in-memory database (non-durable; dev/smoke only).
-	DBSQLitePath string
+	// SessionSecret keys the auth store's sessions. When empty it is read from
+	// SESSION_SECRET; a dev fallback is used in non-prod, but prod refuses to
+	// start without one.
+	SessionSecret string
 
 	// Environment is a free-form deployment label ("prod", "dev", …) surfaced on
 	// the version endpoint. It does not change behaviour on its own.
@@ -89,8 +93,8 @@ func (c *Config) withDefaults() {
 	if c.Domain == "" {
 		c.Domain = "vulos.org"
 	}
-	if c.DBLogicalName == "" {
-		c.DBLogicalName = "cp"
+	if c.DBDir == "" {
+		c.DBDir = "./cpdata"
 	}
 	if c.Version == "" {
 		c.Version = "dev"
@@ -166,8 +170,15 @@ func (d *Deps) withDefaults() {
 // logger. Extend it (not the New signature) when a new shared collaborator is
 // added.
 type Runtime struct {
-	Config             Config
-	DB                 *cpdb.DB
+	Config Config
+	// DB is the auth-subsystem database handle, used for readiness checks. Other
+	// subsystems open their own handle via cpdb.Open(<subsystem>) — the DB backend
+	// (SQLite dir or Postgres schema) is already configured in the process env by
+	// the time registrars run.
+	DB *cpdb.DB
+	// AuthStore is the shared account/session store nearly every route group gates
+	// against. Built once by New.
+	AuthStore          *auth.Store
 	Billing            billingport.BillingProvider
 	Entitlements       billingport.EntitlementResolver
 	StorageProvisioner storageport.StorageProvisioner
@@ -180,6 +191,9 @@ type Server struct {
 	rt      *Runtime
 	http    *http.Server
 	onStart []func(ctx context.Context, rt *Runtime)
+	// closers are the operational store closers returned by
+	// cproutes.RegisterOperational; run in reverse order on Close.
+	closers []func()
 }
 
 // New assembles a control plane from generic config and injected seams. Nil
@@ -190,14 +204,23 @@ func New(cfg Config, deps Deps) (*Server, error) {
 	cfg.withDefaults()
 	deps.withDefaults()
 
-	db, err := openDB(cfg)
+	// Configure the process DB backend so every subsystem's cpdb.Open(...) resolves
+	// to the same place: a Postgres DSN, or per-subsystem SQLite files under DBDir.
+	if cfg.DatabaseDSN != "" {
+		_ = os.Setenv("DATABASE_URL", cfg.DatabaseDSN)
+	} else if os.Getenv("DATABASE_URL") == "" && os.Getenv("VULOS_DATABASE_URL") == "" {
+		_ = os.Setenv("VULOS_DB_DIR", cfg.DBDir)
+	}
+
+	authStore, authDB, err := openAuthStore(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("cpserver: open database: %w", err)
+		return nil, fmt.Errorf("cpserver: open auth store: %w", err)
 	}
 
 	rt := &Runtime{
 		Config:             cfg,
-		DB:                 db,
+		DB:                 authDB,
+		AuthStore:          authStore,
 		Billing:            deps.Billing,
 		Entitlements:       deps.Entitlements,
 		StorageProvisioner: deps.StorageProvisioner,
@@ -206,6 +229,19 @@ func New(cfg Config, deps Deps) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mountOperational(mux, rt)
+
+	// Mount the full operational route surface (auth, recovery, developer/LLM
+	// keys, OIDC provider, mobile push, DDoS, abuse, security, legal, products,
+	// boot, …) built against the injected seams. The commercial module appends
+	// its own route registrars via deps.Routes.
+	opClosers := cproutes.RegisterOperational(mux, cproutes.OperationalDeps{
+		AuthStore:      rt.AuthStore,
+		AuthDB:         rt.DB,
+		Entitlements:   rt.Entitlements,
+		DBDir:          cfg.DBDir,
+		AdminAccountID: os.Getenv("CP_ADMIN_ACCOUNT_ID"),
+	})
+
 	for i, reg := range deps.Routes {
 		if reg == nil {
 			continue
@@ -216,8 +252,9 @@ func New(cfg Config, deps Deps) (*Server, error) {
 	}
 
 	return &Server{
-		cfg: cfg,
-		rt:  rt,
+		cfg:     cfg,
+		rt:      rt,
+		closers: opClosers,
 		http: &http.Server{
 			Addr:         cfg.Addr,
 			Handler:      mux,
@@ -263,30 +300,44 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 }
 
-// Close releases server resources (the database handle).
+// Close releases server resources: the operational store closers (reverse
+// order), then the auth store + its database handle.
 func (s *Server) Close() error {
-	if s.rt != nil && s.rt.DB != nil {
-		return s.rt.DB.Close()
+	for i := len(s.closers) - 1; i >= 0; i-- {
+		if s.closers[i] != nil {
+			s.closers[i]()
+		}
+	}
+	if s.rt != nil && s.rt.AuthStore != nil {
+		return s.rt.AuthStore.Close()
 	}
 	return nil
 }
 
-// openDB opens the control-plane database per Config. Empty DatabaseDSN selects
-// SQLite (on-disk when DBSQLitePath is set, else in-memory) — the zero-config
-// self-host default. A non-empty DSN is passed to the Postgres backend via the
-// standard DATABASE_URL env the cpdb runner honours.
-func openDB(cfg Config) (*cpdb.DB, error) {
-	if cfg.DatabaseDSN == "" {
-		dsn := cfg.DBSQLitePath
-		if dsn == "" {
-			dsn = ":memory:"
-		}
-		return cpdb.OpenSQLiteDSN(dsn)
+// openAuthStore builds the shared account/session store — the spine nearly every
+// route group gates against. The DB backend env is already configured by New, so
+// cpdb.Open("auth") resolves to the right place.
+func openAuthStore(cfg Config) (*auth.Store, *cpdb.DB, error) {
+	secret := []byte(cfg.SessionSecret)
+	if len(secret) == 0 {
+		secret = []byte(os.Getenv("SESSION_SECRET"))
 	}
-	// The Postgres backend reads its DSN from DATABASE_URL; set it for this
-	// process so cpdb.Open selects Postgres with the configured DSN.
-	_ = os.Setenv("DATABASE_URL", cfg.DatabaseDSN)
-	return cpdb.Open(cfg.DBLogicalName)
+	if len(secret) == 0 {
+		if env.IsProdResolved() {
+			return nil, nil, fmt.Errorf("SESSION_SECRET is unset in prod — refusing to start")
+		}
+		secret = []byte("vulos-cp-dev-secret-change-me")
+	}
+	authDB, err := cpdb.Open("auth")
+	if err != nil {
+		return nil, nil, fmt.Errorf("open auth cpdb: %w", err)
+	}
+	store, err := auth.OpenAuthStore(authDB, secret)
+	if err != nil {
+		_ = authDB.Close()
+		return nil, nil, fmt.Errorf("open auth store: %w", err)
+	}
+	return store, authDB, nil
 }
 
 // mountOperational installs the always-on operational endpoints every control

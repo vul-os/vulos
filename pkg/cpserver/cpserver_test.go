@@ -13,7 +13,7 @@ import (
 // free no-op seams and serves the always-on operational endpoints, and that the
 // version endpoint reports the no-op billing rail (never charges).
 func TestNew_SelfHostDefaults(t *testing.T) {
-	srv, err := cpserver.New(cpserver.Config{Version: "test"}, cpserver.Deps{})
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()}, cpserver.Deps{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestNew_RouteRegistrarHook(t *testing.T) {
 		})
 		return nil
 	}
-	srv, err := cpserver.New(cpserver.Config{}, cpserver.Deps{Routes: []cpserver.RouteRegistrar{reg}})
+	srv, err := cpserver.New(cpserver.Config{DBDir: t.TempDir()}, cpserver.Deps{Routes: []cpserver.RouteRegistrar{reg}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
