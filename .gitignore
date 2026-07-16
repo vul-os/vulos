@@ -1,6 +1,10 @@
 # ---- Go ----
 bin/
 dist/
+# Exception: web/dist is the BUILT management console SPA, compiled into the
+# binary via //go:embed in web/embed.go. It MUST be committed so `go build ./...`
+# is green without a Node toolchain. Rebuild with `make console`.
+!/web/dist/
 *.exe
 *.test
 *.out
