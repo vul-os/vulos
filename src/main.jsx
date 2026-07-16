@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { getInitialResolvedTheme } from './core/ThemeProvider.jsx'
 // RELAY-CLIENT-04: relay-client shared package, with OS-specific seams.
 // configure() MUST run before any other relay-client import touches localStorage
 // so existing OS user state under 'vulos.os.endpoints.v1' survives the migration
@@ -35,6 +36,13 @@ bootstrapOffline({
 try {
   document.documentElement.dataset.density = localStorage.getItem('vulos.density') || 'comfortable'
 } catch { /* localStorage unavailable — default comfortable via CSS */ }
+
+// Apply the resolved theme (Light / Dark / System) before first paint so a
+// Light or System-light user never sees a flash of the dark default on reload.
+// ThemeProvider re-applies + tracks live once React mounts.
+try {
+  document.documentElement.setAttribute('data-theme', getInitialResolvedTheme())
+} catch { /* localStorage / matchMedia unavailable — CSS :root dark default applies */ }
 
 // Diagnostic surface: if React fails to mount (or any unhandled error fires
 // before/during render), paint a *visible* error directly to the document

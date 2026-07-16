@@ -61,14 +61,27 @@ function isInTimeRange(fromMin, toMin) {
   return now >= fromMin || now < toMin
 }
 
-function resolveTheme(theme, scheduleDark, scheduleLight) {
-  if (theme === 'auto') return getSystemTheme()
+function resolveTheme(theme, scheduleDark, scheduleLight, systemTheme) {
+  if (theme === 'auto') return systemTheme || getSystemTheme()
   if (theme === 'schedule') {
     const darkStart = parseTime(scheduleDark)
     const lightStart = parseTime(scheduleLight)
     return isInTimeRange(timeToMinutes(darkStart), timeToMinutes(lightStart)) ? 'dark' : 'light'
   }
-  return theme
+  if (theme === 'light' || theme === 'dark') return theme
+  // Unknown / legacy value → treat as System so we never render an invalid attr.
+  return systemTheme || getSystemTheme()
+}
+
+// Resolve the effective theme from persisted settings alone — used by main.jsx
+// to stamp data-theme on <html> BEFORE first paint, so a Light/System-light user
+// never sees a flash of the dark default on reload.
+// eslint-disable-next-line react-refresh/only-export-components
+export function getInitialResolvedTheme() {
+  const theme = ls(STORAGE_KEYS.theme, 'auto')
+  const scheduleDark = ls(STORAGE_KEYS.scheduleDark, '20:00')
+  const scheduleLight = ls(STORAGE_KEYS.scheduleLight, '07:00')
+  return resolveTheme(theme, scheduleDark, scheduleLight, getSystemTheme())
 }
 
 function resolveNightShift(mode, customFrom, customTo) {
@@ -86,7 +99,13 @@ function resolveNightShift(mode, customFrom, customTo) {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => ls(STORAGE_KEYS.theme, 'dark'))
+  // Default mode is System (follow the OS/browser prefers-color-scheme).
+  const [theme, setThemeState] = useState(() => ls(STORAGE_KEYS.theme, 'auto'))
+  // Live mirror of the OS/browser colour-scheme. Kept in React state (not just a
+  // one-off read) so that when the system flips while in System/Auto mode the
+  // whole context recomputes and every consumer re-renders — not merely the
+  // <html data-theme> attribute.
+  const [systemTheme, setSystemTheme] = useState(getSystemTheme)
   const [scheduleDark, setScheduleDarkState] = useState(() => ls(STORAGE_KEYS.scheduleDark, '20:00'))
   const [scheduleLight, setScheduleLightState] = useState(() => ls(STORAGE_KEYS.scheduleLight, '07:00'))
   const [nightShiftMode, setNightShiftModeState] = useState(() => ls(STORAGE_KEYS.nightShift, 'off'))
@@ -103,9 +122,23 @@ export function ThemeProvider({ children }) {
     return () => clearInterval(id)
   }, [theme, nightShiftMode])
 
+  // Track the OS/browser colour-scheme live, in every mode. In System/Auto mode
+  // this drives the effective theme; in explicit Light/Dark it's simply ignored.
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-color-scheme: light)')
+    if (!mq) return
+    const handler = () => setSystemTheme(getSystemTheme())
+    if (mq.addEventListener) mq.addEventListener('change', handler)
+    else if (mq.addListener) mq.addListener(handler) // Safari < 14
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', handler)
+      else if (mq.removeListener) mq.removeListener(handler)
+    }
+  }, [])
+
   const resolved = useMemo(
-    () => resolveTheme(theme, scheduleDark, scheduleLight),
-    [theme, scheduleDark, scheduleLight, tick]
+    () => resolveTheme(theme, scheduleDark, scheduleLight, systemTheme),
+    [theme, scheduleDark, scheduleLight, systemTheme, tick]
   )
 
   const nightShiftActive = useMemo(
@@ -135,15 +168,6 @@ export function ThemeProvider({ children }) {
     document.documentElement.style.setProperty('--accent', accent)
   }, [accent])
 
-  // Listen for system theme changes when in auto mode
-  useEffect(() => {
-    if (theme !== 'auto') return
-    const mq = window.matchMedia('(prefers-color-scheme: light)')
-    const handler = () => document.documentElement.setAttribute('data-theme', getSystemTheme())
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [theme])
-
   // Persisted setters
   const setTheme = useCallback((t) => { setThemeState(t); lsSet(STORAGE_KEYS.theme, t) }, [])
   const setScheduleDark = useCallback((t) => { setScheduleDarkState(t); lsSet(STORAGE_KEYS.scheduleDark, t) }, [])
@@ -158,15 +182,21 @@ export function ThemeProvider({ children }) {
     setTheme(resolved === 'dark' ? 'light' : 'dark')
   }, [resolved, setTheme])
 
+  // Three-way quick cycle for the top-bar toggle: System → Light → Dark → System.
+  // Any non-primary mode (e.g. schedule) folds back into the cycle at System.
+  const cycleTheme = useCallback(() => {
+    setTheme(theme === 'auto' ? 'light' : theme === 'light' ? 'dark' : 'auto')
+  }, [theme, setTheme])
+
   const value = useMemo(() => ({
-    theme, resolved, isDark: resolved === 'dark', setTheme, toggle,
+    theme, resolved, isDark: resolved === 'dark', setTheme, toggle, cycleTheme, systemTheme,
     scheduleDark, scheduleLight, setScheduleDark, setScheduleLight,
     nightShiftMode, nightShiftActive, nightShiftWarmth,
     nightShiftFrom, nightShiftTo,
     setNightShiftMode, setNightShiftFrom, setNightShiftTo, setNightShiftWarmth,
     accent, setAccent,
   }), [
-    theme, resolved, setTheme, toggle,
+    theme, resolved, setTheme, toggle, cycleTheme, systemTheme,
     scheduleDark, scheduleLight, setScheduleDark, setScheduleLight,
     nightShiftMode, nightShiftActive, nightShiftWarmth,
     nightShiftFrom, nightShiftTo,
@@ -185,7 +215,8 @@ export function ThemeProvider({ children }) {
 export function useTheme() {
   const ctx = useContext(ThemeContext)
   if (!ctx) return {
-    theme: 'dark', resolved: 'dark', isDark: true, setTheme: () => {}, toggle: () => {},
+    theme: 'auto', resolved: getSystemTheme(), isDark: getSystemTheme() === 'dark',
+    systemTheme: getSystemTheme(), setTheme: () => {}, toggle: () => {}, cycleTheme: () => {},
     scheduleDark: '20:00', scheduleLight: '07:00', setScheduleDark: () => {}, setScheduleLight: () => {},
     nightShiftMode: 'off', nightShiftActive: false, nightShiftWarmth: 40,
     nightShiftFrom: '20:00', nightShiftTo: '07:00',

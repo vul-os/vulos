@@ -262,15 +262,17 @@ function AppearanceSettings() {
   return (
     <Section title="Appearance">
       <Field label="Theme">
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="radiogroup" aria-label="Theme mode">
           {[
-            { value: 'dark', label: 'Dark', icon: '\u{263E}' },
             { value: 'light', label: 'Light', icon: '\u{2600}' },
-            { value: 'auto', label: 'Auto', icon: '\u{25D1}' },
+            { value: 'dark', label: 'Dark', icon: '\u{263E}' },
+            { value: 'auto', label: 'System', icon: '\u{1F5A5}' },
             { value: 'schedule', label: 'Schedule', icon: '\u{23F0}' },
           ].map(opt => (
             <button
               key={opt.value}
+              role="radio"
+              aria-checked={theme === opt.value}
               onClick={() => setTheme(opt.value)}
               className={`flex-1 py-3 rounded-xl text-sm transition-all border
                 ${theme === opt.value
@@ -286,7 +288,7 @@ function AppearanceSettings() {
         </div>
       </Field>
       <p className="text-xs text-neutral-600 mt-2">
-        {theme === 'auto' && `Follows system preference. Currently ${isDark ? 'dark' : 'light'}.`}
+        {theme === 'auto' && `Follows your device (OS / browser) appearance, updating live. Currently ${isDark ? 'dark' : 'light'}.`}
         {theme === 'schedule' && `Switches by time (${tz}). Currently ${resolved}.`}
         {theme === 'dark' && 'Always dark.'}
         {theme === 'light' && 'Always light.'}

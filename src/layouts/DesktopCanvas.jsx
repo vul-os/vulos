@@ -16,6 +16,7 @@ import AdoptPortManager from '../core/AdoptPortManager'
 import IncomingCall from '../builtin/peering/call/IncomingCall'
 import PublicAppBanner from '../shell/PublicAppBanner'
 import TrustBadge from '../shell/TrustBadge'
+import ThemeToggle from '../core/ThemeToggle'
 import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
 import CalendarWidget from '../shell/CalendarWidget'
@@ -180,6 +181,8 @@ export default function DesktopCanvas() {
               at-rest lock; click opens the transparency panel. */}
           <TrustBadge />
           <div className="w-px h-3.5 bg-neutral-700/40 mx-1" />
+          {/* Quick theme cycle: System → Light → Dark */}
+          <ThemeToggle variant="bar" />
           {/* Chat toggle */}
           <button
             onClick={toggleChat}
