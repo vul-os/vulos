@@ -157,7 +157,7 @@ cp dev/config/llmux.config.json.example dev/config/llmux.config.json   # then ed
 
 **Works fully, out of the box (localhost / LAN):**
 
-- Workspace front door + the OS local control plane (`/api`).
+- OS control plane + the OS local control plane (`/api`).
 - Office (documents), Talk (chat/spaces/huddles), Board (whiteboard) — end to end.
 - Webmail UI (lilmail) boots and is browsable against the `mailpit` catcher.
 - Private AI via llmux, pointed at a model server running on your host.
@@ -221,7 +221,7 @@ curl -fsS http://localhost:3000/health    # lilmail webmail
 curl -fsS http://localhost:2080/healthz   # vulos-mail server
 curl -fsS http://localhost:8081/healthz   # office
 curl -fsS http://localhost:8082/healthz   # talk
-open    http://localhost:8088             # Workspace front door
+open    http://localhost:8088             # OS control plane
 ```
 
 ---
