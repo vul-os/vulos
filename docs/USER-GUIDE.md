@@ -30,7 +30,7 @@ The new-system flow walks through these steps (a few are skippable):
 | Vulos username | Choose a username for your Vulos account (cloud identity). Sign-in uses your email/password or a linked Google/Microsoft account. |
 | Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; you can set it later in Settings. |
 | How will you use Vulos? | Intent question that tunes defaults (relay, AI tokens, backup quota, dedicated IP). |
-| Your apps | Everything is pre-checked by default — the owned productivity app Office (Docs/Sheets/Slides/PDF/whiteboards) plus the PIM apps. Opt out of anything; you can add it back later. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP, via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address. See [APPS.md](APPS.md). |
+| Your apps | Everything is pre-checked by default — the owned productivity app Ofisi (Docs/Sheets/Slides/PDF/whiteboards) plus the PIM apps. Opt out of anything; you can add it back later. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP, via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address. See [APPS.md](APPS.md). |
 | Appearance | Dark / Light / Auto theme. |
 | Node identity | Shows your instance's read-only ULID and lets you set a hostname (lowercase letters, numbers, hyphens). |
 | Storage | Optionally connect S3-compatible storage with an encryption passphrase. |
@@ -94,7 +94,7 @@ When no windows are open on the current desktop, you see **Home**: not a launche
 - **Agenda** — today's and upcoming events and reminders.
 - **Recent activity** — a light feed.
 - **A composer** — ask the assistant anything; actions that change state come back as a proposal card you explicitly approve before anything runs.
-- **Quick launch** — Mail, Calendar, Files, Assistant, Office, Terminal, Settings, plus "All apps" for the full Launchpad.
+- **Quick launch** — Mail, Calendar, Files, Assistant, Ofisi, Terminal, Settings, plus "All apps" for the full Launchpad.
 
 Each section fails independently — if the assistant is offline the brief says so, and the rest of Home still renders. The brief is computed on your box by the on-instance assistant; it introduces no new egress. Details in [ASSISTANT.md](ASSISTANT.md).
 

@@ -1,6 +1,6 @@
 # Mail (LilMail connector)
 
-**Mail in Vulos is a connector, not a service Vulos runs.** The OS/Workspace
+**Mail in Vulos is a connector, not a service Vulos runs.** The OS's built-in
 inbox connects to whatever mailbox the user already has — Gmail, Outlook, or
 any IMAP/SMTP account. There is no requirement to host mail on the box, and a
 mailbox is not the account anchor (identity is decoupled from mail; see

@@ -15,7 +15,7 @@
 //     in this binary, see internal/directlisten's "the OS does not embed the
 //     relay agent" note) maintains a reverse tunnel, so requests routed to
 //     the relay's per-identity URL reach the box anyway. This is what makes
-//     collab apps (Office) work for a NAT'd/CGNAT box with zero public-IP
+//     collab apps (Ofisi) work for a NAT'd/CGNAT box with zero public-IP
 //     configuration.
 //  3. contact.Server: the last-known plain address (today's sole behavior,
 //     unchanged as the final fallback).

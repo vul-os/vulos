@@ -131,7 +131,7 @@ func TestSuiteApps_CorruptFileFailsOpen(t *testing.T) {
 
 // TestSuiteApps_POSTGatedOncePersonalized pins the write gate: once the box has
 // an account, an ANONYMOUS caller can no longer permanently strip Mail + the
-// Workspace suite from the launcher, and a non-admin user cannot either. Only an
+// productivity bundle from the launcher, and a non-admin user cannot either. Only an
 // authenticated admin can rewrite the selection. Reads stay public.
 func TestSuiteApps_POSTGatedOncePersonalized(t *testing.T) {
 	home := t.TempDir()

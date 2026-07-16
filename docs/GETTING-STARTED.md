@@ -118,7 +118,7 @@ you through:
 6. **Vulos username** (`@vulos` handle) — mandatory in production; there is no skip option once cloud identity is in play.
 7. **Device PIN** — optional quick-unlock PIN for the lock screen.
 8. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
-9. **Apps** — the default-everything bundle (the owned productivity app **Office** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
+9. **Apps** — the default-everything bundle (the owned productivity app **Ofisi** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
 10. **Appearance**, **Identity** (display name), **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
 11. **SSH** and **Recovery kit** — download your account recovery material.
 12. **Ready** — setup completes and you land on the desktop.

@@ -19,7 +19,7 @@ There is no separate "bot" runtime — a bot *is* a platform app holding a token
 
 ## Bundled apps
 
-The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, Office, PDF Viewer, Sheets, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`apps/notes/app.json`):
+The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, Ofisi, PDF Viewer, Sheets, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`apps/notes/app.json`):
 
 ```json
 {

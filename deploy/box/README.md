@@ -15,7 +15,7 @@ flowchart TD
     Lilmail -.- Note
 ```
 
-The image runs the Go OS backend only. Owned apps (Office) and PIM (lilmail) are independent deployments reached through the App Hub / PIM proxy; their URLs are injected at runtime via environment variables that the OS backend already reads.
+The image runs the Go OS backend only. Owned apps (Ofisi) and PIM (lilmail) are independent deployments reached through the App Hub / PIM proxy; their URLs are injected at runtime via environment variables that the OS backend already reads.
 
 ## Build
 

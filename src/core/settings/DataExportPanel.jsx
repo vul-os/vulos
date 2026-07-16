@@ -10,7 +10,7 @@ import { useState, useCallback, useRef } from 'react'
 // STANDARD portable formats that need nothing Vulos to read back.
 //
 // Honesty is a feature here: the panel states plainly what the archive covers
-// AND what it does not (per-app data that lives in Talk/Meet/Office docs, and
+// AND what it does not (per-app data that lives in Talk/Meet/Ofisi docs, and
 // content held only on a peer via an end-to-end share), rather than implying
 // completeness. The MANIFEST.txt inside the zip says the same.
 //
@@ -29,7 +29,7 @@ const COVERED = [
 ]
 
 const NOT_COVERED = [
-  'Talk / Meet call history, and Office documents (docs, sheets, slides, whiteboards) — export those from within each app.',
+  'Talk / Meet call history, and Ofisi documents (docs, sheets, slides, whiteboards) — export those from within each app.',
   'Anything held only on another instance via an end-to-end (content-blind) share — that instance holds the keys, so export it there. This is the privacy guarantee working, not a gap in your access.',
 ]
 

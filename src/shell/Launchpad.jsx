@@ -7,7 +7,7 @@ import { useFocusTrap } from './useFocusTrap'
 
 // The full lane-dispatch launch logic lives in the shared ./launchApp module so
 // the Launchpad and the ⌘K command palette open apps identically.
-// Mail is the gateway-proxied `lilmail` connector; Office is the standalone
+// Mail is the gateway-proxied `lilmail` connector; Ofisi is the standalone
 // `vulos-office` web app; Calendar and Contacts are standalone builtin React
 // apps over lilmail's /v1 (via /api/pim/*). Real-time comms (Talk/Meet) are
 // third-party now and are not registered as OS apps.

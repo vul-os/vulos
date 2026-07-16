@@ -15,9 +15,10 @@ import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 // The cloudAccount step is mandatory — no skip option in production (frozen invariant).
 // BUNDLE-01: the 'apps' step ("Your apps") reflects the default-everything
 // (batteries-included, opt-out) bundling model. It is pre-checked for EVERYTHING
-// — an @vulos email (→ Mail) + the full Workspace suite — and lets a lean user
-// opt out. Inserted after 'intent' and before 'appearance' so it shows in every
-// new-system flow (local and cloud alike; a gamer must be able to trim down).
+// — a Vulos account handle (enables Mail, still bring-your-own) + the full Ofisi
+// productivity suite — and lets a lean user opt out. Inserted after 'intent' and
+// before 'appearance' so it shows in every new-system flow (local and cloud
+// alike; a gamer must be able to trim down).
 const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'cloudAccount', 'pin', 'intent', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
@@ -177,8 +178,9 @@ export default function Setup({ onComplete }) {
     intent: 'none',
     // BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
     // Everything is pre-selected; a lean user can uncheck these to trim down.
-    //   suiteEmail     — claim @vulos email (auto-provisions Mail; coupled to the address)
-    //   suiteWorkspace — install the Office productivity app (Docs/Sheets/Slides/PDF/Whiteboards)
+    //   suiteEmail     — claim a Vulos account handle (also enables the Mail app; Mail itself
+    //                    stays a bring-your-own connector, no mailbox is provisioned)
+    //   suiteWorkspace — install the Ofisi productivity app (Docs/Sheets/Slides/PDF/Whiteboards)
     suiteEmail: true,
     suiteWorkspace: true,
   })
@@ -2091,10 +2093,10 @@ function PinStep({ config, update, onNext, onPrev }) {
 //
 // The founder-confirmed model: the OS ships batteries-included. EVERYTHING is
 // pre-checked — Mail (the lilmail connector, which also backs the built-in
-// Calendar/Contacts widgets) plus the owned productivity app (Office/Docs,
+// Calendar/Contacts widgets) plus the owned productivity app (Ofisi/Docs,
 // which now includes whiteboards as a document type). A lean user (e.g. a
 // gamer) can OPT OUT here:
-//   - uncheck productivity apps → drops Office/Docs
+//   - uncheck productivity apps → drops Ofisi/Docs
 //   - uncheck Mail              → drops the Mail connector
 // There is no "Workspace" shell — the OS IS the shell. Files, Calendar and
 // Contacts are always present (Calendar/Contacts degrade to "Connect Mail" when
@@ -2210,15 +2212,15 @@ function AppsStep({ config, update, onNext, onPrev }) {
         <OptRow
           checked={email}
           onToggle={() => update('suiteEmail', !email)}
-          title="Claim your @vulos email — includes Mail"
-          desc="A ready-to-use @vulos address with Mail, calendar and contacts. Declining the address is the only way to skip Mail."
+          title="Claim your Vulos username — enables Mail"
+          desc="Reserves your account handle across the suite and enables the Mail app, which connects to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) — there is no Vulos-hosted mailbox. Declining is the only way to skip Mail."
           accent="accent-border accent-bg-soft"
         />
         <OptRow
           checked={workspace}
           onToggle={() => update('suiteWorkspace', !workspace)}
-          title="Install the productivity app — Office"
-          desc="Vulos Office — Docs, Sheets, Slides, PDF and Whiteboards. Uncheck for a lean OS without the productivity app. Files, Calendar and Contacts are always included."
+          title="Install the productivity app — Ofisi"
+          desc="Ofisi — Docs, Sheets, Slides, PDF and Whiteboards. Uncheck for a lean OS without the productivity app. Files, Calendar and Contacts are always included."
           accent="border-violet-500/60 bg-violet-600/10"
         />
       </div>

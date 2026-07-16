@@ -34,7 +34,7 @@ func writeTestManifest(t *testing.T, appsDir, id, name string) {
 }
 
 // TestAppStore_Installed_ReturnsTileShape verifies GET /api/store/installed's
-// backing call (AppStore.Installed) returns the fields the Workspace cockpit
+// backing call (AppStore.Installed) returns the fields the App Hub
 // needs to render a tile: id, name, description, category, icon — the pinned
 // cross-repo contract (two-class app model plan) for OS-box app inventory.
 func TestAppStore_Installed_ReturnsTileShape(t *testing.T) {

@@ -4,12 +4,14 @@ package main
 // suite selection made at install/onboarding time.
 //
 // The founder-confirmed model: the OS ships batteries-included. At first boot the
-// user gets EVERYTHING pre-selected — an @vulos email (which auto-provisions Mail)
-// plus the full Workspace productivity suite (Calendar, Files, Office/Docs, Board,
-// unified Home + Search). A lean user (e.g. a gamer) can OPT OUT: uncheck Workspace
-// to drop Office/Board/Calendar/Contacts, and/or decline the email address to drop
-// Mail. Mail is coupled to the address — an address with no mailbox is broken, so
-// declining the address is the only way to drop Mail.
+// user gets EVERYTHING pre-selected — a Vulos account handle (which also enables
+// the Mail app; Mail itself stays a bring-your-own connector, no mailbox is
+// provisioned) plus the full productivity bundle (Calendar, Files, Ofisi/Docs,
+// unified Home + Search — whiteboards are an Ofisi document type, not a separate
+// Board app). A lean user (e.g. a gamer) can OPT OUT: uncheck the productivity
+// bundle to drop Ofisi/Calendar/Contacts, and/or decline the account handle to
+// drop Mail. Mail is coupled to the handle — declining it is the only way to
+// drop Mail.
 //
 // This file persists that selection to ~/.vulos/db/suite-selection.json and serves
 // it back so the shell's launcher can hide the suite tiles the user opted out of.
@@ -20,7 +22,9 @@ package main
 //     explicitly opts out during onboarding.
 //   - The selection is a preference, not a security boundary. The backend suite
 //     apps (lilmail/office/board/…) are always compiled in and reachable via the
-//     gateway; this only governs whether the launcher SHOWS their tiles.
+//     gateway; this only governs whether the launcher SHOWS their tiles. (Board
+//     has no launcher tile of its own — Ofisi embeds it as the whiteboard
+//     document type — but its backend route is still live.)
 //
 // Wiring: registerSuiteAppsRoutes(mux, home) is called from main.go alongside the
 // other setup routes (registerStorageRoutes etc.).
@@ -36,14 +40,15 @@ import (
 
 // suiteSelection is the JSON persisted to ~/.vulos/db/suite-selection.json.
 //
-// Email      — the user claimed an @vulos address. Coupled to Mail: keeping the
+// Email      — the user claimed a Vulos account handle. Coupled to Mail: keeping
 //
-//	address keeps Mail; declining it is how Mail is dropped.
+//	the handle keeps Mail enabled; declining it is how Mail is dropped. Mail
+//	itself stays a bring-your-own connector — no mailbox is provisioned here.
 //
-// Workspace  — the user kept the full Workspace bundle (Office/Docs, Board,
+// Workspace  — the user kept the full productivity bundle (Ofisi/Docs, Calendar,
 //
-//	Calendar, Contacts, unified Workspace shell). Unchecking it drops
-//	those tiles. Office lives in this bundle, NOT stapled to the email.
+//	Contacts). Unchecking it drops those tiles. Ofisi lives in this bundle,
+//	NOT stapled to the email/handle.
 type suiteSelection struct {
 	Email     bool `json:"email"`
 	Workspace bool `json:"workspace"`
@@ -66,7 +71,7 @@ func defaultSuiteSelection() suiteSelection {
 // Both are setup-time endpoints (see publicPaths in services/auth/handlers.go),
 // so neither is behind the auth middleware's 401. The GET is public-safe (two
 // booleans). The POST is a PERMANENT, REPEATABLE write that can strip Mail and
-// the whole Workspace suite from the launcher, so it carries its own gate — the
+// the whole productivity bundle from the launcher, so it carries its own gate — the
 // same one handleRegister uses for the other unauthenticated setup-time write:
 // unauthenticated ONLY while the box has no users (first-boot onboarding, where
 // the wizard's apps step may run before any account exists); once an account
@@ -113,8 +118,8 @@ func registerSuiteAppsRoutes(mux *http.ServeMux, authStore *auth.Store, home str
 
 	// POST /api/setup/apps — persist the onboarding selection. Body: {email,workspace}.
 	// Coupling is enforced by the caller (the wizard), but we normalise here too:
-	// Workspace implies its own tiles; Mail is coupled to Email. We store exactly
-	// what we're told (with Chosen=true) so the launcher can honour opt-outs.
+	// the Workspace flag implies its own tiles; Mail is coupled to Email. We store
+	// exactly what we're told (with Chosen=true) so the launcher can honour opt-outs.
 	mux.HandleFunc("POST /api/setup/apps", func(w http.ResponseWriter, r *http.Request) {
 		if !writeGate(w, r) {
 			return
