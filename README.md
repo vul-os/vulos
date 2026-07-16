@@ -1,17 +1,23 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/vulos-logo-dark.svg">
+  <img src="assets/vulos-logo.png" alt="Vulos" width="112" />
+</picture>
+
 # Vulos Management
 
 ### The open-source control plane for a sovereign compute fleet.
 
-Run your own Vulos: accounts, OS routing, relay autoscaling, and a hardened
-superadmin console — all in one self-hostable control plane. **Billing is a
-pluggable seam with a no-op default, so self-hosting is fully functional and
-free.**
+Run your own Vulos: **accounts, OS routing, relay autoscaling, and a hardened
+superadmin console** — one self-hostable control plane. Billing is a pluggable
+seam with a no-op default, so **self-hosting is fully functional and free.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2DD4BF.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://golang.org)
-[![Tests](https://img.shields.io/badge/tests-passing-14B8A6)](docs/)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-free-14B8A6.svg)](docs/SELF-HOST.md)
+[![Tests](https://img.shields.io/badge/tests-passing-14B8A6.svg)](docs/)
+[![Release](https://img.shields.io/badge/release-v0.1.1-2DD4BF.svg)](CHANGELOG.md)
 
 [**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Deploy the CP**](docs/DEPLOY-CP.md) · [**Deploy a relay**](docs/DEPLOY-RELAY.md) · [**Superadmin**](docs/SUPERADMIN-CONSOLE.md)
 
@@ -25,61 +31,108 @@ free.**
 for a Vulos deployment — everything you need to run a sovereign compute fleet,
 with no billing and no phone-home.**
 
-It is the brain that sits in front of your boxes: it authenticates people,
-enrolls devices, points `os.vulos.org` at the best box in your cluster, keeps
-the relay point-of-presence (PoP) fleet healthy and autoscaled, and gives an
-operator a hardened console to see and steer all of it. Self-host it and you own
-your entire deployment — the same code we run in production, minus the parts that
-exist only because we charge money.
+It's the brain in front of your boxes: it authenticates people, enrolls devices,
+points `os.vulos.org` at the best box in your cluster, keeps the relay
+point-of-presence (PoP) fleet healthy and autoscaled, and gives an operator a
+hardened console to see and steer all of it. Self-host it and you own your entire
+deployment — the same control-plane code we run in production, minus the parts
+that exist only because we charge money.
 
-Billing is deliberately **not** in this repo. Instead there is a
-`BillingProvider` seam with a **no-op default**: every metered event is still
-recorded, but nothing is ever charged and nothing is sent off your box. If you
-want commercial billing you wire a provider into that seam — see
-[the two-repo model](#the-two-repo-model) below.
-
-## The two-repo model
-
-Vulos is split into two repositories along a single, honest line — **if a
-self-hoster needs it to run their deployment, it lives here (OSS); if it exists
-only because we charge money, it lives in the private cloud repo.**
-
-| | **vulos-management** (this repo) | **vulos-cloud** (private) |
-|---|---|---|
-| **License** | MIT, open source | Proprietary |
-| **Purpose** | The complete operational control plane anyone can self-host | The commercial layer only |
-| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP registry/heartbeats + fleet health, superadmin + org-admin console, status pages | The real billing provider (Paystack), commercial pricing, billing-only superadmin panels, the hosted marketing site |
-| **Billing** | `BillingProvider` seam with a **no-op default** (metered but free, no phone-home) | Injects a Paystack-backed `BillingProvider` into that seam at wire-time |
-| **Relationship** | Stands alone, fully functional | `require`s and `replace`s this repo as a library, then adds billing |
-
-vulos-cloud imports vulos-management as a Go library and injects billing at the
-composition root. There is no forked control plane — the OSS control plane *is*
-the production control plane; cloud only adds a billing provider and commercial
-panels on top. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> **Self-hosting is free. The cloud is optional.**
+> Billing lives behind a seam with a **no-op default**: every metered event is
+> still recorded and visible, but nothing is ever charged and nothing leaves your
+> box. Want commercial billing? The private `vulos-cloud` layer injects a real
+> provider into that same seam — see [the two-repo model](#the-two-repo-model).
 
 ## Features
 
 | | |
 |---|---|
-| 🔐 **Accounts & auth** | Registration, sign-in, sessions, TOTP 2FA, WebAuthn hardware keys, and linked OAuth sign-in (Google / Microsoft → one Vulos account). Password auth via OPAQUE; login tokens kept separate from data tokens. |
-| 📱 **Device enrollment** | RFC-8628 device-authorization flow so a box or a headless device can enroll against your control plane and mint short-lived, audience-bound tokens. |
-| 🧭 **OS routing & directory** | `os.vulos.org` resolves to the best box in your cluster; the org/box directory tracks who owns what and where it runs. Region-aware placement preview. |
-| 📡 **Relay autoscaler & PoP fleet** | A PoP registry with 15s heartbeats and health flags, RELAY-07 failover routing that excludes unhealthy PoPs, and an autoscaler + serving pool that grows/shrinks the fleet against a provider registry. |
+| 🔐 **Accounts & auth** | Registration, sessions, TOTP 2FA, WebAuthn hardware keys, and linked OAuth sign-in (Google / Microsoft → one Vulos account). Password auth via OPAQUE; login tokens kept separate from data tokens. |
+| 📱 **Device enrollment** | RFC-8628 device-authorization flow so a box or headless device enrolls against your control plane and mints short-lived, audience-bound tokens. |
+| 🧭 **OS routing & directory** | `os.vulos.org` resolves to the best box in your cluster; the org/box directory tracks who owns what and where it runs, with region-aware placement preview. |
+| 📡 **Relay autoscaler & PoP fleet** | A PoP registry with 15s heartbeats and health flags, failover routing that excludes unhealthy PoPs, and an autoscaler + serving pool that grows and shrinks the fleet against a provider registry. |
 | 🖥️ **Superadmin console** | Server-rendered, no-JS-framework, triple-gated (IP allowlist + session + WebAuthn admin session), CSRF-protected, audit-logged operator surface for accounts, orgs, fleet, relay, incidents, and reserved handles. |
-| 👥 **Org-admin console** | Per-organization administration for org owners — members, boxes, and settings scoped to their org. |
+| 👥 **Org-admin console** | Per-organization administration for org owners — members, boxes, and settings scoped to a single org. |
 | 🟢 **Status pages** | A public status/incidents surface plus per-user status, authored from the superadmin incidents page over the same store. |
-| 💳 **BillingProvider seam** | A pluggable seam with a **no-op default** — metered but free. Self-hosting never phones home; commercial billing is injected only in the private cloud build. |
+| 🧩 **Pluggable seams** | `BillingProvider` and `StorageProvisioner` are interfaces with free, no-op / bring-your-own defaults. Self-host stays sovereign; the cloud build injects the commercial implementations at wire-time. |
+
+## The two-repo model
+
+Vulos is split into two repositories along one honest line:
+
+> **If a self-hoster needs it to run their deployment → it lives in
+> vulos-management (OSS, MIT). If it exists only because we charge money → it
+> lives in vulos-cloud (private).**
+
+| | **vulos-management** (this repo) | **vulos-cloud** (private) |
+|---|---|---|
+| **License** | MIT, open source | Proprietary |
+| **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
+| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, superadmin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (Paystack), commercial pricing, **Tigris bucket provisioning**, billing-only superadmin panels, the hosted marketing site |
+| **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a Paystack `BillingProvider` |
+| **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a Tigris auto-provisioner |
+| **Relationship** | Stands alone, fully functional | `require`s + `replace`s this repo as a library, then injects the commercial impls |
+
+There is **no forked control plane** — the OSS control plane *is* the production
+control plane. vulos-cloud imports it and fills the seams. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Architecture
+
+```mermaid
+flowchart TD
+    users["people"] -->|sign in| auth
+    boxes["your box fleet"] -->|enroll · heartbeat| enroll
+    dns["os.vulos.org"] -->|resolve → best box| routing
+
+    subgraph mgmt["vulos-management · OSS control plane"]
+        direction TB
+        auth["accounts · auth · 2FA · OAuth sign-in"]
+        enroll["device enrollment · RFC-8628"]
+        routing["OS routing · org/box directory"]
+        relay["relay autoscaler · PoP registry · fleet health"]
+        admin["superadmin · org-admin · status pages"]
+        billseam(["BillingProvider seam"])
+        storeseam(["StorageProvisioner seam"])
+    end
+
+    admin --> billseam
+    admin --> storeseam
+    relay --> boxes
+
+    billseam -. no-op default .-> free["metered · free · no phone-home"]
+    storeseam -. BYOB default .-> byob["your own S3-compatible bucket"]
+
+    subgraph cloud["vulos-cloud · private, optional"]
+        direction TB
+        paystack["Paystack BillingProvider"]
+        tigris["Tigris bucket provisioner"]
+        pricing["commercial pricing + panels"]
+    end
+
+    cloud -->|require + replace, injects at wire-time| mgmt
+    paystack -.fills.-> billseam
+    tigris -.fills.-> storeseam
+```
+
+The seams are the only intentional holes. The OSS build fills them with the
+no-op billing provider (metered-but-free) and the BYOB storage provisioner (you
+supply a bucket). The private cloud build fills the *same* interfaces with the
+Paystack provider and the Tigris auto-provisioner. **Management never provisions
+buckets** — that's a Cloud-only concern. Everything else is identical. Full
+detail, including the Go module strategy that lets cloud consume this repo, is in
+[**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
 
 ## Quickstart (self-host)
 
 > **Prerequisites:** Go 1.26+, and (optionally) Postgres. Self-host runs on
-> SQLite out of the box; the cloud pricing tables that Postgres carries are
-> simply absent, so every metered path is free.
+> SQLite out of the box; the cloud pricing tables Postgres carries are simply
+> absent, so every metered path is free.
 
 The fastest way to see the whole suite — Workspace front door, the OS as your
 local control plane, mail, office, board, talk, meet, and a private-AI gateway —
-is the sovereign `docker compose` stack documented in
-[**docs/SELF-HOST.md**](docs/SELF-HOST.md):
+is the sovereign `docker compose` stack in [**docs/SELF-HOST.md**](docs/SELF-HOST.md):
 
 ```sh
 docker compose -f docker-compose.sovereign.yml up --build
@@ -90,7 +143,7 @@ To run the control plane itself:
 
 ```sh
 # build
-make build            # produces ./bin/cp (or: go build ./cmd/server)
+make build            # produces ./bin/cp  (or: go build ./cmd/server)
 
 # run — leave VULOS_CP_URL unset for a fully sovereign, billing-free deployment
 ./bin/cp --env=dev
@@ -103,68 +156,56 @@ to pay. See [docs/SELF-HOST.md](docs/SELF-HOST.md) for the full env surface, and
 [docs/DEPLOY-CP.md](docs/DEPLOY-CP.md) / [docs/DEPLOY-RELAY.md](docs/DEPLOY-RELAY.md)
 for a production, internet-reachable deployment.
 
-## Architecture
+## The seams (free by default)
 
-Vulos Management is a Go control plane (single module) with a hardened,
-server-rendered admin console and a small SPA console surface. The domain is
-organized as independent packages behind a composition root:
+Self-hosting is **metered but free**, and **bring-your-own-bucket**. The control
+plane records every billable event (storage sampled, relay GB, mailboxes,
+box-hours) so operators see usage — but the defaults never charge and never
+provision anything off your box.
 
-```mermaid
-flowchart TD
-    subgraph mgmt["vulos-management (OSS control plane)"]
-        auth["accounts · auth · 2FA · OAuth sign-in"]
-        enroll["device enrollment (RFC-8628)"]
-        routing["OS routing · org/box directory"]
-        relay["relay autoscaler · PoP registry · fleet health"]
-        admin["superadmin · org-admin console · status pages"]
-        seam["BillingProvider seam (no-op default)"]
-    end
-    boxes["your box fleet"] -->|enroll · heartbeat| enroll
-    users["people"] -->|sign in| auth
-    dns["os.vulos.org"] -->|resolve → best box| routing
-    admin --> seam
-    relay --> boxes
-```
+| Seam | Self-host default (OSS) | Cloud build (private) |
+|---|---|---|
+| `BillingProvider` | **No-op** — records usage, charges nothing, no network call | Paystack — real recurring + overage charging |
+| `StorageProvisioner` | **BYOB** — you point it at your own S3-compatible bucket | Tigris — auto-provisions per-account buckets |
 
-The `BillingProvider` seam is the one intentional hole: the OSS build fills it
-with a no-op (metered-but-free) provider; the private cloud build fills it with
-a Paystack-backed provider. Everything else is identical. Full detail —
-including the Go module strategy that lets cloud consume this repo — is in
-[**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
+Both builds compile against the same interfaces; only the injected implementation
+differs. No package in this repo imports a payment processor or a bucket
+provider directly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingprovider-seam).
 
-## The BillingProvider seam (free by default)
+## Screenshots
 
-Self-hosting is **metered but free**. The control plane still records every
-billable event (storage sampled, relay GB, mailboxes, box-hours) so operators
-can see usage — but the default provider is a **no-op**: it charges nothing,
-verifies nothing, and never makes a network call off your box.
-
-- **Self-host (default):** no billing provider wired → usage is recorded and
-  visible, but nobody is ever charged and there is no phone-home.
-- **Commercial (private cloud build only):** a Paystack-backed provider is
-  injected into the same seam at the composition root, adding real recurring +
-  overage charging and commercial pricing.
-
-The seam is the same interface in both builds; only the injected implementation
-differs. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingprovider-seam).
+The superadmin console is a hardened, server-rendered operator surface (see
+[docs/SUPERADMIN-CONSOLE.md](docs/SUPERADMIN-CONSOLE.md) for its pages and access
+model). **Console captures will land here once the control-plane code is
+extracted into this repo** — until the extracted binary runs standalone we won't
+publish placeholder or mocked UI. Until then, the
+[architecture diagram](#architecture) above and the docs are the visual tour.
 
 ## Documentation
 
 | | |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | The two-repo split, the BillingProvider seam, and how vulos-cloud consumes this repo |
+| [Architecture](docs/ARCHITECTURE.md) | The two-repo split, the seams, and how vulos-cloud consumes this repo |
 | [Self-host](docs/SELF-HOST.md) | Run the whole suite on your own box with `docker compose`, sovereign mode |
-| [Deploy the control plane](docs/DEPLOY-CP.md) | Production, internet-reachable control-plane deployment checklist |
+| [Deploy the control plane](docs/DEPLOY-CP.md) | Production, internet-reachable control-plane deploy checklist |
 | [Deploy a relay PoP](docs/DEPLOY-RELAY.md) | Multi-region relay point-of-presence deployment |
 | [Superadmin console](docs/SUPERADMIN-CONSOLE.md) | The hardened operator surface — gates, pages, provider registry, audit |
+| [Extraction plan](docs/EXTRACTION-PLAN.md) | How the Go control-plane code moves out of vulos-cloud into this repo |
 
 ## Contributing
 
 Issues and pull requests are welcome. Keep the two-repo line honest: anything a
 self-hoster needs to run their deployment belongs here; anything that exists only
 because we charge money belongs in the private cloud repo. Please don't add a
-hard dependency on a payment processor to any package in this module — route it
-through the `BillingProvider` seam instead.
+hard dependency on a payment processor or a bucket provider to any package in
+this module — route it through the `BillingProvider` / `StorageProvisioner`
+seams instead.
+
+## Versioning
+
+This repo follows [Semantic Versioning](https://semver.org) and
+[Keep a Changelog](https://keepachangelog.com). The current version is in
+[`VERSION`](VERSION); notable changes are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
@@ -172,4 +213,6 @@ through the `BillingProvider` seam instead.
 
 ---
 
-<sub><strong>Vula OS</strong> · Built with purpose. Open by design.</sub>
+<div align="center">
+<sub><picture><source media="(prefers-color-scheme: dark)" srcset="assets/vulos-logo-dark.svg"><img src="assets/vulos-logo.png" height="14" alt="Vulos"></picture> · <strong>Vula OS</strong> — Built with purpose. Open by design.</sub>
+</div>

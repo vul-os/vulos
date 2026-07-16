@@ -73,6 +73,35 @@ tests and dev), and rail selection via `payments.Default()` reading
 See [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md) for exactly which packages move and
 which stay, and the module mechanics.
 
+## The StorageProvisioner seam
+
+The control plane manages a storage plane (per-account content, uploads,
+sampling), but **it does not create buckets** — provisioning object storage is a
+Cloud-only concern. That boundary is a second seam.
+
+```
+   control plane  ─────────────────────►  StorageProvisioner (interface)
+   (this repo)                                    │
+                              ┌────────────────────┴────────────────────┐
+                              ▼                                          ▼
+                   BYOB StorageProvisioner                   Tigris StorageProvisioner
+                   (this repo, default)                      (vulos-cloud, injected)
+                   uses an operator-supplied,                auto-provisions per-account
+                   S3-compatible bucket;                     Tigris buckets + keys;
+                   creates nothing                           bills egress/storage
+```
+
+- **BYOB default (OSS):** the self-hoster brings their own S3-compatible bucket
+  and credentials; the control plane reads/writes it but never calls a
+  provider's bucket-creation API. Sovereign, zero external accounts required.
+- **Tigris provisioner (cloud):** injected in the private build; auto-provisions
+  per-account Tigris buckets and access keys, and feeds storage sampling into
+  billing.
+
+Management is deliberately **BYOB** — the same reason billing is a no-op by
+default. A self-hoster should never need a Tigris (or any vendor) account to run
+their deployment.
+
 ## How vulos-cloud consumes this repo
 
 The two repos are separate Go modules. vulos-cloud imports vulos-management and
