@@ -132,9 +132,9 @@ func DataFlowMap() []DataFlow {
 		},
 		{
 			ID:            "billing-events",
-			Description:   "Billing events and payment processing (Paystack)",
+			Description:   "Billing events and payment processing",
 			RegionBinding: "control-plane",
-			Notes:         "Paystack processes payments; transaction records are stored in the cp billing.db on the control-plane volume.",
+			Notes:         "Your configured payment processor handles payments; transaction records are stored on the control-plane volume.",
 		},
 		{
 			ID:            "audit-log",

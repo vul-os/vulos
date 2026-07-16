@@ -32,12 +32,15 @@ import (
 )
 
 // ── Sub-processor data ────────────────────────────────────────────────────
-// This is the canonical list. Pending changes have EffectiveAfter set to a
-// future date. Add rows here 30+ days before they take effect; the notice
-// email flow is handled by the compliance-notification job (not yet built —
-// see COMPLY-02 AC notes).
+// The OSS control plane ships with an EMPTY sub-processor list: a self-hoster
+// has their own vendors and must not publish someone else's. An operator
+// populates this via SetSubProcessors (the private cloud layer injects its own
+// concrete list). Pending changes have EffectiveAfter set to a future date;
+// add rows 30+ days before they take effect. The notice email flow is handled
+// by the compliance-notification job (not yet built — see COMPLY-02 AC notes).
 
-type subProcessor struct {
+// SubProcessor is one authorized sub-processor entry.
+type SubProcessor struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	URL            string `json:"url"`
@@ -49,67 +52,31 @@ type subProcessor struct {
 	EffectiveAfter string `json:"effectiveAfter,omitempty"`
 }
 
-type changelogEntry struct {
+// ChangelogEntry is one dated sub-processor change-history line.
+type ChangelogEntry struct {
 	Date        string `json:"date"`
 	Description string `json:"description"`
 }
 
-var authorizedSubProcessors = []subProcessor{
-	{
-		ID:           "paystack",
-		Name:         "Paystack",
-		URL:          "https://paystack.com",
-		Purpose:      "Payment processing and subscription billing",
-		DataCategory: "Billing contact (name, email, card metadata). No card numbers stored by Vulos.",
-		Region:       "Nigeria / Global",
-		Since:        "2026-01-01",
-		Pending:      false,
-	},
-	{
-		ID:           "tigris",
-		Name:         "Tigris Object Storage",
-		URL:          "https://www.tigrisdata.com",
-		Purpose:      "Customer bucket storage and OTA artifact distribution",
-		DataCategory: "All customer-uploaded data and system state stored in the customer bucket.",
-		Region:       "Customer-selected (af-south / eu-west / us-east)",
-		Since:        "2026-01-01",
-		Pending:      false,
-	},
-	{
-		ID:           "fly",
-		Name:         "Fly.io",
-		URL:          "https://fly.io",
-		Purpose:      "Managed compute hosting for control-plane and managed-tier instances",
-		DataCategory: "Control-plane metadata; managed-tier instance runtime environment.",
-		Region:       "iad / lhr / fra (control plane); customer-selected (managed tier)",
-		Since:        "2026-05-24",
-		Pending:      false,
-	},
-	{
-		ID:           "cloudflare-dns",
-		Name:         "Cloudflare DNS",
-		URL:          "https://cloudflare.com",
-		Purpose:      "DNS resolver and DDoS protection for *.vulos.org",
-		DataCategory: "DNS query metadata (IP, queried hostname). No payload content.",
-		Region:       "Global PoPs",
-		Since:        "2026-01-01",
-		Pending:      false,
-	},
-	{
-		ID:           "postmark",
-		Name:         "Postmark",
-		URL:          "https://postmarkapp.com",
-		Purpose:      "Transactional email delivery (verification, alerts, breach notifications)",
-		DataCategory: "Account email address and email content for transactional messages.",
-		Region:       "US / EU",
-		Since:        "2026-01-01",
-		Pending:      false,
-	},
-}
+// authorizedSubProcessors is empty by default in the OSS control plane.
+// Operators configure their own list via SetSubProcessors.
+var authorizedSubProcessors = []SubProcessor{}
 
-var subProcessorChangelog = []changelogEntry{
-	{Date: "2026-05-24", Description: "Compute sub-processor is Fly.io (Fly.io, Inc., United States) for control-plane and managed-tier hosting."},
-	{Date: "2026-05-23", Description: "Initial sub-processor list published at v1.0."},
+// subProcessorChangelog is empty by default; operators supply their own via
+// SetSubProcessors.
+var subProcessorChangelog = []ChangelogEntry{}
+
+// SetSubProcessors lets the deployment (e.g. the private cloud layer) inject the
+// concrete authorized sub-processor list and change history. The OSS default is
+// empty so a self-hoster never publishes another operator's vendors. Pass nil to
+// leave a list unchanged.
+func SetSubProcessors(list []SubProcessor, changelog []ChangelogEntry) {
+	if list != nil {
+		authorizedSubProcessors = list
+	}
+	if changelog != nil {
+		subProcessorChangelog = changelog
+	}
 }
 
 // currentDPAVersion is the version string that acceptance records are stamped with.
@@ -183,14 +150,14 @@ func RegisterLegal(mux *http.ServeMux, authStore *auth.Store, db *cpdb.DB) {
 	// list, pending changes, change history, and last-updated timestamp.
 	mux.HandleFunc("GET /api/legal/subprocessors", func(w http.ResponseWriter, r *http.Request) {
 		// Derive last_updated from the most recent changelog entry.
-		lastUpdated := "2026-05-23"
+		lastUpdated := ""
 		if len(subProcessorChangelog) > 0 {
 			lastUpdated = subProcessorChangelog[len(subProcessorChangelog)-1].Date
 		}
 
 		// Mark pending entries whose effective_after is still in the future.
 		now := time.Now().UTC()
-		result := make([]subProcessor, len(authorizedSubProcessors))
+		result := make([]SubProcessor, len(authorizedSubProcessors))
 		copy(result, authorizedSubProcessors)
 		for i := range result {
 			if result[i].EffectiveAfter != "" {
