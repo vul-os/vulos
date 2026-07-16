@@ -1,6 +1,9 @@
 package billingport
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // NoopProvider is the default BillingProvider for a self-hosted control plane.
 // It never contacts a payment network and never pretends a charge succeeded:
@@ -45,8 +48,42 @@ type NoopResolver struct{}
 // NewNoopResolver returns the unlimited self-host entitlement resolver.
 func NewNoopResolver() *NoopResolver { return &NoopResolver{} }
 
+func (NoopResolver) TierFor(context.Context, string) (string, error) {
+	return TierSelfHost, nil
+}
+
 func (NoopResolver) EffectiveTierFor(context.Context, string) (string, error) {
 	return TierSelfHost, nil
+}
+
+// Tiers reports the single unlimited, $0 self-host plan — self-host has no
+// priced tiers.
+func (NoopResolver) Tiers(float64) []Tier {
+	return []Tier{{ID: TierSelfHost, Name: "Self-host", MaxActiveUsers: 0}}
+}
+
+// QuotaFor grants an uncapped, always-allowed quota for every kind — self-host
+// enforces no allowance.
+func (NoopResolver) QuotaFor(_ context.Context, _, kind string) (Quota, error) {
+	return unlimitedQuota(kind), nil
+}
+
+// QuotaWithUsage ignores usage and grants the same uncapped quota — self-host
+// never exceeds a cap that does not exist.
+func (NoopResolver) QuotaWithUsage(_ context.Context, _, kind string, _ RelayUsageSource) (Quota, error) {
+	return unlimitedQuota(kind), nil
+}
+
+// QuotaForTier grants an uncapped, always-allowed quota for every (tier, kind).
+func (NoopResolver) QuotaForTier(tier, kind string) Quota {
+	q := unlimitedQuota(kind)
+	q.Tier = tier
+	return q
+}
+
+// unlimitedQuota is the self-host "everything allowed, nothing capped" quota.
+func unlimitedQuota(kind string) Quota {
+	return Quota{Tier: TierSelfHost, Kind: kind, Allowed: true}
 }
 
 // MaxActiveUsersForTier returns 0 (no cap) for every tier — self-host never
@@ -56,6 +93,75 @@ func (NoopResolver) MaxActiveUsersForTier(string) int { return 0 }
 // CheckStorageQuota always allows: self-host / BYO storage is never capped.
 func (NoopResolver) CheckStorageQuota(context.Context, string, int64, string) error {
 	return nil
+}
+
+// RelayAllowanceGB reports the region-default allowance for every region —
+// self-host is never relay-capped, but callers use this as a display number.
+func (NoopResolver) RelayAllowanceGB(context.Context, string) (int, error) {
+	return noopFreeRelayGB, nil
+}
+
+// FreeRelayGBWithBox reports the region-default relay allowance.
+func (NoopResolver) FreeRelayGBWithBox() int { return noopFreeRelayGB }
+
+// DefaultRelayRegionID reports the single self-host region.
+func (NoopResolver) DefaultRelayRegionID() string { return noopSelfHostRegionID }
+
+// RegionByID reports the single self-host region for the default id and
+// ErrRegionNotFound for any other — self-host sells no priced regions.
+func (NoopResolver) RegionByID(_ context.Context, id string) (Region, error) {
+	if id == "" || id == noopSelfHostRegionID {
+		return noopSelfHostRegion(), nil
+	}
+	return Region{}, ErrRegionNotFound
+}
+
+// AccountRelayRegion always returns the single self-host region.
+func (NoopResolver) AccountRelayRegion(context.Context, string) string {
+	return noopSelfHostRegionID
+}
+
+// EmitSelfHostRelayChargeRegion charges nothing — self-host relay is $0.
+func (NoopResolver) EmitSelfHostRelayChargeRegion(context.Context, string, string, int64, string, time.Time) error {
+	return nil
+}
+
+// ResolveHostingKind reports HostingKindSelfHost — the no-op control plane is a
+// self-hoster by definition; a self-host signal maps to self-host, anything else
+// to cloud (which is still uncapped/uncharged here).
+func (NoopResolver) ResolveHostingKind(selfHost bool) HostingKind {
+	if selfHost {
+		return HostingKindSelfHost
+	}
+	return HostingKindCloud
+}
+
+// MeteredBillingEnabled is always false — self-host has no card-gated wallet to
+// opt into.
+func (NoopResolver) MeteredBillingEnabled(context.Context, string) (bool, error) {
+	return false, nil
+}
+
+// CountedThisMonthByBucket reports zero usage — the no-op resolver meters nothing.
+func (NoopResolver) CountedThisMonthByBucket(context.Context, string, string, time.Time) (int64, error) {
+	return 0, nil
+}
+
+// OverageCostThisMonthMicros reports zero cost — self-host is never billed.
+func (NoopResolver) OverageCostThisMonthMicros(context.Context, string, string, time.Time) (int64, error) {
+	return 0, nil
+}
+
+// Self-host defaults for the relay/region reads. The region is a display
+// placeholder: self-host is structurally uncapped, so these numbers only ever
+// surface in a usage VIEW, never gate anything.
+const (
+	noopFreeRelayGB      = 25
+	noopSelfHostRegionID = "selfhost"
+)
+
+func noopSelfHostRegion() Region {
+	return Region{ID: noopSelfHostRegionID, Name: "Self-host", FreeRelayGBWithBox: noopFreeRelayGB, ComputeMultBps: 10000, Active: true}
 }
 
 // Interface compliance.
