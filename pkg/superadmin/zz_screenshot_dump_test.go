@@ -114,11 +114,11 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 	seedAudit := []struct{ actor, action, target string }{
 		{"ada@vulos.org", "admin.login.success", "ada@vulos.org"},
 		{"ada@vulos.org", "account.suspend", "spam-bot-4471"},
-		{"grace@vulos.org", "pricing.update", "sku:pro_seat"},
-		{"ada@vulos.org", "region.upsert", "region:jnb"},
+		{"grace@vulos.org", "account.reset_2fa", "linus@acme.test"},
+		{"ada@vulos.org", "maintenance.audit_verify", "chain:ok"},
 		{"grace@vulos.org", "incident.create", "inc-2026-07-14"},
 		{"ada@vulos.org", "reserved_handle.add", "postmaster"},
-		{"ada@vulos.org", "account.refund", "txn_9f2a1c"},
+		{"ada@vulos.org", "account.force_password_reset", "dennis@example.test"},
 		{"grace@vulos.org", "org.suspend", "org:acme-corp"},
 	}
 	for _, e := range seedAudit {
@@ -152,20 +152,6 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 	pages := superadmin.NewPages(saStore, al, authStore)
 
 	// ── Wire the same seam providers cmd/server injects, with demo data ──────
-	pages.SetFleetBillingProvider(func(context.Context) superadmin.FleetBilling {
-		return superadmin.FleetBilling{
-			MRRZARCents:    41_820_00,
-			AccountCount:   1284,
-			SuspendedCount: 7,
-			Products: []superadmin.FleetProductRow{
-				{Product: "mail", Usage: "2.1M sends / 30d", EstCostUSDCts: 21_040},
-				{Product: "meet", Usage: "18.4k mtg-min / 30d", EstCostUSDCts: 3_310},
-				{Product: "relay", Usage: "9.7 TB / 30d", EstCostUSDCts: 9_700},
-				{Product: "storage", Usage: "4.3 TB unified buckets", EstCostUSDCts: 4_730},
-			},
-		}
-	})
-
 	pages.SetAnalyticsUsageProvider(func(context.Context) []superadmin.ProductUsageTrend {
 		mk := func(product, unit string, base int64) superadmin.ProductUsageTrend {
 			days := make([]superadmin.DayCount, 0, 7)
@@ -216,55 +202,12 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 			Period:       time.Now().Format("2006-01"),
 			TotalGBMonth: 9_734.2,
 			PoPs: []superadmin.RelayPoPRow{
-				{Region: "eu", Healthy: 3, Total: 3, Status: "up"},
-				{Region: "jnb", Healthy: 1, Total: 2, Status: "degraded"},
-				{Region: "us", Healthy: 2, Total: 2, Status: "up"},
-			},
-			Accounts: []superadmin.RelayAccountRow{
-				{AccountID: "org1", Email: "linus@acme.test", GB: 4_120.5, Sessions: 210, OverageGB: 120.5},
-				{AccountID: "org2", Email: "margaret@acme.test", GB: 1_980.0, Sessions: 88, OverageGB: 0},
-				{AccountID: "acct-d", Email: "dennis@example.test", GB: 640.2, Sessions: 31, OverageGB: 0},
+				{Region: "eu", Healthy: 3, Total: 3, Status: "up", RelayGBMonth: 6_120.4},
+				{Region: "jnb", Healthy: 1, Total: 2, Status: "degraded", RelayGBMonth: 2_410.0},
+				{Region: "us", Healthy: 2, Total: 2, Status: "up", RelayGBMonth: 1_203.8},
 			},
 		}
 	})
-
-	pages.SetBillingReconProvider(func(context.Context) superadmin.BillingReconResult {
-		return superadmin.BillingReconResult{
-			TotalRevenueUSD:    12_480.0,
-			TotalCOGSUSD:       4_690.0,
-			BlendedMarginPct:   62.4,
-			ModelMarginPct:     64.0,
-			BlendedDeltaPP:     -1.6,
-			BlendedStatus:      "GREEN",
-			UncollectedPastDue: 3,
-			ByTier: []superadmin.TierSummary{
-				{Tier: "free", AccountCount: 940, TotalRevenueUSD: 0, TotalCOGSUSD: 310, MarginPct: 0, ModelMarginPct: 0, DeltaPP: 0, Status: "GREEN"},
-				{Tier: "pro", AccountCount: 322, TotalRevenueUSD: 9_660, TotalCOGSUSD: 3_640, MarginPct: 62.3, ModelMarginPct: 64.0, DeltaPP: -1.7, Status: "GREEN"},
-				{Tier: "team", AccountCount: 22, TotalRevenueUSD: 2_820, TotalCOGSUSD: 740, MarginPct: 73.8, ModelMarginPct: 70.0, DeltaPP: 3.8, Status: "YELLOW"},
-			},
-			Drifted: []superadmin.TenantReconRow{
-				{AccountID: "acct-h", Email: "heavy@acme.test", Tier: "pro", State: "active", RevenueUSD: 9, PriceUSD: 9, COGSEstUSD: 15.4, MarginPct: -71.1, DriftFlags: []string{"COGS $15.40 > price $9.00"}},
-				{AccountID: "acct-x", Email: "past@example.test", Tier: "pro", State: "past_due", RevenueUSD: 0, PriceUSD: 9, COGSEstUSD: 2.1, MarginPct: -100, DriftFlags: []string{"past_due — uncollected"}},
-			},
-		}
-	})
-
-	pages.SetPricingProviders(func(context.Context) []superadmin.PriceRowView {
-		return []superadmin.PriceRowView{
-			{SKU: "pro_seat", Name: "Pro seat", Unit: "seat/mo", USDCents: 900, USD: "9.00", ZAR: "165.30", Active: true, UpdatedAt: "2026-07-01", UpdatedBy: "grace@vulos.org"},
-			{SKU: "team_seat", Name: "Team seat", Unit: "seat/mo", USDCents: 1200, USD: "12.00", ZAR: "220.40", Custom: true, Active: true, UpdatedAt: "2026-07-01", UpdatedBy: "grace@vulos.org"},
-			{SKU: "mail_overage", Name: "Mail overage", Unit: "1k sends", USDCents: 10, USD: "0.10", ZAR: "1.84", Active: true, UpdatedAt: "2026-06-20", UpdatedBy: "ada@vulos.org"},
-			{SKU: "relay_overage", Name: "Relay overage", Unit: "GiB", USDCents: 1, USD: "0.01", ZAR: "0.18", Active: true, UpdatedAt: "2026-06-20", UpdatedBy: "ada@vulos.org"},
-		}
-	}, nil)
-
-	pages.SetRegionProviders(func(context.Context) []superadmin.RegionRowView {
-		return []superadmin.RegionRowView{
-			{ID: "eu", Name: "EU (Frankfurt)", EgressCostCentsGB: 1, RelayPriceCentsGB: 1, FreeRelayGB: 100, ComputeMultBps: 10000, ComputeMult: "1.0x", MarkupX: "1.0x", Active: true, Accounts: 812, Boxes: 34, SpendUSD: "1240.18", HasSpendData: true, RelayGBMonth: 6120.4, EstRelayCostUSD: "61.20", UpdatedAt: "2026-07-01", UpdatedBy: "ada@vulos.org"},
-			{ID: "jnb", Name: "Johannesburg", EgressCostCentsGB: 9, RelayPriceCentsGB: 12, FreeRelayGB: 50, ComputeMultBps: 18000, ComputeMult: "1.8x", MarkupX: "1.3x", Active: true, Accounts: 214, Boxes: 9, SpendUSD: "410.55", HasSpendData: true, RelayGBMonth: 2410.0, EstRelayCostUSD: "216.90", UpdatedAt: "2026-07-01", UpdatedBy: "ada@vulos.org"},
-			{ID: "us", Name: "US East", EgressCostCentsGB: 2, RelayPriceCentsGB: 2, FreeRelayGB: 100, ComputeMultBps: 11000, ComputeMult: "1.1x", MarkupX: "1.0x", Active: false, UpdatedAt: "2026-05-14", UpdatedBy: "grace@vulos.org"},
-		}
-	}, nil)
 
 	pages.SetIncidentAdmin(&screenshotIncidents{
 		incidents: []superadmin.IncidentView{
@@ -292,9 +235,6 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 	writePage(t, outDir, "analytics", pages.Analytics, req("/superadmin/analytics"))
 	writePage(t, outDir, "orgs", pages.OrgsList, req("/superadmin/orgs"))
 	writePage(t, outDir, "relay", pages.Relay, req("/superadmin/relay"))
-	writePage(t, outDir, "billing-recon", pages.BillingReconciliation, req("/superadmin/billing-recon"))
-	writePage(t, outDir, "pricing", pages.Pricing, req("/superadmin/pricing"))
-	writePage(t, outDir, "regions", pages.Regions, req("/superadmin/regions"))
 	writePage(t, outDir, "incidents", pages.Incidents, req("/superadmin/incidents"))
 	writePage(t, outDir, "migrations", pages.MigrationsStatus, req("/superadmin/migrations"))
 	writePage(t, outDir, "auditlog", pages.AuditLog, req("/superadmin/auditlog"))

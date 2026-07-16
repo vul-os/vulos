@@ -1,11 +1,15 @@
-// new_pages_test.go — tests for the new superadmin portal pages:
-// analytics, orgs management, billing reconciliation, migrations status.
+// new_pages_test.go — tests for the superadmin portal pages:
+// analytics (usage only), orgs management, migrations status.
 //
-// Test coverage requirements (from task):
+// This is the OSS OPERATIONAL console. Commercial surfaces (billing
+// reconciliation, pricing, regions cost model) were removed — a commercial
+// distributor owns that admin in its own module (COORDINATOR: billing admin
+// belongs in cloud, task #66).
+//
+// Test coverage requirements:
 //   - All handlers are authz-gated (RequireSuperAdmin returns 403/401 without creds).
 //   - CSRF protection: state-changing POSTs return 403 without token.
-//   - Cost reconciliation math: ReconcileTenant, TierMarginStatus, drift flags.
-//   - Page renders: all new pages render HTTP 200 with expected content.
+//   - Page renders: all pages render HTTP 200 with expected content.
 package superadmin_test
 
 import (
@@ -213,197 +217,6 @@ func TestOrgActionExecute_CSRFGated(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Billing reconciliation math
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TestReconcileTenant_CleanMargin verifies correct margin computation when
-// revenue exceeds COGS.
-func TestReconcileTenant_CleanMargin(t *testing.T) {
-	row := superadmin.ReconcileTenant(
-		"acct1", "user@example.com", "pro", "active",
-		/* mailSends=       */ 500,
-		/* machineMinutes=  */ 1000,
-		/* meetMinutes=     */ 100,
-		/* storageGBMo=     */ 2.0,
-		/* egressGB=        */ 0.5,
-		/* llmCostUSD=      */ 0.50,
-		/* revenueUSD=      */ 9.00,
-		/* priceUSD=        */ 9.00,
-	)
-	if row.Tier != "pro" {
-		t.Errorf("tier mismatch: %q", row.Tier)
-	}
-	if row.COGSEstUSD <= 0 {
-		t.Errorf("expected positive COGS, got %.4f", row.COGSEstUSD)
-	}
-	if row.MarginPct <= 0 || row.MarginPct > 100 {
-		t.Errorf("expected margin in (0,100], got %.1f", row.MarginPct)
-	}
-	// At pro price $9 with ~$1–2 COGS, no drift expected.
-	if len(row.DriftFlags) > 0 {
-		t.Errorf("unexpected drift flags: %v", row.DriftFlags)
-	}
-}
-
-// TestReconcileTenant_COGSExceedsPrice verifies the COGS-exceeds-price drift
-// flag is emitted when metered COGS > list price.
-func TestReconcileTenant_COGSExceedsPrice(t *testing.T) {
-	// Use enormous compute minutes so COGS clearly exceeds the $9 pro price.
-	row := superadmin.ReconcileTenant(
-		"acct2", "heavy@example.com", "pro", "active",
-		0, 100_000 /* minutes * $0.0018 = $180 COGS */, 0,
-		0, 0, 0,
-		/* revenueUSD= */ 9.00,
-		/* priceUSD=   */ 9.00,
-	)
-	foundCOGS := false
-	for _, f := range row.DriftFlags {
-		if strings.Contains(f, "COGS") {
-			foundCOGS = true
-		}
-	}
-	if !foundCOGS {
-		t.Errorf("expected COGS drift flag, got: %v", row.DriftFlags)
-	}
-	if row.MarginPct >= 0 {
-		t.Errorf("expected negative margin when COGS > revenue, got %.1f%%", row.MarginPct)
-	}
-}
-
-// TestReconcileTenant_FreeTierOverBudget verifies the free-tier over-budget
-// drift flag.
-func TestReconcileTenant_FreeTierOverBudget(t *testing.T) {
-	// $0.32 * 2 = $0.64 budget; drive COGS above that.
-	row := superadmin.ReconcileTenant(
-		"acct3", "free@example.com", "free", "active",
-		/* mailSends=      */ 10_000, // 10k * $0.10/1000 = $1.00 SES alone
-		0, 0, 0, 0, 0,
-		/* revenueUSD= */ 0.0,
-		/* priceUSD=   */ 0.0,
-	)
-	foundFree := false
-	for _, f := range row.DriftFlags {
-		if strings.Contains(f, "free over budget") {
-			foundFree = true
-		}
-	}
-	if !foundFree {
-		t.Errorf("expected 'free over budget' drift flag, got: %v", row.DriftFlags)
-	}
-}
-
-// TestReconcileTenant_PastDueUncollected verifies the past_due drift flag.
-func TestReconcileTenant_PastDueUncollected(t *testing.T) {
-	row := superadmin.ReconcileTenant(
-		"acct4", "pastdue@example.com", "pro", "past_due",
-		0, 0, 0, 0, 0, 0,
-		/* revenueUSD= */ 0.0, // no revenue collected
-		/* priceUSD=   */ 9.0,
-	)
-	foundPastDue := false
-	for _, f := range row.DriftFlags {
-		if strings.Contains(f, "past_due") {
-			foundPastDue = true
-		}
-	}
-	if !foundPastDue {
-		t.Errorf("expected 'past_due' drift flag, got: %v", row.DriftFlags)
-	}
-}
-
-// TestTierMarginStatus_GREEN verifies small delta → GREEN.
-func TestTierMarginStatus_GREEN(t *testing.T) {
-	s := superadmin.TierMarginStatus(60.0, 62.4)
-	if s != "GREEN" {
-		t.Errorf("expected GREEN for delta 2.4pp, got %s", s)
-	}
-}
-
-// TestTierMarginStatus_YELLOW verifies 5–10pp delta → YELLOW.
-func TestTierMarginStatus_YELLOW(t *testing.T) {
-	s := superadmin.TierMarginStatus(55.0, 62.4)
-	if s != "YELLOW" {
-		t.Errorf("expected YELLOW for delta 7.4pp, got %s", s)
-	}
-}
-
-// TestTierMarginStatus_RED verifies >10pp delta → RED.
-func TestTierMarginStatus_RED(t *testing.T) {
-	s := superadmin.TierMarginStatus(40.0, 62.4)
-	if s != "RED" {
-		t.Errorf("expected RED for delta 22.4pp, got %s", s)
-	}
-}
-
-// TestBillingReconPage_Renders_NoProvider verifies the billing-recon page
-// renders gracefully when no provider is wired.
-func TestBillingReconPage_Renders_NoProvider(t *testing.T) {
-	authStore, saStore, al := openTestStores(t)
-	pages := superadmin.NewPages(saStore, al, authStore)
-
-	req := httptest.NewRequest("GET", "/superadmin/billing-recon", nil)
-	rr := httptest.NewRecorder()
-	pages.BillingReconciliation(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	body, _ := io.ReadAll(rr.Body)
-	if !strings.Contains(string(body), "Billing Reconciliation") {
-		t.Error("expected 'Billing Reconciliation' in page")
-	}
-}
-
-// TestBillingReconPage_WithProvider verifies the billing-recon page renders
-// tier summary and drift flags when the provider returns data.
-func TestBillingReconPage_WithProvider(t *testing.T) {
-	authStore, saStore, al := openTestStores(t)
-	pages := superadmin.NewPages(saStore, al, authStore)
-	pages.SetBillingReconProvider(func(_ context.Context) superadmin.BillingReconResult {
-		return superadmin.BillingReconResult{
-			TotalRevenueUSD:    1000.0,
-			TotalCOGSUSD:       400.0,
-			BlendedMarginPct:   60.0,
-			ModelMarginPct:     62.4,
-			BlendedDeltaPP:     -2.4,
-			BlendedStatus:      "GREEN",
-			UncollectedPastDue: 2,
-			ByTier: []superadmin.TierSummary{
-				{Tier: "pro", AccountCount: 10, TotalRevenueUSD: 90, TotalCOGSUSD: 38.3,
-					MarginPct: 57.4, ModelMarginPct: 57.4, DeltaPP: 0, Status: "GREEN"},
-			},
-			Drifted: []superadmin.TenantReconRow{
-				{AccountID: "acct1", Email: "heavy@test.com", Tier: "pro", State: "active",
-					RevenueUSD: 9, COGSEstUSD: 15, MarginPct: -66.7,
-					DriftFlags: []string{"COGS $15.00 > price $9.00"}},
-			},
-		}
-	})
-
-	req := httptest.NewRequest("GET", "/superadmin/billing-recon", nil)
-	rr := httptest.NewRecorder()
-	pages.BillingReconciliation(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	body, _ := io.ReadAll(rr.Body)
-	s := string(body)
-	for _, want := range []string{
-		"Billing Reconciliation",
-		"1000.00",                      // TotalRevenueUSD
-		"GREEN",                        // BlendedStatus
-		"pro",                          // tier row
-		"heavy@test.com",               // drifted tenant
-		"COGS $15.00 &gt; price $9.00", // html-escaped drift flag
-	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("billing-recon page missing %q", want)
-		}
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Migrations status page
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -485,63 +298,6 @@ func TestMigrationsPage_DegradedOnUnreachable(t *testing.T) {
 	}
 	if !strings.Contains(s, "mail") {
 		t.Error("expected 'mail' product name in table")
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cost model constants sanity check
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TestCostModelConstants verifies the cost model constants match the
-// billingmodel/model.py reference values.
-func TestCostModelConstants(t *testing.T) {
-	// Fly: $0.0018/machine-min from model.py
-	if superadmin.FlyMachineMinUSD != 0.0018 {
-		t.Errorf("FlyMachineMinUSD mismatch: got %v", superadmin.FlyMachineMinUSD)
-	}
-	// the managed store: $0.021/GB-month
-	if superadmin.ManagedStorageGBMonthUSD != 0.021 {
-		t.Errorf("ManagedStorageGBMonthUSD mismatch: got %v", superadmin.ManagedStorageGBMonthUSD)
-	}
-	// SES: $0.10/1k emails
-	if superadmin.SESPer1000USD != 0.10 {
-		t.Errorf("SESPer1000USD mismatch: got %v", superadmin.SESPer1000USD)
-	}
-	// Meet: $0.01/participant-min
-	if superadmin.MeetParticipantMinUSD != 0.01 {
-		t.Errorf("MeetParticipantMinUSD mismatch: got %v", superadmin.MeetParticipantMinUSD)
-	}
-	// Pro price: $10/user/mo (TIERS.md FINAL 2026-06-28; was $9 — updated)
-	if superadmin.TierListPrice("pro") != 10.00 {
-		t.Errorf("TierListPrice(pro) mismatch: got %v, want 10.00", superadmin.TierListPrice("pro"))
-	}
-	// Personal price: $6/mo (new tier, single user)
-	if superadmin.TierListPrice("personal") != 6.00 {
-		t.Errorf("TierListPrice(personal) mismatch: got %v, want 6.00", superadmin.TierListPrice("personal"))
-	}
-	// Free: $0
-	if superadmin.TierListPrice("free") != 0.00 {
-		t.Errorf("TierListPrice(free) mismatch: got %v", superadmin.TierListPrice("free"))
-	}
-}
-
-// TestTierModelMargin verifies tier expected margins.
-func TestTierModelMargin(t *testing.T) {
-	tests := []struct {
-		tier     string
-		expected float64
-	}{
-		{"free", -100.0},
-		{"pro", 57.4},
-		{"team", 68.3},
-		{"enterprise", 56.9},
-		{"unknown", 62.4}, // blended fallback
-	}
-	for _, tc := range tests {
-		got := superadmin.TierModelMargin(tc.tier)
-		if got != tc.expected {
-			t.Errorf("TierModelMargin(%q) = %.1f, want %.1f", tc.tier, got, tc.expected)
-		}
 	}
 }
 

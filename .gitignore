@@ -56,5 +56,6 @@ playwright-report/
 tmp/
 .claude
 
-# screenshotter tooling deps
+# screenshotter tooling deps (the dir, and the dev symlink of the same name)
 scripts/screenshots/node_modules/
+scripts/screenshots/node_modules

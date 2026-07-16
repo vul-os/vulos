@@ -1,14 +1,14 @@
-// relay.go — the superadmin RELAY & USAGE console (item 5).
+// relay.go — the superadmin RELAY HEALTH console.
 //
-// The relay is the one bandwidth-bound service the cloud runs, and the one place
-// a region can quietly go underwater (Africa egress costs 6x Europe). This page
-// puts the two numbers that matter side by side: per-region PoP health (EU + JHB)
-// and relay GB by account, with the accounts sorted by consumption so the whales
-// — and any account past its allowance — are visible at a glance.
+// The relay is the one bandwidth-bound service the fleet runs. This page is a
+// pure OPERATIONAL view: per-region PoP health (up / degraded / down) and the
+// throughput moving through each region, so an operator can see at a glance
+// whether the data plane is healthy. Per-account billing, allowances and
+// overage are a commercial concern and live in the commercial module, not here.
 //
-// Data is assembled by cmd/server (which holds the relay-usage store + the
-// cloud-status PoP health aggregation) and injected via SetRelayProvider. This
-// package stays a pure presentation layer.
+// Data is assembled by cmd/server (which holds the cloud-status PoP health
+// aggregation) and injected via SetRelayProvider. This package stays a pure
+// presentation layer.
 package superadmin
 
 import (
@@ -25,22 +25,11 @@ type RelayPoPRow struct {
 	RelayGBMonth float64 // GB relayed through this region this month (0 when unknown)
 }
 
-// RelayAccountRow is one account's relay consumption this month.
-type RelayAccountRow struct {
-	AccountID string
-	Email     string
-	GB        float64
-	Sessions  int
-	OverageGB float64 // GB above the account's allowance (0 when within allowance/unknown)
-}
-
-// RelayOverview is the whole relay rollup for the page.
+// RelayOverview is the whole relay health rollup for the page.
 type RelayOverview struct {
-	PoPs           []RelayPoPRow
-	Accounts       []RelayAccountRow
-	TotalGBMonth   float64
-	TotalOverageGB float64
-	Period         string // "2026-07"
+	PoPs         []RelayPoPRow
+	TotalGBMonth float64
+	Period       string // "2026-07"
 }
 
 // RelayProvider assembles the relay overview at request time. When unset, the
@@ -57,12 +46,12 @@ type relayData struct {
 	FlashErr  string
 }
 
-// Relay renders per-region PoP health and per-account relay usage.
+// Relay renders per-region PoP health and per-region throughput.
 func (p *Pages) Relay(w http.ResponseWriter, r *http.Request) {
 	d := relayData{Available: p.relayFn != nil}
 	if p.relayFn != nil {
 		d.Overview = p.relayFn(r.Context())
 	}
 	d.Flash, d.FlashErr = flashFromQuery(r)
-	p.r.render(w, "Relay & Usage", "relay", d)
+	p.r.render(w, "Relay health", "relay", d)
 }

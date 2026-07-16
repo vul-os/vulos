@@ -1,53 +1,64 @@
 {{define "dashboard"}}
-<h1>Dashboard</h1>
+<div class="page-head">
+  <h1>Operator console</h1>
+  <p class="page-sub">At-a-glance operational state of the Vulos control plane. Every action across this console is written to the hash-chained audit log.</p>
+</div>
+
+{{if .AllClear}}
+<div class="health clear">
+  <span class="beacon"></span>
+  <div>
+    <div class="h-title">All systems nominal</div>
+    <div class="h-sub">
+      {{if .HasStatus}}No open incidents.{{else}}No status store wired on this control plane.{{end}}
+      {{if gt .MaintenanceSoon 0}} · {{.MaintenanceSoon}} maintenance window(s) scheduled.{{end}}
+    </div>
+  </div>
+  <div class="h-links"><a class="btn sm" href="/superadmin/incidents">Incidents</a></div>
+</div>
+{{else}}
+<div class="health alert">
+  <span class="beacon"></span>
+  <div>
+    <div class="h-title">{{humanInt .OpenIncidents}} open incident{{if ne .OpenIncidents 1}}s{{end}}</div>
+    <div class="h-sub">{{if .TopIncident}}Latest: {{.TopIncident.Title}} <span class="pill warn">{{.TopIncident.Severity}}</span>{{end}}
+      {{if gt .MaintenanceSoon 0}} · {{.MaintenanceSoon}} maintenance window(s) scheduled.{{end}}</div>
+  </div>
+  <div class="h-links"><a class="btn sm danger" href="/superadmin/incidents">Manage incidents</a></div>
+</div>
+{{end}}
+
 <div class="tiles">
-  <div class="tile"><div class="num">{{humanInt .SuperAdminCount}}</div><div class="lbl">Super-admins</div></div>
-  <div class="tile"><div class="num">{{humanInt .AccountCount}}</div><div class="lbl">Accounts</div></div>
-  {{if .HasFleet}}
-  <div class="tile"><div class="num">{{.MRRZAR}}</div><div class="lbl">Est. MRR (ZAR)</div></div>
-  <div class="tile"><div class="num">{{humanInt .Fleet.SuspendedCount}}</div><div class="lbl">Suspended</div></div>
+  <div class="tile accent"><div class="num">{{humanInt .AccountCount}}</div><div class="lbl">Accounts</div></div>
+  <div class="tile brand"><div class="num">{{humanInt .SuperAdminCount}}</div><div class="lbl">Super-admins</div></div>
+  <div class="tile {{if gt .OpenIncidents 0}}danger{{end}}"><div class="num">{{humanInt .OpenIncidents}}</div><div class="lbl">Open incidents</div></div>
+  <div class="tile {{if gt .MaintenanceSoon 0}}warn{{end}}"><div class="num">{{humanInt .MaintenanceSoon}}</div><div class="lbl">Maintenance scheduled</div></div>
+</div>
+
+<h2>Jump to</h2>
+<div class="quicklinks">
+  <a class="ql" href="/superadmin/accounts"><div class="ql-t">Accounts</div><div class="ql-d">Search, suspend, force-reset and refund member accounts.</div></a>
+  <a class="ql" href="/superadmin/orgs"><div class="ql-t">Organisations</div><div class="ql-d">Org directory — members, seats and suspension state.</div></a>
+  <a class="ql" href="/superadmin/analytics"><div class="ql-t">Analytics</div><div class="ql-d">Signups, DAU / MAU and per-product usage trends.</div></a>
+  <a class="ql" href="/superadmin/relay"><div class="ql-t">Relay health</div><div class="ql-d">Per-region PoP health and data-plane throughput.</div></a>
+  <a class="ql" href="/superadmin/migrations"><div class="ql-t">Migrations</div><div class="ql-d">Schema state polled across every product in the suite.</div></a>
+  <a class="ql" href="/superadmin/reserved-handles"><div class="ql-t">Reserved handles</div><div class="ql-d">Reserved-username registry (postmaster, abuse, brand …).</div></a>
+  <a class="ql" href="/superadmin/auditlog"><div class="ql-t">Audit log</div><div class="ql-d">The full tamper-evident, hash-chained action history.</div></a>
+  <a class="ql" href="/superadmin/maintenance"><div class="ql-t">Maintenance</div><div class="ql-d">Verify the audit chain, check secret rotation.</div></a>
+</div>
+
+<h2>Recent activity</h2>
+{{if .AuditRows}}
+<div class="feed">
+  {{range .AuditRows}}
+  <div class="feed-row">
+    <span class="feed-seq">#{{.Seq}}</span>
+    <span class="feed-time">{{.Ts}}</span>
+    <span class="feed-body"><span class="fb-actor">{{.Actor}}</span> · <span class="fb-action">{{.Action}}</span>{{if .Target}} → <span class="fb-target">{{.Target}}</span>{{end}}</span>
+  </div>
   {{end}}
 </div>
-
-{{if .HasFleet}}
-<h2>Billing Cockpit — Fleet-wide Usage &amp; Cost</h2>
-{{$maxCost := maxProductCost .Fleet.Products}}
-<div class="table-wrap">
-<table>
-<thead><tr><th>Product</th><th class="wrap">Aggregate usage (all accounts)</th><th>Est. cost (USD)</th><th style="width:42%">Cost share</th></tr></thead>
-<tbody>
-{{range .Fleet.Products}}
-<tr>
-  <td>{{.Product}}</td>
-  <td class="wrap">{{.Usage}}</td>
-  <td>{{if gt .EstCostUSDCts 0}}${{printf "%.2f" (centsToDollars .EstCostUSDCts)}}{{else}}—{{end}}</td>
-  <td>
-    {{$pct := barPct .EstCostUSDCts $maxCost}}
-    <svg class="bar" height="14" viewBox="0 0 100 14" preserveAspectRatio="none" role="img" aria-label="{{printf "%d%%" $pct}} of fleet cost">
-      <rect x="0" y="2" width="100" height="10" fill="#1a1a1a" stroke="#333" stroke-width="0.5"></rect>
-      {{if gt $pct 0}}<rect x="0" y="2" width="{{$pct}}" height="10" fill="#3b82f6"></rect>{{end}}
-    </svg>
-  </td>
-</tr>
-{{end}}
-</tbody>
-</table>
-</div>
-<p class="ro">Usage summed from the same metered_events store enforcement reads; costs are estimates from published per-unit rates (LLM as recorded, meet at 1¢/participant-min).</p>
-{{end}}
-
-<h2>Recent Audit Events</h2>
-{{if .AuditRows}}
-<div class="table-wrap">
-<table>
-<thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead>
-<tbody>
-{{range .AuditRows}}
-<tr><td>{{.Ts}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Target}}</td></tr>
-{{end}}
-</tbody>
-</table>
-</div>
+<p class="ro feed-more"><a href="/superadmin/auditlog">View the full audit log →</a></p>
 {{else}}
 <div class="empty">No audit events yet.</div>
 {{end}}

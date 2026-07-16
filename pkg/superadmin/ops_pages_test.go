@@ -26,7 +26,7 @@ func TestRelayPage_NoProvider(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), "Relay usage not wired") {
+	if !strings.Contains(rr.Body.String(), "Relay health not wired") {
 		t.Error("expected 'not wired' notice when no relay provider")
 	}
 }
@@ -39,11 +39,8 @@ func TestRelayPage_WithProvider(t *testing.T) {
 			Period:       "2026-07",
 			TotalGBMonth: 42.5,
 			PoPs: []superadmin.RelayPoPRow{
-				{Region: "eu", Healthy: 2, Total: 2, Status: "up"},
-				{Region: "jnb", Healthy: 1, Total: 2, Status: "degraded"},
-			},
-			Accounts: []superadmin.RelayAccountRow{
-				{AccountID: "acct1", Email: "whale@vulos.org", GB: 30.0, Sessions: 5, OverageGB: 5.0},
+				{Region: "eu", Healthy: 2, Total: 2, Status: "up", RelayGBMonth: 30.0},
+				{Region: "jnb", Healthy: 1, Total: 2, Status: "degraded", RelayGBMonth: 12.5},
 			},
 		}
 	})
@@ -54,9 +51,15 @@ func TestRelayPage_WithProvider(t *testing.T) {
 		t.Fatalf("want 200, got %d", rr.Code)
 	}
 	body := rr.Body.String()
-	for _, want := range []string{"2026-07", "whale@vulos.org", "jnb", "degraded", "up"} {
+	for _, want := range []string{"2026-07", "eu", "jnb", "degraded", "up"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("relay page missing %q", want)
+		}
+	}
+	// The commercial per-account billing surface must NOT be on this health page.
+	for _, banned := range []string{"over allowance", "Over allowance", "OverageGB"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("relay health page leaked commercial surface %q", banned)
 		}
 	}
 }

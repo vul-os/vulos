@@ -3,27 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{.Title}} — Vulos Admin</title>
+<meta name="color-scheme" content="dark">
+<title>{{.Title}} — Vulos Operator Console</title>
 <link rel="stylesheet" href="/superadmin/admin.css">
 </head>
 <body>
-<nav>
-  <span class="brand">Vulos Admin</span>
-  <a href="/superadmin/">Dashboard</a>
-  <a href="/superadmin/analytics">Analytics</a>
-  <a href="/superadmin/accounts">Accounts</a>
-  <a href="/superadmin/orgs">Orgs</a>
-  <a href="/superadmin/relay">Relay &amp; Usage</a>
-  <a href="/superadmin/billing-recon">Billing Recon</a>
-  <a href="/superadmin/pricing">Pricing</a>
-  <a href="/superadmin/regions">Regions</a>
-  <a href="/superadmin/incidents">Incidents</a>
-  <a href="/superadmin/reserved-handles">Handles</a>
-  <a href="/superadmin/migrations">Migrations</a>
-  <a href="/superadmin/auditlog">Audit Log</a>
-  <a href="/superadmin/maintenance">Maintenance</a>
-  <a href="/superadmin/logout" class="logout spacer">Logout</a>
-</nav>
+<header class="topbar">
+  <a class="tb-brand" href="/superadmin/">
+    <span class="tb-mark">V</span>
+    <span class="tb-word">Vulos</span>
+    <span class="tb-tag">Operator</span>
+  </a>
+  <nav class="tb-nav" aria-label="Primary">
+    <span class="tb-group">
+      <a href="/superadmin/"          class="{{if eq .Section "home"}}active{{end}}">Overview</a>
+      <a href="/superadmin/analytics" class="{{if eq .Section "analytics"}}active{{end}}">Analytics</a>
+    </span>
+    <span class="tb-group">
+      <a href="/superadmin/accounts"         class="{{if eq .Section "accounts"}}active{{end}}">Accounts</a>
+      <a href="/superadmin/orgs"             class="{{if eq .Section "orgs"}}active{{end}}">Orgs</a>
+      <a href="/superadmin/reserved-handles" class="{{if eq .Section "handles"}}active{{end}}">Handles</a>
+    </span>
+    <span class="tb-group">
+      <a href="/superadmin/relay"      class="{{if eq .Section "relay"}}active{{end}}">Relay</a>
+      <a href="/superadmin/incidents"  class="{{if eq .Section "incidents"}}active{{end}}">Incidents</a>
+      <a href="/superadmin/migrations" class="{{if eq .Section "migrations"}}active{{end}}">Migrations</a>
+    </span>
+    <span class="tb-group">
+      <a href="/superadmin/auditlog"    class="{{if eq .Section "audit"}}active{{end}}">Audit Log</a>
+      <a href="/superadmin/maintenance" class="{{if eq .Section "maintenance"}}active{{end}}">Maintenance</a>
+    </span>
+  </nav>
+  <div class="tb-right">
+    <span class="tb-op"><span class="dot"></span>operator</span>
+    <a class="tb-logout" href="/superadmin/logout">Log out</a>
+  </div>
+</header>
 <main>
 {{.Body}}
 </main>

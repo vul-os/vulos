@@ -446,26 +446,23 @@ func TestDashboard_Renders(t *testing.T) {
 	if !strings.Contains(string(body), "Dashboard") {
 		t.Fatal("expected 'Dashboard' in rendered page")
 	}
-	if !strings.Contains(string(body), "Vulos Admin") {
-		t.Fatal("expected 'Vulos Admin' in rendered layout")
+	if !strings.Contains(string(body), "Vulos") {
+		t.Fatal("expected 'Vulos' brand in rendered layout")
 	}
 }
 
-// Test 12b: the dashboard renders the fleet-wide billing cockpit when a
-// FleetBillingProvider is wired (BILL-SUPERADMIN-COCKPIT-01).
-func TestDashboard_RendersFleetCockpit(t *testing.T) {
+// Test 12b: the operational dashboard surfaces fleet health from the incident
+// seam (open incidents banner) and never leaks a commercial billing cockpit.
+func TestDashboard_RendersOperationalHealth(t *testing.T) {
 	authStore, saStore, al := openTestStores(t)
 	pages := superadmin.NewPages(saStore, al, authStore)
-	pages.SetFleetBillingProvider(func(_ context.Context) superadmin.FleetBilling {
-		return superadmin.FleetBilling{
-			MRRZARCents:    123456, // R1234.56
-			AccountCount:   3,
-			SuspendedCount: 1,
-			Products: []superadmin.FleetProductRow{
-				{Product: "meet", Usage: "100 participant-min", EstCostUSDCts: 100},
-				{Product: "mail", Usage: "15 sends, 0 B"},
-			},
-		}
+	pages.SetIncidentAdmin(&fakeIncidents{
+		incidents: []superadmin.IncidentView{
+			{ID: "inc1", Title: "Relay JHB degraded", Severity: "major", StartedAt: "2026-07-16T00:00:00Z"},
+		},
+		maintenance: []superadmin.MaintenanceView{
+			{ID: "m1", Title: "PG upgrade", StartsAt: "2026-07-20T02:00:00Z", EndsAt: "2026-07-20T03:00:00Z"},
+		},
 	})
 
 	req := httptest.NewRequest("GET", "/superadmin/", nil)
@@ -476,9 +473,16 @@ func TestDashboard_RendersFleetCockpit(t *testing.T) {
 	}
 	body, _ := io.ReadAll(rr.Body)
 	s := string(body)
-	for _, want := range []string{"Billing Cockpit", "R1234.56", "100 participant-min", "$1.00", "15 sends"} {
+	// Operational signals present.
+	for _, want := range []string{"open incident", "Relay JHB degraded", "Recent activity"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("dashboard cockpit missing %q", want)
+			t.Errorf("operational dashboard missing %q", want)
+		}
+	}
+	// Commercial surfaces must be gone.
+	for _, banned := range []string{"Billing Cockpit", "MRR", "Est. cost"} {
+		if strings.Contains(s, banned) {
+			t.Errorf("dashboard leaked commercial surface %q", banned)
 		}
 	}
 }

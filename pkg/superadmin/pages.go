@@ -7,7 +7,6 @@ package superadmin
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"html/template"
@@ -58,20 +57,11 @@ var tplOrgsList string
 //go:embed templates/admin/org_detail.html.tmpl
 var tplOrgDetail string
 
-//go:embed templates/admin/billing_recon.html.tmpl
-var tplBillingRecon string
-
 //go:embed templates/admin/migrations_status.html.tmpl
 var tplMigrationsStatus string
 
 //go:embed templates/admin/confirm.html.tmpl
 var tplConfirm string
-
-//go:embed templates/admin/pricing.html.tmpl
-var tplPricing string
-
-//go:embed templates/admin/regions.html.tmpl
-var tplRegions string
 
 //go:embed templates/admin/relay.html.tmpl
 var tplRelay string
@@ -88,132 +78,30 @@ type renderer struct {
 	t *template.Template
 }
 
-// tplFuncs are the helper functions available to all admin templates.
+// tplFuncs are the helper functions available to all admin templates. This is an
+// operational console only — no money/pricing formatting lives here.
 var tplFuncs = template.FuncMap{
-	// centsToDollars converts an int64 USD-cents value to a float for the
-	// cockpit's "%.2f" dollar formatting.
-	"centsToDollars": func(cents int64) float64 { return float64(cents) / 100.0 },
 	// humanInt formats an integer with thousands separators: 1234567 -> "1,234,567".
 	"humanInt": func(n int) string { return groupThousands(int64(n)) },
 	// humanInt64 is the same but for int64.
 	"humanInt64": func(n int64) string { return groupThousands(n) },
-	// maxProductCost returns the largest EstCostUSDCts across the product rows.
-	// Used to scale the cockpit's inline-SVG cost bars to the busiest product.
-	"maxProductCost": func(rows []FleetProductRow) int64 {
-		var max int64
-		for _, r := range rows {
-			if r.EstCostUSDCts > max {
-				max = r.EstCostUSDCts
-			}
-		}
-		return max
-	},
-	// barPct returns the percentage width (0..100, rounded) of value relative to
-	// max, for sizing the inline-SVG cost bars. A zero max yields 0.
-	"barPct": func(value, max int64) int {
-		if max <= 0 || value <= 0 {
-			return 0
-		}
-		pct := value * 100 / max
-		if pct < 1 {
-			pct = 1 // keep a sliver visible for any non-zero cost
-		}
-		if pct > 100 {
-			pct = 100
-		}
-		return int(pct)
-	},
-	// barPctFloat is barPct for float64 values (billing recon cost bars).
-	"barPctFloat": func(value, max float64) int {
-		if max <= 0 || value <= 0 {
-			return 0
-		}
-		pct := int(value * 100 / max)
-		if pct < 1 {
-			pct = 1
-		}
-		if pct > 100 {
-			pct = 100
-		}
-		return pct
-	},
-	// maxDayCount returns the maximum count from a DayCount slice (for SVG scale).
-	"maxDayCount": func(days []DayCount) int64 {
-		var m int64
-		for _, d := range days {
-			if d.Count > m {
-				m = d.Count
-			}
-		}
-		if m == 0 {
-			m = 1 // avoid zero-division in templates
-		}
-		return m
-	},
-	// maxTrendCount returns the max across all days in a ProductUsageTrend (SVG scale).
-	"maxTrendCount": func(t ProductUsageTrend) int64 {
-		if t.PeakDay == 0 {
-			return 1
-		}
-		return t.PeakDay
-	},
-	// driftClass returns a CSS class from a drift-status string.
-	"driftClass": func(status string) string {
-		switch status {
-		case "GREEN":
-			return "pill active"
-		case "YELLOW":
-			return "pill warn"
-		case "RED":
-			return "pill suspended"
-		default:
-			return "pill"
-		}
-	},
 	// migrateClass maps a migration status string to a CSS pill class.
 	"migrateClass": func(status string) string {
 		switch status {
 		case "ok":
-			return "pill active"
+			return "pill ok"
 		case "pending":
 			return "pill warn"
-		case "error":
-			return "pill suspended"
-		case "unreachable":
-			return "pill suspended"
+		case "error", "unreachable":
+			return "pill danger"
 		default:
 			return "pill"
 		}
-	},
-	// fmtFloat2 formats a float64 to 2 decimal places.
-	"fmtFloat2": func(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) },
-	// fmtFloat1 formats a float64 to 1 decimal place.
-	"fmtFloat1": func(f float64) string { return strconv.FormatFloat(f, 'f', 1, 64) },
-	// hasDrift returns true when the DriftFlags slice is non-empty.
-	"hasDrift": func(flags []string) bool { return len(flags) > 0 },
-	// joinStrings joins a string slice with the given separator.
-	"joinStrings": func(ss []string, sep string) string {
-		result := ""
-		for i, s := range ss {
-			if i > 0 {
-				result += sep
-			}
-			result += s
-		}
-		return result
 	},
 	// add adds two integers (used for length-1 indexing in templates).
 	"add": func(a, b int) int { return a + b },
 	// mul7i multiplies an integer by 7 (SVG x-offset for 7-day trend bars).
 	"mul7i": func(i int) int { return i * 7 },
-	// seq returns a slice of ints [0..n-1] for range loops in templates.
-	"seq": func(n int) []int {
-		s := make([]int, n)
-		for i := range s {
-			s[i] = i
-		}
-		return s
-	},
 }
 
 // groupThousands formats an int64 with comma thousands separators, preserving a
@@ -257,15 +145,44 @@ func newRenderer() (*renderer, error) {
 	for _, src := range []string{
 		tplDashboard, tplLogin, tplAccounts, tplAccountDetail,
 		tplReservedHandles, tplAuditLog, tplMaintenance, tplConfirm,
-		tplAnalytics, tplOrgsList, tplOrgDetail, tplBillingRecon,
-		tplMigrationsStatus, tplPricing, tplRegions,
-		tplRelay, tplIncidents,
+		tplAnalytics, tplOrgsList, tplOrgDetail,
+		tplMigrationsStatus, tplRelay, tplIncidents,
 	} {
 		if _, err := t.Parse(src); err != nil {
 			return nil, err
 		}
 	}
 	return &renderer{t: t}, nil
+}
+
+// navSection maps an inner-template name to the top-bar nav key it belongs to,
+// so the layout can mark the active section. Empty means "no highlight" (login,
+// confirm). Detail pages inherit their parent section.
+func navSection(name string) string {
+	switch name {
+	case "dashboard":
+		return "home"
+	case "analytics":
+		return "analytics"
+	case "accounts", "account_detail":
+		return "accounts"
+	case "orgs_list", "org_detail":
+		return "orgs"
+	case "relay":
+		return "relay"
+	case "incidents":
+		return "incidents"
+	case "reserved_handles":
+		return "handles"
+	case "migrations_status":
+		return "migrations"
+	case "auditlog":
+		return "audit"
+	case "maintenance":
+		return "maintenance"
+	default:
+		return ""
+	}
 }
 
 // render executes the named inner template and wraps it in the layout.
@@ -278,13 +195,15 @@ func (r *renderer) render(w http.ResponseWriter, title, name string, data any) {
 	}
 	// Wrap in layout.
 	type layoutData struct {
-		Title string
-		Body  template.HTML
+		Title   string
+		Section string // active top-bar nav key
+		Body    template.HTML
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := r.t.ExecuteTemplate(w, "layout", layoutData{
-		Title: title,
-		Body:  template.HTML(buf.String()),
+		Title:   title,
+		Section: navSection(name),
+		Body:    template.HTML(buf.String()),
 	}); err != nil {
 		// Layout write failed — not much we can do.
 		http.Error(w, "layout error: "+err.Error(), http.StatusInternalServerError)
@@ -295,40 +214,19 @@ func (r *renderer) render(w http.ResponseWriter, title, name string, data any) {
 // Page handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// FleetProductRow is one product's fleet-wide aggregate for the dashboard
-// cockpit: a human-readable usage summary and an estimated cost in USD cents.
-type FleetProductRow struct {
-	Product       string
-	Usage         string
-	EstCostUSDCts int64
-}
-
-// FleetBilling is the cross-product fleet-wide billing rollup rendered on the
-// landing dashboard: total MRR, suspended-account count, account count, and a
-// per-product usage/cost table. Assembled by cmd/server.buildFleetBilling and
-// injected via Pages.SetFleetBillingProvider so the superadmin package stays
-// free of a billing-store dependency.
-type FleetBilling struct {
-	MRRZARCents    int64
-	AccountCount   int
-	SuspendedCount int
-	Products       []FleetProductRow
-}
-
-// FleetBillingProvider assembles the fleet-wide rollup at request time. It is a
-// seam so the data assembly (which needs the billing + auth stores) can live in
-// cmd/server while the render stays here.
-type FleetBillingProvider func(ctx context.Context) FleetBilling
-
 // Pages bundles all HTML page handlers.
+//
+// This is the OSS OPERATIONAL console only. Commercial surfaces (pricing,
+// regions, billing reconciliation, fleet cost rollups) were removed from this
+// module — a commercial distributor owns a billing/pricing/regions admin in its
+// own module. Nothing here formats money or charges a card.
 type Pages struct {
-	r        *renderer
-	s        *Store
-	al       *auditlog.Logger
-	auth     *auth.Store
-	fleetBil FleetBillingProvider
-	inbox    auth.InboxSender // for force-password-reset delivery; may be nil
-	limiter  *loginLimiter    // brute-force throttle for login
+	r       *renderer
+	s       *Store
+	al      *auditlog.Logger
+	auth    *auth.Store
+	inbox   auth.InboxSender // for force-password-reset delivery; may be nil
+	limiter *loginLimiter    // brute-force throttle for login
 
 	// Analytics seam.
 	analyticsFn AnalyticsUsageProvider
@@ -338,17 +236,6 @@ type Pages struct {
 	orgDetailFn  OrgDetailProvider
 	orgSuspendFn OrgSuspendFunc
 	orgRestoreFn OrgRestoreFunc
-
-	// Billing reconciliation seam.
-	billingReconFn BillingReconProvider
-
-	// Pricing + regions consoles (PRICING-CATALOG-01). These change what
-	// customers are charged and where their machines run, so both mutations are
-	// CSRF-protected and audit-logged like every other money action here.
-	pricingFn      PricingProvider
-	setPriceFn     SetPriceFunc
-	regionsFn      RegionsProvider
-	upsertRegionFn UpsertRegionFunc
 
 	// Migrations status manifest.
 	migrateManifest []MigrationEntry
@@ -408,23 +295,28 @@ func (p *Pages) actorEmail(r *http.Request) string {
 	return id
 }
 
-// SetFleetBillingProvider wires the fleet-wide billing assembler used by the
-// landing dashboard. When unset, the dashboard simply omits the billing cockpit
-// (the page still renders its counts + audit feed).
-func (p *Pages) SetFleetBillingProvider(fn FleetBillingProvider) { p.fleetBil = fn }
-
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
+// dashboardData is the operator cockpit: purely operational signals (fleet
+// health, account/super-admin counts, live incidents/maintenance and the
+// hash-chained audit feed). No revenue, cost or pricing lives here.
 type dashboardData struct {
 	SuperAdminCount int
 	AccountCount    int
-	AuditRows       []auditRow
-	// Fleet is the cross-product billing cockpit. HasFleet gates its render so a
-	// dashboard with no provider wired still shows the counts + audit feed.
-	HasFleet bool
-	Fleet    FleetBilling
-	MRRZAR   string // MRR rendered as a ZAR amount (rands, not cents)
+
+	// Status seam (nil when no status store is wired).
+	HasStatus       bool
+	OpenIncidents   int
+	MaintenanceSoon int
+	// TopIncident is the most recent open incident, surfaced on the health banner.
+	TopIncident *IncidentView
+
+	AuditRows []auditRow
 }
+
+// AllClear reports whether the fleet has no open incidents (drives the health
+// banner). A self-host CP with no status store wired is treated as nominal.
+func (d dashboardData) AllClear() bool { return d.OpenIncidents == 0 }
 
 type auditRow struct {
 	Seq    int64
@@ -445,10 +337,26 @@ func (p *Pages) Dashboard(w http.ResponseWriter, r *http.Request) {
 		`SELECT COUNT(*) FROM users`,
 	).Scan(&d.AccountCount)
 
+	// Fleet health from the status seam (best-effort; nil-safe).
+	if p.incidentAdmin != nil {
+		if incs, maint, err := p.incidentAdmin.List(r.Context()); err == nil {
+			d.HasStatus = true
+			for i := range incs {
+				if !incs[i].Resolved() {
+					if d.TopIncident == nil {
+						d.TopIncident = &incs[i]
+					}
+					d.OpenIncidents++
+				}
+			}
+			d.MaintenanceSoon = len(maint)
+		}
+	}
+
 	// Recent audit rows (best-effort).
 	rows, err := p.s.db.QueryContext(r.Context(),
 		`SELECT seq, ts, actor, action, target
-		 FROM auditlog_entries ORDER BY seq DESC LIMIT 20`)
+		 FROM auditlog_entries ORDER BY seq DESC LIMIT 12`)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -459,37 +367,7 @@ func (p *Pages) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fleet-wide billing cockpit (best-effort; omitted when no provider wired).
-	if p.fleetBil != nil {
-		d.Fleet = p.fleetBil(r.Context())
-		d.HasFleet = true
-		d.MRRZAR = formatZARCents(d.Fleet.MRRZARCents)
-	}
-
 	p.r.render(w, "Dashboard", "dashboard", d)
-}
-
-// formatZARCents renders ZAR cents as a "R<rands>.<cc>" string for the cockpit.
-func formatZARCents(cents int64) string {
-	neg := cents < 0
-	if neg {
-		cents = -cents
-	}
-	rands := cents / 100
-	cc := cents % 100
-	s := "R" + strconv.FormatInt(rands, 10) + "." + leftPad2(cc)
-	if neg {
-		s = "-" + s
-	}
-	return s
-}
-
-// leftPad2 zero-pads a 0..99 value to two digits.
-func leftPad2(n int64) string {
-	if n < 10 {
-		return "0" + strconv.FormatInt(n, 10)
-	}
-	return strconv.FormatInt(n, 10)
 }
 
 // ─── Login ───────────────────────────────────────────────────────────────────
