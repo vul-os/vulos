@@ -1,0 +1,244 @@
+/* app.css — vulos-management console shell layout.
+ *
+ * Tokens-only: every colour/space/size comes from theme.css (copied verbatim
+ * from the marketing site), so the console reads as the same product as
+ * vulos.org. No hardcoded hex. Sans for UI chrome, mono for data/eyebrows —
+ * matching the "instrument panel" console aesthetic used across the suite. */
+
+#root {
+  min-height: 100dvh;
+}
+
+/* ─── Shell: fixed sidebar + fluid main column ───────────────────────────── */
+.vm-shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100dvh;
+  background: var(--bg-base);
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────── */
+.vm-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-2);
+  border-right: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow-y: auto;
+}
+
+.vm-brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.vm-brand-mark {
+  color: var(--brand);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.vm-brand-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.vm-brand-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-transform: lowercase;
+}
+
+.vm-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2-5);
+  flex: 1;
+}
+.vm-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vm-nav-group-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  padding: 0 var(--sp-1) var(--sp-0-5);
+}
+.vm-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-1-5);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  min-height: 36px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.vm-nav-link:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.vm-nav-link.is-active {
+  background: var(--bg-selected);
+  border: 1px solid var(--bg-selected-border);
+  color: var(--text-primary);
+}
+.vm-nav-soon {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--sp-0-5);
+}
+
+.vm-sidebar-foot {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-2);
+}
+.vm-seam-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+/* ─── Main column ────────────────────────────────────────────────────────── */
+.vm-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vm-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  height: var(--nav-h);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--nav-scrim);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-raised);
+}
+.vm-topbar-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.vm-user {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-0-5) var(--sp-1);
+}
+
+.vm-content {
+  flex: 1;
+  padding: var(--sp-5) var(--sp-4);
+  max-width: var(--maxw);
+  width: 100%;
+}
+
+/* ─── Page ───────────────────────────────────────────────────────────────── */
+.vm-page-head {
+  margin-bottom: var(--sp-4);
+}
+.vm-page-head h1 {
+  font-size: var(--text-3xl);
+}
+.vm-page-sub {
+  margin-top: var(--sp-1);
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+}
+.vm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-2);
+}
+.vm-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  padding: var(--sp-3);
+}
+.vm-card h3 {
+  font-size: var(--text-lg);
+  margin-bottom: var(--sp-1);
+}
+.vm-card p {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+.vm-muted {
+  color: var(--text-faint) !important;
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-xs) !important;
+}
+
+.vm-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--sp-5);
+  text-align: center;
+  color: var(--text-tertiary);
+}
+.vm-empty code {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+/* ─── Responsive: collapse sidebar to top strip on narrow viewports ──────── */
+@media (max-width: 860px) {
+  .vm-shell {
+    grid-template-columns: 1fr;
+  }
+  .vm-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .vm-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+  }
+  .vm-nav-group {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  .vm-nav-group-label {
+    display: none;
+  }
+  .vm-content {
+    padding: var(--sp-3) var(--sp-2);
+  }
+}
