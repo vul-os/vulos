@@ -5,7 +5,7 @@
 <h1 align="center">Vulos</h1>
 
 <p align="center">
-  <strong>A self-hostable, web-native operating system. Your cloud, your hardware, your rules.</strong>
+  <strong>A sovereign personal server — web-native desktop + private AI — on hardware you own.<br/>Agency over your computing, your data, and your AI.</strong>
 </p>
 
 <p align="center">
@@ -27,9 +27,24 @@
 
 ## What is Vulos?
 
-Vulos is a **sovereign personal server with a web-native desktop** you run on your own hardware. The shell is a React single-page app — a real window manager with virtual desktops, a dock, and bundled apps — that runs in any browser. Open it from a laptop, a phone, or a shared screen and you get the same full desktop, backed by a single self-contained Go binary that embeds the entire frontend.
+Vulos is a **sovereign personal server with a web-native desktop** you run on your own self-provisioned box. The shell is a React single-page app — a real window manager with virtual desktops, a dock, and bundled apps — that runs in any browser. Open it from a laptop, a phone, or a shared screen and you get the same full desktop, backed by a single self-contained Go binary that embeds the entire frontend. Reach your box from anywhere through the relay; install apps from the app store; every piece is open source and self-hostable.
 
-At its center is a **sovereign assistant**: an on-box AI agent that is aware of your calendar, contacts, files, and reminders, and that can act on your behalf — but only under a hard security contract. Every action with side effects is a confirmation-gated *proposal*, off-box egress is fenced by a tier-aware sovereignty Guard, and the language model runs through your own on-box gateway by default. The wedge is **agency, not just privacy**: your own server, your own AI, acting for you — without handing your inbox and calendar to a third party.
+The wedge is **agency**, not privacy-absolutism. This isn't a "we can never see anything" pitch — it's *ownership*. You own the server, you own the data, and you control the AI. What that buys you is agency over your own computing, without handing your inbox, calendar, and files to a third-party cloud.
+
+### Sovereign AI, honestly
+
+Vulos ships **[llmux](docs/ASSISTANT.md), a sovereign AI gateway**: you run AI **through your own box**, and the box mediates the routing and data-flow. Two honest modes:
+
+- **Bring your own key** to any provider (OpenAI, Anthropic, or anything else). Your keys, your box in the middle — **no Vulos middleman** and no Vulos account required to use AI.
+- **Local models** where your hardware allows, so nothing leaves the box at all.
+
+"Sovereign AI" here means *your gateway + your keys + your box controlling where the data goes* — **not** a promise that every box ships a free frontier LLM (most hardware can't run large models locally). AI on your terms, mediated by a machine you own.
+
+At the center is a **sovereign assistant**: an on-box agent aware of your calendar, contacts, files, and reminders that can act on your behalf — but only under a hard security contract. Every side-effecting action is a confirmation-gated *proposal*, off-box egress is fenced by a tier-aware sovereignty Guard, and its LLM traffic runs through llmux by default. See [the security model](#the-sovereign-assistant-security-model) below.
+
+### Honest privacy, not zero-access
+
+Because you own the box and the data, your privacy posture is genuinely strong — but be clear-eyed about the trust model. Vulos is **honest-privacy, not zero-access**: there are recovery paths, so "impossible for anyone, ever" is not the claim. You get a **client-side recovery phrase** by default, **trusted-device** recovery, and **opt-in HSM** for stronger key custody. Sovereignty means you decide the trade-off between recoverability and lock-down — not that a lost secret is unrecoverable by design.
 
 No Electron, no VNC, no always-on remote-desktop session, no third-party login. Web apps run natively in the shell; native Linux GUI apps stream over WebRTC only while their window is open. The whole thing flashes to a USB stick, deploys to a cloud server, or runs in Docker.
 
