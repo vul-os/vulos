@@ -13,6 +13,8 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-17
+
 ### Added
 
 - **Streaming Chrome, restored.** A real Chromium instance running on the box,
@@ -54,6 +56,8 @@ Versioning: [SemVer](https://semver.org/).
 - **Instance-management authorization** enforced on rename/remove endpoints.
 - **Honest stream auth reporting.** Stopped reporting passkey assertions that
   never actually happened in the stream WebAuthn gate.
+
+---
 
 ## [1.1.0] - 2026-07-07
 
@@ -291,10 +295,13 @@ real hardware/live services.
 - Docker image for `linux/amd64` and `linux/arm64`
 - CI (build, vet, test, gofmt, Docker) and release pipeline (tag-triggered)
 
-[Unreleased]: https://github.com/vul-os/vulos/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/vul-os/vulos/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/vul-os/vulos/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/vul-os/vulos/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vul-os/vulos/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/vul-os/vulos/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/vul-os/vulos/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/vul-os/vulos/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/vul-os/vulos/releases/tag/v0.1.0
+[0.1.0]: https://github.com/vul-os/vulos/compare/v0.0.2...v0.1.0
+[0.0.2]: https://github.com/vul-os/vulos/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/vul-os/vulos/releases/tag/v0.0.1
