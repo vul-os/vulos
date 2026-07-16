@@ -172,3 +172,136 @@ make build
 
 Database migrations run automatically on start. On SQLite this is transparent; on
 Postgres the migration runner applies any new baselines idempotently.
+
+---
+
+<!-- ========================================================================= -->
+<!-- APPENDED: Unified self-host — tiers, the optional relay, one-command setup -->
+<!-- ========================================================================= -->
+
+# Unified self-host: the whole picture
+
+The sections above cover the **control plane** in isolation. This section places
+it in the wider self-host story, explains where the **relay** fits (and when you
+don't need it), and gives you a **single install script** that stands up the
+control plane and — on request — a relay alongside it.
+
+The two pieces stay **separate binaries** from **separate repos** — this is a
+unified *experience*, not a merged program:
+
+| Piece | Repo | Binary | Role |
+|---|---|---|---|
+| **Control plane** | `vulos-management` (this repo) | `./bin/cp` | Accounts, device enrollment, OS routing, relay fleet, admin console. |
+| **Relay** | [`vulos-relay`](https://github.com/vul-os/vulos-relay) | `vulos-relayd` (+ `vulos-relay-agent`) | Public reverse-tunnel ingress so a NAT'd box is reachable. |
+
+## Which tier are you?
+
+Self-hosting scales from a single box to a managed fleet. You only run what your
+tier needs:
+
+| Tier | What you run | Notes |
+|---|---|---|
+| **Individual** | a **box** + *(optional)* a **relay** | You do **not** need the control plane. Run one box; add a relay only if the box isn't publicly reachable. |
+| **Fleet / Enterprise** | **+ the control plane** (this repo) + *(optional)* one or more relays | Central accounts, enrollment, OS routing, and a managed relay fleet across your boxes. |
+
+### The relay is OPTIONAL
+
+A relay is the **public half of a reverse tunnel**: a box dials one outbound
+`wss://` connection to it, and the relay serves the box a public URL. You need one
+**only when a box lacks public reachability** — i.e. it sits behind **NAT/CGNAT**,
+has no static IP, or you want a stable public hostname you control.
+
+- **Box has a public IP + domain?** Reach it directly. **Skip the relay entirely.**
+- **Box behind NAT/CGNAT (home server, laptop, cheap VPS with no ports)?** Stand up
+  a relay so the box is reachable without opening inbound ports.
+
+The control plane runs perfectly well with **zero** relays; a relay runs perfectly
+well with **no** control plane (pure sovereign self-host, unbilled). They are
+composable, not co-dependent.
+
+## One-command self-host
+
+`scripts/selfhost/install.sh` orchestrates the whole thing. It builds the control
+plane, writes a self-host config (free no-op billing, bring-your-own-bucket), and
+can optionally stand up a relay next to it by delegating to the relay repo's own
+installer.
+
+```sh
+# Control plane only (fleet/enterprise, boxes are publicly reachable):
+scripts/selfhost/install.sh --domain cp.example.com
+
+# Control plane + a relay (some boxes are behind NAT/CGNAT):
+scripts/selfhost/install.sh --domain cp.example.com \
+    --with-relay --relay-domain relay.example.com
+
+# Point at a specific relay checkout (default: a sibling ../vulos-relay):
+scripts/selfhost/install.sh --domain cp.example.com \
+    --with-relay --relay-domain relay.example.com \
+    --relay-repo /path/to/vulos-relay
+
+# Postgres instead of the default on-disk SQLite:
+scripts/selfhost/install.sh --domain cp.example.com \
+    --database-url postgres://vulos:secret@db.internal:5432/cp
+
+# Write build + config but don't start anything:
+scripts/selfhost/install.sh --domain cp.example.com --no-run
+```
+
+What it does, step by step:
+
+1. **Builds** `./bin/cp` (`make build`).
+2. **Writes** a self-host env file to `~/.vulos/selfhost/cp.env` (override with
+   `--data-dir` / `VULOS_DATA_DIR`) — kept **outside the repo** so generated
+   secrets are never committed. It generates a real `SESSION_SECRET`, defaults to
+   durable on-disk SQLite (or your `--database-url`), and sets `VULOS_ENV=local`
+   (the working self-host posture — see the note below).
+3. **Relay (optional):** with `--with-relay`, it finds your `vulos-relay` checkout
+   (a sibling `../vulos-relay` by default, or `--relay-repo <path>`) and runs that
+   repo's `scripts/install.sh --domain <relay-domain>`, which brings the relay up
+   in Docker. If no checkout is found it prints the `git clone` + install steps
+   instead of failing.
+4. **Runs** the control plane and health-checks `GET /healthz`, then prints
+   `GET /version` (you'll see `"billing_rail":"noop"` — confirmation it can never
+   charge). Logs and a PID file land in the data dir.
+
+### A note on `VULOS_ENV`
+
+The control plane **fails safe to production posture** when `VULOS_ENV` is unset —
+and full prod additionally requires provider secrets (Apple/Google **push** creds,
+**KEK**s) that a self-hoster usually has no reason to hold, so those fail-closed
+gates would block startup. The installer therefore sets `VULOS_ENV=local`, the
+working self-host posture, while still generating a **real** `SESSION_SECRET`
+(never a dev fallback). To run the full production hardening, set `VULOS_ENV=prod`
+in `cp.env` and supply the push/KEK variables, then restart.
+
+### Standing up a relay by hand
+
+If you'd rather set the relay up directly (or on a different host from the control
+plane), use the relay repo's own one-command installer — the control-plane
+installer simply calls it for you:
+
+```sh
+git clone https://github.com/vul-os/vulos-relay
+cd vulos-relay
+./scripts/install.sh --domain relay.example.com     # Docker Compose, health-checked
+```
+
+That script generates the agent grant token, writes `.env` + `grants.json`, brings
+`vulos-relayd` up behind a TLS-terminating edge, and prints the exact
+`vulos-relay-agent` command to run on each box. See the relay repo's
+**"Self-hosting a Vulos relay"** README section and its `docs/GETTING-STARTED.md`
+for the full walkthrough, DNS/TLS options, and the flag/env reference.
+
+### Putting it on the internet
+
+Both binaries expect a **TLS-terminating reverse proxy** in front (Caddy, nginx,
+Traefik, or a CDN):
+
+- **Control plane** (`./bin/cp`) speaks plain HTTP on `CP_ADDR` (default `:8080`);
+  proxy `https://cp.example.com` → it.
+- **Relay** (`vulos-relayd`) speaks plain HTTP on `:8443`; proxy `:443` → `:8443`,
+  and for subdomain mode terminate a `*.relay.example.com` wildcard cert there.
+
+Neither phones home, charges money, nor provisions managed buckets on its own — the
+commercial `vulos-cloud` layer is the only thing that adds those, by injecting real
+providers into the same seams (see [ARCHITECTURE.md](ARCHITECTURE.md)).
