@@ -13,8 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   packages in this repo, per [`docs/EXTRACTION-PLAN.md`](docs/EXTRACTION-PLAN.md).
 - Land the `BillingProvider` and `StorageProvisioner` seam interfaces with their
   no-op / BYOB defaults.
-- Publish superadmin console screenshots once the extracted binary runs
+- Publish admin console screenshots once the extracted binary runs
   standalone.
+
+## [0.1.2] - 2026-07-16
+
+### Changed
+
+- Renamed the operator console from "superadmin console" to **admin console**
+  throughout the user-facing docs (`README.md`, `docs/ARCHITECTURE.md`,
+  `docs/SELF-HOST.md`, this changelog). Literal code identifiers that still carry
+  the `superadmin` name — the `/superadmin/*` route prefix, the
+  `internal/superadmin` package, the `RequireSuperAdmin` gate, and the
+  `superadmins` table — are preserved for accuracy and called out as code tokens.
+- Renamed `docs/SUPERADMIN-CONSOLE.md` → `docs/ADMIN-CONSOLE.md` and updated all
+  links and references.
 
 ## [0.1.1] - 2026-07-16
 
@@ -34,7 +47,7 @@ Initial public bootstrap of the open-source (MIT) Vulos control-plane repo.
   cloud is optional" framing.
 - **Operational docs** in `docs/`, adapted from `vulos-cloud` to read as
   Management docs: `SELF-HOST.md`, `DEPLOY-CP.md`, `DEPLOY-RELAY.md`, and
-  `SUPERADMIN-CONSOLE.md`.
+  the admin console doc.
 - **`docs/ARCHITECTURE.md`** — the two-repo split, the `BillingProvider` seam
   (no-op default), the `StorageProvisioner` seam (BYOB default), and the Go
   module strategy by which `vulos-cloud` consumes this repo as a library.
@@ -50,5 +63,6 @@ Initial public bootstrap of the open-source (MIT) Vulos control-plane repo.
 - Nothing here contains production secrets, runbooks, or internal package maps —
   those remain in the private `vulos-cloud` repo.
 
-[Unreleased]: https://github.com/vul-os/vulos-management/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/vul-os/vulos-management/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/vul-os/vulos-management/releases/tag/v0.1.2
 [0.1.1]: https://github.com/vul-os/vulos-management/releases/tag/v0.1.1

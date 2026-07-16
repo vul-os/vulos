@@ -8,7 +8,7 @@ office, board, talk, meet and a private-AI gateway alongside — all under one
 > **This doc lives in [vulos-management](https://github.com/vul-os/vulos-management)**,
 > the open-source (MIT) control plane. The control plane in this repo is fully
 > functional on its own — accounts, routing, relay autoscaling, and the
-> superadmin console — with billing behind a `BillingProvider` seam whose
+> admin console — with billing behind a `BillingProvider` seam whose
 > **default is a no-op** (metered but free, no phone-home). The only thing the
 > private `vulos-cloud` layer adds on top is commercial billing (Paystack), a
 > few billing-only admin panels, and the hosted marketing site. **The suite is
@@ -200,7 +200,7 @@ Three options, in order of simplicity:
 
 The Vulos Cloud layer is the **optional commercial layer** for people who don't
 want to run infrastructure: hosted billing (Paystack) injected into the
-`BillingProvider` seam, plus the hosted marketing site. The fleet/super-admin
+`BillingProvider` seam, plus the hosted marketing site. The fleet/admin
 console and the multi-tenant OAuth broker are **part of this OSS
 vulos-management repo**, not the paid layer. Managed enrollment plugs in on top
 of this same `/api` seam — you'd set `VULOS_CP_URL` to enroll. Everything in

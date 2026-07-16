@@ -19,7 +19,7 @@ Everything else follows from that.
 |---|---|---|
 | License | MIT | Proprietary |
 | Role | The complete operational control plane + admin console | The commercial layer only |
-| Ships | accounts / auth / 2FA / OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP registry/heartbeats + fleet health, superadmin + org-admin console, status pages, the `BillingProvider` **interface + no-op default** | the Paystack `BillingProvider` impl, commercial pricing/catalog, billing-only superadmin panels, the hosted marketing site |
+| Ships | accounts / auth / 2FA / OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP registry/heartbeats + fleet health, admin + org-admin console, status pages, the `BillingProvider` **interface + no-op default** | the Paystack `BillingProvider` impl, commercial pricing/catalog, billing-only admin panels, the hosted marketing site |
 | Runs standalone? | Yes — fully functional, metered-but-free | No — it's a thin wrapper that imports vulos-management |
 
 The important consequence: **there is no forked control plane.** The OSS control
@@ -164,6 +164,6 @@ provider on top.
 - [SELF-HOST.md](SELF-HOST.md) — run the whole suite sovereignly with compose
 - [DEPLOY-CP.md](DEPLOY-CP.md) — production control-plane deploy checklist
 - [DEPLOY-RELAY.md](DEPLOY-RELAY.md) — relay PoP fleet deploy
-- [SUPERADMIN-CONSOLE.md](SUPERADMIN-CONSOLE.md) — the operator console
+- [ADMIN-CONSOLE.md](ADMIN-CONSOLE.md) — the operator console
 - [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md) — the plan to move the Go control-plane
   code out of vulos-cloud into this repo

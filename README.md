@@ -10,16 +10,16 @@
 ### The open-source control plane for a sovereign compute fleet.
 
 Run your own Vulos: **accounts, OS routing, relay autoscaling, and a hardened
-superadmin console** — one self-hostable control plane. Billing is a pluggable
+admin console** — one self-hostable control plane. Billing is a pluggable
 seam with a no-op default, so **self-hosting is fully functional and free.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2DD4BF.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-free-14B8A6.svg)](docs/SELF-HOST.md)
 [![Tests](https://img.shields.io/badge/tests-passing-14B8A6.svg)](docs/)
-[![Release](https://img.shields.io/badge/release-v0.1.1-2DD4BF.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.1.2-2DD4BF.svg)](CHANGELOG.md)
 
-[**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Deploy the CP**](docs/DEPLOY-CP.md) · [**Deploy a relay**](docs/DEPLOY-RELAY.md) · [**Superadmin**](docs/SUPERADMIN-CONSOLE.md)
+[**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Deploy the CP**](docs/DEPLOY-CP.md) · [**Deploy a relay**](docs/DEPLOY-RELAY.md) · [**Admin console**](docs/ADMIN-CONSOLE.md)
 
 </div>
 
@@ -52,9 +52,9 @@ that exist only because we charge money.
 | 📱 **Device enrollment** | RFC-8628 device-authorization flow so a box or headless device enrolls against your control plane and mints short-lived, audience-bound tokens. |
 | 🧭 **OS routing & directory** | `os.vulos.org` resolves to the best box in your cluster; the org/box directory tracks who owns what and where it runs, with region-aware placement preview. |
 | 📡 **Relay autoscaler & PoP fleet** | A PoP registry with 15s heartbeats and health flags, failover routing that excludes unhealthy PoPs, and an autoscaler + serving pool that grows and shrinks the fleet against a provider registry. |
-| 🖥️ **Superadmin console** | Server-rendered, no-JS-framework, triple-gated (IP allowlist + session + WebAuthn admin session), CSRF-protected, audit-logged operator surface for accounts, orgs, fleet, relay, incidents, and reserved handles. |
+| 🖥️ **Admin console** | Server-rendered, no-JS-framework, triple-gated (IP allowlist + session + WebAuthn admin session), CSRF-protected, audit-logged operator surface for accounts, orgs, fleet, relay, incidents, and reserved handles. |
 | 👥 **Org-admin console** | Per-organization administration for org owners — members, boxes, and settings scoped to a single org. |
-| 🟢 **Status pages** | A public status/incidents surface plus per-user status, authored from the superadmin incidents page over the same store. |
+| 🟢 **Status pages** | A public status/incidents surface plus per-user status, authored from the admin incidents page over the same store. |
 | 🧩 **Pluggable seams** | `BillingProvider` and `StorageProvisioner` are interfaces with free, no-op / bring-your-own defaults. Self-host stays sovereign; the cloud build injects the commercial implementations at wire-time. |
 
 ## The two-repo model
@@ -69,7 +69,7 @@ Vulos is split into two repositories along one honest line:
 |---|---|---|
 | **License** | MIT, open source | Proprietary |
 | **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
-| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, superadmin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (Paystack), commercial pricing, **Tigris bucket provisioning**, billing-only superadmin panels, the hosted marketing site |
+| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (Paystack), commercial pricing, **Tigris bucket provisioning**, billing-only admin panels, the hosted marketing site |
 | **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a Paystack `BillingProvider` |
 | **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a Tigris auto-provisioner |
 | **Relationship** | Stands alone, fully functional | `require`s + `replace`s this repo as a library, then injects the commercial impls |
@@ -92,7 +92,7 @@ flowchart TD
         enroll["device enrollment · RFC-8628"]
         routing["OS routing · org/box directory"]
         relay["relay autoscaler · PoP registry · fleet health"]
-        admin["superadmin · org-admin · status pages"]
+        admin["admin console · org-admin · status pages"]
         billseam(["BillingProvider seam"])
         storeseam(["StorageProvisioner seam"])
     end
@@ -174,8 +174,8 @@ provider directly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingpr
 
 ## Screenshots
 
-The superadmin console is a hardened, server-rendered operator surface (see
-[docs/SUPERADMIN-CONSOLE.md](docs/SUPERADMIN-CONSOLE.md) for its pages and access
+The admin console is a hardened, server-rendered operator surface (see
+[docs/ADMIN-CONSOLE.md](docs/ADMIN-CONSOLE.md) for its pages and access
 model). **Console captures will land here once the control-plane code is
 extracted into this repo** — until the extracted binary runs standalone we won't
 publish placeholder or mocked UI. Until then, the
@@ -189,7 +189,7 @@ publish placeholder or mocked UI. Until then, the
 | [Self-host](docs/SELF-HOST.md) | Run the whole suite on your own box with `docker compose`, sovereign mode |
 | [Deploy the control plane](docs/DEPLOY-CP.md) | Production, internet-reachable control-plane deploy checklist |
 | [Deploy a relay PoP](docs/DEPLOY-RELAY.md) | Multi-region relay point-of-presence deployment |
-| [Superadmin console](docs/SUPERADMIN-CONSOLE.md) | The hardened operator surface — gates, pages, provider registry, audit |
+| [Admin console](docs/ADMIN-CONSOLE.md) | The hardened operator surface — gates, pages, provider registry, audit |
 | [Extraction plan](docs/EXTRACTION-PLAN.md) | How the Go control-plane code moves out of vulos-cloud into this repo |
 
 ## Contributing

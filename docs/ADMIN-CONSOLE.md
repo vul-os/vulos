@@ -1,4 +1,4 @@
-# Superadmin operator console
+# Admin operator console
 
 > Part of [vulos-management](https://github.com/vul-os/vulos-management), the OSS
 > control plane. The console and its access gate ship in this repo. Most pages
@@ -11,8 +11,14 @@
 > the control-plane Go module (`cmd/server`, `internal/superadmin`); once the
 > extraction lands (see [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md)) the OSS packages
 > move to public import paths in this repo.
+>
+> **Naming:** the console is the **admin console**. Its route prefix
+> (`/superadmin/*`), Go package (`internal/superadmin`), gate function
+> (`RequireSuperAdmin`), and the `superadmins` table keep the `superadmin`
+> identifier in code — those are literal code tokens shown here for accuracy, not
+> the product name.
 
-The superadmin console (`/superadmin/*`) is the server-rendered HTML operator
+The admin console (`/superadmin/*`) is the server-rendered HTML operator
 surface for the whole deployment. It is deliberately **not** a React app: it is the
 highest-value target in the system (it changes what customers are charged, where
 their machines run, and who has access), so it gets the hardened, minimal,
@@ -32,7 +38,7 @@ closed at each step:
    in prod is a fatal startup error; the client IP is read from `Fly-Client-IP`
    (never the forgeable `X-Forwarded-For`).
 2. **Main session** — a valid Vulos session cookie.
-3. **Super-admin status** — an active row in `superadmins`.
+3. **Admin status** — an active row in `superadmins`.
 4. **Admin session** — a separate short-lived (`vulos_admin_session`, 15-min
    idle / 4-hour absolute) cookie minted only after a **WebAuthn hardware-key**
    step on top of password + TOTP.
@@ -62,7 +68,7 @@ console pages reuse this existing gate — no page invents its own auth.
 ### Accounts — impersonation
 
 Account impersonation ("log in as this user for support") is **intentionally not
-built**: there is no safe existing mechanism for it, and a superadmin console is
+built**: there is no safe existing mechanism for it, and an admin console is
 the wrong place to grow an account-takeover primitive. Support actions are limited
 to the audited, reversible operations already present (suspend/reactivate, force
 password reset, 2FA reset, refund).
@@ -108,7 +114,7 @@ table). Both dialects carry the same column set (proved by
 | `egress_cost_cents_gb` | what the provider charges us per GB egress |
 | `relay_price_cents_gb` | what we charge per GB relay egress |
 | `active` | `0` = withdrawn (no new placement) |
-| `updated_at` / `updated_by` | RFC3339 UTC + superadmin email of last editor |
+| `updated_at` / `updated_by` | RFC3339 UTC + admin email of last editor |
 
 ### Validation (fail-closed)
 
