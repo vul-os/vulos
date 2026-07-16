@@ -69,9 +69,9 @@ Vulos is split into two repositories along one honest line:
 |---|---|---|
 | **License** | MIT, open source | Proprietary |
 | **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
-| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | The real billing provider (a commercial provider), commercial pricing, **Tigris bucket provisioning**, billing-only admin panels, the hosted marketing site |
+| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | A commercial billing provider, commercial pricing/catalog, managed bucket provisioning, billing-only admin panels, the hosted marketing site |
 | **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a commercial `BillingProvider` |
-| **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a Tigris auto-provisioner |
+| **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a managed bucket auto-provisioner |
 | **Relationship** | Stands alone, fully functional | `require`s + `replace`s this repo as a library, then injects the commercial impls |
 
 There is **no forked control plane** — the OSS control plane *is* the production
@@ -106,54 +106,49 @@ flowchart TD
 
     subgraph cloud["vulos-cloud · private, optional"]
         direction TB
-        billprovider["a commercial BillingProvider"]
-        tigris["Tigris bucket provisioner"]
+        billprovider["commercial BillingProvider"]
+        bucketprov["managed bucket provisioner"]
         pricing["commercial pricing + panels"]
     end
 
-    cloud -->|require + replace, injects at wire-time| mgmt
+    cloud -->|require + replace, injects into cpserver.Deps| mgmt
     billprovider -.fills.-> billseam
-    tigris -.fills.-> storeseam
+    bucketprov -.fills.-> storeseam
 ```
 
 The seams are the only intentional holes. The OSS build fills them with the
 no-op billing provider (metered-but-free) and the BYOB storage provisioner (you
-supply a bucket). The private cloud build fills the *same* interfaces with the
-the commercial billing provider and the Tigris auto-provisioner. **Management never provisions
-buckets** — that's a Cloud-only concern. Everything else is identical. Full
-detail, including the Go module strategy that lets cloud consume this repo, is in
-[**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
+supply a bucket). The private cloud build fills the *same* interfaces with a
+commercial billing provider and a managed bucket auto-provisioner. **Management
+never provisions buckets** — that's a cloud-only concern. Everything else is
+identical. Full detail, including the Go module strategy that lets cloud consume
+this repo, is in [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
 
 ## Quickstart (self-host)
 
 > **Prerequisites:** Go 1.26+, and (optionally) Postgres. Self-host runs on
-> SQLite out of the box; the cloud pricing tables Postgres carries are simply
-> absent, so every metered path is free.
+> SQLite out of the box; the commercial pricing tables Postgres carries are
+> simply absent, so every metered path is free.
 
-The fastest way to bring up the control plane alongside the OS and app suite is
-the sovereign `docker compose` stack in [**docs/SELF-HOST.md**](docs/SELF-HOST.md):
-
-```sh
-docker compose -f docker-compose.sovereign.yml up --build
-# then open http://localhost:8088
-```
-
-To run the control plane itself:
+Build and run the control plane:
 
 ```sh
-# build
-make build            # produces ./bin/cp  (or: go build ./cmd/server)
-
-# run — leave VULOS_CP_URL unset for a fully sovereign, billing-free deployment
-./bin/cp --env=dev
+make build            # produces ./bin/cp  (or: go build -o bin/cp ./cmd/server)
+./bin/cp              # serves on :8080 with the free no-op billing seam
 ```
 
-The single most important decision for a sovereign deployment: **leave
-`VULOS_CP_URL` unset.** That one absence makes the box its own identity
-authority, uses BYO-OAuth, and mints tokens locally — no managed layer, nothing
-to pay. See [docs/SELF-HOST.md](docs/SELF-HOST.md) for the full env surface, and
-[docs/SELF-HOST.md](docs/SELF-HOST.md)
-for a production, internet-reachable deployment.
+Then probe it:
+
+```sh
+curl -s localhost:8080/healthz   # {"status":"ok"}
+curl -s localhost:8080/version   # {"billing_rail":"noop", ...} — self-host never charges
+curl -s localhost:8080/readyz    # {"status":"ready"}
+```
+
+With no `DATABASE_URL` set, the control plane opens a local SQLite database — a
+fully sovereign, billing-free deployment. Point `DATABASE_URL` at Postgres for a
+durable production database. The full configuration surface (address, domain,
+database, environment) is in [**docs/SELF-HOST.md**](docs/SELF-HOST.md).
 
 ## The seams (free by default)
 
@@ -164,32 +159,20 @@ provision anything off your box.
 
 | Seam | Self-host default (OSS) | Cloud build (private) |
 |---|---|---|
-| `BillingProvider` | **No-op** — records usage, charges nothing, no network call | a commercial billing provider — real recurring + overage charging |
-| `StorageProvisioner` | **BYOB** — you point it at your own S3-compatible bucket | Tigris — auto-provisions per-account buckets |
+| `BillingProvider` | **No-op** — records usage, charges nothing, no network call | A commercial billing provider — real recurring + overage charging |
+| `StorageProvisioner` | **BYOB** — you point it at your own S3-compatible bucket | A managed provisioner — auto-provisions per-account buckets |
 
 Both builds compile against the same interfaces; only the injected implementation
 differs. No package in this repo imports a payment processor or a bucket
 provider directly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingprovider-seam).
 
-## Screenshots
-
-The admin console is a hardened, server-rendered operator surface (see
-[docs/ADMIN-CONSOLE.md](docs/ADMIN-CONSOLE.md) for its pages and access
-model). **Console captures will land here once the control-plane code is
-extracted into this repo** — until the extracted binary runs standalone we won't
-publish placeholder or mocked UI. Until then, the
-[architecture diagram](#architecture) above and the docs are the visual tour.
-
 ## Documentation
 
 | | |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | The two-repo split, the seams, and how vulos-cloud consumes this repo |
-| [Self-host](docs/SELF-HOST.md) | Run the whole suite on your own box with `docker compose`, sovereign mode |
-| [Deploy the control plane](docs/DEPLOY-CP.md) | Production, internet-reachable control-plane deploy checklist |
-| [Deploy a relay PoP](docs/DEPLOY-RELAY.md) | Multi-region relay point-of-presence deployment |
+| [Architecture](docs/ARCHITECTURE.md) | The two-repo split, the `cpserver` builder, the seams, and how vulos-cloud consumes this repo |
+| [Self-host](docs/SELF-HOST.md) | Build, configure, and run the control-plane binary on your own host |
 | [Admin console](docs/ADMIN-CONSOLE.md) | The hardened operator surface — gates, pages, provider registry, audit |
-| [Extraction plan](docs/EXTRACTION-PLAN.md) | How the Go control-plane code moves out of vulos-cloud into this repo |
 
 ## Contributing
 

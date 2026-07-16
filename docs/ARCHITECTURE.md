@@ -1,9 +1,9 @@
-# Architecture — the two-repo split and the BillingProvider seam
+# Architecture — the two-repo split, the `cpserver` builder, and the seams
 
 Vulos ships as two repositories that build one control plane. This document
-explains the split, the `BillingProvider` seam that makes it work, and the Go
-module mechanics that let the private cloud repo consume this OSS repo as a
-library.
+explains the split, the deployment-agnostic `cpserver` builder, the provider
+seams that make it work, and the Go module mechanics that let the private cloud
+repo consume this OSS repo as a library.
 
 ## The dividing line
 
@@ -13,157 +13,156 @@ There is exactly one rule:
 > vulos-management (OSS, MIT). If it exists only because we charge money → it
 > lives in vulos-cloud (private).**
 
-Everything else follows from that.
-
 | | **vulos-management** (this repo) | **vulos-cloud** (private) |
 |---|---|---|
 | License | MIT | Proprietary |
-| Role | The complete operational control plane + admin console | The commercial layer only |
-| Ships | accounts / auth / 2FA / OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP registry/heartbeats + fleet health, admin + org-admin console, status pages, the `BillingProvider` **interface + no-op default** | the a commercial `BillingProvider` impl, commercial pricing/catalog, billing-only admin panels, the hosted marketing site |
-| Runs standalone? | Yes — fully functional, metered-but-free | No — it's a thin wrapper that imports vulos-management |
+| Role | The complete operational control plane + admin console, deployment-agnostic | The thin deployment + commercial wrapper |
+| Ships | accounts / auth / 2FA / OAuth sign-in, device enrollment (RFC-8628), OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, storage plane, infra plumbing, **the seam interfaces + free defaults**, and the `cpserver` builder | a commercial `BillingProvider` impl, commercial pricing/catalog, a managed bucket provisioner, billing-only admin panels, the hosted marketing site, **plus the deployment specifics** (Dockerfiles, host/deploy config, env/secret loading) |
+| Runs standalone? | Yes — fully functional, metered-but-free | No — a thin main that imports this module and injects the commercial providers |
 
 The important consequence: **there is no forked control plane.** The OSS control
-plane is the production control plane. vulos-cloud does not re-implement routing
-or auth or the fleet — it imports them and injects a billing provider.
+plane is the production control plane. vulos-cloud does not re-implement routing,
+auth, or the fleet — it imports them and injects providers.
 
-## The BillingProvider seam
+## Package layout
 
-The control plane records billable events regardless of who is running it —
-storage sampled, relay GB, mailboxes, box-hours. What differs is what happens to
-those events. That difference is isolated behind one seam.
+Everything vulos-cloud must keep importing is **public** under `pkg/...` (Go
+forbids importing another module's `internal/...`). The operational domains:
 
-```
-                     records usage events
-   control plane  ─────────────────────────►  BillingProvider (interface)
-   (this repo)                                       │
-                                     ┌───────────────┴────────────────┐
-                                     ▼                                ▼
-                          Noop BillingProvider              a commercial BillingProvider
-                          (this repo, default)              (vulos-cloud, injected)
-                          charges nothing,                  real recurring + overage
-                          verifies nothing,                 charging, commercial
-                          no network call                   pricing
-```
+- **Accounts / auth / tokens** — `auth`, `apikeys`, `apptoken`, `devicelink`, `secx`
+- **Device & OS enrollment** — `enroll`, `ota`, `sshrec`, `lancert`, `anchorinbox`, `contentseal`, `backup`
+- **Identity / OAuth broker** — `integrations`, `oauthclient`, `oauthprovider`, `oauthfosite`, `idp`, `idents`, `keydir`, `profile`, `onboarding`
+- **OS routing & directory** — `osrouter`, `routing`, `resolver`, `region`, `multiloc`, `georoute`, `residency`, `edge`, `customdomain`, `dnsplane`
+- **Relay autoscaler & PoP fleet** — `relayusage`, `servingpool`, `fleet`, `turn`, `signaling`, `streamsession`, `syncrz`, `ha`, `scheduler`
+- **DDoS / abuse / security** — `ddos`, `abuse`, `security`
+- **Consoles & status** — `superadmin`, `orgadmin`, `status`, `cloudstatus`, `support`, `webapp`
+- **Storage plane** — `storage`, `storagesel`, `cloudhome`, `files`
+- **Infra plumbing** — `cpdb`, `secrets`, `kms`, `env`, `httpx`, `middleware`, `obs`, `telemetry`, `audit`, `auditlog`, `notify`, `mobilepush`, `webhooks`, `publicapi`
+- **Seams & builder** — `billingport`, `storageport`, `cpserver`
 
-- **No-op default (OSS):** every metered path still runs and every event is
-  still recorded and visible to the operator, but the provider charges nothing,
-  verifies nothing, and makes **no network call off the box**. Self-hosting is
-  metered-but-free with zero phone-home.
-- **the commercial billing provider (cloud):** injected at the composition root in the private
-  build. Adds real recurring + overage + add-on charging and commercial pricing.
+## The `cpserver` builder — Config in, control plane out
 
-Both builds compile against the **same interface**; only the injected
-implementation differs. No package in vulos-management imports a payment
-processor directly — the charge/verify hot paths go through the seam.
+The whole split turns on one deployment-agnostic builder:
 
-### Where the seam lives in the code
-
-Today, in vulos-cloud, the seam is expressed as the `payments.PaymentRail`
-interface (`InitTransaction` / `VerifyTransaction` / `VerifyWebhookSignature`)
-with three concrete rails: `a commercial PaymentRail`, `StubRail` (network-free, used by
-tests and dev), and rail selection via `payments.Default()` reading
-`CP_PAYMENT_RAIL`. The richer billing state machine lives in
-`internal/billing`. In the extracted layout:
-
-- The **interface** (`BillingProvider` / `PaymentRail`) and a **no-op/stub
-  default** move into vulos-management as a public package.
-- The **a commercial billing provider implementation** and the **commercial pricing/catalog** stay in
-  vulos-cloud and register themselves into the seam at wire-time.
-
-See [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md) for exactly which packages move and
-which stay, and the module mechanics.
-
-## The StorageProvisioner seam
-
-The control plane manages a storage plane (per-account content, uploads,
-sampling), but **it does not create buckets** — provisioning object storage is a
-Cloud-only concern. That boundary is a second seam.
-
-```
-   control plane  ─────────────────────►  StorageProvisioner (interface)
-   (this repo)                                    │
-                              ┌────────────────────┴────────────────────┐
-                              ▼                                          ▼
-                   BYOB StorageProvisioner                   Tigris StorageProvisioner
-                   (this repo, default)                      (vulos-cloud, injected)
-                   uses an operator-supplied,                auto-provisions per-account
-                   S3-compatible bucket;                     Tigris buckets + keys;
-                   creates nothing                           bills egress/storage
+```go
+srv, err := cpserver.New(cfg cpserver.Config, deps cpserver.Deps) // (*Server, error)
+err = srv.Run(ctx)                                                // serve until ctx cancelled
 ```
 
-- **BYOB default (OSS):** the self-hoster brings their own S3-compatible bucket
-  and credentials; the control plane reads/writes it but never calls a
-  provider's bucket-creation API. Sovereign, zero external accounts required.
-- **Tigris provisioner (cloud):** injected in the private build; auto-provisions
-  per-account Tigris buckets and access keys, and feeds storage sampling into
-  billing.
+- **`Config`** is generic and **host-neutral** — an address, a domain, a database
+  DSN, an environment label, a version. It is populated from plain env/flags/file
+  by whoever builds the server and carries **no** provider-specific knowledge (no
+  hosting provider, no payment processor, no storage vendor).
+- **`Deps`** carries the injected provider seams and optional collaborators. It is
+  a **struct of interfaces** so the set of pluggable providers scales cleanly —
+  add a field, default it, expose it on `Runtime`. Nil fields are filled with the
+  free self-host defaults.
 
-Management is deliberately **BYOB** — the same reason billing is a no-op by
-default. A self-hoster should never need a Tigris (or any vendor) account to run
-their deployment.
-
-## How vulos-cloud consumes this repo
-
-The two repos are separate Go modules. vulos-cloud imports vulos-management and
-overrides billing at the composition root.
-
-**Module mechanics:**
-
-1. vulos-management publishes its control-plane packages under **public** import
-   paths (`pkg/...` or top-level packages), *not* `internal/...` — Go forbids
-   importing another module's `internal/` tree, so anything cloud needs must be
-   public.
-2. vulos-cloud's `go.mod` does:
-   ```
-   require github.com/vul-os/vulos-management v0.x.y
-   // during co-development:
-   replace github.com/vul-os/vulos-management => ../vulos-management
-   ```
-3. vulos-cloud's `cmd/server` (the thin commercial main) builds the
-   vulos-management server and **injects** the a commercial `BillingProvider` and
-   commercial pricing into it before starting — the same way the OSS `cmd/server`
-   injects the no-op provider.
-
-```mermaid
-flowchart LR
-    subgraph cloud["vulos-cloud (private)"]
-        cmain["cmd/server (thin main)"]
-        pay["a commercial BillingProvider"]
-        price["commercial pricing"]
-    end
-    subgraph mgmt["vulos-management (OSS, imported as library)"]
-        srv["control-plane server builder"]
-        seam["BillingProvider seam (no-op default)"]
-    end
-    cmain -->|require + replace| srv
-    cmain -->|inject| seam
-    pay --> seam
-    price --> seam
+```go
+type Deps struct {
+    Billing            billingport.BillingProvider     // default: NoopProvider (never charges)
+    Entitlements       billingport.EntitlementResolver // default: NoopResolver (unlimited self-host)
+    StorageProvisioner storageport.StorageProvisioner  // default: NoopProvisioner (bring your own bucket)
+    Logger             *slog.Logger
+    Routes             []RouteRegistrar                // feature routes mount through this hook
+    OnStart            []func(ctx, *Runtime)           // background jobs (e.g. a billing sweeper)
+}
 ```
 
-The OSS `cmd/server` in this repo wires the no-op provider and is a
-fully-working control plane on its own. The cloud `cmd/server` is the *only*
-place the the commercial billing provider is constructed.
+`New` opens the configured database, mounts the always-on operational endpoints
+(`/healthz`, `/readyz`, `/version`), then runs each `RouteRegistrar` in order. A
+registrar builds handlers against a shared `Runtime` (the DB, the injected seams,
+the domain), so the operational route set (this module) and a distributor's
+commercial route set (its module) compose **without `cpserver` importing either**.
 
-## Deployment shapes
+### Two thin mains, one engine
 
-The control plane is a single Go binary (SQLite by default; Postgres optional
-for the cloud pricing tables). Its shape is defined by whether a real
-`BillingProvider` is wired:
+- **`cmd/server` (this repo)** is the self-host main: it reads generic env
+  config, leaves the `Deps` provider fields nil (accepting the free
+  no-op/BYOB defaults), and runs the control plane. This is what a self-hoster
+  runs on any host.
+- **vulos-cloud's `cmd/server`** is the commercial main: it loads its
+  host/deploy-specific env, builds the same generic `cpserver.Config`, constructs
+  the commercial `Deps` (a real payment rail, a tier/quota resolver, a bucket
+  provisioner), and calls the same `cpserver.New(cfg, deps).Run()`. Deployment
+  specifics (Dockerfiles, host config, secret loading) stay entirely in cloud;
+  the engine is portable.
 
-| Shape | How | Billing |
-|---|---|---|
-| **Self-hosted** (default, this repo) | run the vulos-management binary | metered-but-free no-op; no phone-home |
-| **Commercial** (vulos-cloud build) | run the cloud binary that injects its own billing provider | real recurring + overage charging |
+## The seams
 
-Both are the same control-plane code; the cloud build only *adds* a billing
-provider on top.
+Two provider-agnostic packages define the only intentional coupling points. Both
+name **no vendor** and import **no** billing/payment/storage implementation.
 
-## Related docs
+### `pkg/billingport`
 
-- [SELF-HOST.md](SELF-HOST.md) — run the whole suite sovereignly with compose
-- [DEPLOY-CP.md](DEPLOY-CP.md) — production control-plane deploy checklist
-- [DEPLOY-RELAY.md](DEPLOY-RELAY.md) — relay PoP fleet deploy
-- [ADMIN-CONSOLE.md](ADMIN-CONSOLE.md) — the operator console
-- [EXTRACTION-PLAN.md](EXTRACTION-PLAN.md) — the plan to move the Go control-plane
-  code out of vulos-cloud into this repo
+- **`BillingProvider`** — the payment rail (init / verify / charge / refund /
+  webhook-verify), with currency-neutral request/response types (amounts in minor
+  units + an explicit currency code). Default: **`NoopProvider`** — never contacts
+  a network, never pretends a charge succeeded.
+- **`EntitlementResolver`** — resolves an account's tier, included-seat cap, and
+  managed-storage quota (`EffectiveTierFor` / `MaxActiveUsersForTier` /
+  `CheckStorageQuota`). Default: **`NoopResolver`** — grants an unlimited
+  `selfhost` tier, never caps seats, never caps storage. Self-hosting is never
+  tier-limited.
+- **`RelayUsageSource`** — the read-back interface the resolver uses to enforce
+  relay/TURN over-cap behaviour.
+
+### `pkg/storageport`
+
+- **`StorageProvisioner`** — creates managed object-storage buckets. Default:
+  **`NoopProvisioner`** — bring-your-own-bucket; `Enabled()` reports false so the
+  composition root skips provisioning entirely. **Management never provisions
+  buckets** — that is a commercial concern. Serving objects (presign/put/get) is a
+  first-class control-plane concern and lives in `pkg/storage`, which a
+  self-hoster points at any S3-compatible endpoint.
+
+## How vulos-cloud injects the real implementations
+
+vulos-cloud keeps its commercial impls private and bridges them to the seams in a
+single adapter package (`internal/seamadapter`) — the **only** place the two
+worlds meet:
+
+```go
+deps := cpserver.Deps{
+    Billing:            seamadapter.NewBillingProvider(paymentRail),   // wraps the commercial rail
+    Entitlements:       seamadapter.NewEntitlementResolver(billing),   // wraps the billing store
+    StorageProvisioner: seamadapter.NewStorageProvisioner(bucketProv), // wraps the managed provisioner
+    OnStart:            []func(ctx, *cpserver.Runtime){startBillingSweeper},
+}
+srv, _ := cpserver.New(cfg, deps)
+```
+
+The adapter translates the currency-neutral seam types to the commercial impls'
+types and normalises sentinel errors. The operational control plane never imports
+any of it.
+
+## Go module mechanics
+
+- This module is `github.com/vul-os/vulos-management` (Go 1.26). It inherits the
+  sibling `replace`s for `github.com/llmux/llmux` and `github.com/vul-os/openrate`.
+- vulos-cloud (`vulos.cloud/cp`) keeps the moved packages out of its tree and adds:
+
+  ```
+  require github.com/vul-os/vulos-management v0.x.y
+  replace github.com/vul-os/vulos-management => ../../../vulos-management  // co-dev
+  ```
+
+- The extraction was a mechanical `internal/ → pkg/` promotion plus an import
+  rewrite (`vulos.cloud/cp/internal/X` → `github.com/vul-os/vulos-management/pkg/X`).
+  Only import paths changed; no operational logic moved.
+
+## Boundary guards
+
+Two tests keep the split honest:
+
+- **`internal/archtest`** — a module-wide guard: `go list -deps ./...` must never
+  reach a package under the commercial module path (`vulos.cloud/cp`). Because
+  that module is not even a dependency of this one, a violation would require
+  someone to add a `require` and import it — exactly the regression to catch.
+- **`pkg/idp/boundary_test.go`** — the identity/login boundary stays minimal and
+  must not transitively import `billingport`, `superadmin`, or `orgadmin`, so a
+  login never shares fate with the entitlement seam or the admin consoles.
+
+Please keep them green: route any new billing/quota decision through
+`pkg/billingport`, and any bucket creation through `pkg/storageport` — never
+import a payment processor or a bucket provider into a package in this module.
