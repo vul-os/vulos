@@ -26,6 +26,8 @@
 // instead of failing the palette.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useFocusTrap } from './useFocusTrap'
+import { useNarrow } from './useNarrow'
+import './shell-chrome.css'
 import { useShell } from '../providers/ShellProvider'
 import { useTheme } from '../core/ThemeProvider'
 import { useSovereignty } from '../core/useSovereignty'
@@ -63,12 +65,9 @@ function pushRecent(id) {
 }
 
 // A monospace keyboard chip, matching the shell's mono-accent system.
+// Token-driven (vshell-kbd) so it stays legible in both light and dark themes.
 function Kbd({ children }) {
-  return (
-    <kbd className="font-mono text-[10px] leading-none px-1.5 py-1 rounded border border-neutral-700/70 bg-neutral-800/60 text-neutral-400">
-      {children}
-    </kbd>
-  )
+  return <kbd className="vshell-kbd">{children}</kbd>
 }
 
 const SECTION_LABEL = { app: 'Apps', mail: 'Mail', action: 'Actions', ask: 'Ask' }
@@ -80,6 +79,7 @@ export default function CommandPalette() {
   const theme = useTheme()
   const sovereignty = useSovereignty()
 
+  const narrow = useNarrow(640)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -386,7 +386,9 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex items-start justify-center pt-[12vh] px-4 bg-black/50 backdrop-blur-sm animate-[fadeIn_0.12s_ease-out]"
+      className={`vshell-scrim fixed inset-0 z-[300] flex justify-center ${
+        narrow ? 'items-end p-0' : 'items-start pt-[11vh] px-4'
+      }`}
       onMouseDown={(e) => { if (e.target === e.currentTarget) close() }}
     >
       <div
@@ -394,28 +396,47 @@ export default function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-700/60 bg-neutral-900/95 backdrop-blur-xl shadow-2xl shadow-black/60"
+        className={`vshell-surface w-full max-w-2xl flex flex-col overflow-hidden ${
+          narrow
+            ? 'vshell-sheet rounded-t-2xl max-h-[88vh] pb-[env(safe-area-inset-bottom)]'
+            : 'vshell-pop rounded-2xl'
+        }`}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* Mobile grab handle */}
+        {narrow && (
+          <div className="flex justify-center pt-2 pb-1 shrink-0" aria-hidden="true">
+            <span className="w-9 h-1 rounded-full" style={{ background: 'var(--border-emphasis)' }} />
+          </div>
+        )}
+
         {/* Input row */}
-        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-neutral-800/70">
-          <span className="text-neutral-500 font-mono text-sm select-none">⌘K</span>
+        <div className="vshell-border-b flex items-center gap-3 px-4 py-3.5 shrink-0">
+          <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-faint)' }}>
+            <circle cx="7" cy="7" r="5" />
+            <path d="M11 11l3.5 3.5" strokeLinecap="round" />
+          </svg>
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search apps, mail, actions — or ask a question…"
-            className="flex-1 bg-transparent text-[14px] text-neutral-100 placeholder-neutral-600 outline-none"
+            className="flex-1 min-w-0 bg-transparent text-[14px] outline-none"
+            style={{ color: 'var(--text-primary)' }}
             autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
           />
-          <Kbd>esc</Kbd>
+          {narrow ? (
+            <button onClick={close} aria-label="Close" className="vshell-kbd focus-primary">esc</button>
+          ) : (
+            <Kbd>esc</Kbd>
+          )}
         </div>
 
         {/* Results */}
-        <div className="max-h-[52vh] overflow-y-auto py-1.5">
+        <div className={`flex-1 overflow-y-auto py-1.5 ${narrow ? '' : 'max-h-[52vh]'}`}>
           {!searchText && !showAskSection && (
-            <div className="px-4 pt-1 pb-0.5 text-[10px] text-neutral-600">
+            <div className="px-4 pt-1 pb-0.5 text-[10px]" style={{ color: 'var(--text-faint)' }}>
               {appRows.length ? 'Jump back in, or run an action.' : 'Start typing, or run an action.'}
             </div>
           )}
@@ -425,9 +446,9 @@ export default function CommandPalette() {
           })}
 
           {!hasResults && searchText && (
-            <div className="px-4 py-6 text-center text-[13px] text-neutral-600">
+            <div className="px-4 py-6 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
               No matches for “{searchText}”.
-              <div className="mt-1 text-[11px] text-neutral-700">Prefix with <span className="font-mono">?</span> to ask the assistant.</div>
+              <div className="mt-1 text-[11px]" style={{ color: 'var(--text-faint)' }}>Prefix with <span className="font-mono">?</span> to ask the assistant.</div>
             </div>
           )}
         </div>
@@ -437,13 +458,15 @@ export default function CommandPalette() {
           <AskResult ask={ask} onApprove={approveProposal} onReject={() => setAsk(a => a ? { ...a, proposalState: 'rejected' } : a)} />
         )}
 
-        {/* Footer legend */}
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-neutral-800/70 text-[10.5px] text-neutral-600">
-          <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> navigate</span>
-          <span className="flex items-center gap-1.5"><Kbd>⏎</Kbd> open</span>
-          <span className="flex items-center gap-1.5"><Kbd>tab</Kbd> section</span>
-          <span className="ml-auto flex items-center gap-1.5"><Kbd>?</Kbd> ask</span>
-        </div>
+        {/* Footer legend — hidden on mobile (no keyboard) to save vertical room */}
+        {!narrow && (
+          <div className="vshell-border-t flex items-center gap-4 px-4 py-2 text-[10.5px] shrink-0" style={{ color: 'var(--text-faint)' }}>
+            <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> navigate</span>
+            <span className="flex items-center gap-1.5"><Kbd>⏎</Kbd> open</span>
+            <span className="flex items-center gap-1.5"><Kbd>tab</Kbd> section</span>
+            <span className="ml-auto flex items-center gap-1.5"><Kbd>?</Kbd> ask</span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -458,9 +481,9 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
     if (row.kind !== lastKind) {
       lastKind = row.kind
       out.push(
-        <div key={'h:' + row.kind} className="px-4 pt-2 pb-1 flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-600">{SECTION_LABEL[row.kind]}</span>
-          {row.kind === 'mail' && mailState === 'loading' && <span className="text-[10px] text-neutral-700">searching…</span>}
+        <div key={'h:' + row.kind} className="px-4 pt-2.5 pb-1 flex items-center gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em]" style={{ color: 'var(--text-faint)' }}>{SECTION_LABEL[row.kind]}</span>
+          {row.kind === 'mail' && mailState === 'loading' && <span className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>searching…</span>}
         </div>
       )
     }
@@ -473,8 +496,8 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
   // Mail degradation note (only when the user is searching and mail failed).
   if (mailState === 'error' && !showAskSection) {
     out.push(
-      <div key="mail-err" className="px-4 py-1.5 text-[11px] text-neutral-600">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-700">Mail</span>
+      <div key="mail-err" className="px-4 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>Mail</span>
         <span className="ml-2">search unavailable — is Mail connected?</span>
       </div>
     )
@@ -483,26 +506,26 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
 }
 
 function Row({ row, active, onHover, onClick, rowRef }) {
-  const base = `w-full flex items-center gap-3 px-4 py-2 text-left transition-colors cursor-pointer ${
-    active ? 'bg-neutral-800/70' : 'hover:bg-neutral-800/30'
-  }`
+  const base = 'vshell-row w-full flex items-center gap-3 px-4 py-2 mx-0 text-left cursor-pointer'
+  const titleColor = { color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }
+  const iconStyle = { color: 'var(--text-tertiary)' }
   if (row.kind === 'app') {
     const a = row.app
     return (
-      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
-        <span className="w-5 text-center text-neutral-400 shrink-0">{a.icon}</span>
-        <span className={`text-[13px] ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{a.name}</span>
-        <span className="ml-auto text-[11px] text-neutral-600 truncate max-w-[45%]">{a.description}</span>
+      <div ref={rowRef} data-active={active || undefined} className={base} onMouseMove={onHover} onClick={onClick}>
+        <span className="w-5 text-center shrink-0" style={iconStyle}>{a.icon}</span>
+        <span className="vshell-row-title text-[13px]" style={titleColor}>{a.name}</span>
+        <span className="ml-auto text-[11px] truncate max-w-[45%]" style={{ color: 'var(--text-faint)' }}>{a.description}</span>
       </div>
     )
   }
   if (row.kind === 'action') {
     const c = row.cmd
     return (
-      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
-        <span className="w-5 text-center text-neutral-400 shrink-0">{c.icon || '▸'}</span>
-        <span className={`text-[13px] ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{c.title}</span>
-        {c.subtitle && <span className="ml-auto text-[11px] font-mono text-neutral-600 truncate max-w-[45%]">{c.subtitle}</span>}
+      <div ref={rowRef} data-active={active || undefined} className={base} onMouseMove={onHover} onClick={onClick}>
+        <span className="w-5 text-center shrink-0" style={iconStyle}>{c.icon || '▸'}</span>
+        <span className="vshell-row-title text-[13px]" style={titleColor}>{c.title}</span>
+        {c.subtitle && <span className="ml-auto text-[11px] font-mono truncate max-w-[45%]" style={{ color: 'var(--text-faint)' }}>{c.subtitle}</span>}
       </div>
     )
   }
@@ -510,11 +533,11 @@ function Row({ row, active, onHover, onClick, rowRef }) {
     const m = row.msg
     const sender = m.from_name || m.from || ''
     return (
-      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
-        <span className="w-5 text-center text-neutral-500 shrink-0">✉</span>
+      <div ref={rowRef} data-active={active || undefined} className={base} onMouseMove={onHover} onClick={onClick}>
+        <span className="w-5 text-center shrink-0" style={{ color: 'var(--text-faint)' }}>✉</span>
         <span className="min-w-0 flex-1">
-          <span className={`text-[13px] block truncate ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>{m.subject || '(no subject)'}</span>
-          <span className="text-[11px] text-neutral-600 block truncate">{sender}{m.preview ? ` — ${m.preview}` : ''}</span>
+          <span className="vshell-row-title text-[13px] block truncate" style={titleColor}>{m.subject || '(no subject)'}</span>
+          <span className="text-[11px] block truncate" style={{ color: 'var(--text-faint)' }}>{sender}{m.preview ? ` — ${m.preview}` : ''}</span>
         </span>
         {m.unread && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />}
       </div>
@@ -522,12 +545,12 @@ function Row({ row, active, onHover, onClick, rowRef }) {
   }
   if (row.kind === 'ask') {
     return (
-      <div ref={rowRef} className={base} onMouseMove={onHover} onClick={onClick}>
-        <span className="w-5 text-center text-neutral-400 shrink-0">✦</span>
-        <span className={`text-[13px] ${active ? 'text-neutral-100' : 'text-neutral-300'}`}>
-          Ask the assistant{row.prompt ? <span className="text-neutral-500"> — “{row.prompt}”</span> : ''}
+      <div ref={rowRef} data-active={active || undefined} className={base} onMouseMove={onHover} onClick={onClick}>
+        <span className="w-5 text-center shrink-0" style={{ color: 'var(--accent)' }}>✦</span>
+        <span className="vshell-row-title text-[13px]" style={titleColor}>
+          Ask the assistant{row.prompt ? <span style={{ color: 'var(--text-faint)' }}> — “{row.prompt}”</span> : ''}
         </span>
-        <span className="ml-auto"><span className="font-mono text-[10px] px-1.5 py-1 rounded border border-neutral-700/70 bg-neutral-800/60 text-neutral-500">⏎</span></span>
+        <span className="ml-auto"><span className="vshell-kbd">⏎</span></span>
       </div>
     )
   }
@@ -537,20 +560,20 @@ function Row({ row, active, onHover, onClick, rowRef }) {
 // Inline assistant answer / proposal — a compact reuse of the wave-9 flow.
 function AskResult({ ask, onApprove, onReject }) {
   return (
-    <div aria-live="polite" className="border-t border-neutral-800/70 px-4 py-3 bg-neutral-950/40 max-h-[30vh] overflow-y-auto">
+    <div aria-live="polite" className="vshell-border-t px-4 py-3 max-h-[30vh] overflow-y-auto shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-base) 30%, transparent)' }}>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-neutral-400">✦</span>
-        <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-600">Assistant</span>
+        <span style={{ color: 'var(--accent)' }}>✦</span>
+        <span className="text-[11px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>Assistant</span>
         {ask.status === 'thinking' && (
           <span className="inline-flex gap-1 ml-1">
-            <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full animate-pulse" />
-            <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full animate-pulse [animation-delay:150ms]" />
-            <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full animate-pulse [animation-delay:300ms]" />
+            <span className="vshell-typing w-1.5 h-1.5 rounded-full" />
+            <span className="vshell-typing w-1.5 h-1.5 rounded-full" style={{ animationDelay: '150ms' }} />
+            <span className="vshell-typing w-1.5 h-1.5 rounded-full" style={{ animationDelay: '300ms' }} />
           </span>
         )}
       </div>
       {ask.answer && (
-        <div className={`text-[13px] whitespace-pre-wrap leading-relaxed ${ask.status === 'error' ? 'text-red-300' : 'text-neutral-200'}`}>
+        <div className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color: ask.status === 'error' ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
           {ask.answer}
         </div>
       )}
@@ -566,7 +589,7 @@ function AskResult({ ask, onApprove, onReject }) {
             compact
           />
           {(!ask.proposalState || ask.proposalState === 'pending') && (
-            <div className="mt-1.5 text-[10.5px] text-neutral-500 flex items-center gap-1.5" aria-hidden="true">
+            <div className="mt-1.5 text-[10.5px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }} aria-hidden="true">
               <Kbd>Y</Kbd> approve <Kbd>N</Kbd> reject · or <Kbd>tab</Kbd> to focus
             </div>
           )}
