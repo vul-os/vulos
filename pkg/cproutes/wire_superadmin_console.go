@@ -20,11 +20,13 @@
 // (pricing / regions / fleet-billing / billing-reconciliation) is NOT part of
 // this subset — it lives in the cloud module and is injected there.
 //
-// REMAINING (reported, not done this pass): the WebAuthn admin-key ENROLLMENT
-// endpoints (register begin/finish) are not mounted here, so a fresh self-host
-// operator cannot yet enrol their first passkey through this binary; and the
-// React admin does not yet cover orgs (management has no org-listing provider —
-// that data source lives in the cloud module).
+// The WebAuthn admin-key ENROLMENT endpoints (register begin/finish) are mounted
+// here under a bootstrap gate (RequireSuperAdminEnroll) so a fresh self-host
+// operator can register their first admin passkey through this binary.
+//
+// REMAINING (reported, not done this pass): the React admin does not yet cover
+// orgs (management has no org-listing provider — that data source lives in the
+// cloud module).
 package cproutes
 
 import (
@@ -87,6 +89,7 @@ func wireSuperAdminConsole(mux *http.ServeMux, deps superAdminConsoleDeps) []fun
 	pages.SetMigrationManifest(superadmin.LoadMigrationManifestFromEnv())
 
 	requireAdmin := superadmin.RequireSuperAdmin(saStore, deps.AuthStore, deps.Audit)
+	requireEnroll := superadmin.RequireSuperAdminEnroll(saStore, deps.AuthStore, deps.Audit)
 	csrf := superadmin.CSRFProtect(deps.Audit)
 
 	// Wrappers: SecurityHeaders is OUTERMOST so the strict CSP + hardening
@@ -106,6 +109,14 @@ func wireSuperAdminConsole(mux *http.ServeMux, deps superAdminConsoleDeps) []fun
 	apiAdmin := func(h http.Handler) http.Handler {
 		return superadmin.SecurityHeaders(requireAdmin(h))
 	}
+	// apiEnroll wraps the first-passkey enrolment JSON handlers. Gated on main
+	// session + super-admin status only (a first-time operator has no admin
+	// session yet); the handlers themselves enforce bootstrap-only. CSRF-safe:
+	// a cross-site caller cannot read the begin challenge (same-origin JSON) nor
+	// forge a valid authenticator attestation for finish.
+	apiEnroll := func(h http.Handler) http.Handler {
+		return superadmin.SecurityHeaders(requireEnroll(h))
+	}
 
 	// ── Static assets (public; referenced by the strict-CSP pages) ────────────
 	mux.Handle("GET /superadmin/admin.css", pub(pages.AdminCSS()))
@@ -117,6 +128,10 @@ func wireSuperAdminConsole(mux *http.ServeMux, deps superAdminConsoleDeps) []fun
 	mux.Handle("POST /superadmin/login", pubCSRF(pages.LoginPost))
 	mux.Handle("POST /superadmin/login/webauthn-finish", pubCSRF(pages.LoginWebAuthnFinish))
 	mux.Handle("GET /superadmin/logout", pub(pages.Logout))
+
+	// ── First-passkey enrolment (bootstrap; main-session + super-admin gated) ─
+	mux.Handle("POST /api/superadmin/webauthn/register/begin", apiEnroll(superadmin.HandleAdminWebAuthnRegisterBegin(saStore, deps.Audit)))
+	mux.Handle("POST /api/superadmin/webauthn/register/finish", apiEnroll(superadmin.HandleAdminWebAuthnRegisterFinish(saStore, deps.Audit)))
 
 	// ── Operator HTML pages (kept working alongside the React admin) ──────────
 	mux.Handle("GET /superadmin/", admin(pages.Dashboard))

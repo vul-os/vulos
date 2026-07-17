@@ -93,6 +93,58 @@ func RequireSuperAdmin(
 	}
 }
 
+// RequireSuperAdminEnroll is the gate for FIRST-passkey enrolment. It applies the
+// first three layers of RequireSuperAdmin — IP allowlist, a valid main session,
+// and super-admin status — but DELIBERATELY omits the fourth (admin session)
+// layer. That fourth layer is only obtainable after completing a WebAuthn login,
+// which a fresh operator with no registered passkey cannot do; requiring it here
+// would make first-key enrolment impossible (chicken-and-egg). The handler behind
+// this gate must itself enforce that this is a genuine bootstrap (no existing
+// admin credential) so the main-session-only path cannot be used to add a rogue
+// key once an operator is established.
+func RequireSuperAdminEnroll(
+	store *Store,
+	authStore *auth.Store,
+	al *auditlog.Logger,
+) func(http.Handler) http.Handler {
+	allowlist := ParseAllowlist()
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := remoteIP(r)
+			route := r.Method + " " + r.URL.Path
+
+			// 1. IP allowlist.
+			if !IPAllowed(allowlist, ip) {
+				auditAction(r.Context(), al, "unknown", "admin.enroll.denied.ip",
+					route, map[string]string{"ip": ip})
+				jsonError(w, "forbidden", http.StatusForbidden)
+				return
+			}
+
+			// 2. Main session (auth package writes 401 on failure).
+			mainUser := authStore.RequireSession(r.Context(), w, r)
+			if mainUser == nil {
+				auditAction(r.Context(), al, "unknown", "admin.enroll.denied.no_main_session",
+					route, map[string]string{"ip": ip})
+				return
+			}
+
+			// 3. Super-admin check.
+			isSA, err := store.IsSuperAdmin(r.Context(), mainUser.ID)
+			if err != nil || !isSA {
+				auditAction(r.Context(), al, mainUser.Email, "admin.enroll.denied.not_superadmin",
+					route, map[string]string{"ip": ip})
+				jsonError(w, "forbidden", http.StatusForbidden)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), ctxAdminAccountID, mainUser.ID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // auditAction records an audit entry (fire-and-forget; errors are swallowed).
 func auditAction(ctx context.Context, al *auditlog.Logger, actor, action, target string, meta map[string]string) {
 	if al == nil {

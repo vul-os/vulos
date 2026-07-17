@@ -432,6 +432,17 @@ func (s *Store) loadAdminWAUser(ctx context.Context, accountID string) (*adminWA
 	return &adminWAUser{id: accountID, email: email, creds: creds}, nil
 }
 
+// CountAdminWebAuthnCredentials returns how many admin passkeys the account has
+// registered. Used by the enrolment gate to distinguish first-key BOOTSTRAP
+// (zero credentials) from a re-enrol attempt.
+func (s *Store) CountAdminWebAuthnCredentials(ctx context.Context, accountID string) (int, error) {
+	creds, err := s.loadAdminCredentials(ctx, accountID)
+	if err != nil {
+		return 0, err
+	}
+	return len(creds), nil
+}
+
 func (s *Store) loadAdminCredentials(ctx context.Context, accountID string) ([]webauthn.Credential, error) {
 	rows, err := s.db.QueryContext(ctx,
 		s.db.Rebind(`SELECT credential_id, public_key, sign_count, transports
