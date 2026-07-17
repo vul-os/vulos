@@ -25,6 +25,7 @@ import { useRouter, toFullPath } from '../router.jsx'
 import { clientReplace } from '../auth/nav.js'
 import { commercial } from '@vulos/commercial-seam'
 import { buildNavGroups, isActive, findCrumbs } from './nav.js'
+import { useOperator } from './admin/useAdmin.js'
 import { Icon } from './icons.jsx'
 import './console.css'
 
@@ -47,8 +48,8 @@ function SidebarLink({ href, label, icon, path, onClick }) {
 }
 
 /* ─── Sidebar (shared: desktop rail + mobile drawer) ─────────────────────── */
-function SidebarContent({ path, onLinkClick }) {
-  const groups = buildNavGroups()
+function SidebarContent({ path, onLinkClick, isOperator }) {
+  const groups = buildNavGroups({ isOperator })
   return (
     <div className="vkl-sidebar-inner">
       <a
@@ -173,7 +174,8 @@ function UserMenu() {
 export default function Layout({ children }) {
   const { path } = useRouter()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const crumbs = findCrumbs(path)
+  const { isOperator } = useOperator()
+  const crumbs = findCrumbs(path, { isOperator })
   const closeDrawer = useCallback(() => setDrawerOpen(false), [])
 
   // Close the drawer whenever the route changes (link-close).
@@ -200,12 +202,12 @@ export default function Layout({ children }) {
       )}
 
       <div className={`vkl-drawer${drawerOpen ? ' open' : ''}`} role="dialog" aria-modal="true" aria-label="Console navigation" id="vkl-app-drawer">
-        <SidebarContent path={path} onLinkClick={closeDrawer} />
+        <SidebarContent path={path} onLinkClick={closeDrawer} isOperator={isOperator} />
       </div>
 
       <div className="vkl-shell">
         <aside className="vkl-sidebar" aria-label="Console navigation">
-          <SidebarContent path={path} onLinkClick={null} />
+          <SidebarContent path={path} onLinkClick={null} isOperator={isOperator} />
         </aside>
 
         <div className="vkl-content-col">

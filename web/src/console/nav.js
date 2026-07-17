@@ -18,7 +18,7 @@ import { commercial } from '@vulos/commercial-seam'
  * buildNavGroups — the grouped sidebar model. Kept a function (not a constant)
  * so the commercial gating is evaluated at render time against the live seam.
  */
-export function buildNavGroups() {
+export function buildNavGroups(opts = {}) {
   const groups = [
     {
       label: 'Overview',
@@ -58,18 +58,36 @@ export function buildNavGroups() {
       ],
     },
   ]
+  // Operator (super-admin) group — advertised ONLY to a signed-in operator
+  // (opts.isOperator, resolved by a one-shot /api/superadmin/whoami probe in the
+  // shell). A normal user never sees these entries; on a deployment where the
+  // super-admin console is disabled the probe fails and the group stays hidden.
+  if (opts.isOperator) {
+    groups.push({
+      label: 'Operator',
+      items: [
+        { href: '/admin', label: 'Overview', icon: 'dashboard' },
+        { href: '/admin/accounts', label: 'Accounts', icon: 'status' },
+        { href: '/admin/audit', label: 'Audit', icon: 'audit' },
+        { href: '/admin/security', label: 'Security', icon: 'privacy' },
+      ],
+    })
+  }
   return groups
 }
 
 /** isActive — exact match for root; prefix match for sub-routes. */
 export function isActive(href, path) {
   if (href === '/') return path === '/' || path === ''
+  // The operator Overview is an exact match so it doesn't stay lit on its
+  // own sub-routes (/admin/accounts, /admin/audit, …).
+  if (href === '/admin') return path === '/admin'
   return path === href || path.startsWith(href + '/')
 }
 
 /** findCrumbs — resolve { group, page } for the active path. */
-export function findCrumbs(path) {
-  for (const group of buildNavGroups()) {
+export function findCrumbs(path, opts = {}) {
+  for (const group of buildNavGroups(opts)) {
     for (const item of group.items) {
       if (isActive(item.href, path)) return { group: group.label, page: item.label }
     }

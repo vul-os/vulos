@@ -119,6 +119,21 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 		RegisterLegal(mux, deps.AuthStore, deps.AuthDB)
 	}
 
+	// Operator (super-admin) console — OPT-IN (VULOS_ENABLE_SUPERADMIN=1 or a
+	// VULOS_BOOTSTRAP_SUPERADMIN email). Mounts the operator HTML pages + the JSON
+	// admin API the React /console/admin section consumes. Left disabled by
+	// default so the zero-config self-host admin surface stays mounted-but-deny-
+	// all (403) exactly as before. Wired here (after WireSecurity) so it can share
+	// the already-open security telemetry store and the shared audit logger.
+	if superAdminConsoleEnabled() {
+		closers = append(closers, wireSuperAdminConsole(mux, superAdminConsoleDeps{
+			AuthStore: deps.AuthStore,
+			AuthDB:    deps.AuthDB,
+			Audit:     al,
+			Security:  secR.Store,
+		})...)
+	}
+
 	// Operational surfaces the management /console SPA consumes: fleet + devices,
 	// account/support/cell status, compliance/privacy, org audit + product
 	// catalogue, developer webhooks + MCP. Each opens its own operational store

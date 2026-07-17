@@ -252,6 +252,88 @@ func (l *Logger) QueryOrg(ctx context.Context, tenantID string, opts OrgQueryOpt
 }
 
 // ---------------------------------------------------------------------------
+// Query (platform-wide)
+// ---------------------------------------------------------------------------
+
+// QueryOptions bounds and filters a platform-wide Query. All fields are optional.
+type QueryOptions struct {
+	// Actor, when non-empty, filters to rows whose actor CONTAINS this substring
+	// (case-sensitive LIKE) — the operator audit page's free-text actor filter.
+	Actor string
+	// Action, when non-empty, filters to rows whose action CONTAINS this substring.
+	Action string
+	// AfterSeq returns only rows with seq < AfterSeq (keyset pagination —
+	// descending). Zero = newest page.
+	AfterSeq int64
+	// Limit caps the returned rows. <=0 or over the hard cap uses the default.
+	Limit int
+}
+
+// Query returns audit entries across the WHOLE platform (every tenant + the
+// platform rows with an empty tenant_id), newest-first, bounded and filtered.
+// This is the OPERATOR (super-admin) read side — it is NOT tenant-scoped and
+// must therefore only ever be mounted behind the super-admin gate. The org-admin
+// read side is QueryOrg, which hard-filters on the caller's own tenant.
+//
+// SQL-injection note: the WHERE clause is assembled from IN-CODE CONSTANT
+// predicate strings only; every runtime value is a positional ? parameter.
+func (l *Logger) Query(ctx context.Context, opts QueryOptions) ([]OrgEntry, error) {
+	limit := opts.Limit
+	if limit <= 0 || limit > orgQueryMaxLimit {
+		limit = orgQueryDefaultLimit
+	}
+
+	var parts []string
+	var args []any
+	if opts.Actor != "" {
+		parts = append(parts, "actor LIKE ?")
+		args = append(args, "%"+opts.Actor+"%")
+	}
+	if opts.Action != "" {
+		parts = append(parts, "action LIKE ?")
+		args = append(args, "%"+opts.Action+"%")
+	}
+	if opts.AfterSeq > 0 {
+		parts = append(parts, "seq < ?")
+		args = append(args, opts.AfterSeq)
+	}
+	where := ""
+	if len(parts) > 0 {
+		where = "WHERE " + strings.Join(parts, " AND ")
+	}
+	args = append(args, limit)
+
+	q := fmt.Sprintf(`SELECT seq, entry_id, ts, actor, action, target, metadata_json
+	   FROM auditlog_entries %s ORDER BY seq DESC LIMIT ?`, where)
+
+	rows, err := l.db.QueryContext(ctx, l.db.Rebind(q), args...)
+	if err != nil {
+		return nil, fmt.Errorf("auditlog: query: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]OrgEntry, 0, limit)
+	for rows.Next() {
+		var (
+			e        OrgEntry
+			actor    string
+			target   string
+			metaJSON string
+		)
+		if err := rows.Scan(&e.Seq, &e.ID, &e.TS, &actor, &e.Action, &target, &metaJSON); err != nil {
+			return nil, fmt.Errorf("auditlog: query scan: %w", err)
+		}
+		e.Actor = actor
+		e.Target = target
+		if metaJSON != "" && metaJSON != "null" {
+			_ = json.Unmarshal([]byte(metaJSON), &e.Metadata)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
 // Verify
 // ---------------------------------------------------------------------------
 
