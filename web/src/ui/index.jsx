@@ -106,16 +106,31 @@ export function Card({ children, elevated = false, hover = true, style, classNam
     <>
       <style>{`
         .vk-card {
-          background: var(--bg-elev, #0e1018);
+          /* A gently top-lit panel: the surface ramps from a hair brighter at the
+             top to the base surface below, so cards read as *raised* instrument
+             panels instead of flat cut-outs on the near-black canvas. Both tones
+             are tokens, so it inverts correctly on the light theme. */
+          background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--bg-elevated) 55%, var(--bg-surface)) 0%,
+            var(--bg-surface) 96px
+          );
           border: 1px solid var(--border-strong, #2e3348);
           border-radius: var(--radius-lg, 20px);
           padding: var(--sp-4, 32px);
+          box-shadow: var(--shadow-xs);
           transition: border-color var(--dur-fast, 120ms) var(--ease, cubic-bezier(.22,1,.36,1)),
             transform var(--dur-fast, 120ms) var(--ease, cubic-bezier(.22,1,.36,1)),
             box-shadow var(--dur-fast, 120ms) var(--ease, cubic-bezier(.22,1,.36,1));
         }
-        .vk-card.elevated { background: var(--surface, #151720); }
-        .vk-card.lift-hover:hover { border-color: var(--border-emphasis, #333); transform: translateY(-1px); box-shadow: var(--shadow); }
+        .vk-card.elevated {
+          background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--bg-elevated) 80%, var(--bg-surface)) 0%,
+            var(--bg-elevated) 120px
+          );
+        }
+        .vk-card.lift-hover:hover { border-color: var(--border-emphasis, #333); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
       `}</style>
       <div
         className={`vk-card${elevated ? ' elevated' : ''}${hover ? ' lift-hover' : ''}${className ? ' ' + className : ''}`}

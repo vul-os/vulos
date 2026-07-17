@@ -1,268 +1,55 @@
-/* app.css — vulos-management console shell layout.
+/* app.css — global base layer for the vulos-management console SPA.
  *
  * Tokens-only: every colour/space/size comes from theme.css (copied verbatim
  * from the marketing site), so the console reads as the same product as
- * vulos.org. No hardcoded hex. Sans for UI chrome, mono for data/eyebrows —
- * matching the "instrument panel" console aesthetic used across the suite. */
+ * vulos.org. No hardcoded hex. The two app worlds own their own structural CSS:
+ *
+ *   · the authed console shell → console/console.css  (.vkl-*)
+ *   · the bare auth surface     → Root.jsx AuthLayout  (.vm-auth-main, inline)
+ *
+ * This file is only the thin, app-wide base beneath both: the root sizing plus
+ * a few polish primitives (selection, scrollbars, focus, motion) that make the
+ * whole surface feel considered rather than defaulted. */
 
 #root {
   min-height: 100dvh;
 }
 
-/* ─── Shell: fixed sidebar + fluid main column ───────────────────────────── */
-.vm-shell {
-  display: grid;
-  grid-template-columns: 232px 1fr;
-  min-height: 100dvh;
-  background: var(--bg-base);
-}
-
-/* ─── Sidebar ────────────────────────────────────────────────────────────── */
-.vm-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-2);
-  border-right: 1px solid var(--border-default);
-  background: var(--bg-surface);
-  position: sticky;
-  top: 0;
-  height: 100dvh;
-  overflow-y: auto;
-}
-
-.vm-brand {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-1) var(--sp-2);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.vm-brand-mark {
-  color: var(--brand);
-  font-size: var(--text-lg);
-  line-height: 1;
-}
-.vm-brand-name {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+/* Selection: a soft accent wash rather than the OS default blue. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
   color: var(--text-primary);
 }
-.vm-brand-sub {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-  text-transform: lowercase;
-}
 
-.vm-nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2-5);
-  flex: 1;
+/* App-wide thin scrollbars, tuned to the instrument-panel voice. Firefox first,
+   then the WebKit pseudo-elements. Individual scrollers (the sidebar) may still
+   restyle their own track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-emphasis) transparent;
 }
-.vm-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-emphasis);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 99px;
 }
-.vm-nav-group-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-ghost);
-  padding: 0 var(--sp-1) var(--sp-0-5);
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-ghost);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-.vm-nav-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-1-5);
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  text-decoration: none;
-  min-height: 36px;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
-.vm-nav-link:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-.vm-nav-link.is-active {
-  background: var(--bg-selected);
-  border: 1px solid var(--bg-selected-border);
-  color: var(--text-primary);
-}
-.vm-nav-soon {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-ghost);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: 1px var(--sp-0-5);
-}
+*::-webkit-scrollbar-track { background: transparent; }
 
-.vm-sidebar-foot {
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--sp-2);
-}
-.vm-seam-badge {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-}
+/* Never let a stray wide element push the whole document sideways. */
+html, body { max-width: 100%; overflow-x: hidden; }
 
-/* ─── Main column ────────────────────────────────────────────────────────── */
-.vm-main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.vm-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  height: var(--nav-h);
-  padding: 0 var(--sp-4);
-  border-bottom: 1px solid var(--border-default);
-  background: var(--nav-scrim);
-  backdrop-filter: blur(8px);
-  position: sticky;
-  top: 0;
-  z-index: var(--z-raised);
-}
-.vm-topbar-title {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  letter-spacing: 0.02em;
-  color: var(--text-secondary);
-}
-.vm-topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-.vm-user {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-0-5) var(--sp-1);
-}
-.vm-signout {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-0-5) var(--sp-2);
-  cursor: pointer;
-  transition: border-color 160ms, color 160ms;
-}
-.vm-signout:hover {
-  color: var(--text-primary);
-  border-color: var(--border-emphasis);
-}
-.vm-signout:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.vm-content {
-  flex: 1;
-  padding: var(--sp-5) var(--sp-4);
-  max-width: var(--maxw);
-  width: 100%;
-}
-
-/* ─── Page ───────────────────────────────────────────────────────────────── */
-.vm-page-head {
-  margin-bottom: var(--sp-4);
-}
-.vm-page-head h1 {
-  font-size: var(--text-3xl);
-}
-.vm-page-sub {
-  margin-top: var(--sp-1);
-  color: var(--text-tertiary);
-  font-family: var(--font-sans);
-}
-.vm-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: var(--sp-2);
-}
-.vm-card {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  background: var(--bg-surface);
-  padding: var(--sp-3);
-}
-.vm-card h3 {
-  font-size: var(--text-lg);
-  margin-bottom: var(--sp-1);
-}
-.vm-card p {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
-}
-.vm-muted {
-  color: var(--text-faint) !important;
-  font-family: var(--font-mono) !important;
-  font-size: var(--text-xs) !important;
-}
-
-.vm-empty {
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius);
-  padding: var(--sp-5);
-  text-align: center;
-  color: var(--text-tertiary);
-}
-.vm-empty code {
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
-}
-
-/* ─── Responsive: collapse sidebar to top strip on narrow viewports ──────── */
-@media (max-width: 860px) {
-  .vm-shell {
-    grid-template-columns: 1fr;
-  }
-  .vm-sidebar {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    border-right: none;
-    border-bottom: 1px solid var(--border-default);
-  }
-  .vm-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: var(--sp-1);
-  }
-  .vm-nav-group {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--sp-1);
-  }
-  .vm-nav-group-label {
-    display: none;
-  }
-  .vm-content {
-    padding: var(--sp-3) var(--sp-2);
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

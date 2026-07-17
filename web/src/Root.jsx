@@ -105,6 +105,20 @@ function AuthLayout({ children }) {
           0%, 100% { opacity: 1; transform: scale(1); }
           50%      { opacity: 0.35; transform: scale(0.72); }
         }
+        /* Auth backdrop: a quiet, token-driven light-source so the sign-in surface
+           has depth instead of reading as a flat black void — the same lit-from-
+           above language as the console work area. Inverts on the light theme. */
+        .vm-auth-main {
+          position: relative;
+          background:
+            radial-gradient(80% 55% at 50% -8%,
+              color-mix(in srgb, var(--accent) 9%, transparent) 0%,
+              transparent 60%),
+            radial-gradient(70% 50% at 100% 100%,
+              color-mix(in srgb, var(--brand) 5%, transparent) 0%,
+              transparent 55%),
+            var(--bg-base);
+        }
         /* Trim the Section's marketing-scale vertical padding on the auth surface
            so short forms center cleanly without overflow. */
         .vm-auth-main .vk-section.slim {

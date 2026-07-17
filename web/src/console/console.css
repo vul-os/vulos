@@ -86,8 +86,30 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
   background: var(--bg-base);
 }
+
+/* Backdrop: one faint, fixed light-source at the top of the work area so pages
+   read as lit from above (depth) instead of a flat void. Token-driven and
+   whisper-quiet, so it never competes with content and inverts on the light
+   theme. Non-interactive; sits behind the scroller. */
+.vkl-content-col::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(120% 60% at 18% -10%,
+      color-mix(in srgb, var(--accent) 7%, transparent) 0%,
+      transparent 58%),
+    radial-gradient(90% 50% at 100% 0%,
+      color-mix(in srgb, var(--brand) 4%, transparent) 0%,
+      transparent 60%);
+}
+.vkl-topbar,
+.vkl-page-area { position: relative; z-index: 1; }
 
 .vkl-page-area {
   flex: 1;
@@ -281,9 +303,30 @@
   padding: var(--sp-1) var(--sp-1-5);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-1);
 }
+.vkl-sidebar-foot-seam { margin-left: auto; }
+.vkl-collapse-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-ghost);
+  cursor: pointer;
+  transition: color 110ms var(--ease), background 110ms var(--ease), border-color 110ms var(--ease);
+}
+.vkl-collapse-btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.vkl-collapse-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .vkl-sidebar-foot-link {
   font-family: var(--font-mono);
   font-size: 0.65625rem;    /* 10.5 */
@@ -834,6 +877,59 @@
 .vkl-shell .vkl-page-area .enr-sidebar-head {
   font-size: 0.625rem;
   letter-spacing: 0.14em;
+}
+
+/* ─── 10b. Collapsed rail (desktop only) ─────────────────────────────────────
+   The sidebar can fold to an icon-only rail (persisted in localStorage). The
+   whole behaviour is scoped to the ≥1025px breakpoint where the rail is the
+   nav — on smaller viewports the drawer is the nav and this class is inert, so
+   the mobile drawer width is never affected. */
+@media (min-width: 1025px) {
+  .vkl-shell--collapsed { --con-sidebar-w: 64px; }
+
+  .vkl-shell--collapsed .vkl-sidebar-brand {
+    justify-content: center;
+    padding: 0;
+    gap: 0;
+  }
+  .vkl-shell--collapsed .vkl-sidebar-brand-word,
+  .vkl-shell--collapsed .vkl-sidebar-brand-chip,
+  .vkl-shell--collapsed .vkl-nav-group-label,
+  .vkl-shell--collapsed .vkl-nav-link-label,
+  .vkl-shell--collapsed .vkl-sidebar-foot-word,
+  .vkl-shell--collapsed .vkl-sidebar-foot-seam {
+    display: none;
+  }
+
+  .vkl-shell--collapsed .vkl-sidebar-nav { padding-left: var(--sp-1); padding-right: var(--sp-1); }
+
+  /* Group separation once labels are hidden: a hairline between groups. */
+  .vkl-shell--collapsed .vkl-nav-group + .vkl-nav-group {
+    margin-top: var(--sp-1-5);
+    padding-top: var(--sp-1-5);
+    border-top: 1px solid var(--con-hairline);
+  }
+
+  .vkl-shell--collapsed .vkl-nav-link {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto;
+  }
+  .vkl-shell--collapsed .vkl-nav-link-bar { display: none; }
+  .vkl-shell--collapsed .vkl-nav-link.active {
+    box-shadow: inset 0 0 0 1px var(--bg-selected-border);
+  }
+
+  .vkl-shell--collapsed .vkl-sidebar-foot {
+    flex-direction: column;
+    gap: var(--sp-0-5);
+    padding: var(--sp-1) 0;
+  }
+  .vkl-shell--collapsed .vkl-sidebar-foot-seam { margin-left: 0; }
+  .vkl-shell--collapsed .vkl-sidebar-foot-link { padding: 8px; }
 }
 
 /* ─── 11. Responsive + motion ────────────────────────────────────────────── */

@@ -37,6 +37,7 @@ function SidebarLink({ href, label, icon, path, onClick }) {
       href={toFullPath(href)}
       data-router
       onClick={onClick}
+      title={label}
       className={`vkl-nav-link${active ? ' active' : ''}`}
       aria-current={active ? 'page' : undefined}
     >
@@ -48,7 +49,7 @@ function SidebarLink({ href, label, icon, path, onClick }) {
 }
 
 /* ─── Sidebar (shared: desktop rail + mobile drawer) ─────────────────────── */
-function SidebarContent({ path, onLinkClick, isOperator }) {
+function SidebarContent({ path, onLinkClick, isOperator, onToggleCollapse, collapsed }) {
   const groups = buildNavGroups({ isOperator })
   return (
     <div className="vkl-sidebar-inner">
@@ -58,6 +59,7 @@ function SidebarContent({ path, onLinkClick, isOperator }) {
         className="vkl-sidebar-brand"
         onClick={onLinkClick}
         aria-label="Vulos console — dashboard"
+        title="Vulos console"
       >
         <LogoMark size={18} tone="on-dark" />
         <span className="vkl-sidebar-brand-word">Vulos</span>
@@ -88,13 +90,27 @@ function SidebarContent({ path, onLinkClick, isOperator }) {
       </div>
 
       <div className="vkl-sidebar-foot">
-        <a href={toFullPath('/account-status')} data-router className="vkl-sidebar-foot-link" onClick={onLinkClick}>
+        <a href={toFullPath('/account-status')} data-router className="vkl-sidebar-foot-link" onClick={onLinkClick} title="Account status">
           <span className="vkl-sidebar-foot-dot" aria-hidden="true" />
-          status
+          <span className="vkl-sidebar-foot-word">status</span>
         </a>
-        <span className="vkl-sidebar-foot-link" style={{ color: 'var(--text-ghost)' }}>
+        <span className="vkl-sidebar-foot-link vkl-sidebar-foot-seam" style={{ color: 'var(--text-ghost)' }}>
           seam: {commercial.enabled ? 'commercial' : 'oss'}
         </span>
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="vkl-collapse-btn"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-pressed={collapsed}
+            title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points={collapsed ? '5.5,4 9,7.5 5.5,11' : '9.5,4 6,7.5 9.5,11'} />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   )
@@ -171,12 +187,24 @@ function UserMenu() {
 /* ════════════════════════════════════════════════════════════════════════════
    LAYOUT
 ════════════════════════════════════════════════════════════════════════════ */
+const COLLAPSE_KEY = 'vkl.nav.collapsed'
+
 export default function Layout({ children }) {
   const { path } = useRouter()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return window.localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+  })
   const { isOperator } = useOperator()
   const crumbs = findCrumbs(path, { isOperator })
   const closeDrawer = useCallback(() => setDrawerOpen(false), [])
+  const toggleCollapse = useCallback(() => {
+    setCollapsed((v) => {
+      const next = !v
+      try { window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }, [])
 
   // Close the drawer whenever the route changes (link-close).
   useEffect(() => { setDrawerOpen(false) }, [path])
@@ -205,9 +233,15 @@ export default function Layout({ children }) {
         <SidebarContent path={path} onLinkClick={closeDrawer} isOperator={isOperator} />
       </div>
 
-      <div className="vkl-shell">
+      <div className={`vkl-shell${collapsed ? ' vkl-shell--collapsed' : ''}`}>
         <aside className="vkl-sidebar" aria-label="Console navigation">
-          <SidebarContent path={path} onLinkClick={null} isOperator={isOperator} />
+          <SidebarContent
+            path={path}
+            onLinkClick={null}
+            isOperator={isOperator}
+            onToggleCollapse={toggleCollapse}
+            collapsed={collapsed}
+          />
         </aside>
 
         <div className="vkl-content-col">

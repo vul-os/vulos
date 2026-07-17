@@ -376,11 +376,15 @@ export function AuthFormStyles() {
       .vc-auth-card {
         width: 100%;
         max-width: 420px;
-        background: var(--bg-surface);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--bg-elevated) 55%, var(--bg-surface)) 0%,
+          var(--bg-surface) 140px
+        );
         border: 1px solid var(--border-strong);
         border-radius: var(--radius-lg, 16px);
         padding: var(--sp-6, 48px) var(--sp-5, 40px);
-        box-shadow: var(--shadow);
+        box-shadow: var(--shadow-lg);
       }
 
       .vc-auth-reveal {
@@ -435,12 +439,12 @@ export function AuthFormStyles() {
         margin: 0;
       }
       .vc-auth-title {
-        font-family: var(--font-mono);
-        font-size: 1.625rem;
-        font-weight: 700;
-        letter-spacing: -0.025em;
+        font-family: var(--font-sans);
+        font-size: 1.75rem;
+        font-weight: 650;
+        letter-spacing: -0.028em;
         color: var(--text-primary);
-        line-height: 1.15;
+        line-height: 1.12;
         margin: 4px 0 0;
       }
       .vc-auth-subtitle {
@@ -647,7 +651,9 @@ export function AuthFormStyles() {
         box-shadow: var(--focus-ring);
       }
       .vc-auth-submit:disabled {
-        opacity: 0.5;
+        background: var(--bg-elevated);
+        color: var(--text-faint);
+        border-color: var(--border-strong);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
@@ -720,7 +726,7 @@ export function AuthFormStyles() {
         margin-top: 18px;
       }
       .vc-auth-foot-text {
-        font-family: var(--font-mono);
+        font-family: var(--font-sans);
         font-size: 0.8125rem;
         color: var(--text-tertiary);
       }

@@ -217,7 +217,14 @@ function resolveApi(pathname, ctx) {
 
 // ── Page catalogue: route, flags and README caption ─────────────────────────────
 const PAGES = [
-  { name: 'login',           route: '/login',           authed: false, title: 'Sign in',            desc: 'One Vulos account for the OS, the apps and the console — email + password, an optional passkey, and social sign-in when the deployment configures it.' },
+  { name: 'login',           route: '/login',           authed: false, title: 'Sign in',            desc: 'One Vulos account for the OS, the apps and the console — email + password, an optional passkey, and social sign-in when the deployment configures it.',
+    prepare: async (page) => {
+      // Fill the form with fabricated demo credentials so the primary CTA shows
+      // its live (enabled) accent state in the gallery, not the empty/disabled one.
+      await page.fill('#login-email', 'ada@example.org').catch(() => {})
+      await page.fill('#login-password', 'correct-horse-battery-staple').catch(() => {})
+      await page.locator('#login-email').blur().catch(() => {})
+    } },
   { name: 'dashboard',       route: '/',                title: 'Dashboard',          desc: 'The console cockpit — fleet + relay stat tiles, quick actions and the recent-activity feed. Billing surfaces stay absent under the NoOp seam.' },
   { name: 'boxes',           route: '/boxes',           title: 'Boxes',              desc: 'The machines running your Vulos OS: per-box version, channel, health and last-seen, as a responsive card grid.' },
   { name: 'devices',         route: '/devices',         title: 'Devices',            desc: 'Every enrolled device as a manageable table — health pills, last heartbeat and a decommission action.' },
@@ -298,6 +305,7 @@ async function main() {
     try {
       await page.goto(url, { waitUntil: 'networkidle', timeout: 20_000 })
       await page.waitForTimeout(500)
+      if (p.prepare) { await p.prepare(page); await page.waitForTimeout(200) }
       const out = path.join(PNG_OUT, `${p.name}.png`)
       await page.screenshot({ path: out, fullPage: true })
       console.log(`  ✓ ${p.name}.png`)
