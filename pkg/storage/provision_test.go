@@ -3,11 +3,13 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/vul-os/vulos-management/pkg/cpdb"
 	"github.com/vul-os/vulos-management/pkg/region"
+	"github.com/vul-os/vulos-management/pkg/storageport"
 )
 
 // TestProvisionManagedBucket verifies that ProvisionManagedBucket calls
@@ -20,6 +22,7 @@ func TestProvisionManagedBucket(t *testing.T) {
 		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
 			return mem, nil
 		},
+		Provisioner: ProvisionerFromProvider(mem),
 	}
 
 	ulid := "01HZPROVISION1234"
@@ -74,6 +77,8 @@ func TestProvisionManagedBucketIdempotent(t *testing.T) {
 		},
 	}
 
+	svc.Provisioner = ProvisionerFromProvider(mem)
+
 	ulid := "01HZIDEM999"
 	accountID := "acct-idem"
 
@@ -91,21 +96,21 @@ func TestProvisionManagedBucketIdempotent(t *testing.T) {
 // - First call creates the bucket.
 // - Second call returns the existing config without calling EnsureBucket again.
 func TestProvisionBucketIfAbsent(t *testing.T) {
-	calls := 0
 	mem := NewMemProvider()
 	st := NewMemStore()
+	prov := &countingProvisioner{StorageProvisioner: ProvisionerFromProvider(mem)}
 	svc := &Service{
 		Store: st,
 		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
-			calls++
 			return mem, nil
 		},
+		Provisioner: prov,
 	}
 
 	ulid := "01HZLAZY12345"
 	accountID := "acct-lazy"
 
-	// First call: no config row → provisions.
+	// First call: no config row → provisions (one EnsureBucket).
 	cfg1, err := svc.ProvisionBucketIfAbsent(context.Background(), accountID, ulid, ProvisionOptions{})
 	if err != nil {
 		t.Fatalf("first ProvisionBucketIfAbsent: %v", err)
@@ -113,7 +118,7 @@ func TestProvisionBucketIfAbsent(t *testing.T) {
 	if cfg1.Bucket == "" {
 		t.Fatal("expected bucket after first call")
 	}
-	firstCalls := calls
+	firstCalls := prov.ensureCalls
 
 	// Second call: config row exists → should return early.
 	cfg2, err := svc.ProvisionBucketIfAbsent(context.Background(), accountID, ulid, ProvisionOptions{})
@@ -123,9 +128,59 @@ func TestProvisionBucketIfAbsent(t *testing.T) {
 	if cfg2.Bucket != cfg1.Bucket {
 		t.Errorf("bucket changed on second call: %q vs %q", cfg1.Bucket, cfg2.Bucket)
 	}
-	// ProviderForAccount should NOT be called again.
-	if calls != firstCalls {
-		t.Errorf("ProviderForAccount called %d times on second ProvisionBucketIfAbsent (expected %d)", calls-firstCalls, 0)
+	// The provisioner should NOT be asked to create a bucket again.
+	if prov.ensureCalls != firstCalls {
+		t.Errorf("provisioner EnsureBucket called %d extra times on second ProvisionBucketIfAbsent (expected 0)", prov.ensureCalls-firstCalls)
+	}
+}
+
+// countingProvisioner counts EnsureBucket/EnsureBucketInRegion calls so a test can
+// assert the lazy path does not re-provision.
+type countingProvisioner struct {
+	storageport.StorageProvisioner
+	ensureCalls int
+}
+
+func (c *countingProvisioner) EnsureBucket(ctx context.Context, name string) error {
+	c.ensureCalls++
+	return c.StorageProvisioner.EnsureBucket(ctx, name)
+}
+
+func (c *countingProvisioner) EnsureBucketInRegion(ctx context.Context, name, region string) error {
+	c.ensureCalls++
+	return c.StorageProvisioner.EnsureBucketInRegion(ctx, name, region)
+}
+
+// TestProvisionManagedBucket_NoopProvisionerBringYourOwn verifies the management
+// default: with no provisioner injected (NoopProvisioner), provisioning creates
+// NO bucket and returns a clear bring-your-own-bucket error.
+func TestProvisionManagedBucket_NoopProvisionerBringYourOwn(t *testing.T) {
+	mem := NewMemProvider()
+	st := NewMemStore()
+	svc := &Service{
+		Store: st,
+		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
+			return mem, nil
+		},
+		// Provisioner left nil → provisioner() returns NoopProvisioner.
+	}
+
+	ulid := "01HZBYO0001"
+	_, err := svc.ProvisionManagedBucket(context.Background(), "acct-byo", ulid, ProvisionOptions{})
+	if err == nil {
+		t.Fatal("expected bring-your-own-bucket error with the NoOp provisioner, got nil")
+	}
+	if !errors.Is(err, storageport.ErrProvisioningDisabled) {
+		t.Fatalf("expected ErrProvisioningDisabled, got %v", err)
+	}
+	// No bucket must have been created (ListBucket returns ErrUnknownBucket for a
+	// bucket that does not exist; PutObject would auto-create and mask this).
+	if _, err := mem.ListBucket(context.Background(), managedBucketName(ulid), "", 1); !errors.Is(err, ErrUnknownBucket) {
+		t.Error("a bucket was created despite the NoOp provisioner — management must never provision")
+	}
+	// And no config row must have been written.
+	if _, err := st.GetConfig(context.Background(), "acct-byo"); !errors.Is(err, ErrUnknownAccount) {
+		t.Errorf("a storage_configs row was written despite provisioning being disabled: %v", err)
 	}
 }
 
@@ -149,6 +204,7 @@ func TestProvisionBucketIfAbsent_SQLStore(t *testing.T) {
 		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
 			return mem, nil
 		},
+		Provisioner: ProvisionerFromProvider(mem),
 	}
 
 	ctx := context.Background()
@@ -184,6 +240,7 @@ func TestProvisionManagedBucket_RegionOption(t *testing.T) {
 		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
 			return mem, nil
 		},
+		Provisioner: ProvisionerFromProvider(mem),
 	}
 
 	ctx := context.Background()
@@ -221,9 +278,9 @@ func TestProvisionManagedBucket_RegionOption(t *testing.T) {
 func TestProvisionManagedBucket_UnplaceableRegionFailsClosed(t *testing.T) {
 	svc := &Service{
 		Store: NewMemStore(),
-		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
-			return nonRegionalProvider{Provider: NewMemProvider()}, nil
-		},
+		Provisioner: ProvisionerFromProvider(
+			nonRegionalProvider{Provider: NewMemProvider()},
+		),
 	}
 	_, err := svc.ProvisionManagedBucket(context.Background(), "acct", "01HZNOREGION", ProvisionOptions{Region: "eu-west-1"})
 	if err == nil {
@@ -252,6 +309,7 @@ func TestProvisionManagedBucket_DefaultRegion(t *testing.T) {
 		ProviderForAccount: func(_ context.Context, _ string) (Provider, error) {
 			return mem, nil
 		},
+		Provisioner: ProvisionerFromProvider(mem),
 	}
 
 	cfg, err := svc.ProvisionManagedBucket(context.Background(), "acct-default-region", "01HZDEFAULT", ProvisionOptions{})

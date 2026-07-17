@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vul-os/vulos-management/pkg/storageport"
 )
 
 // ---------------------------------------------------------------------------
@@ -135,10 +137,34 @@ type Service struct {
 	// ProviderForAccount returns the Provider for the given accountID.
 	// It must consult the store config and return S3Provider (for managed)
 	// or a provider built from the BYO config.
+	//
+	// NOTE: this is the DATA-PLANE selector (presign/get/put/list). Bucket
+	// CREATION does NOT go through here — it goes through Provisioner, the
+	// storageport seam, so the operational control plane never creates a bucket
+	// on its own.
 	ProviderForAccount func(ctx context.Context, accountID string) (Provider, error)
+	// Provisioner creates managed object-storage buckets through the storageport
+	// seam. This is the ONE storage capability the operational control plane must
+	// never perform on its own: the management default is NoopProvisioner
+	// (bring-your-own-bucket — provisioning returns a "create it first" error and
+	// no bucket is created), while the cloud composition root injects a
+	// Tigris-backed StorageProvisioner. A nil value is treated as NoopProvisioner
+	// (see provisioner()).
+	Provisioner storageport.StorageProvisioner
 	// KEK is the 32-byte AES-GCM key-encryption key read from STORAGE_KEK env.
 	// Empty means BYO secret encryption is disabled (dev mode).
 	KEK []byte
+}
+
+// provisioner returns the injected StorageProvisioner, or the bring-your-own-bucket
+// NoopProvisioner when none was injected. Management deployments leave it nil and
+// thus never create a bucket; the cloud composition root injects a Tigris-backed
+// provisioner.
+func (s *Service) provisioner() storageport.StorageProvisioner {
+	if s.Provisioner != nil {
+		return s.Provisioner
+	}
+	return storageport.NewNoopProvisioner()
 }
 
 // maxSnapshotTTL is the maximum TTL for snapshot presigned URLs (5 minutes).

@@ -71,6 +71,10 @@ func newStorageEnvWith(t *testing.T, ent billingport.EntitlementResolver) *stora
 		ProviderForAccount: func(_ context.Context, _ string) (storage.Provider, error) {
 			return mem, nil
 		},
+		// These route tests exercise the managed (cloud-like) path where buckets are
+		// provisioned; inject a real provisioner backed by the MemProvider, mirroring
+		// how the cloud composition root injects a Tigris-backed StorageProvisioner.
+		Provisioner: storage.ProvisionerFromProvider(mem),
 	}
 	mux := http.NewServeMux()
 	RegisterStorage(mux, svc, authSt, ent)

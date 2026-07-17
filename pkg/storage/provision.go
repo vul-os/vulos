@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/vul-os/vulos-management/pkg/region"
+	"github.com/vul-os/vulos-management/pkg/storageport"
 )
 
 // RegionalBucketProvider is the optional capability of creating a bucket in a
@@ -36,15 +37,58 @@ type RegionalBucketProvider interface {
 	EnsureBucketInRegion(ctx context.Context, name, s3Region string) error
 }
 
-// ensureBucketPlaced creates the bucket and returns the canonical region it was
-// actually placed in — "auto" when no residency requirement was given.
+// ProvisionerFromProvider adapts a data-plane Provider (S3Provider, MemProvider)
+// into a storageport.StorageProvisioner. Only a commercial composition root
+// (vulos-cloud) uses it: it turns the managed Tigris provider into the bucket-
+// creating seam management injects. Management itself never constructs one — its
+// default provisioner is storageport.NoopProvisioner.
+//
+// EnsureBucketInRegion fails closed when the wrapped provider cannot place buckets
+// regionally (it does not implement RegionalBucketProvider): recording an
+// unenforced residency is worse than refusing to provision.
+func ProvisionerFromProvider(p Provider) storageport.StorageProvisioner {
+	return providerProvisioner{p: p}
+}
+
+type providerProvisioner struct{ p Provider }
+
+func (a providerProvisioner) EnsureBucket(ctx context.Context, name string) error {
+	return a.p.EnsureBucket(ctx, name)
+}
+
+func (a providerProvisioner) EnsureBucketInRegion(ctx context.Context, name, s3Region string) error {
+	regional, ok := a.p.(RegionalBucketProvider)
+	if !ok {
+		return fmt.Errorf("%w: residency region %q requested but the storage provider cannot place buckets by region", ErrProviderFailed, s3Region)
+	}
+	return regional.EnsureBucketInRegion(ctx, name, s3Region)
+}
+
+func (providerProvisioner) Enabled() bool { return true }
+
+var _ storageport.StorageProvisioner = providerProvisioner{}
+
+// ensureBucketPlaced creates the bucket THROUGH the storageport seam and returns
+// the canonical region it was actually placed in — "auto" when no residency
+// requirement was given.
+//
+// When the injected provisioner is not enabled (the management/bring-your-own
+// default, NoopProvisioner), NO bucket is created: the operator is expected to
+// have created the bucket already, and we return a clear "create it first" error
+// rather than silently attempting a create the control plane must never perform.
 //
 // A requested region must be (a) in the canonical region table and (b) placeable
-// by this provider.  Otherwise we refuse: recording an unenforced residency is
+// by the provisioner. Otherwise we refuse: recording an unenforced residency is
 // worse than failing to provision, because the row is later read as a guarantee.
-func ensureBucketPlaced(ctx context.Context, provider Provider, bucket, want string) (string, error) {
+func ensureBucketPlaced(ctx context.Context, prov storageport.StorageProvisioner, bucket, want string) (string, error) {
+	if !prov.Enabled() {
+		// Bring-your-own-bucket: the control plane never creates a bucket. Bucket
+		// creation on a managed backend is a commercial concern wired only in the
+		// cloud composition root.
+		return "", fmt.Errorf("%w: managed bucket %q not found — bring your own bucket: create it first (this control plane does not provision buckets)", storageport.ErrProvisioningDisabled, bucket)
+	}
 	if want == "" || want == "auto" {
-		if err := provider.EnsureBucket(ctx, bucket); err != nil {
+		if err := prov.EnsureBucket(ctx, bucket); err != nil {
 			return "", fmt.Errorf("EnsureBucket: %w", err)
 		}
 		return "auto", nil
@@ -54,11 +98,7 @@ func ensureBucketPlaced(ctx context.Context, provider Provider, bucket, want str
 	if err != nil {
 		return "", err
 	}
-	regional, ok := provider.(RegionalBucketProvider)
-	if !ok {
-		return "", fmt.Errorf("%w: residency region %q requested but the storage provider cannot place buckets by region", ErrProviderFailed, r.Key)
-	}
-	if err := regional.EnsureBucketInRegion(ctx, bucket, r.S3); err != nil {
+	if err := prov.EnsureBucketInRegion(ctx, bucket, r.S3); err != nil {
 		return "", fmt.Errorf("EnsureBucketInRegion(%s): %w", r.S3, err)
 	}
 	return r.Key, nil
@@ -80,13 +120,8 @@ type ProvisionOptions struct {
 // opts may be zero — pass ProvisionOptions{Region: orgRegion} from the
 // residency store to honour COMPLY-01 per-org data residency.
 func (svc *Service) ProvisionManagedBucket(ctx context.Context, accountID, ulid string, opts ProvisionOptions) (Config, error) {
-	provider, err := svc.ProviderForAccount(ctx, accountID)
-	if err != nil {
-		return Config{}, fmt.Errorf("storage: ProvisionManagedBucket provider: %w", err)
-	}
-
 	bucket := managedBucketName(ulid)
-	placed, err := ensureBucketPlaced(ctx, provider, bucket, opts.Region)
+	placed, err := ensureBucketPlaced(ctx, svc.provisioner(), bucket, opts.Region)
 	if err != nil {
 		return Config{}, fmt.Errorf("storage: ProvisionManagedBucket: %w", err)
 	}
@@ -115,12 +150,12 @@ func backupBucketName(ulid string) string {
 // row, because the backup bucket is not the account's primary config; it is a
 // sibling single-tenant bucket the cell's scoped credential also covers (§2.3).
 // Additive: called only when backups are enabled.
-func (svc *Service) ProvisionBackupBucket(ctx context.Context, accountID, ulid string, _ ProvisionOptions) error {
-	provider, err := svc.ProviderForAccount(ctx, accountID)
-	if err != nil {
-		return fmt.Errorf("storage: ProvisionBackupBucket provider: %w", err)
+func (svc *Service) ProvisionBackupBucket(ctx context.Context, _, ulid string, _ ProvisionOptions) error {
+	prov := svc.provisioner()
+	if !prov.Enabled() {
+		return fmt.Errorf("%w: backup bucket %q not found — bring your own bucket: create it first (this control plane does not provision buckets)", storageport.ErrProvisioningDisabled, backupBucketName(ulid))
 	}
-	if err := provider.EnsureBucket(ctx, backupBucketName(ulid)); err != nil {
+	if err := prov.EnsureBucket(ctx, backupBucketName(ulid)); err != nil {
 		return fmt.Errorf("storage: ProvisionBackupBucket EnsureBucket: %w", err)
 	}
 	return nil
