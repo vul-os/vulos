@@ -1,5 +1,6 @@
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
+import './shell-chrome.css'
 
 // Dock — a bottom-center taskbar of the windows open on the active desktop.
 // Its main job is to make MINIMIZED windows recoverable (Mission Control hides
@@ -7,8 +8,10 @@ import AppIcon from '../core/AppIcons'
 //   · click a floating window        → focus/raise it
 //   · click the focused window        → minimize it (toggle)
 //   · click a minimized window        → restore + focus it
-// It only renders when at least one window exists, so an empty desktop keeps
-// the clean Home backdrop. Matches the shell's dark, blurred menu-bar aesthetic.
+// It only renders when at least one window exists, so an empty desktop keeps the
+// clean Home backdrop. Matches the shell's dark, blurred menu-bar aesthetic and
+// is token-driven throughout. On small screens it caps its width and scrolls
+// horizontally rather than overflowing the viewport.
 export default function Dock() {
   const { windows, activeWindow, focusWindow, minimizeWindow } = useShell()
 
@@ -26,12 +29,9 @@ export default function Dock() {
   }
 
   return (
-    <div className="fixed bottom-2.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-      <div
-        className="flex items-end gap-1 px-2 py-1.5 rounded-2xl backdrop-blur-xl pointer-events-auto shadow-2xl shadow-black/40"
-        style={{ background: 'var(--bg-elevated, rgba(38,38,38,0.72))', border: '1px solid var(--border-default, rgba(64,64,64,0.5))' }}
-      >
-        {windows.map(win => {
+    <div className="fixed bottom-2.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none max-w-[calc(100vw-1rem)]">
+      <div className="vshell-dock flex items-end gap-1 px-2 py-1.5 rounded-2xl backdrop-blur-xl pointer-events-auto overflow-x-auto no-scrollbar">
+        {windows.map((win) => {
           const active = win.id === activeWindow && !win.minimized
           return (
             <button
@@ -40,25 +40,28 @@ export default function Dock() {
               title={win.title}
               aria-label={`${win.title}${win.minimized ? ' (minimized)' : ''}`}
               aria-pressed={active}
-              className="focus-primary rounded-xl group relative flex flex-col items-center"
+              className="vshell-dock-item focus-primary rounded-xl group relative flex flex-col items-center shrink-0"
             >
               <span
-                className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150
-                  ${active ? 'bg-white/10' : 'hover:bg-white/5'}
-                  ${win.minimized ? 'opacity-45 hover:opacity-80' : 'opacity-100'}`}
+                data-active={active ? 'true' : undefined}
+                className={`vshell-dock-tile flex items-center justify-center w-10 h-10 rounded-xl
+                  ${win.minimized ? 'opacity-45 hover:opacity-90' : 'opacity-100'}`}
               >
                 <AppIcon id={win.appId} size={22} />
               </span>
-              {/* Running indicator — a dot under the icon; bright when focused. */}
+              {/* Running indicator — a dot under the icon; accent when focused. */}
               <span
-                style={active ? { background: 'var(--accent)' } : undefined}
-                className={`absolute -bottom-0.5 w-1 h-1 rounded-full transition-colors
-                  ${active ? '' : 'bg-neutral-500 group-hover:bg-neutral-300'}`}
+                data-active={active ? 'true' : undefined}
+                className="vshell-dot absolute -bottom-0.5 w-1 h-1 rounded-full"
               />
               {/* Tooltip */}
               <span
                 className="pointer-events-none absolute bottom-full mb-1.5 whitespace-nowrap px-2 py-0.5 rounded-md text-[11px] opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ background: 'var(--bg-surface, #1c1c1c)', border: '1px solid var(--border-default, rgba(64,64,64,0.6))', color: 'var(--text-secondary, #d4d4d4)' }}
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid color-mix(in srgb, var(--border-strong) 60%, transparent)',
+                  color: 'var(--text-secondary)',
+                }}
               >
                 {win.title}
               </span>
