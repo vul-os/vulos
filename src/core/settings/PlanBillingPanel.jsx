@@ -18,19 +18,27 @@ import { useState, useEffect, useCallback } from 'react'
 // standalone box too. All styling uses the shared semantic tokens.
 // ---------------------------------------------------------------------------
 
-function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+function Section({ title, desc, children }) {
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+      </header>
+      {children}
+    </div>
+  )
 }
 
 function InfoRow({ label, value, tone }) {
   const color =
-    tone === 'good' ? 'text-green-400' :
-    tone === 'warn' ? 'text-amber-400' :
-    tone === 'bad' ? 'text-red-400' :
-    'text-neutral-300'
+    tone === 'good' ? 'text-[var(--status-success)]' :
+    tone === 'warn' ? 'text-[var(--status-warning)]' :
+    tone === 'bad' ? 'text-[var(--status-danger)]' :
+    'text-[var(--text-secondary)]'
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
-      <span className="text-xs text-neutral-500">{label}</span>
+    <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
+      <span className="text-xs text-[var(--text-muted)]">{label}</span>
       <span className={`text-sm ${color}`}>{value ?? '—'}</span>
     </div>
   )
@@ -50,16 +58,16 @@ function QuotaBar({ label, used, limit, unit = 'GB', format }) {
   const textColor = exceeded ? 'var(--status-danger)' : near ? 'var(--status-warning)' : undefined
 
   return (
-    <div className="px-4 py-3 bg-neutral-900/40">
+    <div className="px-4 py-3 bg-[var(--bg-surface)]">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs text-neutral-400">{label}</span>
-        <span className="text-xs tabular-nums text-neutral-400" style={textColor ? { color: textColor } : undefined}>
+        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
+        <span className="text-xs tabular-nums text-[var(--text-tertiary)]" style={textColor ? { color: textColor } : undefined}>
           {fmt(used)}{hasLimit ? ` / ${fmt(limit)}` : ''}
         </span>
       </div>
       {hasLimit && (
         <div
-          className="h-1.5 rounded-full bg-neutral-800 overflow-hidden"
+          className="h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden"
           role="progressbar"
           aria-label={`${label} usage`}
           aria-valuenow={Math.round(pct)}
@@ -73,12 +81,12 @@ function QuotaBar({ label, used, limit, unit = 'GB', format }) {
         </div>
       )}
       {exceeded && (
-        <p className="text-[11px] text-red-400 mt-1.5">
+        <p className="text-[11px] text-[var(--status-danger)] mt-1.5">
           Quota exceeded — upgrade your plan or free up space to keep syncing.
         </p>
       )}
       {near && (
-        <p className="text-[11px] text-amber-400 mt-1.5">
+        <p className="text-[11px] text-[var(--status-warning)] mt-1.5">
           You’re close to your limit.
         </p>
       )}
@@ -155,17 +163,17 @@ export default function PlanBillingPanel() {
 
   return (
     <Section title="Plan & Billing">
-      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+      <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
         Your Vulos plan and how much of your cloud entitlement you’re using.
         Storage, backup, and relay are billed against your account tier.
       </p>
 
       {/* ── Plan card ───────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-neutral-800/60 overflow-hidden mb-5">
-        <div className="flex items-start justify-between gap-4 px-4 py-4 bg-neutral-900/50">
+      <div className="rounded-xl border border-[var(--border-default)] overflow-hidden mb-5">
+        <div className="flex items-start justify-between gap-4 px-4 py-4 bg-[var(--bg-surface)]">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-base font-semibold text-neutral-100">{tier.label}</span>
+              <span className="text-base font-semibold text-[var(--text-primary)]">{tier.label}</span>
               <span
                 className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded"
                 style={{ background: 'color-mix(in srgb, var(--accent) 18%, transparent)', color: 'var(--accent)' }}
@@ -173,7 +181,7 @@ export default function PlanBillingPanel() {
                 Current plan
               </span>
             </div>
-            <p className="text-xs text-neutral-500 leading-relaxed">{tier.blurb}</p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">{tier.blurb}</p>
           </div>
           {!isTopTier && (
             <a
@@ -186,9 +194,9 @@ export default function PlanBillingPanel() {
             </a>
           )}
         </div>
-        <ul className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 border-t border-neutral-800/50">
+        <ul className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 border-t border-[var(--border-default)]">
           {tier.features.map(f => (
-            <li key={f} className="flex items-center gap-2 text-xs text-neutral-400">
+            <li key={f} className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
               <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -199,8 +207,8 @@ export default function PlanBillingPanel() {
       </div>
 
       {/* ── Usage & quotas ──────────────────────────────────────────────── */}
-      <h3 className="text-xs uppercase tracking-wider text-neutral-500 font-medium mb-2">Usage</h3>
-      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-2">
+      <h3 className="text-xs uppercase tracking-wider text-[var(--text-muted)] font-medium mb-2">Usage</h3>
+      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-2">
         <QuotaBar label="Cloud storage" used={storageUsed} limit={storageLimit} unit="GB" />
         <InfoRow
           label="Backup"
@@ -232,7 +240,7 @@ export default function PlanBillingPanel() {
         </a>
       </div>
 
-      <p className="text-[11px] text-neutral-600 mt-4 leading-relaxed">
+      <p className="text-[11px] text-[var(--text-faint)] mt-4 leading-relaxed">
         Billing and plan changes are managed in your Vulos Cloud account.
         Usage shown here reflects this device’s view and may lag the cloud by a
         few minutes.

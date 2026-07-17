@@ -74,7 +74,7 @@ function ApmAdoptForm({ onAdopted }) {
           onChange={e => setName(e.target.value)}
           placeholder="App name (e.g. Grafana)"
           aria-label="App name"
-          className="flex-1 min-w-0 text-xs bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1.5 text-neutral-200 focus:outline-none focus:border-blue-500/50"
+          className="flex-1 min-w-0 text-xs bg-[var(--bg-elevated)] border border-[var(--border-strong)] rounded-lg px-2 py-1.5 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
         />
         <input
           value={port}
@@ -82,18 +82,18 @@ function ApmAdoptForm({ onAdopted }) {
           placeholder="Port"
           inputMode="numeric"
           aria-label="Local port"
-          className="w-20 text-xs bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1.5 text-neutral-200 focus:outline-none focus:border-blue-500/50"
+          className="w-20 text-xs bg-[var(--bg-elevated)] border border-[var(--border-strong)] rounded-lg px-2 py-1.5 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
         />
         <button
           type="submit"
           disabled={busy}
-          className="text-xs px-3 py-1.5 rounded-lg font-medium bg-blue-700/80 hover:bg-blue-600/80 text-white transition-colors disabled:opacity-40"
+          className="text-xs px-3 py-1.5 rounded-lg font-medium bg-[var(--accent)] hover:bg-[var(--accent)] text-white transition-colors disabled:opacity-40"
         >
           Adopt
         </button>
       </div>
-      {err && <p className="text-[11px] text-red-400">{err}</p>}
-      <p className="text-[10px] text-neutral-600">
+      {err && <p className="text-[11px] text-[var(--status-danger)]">{err}</p>}
+      <p className="text-[10px] text-[var(--text-faint)]">
         The service must be listening on 127.0.0.1. It stays behind your sign-in — it is never exposed to the public web.
       </p>
     </form>
@@ -112,27 +112,27 @@ function ApmRow({ item, onRevoke }) {
   }, [item.id, onRevoke])
 
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-neutral-800/40 last:border-0 gap-3">
+    <div className="flex items-center justify-between py-2.5 border-b border-[var(--border-default)] last:border-0 gap-3">
       <div className="flex items-center gap-2 min-w-0">
         <span
-          className={`shrink-0 w-2 h-2 rounded-full ${item.healthy ? 'bg-green-500' : 'bg-neutral-600'}`}
+          className={`shrink-0 w-2 h-2 rounded-full ${item.healthy ? 'bg-[var(--status-success)]' : 'bg-[var(--bg-active)]'}`}
           title={item.healthy ? 'Reachable' : 'Not responding'}
           aria-label={item.healthy ? 'healthy' : 'unhealthy'}
         />
-        <span className="text-sm text-neutral-200 truncate">{item.name || item.id}</span>
-        <span className="text-[10px] text-neutral-500 shrink-0">:{item.port}</span>
+        <span className="text-sm text-[var(--text-primary)] truncate">{item.name || item.id}</span>
+        <span className="text-[10px] text-[var(--text-muted)] shrink-0">:{item.port}</span>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <a
           href={item.url}
-          className="text-[11px] px-2 py-1 rounded-lg bg-neutral-800 text-blue-400 hover:bg-neutral-700 hover:text-blue-300 transition-colors"
+          className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--accent)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] transition-colors"
         >
           Open
         </a>
         <button
           onClick={revoke}
           disabled={busy}
-          className="text-[11px] px-2 py-1 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-red-900/40 hover:text-red-300 transition-colors disabled:opacity-40"
+          className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--status-danger-soft)] hover:text-[var(--status-danger)] transition-colors disabled:opacity-40"
         >
           Revoke
         </button>
@@ -180,16 +180,16 @@ function ApmPopover({ onClose }) {
         ref={panelRef}
         role="dialog"
         aria-label="Adopt a local port"
-        className="w-[420px] max-h-[70vh] flex flex-col rounded-2xl bg-neutral-900/97 backdrop-blur-2xl border border-neutral-700/50 shadow-2xl shadow-black/60 animate-[fadeIn_0.15s_ease-out] overflow-hidden"
+        className="w-[420px] max-h-[70vh] flex flex-col rounded-2xl bg-[var(--glass-bg)] backdrop-blur-2xl border border-[var(--border-strong)] shadow-2xl shadow-black/60 animate-[fadeIn_0.15s_ease-out] overflow-hidden"
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/60 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] shrink-0">
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Adopt a Local Port</h2>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Front a loopback service through the OS gateway</p>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Adopt a Local Port</h2>
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Front a loopback service through the OS gateway</p>
           </div>
           <button
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors text-sm"
+            className="w-6 h-6 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors text-sm"
           >
             {'×'}
           </button>
@@ -197,15 +197,15 @@ function ApmPopover({ onClose }) {
 
         <div className="overflow-y-auto flex-1 px-4 py-2">
           <ApmAdoptForm onAdopted={load} />
-          <div className="border-t border-neutral-800/60 mt-1 pt-1">
+          <div className="border-t border-[var(--border-default)] mt-1 pt-1">
             {items === null && (
-              <div className="flex items-center gap-2 py-6 justify-center text-neutral-600 text-xs">
+              <div className="flex items-center gap-2 py-6 justify-center text-[var(--text-faint)] text-xs">
                 <span className="w-3 h-3 spinner" /> Loading...
               </div>
             )}
-            {error && <p className="text-xs text-red-400 py-4 text-center">{error}</p>}
+            {error && <p className="text-xs text-[var(--status-danger)] py-4 text-center">{error}</p>}
             {items !== null && items.length === 0 && !error && (
-              <p className="text-xs text-neutral-500 py-6 text-center">No adopted ports yet.</p>
+              <p className="text-xs text-[var(--text-muted)] py-6 text-center">No adopted ports yet.</p>
             )}
             {items && items.map(item => (
               <ApmRow key={item.id} item={item} onRevoke={load} />

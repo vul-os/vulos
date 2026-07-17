@@ -24,8 +24,8 @@ export default function AskAIButton({ context, label = 'Ask AI', className = '' 
     <button
       onClick={handleClick}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-        bg-violet-500/15 text-violet-300 border border-violet-500/25
-        hover:bg-violet-500/25 hover:text-violet-200 hover:border-violet-500/40
+        bg-[var(--accent-soft)] text-[var(--accent)] border accent-border-soft accent-bg-hover
+        hover:border-[var(--accent)]
         active:scale-95 transition-all duration-150 cursor-pointer ${className}`}
       title={context}
     >

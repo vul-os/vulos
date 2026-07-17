@@ -9,25 +9,33 @@ import { useState, useEffect, useCallback } from 'react'
 // The anchor inbox is ALWAYS on Tigris regardless of the mode selected here.
 // ---------------------------------------------------------------------------
 
-function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+function Section({ title, desc, children }) {
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+      </header>
+      {children}
+    </div>
+  )
 }
 
 function Field({ label, hint, children }) {
   return (
     <div className="mb-3">
-      <label className="block text-xs text-neutral-500 mb-1">{label}</label>
+      <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-neutral-600 mt-1">{hint}</p>}
+      {hint && <p className="text-[11px] text-[var(--text-faint)] mt-1">{hint}</p>}
     </div>
   )
 }
 
 function InfoRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
-      <span className="text-xs text-neutral-500">{label}</span>
-      <span className="text-sm text-neutral-300">{value || '—'}</span>
+    <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
+      <span className="text-xs text-[var(--text-muted)]">{label}</span>
+      <span className="text-sm text-[var(--text-secondary)]">{value || '—'}</span>
     </div>
   )
 }
@@ -117,9 +125,9 @@ export default function StoragePanel() {
   // -------------------------------------------------------------------------
   return (
     <Section title="Storage Backend">
-      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+      <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
         Choose where Vulos stores your mail, files, and office data on this device.
-        The <strong className="text-neutral-400">anchor inbox</strong> is always kept
+        The <strong className="text-[var(--text-tertiary)]">anchor inbox</strong> is always kept
         on Tigris regardless of this setting, guaranteeing a reliable landing zone.
       </p>
 
@@ -134,8 +142,8 @@ export default function StoragePanel() {
               htmlFor={`storage-mode-${opt.value}`}
               className={`flex items-start gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
                 mode === opt.value
-                  ? 'border-blue-600/60 bg-blue-600/10'
-                  : 'border-neutral-800/60 bg-neutral-900/30 hover:bg-neutral-900/60'
+                  ? 'accent-border bg-[var(--accent-soft)]'
+                  : 'border-[var(--border-default)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface)]'
               }`}
             >
               <input
@@ -149,14 +157,14 @@ export default function StoragePanel() {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-neutral-200">{opt.label}</span>
+                  <span className="text-sm font-medium text-[var(--text-primary)]">{opt.label}</span>
                   {cfg?.mode === opt.value && (
-                    <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-900/40 text-green-400">
+                    <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">
                       Active
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-neutral-500 mt-0.5">{opt.desc}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">{opt.desc}</p>
               </div>
             </label>
           ))}
@@ -167,8 +175,8 @@ export default function StoragePanel() {
       {/* MinIO fields — only shown when local-minio-sync is selected          */}
       {/* ------------------------------------------------------------------ */}
       {mode === 'local-minio-sync' && (
-        <div className="mt-4 pt-4 border-t border-neutral-800/50 space-y-0">
-          <h3 className="text-sm font-medium text-neutral-300 mb-4">MinIO connection</h3>
+        <div className="mt-4 pt-4 border-t border-[var(--border-default)] space-y-0">
+          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">MinIO connection</h3>
 
           <Field
             label="Endpoint"
@@ -224,8 +232,8 @@ export default function StoragePanel() {
       {/* Status summary                                                       */}
       {/* ------------------------------------------------------------------ */}
       {cfg && !loading && (
-        <div className="mt-5 pt-4 border-t border-neutral-800/50">
-          <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50">
+        <div className="mt-5 pt-4 border-t border-[var(--border-default)]">
+          <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)]">
             <InfoRow label="Active backend" value={cfg.mode || '—'} />
             {cfg.mode === 'local-minio-sync' && (
               <>
@@ -235,15 +243,15 @@ export default function StoragePanel() {
               </>
             )}
           </div>
-          <p className="text-[11px] text-neutral-600 mt-2 leading-relaxed">
+          <p className="text-[11px] text-[var(--text-faint)] mt-2 leading-relaxed">
             The anchor inbox always uses Tigris regardless of the backend selected above.
           </p>
         </div>
       )}
 
       {!loading && !cfg && (
-        <div className="mt-4 p-3 rounded-lg bg-amber-900/20 border border-amber-800/30">
-          <p className="text-xs text-amber-400">
+        <div className="mt-4 p-3 rounded-lg bg-[var(--status-warning-soft)] border border-warning-soft">
+          <p className="text-xs text-[var(--status-warning)]">
             Storage backend not yet reachable — configuration will be applied when available.
           </p>
         </div>
@@ -270,7 +278,7 @@ export default function StoragePanel() {
       </div>
 
       {error && (
-        <div className="mt-3 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400">
+        <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
           {error}
         </div>
       )}

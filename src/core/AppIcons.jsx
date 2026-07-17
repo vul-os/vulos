@@ -224,8 +224,8 @@ export function AppIconTile({ id, size = 48, unicode }) {
         onMouseLeave={() => setHover(false)}
         style={{
           ...wrapStyle,
-          background: color ? `${color}12` : '#1a1a1a',
-          border: `1px solid ${color ? color + '25' : '#2a2a2a'}`,
+          background: color ? `${color}12` : 'var(--bg-elevated)',
+          border: `1px solid ${color ? color + '25' : 'var(--border-strong)'}`,
           overflow: 'hidden',
         }}
       >
@@ -282,8 +282,8 @@ export function AppIconTile({ id, size = 48, unicode }) {
         onMouseLeave={() => setHover(false)}
         style={{
           ...wrapStyle,
-          background: color ? `${color}10` : '#1a1a1a',
-          border: `1px solid ${color ? color + '25' : '#2a2a2a'}`,
+          background: color ? `${color}10` : 'var(--bg-elevated)',
+          border: `1px solid ${color ? color + '25' : 'var(--border-strong)'}`,
         }}
       >
         <svg viewBox="0 0 16 16" width={size * 0.55} height={size * 0.55} fill="none"
@@ -302,9 +302,9 @@ export function AppIconTile({ id, size = 48, unicode }) {
       onMouseLeave={() => setHover(false)}
       style={{
         ...wrapStyle,
-        background: color ? `linear-gradient(135deg, ${color}30, ${color}15)` : '#262626',
-        border: `1px solid ${color ? color + '30' : '#333'}`,
-        color: color || '#a3a3a3', fontWeight: 700, fontSize: size * 0.38,
+        background: color ? `linear-gradient(135deg, ${color}30, ${color}15)` : 'var(--bg-elevated)',
+        border: `1px solid ${color ? color + '30' : 'var(--border-strong)'}`,
+        color: color || 'var(--text-tertiary)', fontWeight: 700, fontSize: size * 0.38,
       }}
     >
       {letter}

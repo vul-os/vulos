@@ -33,8 +33,16 @@ const NOT_COVERED = [
   'Anything held only on another instance via an end-to-end (content-blind) share — that instance holds the keys, so export it there. This is the privacy guarantee working, not a gap in your access.',
 ]
 
-function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+function Section({ title, desc, children }) {
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+      </header>
+      {children}
+    </div>
+  )
 }
 
 export default function DataExportPanel() {
@@ -86,27 +94,27 @@ export default function DataExportPanel() {
   return (
     <Section title="Export My Data">
       {/* Sovereignty framing */}
-      <p className="text-sm text-neutral-400 leading-relaxed mb-2">
+      <p className="text-sm text-[var(--text-tertiary)] leading-relaxed mb-2">
         Your data is yours. Download a complete archive of it in{' '}
-        <span className="text-neutral-200">standard, portable formats</span> — nothing here needs
+        <span className="text-[var(--text-primary)]">standard, portable formats</span> — nothing here needs
         Vulos to open it. This is the concrete proof of sovereignty: you can walk away with everything,
         any time, no lock-in.
       </p>
-      <p className="text-xs text-neutral-600 leading-relaxed mb-6">
-        The archive is a single <code className="text-neutral-400">.zip</code> and includes a{' '}
-        <code className="text-neutral-400">MANIFEST.txt</code> describing exactly what it does and does not contain.
+      <p className="text-xs text-[var(--text-faint)] leading-relaxed mb-6">
+        The archive is a single <code className="text-[var(--text-tertiary)]">.zip</code> and includes a{' '}
+        <code className="text-[var(--text-tertiary)]">MANIFEST.txt</code> describing exactly what it does and does not contain.
       </p>
 
       {/* What's included */}
-      <h3 className="text-xs uppercase text-neutral-500 tracking-wider mb-2">Included</h3>
-      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-6">
+      <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Included</h3>
+      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-6">
         {COVERED.map(item => (
-          <div key={item.label} className="px-4 py-3 bg-neutral-900/40">
+          <div key={item.label} className="px-4 py-3 bg-[var(--bg-surface)]">
             <div className="flex items-center gap-2 mb-0.5">
               <span aria-hidden="true" className="text-success text-xs">✓</span>
-              <span className="text-sm font-medium text-neutral-200">{item.label}</span>
+              <span className="text-sm font-medium text-[var(--text-primary)]">{item.label}</span>
             </div>
-            <p className="text-xs text-neutral-500 leading-relaxed">{item.detail}</p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">{item.detail}</p>
           </div>
         ))}
       </div>
@@ -121,14 +129,14 @@ export default function DataExportPanel() {
       >
         {preparing ? 'Preparing your archive…' : 'Download My Data'}
       </button>
-      <p className="text-xs text-neutral-600 mt-2">
+      <p className="text-xs text-[var(--text-faint)] mt-2">
         A large mailbox or Drive may take a moment. Keep this window open until the download starts.
       </p>
 
       {/* States */}
       <div aria-live="polite" className="mt-3">
         {preparing && (
-          <div className="flex items-center gap-2 text-xs text-neutral-400">
+          <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
             <span className="inline-block w-3 h-3 spinner" aria-hidden="true" />
             Gathering your mail, files, calendar, contacts and settings…
           </div>
@@ -146,13 +154,13 @@ export default function DataExportPanel() {
       </div>
 
       {/* Honest boundaries */}
-      <h3 className="text-xs uppercase text-neutral-500 tracking-wider mt-8 mb-2">Not in this archive (yet)</h3>
-      <p className="text-xs text-neutral-600 mb-3 leading-relaxed">
+      <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mt-8 mb-2">Not in this archive (yet)</h3>
+      <p className="text-xs text-[var(--text-faint)] mb-3 leading-relaxed">
         We would rather be honest than imply completeness. These parts live elsewhere and need their own export:
       </p>
       <ul className="space-y-2 mb-2">
         {NOT_COVERED.map((line, i) => (
-          <li key={i} className="flex items-start gap-2 text-xs text-neutral-500 leading-relaxed">
+          <li key={i} className="flex items-start gap-2 text-xs text-[var(--text-muted)] leading-relaxed">
             <span aria-hidden="true" className="text-warning mt-px">•</span>
             <span>{line}</span>
           </li>

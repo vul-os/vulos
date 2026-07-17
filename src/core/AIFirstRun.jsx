@@ -83,7 +83,7 @@ export default function AIFirstRun() {
 
   return (
     <div
-      className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-950/70 backdrop-blur-sm"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
       onClick={handleDismiss}
       aria-modal="true"
       role="dialog"
@@ -91,7 +91,7 @@ export default function AIFirstRun() {
     >
       <div
         ref={trapRef}
-        className="relative w-full max-w-sm mx-4 rounded-2xl bg-neutral-900 border border-neutral-800/60 shadow-2xl shadow-black/60 overflow-hidden animate-[fadeIn_0.12s_ease-out]"
+        className="relative w-full max-w-sm mx-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-default)] shadow-2xl shadow-black/60 overflow-hidden animate-[fadeIn_0.12s_ease-out]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Ambient glow — follows the operator's accent */}
@@ -105,20 +105,20 @@ export default function AIFirstRun() {
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
             </svg>
           </div>
-          <h2 id="ai-firstrun-title" className="text-lg font-semibold text-neutral-100">Meet your AI assistant</h2>
-          <p className="text-sm text-neutral-500 mt-1.5 leading-relaxed">
-            Press <kbd className="px-1.5 py-0.5 text-[11px] rounded bg-neutral-800 border border-neutral-700 text-neutral-300 font-mono">Ctrl+K</kbd> any time to open the chat.
+          <h2 id="ai-firstrun-title" className="text-lg font-semibold text-[var(--text-primary)]">Meet your AI assistant</h2>
+          <p className="text-sm text-[var(--text-muted)] mt-1.5 leading-relaxed">
+            Press <kbd className="px-1.5 py-0.5 text-[11px] rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-secondary)] font-mono">Ctrl+K</kbd> any time to open the chat.
           </p>
         </div>
 
         {/* Capabilities */}
         <ul className="px-5 pb-5 space-y-2.5">
           {CAPABILITIES.map((cap) => (
-            <li key={cap.label} className="flex items-start gap-3 bg-neutral-800/40 rounded-xl px-4 py-3 border border-neutral-800/50">
+            <li key={cap.label} className="flex items-start gap-3 bg-[var(--bg-elevated)] rounded-xl px-4 py-3 border border-[var(--border-default)]">
               <span className="mt-0.5 accent-text shrink-0">{cap.icon}</span>
               <div>
-                <div className="text-sm font-medium text-neutral-200">{cap.label}</div>
-                <div className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{cap.desc}</div>
+                <div className="text-sm font-medium text-[var(--text-primary)]">{cap.label}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{cap.desc}</div>
               </div>
             </li>
           ))}
@@ -128,7 +128,7 @@ export default function AIFirstRun() {
         <div className="px-5 pb-6 flex gap-3">
           <button
             onClick={handleDismiss}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-neutral-400 bg-neutral-800/60 hover:bg-neutral-800 transition-colors"
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[var(--text-tertiary)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated)] transition-colors"
           >
             Later
           </button>

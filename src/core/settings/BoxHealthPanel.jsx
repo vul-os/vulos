@@ -15,8 +15,16 @@ import { useTelemetry } from '../useTelemetry'
 // About page (static device info) with a live, health-focused view.
 // ---------------------------------------------------------------------------
 
-function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+function Section({ title, desc, children }) {
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+      </header>
+      {children}
+    </div>
+  )
 }
 
 function humanMB(mb) {
@@ -36,14 +44,14 @@ function humanBytes(n) {
 // Bar — a labelled utilization meter that turns amber/red as it fills.
 function Bar({ label, pct, right }) {
   const p = Math.max(0, Math.min(100, pct || 0))
-  const tone = p > 85 ? 'bg-red-500' : p > 65 ? 'bg-amber-500' : 'bg-blue-500'
+  const tone = p > 85 ? 'bg-[var(--status-danger)]' : p > 65 ? 'bg-[var(--status-warning)]' : 'bg-[var(--accent)]'
   const readout = right ?? `${Math.round(p)}%`
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
-      <span className="text-xs text-neutral-500">{label}</span>
+    <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
+      <span className="text-xs text-[var(--text-muted)]">{label}</span>
       <div className="flex items-center gap-2">
         <div
-          className="w-32 h-1.5 bg-neutral-800 rounded-full overflow-hidden"
+          className="w-32 h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden"
           role="progressbar"
           aria-label={`${label} utilization`}
           aria-valuenow={Math.round(p)}
@@ -53,7 +61,7 @@ function Bar({ label, pct, right }) {
         >
           <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${p}%` }} />
         </div>
-        <span className="text-xs text-neutral-400 w-16 text-right">{readout}</span>
+        <span className="text-xs text-[var(--text-tertiary)] w-16 text-right">{readout}</span>
       </div>
     </div>
   )
@@ -61,17 +69,17 @@ function Bar({ label, pct, right }) {
 
 function InfoRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40">
-      <span className="text-xs text-neutral-500">{label}</span>
-      <span className="text-sm text-neutral-300">{value ?? '—'}</span>
+    <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
+      <span className="text-xs text-[var(--text-muted)]">{label}</span>
+      <span className="text-sm text-[var(--text-secondary)]">{value ?? '—'}</span>
     </div>
   )
 }
 
 // checkTone maps a health check's string ("ok: …" | "degraded: …") to a dot color.
 function checkTone(v) {
-  if (typeof v !== 'string') return 'bg-neutral-500'
-  return v.startsWith('degraded') ? 'bg-red-400' : 'bg-green-400'
+  if (typeof v !== 'string') return 'bg-[var(--bg-active)]'
+  return v.startsWith('degraded') ? 'bg-[var(--status-danger)]' : 'bg-[var(--status-success)]'
 }
 
 export default function BoxHealthPanel() {
@@ -99,7 +107,7 @@ export default function BoxHealthPanel() {
 
   return (
     <Section title="Box Health">
-      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+      <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
         The live status of your sovereign server — resource usage and the built-in
         health checks. For a machine-readable feed, a Prometheus <span className="font-mono">/metrics</span> endpoint
         is available to the box owner.
@@ -110,13 +118,13 @@ export default function BoxHealthPanel() {
         role="status"
         aria-live="polite"
         className={`rounded-xl border px-4 py-3 mb-5 ${
-        healthErr ? 'border-neutral-700/50 bg-neutral-800/40 text-neutral-300'
-          : degraded ? 'border-red-800/40 bg-red-900/30 text-red-400'
-          : 'border-green-800/40 bg-green-900/30 text-green-400'
+        healthErr ? 'border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+          : degraded ? 'border-danger-soft bg-[var(--status-danger-soft)] text-[var(--status-danger)]'
+          : 'border-success-soft bg-[var(--status-success-soft)] text-[var(--status-success)]'
       }`}>
         <div className="flex items-center gap-2">
           <span className={`inline-block w-2 h-2 rounded-full ${
-            healthErr ? 'bg-neutral-400' : degraded ? 'bg-red-400' : 'bg-green-400'
+            healthErr ? 'bg-[var(--bg-active)]' : degraded ? 'bg-[var(--status-danger)]' : 'bg-[var(--status-success)]'
           }`} aria-hidden="true" />
           <span className="text-sm font-medium">
             {healthErr ? 'Health status unavailable' : degraded ? 'Attention needed' : 'All systems healthy'}
@@ -128,13 +136,13 @@ export default function BoxHealthPanel() {
       </div>
 
       {/* Live resource usage */}
-      <h3 className="text-sm font-medium text-neutral-300 mb-2">
+      <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">
         Resources
         <span className={`ml-2 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
-          connected ? 'bg-green-900/30 text-green-500' : 'bg-neutral-800/50 text-neutral-500'
+          connected ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
         }`}>{connected ? 'live' : 'offline'}</span>
       </h3>
-      <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-5">
+      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-5">
         <Bar label="CPU" pct={stats?.cpu} />
         <Bar label="Memory" pct={stats?.mem_percent}
           right={stats ? `${humanBytes(stats.mem_used)} / ${humanBytes(stats.mem_total)}` : '—'} />
@@ -149,15 +157,15 @@ export default function BoxHealthPanel() {
       {/* Health checks breakdown */}
       {health?.checks && (
         <>
-          <h3 className="text-sm font-medium text-neutral-300 mb-2">Health checks</h3>
-          <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50">
+          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Health checks</h3>
+          <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)]">
             {Object.entries(health.checks).map(([name, value]) => (
-              <div key={name} className="flex items-center justify-between px-4 py-2.5 bg-neutral-900/40 gap-3">
-                <span className="text-xs text-neutral-400 flex items-center gap-2">
+              <div key={name} className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)] gap-3">
+                <span className="text-xs text-[var(--text-tertiary)] flex items-center gap-2">
                   <span className={`inline-block w-1.5 h-1.5 rounded-full ${checkTone(value)}`} aria-hidden="true" />
                   {name.replace(/_/g, ' ')}
                 </span>
-                <span className="text-xs text-neutral-500 text-right truncate max-w-[55%]" title={value}>{value}</span>
+                <span className="text-xs text-[var(--text-muted)] text-right truncate max-w-[55%]" title={value}>{value}</span>
               </div>
             ))}
           </div>

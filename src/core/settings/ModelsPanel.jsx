@@ -22,8 +22,16 @@ import { useAuth } from '../../auth/AuthProvider'
 // hides itself for non-owners so the surface stays owner-facing.
 // ---------------------------------------------------------------------------
 
-function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+function Section({ title, desc, children }) {
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+      </header>
+      {children}
+    </div>
+  )
 }
 
 function humanBytes(n) {
@@ -39,20 +47,20 @@ function humanBytes(n) {
 const RAG_MODES = {
   semantic: {
     label: 'Semantic RAG active',
-    tone: 'text-green-400 bg-green-900/30 border-green-800/40',
-    dot: 'bg-green-400',
+    tone: 'text-[var(--status-success)] bg-[var(--status-success-soft)] border-success-soft',
+    dot: 'bg-[var(--status-success)]',
     desc: 'A local embedding model and its real tokenizer.json are installed. Your assistant retrieves mail by meaning — genuine semantic search, entirely on your box.',
   },
   degraded: {
     label: 'Degraded fallback',
-    tone: 'text-amber-400 bg-amber-900/30 border-amber-800/40',
-    dot: 'bg-amber-400',
+    tone: 'text-[var(--status-warning)] bg-[var(--status-warning-soft)] border-warning-soft',
+    dot: 'bg-[var(--status-warning)]',
     desc: 'A local model is installed but its tokenizer.json is missing, so embeddings use a deterministic hash fallback. Vectors are reproducible but only weakly meaningful — retrieval quality is reduced. Import the model’s tokenizer.json below to upgrade to real semantic RAG.',
   },
   lexical: {
     label: 'Lexical retrieval',
-    tone: 'text-neutral-300 bg-neutral-800/40 border-neutral-700/50',
-    dot: 'bg-neutral-400',
+    tone: 'text-[var(--text-secondary)] bg-[var(--bg-elevated)] border-[var(--border-strong)]',
+    dot: 'bg-[var(--bg-active)]',
     desc: 'No local embedding model is installed, so the assistant uses on-box lexical (keyword) retrieval. This is fully sovereign and needs no model, but does not find messages by meaning. Import an .onnx embedding model below to enable semantic RAG.',
   },
 }
@@ -80,7 +88,7 @@ function PythonDepsNotice({ deps }) {
   const hint = deps.install_hint || 'pip install onnxruntime tokenizers numpy'
   if (deps.ready) {
     return (
-      <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-green-900/20 text-green-500 border border-green-800/30">
+      <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-success-soft)] text-[var(--status-success)] border border-success-soft">
         On-box embedding runtime detected (python3 + onnxruntime + tokenizers). Semantic embeddings can run locally.
       </div>
     )
@@ -90,10 +98,10 @@ function PythonDepsNotice({ deps }) {
   if (!deps.onnxruntime) missing.push('onnxruntime')
   if (!deps.tokenizers) missing.push('tokenizers')
   return (
-    <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-amber-900/20 text-amber-400 border border-amber-800/30">
+    <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-warning-soft)] text-[var(--status-warning)] border border-warning-soft">
       The on-box embedding runtime is missing ({missing.join(', ') || 'dependencies'}). A model can be installed, but
       embeddings will not run until you install the <strong>vula-embed</strong> Python deps on the box:
-      <code className="block mt-1.5 font-mono text-amber-300 bg-neutral-950/60 rounded px-2 py-1 select-all">{hint}</code>
+      <code className="block mt-1.5 font-mono text-[var(--status-warning)] bg-[var(--bg-base)] rounded px-2 py-1 select-all">{hint}</code>
       This is never installed automatically — run it yourself on the box.
     </div>
   )
@@ -131,27 +139,27 @@ function CatalogRow({ entry, onDownloaded }) {
   }
 
   return (
-    <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30 px-4 py-3">
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-neutral-200 font-mono">{entry.name}</span>
+            <span className="text-sm font-medium text-[var(--text-primary)] font-mono">{entry.name}</span>
             {entry.recommended && (
-              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300">Recommended</span>
+              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent)]">Recommended</span>
             )}
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800/60 text-neutral-400">{entry.dim}-dim</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">{entry.dim}-dim</span>
           </div>
-          <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{entry.description}</p>
-          <p className="text-[11px] text-neutral-600 mt-0.5">Download: {humanBytes(totalBytes)} (model + tokenizer), verified by SHA-256.</p>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{entry.description}</p>
+          <p className="text-[11px] text-[var(--text-faint)] mt-0.5">Download: {humanBytes(totalBytes)} (model + tokenizer), verified by SHA-256.</p>
         </div>
         <button onClick={download} disabled={busy} aria-busy={busy} className="btn text-sm shrink-0 disabled:opacity-50 flex items-center gap-1.5">
           {busy && <span className="spinner w-3.5 h-3.5" aria-hidden="true" />}
           {busy ? 'Downloading…' : 'Download'}
         </button>
       </div>
-      {busy && <div className="mt-2 text-[11px] text-neutral-500" role="status">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
-      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400" role="status">{ok}</div>}
-      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400" role="alert">{err}</div>}
+      {busy && <div className="mt-2 text-[11px] text-[var(--text-muted)]" role="status">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-[var(--status-success)]" role="status">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{err}</div>}
     </div>
   )
 }
@@ -190,11 +198,11 @@ function ImportRow({ kind, label, accept, hint, onImported }) {
   }
 
   return (
-    <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30 px-4 py-3">
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-neutral-200">{label}</div>
-          <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{hint}</p>
+          <div className="text-sm font-medium text-[var(--text-primary)]">{label}</div>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{hint}</p>
         </div>
         <button onClick={pick} disabled={busy} aria-busy={busy} className="btn text-sm shrink-0 disabled:opacity-50 flex items-center gap-1.5">
           {busy && <span className="spinner w-3.5 h-3.5" aria-hidden="true" />}
@@ -209,8 +217,8 @@ function ImportRow({ kind, label, accept, hint, onImported }) {
         className="hidden"
         aria-label={`Import ${label}`}
       />
-      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-green-900/30 text-green-400" role="status">{ok}</div>}
-      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-red-900/30 text-red-400" role="alert">{err}</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-[var(--status-success)]" role="status">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{err}</div>}
     </div>
   )
 }
@@ -224,7 +232,7 @@ export default function ModelsPanel() {
   if (!isOwner) {
     return (
       <Section title="AI Models">
-        <p className="text-sm text-neutral-500">Model management is available to the box owner only.</p>
+        <p className="text-sm text-[var(--text-muted)]">Model management is available to the box owner only.</p>
       </Section>
     )
   }
@@ -257,8 +265,8 @@ function ModelsPanelOwner() {
 
   return (
     <Section title="AI Models">
-      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
-        Manage the private AI running on <strong className="text-neutral-400">your own box</strong>.
+      <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
+        Manage the private AI running on <strong className="text-[var(--text-tertiary)]">your own box</strong>.
         The embedding model powers semantic search over your mail (RAG); chat models
         are routed through your llmux gateway. Everything here reflects what is
         actually installed — no hidden downloads.
@@ -268,18 +276,18 @@ function ModelsPanelOwner() {
       {/* RAG readiness — the honest retrieval-quality indicator          */}
       {/* -------------------------------------------------------------- */}
       <div className="mb-6">
-        <h3 className="text-sm font-medium text-neutral-300 mb-2">Retrieval quality</h3>
+        <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Retrieval quality</h3>
         <RAGReadinessBadge mode={ragMode} />
       </div>
 
       {loading && (
-        <p className="text-sm text-neutral-500 flex items-center gap-2" role="status">
+        <p className="text-sm text-[var(--text-muted)] flex items-center gap-2" role="status">
           <span className="spinner w-3.5 h-3.5" aria-hidden="true" />
           Loading models…
         </p>
       )}
       {error && (
-        <div className="mb-4 text-xs rounded px-3 py-2 bg-red-900/30 text-red-400" role="alert">{error}</div>
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{error}</div>
       )}
 
       {emb && (
@@ -287,23 +295,23 @@ function ModelsPanelOwner() {
           {/* Installed embedding models */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-neutral-300">Embedding models</h3>
+              <h3 className="text-sm font-medium text-[var(--text-secondary)]">Embedding models</h3>
               <button onClick={load} className="btn-ghost text-xs">Refresh</button>
             </div>
             {emb.models?.length ? (
               <div className="space-y-2">
                 {emb.models.map(mm => (
-                  <div key={mm.name} className="rounded-lg border border-neutral-800/60 bg-neutral-900/30 px-4 py-3">
+                  <div key={mm.name} className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-neutral-200 font-mono">{mm.name}</span>
+                      <span className="text-sm font-medium text-[var(--text-primary)] font-mono">{mm.name}</span>
                       {mm.active && (
-                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-900/40 text-green-400">Active</span>
+                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">Active</span>
                       )}
                       {mm.has_tokenizer
-                        ? <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-900/30 text-green-500">tokenizer ✓</span>
-                        : <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">no tokenizer</span>}
+                        ? <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">tokenizer ✓</span>
+                        : <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-warning-soft)] text-[var(--status-warning)]">no tokenizer</span>}
                     </div>
-                    <div className="text-xs text-neutral-500 mt-1">
+                    <div className="text-xs text-[var(--text-muted)] mt-1">
                       {humanBytes(mm.size_bytes)}
                       {mm.sha256 && <span className="font-mono ml-2 opacity-70">sha256:{mm.sha256.slice(0, 12)}…</span>}
                     </div>
@@ -311,12 +319,12 @@ function ModelsPanelOwner() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-neutral-500">
+              <p className="text-sm text-[var(--text-muted)]">
                 No embedding model installed — the assistant is using sovereign lexical retrieval.
                 Import an <span className="font-mono">.onnx</span> model below to enable semantic RAG.
               </p>
             )}
-            <p className="text-[11px] text-neutral-600 mt-2 font-mono truncate" title={emb.dir}>
+            <p className="text-[11px] text-[var(--text-faint)] mt-2 font-mono truncate" title={emb.dir}>
               {emb.dir}
             </p>
           </div>
@@ -324,8 +332,8 @@ function ModelsPanelOwner() {
           {/* One-click download from the curated, pinned catalog */}
           {emb.catalog?.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-medium text-neutral-300 mb-2">Download a recommended model</h3>
-              <p className="text-[11px] text-neutral-600 mb-3 leading-relaxed">
+              <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Download a recommended model</h3>
+              <p className="text-[11px] text-[var(--text-faint)] mb-3 leading-relaxed">
                 Install a curated embedding model in one click. The model is fetched on demand
                 from a pinned source and verified by SHA-256 before it is installed — nothing
                 is bundled in the app.
@@ -345,8 +353,8 @@ function ModelsPanelOwner() {
 
           {/* Import flow (manual) */}
           <div className="mb-6">
-            <h3 className="text-sm font-medium text-neutral-300 mb-2">Or import a model you already have</h3>
-            <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-neutral-800/40 text-neutral-400 border border-neutral-700/40">
+            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Or import a model you already have</h3>
+            <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--border-strong)]">
               Already have an ONNX sentence-embedding model and its
               <span className="font-mono"> tokenizer.json</span>? Import both files here.
               The active model is picked up automatically.
@@ -371,19 +379,19 @@ function ModelsPanelOwner() {
 
           {/* Chat models (llmux) */}
           <div>
-            <h3 className="text-sm font-medium text-neutral-300 mb-2">Chat models</h3>
+            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Chat models</h3>
             {data?.chat_models_error ? (
-              <p className="text-sm text-neutral-500">{data.chat_models_error}</p>
+              <p className="text-sm text-[var(--text-muted)]">{data.chat_models_error}</p>
             ) : chatModels.length ? (
               <div className="flex flex-wrap gap-2">
                 {chatModels.map(id => (
-                  <span key={id} className="text-xs font-mono rounded px-2 py-1 bg-neutral-800/50 text-neutral-300">{id}</span>
+                  <span key={id} className="text-xs font-mono rounded px-2 py-1 bg-[var(--bg-elevated)] text-[var(--text-secondary)]">{id}</span>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-neutral-500">No chat models reported by the gateway.</p>
+              <p className="text-sm text-[var(--text-muted)]">No chat models reported by the gateway.</p>
             )}
-            <p className="text-[11px] text-neutral-600 mt-2 leading-relaxed">
+            <p className="text-[11px] text-[var(--text-faint)] mt-2 leading-relaxed">
               Chat model routing and provider management are handled by your llmux gateway.
             </p>
           </div>

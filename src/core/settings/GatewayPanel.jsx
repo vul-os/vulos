@@ -158,37 +158,37 @@ export default function GatewayPanel() {
     }
   }
 
-  const healthTone = health === 'ok' ? 'bg-green-400' : health === 'down' ? 'bg-red-400' : 'bg-amber-400'
+  const healthTone = health === 'ok' ? 'bg-[var(--status-success)]' : health === 'down' ? 'bg-[var(--status-danger)]' : 'bg-[var(--status-warning)]'
   const healthText = health === 'ok' ? 'Reachable' : health === 'down' ? 'Unreachable' : 'Checking…'
 
   return (
     <Section title="Control Plane">
-      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+      <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
         The gateway is the control plane your device authenticates against for cloud
         sign-in, account enrollment, and instance routing. Managed devices use
-        <strong className="text-neutral-400"> Vulos Cloud</strong>. Point it at your own
+        <strong className="text-[var(--text-tertiary)]"> Vulos Cloud</strong>. Point it at your own
         <span className="font-mono"> vulos-management</span> control plane if you self-host.
       </p>
 
       {loadErr && (
-        <div className="rounded-xl border border-neutral-700/50 bg-neutral-800/40 text-neutral-300 px-4 py-3 mb-5 text-sm" role="alert">
+        <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-4 py-3 mb-5 text-sm" role="alert">
           Could not load the gateway configuration.
         </div>
       )}
 
       {info && (
-        <div className="space-y-px rounded-xl overflow-hidden border border-neutral-800/50 mb-5">
-          <div className="flex items-center justify-between px-4 py-3 bg-neutral-900/40">
-            <span className="text-xs text-neutral-500">Current gateway</span>
-            <span className="text-sm text-neutral-200 font-mono break-all text-right max-w-[65%]">{info.url}</span>
+        <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-5">
+          <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
+            <span className="text-xs text-[var(--text-muted)]">Current gateway</span>
+            <span className="text-sm text-[var(--text-primary)] font-mono break-all text-right max-w-[65%]">{info.url}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3 bg-neutral-900/40">
-            <span className="text-xs text-neutral-500">Source</span>
-            <span className="text-sm text-neutral-300">{SOURCE_LABEL[info.source] || info.source}</span>
+          <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
+            <span className="text-xs text-[var(--text-muted)]">Source</span>
+            <span className="text-sm text-[var(--text-secondary)]">{SOURCE_LABEL[info.source] || info.source}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3 bg-neutral-900/40">
-            <span className="text-xs text-neutral-500">Status</span>
-            <span className="flex items-center gap-2 text-sm text-neutral-300">
+          <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
+            <span className="text-xs text-[var(--text-muted)]">Status</span>
+            <span className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
               <span className={`inline-block w-2 h-2 rounded-full ${healthTone}`} aria-hidden="true" />
               {healthText}
             </span>
@@ -208,7 +208,7 @@ export default function GatewayPanel() {
       )}
 
       {editing && (
-        <div className="rounded-xl border border-neutral-800/60 bg-neutral-900/50 p-4 space-y-3">
+        <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 space-y-3">
           {/* Warning: gateway is identity-scoped. */}
           <div className="flex items-start gap-2 bg-warning-soft border border-warning-soft rounded-xl px-4 py-3">
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-warning mt-0.5 shrink-0">
@@ -221,7 +221,7 @@ export default function GatewayPanel() {
             </p>
           </div>
 
-          <label htmlFor="gw-settings-url" className="block text-xs text-neutral-500">Gateway URL</label>
+          <label htmlFor="gw-settings-url" className="block text-xs text-[var(--text-muted)]">Gateway URL</label>
           <div className="flex gap-2">
             <input
               id="gw-settings-url"
@@ -244,8 +244,8 @@ export default function GatewayPanel() {
           </div>
 
           {msg && (
-            <div className={`flex items-start gap-2 text-xs ${msg.ok ? 'text-emerald-400' : 'text-danger'}`} role={msg.ok ? 'status' : 'alert'}>
-              <span className={`inline-block w-2 h-2 rounded-full mt-1 ${msg.ok ? 'bg-emerald-400' : 'bg-red-400'}`} aria-hidden="true" />
+            <div className={`flex items-start gap-2 text-xs ${msg.ok ? 'text-[var(--status-success)]' : 'text-danger'}`} role={msg.ok ? 'status' : 'alert'}>
+              <span className={`inline-block w-2 h-2 rounded-full mt-1 ${msg.ok ? 'bg-[var(--status-success)]' : 'bg-[var(--status-danger)]'}`} aria-hidden="true" />
               <span>{msg.text}</span>
             </div>
           )}
