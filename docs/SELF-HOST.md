@@ -114,6 +114,33 @@ seams, and never opens a commercial store or charges money:
   counts for an external scaler through the `relayscale.RelayProvisioner`
   seam, regardless of which provisioner is active (**manual** by default —
   see [RELAY-SCALING.md](RELAY-SCALING.md)).
+- **Device enrollment, OS routing, integrations & storage**
+  (`registerNetworkOperational`) — mounted against the same shared auth store,
+  all fail-closed:
+  - **Device enrollment** — the RFC-8628 device-authorization grant
+    (`POST /enroll/{start,poll,approve,deny}`; `start`/`poll` are public +
+    per-IP rate-limited, `approve`/`deny` are session-gated) plus the
+    session-driven web-wizard enrollment (`POST /api/enroll`,
+    `/api/enroll/direct`, `/api/connmode`). The MIT default mints device certs
+    with a process-local CA signer (a persistent CA is a configured concern).
+  - **OS routing plane** — the DNS plane (`/api/dnsplane/*`, in-process
+    `MemProvider`; the cloud root injects Cloudflare), relay status
+    (`GET /api/relay/status`), the edge control plane (`/api/edge/*`), BYO-CDN
+    (`/api/cdn/*`), and multi-location management (`/api/multiloc/*`).
+  - **Integrations** — the third-party OAuth data broker
+    (`/api/integrations/*`). Without `INTEGRATIONS_KEK` the broker refuses to
+    custody tokens (Connect/Mint error; the routes still report status).
+  - **Mail key directory** (`/api/mail/keydir`) and the **cloud-home directory
+    + peering intake** (`/api/verify/lookup`, `/api/peering/*`,
+    `/api/cloudhome/*`). Cloud-home fail-closes to `503` on every route unless
+    `CLOUDHOME_KEK` is configured — the cell never custodies peering keys under
+    a default key.
+  - **Storage / files / export** (`/api/storage/*`, `/api/account/export`,
+    the Files/Drive control plane), **storage-backend selection**
+    (`/api/storage/backend`, `/api/storage/sync-mode`), and the **mail-backend
+    resolver** (`/api/resolve/backend`). Bring-your-own-bucket by default: the
+    no-op `StorageProvisioner` never creates a bucket, and a managed presign
+    with no `S3_*` credentials answers an honest `503`.
 - **Operator (admin) console** — **opt-in**, off by default. Set
   `VULOS_ENABLE_SUPERADMIN=1` (or `VULOS_BOOTSTRAP_SUPERADMIN=<email>`) to
   mount the operator HTML pages, session/login, and the JSON admin API the
@@ -124,39 +151,29 @@ seams, and never opens a commercial store or charges money:
 - **Org-admin console** (`pkg/orgadmin`) — mounted unconditionally alongside
   the product catalogue, gated by the shared auth store.
 
-### What's in the module, not yet wired into the default binary
+### What's in the module, not wired into the default binary
 
-These packages and their `pkg/cproutes` route handlers already live in this
-repo — they were extracted at the same time as everything above — but
-`cmd/server` does not mount them yet (see the "NOT wired by this zero-config
-default" note at the bottom of `pkg/cproutes/register_all.go`). Each needs a
-`RouteRegistrar` wired into `RegisterOperational` (or your own thin `main`,
-built the same way `vulos-cloud`'s is, against `pkg/cpserver`):
+Only two things remain unmounted by the zero-config default, and neither is a
+mechanical migration gap:
 
-- **Device enrollment** (`pkg/enroll`, `pkg/cproutes/routes_enroll.go`) — the
-  RFC-8628 device-authorization flow, plus boot-enrollment.
-- **OS routing & directory** (`pkg/osrouter`, `pkg/routing`,
-  `pkg/cproutes/routes_routing_enroll.go`, `dnsplane.go`, `relaystatus.go`) —
-  resolves your OS hostname to the best box in your cluster; the DNS plane,
-  CDN, and edge routes.
-- **Integrations** (`pkg/integrations`) — the third-party OAuth data-broker
-  routes.
-- **Storage / files** (`pkg/storage`, `pkg/storagesel`, `pkg/files`,
-  `pkg/cloudhome`, `pkg/keydir`, `pkg/residency`) — object storage serving,
-  account export, and the storage-selection/residency plane against whatever
-  bucket you configure via `StorageProvisioner`.
-- **Status pages** (`pkg/status`, `pkg/cloudstatus`) — the public
-  status/incidents surface.
 - **Box billing read** (`GET /api/box`, `GET /api/box/billing`) and the whole
   commercial billing/pricing/admin-billing surface — inherently
   commercial-only; the private `vulos-cloud` composition root mounts these.
+- **Library packages with no operational HTTP handler** —
+  `pkg/status` (the durable uptime-sample + operator-incident store that would
+  back a *public* status/incidents page), `pkg/osrouter` (the hostname→box
+  resolver library the routing plane calls in-process), and `pkg/residency`
+  (the residency contract). These have no `pkg/cproutes` route group to mount
+  yet. Note the account/cloud/support/per-cell **status** surface the console
+  consumes (`pkg/cloudstatus`) *is* wired — see `registerConsoleOperational`.
 
-None of this is a licensing gate or a commercial hold-back — it's a mechanical
-migration checklist. Track it in
-[CHANGELOG.md](../CHANGELOG.md#unreleased). If you need one of these route
-groups today, mounting it yourself is a few lines: call the package's
-`Wire*`/`Register*` helper from a `cpserver.RouteRegistrar` you pass in
-`cpserver.Deps.Routes`, the same hook `cmd/server` uses for the SPA fallback.
+Everything else — device enrollment, the OS routing plane (DNS/relay/edge/CDN/
+multi-location), integrations, the mail key directory, cloud-home, and the
+storage/files/selection/resolver plane — is now mounted by the default binary
+via `registerNetworkOperational`, fail-closed (see the note at the bottom of
+`pkg/cproutes/register_all.go`). None of it is a licensing gate. If you need the
+box-billing surface, build your own thin `main` the same way `vulos-cloud`'s is,
+against `pkg/cpserver`, and pass a `RouteRegistrar` in `cpserver.Deps.Routes`.
 
 ## The seams (free by default)
 

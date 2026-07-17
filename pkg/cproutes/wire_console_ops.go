@@ -50,7 +50,12 @@ import (
 // /console SPA consumes and returns the store closers (run in reverse on
 // shutdown). Called from RegisterOperational. Never fails the caller: a store
 // that cannot open falls back to an in-memory store and logs.
-func registerConsoleOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
+//
+// fleetStore is opened ONCE by the caller (RegisterOperational) and threaded in,
+// because the network/routing groups (enrollment, edge, CDN, multi-location)
+// registered alongside these need the SAME fleet store — device rows created on
+// enrollment must be visible to the fleet/support/status views here.
+func registerConsoleOperational(mux *http.ServeMux, deps OperationalDeps, fleetStore fleet.Store) []func() {
 	var closers []func()
 	add := func(c func()) {
 		if c != nil {
@@ -59,10 +64,8 @@ func registerConsoleOperational(mux *http.ServeMux, deps OperationalDeps) []func
 	}
 
 	// ── Fleet (orgs / devices / heartbeats / invites) ─────────────────────────
-	// The shared fleet store also backs the support/status and account-status
-	// groups below, so it is opened once and threaded through.
-	fleetStore, fleetCloser := openFleetStore(deps.DBDir)
-	add(fleetCloser)
+	// The shared fleet store (opened by RegisterOperational) also backs the
+	// support/status and account-status groups below.
 	// ownerResolver is nil in self-host: device access is gated on account
 	// ownership (and org-admin role), which needs no routing-side resolver.
 	RegisterFleet(mux, fleetStore, deps.AuthStore, nil)

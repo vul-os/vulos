@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Remaining operational route groups wired into the self-host binary**
+  (`registerNetworkOperational`, called from `cproutes.RegisterOperational`):
+  device enrollment (RFC-8628 `POST /enroll/{start,poll,approve,deny}` + the web
+  wizard `/api/enroll{,/direct}`, `/api/connmode`), the OS routing plane (DNS
+  plane, `GET /api/relay/status`, edge, BYO-CDN, multi-location), the third-party
+  OAuth data broker (`/api/integrations/*`), the mail key directory
+  (`/api/mail/keydir`), the cloud-home directory + peering intake, and the
+  storage/files/export + storage-selection + mail-resolver plane. All mount
+  against the shared auth store and are **fail-closed** — every group gates on a
+  session (or device/shared-secret) gate, and the ones needing a secret
+  (`INTEGRATIONS_KEK`, `CLOUDHOME_KEK`, managed `S3_*` creds) refuse/`503`
+  rather than fail open. The `fleet` + `routing` stores are opened once and
+  shared so an enrolled device row/binding is visible to the console views. The
+  management binary is now functionally complete for self-hosting; the only
+  unmounted surface is the commercial box-billing read and library packages with
+  no route handler (`pkg/status`, `pkg/osrouter`, `pkg/residency`). Regression
+  tests in `pkg/cproutes/wire_operational_extra_test.go` assert each group is
+  mounted (never 404) and authz-gated (never a 2xx fail-open).
 - **Opt-in migration checksum reconcile** (`VULOS_MIGRATE_RECONCILE_CHECKSUMS=1`):
   a controlled escape hatch for deploying an intentional clean-baseline migration
   fold against an EXISTING database that cannot be reset (e.g. production). When
@@ -33,16 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Wire the remaining operational route groups — device enrollment (RFC-8628),
-  OS routing + DNS/CDN/edge, integrations, and the storage/files surface —
-  into `cmd/server`'s default `cproutes.RegisterOperational` call, via the
-  same `RouteRegistrar` hook the composition root already exposes. The Go
-  packages and their route handlers already live in this repo (`pkg/enroll`,
-  `pkg/routing`, `pkg/osrouter`, `pkg/storage`, `pkg/integrations`, and their
-  `pkg/cproutes/*` handler files); see
+- Give the durable status store (`pkg/status`) and the OS-router library
+  (`pkg/osrouter`) their own `pkg/cproutes` route groups so a *public*
+  status/incidents page and the hostname→box resolver are self-host-mountable;
+  today they are library packages with no operational HTTP handler. See
   [`docs/SELF-HOST.md`](docs/SELF-HOST.md#whats-wired-in-today) for exactly
-  what the self-host binary serves today versus what still needs a
-  registrar.
+  what the self-host binary serves today.
 
 ## [0.2.0] - 2026-07-17
 

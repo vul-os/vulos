@@ -161,6 +161,16 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 		RegisterLegal(mux, deps.AuthStore, deps.AuthDB)
 	}
 
+	// Shared operational stores threaded into BOTH the console-operational groups
+	// and the network/routing + storage groups below. Opened ONCE here (cpdb;
+	// in-memory fallback) so, e.g., a device row created by enrollment is visible
+	// to the fleet/support/status console views, and a routing binding written by
+	// enrollment is the same one the DNS plane / relay-status / resolver read.
+	fleetStore, fleetCloser := openFleetStore(deps.DBDir)
+	add(fleetCloser)
+	routingStore, routingCloser := openRoutingStore(deps.DBDir)
+	add(routingCloser)
+
 	// Operational surfaces the management /console SPA consumes: fleet + devices,
 	// account/support/cell status, compliance/privacy, org audit + product
 	// catalogue, developer webhooks + MCP. Each opens its own operational store
@@ -168,8 +178,16 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// instead of 404. This also registers the product catalogue (GET/PATCH
 	// /api/products) with the real caller gate — so it is NOT registered again
 	// below.
-	add2 := registerConsoleOperational(mux, deps)
-	closers = append(closers, add2...)
+	closers = append(closers, registerConsoleOperational(mux, deps, fleetStore)...)
+
+	// Network/routing + storage operational surface: device enrollment (RFC-8628),
+	// the OS routing plane (routing-enroll, DNS plane, relay status, edge, CDN,
+	// multi-location), the third-party OAuth data-broker, the mail key directory,
+	// the cloud-home directory + peering intake, and the storage/files/export +
+	// storage-selection + mail-resolver plane. All gate on the shared auth store
+	// and are fail-closed (a store that cannot open logs and answers 503; a group
+	// whose required secret is unset stays deny/unavailable, never fail-open).
+	closers = append(closers, registerNetworkOperational(mux, deps, fleetStore, routingStore)...)
 
 	// Boot/first-run endpoints.
 	RegisterBoot(mux)
@@ -180,15 +198,22 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// gated (fail-closed).
 	wireRelayScaleDemand(mux, deps.RelayProvisioner)
 
-	// NOT wired by this zero-config default (each is fail-closed on a required
-	// secret / needs a store-opening Wire* helper that still lives in the
-	// commercial module — a configured or commercial composition root mounts them):
-	//   - enroll + boot-enroll, integrations, the storage service
-	//     (RegisterStorage/RegisterFiles/RegisterAccountExport), storagesel,
-	//     DNS plane, routing/relay status, CDN, edge, cloud-home, keydir,
-	//     residency.
+	// NOT wired by this zero-config default (inherently commercial, or a library
+	// package with no operational HTTP handler in this module — a configured or
+	// commercial composition root mounts these):
 	//   - the box billing read (GET /api/box, /api/box/billing) and the whole
 	//     commercial billing/pricing/superadmin-billing surface.
+	//   - residency (pkg/residency), OS-router (pkg/osrouter) and the public
+	//     status/incidents pages (pkg/status): library packages with no
+	//     pkg/cproutes route handler yet. (The account/cloud/support/per-cell
+	//     STATUS surface the console consumes IS wired — see
+	//     registerConsoleOperational.)
+	//
+	// Everything else — device enrollment (RFC-8628), the OS routing plane
+	// (routing-enroll, DNS, relay status, edge, CDN, multi-location), the
+	// third-party OAuth broker, storage/files/export, storage-selection, the mail
+	// key directory, the cloud-home directory + peering intake, and the mail
+	// resolver — is now wired above via registerNetworkOperational, fail-closed.
 
 	return closers
 }

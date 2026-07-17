@@ -195,12 +195,13 @@ database, environment) is in [**docs/SELF-HOST.md**](docs/SELF-HOST.md).
 > catalogue, boot endpoints, your own fleet/devices/account/support/compliance
 > status, the org-admin console, and the relay-scaling demand API out of the
 > box — plus the operator (admin) console, opt-in via
-> `VULOS_ENABLE_SUPERADMIN=1`. The rest of the operational surface — device
-> enrollment, OS routing/DNS/CDN/edge, integrations, storage/files, and status
-> pages — already lives in this repo as `pkg/` packages with route handlers in
-> `pkg/cproutes`; wiring each into the default binary via the same
-> `RouteRegistrar` hook is tracked in
-> [CHANGELOG.md](CHANGELOG.md#unreleased). See
+> `VULOS_ENABLE_SUPERADMIN=1`. The rest of the operational surface — **device
+> enrollment (RFC-8628), OS routing/DNS/relay/CDN/edge, integrations, the mail
+> key directory, cloud-home peering, and storage/files/selection/resolver** — is
+> now mounted too, fail-closed, via `registerNetworkOperational`. The only things
+> the default binary does NOT mount are the commercial box-billing surface and a
+> few library packages with no route handler (`pkg/status`, `pkg/osrouter`,
+> `pkg/residency`). See
 > [docs/SELF-HOST.md#whats-wired-in-today](docs/SELF-HOST.md#whats-wired-in-today)
 > for the exact route-by-route breakdown.
 
