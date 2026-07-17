@@ -52,21 +52,21 @@ async function apcPurgeCache(appId) {
 function ResourceBar({ label, pct, warn }) {
   const clamp = Math.min(Math.max(pct || 0, 0), 100)
   const barColor = warn
-    ? 'bg-amber-500'
+    ? 'bg-warning'
     : clamp > 60
-    ? 'bg-blue-500'
+    ? 'accent-bg'
     : 'bg-neutral-600'
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="text-[10px] text-neutral-500 w-8 shrink-0">{label}</span>
+      <span className="text-[10px] text-neutral-500 w-8 shrink-0 font-mono">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-neutral-800 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${barColor}`}
           style={{ width: `${clamp}%` }}
         />
       </div>
-      <span className={`text-[10px] w-8 text-right shrink-0 ${warn ? 'text-amber-400' : 'text-neutral-500'}`}>
+      <span className={`text-[10px] w-8 text-right shrink-0 font-mono ${warn ? 'text-warning' : 'text-neutral-500'}`}>
         {Math.round(clamp)}%
       </span>
     </div>
@@ -78,11 +78,11 @@ function ResourceBar({ label, pct, warn }) {
 function MemWarningBanner({ appId, memPct }) {
   if (memPct < APC_WARN_THRESHOLD * 100) return null
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-900/30 border border-amber-700/40">
-      <svg viewBox="0 0 16 16" className="w-3 h-3 text-amber-400 shrink-0" fill="currentColor">
+    <div className="mt-1.5 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-warning-soft border border-warning-soft">
+      <svg viewBox="0 0 16 16" className="w-3 h-3 text-warning shrink-0" fill="currentColor">
         <path d="M8 1L1 14h14L8 1zm0 3.5l4.5 8H3.5L8 4.5zm-.75 3v3h1.5V7.5h-1.5zm0 3.75v1.5h1.5v-1.5h-1.5z"/>
       </svg>
-      <span className="text-[10px] text-amber-300 leading-tight">
+      <span className="text-[10px] text-warning leading-tight">
         {appId} is approaching its memory limit ({Math.round(memPct)}%)
       </span>
     </div>
@@ -143,9 +143,9 @@ function AppCard({ app, cgroupInfo, onToggle }) {
   const memWarn = memPct >= APC_WARN_THRESHOLD * 100
 
   return (
-    <div className={`rounded-xl border p-3 transition-all ${
+    <div className={`rounded-xl border p-3 transition-all hover:border-neutral-600/50 ${
       isPublic
-        ? 'bg-neutral-900/70 border-green-800/40'
+        ? 'bg-neutral-900/70 border-success-soft'
         : 'bg-neutral-900/40 border-neutral-800/40'
     }`}>
       {/* Header row */}
@@ -153,7 +153,7 @@ function AppCard({ app, cgroupInfo, onToggle }) {
         <div className="flex items-center gap-2 min-w-0">
           {/* Published badge */}
           {isPublic && (
-            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-green-900/40 text-green-400 border border-green-800/40">
+            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-success-soft text-success border border-success-soft">
               Public
             </span>
           )}
@@ -165,8 +165,9 @@ function AppCard({ app, cgroupInfo, onToggle }) {
           onClick={handleToggle}
           disabled={toggling}
           title={isPublic ? 'Make private' : 'Publish to web'}
-          className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
-            isPublic ? 'bg-green-600' : 'bg-neutral-700'
+          aria-pressed={isPublic}
+          className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-primary disabled:opacity-50 ${
+            isPublic ? 'bg-success' : 'bg-neutral-700'
           }`}
         >
           <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -278,8 +279,8 @@ export default function AppPublishCard() {
       <div className="flex-1 px-5 py-4 space-y-5 overflow-y-auto">
         {/* Error */}
         {error && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/40">
-            <span className="text-xs text-red-400">{error}</span>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-danger-soft border border-danger-soft">
+            <span className="text-xs text-danger">{error}</span>
           </div>
         )}
 
@@ -331,10 +332,12 @@ export default function AppPublishCard() {
 
         {/* Empty state */}
         {apps !== null && apps.length === 0 && !error && (
-          <div className="py-16 text-center">
-            <div className="text-3xl mb-3 opacity-30">◎</div>
-            <p className="text-sm text-neutral-500">No apps found.</p>
-            <p className="text-xs text-neutral-600 mt-1">Install apps from the App Hub to manage their visibility here.</p>
+          <div className="py-16 text-center animate-[fadeIn_0.2s_ease-out]">
+            <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800 text-neutral-600">
+              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+            </div>
+            <p className="text-sm text-neutral-400">No apps found.</p>
+            <p className="text-xs text-neutral-600 mt-1.5 max-w-xs mx-auto leading-relaxed">Install apps from the App Hub to manage their visibility here.</p>
           </div>
         )}
       </div>

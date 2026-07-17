@@ -128,14 +128,18 @@ export default function Contacts() {
 
   if (unavailable) {
     return (
-      <div className="h-full grid place-items-center bg-neutral-950 text-center px-6" data-contacts-app>
-        <div>
-          <div className="text-neutral-300 text-sm">Contacts unavailable.</div>
-          <div className="text-neutral-500 text-[12px] mt-1 max-w-xs mx-auto">
+      <div className="h-full grid place-items-center bg-neutral-950 text-center px-6 animate-[fadeIn_0.2s_ease-out]" data-contacts-app>
+        <div className="max-w-xs">
+          <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800"
+            style={{ background: 'var(--accent-soft)' }}>
+            <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+          </div>
+          <div className="text-neutral-200 text-sm font-medium">Contacts unavailable.</div>
+          <div className="text-neutral-500 text-[12px] mt-1.5 leading-relaxed">
             Connect a mail account (Gmail, Outlook, or IMAP/CardDAV) to see and manage your contacts.
           </div>
           <button type="button" onClick={connectMail}
-            className="mt-3 text-[12px] font-mono px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary">
+            className="mt-4 text-[12px] font-mono px-4 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">
             Connect Mail →
           </button>
         </div>
@@ -149,29 +153,37 @@ export default function Contacts() {
       {showList && (
       <div className={`${narrow ? 'w-full' : 'w-64 shrink-0 border-r border-neutral-800/70'} flex flex-col min-h-0`}>
         <div className="p-2.5 border-b border-neutral-800/70 flex items-center gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search contacts"
-            aria-label="Search contacts"
-            className="flex-1 min-w-0 bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-2 text-[12px] focus-primary"
-          />
+          <div className="relative flex-1 min-w-0">
+            <svg viewBox="0 0 16 16" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3" strokeLinecap="round"/></svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search contacts"
+              aria-label="Search contacts"
+              className="w-full min-w-0 bg-neutral-800/60 border border-neutral-700/80 rounded-md pl-8 pr-2.5 py-2 text-[12px] focus-primary transition-colors focus:border-neutral-600"
+            />
+          </div>
           <button type="button" onClick={startCreate} aria-label="New contact"
-            className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md text-white text-lg focus-primary"
+            className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md text-white text-lg transition-all hover:brightness-110 active:scale-95 focus-primary shadow-sm"
             style={{ background: 'var(--accent)' }}>+</button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {loading && contacts.length === 0 ? (
-            <div className="p-4 text-neutral-500 text-[12px]">Loading…</div>
+            <div className="p-4 flex items-center gap-2 text-neutral-500 text-[12px]"><span className="w-3.5 h-3.5 spinner" /> Loading…</div>
           ) : filtered.length === 0 ? (
-            <div className="p-4 text-neutral-500 text-[12px]">{query ? 'No matches.' : 'No contacts yet.'}</div>
+            <div className="p-8 text-center text-neutral-500 text-[12px] animate-[fadeIn_0.2s_ease-out]">
+              <div className="w-10 h-10 mx-auto mb-2.5 grid place-items-center rounded-xl border border-neutral-800 text-neutral-600">
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+              </div>
+              {query ? 'No matches.' : 'No contacts yet.'}
+            </div>
           ) : (
-            <ul>
+            <ul className="py-1">
               {filtered.map((c) => (
                 <li key={c.id || c.name}>
                   <button type="button" onClick={() => { setSelectedId(c.id); setEditing(null) }}
-                    className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors focus-primary ${selectedId === c.id ? 'bg-neutral-800/70' : 'hover:bg-neutral-800/40'}`}>
-                    <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-[11px] font-mono"
+                    className={`group w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors focus-primary border-l-2 ${selectedId === c.id ? 'bg-neutral-800/70 border-[var(--accent)]' : 'border-transparent hover:bg-neutral-800/40'}`}>
+                    <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-[11px] font-mono font-semibold ring-1 ring-inset ring-white/5"
                       style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(c.name)}</span>
                     <span className="min-w-0">
                       <span className="block text-[12.5px] text-neutral-100 truncate">{c.name || '(no name)'}</span>
@@ -203,8 +215,13 @@ export default function Contacts() {
             <ContactDetail contact={selected} onEdit={() => startEdit(selected)}
               onDelete={() => remove(selected)} saving={saving} />
           ) : (
-            <div className="h-full grid place-items-center text-neutral-600 text-[13px]">
-              Select a contact, or add a new one.
+            <div className="h-full grid place-items-center text-center px-6 text-neutral-600 animate-[fadeIn_0.2s_ease-out]">
+              <div>
+                <div className="w-12 h-12 mx-auto mb-3 grid place-items-center rounded-2xl border border-neutral-800">
+                  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+                </div>
+                <div className="text-[13px] text-neutral-500">Select a contact, or add a new one.</div>
+              </div>
             </div>
           )}
         </div>
@@ -216,12 +233,12 @@ export default function Contacts() {
 
 function ContactDetail({ contact, onEdit, onDelete, saving }) {
   return (
-    <div className="p-6" data-contact-detail>
+    <div className="p-6 animate-[fadeIn_0.18s_ease-out]" data-contact-detail>
       <div className="flex items-center gap-4">
-        <span className="w-16 h-16 grid place-items-center rounded-full text-[22px] font-mono"
+        <span className="w-16 h-16 shrink-0 grid place-items-center rounded-full text-[22px] font-mono font-semibold ring-1 ring-inset ring-white/5"
           style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
         <div className="min-w-0">
-          <div className="text-[19px] font-semibold truncate">{contact.name || '(no name)'}</div>
+          <div className="text-[19px] font-semibold truncate tracking-tight">{contact.name || '(no name)'}</div>
           {(contact.title || contact.org) && (
             <div className="text-[13px] text-neutral-400 truncate">
               {[contact.title, contact.org].filter(Boolean).join(' · ')}
@@ -230,25 +247,35 @@ function ContactDetail({ contact, onEdit, onDelete, saving }) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button type="button" onClick={onEdit}
-            className="text-[12px] px-3 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary">Edit</button>
+            className="text-[12px] px-3 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">Edit</button>
           <button type="button" onClick={onDelete} disabled={saving}
-            className="text-[12px] px-3 py-2 rounded-md text-danger hover:bg-danger-soft focus-primary disabled:opacity-50">Delete</button>
+            className="text-[12px] px-3 py-2 rounded-md text-danger hover:bg-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
         </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-4">
         {contact.emails.length > 0 && (
           <Field label="Email">
-            {contact.emails.map((e, i) => (
-              <a key={i} href={`mailto:${e}`} className="block text-[13px] hover:underline" style={{ color: 'var(--accent)' }}>{e}</a>
-            ))}
+            <div className="flex flex-col gap-1">
+              {contact.emails.map((e, i) => (
+                <a key={i} href={`mailto:${e}`} className="flex items-center gap-2 text-[13px] px-2 py-1.5 -mx-2 rounded-md hover:bg-neutral-800/50 transition-colors focus-primary" style={{ color: 'var(--accent)' }}>
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0 opacity-70" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M2 4l6 4.5L14 4"/></svg>
+                  <span className="truncate">{e}</span>
+                </a>
+              ))}
+            </div>
           </Field>
         )}
         {contact.phones.length > 0 && (
           <Field label="Phone">
-            {contact.phones.map((p, i) => (
-              <a key={i} href={`tel:${p}`} className="block text-[13px] text-neutral-200 hover:underline">{p}</a>
-            ))}
+            <div className="flex flex-col gap-1">
+              {contact.phones.map((p, i) => (
+                <a key={i} href={`tel:${p}`} className="flex items-center gap-2 text-[13px] text-neutral-200 px-2 py-1.5 -mx-2 rounded-md hover:bg-neutral-800/50 transition-colors focus-primary">
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0 text-neutral-500" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round"/></svg>
+                  <span className="truncate">{p}</span>
+                </a>
+              ))}
+            </div>
           </Field>
         )}
         {contact.note && (
@@ -280,8 +307,11 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }) {
     return { ...f, [key]: cleaned }
   })
   return (
-    <div className="p-6 max-w-md" data-contact-editor>
-      <div className="text-[15px] font-semibold mb-4">{form.id ? 'Edit contact' : 'New contact'}</div>
+    <div className="p-6 max-w-md animate-[fadeIn_0.18s_ease-out]" data-contact-editor>
+      <div className="flex items-center gap-2 text-[15px] font-semibold mb-4 tracking-tight">
+        <span className="w-1.5 h-5 rounded-full" style={{ background: 'var(--accent)' }} />
+        {form.id ? 'Edit contact' : 'New contact'}
+      </div>
       <div className="flex flex-col gap-3">
         <Input label="Name" value={form.name} onChange={(v) => set({ name: v })} autoFocus />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -295,14 +325,14 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }) {
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Notes</span>
           <textarea value={form.note} onChange={(e) => set({ note: e.target.value })} rows={3}
-            className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[13px] resize-none focus-primary" />
+            className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 resize-none focus-primary" />
         </label>
       </div>
       <div className="mt-5 flex items-center gap-2">
         <button type="button" onClick={onCancel} disabled={saving}
           className="ml-auto text-[12px] px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary disabled:opacity-50">Cancel</button>
         <button type="button" onClick={onSave} disabled={saving}
-          className="text-[12px] px-3 py-1.5 rounded-md text-white focus-primary disabled:opacity-50"
+          className="text-[12px] px-3 py-1.5 rounded-md text-white font-medium transition-all hover:brightness-110 active:scale-[0.97] focus-primary disabled:opacity-50 shadow-sm"
           style={{ background: 'var(--accent)' }}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
     </div>
@@ -314,7 +344,7 @@ function Input({ label, value, onChange, autoFocus }) {
     <label className="flex flex-col gap-1">
       <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
       <input autoFocus={autoFocus} value={value} onChange={(e) => onChange(e.target.value)}
-        className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[13px] focus-primary" />
+        className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 focus-primary" />
     </label>
   )
 }
@@ -328,7 +358,7 @@ function ListField({ label, type, values, onChange }) {
           <input key={i} type={type} value={v} onChange={(e) => onChange(i, e.target.value)}
             aria-label={`${label} ${i + 1}`}
             placeholder={type === 'email' ? 'name@example.com' : ''}
-            className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[13px] focus-primary" />
+            className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 focus-primary" />
         ))}
       </div>
     </div>

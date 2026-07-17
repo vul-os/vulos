@@ -89,12 +89,12 @@ function OnlineBadge({ online }) {
     <span
       className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium border ${
         online
-          ? 'bg-emerald-900/40 text-emerald-400 border-emerald-800/40'
+          ? 'bg-success-soft text-success border-success-soft'
           : 'bg-neutral-800/60 text-neutral-500 border-neutral-700/40'
       }`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-600'}`}
+        className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-success animate-pulse' : 'bg-neutral-600'}`}
       />
       {online ? 'Online' : 'Offline'}
     </span>
@@ -105,14 +105,14 @@ function OnlineBadge({ online }) {
 
 function ResourceMiniBar({ label, pct }) {
   const clamp = Math.min(Math.max(pct || 0, 0), 100)
-  const color = clamp > 80 ? 'bg-amber-500' : clamp > 60 ? 'bg-blue-500' : 'bg-neutral-600'
+  const color = clamp > 80 ? 'bg-warning' : clamp > 60 ? 'accent-bg' : 'bg-neutral-600'
   return (
     <div className="flex items-center gap-1.5 min-w-0">
-      <span className="text-[10px] text-neutral-500 w-7 shrink-0">{label}</span>
+      <span className="text-[10px] text-neutral-500 w-7 shrink-0 font-mono">{label}</span>
       <div className="flex-1 h-1 rounded-full bg-neutral-800 overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${clamp}%` }} />
       </div>
-      <span className="text-[10px] text-neutral-500 w-7 text-right shrink-0">{Math.round(clamp)}%</span>
+      <span className="text-[10px] text-neutral-500 w-7 text-right shrink-0 font-mono">{Math.round(clamp)}%</span>
     </div>
   )
 }
@@ -141,30 +141,32 @@ function RenameModal({ instance, onSave, onCancel }) {
   }, [instance.id, name, saving, onSave])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 shadow-2xl">
-        <h3 className="text-sm font-semibold text-neutral-100 mb-3">Rename Instance</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]">
+      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 max-w-full shadow-2xl anim-sheet-up">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
+          <span className="w-1.5 h-4 rounded-full accent-bg" /> Rename Instance
+        </h3>
         <input
           ref={inputRef}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onCancel() }}
-          className="w-full bg-neutral-800 border border-neutral-700/60 rounded-lg px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500/70 transition-colors"
+          className="w-full bg-neutral-800 border border-neutral-700/60 rounded-lg px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500/70 transition-colors focus-primary"
           placeholder="Instance name"
         />
-        {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
         <div className="flex gap-2 mt-4 justify-end">
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors focus-primary"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!name.trim() || saving}
-            className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg accent-bg text-white font-medium hover:brightness-110 active:scale-[0.97] disabled:opacity-40 transition-all focus-primary"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -195,25 +197,27 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
   }, [instance.id, removing, onConfirm])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 shadow-2xl">
-        <h3 className="text-sm font-semibold text-neutral-100 mb-2">Remove Instance?</h3>
-        <p className="text-xs text-neutral-400 mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]">
+      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 max-w-full shadow-2xl anim-sheet-up">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-2">
+          <span className="w-1.5 h-4 rounded-full bg-danger" /> Remove Instance?
+        </h3>
+        <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
           Remove <span className="text-neutral-200 font-medium">{instance.display_name || truncateId(instance.id)}</span> from your account?
           This cannot be undone.
         </p>
-        {error && <p className="text-[11px] text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-[11px] text-danger mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors focus-primary"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={removing}
-            className="px-3 py-1.5 text-xs rounded-lg bg-red-700 text-white hover:bg-red-600 disabled:opacity-40 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-danger text-white font-medium hover:brightness-110 active:scale-[0.97] disabled:opacity-40 transition-all focus-primary"
           >
             {removing ? 'Removing...' : 'Remove'}
           </button>
@@ -231,11 +235,11 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
 
   const typeLabel = instance.type === 'cloud' ? 'Cloud' : 'Device'
   const typeColor = instance.type === 'cloud'
-    ? 'bg-indigo-900/40 text-indigo-400 border-indigo-800/40'
+    ? 'accent-bg-soft accent-text accent-border-soft'
     : 'bg-neutral-800/60 text-neutral-400 border-neutral-700/40'
 
   return (
-    <div className={`rounded-xl border transition-all ${
+    <div className={`rounded-xl border transition-all hover:border-neutral-600/60 ${
       instance.online
         ? 'bg-neutral-900/70 border-neutral-700/50'
         : 'bg-neutral-900/30 border-neutral-800/30'
@@ -295,7 +299,7 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
                   href={`https://${app.fqdn}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-blue-400 hover:text-blue-300 transition-colors"
+                  className="shrink-0 text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 accent-text transition-colors focus-primary"
                   title={`Open ${app.app_id} on this instance`}
                 >
                   Open ↗
@@ -311,14 +315,14 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
       <div className="px-3 pb-3 flex gap-2">
         <button
           onClick={onRename}
-          className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+          className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors focus-primary"
         >
           Rename
         </button>
         {!instance.is_owner && (
           <button
             onClick={onRemove}
-            className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-red-900/40 text-neutral-500 hover:text-red-400 transition-colors"
+            className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-danger-soft text-neutral-500 hover:text-danger transition-colors focus-primary"
           >
             Remove
           </button>
@@ -402,8 +406,8 @@ export default function InstancesPanel() {
       <div className="flex-1 px-5 py-4 space-y-5 overflow-y-auto">
         {/* Error */}
         {error && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-800/40">
-            <span className="text-xs text-red-400">{error}</span>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-danger-soft border border-danger-soft">
+            <span className="text-xs text-danger">{error}</span>
           </div>
         )}
 
@@ -457,10 +461,12 @@ export default function InstancesPanel() {
 
         {/* Empty state */}
         {instances !== null && instances.length === 0 && !error && (
-          <div className="py-16 text-center">
-            <div className="text-3xl mb-3 opacity-30">◎</div>
-            <p className="text-sm text-neutral-500">No instances found.</p>
-            <p className="text-xs text-neutral-600 mt-1">
+          <div className="py-16 text-center animate-[fadeIn_0.2s_ease-out]">
+            <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800 text-neutral-600">
+              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            </div>
+            <p className="text-sm text-neutral-400">No instances found.</p>
+            <p className="text-xs text-neutral-600 mt-1.5 max-w-xs mx-auto leading-relaxed">
               A new device joins this account from its own setup wizard — choose
               “Join an existing system” there, and it appears here.
             </p>

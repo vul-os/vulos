@@ -147,8 +147,8 @@ export default function ActivityMonitor() {
       {/* Graphs section */}
       <div className="shrink-0 p-3 pb-0">
         {!expanded ? (
-          /* Default: 4 compact graph cards */
-          <div className="grid grid-cols-4 gap-2" style={{ height: 140 }}>
+          /* Default: 4 compact graph cards — 2×2 on mobile, single row on desktop */
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 auto-rows-[118px] sm:auto-rows-auto sm:h-[140px]">
             {graphs.map(g => (
               <GraphCard
                 key={g.id}
@@ -202,7 +202,9 @@ export default function ActivityMonitor() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors ${tab === t ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
+              aria-pressed={tab === t}
+              className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${tab === t ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
+              style={tab === t ? { boxShadow: 'inset 0 -2px 0 var(--accent)' } : undefined}
             >
               {t === 'processes' ? `Processes (${processes.length})` : `Network (${netConns?.length || 0})`}
             </button>
@@ -211,7 +213,7 @@ export default function ActivityMonitor() {
         <input
           type="text" placeholder="Filter..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1 text-[11px] text-neutral-300 placeholder-neutral-600 w-40 outline-none focus:border-neutral-600 transition-colors"
+          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1.5 text-[11px] text-neutral-300 placeholder-neutral-600 w-28 sm:w-40 outline-none focus:border-neutral-600 transition-colors"
         />
       </div>
 
@@ -265,34 +267,37 @@ function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSort
 
   return (
     <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-800/60 bg-neutral-900/40 overflow-hidden">
-      {/* Header */}
-      <div className="grid gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 shrink-0 bg-neutral-900/80" style={{ gridTemplateColumns: gridTemplate }}>
-        {cols.map(c => (
-          <span
-            key={c.key}
-            className={`cursor-pointer select-none hover:text-neutral-400 ${sortCol === c.key ? 'text-neutral-300' : ''} ${c.align}`}
-            onClick={() => handleSort(c.key)}
-          >
-            {c.label}{sortCol === c.key ? (sortAsc ? ' \u25B2' : ' \u25BC') : ''}
-          </span>
-        ))}
-      </div>
-      {/* Rows */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {sorted.length === 0 && (
-          <div className="text-xs text-neutral-600 p-3">No processes found</div>
-        )}
-        {sorted.map(p => (
-          <div key={p.pid} className="grid gap-2 items-center px-3 py-1 text-[11px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
-            <span className="text-neutral-500 font-mono">{p.pid}</span>
-            <span className="text-neutral-300 truncate" title={p.command}>{p.name}</span>
-            <span className="text-neutral-500 truncate">{p.user}</span>
-            <StateIndicator state={p.state} />
-            <span className="text-right font-mono text-neutral-400">{p.cpu < 0.1 ? '0.0' : p.cpu?.toFixed(1)}</span>
-            <span className="text-right text-neutral-500 font-mono">{fmtBytes(p.mem_rss)}</span>
-            <span className="text-right text-neutral-500">{p.threads}</span>
+      {/* Scroll region \u2014 horizontal on narrow screens, vertical always */}
+      <div className="flex-1 min-h-0 overflow-auto">
+        <div className="min-w-[560px]">
+          {/* Header */}
+          <div className="grid gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+            {cols.map(c => (
+              <span
+                key={c.key}
+                className={`cursor-pointer select-none hover:text-neutral-400 transition-colors ${sortCol === c.key ? 'text-neutral-200' : ''} ${c.align}`}
+                onClick={() => handleSort(c.key)}
+              >
+                {c.label}{sortCol === c.key ? (sortAsc ? ' \u25B2' : ' \u25BC') : ''}
+              </span>
+            ))}
           </div>
-        ))}
+          {/* Rows */}
+          {sorted.length === 0 && (
+            <div className="text-xs text-neutral-600 p-6 text-center">No processes found</div>
+          )}
+          {sorted.map(p => (
+            <div key={p.pid} className="grid gap-2 items-center px-3 py-1 text-[11px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
+              <span className="text-neutral-500 font-mono">{p.pid}</span>
+              <span className="text-neutral-300 truncate" title={p.command}>{p.name}</span>
+              <span className="text-neutral-500 truncate">{p.user}</span>
+              <StateIndicator state={p.state} />
+              <span className="text-right font-mono text-neutral-400">{p.cpu < 0.1 ? '0.0' : p.cpu?.toFixed(1)}</span>
+              <span className="text-right text-neutral-500 font-mono">{fmtBytes(p.mem_rss)}</span>
+              <span className="text-right text-neutral-500">{p.threads}</span>
+            </div>
+          ))}
+        </div>
       </div>
       {/* Footer */}
       <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
@@ -341,26 +346,28 @@ function NetworkTable({ conns, search }) {
 
   return (
     <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-800/60 bg-neutral-900/40 overflow-hidden">
-      <div className="grid gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 shrink-0 bg-neutral-900/80" style={{ gridTemplateColumns: gridTemplate }}>
-        {cols.map(c => <span key={c.key}>{c.label}</span>)}
-      </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {filtered.length === 0 && (
-          <div className="text-xs text-neutral-600 p-3">No connections</div>
-        )}
-        {filtered.map((c, i) => (
-          <div key={i} className="grid gap-2 items-center px-3 py-1 text-[11px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
-            <span className="text-neutral-500 font-mono uppercase">{c.proto}</span>
-            <span className="text-neutral-300 font-mono truncate">{c.local_addr}:{c.local_port}</span>
-            <span className="text-neutral-500 font-mono truncate">
-              {c.remote_addr === '0.0.0.0' && c.remote_port === 0 ? '*' : `${c.remote_addr}:${c.remote_port}`}
-            </span>
-            <span className={`text-[10px] ${c.state === 'ESTABLISHED' ? 'text-emerald-400' : c.state === 'LISTEN' ? 'text-blue-400' : c.state === 'TIME_WAIT' ? 'text-amber-400' : 'text-neutral-500'}`}>
-              {c.state}
-            </span>
-            <span className="text-neutral-500 truncate">{c.process || '—'}</span>
+      <div className="flex-1 min-h-0 overflow-auto">
+        <div className="min-w-[560px]">
+          <div className="grid gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+            {cols.map(c => <span key={c.key}>{c.label}</span>)}
           </div>
-        ))}
+          {filtered.length === 0 && (
+            <div className="text-xs text-neutral-600 p-6 text-center">No connections</div>
+          )}
+          {filtered.map((c, i) => (
+            <div key={i} className="grid gap-2 items-center px-3 py-1 text-[11px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
+              <span className="text-neutral-500 font-mono uppercase">{c.proto}</span>
+              <span className="text-neutral-300 font-mono truncate">{c.local_addr}:{c.local_port}</span>
+              <span className="text-neutral-500 font-mono truncate">
+                {c.remote_addr === '0.0.0.0' && c.remote_port === 0 ? '*' : `${c.remote_addr}:${c.remote_port}`}
+              </span>
+              <span className={`text-[10px] ${c.state === 'ESTABLISHED' ? 'text-emerald-400' : c.state === 'LISTEN' ? 'text-blue-400' : c.state === 'TIME_WAIT' ? 'text-amber-400' : 'text-neutral-500'}`}>
+                {c.state}
+              </span>
+              <span className="text-neutral-500 truncate">{c.process || '—'}</span>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
         <span>{filtered.length} connection{filtered.length !== 1 ? 's' : ''}</span>
@@ -443,7 +450,7 @@ function AreaGraph({ data, color, fill, autoScale }) {
     <div ref={ref} className="w-full h-full">
       <svg width={w} height={h} className="block">
         {gridLines.map((y, i) => (
-          <line key={i} x1={0} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth={1} />
+          <line key={i} x1={0} y1={y} x2={w} y2={y} stroke="var(--graph-grid)" strokeWidth={1} strokeOpacity={0.7} />
         ))}
         {pts.length >= 2 && (
           <>
