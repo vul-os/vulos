@@ -34,6 +34,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/vul-os/vulos-management/pkg/cpdb"
+	"github.com/vul-os/vulos-management/pkg/ddos"
 	"github.com/vul-os/vulos-management/pkg/env"
 )
 
@@ -353,25 +354,28 @@ func IPAllowed(allowlist []*net.IPNet, ip string) bool {
 	return false
 }
 
-// remoteIP extracts the real client IP from r.
+// remoteIP extracts the real client IP from r for the IP allowlist and audit log.
 //
-// Security: we MUST NOT trust the leftmost X-Forwarded-For value because that
-// header is fully client-controlled and an attacker can forge it to bypass the
-// IP allowlist (e.g. "X-Forwarded-For: 10.0.0.1" makes the forged IP appear
-// to be the first entry).
-//
-// Instead we use the Fly-Client-IP header (set by the Fly.io edge proxy and
-// stripped from untrusted clients) when available, and fall back to the
-// TCP-level RemoteAddr which reflects the last hop and cannot be forged.
-// X-Forwarded-For is intentionally ignored for IP-allowlist decisions.
+// Security: a forwarding header (Fly-Client-IP, X-Forwarded-For, …) is fully
+// client-controlled on a raw self-host deployment, so trusting it unconditionally
+// lets an attacker forge "Fly-Client-IP: <allowlisted-ip>" to satisfy the
+// superadmin IP allowlist (and forge audit IPs). We therefore route through the
+// canonical trusted-edge resolver (ddos.RealClientIP): a forwarding header is
+// honoured ONLY when the deploy explicitly opts in via VULOS_EDGE_TRUST_HEADER
+// (optionally pinned to VULOS_EDGE_TRUST_CIDR upstreams — e.g. the Fly edge). With
+// no trust header configured the IP is derived from the TCP-level RemoteAddr,
+// which reflects the last hop and cannot be forged.
 func remoteIP(r *http.Request) string {
-	// Fly.io edge sets this and strips it from client requests.
-	if flyIP := r.Header.Get("Fly-Client-IP"); flyIP != "" {
-		return strings.TrimSpace(flyIP)
+	// ddos.RealClientIP honours a forwarding header ONLY when the deploy opts in
+	// via VULOS_EDGE_TRUST_HEADER (a forged Fly-Client-IP is otherwise ignored),
+	// and returns "" when the only visible address is a private/shared upstream.
+	if ip := ddos.RealClientIP(r); ip != "" {
+		return ip
 	}
+	// Fall back to the raw TCP peer address (last hop, un-forgeable).
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return strings.TrimSpace(r.RemoteAddr)
 	}
 	return host
 }

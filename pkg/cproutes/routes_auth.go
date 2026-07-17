@@ -56,9 +56,31 @@ import (
 	"time"
 
 	"github.com/vul-os/vulos-management/pkg/auth"
+	"github.com/vul-os/vulos-management/pkg/ddos"
 	"github.com/vul-os/vulos-management/pkg/env"
 	"github.com/vul-os/vulos-management/pkg/httpx"
 )
+
+// authClientIP resolves the per-IP rate-limit key for auth endpoints.
+//
+// It applies the SAME trust decision as the rest of the control plane
+// (ddos.RealClientIP): a forwarding header (Fly-Client-IP / X-Forwarded-For / …)
+// is honoured ONLY when the deploy opts in via VULOS_EDGE_TRUST_HEADER (optionally
+// pinned to VULOS_EDGE_TRUST_CIDR upstreams). Without a configured trust header a
+// client-supplied header can never move the rate-limit bucket — the key derives
+// from the un-forgeable TCP peer address instead. When the trusted-edge resolver
+// yields "" (a private/shared upstream with no trust header) we fall back to the
+// raw RemoteAddr host so local/dev per-IP limiting still keys on the peer.
+func authClientIP(r *http.Request) string {
+	if ip := ddos.RealClientIP(r); ip != "" {
+		return ip
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return host
+}
 
 // timeNow is the clock hook used in route handlers for lockout retry_after
 // computation.  Tests can replace it to advance time without sleeping.
@@ -159,7 +181,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 	// Rate-limited: 30 req/min per IP. No session required (public endpoint).
 	// Returns: {"available":bool,"reason":"available"|"taken"|"reserved"|"invalid","suggestions":[...]}
 	mux.HandleFunc("GET /api/auth/handle-available", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !handleRL.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -178,7 +200,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 	// The email is CONSTRUCTED server-side as <handle>@vulos.org.
 	// Sending a non-vulos.org email address in the body is rejected with 400.
 	mux.HandleFunc("POST /api/auth/signup", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -292,7 +314,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 	// The handler func is stored in loginInnerHandler so that wire_security.go
 	// can re-register the route wrapped with StepUpMiddleware.
 	loginHandlerFunc := func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -453,7 +475,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 	//   Unknown handles → pretend-200 with ~250 ms delay (enumeration safety).
 	//   Known handles → recovery link delivered to Vulos inbox.
 	mux.HandleFunc("POST /api/auth/forgot-password", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -569,7 +591,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 
 	// POST /api/auth/password/reset/request  (rate-limited per IP, email-enumeration safe)
 	mux.HandleFunc("POST /api/auth/password/reset/request", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -877,7 +899,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 			log.Printf("[auth] totp/verify reset lockout: %v", resetErr)
 		}
 
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		ua := r.UserAgent()
 		fullToken, err := st.UpgradePartialSession(r.Context(), token, ip, ua)
 		if err != nil {
@@ -999,7 +1021,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 	// Issues a fresh verification token and logs it. No body required.
 	// Always 204 — never reveals whether email exists or is already verified.
 	mux.HandleFunc("POST /api/auth/verify-email/resend", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -1245,7 +1267,7 @@ func RegisterWebAuthnRoutes(mux *http.ServeMux, st *auth.Store) {
 			return
 		}
 
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -1280,7 +1302,7 @@ func RegisterWebAuthnRoutes(mux *http.ServeMux, st *auth.Store) {
 			return
 		}
 
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -1320,7 +1342,7 @@ func RegisterWebAuthnRoutes(mux *http.ServeMux, st *auth.Store) {
 	// ── POST /api/auth/webauthn/login/begin ───────────────────────────────────
 	// No session required. Body: {email}. Returns CredentialAssertion JSON.
 	mux.HandleFunc("POST /api/auth/webauthn/login/begin", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -1400,7 +1422,7 @@ func RegisterWebAuthnRoutes(mux *http.ServeMux, st *auth.Store) {
 	// PublicKeyCredential assertion from navigator.credentials.get.
 	// On success: issues a full session cookie.
 	mux.HandleFunc("POST /api/auth/webauthn/login/finish", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -1488,7 +1510,7 @@ func RegisterWebAuthnRoutes(mux *http.ServeMux, st *auth.Store) {
 	// Begins a WebAuthn assertion ceremony for the passkey-as-2FA step.
 	// The partial session identifies the user; no email param needed.
 	mux.HandleFunc("POST /api/auth/webauthn/login/begin-2fa", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -1552,7 +1574,7 @@ func RegisterWebAuthnRoutes(mux *http.ServeMux, st *auth.Store) {
 	// Partial-session required (password+passkey modality, AUTH-12).
 	// Validates the WebAuthn assertion and upgrades the partial→full session.
 	mux.HandleFunc("POST /api/auth/webauthn/login/finish-2fa", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
