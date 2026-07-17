@@ -157,59 +157,90 @@ function savePrefs(prefs) {
 // ---------------------------------------------------------------------------
 function SessionPicker({ sessions, onNew, onAttach, onKill, prefs }) {
   const theme = THEMES[prefs.theme]
+  const hoverIn = (bg) => (e) => { e.currentTarget.style.background = bg }
+  const hoverOut = (bg) => (e) => { e.currentTarget.style.background = bg }
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', height: '100%', background: theme.background,
       color: theme.foreground, fontFamily: prefs.fontFamily,
-      fontSize: prefs.fontSize, gap: 16, padding: 24,
+      fontSize: prefs.fontSize, gap: 20, padding: 24, boxSizing: 'border-box',
     }}>
-      <div style={{ fontSize: 13, color: theme.brightBlack, marginBottom: 4 }}>Terminal Sessions</div>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{
+          fontSize: 15, fontWeight: 600, color: theme.foreground,
+          letterSpacing: '0.02em',
+        }}>Terminal Sessions</div>
+        <div style={{ fontSize: 11, color: theme.brightBlack }}>
+          {sessions.length > 0
+            ? `${sessions.length} session${sessions.length === 1 ? '' : 's'} available`
+            : 'Start a new shell to begin'}
+        </div>
+      </div>
       {sessions.length > 0 && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: 8,
-          width: '100%', maxWidth: 400,
+          width: '100%', maxWidth: 420,
         }}>
           {sessions.map(s => (
-            <div key={s.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 12px', borderRadius: 6,
-              background: theme.black, border: `1px solid ${theme.selectionBackground}`,
-            }}>
+            <div key={s.id}
+              onMouseEnter={hoverIn(theme.selectionBackground)}
+              onMouseLeave={hoverOut(theme.black)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 11,
+                padding: '10px 13px', borderRadius: 10,
+                background: theme.black, border: `1px solid ${theme.selectionBackground}`,
+                transition: 'background 0.15s ease',
+              }}>
               <span style={{
-                width: 8, height: 8, borderRadius: '50%',
+                width: 9, height: 9, borderRadius: '50%',
                 background: s.attached ? theme.yellow : s.alive ? theme.green : theme.brightBlack,
+                boxShadow: s.alive ? `0 0 8px ${s.attached ? theme.yellow : theme.green}55` : 'none',
                 flexShrink: 0,
               }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13 }}>{s.id}</div>
-                <div style={{ fontSize: 11, color: theme.brightBlack }}>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.id}</div>
+                <div style={{ fontSize: 11, color: theme.brightBlack, marginTop: 1 }}>
                   {s.attached ? 'attached elsewhere' : s.alive ? 'detached' : 'exited'}
                 </div>
               </div>
               {s.alive && (
-                <button onClick={() => onAttach(s.id)} style={{
-                  background: theme.selectionBackground, border: 'none', color: theme.foreground,
-                  padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12,
-                }}>
+                <button onClick={() => onAttach(s.id)}
+                  onMouseEnter={e => { e.currentTarget.style.background = theme.brightBlack }}
+                  onMouseLeave={e => { e.currentTarget.style.background = theme.selectionBackground }}
+                  style={{
+                    background: theme.selectionBackground, border: 'none', color: theme.foreground,
+                    padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+                    fontWeight: 500, fontFamily: 'inherit', transition: 'background 0.15s ease',
+                  }}>
                   {s.attached ? 'Takeover' : 'Attach'}
                 </button>
               )}
-              <button onClick={() => onKill(s.id)} style={{
-                background: 'transparent', border: 'none', color: theme.brightBlack,
-                padding: '4px 6px', cursor: 'pointer', fontSize: 12,
-              }}>
+              <button onClick={() => onKill(s.id)} aria-label={`Kill session ${s.id}`} title="Kill session"
+                onMouseEnter={e => { e.currentTarget.style.color = theme.red }}
+                onMouseLeave={e => { e.currentTarget.style.color = theme.brightBlack }}
+                style={{
+                  background: 'transparent', border: 'none', color: theme.brightBlack,
+                  padding: '5px 7px', cursor: 'pointer', fontSize: 13, lineHeight: 1,
+                  transition: 'color 0.15s ease',
+                }}>
                 ✕
               </button>
             </div>
           ))}
         </div>
       )}
-      <button onClick={onNew} style={{
-        background: theme.green, border: 'none', color: theme.background,
-        padding: '8px 20px', borderRadius: 6, cursor: 'pointer',
-        fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
-      }}>
+      <button onClick={onNew}
+        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.1)' }}
+        onMouseLeave={e => { e.currentTarget.style.filter = 'none' }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          background: theme.green, border: 'none', color: theme.background,
+          padding: '9px 22px', borderRadius: 8, cursor: 'pointer',
+          fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+          transition: 'filter 0.15s ease',
+        }}>
+        <span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span>
         New Session
       </button>
     </div>

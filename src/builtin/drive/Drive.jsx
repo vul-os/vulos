@@ -1243,6 +1243,9 @@ export default function Drive() {
   // pct === null → indeterminate (transport can't report bytes). state:
   // 'uploading' | 'done' | 'error'. Cleared shortly after the batch settles.
   const [uploads, setUploads] = useState([])
+  // Purely-visual: on narrow screens the fixed sidebar becomes a slide-over
+  // drawer toggled by a menu button in the toolbar (no data-flow impact).
+  const [navOpen, setNavOpen] = useState(false)
 
   // The active external mount, if the current view is one ("ext:<mountID>").
   const extMountId = view.startsWith('ext:') ? view.slice(4) : ''
@@ -1431,64 +1434,85 @@ export default function Drive() {
 
   // ── render ──────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', height: '100%', background: T.bg, color: T.text, fontSize: 14, position: 'relative' }}>
+    <div className="drive-root" style={{ display: 'flex', height: '100%', background: T.bg, color: T.text, fontSize: 14, position: 'relative', overflow: 'hidden' }}>
+      {/* mobile scrim — dismisses the slide-over sidebar */}
+      {navOpen && <div className="drive-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />}
       {/* sidebar */}
-      <div style={{ width: 180, flexShrink: 0, borderRight: `1px solid ${T.border}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, padding: '4px 10px 12px', color: T.text }}>Drive</div>
+      <div className={`drive-sidebar${navOpen ? ' open' : ''}`} style={{ width: 184, flexShrink: 0, borderRight: `1px solid ${T.border}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 3, background: T.bg }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 12px' }}>
+          <span style={{ fontSize: 18, lineHeight: 1 }} aria-hidden="true">🗂</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Drive</span>
+        </div>
         {[['mydrive', '📁', 'My Drive'], ['shared', '👥', 'Shared with me'], ['received', '📥', 'Received']].map(([v, icon, label]) => (
           <button
             key={v}
-            onClick={() => switchView(v)}
+            onClick={() => { switchView(v); setNavOpen(false) }}
+            aria-current={view === v ? 'page' : undefined}
             style={{
-              display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9,
-              border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left',
-              background: view === v ? T.selected : 'none',
+              display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 9,
+              border: `1px solid ${view === v ? 'var(--bg-selected-border)' : 'transparent'}`,
+              cursor: 'pointer', fontSize: 13, textAlign: 'left',
+              background: view === v ? T.selected : 'transparent',
               color: view === v ? T.text : T.textDim,
+              fontWeight: view === v ? 600 : 500,
+              transition: 'background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out)',
             }}
+            onMouseEnter={(e) => { if (view !== v) e.currentTarget.style.background = T.hover }}
+            onMouseLeave={(e) => { if (view !== v) e.currentTarget.style.background = 'transparent' }}
           >
-            <span>{icon}</span><span>{label}</span>
+            <span style={{ width: 18, textAlign: 'center', flexShrink: 0 }} aria-hidden="true">{icon}</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
           </button>
         ))}
 
         {/* external drives (Google Drive etc.) — only when the seam is wired */}
         {(extStatus.available || mounts.length > 0) && (
           <>
-            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, padding: '14px 10px 4px' }}>External</div>
+            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.textFaint, padding: '16px 10px 5px' }}>External</div>
             {mounts.map((m) => {
               const v = `ext:${m.id}`
               return (
                 <div key={m.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <button
-                    onClick={() => switchView(v, m.name)}
+                    onClick={() => { switchView(v, m.name); setNavOpen(false) }}
+                    aria-current={view === v ? 'page' : undefined}
                     title={m.name}
                     style={{
-                      flex: 1, display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9,
-                      border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', minWidth: 0,
-                      background: view === v ? T.selected : 'none', color: view === v ? T.text : T.textDim,
+                      flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 9,
+                      border: `1px solid ${view === v ? 'var(--bg-selected-border)' : 'transparent'}`, cursor: 'pointer', fontSize: 13, textAlign: 'left', minWidth: 0,
+                      background: view === v ? T.selected : 'transparent', color: view === v ? T.text : T.textDim,
+                      fontWeight: view === v ? 600 : 500,
                     }}
+                    onMouseEnter={(e) => { if (view !== v) e.currentTarget.style.background = T.hover }}
+                    onMouseLeave={(e) => { if (view !== v) e.currentTarget.style.background = 'transparent' }}
                   >
-                    <span>🟢</span>
+                    <span style={{ fontSize: 9, color: 'var(--status-success)', flexShrink: 0 }} aria-hidden="true">●</span>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
                   </button>
                   <button
                     onClick={() => disconnectExternal(m)}
+                    aria-label={`Disconnect ${m.name}`}
                     title="Disconnect"
-                    style={{ background: 'none', border: 'none', color: T.textFaint, cursor: 'pointer', fontSize: 14, padding: '0 6px' }}
+                    className="drive-touch"
+                    style={{ background: 'none', border: 'none', color: T.textFaint, cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 6px', borderRadius: 7 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = T.danger }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = T.textFaint }}
                   >×</button>
                 </div>
               )
             })}
             <button
-              onClick={() => extStatus.available && setConnectOpen(true)}
+              onClick={() => { if (extStatus.available) { setConnectOpen(true); setNavOpen(false) } }}
               disabled={!extStatus.available}
               title={extStatus.available ? 'Connect an external drive' : 'External drives require a connected cloud account'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9,
-                border: 'none', cursor: extStatus.available ? 'pointer' : 'not-allowed', fontSize: 13, textAlign: 'left',
-                background: 'none', color: extStatus.available ? T.accent : T.textFaint, opacity: extStatus.available ? 1 : 0.6,
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 9,
+                border: '1px solid transparent', cursor: extStatus.available ? 'pointer' : 'not-allowed', fontSize: 13, textAlign: 'left',
+                background: 'transparent', color: extStatus.available ? T.accent : T.textFaint, opacity: extStatus.available ? 1 : 0.6,
               }}
+              onMouseEnter={(e) => { if (extStatus.available) e.currentTarget.style.background = T.hover }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
             >
-              <span>＋</span><span>{extStatus.available ? 'Connect a drive' : 'Connect (unavailable)'}</span>
+              <span style={{ width: 18, textAlign: 'center', flexShrink: 0 }} aria-hidden="true">＋</span><span>{extStatus.available ? 'Connect a drive' : 'Connect (unavailable)'}</span>
             </button>
           </>
         )}
@@ -1496,22 +1520,24 @@ export default function Drive() {
         {/* Import (copy provider files into your Drive) — distinct from Connect
             (mount). Disabled with a hint when the integration broker isn't set. */}
         <button
-          onClick={() => importStatus.available && setImportOpen(true)}
+          onClick={() => { if (importStatus.available) { setImportOpen(true); setNavOpen(false) } }}
           disabled={!importStatus.available}
           title={importStatus.available
             ? 'Import a copy of your Google / Microsoft files into your Drive'
             : 'Import requires a connected cloud account'}
           style={{
-            display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderRadius: 9, marginTop: 6,
-            border: 'none', cursor: importStatus.available ? 'pointer' : 'not-allowed', fontSize: 13, textAlign: 'left',
-            background: 'none', color: importStatus.available ? T.accent : T.textFaint, opacity: importStatus.available ? 1 : 0.6,
+            display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 9, marginTop: 4,
+            border: '1px solid transparent', cursor: importStatus.available ? 'pointer' : 'not-allowed', fontSize: 13, textAlign: 'left',
+            background: 'transparent', color: importStatus.available ? T.accent : T.textFaint, opacity: importStatus.available ? 1 : 0.6,
           }}
+          onMouseEnter={(e) => { if (importStatus.available) e.currentTarget.style.background = T.hover }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
         >
-          <span>⇩</span><span>{importStatus.available ? 'Import files' : 'Import (unavailable)'}</span>
+          <span style={{ width: 18, textAlign: 'center', flexShrink: 0 }} aria-hidden="true">⇩</span><span>{importStatus.available ? 'Import files' : 'Import (unavailable)'}</span>
         </button>
 
-        <div style={{ marginTop: 'auto', paddingTop: 12 }}>
-          <Btn small onClick={() => setRedeemOpen(true)}>↓ Redeem link</Btn>
+        <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: `1px solid ${T.border}`, marginLeft: -12, marginRight: -12, paddingLeft: 12, paddingRight: 12 }}>
+          <Btn small onClick={() => { setRedeemOpen(true); setNavOpen(false) }}>↓ Redeem link</Btn>
         </div>
       </div>
 
@@ -1524,20 +1550,30 @@ export default function Drive() {
         style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
       >
         {/* toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${T.border}` }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 3, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px', borderBottom: `1px solid ${T.border}`, minHeight: 56, boxSizing: 'border-box' }}>
+          <button
+            className="drive-menu-btn drive-touch"
+            onClick={() => setNavOpen((o) => !o)}
+            aria-label="Toggle navigation"
+            aria-expanded={navOpen}
+            style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, flexShrink: 0, background: T.elevated, border: `1px solid ${T.borderStrong}`, borderRadius: 8, color: T.text, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}
+          >☰</button>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, minWidth: 0 }}>
             {trail.map((c, i) => (
-              <span key={c.id || 'root'} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span key={c.id || 'root'} style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
                 <button
                   onClick={() => gotoCrumb(i)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: i === trail.length - 1 ? 600 : 400, color: i === trail.length - 1 ? T.text : T.accent, padding: 0 }}
+                  disabled={i === trail.length - 1}
+                  style={{ background: 'none', border: 'none', cursor: i === trail.length - 1 ? 'default' : 'pointer', fontSize: 14, fontWeight: i === trail.length - 1 ? 600 : 500, color: i === trail.length - 1 ? T.text : T.accent, padding: '2px 4px', borderRadius: 6, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'background var(--motion-fast) var(--ease-out)' }}
+                  onMouseEnter={(e) => { if (i !== trail.length - 1) e.currentTarget.style.background = T.hover }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
                 >{c.name}</button>
-                {i < trail.length - 1 && <span style={{ color: T.textFaint }}>/</span>}
+                {i < trail.length - 1 && <span style={{ color: T.textFaint, flexShrink: 0 }} aria-hidden="true">/</span>}
               </span>
             ))}
           </div>
           {extMountId && !extWritable && (
-            <span style={{ fontSize: 11, color: T.textFaint, border: `1px solid ${T.border}`, borderRadius: 6, padding: '3px 8px' }}>Read-only</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.textDim, background: T.elevated, border: `1px solid ${T.border}`, borderRadius: 6, padding: '3px 8px', flexShrink: 0, whiteSpace: 'nowrap' }}>Read-only</span>
           )}
           {canWrite && (
             <>
@@ -1573,43 +1609,48 @@ export default function Drive() {
             <DriveSkeleton />
           ) : nodes.length === 0 ? (
             <Center>
-              <div style={{ fontSize: 40, opacity: 0.4 }}>{view === 'shared' ? '👥' : view === 'received' ? '📥' : '📂'}</div>
-              <div style={{ color: T.textDim, fontSize: 14 }}>
+              <div style={{ fontSize: 46, opacity: 0.35, lineHeight: 1 }} aria-hidden="true">{view === 'shared' ? '👥' : view === 'received' ? '📥' : '📂'}</div>
+              <div style={{ color: T.text, fontSize: 15, fontWeight: 600 }}>
                 {view === 'received' ? 'Nothing received yet' : view === 'shared' ? 'Nothing shared with you yet' : extMountId ? (atRoot ? `${extMount?.name || 'This drive'} is empty` : 'This folder is empty') : atRoot ? 'Your Drive is empty' : 'This folder is empty'}
+              </div>
+              <div style={{ color: T.textFaint, fontSize: 12.5, textAlign: 'center', maxWidth: 320, lineHeight: 1.5, marginTop: -4 }}>
+                {view === 'received' ? 'Redeem a capability link to receive files from another Vulos box.' : view === 'shared' ? 'Files people share with you will appear here.' : canWrite ? 'Drag files here, or upload to get started.' : 'There’s nothing to show here yet.'}
               </div>
               {view === 'received' && <Btn small primary onClick={() => setRedeemOpen(true)}>Redeem a link</Btn>}
               {canWrite && <Btn small primary onClick={() => fileInputRef.current?.click()}>Upload a file</Btn>}
             </Center>
           ) : view === 'received' ? (
-            <div style={{ padding: 8 }}>
+            <div style={{ padding: 8 }} className="drive-fade">
               {nodes.map((item) => (
                 <div
                   key={item.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 9 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 9, flexWrap: 'wrap', transition: 'background var(--motion-fast) var(--ease-out)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = T.hover }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
                 >
-                  <span style={{ fontSize: 18, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.is_dir ? '📁' : fileGlyph(item)}</span>
-                  <span style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                  <span style={{ fontSize: 18, width: 22, textAlign: 'center', flexShrink: 0 }} aria-hidden="true">{item.is_dir ? '📁' : fileGlyph(item)}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', minWidth: 120 }}>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>{item.name}</span>
-                    <span style={{ display: 'block', color: T.textFaint, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ display: 'block', color: T.textFaint, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       from {String(item.owner_vula_id || '').slice(0, 22)}… · {fmtDate(item.received_at)}
                     </span>
                   </span>
-                  <span style={{ color: T.textFaint, fontSize: 12 }}>{item.is_dir ? 'folder' : fmtSize(item.size)}</span>
+                  <span style={{ color: T.textFaint, fontSize: 12, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{item.is_dir ? 'folder' : fmtSize(item.size)}</span>
                   <Btn small onClick={() => { setBusy(`Downloading ${item.name}…`); downloadReceived(item).catch((e) => setError(e.message || 'Download failed')).finally(() => setBusy(null)) }}>Download</Btn>
                   {item.saved_node_id
-                    ? <span style={{ color: T.textDim, fontSize: 12, width: 90, textAlign: 'center' }}>Saved ✓</span>
+                    ? <span style={{ color: 'var(--status-success)', fontSize: 12, minWidth: 90, textAlign: 'center', flexShrink: 0 }}>Saved ✓</span>
                     : <Btn small primary onClick={() => saveReceived(item)}>Save to Drive</Btn>}
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ padding: 8 }}>
+            <div style={{ padding: 8 }} className="drive-fade">
               {/* header row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: T.textFaint }}>
-                <span style={{ flex: 1 }}>Name</span>
-                <span style={{ width: 90, textAlign: 'right' }}>Size</span>
-                <span style={{ width: 110, textAlign: 'right' }}>Modified</span>
-                <span style={{ width: 28 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 12px 8px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textFaint, borderBottom: `1px solid ${T.border}`, marginBottom: 2 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>Name</span>
+                <span style={{ width: 90, textAlign: 'right', flexShrink: 0 }}>Size</span>
+                <span className="drive-mod" style={{ width: 110, textAlign: 'right', flexShrink: 0 }}>Modified</span>
+                <span style={{ width: 28, flexShrink: 0 }} />
               </div>
               {nodes.map((node) => (
                 <div
@@ -1619,22 +1660,23 @@ export default function Drive() {
                   aria-label={`${node.is_dir ? 'Folder' : 'File'}: ${node.name}`}
                   onClick={() => onRowOpen(node)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowOpen(node) } }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 9, cursor: 'pointer', position: 'relative' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 9, cursor: 'pointer', position: 'relative', transition: 'background var(--motion-fast) var(--ease-out)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = T.hover }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
+                  onMouseLeave={(e) => { if (menuFor !== node.id) e.currentTarget.style.background = 'none' }}
                 >
-                  <span style={{ fontSize: 18, width: 22, textAlign: 'center', flexShrink: 0 }}>{fileGlyph(node)}</span>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>{node.name}</span>
-                  <span style={{ width: 90, textAlign: 'right', color: T.textFaint, fontSize: 12 }}>{node.is_dir ? '—' : fmtSize(node.size)}</span>
-                  <span style={{ width: 110, textAlign: 'right', color: T.textFaint, fontSize: 12 }}>{fmtDate(node.updated_at)}</span>
-                  <span style={{ width: 28, textAlign: 'center' }}>
+                  <span style={{ fontSize: 18, width: 22, textAlign: 'center', flexShrink: 0 }} aria-hidden="true">{fileGlyph(node)}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>{node.name}</span>
+                  <span style={{ width: 90, textAlign: 'right', flexShrink: 0, color: T.textFaint, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{node.is_dir ? '—' : fmtSize(node.size)}</span>
+                  <span className="drive-mod" style={{ width: 110, textAlign: 'right', flexShrink: 0, color: T.textFaint, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{fmtDate(node.updated_at)}</span>
+                  <span style={{ width: 28, flexShrink: 0, textAlign: 'center' }}>
                     {!extMountId && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === node.id ? null : node.id) }}
                         aria-label={`Actions for ${node.name}`}
                         aria-expanded={menuFor === node.id}
                         aria-haspopup="menu"
-                        style={{ background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
+                        className="drive-touch"
+                        style={{ background: menuFor === node.id ? T.elevated : 'none', border: 'none', color: menuFor === node.id ? T.text : T.textDim, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 4px', borderRadius: 7 }}
                       >⋯</button>
                     )}
                   </span>
@@ -1710,9 +1752,36 @@ export default function Drive() {
           100% { transform: translateX(350%) }
         }
         [data-drive-upload="indeterminate"] { animation: drive-upload-indeterminate 1.1s ease-in-out infinite; }
+        @keyframes drive-fade-in { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+        .drive-fade { animation: drive-fade-in var(--motion-base, .18s) var(--ease-out, ease); }
+        /* Desktop defaults: sidebar is a static column; menu button + scrim hidden. */
+        .drive-menu-btn { display: none !important; }
+        .drive-scrim { display: none; }
+        @media (max-width: 720px) {
+          /* On phones the fixed sidebar becomes a slide-over drawer. */
+          .drive-sidebar {
+            position: absolute; top: 0; bottom: 0; left: 0; z-index: 40;
+            width: 248px !important; max-width: 84%;
+            transform: translateX(-100%);
+            transition: transform var(--motion-base, .18s) var(--ease-out, ease);
+            box-shadow: 6px 0 32px rgba(0,0,0,0.35);
+          }
+          .drive-sidebar.open { transform: translateX(0); }
+          .drive-sidebar button { min-height: 44px; }
+          .drive-scrim {
+            display: block; position: absolute; inset: 0; z-index: 35;
+            background: rgba(0,0,0,0.5);
+            animation: drive-fade-in var(--motion-fast, .12s) var(--ease-out, ease);
+          }
+          .drive-menu-btn { display: inline-flex !important; }
+          .drive-touch { min-width: 44px; min-height: 44px; }
+        }
+        @media (max-width: 520px) { .drive-mod { display: none !important; } }
         @media (prefers-reduced-motion: reduce) {
           [data-drive-skel] { animation: none !important; opacity: 0.6; }
           [data-drive-upload="indeterminate"] { animation: none !important; }
+          .drive-fade { animation: none !important; }
+          .drive-sidebar { transition: none !important; }
         }
       `}</style>
     </div>

@@ -41,9 +41,9 @@ function DonutChart({ segments, size = 160, label, sublabel }) {
     paths.push(
       <path key={i}
         d={`M${ox1},${oy1} A${outerR},${outerR} 0 ${large} 1 ${ox2},${oy2} L${ix1},${iy1} A${innerR},${innerR} 0 ${large} 0 ${ix2},${iy2} Z`}
-        fill={seg.color}
-        stroke="#0a0a0a" strokeWidth="1"
-        className="transition-opacity hover:opacity-80 cursor-pointer"
+        style={{ fill: seg.color, stroke: 'var(--bg-base)' }}
+        strokeWidth="1.5"
+        className="transition-opacity duration-(--motion-base) hover:opacity-80 cursor-pointer"
       >
         <title>{seg.label}: {fmtSize(seg.value)}</title>
       </path>
@@ -54,11 +54,11 @@ function DonutChart({ segments, size = 160, label, sublabel }) {
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
       {paths}
-      <text x={cx} y={cy - 4} textAnchor="middle" fill="#e5e5e5" fontSize="14" fontWeight="600">
+      <text x={cx} y={cy - 4} textAnchor="middle" style={{ fill: 'var(--text-primary)' }} fontSize="14" fontWeight="600">
         {label || fmtSize(total)}
       </text>
       {sublabel && (
-        <text x={cx} y={cy + 12} textAnchor="middle" fill="#525252" fontSize="10">
+        <text x={cx} y={cy + 12} textAnchor="middle" style={{ fill: 'var(--text-faint)' }} fontSize="10">
           {sublabel}
         </text>
       )}
@@ -66,14 +66,24 @@ function DonutChart({ segments, size = 160, label, sublabel }) {
   )
 }
 
+function usageTone(percent) {
+  if (percent > 90) return { bar: 'bg-danger', text: 'text-danger' }
+  if (percent > 70) return { bar: 'bg-warning', text: 'text-warning' }
+  return { bar: 'accent-bg', text: 'accent-text' }
+}
+
 function UsageBar({ percent, className = '' }) {
-  const color = percent > 90 ? 'bg-red-500' : percent > 70 ? 'bg-amber-500' : 'bg-blue-500'
+  const { bar } = usageTone(percent)
   return (
     <div className={`w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden ${className}`}>
-      <div className={`h-full rounded-full transition-all ${color}`}
+      <div className={`h-full rounded-full transition-all duration-(--motion-slow) ease-(--ease-out) ${bar}`}
         style={{ width: `${Math.min(percent, 100)}%` }} />
     </div>
   )
+}
+
+function Spinner({ className = 'w-6 h-6' }) {
+  return <div className={`spinner rounded-full ${className}`} role="status" aria-label="Loading" />
 }
 
 export default function DiskUsage() {
@@ -116,13 +126,13 @@ export default function DiskUsage() {
     const accounted = breakdown.reduce((s, d) => s + d.size_mb, 0)
     const remaining = selectedMount.used_mb - accounted
     if (remaining > 0) {
-      breakdownSegments.push({ label: 'Other', value: remaining, color: '#333' })
+      breakdownSegments.push({ label: 'Other', value: remaining, color: 'var(--border-strong)' })
     }
   }
 
   const mountSegments = selectedMount ? [
-    { label: 'Used', value: selectedMount.used_mb, color: '#3b82f6' },
-    { label: 'Free', value: selectedMount.free_mb, color: '#1e293b' },
+    { label: 'Used', value: selectedMount.used_mb, color: 'var(--accent)' },
+    { label: 'Free', value: selectedMount.free_mb, color: 'var(--border-default)' },
   ] : []
 
   const canGoUp = breakdownPath !== '/' && breakdownPath !== selectedMount?.mount_point
@@ -135,32 +145,38 @@ export default function DiskUsage() {
         {/* Sidebar: filesystem list */}
         <div className="w-36 sm:w-52 shrink-0 flex flex-col border-r border-neutral-800/50 bg-neutral-950/80">
           <div className="shrink-0 px-3 pt-3 pb-2">
-            <h2 className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">Volumes</h2>
+            <h2 className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold">Volumes</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {loading && (
-              <div className="px-3 py-4 text-xs text-neutral-600">Scanning...</div>
+            {loading && !mounts && (
+              <div className="flex flex-col items-center gap-2 px-3 py-8 text-neutral-500">
+                <Spinner className="w-5 h-5" />
+                <span className="text-[11px]">Scanning...</span>
+              </div>
+            )}
+            {mounts?.length === 0 && !loading && (
+              <div className="px-3 py-6 text-[11px] text-neutral-600 text-center">No volumes found</div>
             )}
             {mounts?.map(m => {
               const active = selectedMount?.mount_point === m.mount_point
-              const pctColor = m.percent > 90 ? 'text-red-400' : m.percent > 70 ? 'text-amber-400' : 'text-neutral-500'
+              const { text: pctColor } = usageTone(m.percent)
               return (
                 <button key={m.mount_point}
                   onClick={() => setSelectedMount(m)}
                   aria-pressed={active}
-                  style={active ? { borderColor: 'var(--accent)' } : undefined}
-                  className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
+                  style={active ? { borderColor: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
+                  className={`w-full text-left px-3 py-2.5 transition-colors duration-(--motion-fast) border-l-2 ${
                     active
-                      ? 'bg-neutral-800/50'
+                      ? ''
                       : 'border-transparent hover:bg-neutral-900/60'
                   }`}>
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-xs font-mono truncate">{m.mount_point}</span>
-                    <span className={`text-[10px] shrink-0 ${pctColor}`}>{Math.round(m.percent)}%</span>
+                    <span className={`text-[10px] shrink-0 tabular-nums font-medium ${pctColor}`}>{Math.round(m.percent)}%</span>
                   </div>
-                  <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{m.device}</div>
+                  <div className="text-[10px] text-neutral-600 mt-0.5 truncate font-mono">{m.device}</div>
                   <UsageBar percent={m.percent} className="mt-1.5" />
-                  <div className="text-[10px] text-neutral-600 mt-1">
+                  <div className="text-[10px] text-neutral-600 mt-1 tabular-nums">
                     {fmtSize(m.used_mb)} / {fmtSize(m.total_mb)}
                   </div>
                 </button>
@@ -172,8 +188,20 @@ export default function DiskUsage() {
         {/* Detail pane */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {!selectedMount ? (
-            <div className="flex-1 flex items-center justify-center text-sm text-neutral-600">
-              {loading ? 'Loading...' : 'No filesystem selected'}
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-neutral-500 px-6 text-center">
+              {loading ? (
+                <>
+                  <Spinner className="w-7 h-7" />
+                  <span className="text-sm">Loading volumes...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-10 h-10 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.4}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H6a2 2 0 00-2 2z" />
+                  </svg>
+                  <span className="text-sm">No filesystem selected</span>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -193,16 +221,16 @@ export default function DiskUsage() {
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-3">
                       <div>
-                        <div className="text-[10px] uppercase text-neutral-600">Used</div>
-                        <div className="text-xs font-medium text-blue-400">{fmtSize(selectedMount.used_mb)}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold">Used</div>
+                        <div className="text-xs font-medium accent-text tabular-nums mt-0.5">{fmtSize(selectedMount.used_mb)}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] uppercase text-neutral-600">Free</div>
-                        <div className="text-xs font-medium text-neutral-400">{fmtSize(selectedMount.free_mb)}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold">Free</div>
+                        <div className="text-xs font-medium text-neutral-400 tabular-nums mt-0.5">{fmtSize(selectedMount.free_mb)}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] uppercase text-neutral-600">Total</div>
-                        <div className="text-xs font-medium text-neutral-300">{fmtSize(selectedMount.total_mb)}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold">Total</div>
+                        <div className="text-xs font-medium text-neutral-300 tabular-nums mt-0.5">{fmtSize(selectedMount.total_mb)}</div>
                       </div>
                     </div>
                     <UsageBar percent={selectedMount.percent} className="mt-2.5" />
@@ -217,22 +245,30 @@ export default function DiskUsage() {
                     <button onClick={() => {
                       const parent = breakdownPath.replace(/\/[^/]+\/?$/, '') || '/'
                       loadBreakdown(parent)
-                    }} className="text-blue-400 hover:text-blue-300 text-xs shrink-0">
+                    }} className="accent-text hover-accent-text text-xs shrink-0 flex items-center gap-1 rounded-md px-1.5 py-0.5 hover-accent-bg-soft transition-colors duration-(--motion-fast)">
                       &larr; Up
                     </button>
                   )}
                   <span className="text-[11px] text-neutral-500 font-mono truncate">{breakdownPath}</span>
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-neutral-600 shrink-0">Breakdown</span>
+                <span className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold shrink-0">Breakdown</span>
               </div>
 
               {/* Directory breakdown list (scrollable) */}
               <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-3">
                 {breakdownLoading && (
-                  <div className="text-xs text-neutral-600 py-6 text-center">Scanning directory...</div>
+                  <div className="flex flex-col items-center gap-2 text-neutral-500 py-8">
+                    <Spinner className="w-5 h-5" />
+                    <span className="text-xs">Scanning directory...</span>
+                  </div>
                 )}
                 {!breakdownLoading && breakdown && breakdown.length === 0 && (
-                  <div className="text-xs text-neutral-600 py-6 text-center">Empty or not accessible</div>
+                  <div className="flex flex-col items-center gap-2 text-neutral-600 py-8">
+                    <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.4}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    <span className="text-xs">Empty or not accessible</span>
+                  </div>
                 )}
                 {!breakdownLoading && breakdown && breakdown.length > 0 && (
                   <div className="space-y-px rounded-lg overflow-hidden border border-neutral-800/40">

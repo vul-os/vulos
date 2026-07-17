@@ -32,10 +32,10 @@ function Toast({ msg, onDismiss }) {
   }, [msg, onDismiss])
 
   const colors = msg.type === 'ok'
-    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+    ? 'bg-success-soft border-success-soft text-success'
     : msg.type === 'err'
-    ? 'bg-red-500/15 border-red-500/30 text-red-400'
-    : 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+    ? 'bg-danger-soft border-danger-soft text-danger'
+    : 'accent-bg-soft accent-border-soft accent-text'
 
   const icon = msg.type === 'ok' ? (
     <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -53,9 +53,10 @@ function Toast({ msg, onDismiss }) {
   )
 
   return (
-    <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-sm shadow-xl text-sm font-medium transition-all duration-300 ${colors} ${visible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
+    <div role="status" aria-live="polite"
+      className={`fixed bottom-5 right-4 sm:right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-sm shadow-xl text-sm font-medium transition-all duration-300 max-w-[calc(100vw-2rem)] ${colors} ${visible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
       {icon}
-      {msg.text}
+      <span className="min-w-0 truncate">{msg.text}</span>
     </div>
   )
 }
@@ -172,8 +173,8 @@ export default function Packages() {
 
   return (
     <div className="h-full flex bg-neutral-950 text-neutral-200 overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-52 shrink-0 flex flex-col border-r border-neutral-800/60 bg-neutral-950/80">
+      {/* Sidebar (desktop) */}
+      <div className="hidden sm:flex w-52 shrink-0 flex-col border-r border-neutral-800/60 bg-neutral-950/80">
         <div className="px-4 pt-5 pb-4">
           <h1 className="text-[15px] font-semibold tracking-tight">Software</h1>
           <p className="text-[11px] text-neutral-500 mt-0.5">Package Manager</p>
@@ -182,7 +183,7 @@ export default function Packages() {
         {/* Installed count card */}
         {status && (
           <div className="mx-3 mb-4 px-3 py-3 rounded-xl bg-neutral-900/60 border border-neutral-800/40">
-            <div className="text-2xl font-bold text-white leading-none">{status.installed_count?.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-white leading-none tabular-nums">{status.installed_count?.toLocaleString()}</div>
             <div className="text-[11px] text-neutral-500 mt-1">packages installed</div>
           </div>
         )}
@@ -191,12 +192,13 @@ export default function Packages() {
         <nav className="flex-1 px-2 space-y-0.5">
           {SIDEBAR_ITEMS.map(item => (
             <button key={item.id} onClick={() => setTab(item.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+              aria-pressed={tab === item.id}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-(--motion-fast) ${
                 tab === item.id
-                  ? 'bg-neutral-800/80 text-white'
+                  ? 'accent-bg-soft text-white'
                   : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/60'
               }`}>
-              <span className={tab === item.id ? 'text-blue-400' : 'text-neutral-600'}>{item.icon}</span>
+              <span className={tab === item.id ? 'accent-text' : 'text-neutral-600'}>{item.icon}</span>
               {item.label}
             </button>
           ))}
@@ -205,7 +207,7 @@ export default function Packages() {
         {/* Sidebar bottom actions */}
         <div className="p-3 space-y-2 border-t border-neutral-800/40">
           <button onClick={doUpdate} disabled={updating}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium bg-neutral-800/70 hover:bg-neutral-700/70 rounded-lg transition-colors disabled:opacity-40">
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium bg-neutral-800/70 hover:bg-neutral-700/70 rounded-lg transition-colors duration-(--motion-fast) disabled:opacity-40">
             {updating ? (
               <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -219,7 +221,7 @@ export default function Packages() {
             {updating ? 'Refreshing...' : 'Refresh Index'}
           </button>
           <button onClick={doUpgrade} disabled={upgrading}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-40 shadow-sm shadow-blue-600/20">
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium accent-bg hover:bg-[var(--accent-hover)] text-white rounded-lg transition-colors duration-(--motion-fast) disabled:opacity-40 shadow-sm">
             {upgrading ? (
               <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -237,6 +239,33 @@ export default function Packages() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* Mobile top bar: title + horizontal tab strip (replaces sidebar < sm) */}
+        <div className="sm:hidden shrink-0 border-b border-neutral-800/60 bg-neutral-950/80">
+          <div className="flex items-baseline justify-between gap-2 px-4 pt-3">
+            <h1 className="text-[15px] font-semibold tracking-tight">Software</h1>
+            {status && (
+              <span className="text-[11px] text-neutral-500 tabular-nums shrink-0">
+                {status.installed_count?.toLocaleString()} installed
+              </span>
+            )}
+          </div>
+          <div className="flex gap-1 px-2 py-2 overflow-x-auto">
+            {SIDEBAR_ITEMS.map(item => (
+              <button key={item.id} onClick={() => setTab(item.id)}
+                aria-pressed={tab === item.id}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-(--motion-fast) ${
+                  tab === item.id
+                    ? 'accent-bg-soft accent-text'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/60'
+                }`}>
+                <span className="shrink-0">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
 
         {/* ===== INSTALLED TAB ===== */}
         {tab === 'installed' && (
@@ -303,7 +332,7 @@ export default function Packages() {
                       </div>
                       <button
                         onClick={() => action('/api/packages/remove', { name: p.name }, `Removing ${p.name}`)}
-                        className="shrink-0 opacity-0 group-hover:opacity-100 px-2.5 py-1 text-[11px] font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all">
+                        className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 px-2.5 py-1 text-[11px] font-medium text-danger bg-danger-soft hover:bg-[color-mix(in_srgb,var(--status-danger)_24%,transparent)] rounded-lg transition-all duration-(--motion-fast)">
                         Remove
                       </button>
                     </div>
@@ -377,7 +406,7 @@ export default function Packages() {
                           <span className="text-sm font-medium text-neutral-100 truncate">{p.name}</span>
                           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-neutral-800/80 text-neutral-500 font-mono">{p.version}</span>
                           {p.installed && (
-                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 font-medium">installed</span>
+                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-success-soft text-success font-medium">installed</span>
                           )}
                         </div>
                         {p.description && (
@@ -387,13 +416,13 @@ export default function Packages() {
                       {p.installed ? (
                         <button
                           onClick={() => action('/api/packages/remove', { name: p.name }, `Removing ${p.name}`)}
-                          className="shrink-0 px-3 py-1.5 text-[11px] font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors">
+                          className="shrink-0 px-3 py-1.5 text-[11px] font-medium text-danger bg-danger-soft hover:bg-[color-mix(in_srgb,var(--status-danger)_24%,transparent)] rounded-lg transition-colors duration-(--motion-fast)">
                           Remove
                         </button>
                       ) : (
                         <button
                           onClick={() => action('/api/packages/install', { name: p.name }, `Installing ${p.name}`)}
-                          className="shrink-0 px-3 py-1.5 text-[11px] font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-colors">
+                          className="shrink-0 px-3 py-1.5 text-[11px] font-medium accent-text accent-bg-soft hover:bg-[color-mix(in_srgb,var(--accent)_24%,transparent)] rounded-lg transition-colors duration-(--motion-fast)">
                           Install
                         </button>
                       )}
@@ -414,8 +443,8 @@ export default function Packages() {
             </div>
             <div className="flex-1 overflow-y-auto px-5 pb-5">
               <div className="rounded-xl border border-neutral-800/50 bg-neutral-900/30 p-6 flex flex-col items-center text-center">
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
-                  <svg className="w-7 h-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <div className="w-14 h-14 rounded-2xl accent-bg-soft flex items-center justify-center mb-4">
+                  <svg className="w-7 h-7 accent-text" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                 </div>
@@ -439,7 +468,7 @@ export default function Packages() {
                     {updating ? 'Refreshing...' : 'Refresh Index'}
                   </button>
                   <button onClick={doUpgrade} disabled={upgrading}
-                    className="flex items-center gap-2 px-4 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-40 shadow-sm shadow-blue-600/20">
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-medium accent-bg hover:bg-[var(--accent-hover)] text-white rounded-lg transition-colors duration-(--motion-fast) disabled:opacity-40 shadow-sm">
                     {upgrading ? (
                       <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -479,13 +508,13 @@ export default function Packages() {
                   {status.repos.map((r, i) => (
                     <div key={i}
                       className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-neutral-900/40 border border-neutral-800/40 hover:border-neutral-700/40 transition-colors">
-                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${r.enabled ? 'bg-emerald-400 shadow-sm shadow-emerald-400/30' : 'bg-neutral-600'}`} />
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${r.enabled ? 'bg-success shadow-sm' : 'bg-neutral-600'}`} />
                       <div className="min-w-0 flex-1">
                         <span className="text-sm font-mono text-neutral-300 truncate block">{r.url}</span>
                       </div>
                       <span className={`shrink-0 text-[10px] px-2 py-1 rounded-lg font-medium ${
                         r.enabled
-                          ? 'bg-emerald-500/10 text-emerald-400'
+                          ? 'bg-success-soft text-success'
                           : 'bg-neutral-800 text-neutral-500'
                       }`}>
                         {r.enabled ? 'Enabled' : 'Disabled'}
