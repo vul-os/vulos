@@ -74,7 +74,7 @@ function AppIcon({ appId, size = 44 }) {
   if (logo && !failed) {
     return (
       <div
-        className="flex-shrink-0 flex items-center justify-center bg-white/[0.03] overflow-hidden"
+        className="flex-shrink-0 flex items-center justify-center bg-[var(--bg-elevated)] overflow-hidden"
         style={{ width: size, height: size, borderRadius: radius }}
       >
         <img
@@ -90,7 +90,7 @@ function AppIcon({ appId, size = 44 }) {
 
   return (
     <div
-      className="flex-shrink-0 flex items-center justify-center font-semibold text-white/80"
+      className="flex-shrink-0 flex items-center justify-center font-semibold text-[var(--text-secondary)]"
       style={{
         width: size, height: size, borderRadius: radius,
         background: `linear-gradient(135deg, ${color}35, ${color}15)`,
@@ -119,10 +119,10 @@ function InstallProgress({ label }) {
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2.5">
         <span className="w-4 h-4 spinner flex-shrink-0" />
-        <span className="text-[13px] font-medium text-blue-300">{label || 'Installing...'}</span>
+        <span className="text-[13px] font-medium text-[var(--accent)]">{label || 'Installing...'}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-neutral-800/80 overflow-hidden">
-        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 animate-progress" />
+      <div className="h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+        <div className="h-full rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent)] animate-progress" />
       </div>
       <style>{`
         @keyframes progress {
@@ -134,7 +134,23 @@ function InstallProgress({ label }) {
           100% { width: 90%; }
         }
         .animate-progress { animation: progress 30s ease-out forwards; }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-progress { animation: none; width: 45%; }
+        }
       `}</style>
+    </div>
+  )
+}
+
+// Loading skeleton card — mirrors the real card footprint for a calm, intentional load state
+function SkeletonCard() {
+  return (
+    <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+      <div className="w-[42px] h-[42px] rounded-[10px] bg-[var(--bg-elevated)] animate-pulse flex-shrink-0 motion-reduce:animate-none" />
+      <div className="flex-1 min-w-0 flex flex-col gap-2">
+        <div className="h-3 w-1/2 rounded bg-[var(--bg-elevated)] animate-pulse motion-reduce:animate-none" />
+        <div className="h-2.5 w-4/5 rounded bg-[var(--bg-elevated)] animate-pulse motion-reduce:animate-none" />
+      </div>
     </div>
   )
 }
@@ -278,25 +294,25 @@ export default function AppHub() {
   }
 
   return (
-    <div className={`flex h-full overflow-hidden ${isDark ? 'bg-[#0d0d0d] text-neutral-300' : 'bg-white text-neutral-700'}`}>
+    <div className={`relative flex h-full overflow-hidden bg-[var(--bg-base)] ${isDark ? 'text-neutral-300' : 'text-neutral-700'}`}>
       {/* Sidebar */}
-      <div className="w-56 flex-shrink-0 border-r border-white/[0.06] flex flex-col bg-[#0d0d0d]">
-        <div className="px-5 pt-5 pb-4">
-          <h1 className="text-[17px] font-bold text-white tracking-tight">App Store</h1>
+      <div className="w-44 sm:w-52 lg:w-56 flex-shrink-0 border-r border-[var(--border-default)] flex flex-col bg-[var(--bg-base)]">
+        <div className="px-4 sm:px-5 pt-5 pb-4">
+          <h1 className="text-[17px] font-bold text-[var(--text-primary)] tracking-tight">App Store</h1>
           <p className="text-[11px] text-neutral-600 mt-1">{apps.length} apps available</p>
         </div>
 
         {/* Search */}
         <div className="px-3 pb-3">
           <div className="relative">
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="6.5" cy="6.5" r="4.5" /><path d="M10 10l4 4" strokeLinecap="round" />
             </svg>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search..."
-              className="w-full bg-white/[0.04] border border-white/[0.06] rounded-lg pl-9 pr-3 py-2 text-[12px] text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-white/[0.12] focus:bg-white/[0.06] transition-all"
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg pl-9 pr-3 py-2 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--border-strong)] focus:bg-[var(--bg-hover)] transition-colors [transition-duration:var(--motion-fast)]"
             />
           </div>
         </div>
@@ -309,15 +325,15 @@ export default function AppHub() {
           ].map(t => (
             <button
               key={t.id}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-all text-left ${
-                tab === t.id ? 'bg-white/[0.08] text-white' : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.03]'
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors [transition-duration:var(--motion-fast)] text-left ${
+                tab === t.id ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]' : 'text-neutral-500 hover:text-neutral-300 hover:bg-[var(--bg-hover)]'
               }`}
               onClick={() => setTab(t.id)}
             >
               <svg viewBox="0 0 24 24" className="w-[15px] h-[15px] flex-shrink-0" fill="currentColor" opacity={0.7}><path d={t.icon} /></svg>
               {t.label}
               {t.count > 0 && (
-                <span className="ml-auto text-[10px] bg-white/[0.08] text-neutral-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-medium">
+                <span className="ml-auto text-[10px] bg-[var(--bg-elevated)] text-neutral-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-medium">
                   {t.count}
                 </span>
               )}
@@ -326,7 +342,7 @@ export default function AppHub() {
         </div>
 
         {/* APPSTORE-08: Type filter */}
-        <div className="px-3 pt-3 border-t border-white/[0.04]">
+        <div className="px-3 pt-3 border-t border-[var(--border-subtle)]">
           <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">App Type</div>
           <div className="flex flex-col gap-0.5">
             {[
@@ -337,10 +353,10 @@ export default function AppHub() {
             ].map(t => (
               <button
                 key={t.id}
-                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-all text-left ${
+                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors [transition-duration:var(--motion-fast)] text-left ${
                   appTypeFilter === t.id
-                    ? 'bg-white/[0.08] text-white font-medium'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.03]'
+                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-[var(--bg-hover)]'
                 }`}
                 onClick={() => setAppTypeFilter(t.id)}
               >
@@ -354,16 +370,16 @@ export default function AppHub() {
         </div>
 
         {/* Categories */}
-        <div className="px-3 pt-3 border-t border-white/[0.04] flex-1 overflow-y-auto">
+        <div className="px-3 pt-3 border-t border-[var(--border-subtle)] flex-1 overflow-y-auto">
           <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">Categories</div>
           <div className="flex flex-col gap-0.5">
             {categories.map(cat => (
               <button
                 key={cat}
-                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-all text-left ${
+                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors [transition-duration:var(--motion-fast)] text-left ${
                   category === cat
-                    ? 'bg-white/[0.08] text-white font-medium'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.03]'
+                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-[var(--bg-hover)]'
                 }`}
                 onClick={() => setCategory(cat)}
               >
@@ -381,20 +397,20 @@ export default function AppHub() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Apt cache banner */}
         {cacheReady === false && (
-          <div className="mx-6 mt-4 px-4 py-3.5 rounded-xl bg-blue-500/[0.06] border border-blue-500/[0.12] flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 20 20" className="w-4.5 h-4.5 text-blue-400" fill="currentColor">
+          <div className="mx-4 sm:mx-6 mt-4 px-4 py-3.5 rounded-xl bg-[var(--accent-soft)] border accent-border-soft flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent-soft)] flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 20 20" className="w-4.5 h-4.5 text-[var(--accent)]" fill="currentColor">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
               </svg>
             </div>
-            <div className="flex-1">
-              <div className="text-[12px] font-semibold text-blue-300">Package index required</div>
-              <div className="text-[11px] text-blue-400/60 mt-0.5">Update to install apps from Debian repositories</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-semibold text-[var(--accent)]">Package index required</div>
+              <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">Update to install apps from Debian repositories</div>
             </div>
             <button
               onClick={updateAptCache}
               disabled={updatingCache}
-              className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-all flex-shrink-0 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-colors [transition-duration:var(--motion-fast)] flex-shrink-0 disabled:opacity-50"
             >
               {updatingCache ? (
                 <span className="flex items-center gap-1.5">
@@ -407,39 +423,42 @@ export default function AppHub() {
         )}
 
         {/* Toast notifications */}
-        <div className="absolute top-3 right-3 z-50 flex flex-col gap-2 max-w-sm" style={{ right: selectedApp ? '340px' : '16px' }}>
+        <div className="absolute top-3 right-3 z-50 flex flex-col gap-2 max-w-[calc(100%-1.5rem)] sm:max-w-sm" style={{ right: selectedApp ? '340px' : '16px' }}>
           {success && (
-            <div className="px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm flex items-center gap-2.5 animate-in slide-in-from-right">
-              <svg viewBox="0 0 16 16" className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor">
+            <div className="px-4 py-3 rounded-xl bg-[var(--status-success-soft)] border border-success-soft backdrop-blur-sm flex items-center gap-2.5 animate-[slideIn_0.2s_ease-out]">
+              <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--status-success)] flex-shrink-0" fill="currentColor">
                 <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
               </svg>
-              <span className="text-[12px] text-emerald-300 font-medium">{success}</span>
+              <span className="text-[12px] text-[var(--status-success)] font-medium">{success}</span>
             </div>
           )}
         </div>
 
         {/* App grid */}
-        <div className="flex-1 overflow-y-auto px-6 pt-4 pb-8" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-8" ref={scrollRef}>
           {/* Section header */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[14px] font-semibold text-white">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-[14px] font-semibold text-[var(--text-primary)] min-w-0 truncate">
               {tab === 'installed' ? 'Installed Apps' : category !== 'all' ? CATEGORY_LABELS[category] || category : 'All Apps'}
             </h2>
-            <span className="text-[11px] text-neutral-600">{browseList.length} {browseList.length === 1 ? 'app' : 'apps'}</span>
+            <span className="text-[11px] text-neutral-600 flex-shrink-0">{browseList.length} {browseList.length === 1 ? 'app' : 'apps'}</span>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center h-48 text-neutral-600">
-              <span className="w-5 h-5 border-2 border-neutral-700 border-t-neutral-400 rounded-full animate-spin" />
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : browseList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-neutral-600 gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-white/[0.03] flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-7 h-7 text-neutral-700" fill="currentColor">
+            <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-neutral-600 gap-4 text-center px-6">
+              <div className="w-16 h-16 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-8 h-8 text-neutral-700" fill="currentColor">
                   <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z" />
                 </svg>
               </div>
-              <span className="text-[13px]">{tab === 'installed' ? 'No apps installed yet' : 'No apps match your search'}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-[13px] font-medium text-[var(--text-secondary)]">{tab === 'installed' ? 'No apps installed yet' : 'No apps match your search'}</span>
+                <span className="text-[11px] text-neutral-600">{tab === 'installed' ? 'Browse the store to add your first app' : 'Try a different search or category'}</span>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
@@ -451,17 +470,17 @@ export default function AppHub() {
                 return (
                   <div
                     key={app.id}
-                    className={`group relative flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer transition-all duration-100 ${
+                    className={`group relative flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer transition-[background-color,border-color,box-shadow,transform] [transition-duration:var(--motion-base)] [transition-timing-function:var(--ease-out)] motion-reduce:transition-none ${
                       isSelected
-                        ? 'bg-white/[0.07] ring-1 ring-white/[0.1]'
-                        : 'bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.04] hover:border-white/[0.08]'
+                        ? 'bg-[var(--bg-selected)] ring-1 ring-[var(--bg-selected-border)] border border-transparent'
+                        : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none'
                     }`}
                     onClick={() => selectApp(app)}
                   >
                     <AppIcon appId={app.icon || app.id} size={42} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[13px] font-medium text-white truncate">{app.name}</span>
+                        <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">{app.name}</span>
                         <SourceBadge app={app} />
                         <AppTypeBadge app={app} />{/* APPSTORE-08 */}
                       </div>
@@ -474,10 +493,10 @@ export default function AppHub() {
                         </span>
                       ) : isBeingRemoved ? (
                         <span className="w-7 h-7 flex items-center justify-center">
-                          <span className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
+                          <span className="w-4 h-4 rounded-full animate-spin border-2 border-[var(--status-danger-soft)] border-t-[var(--status-danger)]" />
                         </span>
                       ) : isInstalled ? (
-                        <svg viewBox="0 0 16 16" className="w-4.5 h-4.5 text-emerald-500/70" fill="currentColor">
+                        <svg viewBox="0 0 16 16" className="w-4.5 h-4.5 text-[var(--status-success)]" fill="currentColor">
                           <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
                         </svg>
                       ) : !isArchCompatible(app) ? (
@@ -486,7 +505,7 @@ export default function AppHub() {
                         </svg>
                       ) : (
                         <button
-                          className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/15 hover:border-blue-500/30 transition-all"
+                          className="px-3.5 py-2 min-h-[36px] rounded-lg text-[11px] font-semibold text-[var(--accent)] accent-bg-soft accent-bg-hover border accent-border-soft transition-colors [transition-duration:var(--motion-fast)]"
                           onClick={e => { e.stopPropagation(); installApp(app.id, app.latest) }}
                         >
                           Get
@@ -503,11 +522,11 @@ export default function AppHub() {
 
       {/* Detail panel — slide in from right */}
       {selectedApp && (
-        <div className="w-[340px] flex-shrink-0 border-l border-white/[0.06] flex flex-col bg-[#0f0f0f] overflow-hidden">
+        <div className="absolute sm:relative inset-y-0 right-0 z-30 w-full max-w-sm sm:w-[340px] sm:max-w-none flex-shrink-0 border-l border-[var(--border-default)] flex flex-col bg-[var(--bg-surface)] overflow-hidden shadow-2xl sm:shadow-none animate-[slideIn_0.2s_ease-out] sm:animate-none">
           {/* Close */}
           <div className="flex justify-end p-3 pb-0">
             <button
-              className="text-neutral-600 hover:text-neutral-400 transition-colors p-1.5 rounded-lg hover:bg-white/[0.05]"
+              className="text-neutral-600 hover:text-neutral-400 transition-colors p-1.5 rounded-lg hover:bg-[var(--bg-hover)]"
               onClick={() => setSelectedApp(null)}
             >
               <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
@@ -520,10 +539,10 @@ export default function AppHub() {
             {/* Hero section */}
             <div className="px-6 pb-5 flex flex-col items-center text-center">
               <AppIcon appId={selectedApp.icon || selectedApp.id} size={80} />
-              <h2 className="text-[18px] font-bold text-white mt-4 flex items-center gap-2">
+              <h2 className="text-[18px] font-bold text-[var(--text-primary)] mt-4 flex items-center gap-2">
                 {selectedApp.name}
                 {selectedApp.vetted && (
-                  <svg viewBox="0 0 16 16" className="w-4.5 h-4.5 text-blue-400" fill="currentColor">
+                  <svg viewBox="0 0 16 16" className="w-4.5 h-4.5 text-[var(--accent)]" fill="currentColor">
                     <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
                   </svg>
                 )}
@@ -537,38 +556,38 @@ export default function AppHub() {
             {/* Install / Uninstall action */}
             <div className="px-6 pb-5">
               {installing === selectedApp.id ? (
-                <div className="p-4 rounded-xl bg-blue-500/[0.05] border border-blue-500/[0.1]">
+                <div className="p-4 rounded-xl bg-[var(--accent-soft)] border accent-border-soft">
                   <InstallProgress label={installPhase} />
                 </div>
               ) : uninstalling === selectedApp.id ? (
-                <div className="p-4 rounded-xl bg-red-500/[0.05] border border-red-500/[0.1]">
+                <div className="p-4 rounded-xl bg-[var(--status-danger-soft)] border border-danger-soft">
                   <div className="flex items-center gap-2.5">
-                    <span className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin flex-shrink-0" />
-                    <span className="text-[13px] font-medium text-red-300">Removing...</span>
+                    <span className="w-4 h-4 rounded-full animate-spin flex-shrink-0 border-2 border-[var(--status-danger-soft)] border-t-[var(--status-danger)]" />
+                    <span className="text-[13px] font-medium text-[var(--status-danger)]">Removing...</span>
                   </div>
                 </div>
               ) : (selectedApp.installed || installedIds.has(selectedApp.id)) ? (
                 <div className="flex gap-2.5">
-                  <div className="flex-1 py-3 rounded-xl text-[13px] font-semibold text-emerald-400 bg-emerald-500/[0.06] border border-emerald-500/[0.12] flex items-center justify-center gap-2">
+                  <div className="flex-1 py-3 rounded-xl text-[13px] font-semibold text-[var(--status-success)] bg-[var(--status-success-soft)] border border-success-soft flex items-center justify-center gap-2">
                     <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
                       <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
                     </svg>
                     Installed
                   </div>
                   <button
-                    className="px-5 py-3 rounded-xl text-[12px] font-semibold text-red-400 border border-red-500/[0.15] hover:bg-red-500/[0.06] transition-all"
+                    className="px-5 py-3 rounded-xl text-[12px] font-semibold text-[var(--status-danger)] border border-danger-soft hover:bg-[var(--status-danger-soft)] transition-colors [transition-duration:var(--motion-fast)]"
                     onClick={() => uninstallApp(selectedApp.id)}
                   >
                     Remove
                   </button>
                 </div>
               ) : !isArchCompatible(selectedApp) ? (
-                <div className="py-3.5 rounded-xl text-[12px] font-medium text-red-400/80 bg-red-500/[0.05] border border-red-500/[0.1] text-center">
+                <div className="py-3.5 rounded-xl text-[12px] font-medium text-[var(--status-danger)] bg-[var(--status-danger-soft)] border border-danger-soft text-center">
                   Not available for {systemArch === 'arm64' ? 'ARM64' : systemArch}
                 </div>
               ) : (
                 <button
-                  className="w-full py-3.5 rounded-xl text-[13px] font-bold text-white bg-green-600 hover:bg-green-500 transition-all shadow-lg shadow-green-600/10 active:scale-[0.98]"
+                  className="w-full py-3.5 rounded-xl text-[13px] font-bold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-transform [transition-duration:var(--motion-fast)] shadow-lg shadow-[var(--accent)]/10 active:scale-[0.98] motion-reduce:active:scale-100"
                   onClick={() => installApp(selectedApp.id, selectedVersion)}
                 >
                   Install{selectedVersion && selectedVersion !== 'latest' ? ` ${selectedVersion}` : ''}
@@ -577,16 +596,16 @@ export default function AppHub() {
 
               {/* Error shown in panel */}
               {error && installing !== selectedApp.id && (
-                <div className="mt-3 p-3.5 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12]">
+                <div className="mt-3 p-3.5 rounded-xl bg-[var(--status-danger-soft)] border border-danger-soft">
                   <div className="flex items-start gap-2.5">
-                    <svg viewBox="0 0 16 16" className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="currentColor">
+                    <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--status-danger)] mt-0.5 flex-shrink-0" fill="currentColor">
                       <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zM6.25 5.5a.75.75 0 00-1.5 0v4a.75.75 0 001.5 0v-4zm4.25-.75a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4a.75.75 0 01.75-.75zM8 13a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                     </svg>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-semibold text-red-300 mb-1">Installation failed</div>
-                      <pre className="text-[10px] text-red-400/70 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-24 overflow-y-auto">{error}</pre>
+                      <div className="text-[11px] font-semibold text-[var(--status-danger)] mb-1">Installation failed</div>
+                      <pre className="text-[10px] text-[var(--text-tertiary)] whitespace-pre-wrap break-words font-mono leading-relaxed max-h-24 overflow-y-auto">{error}</pre>
                     </div>
-                    <button onClick={() => setError(null)} className="text-red-500/40 hover:text-red-400 transition-colors flex-shrink-0">
+                    <button onClick={() => setError(null)} className="text-neutral-600 hover:text-[var(--status-danger)] transition-colors flex-shrink-0">
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
                         <path d="M5.28 4.22a.75.75 0 00-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 101.06 1.06L8 9.06l2.72 2.72a.75.75 0 101.06-1.06L9.06 8l2.72-2.72a.75.75 0 00-1.06-1.06L8 6.94 5.28 4.22z" />
                       </svg>
@@ -629,10 +648,10 @@ export default function AppHub() {
                   {(selectedApp.versions || []).map(v => (
                     <button
                       key={v}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors [transition-duration:var(--motion-fast)] ${
                         selectedVersion === v
-                          ? 'bg-white/[0.1] text-white border border-white/[0.15]'
-                          : 'bg-white/[0.03] text-neutral-500 border border-white/[0.04] hover:border-white/[0.1] hover:text-neutral-300'
+                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] border border-[var(--bg-selected-border)]'
+                          : 'bg-[var(--bg-elevated)] text-neutral-500 border border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-neutral-300'
                       }`}
                       onClick={() => setSelectedVersion(v)}
                     >
@@ -646,10 +665,10 @@ export default function AppHub() {
             {/* Details table */}
             <div className="px-6 pb-6">
               <div className="text-[10px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Details</div>
-              <div className="rounded-xl border border-white/[0.05] overflow-hidden divide-y divide-white/[0.04]">
+              <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden divide-y divide-[var(--border-subtle)]">
                 <DetailRow label="Source" value={selectedApp.flatpak_id ? 'Flathub' : selectedApp.type === 'web' ? 'Web Service' : 'Debian'} />
                 <DetailRow label="Category" value={CATEGORY_LABELS[selectedApp.category] || selectedApp.category} />
-                <DetailRow label="License" value={selectedApp.license || '\u2014'} />
+                <DetailRow label="License" value={selectedApp.license || '—'} />
                 <DetailRow label="Arch" value={selectedApp.arch?.length ? selectedApp.arch.join(', ') : 'All'} />
                 {selectedApp.homepage && <DetailRow label="Website" value={selectedApp.homepage} link />}
               </div>
@@ -663,14 +682,14 @@ export default function AppHub() {
 
 function DetailRow({ label, value, link }) {
   return (
-    <div className="flex justify-between items-center px-4 py-2.5 bg-white/[0.01]">
-      <span className="text-[11px] text-neutral-600 font-medium">{label}</span>
+    <div className="flex justify-between items-center gap-3 px-4 py-2.5 bg-[var(--bg-base)]">
+      <span className="text-[11px] text-neutral-600 font-medium flex-shrink-0">{label}</span>
       {link ? (
         <a
           href={value}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[11px] text-blue-400/60 hover:text-blue-400 truncate max-w-[170px] transition-colors"
+          className="text-[11px] text-[var(--accent)] hover:text-[var(--accent-hover)] truncate max-w-[170px] transition-colors"
         >
           {value.replace(/^https?:\/\/(www\.)?/, '')}
         </a>

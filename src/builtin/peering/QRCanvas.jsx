@@ -360,7 +360,7 @@ function generateQR(text) {
 // ---------------------------------------------------------------------------
 // React component
 // ---------------------------------------------------------------------------
-export default function QRCanvas({ value, size = 200, darkColor = '#fff', lightColor = '#111827' }) {
+export default function QRCanvas({ value, size = 200, darkColor = '#0c0c0c', lightColor = '#ffffff' }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {

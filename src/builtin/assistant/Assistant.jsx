@@ -34,7 +34,7 @@ function SovereigntyBadge({ status, onClick }) {
       type="button"
       onClick={onClick}
       title={status.sovereignty?.reason || info.blurb}
-      className="flex items-center gap-2 text-[11px] rounded-md px-1.5 py-1 -mr-1 hover:bg-neutral-800/60 transition-colors"
+      className="flex items-center gap-2 text-[11px] rounded-md px-1.5 py-1 -mr-1 hover:bg-neutral-800/60 transition-colors focus-primary"
     >
       <span className="inline-block w-2 h-2 rounded-full" style={{ background: info.dot }} />
       <span className={info.tone}>{label}</span>
@@ -91,7 +91,7 @@ function TierPicker({ status, options, current, onPick, busy, onClose }) {
         })}
       </div>
       {status?.sovereignty && !status.sovereignty.allowed && (
-        <div className="text-[10.5px] text-amber-400/80 mt-2 leading-snug">
+        <div className="text-[10.5px] text-warning mt-2 leading-snug">
           This tier needs the egress opt-in (VULOS_ASSISTANT_ALLOW_EXTERNAL=1) before mail is sent to it.
         </div>
       )}
@@ -111,25 +111,36 @@ const QUICK = [
 function Bubble({ role, content, pending, error, onRetry }) {
   const isUser = role === 'user'
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
         style={isUser ? { background: 'var(--accent)' } : undefined}
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
+        className={`max-w-[86%] sm:max-w-[80%] min-w-0 rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
           isUser
-            ? 'text-white rounded-br-sm'
+            ? 'text-white rounded-br-md shadow-[0_1px_2px_rgba(0,0,0,0.18)]'
             : error
-              ? 'bg-danger-soft border border-danger-soft text-danger rounded-bl-sm'
-              : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'
+              ? 'bg-danger-soft border border-danger-soft text-danger rounded-bl-md'
+              : 'bg-neutral-800/60 border border-neutral-800/70 text-neutral-200 rounded-bl-md'
         }`}
       >
         {error && <span aria-hidden="true" className="mr-1.5">⚠</span>}
-        {content || (pending && !isUser && <span className="text-neutral-500">Thinking…</span>)}
-        {pending && content && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" aria-hidden="true" />}
+        {content || (pending && !isUser && (
+          <span className="inline-flex items-center gap-2 text-neutral-500">
+            <span className="va-dots" aria-hidden="true"><i /><i /><i /></span>
+            Thinking…
+          </span>
+        ))}
+        {pending && content && (
+          <span
+            className="va-caret inline-block w-[3px] h-[1.05em] ml-0.5 -mb-[0.12em] rounded-full align-baseline"
+            style={{ background: 'var(--accent)' }}
+            aria-hidden="true"
+          />
+        )}
         {error && onRetry && (
           <button
             type="button"
             onClick={onRetry}
-            className="block mt-1.5 text-[12px] font-medium text-danger underline decoration-danger/40 underline-offset-2 hover:decoration-danger transition-colors"
+            className="block mt-1.5 text-[12px] font-medium text-danger underline decoration-danger/40 underline-offset-2 hover:decoration-danger transition-colors focus-primary rounded"
           >
             Retry
           </button>
@@ -391,10 +402,24 @@ export default function Assistant() {
 
   return (
     <div className="flex flex-col h-full bg-neutral-950 text-neutral-200 overflow-hidden">
+      <style>{`
+        @keyframes vaCaret { 0%,45% { opacity: 1 } 55%,100% { opacity: 0.12 } }
+        .va-caret { animation: vaCaret 1s var(--ease-standard) infinite; }
+        @keyframes vaDot { 0%,80%,100% { transform: translateY(0); opacity: .35 } 40% { transform: translateY(-3px); opacity: 1 } }
+        .va-dots { display: inline-flex; gap: 3px; align-items: center; }
+        .va-dots i { width: 5px; height: 5px; border-radius: 9999px; background: currentColor; display: inline-block; animation: vaDot 1.2s var(--ease-standard) infinite; }
+        .va-dots i:nth-child(2) { animation-delay: .15s }
+        .va-dots i:nth-child(3) { animation-delay: .3s }
+        @keyframes vaFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+        .va-float { animation: vaFloat 4s var(--ease-standard) infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .va-caret, .va-dots i, .va-float { animation: none !important }
+        }
+      `}</style>
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-neutral-800/60 flex items-center justify-between gap-3">
+      <div className="flex-shrink-0 px-3 sm:px-4 py-3 border-b border-neutral-800/60 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-lg leading-none">✦</span>
+          <span className="w-7 h-7 rounded-lg flex items-center justify-center accent-bg-soft accent-text text-[15px] leading-none flex-shrink-0" aria-hidden="true">✦</span>
           <div className="min-w-0">
             <div className="text-[13px] font-medium text-neutral-100 leading-tight">Assistant</div>
             <div className="text-[11px] text-neutral-500 leading-tight truncate">
@@ -417,7 +442,7 @@ export default function Assistant() {
       )}
 
       {blocked && (
-        <div className="flex-shrink-0 px-4 py-2 text-[11px] text-red-300 bg-red-950/40 border-b border-red-900/40">
+        <div className="flex-shrink-0 px-3 sm:px-4 py-2 text-[11px] text-danger bg-danger-soft border-b border-danger-soft">
           This endpoint's tier ({tierInfo(currentTier).label}) is not permitted, so your mail stays inside the
           sovereignty boundary. Pick a local or sovereign endpoint, or set VULOS_ASSISTANT_ALLOW_EXTERNAL=1 to
           authorize a brokered/external one.
@@ -426,11 +451,11 @@ export default function Assistant() {
 
       {/* Conversation */}
       <div ref={scrollRef} role="log" aria-live="polite" aria-atomic="false" aria-busy={busy}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-3.5">
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center gap-4 select-none">
+          <div className="h-full flex flex-col items-center justify-center text-center gap-5 select-none px-2">
             <div
-              className="w-11 h-11 rounded-2xl flex items-center justify-center text-[20px] leading-none accent-bg-soft accent-text"
+              className="va-float w-14 h-14 rounded-2xl flex items-center justify-center text-[24px] leading-none accent-bg-soft accent-text ring-1 ring-[var(--border-default)]"
               aria-hidden="true"
             >
               ✦
@@ -445,9 +470,10 @@ export default function Assistant() {
                   key={q.id}
                   onClick={() => onQuick(q)}
                   disabled={busy}
-                  className="text-left text-[12px] px-3 py-2 rounded-lg bg-neutral-900/70 border border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:text-neutral-100 transition-colors disabled:opacity-50"
+                  className="group flex items-center gap-2.5 text-left text-[12.5px] px-3.5 py-2.5 rounded-xl bg-neutral-900/70 border border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-100 transition-colors disabled:opacity-50 focus-primary"
                 >
-                  {q.label}
+                  <span className="accent-text opacity-50 group-hover:opacity-100 transition-opacity" aria-hidden="true">→</span>
+                  <span className="min-w-0">{q.label}</span>
                 </button>
               ))}
             </div>
@@ -456,10 +482,10 @@ export default function Assistant() {
         {messages.map((m, i) => {
           const isLast = i === messages.length - 1
           return m.proposal ? (
-            <div key={m.id} className="flex justify-start flex-col gap-2 items-start">
+            <div key={m.id} className="flex justify-start flex-col gap-2 items-start min-w-0 w-full">
               {m.content && <Bubble role="assistant" content={m.content} />}
-              <StepTrace steps={m.steps} className="max-w-[85%]" />
-              <div className="max-w-[85%] w-full">
+              <StepTrace steps={m.steps} className="max-w-[86%] sm:max-w-[80%]" />
+              <div className="max-w-[86%] sm:max-w-[80%] w-full">
                 <ProposalCard
                   proposal={m.proposal}
                   state={m.state}
@@ -469,10 +495,10 @@ export default function Assistant() {
               </div>
             </div>
           ) : m.steps ? (
-            <div key={m.id} className="flex justify-start flex-col gap-1.5 items-start">
+            <div key={m.id} className="flex justify-start flex-col gap-1.5 items-start min-w-0 w-full">
               <Bubble role={m.role} content={m.content} pending={m.pending} error={m.error}
                 onRetry={m.error && isLast ? retryLast : undefined} />
-              <StepTrace steps={m.steps} className="max-w-[85%]" />
+              <StepTrace steps={m.steps} className="max-w-[86%] sm:max-w-[80%]" />
             </div>
           ) : (
             <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} error={m.error}
@@ -482,7 +508,7 @@ export default function Assistant() {
       </div>
 
       {/* Composer */}
-      <form onSubmit={submit} className="flex-shrink-0 border-t border-neutral-800/60 p-3">
+      <form onSubmit={submit} className="flex-shrink-0 border-t border-neutral-800/60 bg-neutral-950/60 p-3">
         {messages.length > 0 && (
           <div className="flex gap-1.5 mb-2 flex-wrap">
             {QUICK.map(q => (
@@ -491,7 +517,7 @@ export default function Assistant() {
                 type="button"
                 onClick={() => onQuick(q)}
                 disabled={busy}
-                className="text-[11px] px-2.5 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700 transition-colors disabled:opacity-40"
+                className="text-[11px] px-2.5 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700 transition-colors disabled:opacity-40 focus-primary"
               >
                 {q.label}
               </button>
@@ -499,25 +525,27 @@ export default function Assistant() {
           </div>
         )}
         <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submit(e) }}
-            placeholder="Ask about your mail…"
-            aria-label="Ask about your mail"
-            className="flex-1 resize-none bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-[13px] text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-neutral-700"
-          />
+          <div className="flex-1 min-w-0 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors focus-within:border-[color-mix(in_srgb,var(--accent)_55%,var(--border-emphasis))]">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submit(e) }}
+              placeholder="Ask about your mail…"
+              aria-label="Ask about your mail"
+              className="w-full min-w-0 resize-none bg-transparent rounded-2xl px-3.5 py-2.5 text-[13px] text-neutral-100 placeholder-neutral-600 focus:outline-none"
+            />
+          </div>
           <button
             type="submit"
             disabled={busy || !input.trim()}
             style={{ background: 'var(--accent)' }}
-            className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
+            className="flex-shrink-0 w-11 h-11 rounded-2xl text-white flex items-center justify-center transition-[filter,opacity] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
             aria-label="Send"
             title="Send (Enter)"
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="17" height="17">
               <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
             </svg>
           </button>

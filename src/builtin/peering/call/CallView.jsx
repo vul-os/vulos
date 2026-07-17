@@ -63,8 +63,8 @@ function Avatar({ label, size = 'lg' }) {
 function RingAnimation() {
   return (
     <span className="relative flex h-4 w-4">
-      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-      <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500" />
+      <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-[var(--status-success)] opacity-75" />
+      <span className="relative inline-flex rounded-full h-4 w-4 bg-[var(--status-success)]" />
     </span>
   )
 }
@@ -85,7 +85,7 @@ function CallBtn({ onClick, label, icon, color = 'bg-neutral-700 hover:bg-neutra
 // PEER-23: quality indicator badge
 function QualityBadge({ quality }) {
   if (!quality) return null
-  const colors = { good: 'text-green-400', fair: 'text-yellow-400', poor: 'text-red-400', unknown: 'text-neutral-500' }
+  const colors = { good: 'text-success', fair: 'text-warning', poor: 'text-danger', unknown: 'text-[var(--text-muted)]' }
   const labels = { good: 'Good', fair: 'Fair', poor: 'Poor', unknown: '—' }
   const c = colors[quality.quality] ?? colors.unknown
   const rtt = quality.rttMs != null ? `${quality.rttMs}ms` : ''
@@ -199,7 +199,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // ---------------------------------------------------------------------------
   if (call.state === 'idle') {
     return (
-      <div className="flex flex-col h-full bg-neutral-900 text-white select-none">
+      <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] select-none">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-neutral-200">Voice Call</h2>
@@ -228,18 +228,18 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
               onChange={e => { setDialTarget(e.target.value); setDialError('') }}
               onKeyDown={handleKeyDown}
               placeholder="vula:ed25519:abc123…"
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-[var(--accent)] transition-colors"
               autoComplete="off"
               spellCheck={false}
             />
             {dialError && (
-              <p className="text-xs text-red-400">{dialError}</p>
+              <p className="text-xs text-danger">{dialError}</p>
             )}
           </div>
 
           <button
             onClick={handleDial}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-500 transition-colors text-white font-medium px-6 py-2.5 rounded-full text-sm"
+            className="flex items-center gap-2 bg-[var(--status-success)] hover:brightness-110 transition-[filter] text-white font-medium px-6 py-2.5 rounded-full text-sm shadow-sm"
           >
             <span>📞</span> Call
           </button>
@@ -262,7 +262,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // ---------------------------------------------------------------------------
   if (call.state === 'calling') {
     return (
-      <div className="flex flex-col h-full bg-neutral-900 text-white select-none">
+      <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] select-none">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-neutral-200">Calling…</h2>
         </div>
@@ -282,7 +282,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             onClick={call.hangUp}
             label="Cancel"
             icon="📵"
-            color="bg-red-700 hover:bg-red-600"
+            color="bg-[var(--status-danger)] hover:brightness-110"
           />
         </div>
 
@@ -296,7 +296,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // ---------------------------------------------------------------------------
   if (call.state === 'ringing') {
     return (
-      <div className="flex flex-col h-full bg-neutral-900 text-white select-none">
+      <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] select-none">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-neutral-200">Incoming Call</h2>
         </div>
@@ -304,7 +304,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
         <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
           {/* Pulsing ring effect */}
           <div className="relative">
-            <span className="absolute inset-0 rounded-full bg-green-500/20 animate-ping" />
+            <span className="absolute inset-0 rounded-full bg-[color-mix(in_srgb,var(--status-success)_20%,transparent)] animate-ping motion-reduce:animate-none" />
             <Avatar label={shortId(call.remoteVulaId)} size="lg" />
           </div>
 
@@ -318,13 +318,13 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
               onClick={call.rejectCall}
               label="Decline"
               icon="📵"
-              color="bg-red-700 hover:bg-red-600"
+              color="bg-[var(--status-danger)] hover:brightness-110"
             />
             <CallBtn
               onClick={call.acceptCall}
               label="Accept"
               icon="📞"
-              color="bg-green-700 hover:bg-green-600"
+              color="bg-[var(--status-success)] hover:brightness-110"
             />
           </div>
         </div>
@@ -339,11 +339,11 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // ---------------------------------------------------------------------------
   if (call.state === 'active') {
     return (
-      <div className="flex flex-col h-full bg-neutral-900 text-white select-none">
+      <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] select-none">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-[var(--status-success)] animate-pulse motion-reduce:animate-none" />
             <h2 className="text-sm font-semibold text-neutral-200">In Call</h2>
           </div>
           <div className="flex items-center gap-3">
@@ -359,7 +359,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             ref={setRemoteVideoRef}
             autoPlay
             playsInline
-            className={`w-full rounded-xl object-cover bg-neutral-800 ${cameraOn || screenSharing ? 'max-h-56' : 'hidden'}`}
+            className={`w-full rounded-xl object-cover bg-black ${cameraOn || screenSharing ? 'max-h-56' : 'hidden'}`}
           />
 
           {/* Local camera preview (PiP-style corner) */}
@@ -368,7 +368,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             autoPlay
             playsInline
             muted
-            className={`absolute bottom-2 right-2 w-24 rounded-lg object-cover bg-neutral-800 border border-neutral-700 shadow-lg ${cameraOn ? 'block' : 'hidden'}`}
+            className={`absolute bottom-2 right-2 w-24 rounded-lg object-cover bg-black border border-white/15 shadow-lg ${cameraOn ? 'block' : 'hidden'}`}
           />
 
           {/* Avatar fallback when no video */}
@@ -386,12 +386,12 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
 
           {/* Screen-share label */}
           {screenSharing && (
-            <p className="text-xs text-blue-400 font-medium">Sharing screen</p>
+            <p className="text-xs accent-text font-medium">Sharing screen</p>
           )}
 
           {/* Video error */}
           {videoError && (
-            <p className="text-xs text-red-400 text-center px-2">{videoError}</p>
+            <p className="text-xs text-danger text-center px-2">{videoError}</p>
           )}
         </div>
 
@@ -404,7 +404,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             icon={call.isMuted ? '🔇' : '🎙'}
             color={
               call.isMuted
-                ? 'bg-yellow-700 hover:bg-yellow-600'
+                ? 'bg-[var(--status-warning)] hover:brightness-110'
                 : 'bg-neutral-700 hover:bg-neutral-600'
             }
           />
@@ -416,7 +416,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             icon={cameraOn ? '📹' : '📷'}
             color={
               cameraOn
-                ? 'bg-blue-700 hover:bg-blue-600'
+                ? 'accent-bg hover:brightness-110'
                 : 'bg-neutral-700 hover:bg-neutral-600'
             }
           />
@@ -428,7 +428,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             icon={screenSharing ? '🖥️' : '📤'}
             color={
               screenSharing
-                ? 'bg-blue-700 hover:bg-blue-600'
+                ? 'accent-bg hover:brightness-110'
                 : 'bg-neutral-700 hover:bg-neutral-600'
             }
           />
@@ -441,7 +441,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
               icon="⧉"
               color={
                 pipActive
-                  ? 'bg-blue-700 hover:bg-blue-600'
+                  ? 'accent-bg hover:brightness-110'
                   : 'bg-neutral-700 hover:bg-neutral-600'
               }
             />
@@ -452,7 +452,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
             onClick={call.hangUp}
             label="Hang Up"
             icon="📵"
-            color="bg-red-700 hover:bg-red-600"
+            color="bg-[var(--status-danger)] hover:brightness-110"
           />
         </div>
 
@@ -466,7 +466,7 @@ export default function CallView({ myVulaId = '', peeringWS = null, onClose, dia
   // ---------------------------------------------------------------------------
   if (call.state === 'ended') {
     return (
-      <div className="flex flex-col h-full bg-neutral-900 text-white select-none">
+      <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] select-none">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-neutral-200">Call Ended</h2>
         </div>

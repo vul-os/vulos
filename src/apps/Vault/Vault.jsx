@@ -62,6 +62,30 @@ function useCopy() {
   return { copied, copy }
 }
 
+// ── Password strength estimate (presentational only) ─────────────────────────
+// Rough, on-device heuristic used purely to colour the generator's strength bar.
+function estimateStrength(pw) {
+  if (!pw) return { score: 0, label: '', color: 'var(--text-muted)' }
+  let variety = 0
+  if (/[a-z]/.test(pw)) variety++
+  if (/[A-Z]/.test(pw)) variety++
+  if (/[0-9]/.test(pw)) variety++
+  if (/[^A-Za-z0-9]/.test(pw)) variety++
+  const len = pw.length
+  let score = 1
+  if (len >= 12 && variety >= 3) score = 3
+  else if (len >= 10 && variety >= 2) score = 2
+  if (len >= 16 && variety >= 3) score = 4
+  const meta = [
+    { label: '', color: 'var(--text-muted)' },
+    { label: 'Weak', color: 'var(--status-danger)' },
+    { label: 'Fair', color: 'var(--status-warning)' },
+    { label: 'Strong', color: 'var(--status-success)' },
+    { label: 'Excellent', color: 'var(--status-success)' },
+  ][score]
+  return { score, label: meta.label, color: meta.color }
+}
+
 // ── Small icon components ─────────────────────────────────────────────────────
 const IconLock = () => (
   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -277,17 +301,17 @@ function TransferPanel({ onBack, onImported }) {
   }
 
   const tabCls = (t) =>
-    `flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-      tab === t ? 'bg-neutral-700/70 text-white' : 'text-neutral-500 hover:text-neutral-300'
+    `flex-1 min-h-[36px] py-1.5 rounded-lg text-xs font-medium transition-colors ${
+      tab === t ? 'bg-neutral-700/70 text-[var(--text-primary)]' : 'text-neutral-500 hover:text-neutral-300'
     }`
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 shrink-0">
-        <button onClick={onBack} className="text-neutral-500 hover:text-neutral-200 transition-colors" aria-label="Back">
+        <button onClick={onBack} className="text-neutral-500 hover:text-neutral-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2" aria-label="Back">
           <IconBack />
         </button>
-        <h3 className="text-sm font-semibold text-white">Import &amp; Export</h3>
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Import &amp; Export</h3>
       </div>
 
       <div className="px-4 py-3 flex flex-col gap-3">
@@ -344,7 +368,7 @@ function TransferPanel({ onBack, onImported }) {
             )}
 
             {importErr && (
-              <p role="alert" className="text-red-400 text-xs bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+              <p role="alert" className="text-[var(--status-danger)] text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">
                 {importErr}
               </p>
             )}
@@ -355,7 +379,7 @@ function TransferPanel({ onBack, onImported }) {
                 <span className="text-xs font-medium text-neutral-300">Import finished</span>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-neutral-900 rounded-lg py-2">
-                    <div className="text-green-400 text-sm font-semibold">{result.imported ?? 0}</div>
+                    <div className="text-[var(--status-success)] text-sm font-semibold">{result.imported ?? 0}</div>
                     <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Imported</div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg py-2">
@@ -363,7 +387,7 @@ function TransferPanel({ onBack, onImported }) {
                     <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Skipped</div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg py-2">
-                    <div className={`text-sm font-semibold ${result.errors ? 'text-red-400' : 'text-neutral-300'}`}>
+                    <div className={`text-sm font-semibold ${result.errors ? 'text-[var(--status-danger)]' : 'text-neutral-300'}`}>
                       {result.errors ?? 0}
                     </div>
                     <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Failed</div>
@@ -376,7 +400,7 @@ function TransferPanel({ onBack, onImported }) {
                 {Array.isArray(result.warnings) && result.warnings.length > 0 && (
                   <ul className="flex flex-col gap-1 mt-1">
                     {result.warnings.map((wmsg, i) => (
-                      <li key={i} className="text-[11px] text-amber-400/90 bg-amber-900/15 border border-amber-800/30 rounded-md px-2 py-1">
+                      <li key={i} className="text-[11px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-md px-2 py-1">
                         {wmsg}
                       </li>
                     ))}
@@ -388,7 +412,7 @@ function TransferPanel({ onBack, onImported }) {
             <button
               type="submit"
               disabled={importing || !file}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default text-white rounded-lg py-2 text-sm font-medium transition-colors"
+              className="w-full min-h-[44px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-default text-[var(--text-on-accent,#fff)] rounded-lg py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
             >
               {importing ? 'Importing…' : 'Import'}
             </button>
@@ -437,18 +461,18 @@ function TransferPanel({ onBack, onImported }) {
               />
             </Field>
 
-            <p className="text-[11px] text-amber-400/80 bg-amber-900/15 border border-amber-800/30 rounded-lg px-3 py-2">
+            <p className="text-[11px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-lg px-3 py-2">
               This password is not stored anywhere. If you lose it, the backup
               cannot be opened — not even by us.
             </p>
 
             {exportErr && (
-              <p role="alert" className="text-red-400 text-xs bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+              <p role="alert" className="text-[var(--status-danger)] text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">
                 {exportErr}
               </p>
             )}
             {exportDone && (
-              <p role="status" className="text-green-400 text-xs bg-green-900/20 border border-green-800/40 rounded-lg px-3 py-2">
+              <p role="status" className="text-[var(--status-success)] text-xs bg-[var(--status-success-soft)] border border-[var(--status-success-soft)] rounded-lg px-3 py-2">
                 Backup downloaded.
               </p>
             )}
@@ -456,7 +480,7 @@ function TransferPanel({ onBack, onImported }) {
             <button
               type="submit"
               disabled={exporting || !masterPassword || !exportPassword || !exportConfirm}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default text-white rounded-lg py-2 text-sm font-medium transition-colors"
+              className="w-full min-h-[44px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-default text-[var(--text-on-accent,#fff)] rounded-lg py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
             >
               {exporting ? 'Exporting…' : 'Export vault'}
             </button>
@@ -500,12 +524,12 @@ function UnlockScreen({ onUnlock }) {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[300px] px-8 gap-6">
+    <div className="flex flex-col items-center justify-center h-full min-h-[300px] px-6 sm:px-8 gap-6">
       <div className="flex flex-col items-center gap-2">
-        <div className="w-14 h-14 rounded-2xl bg-neutral-800 flex items-center justify-center text-neutral-400">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--accent-soft)] flex items-center justify-center text-[var(--accent)] [&_svg]:w-7 [&_svg]:h-7">
           <IconLock />
         </div>
-        <h2 className="text-white font-semibold text-lg">Vault Locked</h2>
+        <h2 className="text-[var(--text-primary)] font-semibold text-lg">Vault Locked</h2>
         <p className="text-neutral-500 text-sm text-center">Enter your master password to unlock</p>
       </div>
 
@@ -516,16 +540,16 @@ function UnlockScreen({ onUnlock }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Master password"
-          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2.5 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-500 transition-colors"
+          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
           autoComplete="current-password"
         />
         {error && (
-          <p className="text-red-400 text-xs text-center">{error}</p>
+          <p className="text-[var(--status-danger)] text-xs text-center">{error}</p>
         )}
         <button
           type="submit"
           disabled={loading || !password}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-default text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
+          className="w-full min-h-[44px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-default text-[var(--text-on-accent,#fff)] rounded-lg py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
         >
           {loading ? 'Unlocking…' : 'Unlock Vault'}
         </button>
@@ -543,27 +567,29 @@ function GeneratorPanel({ onInsert, onClose }) {
 
   const toggle = (field) => gen.setOpts(prev => ({ ...prev, [field]: !prev[field] }))
 
+  const strength = estimateStrength(gen.result)
+
   return (
     <div className="bg-neutral-850 border border-neutral-700/60 rounded-xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Password Generator</span>
         {onClose && (
-          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-400 text-lg leading-none">×</button>
+          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-400 text-lg leading-none w-8 h-8 flex items-center justify-center -mr-1">×</button>
         )}
       </div>
 
       {/* Length slider */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-neutral-500 w-12">Length</span>
+        <span className="text-xs text-neutral-500 w-12 shrink-0">Length</span>
         <input
           type="range"
           min={8}
           max={64}
           value={gen.opts.length}
           onChange={(e) => gen.setOpts(prev => ({ ...prev, length: Number(e.target.value) }))}
-          className="flex-1 accent-blue-500"
+          className="flex-1 min-w-0 accent-[var(--accent)]"
         />
-        <span className="text-xs text-neutral-300 w-6 text-right">{gen.opts.length}</span>
+        <span className="text-xs text-neutral-300 w-6 text-right shrink-0 font-mono tabular-nums">{gen.opts.length}</span>
       </div>
 
       {/* Character set toggles */}
@@ -577,9 +603,9 @@ function GeneratorPanel({ onInsert, onClose }) {
           <button
             key={field}
             onClick={() => toggle(field)}
-            className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
+            className={`px-2.5 py-1.5 min-h-[36px] rounded-md text-xs font-mono transition-colors ${
               gen.opts[field]
-                ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]'
                 : 'bg-neutral-800 text-neutral-500 border border-neutral-700/50'
             }`}
           >
@@ -592,7 +618,7 @@ function GeneratorPanel({ onInsert, onClose }) {
       <button
         onClick={handleGenerate}
         disabled={gen.loading}
-        className="flex items-center justify-center gap-2 w-full bg-neutral-700/60 hover:bg-neutral-600/60 disabled:opacity-40 text-neutral-200 rounded-lg py-2 text-sm transition-colors"
+        className="flex items-center justify-center gap-2 w-full min-h-[44px] bg-neutral-700/60 hover:bg-neutral-600/60 disabled:opacity-40 text-neutral-200 rounded-lg py-2 text-sm transition-colors"
       >
         <IconWand />
         {gen.loading ? 'Generating…' : 'Generate'}
@@ -600,23 +626,42 @@ function GeneratorPanel({ onInsert, onClose }) {
 
       {/* Result row */}
       {gen.result && (
-        <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700/50 rounded-lg px-3 py-2">
-          <span className="flex-1 font-mono text-xs text-green-400 break-all">{gen.result}</span>
-          <button
-            onClick={() => copy(gen.result, 'gen')}
-            className="text-neutral-500 hover:text-neutral-200 shrink-0 transition-colors"
-            title="Copy"
-          >
-            {copied === 'gen' ? <span className="text-green-400 text-xs">Copied!</span> : <IconCopy />}
-          </button>
-          {onInsert && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700/50 rounded-lg px-3 py-2">
+            <span className="flex-1 min-w-0 font-mono text-xs text-[var(--status-success)] break-all">{gen.result}</span>
             <button
-              onClick={() => { onInsert(gen.result); onClose && onClose() }}
-              className="text-xs text-blue-400 hover:text-blue-300 shrink-0 ml-1 transition-colors"
+              onClick={() => copy(gen.result, 'gen')}
+              className="text-neutral-500 hover:text-neutral-200 shrink-0 transition-colors w-9 h-9 flex items-center justify-center"
+              title="Copy"
             >
-              Use
+              {copied === 'gen' ? <span className="text-[var(--status-success)] text-xs">Copied!</span> : <IconCopy />}
             </button>
-          )}
+            {onInsert && (
+              <button
+                onClick={() => { onInsert(gen.result); onClose && onClose() }}
+                className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] shrink-0 ml-1 transition-colors px-2 py-1"
+              >
+                Use
+              </button>
+            )}
+          </div>
+          {/* Strength indicator (presentational) */}
+          <div className="flex items-center gap-2" aria-hidden="true">
+            <div className="flex-1 flex gap-1">
+              {[1, 2, 3, 4].map(i => (
+                <div
+                  key={i}
+                  className="h-1 flex-1 rounded-full transition-colors"
+                  style={{ background: i <= strength.score ? strength.color : 'var(--border-default)' }}
+                />
+              ))}
+            </div>
+            {strength.label && (
+              <span className="text-[10px] font-medium shrink-0" style={{ color: strength.color }}>
+                {strength.label}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -677,23 +722,23 @@ function EntryForm({ existing, onSave, onCancel }) {
     <form onSubmit={handleSave} className="flex flex-col gap-0 h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 shrink-0">
-        <button type="button" onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors">
+        <button type="button" onClick={onCancel} className="text-neutral-500 hover:text-neutral-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2">
           <IconBack />
         </button>
-        <h3 className="text-sm font-semibold text-white flex-1">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] flex-1 min-w-0 truncate">
           {isEdit ? 'Edit Entry' : 'New Entry'}
         </h3>
         <button
           type="submit"
           disabled={saving}
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-colors"
+          className="px-3 py-1.5 min-h-[36px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 text-[var(--text-on-accent,#fff)] rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
 
       <div className="flex flex-col gap-3 px-4 py-3">
-        {error && <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">{error}</p>}
+        {error && <p className="text-[var(--status-danger)] text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">{error}</p>}
 
         <Field label="Title" required>
           <input
@@ -724,14 +769,14 @@ function EntryForm({ existing, onSave, onCancel }) {
               value={form.password}
               onChange={set('password')}
               placeholder={isEdit ? '(unchanged)' : 'Enter or generate a password'}
-              className={`${inputCls} pr-16`}
+              className={`${inputCls} pr-20 font-mono`}
               autoComplete="new-password"
             />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-0.5">
               <button
                 type="button"
                 onClick={() => setShowPass(s => !s)}
-                className="text-neutral-500 hover:text-neutral-300 p-1 transition-colors"
+                className="text-neutral-500 hover:text-neutral-300 w-9 h-9 flex items-center justify-center transition-colors"
                 title={showPass ? 'Hide' : 'Show'}
               >
                 <IconEye open={showPass} />
@@ -739,7 +784,7 @@ function EntryForm({ existing, onSave, onCancel }) {
               <button
                 type="button"
                 onClick={() => setShowGen(s => !s)}
-                className="text-neutral-500 hover:text-neutral-300 p-1 transition-colors"
+                className="text-neutral-500 hover:text-neutral-300 w-9 h-9 flex items-center justify-center transition-colors"
                 title="Generate password"
               >
                 <IconWand />
@@ -787,14 +832,14 @@ function Field({ label, required, children }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-neutral-500 font-medium">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+        {label}{required && <span className="text-[var(--status-danger)] ml-0.5">*</span>}
       </span>
       {children}
     </label>
   )
 }
 
-const inputCls = 'w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-500 transition-colors'
+const inputCls = 'w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30'
 
 // ── Entry detail view ─────────────────────────────────────────────────────────
 function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
@@ -833,7 +878,7 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <p className="text-neutral-500 text-sm">Could not load entry</p>
-        <button onClick={onBack} className="text-blue-400 hover:text-blue-300 text-sm">Back</button>
+        <button onClick={onBack} className="text-[var(--accent)] hover:text-[var(--accent-hover)] text-sm">Back</button>
       </div>
     )
   }
@@ -842,25 +887,25 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 shrink-0">
-        <button onClick={onBack} className="text-neutral-500 hover:text-neutral-200 transition-colors">
+        <button onClick={onBack} className="text-neutral-500 hover:text-neutral-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2">
           <IconBack />
         </button>
-        <h3 className="text-sm font-semibold text-white flex-1 truncate">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] flex-1 min-w-0 truncate">
           {entry.title || entry.name || entryMeta.title || entryMeta.name}
         </h3>
         <button
           onClick={() => onEdit(entry)}
-          className="text-neutral-500 hover:text-neutral-200 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+          className="text-neutral-500 hover:text-neutral-200 w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
           title="Edit"
         >
           <IconEdit />
         </button>
         <button
           onClick={handleDelete}
-          className={`p-1.5 rounded-lg transition-colors ${
+          className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
             delConfirm
-              ? 'text-red-400 bg-red-900/20 hover:bg-red-900/40'
-              : 'text-neutral-500 hover:text-red-400 hover:bg-white/5'
+              ? 'text-[var(--status-danger)] bg-[var(--status-danger-soft)] hover:bg-[var(--status-danger-soft)]'
+              : 'text-neutral-500 hover:text-[var(--status-danger)] hover:bg-[var(--bg-hover)]'
           }`}
           title={delConfirm ? 'Click again to confirm' : 'Delete'}
         >
@@ -895,18 +940,18 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
               <div className="flex gap-1">
                 <button
                   onClick={() => setShowPass(s => !s)}
-                  className="text-neutral-500 hover:text-neutral-300 p-1 rounded transition-colors"
+                  className="text-neutral-500 hover:text-neutral-300 w-9 h-9 flex items-center justify-center rounded transition-colors"
                   title={showPass ? 'Hide' : 'Reveal'}
                 >
                   <IconEye open={showPass} />
                 </button>
                 <button
                   onClick={() => copy(entry.password, 'password')}
-                  className="text-neutral-500 hover:text-neutral-300 p-1 rounded transition-colors"
+                  className="text-neutral-500 hover:text-neutral-300 min-w-9 h-9 px-1 flex items-center justify-center rounded transition-colors"
                   title="Copy"
                 >
                   {copied === 'password'
-                    ? <span className="text-green-400 text-xs font-medium">Copied!</span>
+                    ? <span className="text-[var(--status-success)] text-xs font-medium">Copied!</span>
                     : <IconCopy />
                   }
                 </button>
@@ -920,13 +965,13 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
         {entry.notes && (
           <div className="py-3 border-b border-neutral-800/60 last:border-0">
             <span className="text-xs text-neutral-500 font-medium block mb-1">Notes</span>
-            <p className="text-sm text-neutral-300 whitespace-pre-wrap">{entry.notes}</p>
+            <p className="text-sm text-neutral-300 whitespace-pre-wrap break-words">{entry.notes}</p>
           </div>
         )}
       </div>
 
       {delConfirm && (
-        <div className="mx-4 mb-4 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2 text-xs text-red-400">
+        <div className="mx-4 mb-4 bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2 text-xs text-[var(--status-danger)]">
           Click the trash icon again to permanently delete this entry.
         </div>
       )}
@@ -937,15 +982,15 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
 function DetailRow({ label, value, copyKey, copied, copy }) {
   return (
     <div className="py-3 border-b border-neutral-800/60 last:border-0">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1 gap-2">
         <span className="text-xs text-neutral-500 font-medium">{label}</span>
         <button
           onClick={() => copy(value, copyKey)}
-          className="text-neutral-500 hover:text-neutral-300 p-1 rounded transition-colors"
+          className="text-neutral-500 hover:text-neutral-300 min-w-9 h-9 px-1 flex items-center justify-center rounded transition-colors shrink-0"
           title="Copy"
         >
           {copied === copyKey
-            ? <span className="text-green-400 text-xs font-medium">Copied!</span>
+            ? <span className="text-[var(--status-success)] text-xs font-medium">Copied!</span>
             : <IconCopy />
           }
         </button>
@@ -963,7 +1008,7 @@ function EntryTile({ entry, onSelect }) {
   return (
     <button
       onClick={() => onSelect(entry)}
-      className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-left group"
+      className="flex items-center gap-3 w-full px-3 py-2.5 min-h-[52px] rounded-xl hover:bg-[var(--bg-hover)] transition-colors text-left group"
     >
       {/* Avatar */}
       <div className="w-9 h-9 rounded-xl bg-neutral-800 border border-neutral-700/50 flex items-center justify-center text-xs font-semibold text-neutral-400 shrink-0 group-hover:border-neutral-600/50 transition-colors">
@@ -1107,7 +1152,7 @@ export default function Vault() {
           {/* Toolbar */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-neutral-800 shrink-0">
             {/* Search */}
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none">
                 <IconSearch />
               </div>
@@ -1116,12 +1161,12 @@ export default function Vault() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search vault…"
-                className="w-full bg-neutral-800/60 border border-neutral-700/50 rounded-lg pl-9 pr-3 py-1.5 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-500/70 transition-colors"
+                className="w-full bg-neutral-800/60 border border-neutral-700/50 rounded-lg pl-9 pr-8 py-1.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-neutral-400 text-base"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-neutral-400 text-base w-7 h-7 flex items-center justify-center"
                 >
                   ×
                 </button>
@@ -1131,7 +1176,7 @@ export default function Vault() {
             {/* Generator shortcut */}
             <button
               onClick={() => setView('generator')}
-              className="p-2 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-white/5 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors shrink-0"
               title="Password Generator"
               aria-label="Password Generator"
             >
@@ -1141,7 +1186,7 @@ export default function Vault() {
             {/* Import / Export */}
             <button
               onClick={() => setView('transfer')}
-              className="p-2 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-white/5 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors shrink-0"
               title="Import / Export"
               aria-label="Import or export vault"
             >
@@ -1151,7 +1196,7 @@ export default function Vault() {
             {/* Add */}
             <button
               onClick={() => setView('add')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--text-on-accent,#fff)] text-xs font-medium transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
             >
               <IconPlus />
               Add
@@ -1160,7 +1205,7 @@ export default function Vault() {
             {/* Lock */}
             <button
               onClick={lockVault}
-              className="p-2 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-white/5 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[var(--bg-hover)] transition-colors shrink-0"
               title="Lock vault"
             >
               <IconLock />
@@ -1174,27 +1219,27 @@ export default function Vault() {
                 Loading…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="flex flex-col items-center justify-center py-16 px-4 gap-3">
                 {entries.length === 0 ? (
                   <>
-                    <div className="w-12 h-12 rounded-2xl bg-neutral-800 flex items-center justify-center text-neutral-600">
+                    <div className="w-14 h-14 rounded-2xl bg-[var(--accent-soft)] flex items-center justify-center text-[var(--accent)] [&_svg]:w-6 [&_svg]:h-6">
                       <IconKey />
                     </div>
                     <div className="text-center">
-                      <p className="text-neutral-500 text-sm font-medium">Vault is empty</p>
+                      <p className="text-neutral-400 text-sm font-medium">Vault is empty</p>
                       <p className="text-neutral-600 text-xs mt-1">Add your first credential to get started</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-center">
                       <button
                         onClick={() => setView('add')}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 min-h-[40px] rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--text-on-accent,#fff)] text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
                       >
                         <IconPlus />
                         Add credential
                       </button>
                       <button
                         onClick={() => setView('transfer')}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 text-neutral-200 text-sm font-medium transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 min-h-[40px] rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 text-neutral-200 text-sm font-medium transition-colors"
                       >
                         <IconTransfer />
                         Import
@@ -1240,10 +1285,10 @@ export default function Vault() {
       {view === 'generator' && (
         <div className="flex flex-col h-full">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 shrink-0">
-            <button onClick={handleBack} className="text-neutral-500 hover:text-neutral-200 transition-colors">
+            <button onClick={handleBack} className="text-neutral-500 hover:text-neutral-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2">
               <IconBack />
             </button>
-            <h3 className="text-sm font-semibold text-white">Password Generator</h3>
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Password Generator</h3>
           </div>
           <div className="p-4">
             <GeneratorPanel />

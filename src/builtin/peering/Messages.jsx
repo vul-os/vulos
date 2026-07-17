@@ -159,7 +159,7 @@ const S = {
     width: 8,
     height: 8,
     borderRadius: '50%',
-    background: '#555',
+    background: 'var(--text-ghost)',
     flexShrink: 0,
   },
   convList: {
@@ -171,11 +171,12 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    padding: '9px 14px',
+    padding: '10px 14px',
+    minHeight: 44,
     cursor: 'pointer',
-    background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
+    background: active ? 'var(--bg-selected)' : 'transparent',
     borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
-    transition: 'background 0.1s',
+    transition: 'background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard)',
   }),
   avatar: (seed) => {
     const colors = ['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#db2777','#0891b2']
@@ -289,10 +290,11 @@ const S = {
     flexShrink: 0,
   }),
   bubble: (mine) => ({
-    maxWidth: '65%',
+    maxWidth: '100%',
     padding: '8px 12px',
     borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
     background: mine ? 'var(--accent)' : 'var(--bg-elevated, #1e1e1e)',
+    border: mine ? '1px solid transparent' : '1px solid var(--border-subtle)',
     color: mine ? '#fff' : 'var(--text-primary, #e5e5e5)',
     lineHeight: 1.45,
     wordBreak: 'break-word',
@@ -327,7 +329,7 @@ const S = {
     alignItems: 'center',
     gap: 8,
     padding: '8px 12px',
-    background: 'rgba(255,255,255,0.08)',
+    background: 'color-mix(in srgb, var(--text-primary) 9%, transparent)',
     borderRadius: 10,
     fontSize: 12,
     marginTop: 4,
@@ -343,8 +345,9 @@ const S = {
   },
   dropZone: (dragging) => ({
     border: dragging ? '2px dashed var(--accent)' : '2px dashed transparent',
-    borderRadius: 10,
-    transition: 'border 0.15s',
+    borderRadius: 12,
+    background: dragging ? 'var(--accent-soft)' : 'transparent',
+    transition: 'border-color var(--motion-base) var(--ease-standard), background var(--motion-base) var(--ease-standard), padding var(--motion-base) var(--ease-standard)',
     padding: dragging ? 8 : 0,
   }),
   attachPreviews: {
@@ -355,9 +358,10 @@ const S = {
   },
   attachPreview: {
     position: 'relative',
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: 'hidden',
-    background: '#1e1e1e',
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--border-default)',
   },
   attachImg: {
     width: 60,
@@ -402,10 +406,12 @@ const S = {
   },
   textInput: {
     flex: 1,
+    minWidth: 0,
     background: 'var(--bg-elevated, #1a1a1a)',
     border: '1px solid var(--border-strong, #2a2a2a)',
     borderRadius: 22,
-    padding: '9px 16px',
+    padding: '10px 16px',
+    minHeight: 44,
     color: 'inherit',
     fontSize: 13,
     outline: 'none',
@@ -414,6 +420,7 @@ const S = {
     maxHeight: 120,
     fontFamily: 'inherit',
     overflowY: 'auto',
+    transition: 'border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard)',
   },
   iconBtn: (disabled) => ({
     background: 'none',
@@ -427,13 +434,13 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'color 0.1s, background 0.1s',
+    transition: 'color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard)',
     flexShrink: 0,
   }),
   sendBtn: (canSend) => ({
     background: canSend ? 'var(--accent)' : 'var(--bg-elevated, #2a2a2a)',
-    border: 'none',
-    color: canSend ? '#fff' : '#555',
+    border: canSend ? 'none' : '1px solid var(--border-default)',
+    color: canSend ? '#fff' : 'var(--text-ghost)',
     cursor: canSend ? 'pointer' : 'default',
     width: 44,
     height: 44,
@@ -441,7 +448,7 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'background 0.15s',
+    transition: 'background var(--motion-base) var(--ease-standard), color var(--motion-base) var(--ease-standard)',
     flexShrink: 0,
   }),
   backBtn: {
@@ -470,7 +477,19 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
+    padding: 24,
     color: 'var(--text-ghost, #555)',
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: '50%',
+    background: 'var(--accent-soft)',
+    color: 'var(--accent)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
   },
   emptyTitle: {
     fontSize: 15,
@@ -486,7 +505,7 @@ const S = {
   spinner: {
     width: 20,
     height: 20,
-    border: '2px solid #333',
+    border: '2px solid color-mix(in srgb, var(--accent) 22%, transparent)',
     borderTopColor: 'var(--accent)',
     borderRadius: '50%',
     animation: 'spin 0.7s linear infinite',
@@ -641,7 +660,7 @@ function MessageBubble({ msg, isMine, peerName }) {
             {initials(peerName)}
           </div>
         )}
-        <div style={{ maxWidth: '65%' }}>
+        <div style={{ maxWidth: '74%', minWidth: 0 }}>
           <div style={S.bubble(isMine)}>
             {msg.body && <div>{msg.body}</div>}
             {msg.attachments?.map((att, i) => (
@@ -822,7 +841,7 @@ function Composer({ convId, onSent, disabled }) {
                   )}
                   {a.error && (
                     <div style={{
-                      position: 'absolute', inset: 0, background: 'rgba(220,38,38,0.4)',
+                      position: 'absolute', inset: 0, background: 'color-mix(in srgb, var(--status-danger) 55%, transparent)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 10, color: '#fff', padding: 2, textAlign: 'center',
                     }}>
@@ -967,7 +986,9 @@ function ThreadView({ conversation, myVulaId, onBack }) {
     return (
       <div style={{ ...S.main, justifyContent: 'center' }}>
         <div style={S.empty}>
-          <IconMessages />
+          <div style={S.emptyIconWrap}>
+            <IconMessages />
+          </div>
           <div style={S.emptyTitle}>Your Messages</div>
           <div style={S.emptyNote}>
             Select a conversation to read messages or send to a contact.

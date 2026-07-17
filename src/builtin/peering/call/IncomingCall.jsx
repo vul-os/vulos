@@ -108,11 +108,11 @@ function useCallHistory() {
 
 function StatusBadge({ status }) {
   const cfg = {
-    completed: { label: 'Completed', cls: 'text-green-400' },
-    missed:    { label: 'Missed',    cls: 'text-red-400' },
-    rejected:  { label: 'Rejected',  cls: 'text-amber-400' },
-    outgoing:  { label: 'Outgoing',  cls: 'text-blue-400' },
-  }[status] || { label: status, cls: 'text-neutral-400' }
+    completed: { label: 'Completed', cls: 'text-success' },
+    missed:    { label: 'Missed',    cls: 'text-danger' },
+    rejected:  { label: 'Rejected',  cls: 'text-warning' },
+    outgoing:  { label: 'Outgoing',  cls: 'accent-text' },
+  }[status] || { label: status, cls: 'text-[var(--text-tertiary)]' }
 
   return <span className={`text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
 }
@@ -145,7 +145,7 @@ function CallHistoryPanel({ onClose }) {
             </div>
           )}
           {error && (
-            <div className="px-5 py-4 text-sm text-red-400">
+            <div className="px-5 py-4 text-sm text-danger">
               Failed to load history: {error}
               <button onClick={refresh} className="ml-2 underline hover:no-underline">Retry</button>
             </div>
@@ -185,9 +185,9 @@ function CallHistoryRow({ entry }) {
   return (
     <div className="flex items-center gap-3 px-5 py-3 border-b border-neutral-800/60 hover:bg-neutral-800/30 transition-colors">
       {/* Direction arrow */}
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isInbound ? 'bg-blue-900/50' : 'bg-neutral-800'}`}>
+      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isInbound ? 'accent-bg-soft' : 'bg-neutral-800'}`}>
         {isInbound ? (
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 accent-text" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 3l10 10M13 3v10H3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : (
@@ -231,10 +231,10 @@ function IncomingCallModal({ call, onAccept, onReject }) {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
 
       {/* Card */}
-      <div className="relative z-10 w-80 bg-neutral-900 border border-neutral-700/60 rounded-3xl shadow-[0_32px_80px_rgba(0,0,0,0.7)] overflow-hidden animate-[fadeScaleIn_0.25s_ease-out]">
+      <div className="relative z-10 w-80 max-w-[calc(100vw-2rem)] bg-neutral-900 border border-neutral-700/60 rounded-3xl shadow-[0_32px_80px_rgba(0,0,0,0.7)] overflow-hidden animate-[fadeScaleIn_0.25s_ease-out] motion-reduce:animate-none">
         {/* Animated ring pulse */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-blue-500/20 animate-ping" />
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border accent-border-soft animate-ping motion-reduce:animate-none" />
         </div>
 
         {/* Avatar / identity */}
@@ -244,17 +244,17 @@ function IncomingCallModal({ call, onAccept, onReject }) {
               <img
                 src={call.peerAvatar}
                 alt={call.peerDisplay}
-                className="w-20 h-20 rounded-full object-cover ring-2 ring-blue-500/40"
+                className="w-20 h-20 rounded-full object-cover ring-2 ring-[color-mix(in_srgb,var(--accent)_40%,transparent)]"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full bg-neutral-700 flex items-center justify-center ring-2 ring-blue-500/40">
+              <div className="w-20 h-20 rounded-full bg-neutral-700 flex items-center justify-center ring-2 ring-[color-mix(in_srgb,var(--accent)_40%,transparent)]">
                 <span className="text-3xl text-neutral-300 select-none">
                   {(call.peerDisplay || '?').charAt(0).toUpperCase()}
                 </span>
               </div>
             )}
             {/* Ringing indicator dot */}
-            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 ring-2 ring-neutral-900 animate-pulse" />
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[var(--status-success)] ring-2 ring-neutral-900 animate-pulse motion-reduce:animate-none" />
           </div>
 
           <div className="text-center">
@@ -276,7 +276,7 @@ function IncomingCallModal({ call, onAccept, onReject }) {
             className="flex flex-col items-center gap-2 group"
             aria-label="Reject call"
           >
-            <span className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center shadow-lg transition-colors group-hover:scale-105 active:scale-95">
+            <span className="w-14 h-14 rounded-full bg-[var(--status-danger)] hover:brightness-110 flex items-center justify-center shadow-lg transition-[filter,transform] group-hover:scale-105 active:scale-95 motion-reduce:group-hover:scale-100">
               <svg viewBox="0 0 24 24" className="w-6 h-6 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 011.72 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.42 19.42 0 013.43 5.39 2 2 0 015.41 3h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L9.39 10.9" />
                 <line x1="23" y1="1" x2="1" y2="23" />
@@ -291,7 +291,7 @@ function IncomingCallModal({ call, onAccept, onReject }) {
             className="flex flex-col items-center gap-2 group"
             aria-label="Accept call"
           >
-            <span className="w-14 h-14 rounded-full bg-green-600 hover:bg-green-500 flex items-center justify-center shadow-lg transition-colors group-hover:scale-105 active:scale-95">
+            <span className="w-14 h-14 rounded-full bg-[var(--status-success)] hover:brightness-110 flex items-center justify-center shadow-lg transition-[filter,transform] group-hover:scale-105 active:scale-95 motion-reduce:group-hover:scale-100">
               <svg viewBox="0 0 24 24" className="w-6 h-6 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
               </svg>

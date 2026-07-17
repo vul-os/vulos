@@ -113,22 +113,22 @@ function StreamToolbar({
   }, [])
 
   const streamToolbarRttColor =
-    streamToolbarRtt == null ? 'text-neutral-500' :
-    streamToolbarRtt < 50   ? 'text-green-400' :
-    streamToolbarRtt < 120  ? 'text-yellow-400' :
-                               'text-red-400'
+    streamToolbarRtt == null ? 'text-white/40' :
+    streamToolbarRtt < 50   ? 'text-[var(--status-success)]' :
+    streamToolbarRtt < 120  ? 'text-[var(--status-warning)]' :
+                               'text-[var(--status-danger)]'
 
   const streamToolbarQualityColor =
-    quality === 'max'    ? 'text-green-400' :
-    quality === 'high'   ? 'text-green-500' :
-    quality === 'medium' ? 'text-yellow-400' :
-    quality === 'low'    ? 'text-red-400' :
-                           'text-neutral-500'
+    quality === 'max'    ? 'text-[var(--status-success)]' :
+    quality === 'high'   ? 'text-[var(--status-success)]' :
+    quality === 'medium' ? 'text-[var(--status-warning)]' :
+    quality === 'low'    ? 'text-[var(--status-danger)]' :
+                           'text-white/40'
 
   if (streamToolbarCollapsed) {
     return (
       <button
-        className="absolute top-2 right-2 z-30 px-2 py-1 rounded bg-black/60 text-neutral-400 text-xs hover:bg-black/80 hover:text-white transition-colors select-none"
+        className="absolute top-3 right-3 z-30 inline-flex items-center justify-center min-w-[40px] min-h-[40px] rounded-xl bg-black/50 text-white/70 text-sm backdrop-blur-md ring-1 ring-white/10 shadow-lg shadow-black/30 hover:bg-black/70 hover:text-white transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         onMouseDown={e => e.stopPropagation()}
         onClick={onStreamToolbarToggle}
         title="Show stream toolbar"
@@ -141,23 +141,29 @@ function StreamToolbar({
 
   return (
     <div
-      className="absolute top-0 left-0 right-0 z-30 flex items-center gap-3 px-3 py-1.5 bg-black/70 backdrop-blur-sm text-xs select-none"
+      className="stream-fade-in absolute top-0 left-0 right-0 z-30 flex items-center gap-2 sm:gap-3 px-2.5 sm:px-3 py-2 bg-gradient-to-b from-black/85 to-black/40 backdrop-blur-md text-xs select-none border-b border-white/5 overflow-x-auto min-w-0"
       onMouseDown={e => e.stopPropagation()}
       onKeyDown={e => e.stopPropagation()}
     >
+      {/* Live indicator */}
+      <span
+        className="stream-pulse shrink-0 w-2 h-2 rounded-full bg-[var(--status-success)] shadow-[0_0_8px_var(--status-success)] motion-reduce:animate-none"
+        aria-hidden="true"
+      />
+
       {/* FPS selector */}
-      <div className="flex items-center gap-1">
-        <span className="text-neutral-500 mr-0.5">FPS</span>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-white/40 mr-0.5 tracking-wide">FPS</span>
         {STREAM_TOOLBAR_FPS_OPTIONS.map(fps => (
           <button
             key={fps}
             onClick={() => streamToolbarSetFps(fps)}
             aria-pressed={streamToolbarFps === fps}
             aria-label={`${fps} frames per second`}
-            className={`px-1.5 py-0.5 rounded transition-colors ${
+            className={`px-2 py-1 min-w-[34px] text-center rounded-md tabular-nums transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
               streamToolbarFps === fps
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
+                ? 'bg-[var(--accent)] text-white shadow-sm shadow-black/30'
+                : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
             }`}
           >
             {fps}
@@ -165,38 +171,38 @@ function StreamToolbar({
         ))}
       </div>
 
-      <div className="w-px h-4 bg-neutral-700" />
+      <div className="shrink-0 w-px h-4 bg-white/10" />
 
       {/* Live RTT */}
       <div
-        className={`flex items-center gap-1 ${streamToolbarRttColor}`}
+        className={`flex items-center gap-1 shrink-0 tabular-nums ${streamToolbarRttColor}`}
         aria-label={`Round-trip latency ${streamToolbarRtt != null ? `${streamToolbarRtt} milliseconds` : 'unknown'}`}
       >
-        <span className="text-neutral-500" aria-hidden="true">RTT</span>
+        <span className="text-white/40 tracking-wide" aria-hidden="true">RTT</span>
         <span>{streamToolbarRtt != null ? `${streamToolbarRtt}ms` : '—'}</span>
       </div>
 
-      <div className="w-px h-4 bg-neutral-700" />
+      <div className="shrink-0 w-px h-4 bg-white/10" />
 
       {/* Quality tier */}
       <div
-        className={`flex items-center gap-1 ${streamToolbarQualityColor}`}
+        className={`flex items-center gap-1 shrink-0 capitalize ${streamToolbarQualityColor}`}
         aria-label={`Stream quality ${quality || 'unknown'}`}
       >
-        <span className="text-neutral-500" aria-hidden="true">Q</span>
+        <span className="text-white/40 tracking-wide" aria-hidden="true">Q</span>
         <span>{quality || '—'}</span>
       </div>
 
-      <div className="w-px h-4 bg-neutral-700" />
+      <div className="shrink-0 w-px h-4 bg-white/10" />
 
       {/* MangoHud toggle */}
       <button
         onClick={streamToolbarToggleMangoHud}
         aria-pressed={streamToolbarMangoHud}
-        className={`px-1.5 py-0.5 rounded transition-colors ${
+        className={`shrink-0 px-2 py-1 rounded-md font-medium tracking-wide transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
           streamToolbarMangoHud
-            ? 'bg-orange-600 text-white'
-            : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
+            ? 'bg-orange-500 text-white shadow-sm shadow-black/30'
+            : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
         }`}
         title="Toggle MangoHud overlay (restarts capture)"
         aria-label="Toggle MangoHud performance overlay"
@@ -204,12 +210,12 @@ function StreamToolbar({
         HUD
       </button>
 
-      <div className="w-px h-4 bg-neutral-700" />
+      <div className="shrink-0 w-px h-4 bg-white/10" />
 
       {/* Fullscreen + pointer-lock */}
       <button
         onClick={streamToolbarToggleFullscreen}
-        className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-colors"
+        className="shrink-0 px-2 py-1 rounded-md bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         title={streamToolbarFullscreen ? 'Exit fullscreen' : 'Fullscreen + pointer lock (Esc to exit)'}
         aria-label={streamToolbarFullscreen ? 'Exit fullscreen' : 'Enter fullscreen with pointer lock'}
       >
@@ -219,7 +225,7 @@ function StreamToolbar({
       {/* Collapse button */}
       <button
         onClick={onStreamToolbarToggle}
-        className="ml-auto px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500 hover:bg-neutral-700 hover:text-white transition-colors"
+        className="shrink-0 ml-auto px-2 py-1 rounded-md bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         title="Hide toolbar"
         aria-label="Hide stream toolbar"
       >
@@ -583,11 +589,11 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm">
-        <div className="text-center space-y-3">
+      <div className="flex items-center justify-center h-full w-full min-w-0 bg-black text-white/50 text-sm p-6">
+        <div className="stream-fade-in text-center space-y-3 max-w-sm min-w-0">
           <span className="w-6 h-6 spinner inline-block" />
-          <p className="text-neutral-400">Starting app...</p>
-          <p className="text-neutral-600 text-xs">{error}</p>
+          <p className="text-white/70">Starting app...</p>
+          <p className="text-white/40 text-xs break-words">{error}</p>
         </div>
       </div>
     )
@@ -608,6 +614,22 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       onClick={focusContainer}
       style={{ cursor: pointerLocked ? 'none' : undefined }}
     >
+      <style>{`
+        @keyframes streamFadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes streamPulse {
+          0%, 100% { opacity: 1; }
+          50%      { opacity: 0.35; }
+        }
+        .stream-fade-in { animation: streamFadeIn var(--motion-base) var(--ease-out); }
+        .stream-pulse   { animation: streamPulse 2s var(--ease-standard) infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .stream-fade-in, .stream-pulse { animation: none; }
+        }
+      `}</style>
+
       {/* Stream toolbar overlay — GAME-08 (additive, does not touch existing layout) */}
       {status === 'connected' && (
         <StreamToolbar
@@ -620,16 +642,16 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       )}
 
       {status === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center z-10 bg-neutral-950">
-          <span className="text-neutral-600 text-sm flex items-center gap-2">
+        <div className="stream-fade-in absolute inset-0 flex items-center justify-center z-10 bg-black">
+          <span className="text-white/55 text-sm flex items-center gap-2.5">
             <span className="w-4 h-4 spinner" />
             Connecting...
           </span>
         </div>
       )}
       {gaming && !pointerLocked && status === 'connected' && (
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-          <div className="bg-black/60 text-neutral-300 text-xs px-3 py-1.5 rounded-full backdrop-blur-sm select-none">
+        <div className="absolute inset-x-0 bottom-6 flex items-center justify-center z-10 px-4 pointer-events-none">
+          <div className="stream-fade-in max-w-full bg-black/55 text-white/85 text-xs px-3.5 py-2 rounded-full backdrop-blur-md ring-1 ring-white/10 shadow-lg shadow-black/30 select-none">
             Click to capture mouse &mdash; Esc to release
           </div>
         </div>

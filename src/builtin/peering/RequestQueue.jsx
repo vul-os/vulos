@@ -9,10 +9,13 @@ function Avatar({ name, size = 9 }) {
     .slice(0, 2)
   const hue = [...(name || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffffff, 0)
   const bg = `hsl(${hue % 360}, 55%, 30%)`
+  // Tailwind cannot see dynamically-built class names (`w-${size}`), so the size
+  // is applied inline (spacing unit ×0.25rem) to match the ContactCard avatar.
+  const px = `${size * 0.25}rem`
   return (
     <div
-      className={`w-${size} h-${size} rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0`}
-      style={{ background: bg }}
+      className="rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0"
+      style={{ background: bg, width: px, height: px }}
     >
       {initials}
     </div>
@@ -59,16 +62,16 @@ function RequestRow({ req, onApprove, onBlock }) {
         <button
           onClick={() => handle('approve')}
           disabled={!!busy}
-          className="px-3 py-1 text-xs font-medium rounded-lg bg-emerald-600/20 border border-emerald-500/30
-            text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-success-soft border border-success-soft
+            text-success hover:opacity-80 disabled:opacity-50 transition-opacity"
         >
           {busy === 'approve' ? '…' : 'Approve'}
         </button>
         <button
           onClick={() => handle('block')}
           disabled={!!busy}
-          className="px-3 py-1 text-xs font-medium rounded-lg bg-red-600/10 border border-red-500/20
-            text-red-400 hover:bg-red-600/20 disabled:opacity-50 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-danger-soft border border-danger-soft
+            text-danger hover:opacity-80 disabled:opacity-50 transition-opacity"
         >
           {busy === 'block' ? '…' : 'Block'}
         </button>
@@ -80,8 +83,9 @@ function RequestRow({ req, onApprove, onBlock }) {
 export default function RequestQueue({ requests, onApprove, onBlock }) {
   if (!requests || requests.length === 0) {
     return (
-      <div className="text-center py-8 text-neutral-600 text-sm">
-        No pending requests
+      <div className="flex flex-col items-center gap-3 text-center py-10 text-neutral-600 text-sm">
+        <span className="flex items-center justify-center w-12 h-12 rounded-full bg-neutral-800/40 border border-neutral-800/60 text-2xl opacity-70">📭</span>
+        <p>No pending requests</p>
       </div>
     )
   }
