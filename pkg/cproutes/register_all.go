@@ -119,8 +119,15 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 		RegisterLegal(mux, deps.AuthStore, deps.AuthDB)
 	}
 
-	// Public product catalogue (nil org service/gate → the public GET surface).
-	registerProductsRoutes(mux, nil, nil, deps.AuthStore)
+	// Operational surfaces the management /console SPA consumes: fleet + devices,
+	// account/support/cell status, compliance/privacy, org audit + product
+	// catalogue, developer webhooks + MCP. Each opens its own operational store
+	// (cpdb; in-memory fallback) so a self-hoster's console shows their own data
+	// instead of 404. This also registers the product catalogue (GET/PATCH
+	// /api/products) with the real caller gate — so it is NOT registered again
+	// below.
+	add2 := registerConsoleOperational(mux, deps)
+	closers = append(closers, add2...)
 
 	// Boot/first-run endpoints.
 	RegisterBoot(mux)
@@ -128,11 +135,12 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// NOT wired by this zero-config default (each is fail-closed on a required
 	// secret / needs a store-opening Wire* helper that still lives in the
 	// commercial module — a configured or commercial composition root mounts them):
-	//   - fleet + invite-accept, enroll + boot-enroll, integrations, the storage
-	//     service (RegisterStorage/RegisterFiles/RegisterAccountExport), storagesel,
-	//     DNS plane, routing/relay status, CDN, edge, compliance, cloud-home,
-	//     keydir, residency, support/telemetry.
-	//   - the entire commercial billing/pricing/superadmin-billing surface.
+	//   - enroll + boot-enroll, integrations, the storage service
+	//     (RegisterStorage/RegisterFiles/RegisterAccountExport), storagesel,
+	//     DNS plane, routing/relay status, CDN, edge, cloud-home, keydir,
+	//     residency.
+	//   - the box billing read (GET /api/box, /api/box/billing) and the whole
+	//     commercial billing/pricing/superadmin-billing surface.
 
 	return closers
 }
