@@ -13,6 +13,7 @@ import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 import DataExportPanel from './settings/DataExportPanel.jsx'
 import ModelsPanel from './settings/ModelsPanel.jsx'
 import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
+import GatewayPanel from './settings/GatewayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
 
 // baseSections are the settings sections everyone sees. Owner-only sections
@@ -34,6 +35,7 @@ const baseSections = [
   { id: 'storagemode', label: 'Storage Mode' },
   { id: 'connmode', label: 'Connection Mode' },
   { id: 'network', label: 'Remote Access' },
+  { id: 'gateway', label: 'Control Plane', owner: true },
   { id: 'turnSettings', label: 'TURN / WebRTC' },
   { id: 'users', label: 'Users & Profiles' },
   { id: 'pin', label: 'Device PIN' },
@@ -192,6 +194,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'storagemode' && <StorageModeSettings />}
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
+        {active === 'gateway' && <GatewayPanel />}
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'users' && <UsersSettings profile={profile} />}
         {active === 'pin' && <DevicePINSettings />}

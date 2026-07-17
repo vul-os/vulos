@@ -41,9 +41,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
+
+	"vulos/backend/services/gwurl"
 )
 
 // identityDeviceAuther supplies this box's owner-attested device certificate
@@ -108,10 +109,11 @@ func setIdentityDeviceAuthHeaders(req *http.Request) bool {
 	return true
 }
 
-// identityCloudAPIURL returns the Vulos Cloud API base, honouring VULOS_CLOUD_API_URL
-// (default https://api.vulos.org), matching auth.cloudAPIURL(). Trailing slash trimmed.
+// identityCloudAPIURL returns the Vulos Cloud API base via the single gwurl
+// accessor (configured gateway override → canonical CP env var → default),
+// matching auth.cloudAPIURL(). Trailing slash trimmed.
 func identityCloudAPIURL() string {
-	if u := os.Getenv("VULOS_CLOUD_API_URL"); u != "" {
+	if u := gwurl.URL(); u != "" {
 		return strings.TrimRight(u, "/")
 	}
 	return "https://api.vulos.org"

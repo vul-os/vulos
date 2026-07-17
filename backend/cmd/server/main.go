@@ -56,6 +56,7 @@ import (
 	"vulos/backend/services/files"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
+	"vulos/backend/services/gwurl"
 	"vulos/backend/services/installer"
 	"vulos/backend/services/integrations"
 	"vulos/backend/services/lease"
@@ -190,6 +191,17 @@ func main() {
 	os.MkdirAll(dataDir, 0755)
 	dbDir := filepath.Join(home, ".vulos", "db")
 	os.MkdirAll(dbDir, 0755)
+
+	// GATEWAY-01: load any persisted control-plane ("gateway") override before any
+	// CP broker resolves its base URL. gwurl is the single source of truth read by
+	// cloud login/signup/enroll, identity claim, instance routing, cloud sync, and
+	// the OAuth integrations broker. Missing/corrupt file → env/default (fail-safe).
+	if err := gwurl.Init(filepath.Join(home, ".vulos")); err != nil {
+		log.Printf("[gateway] could not load persisted gateway override (%v) — using env/default %s", err, gwurl.Default)
+	}
+	if u, src := gwurl.Resolved(); src != gwurl.SourceDefault {
+		log.Printf("[gateway] control-plane URL = %s (source: %s)", u, src)
+	}
 
 	// S3 storage
 	s3cfg := storage.LoadS3Config()
@@ -1138,10 +1150,11 @@ func main() {
 		// UNIFIED-SIGNIN: the enroller base URL falls back to VULOS_CLOUD_API_URL
 		// so a box configured for the cloud API (signup proxy / unified login)
 		// enrolls against the same CP without a second env var.
-		cloudEnrollBase := os.Getenv("VULOS_CLOUD_URL")
-		if cloudEnrollBase == "" {
-			cloudEnrollBase = os.Getenv("VULOS_CLOUD_API_URL")
-		}
+		// GATEWAY-01: the enroller base URL resolves through the single gwurl
+		// accessor (configured override → canonical CP env vars → default), so a
+		// self-host box enrolls against the same control plane every other broker
+		// targets. Bound at startup; a runtime gateway change applies on restart.
+		cloudEnrollBase := gwurl.URL()
 		enroller := cloudenroll.New(cloudEnrollBase, filepath.Join(home, ".vulos", "auth", "integrations"), deviceKS)
 		if ident, err := enroller.Load(); err != nil {
 			log.Printf("[integrations] cloud enrollment load: %v", err)
@@ -1314,6 +1327,24 @@ func main() {
 	registerModelRoutes(mux, modelMgr, llmuxChatClient, func(userID string) bool {
 		p, _ := authStore.GetProfile(userID)
 		return p != nil && p.Role == auth.RoleAdmin
+	})
+
+	// GATEWAY-01: owner-configurable control-plane URL (self-host affordance).
+	// GET/check are reachable pre-session (first-boot); SET/DELETE are gated to
+	// the box owner once an owner exists (before that, the setup window is open).
+	registerGatewayRoutes(mux, gatewaySetGate{
+		isOwner: func(userID string) bool {
+			p, _ := authStore.GetProfile(userID)
+			return p != nil && p.Role == auth.RoleAdmin
+		},
+		hasOwner: func() bool {
+			for _, ur := range authStore.ListUsersWithRoles() {
+				if ur.Role == string(auth.RoleAdmin) {
+					return true
+				}
+			}
+			return false
+		},
 	})
 	// Seed the exported RAG-mode gauge at startup so /metrics reflects reality
 	// before the first model-management page load.

@@ -24,18 +24,21 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"vulos/backend/services/cloudclient"
+	"vulos/backend/services/gwurl"
 )
 
 // defaultCloudAPIURL is the Vulos Cloud production API base.
 const defaultCloudAPIURL = "https://api.vulos.org"
 
-// cloudAPIURL returns the cloud API base URL, honouring VULOS_CLOUD_API_URL.
+// cloudAPIURL returns the cloud API base URL via the single gwurl accessor: a
+// configured gateway override (Settings / first-boot) wins, else a canonical CP
+// env var (incl. VULOS_CLOUD_API_URL), else the default. Read at request time so
+// a runtime gateway change takes effect on the very next cloud call.
 func cloudAPIURL() string {
-	if u := os.Getenv("VULOS_CLOUD_API_URL"); u != "" {
+	if u := gwurl.URL(); u != "" {
 		return u
 	}
 	return defaultCloudAPIURL

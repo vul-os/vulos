@@ -6,7 +6,11 @@
 // on boxes in that cell — no other code changes are required.
 package multiinstance
 
-import "os"
+import (
+	"os"
+
+	"vulos/backend/services/gwurl"
+)
 
 // regionCPMap is the authoritative region → CP base URL directory.
 // Phase-0: a single "eu" cell backed by DefaultCloudBaseURL.
@@ -26,12 +30,15 @@ func boxRegion() string {
 // PlaceFor returns the CP base URL for the given region slug.
 //
 // For Phase-0 (single cell) all regions resolve to DefaultCloudBaseURL.
-// VULOS_CLOUD_URL always takes precedence so dev / self-hosted deployments
-// can override the resolved URL without touching the region map.
+// A configured gateway override (Settings / first-boot) or a canonical CP env
+// var always takes precedence — resolved via the single gwurl accessor — so
+// dev / self-hosted deployments can repoint the OS without touching the region
+// map. Only when neither is set does the region map (else the eu default)
+// apply.
 func PlaceFor(region string) string {
-	// Explicit dev/self-hosted override always wins.
-	if v := os.Getenv("VULOS_CLOUD_URL"); v != "" {
-		return v
+	// A configured override or env var always wins over the region map.
+	if u, src := gwurl.Resolved(); src != gwurl.SourceDefault {
+		return u
 	}
 	if base, ok := regionCPMap[region]; ok {
 		return base

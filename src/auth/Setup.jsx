@@ -7,8 +7,29 @@ import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
 import { matchState } from './matchState'
 import { useCloudSignIn, CloudSignInFlowExtras } from './CloudSignIn'
+import GatewayChoice, { setGateway } from './GatewayChoice'
 import VulosAccountStep from '../../apps/setup-wizard/src/steps/VulosAccountStep'
 import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
+
+// GATEWAY-01: persist the chosen control-plane gateway before any cloud login /
+// account-create / enroll runs, so all brokering targets it. Returns true when
+// brokering may proceed (Vulos Cloud default → nothing to persist; or a tested
+// custom gateway that persisted). On a bad/untested/failed gateway it sets an
+// error and returns false so the caller aborts before hitting the wrong CP.
+async function ensureGatewayPersisted(gw, setError) {
+  const g = gw || { mode: 'cloud' }
+  if (g.mode !== 'custom') return true
+  if (!g.url || !g.tested) {
+    setError('Test your gateway connection before continuing.')
+    return false
+  }
+  const res = await setGateway(g.url)
+  if (!res.ok) {
+    setError(res.error || 'Could not save the gateway. Check the URL and try again.')
+    return false
+  }
+  return true
+}
 
 // IDENTITY-01: 'cloudAccount' step ("Pick your Vulos username") is inserted after 'account' and before 'pin'.
 // 'intent' step ("How will you use Vulos?") is inserted after 'pin' and before 'appearance'.
@@ -169,6 +190,11 @@ export default function Setup({ onComplete }) {
     CL04_createPassword: '',
     CL04_createConfirm: '',
     CL04_createFullName: '',
+    // GATEWAY-01: control-plane ("gateway") selection for cloud sign-in/create.
+    // Default = Vulos Cloud (managed users never touch it). A self-hoster can
+    // switch to their own gateway; it must be connection-tested before use, and
+    // is persisted to the backend right before the cloud login/enroll runs.
+    GW01_gateway: { mode: 'cloud', url: '', tested: false },
     // NETB-05: install-time account choice
     NETB05_choice: '', // 'local' | 'cloud'
     NETB05_clusterPassphrase: '',
@@ -1158,7 +1184,7 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
   const NB_cloudFlow = useCloudSignIn({
     onSuccess: async () => { setError(''); onNext() },
   })
-  const submitCloudLogin = () => {
+  const submitCloudLogin = async () => {
     if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
       setError('Enter a valid email address')
       return
@@ -1168,6 +1194,8 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
       return
     }
     setError('')
+    // GATEWAY-01: point brokering at the chosen gateway before signing in.
+    if (!(await ensureGatewayPersisted(config.GW01_gateway, setError))) return
     NB_cloudFlow.submit({
       email: config.CL01_cloudEmail,
       password: config.CL01_cloudPassword,
@@ -1194,6 +1222,8 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
       setError('Enter your full name')
       return
     }
+    // GATEWAY-01: create the account on the chosen gateway, not always Cloud.
+    if (!(await ensureGatewayPersisted(config.GW01_gateway, setError))) return
     NB_setCloudSubmitting(true)
     try {
       const res = await fetch('/api/auth/cloud/signup', {
@@ -1505,6 +1535,15 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
         </div>
       )}
 
+      {/* ── GATEWAY-01: control-plane selection (Vulos Cloud vs own gateway) ── */}
+      <div className="mt-5">
+        <GatewayChoice
+          idPrefix="netb05"
+          value={config.GW01_gateway}
+          onChange={g => update('GW01_gateway', g)}
+        />
+      </div>
+
       {/* ── Optional: join existing data cluster ── */}
       <div className="mt-5">
         <button
@@ -1691,7 +1730,7 @@ function AccountStep({ config, update, onNext, onPrev }) {
   const cloudFlow = useCloudSignIn({
     onSuccess: async () => { setError(''); onNext() },
   })
-  const validateCloud = () => {
+  const validateCloud = async () => {
     if (!config.CL01_cloudEmail || !config.CL01_cloudEmail.includes('@')) {
       setError('Enter a valid email address')
       return
@@ -1701,6 +1740,8 @@ function AccountStep({ config, update, onNext, onPrev }) {
       return
     }
     setError('')
+    // GATEWAY-01: point brokering at the chosen gateway before signing in.
+    if (!(await ensureGatewayPersisted(config.GW01_gateway, setError))) return
     cloudFlow.submit({
       email: config.CL01_cloudEmail,
       password: config.CL01_cloudPassword,
@@ -1729,6 +1770,8 @@ function AccountStep({ config, update, onNext, onPrev }) {
       return
     }
 
+    // GATEWAY-01: create the account on the chosen gateway, not always Cloud.
+    if (!(await ensureGatewayPersisted(config.GW01_gateway, setError))) return
     CL04_setSubmitting(true)
     try {
       const res = await fetch('/api/auth/cloud/signup', {
@@ -1974,6 +2017,18 @@ function AccountStep({ config, update, onNext, onPrev }) {
               If 2FA is enabled on your account you’ll be asked for a code.
             </p>
           )}
+        </div>
+      )}
+
+      {/* GATEWAY-01: control-plane selection — only relevant when a cloud account
+          is involved (sign-in or create), not for a purely local account. */}
+      {(mode === 'cloud' || mode === 'create') && (
+        <div className="mt-5">
+          <GatewayChoice
+            idPrefix="account"
+            value={config.GW01_gateway}
+            onChange={g => update('GW01_gateway', g)}
+          />
         </div>
       )}
 

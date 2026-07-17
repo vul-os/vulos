@@ -36,6 +36,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"vulos/backend/services/gwurl"
 )
 
 // DefaultCloudBaseURL mirrors multiinstance.DefaultCloudBaseURL.
@@ -102,11 +104,14 @@ type Client struct {
 
 // NewClientFromEnv builds a Client from the box's provisioned environment:
 //
-//	VULOS_CLOUD_URL       — broker base URL (default https://api.vulos.org)
+//	gateway (gwurl)       — broker base URL: a configured override / canonical CP
+//	                        env var / default https://api.vulos.org, resolved via
+//	                        the single gwurl accessor. Bound once at startup; a
+//	                        runtime gateway change applies on the next restart.
 //	VULOS_DEVICE_ULID     — this box's canonical ULID
 //	DEVICE_SHARED_SECRET  — fleet device secret (same as heartbeat signing)
 func NewClientFromEnv() *Client {
-	base := os.Getenv("VULOS_CLOUD_URL")
+	base := gwurl.URL()
 	if base == "" {
 		base = DefaultCloudBaseURL
 	}

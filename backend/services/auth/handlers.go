@@ -125,6 +125,8 @@ var publicPaths = map[string]bool{
 	"/api/auth/cloud/enroll/start":    true, // UNIFIED-SIGNIN: setup-time enrollment kickoff — the grant only completes when the OWNER approves the user_code in the cloud console
 	"/api/auth/cloud/enroll/status":   true, // UNIFIED-SIGNIN: enrollment progress poll (setup-time; exposes only grant state)
 	"/api/identity/check":             true, // IDENTITY-01: account-username availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
+	"/api/gateway":                    true, // GATEWAY-01: control-plane URL. GET is a public read; POST/DELETE do their OWN owner-or-first-boot gate in the handler (like /metrics), so the session middleware must defer rather than 401 the setup wizard.
+	"/api/gateway/check":              true, // GATEWAY-01: dry-run validate + SSRF-scoped reachability probe (setup-time; no persistence).
 	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":            true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
