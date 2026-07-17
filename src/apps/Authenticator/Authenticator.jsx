@@ -80,7 +80,13 @@ function AccountRow({ account, onDelete }) {
     : error ? '— —' : '···'
 
   const progress = secondsLeft / 30 // 1.0 → 0.0
-  const urgency = secondsLeft <= 5
+  const danger = secondsLeft <= 5
+  const warn = secondsLeft <= 8 && !danger
+  const urgency = danger
+
+  // Countdown color shifts accent → warning → danger as the window depletes
+  const ringColor = danger ? 'var(--status-danger)' : warn ? 'var(--status-warning)' : 'var(--accent)'
+  const timeColor = danger ? 'var(--status-danger)' : warn ? 'var(--status-warning)' : 'var(--text-muted)'
 
   // SVG ring parameters
   const R = 10
@@ -94,31 +100,33 @@ function AccountRow({ account, onDelete }) {
         alignItems: 'center',
         gap: 12,
         padding: '12px 14px',
-        borderRadius: 10,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 12,
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
         marginBottom: 8,
         cursor: 'pointer',
-        transition: 'background 0.15s',
+        transition: 'background var(--motion-fast, 0.15s) var(--ease-out, ease), border-color var(--motion-fast, 0.15s) var(--ease-out, ease)',
         userSelect: 'none',
       }}
       onClick={handleCopy}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-surface)'; e.currentTarget.style.borderColor = 'var(--border-subtle)' }}
       role="button"
       aria-label={`Copy ${account.name} code`}
       title="Click to copy"
     >
       {/* Account icon / initial */}
       <div style={{
-        width: 34,
-        height: 34,
-        borderRadius: 8,
-        background: 'rgba(99,102,241,0.25)',
+        width: 36,
+        height: 36,
+        borderRadius: 9,
+        background: 'var(--accent-soft)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: 15,
         fontWeight: 700,
-        color: '#818cf8',
+        color: 'var(--accent)',
         flexShrink: 0,
         textTransform: 'uppercase',
       }}>
@@ -129,7 +137,7 @@ function AccountRow({ account, onDelete }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 11,
-          color: 'rgba(255,255,255,0.45)',
+          color: 'var(--text-tertiary)',
           marginBottom: 2,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -141,9 +149,10 @@ function AccountRow({ account, onDelete }) {
           fontSize: 24,
           fontWeight: 600,
           letterSpacing: '0.12em',
-          fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
-          color: urgency ? '#f87171' : copied ? '#4ade80' : '#f5f5f5',
-          transition: 'color 0.2s',
+          fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace",
+          fontVariantNumeric: 'tabular-nums',
+          color: urgency ? 'var(--status-danger)' : copied ? 'var(--status-success)' : 'var(--text-primary)',
+          transition: 'color var(--motion-base, 0.2s) var(--ease-out, ease)',
         }}>
           {copied ? 'Copied!' : displayCode}
         </div>
@@ -151,25 +160,25 @@ function AccountRow({ account, onDelete }) {
 
       {/* Countdown ring */}
       <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-        <svg width={28} height={28} viewBox="0 0 28 28">
+        <svg width={28} height={28} viewBox="0 0 28 28" aria-hidden="true">
           {/* Background track */}
-          <circle cx={14} cy={14} r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={2.5} />
+          <circle cx={14} cy={14} r={R} fill="none" stroke="var(--border-default)" strokeWidth={2.5} />
           {/* Progress arc — rotated so it depletes clockwise */}
           <circle
             cx={14} cy={14} r={R}
             fill="none"
-            stroke={urgency ? '#f87171' : '#818cf8'}
+            stroke={ringColor}
             strokeWidth={2.5}
             strokeLinecap="round"
             strokeDasharray={`${dash} ${CIRC}`}
-            style={{ transform: 'rotate(-90deg)', transformOrigin: '14px 14px', transition: 'stroke 0.3s' }}
+            style={{ transform: 'rotate(-90deg)', transformOrigin: '14px 14px', transition: 'stroke var(--motion-slow, 0.3s) var(--ease-out, ease)' }}
           />
         </svg>
         <span style={{
           fontSize: 9,
-          color: urgency ? '#f87171' : 'rgba(255,255,255,0.3)',
+          color: timeColor,
           fontVariantNumeric: 'tabular-nums',
-          transition: 'color 0.3s',
+          transition: 'color var(--motion-slow, 0.3s) var(--ease-out, ease)',
         }}>
           {secondsLeft}s
         </span>
@@ -182,17 +191,17 @@ function AccountRow({ account, onDelete }) {
         style={{
           background: 'transparent',
           border: 'none',
-          color: 'rgba(255,255,255,0.2)',
+          color: 'var(--text-ghost)',
           cursor: 'pointer',
-          padding: '4px 6px',
-          borderRadius: 6,
+          padding: 8,
+          borderRadius: 8,
           fontSize: 14,
           lineHeight: 1,
           flexShrink: 0,
-          transition: 'color 0.15s',
+          transition: 'color var(--motion-fast, 0.15s) var(--ease-out, ease), background var(--motion-fast, 0.15s) var(--ease-out, ease)',
         }}
-        onMouseEnter={e => e.currentTarget.style.color = '#f87171'}
-        onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.2)'}
+        onMouseEnter={e => { e.currentTarget.style.color = 'var(--status-danger)'; e.currentTarget.style.background = 'var(--status-danger-soft)' }}
+        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-ghost)'; e.currentTarget.style.background = 'transparent' }}
       >
         ✕
       </button>
@@ -274,19 +283,20 @@ function AddAccountForm({ onAdd, onCancel }) {
 
   const inputStyle = {
     width: '100%',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
-    color: '#f5f5f5',
+    color: 'var(--text-primary)',
     fontSize: 13,
-    padding: '8px 12px',
+    padding: '10px 12px',
     outline: 'none',
     boxSizing: 'border-box',
+    transition: 'border-color var(--motion-fast, 0.15s) var(--ease-out, ease)',
   }
 
   const labelStyle = {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.45)',
+    color: 'var(--text-tertiary)',
     marginBottom: 4,
     display: 'block',
   }
@@ -298,11 +308,11 @@ function AddAccountForm({ onAdd, onCancel }) {
           type="button"
           onClick={() => setManual(false)}
           style={{
-            flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-            background: !manual ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.05)',
-            border: !manual ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
-            color: !manual ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
-            transition: 'all 0.15s',
+            flex: 1, minHeight: 40, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+            background: !manual ? 'var(--accent-soft)' : 'var(--bg-surface)',
+            border: !manual ? '1px solid var(--accent)' : '1px solid var(--border-default)',
+            color: !manual ? 'var(--accent)' : 'var(--text-secondary)',
+            transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
           }}
         >
           Paste URI
@@ -311,11 +321,11 @@ function AddAccountForm({ onAdd, onCancel }) {
           type="button"
           onClick={() => setManual(true)}
           style={{
-            flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-            background: manual ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.05)',
-            border: manual ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
-            color: manual ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
-            transition: 'all 0.15s',
+            flex: 1, minHeight: 40, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+            background: manual ? 'var(--accent-soft)' : 'var(--bg-surface)',
+            border: manual ? '1px solid var(--accent)' : '1px solid var(--border-default)',
+            color: manual ? 'var(--accent)' : 'var(--text-secondary)',
+            transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
           }}
         >
           Manual
@@ -331,9 +341,9 @@ function AddAccountForm({ onAdd, onCancel }) {
             onChange={e => setUri(e.target.value)}
             placeholder="otpauth://totp/Example:user@email.com?secret=BASE32SECRET&issuer=Example"
             rows={3}
-            style={{ ...inputStyle, resize: 'vertical', fontFamily: "'SF Mono', monospace", fontSize: 11 }}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: "'SF Mono', ui-monospace, monospace", fontSize: 11 }}
           />
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
             Use a QR code scanner app to get the URI, then paste it here.
           </div>
         </div>
@@ -350,7 +360,7 @@ function AddAccountForm({ onAdd, onCancel }) {
           <div>
             <label style={labelStyle}>Secret key (Base32) *</label>
             <input
-              style={{ ...inputStyle, fontFamily: "'SF Mono', monospace", letterSpacing: '0.08em' }}
+              style={{ ...inputStyle, fontFamily: "'SF Mono', ui-monospace, monospace", letterSpacing: '0.08em' }}
               value={secret}
               onChange={e => setSecret(e.target.value.toUpperCase().replace(/[^A-Z2-7=]/g, ''))}
               placeholder="JBSWY3DPEHPK3PXP"
@@ -363,7 +373,7 @@ function AddAccountForm({ onAdd, onCancel }) {
       )}
 
       {err && (
-        <div style={{ fontSize: 12, color: '#f87171', padding: '8px 10px', background: 'rgba(239,68,68,0.1)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div style={{ fontSize: 12, color: 'var(--status-danger)', padding: '8px 10px', background: 'var(--status-danger-soft)', borderRadius: 8, border: '1px solid var(--status-danger-soft)' }}>
           {err}
         </div>
       )}
@@ -373,9 +383,10 @@ function AddAccountForm({ onAdd, onCancel }) {
           type="button"
           onClick={onCancel}
           style={{
-            flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-            color: 'rgba(255,255,255,0.5)',
+            flex: 1, minHeight: 44, padding: '10px 0', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+            background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+            color: 'var(--text-secondary)',
+            transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
           }}
         >
           Cancel
@@ -384,11 +395,11 @@ function AddAccountForm({ onAdd, onCancel }) {
           type="submit"
           disabled={submitting}
           style={{
-            flex: 2, padding: '8px 0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: submitting ? 'default' : 'pointer',
-            background: submitting ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.5)',
-            border: '1px solid rgba(99,102,241,0.4)',
-            color: submitting ? 'rgba(165,180,252,0.5)' : '#a5b4fc',
-            transition: 'all 0.15s',
+            flex: 2, minHeight: 44, padding: '10px 0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: submitting ? 'default' : 'pointer',
+            background: 'var(--accent)', opacity: submitting ? 0.55 : 1,
+            border: '1px solid var(--accent)',
+            color: 'var(--text-on-accent, #fff)',
+            transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
           }}
         >
           {submitting ? 'Adding...' : 'Add Account'}
@@ -425,35 +436,38 @@ function TransferPanel({ onDone, onCancel }) {
 
   const inputStyle = {
     width: '100%',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
-    color: '#f5f5f5',
+    color: 'var(--text-primary)',
     fontSize: 13,
-    padding: '8px 12px',
+    padding: '10px 12px',
     outline: 'none',
     boxSizing: 'border-box',
+    transition: 'border-color var(--motion-fast, 0.15s) var(--ease-out, ease)',
   }
-  const labelStyle = { fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4, display: 'block' }
+  const labelStyle = { fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, display: 'block' }
   const primaryBtn = (disabled) => ({
-    width: '100%', padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
-    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
-    background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc',
+    width: '100%', minHeight: 44, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
+    background: 'var(--accent)', border: '1px solid var(--accent)', color: 'var(--text-on-accent, #fff)',
+    transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
   })
   const noteStyle = {
-    fontSize: 11, lineHeight: 1.5, color: 'rgba(251,191,36,0.85)',
-    background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)',
+    fontSize: 11, lineHeight: 1.5, color: 'var(--status-warning)',
+    background: 'var(--status-warning-soft)', border: '1px solid var(--status-warning-soft)',
     borderRadius: 8, padding: '8px 10px',
   }
   const errStyle = {
-    fontSize: 12, color: '#fca5a5', background: 'rgba(239,68,68,0.1)',
-    border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 10px',
+    fontSize: 12, color: 'var(--status-danger)', background: 'var(--status-danger-soft)',
+    border: '1px solid var(--status-danger-soft)', borderRadius: 8, padding: '8px 10px',
   }
   const tabStyle = (t) => ({
-    flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-    background: tab === t ? 'rgba(255,255,255,0.1)' : 'transparent',
+    flex: 1, minHeight: 36, padding: '7px 0', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+    background: tab === t ? 'var(--bg-hover)' : 'transparent',
     border: 'none',
-    color: tab === t ? '#f5f5f5' : 'rgba(255,255,255,0.4)',
+    color: tab === t ? 'var(--text-primary)' : 'var(--text-muted)',
+    transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
   })
 
   const submitImport = async (e) => {
@@ -531,7 +545,7 @@ function TransferPanel({ onDone, onCancel }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div role="tablist" style={{
         display: 'flex', gap: 4, padding: 4, borderRadius: 9,
-        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
       }}>
         <button role="tab" aria-selected={tab === 'import'} style={tabStyle('import')} onClick={() => setTab('import')}>Import</button>
         <button role="tab" aria-selected={tab === 'export'} style={tabStyle('export')} onClick={() => setTab('export')}>Export</button>
@@ -539,7 +553,7 @@ function TransferPanel({ onDone, onCancel }) {
 
       {tab === 'import' && (
         <form onSubmit={submitImport} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 11, lineHeight: 1.6, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: 'var(--text-tertiary)', margin: 0 }}>
             In Google Authenticator, tap <strong>Transfer accounts → Export</strong>, scan the QR
             code it shows, and paste the <code>otpauth-migration://</code> link here.
           </p>
@@ -565,7 +579,7 @@ function TransferPanel({ onDone, onCancel }) {
               type="file"
               accept=".json"
               onChange={(e) => { setBackupFile(e.target.files?.[0] || null); setUri(''); setResult(null); setImportErr('') }}
-              style={{ ...inputStyle, padding: '6px 10px', fontSize: 12 }}
+              style={{ ...inputStyle, padding: '8px 10px', fontSize: 12 }}
             />
           </div>
 
@@ -589,32 +603,32 @@ function TransferPanel({ onDone, onCancel }) {
           {/* Honest accounting: what landed, what did not. */}
           {result && (
             <div role="status" style={{
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
               borderRadius: 9, padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
             }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>Import finished</div>
-              <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Import finished</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: '#4ade80' }}>{result.imported ?? 0}</div>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Imported</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--status-success)' }}>{result.imported ?? 0}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Imported</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: (result.failed ?? 0) > 0 ? '#f87171' : 'rgba(255,255,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: (result.failed ?? 0) > 0 ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
                     {result.failed ?? 0}
                   </div>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Skipped</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Skipped</div>
                 </div>
                 {result.parsed != null && (
                   <div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{result.parsed}</div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>Found</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-secondary)' }}>{result.parsed}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Found</div>
                   </div>
                 )}
               </div>
               {Array.isArray(result.warnings) && result.warnings.length > 0 && (
                 <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {result.warnings.map((wmsg, i) => (
-                    <li key={i} style={{ fontSize: 11, color: 'rgba(251,191,36,0.85)' }}>{wmsg}</li>
+                    <li key={i} style={{ fontSize: 11, color: 'var(--status-warning)' }}>{wmsg}</li>
                   ))}
                 </ul>
               )}
@@ -623,9 +637,9 @@ function TransferPanel({ onDone, onCancel }) {
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" onClick={onCancel} style={{
-              flex: 1, padding: '9px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.6)',
+              flex: 1, minHeight: 44, padding: '10px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+              color: 'var(--text-secondary)',
             }}>
               Done
             </button>
@@ -638,7 +652,7 @@ function TransferPanel({ onDone, onCancel }) {
 
       {tab === 'export' && (
         <form onSubmit={submitExport} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 11, lineHeight: 1.6, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: 'var(--text-tertiary)', margin: 0 }}>
             Download an encrypted backup of your 2FA seeds. Without one, losing this
             box means losing access to every account these codes protect.
           </p>
@@ -690,8 +704,8 @@ function TransferPanel({ onDone, onCancel }) {
           {exportErr && <div role="alert" style={errStyle}>{exportErr}</div>}
           {exportDone && (
             <div role="status" style={{
-              fontSize: 12, color: '#4ade80', background: 'rgba(74,222,128,0.1)',
-              border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8, padding: '8px 10px',
+              fontSize: 12, color: 'var(--status-success)', background: 'var(--status-success-soft)',
+              border: '1px solid var(--status-success-soft)', borderRadius: 8, padding: '8px 10px',
             }}>
               Backup downloaded.
             </div>
@@ -699,9 +713,9 @@ function TransferPanel({ onDone, onCancel }) {
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" onClick={onCancel} style={{
-              flex: 1, padding: '9px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.6)',
+              flex: 1, minHeight: 44, padding: '10px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+              color: 'var(--text-secondary)',
             }}>
               Done
             </button>
@@ -761,8 +775,8 @@ export default function Authenticator() {
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    background: '#0d0d0f',
-    color: '#f5f5f5',
+    background: 'var(--bg-base)',
+    color: 'var(--text-primary)',
     fontFamily: "-apple-system, 'Inter', 'Segoe UI', sans-serif",
   }
 
@@ -770,8 +784,10 @@ export default function Authenticator() {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
     padding: '16px 20px 12px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: '1px solid var(--border-subtle)',
     flexShrink: 0,
   }
 
@@ -779,62 +795,64 @@ export default function Authenticator() {
     display: 'flex',
     alignItems: 'center',
     gap: 5,
-    padding: '6px 12px',
+    minHeight: 36,
+    padding: '7px 12px',
     borderRadius: 8,
-    background: 'rgba(99,102,241,0.2)',
-    border: '1px solid rgba(99,102,241,0.35)',
-    color: '#a5b4fc',
+    background: 'var(--accent)',
+    border: '1px solid var(--accent)',
+    color: 'var(--text-on-accent, #fff)',
     fontSize: 12,
-    fontWeight: 500,
+    fontWeight: 600,
     cursor: 'pointer',
-    transition: 'background 0.15s',
+    transition: 'opacity var(--motion-fast, 0.15s) var(--ease-out, ease)',
   }
 
   return (
     <div style={root}>
       {/* Header */}
       <div style={header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <div style={{
             width: 28, height: 28, borderRadius: 7,
-            background: 'rgba(99,102,241,0.25)',
+            background: 'var(--accent-soft)',
+            color: 'var(--accent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14,
+            fontSize: 14, flexShrink: 0,
           }}>
             ⊛
           </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Authenticator</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Authenticator</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
               {accounts.length} account{accounts.length !== 1 ? 's' : ''}
             </div>
           </div>
         </div>
         {!showAdd && !showTransfer && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <button
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                padding: '6px 12px', borderRadius: 8,
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.6)',
+                minHeight: 36, padding: '7px 12px', borderRadius: 8,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-default)',
+                color: 'var(--text-secondary)',
                 fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                transition: 'background 0.15s',
+                transition: 'background var(--motion-fast, 0.15s) var(--ease-out, ease)',
               }}
               onClick={() => setShowTransfer(true)}
               title="Import or export your 2FA accounts"
               aria-label="Import or export your 2FA accounts"
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-surface)'}
             >
               ⇄ Import / Export
             </button>
             <button
               style={addBtn}
               onClick={() => setShowAdd(true)}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.35)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
               <span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span>
               Add account
@@ -847,7 +865,7 @@ export default function Authenticator() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
         {showTransfer ? (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 14 }}>
               Import &amp; export accounts
             </div>
             <TransferPanel
@@ -857,30 +875,29 @@ export default function Authenticator() {
           </div>
         ) : showAdd ? (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 14 }}>
               Add new account
             </div>
             <AddAccountForm onAdd={handleAdded} onCancel={() => setShowAdd(false)} />
           </div>
         ) : loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 120, color: 'rgba(255,255,255,0.25)', fontSize: 13 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 120, color: 'var(--text-muted)', fontSize: 13 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
+              <span className="vulos-auth-spin" style={{
                 width: 14, height: 14,
-                border: '2px solid rgba(255,255,255,0.1)',
-                borderTopColor: '#818cf8',
+                border: '2px solid var(--border-default)',
+                borderTopColor: 'var(--accent)',
                 borderRadius: '50%',
                 display: 'inline-block',
-                animation: 'spin 0.8s linear infinite',
               }} />
               Loading...
             </span>
           </div>
         ) : fetchErr ? (
           <div style={{
-            textAlign: 'center', color: '#f87171', fontSize: 13, padding: 24,
-            background: 'rgba(239,68,68,0.08)', borderRadius: 10,
-            border: '1px solid rgba(239,68,68,0.15)',
+            textAlign: 'center', color: 'var(--status-danger)', fontSize: 13, padding: 24,
+            background: 'var(--status-danger-soft)', borderRadius: 12,
+            border: '1px solid var(--status-danger-soft)',
           }}>
             <div style={{ fontSize: 20, marginBottom: 8 }}>⚠</div>
             Could not connect to the TOTP service.
@@ -888,8 +905,8 @@ export default function Authenticator() {
             <button
               onClick={loadAccounts}
               style={{
-                marginTop: 12, padding: '6px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5',
+                marginTop: 12, minHeight: 36, padding: '8px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                background: 'var(--status-danger-soft)', border: '1px solid var(--status-danger)', color: 'var(--status-danger)',
               }}
             >
               Retry
@@ -898,18 +915,21 @@ export default function Authenticator() {
         ) : accounts.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', height: 160, gap: 12,
-            color: 'rgba(255,255,255,0.3)',
+            justifyContent: 'center', minHeight: 200, gap: 12, padding: '24px 8px',
+            color: 'var(--text-muted)',
           }}>
-            <div style={{ fontSize: 36 }}>⊛</div>
-            <div style={{ fontSize: 13 }}>No accounts yet</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 30,
+            }}>⊛</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No accounts yet</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
               <button
                 onClick={() => setShowAdd(true)}
                 style={{
-                  padding: '7px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-                  background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.35)',
-                  color: '#a5b4fc', fontWeight: 500,
+                  minHeight: 40, padding: '9px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                  background: 'var(--accent)', border: '1px solid var(--accent)',
+                  color: 'var(--text-on-accent, #fff)', fontWeight: 600,
                 }}
               >
                 + Add your first account
@@ -917,9 +937,9 @@ export default function Authenticator() {
               <button
                 onClick={() => setShowTransfer(true)}
                 style={{
-                  padding: '7px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'rgba(255,255,255,0.6)', fontWeight: 500,
+                  minHeight: 40, padding: '9px 18px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                  background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+                  color: 'var(--text-secondary)', fontWeight: 500,
                 }}
               >
                 Import from Google Authenticator
@@ -933,8 +953,14 @@ export default function Authenticator() {
         )}
       </div>
 
-      {/* Keyframe for spinner — injected once via a style tag */}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Keyframe for spinner — injected once via a style tag, disabled under reduced motion */}
+      <style>{`
+        @keyframes vulos-auth-spin { to { transform: rotate(360deg); } }
+        .vulos-auth-spin { animation: vulos-auth-spin 0.8s linear infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .vulos-auth-spin { animation-duration: 2s; }
+        }
+      `}</style>
     </div>
   )
 }

@@ -60,7 +60,7 @@ function IdentityPanel({ identity, onRefresh }) {
       <div className="bg-neutral-900/60 border border-neutral-800/60 rounded-2xl p-5">
         <div className="flex items-start gap-4">
           {/* Avatar block */}
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-600/40 to-violet-600/40 border border-blue-500/20 flex items-center justify-center text-xl font-bold text-white shrink-0">
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[color-mix(in_srgb,var(--accent)_42%,transparent)] to-[color-mix(in_srgb,var(--accent)_14%,transparent)] border accent-border-soft flex items-center justify-center text-xl font-bold accent-text shrink-0 shadow-inner">
             {displayName[0]?.toUpperCase() || 'V'}
           </div>
 
@@ -85,7 +85,7 @@ function IdentityPanel({ identity, onRefresh }) {
           <button
             onClick={copyId}
             className="flex-1 py-2 rounded-lg text-sm text-center border transition-colors
-              bg-neutral-800/60 border-neutral-700/40 text-neutral-300 hover:bg-neutral-700/60 hover:text-white"
+              bg-neutral-800/60 border-neutral-700/40 text-neutral-300 hover:bg-neutral-700/60 hover:text-[var(--text-primary)]"
           >
             {copied ? 'Copied!' : 'Copy Vula ID'}
           </button>
@@ -94,7 +94,7 @@ function IdentityPanel({ identity, onRefresh }) {
             className={`flex-1 py-2 rounded-lg text-sm text-center border transition-colors
               ${showQR
                 ? 'accent-bg-soft accent-border accent-text'
-                : 'bg-neutral-800/60 border-neutral-700/40 text-neutral-300 hover:bg-neutral-700/60 hover:text-white'}`}
+                : 'bg-neutral-800/60 border-neutral-700/40 text-neutral-300 hover:bg-neutral-700/60 hover:text-[var(--text-primary)]'}`}
           >
             {showQR ? 'Hide QR' : 'Show QR'}
           </button>
@@ -105,8 +105,8 @@ function IdentityPanel({ identity, onRefresh }) {
       {showQR && vulaId && (
         <div className="flex flex-col items-center gap-3 bg-neutral-900/60 border border-neutral-800/60 rounded-2xl p-6">
           <p className="text-xs text-neutral-500 mb-2">Scan to add this Vula instance</p>
-          <div className="rounded-xl overflow-hidden p-3 bg-neutral-900 border border-neutral-800">
-            <QRCanvas value={vulaId} size={220} darkColor="#ffffff" lightColor="#111827" />
+          <div className="rounded-xl overflow-hidden p-3 bg-white border border-black/10 shadow-sm">
+            <QRCanvas value={vulaId} size={220} darkColor="#0c0c0c" lightColor="#ffffff" />
           </div>
           <p className="text-[10px] text-neutral-700 text-center max-w-xs break-all font-mono">{vulaId}</p>
         </div>
@@ -179,10 +179,13 @@ function ContactsPanel({ contacts, onUpdatePerms, onRemove, onCall, loading }) {
           <span className="w-5 h-5 spinner" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-10 text-neutral-600 text-sm">
-          {contacts?.length === 0
-            ? 'No approved contacts yet. Approve a request to add someone.'
-            : `No contacts match "${search}"`}
+        <div className="flex flex-col items-center gap-3 text-center py-14 text-neutral-600 text-sm">
+          <span className="flex items-center justify-center w-12 h-12 rounded-full bg-neutral-800/40 border border-neutral-800/60 text-2xl opacity-70">👥</span>
+          <p className="max-w-xs leading-relaxed">
+            {contacts?.length === 0
+              ? 'No approved contacts yet. Approve a request to add someone.'
+              : `No contacts match "${search}"`}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -445,7 +448,7 @@ export default function Peering() {
               onClick={() => setTab(t.id)}
               className={`relative shrink-0 whitespace-nowrap px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors rounded-t-lg
                 ${tab === t.id
-                  ? 'text-white bg-neutral-800/50 border-t border-l border-r border-neutral-700/50'
+                  ? 'text-[var(--text-primary)] bg-neutral-800/50 border-t border-l border-r border-neutral-700/50'
                   : 'text-neutral-500 hover:text-neutral-300'}`}
             >
               {t.label}

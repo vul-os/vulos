@@ -50,7 +50,7 @@ function PermToggle({ perm, active, onChange, disabled }) {
       title={perm.label}
       className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors
         ${active
-          ? 'accent-bg-soft accent-border text-white'
+          ? 'accent-bg-soft accent-border accent-text'
           : 'bg-neutral-800/60 border-neutral-700/40 text-neutral-500 hover:text-neutral-400'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
@@ -151,14 +151,14 @@ export default function ContactCard({ contact, onUpdatePerms, onRemove, onCall }
             {onCall && perms.includes('call') && (
               <button
                 onClick={() => onCall(contact.vula_id)}
-                className="flex items-center gap-1 text-[11px] text-success hover:opacity-80 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-success-soft border border-success-soft text-success hover:opacity-80 transition-opacity"
               >
                 <span>📞</span> Voice call
               </button>
             )}
             <button
               onClick={() => onRemove(contact.vula_id)}
-              className="text-[11px] text-danger hover:opacity-80 transition-colors"
+              className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-medium bg-danger-soft border border-danger-soft text-danger hover:opacity-80 transition-opacity"
             >
               Remove contact
             </button>

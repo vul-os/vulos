@@ -81,8 +81,8 @@ export function ProposalCard({ proposal, state, onApprove, onReject, compact = f
     <div
       role="group"
       aria-label={`Assistant proposal: ${verb}. Needs your approval.`}
-      className={`text-[13px] border bg-warning-soft border-warning-soft ${
-        compact ? 'rounded-xl px-3 py-2.5' : 'rounded-2xl rounded-bl-sm px-3.5 py-3'
+      className={`text-[13px] border bg-warning-soft border-warning-soft shadow-[0_1px_3px_rgba(0,0,0,0.12)] min-w-0 ${
+        compact ? 'rounded-xl px-3 py-2.5' : 'rounded-2xl rounded-bl-md px-3.5 py-3'
       }`}
     >
       <div className="flex items-center gap-2 mb-1.5">
@@ -114,7 +114,7 @@ export function ProposalCard({ proposal, state, onApprove, onReject, compact = f
       )}
 
       {body && (
-        <div className="text-[12px] text-neutral-400 whitespace-pre-wrap bg-neutral-900/50 rounded-lg px-2.5 py-2 mt-2 max-h-40 overflow-y-auto">
+        <div className="text-[12px] text-neutral-400 whitespace-pre-wrap break-words bg-neutral-900/50 border border-neutral-800/60 rounded-lg px-2.5 py-2 mt-2 max-h-40 overflow-y-auto">
           {body}
         </div>
       )}
@@ -124,23 +124,38 @@ export function ProposalCard({ proposal, state, onApprove, onReject, compact = f
       ) : state === 'rejected' ? (
         <div className="text-[12px] text-neutral-500 mt-2.5">Rejected — nothing was done.</div>
       ) : (
-        <div className="flex items-center gap-2 mt-2.5">
+        <div className="flex items-center gap-2 mt-3">
           <button
             type="button"
             disabled={state === 'busy'}
             onClick={onApprove}
             aria-keyshortcuts={approveKey || undefined}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-success text-black font-medium hover:brightness-110 transition-[filter] disabled:opacity-50 disabled:hover:brightness-100"
+            className="inline-flex items-center justify-center gap-1.5 text-[12px] min-h-[40px] px-3.5 py-2 rounded-lg bg-success text-black font-medium hover:brightness-110 transition-[filter] disabled:opacity-50 disabled:hover:brightness-100 focus-primary"
           >
-            {state === 'busy' ? 'Working…' : 'Approve'}
+            {state === 'busy' ? (
+              <>
+                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-black/30 border-t-black animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                Working…
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13" aria-hidden="true">
+                  <path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 111.4-1.4l2.8 2.79 6.8-6.79a1 1 0 011.4 0z" clipRule="evenodd" />
+                </svg>
+                Approve
+              </>
+            )}
           </button>
           <button
             type="button"
             disabled={state === 'busy'}
             onClick={onReject}
             aria-keyshortcuts={rejectKey || undefined}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 text-[12px] min-h-[40px] px-3.5 py-2 rounded-lg bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-50 focus-primary"
           >
+            <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true">
+              <path fillRule="evenodd" d="M4.3 4.3a1 1 0 011.4 0L10 8.6l4.3-4.3a1 1 0 111.4 1.4L11.4 10l4.3 4.3a1 1 0 01-1.4 1.4L10 11.4l-4.3 4.3a1 1 0 01-1.4-1.4L8.6 10 4.3 5.7a1 1 0 010-1.4z" clipRule="evenodd" />
+            </svg>
             Reject
           </button>
         </div>
@@ -169,8 +184,13 @@ export function StepTrace({ steps, className = '' }) {
   if (!steps || !steps.length) return null
   const n = steps.length
   return (
-    <details className={`group ${className}`}>
-      <summary className="cursor-pointer text-[11px] text-neutral-500 hover:text-neutral-300 select-none list-none flex items-center gap-1.5 rounded focus-primary w-fit">
+    <details className={`group va-steps min-w-0 ${className}`}>
+      <style>{`
+        @keyframes vaStepReveal { from { opacity: 0; transform: translateY(-2px) } to { opacity: 1; transform: none } }
+        details.va-steps[open] > ol { animation: vaStepReveal var(--motion-base) var(--ease-out) }
+        @media (prefers-reduced-motion: reduce) { details.va-steps[open] > ol { animation: none } }
+      `}</style>
+      <summary className="cursor-pointer text-[11px] text-neutral-500 hover:text-neutral-300 select-none list-none flex items-center gap-1.5 rounded focus-primary w-fit transition-colors">
         <svg viewBox="0 0 20 20" fill="currentColor" width="10" height="10" aria-hidden="true"
           className="transition-transform group-open:rotate-90 motion-reduce:transition-none">
           <path fillRule="evenodd" d="M7.21 5.23a.75.75 0 011.06.02l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 11-1.04-1.08L11.17 10 7.23 6.29a.75.75 0 01-.02-1.06z" clipRule="evenodd" />

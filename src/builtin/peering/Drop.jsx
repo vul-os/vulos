@@ -103,9 +103,9 @@ const DISC_OPTIONS = [
 function DiscoverabilityBadge({ value }) {
   const opt = DISC_OPTIONS.find(o => o.value === value)
   const color =
-    value === 'everyone' ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' :
-    value === 'peers'    ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' :
-                           'bg-neutral-700/40 border-neutral-600/40 text-neutral-500'
+    value === 'everyone' ? 'bg-success-soft border-success-soft text-success' :
+    value === 'peers'    ? 'bg-[var(--accent-soft)] accent-border-soft accent-text' :
+                           'bg-neutral-800/60 border-neutral-700/50 text-neutral-500'
   return (
     <span className={`text-[11px] px-2 py-0.5 rounded-full border ${color}`}>
       {opt?.label ?? value}
@@ -136,12 +136,12 @@ function DiscoverabilitySettings({ current, onSave, onClose }) {
   }
 
   return (
-    <div className="bg-neutral-900/90 border border-neutral-800/70 rounded-2xl p-5 space-y-4">
+    <div className="bg-neutral-900/90 border border-neutral-800/70 rounded-2xl p-4 sm:p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-neutral-200">Discoverability</h3>
         <button
           onClick={onClose}
-          className="text-neutral-600 hover:text-neutral-400 transition-colors"
+          className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] -mr-2 rounded-lg text-neutral-500 hover:text-neutral-300 transition-colors"
           aria-label="Close"
         >
           <IconX />
@@ -155,8 +155,8 @@ function DiscoverabilitySettings({ current, onSave, onClose }) {
             onClick={() => setSelected(opt.value)}
             className={`w-full text-left px-4 py-3 rounded-xl border transition-colors
               ${selected === opt.value
-                ? 'bg-blue-600/15 border-blue-500/40 text-blue-200'
-                : 'bg-neutral-800/40 border-neutral-700/40 text-neutral-400 hover:border-neutral-600/60 hover:text-neutral-300'
+                ? 'bg-[var(--accent-soft)] accent-border accent-text'
+                : 'bg-neutral-800/40 border-neutral-700/40 text-neutral-400 hover:border-neutral-600/60 hover:text-neutral-200'
               }`}
           >
             <p className="text-sm font-medium leading-snug">{opt.label}</p>
@@ -165,14 +165,14 @@ function DiscoverabilitySettings({ current, onSave, onClose }) {
         ))}
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
 
       <button
         onClick={save}
         disabled={busy || selected === current}
-        className="w-full py-2 rounded-lg text-sm font-medium transition-colors
-          bg-blue-600/20 border border-blue-500/30 text-blue-300
-          hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full min-h-[44px] py-2 rounded-lg text-sm font-medium transition-colors
+          accent-bg-soft accent-border accent-text accent-bg-hover
+          disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {busy ? 'Saving…' : 'Save'}
       </button>
@@ -188,12 +188,12 @@ function PeerTile({ peer, onSend }) {
   const initial = (peer.display_name || peer.vula_id || '?')[0].toUpperCase()
 
   return (
-    <div className="flex flex-col items-center gap-2 p-4 bg-neutral-900/60 border border-neutral-800/60 rounded-2xl hover:border-neutral-700/60 transition-colors">
+    <div className="flex flex-col items-center gap-2 p-4 min-w-0 bg-neutral-900/60 border border-neutral-800/60 rounded-2xl hover:border-neutral-700/60 hover:bg-neutral-900/80 transition-colors">
       {/* Avatar */}
-      <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white
+      <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold
         ${peer.is_contact
-          ? 'bg-gradient-to-br from-blue-600/40 to-violet-600/40 border border-blue-500/20'
-          : 'bg-neutral-700/60 border border-neutral-600/30'}`}
+          ? 'accent-bg-soft accent-border accent-text'
+          : 'bg-neutral-800/70 border border-neutral-700/50 text-neutral-300'}`}
       >
         {initial}
       </div>
@@ -204,15 +204,15 @@ function PeerTile({ peer, onSend }) {
           {peer.display_name || 'Unknown'}
         </p>
         {peer.is_contact && (
-          <span className="text-[10px] text-blue-400">Contact</span>
+          <span className="text-[10px] accent-text">Contact</span>
         )}
       </div>
 
       {/* Send button */}
       <button
         onClick={() => onSend(peer)}
-        className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
-          bg-blue-600/15 border border-blue-500/30 text-blue-300 hover:bg-blue-600/25"
+        className="mt-1 flex items-center justify-center gap-1.5 w-full min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
+          accent-bg-soft accent-border accent-text accent-bg-hover"
       >
         <IconUpload />
         Send
@@ -227,35 +227,51 @@ function PeerTile({ peer, onSend }) {
 
 function TransferRow({ transfer }) {
   const statusColor =
-    transfer.status === 'done'     ? 'text-emerald-400' :
-    transfer.status === 'error'    ? 'text-red-400' :
-    transfer.status === 'sending'  ? 'text-blue-400' : 'text-neutral-500'
+    transfer.status === 'done'     ? 'text-success' :
+    transfer.status === 'error'    ? 'text-danger' :
+    transfer.status === 'sending'  ? 'accent-text' : 'text-neutral-500'
 
   const statusLabel =
     transfer.status === 'done'    ? 'Complete' :
     transfer.status === 'error'   ? transfer.error || 'Error' :
     transfer.status === 'sending' ? 'Sending…' : 'Pending'
 
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-neutral-900/50 border border-neutral-800/50 rounded-xl">
-      {/* Spinner or icon */}
-      {transfer.status === 'sending' ? (
-        <span className="w-4 h-4 spinner shrink-0" />
-      ) : transfer.status === 'done' ? (
-        <span className="text-emerald-400 shrink-0"><IconCheck /></span>
-      ) : (
-        <span className="text-red-400 shrink-0"><IconX /></span>
-      )}
+  // Progress track fill — driven by the existing status (no computed percentage):
+  // sending = indeterminate pulsing accent sliver, done = full success,
+  // error = full danger, pending = faint neutral hint.
+  const barFill =
+    transfer.status === 'done'    ? 'w-full bg-success' :
+    transfer.status === 'error'   ? 'w-full bg-danger' :
+    transfer.status === 'sending' ? 'w-2/3 accent-bg animate-pulse motion-reduce:animate-none' :
+                                    'w-1/4 bg-neutral-700'
 
-      {/* Details */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-neutral-200 truncate">{transfer.fileName}</p>
-        <p className="text-[11px] text-neutral-600">
-          To {transfer.peerName} · {humanBytes(transfer.fileSize)}
-        </p>
+  return (
+    <div className="px-4 py-3 bg-neutral-900/50 border border-neutral-800/50 rounded-xl">
+      <div className="flex items-center gap-3">
+        {/* Spinner or icon */}
+        {transfer.status === 'sending' ? (
+          <span className="w-4 h-4 spinner shrink-0" />
+        ) : transfer.status === 'done' ? (
+          <span className="text-success shrink-0"><IconCheck /></span>
+        ) : (
+          <span className="text-danger shrink-0"><IconX /></span>
+        )}
+
+        {/* Details */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-neutral-200 truncate">{transfer.fileName}</p>
+          <p className="text-[11px] text-neutral-500 truncate">
+            To {transfer.peerName} · {humanBytes(transfer.fileSize)}
+          </p>
+        </div>
+
+        <span className={`text-xs shrink-0 ${statusColor}`}>{statusLabel}</span>
       </div>
 
-      <span className={`text-xs shrink-0 ${statusColor}`}>{statusLabel}</span>
+      {/* Progress track */}
+      <div className="mt-2.5 h-1 rounded-full bg-neutral-800/80 overflow-hidden">
+        <div className={`h-full rounded-full transition-[width] duration-500 ${barFill}`} />
+      </div>
     </div>
   )
 }
@@ -281,7 +297,7 @@ function InboundCard({ req, onDecide }) {
   }
 
   return (
-    <div className="bg-amber-500/8 border border-amber-500/25 rounded-xl px-4 py-3 space-y-2">
+    <div className="bg-warning-soft border border-warning-soft rounded-xl px-4 py-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium text-neutral-200 truncate">
@@ -291,7 +307,7 @@ function InboundCard({ req, onDecide }) {
             {req.file_name} · {humanBytes(req.file_size)}
           </p>
         </div>
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning-soft border border-warning-soft text-warning shrink-0">
           Incoming
         </span>
       </div>
@@ -300,9 +316,9 @@ function InboundCard({ req, onDecide }) {
         <button
           onClick={() => decide(true)}
           disabled={busy}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors
-            bg-emerald-600/15 border border-emerald-500/30 text-emerald-300
-            hover:bg-emerald-600/25 disabled:opacity-50"
+          className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2 rounded-lg text-xs font-medium transition-colors
+            bg-success-soft border border-success-soft text-success
+            hover:bg-[color-mix(in_srgb,var(--status-success)_24%,transparent)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <IconCheck />
           Accept
@@ -310,9 +326,9 @@ function InboundCard({ req, onDecide }) {
         <button
           onClick={() => decide(false)}
           disabled={busy}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors
-            bg-red-600/10 border border-red-500/25 text-red-400
-            hover:bg-red-600/20 disabled:opacity-50"
+          className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] py-2 rounded-lg text-xs font-medium transition-colors
+            bg-danger-soft border border-danger-soft text-danger
+            hover:bg-[color-mix(in_srgb,var(--status-danger)_22%,transparent)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <IconX />
           Decline
@@ -429,10 +445,10 @@ function ProximityCodePanel({ onPeerResolved }) {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 text-xs font-medium transition-colors
+            className={`flex-1 min-h-[44px] py-2.5 text-xs font-medium transition-colors
               ${tab === t
-                ? 'text-blue-300 border-b-2 border-blue-500/60 bg-blue-600/5'
-                : 'text-neutral-500 hover:text-neutral-400'}`}
+                ? 'accent-text border-b-2 accent-border bg-[var(--accent-soft)]'
+                : 'text-neutral-500 hover:text-neutral-300 border-b-2 border-transparent'}`}
           >
             {t === 'my-code' ? 'My Code' : 'Enter Code'}
           </button>
@@ -450,13 +466,13 @@ function ProximityCodePanel({ onPeerResolved }) {
             {myCode ? (
               <div className="space-y-3">
                 {/* Big code display */}
-                <div className="flex items-center justify-center gap-1.5 py-5">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2 py-5">
                   {myCode.code.split('').map((digit, i) => (
                     <span
                       key={i}
                       className="w-10 h-12 flex items-center justify-center rounded-xl
                         bg-neutral-800/80 border border-neutral-700/60
-                        text-2xl font-mono font-bold text-blue-200 tracking-widest"
+                        text-2xl font-mono font-bold accent-text tracking-widest"
                     >
                       {digit}
                     </span>
@@ -466,7 +482,7 @@ function ProximityCodePanel({ onPeerResolved }) {
                 {/* Countdown */}
                 <div className="flex items-center justify-between text-xs text-neutral-500">
                   <span>Expires in</span>
-                  <span className={`font-mono font-medium ${myCodeSecsLeft < 60 ? 'text-amber-400' : 'text-neutral-400'}`}>
+                  <span className={`font-mono font-medium ${myCodeSecsLeft < 60 ? 'text-warning' : 'text-neutral-400'}`}>
                     {fmtCountdown(myCodeSecsLeft)}
                   </span>
                 </div>
@@ -475,9 +491,9 @@ function ProximityCodePanel({ onPeerResolved }) {
                 <button
                   onClick={handleGenerate}
                   disabled={generating}
-                  className="w-full py-2 rounded-lg text-xs font-medium transition-colors
+                  className="w-full min-h-[44px] py-2 rounded-lg text-xs font-medium transition-colors
                     bg-neutral-800/50 border border-neutral-700/40 text-neutral-400
-                    hover:border-neutral-600/60 hover:text-neutral-300 disabled:opacity-40"
+                    hover:border-neutral-600/60 hover:text-neutral-200 disabled:opacity-40"
                 >
                   Generate new code
                 </button>
@@ -486,15 +502,15 @@ function ProximityCodePanel({ onPeerResolved }) {
               <button
                 onClick={handleGenerate}
                 disabled={generating}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-colors
-                  bg-blue-600/15 border border-blue-500/30 text-blue-300
-                  hover:bg-blue-600/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full min-h-[44px] py-2.5 rounded-xl text-sm font-medium transition-colors
+                  accent-bg-soft accent-border accent-text accent-bg-hover
+                  disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {generating ? 'Generating…' : 'Generate Code'}
               </button>
             )}
 
-            {genError && <p className="text-xs text-red-400">{genError}</p>}
+            {genError && <p className="text-xs text-danger">{genError}</p>}
           </>
         )}
 
@@ -519,30 +535,30 @@ function ProximityCodePanel({ onPeerResolved }) {
               }}
               onKeyDown={e => e.key === 'Enter' && handleRedeem()}
               className="w-full px-4 py-3 rounded-xl bg-neutral-800/60 border border-neutral-700/50
-                text-center font-mono text-2xl font-bold tracking-[0.35em] text-blue-200
-                placeholder:text-neutral-700 placeholder:tracking-widest
-                focus:outline-none focus:border-blue-500/60 focus:bg-neutral-800/80 transition-colors"
+                text-center font-mono text-2xl font-bold tracking-[0.35em] accent-text
+                placeholder:text-neutral-600 placeholder:tracking-widest
+                focus:outline-none focus:border-[color-mix(in_srgb,var(--accent)_55%,transparent)] focus:bg-neutral-800/80 transition-colors"
             />
 
             <button
               onClick={handleRedeem}
               disabled={redeeming || inputCode.length !== 6}
-              className="w-full py-2.5 rounded-xl text-sm font-medium transition-colors
-                bg-blue-600/15 border border-blue-500/30 text-blue-300
-                hover:bg-blue-600/25 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full min-h-[44px] py-2.5 rounded-xl text-sm font-medium transition-colors
+                accent-bg-soft accent-border accent-text accent-bg-hover
+                disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {redeeming ? 'Connecting…' : 'Connect'}
             </button>
 
-            {redeemError && <p className="text-xs text-red-400">{redeemError}</p>}
+            {redeemError && <p className="text-xs text-danger">{redeemError}</p>}
 
             {redeemResult && (
               <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl
-                bg-emerald-500/8 border border-emerald-500/25 text-emerald-300">
+                bg-success-soft border border-success-soft text-success">
                 <IconCheck />
-                <div className="text-xs leading-relaxed">
+                <div className="text-xs leading-relaxed min-w-0">
                   <p className="font-medium">Peer found</p>
-                  <p className="text-emerald-500 font-mono mt-0.5 break-all">
+                  <p className="text-success font-mono mt-0.5 break-all opacity-80">
                     {redeemResult.vula_id || redeemResult.owner_addr}
                   </p>
                 </div>
@@ -734,10 +750,10 @@ export default function DropPanel({ onPendingCount }) {
           <DiscoverabilityBadge value={discoverability} />
           <button
             onClick={() => setShowSettings(v => !v)}
-            className={`p-1.5 rounded-lg border transition-colors
+            className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg border transition-colors
               ${showSettings
-                ? 'bg-neutral-700/40 border-neutral-600/40 text-neutral-300'
-                : 'bg-neutral-800/30 border-neutral-700/30 text-neutral-500 hover:text-neutral-400'}`}
+                ? 'bg-neutral-700/40 border-neutral-600/40 text-neutral-200'
+                : 'bg-neutral-800/30 border-neutral-700/30 text-neutral-500 hover:text-neutral-300 hover:border-neutral-600/40'}`}
             aria-label="Discoverability settings"
           >
             <IconSettings />
@@ -770,14 +786,14 @@ export default function DropPanel({ onPendingCount }) {
           <h3 className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Nearby</h3>
           <button
             onClick={() => fetchNearby()}
-            className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors"
+            className="px-2 py-1 -mr-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
           >
             Refresh
           </button>
         </div>
 
         {error && (
-          <p className="text-xs text-red-400 mb-3">{error}</p>
+          <p className="text-xs text-danger mb-3">{error}</p>
         )}
 
         {loadingPeers ? (
@@ -785,10 +801,12 @@ export default function DropPanel({ onPendingCount }) {
             <span className="w-5 h-5 spinner" />
           </div>
         ) : peers.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <span className="text-neutral-700 opacity-60"><IconWifi /></span>
-            <p className="text-sm text-neutral-600">No nearby Vula peers found</p>
-            <p className="text-xs text-neutral-700 max-w-xs">
+          <div className="flex flex-col items-center gap-3 px-6 py-12 text-center rounded-2xl border border-dashed border-neutral-800/70 bg-neutral-900/30">
+            <span className="flex items-center justify-center w-14 h-14 rounded-full accent-bg-soft accent-text">
+              <IconWifi />
+            </span>
+            <p className="text-sm text-neutral-400">No nearby Vula peers found</p>
+            <p className="text-xs text-neutral-600 max-w-xs leading-relaxed">
               {discoverability === 'nobody'
                 ? 'Your discoverability is set to Nobody — other peers cannot find you either.'
                 : 'Make sure the other device is on the same network and has discoverability enabled.'}
