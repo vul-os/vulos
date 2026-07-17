@@ -16,6 +16,14 @@
  *
  * SOVEREIGN: the brief uses the on-instance assistant behind the egress Guard —
  * no new egress is introduced here.
+ *
+ * LAYOUT (wave-79 hero redesign): a composed, responsive "home canvas" rather
+ * than a single narrow list. A prominent greeting + sovereignty posture, a hero
+ * ask-bar with an ambient accent glow, then a bento split — the assistant brief
+ * and focus items lead on the left while the day's agenda / invites / reminders
+ * stack on the right; recent activity + quick-launch anchor a full-width lower
+ * row. Everything stacks to one clean column on narrow screens. Pure
+ * presentation: no state, endpoints, labels, or a11y semantics changed.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShell } from '../../providers/ShellProvider'
@@ -38,6 +46,16 @@ const TIER_DOT = {
   brokered: 'var(--status-warning)',
   external: 'var(--status-danger)',
 }
+
+// ── shared surface + control vocabulary ───────────────────────────────────────
+// One card / button / link language so every section reads as the same system —
+// consistent radius, border, translucency and hover, tuned for the dark scrim
+// Home floats over. Kept as constants (not ad-hoc repeated strings) so the whole
+// surface stays coherent and is retuned in one place.
+const CARD = 'rounded-2xl border border-neutral-800/70 bg-neutral-900/50 backdrop-blur-sm'
+const CARD_ROW = `${CARD} px-3.5 py-3 transition-colors hover:border-neutral-700/90 hover:bg-neutral-900/70`
+const BTN = 'text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40'
+const LINK = 'text-[11px] font-mono text-neutral-500 hover:text-neutral-300 transition-colors'
 
 // Module-scoped cache of the last Home payload. Home remounts each time you
 // close all windows (it's the desktop backdrop), so we render the cached brief/
@@ -77,11 +95,17 @@ function reminderWhen(iso) {
 }
 
 // ── section shell ─────────────────────────────────────────────────────────────
-function Section({ label, right, children }) {
+// A labelled block: an accent tick + mono eyebrow on the left, an optional
+// action/status on the right. The tick and tightened tracking give each section
+// a crisp, intentional header instead of a lone grey caption.
+function Section({ label, right, children, className = '' }) {
   return (
-    <section className="mb-6">
-      <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-[10.5px] font-mono uppercase tracking-[0.18em] text-neutral-500">{label}</h2>
+    <section className={className}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="flex items-center gap-2 text-[10.5px] font-mono uppercase tracking-[0.2em] text-neutral-400">
+          <span aria-hidden="true" className="inline-block h-px w-4 rounded-full" style={{ background: 'var(--accent)' }} />
+          {label}
+        </h2>
         {right}
       </div>
       {children}
@@ -277,26 +301,249 @@ export default function Home() {
   const tier = data?.sovereignty?.tier || 'local'
   const tierLabel = data?.sovereignty?.label || ''
 
+  // ── section renderers — kept as locals so the JSX below stays a legible
+  // composition map (header → ask-bar → bento) instead of one giant tree. ──────
+
+  const briefSection = (
+    <Section label="What needs you today"
+      right={data?.brief && <button onClick={openAssistant} className={LINK}>open assistant →</button>}>
+      {loading && !data ? (
+        <div className="space-y-2">
+          <div className="h-3.5 bg-neutral-800/70 rounded animate-pulse w-4/5" />
+          <div className="h-3.5 bg-neutral-800/70 rounded animate-pulse w-3/5" />
+        </div>
+      ) : offline ? (
+        <p className="text-[13px] text-neutral-500">Assistant offline — Home is still here. Reconnect your box to get today's brief.</p>
+      ) : data?.brief ? (
+        <div className="text-[14px] text-neutral-200 leading-relaxed whitespace-pre-wrap">{data.brief}</div>
+      ) : data?.brief_error ? (
+        <p className="text-[13px] text-neutral-500">
+          The assistant couldn't produce a brief right now ({data.mail_error ? 'mail unavailable' : 'model offline'}).
+          Your mail and agenda below are still live.
+        </p>
+      ) : (
+        <p className="text-[13px] text-neutral-500">Nothing urgent — you're clear. Enjoy the calm.</p>
+      )}
+
+      {focus.length > 0 && (
+        <ul className="mt-4 space-y-2.5">
+          {focus.map(item => (
+            <li key={item.uid} className={`group relative overflow-hidden ${CARD_ROW} pl-4`}>
+              {/* accent spine — a quiet "this wants you" marker down the card edge */}
+              <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: 'var(--accent)' }} />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
+                    <span className="text-[13px] text-neutral-100 font-medium truncate">{item.subject}</span>
+                  </div>
+                  <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate pl-3.5">{item.from_name || item.from}</div>
+                  {item.preview && <div className="text-[12px] text-neutral-500/90 mt-1 line-clamp-2 pl-3.5">{item.preview}</div>}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pl-3.5">
+                <button onClick={openMail} className={BTN}>Open</button>
+                <button onClick={() => replyWith(item)} disabled={busy} className={BTN}>Reply with assistant</button>
+                {snoozing === item.uid ? (
+                  <>
+                    <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md text-white bg-warning transition-[filter] hover:brightness-110">Confirm snooze</button>
+                    <button onClick={() => setSnoozing(null)} className="text-[11px] px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Cancel</button>
+                  </>
+                ) : (
+                  <button onClick={() => setSnoozing(item.uid)} disabled={snoozing === `busy:${item.uid}`} className={BTN}>
+                    {snoozing === `busy:${item.uid}` ? 'Snoozing…' : 'Snooze'}
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+
+  const agendaSection = (
+    <Section label="Agenda"
+      right={
+        <div className="flex items-center gap-2.5">
+          {data && (
+            <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-600" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: data.agenda_fresh ? 'var(--status-success)' : 'var(--status-danger)' }} />
+              {data.agenda_fresh ? 'live' : 'stale'}
+            </span>
+          )}
+          <button onClick={() => openApp('vulos-calendar')} className={LINK}>calendar →</button>
+        </div>
+      }>
+      {loading && !data ? (
+        <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
+      ) : agenda.length === 0 ? (
+        <p className="text-[13px] text-neutral-500">
+          {data?.agenda_error ? 'Calendar unavailable right now.' : 'Nothing on your calendar for the week ahead.'}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {agenda.map((ev, i) => (
+            <li key={ev.id || i} className={`flex items-center gap-3.5 ${CARD_ROW}`}>
+              <div className="flex-shrink-0 w-[64px] rounded-lg px-2 py-1.5 text-center" style={{ background: 'var(--accent-soft)' }}>
+                <div className="text-[12px] font-mono text-neutral-100 leading-tight">{ev.all_day ? 'All day' : eventTime(ev.start)}</div>
+                <div className="text-[9.5px] font-mono uppercase tracking-wide text-neutral-400 mt-0.5">{relDay(ev.start)}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] text-neutral-100 truncate">{ev.title || '(untitled)'}</div>
+                {ev.location && <div className="text-[11px] text-neutral-500 truncate">{ev.location}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+
+  const invitesSection = (invites.length > 0 || data?.invites_error) && (
+    <Section label="Invites awaiting your response"
+      right={invites.length > 0 && (
+        <span className="text-[11px] font-mono text-neutral-500">
+          {invites.length} · soonest {relDay(invites[0]?.invite?.start)}
+        </span>
+      )}>
+      {data?.invites_error ? (
+        <p className="text-[13px] text-neutral-500">Couldn't check for invites right now.</p>
+      ) : (
+        <ul className="space-y-2">
+          {invites.map((inv) => {
+            const iv = inv.invite || {}
+            return (
+              <li key={inv.message_uid} className={CARD_ROW}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] text-neutral-100 font-medium truncate">{iv.summary || inv.subject || '(untitled invite)'}</div>
+                    <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">
+                      {!isNaN(new Date(iv.start)) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
+                      {iv.location ? ` · ${iv.location}` : ''}
+                    </div>
+                    <div className="text-[11px] text-neutral-600 mt-0.5 truncate">from {iv.organizer || inv.from}</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                  <button onClick={() => rsvpInvite(inv, 'accept')} disabled={busy}
+                    className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-700/70 text-emerald-100 hover:bg-emerald-600 transition-colors disabled:opacity-40">Accept</button>
+                  <button onClick={() => rsvpInvite(inv, 'tentative')} disabled={busy} className={BTN}>Tentative</button>
+                  <button onClick={() => rsvpInvite(inv, 'decline')} disabled={busy} className={BTN}>Decline</button>
+                  <button onClick={openMail} className="text-[11px] px-2.5 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Open</button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Section>
+  )
+
+  const remindersSection = (reminders.length > 0 || data?.reminders_error) && (
+    <Section label="Reminders"
+      right={reminders.length > 0 && (
+        <span className="text-[11px] font-mono text-neutral-500">
+          {reminders.length} · next {reminderWhen(reminders[0]?.remind_at)}
+        </span>
+      )}>
+      {data?.reminders_error ? (
+        <p className="text-[13px] text-neutral-500">Couldn't load your reminders right now.</p>
+      ) : (
+        <ul className="space-y-2">
+          {reminders.map((rem) => (
+            <li key={rem.id} className={CARD_ROW}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[13px] text-neutral-100 truncate">{rem.text}</div>
+                  <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">{reminderWhen(rem.remind_at)}</div>
+                </div>
+                <button
+                  onClick={() => cancelReminder(rem)}
+                  disabled={remindersBusy === rem.id}
+                  className={`flex-shrink-0 ${BTN}`}>
+                  {remindersBusy === rem.id ? 'Cancelling…' : 'Done'}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+
+  const activitySection = (
+    <Section label="Recent activity"
+      right={<button onClick={openMail} className={LINK}>mail →</button>}>
+      {loading && !data ? (
+        <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
+      ) : activity.length === 0 ? (
+        <p className="text-[13px] text-neutral-500">{data?.mail_error ? 'Mail unavailable right now.' : 'No recent activity.'}</p>
+      ) : (
+        <ul className={`${CARD} divide-y divide-neutral-800/70 overflow-hidden`}>
+          {activity.map((a, i) => (
+            <li key={a.uid || i}>
+              <button onClick={openMail} className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-800/40 transition-colors flex items-center gap-3">
+                <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-strong)' }} />
+                <div className="min-w-0 flex-1">
+                  <div className={`text-[13px] truncate ${a.unread ? 'text-neutral-100' : 'text-neutral-300'}`}>{a.title}</div>
+                  <div className="text-[11px] text-neutral-500 truncate">{a.subtitle}</div>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+
+  const quickLaunchSection = (
+    <Section label="Quick launch"
+      right={<button onClick={() => setLaunchpad(true)} className={LINK}>all apps →</button>}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        {QUICK_LAUNCH.map(id => {
+          const app = getAppById(id)
+          if (!app) return null
+          return (
+            <button key={id} onClick={() => openApp(id)}
+              className="group flex items-center gap-2.5 rounded-xl border border-neutral-800/70 bg-neutral-900/50 px-3 py-2.5 hover:border-neutral-700/90 hover:bg-neutral-900/80 transition-colors">
+              <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-[15px] leading-none transition-colors group-hover:brightness-125" style={{ background: 'var(--accent-soft)' }}>{app.icon}</span>
+              <span className="text-[12.5px] text-neutral-200 truncate">{app.name}</span>
+            </button>
+          )
+        })}
+      </div>
+    </Section>
+  )
+
   return (
-    <div className="absolute inset-0 overflow-y-auto bg-neutral-950/45 backdrop-blur-sm">
-      <div className="max-w-3xl mx-auto px-6 py-10">
+    <div className="absolute inset-0 overflow-y-auto bg-neutral-950/55 backdrop-blur-md">
+      <div className="relative mx-auto w-full max-w-5xl px-5 sm:px-8 py-9 sm:py-12">
+
+        {/* Ambient accent glow — pure decoration behind the greeting + ask-bar,
+            giving the hero depth without introducing any chrome. */}
+        <div aria-hidden="true"
+          className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-80 w-[820px] max-w-full opacity-70"
+          style={{ background: 'radial-gradient(50% 60% at 50% 0%, var(--accent-soft), transparent 72%)' }} />
 
         {/* Header — greeting + live clock + sovereignty posture */}
-        <header className="mb-7 flex items-end justify-between gap-4">
+        <header className="relative mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-[26px] font-light text-neutral-100 tracking-tight">
+            <h1
+              className="text-[30px] sm:text-[38px] font-light leading-[1.04] tracking-tight text-transparent bg-clip-text"
+              style={{ backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c9c9cf 100%)' }}>
               {data?.greeting || 'Welcome'}
-            </div>
-            <div className="text-[12px] font-mono text-neutral-500 mt-1">
+            </h1>
+            <div className="mt-2 text-[12px] font-mono text-neutral-500">
               {fmtDate(clock)} · {fmtTime(clock)}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={openAssistant}
               title="Where your AI runs"
-              className="flex items-center gap-1.5 text-[11px] text-neutral-400 hover:text-neutral-200 rounded-md px-2 py-1 hover:bg-neutral-800/60 transition-colors"
+              className="flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 backdrop-blur px-3 py-1.5 text-[11px] text-neutral-300 hover:border-neutral-700 hover:text-neutral-100 transition-colors"
             >
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: TIER_DOT[tier] || TIER_DOT.external }} />
               <span className="font-mono">{tierLabel || 'sovereign'}</span>
@@ -306,7 +553,7 @@ export default function Home() {
               onClick={load}
               disabled={loading}
               title="Refresh"
-              className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/60 transition-colors disabled:opacity-40"
+              className="w-8 h-8 flex items-center justify-center rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500 hover:text-neutral-200 hover:border-neutral-700 transition-colors disabled:opacity-40"
             >
               <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" className={loading ? 'animate-spin' : ''}>
                 <path d="M13.5 8a5.5 5.5 0 10-1.6 3.9M13.5 12.5V9h-3.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -315,32 +562,38 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Ask / act — the always-there composer that opens the agent */}
-        <div ref={composerRef} className="mb-7">
-          <form onSubmit={submitAsk}
-            className="rounded-2xl border border-neutral-700/70 bg-neutral-900/70 backdrop-blur px-3.5 py-3 focus-within:border-neutral-500 transition-colors">
-            <div className="flex items-end gap-2.5">
-              <span className="text-neutral-500 text-lg leading-none mb-1 select-none">✦</span>
-              <textarea
-                ref={inputRef}
-                rows={1}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submitAsk(e) }}
-                placeholder="Ask your assistant, or tell it to do something…"
-                aria-label="Ask your assistant"
-                className="flex-1 resize-none bg-transparent text-[14px] text-neutral-100 placeholder-neutral-600 focus:outline-none leading-relaxed py-1"
-              />
-              <button type="submit" disabled={busy || !input.trim()}
-                style={{ background: 'var(--accent)' }}
-                className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
-                aria-label="Send" title="Send (Enter)">
-                <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                </svg>
-              </button>
-            </div>
-          </form>
+        {/* Ask / act — the always-there composer that opens the agent. The hero
+            control: elevated, glowing, unmissable. */}
+        <div ref={composerRef} className="relative mb-9">
+          <div className="relative">
+            <div aria-hidden="true"
+              className="pointer-events-none absolute -inset-x-3 -top-2 -bottom-2 rounded-3xl opacity-60"
+              style={{ background: 'radial-gradient(60% 130% at 50% 0%, var(--accent-soft), transparent 70%)' }} />
+            <form onSubmit={submitAsk}
+              className="relative rounded-2xl border border-neutral-700/70 bg-neutral-900/70 backdrop-blur-md px-4 py-3.5 shadow-xl shadow-black/30 transition-colors focus-within:border-[var(--accent)]">
+              <div className="flex items-end gap-3">
+                <span className="text-lg leading-none mb-1 select-none" style={{ color: 'var(--accent)' }}>✦</span>
+                <textarea
+                  ref={inputRef}
+                  rows={1}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submitAsk(e) }}
+                  placeholder="Ask your assistant, or tell it to do something…"
+                  aria-label="Ask your assistant"
+                  className="flex-1 resize-none bg-transparent text-[14px] text-neutral-100 placeholder-neutral-600 focus:outline-none leading-relaxed py-1"
+                />
+                <button type="submit" disabled={busy || !input.trim()}
+                  style={{ background: 'var(--accent)' }}
+                  className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
+                  aria-label="Send" title="Send (Enter)">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                  </svg>
+                </button>
+              </div>
+            </form>
+          </div>
 
           {turns.length > 0 && (
             <div ref={transcriptRef} role="log" aria-label="Assistant conversation" className="mt-3 max-h-72 overflow-y-auto space-y-2.5 px-1">
@@ -370,227 +623,29 @@ export default function Home() {
           )}
         </div>
 
-        {/* What needs you today — the curated brief + actionable focus items */}
-        <Section label="What needs you today"
-          right={data?.brief && <button onClick={openAssistant} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-mono">open assistant →</button>}>
-          {loading && !data ? (
-            <div className="space-y-2">
-              <div className="h-3.5 bg-neutral-800/70 rounded animate-pulse w-4/5" />
-              <div className="h-3.5 bg-neutral-800/70 rounded animate-pulse w-3/5" />
-            </div>
-          ) : offline ? (
-            <p className="text-[13px] text-neutral-500">Assistant offline — Home is still here. Reconnect your box to get today's brief.</p>
-          ) : data?.brief ? (
-            <div className="text-[13.5px] text-neutral-300 leading-relaxed whitespace-pre-wrap">{data.brief}</div>
-          ) : data?.brief_error ? (
-            <p className="text-[13px] text-neutral-500">
-              The assistant couldn't produce a brief right now ({data.mail_error ? 'mail unavailable' : 'model offline'}).
-              Your mail and agenda below are still live.
-            </p>
-          ) : (
-            <p className="text-[13px] text-neutral-500">Nothing urgent — you're clear. Enjoy the calm.</p>
-          )}
-
-          {focus.length > 0 && (
-            <ul className="mt-3.5 space-y-2">
-              {focus.map(item => (
-                <li key={item.uid} className="group rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3.5 py-2.5 hover:border-neutral-700 transition-colors">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
-                        <span className="text-[13px] text-neutral-100 font-medium truncate">{item.subject}</span>
-                      </div>
-                      <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate pl-3.5">{item.from_name || item.from}</div>
-                      {item.preview && <div className="text-[12px] text-neutral-500/90 mt-1 line-clamp-2 pl-3.5">{item.preview}</div>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-2 pl-3.5">
-                    <button onClick={openMail} className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors">Open</button>
-                    <button onClick={() => replyWith(item)} disabled={busy}
-                      className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Reply with assistant</button>
-                    {snoozing === item.uid ? (
-                      <>
-                        <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md text-white bg-warning transition-[filter] hover:brightness-110">Confirm snooze</button>
-                        <button onClick={() => setSnoozing(null)} className="text-[11px] px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Cancel</button>
-                      </>
-                    ) : (
-                      <button onClick={() => setSnoozing(item.uid)} disabled={snoozing === `busy:${item.uid}`}
-                        className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">
-                        {snoozing === `busy:${item.uid}` ? 'Snoozing…' : 'Snooze'}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        {/* Today's agenda */}
-        <Section label="Agenda"
-          right={
-            <div className="flex items-center gap-2.5">
-              {data && (
-                <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-600" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
-                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: data.agenda_fresh ? 'var(--status-success)' : 'var(--status-danger)' }} />
-                  {data.agenda_fresh ? 'live' : 'stale'}
-                </span>
-              )}
-              <button onClick={() => openApp('vulos-calendar')} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-mono">calendar →</button>
-            </div>
-          }>
-          {loading && !data ? (
-            <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
-          ) : agenda.length === 0 ? (
-            <p className="text-[13px] text-neutral-500">
-              {data?.agenda_error ? 'Calendar unavailable right now.' : 'Nothing on your calendar for the week ahead.'}
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {agenda.map((ev, i) => (
-                <li key={ev.id || i} className="flex items-center gap-3 rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3.5 py-2.5">
-                  <div className="w-16 flex-shrink-0 text-right">
-                    <div className="text-[12px] font-mono text-neutral-300">{ev.all_day ? 'All day' : eventTime(ev.start)}</div>
-                    <div className="text-[10px] font-mono text-neutral-600">{relDay(ev.start)}</div>
-                  </div>
-                  <div className="w-px self-stretch bg-neutral-800" />
-                  <div className="min-w-0">
-                    <div className="text-[13px] text-neutral-100 truncate">{ev.title || '(untitled)'}</div>
-                    {ev.location && <div className="text-[11px] text-neutral-500 truncate">{ev.location}</div>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        {/* Invites awaiting your response — calendar invitations in the mailbox
-            still needing an RSVP (wave-40). Responding routes through the agent
-            as a ledger-gated proposal (Approve/Reject), never auto-executed. */}
-        {(invites.length > 0 || data?.invites_error) && (
-          <Section label="Invites awaiting your response"
-            right={invites.length > 0 && (
-              <span className="text-[11px] font-mono text-neutral-500">
-                {invites.length} · soonest {relDay(invites[0]?.invite?.start)}
-              </span>
-            )}>
-            {data?.invites_error ? (
-              <p className="text-[13px] text-neutral-500">Couldn't check for invites right now.</p>
-            ) : (
-              <ul className="space-y-2">
-                {invites.map((inv) => {
-                  const iv = inv.invite || {}
-                  return (
-                    <li key={inv.message_uid} className="rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3.5 py-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[13px] text-neutral-100 font-medium truncate">{iv.summary || inv.subject || '(untitled invite)'}</div>
-                          <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">
-                            {!isNaN(new Date(iv.start)) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
-                            {iv.location ? ` · ${iv.location}` : ''}
-                          </div>
-                          <div className="text-[11px] text-neutral-600 mt-0.5 truncate">from {iv.organizer || inv.from}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <button onClick={() => rsvpInvite(inv, 'accept')} disabled={busy}
-                          className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-700/70 text-emerald-100 hover:bg-emerald-600 transition-colors disabled:opacity-40">Accept</button>
-                        <button onClick={() => rsvpInvite(inv, 'tentative')} disabled={busy}
-                          className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Tentative</button>
-                        <button onClick={() => rsvpInvite(inv, 'decline')} disabled={busy}
-                          className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">Decline</button>
-                        <button onClick={openMail}
-                          className="text-[11px] px-2.5 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Open</button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </Section>
-        )}
-
-        {/* Reminders awaiting — the user's OWN pending reminders (wave-62). A
-            reminder fires as a notification at its time; done/cancel here is a
-            direct, session-authed action on a reminder the user can see (not an
-            LLM proposal). SETTING a reminder happens through the composer above
-            ("remind me to …"), which arrives as a ledger-gated proposal. The
-            reminder text is user-authored and rendered ESCAPED by React ({}) —
-            never as HTML. */}
-        {(reminders.length > 0 || data?.reminders_error) && (
-          <Section label="Reminders"
-            right={reminders.length > 0 && (
-              <span className="text-[11px] font-mono text-neutral-500">
-                {reminders.length} · next {reminderWhen(reminders[0]?.remind_at)}
-              </span>
-            )}>
-            {data?.reminders_error ? (
-              <p className="text-[13px] text-neutral-500">Couldn't load your reminders right now.</p>
-            ) : (
-              <ul className="space-y-2">
-                {reminders.map((rem) => (
-                  <li key={rem.id} className="rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3.5 py-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[13px] text-neutral-100 truncate">{rem.text}</div>
-                        <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">{reminderWhen(rem.remind_at)}</div>
-                      </div>
-                      <button
-                        onClick={() => cancelReminder(rem)}
-                        disabled={remindersBusy === rem.id}
-                        className="flex-shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40">
-                        {remindersBusy === rem.id ? 'Cancelling…' : 'Done'}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
-        )}
-
-        {/* Recent activity — light cross-surface feed (mail today) */}
-        <Section label="Recent activity"
-          right={<button onClick={openMail} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-mono">mail →</button>}>
-          {loading && !data ? (
-            <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
-          ) : activity.length === 0 ? (
-            <p className="text-[13px] text-neutral-500">{data?.mail_error ? 'Mail unavailable right now.' : 'No recent activity.'}</p>
-          ) : (
-            <ul className="divide-y divide-neutral-800/70 rounded-xl border border-neutral-800/80 bg-neutral-900/40 overflow-hidden">
-              {activity.map((a, i) => (
-                <li key={a.uid || i}>
-                  <button onClick={openMail} className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-800/40 transition-colors flex items-center gap-3">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-strong)' }} />
-                    <div className="min-w-0 flex-1">
-                      <div className={`text-[13px] truncate ${a.unread ? 'text-neutral-100' : 'text-neutral-300'}`}>{a.title}</div>
-                      <div className="text-[11px] text-neutral-500 truncate">{a.subtitle}</div>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        {/* Quick launch — the everyday apps, tastefully */}
-        <Section label="Quick launch"
-          right={<button onClick={() => setLaunchpad(true)} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-mono">all apps →</button>}>
-          <div className="flex flex-wrap gap-2">
-            {QUICK_LAUNCH.map(id => {
-              const app = getAppById(id)
-              if (!app) return null
-              return (
-                <button key={id} onClick={() => openApp(id)}
-                  className="flex items-center gap-2 rounded-xl border border-neutral-800/80 bg-neutral-900/50 px-3 py-2 hover:border-neutral-700 hover:bg-neutral-800/60 transition-colors">
-                  <span className="text-[15px] leading-none w-5 text-center">{app.icon}</span>
-                  <span className="text-[12.5px] text-neutral-200">{app.name}</span>
-                </button>
-              )
-            })}
+        {/* Bento split — the assistant brief + focus items lead; the day's
+            schedule (agenda / invites / reminders) stacks alongside. Collapses to
+            one column below lg. */}
+        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            {briefSection}
           </div>
-        </Section>
+          <div className="lg:col-span-5 space-y-8">
+            {agendaSection}
+            {invitesSection}
+            {remindersSection}
+          </div>
+        </div>
+
+        {/* Lower row — recent activity + quick launch anchor the canvas. */}
+        <div className="mt-8 grid gap-x-10 gap-y-8 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            {activitySection}
+          </div>
+          <div className="lg:col-span-5">
+            {quickLaunchSection}
+          </div>
+        </div>
 
         <div className="h-6" />
       </div>
