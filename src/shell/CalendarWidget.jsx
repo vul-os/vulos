@@ -25,6 +25,7 @@ import { useShell } from '../providers/ShellProvider'
 import { getAppById } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
 import { listEvents } from '../builtin/calendar/calendarApi'
+import './shell-chrome.css'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -110,29 +111,30 @@ export default function CalendarWidget() {
 
   return (
     <div
-      className="fixed right-3 z-30 w-60 select-none"
+      className="fixed right-3 z-30 w-60 max-w-[calc(100vw-1.5rem)] select-none"
       style={{ top: '2.75rem' }}
       data-calendar-widget
     >
-      <div className="rounded-2xl border border-neutral-800/70 bg-neutral-900/80 backdrop-blur-xl shadow-xl shadow-black/40 overflow-hidden">
+      <div className="vshell-surface rounded-2xl overflow-hidden">
         {/* Header — date + live/stale dot; whole row toggles expand */}
         <button
           type="button"
           onClick={() => setExpanded(v => !v)}
           aria-expanded={expanded}
           aria-label={expanded ? 'Collapse calendar' : 'Expand calendar'}
-          className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:bg-neutral-800/40 transition-colors focus-primary"
+          className="vshell-row w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left focus-primary"
         >
           <div className="min-w-0">
-            <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-neutral-500">
+            <div className="text-[10px] font-mono uppercase tracking-[0.16em]" style={{ color: 'var(--text-faint)' }}>
               {now.toLocaleDateString(undefined, { weekday: 'long' })}
             </div>
-            <div className="text-[15px] font-semibold text-neutral-100 leading-tight">
+            <div className="text-[15px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
               {now.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
             </div>
           </div>
           <span
-            className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider text-neutral-600 shrink-0"
+            className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider shrink-0"
+            style={{ color: 'var(--text-faint)' }}
             title={fresh ? 'Calendar is live' : hasError ? 'Calendar unavailable' : ''}
           >
             {!loading && !notConfigured && (
@@ -150,14 +152,15 @@ export default function CalendarWidget() {
         {/* Next-up strip — the always-visible "what's next" answer */}
         <div className="px-3.5 pb-2.5">
           {loading && events.length === 0 ? (
-            <div className="h-8 rounded-lg bg-neutral-800/50 animate-pulse" />
+            <div className="h-8 rounded-lg animate-pulse" style={{ background: 'color-mix(in srgb, var(--bg-hover) 60%, transparent)' }} />
           ) : notConfigured ? (
-            <div className="text-[12px] text-neutral-500 leading-snug">
+            <div className="text-[12px] leading-snug" style={{ color: 'var(--text-muted)' }}>
               <div>Calendar unavailable.</div>
               <button
                 type="button"
                 onClick={() => openApp_connectMail(openWindow)}
-                className="mt-1 text-[11px] font-mono text-neutral-400 hover:text-neutral-200 transition-colors"
+                className="mt-1 text-[11px] font-mono transition-colors focus-primary rounded"
+                style={{ color: 'var(--accent)' }}
               >
                 Connect Mail →
               </button>
@@ -166,32 +169,32 @@ export default function CalendarWidget() {
             <button
               type="button"
               onClick={openCalendar}
-              className="w-full flex items-center gap-2.5 rounded-lg text-left hover:bg-neutral-800/40 -mx-1 px-1 py-1 transition-colors focus-primary"
+              className="vshell-row w-full flex items-center gap-2.5 rounded-lg text-left -mx-1 px-1 py-1 focus-primary"
             >
               <div className="w-14 shrink-0 text-right">
-                <div className="text-[12px] font-mono text-neutral-200">{eventWhen(next)}</div>
-                <div className="text-[9px] font-mono text-neutral-600">{relDay(next._start, now)}</div>
+                <div className="text-[12px] font-mono" style={{ color: 'var(--accent)' }}>{eventWhen(next)}</div>
+                <div className="text-[9px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(next._start, now)}</div>
               </div>
-              <div className="w-px self-stretch bg-neutral-800" />
+              <div className="w-px self-stretch vshell-hairline" />
               <div className="min-w-0">
-                <div className="text-[12.5px] text-neutral-100 truncate">{next.title || '(untitled)'}</div>
-                {next.location && <div className="text-[10.5px] text-neutral-500 truncate">{next.location}</div>}
+                <div className="text-[12.5px] truncate" style={{ color: 'var(--text-primary)' }}>{next.title || '(untitled)'}</div>
+                {next.location && <div className="text-[10.5px] truncate" style={{ color: 'var(--text-muted)' }}>{next.location}</div>}
               </div>
             </button>
           ) : (
-            <div className="text-[12px] text-neutral-500">Nothing on your calendar.</div>
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Nothing on your calendar.</div>
           )}
         </div>
 
         {/* Expanded agenda — the week ahead */}
         {expanded && (
-          <div className="border-t border-neutral-800/60 max-h-72 overflow-y-auto">
+          <div className="vshell-border-t max-h-72 overflow-y-auto">
             {notConfigured ? (
-              <div className="px-3.5 py-3 text-[12px] text-neutral-500">
+              <div className="px-3.5 py-3 text-[12px]" style={{ color: 'var(--text-muted)' }}>
                 Connect Mail to see your agenda here.
               </div>
             ) : upcoming.length <= 1 ? (
-              <div className="px-3.5 py-3 text-[12px] text-neutral-500">
+              <div className="px-3.5 py-3 text-[12px]" style={{ color: 'var(--text-muted)' }}>
                 {upcoming.length === 0 ? 'Nothing on your calendar for the week ahead.' : 'No further events this week.'}
               </div>
             ) : (
@@ -201,27 +204,28 @@ export default function CalendarWidget() {
                     <button
                       type="button"
                       onClick={openCalendar}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-left hover:bg-neutral-800/40 transition-colors focus-primary"
+                      className="vshell-row w-full flex items-center gap-2.5 px-3.5 py-1.5 text-left focus-primary"
                     >
                       <div className="w-14 shrink-0 text-right">
-                        <div className="text-[11.5px] font-mono text-neutral-300">{eventWhen(ev)}</div>
-                        <div className="text-[9px] font-mono text-neutral-600">{relDay(ev._start, now)}</div>
+                        <div className="text-[11.5px] font-mono" style={{ color: 'var(--text-secondary)' }}>{eventWhen(ev)}</div>
+                        <div className="text-[9px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(ev._start, now)}</div>
                       </div>
-                      <div className="w-px self-stretch bg-neutral-800" />
+                      <div className="w-px self-stretch vshell-hairline" />
                       <div className="min-w-0">
-                        <div className="text-[12px] text-neutral-100 truncate">{ev.title || '(untitled)'}</div>
-                        {ev.location && <div className="text-[10px] text-neutral-500 truncate">{ev.location}</div>}
+                        <div className="text-[12px] truncate" style={{ color: 'var(--text-primary)' }}>{ev.title || '(untitled)'}</div>
+                        {ev.location && <div className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>{ev.location}</div>}
                       </div>
                     </button>
                   </li>
                 ))}
               </ul>
             )}
-            <div className="border-t border-neutral-800/60 px-3.5 py-2">
+            <div className="vshell-border-t px-3.5 py-2">
               <button
                 type="button"
                 onClick={openCalendar}
-                className="text-[11px] font-mono text-neutral-500 hover:text-neutral-300 transition-colors focus-primary"
+                className="text-[11px] font-mono transition-colors focus-primary rounded"
+                style={{ color: 'var(--text-muted)' }}
               >
                 Open Calendar →
               </button>

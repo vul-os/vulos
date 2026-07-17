@@ -4,6 +4,7 @@ import { getApps, searchApps } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
 import { AppIconTile } from '../core/AppIcons'
 import { useFocusTrap } from './useFocusTrap'
+import './shell-chrome.css'
 
 // The full lane-dispatch launch logic lives in the shared ./launchApp module so
 // the Launchpad and the ⌘K command palette open apps identically.
@@ -113,13 +114,13 @@ export default function Launchpad() {
       role="dialog"
       aria-modal="true"
       aria-label="Application launcher"
-      className="fixed inset-0 z-50 flex flex-col bg-neutral-950/80 backdrop-blur-2xl"
+      className="vshell-scrim fixed inset-0 z-50 flex flex-col"
       onClick={(e) => { if (e.target === e.currentTarget) close() }}
     >
       {/* Search bar */}
-      <div className="flex justify-center pt-10 pb-4 px-6">
-        <div className="w-full max-w-lg relative">
-          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500">
+      <div className="flex justify-center pt-10 pb-4 px-6" style={{ paddingTop: 'max(2.5rem, var(--safe-top))' }}>
+        <div className="w-full max-w-lg relative vshell-pop">
+          <div className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
             <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="7" cy="7" r="5" />
               <path d="M11 11l3.5 3.5" strokeLinecap="round" />
@@ -131,13 +132,14 @@ export default function Launchpad() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search applications..."
-            className="w-full bg-neutral-800/70 border border-neutral-700/50 rounded-xl pl-10 pr-4 py-3 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-neutral-500/70 transition-colors"
+            className="vshell-input w-full rounded-xl pl-10 pr-9 py-3 text-sm"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
               aria-label="Clear search"
-              className="focus-primary rounded absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 text-lg"
+              className="focus-primary rounded absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none"
+              style={{ color: 'var(--text-faint)' }}
             >
               {'\u00D7'}
             </button>
@@ -151,7 +153,7 @@ export default function Launchpad() {
           {grouped ? (
             Object.entries(grouped).map(([cat, catApps]) => (
               <div key={cat} className="mb-6">
-                <h3 className="text-[11px] uppercase tracking-wider text-neutral-500 mb-2.5 px-1 font-medium">
+                <h3 className="text-[11px] font-mono uppercase tracking-[0.14em] mb-2.5 px-1" style={{ color: 'var(--text-faint)' }}>
                   {categoryLabels[cat] || cat}
                 </h3>
                 <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-2">
@@ -170,7 +172,7 @@ export default function Launchpad() {
           )}
 
           {apps.length === 0 && (
-            <div className="text-center text-neutral-600 py-16 text-sm">
+            <div className="text-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>
               No applications found
             </div>
           )}
@@ -178,12 +180,12 @@ export default function Launchpad() {
       </div>
 
       {/* Bottom bar — chat input + ESC hint */}
-      <div className="flex-shrink-0 border-t border-neutral-800/40 bg-neutral-900/50 backdrop-blur-xl">
+      <div className="vshell-border-t flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-elevated) 40%, transparent)', paddingBottom: 'var(--safe-bottom)' }}>
         <div className="max-w-lg mx-auto px-6 py-3">
           <form onSubmit={handleChatSubmit} className="flex items-center gap-2">
             <div className="flex-1 relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600">
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor" opacity="0.6">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor" opacity="0.7">
                   <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" />
                 </svg>
               </div>
@@ -193,17 +195,18 @@ export default function Launchpad() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder="Ask anything..."
-                className="w-full bg-neutral-800/50 border border-neutral-700/40 rounded-lg pl-9 pr-3 py-2 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-600/60 transition-colors"
+                className="vshell-input w-full rounded-lg pl-9 pr-3 py-2 text-sm"
               />
             </div>
             <button
               type="submit"
               disabled={!chatInput.trim()}
-              className="focus-primary px-3 py-2 rounded-lg text-xs font-medium bg-neutral-700/50 text-neutral-400 hover:bg-neutral-600/50 hover:text-neutral-200 disabled:opacity-30 disabled:cursor-default transition-colors"
+              className="focus-primary px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-30 disabled:cursor-default"
+              style={{ background: chatInput.trim() ? 'var(--accent)' : 'color-mix(in srgb, var(--bg-hover) 70%, transparent)', color: chatInput.trim() ? '#fff' : 'var(--text-tertiary)' }}
             >
               Send
             </button>
-            <kbd className="text-[10px] text-neutral-600 border border-neutral-800 rounded px-1.5 py-1 ml-1 select-none">esc</kbd>
+            <kbd className="vshell-kbd ml-1 hidden sm:inline-flex">esc</kbd>
           </form>
         </div>
       </div>
@@ -241,10 +244,10 @@ function AppTile({ app, onLaunch }) {
     <button
       onClick={() => onLaunch(app)}
       aria-label={`Open ${app.name}`}
-      className="focus-primary flex flex-col items-center gap-1.5 p-2.5 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors group"
+      className="vshell-tile focus-primary flex flex-col items-center gap-1.5 p-2.5 rounded-xl group"
     >
       <AppIconTile id={app.id} size={48} unicode={app.icon} />
-      <span className="text-[11px] text-neutral-400 group-hover:text-neutral-200 text-center truncate w-full transition-colors">{app.name}</span>
+      <span className="vshell-tile-label text-[11px] text-center truncate w-full">{app.name}</span>
     </button>
   )
 }

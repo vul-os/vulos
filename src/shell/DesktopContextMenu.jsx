@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { canSpawnNativeWindow } from '../core/useNativeMode'
 import { useFocusTrap } from './useFocusTrap'
+import './shell-chrome.css'
 
 function dispatchAskAI(prompt) {
   window.dispatchEvent(new CustomEvent('vulos:chat', { detail: prompt }))
@@ -74,20 +75,22 @@ export default function DesktopContextMenu() {
       style={{ left: menu.x, top: menu.y }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[180px] shadow-2xl shadow-black/60">
+      <div className="vshell-surface vshell-pop rounded-xl py-1 min-w-[190px]">
         <button
           role="menuitem"
           onClick={handleNewNative}
-          className="w-full text-left px-3 py-1.5 text-[13px] text-neutral-300 hover:bg-neutral-700/60 hover:text-white transition-colors focus:bg-neutral-700/60 focus:text-white focus:outline-none"
+          className="vshell-menu-item w-full text-left px-3 py-1.5 text-[13px] focus:outline-none"
         >
           Open Native Window
         </button>
-        <div className="my-1 mx-2 border-t border-neutral-700/40" />
+        <div className="vshell-hairline my-1 mx-2 h-px" />
         <button
           role="menuitem"
           onClick={handleAskAI}
-          className="w-full text-left px-3 py-1.5 text-[13px] text-violet-300 hover:bg-neutral-700/60 hover:text-violet-200 transition-colors focus:bg-neutral-700/60 focus:text-violet-200 focus:outline-none"
+          data-accent="true"
+          className="vshell-menu-item w-full text-left px-3 py-1.5 text-[13px] focus:outline-none flex items-center gap-2"
         >
+          <span aria-hidden="true">✦</span>
           {menu.selectedText ? 'Ask AI about selection' : 'Ask AI about this'}
         </button>
       </div>

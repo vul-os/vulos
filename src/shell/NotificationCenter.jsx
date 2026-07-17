@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react'
 import { useFocusTrap } from './useFocusTrap'
+import { useNarrow } from './useNarrow'
+import './shell-chrome.css'
 import {
   subscribe, getItems, getUnreadCount,
   subscribePrefs, getPrefs, setMuted,
@@ -91,10 +93,10 @@ function NC13_Panel({ onClose }) {
   const grouped = NC13_group(items)
 
   return (
-    <div className="w-[min(328px,calc(100vw-1rem))] max-h-[480px] flex flex-col overflow-hidden">
+    <div className="w-full sm:w-[min(340px,calc(100vw-1rem))] max-h-[min(70vh,520px)] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-800/60 shrink-0">
-        <span className="text-xs font-semibold text-neutral-200">Notifications</span>
+      <div className="vshell-border-b flex items-center justify-between px-3.5 py-2.5 shrink-0">
+        <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Notifications</span>
         <div className="flex items-center gap-1.5">
           {unread > 0 && (
             <button
@@ -108,7 +110,8 @@ function NC13_Panel({ onClose }) {
           {items.length > 0 && (
             <button
               onClick={clear}
-              className="focus-primary text-[10px] text-neutral-500 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-500/10"
+              className="focus-primary text-[10px] transition-colors px-1.5 py-0.5 rounded"
+              style={{ color: 'var(--text-muted)' }}
             >
               Clear
             </button>
@@ -116,7 +119,7 @@ function NC13_Panel({ onClose }) {
           <button
             onClick={onClose}
             aria-label="Close notifications"
-            className="focus-primary w-5 h-5 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors text-xs"
+            className="vshell-menu-item focus-primary w-6 h-6 flex items-center justify-center rounded text-xs"
           >
             ✕
           </button>
@@ -126,31 +129,32 @@ function NC13_Panel({ onClose }) {
       {/* Body */}
       <div className="overflow-y-auto flex-1 min-h-0">
         {items.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-8 gap-2">
-            <svg viewBox="0 0 24 24" className="w-8 h-8 text-neutral-500" fill="currentColor">
+          <div className="flex flex-col items-center justify-center py-10 gap-2">
+            <svg viewBox="0 0 24 24" className="w-8 h-8" style={{ color: 'var(--text-faint)' }} fill="currentColor">
               <path d="M12 2a.75.75 0 01.75.75v.75A7.25 7.25 0 0119.5 10.5v3.75l2.25 2.25a.75.75 0 01-.53 1.28H2.78a.75.75 0 01-.53-1.28L4.5 14.25V10.5A7.25 7.25 0 0111.25 3.5V2.75A.75.75 0 0112 2zm0 20a3 3 0 003-3H9a3 3 0 003 3z" />
             </svg>
-            <span className="text-xs text-neutral-500">You're all caught up</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>You're all caught up</span>
           </div>
         )}
         {grouped.map(({ day, groups }) => (
           <div key={day}>
-            <div className="flex items-center gap-2 px-3 pt-3 pb-1">
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-medium">{day}</span>
-              <div className="flex-1 h-px bg-neutral-800/60" />
+            <div className="flex items-center gap-2 px-3.5 pt-3 pb-1">
+              <span className="text-[10px] font-mono uppercase tracking-[0.14em]" style={{ color: 'var(--text-faint)' }}>{day}</span>
+              <div className="vshell-hairline flex-1 h-px" />
             </div>
             {groups.map(({ source, items: rows }) => (
               <div key={source} className="mb-1">
                 {source !== 'system' && (
-                  <div className="px-3 pb-0.5">
-                    <span className="text-[9px] text-neutral-600 uppercase tracking-wider">{source}</span>
+                  <div className="px-3.5 pb-0.5">
+                    <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>{source}</span>
                   </div>
                 )}
                 {rows.map(n => (
                   <div
                     key={n.id}
-                    className={`group/row w-full px-3 py-2 flex items-start gap-2.5 transition-colors
-                      ${n.read ? 'hover:bg-neutral-800/30' : 'hover:bg-neutral-800/50 bg-neutral-800/20'}`}
+                    data-active={n.read ? undefined : true}
+                    className="vshell-row group/row w-full px-3.5 py-2 flex items-start gap-2.5"
+                    style={n.read ? undefined : { background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}
                   >
                     <button
                       onClick={() => { if (!n.read) markRead(n.id) }}
@@ -160,20 +164,20 @@ function NC13_Panel({ onClose }) {
                       <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={NC13_levelDot(n.level, n.read)} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1">
-                          <span className={`text-xs font-medium truncate ${n.read ? 'text-neutral-400' : 'text-neutral-200'}`}>
+                          <span className="text-xs font-medium truncate" style={{ color: n.read ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
                             {n.title}
                           </span>
-                          <span className="text-[10px] text-neutral-600 shrink-0">{NC13_fmtRelTime(n.ts)}</span>
+                          <span className="text-[10px] shrink-0" style={{ color: 'var(--text-faint)' }}>{NC13_fmtRelTime(n.ts)}</span>
                         </div>
                         {n.body && (
-                          <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-2">{n.body}</p>
+                          <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{n.body}</p>
                         )}
                       </div>
                     </button>
                     <button
                       onClick={() => dismiss(n.id)}
                       aria-label="Dismiss notification"
-                      className="focus-primary opacity-0 group-hover/row:opacity-100 focus:opacity-100 w-4 h-4 flex items-center justify-center rounded text-neutral-600 hover:text-red-400 hover:bg-neutral-800/60 transition-all text-[10px] shrink-0 mt-0.5"
+                      className="vshell-pip focus-primary opacity-0 group-hover/row:opacity-100 focus:opacity-100 w-5 h-5 flex items-center justify-center rounded transition-all text-[10px] shrink-0 mt-0.5"
                     >
                       ✕
                     </button>
@@ -186,8 +190,8 @@ function NC13_Panel({ onClose }) {
       </div>
 
       {/* Do Not Disturb — global mute lives in the store; also surfaced in Settings. */}
-      <div className="flex items-center justify-between px-3 py-2 border-t border-neutral-800/60 shrink-0">
-        <span className="text-[11px] text-neutral-400">Do Not Disturb</span>
+      <div className="vshell-border-t flex items-center justify-between px-3.5 py-2.5 shrink-0">
+        <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Do Not Disturb</span>
         <button
           onClick={() => setMuted(!prefs.muted)}
           role="switch"
@@ -207,6 +211,7 @@ function NC13_Panel({ onClose }) {
 // ---- Main export ----
 export default function NotificationCenter() {
   const [open, setOpen] = useState(false)
+  const narrow = useNarrow(640)
   const unread = useSyncExternalStore(subscribe, getUnreadCount)
   const prefs = useSyncExternalStore(subscribePrefs, getPrefs)
   const triggerRef = useRef(null)
@@ -251,25 +256,38 @@ export default function NotificationCenter() {
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={`h-8 px-1.5 flex items-center justify-center rounded-md transition-colors text-neutral-400 hover:text-neutral-200
-          ${open ? 'bg-neutral-700/60 text-neutral-200' : 'hover:bg-neutral-800/60'}`}
+        data-active={open || undefined}
+        className="vshell-btn focus-primary h-8 px-1.5 flex items-center justify-center rounded-md"
       >
         <NC13_BellIcon unread={unread} muted={prefs.muted} />
       </button>
 
       {open && (
-        <div
-          ref={(el) => { panelRef.current = el; trapRef.current = el }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Notifications"
-          className="absolute top-full right-0 mt-1.5 z-[100] max-w-[calc(100vw-1rem)]
-            bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/50
-            rounded-xl shadow-2xl shadow-black/50 overflow-hidden
-            animate-[fadeIn_0.12s_ease-out]"
-        >
-          <NC13_Panel onClose={close} />
-        </div>
+        narrow ? (
+          <>
+            {/* Mobile: dim the desktop and float a sheet under the bar */}
+            <div className="vshell-scrim fixed inset-0 z-[99]" onClick={close} aria-hidden="true" />
+            <div
+              ref={(el) => { panelRef.current = el; trapRef.current = el }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Notifications"
+              className="vshell-surface vshell-sheet fixed left-2 right-2 top-9 z-[100] rounded-2xl overflow-hidden"
+            >
+              <NC13_Panel onClose={close} />
+            </div>
+          </>
+        ) : (
+          <div
+            ref={(el) => { panelRef.current = el; trapRef.current = el }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Notifications"
+            className="vshell-surface vshell-pop absolute top-full right-0 mt-1.5 z-[100] max-w-[calc(100vw-1rem)] rounded-2xl overflow-hidden"
+          >
+            <NC13_Panel onClose={close} />
+          </div>
+        )
       )}
     </div>
   )

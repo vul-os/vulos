@@ -134,3 +134,282 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Shell OVERLAY surfaces — the shared design language for the desktop's
+   floating chrome: command palette, launchpad, mission control, notification
+   center, desktop context menu, and the calendar widget.
+
+   One vocabulary, strictly token-driven, so every overlay tracks the active
+   theme + accent and reads as one coherent operating system rather than a set
+   of unrelated panels. Colours resolve from index.css vars only; shadow /
+   highlight geometry is defined here (scoped chrome, not global tokens).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Scrim ────────────────────────────────────────────────────────────────────
+   The dimmed, frosted backdrop behind a modal overlay. Built from --bg-base so
+   it dims in dark themes and frosts to a bright wash in light — both feel native.
+   The scrim also blurs the desktop behind it, focusing attention on the panel. */
+.vshell-scrim {
+  background: color-mix(in srgb, var(--bg-base) 52%, transparent);
+  backdrop-filter: blur(10px) saturate(118%);
+  -webkit-backdrop-filter: blur(10px) saturate(118%);
+  animation: vshellScrimIn var(--motion-base) var(--ease-standard);
+}
+@keyframes vshellScrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Surface ──────────────────────────────────────────────────────────────────
+   The premium glass card every overlay is built on: a translucent, blurred
+   elevated panel with a layered drop shadow for real depth and a hairline of
+   inset top-light so the top edge reads as a lit pane of glass (the signature
+   detail). The highlight is mixed from --text-primary, so it's a bright rim in
+   dark themes and a soft crease in light — never a flat box. */
+.vshell-surface {
+  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  box-shadow:
+    0 32px 70px -28px rgba(0, 0, 0, 0.62),
+    0 8px 24px -14px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+/* Entrance: a compact spring pop-up (translate + a whisper of scale). Reserved
+   for centred / anchored panels. Mobile sheets use vshell-sheet instead. */
+.vshell-pop {
+  animation: vshellPop var(--motion-slow) var(--ease-out);
+  transform-origin: top center;
+}
+@keyframes vshellPop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Mobile bottom-sheet entrance — slides up from the edge it's docked to. */
+.vshell-sheet {
+  animation: vshellSheet var(--motion-slow) var(--ease-out);
+}
+@keyframes vshellSheet {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Text input ───────────────────────────────────────────────────────────────
+   Shared field look for the palette + launchpad search. Calm at rest, and on
+   focus it lights an accent ring + accent-tinted border — the accent thread
+   that runs through the whole shell. */
+.vshell-input {
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 62%, transparent);
+  color: var(--text-primary);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.vshell-input::placeholder {
+  color: var(--text-faint);
+}
+.vshell-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ── Keyboard chip ────────────────────────────────────────────────────────────
+   The mono keycap used across the palette footer + hints. Token-driven so it
+   never turns invisible in light themes (the old neutral-800 chip did). */
+.vshell-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0.2rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-emphasis) 55%, transparent);
+  border-radius: 5px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--border-emphasis) 45%, transparent);
+}
+
+/* ── Hairline divider ─────────────────────────────────────────────────────────
+   A 1px rule that matches the surface border tone in either theme. */
+.vshell-hairline {
+  background: color-mix(in srgb, var(--border-strong) 55%, transparent);
+}
+.vshell-border-b {
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+}
+.vshell-border-t {
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+}
+
+/* ── Result / list row ────────────────────────────────────────────────────────
+   The interactive row shared by the palette + notification list. Hover lifts a
+   soft surface; the ACTIVE (keyboard-selected) row gets accent-soft fill plus a
+   left accent rail — a crisp, unmistakable "you are here" the mac list lacks. */
+.vshell-row {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.vshell-row:hover {
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+}
+.vshell-row[data-active='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
+.vshell-row[data-active='true'] .vshell-row-title {
+  color: var(--text-primary);
+}
+
+/* ── Menu (desktop context menu) ──────────────────────────────────────────────*/
+.vshell-menu-item {
+  color: var(--text-secondary);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.vshell-menu-item:hover,
+.vshell-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+  color: var(--text-primary);
+}
+.vshell-menu-item[data-accent='true'] {
+  color: var(--accent);
+}
+.vshell-menu-item[data-accent='true']:hover,
+.vshell-menu-item[data-accent='true']:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ── Launchpad app tile ───────────────────────────────────────────────────────*/
+.vshell-tile {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    transform var(--motion-base) var(--ease-out);
+}
+.vshell-tile:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.vshell-tile:active {
+  transform: scale(0.94);
+}
+.vshell-tile-label {
+  color: var(--text-tertiary);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.vshell-tile:hover .vshell-tile-label {
+  color: var(--text-primary);
+}
+
+/* ── Mission Control space thumbnail ──────────────────────────────────────────*/
+.vshell-space {
+  border: 2px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+.vshell-space:hover {
+  border-color: color-mix(in srgb, var(--border-emphasis) 90%, transparent);
+  transform: translateY(-2px);
+}
+.vshell-space[data-active='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.vshell-space-win {
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+.vshell-space-add {
+  border: 2px dashed color-mix(in srgb, var(--border-strong) 55%, transparent);
+  color: var(--text-faint);
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+}
+.vshell-space-add:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+}
+
+/* ── Icon affordance (close pips, small round buttons) ────────────────────────*/
+.vshell-pip {
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--bg-hover) 65%, transparent);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.vshell-pip:hover {
+  color: var(--status-danger);
+  background: var(--status-danger-soft);
+}
+
+/* Small three-dot "thinking" pulse used by the palette's inline assistant. */
+.vshell-typing {
+  background: var(--text-faint);
+  animation: vshellTyping 1s var(--ease-standard) infinite;
+}
+@keyframes vshellTyping {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+/* ── Reduced motion — honour the OS preference across every overlay ───────────*/
+@media (prefers-reduced-motion: reduce) {
+  .vshell-scrim,
+  .vshell-pop,
+  .vshell-sheet {
+    animation: none;
+  }
+  .vshell-typing {
+    animation: none;
+    opacity: 0.6;
+  }
+  .vshell-tile,
+  .vshell-tile:active,
+  .vshell-space,
+  .vshell-space:hover {
+    transition: none;
+    transform: none;
+  }
+}

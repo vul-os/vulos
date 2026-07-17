@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
+import './shell-chrome.css'
 
 function detectOS() {
   const ua = navigator.userAgent || ''
@@ -150,14 +151,14 @@ export default function MissionControl() {
 
   return (
     <>
-      {/* Dark backdrop — click to dismiss */}
+      {/* Frosted backdrop — click to dismiss */}
       <div
-        className="fixed inset-0 z-45 bg-neutral-950/80 backdrop-blur-xl transition-opacity"
+        className="vshell-scrim fixed inset-0 z-45"
         onClick={() => setMissionControl(false)}
       />
 
       {/* Desktop strip at top */}
-      <div className="fixed top-0 left-0 right-0 z-[60] flex items-center justify-center gap-3 pt-10 pb-4">
+      <div className="fixed top-0 left-0 right-0 z-[60] flex items-center justify-center flex-wrap gap-3 px-4 pt-10 pb-4" style={{ paddingTop: 'max(2.5rem, var(--safe-top))' }}>
         {desktopList.map((desk, i) => {
           const isActive = desk.id === activeDesktop
           return (
@@ -168,14 +169,11 @@ export default function MissionControl() {
               aria-label={`Switch to Desktop ${i + 1}`}
               onClick={() => { switchDesktop(desk.id); setMissionControl(false) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchDesktop(desk.id); setMissionControl(false) } }}
-              className="relative group flex flex-col items-center gap-1.5 cursor-pointer"
+              className="relative group flex flex-col items-center gap-1.5 cursor-pointer focus-primary rounded-xl"
             >
               <div
-                style={isActive ? { borderColor: 'var(--accent)' } : undefined}
-                className={`w-32 h-20 rounded-lg border-2 transition-all overflow-hidden
-                ${isActive
-                  ? 'bg-neutral-800/80'
-                  : 'border-neutral-700/50 bg-neutral-800/40 hover:border-neutral-600'}`}
+                data-active={isActive || undefined}
+                className="vshell-space w-32 h-20 rounded-xl overflow-hidden"
               >
                 <div className="relative w-full h-full">
                   {desk.windows.map(win => {
@@ -183,7 +181,7 @@ export default function MissionControl() {
                     return (
                       <div
                         key={win.id}
-                        className="absolute rounded-sm bg-neutral-600/50 border border-neutral-500/30"
+                        className="vshell-space-win absolute rounded-sm"
                         style={{
                           left: `${win.position.x * s + 4}px`,
                           top: `${win.position.y * s + 2}px`,
@@ -195,14 +193,14 @@ export default function MissionControl() {
                   })}
                 </div>
               </div>
-              <span className={`text-[11px] ${isActive ? 'text-white' : 'text-neutral-500'}`}>
+              <span className="text-[11px]" style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                 Desktop {i + 1}
               </span>
               {desktopList.length > 1 && (
                 <button
                   onClick={(e) => { e.stopPropagation(); removeDesktop(desk.id) }}
                   aria-label={`Remove Desktop ${i + 1}`}
-                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-neutral-700 text-neutral-400 hover:bg-red-500 hover:text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="vshell-pip absolute -top-1 -right-1 w-4 h-4 rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 >
                   <span aria-hidden="true">{'\u00D7'}</span>
                 </button>
@@ -213,7 +211,7 @@ export default function MissionControl() {
         <button
           onClick={() => addDesktop()}
           aria-label="Add desktop"
-          className="w-32 h-20 rounded-lg border-2 border-dashed border-neutral-700/40 hover:border-neutral-600 text-neutral-600 hover:text-neutral-400 flex items-center justify-center text-2xl transition-colors"
+          className="vshell-space-add focus-primary w-32 h-20 rounded-xl flex items-center justify-center text-2xl"
         >
           <span aria-hidden="true">+</span>
         </button>
@@ -231,8 +229,8 @@ export default function MissionControl() {
               className="absolute pointer-events-auto"
               style={{ left: rect.left, top: rect.bottom + 6, width: rect.width }}
             >
-              <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400">
-                <AppIcon id={win.appId} size={12} color="#737373" />
+              <div className="flex items-center justify-center gap-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                <AppIcon id={win.appId} size={12} color="currentColor" />
                 <span className="truncate max-w-[12rem]">{win.title}</span>
               </div>
             </div>
@@ -241,7 +239,7 @@ export default function MissionControl() {
       </div>
 
       {/* Shortcut hint */}
-      <div className="fixed bottom-0 left-0 right-0 z-[60] text-center pb-3 text-[11px] text-neutral-600">
+      <div className="fixed bottom-0 left-0 right-0 z-[60] text-center pb-3 text-[11px]" style={{ color: 'var(--text-muted)', paddingBottom: 'max(0.75rem, var(--safe-bottom))' }}>
         {os === 'mac' ? 'F3 or Ctrl+\u2191 to toggle' : 'F3 to toggle'} · ESC to close · pinch to zoom
       </div>
     </>
