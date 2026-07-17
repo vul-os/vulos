@@ -1,0 +1,886 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   console.css — the /console design layer ("instrument panel")
+   ═══════════════════════════════════════════════════════════════════════════
+
+   The marketing site and the OS speak mono-everything; the console is where
+   people WORK, so it trades the terminal voice for instrument-panel density:
+
+     · Sans (Inter) for UI prose — labels, nav, headings, body.
+     · Mono strictly for DATA — numbers, ULIDs, group eyebrows, chips, code.
+     · A console-scoped type ramp ~15% tighter than the site ramp, applied by
+       remapping the --text-* tokens inside .vkl-shell, so every page that
+       says `font-size: var(--text-sm)` densifies without being touched.
+     · One accent, used only to mean "current" or "actionable".
+
+   Structure:
+     1. Scoped tokens (density ramp + console-only knobs)
+     2. Shell frame
+     3. Sidebar   (brand / nav / footer)
+     4. Topbar    (hamburger / breadcrumb / actions / avatar)
+     5. User menu
+     6. Verify banner
+     7. Mobile drawer
+     8. Page loader
+     9. Page-content retune (typography + control sizing inside .vkl-page-area)
+    10. Page-specific densifiers (greeting, stat numerals)
+    11. Responsive + reduced motion
+
+   Contract preserved from the previous inline version:
+     tokens-only (zero hardcoded hex) · hairline borders · accent only on
+     active/actionable · ≥44px tap targets on coarse pointers · 360px floor
+     without horizontal scroll · prefers-reduced-motion honoured.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. Scoped tokens ───────────────────────────────────────────────────── */
+
+.vkl-shell {
+  /* Console density ramp — pages consume these via var(--text-*). */
+  --text-xs:   0.6875rem;   /* 11    — eyebrows, meta            */
+  --text-sm:   0.78125rem;  /* 12.5  — secondary UI, table cells */
+  --text-base: 0.84375rem;  /* 13.5  — default UI prose          */
+  --text-lg:   0.9375rem;   /* 15    — emphasized rows           */
+  --text-xl:   1.0625rem;   /* 17    — card titles               */
+  --text-2xl:  1.25rem;     /* 20    — section headings          */
+  --text-3xl:  1.5rem;      /* 24    — page headings             */
+  --text-4xl:  1.875rem;    /* 30    — hero numerals             */
+
+  /* Site heading tokens, re-scoped to console scale (Developer uses --h3-size) */
+  --h3-size: 1.25rem;
+  --h4-size: 1.0625rem;
+  --h5-size: 0.9375rem;
+
+  /* Console-only knobs */
+  --con-sidebar-w:   232px;
+  --con-topbar-h:    48px;
+  --con-row-h:       32px;   /* nav rows (desktop)  */
+  --con-icon-dim:    62%;    /* resting icon/label presence */
+  --con-pad-x:       var(--sp-4);
+  --con-hairline:    var(--border-strong);
+
+  /* Sidebar surface: barely-there vertical falloff, works in both themes */
+  --con-sidebar-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-elevated) 26%, var(--bg-surface)) 0%,
+    var(--bg-surface) 140px
+  );
+}
+
+/* ─── 2. Shell frame ─────────────────────────────────────────────────────── */
+
+.vkl-shell {
+  display: flex;
+  /* App-shell: the shell is exactly the viewport and never scrolls itself —
+     the sidebar + topbar stay fixed and .vkl-page-area is the ONLY scroller.
+     (min-height here would let the shell grow past the viewport, making the
+     whole body scroll and dragging the "sticky" sidebar with it.) */
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-base);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+}
+
+.vkl-content-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+}
+
+.vkl-page-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ─── 3. Sidebar ─────────────────────────────────────────────────────────── */
+
+.vkl-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  width: var(--con-sidebar-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--con-sidebar-bg);
+  border-right: 1px solid var(--con-hairline);
+  z-index: 10;
+}
+
+.vkl-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Brand header — the mark lives IN the rail so the rail owns identity. */
+.vkl-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--con-topbar-h);
+  padding: 0 var(--sp-2);
+  flex-shrink: 0;
+  text-decoration: none;
+  border-bottom: 1px solid var(--con-hairline);
+  transition: background var(--dur-fast) var(--ease);
+}
+.vkl-sidebar-brand:hover { background: var(--bg-hover); }
+.vkl-sidebar-brand:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+.vkl-sidebar-brand-word {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.vkl-sidebar-brand-chip {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border-emphasis);
+  border-radius: 3px;
+  padding: 2.5px 5px 2px;
+  line-height: 1;
+  margin-left: 2px;
+  transform: translateY(0.5px);
+}
+
+/* Scrollable nav body */
+.vkl-sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--sp-1-5) var(--sp-1) var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-emphasis) transparent;
+}
+.vkl-sidebar-nav::-webkit-scrollbar { width: 3px; }
+.vkl-sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--border-emphasis);
+  border-radius: 99px;
+}
+.vkl-sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+
+/* Nav groups */
+.vkl-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.vkl-nav-group + .vkl-nav-group { margin-top: var(--sp-2); }
+
+.vkl-nav-group-label {
+  font-family: var(--font-mono);
+  font-size: 0.59375rem;      /* 9.5 — a whisper, not a heading */
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  padding: 0 var(--sp-1) 5px calc(var(--sp-1) + 8px);
+  display: block;
+  user-select: none;
+}
+
+.vkl-nav-group-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Nav links — quiet rows; presence rises with intent. */
+.vkl-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: var(--con-row-h);
+  padding: 0 var(--sp-1) 0 calc(var(--sp-1) + 8px);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 450;
+  letter-spacing: 0.002em;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color      110ms var(--ease),
+    background 110ms var(--ease);
+}
+.vkl-nav-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.vkl-nav-link.active {
+  color: var(--text-primary);
+  background: var(--bg-selected);
+  font-weight: 550;
+}
+.vkl-nav-link:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+/* Icon: dimmed at rest, full presence on hover, accent when current. */
+.vkl-nav-link-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: var(--con-icon-dim);
+  transition: opacity 110ms var(--ease), color 110ms var(--ease);
+}
+.vkl-nav-link:hover .vkl-nav-link-icon  { opacity: 1; }
+.vkl-nav-link.active .vkl-nav-link-icon {
+  opacity: 1;
+  color: var(--good);
+}
+
+.vkl-nav-link-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Active tick — hairline, hugs the rail edge. */
+.vkl-nav-link-bar {
+  position: absolute;
+  left: calc(-1 * var(--sp-1));
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--good);
+}
+
+/* Sidebar footer — quiet utilities, mono because it's metadata. */
+.vkl-sidebar-foot {
+  flex-shrink: 0;
+  border-top: 1px solid var(--con-hairline);
+  padding: var(--sp-1) var(--sp-1-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1);
+}
+.vkl-sidebar-foot-link {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;    /* 10.5 */
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  text-decoration: none;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  transition: color 110ms var(--ease);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vkl-sidebar-foot-link:hover { color: var(--text-secondary); }
+.vkl-sidebar-foot-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.vkl-sidebar-foot-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--good);
+  flex-shrink: 0;
+}
+
+/* ─── 4. Topbar ──────────────────────────────────────────────────────────── */
+
+.vkl-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--con-topbar-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--con-pad-x) 0 var(--sp-2-5);
+  background: color-mix(in srgb, var(--bg-base) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--con-hairline);
+  gap: var(--sp-1-5);
+  flex-shrink: 0;
+}
+
+/* Breadcrumb: mono eyebrow (group) → sans title (page). */
+.vkl-crumbs {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.vkl-crumbs-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  flex-shrink: 0;
+}
+.vkl-crumbs-sep {
+  color: var(--text-invisible);
+  font-size: 0.6875rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+.vkl-crumbs-title {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 550;
+  letter-spacing: 0.002em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vkl-topbar-spacer { flex: 1; }
+
+/* Quiet text action (Docs, Status) */
+.vkl-topbar-link {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 480;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: color 110ms var(--ease), background 110ms var(--ease);
+}
+.vkl-topbar-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.vkl-topbar-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Hamburger — mobile only */
+.vkl-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 110ms var(--ease), background 110ms var(--ease);
+}
+.vkl-hamburger:hover,
+.vkl-hamburger.open {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.vkl-hamburger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Mobile-only brand (desktop brand lives in the rail) */
+.vkl-topbar-brand {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  transition: opacity 130ms var(--ease);
+}
+.vkl-topbar-brand:hover { opacity: 0.75; }
+.vkl-topbar-brand:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Avatar */
+.vkl-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-selected);
+  border: 1px solid var(--bg-selected-border);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: border-color 110ms var(--ease), background 110ms var(--ease);
+}
+.vkl-avatar:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+}
+.vkl-avatar:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ─── 5. User menu ───────────────────────────────────────────────────────── */
+
+.vkl-usermenu-wrap {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.vkl-usermenu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 216px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-emphasis);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 200;
+  overflow: hidden;
+  padding: 4px;
+  animation: vklDropIn 140ms var(--ease) forwards;
+}
+@keyframes vklDropIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+.vkl-usermenu-header { padding: 8px 10px 7px; }
+.vkl-usermenu-email {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  display: block;
+  word-break: break-all;
+  line-height: 1.4;
+}
+.vkl-usermenu-sep {
+  height: 1px;
+  background: var(--border-strong);
+  margin: 4px 6px;
+}
+.vkl-usermenu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 450;
+  color: var(--text-secondary);
+  padding: 7px 10px;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 110ms var(--ease), background 110ms var(--ease);
+}
+.vkl-usermenu-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.vkl-usermenu-item:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+.vkl-usermenu-signout { color: var(--text-tertiary); }
+.vkl-usermenu-signout:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
+/* ─── 6. Email-verify banner ─────────────────────────────────────────────── */
+
+.vkl-verify-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 7px var(--con-pad-x);
+  background: color-mix(in srgb, var(--warn) 6%, var(--bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--warn) 22%, var(--border-strong));
+  font-family: var(--font-sans);
+  font-size: 0.78125rem;
+  color: var(--text-secondary);
+  position: sticky;
+  top: var(--con-topbar-h);
+  z-index: 19;
+  flex-shrink: 0;
+}
+.vkl-verify-banner-text { flex: 1; min-width: 0; }
+.vkl-verify-banner-resend {
+  font-family: var(--font-sans);
+  font-size: 0.78125rem;
+  font-weight: 550;
+  color: var(--accent-hover);
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  transition: opacity 120ms var(--ease);
+}
+.vkl-verify-banner-resend:hover    { opacity: 0.8; }
+.vkl-verify-banner-resend:disabled { opacity: 0.45; cursor: default; }
+.vkl-verify-banner-resend:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.vkl-verify-banner-feedback {
+  font-family: var(--font-sans);
+  font-size: 0.78125rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.vkl-verify-banner-feedback.error { color: var(--danger); }
+.vkl-verify-banner-dismiss {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-ghost);
+  border-radius: var(--radius-sm);
+  transition: color 120ms var(--ease), background 120ms var(--ease);
+}
+.vkl-verify-banner-dismiss:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.vkl-verify-banner-dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ─── 7. Mobile drawer ───────────────────────────────────────────────────── */
+
+.vkl-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim);
+  z-index: 49;
+  animation: vklFadeIn 160ms var(--ease) forwards;
+}
+@keyframes vklFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.vkl-drawer {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--con-sidebar-w, 232px);
+  z-index: 50;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-strong);
+  overflow-y: auto;
+  overflow-x: hidden;
+  animation: vklSlideIn 200ms var(--ease) forwards;
+  -webkit-overflow-scrolling: touch;
+}
+@keyframes vklSlideIn {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0);     }
+}
+
+/* ─── 8. Page loader ─────────────────────────────────────────────────────── */
+
+.vkl-page-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40dvh;
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  color: var(--text-ghost);
+}
+.vkl-page-loader-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: vklPulse 1.2s var(--ease-in-out) infinite;
+}
+@keyframes vklPulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.3; transform: scale(0.72); }
+}
+
+/* ─── 9. Page-content retune ─────────────────────────────────────────────── */
+/* Pages set mono explicitly where they mean DATA; everything they left to
+   inheritance becomes sans UI prose at console density. */
+
+.vkl-page-area {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.vkl-shell .vkl-page-area h1,
+.vkl-shell .vkl-page-area h2,
+.vkl-shell .vkl-page-area h3,
+.vkl-shell .vkl-page-area h4 {
+  font-family: var(--font-sans);
+  letter-spacing: -0.015em;
+}
+.vkl-shell .vkl-page-area h1 { font-size: var(--text-3xl); font-weight: 650; line-height: 1.15; }
+.vkl-shell .vkl-page-area h2 { font-size: var(--text-2xl); font-weight: 620; line-height: 1.2;  }
+.vkl-shell .vkl-page-area h3 { font-size: var(--text-xl);  font-weight: 600; line-height: 1.25; }
+.vkl-shell .vkl-page-area h4 { font-size: var(--text-lg);  font-weight: 600; }
+
+.vkl-shell .vkl-page-area p {
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+/* Controls inherit console sizing instead of the site's roomy defaults. */
+.vkl-shell .vkl-page-area button {
+  font-family: var(--font-sans);
+}
+/* NOTE: no padding override here — pages position icons inside inputs with
+   their own padding (e.g. .dev-search's magnifier inset). */
+.vkl-shell .vkl-page-area input,
+.vkl-shell .vkl-page-area textarea,
+.vkl-shell .vkl-page-area select {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+
+/* Tabular data is mono by definition. */
+.vkl-shell .vkl-page-area table {
+  font-variant-numeric: tabular-nums;
+}
+.vkl-shell .vkl-page-area code,
+.vkl-shell .vkl-page-area kbd {
+  font-size: 0.85em;
+}
+
+/* ─── 10. Page voice: sans for prose, mono for data ─────────────────────── */
+/* The pages hard-code font-mono per class. Instrument-panel rule: mono is a
+   DATA voice (numbers, ULIDs, eyebrows, table cells, chips); everything a
+   human READS (titles, subtitles, buttons, inputs, empty states) is sans.
+   These selectors are 3-class-deep on purpose: they outrank the pages' own
+   injected 1-class rules without !important. Curated per page, grouped by
+   role — extend the matching group when a page adds a class. */
+
+/* Page titles + card/modal/empty-state titles */
+.vkl-shell .vkl-page-area .db-greeting-text,
+.vkl-shell .vkl-page-area .au-header-title,
+.vkl-shell .vkl-page-area .bx-header-title,
+.vkl-shell .vkl-page-area .iv-header-title,
+.vkl-shell .vkl-page-area .us-header-title,
+.vkl-shell .vkl-page-area .sp-page-title,
+.vkl-shell .vkl-page-area .enr-title,
+.vkl-shell .vkl-page-area .dev-title,
+.vkl-shell .vkl-page-area .bx-firstrun-title,
+.vkl-shell .vkl-page-area .bx-modal-title,
+.vkl-shell .vkl-page-area .bx-status-heading,
+.vkl-shell .vkl-page-area .au-empty-title,
+.vkl-shell .vkl-page-area .iv-empty-title,
+.vkl-shell .vkl-page-area .db-cta-title,
+.vkl-shell .vkl-page-area .db-onboard-title,
+.vkl-shell .vkl-page-area .db-runbook-title,
+.vkl-shell .vkl-page-area .sp-runbook-title,
+.vkl-shell .vkl-page-area .enr-fact-title,
+.vkl-shell .vkl-page-area .enr-mode-name,
+.vkl-shell .vkl-page-area .us-plan-name,
+.vkl-shell .vkl-page-area .db-health-headline {
+  font-family: var(--font-sans);
+  letter-spacing: -0.015em;
+}
+.vkl-shell .vkl-page-area .db-greeting-text {
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  letter-spacing: -0.018em;
+}
+
+/* Subtitles, helper prose, empty/error states, notices */
+.vkl-shell .vkl-page-area .au-header-sub,
+.vkl-shell .vkl-page-area .bx-header-sub,
+.vkl-shell .vkl-page-area .iv-header-sub,
+.vkl-shell .vkl-page-area .us-header-sub,
+.vkl-shell .vkl-page-area .sp-page-sub,
+.vkl-shell .vkl-page-area .dev-subtitle,
+.vkl-shell .vkl-page-area .db-greeting-sub,
+.vkl-shell .vkl-page-area .db-cta-sub,
+.vkl-shell .vkl-page-area .db-onboard-sub,
+.vkl-shell .vkl-page-area .db-onboard-step-label,
+.vkl-shell .vkl-page-area .db-event-label,
+.vkl-shell .vkl-page-area .db-event-detail,
+.vkl-shell .vkl-page-area .bx-firstrun-sub,
+.vkl-shell .vkl-page-area .bx-modal-body,
+.vkl-shell .vkl-page-area .bx-notice,
+.vkl-shell .vkl-page-area .bx-topup-note,
+.vkl-shell .vkl-page-area .bx-ledger-empty,
+.vkl-shell .vkl-page-area .au-empty-sub,
+.vkl-shell .vkl-page-area .iv-empty-sub,
+.vkl-shell .vkl-page-area .iv-detail-note,
+.vkl-shell .vkl-page-area .us-plan-sub,
+.vkl-shell .vkl-page-area .us-suspend-note,
+.vkl-shell .vkl-page-area .us-invoice-note,
+.vkl-shell .vkl-page-area .us-invoice-free,
+.vkl-shell .vkl-page-area .us-invoice-label,
+.vkl-shell .vkl-page-area .us-meter-label,
+.vkl-shell .vkl-page-area .enr-mode-summary,
+.vkl-shell .vkl-page-area .enr-step-label,
+.vkl-shell .vkl-page-area .sp-no-alerts,
+.vkl-shell .vkl-page-area .sp-alert-detail,
+.vkl-shell .vkl-page-area .sp-picker-name,
+.vkl-shell .vkl-page-area .sp-picker-label,
+.vkl-shell .vkl-page-area .au-state-error,
+.vkl-shell .vkl-page-area .bx-state-error,
+.vkl-shell .vkl-page-area .bx-inline-error,
+.vkl-shell .vkl-page-area .iv-state-error,
+.vkl-shell .vkl-page-area .us-state,
+.vkl-shell .vkl-page-area .sp-error-box,
+.vkl-shell .vkl-page-area .sp-banner {
+  font-family: var(--font-sans);
+}
+
+/* Buttons, CTAs, links, tabs, form labels + inputs */
+.vkl-shell .vkl-page-area .au-retry-btn,
+.vkl-shell .vkl-page-area .bx-retry-btn,
+.vkl-shell .vkl-page-area .bx-danger-btn,
+.vkl-shell .vkl-page-area .iv-retry-btn,
+.vkl-shell .vkl-page-area .iv-receipt-btn,
+.vkl-shell .vkl-page-area .us-retry-btn,
+.vkl-shell .vkl-page-area .sp-reload-btn,
+.vkl-shell .vkl-page-area .sp-share-copy-btn,
+.vkl-shell .vkl-page-area .dev-enroll-cta,
+.vkl-shell .vkl-page-area .db-onboard-step-cta,
+.vkl-shell .vkl-page-area .dev-btn,
+.vkl-shell .vkl-page-area .pd-btn,
+.vkl-shell .vkl-page-area .db-health-link,
+.vkl-shell .vkl-page-area .us-link-ghost,
+.vkl-shell .vkl-page-area .dev-tab,
+.vkl-shell .vkl-page-area .dev-field-label,
+.vkl-shell .vkl-page-area .au-filter-label,
+.vkl-shell .vkl-page-area .bx-modal-label,
+.vkl-shell .vkl-page-area .dev-search,
+.vkl-shell .vkl-page-area .au-filter-input,
+.vkl-shell .vkl-page-area .bx-modal-input,
+.vkl-shell .vkl-page-area .dev-input,
+.vkl-shell .vkl-page-area .dev-textarea,
+.vkl-shell .vkl-page-area .pd-input {
+  font-family: var(--font-sans);
+}
+
+/* Section eyebrows stay mono but drop to whisper size. */
+.vkl-shell .vkl-page-area .db-section-head,
+.vkl-shell .vkl-page-area .db-runbooks-head,
+.vkl-shell .vkl-page-area .db-runbook-label,
+.vkl-shell .vkl-page-area .sp-runbooks-head,
+.vkl-shell .vkl-page-area .sp-runbook-label,
+.vkl-shell .vkl-page-area .sp-group-label,
+.vkl-shell .vkl-page-area .sp-alerts-head,
+.vkl-shell .vkl-page-area .us-eyebrow,
+.vkl-shell .vkl-page-area .us-section-head,
+.vkl-shell .vkl-page-area .bx-eyebrow,
+.vkl-shell .vkl-page-area .enr-eyebrow,
+.vkl-shell .vkl-page-area .enr-sidebar-head {
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+}
+
+/* ─── 11. Responsive + motion ────────────────────────────────────────────── */
+
+@media (min-width: 1025px) {
+  .vkl-sidebar        { display: flex; }
+  .vkl-hamburger      { display: none !important; }
+  .vkl-topbar-brand   { display: none !important; }
+  .vkl-drawer-overlay { display: none !important; }
+  .vkl-drawer         { display: none !important; }
+}
+
+@media (max-width: 1024px) {
+  .vkl-sidebar      { display: none; }
+  .vkl-hamburger    { display: flex; }
+  .vkl-topbar-brand { display: flex; }
+  .vkl-crumbs       { display: none; }
+
+  .vkl-drawer-overlay.open { display: block; }
+  .vkl-drawer.open         { display: flex; flex-direction: column; }
+}
+
+/* Comfortable tap targets where fingers are the pointer. */
+@media (pointer: coarse) {
+  .vkl-nav-link             { height: 44px; }
+  .vkl-hamburger            { width: 44px; height: 44px; }
+  .vkl-avatar               { width: 32px; height: 32px; }
+  .vkl-usermenu-item        { padding: 11px 10px; }
+  .vkl-verify-banner-dismiss{ width: 44px; height: 44px; }
+  .vkl-verify-banner-resend { padding: 10px 6px; }
+  .vkl-sidebar-foot-link    { padding: 12px 6px; }
+}
+
+@media (max-width: 768px) {
+  .vkl-topbar { padding: 0 var(--sp-2); gap: var(--sp-1); }
+}
+
+@media (max-width: 480px) {
+  .vkl-drawer { width: 224px; }
+}
+
+/* 360px floor — never scroll sideways. */
+@media (max-width: 360px) {
+  .vkl-drawer { width: 204px; }
+  .vkl-topbar { padding: 0 10px; gap: 6px; }
+  .vkl-shell  { overflow-x: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vkl-usermenu-dropdown,
+  .vkl-drawer-overlay,
+  .vkl-drawer { animation: none; }
+  .vkl-page-loader-dot { animation: none; opacity: 0.6; }
+}
