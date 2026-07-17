@@ -10,14 +10,19 @@ import (
 )
 
 // Autoscaler observes the pool and emits autoscale-by-load signals an
-// external autoscaler (Fly scalings, k8s HPA, etc.)
-// reads from RecentSignals + the exposed Prometheus gauges.
+// external actuator (a pkg/relayscale.RelayProvisioner, a Fly scaler, a k8s HPA,
+// …) reads from RecentSignals + the exposed Prometheus gauges.
 //
-// Cloud control plane does NOT scale the fleet itself — the responsibility
-// is split: this package SIGNALS what is needed; an out-of-band component
-// reconciles. That keeps the CP free of provider-specific scaling APIs.
+// POLICY vs ACTUATION. The Autoscaler is pure I/O: it reads Stats, asks the
+// injected ScalePolicy for a desired-state Decision, updates gauges, and persists
+// the decision as a signal. The DECISION logic lives in ScalePolicy (policy.go),
+// a pure function with no side effects. The Autoscaler itself PROVISIONS NOTHING —
+// the cloud control plane does not scale the fleet directly; an out-of-band
+// component reconciles the emitted desired state. That keeps the CP free of
+// provider-specific scaling APIs and lets the same policy drive any actuator.
 type Autoscaler struct {
 	cfg       Config
+	policy    ScalePolicy
 	scheduler *Scheduler
 	store     Store
 }
@@ -73,7 +78,7 @@ func registerMetrics() {
 func NewAutoscaler(scheduler *Scheduler, store Store, cfg Config) *Autoscaler {
 	cfg.withDefaults()
 	registerMetrics()
-	return &Autoscaler{cfg: cfg, scheduler: scheduler, store: store}
+	return &Autoscaler{cfg: cfg, policy: policyFromConfig(cfg), scheduler: scheduler, store: store}
 }
 
 // Tick computes pool stats, updates gauges, and emits one autoscale signal
@@ -88,36 +93,21 @@ func (a *Autoscaler) Tick(ctx context.Context) (AutoscaleSignal, error) {
 	totalNodes.Set(float64(st.TotalNodes))
 	totalLeases.Set(float64(st.TotalLeases))
 
-	action := ActionHold
-	reason := "load within bounds"
-	switch {
-	case st.HealthyNodes == 0 && st.TotalLeases > 0:
-		action = ActionScaleUp
-		reason = "no healthy nodes but leases exist"
-	case st.HealthyNodes == 0:
-		// no nodes, no work — hold.
-		action = ActionHold
-		reason = "no healthy nodes and no leases"
-	case st.FleetLoad >= a.cfg.ScaleUpAt:
-		action = ActionScaleUp
-		reason = fmt.Sprintf("fleet_load %.2f >= scale_up_at %.2f", st.FleetLoad, a.cfg.ScaleUpAt)
-	case st.FleetLoad <= a.cfg.ScaleDownAt && st.HealthyNodes > 1:
-		// Don't scale down to zero — keep at least one node.
-		action = ActionScaleDown
-		reason = fmt.Sprintf("fleet_load %.2f <= scale_down_at %.2f", st.FleetLoad, a.cfg.ScaleDownAt)
-	}
+	// Ask the pure policy for the desired-state decision. The Autoscaler makes no
+	// scaling decision of its own — it only persists what the policy decides.
+	d := a.policy.Decide(st)
 
 	sig := AutoscaleSignal{
 		EmittedAt: nowUTC(),
 		Scope:     "global",
-		Action:    action,
-		Reason:    reason,
+		Action:    d.Action,
+		Reason:    d.Reason,
 		LoadScore: st.FleetLoad,
 	}
 	if err := a.store.EmitSignal(ctx, sig); err != nil {
 		return sig, err
 	}
-	autoscaleSignals.WithLabelValues(action).Inc()
+	autoscaleSignals.WithLabelValues(d.Action).Inc()
 	return sig, nil
 }
 
