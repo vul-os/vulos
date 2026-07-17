@@ -11,6 +11,9 @@
 package cproutes
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +21,58 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+// SPANonce returns a fresh, cryptographically-random per-request CSP nonce.
+func SPANonce() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Never reuse a static nonce: on entropy failure fall back to a value that
+		// still differs per process start rather than a constant an attacker could
+		// predict and match with an injected inline script.
+		return base64.RawStdEncoding.EncodeToString([]byte("spa-nonce-fallback"))
+	}
+	return base64.RawStdEncoding.EncodeToString(b)
+}
+
+// SPAStrictCSP builds the SPA Content-Security-Policy with a per-request script
+// nonce and NO 'unsafe-inline' in script-src (M2). The built SPA's only inline
+// script (the pre-paint theme bootstrap) carries the nonce (see WriteSPAIndexHTML);
+// its module entry + hashed chunks + modulepreload are all same-origin, so 'self'
+// admits them without strict-dynamic. object-src is 'none' so no plugin/embed can
+// execute. style-src keeps 'unsafe-inline' — Vite/React inject inline styles and
+// the finding targets script-src only.
+func SPAStrictCSP(nonce string) string {
+	return "default-src 'self'; " +
+		"script-src 'self' 'nonce-" + nonce + "'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; " +
+		"font-src 'self' data:; " +
+		"connect-src 'self' https://api.github.com; " +
+		"manifest-src 'self'; " +
+		"worker-src 'self' blob:; " +
+		"object-src 'none'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'; " +
+		"frame-ancestors 'none'"
+}
+
+// WriteSPAIndexHTML reads the SPA index.html, stamps the per-request nonce onto
+// every <script tag (so the strict, unsafe-inline-free CSP admits the inline
+// theme-bootstrap script and the module entry), and writes it. Returns an error
+// (caller should 404/500) if the file cannot be read.
+func WriteSPAIndexHTML(w http.ResponseWriter, indexPath, nonce string) error {
+	raw, err := os.ReadFile(indexPath)
+	if err != nil {
+		return err
+	}
+	// Add nonce="..." to every script element. "<script>" → `<script nonce="N">`
+	// and `<script type="module" src=...>` → `<script nonce="N" type="module" ...>`.
+	html := strings.ReplaceAll(string(raw), "<script", `<script nonce="`+nonce+`"`)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, err = io.WriteString(w, html)
+	return err
+}
 
 // spaStaticDir resolves the directory the built SPA is served from. CP_STATIC_DIR
 // wins (the container image sets it); otherwise a few conventional locations are
@@ -71,19 +126,10 @@ func RegisterSPAFallback(mux *http.ServeMux) {
 
 		// The SPA needs a self-scoped CSP: the API-wide default (default-src
 		// 'none', set in middleware) otherwise blocks the bundle's own scripts,
-		// styles, fonts and images. Set before serving so it wins over the default.
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self' 'unsafe-inline'; "+
-				"style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; "+
-				"font-src 'self' data:; "+
-				"connect-src 'self' https://api.github.com; "+
-				"manifest-src 'self'; "+
-				"worker-src 'self' blob:; "+
-				"base-uri 'self'; "+
-				"form-action 'self'; "+
-				"frame-ancestors 'none'")
+		// styles, fonts and images. Strict, nonce-based, NO script-src
+		// 'unsafe-inline' (M2). Set before serving so it wins over the default.
+		nonce := SPANonce()
+		w.Header().Set("Content-Security-Policy", SPAStrictCSP(nonce))
 
 		// Serve a real static asset (hashed JS/CSS, favicon, manifest, images)
 		// directly when it exists under dir; otherwise fall through to index.html
@@ -97,7 +143,11 @@ func RegisterSPAFallback(mux *http.ServeMux) {
 				}
 			}
 		}
-		http.ServeFile(w, r, indexPath)
+		// index.html gets the nonce stamped onto its inline theme-bootstrap script
+		// so the strict CSP admits it without 'unsafe-inline'.
+		if err := WriteSPAIndexHTML(w, indexPath, nonce); err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+		}
 	})
 	log.Printf("[spa] serving landing/console SPA from %s (apex same-host: /api=API, else→index.html)", dir)
 }
