@@ -17,7 +17,7 @@ seam with a no-op default, so **self-hosting is fully functional and free.**
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-free-14B8A6.svg)](docs/SELF-HOST.md)
 [![Tests](https://img.shields.io/badge/tests-passing-14B8A6.svg)](docs/)
-[![Release](https://img.shields.io/badge/release-v0.1.3-2DD4BF.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.2.0-2DD4BF.svg)](CHANGELOG.md)
 
 [**Quickstart**](#quickstart-self-host) · [**Architecture**](docs/ARCHITECTURE.md) · [**Self-host**](docs/SELF-HOST.md) · [**Admin console**](docs/ADMIN-CONSOLE.md)
 
@@ -192,11 +192,14 @@ database, environment) is in [**docs/SELF-HOST.md**](docs/SELF-HOST.md).
 > **What's wired in today:** `cmd/server` mounts accounts/auth (sessions, TOTP
 > 2FA, WebAuthn, OAuth sign-in), account recovery, developer & LLM API keys,
 > mobile push, the DDoS/abuse/security layer, legal pages, the public product
-> catalogue, and boot endpoints out of the box. The rest of the operational
-> surface — device enrollment, OS routing, the relay autoscaler + PoP fleet,
-> the admin/org-admin consoles, and storage/files — already lives in this repo
-> as `pkg/` packages with route handlers in `pkg/cproutes`; wiring each into
-> the default binary via the same `RouteRegistrar` hook is tracked in
+> catalogue, boot endpoints, your own fleet/devices/account/support/compliance
+> status, the org-admin console, and the relay-scaling demand API out of the
+> box — plus the operator (admin) console, opt-in via
+> `VULOS_ENABLE_SUPERADMIN=1`. The rest of the operational surface — device
+> enrollment, OS routing/DNS/CDN/edge, integrations, storage/files, and status
+> pages — already lives in this repo as `pkg/` packages with route handlers in
+> `pkg/cproutes`; wiring each into the default binary via the same
+> `RouteRegistrar` hook is tracked in
 > [CHANGELOG.md](CHANGELOG.md#unreleased). See
 > [docs/SELF-HOST.md#whats-wired-in-today](docs/SELF-HOST.md#whats-wired-in-today)
 > for the exact route-by-route breakdown.
@@ -224,6 +227,8 @@ provider directly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingpr
 | [Architecture](docs/ARCHITECTURE.md) | The two-repo split, the `cpserver` builder, the seams, and how vulos-cloud consumes this repo |
 | [Self-host](docs/SELF-HOST.md) | Build, configure, and run the control-plane binary on your own host |
 | [Admin console](docs/ADMIN-CONSOLE.md) | The hardened operator surface — gates, pages, provider registry, audit |
+| [Relay scaling](docs/RELAY-SCALING.md) | The `RelayProvisioner` seam and its OSS providers |
+| [Roadmap](ROADMAP.md) | What's shipped, what's next, and what's later for this repo |
 
 ### Regenerating the screenshots
 
@@ -258,7 +263,8 @@ seams instead.
 
 This repo follows [Semantic Versioning](https://semver.org) and
 [Keep a Changelog](https://keepachangelog.com). The current version is in
-[`VERSION`](VERSION); notable changes are in [`CHANGELOG.md`](CHANGELOG.md).
+[`VERSION`](VERSION); notable changes are in [`CHANGELOG.md`](CHANGELOG.md);
+what's next is in [`ROADMAP.md`](ROADMAP.md).
 
 ## License
 

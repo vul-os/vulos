@@ -100,35 +100,56 @@ seams, and never opens a commercial store or charges money:
 - **DDoS / abuse / security** — the honeypot, captcha, rate limiting, IP
   reputation, and the fail-closed security dashboard gate.
 - **Legal pages** — ToS / privacy / DPA acceptance tracking.
-- **Public product catalogue** — the read-only `GET` surface.
+- **Public product catalogue** — the gated `GET`/`PATCH` surface (org audit
+  reads share the same registration).
 - **Boot / first-run endpoints**, plus the always-on `/healthz`, `/readyz`,
   and `/version` operational endpoints and the SPA fallback.
+- **Your own fleet & devices, account/cloud/support/per-cell status,
+  compliance/privacy requests, developer webhooks + MCP** — the operational
+  surfaces the React `/console` SPA calls (`registerConsoleOperational`).
+  Each opens its own store via `cpdb` (SQLite by default, Postgres when
+  `DATABASE_URL` is set, in-memory fallback so the console always renders).
+- **Relay-scaling demand API** (`GET /api/relay/scale/demand`,
+  `POST /api/relay/scale/observe`) — publishes desired per-region relay
+  counts for an external scaler through the `relayscale.RelayProvisioner`
+  seam, regardless of which provisioner is active (**manual** by default —
+  see [RELAY-SCALING.md](RELAY-SCALING.md)).
+- **Operator (admin) console** — **opt-in**, off by default. Set
+  `VULOS_ENABLE_SUPERADMIN=1` (or `VULOS_BOOTSTRAP_SUPERADMIN=<email>`) to
+  mount the operator HTML pages, session/login, and the JSON admin API the
+  React `/console/admin` section consumes (dashboard, accounts, audit,
+  security, whoami). Left disabled by default so the zero-config self-host
+  admin surface stays mounted-but-deny-all (`403`). See
+  [ADMIN-CONSOLE.md](ADMIN-CONSOLE.md).
+- **Org-admin console** (`pkg/orgadmin`) — mounted unconditionally alongside
+  the product catalogue, gated by the shared auth store.
 
 ### What's in the module, not yet wired into the default binary
 
 These packages and their `pkg/cproutes` route handlers already live in this
 repo — they were extracted at the same time as everything above — but
-`cmd/server` does not mount them yet. Each needs a `RouteRegistrar` wired into
-`RegisterOperational` (or your own thin `main`, built the same way
-`vulos-cloud`'s is, against `pkg/cpserver`):
+`cmd/server` does not mount them yet (see the "NOT wired by this zero-config
+default" note at the bottom of `pkg/cproutes/register_all.go`). Each needs a
+`RouteRegistrar` wired into `RegisterOperational` (or your own thin `main`,
+built the same way `vulos-cloud`'s is, against `pkg/cpserver`):
 
 - **Device enrollment** (`pkg/enroll`, `pkg/cproutes/routes_enroll.go`) — the
-  RFC-8628 device-authorization flow.
+  RFC-8628 device-authorization flow, plus boot-enrollment.
 - **OS routing & directory** (`pkg/osrouter`, `pkg/routing`,
   `pkg/cproutes/routes_routing_enroll.go`, `dnsplane.go`, `relaystatus.go`) —
-  resolves your OS hostname to the best box in your cluster.
-- **Relay autoscaler & PoP fleet** (`pkg/servingpool`, `pkg/fleet`,
-  `pkg/cproutes/fleet.go`) — PoP registry, heartbeats, failover, autoscaling.
-- **Admin & org-admin consoles** (`pkg/superadmin`, `pkg/orgadmin`) — the
-  hardened operator surface described in [ADMIN-CONSOLE.md](ADMIN-CONSOLE.md).
-  Only the security dashboard's gate (`pkg/superadmin.RequireSuperAdmin`) is
-  reachable today, and it fails closed (deny-all) until the console's own
-  composition root registers the superadmin store singleton.
-- **Storage / files** (`pkg/storage`, `pkg/storagesel`, `pkg/files`) — object
-  storage serving against whatever bucket you configure via
-  `StorageProvisioner`.
+  resolves your OS hostname to the best box in your cluster; the DNS plane,
+  CDN, and edge routes.
+- **Integrations** (`pkg/integrations`) — the third-party OAuth data-broker
+  routes.
+- **Storage / files** (`pkg/storage`, `pkg/storagesel`, `pkg/files`,
+  `pkg/cloudhome`, `pkg/keydir`, `pkg/residency`) — object storage serving,
+  account export, and the storage-selection/residency plane against whatever
+  bucket you configure via `StorageProvisioner`.
 - **Status pages** (`pkg/status`, `pkg/cloudstatus`) — the public
   status/incidents surface.
+- **Box billing read** (`GET /api/box`, `GET /api/box/billing`) and the whole
+  commercial billing/pricing/superadmin-billing surface — inherently
+  commercial-only; the private `vulos-cloud` composition root mounts these.
 
 None of this is a licensing gate or a commercial hold-back — it's a mechanical
 migration checklist. Track it in
