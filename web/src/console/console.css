@@ -734,7 +734,9 @@
 .vkl-shell .vkl-page-area .enr-fact-title,
 .vkl-shell .vkl-page-area .enr-mode-name,
 .vkl-shell .vkl-page-area .us-plan-name,
-.vkl-shell .vkl-page-area .db-health-headline {
+.vkl-shell .vkl-page-area .db-health-headline,
+.vkl-shell .vkl-page-area .op-title,
+.vkl-shell .vkl-page-area .op-empty-title {
   font-family: var(--font-sans);
   letter-spacing: -0.015em;
 }
@@ -783,7 +785,9 @@
 .vkl-shell .vkl-page-area .iv-state-error,
 .vkl-shell .vkl-page-area .us-state,
 .vkl-shell .vkl-page-area .sp-error-box,
-.vkl-shell .vkl-page-area .sp-banner {
+.vkl-shell .vkl-page-area .sp-banner,
+.vkl-shell .vkl-page-area .op-sub,
+.vkl-shell .vkl-page-area .op-empty-sub {
   font-family: var(--font-sans);
 }
 

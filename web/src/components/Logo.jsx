@@ -24,37 +24,28 @@ export function LogoMark({
     tone === 'on-dark'
       ? 'drop-shadow(0 0 4px rgba(255,255,255,0.12))'
       : 'drop-shadow(0 1px 0 rgba(255,255,255,0.04))'
+  // Canonical Vulos glyph — the stylised "V" with the teardrop counter, the
+  // exact path shipped as assets/vulos-logo-dark.svg, inlined here so the mark
+  // stays CSP-clean (img-src 'self' data:) and crisp at any size. Filled with
+  // the theme-aware brand teal (--good: #2dd4bf on dark, #0d9488 on light — the
+  // same teal the shipped dark asset hardcodes) so it reads on either canvas.
+  // The native 48×46 viewBox is preserved; height is derived so the glyph never
+  // distorts.
+  const h = Math.round((size * 46) / 48)
   return (
     <svg
       width={size}
-      height={size}
-      viewBox="0 0 32 32"
+      height={h}
+      viewBox="0 0 48 46"
       role="img"
       aria-label={alt}
       className={className}
       style={{ display: 'block', flexShrink: 0, filter: glow, ...style }}
       {...props}
     >
-      {/* Diamond token — mirrors the ◇ mark used in the console sidebar. */}
-      <rect
-        x="16"
-        y="2.2"
-        width="19.5"
-        height="19.5"
-        rx="4"
-        transform="rotate(45 16 16)"
-        fill="none"
-        stroke="var(--accent, #6366f1)"
-        strokeWidth="2.2"
-      />
-      {/* Inner "V" counter — the teardrop suggestion from the OSS mark. */}
       <path
-        d="M11 12.5 L16 21 L21 12.5"
-        fill="none"
-        stroke="var(--accent, #6366f1)"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z"
+        fill="var(--good, #2dd4bf)"
       />
     </svg>
   )

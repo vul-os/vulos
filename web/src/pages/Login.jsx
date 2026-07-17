@@ -84,6 +84,30 @@ async function navigateAfterAuth(returnTo) {
   goPostLogin(dest)
 }
 
+// Inline key/passkey glyph — an SVG, not a unicode symbol, so it renders on every
+// platform (the ⚿ codepoint is absent from most system + mono fonts → tofu).
+function PasskeyIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="vc-auth-passkey-key"
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="8" cy="8" r="5" />
+      <path d="M11.5 11.5 L21 21" />
+      <path d="M17.5 17.5 L20 15" />
+      <path d="M15 15 L17.5 12.5" />
+    </svg>
+  )
+}
+
 function Spinner({ size = 14 }) {
   return (
     <span
@@ -298,7 +322,7 @@ export default function Login() {
                 >
                   {passkeyBusy
                     ? (<><Spinner size={14} /><span>Waiting for passkey…</span></>)
-                    : (<><span aria-hidden="true" className="vc-auth-passkey-key">⚿</span><span>Sign in with a passkey</span></>)}
+                    : (<><PasskeyIcon /><span>Sign in with a passkey</span></>)}
                 </button>
               </>
             )}
