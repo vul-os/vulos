@@ -49,6 +49,6 @@ fmt:
 clean:
 	rm -rf $(BIN_DIR)
 
-## screenshots: render the admin console to docs/assets/screenshots/ (needs Node + Playwright)
-screenshots:
+## screenshots: capture the React console SPA to docs/assets/screenshots/ (needs a built web/dist + Node + Playwright)
+screenshots: console
 	cd scripts/screenshots && npm install --silent && npx playwright install chromium && npm run screenshots
