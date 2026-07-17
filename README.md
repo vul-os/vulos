@@ -44,32 +44,38 @@ that exist only because we charge money.
 > box. Want commercial billing? The private `vulos-cloud` layer injects a real
 > provider into that same seam — see [the two-repo model](#the-two-repo-model).
 
-## Screenshots
+## The console
 
-The operator console is **server-rendered** (plain `html/template`, no JS
-framework) and ships in this repo — the same `pkg/superadmin` and `pkg/security`
-handlers + `admin.css` the control plane serves. Every image below is that real
-UI, seeded with fabricated demo data and captured headlessly. Regenerate any
-time with **`make screenshots`** (see [below](#regenerating-the-screenshots)).
+Vulos Management ships its own **React console SPA** — the *Vulos Workspace*: one
+app that carries **sign-in + onboarding**, the **user console** (your fleet,
+devices, telemetry, developer keys, audit trail and privacy tools) and the gated
+**operator (super-admin) console**. The Go binary embeds the built bundle and
+serves it at **`/console`**; it talks to the same `pkg/cproutes` JSON APIs the
+control plane exposes. Billing lives behind a build-time seam — in this OSS build
+`@vulos/commercial-seam` resolves to a **NoOp**, so **a self-hoster never sees a
+Pay button** (the private cloud build injects the real billing UI into the same
+slots). Every image below is that real SPA, driven headlessly with a bank of
+**fabricated** demo data — no backend is run and no real data is touched.
+Regenerate with **`make screenshots`** (see [below](#regenerating-the-screenshots)).
 
 <div align="center">
 
-<img src="docs/assets/screenshots/dashboard.png" alt="Operator console — fleet health, counts and the live hash-chained audit feed" width="900" />
+<img src="docs/assets/screenshots/dashboard.png" alt="Vulos console — the dashboard: fleet + relay stat tiles, quick actions and the recent-activity feed" width="900" />
 
-<em>The operator cockpit — fleet-health beacon, account / super-admin counts and open-incident state over the live, hash-chained audit feed, with jump cards to every section.</em>
+<em>The console cockpit — fleet + relay stat tiles, quick actions and the recent-activity feed. No billing surfaces: the OSS build runs the NoOp commercial seam.</em>
 
 </div>
 
 | | |
 |:---:|:---:|
-| <img src="docs/assets/screenshots/security-dashboard.png" width="420" alt="Security dashboard" /><br/><sub><b>Security dashboard</b> — WAF hits, bot scores, ATO reviews, CT-log certs, egress anomalies</sub> | <img src="docs/assets/screenshots/analytics.png" width="420" alt="Analytics" /><br/><sub><b>Analytics</b> — DAU/MAU and per-product 7-day usage sparklines (usage only)</sub> |
-| <img src="docs/assets/screenshots/relay.png" width="420" alt="Relay health" /><br/><sub><b>Relay health</b> — per-region PoP health and data-plane throughput</sub> | <img src="docs/assets/screenshots/accounts.png" width="420" alt="Accounts" /><br/><sub><b>Accounts</b> — search + suspend / force-reset / reset-2FA, every action audit-logged</sub> |
-| <img src="docs/assets/screenshots/orgs.png" width="420" alt="Organisations" /><br/><sub><b>Organisations</b> — directory of members, seats, tier and suspension state</sub> | <img src="docs/assets/screenshots/incidents.png" width="420" alt="Incidents" /><br/><sub><b>Incidents</b> — status-page incidents and scheduled maintenance</sub> |
-| <img src="docs/assets/screenshots/auditlog.png" width="420" alt="Audit log" /><br/><sub><b>Audit log</b> — tamper-evident, hash-chained, actor/action filters</sub> | <img src="docs/assets/screenshots/login.png" width="420" alt="Operator login" /><br/><sub><b>Operator login</b> — password + TOTP, then a WebAuthn hardware-key step-up</sub> |
+| <img src="docs/assets/screenshots/login.png" width="420" alt="Sign in" /><br/><sub><b>Sign in</b> — one Vulos account for the OS, apps and console: password, optional passkey, and social sign-in when configured</sub> | <img src="docs/assets/screenshots/boxes.png" width="420" alt="Boxes" /><br/><sub><b>Boxes</b> — the machines running your Vulos OS: version, channel, health and last-seen as a card grid</sub> |
+| <img src="docs/assets/screenshots/devices.png" width="420" alt="Devices" /><br/><sub><b>Devices</b> — every enrolled device as a table, with health pills and a decommission action</sub> | <img src="docs/assets/screenshots/developer.png" width="420" alt="Developer" /><br/><sub><b>Developer</b> — issue scoped API keys, register webhooks and (soon) MCP servers</sub> |
+| <img src="docs/assets/screenshots/account-status.png" width="420" alt="Account status" /><br/><sub><b>Account status</b> — box reachability, relay usage/health, provisioned services and recent events</sub> | <img src="docs/assets/screenshots/auditlog.png" width="420" alt="Audit log" /><br/><sub><b>Audit log</b> — who did what in your org: expandable, tamper-evident, actor/action filters</sub> |
+| <img src="docs/assets/screenshots/admin-dashboard.png" width="420" alt="Operator dashboard" /><br/><sub><b>Operator — Dashboard</b> — account / super-admin counts over the most recent platform audit rows</sub> | <img src="docs/assets/screenshots/admin-security.png" width="420" alt="Operator security" /><br/><sub><b>Operator — Security</b> — WAF hits, bot flags, step-up, ATO, honeypot and egress telemetry</sub> |
 
-<sub>The full gallery (org detail, account detail, migrations, reserved handles, maintenance) lives in
-[`docs/assets/screenshots/`](docs/assets/screenshots/). The whole console — including the security dashboard —
-ships a single deliberate dark "instrument-panel" theme, and does not theme dynamically.</sub>
+<sub>The full gallery (enroll, telemetry, privacy, operator accounts & audit) lives in
+[`docs/assets/screenshots/`](docs/assets/screenshots/). The console ships a single deliberate dark
+"instrument-panel" theme — sans for UI prose, mono strictly for data.</sub>
 
 ## Features
 
@@ -85,10 +91,10 @@ exact split, or build your own thin `main` against `pkg/cpserver` (the same way
 | 📱 **Device enrollment** | RFC-8628 device-authorization flow so a box or headless device enrolls against your control plane and mints short-lived, audience-bound tokens. |
 | 🧭 **OS routing & directory** | `os.vulos.org` resolves to the best box in your cluster; the org/box directory tracks who owns what and where it runs, with region-aware placement preview. |
 | 📡 **Relay autoscaler & PoP fleet** | A PoP registry with 15s heartbeats and health flags, failover routing that excludes unhealthy PoPs, and an autoscaler + serving pool that grows and shrinks the fleet against a provider registry. |
-| 🖥️ **Admin console** | Server-rendered, no-JS-framework, triple-gated (IP allowlist + session + WebAuthn admin session), CSRF-protected, audit-logged operator surface for accounts, orgs, fleet, relay, incidents, and reserved handles. |
-| 👥 **Org-admin console** | Per-organization administration for org owners — members, boxes, and settings scoped to a single org. |
-| 🟢 **Status pages** | A public status/incidents surface plus per-user status, authored from the admin incidents page over the same store. |
-| 🧩 **Pluggable seams** | `BillingProvider` and `StorageProvisioner` are interfaces with free, no-op / bring-your-own defaults. Self-host stays sovereign; the cloud build injects the commercial implementations at wire-time. |
+| 🖥️ **React console (`/console`)** | One embedded React SPA — the *Vulos Workspace*: sign-in + onboarding, the **user console** (fleet, devices, telemetry, developer keys, audit trail, privacy), and the **operator (super-admin) console** (accounts, platform audit, security telemetry), each page self-gating on the JSON admin API. Instrument-panel dark theme, fully responsive, AA-contrast, focus-visible throughout. |
+| 🛡️ **Hardened operator gate** | The operator console is triple-gated (session + super-admin row + a separate WebAuthn-backed admin session) and CSRF-protected; every action is audit-logged into the tamper-evident, hash-chained trail. |
+| 🟢 **Status pages** | A public status/incidents surface plus per-user status, authored over the same store. |
+| 🧩 **Pluggable seams** | `BillingProvider` and `StorageProvisioner` (Go) and `@vulos/commercial-seam` (the console SPA) are interfaces/slots with free, no-op / bring-your-own defaults — **a self-hoster never sees a Pay button**. The cloud build injects the commercial implementations at wire-time; the app code is byte-for-byte identical. |
 
 ## The two-repo model
 
@@ -102,7 +108,7 @@ Vulos is split into two repositories along one honest line:
 |---|---|---|
 | **License** | MIT, open source | Proprietary |
 | **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
-| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, admin + org-admin console, status pages, the seam interfaces + no-op defaults | A commercial billing provider, commercial pricing/catalog, managed bucket provisioning, billing-only admin panels, the hosted marketing site |
+| **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, the React `/console` (auth + user console + operator admin) with a NoOp billing seam, status pages, the seam interfaces + no-op defaults | A commercial billing provider, commercial pricing/catalog, managed bucket provisioning, the injected billing/usage/invoice console UI, the hosted marketing site |
 | **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a commercial `BillingProvider` |
 | **Storage** | `StorageProvisioner` seam, **BYOB** — bring your own S3-compatible bucket | Injects a managed bucket auto-provisioner |
 | **Relationship** | Stands alone, fully functional | `require`s + `replace`s this repo as a library, then injects the commercial impls |
@@ -125,7 +131,7 @@ flowchart TD
         enroll["device enrollment · RFC-8628"]
         routing["OS routing · org/box directory"]
         relay["relay autoscaler · PoP registry · fleet health"]
-        admin["admin console · org-admin · status pages"]
+        admin["React /console · user + operator · status pages"]
         billseam(["BillingProvider seam"])
         storeseam(["StorageProvisioner seam"])
     end
@@ -222,20 +228,22 @@ provider directly. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-billingpr
 ### Regenerating the screenshots
 
 The screenshotter lives in [`scripts/screenshots/`](scripts/screenshots/) — an
-isolated Node tool (its own `package.json`; not part of the Go module). It
-drives the real console templates through the same `pkg/superadmin` /
-`pkg/security` handlers the server mounts, seeded with fabricated demo data in
-an in-memory database (a Go dump harness gated behind `SCREENSHOT_DUMP=1`), then
-captures each page with headless Chromium. **No operator data is ever touched.**
+isolated Node tool (its own `package.json`; not part of the Go module). It serves
+the **built React console** (`web/dist`) over a throwaway localhost server and
+drives headless Chromium against it, with **every `/api/**` request intercepted
+and answered from a bank of fabricated demo data** (a small account, fleet, audit
+trail and an operator). The management binary is never run and **no real data is
+ever touched**; billing surfaces stay empty because the OSS build resolves the
+commercial seam to its NoOp.
 
 ```sh
-make screenshots
-# or, manually:
+make screenshots           # builds web/dist, then captures → docs/assets/screenshots/*.png
+# or, manually (after `npm --prefix web run build`):
 cd scripts/screenshots && npm install && npx playwright install chromium
-node capture.mjs            # → docs/assets/screenshots/*.png
+node capture.mjs
 ```
 
-Requires Go on `PATH` (to render the pages) and Chromium (via Playwright).
+Requires a built `web/dist` (`npm --prefix web run build`) and Chromium (via Playwright).
 
 ## Contributing
 
