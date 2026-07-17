@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/vul-os/vulos-management/pkg/billingport"
 	"github.com/vul-os/vulos-management/pkg/cpserver"
 )
 
@@ -43,6 +44,64 @@ func TestNew_SelfHostDefaults(t *testing.T) {
 	}
 	if v["domain"] != "vulos.org" {
 		t.Fatalf("domain = %q, want default vulos.org", v["domain"])
+	}
+	// M2: the entitlement rail identity is exposed so a fail-open-to-free
+	// composition regression is machine-checkable, not log-only.
+	if v["entitlements_rail"] != "noop" {
+		t.Fatalf("entitlements_rail = %q, want noop (self-host defaults)", v["entitlements_rail"])
+	}
+}
+
+// TestHealthz_ReportsRails proves M2: /healthz — the always-on liveness probe —
+// reports the wired billing + entitlement rails, so a fail-open-to-free
+// regression (cloud booting with the no-op resolver) is observable there too.
+func TestHealthz_ReportsRails(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()}, cpserver.Deps{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/healthz")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200", rr.Code)
+	}
+	var v map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &v); err != nil {
+		t.Fatalf("decode /healthz: %v", err)
+	}
+	if v["status"] != "ok" {
+		t.Fatalf("status = %q, want ok", v["status"])
+	}
+	if v["billing_rail"] != "noop" || v["entitlements_rail"] != "noop" {
+		t.Fatalf("rails = billing:%q entitlements:%q, want both noop", v["billing_rail"], v["entitlements_rail"])
+	}
+}
+
+// realResolver is a minimal non-noop EntitlementResolver so the guard sees a
+// "custom" rail. It embeds the noop for the methods we don't exercise, but its
+// concrete type is NOT *billingport.NoopResolver, so billingport.IsNoopResolver
+// reports false — exactly the shape a real commercial resolver has.
+type realResolver struct{ *billingport.NoopResolver }
+
+// TestVersionRealResolver_ReportsCustom proves the /version rail identity flips
+// to "custom" when a real (non-noop) entitlement resolver is injected — the
+// machine-checkable half of M2.
+func TestVersionRealResolver_ReportsCustom(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()},
+		cpserver.Deps{Entitlements: realResolver{billingport.NewNoopResolver()}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/version")
+	var v map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &v); err != nil {
+		t.Fatalf("decode /version: %v", err)
+	}
+	if v["entitlements_rail"] != "custom" {
+		t.Fatalf("entitlements_rail = %q, want custom for an injected resolver", v["entitlements_rail"])
 	}
 }
 

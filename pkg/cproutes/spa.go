@@ -94,6 +94,19 @@ func isSelfContainedPage(upath string) bool {
 	return strings.HasSuffix(upath, ".html") && upath != "/index.html"
 }
 
+// StampSPANonce stamps the per-request CSP nonce onto every <script element in
+// the SPA HTML so the strict, unsafe-inline-free policy (SPAStrictCSP) admits the
+// inline theme-bootstrap script and the module entry. Shared by WriteSPAIndexHTML
+// (apex, disk-served) and the embedded /console SPA handler (web/serve.go) so both
+// surfaces stamp identically — the /console section hosts the ADMIN console and
+// must run under the SAME strict CSP as the apex, not the weaker legacy policy.
+//
+//	"<script>"                    → `<script nonce="N">`
+//	`<script type="module" src=…>`→ `<script nonce="N" type="module" src=…>`
+func StampSPANonce(raw []byte, nonce string) string {
+	return strings.ReplaceAll(string(raw), "<script", `<script nonce="`+nonce+`"`)
+}
+
 // WriteSPAIndexHTML reads the SPA index.html, stamps the per-request nonce onto
 // every <script tag (so the strict, unsafe-inline-free CSP admits the inline
 // theme-bootstrap script and the module entry), and writes it. Returns an error
@@ -103,12 +116,9 @@ func WriteSPAIndexHTML(w http.ResponseWriter, indexPath, nonce string) error {
 	if err != nil {
 		return err
 	}
-	// Add nonce="..." to every script element. "<script>" → `<script nonce="N">`
-	// and `<script type="module" src=...>` → `<script nonce="N" type="module" ...>`.
-	html := strings.ReplaceAll(string(raw), "<script", `<script nonce="`+nonce+`"`)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	_, err = io.WriteString(w, html)
+	_, err = io.WriteString(w, StampSPANonce(raw, nonce))
 	return err
 }
 

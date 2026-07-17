@@ -1,11 +1,14 @@
 package web
 
 import (
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/vul-os/vulos-management/pkg/cproutes"
 )
 
 // MountPrefix is where the console SPA is served. The Vite build sets
@@ -48,20 +51,14 @@ func spaHandler(sub fs.FS) http.Handler {
 			return
 		}
 
-		// Self-scoped CSP: the API-wide default (default-src 'none') would block
-		// the bundle's own scripts/styles/fonts. Mirrors pkg/cproutes/spa.go.
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self' 'unsafe-inline'; "+
-				"style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; "+
-				"font-src 'self' data:; "+
-				"connect-src 'self'; "+
-				"manifest-src 'self'; "+
-				"worker-src 'self' blob:; "+
-				"base-uri 'self'; "+
-				"form-action 'self'; "+
-				"frame-ancestors 'none'")
+		// Strict, nonce-based, self-scoped CSP — IDENTICAL to the apex SPA
+		// (pkg/cproutes.SPAStrictCSP): no script-src 'unsafe-inline', object-src
+		// 'none'. The /console section hosts the ADMIN console, so it must run
+		// under the same hardened policy, never the weaker legacy one. The API-wide
+		// default (default-src 'none') would otherwise block the bundle's own
+		// scripts/styles/fonts, so we set the self-scoped policy here.
+		nonce := cproutes.SPANonce()
+		w.Header().Set("Content-Security-Policy", cproutes.SPAStrictCSP(nonce))
 
 		upath := path.Clean("/" + r.URL.Path)
 		if upath != "/" {
@@ -76,9 +73,11 @@ func spaHandler(sub fs.FS) http.Handler {
 			}
 		}
 
-		// SPA fallback → index.html (client-side routing owns deep links).
+		// SPA fallback → index.html (client-side routing owns deep links). Stamp
+		// the per-request nonce onto its inline theme-bootstrap script + module
+		// entry so the strict, unsafe-inline-free CSP admits them.
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(index)
+		_, _ = io.WriteString(w, cproutes.StampSPANonce(index, nonce))
 	})
 }

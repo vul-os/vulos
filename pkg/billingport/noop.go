@@ -164,6 +164,34 @@ func noopSelfHostRegion() Region {
 	return Region{ID: noopSelfHostRegionID, Name: "Self-host", FreeRelayGBWithBox: noopFreeRelayGB, ComputeMultBps: 10000, Active: true}
 }
 
+// IsNoopResolver reports whether r is the free self-host no-op entitlement
+// resolver (unlimited tier, no quota/storage caps, no metering). A cloud
+// composition MUST inject a real resolver; if this returns true in prod, every
+// quota/storage cap is disabled and metering is off — a fail-open the caller
+// should surface loudly (see cpserver's prod guard).
+func IsNoopResolver(r EntitlementResolver) bool {
+	_, ok := r.(*NoopResolver)
+	return ok
+}
+
+// IsNoopProvider reports whether p is the free self-host no-op payment rail
+// (never charges). Cloud injects a real rail; noop in prod means no charging.
+func IsNoopProvider(p BillingProvider) bool {
+	_, ok := p.(*NoopProvider)
+	return ok
+}
+
+// ResolverRail names the wired entitlement resolver for observability
+// (/version, /healthz): "noop" for the free self-host resolver, "custom" for an
+// injected (commercial) one. Mirrors BillingProvider.Name() so a composition
+// regression that drops the injection is visible on the operational endpoints.
+func ResolverRail(r EntitlementResolver) string {
+	if IsNoopResolver(r) {
+		return "noop"
+	}
+	return "custom"
+}
+
 // Interface compliance.
 var (
 	_ BillingProvider     = (*NoopProvider)(nil)

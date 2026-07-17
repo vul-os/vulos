@@ -249,6 +249,15 @@ func New(cfg Config, deps Deps) (*Server, error) {
 		Logger:             deps.Logger,
 	}
 
+	// M2 — fail-open-to-free guard. Self-host legitimately runs the no-op
+	// entitlement resolver in prod (unlimited, uncapped, honest), so this must NOT
+	// hard-fail. But if a CLOUD composition regression drops the resolver
+	// injection, the process boots with EVERY quota/storage cap disabled and
+	// metering off, silently. Log a LOUD warning when prod + noop so the
+	// regression is observable in logs; the resolver identity is also exposed on
+	// /version + /healthz for a machine-checkable signal.
+	warnBillingSeamFailOpen(rt.Logger, env.IsProdResolved(), rt.Entitlements, rt.Billing, cfg.Environment)
+
 	mux := http.NewServeMux()
 	mountOperational(mux, rt)
 
@@ -288,6 +297,33 @@ func New(cfg Config, deps Deps) (*Server, error) {
 		},
 		onStart: deps.OnStart,
 	}, nil
+}
+
+// warnBillingSeamFailOpen implements the M2 fail-open-to-free guard. When the
+// environment resolves to prod AND the free no-op entitlement resolver is wired,
+// it logs a LOUD warning (every quota/storage cap disabled, metering off) — but
+// never hard-fails, because a self-host prod deployment legitimately runs the
+// no-op seams. A missing entitlement injection on the CLOUD control plane is a
+// silent fail-open this surfaces. Split out from New so the predicate is
+// unit-testable without booting the whole operational surface (some subsystems
+// fail-closed / os.Exit in prod without their own secrets). No-op outside prod.
+func warnBillingSeamFailOpen(logger *slog.Logger, prod bool, ent billingport.EntitlementResolver, bill billingport.BillingProvider, environment string) {
+	if !prod {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if billingport.IsNoopResolver(ent) {
+		logger.Warn("BILLING SEAM FAIL-OPEN: prod is running the NO-OP entitlement resolver — all quota/storage caps are DISABLED and metering is OFF. This is correct for a self-host prod deployment; if this is the CLOUD control plane, the entitlement resolver injection has been dropped (a regression) and every account is silently uncapped. Verify the composition root injects a real EntitlementResolver.",
+			"entitlements_rail", "noop",
+			"billing_rail", bill.Name(),
+			"environment", environment)
+	}
+	if billingport.IsNoopProvider(bill) {
+		logger.Warn("BILLING SEAM: prod is running the NO-OP payment rail — no card is ever charged. Correct for self-host; a regression for cloud.",
+			"billing_rail", "noop", "environment", environment)
+	}
 }
 
 // globalMiddleware wraps the assembled mux in the same defence-in-depth chain the
@@ -398,10 +434,17 @@ func openAuthStore(cfg Config) (*auth.Store, *cpdb.DB, error) {
 // mountOperational installs the always-on operational endpoints every control
 // plane exposes regardless of deployment: liveness, readiness, and version.
 func mountOperational(mux *http.ServeMux, rt *Runtime) {
-	// GET /healthz — lightweight liveness probe (always 200 once serving).
+	// GET /healthz — lightweight liveness probe (always 200 once serving). Also
+	// reports which billing/entitlement rails are wired so a fail-open-to-free
+	// regression (M2: cloud booting with the no-op resolver) is observable on the
+	// always-on liveness endpoint, not only in logs.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":            "ok",
+			"billing_rail":      rt.Billing.Name(),
+			"entitlements_rail": billingport.ResolverRail(rt.Entitlements),
+		})
 	})
 
 	// GET /readyz — readiness probe: 200 only when the database answers.
@@ -427,10 +470,15 @@ func mountOperational(mux *http.ServeMux, rt *Runtime) {
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"version":      rt.Config.Version,
-			"environment":  rt.Config.Environment,
-			"domain":       rt.Config.Domain,
-			"billing_rail": rt.Billing.Name(),
+			"version":     rt.Config.Version,
+			"environment": rt.Config.Environment,
+			"domain":      rt.Config.Domain,
+			// Billing + entitlement rail identity: "noop" = free self-host seams
+			// (never charges / uncapped); "custom" resolver = an injected
+			// commercial impl. Exposed so a fail-open-to-free composition
+			// regression (M2) is machine-checkable, not just log-only.
+			"billing_rail":      rt.Billing.Name(),
+			"entitlements_rail": billingport.ResolverRail(rt.Entitlements),
 		})
 	})
 }

@@ -201,3 +201,29 @@ func TestHandleGrantAdmin_StepUpRequired(t *testing.T) {
 		t.Fatalf("expected 401 when step-up TOTP missing, got %d", rr.Code)
 	}
 }
+
+// Test: with step-up required and no TOTP supplied, the REVOKE handler rejects —
+// and the revoke does NOT take effect. A second admin is promoted first so the
+// last-admin guard cannot be the cause of the 401 (proving the step-up gate is
+// what fires, and that admin demotion is step-up-protected like promotion).
+func TestHandleRevokeAdmin_StepUpRequired(t *testing.T) {
+	adminID, adminEmail, otherID, otherEmail, saStore := twoAccountsOneAdmin(t)
+	if _, err := saStore.GrantAdminByEmail(context.Background(), otherEmail, adminID, adminEmail, nil); err != nil {
+		t.Fatalf("promote second admin: %v", err)
+	}
+
+	os.Setenv("VULOS_ADMIN_REAUTH_TOTP", "1")
+	defer os.Unsetenv("VULOS_ADMIN_REAUTH_TOTP")
+
+	req := adminCtx(httptest.NewRequest(http.MethodDelete, "/api/superadmin/admins/"+otherID, nil), adminID)
+	req.SetPathValue("id", otherID)
+	rr := httptest.NewRecorder()
+	superadmin.HandleRevokeAdmin(saStore, nil, nil)(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when step-up TOTP missing on revoke, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if isSA, _ := saStore.IsSuperAdmin(context.Background(), otherID); !isSA {
+		t.Fatal("revoke took effect despite a failed step-up — demotion must be step-up-gated")
+	}
+}

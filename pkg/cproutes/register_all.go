@@ -123,18 +123,9 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	_, abuseCloser := WireAbuse(mux, deps.DBDir, deps.AuthStore, deps.AdminAccountID, al, os.Getenv("CP_SHARED_SECRET"))
 	add(abuseCloser)
 
-	// Security hardening layer + super-admin dashboard. WireSecurityRequireAdmin
-	// falls back to deny-all when no super-admin store is registered, so the
-	// dashboard is never accidentally exposed in a standalone deployment.
+	// Security hardening layer + super-admin dashboard.
 	secR := WireSecurity(deps.DBDir)
-	WireSecurityRequireAdmin(deps.AuthStore, al)
-	RegisterSecurity(mux, secR, SARequireAdmin(), nil, deps.AuthStore)
 	add(secR.Closer)
-
-	// Legal pages (ToS/privacy/DPA acceptance) — gated by the shared auth DB.
-	if deps.AuthDB != nil {
-		RegisterLegal(mux, deps.AuthStore, deps.AuthDB)
-	}
 
 	// Operator (super-admin) console — OPT-IN (VULOS_ENABLE_SUPERADMIN=1 or a
 	// VULOS_BOOTSTRAP_SUPERADMIN email). Mounts the operator HTML pages + the JSON
@@ -142,6 +133,13 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// default so the zero-config self-host admin surface stays mounted-but-deny-
 	// all (403) exactly as before. Wired here (after WireSecurity) so it can share
 	// the already-open security telemetry store and the shared audit logger.
+	//
+	// ORDERING (L1): this MUST run BEFORE WireSecurityRequireAdmin. It registers
+	// the super-admin store singleton (RegisterSuperAdminStore), which
+	// WireSecurityRequireAdmin snapshots to build the security-dashboard gate. If
+	// the order were reversed the singleton would still be nil when the gate is
+	// built, so the security telemetry dashboard would deny ALL requests even with
+	// the console enabled (dead-gated). With this order the gate authenticates.
 	if superAdminConsoleEnabled() {
 		closers = append(closers, wireSuperAdminConsole(mux, superAdminConsoleDeps{
 			AuthStore: deps.AuthStore,
@@ -149,6 +147,18 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 			Audit:     al,
 			Security:  secR.Store,
 		})...)
+	}
+
+	// WireSecurityRequireAdmin falls back to deny-all when no super-admin store is
+	// registered, so the dashboard is never accidentally exposed in a standalone
+	// (console-disabled) deployment. When the console IS enabled it was registered
+	// just above, so the gate now snapshots a live store and authenticates.
+	WireSecurityRequireAdmin(deps.AuthStore, al)
+	RegisterSecurity(mux, secR, SARequireAdmin(), nil, deps.AuthStore)
+
+	// Legal pages (ToS/privacy/DPA acceptance) — gated by the shared auth DB.
+	if deps.AuthDB != nil {
+		RegisterLegal(mux, deps.AuthStore, deps.AuthDB)
 	}
 
 	// Operational surfaces the management /console SPA consumes: fleet + devices,
