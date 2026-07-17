@@ -56,6 +56,44 @@ func SPAStrictCSP(nonce string) string {
 		"frame-ancestors 'none'"
 }
 
+// SelfContainedPageCSP is the policy for first-party static HTML *sub-pages* we
+// ship in the build output — e.g. the product mini-site landing pages under
+// /products/<slug>/landing.html, which the marketing SPA embeds in a SAME-ORIGIN
+// <iframe>. Unlike the SPA shell (SPAStrictCSP), these pages:
+//
+//   - MUST be framable by their own origin, so frame-ancestors is 'self' (and the
+//     handler drops X-Frame-Options: DENY → SAMEORIGIN). With 'none'/DENY the
+//     browser refuses to render them in the iframe at all — a blank product page.
+//   - carry their own inline <script>/<style> with no per-request nonce (they are
+//     prebuilt static files, not server-rendered), so script-src/style-src allow
+//     'unsafe-inline'. They are trusted first-party assets from our own build.
+//
+// Everything else stays locked down (default-src 'self', object-src 'none',
+// base-uri 'self').
+func SelfContainedPageCSP() string {
+	return "default-src 'self'; " +
+		"script-src 'self' 'unsafe-inline'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; " +
+		"font-src 'self' data:; " +
+		"connect-src 'self'; " +
+		"manifest-src 'self'; " +
+		"worker-src 'self' blob:; " +
+		"object-src 'none'; " +
+		"base-uri 'self'; " +
+		"form-action 'self'; " +
+		"frame-ancestors 'self'"
+}
+
+// isSelfContainedPage reports whether a cleaned request path resolves to a
+// first-party static HTML sub-page (any *.html other than the root SPA shell).
+// These are self-contained mini-sites (product landings, standalone doc sites)
+// that need the framable, inline-friendly SelfContainedPageCSP rather than the
+// strict SPA policy.
+func isSelfContainedPage(upath string) bool {
+	return strings.HasSuffix(upath, ".html") && upath != "/index.html"
+}
+
 // WriteSPAIndexHTML reads the SPA index.html, stamps the per-request nonce onto
 // every <script tag (so the strict, unsafe-inline-free CSP admits the inline
 // theme-bootstrap script and the module entry), and writes it. Returns an error
@@ -138,6 +176,17 @@ func RegisterSPAFallback(mux *http.ServeMux) {
 			full := filepath.Join(dir, filepath.FromSlash(upath))
 			if rel, err := filepath.Rel(dir, full); err == nil && !strings.HasPrefix(rel, "..") {
 				if fi, err := os.Stat(full); err == nil && !fi.IsDir() {
+					// First-party static HTML sub-pages (product mini-site landings
+					// under /products/<slug>/landing.html, standalone doc sites) are
+					// embedded in a SAME-ORIGIN iframe and carry their own inline
+					// scripts. The strict SPA CSP (frame-ancestors 'none') + the
+					// middleware's X-Frame-Options: DENY would make the browser
+					// refuse to render them → a blank product page. Serve them with
+					// the framable, inline-friendly self-contained-page policy.
+					if isSelfContainedPage(upath) {
+						w.Header().Set("Content-Security-Policy", SelfContainedPageCSP())
+						w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+					}
 					fileServer.ServeHTTP(w, r)
 					return
 				}

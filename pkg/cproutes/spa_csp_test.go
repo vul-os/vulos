@@ -4,6 +4,7 @@
 package cproutes
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -33,6 +34,67 @@ func TestSPAStrictCSP_DropsUnsafeInlineScript(t *testing.T) {
 	}
 	if !strings.Contains(csp, "object-src 'none'") {
 		t.Errorf("CSP missing object-src 'none': %q", csp)
+	}
+}
+
+// TestSelfContainedPage_IsFramable is the regression guard for the product
+// mini-site render bug: landing.html files are embedded in a SAME-ORIGIN iframe,
+// so serving them with the SPA shell's frame-ancestors 'none' + X-Frame-Options:
+// DENY made the browser refuse to render them (blank product page). A static
+// *.html sub-page must be served framable-by-self + inline-friendly, while the
+// SPA shell and hashed assets stay strict.
+func TestSelfContainedPage_IsFramable(t *testing.T) {
+	dir := buildSPADir(t)
+	// A product mini-site landing (self-contained, with an inline <script>).
+	landing := filepath.Join(dir, "products", "wede")
+	if err := os.MkdirAll(landing, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(landing, "landing.html"),
+		[]byte("<!doctype html><title>wede</title><script>1</script>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CP_STATIC_DIR", dir)
+
+	mux := http.NewServeMux()
+	// Emulate the middleware default that the handler must override.
+	base := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		mux.ServeHTTP(w, r)
+	})
+	RegisterSPAFallback(mux)
+	srv := httptest.NewServer(base)
+	defer srv.Close()
+
+	head := func(path string) http.Header {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		return resp.Header
+	}
+
+	// The mini-site landing must be framable by its own origin + allow its inline
+	// script; X-Frame-Options must NOT be DENY.
+	h := head("/products/wede/landing.html")
+	csp := h.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "frame-ancestors 'self'") {
+		t.Errorf("landing CSP not framable-by-self: %q", csp)
+	}
+	if strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("landing CSP still frame-ancestors 'none' (iframe would be blocked): %q", csp)
+	}
+	if !strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
+		t.Errorf("landing CSP does not admit its inline script: %q", csp)
+	}
+	if xfo := h.Get("X-Frame-Options"); strings.EqualFold(xfo, "DENY") {
+		t.Errorf("landing still has X-Frame-Options: DENY — iframe blocked")
+	}
+
+	// The SPA shell (index.html fallback) must STAY strict — not framable.
+	if csp := head("/products").Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("SPA shell should remain frame-ancestors 'none', got: %q", csp)
 	}
 }
 
