@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/vul-os/vulos-management/pkg/auditlog"
@@ -355,7 +357,13 @@ func HandleReset2FA(store *Store, al *auditlog.Logger) http.HandlerFunc {
 // AUTHZ: txn_id is verified to belong to the account identified by {id} before
 // calling the processor. This prevents an admin from using one account's URL path
 // to trigger a refund against an unrelated transaction reference.
-func HandleRefund(store *Store, al *auditlog.Logger) http.HandlerFunc {
+//
+// STEP-UP: when VULOS_ADMIN_REAUTH_TOTP=1 the operator must re-enter their own
+// TOTP code (query ?totp= or JSON body {"totp":"..."}), exactly as the HTML
+// confirm path (actions.go RefundExecute) enforces — otherwise this JSON endpoint
+// would be a step-up bypass for the single most destructive admin action (money
+// movement).
+func HandleRefund(store *Store, authStore *auth.Store, al *auditlog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		txnID := r.URL.Query().Get("txn_id")
@@ -366,6 +374,15 @@ func HandleRefund(store *Store, al *auditlog.Logger) http.HandlerFunc {
 		actor := AdminAccountIDFromCtx(r.Context())
 		var actorEmail string
 		_ = store.db.QueryRowContext(r.Context(), store.db.Rebind(`SELECT email FROM users WHERE id = ?`), actor).Scan(&actorEmail)
+
+		// Step-up TOTP (parity with the HTML confirm path). The code may arrive as
+		// a query param or in a JSON body {"totp":"..."}.
+		if !verifyStepUpTOTP(r.Context(), authStore, actor, refundTOTPCode(r)) {
+			auditAction(r.Context(), al, actorEmail, "admin.action.stepup_failed", id,
+				map[string]string{"action": "refund", "txn_id": txnID})
+			jsonError(w, "step-up verification failed", http.StatusUnauthorized)
+			return
+		}
 
 		// Verify the txn_id belongs to the account in the URL path.
 		// billing_transactions may not exist in all environments; if the table is
@@ -394,4 +411,22 @@ func HandleRefund(store *Store, al *auditlog.Logger) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
 	}
+}
+
+// refundTOTPCode extracts the operator's step-up TOTP code from the refund
+// request: a ?totp= query param wins, otherwise a small JSON body {"totp":"..."}.
+// The body is size-limited so a hostile client cannot force an unbounded read,
+// and refund reads nothing else from the body so consuming it here is harmless.
+func refundTOTPCode(r *http.Request) string {
+	if c := strings.TrimSpace(r.URL.Query().Get("totp")); c != "" {
+		return c
+	}
+	if r.Body == nil {
+		return ""
+	}
+	var body struct {
+		TOTP string `json:"totp"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+	return strings.TrimSpace(body.TOTP)
 }

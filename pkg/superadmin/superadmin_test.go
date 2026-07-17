@@ -268,10 +268,10 @@ func TestForcePasswordReset_AdminSeesOnly202(t *testing.T) {
 // Test 8a: Refund handler returns 422 when the txn_id doesn't belong to the account.
 // This verifies the ownership check added to prevent cross-account refund abuse.
 func TestRefundHandler_WrongAccount_Returns422(t *testing.T) {
-	_, saStore, al := openTestStores(t)
+	authStore, saStore, al := openTestStores(t)
 	os.Unsetenv("PAYSTACK_SECRET_KEY")
 
-	handler := superadmin.HandleRefund(saStore, al)
+	handler := superadmin.HandleRefund(saStore, authStore, al)
 	// txn1 is not in billing_transactions for account id1 (table may not exist / row absent).
 	req := httptest.NewRequest("POST", "/api/superadmin/accounts/id1/refund?txn_id=txn1", nil)
 	ctx := context.WithValue(req.Context(), superadmin.ExportedCtxAdminAccountID, "actor-id")
@@ -320,7 +320,7 @@ func TestRefundHandler_NoKey_Returns502(t *testing.T) {
 
 	// Route through ServeMux so r.PathValue("id") is populated.
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/superadmin/accounts/{id}/refund", superadmin.HandleRefund(saStore, al))
+	mux.Handle("POST /api/superadmin/accounts/{id}/refund", superadmin.HandleRefund(saStore, authStore, al))
 
 	req := httptest.NewRequest("POST", "/api/superadmin/accounts/"+acctID+"/refund?txn_id=txn_refund502", nil)
 	ctx := context.WithValue(req.Context(), superadmin.ExportedCtxAdminAccountID, "actor-id")

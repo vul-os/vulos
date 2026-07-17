@@ -16,6 +16,7 @@
 package superadmin
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"os"
@@ -61,14 +62,22 @@ func redirectErr(w http.ResponseWriter, r *http.Request, dest, msg string) {
 // verifyStepUpTOTP validates an operator-supplied TOTP code against their own
 // enrolled secret. Returns true when step-up is not required.
 func (p *Pages) verifyStepUpTOTP(r *http.Request, code string) bool {
+	return verifyStepUpTOTP(r.Context(), p.auth, AdminAccountIDFromCtx(r.Context()), code)
+}
+
+// verifyStepUpTOTP is the package-level step-up check shared by the HTML confirm
+// pages (Pages.verifyStepUpTOTP) and the JSON admin API (accounts.go's
+// HandleRefund). It validates code against the operator's OWN enrolled TOTP
+// secret. Returns true when step-up is not required (VULOS_ADMIN_REAUTH_TOTP
+// unset); otherwise fail-closed on any missing secret / bad code / KEK error.
+func verifyStepUpTOTP(ctx context.Context, authStore *auth.Store, accountID, code string) bool {
 	if !stepUpTOTPRequired() {
 		return true
 	}
-	accountID := AdminAccountIDFromCtx(r.Context())
-	if accountID == "" || code == "" {
+	if authStore == nil || accountID == "" || code == "" {
 		return false
 	}
-	encSecret, enabled, err := p.auth.LoadTOTPSecret(r.Context(), accountID)
+	encSecret, enabled, err := authStore.LoadTOTPSecret(ctx, accountID)
 	if err != nil || !enabled || encSecret == nil {
 		return false
 	}
