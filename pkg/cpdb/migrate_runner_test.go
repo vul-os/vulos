@@ -46,6 +46,55 @@ func TestMigrate_ChecksumTamper_FailClosed(t *testing.T) {
 	}
 }
 
+// TestMigrate_ChecksumDrift_ReconcileOptIn is the controlled escape hatch for a
+// clean-baseline fold deployed against an EXISTING db that can't be reset (prod):
+// with VULOS_MIGRATE_RECONCILE_CHECKSUMS=1, a drifted checksum is BACKFILLED to
+// the current file — accepted WITHOUT re-running the DDL — instead of failing
+// closed. This prevents the fold from crash-looping the control plane on boot.
+func TestMigrate_ChecksumDrift_ReconcileOptIn(t *testing.T) {
+	db := openMem(t)
+
+	orig := fstest.MapFS{
+		"0001_reconcile.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE IF NOT EXISTS reconcile_t (id TEXT PRIMARY KEY)`),
+		},
+	}
+	if err := db.Migrate(orig); err != nil {
+		t.Fatalf("initial migrate: %v", err)
+	}
+
+	// Same filename, different content (the clean-baseline fold rewrote it).
+	folded := fstest.MapFS{
+		"0001_reconcile.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE IF NOT EXISTS reconcile_t (id TEXT PRIMARY KEY, extra TEXT)`),
+		},
+	}
+
+	// Without the opt-in, this drift must still fail closed (default guard).
+	if err := db.Migrate(folded); err == nil {
+		t.Fatal("drift must fail closed when VULOS_MIGRATE_RECONCILE_CHECKSUMS is unset")
+	}
+
+	// With the opt-in, the runner reconciles (backfills the checksum) and boots.
+	t.Setenv("VULOS_MIGRATE_RECONCILE_CHECKSUMS", "1")
+	if err := db.Migrate(folded); err != nil {
+		t.Fatalf("reconcile opt-in: drift should be accepted, got: %v", err)
+	}
+
+	// The DDL was NOT re-run: the folded file's new `extra` column must be absent
+	// (reconcile only updates the ledger checksum, it never applies the body).
+	if _, err := db.Exec(`SELECT extra FROM reconcile_t`); err == nil {
+		t.Error("reconcile must NOT re-run the migration DDL (the new column should not exist)")
+	}
+
+	// The ledger checksum is now the folded file's: a later byte-identical boot is
+	// a clean no-op even with the env unset again.
+	t.Setenv("VULOS_MIGRATE_RECONCILE_CHECKSUMS", "")
+	if err := db.Migrate(folded); err != nil {
+		t.Fatalf("post-reconcile re-boot should be a clean no-op, got: %v", err)
+	}
+}
+
 // TestMigrate_UnchangedReapply_OK is the companion: re-applying the byte-identical
 // file (the normal boot path) must be a clean no-op, not a false tamper trip.
 func TestMigrate_UnchangedReapply_OK(t *testing.T) {

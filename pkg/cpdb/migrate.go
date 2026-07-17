@@ -46,6 +46,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -197,7 +199,24 @@ func (db *DB) Migrate(fsys fs.FS) error {
 					return fmt.Errorf("cpdb/migrate: backfill checksum %q: %w", name, uerr)
 				}
 			} else if prev != sum {
-				return fmt.Errorf("cpdb/migrate: applied migration %q was modified after being applied (checksum %s != recorded %s); never edit an applied migration", name, sum, prev)
+				// CONTROLLED RECONCILE (prod clean-baseline roll-out): when the
+				// operator explicitly opts in, accept the changed file content as
+				// canonical by backfilling the recorded checksum WITHOUT re-running
+				// the DDL. This lets an intentional clean-baseline fold (which
+				// rewrites already-applied files) deploy against an EXISTING database
+				// that cannot be reset (e.g. prod) instead of crash-looping on this
+				// guard. The default (env unset) stays strictly fail-closed.
+				if reconcileChecksums() {
+					log.Printf("[cpdb/migrate] WARNING: reconciling drifted checksum for %q (recorded %s → %s) — VULOS_MIGRATE_RECONCILE_CHECKSUMS is set, so the changed migration is accepted WITHOUT re-running its DDL; verify the live schema still matches the new file", name, prev, sum)
+					if _, uerr := db.Exec(
+						db.Rebind(`UPDATE _schema_migrations SET checksum = ? WHERE filename = ?`),
+						sum, name,
+					); uerr != nil {
+						return fmt.Errorf("cpdb/migrate: reconcile checksum %q: %w", name, uerr)
+					}
+				} else {
+					return fmt.Errorf("cpdb/migrate: applied migration %q was modified after being applied (checksum %s != recorded %s); never edit an applied migration (set VULOS_MIGRATE_RECONCILE_CHECKSUMS=1 to accept the new content without re-running it)", name, sum, prev)
+				}
 			}
 			continue
 		}
@@ -296,6 +315,19 @@ func isDuplicateColumnErr(err error) bool {
 func checksumOf(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+
+// reconcileChecksums reports whether the operator has opted into reconciling a
+// drifted migration checksum (VULOS_MIGRATE_RECONCILE_CHECKSUMS=1|true) instead
+// of failing closed. This is the controlled escape hatch for deploying an
+// intentional clean-baseline fold — which rewrites already-applied migration
+// files — against an EXISTING database that cannot be reset (e.g. production):
+// the runner backfills the recorded checksum to the current file WITHOUT
+// re-running the DDL. The default (env unset) keeps the strict, fail-closed
+// drift guard so an *accidental* edit to an applied migration is still caught.
+func reconcileChecksums() bool {
+	v := strings.TrimSpace(os.Getenv("VULOS_MIGRATE_RECONCILE_CHECKSUMS"))
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // loadApplied returns filename → recorded checksum (checksum is "" for legacy

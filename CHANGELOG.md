@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Opt-in migration checksum reconcile** (`VULOS_MIGRATE_RECONCILE_CHECKSUMS=1`):
+  a controlled escape hatch for deploying an intentional clean-baseline migration
+  fold against an EXISTING database that cannot be reset (e.g. production). When
+  set, `cpdb`'s migration runner backfills a drifted migration's recorded
+  checksum to the current file — accepting the changed content WITHOUT re-running
+  its DDL — and logs a loud warning, instead of failing closed and crash-looping
+  the control plane on boot. The default (env unset) keeps the strict,
+  fail-closed drift guard so an *accidental* edit to an applied migration is
+  still caught. (`pkg/cpdb/migrate.go`, regression test in
+  `pkg/cpdb/migrate_runner_test.go`.)
+
+### Fixed
+
+- **Product mini-site landing pages rendered blank** in production: the apex SPA
+  handler stamped the strict SPA CSP (`frame-ancestors 'none'`) plus
+  `X-Frame-Options: DENY` onto the self-contained `landing.html` files, which the
+  marketing site embeds in a **same-origin `<iframe>`** — so the browser refused
+  to render them. First-party static `*.html` sub-pages are now served with a
+  framable, inline-friendly `SelfContainedPageCSP` (`frame-ancestors 'self'` +
+  `X-Frame-Options: SAMEORIGIN`); the SPA shell and hashed assets stay strict.
+  (`pkg/cproutes/spa.go`, regression test in `pkg/cproutes/spa_csp_test.go`.)
+
 ### Planned
 
 - Wire the remaining operational route groups — device enrollment (RFC-8628),
