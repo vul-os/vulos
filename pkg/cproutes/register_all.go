@@ -25,6 +25,7 @@ import (
 	"github.com/vul-os/vulos-management/pkg/billingport"
 	"github.com/vul-os/vulos-management/pkg/cpdb"
 	"github.com/vul-os/vulos-management/pkg/oauthclient"
+	"github.com/vul-os/vulos-management/pkg/relayscale"
 )
 
 // OperationalDeps carries the shared collaborators the operational route set is
@@ -43,6 +44,16 @@ type OperationalDeps struct {
 	// AdminAccountID is the account id treated as the platform super-admin for
 	// the abuse console (empty disables those admin gates → deny).
 	AdminAccountID string
+	// RelayProvisioner is the relay-pool scaling seam (default: manual). Its name
+	// + the relay-scale policy drive the demand API mounted below.
+	RelayProvisioner relayscale.RelayProvisioner
+	// DDoSMiddleware, when non-nil, receives the DDoS defence middleware stack
+	// (metrics/blocklist/geoip/conncap/iprate/tarpit/captcha). The server builder
+	// (cpserver.New) uses this to thread those layers into the global middleware
+	// chain that wraps the whole mux — previously the stack was registered's
+	// routes were mounted but the middleware layers themselves were dropped, so a
+	// self-host binary served a bare mux with no global protections.
+	DDoSMiddleware func([]func(http.Handler) http.Handler)
 }
 
 // RegisterOperational mounts the operational route surface and returns the
@@ -101,6 +112,12 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// fly/tigris cost readers are nil in self-host (budget readers return 0).
 	ddosR := WireDDoS(mux, deps.DBDir, al, nil, nil)
 	add(ddosR.Closer)
+	// Hand the DDoS middleware stack to the server builder so it can wrap the mux
+	// (M1: the self-host binary otherwise served a bare mux with these layers
+	// registered-but-never-applied).
+	if deps.DDoSMiddleware != nil {
+		deps.DDoSMiddleware(ddosR.Middlewares)
+	}
 
 	// Abuse detector + console. The shared-secret gate reads CP_SHARED_SECRET.
 	_, abuseCloser := WireAbuse(mux, deps.DBDir, deps.AuthStore, deps.AdminAccountID, al, os.Getenv("CP_SHARED_SECRET"))
@@ -146,6 +163,12 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 
 	// Boot/first-run endpoints.
 	RegisterBoot(mux)
+
+	// Relay-scaling demand API (GET /api/relay/scale/demand, POST .../observe).
+	// Publishes desired per-region relay counts for an external scaler regardless
+	// of the active provisioner (manual by default). Observe is CP_SHARED_SECRET-
+	// gated (fail-closed).
+	wireRelayScaleDemand(mux, deps.RelayProvisioner)
 
 	// NOT wired by this zero-config default (each is fail-closed on a required
 	// secret / needs a store-opening Wire* helper that still lives in the

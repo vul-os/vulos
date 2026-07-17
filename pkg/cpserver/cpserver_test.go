@@ -74,3 +74,28 @@ func do(h http.Handler, method, path string) *httptest.ResponseRecorder {
 	h.ServeHTTP(rr, req)
 	return rr
 }
+
+// TestNew_GlobalMiddlewareApplied proves the M1 fix: the assembled handler is no
+// longer a bare mux — it is wrapped in the global defence-in-depth chain, so every
+// response carries the RequestID + SecureHeaders that main.go's chain applies.
+func TestNew_GlobalMiddlewareApplied(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()}, cpserver.Deps{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/healthz")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200", rr.Code)
+	}
+	if rr.Header().Get("X-Request-ID") == "" {
+		t.Error("missing X-Request-ID header — RequestID middleware not wrapping the mux")
+	}
+	if got := rr.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff — SecureHeaders not wrapping the mux", got)
+	}
+	if got := rr.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("X-Frame-Options = %q, want DENY — SecureHeaders not wrapping the mux", got)
+	}
+}

@@ -44,6 +44,8 @@ import (
 	"github.com/vul-os/vulos-management/pkg/cpdb"
 	"github.com/vul-os/vulos-management/pkg/cproutes"
 	"github.com/vul-os/vulos-management/pkg/env"
+	"github.com/vul-os/vulos-management/pkg/middleware"
+	"github.com/vul-os/vulos-management/pkg/relayscale"
 	"github.com/vul-os/vulos-management/pkg/storageport"
 )
 
@@ -136,6 +138,13 @@ type Deps struct {
 	// storageport.NewNoopProvisioner (bring-your-own-bucket; provisions nothing).
 	StorageProvisioner storageport.StorageProvisioner
 
+	// RelayProvisioner scales the relay pool on the operator's substrate. Default:
+	// resolved from RELAY_PROVISIONER (manual|external|kubernetes|firecracker|
+	// proxmox), falling back to relayscale.ManualProvisioner (bring-your-own-relay;
+	// provisions nothing). A commercial distributor injects its managed
+	// multi-provider (Fly/Hetzner/Vultr) here, bypassing the env registry.
+	RelayProvisioner relayscale.RelayProvisioner
+
 	// Logger is the structured logger. Default: slog.Default().
 	Logger *slog.Logger
 
@@ -163,6 +172,17 @@ func (d *Deps) withDefaults() {
 	if d.Logger == nil {
 		d.Logger = slog.Default()
 	}
+	if d.RelayProvisioner == nil {
+		// Resolve from RELAY_PROVISIONER; a misconfigured provider (e.g. kubernetes
+		// without a token) fails closed to manual so the CP still boots and a
+		// self-hoster who set nothing gets bring-your-own-relay.
+		if p, err := relayscale.ProvisionerFromEnv(); err == nil {
+			d.RelayProvisioner = p
+		} else {
+			d.Logger.Warn("relay provisioner config invalid; falling back to manual", "err", err)
+			d.RelayProvisioner = relayscale.NewManualProvisioner()
+		}
+	}
 }
 
 // Runtime is the shared state a RouteRegistrar builds handlers against. It
@@ -182,6 +202,7 @@ type Runtime struct {
 	Billing            billingport.BillingProvider
 	Entitlements       billingport.EntitlementResolver
 	StorageProvisioner storageport.StorageProvisioner
+	RelayProvisioner   relayscale.RelayProvisioner
 	Logger             *slog.Logger
 }
 
@@ -224,6 +245,7 @@ func New(cfg Config, deps Deps) (*Server, error) {
 		Billing:            deps.Billing,
 		Entitlements:       deps.Entitlements,
 		StorageProvisioner: deps.StorageProvisioner,
+		RelayProvisioner:   deps.RelayProvisioner,
 		Logger:             deps.Logger,
 	}
 
@@ -234,12 +256,15 @@ func New(cfg Config, deps Deps) (*Server, error) {
 	// keys, OIDC provider, mobile push, DDoS, abuse, security, legal, products,
 	// boot, …) built against the injected seams. The commercial module appends
 	// its own route registrars via deps.Routes.
+	var ddosMWs []func(http.Handler) http.Handler
 	opClosers := cproutes.RegisterOperational(mux, cproutes.OperationalDeps{
-		AuthStore:      rt.AuthStore,
-		AuthDB:         rt.DB,
-		Entitlements:   rt.Entitlements,
-		DBDir:          cfg.DBDir,
-		AdminAccountID: os.Getenv("CP_ADMIN_ACCOUNT_ID"),
+		AuthStore:        rt.AuthStore,
+		AuthDB:           rt.DB,
+		Entitlements:     rt.Entitlements,
+		DBDir:            cfg.DBDir,
+		AdminAccountID:   os.Getenv("CP_ADMIN_ACCOUNT_ID"),
+		RelayProvisioner: rt.RelayProvisioner,
+		DDoSMiddleware:   func(mws []func(http.Handler) http.Handler) { ddosMWs = mws },
 	})
 
 	for i, reg := range deps.Routes {
@@ -257,12 +282,42 @@ func New(cfg Config, deps Deps) (*Server, error) {
 		closers: opClosers,
 		http: &http.Server{
 			Addr:         cfg.Addr,
-			Handler:      mux,
+			Handler:      globalMiddleware(mux, ddosMWs),
 			ReadTimeout:  cfg.ReadTimeout,
 			WriteTimeout: cfg.WriteTimeout,
 		},
 		onStart: deps.OnStart,
 	}, nil
+}
+
+// globalMiddleware wraps the assembled mux in the same defence-in-depth chain the
+// cloud composition root (backend/cp/cmd/server/main.go) applies, so the self-host
+// binary is no longer a bare mux with no global protections (M1). Order, outermost
+// → innermost:
+//
+//	RequestID → PanicRecovery → SecureHeaders → CORS → CSRFOriginCheck
+//	  → RateLimit (when enabled) → DDoS layers → mux
+//
+// The CORS/CSRF allow-list and the rate-limit toggle come from the environment
+// profile (env.Get): a self-host prod deployment enforces the full stack, while a
+// local profile keeps rate-limiting off for curl-testing. CSRFOriginCheck degrades
+// to pass-through when no origins are configured.
+func globalMiddleware(h http.Handler, ddosMWs []func(http.Handler) http.Handler) http.Handler {
+	defaults := env.Get()
+	mws := []func(http.Handler) http.Handler{
+		middleware.RequestID,
+		middleware.PanicRecovery,
+		middleware.SecureHeaders,
+		middleware.CORSWithOrigins(defaults.CORSOrigins),
+		middleware.CSRFOriginCheck(defaults.CORSOrigins),
+	}
+	if defaults.RateLimitEnabled {
+		mws = append(mws, middleware.RateLimit(middleware.DefaultRateLimitConfig))
+	}
+	// DDoS layers run after CORS/CSRF so pre-flight OPTIONS are not counted as
+	// attack traffic (matches cloud's ordering).
+	mws = append(mws, ddosMWs...)
+	return middleware.Chain(h, mws...)
 }
 
 // Runtime returns the shared runtime, primarily for tests and OnStart hooks.
