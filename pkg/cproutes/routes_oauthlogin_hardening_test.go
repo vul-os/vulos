@@ -35,8 +35,8 @@ func TestOAuthSignup_PasswordlessSession_DeniedOnGatedRoutes(t *testing.T) {
 
 	flow, state := startFlow(t, mux, "test")
 	rr := callback(t, mux, "test", "code", state, flow)
-	if rr.Header().Get("Location") != setPasswordPath {
-		t.Fatalf("new social signup: expected redirect to %s, got %s", setPasswordPath, rr.Header().Get("Location"))
+	if rr.Header().Get("Location") != consolePath(setPasswordPath) {
+		t.Fatalf("new social signup: expected redirect to %s, got %s", consolePath(setPasswordPath), rr.Header().Get("Location"))
 	}
 	sess := sessionCookie(rr)
 	if sess == "" {
@@ -80,7 +80,7 @@ func TestOAuthCollision_EmailCaseNormalized_NoTakeover(t *testing.T) {
 	flow, state := startFlow(t, mux, "test")
 	rr := callback(t, mux, "test", "code", state, flow)
 	loc := rr.Header().Get("Location")
-	if !strings.HasPrefix(loc, linkAccountPath) {
+	if !strings.HasPrefix(loc, consolePath(linkAccountPath)) {
 		t.Fatalf("case-variant collision: expected link path, got %s", loc)
 	}
 	if sessionCookie(rr) != "" {
@@ -224,7 +224,7 @@ func TestOAuthLink_HonoursExistingTOTP_NoSkip(t *testing.T) {
 func mustLinkToken(t *testing.T, rr *httptest.ResponseRecorder) string {
 	t.Helper()
 	loc := rr.Header().Get("Location")
-	if !strings.HasPrefix(loc, linkAccountPath) {
+	if !strings.HasPrefix(loc, consolePath(linkAccountPath)) {
 		t.Fatalf("expected collision→link redirect, got %s", loc)
 	}
 	u, _ := url.Parse(loc)

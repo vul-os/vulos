@@ -195,8 +195,8 @@ func TestOAuthSignup_ForcesPasswordBeforeUsable(t *testing.T) {
 	flow, state := startFlow(t, mux, "test")
 	rr := callback(t, mux, "test", "code", state, flow)
 
-	if got := rr.Header().Get("Location"); got != setPasswordPath {
-		t.Fatalf("new social signup: expected redirect to %s, got %s", setPasswordPath, got)
+	if got := rr.Header().Get("Location"); got != consolePath(setPasswordPath) {
+		t.Fatalf("new social signup: expected redirect to %s, got %s", consolePath(setPasswordPath), got)
 	}
 	sess := sessionCookie(rr)
 	if sess == "" {
@@ -270,8 +270,8 @@ func TestOAuthCollision_RequiresPasswordProof_NoTakeover(t *testing.T) {
 	rr := callback(t, mux, "test", "code", state, flow)
 
 	loc := rr.Header().Get("Location")
-	if !strings.HasPrefix(loc, linkAccountPath) {
-		t.Fatalf("collision: expected redirect to %s, got %s", linkAccountPath, loc)
+	if !strings.HasPrefix(loc, consolePath(linkAccountPath)) {
+		t.Fatalf("collision: expected redirect to %s, got %s", consolePath(linkAccountPath), loc)
 	}
 	if sessionCookie(rr) != "" {
 		t.Fatal("collision SILENTLY issued a session — account takeover")
@@ -308,7 +308,7 @@ func TestOAuthCollision_RequiresPasswordProof_NoTakeover(t *testing.T) {
 	if sessionCookie(rr2) == "" {
 		t.Fatal("linked social login did not issue a session on repeat")
 	}
-	if strings.HasPrefix(rr2.Header().Get("Location"), linkAccountPath) {
+	if strings.HasPrefix(rr2.Header().Get("Location"), consolePath(linkAccountPath)) {
 		t.Error("linked social login incorrectly re-prompted for linking")
 	}
 }
@@ -325,7 +325,7 @@ func TestOAuthCollision_UnverifiedEmail_Refused(t *testing.T) {
 	if sessionCookie(rr) != "" {
 		t.Fatal("unverified collision issued a session")
 	}
-	if strings.Contains(rr.Header().Get("Location"), linkAccountPath) {
+	if strings.Contains(rr.Header().Get("Location"), consolePath(linkAccountPath)) {
 		t.Error("unverified collision offered a link token")
 	}
 }

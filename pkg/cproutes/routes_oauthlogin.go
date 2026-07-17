@@ -55,14 +55,35 @@ var oauthLoginSecureCookie = true
 func SetOAuthLoginSecureCookie(secure bool) { oauthLoginSecureCookie = secure }
 
 const (
-	oauthFlowCookie       = "vc_oauth"       // transient state+verifier cookie
-	oauthFlowTTL          = 10 * time.Minute // authorize→callback window
-	oauthLinkTTL          = 10 * time.Minute // link-token validity
+	oauthFlowCookie = "vc_oauth"       // transient state+verifier cookie
+	oauthFlowTTL    = 10 * time.Minute // authorize→callback window
+	oauthLinkTTL    = 10 * time.Minute // link-token validity
+	// The following are console-relative sub-paths; the callback prepends the
+	// console base (see consolePath) before redirecting the browser.
 	setPasswordPath       = "/onboarding/set-password"
 	linkAccountPath       = "/onboarding/link-account"
 	oauthEmailPath        = "/onboarding/oauth-email" // mandatory-email entry page
 	connectedAccountsPath = "/account/social"         // connect/disconnect surface
 )
+
+// consoleBasePath is the URL basename the auth/onboarding SPA is mounted under.
+// The social-login callback redirects the browser to pages relative to this base
+// (e.g. "<base>/login", "<base>/2fa", "<base>/onboarding/..."). It defaults to
+// "/console" to match the console shell mount and is overridable via
+// CONSOLE_BASE_PATH for alternate deployments. A bare "/" disables the prefix.
+var consoleBasePath = func() string {
+	if v := strings.TrimSpace(os.Getenv("CONSOLE_BASE_PATH")); v != "" {
+		if v == "/" {
+			return ""
+		}
+		return "/" + strings.Trim(v, "/")
+	}
+	return "/console"
+}()
+
+// consolePath joins the configured console base with a rooted sub-path such as
+// "/login" or "/onboarding/set-password".
+func consolePath(sub string) string { return consoleBasePath + sub }
 
 // oauthFlowMode distinguishes the two authorize→callback flows carried by the
 // transient cookie: "" / "login" (sign in or sign up) vs "connect" (link an
@@ -323,7 +344,7 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 			q := url.Values{}
 			q.Set("provider", ident.Provider)
 			q.Set("token", signBlob(secret, payload))
-			http.Redirect(w, r, oauthEmailPath+"?"+q.Encode(), http.StatusFound)
+			http.Redirect(w, r, consolePath(oauthEmailPath)+"?"+q.Encode(), http.StatusFound)
 			return
 		}
 
@@ -645,7 +666,7 @@ func resolveSocialLogin(w http.ResponseWriter, r *http.Request, st *auth.Store, 
 		redirectLoginResult(w, r, out.login, next)
 	case outcomeSetPassword:
 		auth.SetSessionCookie(w, out.session)
-		http.Redirect(w, r, setPasswordPath, http.StatusFound)
+		http.Redirect(w, r, consolePath(setPasswordPath), http.StatusFound)
 	case outcomeCollision:
 		if !ident.EmailVerified {
 			redirectLoginError(w, r, "email_unverified")
@@ -655,7 +676,7 @@ func resolveSocialLogin(w http.ResponseWriter, r *http.Request, st *auth.Store, 
 		q.Set("provider", ident.Provider)
 		q.Set("email", ident.Email)
 		q.Set("token", buildLinkToken(secret, ident, out.userID))
-		http.Redirect(w, r, linkAccountPath+"?"+q.Encode(), http.StatusFound)
+		http.Redirect(w, r, consolePath(linkAccountPath)+"?"+q.Encode(), http.StatusFound)
 	}
 }
 
@@ -732,19 +753,19 @@ func redirectConnect(w http.ResponseWriter, r *http.Request, provider, errCode s
 	} else {
 		q.Set("connected", provider)
 	}
-	http.Redirect(w, r, connectedAccountsPath+"?"+q.Encode(), http.StatusFound)
+	http.Redirect(w, r, consolePath(connectedAccountsPath)+"?"+q.Encode(), http.StatusFound)
 }
 
 // redirectLoginResult issues cookies for a LoginResult from a browser (redirect)
 // social login and navigates to the right SPA destination.
 func redirectLoginResult(w http.ResponseWriter, r *http.Request, res *auth.LoginResult, next string) {
-	dest := "/login"
+	dest := consolePath("/login")
 	if n := safeNextPath(next); n != "" {
 		dest = n
 	}
 	switch {
 	case res.EmailVerificationRequired:
-		http.Redirect(w, r, "/login?error=email_verification_required", http.StatusFound)
+		http.Redirect(w, r, consolePath("/login")+"?error=email_verification_required", http.StatusFound)
 		return
 	case res.TOTPRequired || res.PasskeyAs2FA:
 		// Partial session cookie already carries the token; drive the 2FA step.
@@ -758,10 +779,10 @@ func redirectLoginResult(w http.ResponseWriter, r *http.Request, res *auth.Login
 			SameSite: http.SameSiteLaxMode,
 		})
 		if res.PasskeyAs2FA {
-			http.Redirect(w, r, "/login?step=passkey", http.StatusFound)
+			http.Redirect(w, r, consolePath("/login")+"?step=passkey", http.StatusFound)
 			return
 		}
-		http.Redirect(w, r, "/2fa", http.StatusFound)
+		http.Redirect(w, r, consolePath("/2fa"), http.StatusFound)
 		return
 	default:
 		auth.SetSessionCookie(w, res.Token)
@@ -802,5 +823,5 @@ func clearOAuthFlowCookie(w http.ResponseWriter) {
 // redirectLoginError sends the browser back to /login with a short error code the
 // SPA can render. It never leaks internal detail.
 func redirectLoginError(w http.ResponseWriter, r *http.Request, code string) {
-	http.Redirect(w, r, "/login?error="+url.QueryEscape(code), http.StatusFound)
+	http.Redirect(w, r, consolePath("/login")+"?error="+url.QueryEscape(code), http.StatusFound)
 }

@@ -110,8 +110,8 @@ func TestOAuthCompleteEmail_ForcesEmailThenCreatesAccount(t *testing.T) {
 		t.Fatalf("callback: got %d %s", rr.Code, rr.Body.String())
 	}
 	loc, _ := url.Parse(rr.Header().Get("Location"))
-	if loc.Path != oauthEmailPath {
-		t.Fatalf("callback location = %q, want %q", loc.Path, oauthEmailPath)
+	if loc.Path != consolePath(oauthEmailPath) {
+		t.Fatalf("callback location = %q, want %q", loc.Path, consolePath(oauthEmailPath))
 	}
 	token := loc.Query().Get("token")
 	if token == "" {
