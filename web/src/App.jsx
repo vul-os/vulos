@@ -1,141 +1,94 @@
 /**
- * App.jsx — vulos-management authed SPA shell (phase 1 scaffold).
+ * App.jsx — the authenticated console (phase 3a).
  *
- * Renders the base app chrome — top bar + left sidebar nav + content area —
- * around a routed page. This is the FOUNDATION only: a minimal authed shell and
- * a placeholder Dashboard that proves the commercial seam works (it renders
- * <BillingSlot/>, which is NoOp/empty in this OSS build). The real auth flow and
- * console pages migrate in phase 2 — do not add them here yet.
+ * Root.jsx mounts this under <RequireAuth>. App owns the console's own
+ * sub-routing: it resolves the app-relative path (from the basename-aware router)
+ * to a lazily-loaded console page and renders it inside the console shell
+ * (console/Layout.jsx — sidebar + topbar + mobile drawer).
  *
- * Design system: theme.css is copied verbatim from the marketing site
- * (vulos-cloud), so colours/spacing/type are identical to vulos.org. Inter is
- * self-hosted via @fontsource (see theme.css) — air-gappable, no Google Fonts.
+ * Route map (app-relative; the router prepends /console):
+ *   /                 → Dashboard        (overview)
+ *   /account-status   → AccountStatus     (GET /api/account/status)
+ *   /boxes            → Boxes             (GET /api/fleet/devices + ProvisioningSlot)
+ *   /devices          → Devices           (GET /api/fleet/devices, POST /api/fleet/decommission)
+ *   /enroll           → Enroll            (POST /enroll/approve|deny)
+ *   /status           → Status            (GET /api/support/status)
+ *   /developer        → Developer         (/api/developer/keys|webhooks|mcp-servers)
+ *   /audit            → AuditLog          (GET /api/org/audit)
+ *   /privacy          → PrivacyDashboard  (/api/compliance/*, /api/account/export)
+ *   COMMERCIAL (seam-gated, shown in nav only when commercial.enabled):
+ *   /usage            → Usage    → UsageSlot
+ *   /invoices         → Invoices → InvoicesSlot
+ *   /billing          → Billing  → BillingSlot
+ *
+ * BILLING NEVER SHIPS AS REAL CODE HERE: usage/invoices/billing render only the
+ * commercial-seam slots, which are NoOp/empty in this OSS build.
  */
 
-import { useRouter, toFullPath } from './router.jsx'
-import { useAuth } from './auth/AuthProvider.jsx'
-import { clientReplace } from './auth/nav.js'
-import Dashboard from './pages/Dashboard.jsx'
-import { commercial } from '@vulos/commercial-seam'
+import { lazy, Suspense } from 'react'
+import { useRouter } from './router.jsx'
+import Layout from './console/Layout.jsx'
 
-/* ─── Sidebar nav model ───────────────────────────────────────────────────────
-   Placeholder groups for phase 1. Real routes wire in phase 2. The "Account"
-   group is where commercial affordances (billing/usage/invoices) will surface
-   IF the seam is enabled — in OSS they simply render nothing. */
-const NAV_GROUPS = [
-  {
-    label: 'Overview',
-    items: [{ path: '/', label: 'Dashboard' }],
-  },
-  {
-    label: 'Operate',
-    items: [
-      { path: '/fleet', label: 'Fleet', soon: true },
-      { path: '/devices', label: 'Devices', soon: true },
-    ],
-  },
-  {
-    label: 'Account',
-    items: [
-      { path: '/account', label: 'Account', soon: true },
-      // Only advertised when a commercial seam is wired; hidden in OSS.
-      ...(commercial.enabled ? [{ path: '/billing', label: 'Billing' }] : []),
-    ],
-  },
-]
+/* ─── Lazy console pages ─────────────────────────────────────────────────── */
+const Dashboard        = lazy(() => import('./console/pages/Dashboard.jsx'))
+const AccountStatus    = lazy(() => import('./console/pages/AccountStatus.jsx'))
+const Boxes            = lazy(() => import('./console/pages/Boxes.jsx'))
+const Devices          = lazy(() => import('./console/pages/Devices.jsx'))
+const Enroll           = lazy(() => import('./console/pages/Enroll.jsx'))
+const Status           = lazy(() => import('./console/pages/Status.jsx'))
+const Developer        = lazy(() => import('./console/pages/Developer.jsx'))
+const AuditLog         = lazy(() => import('./console/pages/AuditLog.jsx'))
+const PrivacyDashboard = lazy(() => import('./console/pages/PrivacyDashboard.jsx'))
+// Commercial seam pages (Billing default + named Usage/Invoices exports).
+const Billing          = lazy(() => import('./console/pages/Billing.jsx'))
+const Usage            = lazy(() => import('./console/pages/Billing.jsx').then((m) => ({ default: m.Usage })))
+const Invoices         = lazy(() => import('./console/pages/Billing.jsx').then((m) => ({ default: m.Invoices })))
 
-/* ─── Routed pages (phase 1: Dashboard only) ─────────────────────────────── */
-function renderPage(path) {
-  switch (path) {
-    case '/':
-      return <Dashboard />
-    default:
-      return (
-        <div className="vm-empty">
-          <h2>Not built yet</h2>
-          <p>
-            <code>{path}</code> is a phase-2 page. This is the phase-1 scaffold —
-            sign-in and the real console migrate next.
-          </p>
-        </div>
-      )
-  }
+const ROUTES = {
+  '/': Dashboard,
+  '/account-status': AccountStatus,
+  '/boxes': Boxes,
+  '/devices': Devices,
+  '/enroll': Enroll,
+  '/status': Status,
+  '/developer': Developer,
+  '/audit': AuditLog,
+  '/privacy': PrivacyDashboard,
+  '/usage': Usage,
+  '/invoices': Invoices,
+  '/billing': Billing,
 }
 
-function Sidebar({ path }) {
+function PageLoader() {
   return (
-    <aside className="vm-sidebar" aria-label="Console navigation">
-      <div className="vm-brand">
-        <span className="vm-brand-mark" aria-hidden="true">◇</span>
-        <span className="vm-brand-name">Vulos</span>
-        <span className="vm-brand-sub">Management</span>
-      </div>
-      <nav className="vm-nav">
-        {NAV_GROUPS.map((group) => (
-          <div className="vm-nav-group" key={group.label}>
-            <div className="vm-nav-group-label">{group.label}</div>
-            {group.items.map((item) => {
-              const active = item.path === path
-              return (
-                <a
-                  key={item.path}
-                  href={toFullPath(item.path)}
-                  data-router
-                  className={'vm-nav-link' + (active ? ' is-active' : '')}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  {item.label}
-                  {item.soon && <span className="vm-nav-soon">soon</span>}
-                </a>
-              )
-            })}
-          </div>
-        ))}
-      </nav>
-      <div className="vm-sidebar-foot">
-        <span className="vm-seam-badge">
-          seam: {commercial.enabled ? 'commercial' : 'oss'}
-        </span>
-      </div>
-    </aside>
+    <div className="vkl-page-loader" aria-live="polite" aria-label="Loading…">
+      <span className="vkl-page-loader-dot" aria-hidden="true" />
+      <span>Loading…</span>
+    </div>
   )
 }
 
-function TopBar() {
-  const { user, logout } = useAuth()
-
-  const handleSignOut = async () => {
-    await logout()
-    // Session dropped — return to the focused sign-in surface.
-    clientReplace('/login')
-  }
-
+function NotFound({ path }) {
   return (
-    <header className="vm-topbar">
-      <div className="vm-topbar-title">Console</div>
-      <div className="vm-topbar-actions">
-        {user && (
-          <span className="vm-user" title="Signed-in account">
-            {user.email || user.handle || 'account'}
-          </span>
-        )}
-        <button type="button" className="vm-signout" onClick={handleSignOut}>
-          Sign out
-        </button>
-      </div>
-    </header>
+    <div style={{ padding: 'var(--sp-6, 48px) var(--sp-4, 32px)', maxWidth: 560 }}>
+      <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: '1.125rem', margin: 0 }}>Page not found</h2>
+      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-faint)', marginTop: 8 }}>
+        <code>{path}</code> isn&apos;t a console page.{' '}
+        <a href="/console/" data-router style={{ color: 'var(--accent)' }}>Back to the dashboard →</a>
+      </p>
+    </div>
   )
 }
 
 export default function App() {
   const { path } = useRouter()
+  const norm = path.length > 1 ? path.replace(/\/$/, '') : path
+  const Page = ROUTES[norm]
   return (
-    <div className="vm-shell">
-      <Sidebar path={path} />
-      <div className="vm-main">
-        <TopBar />
-        <main className="vm-content">{renderPage(path)}</main>
-      </div>
-    </div>
+    <Layout>
+      <Suspense fallback={<PageLoader />}>
+        {Page ? <Page /> : <NotFound path={norm} />}
+      </Suspense>
+    </Layout>
   )
 }
