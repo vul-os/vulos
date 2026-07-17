@@ -1,0 +1,136 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Vulos desktop shell chrome — top bar + dock.
+   Scoped styles for the shell's premium chrome. STRICTLY token-driven: every
+   colour resolves from an --* CSS variable (defined in index.css) so it tracks
+   the active theme and accent. No one-off hex values live here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Top bar surface ─────────────────────────────────────────────────────────
+   A translucent, blurred panel that floats over the wallpaper in both themes.
+   color-mix keeps it tinted by the theme's elevated surface while staying
+   see-through, so the desktop reads through it like a real menu bar. */
+.vshell-bar {
+  background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 65%, transparent);
+  box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.7);
+}
+
+/* Segment divider between button groups in the bar / trays. */
+.vshell-div {
+  width: 1px;
+  height: 0.875rem;
+  align-self: center;
+  background: color-mix(in srgb, var(--border-emphasis) 55%, transparent);
+}
+
+/* ── Shell icon buttons ──────────────────────────────────────────────────────
+   Shared look for every top-bar affordance (launchpad, mission control, chat,
+   fullscreen). Calm at rest, lifts to a token surface on hover, and shows a
+   filled accent state when active/toggled. */
+.vshell-btn {
+  color: var(--text-tertiary);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.vshell-btn:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+}
+.vshell-btn[data-active='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── Network-exposure chip (the "public ports" widget) ───────────────────────
+   State-coloured soft chip. Colours arrive as inline vars set per state
+   (--chip-fg / --chip-bg / --chip-bd) so this one element drives every tone. */
+.vshell-chip {
+  color: var(--chip-fg);
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-bd);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    filter var(--motion-fast) var(--ease-standard);
+}
+.vshell-chip:hover {
+  filter: brightness(1.14);
+}
+.vshell-chip-dot {
+  background: var(--chip-fg);
+}
+/* Public exposure is the loud state — a gentle attention halo on the dot. */
+.vshell-chip-dot[data-live='true'] {
+  animation: vshellExposePulse 2.4s var(--ease-standard) infinite;
+}
+@keyframes vshellExposePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--chip-fg) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--chip-fg) 0%, transparent);
+  }
+}
+
+/* ── Dock ────────────────────────────────────────────────────────────────────
+   Floating, blurred taskbar. Items lift on hover for a tactile, premium feel. */
+.vshell-dock {
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.6);
+}
+.vshell-dock-item {
+  transition: transform var(--motion-base) var(--ease-out);
+}
+.vshell-dock-item:hover {
+  transform: translateY(-4px);
+}
+.vshell-dock-tile {
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.vshell-dock-tile:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.vshell-dock-tile[data-active='true'] {
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+.vshell-dot {
+  background: var(--text-faint);
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.vshell-dock-item:hover .vshell-dot {
+  background: var(--text-tertiary);
+}
+.vshell-dot[data-active='true'] {
+  background: var(--accent);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   Honour the OS preference: no lifts, no pulses, no colour transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .vshell-btn,
+  .vshell-chip,
+  .vshell-dock-tile,
+  .vshell-dot {
+    transition: none;
+  }
+  .vshell-chip-dot[data-live='true'] {
+    animation: none;
+  }
+  .vshell-dock-item,
+  .vshell-dock-item:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Hide the scrollbar on the dock's horizontal overflow (small screens) while
+   keeping it scrollable — the dock is chrome, a visible track would cheapen it. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
