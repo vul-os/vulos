@@ -413,3 +413,200 @@
     transform: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESKTOP WINDOW CHROME — the frame, titlebar, traffic lights, resize grip and
+   fallback surfaces for a floating window (src/shell/Window.jsx).
+
+   Everything is token-driven so a window reads as a real, lit pane of glass in
+   BOTH themes and retints with the user's accent. Focus is unmistakable: the
+   active window lifts on a deeper shadow + an accent hairline and its titlebar
+   brightens, while inactive windows recede to a calm neutral rim. Keyed off the
+   [data-active] attribute the root sets, so no per-element JS is needed.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Frame + elevation ───────────────────────────────────────────────────────
+   Inactive: a hairline neutral rim + a modest lift. Active: an accent-tinted rim
+   fused with the deeper window shadow token, so the focused window is obvious
+   and both states track the theme (the shadow tokens differ per theme). */
+.vwin {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--border-strong) 92%, transparent),
+    var(--shadow-lg);
+  /* Superset transition: the box-shadow focus cue PLUS the same transform/opacity
+     timings .win-anim (index.css) uses for lifecycle motion. Both classes set the
+     `transition` shorthand on this element, so whichever wins the cascade must
+     still carry the lifecycle values — hence the superset here. The phase-specific
+     .win-anim[data-win-anim="…"] rules (higher specificity) still override during
+     open/close/minimize. */
+  transition:
+    box-shadow var(--motion-base) var(--ease-standard),
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease-out;
+}
+.vwin[data-active] {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 50%, var(--border-strong)),
+    var(--shadow-window);
+}
+
+/* ── Titlebar ────────────────────────────────────────────────────────────────
+   A translucent, faintly-blurred strip built from the elevated surface so it
+   sits above the content in either theme. It brightens when the window is
+   active — the classic focus/blur cue macOS uses. */
+.vwin-titlebar {
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+  backdrop-filter: blur(6px) saturate(120%);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  transition: background var(--motion-base) var(--ease-standard);
+}
+.vwin[data-active] .vwin-titlebar {
+  background: color-mix(in srgb, var(--bg-elevated) 97%, transparent);
+}
+/* Title text recedes when blurred, sharpens on focus. */
+.vwin-title {
+  color: var(--text-faint);
+  transition: color var(--motion-base) var(--ease-standard);
+}
+.vwin[data-active] .vwin-title {
+  color: var(--text-secondary);
+}
+
+/* ── Traffic lights ──────────────────────────────────────────────────────────
+   macOS-style pips mapped to semantic status tokens (close=danger,
+   minimize=warning, maximize=success) so they theme correctly. They're a calm
+   neutral when the window is blurred, light up in colour when it's active OR
+   when the pointer hovers the cluster, and reveal their glyph on cluster hover —
+   the familiar, tactile detail. */
+.vwin-light {
+  position: relative;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, var(--border-emphasis) 85%, transparent);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    filter var(--motion-fast) var(--ease-standard);
+}
+.vwin[data-active] .vwin-light-close,
+.vwin-lights:hover .vwin-light-close {
+  background: var(--status-danger);
+}
+.vwin[data-active] .vwin-light-min,
+.vwin-lights:hover .vwin-light-min {
+  background: var(--status-warning);
+}
+.vwin[data-active] .vwin-light-max,
+.vwin-lights:hover .vwin-light-max {
+  background: var(--status-success);
+}
+.vwin-light:hover {
+  filter: brightness(1.12);
+}
+.vwin-light > svg {
+  width: 7px;
+  height: 7px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.vwin-lights:hover .vwin-light > svg {
+  opacity: 0.75;
+}
+
+/* ── Small titlebar chrome buttons (pop-to-native, save-app) ──────────────────*/
+.vwin-chrome-btn {
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.vwin-chrome-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── Content + fallback surfaces ─────────────────────────────────────────────*/
+.vwin-content {
+  background: var(--bg-base);
+}
+.vwin-fallback {
+  background: color-mix(in srgb, var(--bg-base) 96%, transparent);
+  color: var(--text-tertiary);
+}
+
+/* ── Browser (chromeless) drag strip ─────────────────────────────────────────*/
+.vwin-browserbar {
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  transition: background var(--motion-base) var(--ease-standard);
+}
+.vwin[data-active] .vwin-browserbar {
+  background: color-mix(in srgb, var(--bg-elevated) 98%, transparent);
+}
+
+/* ── Resize grip ─────────────────────────────────────────────────────────────*/
+.vwin-grip {
+  color: color-mix(in srgb, var(--text-faint) 65%, transparent);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.vwin-resize:hover .vwin-grip {
+  color: var(--text-tertiary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE WINDOW SURFACES — on phones/tablets a window is a full-screen sheet
+   (src/layouts/MobileStack.jsx). Same token vocabulary so the mobile shell is
+   correct in light AND dark, not a permanently-dark panel.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.vmob-root {
+  background: var(--bg-base);
+}
+.vmob-bar {
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 45%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.vmob-dock {
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 50%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.vmob-frame {
+  background: var(--bg-base);
+}
+.vmob-switcher {
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.vmob-card {
+  background: var(--bg-surface);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+.vmob-card-body {
+  background: var(--bg-base);
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 45%, transparent);
+}
+
+/* ── Reduced motion for window + mobile chrome ───────────────────────────────*/
+@media (prefers-reduced-motion: reduce) {
+  .vwin,
+  .vwin-titlebar,
+  .vwin-title,
+  .vwin-light,
+  .vwin-light > svg,
+  .vwin-chrome-btn,
+  .vwin-browserbar,
+  .vwin-grip {
+    transition: none;
+  }
+}

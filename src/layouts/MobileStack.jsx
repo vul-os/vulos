@@ -10,6 +10,7 @@ import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
 import { iframeSandboxForURL } from '../core/AppOrigins'
 import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
+import '../shell/shell-chrome.css'
 
 // ORIGIN-01: identical rule to the desktop shell (src/shell/Window.jsx) —
 // allow-same-origin is derived from the frame URL's origin and is granted only
@@ -50,25 +51,25 @@ export default function MobileStack() {
   const openApp = (id) => { focusWindow(id); setView('app') }
 
   return (
-    <div data-shell="mobile" className="fixed inset-0 bg-neutral-950 flex flex-col overflow-hidden">
+    <div data-shell="mobile" className="vmob-root fixed inset-0 flex flex-col overflow-hidden">
       {/* Status bar — safe-area padded so it clears a notch. Shows the active
           app's identity while an app is fullscreen, else the shell brand. */}
-      <div className="safe-pt safe-px shrink-0 bg-neutral-900/60 backdrop-blur-xl border-b border-neutral-800/30">
+      <div className="vmob-bar safe-pt safe-px shrink-0">
         <div className="px-3 h-10 flex items-center justify-between">
           {showApp ? (
             <button
               onClick={() => setView('home')}
               aria-label="Back to home"
-              className="focus-primary -ml-1 h-8 px-1.5 flex items-center gap-2 rounded-lg text-neutral-300 hover:bg-neutral-800/60 transition-colors min-w-0"
+              className="focus-primary -ml-1 h-8 px-1.5 flex items-center gap-2 rounded-lg text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-hover)] transition-colors min-w-0"
             >
-              <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-neutral-500" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
+              <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
               <AppIcon id={activeWin.appId} size={16} />
               <span className="text-sm font-medium truncate">{activeWin.title}</span>
             </button>
           ) : (
             <div className="flex items-center gap-2">
               <img src="/vulos.png" alt="" className="w-4 h-4 opacity-70" />
-              <span className="text-sm font-semibold text-neutral-300">vula</span>
+              <span className="text-sm font-semibold text-[color:var(--text-secondary)]">vula</span>
             </div>
           )}
           <div className="flex items-center gap-2">
@@ -121,7 +122,7 @@ export default function MobileStack() {
           home indicator never overlaps the targets; every target ≥44px. */}
       <nav
         aria-label="System navigation"
-        className="safe-pb safe-px shrink-0 flex items-stretch bg-neutral-900/80 backdrop-blur-md border-t border-neutral-800/40"
+        className="vmob-dock safe-pb safe-px shrink-0 flex items-stretch"
       >
         <DockButton
           label="Home"
@@ -170,7 +171,7 @@ function MobileAppFrame({ win }) {
   const src = win.html ? undefined : (win.appId ? appFrameSrc(win.url, win.appId) : win.url)
 
   if (win.component) {
-    return <div className="absolute inset-0 overflow-y-auto bg-neutral-950 overscroll-contain">{win.component}</div>
+    return <div className="vmob-frame absolute inset-0 overflow-y-auto overscroll-contain">{win.component}</div>
   }
   return (
     <iframe
@@ -178,7 +179,7 @@ function MobileAppFrame({ win }) {
       src={src}
       srcDoc={win.html || undefined}
       title={win.title}
-      className="absolute inset-0 w-full h-full border-0 bg-neutral-950"
+      className="vmob-frame absolute inset-0 w-full h-full border-0"
       sandbox={win.html ? 'allow-scripts' : iframeSandboxForURL(win.url)}
       referrerPolicy="no-referrer"
     />
@@ -192,27 +193,27 @@ function MobileSwitcher({ onOpen, onHome }) {
   const { windows, closeWindow } = useShell()
 
   return (
-    <div className="absolute inset-0 z-10 bg-neutral-950/95 backdrop-blur-xl overflow-y-auto anim-sheet-up">
+    <div className="vmob-switcher absolute inset-0 z-10 overflow-y-auto anim-sheet-up">
       <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-neutral-300">Running apps</h2>
-        <span className="text-xs text-neutral-600">{windows.length} open</span>
+        <h2 className="text-sm font-semibold text-[color:var(--text-secondary)]">Running apps</h2>
+        <span className="text-xs text-[color:var(--text-faint)]">{windows.length} open</span>
       </div>
       {windows.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center px-6">
-          <p className="text-sm text-neutral-500">No apps are running</p>
+          <p className="text-sm text-[color:var(--text-tertiary)]">No apps are running</p>
           <button onClick={onHome} className="mt-3 text-xs accent-text hover:underline">Back to home</button>
         </div>
       ) : (
         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {windows.map(win => (
-            <div key={win.id} className="rounded-2xl overflow-hidden border border-neutral-800/60 bg-neutral-900">
+            <div key={win.id} className="vmob-card rounded-2xl overflow-hidden">
               <div className="flex items-center gap-2 px-3 h-11">
                 <AppIcon id={win.appId} size={18} />
-                <span className="text-sm text-neutral-300 truncate flex-1">{win.title}</span>
+                <span className="text-sm text-[color:var(--text-secondary)] truncate flex-1">{win.title}</span>
                 <button
                   onClick={() => closeWindow(win.id)}
                   aria-label={`Close ${win.title}`}
-                  className="focus-primary touch-target -mr-2 flex items-center justify-center rounded-lg text-neutral-500 hover:text-danger transition-colors"
+                  className="focus-primary touch-target -mr-2 flex items-center justify-center rounded-lg text-[color:var(--text-tertiary)] hover:text-danger transition-colors"
                 >
                   <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
                 </button>
@@ -222,7 +223,7 @@ function MobileSwitcher({ onOpen, onHome }) {
                 aria-label={`Switch to ${win.title}`}
                 className="block w-full text-left"
               >
-                <div className="h-40 bg-neutral-950 border-t border-neutral-800/60 relative pointer-events-none">
+                <div className="vmob-card-body h-40 relative pointer-events-none">
                   <MobileAppFrame win={win} />
                 </div>
               </button>
@@ -242,12 +243,12 @@ function DockButton({ children, label, active, badge, disabled, onClick }) {
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       className={`touch-target flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors
-        ${disabled ? 'opacity-30' : active ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+        ${disabled ? 'opacity-30' : active ? 'text-[color:var(--accent)]' : 'text-[color:var(--text-tertiary)] hover:text-[color:var(--text-primary)]'}`}
     >
       <span className="relative flex items-center justify-center">
         {children}
         {badge ? (
-          <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 accent-bg rounded-full text-[9px] text-white font-semibold flex items-center justify-center">{badge}</span>
+          <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 accent-bg rounded-full text-[9px] text-[color:var(--accent-contrast)] font-semibold flex items-center justify-center">{badge}</span>
         ) : null}
       </span>
       <span className="text-[10px] leading-none">{label}</span>
