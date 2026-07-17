@@ -198,42 +198,44 @@ export default function Calendar({ initialQuery = '' } = {}) {
   return (
     <div className="h-full flex flex-col bg-neutral-950 text-neutral-100 select-none" data-calendar-app>
       {/* Toolbar — wraps on narrow screens; larger touch targets on mobile */}
-      <div className="flex items-center flex-wrap gap-2 gap-y-2 px-3 sm:px-4 py-2.5 border-b border-neutral-800/70 shrink-0">
+      <div className="flex items-center flex-wrap gap-2 gap-y-2 px-3 sm:px-4 py-2.5 border-b border-neutral-800/70 shrink-0 bg-neutral-950/80 backdrop-blur-sm">
         <button
           type="button"
           onClick={() => setMonth(startOfDay(new Date()))}
-          className="text-[12px] font-mono px-3 py-2 sm:py-1 rounded-md border border-neutral-700 hover:bg-neutral-800/60 transition-colors focus-primary"
+          className="text-[12px] font-mono px-3 py-2 sm:py-1 rounded-md border border-neutral-700/80 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary"
         >
           Today
         </button>
         <div className="flex items-center gap-0.5">
           <button type="button" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}
-            className="w-11 h-11 sm:w-7 sm:h-7 text-lg sm:text-base grid place-items-center rounded-md hover:bg-neutral-800/60 focus-primary">‹</button>
+            className="w-11 h-11 sm:w-7 sm:h-7 text-lg sm:text-base grid place-items-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/60 transition-colors focus-primary">‹</button>
           <button type="button" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}
-            className="w-11 h-11 sm:w-7 sm:h-7 text-lg sm:text-base grid place-items-center rounded-md hover:bg-neutral-800/60 focus-primary">›</button>
+            className="w-11 h-11 sm:w-7 sm:h-7 text-lg sm:text-base grid place-items-center rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/60 transition-colors focus-primary">›</button>
         </div>
-        <div className="text-[15px] font-semibold min-w-0 truncate" data-calendar-title>
+        <div className="text-[15px] font-semibold min-w-0 truncate tracking-tight" data-calendar-title>
           {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
         </div>
         <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider text-neutral-500 ml-1"
           title={unavailable ? 'Calendar unavailable' : loading ? 'Loading' : 'Calendar is live'}>
           {!unavailable && !loading && (
-            <><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--status-success)' }} />live</>
+            <><span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--status-success)' }} />live</>
           )}
         </span>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-md border border-neutral-700 overflow-hidden text-[11px] font-mono">
+          <div className="flex rounded-md border border-neutral-700/80 overflow-hidden text-[11px] font-mono p-0.5 gap-0.5">
             <button type="button" onClick={() => setView('month')}
-              className={`px-3 py-2 sm:py-1 ${view === 'month' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/40'}`}>Month</button>
+              className={`px-3 py-1.5 sm:py-1 rounded transition-colors ${view === 'month' ? 'text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
+              style={view === 'month' ? { background: 'var(--accent)' } : undefined}>Month</button>
             <button type="button" onClick={() => setView('agenda')}
-              className={`px-3 py-2 sm:py-1 ${view === 'agenda' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/40'}`}>Agenda</button>
+              className={`px-3 py-1.5 sm:py-1 rounded transition-colors ${view === 'agenda' ? 'text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
+              style={view === 'agenda' ? { background: 'var(--accent)' } : undefined}>Agenda</button>
           </div>
           <button
             type="button"
             onClick={() => openEditorForDay(view === 'month' ? month : now)}
             aria-label="New event"
-            className="text-[12px] px-3 py-2 sm:py-1 rounded-md text-white transition-colors focus-primary whitespace-nowrap"
+            className="text-[12px] px-3 py-2 sm:py-1.5 rounded-md text-white font-medium transition-all hover:brightness-110 active:scale-[0.97] focus-primary whitespace-nowrap shadow-sm"
             style={{ background: 'var(--accent)' }}
           >
             + New event
@@ -242,14 +244,18 @@ export default function Calendar({ initialQuery = '' } = {}) {
       </div>
 
       {unavailable ? (
-        <div className="flex-1 grid place-items-center text-center px-6">
-          <div>
-            <div className="text-neutral-300 text-sm">Calendar unavailable.</div>
-            <div className="text-neutral-500 text-[12px] mt-1 max-w-xs mx-auto">
+        <div className="flex-1 grid place-items-center text-center px-6 animate-[fadeIn_0.2s_ease-out]">
+          <div className="max-w-xs">
+            <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800"
+              style={{ background: 'var(--accent-soft)' }}>
+              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>
+            </div>
+            <div className="text-neutral-200 text-sm font-medium">Calendar unavailable.</div>
+            <div className="text-neutral-500 text-[12px] mt-1.5 leading-relaxed">
               Connect a mail account (Gmail, Outlook, or IMAP/CalDAV) to see and manage your events.
             </div>
             <button type="button" onClick={connectMail}
-              className="mt-3 text-[12px] font-mono px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary">
+              className="mt-4 text-[12px] font-mono px-4 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">
               Connect Mail →
             </button>
           </div>
@@ -277,16 +283,17 @@ export default function Calendar({ initialQuery = '' } = {}) {
 
 function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 animate-[fadeIn_0.18s_ease-out]">
       <div className="grid grid-cols-7 border-b border-neutral-800/70 shrink-0">
-        {WEEKDAYS.map((w) => (
-          <div key={w} className="px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-500 text-center">{w}</div>
+        {WEEKDAYS.map((w, i) => (
+          <div key={w} className={`px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider text-center ${i === 0 || i === 6 ? 'text-neutral-600' : 'text-neutral-500'}`}>{w}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 grid-rows-6 flex-1 min-h-0">
         {days.map((day) => {
           const inMonth = day.getMonth() === month.getMonth()
           const isToday = isSameDay(day, now)
+          const weekend = day.getDay() === 0 || day.getDay() === 6
           const items = byDay.get(toDateInput(day)) || []
           return (
             <button
@@ -294,13 +301,14 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
               type="button"
               onClick={() => onDay(day)}
               aria-label={`Add event on ${day.toLocaleDateString()}`}
-              className={`text-left border-r border-b border-neutral-800/50 p-1 overflow-hidden flex flex-col gap-0.5 focus-primary hover:bg-neutral-800/30 transition-colors ${inMonth ? '' : 'bg-neutral-900/40'}`}
+              className={`group relative text-left border-r border-b border-neutral-800/50 p-1 overflow-hidden flex flex-col gap-0.5 focus-primary transition-colors ${inMonth ? (weekend ? 'bg-neutral-900/20' : '') : 'bg-neutral-900/50'} ${isToday ? 'bg-[var(--accent-soft)]' : 'hover:bg-neutral-800/30'}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-[11px] font-mono grid place-items-center w-5 h-5 rounded-full ${isToday ? 'text-white' : inMonth ? 'text-neutral-300' : 'text-neutral-600'}`}
+                <span className={`text-[11px] font-mono grid place-items-center min-w-5 h-5 px-1 rounded-full transition-colors ${isToday ? 'text-white font-semibold' : inMonth ? 'text-neutral-300' : 'text-neutral-600'}`}
                   style={isToday ? { background: 'var(--accent)' } : undefined}>
                   {day.getDate()}
                 </span>
+                <span aria-hidden className="text-[13px] leading-none text-neutral-500 opacity-0 group-hover:opacity-100 transition-opacity pr-0.5">+</span>
               </div>
               <div className="flex flex-col gap-0.5 overflow-hidden">
                 {items.slice(0, 3).map((ev) => (
@@ -310,16 +318,17 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
                     tabIndex={0}
                     onClick={(e) => { e.stopPropagation(); onEvent(ev) }}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEvent(ev) } }}
-                    className="text-[10px] leading-tight px-1 py-0.5 rounded truncate cursor-pointer"
+                    className="flex items-center gap-1 text-[10px] leading-tight px-1 py-0.5 rounded truncate cursor-pointer transition-all hover:brightness-110"
                     style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
                     title={ev.title}
                   >
-                    {!ev.allDay && ev._start ? <span className="opacity-70 mr-1">{fmtTime(ev._start)}</span> : null}
-                    {ev.title || '(untitled)'}
+                    <span className="w-1 h-1 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />
+                    {!ev.allDay && ev._start ? <span className="opacity-70 font-mono shrink-0">{fmtTime(ev._start)}</span> : null}
+                    <span className="truncate">{ev.title || '(untitled)'}</span>
                   </span>
                 ))}
                 {items.length > 3 && (
-                  <span className="text-[9px] text-neutral-500 px-1">+{items.length - 3} more</span>
+                  <span className="text-[9px] text-neutral-500 px-1 font-mono">+{items.length - 3} more</span>
                 )}
               </div>
             </button>
@@ -332,37 +341,61 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
 
 function AgendaList({ groups, now, onEvent, loading }) {
   if (loading && groups.length === 0) {
-    return <div className="flex-1 grid place-items-center text-neutral-500 text-sm">Loading…</div>
+    return (
+      <div className="flex-1 grid place-items-center text-neutral-500 text-sm gap-2">
+        <span className="w-4 h-4 spinner" /> Loading…
+      </div>
+    )
   }
   if (groups.length === 0) {
-    return <div className="flex-1 grid place-items-center text-neutral-500 text-sm">Nothing on your calendar ahead.</div>
+    return (
+      <div className="flex-1 grid place-items-center text-center px-6 animate-[fadeIn_0.2s_ease-out]">
+        <div className="max-w-xs">
+          <div className="w-12 h-12 mx-auto mb-3 grid place-items-center rounded-2xl border border-neutral-800 text-neutral-600">
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>
+          </div>
+          <div className="text-neutral-400 text-sm">Nothing on your calendar ahead.</div>
+          <div className="text-neutral-600 text-[12px] mt-1">Your upcoming events will appear here.</div>
+        </div>
+      </div>
+    )
   }
   return (
-    <div className="flex-1 overflow-y-auto">
-      {groups.map((g) => (
+    <div className="flex-1 overflow-y-auto animate-[fadeIn_0.18s_ease-out]">
+      {groups.map((g) => {
+        const isToday = isSameDay(g.date, now)
+        return (
         <div key={g.key}>
-          <div className="sticky top-0 bg-neutral-950/95 backdrop-blur px-4 py-1.5 text-[11px] font-mono uppercase tracking-wider text-neutral-500 border-b border-neutral-800/50">
-            {fmtDayLabel(g.date, now)}
+          <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-950/95 backdrop-blur px-4 py-1.5 text-[11px] font-mono uppercase tracking-wider border-b border-neutral-800/50"
+            style={isToday ? { color: 'var(--accent)' } : undefined}>
+            {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
+            <span className={isToday ? '' : 'text-neutral-500'}>{fmtDayLabel(g.date, now)}</span>
           </div>
           <ul>
             {g.items.map((ev) => (
               <li key={ev.id || ev.start}>
                 <button type="button" onClick={() => onEvent(ev)}
-                  className="w-full flex items-start gap-3 px-4 py-2 text-left hover:bg-neutral-800/40 transition-colors focus-primary border-b border-neutral-900">
-                  <div className="w-16 shrink-0 text-right text-[12px] font-mono text-neutral-300 pt-0.5">
+                  className="w-full flex items-stretch gap-3 px-4 py-2.5 text-left hover:bg-neutral-800/40 transition-colors focus-primary border-b border-neutral-900 group">
+                  <div className="w-16 shrink-0 text-right text-[12px] font-mono text-neutral-400 pt-0.5">
                     {ev.allDay ? 'All day' : fmtTime(ev._start) || '—'}
                   </div>
-                  <div className="w-px self-stretch bg-neutral-800" />
-                  <div className="min-w-0">
-                    <div className="text-[13px] text-neutral-100 truncate">{ev.title || '(untitled)'}</div>
-                    {ev.location && <div className="text-[11px] text-neutral-500 truncate">{ev.location}</div>}
+                  <div className="w-0.5 self-stretch rounded-full shrink-0 transition-colors" style={{ background: 'var(--accent)', opacity: 0.55 }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] text-neutral-100 truncate group-hover:text-white transition-colors">{ev.title || '(untitled)'}</div>
+                    {ev.location && (
+                      <div className="flex items-center gap-1 text-[11px] text-neutral-500 truncate mt-0.5">
+                        <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M8 1.5c-2.5 0-4.5 2-4.5 4.5 0 3 4.5 8 4.5 8s4.5-5 4.5-8c0-2.5-2-4.5-4.5-4.5z"/><circle cx="8" cy="6" r="1.5"/></svg>
+                        <span className="truncate">{ev.location}</span>
+                      </div>
+                    )}
                   </div>
                 </button>
               </li>
             ))}
           </ul>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -375,10 +408,11 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
   }
   const onEnd = (v) => { const d = parseDate(v); if (d) set({ end: d }) }
   return (
-    <div className="absolute inset-0 z-40 grid place-items-center bg-black/50 p-4" onClick={onCancel} data-event-editor>
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl shadow-black/50 overflow-hidden"
+    <div className="absolute inset-0 z-40 grid place-items-center bg-black/50 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]" onClick={onCancel} data-event-editor>
+      <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl shadow-black/50 overflow-hidden anim-sheet-up"
         onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b border-neutral-800 text-[13px] font-semibold">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-neutral-800 text-[13px] font-semibold">
+          <span className="w-1.5 h-5 rounded-full" style={{ background: 'var(--accent)' }} />
           {form.id ? 'Edit event' : 'New event'}
         </div>
         <div className="p-4 flex flex-col gap-3">
@@ -389,7 +423,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
               value={form.title}
               onChange={(e) => set({ title: e.target.value })}
               placeholder="Event title"
-              className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[13px] focus-primary"
+              className="bg-neutral-800/60 border border-neutral-700/80 transition-colors focus:border-neutral-600 rounded-md px-2.5 py-1.5 text-[13px] focus-primary"
             />
           </label>
 
@@ -406,7 +440,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
                 value={form.allDay ? toDateInput(form.start) : toLocalInput(form.start)}
                 onChange={(e) => onStart(e.target.value)}
                 aria-label="Start"
-                className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2 py-1.5 text-[12px] focus-primary"
+                className="bg-neutral-800/60 border border-neutral-700/80 transition-colors focus:border-neutral-600 rounded-md px-2 py-1.5 text-[12px] focus-primary"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -416,7 +450,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
                 value={form.allDay ? toDateInput(form.end) : toLocalInput(form.end)}
                 onChange={(e) => onEnd(e.target.value)}
                 aria-label="End"
-                className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2 py-1.5 text-[12px] focus-primary"
+                className="bg-neutral-800/60 border border-neutral-700/80 transition-colors focus:border-neutral-600 rounded-md px-2 py-1.5 text-[12px] focus-primary"
               />
             </label>
           </div>
@@ -427,7 +461,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
               value={form.location}
               onChange={(e) => set({ location: e.target.value })}
               placeholder="Add a location"
-              className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[13px] focus-primary"
+              className="bg-neutral-800/60 border border-neutral-700/80 transition-colors focus:border-neutral-600 rounded-md px-2.5 py-1.5 text-[13px] focus-primary"
             />
           </label>
 
@@ -438,7 +472,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
               onChange={(e) => set({ notes: e.target.value })}
               rows={2}
               placeholder="Add notes"
-              className="bg-neutral-800/60 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[13px] resize-none focus-primary"
+              className="bg-neutral-800/60 border border-neutral-700/80 transition-colors focus:border-neutral-600 rounded-md px-2.5 py-1.5 text-[13px] resize-none focus-primary"
             />
           </label>
         </div>
@@ -454,7 +488,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
             Cancel
           </button>
           <button type="button" onClick={onSave} disabled={saving}
-            className="text-[12px] px-3 py-1.5 rounded-md text-white focus-primary disabled:opacity-50"
+            className="text-[12px] px-3 py-1.5 rounded-md text-white font-medium transition-all hover:brightness-110 active:scale-[0.97] focus-primary disabled:opacity-50 shadow-sm"
             style={{ background: 'var(--accent)' }}>
             {saving ? 'Saving…' : 'Save'}
           </button>
