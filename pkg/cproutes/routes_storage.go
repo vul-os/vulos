@@ -26,6 +26,7 @@ package cproutes
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -207,6 +208,14 @@ func (h *storageHandlers) getUsage(w http.ResponseWriter, r *http.Request) {
 // POST /api/storage/presign/put
 // ---------------------------------------------------------------------------
 
+// Presign TTL bounds. A presigned URL is a bearer credential for one object, so
+// its lifetime is clamped: absent/invalid → defaultPresignTTL; anything longer
+// than maxPresignTTL is capped so a leaked URL cannot stay usable for hours.
+const (
+	defaultPresignTTL = 5 * time.Minute
+	maxPresignTTL     = 60 * time.Minute
+)
+
 type presignRequest struct {
 	AccountID  string `json:"account_id"`
 	Bucket     string `json:"bucket"`
@@ -293,6 +302,14 @@ func (h *storageHandlers) presignOp(w http.ResponseWriter, r *http.Request, put 
 			httpx.Err(w, http.StatusForbidden, "key is outside this app's storage prefix")
 			return
 		}
+	} else if keyHasTraversal(req.Key) {
+		// L1: the legacy (unscoped, user-session) presign path is already pinned to
+		// the caller's OWN bucket (callerOwnsBucket), so there is no cross-tenant
+		// reach — but tighten it so a key can never carry a ".." traversal segment.
+		// Legitimate object keys never contain "..", so this cannot break a real
+		// upload; it just refuses a malformed/abusive key on the un-prefixed path.
+		httpx.Err(w, http.StatusBadRequest, "key must not contain path traversal segments")
+		return
 	}
 
 	// Storage quota enforcement on write paths only (CLOUD-BILLING-EDGES edge #2).
@@ -320,9 +337,17 @@ func (h *storageHandlers) presignOp(w http.ResponseWriter, r *http.Request, put 
 		}
 	}
 
+	// Clamp the presign lifetime to a sane window. A missing/zero TTL defaults to
+	// 5 minutes; an over-long TTL is capped at maxPresignTTL so a caller cannot
+	// mint a URL that stays live for hours/days (a long-lived, replayable
+	// exfiltration/overwrite handle if it leaks). Negative values fall to the
+	// default too.
 	ttl := time.Duration(req.TTLSeconds) * time.Second
 	if ttl <= 0 {
-		ttl = 5 * time.Minute
+		ttl = defaultPresignTTL
+	}
+	if ttl > maxPresignTTL {
+		ttl = maxPresignTTL
 	}
 
 	p, err := h.svc.ProviderForAccount(r.Context(), req.AccountID)
@@ -549,7 +574,13 @@ func (h *storageHandlers) byoConnect(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrBYOValidation) {
-			httpx.Err(w, http.StatusBadRequest, err.Error())
+			// Do NOT reflect the upstream/provider error text: it can echo the
+			// resolved endpoint, an internal hostname, or an S3 error body back to
+			// the caller (an SSRF oracle). Log the detail server-side, return a
+			// generic, actionable message.
+			log.Printf("[storage] BYO connect validation failed for account %s: %v", u.ID, err)
+			httpx.Err(w, http.StatusBadRequest,
+				"could not connect the bucket: check the endpoint (must be a public S3 host), bucket name, region and credentials")
 			return
 		}
 		h.mapErr(w, err)
@@ -744,6 +775,17 @@ func keyWithinAppPrefix(key, accountID, appID string) bool {
 		}
 	}
 	return true
+}
+
+// keyHasTraversal reports whether key contains a ".." path segment. Used to
+// harden the legacy (un-prefixed) presign path — see L1.
+func keyHasTraversal(key string) bool {
+	for _, seg := range strings.Split(key, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 // mapErr maps storage sentinel errors to HTTP status codes.
