@@ -5,6 +5,7 @@ import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
 import { iframeSandboxForURL } from '../core/AppOrigins'
 import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
 import { tileGeometry, snapZoneForPoint, MENU_BAR_H } from './windowTiling'
+import './shell-chrome.css'
 
 // ORIGIN-01: the iframe sandbox is derived from the frame URL's ORIGIN, not from
 // an app-registry flag. `allow-same-origin` is granted only when that origin is
@@ -62,11 +63,11 @@ class WindowErrorBoundary extends Component {
     if (this.state.error) {
       const msg = this.state.error?.message || String(this.state.error)
       return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-neutral-950 text-center">
-          <div className="text-neutral-500 text-sm mb-2">App error</div>
-          <div className="text-red-400 text-xs font-mono bg-neutral-900 rounded p-3 max-w-md overflow-auto">{msg}</div>
+        <div className="vwin-fallback absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+          <div className="text-[color:var(--text-tertiary)] text-sm mb-2">App error</div>
+          <div className="text-danger text-xs font-mono rounded p-3 max-w-md overflow-auto bg-[color:var(--bg-elevated)]">{msg}</div>
           <button
-            className="mt-4 text-xs text-neutral-500 hover:text-neutral-300"
+            className="mt-4 text-xs text-[color:var(--text-tertiary)] hover:text-[color:var(--text-primary)]"
             onClick={() => this.setState({ error: null })}
           >
             Retry
@@ -138,24 +139,24 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
         onError={() => { clearTimeout(timerRef.current); setStatus('error') }}
       />
       {status === 'error' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/95">
-          <svg viewBox="0 0 24 24" className="w-9 h-9 text-neutral-700 mb-3" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <div className="vwin-fallback absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+          <svg viewBox="0 0 24 24" className="w-9 h-9 text-[color:var(--text-faint)] mb-3" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
           </svg>
-          <div className="text-neutral-300 text-sm font-medium mb-1">{title} didn’t load</div>
-          <div className="text-neutral-500 text-xs mb-4 max-w-xs">
+          <div className="text-[color:var(--text-secondary)] text-sm font-medium mb-1">{title} didn’t load</div>
+          <div className="text-[color:var(--text-tertiary)] text-xs mb-4 max-w-xs">
             The app may still be starting up or is temporarily unreachable.
           </div>
           <button
             onClick={retry}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-contrast)' }}
             onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '' }}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 text-neutral-200 transition-colors focus-primary"
+            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-[color:var(--bg-elevated)] text-[color:var(--text-secondary)] transition-colors focus-primary"
           >
             Retry{attempt > 0 ? ` (${attempt})` : ''}
           </button>
-          <div className="text-[10px] text-neutral-700 mt-3 font-mono truncate max-w-xs">{appId}</div>
+          <div className="text-[10px] text-[color:var(--text-faint)] mt-3 font-mono truncate max-w-xs">{appId}</div>
         </div>
       )}
     </>
@@ -293,19 +294,15 @@ export default function Window({ win, pointerBlock }) {
       data-window-id={win.id}
       data-win-anim={reduceMotion ? undefined : phase}
       data-active={isActive ? '' : undefined}
-      className="win-anim absolute flex flex-col rounded-lg overflow-hidden transition-shadow"
+      // .vwin drives the token-based elevation + accent focus ring (theme-aware,
+      // active/inactive keyed off [data-active]); .win-anim drives lifecycle motion.
+      className="vwin win-anim absolute flex flex-col rounded-lg overflow-hidden"
       style={{
         left: win.position.x, top: win.position.y, width: win.size.width, height: win.size.height,
         zIndex: closing ? zBase + 5 : zBase,
         transformOrigin: genieOrigin,
         pointerEvents: animating ? 'none' : undefined,
         display: hidden ? 'none' : undefined,
-        // Active-window affordance: an accent-tinted inset ring + deeper shadow so
-        // the focused window is unmistakable and retints with the user's accent.
-        // Inactive windows get a subtle neutral ring and a lighter drop shadow.
-        boxShadow: isActive
-          ? '0 0 0 1px color-mix(in srgb, var(--accent) 55%, var(--border-strong)), 0 25px 50px -12px rgba(0,0,0,0.6)'
-          : '0 0 0 1px var(--border-strong), 0 10px 15px -3px rgba(0,0,0,0.3)',
       }}
       onPointerDown={() => focusWindow(win.id)}
     >
@@ -313,16 +310,24 @@ export default function Window({ win, pointerBlock }) {
           In v2 labwc mode: traffic lights + drag handle are suppressed because the
           compositor provides SSD (server-side decoration) for all windows. */}
       {!isBrowser && !thinWM && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart} onDoubleClick={() => maximizeWindow(win.id)}>
-          {/* Traffic lights — focus-primary gives keyboard users a visible ring
-              so a window can be focused + closed entirely from the keyboard. */}
-          <div className="flex items-center gap-1.5" data-no-drag>
-            <button onClick={animatedClose} aria-label="Close window" className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" />
-            <button onClick={() => minimizeWindow(win.id)} aria-label="Minimize window" className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" />
-            <button onClick={() => maximizeWindow(win.id)} aria-label="Maximize window" className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" />
+        <div className="vwin-titlebar flex items-center gap-2 px-3 py-2 select-none shrink-0 cursor-grab active:cursor-grabbing" onPointerDown={onDragStart} onDoubleClick={() => maximizeWindow(win.id)}>
+          {/* Traffic lights — always-lit colour when the window is focused (or when
+              the cluster is hovered), calm neutral otherwise; the glyph is revealed
+              on cluster hover. focus-primary gives keyboard users a visible ring so
+              a window can be focused + closed entirely from the keyboard. */}
+          <div className="vwin-lights flex items-center gap-1.5" data-no-drag>
+            <button onClick={animatedClose} aria-label="Close window" className="vwin-light vwin-light-close focus-primary">
+              <svg viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2l4 4M6 2l-4 4" /></svg>
+            </button>
+            <button onClick={() => minimizeWindow(win.id)} aria-label="Minimize window" className="vwin-light vwin-light-min focus-primary">
+              <svg viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 4h4" /></svg>
+            </button>
+            <button onClick={() => maximizeWindow(win.id)} aria-label="Maximize window" className="vwin-light vwin-light-max focus-primary">
+              <svg viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M4 2v4M2 4h4" /></svg>
+            </button>
           </div>
-          <div className="flex-1 flex items-center justify-center gap-1.5 text-xs text-neutral-500 truncate">
-            <AppIcon id={win.appId} size={12} color="#737373" />
+          <div className="vwin-title flex-1 flex items-center justify-center gap-1.5 text-xs truncate">
+            <AppIcon id={win.appId} size={12} color="currentColor" />
             <span>{win.title}</span>
           </div>
           {/* Pop to native window button — only on native mode */}
@@ -331,9 +336,7 @@ export default function Window({ win, pointerBlock }) {
               data-no-drag
               onClick={() => openNativeWindow(win)}
               title="Open in native window"
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
-              onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '' }}
-              className="focus-primary w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 text-neutral-500 text-[9px] transition-colors mr-0.5"
+              className="vwin-chrome-btn focus-primary w-5 h-5 flex items-center justify-center rounded-full text-[9px] mr-0.5"
             >
               <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M5 1H2a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V7" />
@@ -355,7 +358,7 @@ export default function Window({ win, pointerBlock }) {
                 if (el) { el.textContent = '\u2713'; setTimeout(() => { el.textContent = '\uD83D\uDCBE' }, 1000) }
               }}
               title="Save this AI app"
-              className="focus-primary w-5 h-5 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-green-600 text-neutral-500 hover:text-white text-[9px] transition-colors mr-0.5"
+              className="vwin-chrome-btn focus-primary w-5 h-5 flex items-center justify-center rounded-full text-[9px] mr-0.5"
             >
               {'\uD83D\uDCBE'}
             </button>
@@ -366,13 +369,13 @@ export default function Window({ win, pointerBlock }) {
       {/* Browser: thin draggable strip at top */}
       {isBrowser && (
         <div
-          className="h-2 bg-neutral-900 select-none shrink-0 cursor-grab active:cursor-grabbing"
+          className="vwin-browserbar h-2 select-none shrink-0 cursor-grab active:cursor-grabbing"
           onPointerDown={onDragStart}
         />
       )}
 
       {/* Content */}
-      <div className="flex-1 relative bg-neutral-950 overflow-hidden" style={pointerBlock ? { pointerEvents: 'none' } : undefined}>
+      <div className="vwin-content flex-1 relative overflow-hidden" style={pointerBlock ? { pointerEvents: 'none' } : undefined}>
         {win.component ? (
           <WindowErrorBoundary key={win.id}>
             <div className="absolute inset-0 overflow-y-auto">{win.component}</div>
@@ -399,18 +402,24 @@ export default function Window({ win, pointerBlock }) {
 
       {/* Browser overlay controls — top right, matching Chrome's title bar */}
       {isBrowser && (
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5" data-no-drag>
-          <button onClick={() => minimizeWindow(win.id)} className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-yellow-500 transition-colors" title="Minimize" aria-label="Minimize window" />
-          <button onClick={() => maximizeWindow(win.id)} className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-green-500 transition-colors" title="Maximize" aria-label="Maximize window" />
-          <button onClick={animatedClose} className="focus-primary w-3 h-3 rounded-full bg-neutral-700 hover:bg-red-500 transition-colors" title="Close" aria-label="Close window" />
+        <div className="vwin-lights absolute top-3 right-3 z-10 flex items-center gap-1.5" data-no-drag>
+          <button onClick={() => minimizeWindow(win.id)} className="vwin-light vwin-light-min focus-primary" title="Minimize" aria-label="Minimize window">
+            <svg viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 4h4" /></svg>
+          </button>
+          <button onClick={() => maximizeWindow(win.id)} className="vwin-light vwin-light-max focus-primary" title="Maximize" aria-label="Maximize window">
+            <svg viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M4 2v4M2 4h4" /></svg>
+          </button>
+          <button onClick={animatedClose} className="vwin-light vwin-light-close focus-primary" title="Close" aria-label="Close window">
+            <svg viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2l4 4M6 2l-4 4" /></svg>
+          </button>
         </div>
       )}
 
       {/* Resize handle — suppressed in thin WM mode (labwc SSD provides resize grips).
           Brightens on hover so the grip reads as interactive rather than dead chrome. */}
       {!thinWM && (
-        <div className="group/resize absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart} aria-hidden="true">
-          <svg className="w-3 h-3 text-neutral-700 group-hover/resize:text-neutral-400 transition-colors absolute bottom-0.5 right-0.5" viewBox="0 0 10 10">
+        <div className="vwin-resize absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onPointerDown={onResizeStart} aria-hidden="true">
+          <svg className="vwin-grip w-3 h-3 absolute bottom-0.5 right-0.5" viewBox="0 0 10 10">
             <path d="M9 1L1 9M9 5L5 9" stroke="currentColor" strokeWidth="1.5" fill="none" />
           </svg>
         </div>
@@ -430,8 +439,11 @@ function SnapPreview({ zone }) {
       className="fixed z-[100] rounded-xl border-2 pointer-events-none transition-all duration-150"
       style={{
         left: g.position.x, top: g.position.y, width: g.size.width, height: g.size.height,
-        borderColor: 'color-mix(in srgb, var(--accent) 45%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)',
         background: 'var(--accent-soft)',
+        backdropFilter: 'blur(2px)',
+        WebkitBackdropFilter: 'blur(2px)',
+        boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent), 0 12px 40px -10px color-mix(in srgb, var(--accent) 45%, transparent)',
       }}
     />
   )

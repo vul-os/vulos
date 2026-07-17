@@ -53,7 +53,7 @@ export default function DesktopCanvas() {
             // viewer to the returned session ID. Previously this opened a
             // StreamViewer for a hardcoded 'browser' session that nothing
             // created (orphaned); now /api/browser/launch actually spawns it.
-            const fallback = createElement('div', { className: 'flex items-center justify-center h-full bg-neutral-950 text-neutral-500 text-sm' },
+            const fallback = createElement('div', { className: 'vwin-content flex items-center justify-center h-full text-[color:var(--text-tertiary)] text-sm' },
               createElement('span', { className: 'flex items-center gap-2' },
                 createElement('span', { className: 'w-4 h-4 spinner' }),
                 'Starting Chrome...'
@@ -157,7 +157,7 @@ export default function DesktopCanvas() {
                 <button
                   onClick={(e) => { e.stopPropagation(); minimizeWindow(win.id) }}
                   aria-label={`Minimize ${win.title || 'window'}`}
-                  className="focus-primary absolute -top-2 -right-2 w-5 h-5 rounded-full bg-neutral-700/90 text-neutral-300 hover:bg-red-500 hover:text-white text-xs flex items-center justify-center z-[53] transition-colors"
+                  className="vshell-pip focus-primary absolute -top-2 -right-2 w-5 h-5 rounded-full text-xs flex items-center justify-center z-[53]"
                   style={{ transform: `scale(${1/mc.scale})`, transformOrigin: 'center' }}
                 >
                   {'×'}
