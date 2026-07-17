@@ -13,6 +13,18 @@
 @import '@fontsource-variable/inter/opsz.css';
 @import '@fontsource-variable/inter/opsz-italic.css';
 
+/* The console is mono-heavy by design (data, ULIDs, eyebrows, chips, numerals),
+ * so the monospace face IS a load-bearing brand surface — not an afterthought.
+ * The marketing site leans on the system mono (ui-monospace / SF Mono), which
+ * renders premium on a Mac but degrades to Courier on Linux/Windows and in the
+ * screenshot harness — reading templated and cheap. We vendor Geist Mono locally
+ * (same @fontsource, self-hosted woff2 — no Google Fonts, air-gappable) so the
+ * console shows a crisp, neutral, SF-Mono-adjacent face EVERYWHERE, matching the
+ * quality a Mac user already sees on vulos.org. SF Mono still wins first on
+ * machines that have it (see --font-mono), so parity is preserved where it looks
+ * good and only the ugly fallback is upgraded. */
+@import '@fontsource-variable/geist-mono/index.css';
+
 /* ─── OSS Mirror Tokens (verbatim from vulos/src/index.css) ─────────────── */
 :root {
 
@@ -58,7 +70,10 @@
   --danger: #f43f5e;
 
   /* ── Font system ─────────────────────────────────────────────── */
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  /* Geist Mono (vendored above) leads so the console's mono voice renders
+     crisply and identically on every OS + in the screenshot gallery; the system
+     mono stack stays as graceful fallback if the woff2 fails to load. */
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   --font-sans: 'Inter', system-ui, sans-serif;
 
   /* Legacy aliases kept for backward compat */
@@ -515,6 +530,37 @@ select:focus-visible {
 img, svg, video, canvas, iframe {
   max-width: 100%;
   display: block;
+}
+
+/* ─── Brand mark — theme-aware tone (see components/Logo.jsx) ─────────────────
+   The canonical Vulos PNG is a single dark-slate glyph on transparent. On the
+   LIGHT theme it reads as-is (dark ink on warm paper). On the near-black DARK
+   theme a dark glyph would disappear, so we render the SAME glyph tonally lifted
+   to a soft near-white — a light logo on a dark canvas, the standard way brands
+   place a monochrome mark on a dark surface. Keyed on the data-theme attribute
+   that index.html stamps before first paint, so there is no flash and no JS. */
+.vk-logo-mark            { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.10)); }
+.vk-logo-mark--on-dark   { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)); }
+
+:root[data-theme="dark"] .vk-logo-mark {
+  filter: brightness(0) invert(0.90) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+:root[data-theme="dark"] .vk-logo-mark--on-dark {
+  filter: brightness(0) invert(0.94)
+          drop-shadow(0 0 5px rgba(255, 255, 255, 0.08))
+          drop-shadow(0 1px 1px rgba(0, 0, 0, 0.50));
+}
+
+/* No-JS / pre-hydration System-dark fallback (mirrors the explicit rules). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .vk-logo-mark {
+    filter: brightness(0) invert(0.90) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+  }
+  :root:not([data-theme]) .vk-logo-mark--on-dark {
+    filter: brightness(0) invert(0.94)
+            drop-shadow(0 0 5px rgba(255, 255, 255, 0.08))
+            drop-shadow(0 1px 1px rgba(0, 0, 0, 0.50));
+  }
 }
 
 /* ─── Container utility ──────────────────────────────────────────────────── */
