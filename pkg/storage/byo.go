@@ -64,6 +64,12 @@ func NewBYOProvider(cfg Config) (Provider, error) {
 		SecretAccessKey: cfg.SecretKey,
 		Endpoint:        cfg.Endpoint,
 		Region:          region,
+		// The endpoint is USER-SUPPLIED, so screen it against the SSRF ranges up
+		// front and pin the dialed IP on every request (metadata / *.internal /
+		// Neon / RFC1918 are all unreachable). This is the single choke point both
+		// the connect-time validation (ValidateBYO) AND the nightly usage sampler
+		// (ProviderForAccount → NewBYOProvider) build providers through.
+		SSRFGuard: true,
 	})
 }
 

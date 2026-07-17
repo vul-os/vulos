@@ -30,6 +30,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+
+	"github.com/vul-os/vulos-management/pkg/appsplatform"
 )
 
 const defaultS3Region = "auto"
@@ -54,6 +56,15 @@ type S3Config struct {
 	// REAL S3 client and REAL SigV4 presigning instead of falling back to
 	// MemProvider's fake URLs.
 	ForcePathStyle bool
+
+	// SSRFGuard hardens a provider whose Endpoint is USER-SUPPLIED (a Bring-Your-
+	// Own bucket). When set, NewS3Provider rejects an endpoint whose host resolves
+	// to a loopback/link-local/private/ULA/metadata address up front, and dials
+	// every subsequent request through appsplatform's guarded HTTP client, which
+	// re-screens and PINS the resolved IP at connect time — closing the DNS-rebind
+	// TOCTOU window that a nightly-sampled BYO endpoint would otherwise leave open.
+	// Leave OFF for a trusted, operator-configured managed endpoint (no user input).
+	SSRFGuard bool
 }
 
 // S3Provider is the production Provider backed by any S3-compatible object
@@ -80,11 +91,22 @@ func NewS3Provider(cfg S3Config) (*S3Provider, error) {
 		region = defaultS3Region
 	}
 
-	creds := credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, "")
-	awsCfg, err := config.LoadDefaultConfig(context.Background(),
+	loadOpts := []func(*config.LoadOptions) error{
 		config.WithRegion(region),
-		config.WithCredentialsProvider(creds),
-	)
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, "")),
+	}
+
+	// SSRF guard for user-supplied (BYO) endpoints: reject a private/loopback/
+	// metadata endpoint up front, and route all traffic through the guarded HTTP
+	// client that re-screens + pins the IP at dial time (DNS-rebind safe).
+	if cfg.SSRFGuard {
+		if err := appsplatform.ValidateWebhookURL(endpoint); err != nil {
+			return nil, fmt.Errorf("%w: endpoint failed the SSRF safety check", ErrProviderFailed)
+		}
+		loadOpts = append(loadOpts, config.WithHTTPClient(appsplatform.NewGuardedHTTPClient(30*time.Second)))
+	}
+
+	awsCfg, err := config.LoadDefaultConfig(context.Background(), loadOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: load aws config: %v", ErrProviderFailed, err)
 	}

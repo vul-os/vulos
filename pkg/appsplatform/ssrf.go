@@ -159,9 +159,18 @@ func NewGuardedHTTPClient(timeout time.Duration) *http.Client {
 	}
 }
 
+// cgnatNet is the RFC 6598 carrier-grade NAT range (100.64.0.0/10). Go's
+// net.IP.IsPrivate does NOT cover it, yet it is shared/internal address space
+// that must never be an SSRF destination, so we screen it explicitly.
+var cgnatNet = func() *net.IPNet {
+	_, n, _ := net.ParseCIDR("100.64.0.0/10")
+	return n
+}()
+
 // isBlockedIP reports whether ip falls in a range that must never be a webhook
-// destination (loopback, RFC1918/ULA private, link-local incl. the cloud
-// metadata 169.254.169.254, unspecified, and multicast).
+// or user-supplied-endpoint destination (loopback, RFC1918/ULA private,
+// carrier-grade NAT, link-local incl. the cloud metadata 169.254.169.254,
+// unspecified, and multicast).
 func isBlockedIP(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
 		ip = ip4
@@ -171,5 +180,6 @@ func isBlockedIP(ip net.IP) bool {
 		ip.IsPrivate() || // RFC1918, fc00::/7
 		ip.IsLinkLocalUnicast() || // 169.254.0.0/16 (incl .169.254), fe80::/10
 		ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast()
+		ip.IsMulticast() ||
+		(cgnatNet != nil && cgnatNet.Contains(ip)) // 100.64.0.0/10 (RFC 6598)
 }
