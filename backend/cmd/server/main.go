@@ -2959,6 +2959,20 @@ func main() {
 		appnet.RegisterProxyAdoptHandlers(mux, appnet.ProxyAdoptDeps{
 			Mgr:   netMgr,
 			Store: extStore,
+			// OS M1 (security): adopting a loopback port grants gateway-authenticated
+			// reach to an arbitrary local service (Ollama, Postgres, Redis, a local
+			// admin panel, …). On a multi-user box that must be restricted to the box
+			// owner / RoleAdmin — not any authenticated user (incl. RoleGuest).
+			AuthorizeAdopt: func(r *http.Request) bool {
+				userID := r.Header.Get("X-User-ID") // stamped by auth middleware; never client-supplied
+				if userID == "" {
+					return false
+				}
+				if p, _ := authStore.GetProfile(userID); p != nil && p.Role == auth.RoleAdmin {
+					return true
+				}
+				return false
+			},
 			OnRegister: func(appID, product string) {
 				if product != "" {
 					appGateway.AllowApp(appID, product)

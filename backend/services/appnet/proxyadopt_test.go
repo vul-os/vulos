@@ -47,6 +47,71 @@ func TestAdopt_RequiresAuth(t *testing.T) {
 	}
 }
 
+// TestAdopt_RequiresAdmin verifies OS M1: with a real AuthorizeAdopt installed
+// (as main.go always does), a non-admin caller (RoleUser / RoleGuest) is denied
+// 403 on adopt/list/revoke, while an admin / box owner succeeds. Without this
+// gate any authenticated user could adopt an arbitrary loopback service
+// (Ollama, Postgres, Redis, a local admin panel) and reach it through the
+// authenticated gateway.
+func TestAdopt_RequiresAdmin(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	store, err := NewExternalUpstreamStoreAt(filepath.Join(dir, "ext.json"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	mgr := NewManager()
+	mux := http.NewServeMux()
+
+	// Fake role table keyed by user id, consulted by the installed authorizer —
+	// mirrors main.go's authStore.GetProfile(userID).Role == RoleAdmin check
+	// without importing the auth package into this test.
+	admins := map[string]bool{"owner": true} // "user"/"guest" absent ⇒ non-admin
+	RegisterProxyAdoptHandlers(mux, ProxyAdoptDeps{
+		Mgr:   mgr,
+		Store: store,
+		AuthorizeAdopt: func(r *http.Request) bool {
+			return admins[r.Header.Get("X-User-ID")]
+		},
+	})
+
+	adoptBody := func() map[string]any {
+		return map[string]any{"name": "My Grafana", "port": 33000}
+	}
+
+	// Non-admins (RoleUser, RoleGuest) are forbidden on every route.
+	for _, uid := range []string{"user", "guest"} {
+		if rr := adoptReq(t, mux, http.MethodPost, "/api/proxyadopt", uid, adoptBody()); rr.Code != http.StatusForbidden {
+			t.Errorf("non-admin %q adopt: got %d, want 403 (%s)", uid, rr.Code, rr.Body.String())
+		}
+		if rr := adoptReq(t, mux, http.MethodGet, "/api/proxyadopt", uid, nil); rr.Code != http.StatusForbidden {
+			t.Errorf("non-admin %q list: got %d, want 403", uid, rr.Code)
+		}
+		if rr := adoptReq(t, mux, http.MethodDelete, "/api/proxyadopt/my-grafana", uid, nil); rr.Code != http.StatusForbidden {
+			t.Errorf("non-admin %q revoke: got %d, want 403", uid, rr.Code)
+		}
+	}
+
+	// The non-admin attempts must not have registered or persisted anything.
+	if _, ok := mgr.GetForProfile("my-grafana", "user", "default"); ok {
+		t.Fatal("non-admin adopt leaked a live upstream")
+	}
+	if store.Get("user", "my-grafana", "default") != nil {
+		t.Fatal("non-admin adopt persisted an upstream")
+	}
+
+	// The box owner / admin succeeds.
+	if rr := adoptReq(t, mux, http.MethodPost, "/api/proxyadopt", "owner", adoptBody()); rr.Code != http.StatusCreated {
+		t.Fatalf("admin adopt: got %d, want 201 (%s)", rr.Code, rr.Body.String())
+	}
+	if rr := adoptReq(t, mux, http.MethodGet, "/api/proxyadopt", "owner", nil); rr.Code != http.StatusOK {
+		t.Fatalf("admin list: got %d, want 200", rr.Code)
+	}
+	if rr := adoptReq(t, mux, http.MethodDelete, "/api/proxyadopt/my-grafana", "owner", nil); rr.Code != http.StatusOK {
+		t.Fatalf("admin revoke: got %d, want 200 (%s)", rr.Code, rr.Body.String())
+	}
+}
+
 // TestAdopt_LoopbackReservedPortsRejected verifies loopback-only / reserved-port
 // enforcement at the API layer.
 func TestAdopt_LoopbackReservedPortsRejected(t *testing.T) {

@@ -14,8 +14,17 @@ import { getGateway, checkGateway, setGateway, clearGateway } from '../../auth/G
 // keeps working untouched.
 // ---------------------------------------------------------------------------
 
+// Mirrors the shared Settings masthead (see core/Settings.jsx Section) so the
+// Control Plane panel reads identically to every other settings panel.
 function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+      </header>
+      {children}
+    </div>
+  )
 }
 
 const SOURCE_LABEL = {

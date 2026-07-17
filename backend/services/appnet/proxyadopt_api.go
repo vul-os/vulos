@@ -42,6 +42,21 @@ type ProxyAdoptDeps struct {
 	// OnRemove is called on revoke so the gateway can drop the app's secret and
 	// manifest-derived grants (RemoveAppSecret + RemoveAppGrants). Safe nil.
 	OnRemove func(appID string)
+
+	// AuthorizeAdopt decides whether the caller may adopt / list / revoke ports.
+	//
+	// OS M1 (security): adopting a loopback port grants the caller
+	// gateway-authenticated reach to an ARBITRARY local service (Ollama 11434,
+	// Postgres 5432, Redis 6379, a local admin panel, …), so on a multi-user box
+	// it must be restricted to the box owner / RoleAdmin — NOT any authenticated
+	// user, and certainly not RoleGuest. Returning false ⇒ the handler answers
+	// 403. It is called for all three routes (adopt, list, revoke).
+	//
+	// nil ⇒ open to any authenticated caller (self-host / standalone posture,
+	// where the sole user is the owner anyway) — the same "gating off by default"
+	// convention the visibility layer (PublishAuthorizer) uses. main.go always
+	// installs a real authorizer that requires RoleAdmin.
+	AuthorizeAdopt func(r *http.Request) bool
 }
 
 type adoptRequest struct {
@@ -102,14 +117,28 @@ func RegisterProxyAdoptHandlers(mux *http.ServeMux, deps ProxyAdoptDeps) {
 	writeErr := func(w http.ResponseWriter, code int, msg string) {
 		writeJSON(w, code, map[string]string{"error": msg})
 	}
-
-	// POST /api/apps/proxy — adopt a loopback port.
-	mux.HandleFunc("POST /api/proxyadopt", func(w http.ResponseWriter, r *http.Request) {
+	// authorized reports whether the caller may act on the adopt-a-port surface.
+	// It stamps 401 (missing session) / 403 (authenticated but not owner/admin)
+	// directly and returns false when the caller must be rejected. OS M1.
+	authorized := func(w http.ResponseWriter, r *http.Request) bool {
 		userID := r.Header.Get("X-User-ID") // stamped by auth middleware; never client-supplied
 		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return false
+		}
+		if deps.AuthorizeAdopt != nil && !deps.AuthorizeAdopt(r) {
+			writeErr(w, http.StatusForbidden, "only the box owner or an admin can adopt ports")
+			return false
+		}
+		return true
+	}
+
+	// POST /api/apps/proxy — adopt a loopback port.
+	mux.HandleFunc("POST /api/proxyadopt", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(w, r) {
 			return
 		}
+		userID := r.Header.Get("X-User-ID") // stamped by auth middleware; never client-supplied
 		var req adoptRequest
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid JSON body")
@@ -178,11 +207,10 @@ func RegisterProxyAdoptHandlers(mux *http.ServeMux, deps ProxyAdoptDeps) {
 
 	// GET /api/apps/proxy — list the caller's adopted upstreams.
 	mux.HandleFunc("GET /api/proxyadopt", func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Header.Get("X-User-ID")
-		if userID == "" {
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+		if !authorized(w, r) {
 			return
 		}
+		userID := r.Header.Get("X-User-ID")
 		list := deps.Mgr.ListExternalUpstreamsForOwner(userID)
 		out := make([]adoptResponse, 0, len(list))
 		for _, u := range list {
@@ -201,11 +229,10 @@ func RegisterProxyAdoptHandlers(mux *http.ServeMux, deps ProxyAdoptDeps) {
 
 	// DELETE /api/apps/proxy/{id} — revoke an adopted upstream.
 	mux.HandleFunc("DELETE /api/proxyadopt/{id}", func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Header.Get("X-User-ID")
-		if userID == "" {
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+		if !authorized(w, r) {
 			return
 		}
+		userID := r.Header.Get("X-User-ID")
 		appID := r.PathValue("id")
 		if appID == "" {
 			writeErr(w, http.StatusBadRequest, "app id required")

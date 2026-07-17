@@ -16,37 +16,78 @@ import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
 import GatewayPanel from './settings/GatewayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
 
-// baseSections are the settings sections everyone sees. Owner-only sections
-// (see ownerSections) are appended for the box owner/admin.
-const baseSections = [
-  { id: 'ai', label: 'AI Assistant' },
-  { id: 'models', label: 'AI Models', owner: true },
-  { id: 'aiapps', label: 'AI Apps' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'notifications', label: 'Notifications' },
-  { id: 'wifi', label: 'WiFi' },
-  { id: 'bluetooth', label: 'Bluetooth' },
-  { id: 'audio', label: 'Sound' },
-  { id: 'display', label: 'Display' },
-  { id: 'energy', label: 'Battery & Energy' },
-  { id: 'vault', label: 'Backup & Sync' },
-  { id: 'recall', label: 'Search & Index' },
-  { id: 'storage', label: 'Storage' },
-  { id: 'storagemode', label: 'Storage Mode' },
-  { id: 'connmode', label: 'Connection Mode' },
-  { id: 'network', label: 'Remote Access' },
-  { id: 'gateway', label: 'Control Plane', owner: true },
-  { id: 'turnSettings', label: 'TURN / WebRTC' },
-  { id: 'users', label: 'Users & Profiles' },
-  { id: 'pin', label: 'Device PIN' },
-  { id: 'fingerprint', label: 'Fingerprint' },
-  { id: 'account', label: 'Account' },
-  { id: 'dataexport', label: 'Export My Data' },
-  { id: 'plan', label: 'Plan & Billing' },
-  { id: 'osupdate', label: 'OS Update' },
-  { id: 'boxhealth', label: 'Box Health', owner: true },
-  { id: 'about', label: 'About' },
+// sectionGroups organise the settings sections into labelled clusters for a
+// clear, scannable nav. Each item carries an id + label (+ owner:true for
+// owner-only sections) and a compact glyph used as a subtle nav affordance.
+// Ordering within a group is intentional. Flattened into `baseSections` below.
+const sectionGroups = [
+  {
+    label: 'Intelligence',
+    items: [
+      { id: 'ai', label: 'AI Assistant', icon: '\u{2728}' },
+      { id: 'models', label: 'AI Models', owner: true, icon: '\u{25C8}' },
+      { id: 'aiapps', label: 'AI Apps', icon: '\u{25A6}' },
+    ],
+  },
+  {
+    label: 'Appearance',
+    items: [
+      { id: 'appearance', label: 'Appearance', icon: '\u{25D0}' },
+      { id: 'notifications', label: 'Notifications', icon: '\u{1F514}' },
+    ],
+  },
+  {
+    label: 'Devices',
+    items: [
+      { id: 'wifi', label: 'WiFi', icon: '\u{1F4F6}' },
+      { id: 'bluetooth', label: 'Bluetooth', icon: '\u{223F}' },
+      { id: 'audio', label: 'Sound', icon: '\u{1F509}' },
+      { id: 'display', label: 'Display', icon: '\u{25AD}' },
+      { id: 'energy', label: 'Battery & Energy', icon: '\u{26A1}' },
+    ],
+  },
+  {
+    label: 'Data',
+    items: [
+      { id: 'vault', label: 'Backup & Sync', icon: '\u{21BB}' },
+      { id: 'recall', label: 'Search & Index', icon: '\u{1F50D}' },
+      { id: 'storage', label: 'Storage', icon: '\u{25F4}' },
+      { id: 'storagemode', label: 'Storage Mode', icon: '\u{25F1}' },
+    ],
+  },
+  {
+    label: 'Network',
+    items: [
+      { id: 'connmode', label: 'Connection Mode', icon: '\u{29C9}' },
+      { id: 'network', label: 'Remote Access', icon: '\u{1F310}' },
+      { id: 'gateway', label: 'Control Plane', owner: true, icon: '\u{25C9}' },
+      { id: 'turnSettings', label: 'TURN / WebRTC', icon: '\u{21C4}' },
+    ],
+  },
+  {
+    label: 'Account & Security',
+    items: [
+      { id: 'users', label: 'Users & Profiles', icon: '\u{1F464}' },
+      { id: 'pin', label: 'Device PIN', icon: '\u{25A3}' },
+      { id: 'fingerprint', label: 'Fingerprint', icon: '\u{25CC}' },
+      { id: 'account', label: 'Account', icon: '\u{2699}' },
+      { id: 'dataexport', label: 'Export My Data', icon: '\u{2913}' },
+      { id: 'plan', label: 'Plan & Billing', icon: '\u{25C6}' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { id: 'osupdate', label: 'OS Update', icon: '\u{2B06}' },
+      { id: 'boxhealth', label: 'Box Health', owner: true, icon: '\u{2665}' },
+      { id: 'about', label: 'About', icon: '\u{24D8}' },
+    ],
+  },
 ]
+
+// baseSections is the flat list (order preserved from the groups) used for
+// lookups: initial-section validation and the active-label header.
+const baseSections = sectionGroups.flatMap(g => g.items)
 
 // sectionsFor returns the sections visible to a given role. Owner-only sections
 // (marked owner:true) are hidden from non-owners so the surface stays owner-
@@ -54,6 +95,14 @@ const baseSections = [
 // the security boundary.
 function sectionsFor(isOwner) {
   return baseSections.filter(s => !s.owner || isOwner)
+}
+
+// groupsFor returns the section groups visible to a given role, dropping any
+// group left empty after owner-only filtering.
+function groupsFor(isOwner) {
+  return sectionGroups
+    .map(g => ({ ...g, items: g.items.filter(s => !s.owner || isOwner) }))
+    .filter(g => g.items.length > 0)
 }
 
 // SettingsModal — a small, accessible dialog wrapper: focus trap + focus
@@ -85,24 +134,52 @@ function SettingsModal({ title, onClose, children }) {
   )
 }
 
-// SettingsNav — the section list. Shared between the desktop rail and the
-// mobile drawer so aria-current + styling stay identical.
-function SettingsNav({ active, onSelect, idPrefix, sections }) {
+// SettingsNav — the grouped section list. Shared between the desktop rail and
+// the mobile drawer so aria-current + styling stay identical. Groups are
+// rendered with a small uppercase label; the active item carries an accent left
+// bar + accent-tinted surface so the current section reads at a glance.
+function SettingsNav({ active, onSelect, idPrefix, groups }) {
   return (
-    <>
-      {sections.map(s => (
-        <button
-          key={s.id}
-          id={idPrefix ? `${idPrefix}-${s.id}` : undefined}
-          onClick={() => onSelect(s.id)}
-          aria-current={active === s.id ? 'page' : undefined}
-          className={`w-full text-left px-4 py-2 text-sm transition-colors
-            ${active === s.id ? 'bg-neutral-800/60 text-white' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/30'}`}
-        >
-          {s.label}
-        </button>
+    <div className="px-2 space-y-5">
+      {groups.map(g => (
+        <div key={g.label}>
+          <div className="px-2.5 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] select-none">
+            {g.label}
+          </div>
+          <div className="space-y-0.5">
+            {g.items.map(s => {
+              const isActive = active === s.id
+              return (
+                <button
+                  key={s.id}
+                  id={idPrefix ? `${idPrefix}-${s.id}` : undefined}
+                  onClick={() => onSelect(s.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors
+                    ${isActive
+                      ? 'accent-bg-soft accent-text font-medium'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 rounded-full transition-all
+                      ${isActive ? 'h-5 accent-bg' : 'h-0'}`}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`shrink-0 w-4 text-center text-[13px] leading-none transition-opacity
+                      ${isActive ? 'opacity-100' : 'opacity-55 group-hover:opacity-90'}`}
+                  >
+                    {s.icon}
+                  </span>
+                  <span className="truncate">{s.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       ))}
-    </>
+    </div>
   )
 }
 
@@ -110,6 +187,7 @@ export default function Settings({ initialSection } = {}) {
   const { profile, updateProfile, logout } = useAuth()
   const isOwner = profile?.role === 'admin'
   const sections = sectionsFor(isOwner)
+  const groups = groupsFor(isOwner)
   const [active, setActive] = useState(
     initialSection && sections.some(s => s.id === initialSection) ? initialSection : 'ai',
   )
@@ -129,20 +207,25 @@ export default function Settings({ initialSection } = {}) {
   }, [isMobile, drawerOpen])
 
   return (
-    <div className="flex flex-col sm:flex-row h-full bg-neutral-950 text-neutral-200">
+    <div className="flex flex-col sm:flex-row h-full bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Desktop sidebar rail */}
-      <nav aria-label="Settings sections" className="hidden sm:block w-40 sm:w-48 shrink-0 border-r border-neutral-800/50 py-4 overflow-y-auto">
-        <h2 className="px-4 text-sm font-semibold text-neutral-400 mb-3">Settings</h2>
-        <SettingsNav active={active} onSelect={selectSection} sections={sections} />
+      <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 lg:w-60 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)]/60 overflow-y-auto">
+        <div className="sticky top-0 z-10 px-4 pt-5 pb-3 bg-[var(--bg-surface)]/80 backdrop-blur-sm border-b border-[var(--border-subtle)]">
+          <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Settings</h2>
+          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">Configure your device</p>
+        </div>
+        <div className="py-4">
+          <SettingsNav active={active} onSelect={selectSection} groups={groups} />
+        </div>
       </nav>
 
       {/* Mobile top bar — opens the section drawer */}
-      <div className="sm:hidden flex items-center gap-3 shrink-0 border-b border-neutral-800/50 px-3 py-2.5">
+      <div className="sm:hidden flex items-center gap-3 shrink-0 border-b border-[var(--border-default)] bg-[var(--bg-surface)]/70 backdrop-blur-sm px-3 py-2.5">
         <button
           onClick={() => setDrawerOpen(true)}
           aria-label="Open settings sections"
           aria-expanded={drawerOpen}
-          className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800/50 transition-colors"
+          className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
         >
           <span aria-hidden="true" className="text-base leading-none">☰</span>
           <span className="font-medium truncate max-w-[60vw]">{activeLabel}</span>
@@ -158,26 +241,29 @@ export default function Settings({ initialSection } = {}) {
           <nav
             ref={drawerRef}
             aria-label="Settings sections"
-            className="w-64 max-w-[80vw] h-full bg-neutral-950 border-r border-neutral-800/60 py-4 overflow-y-auto shadow-2xl animate-[fadeIn_0.12s_ease-out]"
+            className="w-72 max-w-[82vw] h-full bg-[var(--bg-surface)] border-r border-[var(--border-default)] overflow-y-auto shadow-2xl animate-[fadeIn_0.12s_ease-out]"
           >
-            <div className="flex items-center justify-between px-4 mb-3">
-              <h2 className="text-sm font-semibold text-neutral-400">Settings</h2>
+            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3.5 bg-[var(--bg-surface)]/90 backdrop-blur-sm border-b border-[var(--border-subtle)]">
+              <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Settings</h2>
               <button
                 onClick={() => setDrawerOpen(false)}
                 aria-label="Close settings sections"
-                className="rounded-md p-1 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800/50 transition-colors"
+                className="rounded-md p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
               >
                 <span aria-hidden="true">✕</span>
               </button>
             </div>
-            <SettingsNav active={active} onSelect={selectSection} idPrefix="settings-drawer" sections={sections} />
+            <div className="py-4">
+              <SettingsNav active={active} onSelect={selectSection} idPrefix="settings-drawer" groups={groups} />
+            </div>
           </nav>
           <div className="flex-1 bg-black/60" aria-hidden="true" />
         </div>
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 max-w-2xl min-w-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+       <div className="mx-auto w-full max-w-2xl p-5 sm:p-8">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'models' && <ModelsPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
@@ -205,6 +291,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'boxhealth' && <BoxHealthPanel />}
         {active === 'about' && <AboutSettings />}
+       </div>
       </div>
     </div>
   )
@@ -263,9 +350,9 @@ function AppearanceSettings() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   return (
-    <Section title="Appearance">
+    <Section title="Appearance" desc="Theme, accent, density, and wallpaper for this device.">
       <Field label="Theme">
-        <div className="flex gap-2" role="radiogroup" aria-label="Theme mode">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Theme mode">
           {[
             { value: 'light', label: 'Light', icon: '\u{2600}' },
             { value: 'dark', label: 'Dark', icon: '\u{263E}' },
@@ -277,10 +364,10 @@ function AppearanceSettings() {
               role="radio"
               aria-checked={theme === opt.value}
               onClick={() => setTheme(opt.value)}
-              className={`flex-1 py-3 rounded-xl text-sm transition-all border
+              className={`py-3 rounded-xl text-sm transition-all border
                 ${theme === opt.value
-                  ? 'bg-blue-600/20 border-blue-500/50 text-blue-400'
-                  : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+                  ? 'accent-bg-soft accent-border accent-text font-medium'
+                  : 'bg-[var(--bg-surface)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
             >
               <div className="text-center">
                 <div className="text-lg mb-1">{opt.icon}</div>
@@ -290,7 +377,7 @@ function AppearanceSettings() {
           ))}
         </div>
       </Field>
-      <p className="text-xs text-neutral-600 mt-2">
+      <p className="text-xs text-[var(--text-tertiary)] mt-2">
         {theme === 'auto' && `Follows your device (OS / browser) appearance, updating live. Currently ${isDark ? 'dark' : 'light'}.`}
         {theme === 'schedule' && `Switches by time (${tz}). Currently ${resolved}.`}
         {theme === 'dark' && 'Always dark.'}
@@ -421,8 +508,8 @@ function DensityPicker() {
           onClick={() => apply(opt.value)}
           className={`flex-1 py-2 rounded-lg text-sm transition-all border
             ${density === opt.value
-              ? 'bg-blue-600/20 border-blue-500/50 text-blue-400'
-              : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+              ? 'accent-bg-soft accent-border accent-text font-medium'
+              : 'bg-[var(--bg-surface)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
         >
           {opt.label}
         </button>
@@ -2607,26 +2694,44 @@ function NotificationsSettings() {
   )
 }
 
-function Section({ title, children }) {
-  return <div><h2 className="text-lg font-medium mb-4">{title}</h2>{children}</div>
+// Section — the shared panel header + body wrapper. A prominent title, an
+// optional one-line description, and a hairline divider give every panel a
+// consistent, premium masthead. `desc` is optional and back-compatible.
+function Section({ title, desc, children }) {
+  return (
+    <div>
+      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
+        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+      </header>
+      {children}
+    </div>
+  )
 }
 
 function Field({ label, children }) {
-  return <div className="mb-3"><label className="block text-xs text-neutral-500 mb-1">{label}</label>{children}</div>
+  return (
+    <div className="mb-4">
+      <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1.5">{label}</label>
+      {children}
+    </div>
+  )
 }
 
+// Toggle — accent-driven switch so it retints with the chosen --accent.
 function Toggle({ label, checked, onChange }) {
   return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm">{label}</span>
+    <div className="flex items-center justify-between gap-4 py-2.5">
+      <span className="text-sm text-[var(--text-primary)]">{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={!!checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`shrink-0 w-10 h-5 rounded-full transition-colors relative ${checked ? 'bg-blue-600' : 'bg-neutral-700'}`}>
-        <span aria-hidden="true" className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? 'left-5' : 'left-0.5'}`} />
+        style={checked ? { background: 'var(--accent)' } : undefined}
+        className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${checked ? '' : 'bg-[var(--border-emphasis)]'}`}>
+        <span aria-hidden="true" className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${checked ? 'left-[1.375rem]' : 'left-0.5'}`} />
       </button>
     </div>
   )
