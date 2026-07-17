@@ -115,6 +115,30 @@ type UpdaterConfig struct {
 // DefaultUpdateInterval is the default polling interval for the update loop.
 const DefaultUpdateInterval = 4 * time.Hour
 
+// AutoUpdateEnvKey is the operator opt-out for the background OS auto-update
+// loop. The signed auto-update check (a read-only GET of os/stable.json from the
+// OS distribution bucket) is the ONLY outbound connection a fresh, un-configured
+// self-hosted box makes by default — it carries no usage/telemetry data, but it
+// does reach Vulos-operated (or mirror) infrastructure. Privacy-maximal
+// operators who prefer a box with zero default egress can turn it off here and
+// pull updates manually via the OS update admin endpoint.
+const AutoUpdateEnvKey = "VULOS_OS_AUTOUPDATE"
+
+// AutoUpdateEnabled reports whether the background OS auto-update loop should
+// run. It is ON by default (security updates matter) and only turns OFF when
+// VULOS_OS_AUTOUPDATE is explicitly set to a disable value
+// (0/off/false/no/disable/disabled/none — case-insensitive). Any other value,
+// including unset, leaves auto-update enabled. Fail-safe direction: a
+// mis-spelled value keeps updates flowing rather than silently disabling them.
+func AutoUpdateEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(AutoUpdateEnvKey))) {
+	case "0", "off", "false", "no", "disable", "disabled", "none":
+		return false
+	default:
+		return true
+	}
+}
+
 // ─── Updater ──────────────────────────────────────────────────────────────────
 
 // Updater runs the periodic OS update fetch loop.

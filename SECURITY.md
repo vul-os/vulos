@@ -18,6 +18,55 @@
 - Vulnerabilities in infrastructure we do not control (DNS providers, CDNs)
 - Issues already publicly disclosed or reported
 
+## Telemetry / phone-home
+
+Vulos OS collects **no** usage analytics, no crash reporting, and no
+behavioural telemetry, and it has no analytics endpoint to send them to. There
+is no Google Analytics, Sentry, PostHog, Segment, or comparable SDK anywhere in
+the shell or the backend — the frontend ships only local assets (no external
+scripts, fonts, or beacons). The subsystem named `services/telemetry` is a
+purely **local** system monitor: it reads `/proc` and streams CPU / memory /
+network / process stats over a WebSocket to *your own* browser dashboard.
+Nothing it produces leaves the box.
+
+What a **fresh, self-hosted box with nothing configured** talks to over the
+network:
+
+- **The signed OS auto-update check** — the only outbound connection a box
+  makes by default. Every ~4 hours the box performs a read-only `GET` of a
+  signed `os/stable.json` manifest from the OS distribution bucket to see
+  whether a newer, signed OS image exists. It sends **no** usage, identity, or
+  device data beyond the bare HTTP request itself; the manifest and any image
+  are verified against a baked-in trust anchor (a poisoned mirror cannot serve a
+  forged image). This is a security-update mechanism, not telemetry. Operators
+  who want a box with **zero default egress** can turn it off with
+  `VULOS_OS_AUTOUPDATE=off` and apply updates manually from the OS update admin
+  screen.
+- **Nothing else.** A box with no cloud, relay, llmux, or integrations
+  configured makes no other outbound calls.
+
+Everything beyond the update check is **opt-in and operator-configured**, and
+fires only when *you* enable it:
+
+- **Metrics/tracing** (`internal/obs`): Prometheus metrics are pull-only (you
+  scrape `/metrics`); OpenTelemetry tracing stays a no-op unless you set
+  `OTEL_EXPORTER_OTLP_ENDPOINT` to your own collector.
+- **Cloud control-plane / relay / device enrollment** (fleet sync, push
+  registrar, LAN-cert puller, billing): each is fail-safe **off** and activates
+  only when the relevant endpoint + secret env vars are set — i.e. on a
+  Vulos-managed box you enrolled, or one you pointed at your own control plane.
+- **AI, and integrations** (Anthropic/OpenAI, Google/Microsoft/Dropbox/GCS,
+  S3): bring-your-own credentials; requests go to the provider *you* configured
+  and fire only on your action. Assistant LLM traffic is additionally fenced by
+  the on-box sovereignty Guard.
+- **Web Push**: opt-in per device; outbound-only to your device's browser
+  vendor with end-to-end-encrypted payloads (the vendor routes but cannot read
+  them).
+
+In short: out of the box Vulos checks for signed OS updates and otherwise stays
+silent; every other network destination is one you configured, your own box, or
+your own peers — never a silent Vulos-owned analytics sink.
+
 ## How to Report
 
 **Email:** security@vulos.org  

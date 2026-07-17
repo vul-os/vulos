@@ -752,3 +752,33 @@ func TestAnchorKeyRoundTrip(t *testing.T)      { OSDIST04_TestAnchorKeyRoundTrip
 
 // Ensure unused import doesn't cause a compile error — fmt is used in bucketHandler indirectly.
 var _ = fmt.Sprintf
+
+// TestAutoUpdateEnabled_DefaultOnOptOut asserts the phone-home posture of the
+// background OS auto-update loop: it is ON by default (unset env) so security
+// updates flow, and turns OFF only when the operator explicitly sets a disable
+// value. A mis-spelled value must fail SAFE (updates stay on), never silently
+// disable. This is the ONLY default outbound connection a fresh self-host box
+// makes, so its default-on / explicit-opt-out contract is security-relevant.
+func TestAutoUpdateEnabled_DefaultOnOptOut(t *testing.T) {
+	// Default: env unset → enabled.
+	os.Unsetenv(AutoUpdateEnvKey)
+	if !AutoUpdateEnabled() {
+		t.Fatalf("AutoUpdateEnabled() = false with %s unset; want true (default on)", AutoUpdateEnvKey)
+	}
+
+	// Explicit disable values → disabled.
+	for _, v := range []string{"0", "off", "OFF", "false", "no", "disable", "disabled", "none", " off "} {
+		t.Setenv(AutoUpdateEnvKey, v)
+		if AutoUpdateEnabled() {
+			t.Errorf("AutoUpdateEnabled() = true with %s=%q; want false (opt-out)", AutoUpdateEnvKey, v)
+		}
+	}
+
+	// Any other / truthy / garbage value → stays enabled (fail-safe).
+	for _, v := range []string{"1", "on", "true", "yes", "", "please-disable", "0x0"} {
+		t.Setenv(AutoUpdateEnvKey, v)
+		if !AutoUpdateEnabled() {
+			t.Errorf("AutoUpdateEnabled() = false with %s=%q; want true (fail-safe on)", AutoUpdateEnvKey, v)
+		}
+	}
+}

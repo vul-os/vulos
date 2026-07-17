@@ -3419,7 +3419,13 @@ func main() {
 
 		// OSDIST-04: start the 4-hour background update-fetch loop.
 		// Trust anchor is optional — skip updater when key is absent (dev/CI).
-		if anchorPub, anchorErr := signing.LoadAnchor(signing.DefaultAnchorPath); anchorErr == nil {
+		// PHONE-HOME: this signed manifest check is the only outbound connection a
+		// fresh un-configured self-host box makes by default. It sends no usage
+		// data, but operators can opt out with VULOS_OS_AUTOUPDATE=off for a box
+		// with zero default egress (updates then only apply via the admin endpoint).
+		if !osdist.AutoUpdateEnabled() {
+			log.Printf("[osdist] auto-update loop disabled by operator (%s) — no default egress; update via admin endpoint", osdist.AutoUpdateEnvKey)
+		} else if anchorPub, anchorErr := signing.LoadAnchor(signing.DefaultAnchorPath); anchorErr == nil {
 			osdistSrc := osdist.NewSource()
 			updaterCfg := osdist.UpdaterConfig{
 				Source:         osdistSrc,
