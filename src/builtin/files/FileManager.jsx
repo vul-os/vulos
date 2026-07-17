@@ -185,7 +185,7 @@ const PDF_EXTS = new Set(['pdf', 'doc', 'docx'])
 const LOCK_EXTS = new Set(['lock', 'env'])
 
 function FileIcon({ name, isDir, isLink, className = '' }) {
-  if (isDir) return <IconFolder className={`text-blue-400 ${className}`} />
+  if (isDir) return <IconFolder className={`accent-text ${className}`} />
   if (isLink) return <IconLink className={`text-cyan-400 ${className}`} />
   const ext = name.split('.').pop().toLowerCase()
   if (CODE_EXTS.has(ext)) return <IconCode className={`text-emerald-400 ${className}`} />
@@ -669,12 +669,18 @@ export default function FileManager() {
           {/* File rows */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
             {loading && (
-              <div className="py-12 text-center text-neutral-700 text-xs">Loading...</div>
+              <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-600 text-xs">
+                <span className="spinner w-6 h-6" aria-hidden="true" />
+                <span>Reading folder…</span>
+              </div>
             )}
 
             {searchResults ? (
               searchResults.items.length === 0 ? (
-                <div className="py-12 text-center text-neutral-700 text-xs">No results</div>
+                <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-600 text-xs">
+                  <IconSearch className="w-8 h-8 opacity-30" />
+                  <span>No matches for “{query}”</span>
+                </div>
               ) : searchResults.type === 'semantic' ? (
                 searchResults.items.map((r, i) => {
                   const p = r.metadata?.abs_path || r.metadata?.path || ''
@@ -753,10 +759,10 @@ export default function FileManager() {
                       </span>
                     )}
                   </span>
-                  <span className="w-16 shrink-0 text-right text-neutral-600">
+                  <span className="w-16 shrink-0 text-right text-neutral-600 tabular-nums">
                     {entry.isDir ? '\u2014' : fmtSize(entry.size)}
                   </span>
-                  <span className="w-32 shrink-0 text-right text-neutral-600 truncate">
+                  <span className="w-32 shrink-0 text-right text-neutral-600 truncate tabular-nums">
                     {entry.modified}
                   </span>
                 </div>
@@ -789,7 +795,7 @@ export default function FileManager() {
         {/* Preview pane — a fixed rail on desktop; a full-screen overlay sheet on
             phones (side-by-side would overflow), dismissed with its close button. */}
         {preview && (
-          <div className="absolute inset-0 z-20 w-full sm:static sm:z-auto sm:w-64 border-l border-neutral-800/40 flex flex-col shrink-0 overflow-hidden bg-neutral-950 sm:bg-neutral-900/30">
+          <div className="absolute inset-0 z-20 w-full sm:static sm:z-auto sm:w-64 border-l border-neutral-800/40 flex flex-col shrink-0 overflow-hidden bg-neutral-950 sm:bg-neutral-900/30 anim-sheet-up">
             {/* Preview header */}
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-800/40 shrink-0">
               <div className="flex items-center gap-2 min-w-0 overflow-hidden">
@@ -863,16 +869,19 @@ export default function FileManager() {
             {/* Preview body */}
             <div className="flex-1 overflow-auto min-h-0">
               {previewLoading ? (
-                <div className="p-3 text-neutral-600 text-xs">Loading...</div>
+                <div className="py-10 flex flex-col items-center justify-center gap-2.5 text-neutral-600 text-xs">
+                  <span className="spinner w-5 h-5" aria-hidden="true" />
+                  <span>Loading preview…</span>
+                </div>
               ) : preview.type === 'dir' ? (
-                <div className="p-4 text-center">
-                  <IconFolder className="text-blue-400/40 mx-auto mb-2" />
+                <div className="p-8 flex flex-col items-center text-center gap-2.5">
+                  <IconFolder className="accent-text opacity-40 w-10 h-10" />
                   <div className="text-neutral-600 text-xs">Double-click to open directory</div>
                 </div>
               ) : preview.type === 'image' ? (
-                <div className="p-4 text-center">
-                  <IconImage className="text-pink-400/40 mx-auto mb-2" />
-                  <div className="text-neutral-600 text-xs">Image: {preview.name}</div>
+                <div className="p-8 flex flex-col items-center text-center gap-2.5">
+                  <IconImage className="text-pink-400 opacity-40 w-10 h-10" />
+                  <div className="text-neutral-600 text-xs truncate max-w-full">{preview.name}</div>
                 </div>
               ) : (
                 <pre className="m-0 p-3 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-all font-mono">
