@@ -13,6 +13,8 @@
  */
 
 import { useRouter, toFullPath } from './router.jsx'
+import { useAuth } from './auth/AuthProvider.jsx'
+import { clientReplace } from './auth/nav.js'
 import Dashboard from './pages/Dashboard.jsx'
 import { commercial } from '@vulos/commercial-seam'
 
@@ -100,13 +102,26 @@ function Sidebar({ path }) {
 }
 
 function TopBar() {
+  const { user, logout } = useAuth()
+
+  const handleSignOut = async () => {
+    await logout()
+    // Session dropped — return to the focused sign-in surface.
+    clientReplace('/login')
+  }
+
   return (
     <header className="vm-topbar">
       <div className="vm-topbar-title">Console</div>
       <div className="vm-topbar-actions">
-        <span className="vm-user" title="Authenticated shell (placeholder)">
-          self-host
-        </span>
+        {user && (
+          <span className="vm-user" title="Signed-in account">
+            {user.email || user.handle || 'account'}
+          </span>
+        )}
+        <button type="button" className="vm-signout" onClick={handleSignOut}>
+          Sign out
+        </button>
       </div>
     </header>
   )

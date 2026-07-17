@@ -146,6 +146,11 @@
   letter-spacing: 0.02em;
   color: var(--text-secondary);
 }
+.vm-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
 .vm-user {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -153,6 +158,25 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   padding: var(--sp-0-5) var(--sp-1);
+}
+.vm-signout {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-0-5) var(--sp-2);
+  cursor: pointer;
+  transition: border-color 160ms, color 160ms;
+}
+.vm-signout:hover {
+  color: var(--text-primary);
+  border-color: var(--border-emphasis);
+}
+.vm-signout:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .vm-content {
