@@ -33,7 +33,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -176,8 +175,22 @@ func oauthCallbackURI(provider string) string {
 }
 
 // safeNextPath validates the ?return= param: same-origin absolute path only.
+//
+// It rejects protocol-relative and backslash-smuggled open redirects. A value
+// like "/\evil.com" passes a naive "//"-prefix check yet browsers normalise the
+// backslash to a forward slash, yielding "//evil.com" — a protocol-relative
+// redirect to an attacker origin. We therefore reject any backslash outright and,
+// as defence in depth, require the value to parse as a bare path (no scheme, no
+// host), mirroring the strict host check in isAllowedNextURL.
 func safeNextPath(raw string) string {
 	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return ""
+	}
+	if strings.Contains(raw, `\`) {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "" || u.Host != "" {
 		return ""
 	}
 	return raw
@@ -198,7 +211,7 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 	// GET /api/auth/oauth/{provider}/start?return=/path
 	// Begins the OAuth authorize redirect with PKCE + state.
 	mux.HandleFunc("GET /api/auth/oauth/{provider}/start", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -348,7 +361,7 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 			return
 		}
 
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		ua := r.UserAgent()
 		resolveSocialLogin(w, r, st, secret, ident, flow.Next, ip, ua)
 	})
@@ -357,7 +370,7 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 	// Safe-linking proof: verifies the existing account password, then links the
 	// social identity and signs in (respecting the account's 2FA).
 	mux.HandleFunc("POST /api/auth/oauth/link/confirm", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -477,7 +490,7 @@ func RegisterOAuthLoginRoutes(mux *http.ServeMux, st *auth.Store, reg *oauthclie
 	// collision, be routed to the safe-link flow (which still requires the existing
 	// account's password) — it can never silently take over an account.
 	mux.HandleFunc("POST /api/auth/oauth/complete-email", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := authClientIP(r)
 		if !rl.Allow(ip) {
 			httpx.Err(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
