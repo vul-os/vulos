@@ -49,7 +49,7 @@ that exist only because we charge money.
 Vulos Management ships its own **React console SPA** — the *Vulos Workspace*: one
 app that carries **sign-in + onboarding**, the **user console** (your fleet,
 devices, telemetry, developer keys, audit trail and privacy tools) and the gated
-**operator (super-admin) console**. The Go binary embeds the built bundle and
+**operator (admin) console**. The Go binary embeds the built bundle and
 serves it at **`/console`**; it talks to the same `pkg/cproutes` JSON APIs the
 control plane exposes. Billing lives behind a build-time seam — in this OSS build
 `@vulos/commercial-seam` resolves to a **NoOp**, so **a self-hoster never sees a
@@ -71,7 +71,7 @@ Regenerate with **`make screenshots`** (see [below](#regenerating-the-screenshot
 | <img src="docs/assets/screenshots/login.png" width="420" alt="Sign in" /><br/><sub><b>Sign in</b> — one Vulos account for the OS, apps and console: password, optional passkey, and social sign-in when configured</sub> | <img src="docs/assets/screenshots/boxes.png" width="420" alt="Boxes" /><br/><sub><b>Boxes</b> — the machines running your Vulos OS: version, channel, health and last-seen as a card grid</sub> |
 | <img src="docs/assets/screenshots/devices.png" width="420" alt="Devices" /><br/><sub><b>Devices</b> — every enrolled device as a table, with health pills and a decommission action</sub> | <img src="docs/assets/screenshots/developer.png" width="420" alt="Developer" /><br/><sub><b>Developer</b> — issue scoped API keys, register webhooks and (soon) MCP servers</sub> |
 | <img src="docs/assets/screenshots/account-status.png" width="420" alt="Account status" /><br/><sub><b>Account status</b> — box reachability, relay usage/health, provisioned services and recent events</sub> | <img src="docs/assets/screenshots/auditlog.png" width="420" alt="Audit log" /><br/><sub><b>Audit log</b> — who did what in your org: expandable, tamper-evident, actor/action filters</sub> |
-| <img src="docs/assets/screenshots/admin-dashboard.png" width="420" alt="Operator dashboard" /><br/><sub><b>Operator — Dashboard</b> — account / super-admin counts over the most recent platform audit rows</sub> | <img src="docs/assets/screenshots/admin-security.png" width="420" alt="Operator security" /><br/><sub><b>Operator — Security</b> — WAF hits, bot flags, step-up, ATO, honeypot and egress telemetry</sub> |
+| <img src="docs/assets/screenshots/admin-dashboard.png" width="420" alt="Operator dashboard" /><br/><sub><b>Operator — Dashboard</b> — account / admin counts over the most recent platform audit rows</sub> | <img src="docs/assets/screenshots/admin-security.png" width="420" alt="Operator security" /><br/><sub><b>Operator — Security</b> — WAF hits, bot flags, step-up, ATO, honeypot and egress telemetry</sub> |
 
 <sub>The full gallery (enroll, telemetry, privacy, operator accounts & audit) lives in
 [`docs/assets/screenshots/`](docs/assets/screenshots/). The console ships a single deliberate dark
@@ -91,8 +91,8 @@ exact split, or build your own thin `main` against `pkg/cpserver` (the same way
 | 📱 **Device enrollment** | RFC-8628 device-authorization flow so a box or headless device enrolls against your control plane and mints short-lived, audience-bound tokens. |
 | 🧭 **OS routing & directory** | `os.vulos.org` resolves to the best box in your cluster; the org/box directory tracks who owns what and where it runs, with region-aware placement preview. |
 | 📡 **Relay autoscaler & PoP fleet** | A PoP registry with 15s heartbeats and health flags, failover routing that excludes unhealthy PoPs, and an autoscaler + serving pool that grows and shrinks the fleet against a provider registry. |
-| 🖥️ **React console (`/console`)** | One embedded React SPA — the *Vulos Workspace*: sign-in + onboarding, the **user console** (fleet, devices, telemetry, developer keys, audit trail, privacy), and the **operator (super-admin) console** (accounts, platform audit, security telemetry), each page self-gating on the JSON admin API. Instrument-panel dark theme, fully responsive, AA-contrast, focus-visible throughout. |
-| 🛡️ **Hardened operator gate** | The operator console is triple-gated (session + super-admin row + a separate WebAuthn-backed admin session) and CSRF-protected; every action is audit-logged into the tamper-evident, hash-chained trail. |
+| 🖥️ **React console (`/console`)** | One embedded React SPA — the *Vulos Workspace*: sign-in + onboarding, the **user console** (fleet, devices, telemetry, developer keys, audit trail, privacy), and the **operator (admin) console** (accounts, admin team, platform audit, security telemetry), each page self-gating on the JSON admin API. Instrument-panel dark theme, fully responsive, AA-contrast, focus-visible throughout. |
+| 🛡️ **Hardened operator gate** | The operator console is triple-gated (session + admin row + a separate WebAuthn-backed admin session) and CSRF-protected; every action is audit-logged into the tamper-evident, hash-chained trail. Admins can grant/revoke admin access to other accounts from the console (last-admin-protected). |
 | 🟢 **Status pages** | A public status/incidents surface plus per-user status, authored over the same store. |
 | 🧩 **Pluggable seams** | `BillingProvider` and `StorageProvisioner` (Go) and `@vulos/commercial-seam` (the console SPA) are interfaces/slots with free, no-op / bring-your-own defaults — **a self-hoster never sees a Pay button**. The cloud build injects the commercial implementations at wire-time; the app code is byte-for-byte identical. |
 

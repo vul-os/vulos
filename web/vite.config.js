@@ -41,6 +41,15 @@ export default defineConfig({
   base: BASE,
   plugins: [react()],
   resolve: {
+    // Force a SINGLE React instance. When the console is composed for the cloud
+    // build (build-console.mjs runs this build with VULOS_COMMERCIAL_SEAM pointed
+    // at cloud/src/commercial-seam), the seam's own `react` import would
+    // otherwise resolve to the cloud module's node_modules/react while the app
+    // uses management/web's copy → two React copies → the dispatcher is null and
+    // hooks crash ("can't access property useState, …H is null"). dedupe pins all
+    // three React entrypoints to one instance. Harmless to the standalone OSS
+    // build (already a single copy).
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
     alias: {
       '@vulos/commercial-seam': COMMERCIAL_SEAM,
     },

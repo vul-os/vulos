@@ -58,16 +58,17 @@ export function buildNavGroups(opts = {}) {
       ],
     },
   ]
-  // Operator (super-admin) group — advertised ONLY to a signed-in operator
+  // Operator (admin) group — advertised ONLY to a signed-in operator
   // (opts.isOperator, resolved by a one-shot /api/superadmin/whoami probe in the
   // shell). A normal user never sees these entries; on a deployment where the
-  // super-admin console is disabled the probe fails and the group stays hidden.
+  // admin console is disabled the probe fails and the group stays hidden.
   if (opts.isOperator) {
     groups.push({
       label: 'Operator',
       items: [
         { href: '/admin', label: 'Overview', icon: 'dashboard' },
         { href: '/admin/accounts', label: 'Accounts', icon: 'status' },
+        { href: '/admin/admins', label: 'Admins', icon: 'privacy' },
         { href: '/admin/audit', label: 'Audit', icon: 'audit' },
         { href: '/admin/security', label: 'Security', icon: 'privacy' },
       ],

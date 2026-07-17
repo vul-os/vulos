@@ -27,7 +27,7 @@ export default function AdminDashboard() {
       >
         <div className="op-statrow">
           <Card><Stat label="Accounts" value={(data?.account_count ?? 0).toLocaleString()} /></Card>
-          <Card><Stat label="Super-admins" value={(data?.superadmin_count ?? 0).toLocaleString()} /></Card>
+          <Card><Stat label="Admins" value={(data?.superadmin_count ?? 0).toLocaleString()} /></Card>
           <Card><Stat label="Recent events" value={String(recent.length)} sublabel="last audit page" /></Card>
         </div>
 

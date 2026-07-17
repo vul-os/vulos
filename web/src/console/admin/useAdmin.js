@@ -39,6 +39,26 @@ export async function adminFetch(path) {
 }
 
 /**
+ * adminSend wraps a credentialed mutating request (POST/DELETE). It returns the
+ * parsed JSON body on success (or {} for an empty 204), and throws an Error
+ * whose `.message` is the server's {"error":…} text (or a generic HTTP message)
+ * so callers can surface an honest reason (e.g. "cannot revoke the last admin").
+ */
+export async function adminSend(path, { method = 'POST', body } = {}) {
+  const res = await fetch(path, {
+    method,
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  if (res.status === 204) return {}
+  let json = null
+  try { json = await res.json() } catch { /* empty body */ }
+  if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+  return json ?? {}
+}
+
+/**
  * useAdminResource — GET `path` once (and on demand), classifying the gate
  * outcome. Returns { data, loading, error, needsAdminSession, notOperator, reload }.
  */

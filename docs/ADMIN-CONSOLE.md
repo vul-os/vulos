@@ -71,8 +71,29 @@ console pages reuse this existing gate — no page invents its own auth.
 | **Providers** | `GET/POST /superadmin/providers` | `provider_registry` (see below) |
 | **Incidents** | `GET/POST /superadmin/incidents/*` | `pkg/status` store (what the public status page reads) |
 | Reserved handles | `GET/POST /superadmin/reserved-handles` | `additional_reserved_handles` |
+| **Admins** | `GET/POST /api/superadmin/admins`, `DELETE .../{id}` | `superadmins` — grant/revoke admin access to other accounts |
 | Migrations | `GET /superadmin/migrations` | polled product migration-status endpoints |
 | Audit log | `GET /superadmin/auditlog` | `auditlog_entries` (searchable by actor/action/date) |
+
+### Admins — team management
+
+Admin access is no longer only bootstrap-seeded. Any existing admin can, from the
+React console's **Admins** page (`/console/admin/admins`), grant admin access to
+another account **by email** and revoke it again — so a self-hoster or the Vulos
+team can add teammates without touching the database. This is self-contained in
+`pkg/superadmin` (no cloud dependency): the account must already exist, and the
+promotion inserts/re-activates a row in `superadmins`.
+
+- `GET /api/superadmin/admins` — list active admins (email, promoter, when, whether seeded).
+- `POST /api/superadmin/admins` `{email, totp?}` — promote an existing account (re-activates a revoked one).
+- `DELETE /api/superadmin/admins/{id}?totp=` — revoke access; the target's live admin sessions are killed immediately.
+
+Guards: both mutations sit behind the full `RequireSuperAdmin` gate (so the caller
+already holds a WebAuthn-backed admin session) and additionally honour the
+operator TOTP step-up (`VULOS_ADMIN_REAUTH_TOTP=1`). Every grant/revoke is
+audit-logged (`admin.grant` / `admin.revoke`). The **last remaining admin can
+never be revoked** — the store fail-closes with `409 Conflict` so a deployment
+can't lock everyone out.
 
 ### Accounts — impersonation
 

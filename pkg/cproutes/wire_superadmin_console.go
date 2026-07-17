@@ -166,6 +166,13 @@ func wireSuperAdminConsole(mux *http.ServeMux, deps superAdminConsoleDeps) []fun
 	mux.Handle("POST /api/superadmin/reserved-handles", apiAdmin(superadmin.HandleAddReservedHandle(saStore, deps.Audit)))
 	mux.Handle("DELETE /api/superadmin/reserved-handles/{handle}", apiAdmin(superadmin.HandleDeleteReservedHandle(saStore, deps.Audit)))
 
+	// Admin-team management: an existing admin can grant/revoke admin access for
+	// other accounts (self-host + Vulos team), no DB surgery. Mutations honour the
+	// operator TOTP step-up and are audit-logged; the last admin can't be revoked.
+	mux.Handle("GET /api/superadmin/admins", apiAdmin(superadmin.HandleListAdmins(saStore)))
+	mux.Handle("POST /api/superadmin/admins", apiAdmin(superadmin.HandleGrantAdmin(saStore, deps.AuthStore, deps.Audit)))
+	mux.Handle("DELETE /api/superadmin/admins/{id}", apiAdmin(superadmin.HandleRevokeAdmin(saStore, deps.AuthStore, deps.Audit)))
+
 	// New JSON endpoints mirroring the HTML-only pages' data:
 	mux.Handle("GET /api/superadmin/dashboard", apiAdmin(handleAdminDashboard(saStore, deps.Audit)))
 	mux.Handle("GET /api/superadmin/audit", apiAdmin(handleAdminAudit(deps.Audit)))

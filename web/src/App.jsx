@@ -43,11 +43,12 @@ const PrivacyDashboard = lazy(() => import('./console/pages/PrivacyDashboard.jsx
 const Billing          = lazy(() => import('./console/pages/Billing.jsx'))
 const Usage            = lazy(() => import('./console/pages/Billing.jsx').then((m) => ({ default: m.Usage })))
 const Invoices         = lazy(() => import('./console/pages/Billing.jsx').then((m) => ({ default: m.Invoices })))
-// Operator (super-admin) console pages — a distinct /admin section, gated for
-// operators (each page self-gates on the RequireSuperAdmin JSON API). Mounted in
-// the binary only when the operator opts the super-admin console in.
+// Operator (admin) console pages — a distinct /admin section, gated for
+// operators (each page self-gates on the admin JSON API). Mounted in the binary
+// only when the operator opts the admin console in.
 const AdminDashboard   = lazy(() => import('./console/admin/AdminDashboard.jsx'))
 const AdminAccounts    = lazy(() => import('./console/admin/AdminAccounts.jsx'))
+const AdminTeam        = lazy(() => import('./console/admin/AdminTeam.jsx'))
 const AdminAudit       = lazy(() => import('./console/admin/AdminAudit.jsx'))
 const AdminSecurity    = lazy(() => import('./console/admin/AdminSecurity.jsx'))
 
@@ -67,6 +68,7 @@ const ROUTES = {
   // Operator console (distinct admin section).
   '/admin': AdminDashboard,
   '/admin/accounts': AdminAccounts,
+  '/admin/admins': AdminTeam,
   '/admin/audit': AdminAudit,
   '/admin/security': AdminSecurity,
 }

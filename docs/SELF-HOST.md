@@ -148,7 +148,7 @@ built the same way `vulos-cloud`'s is, against `pkg/cpserver`):
 - **Status pages** (`pkg/status`, `pkg/cloudstatus`) — the public
   status/incidents surface.
 - **Box billing read** (`GET /api/box`, `GET /api/box/billing`) and the whole
-  commercial billing/pricing/superadmin-billing surface — inherently
+  commercial billing/pricing/admin-billing surface — inherently
   commercial-only; the private `vulos-cloud` composition root mounts these.
 
 None of this is a licensing gate or a commercial hold-back — it's a mechanical

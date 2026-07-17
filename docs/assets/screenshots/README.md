@@ -22,7 +22,7 @@ commercial seam to its NoOp implementation).
 | `developer.png` | Developer — Issue scoped API keys, register webhooks and (soon) MCP servers for building on your control plane. |
 | `auditlog.png` | Audit log — Who did what in your organisation — expandable, tamper-evident rows with actor / action / target filters. |
 | `privacy.png` | Privacy & data — Export or erase your account data and track the compliance requests you have filed. |
-| `admin-dashboard.png` | Operator — Dashboard — The operator cockpit: account / super-admin counts and the most recent platform audit rows. |
+| `admin-dashboard.png` | Operator — Dashboard — The operator cockpit: account / admin counts and the most recent platform audit rows. |
 | `admin-accounts.png` | Operator — Accounts — Operator account search with an inline detail drawer — session state, flags and transactions. |
 | `admin-audit.png` | Operator — Audit — The platform-wide, hash-chained audit trail (every tenant + system) with actor / action filters. |
 | `admin-security.png` | Operator — Security — Defensive telemetry: WAF hits, bot flags, step-up challenges, ATO anomalies, honeypot + egress. |

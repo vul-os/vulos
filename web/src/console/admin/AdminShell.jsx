@@ -85,7 +85,7 @@ export function OpGate({ loading, error, needsAdminSession, notOperator, onRetry
         <div className="op-empty">
           <div className="op-empty-title">Operator access required</div>
           <div className="op-empty-sub">
-            The operator console is available to platform super-admins on
+            The operator console is available to platform admins on
             operator-enabled deployments only.
           </div>
         </div>
