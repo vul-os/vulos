@@ -103,10 +103,10 @@ const DEVICE_PROFILES = [
 ]
 
 const PROFILE_ACCENT_CLASSES = {
-  blue:    { selected: 'bg-blue-600/15 border-blue-500/60 text-white shadow-blue-500/10', icon: 'text-blue-400', check: 'bg-blue-500' },
-  violet:  { selected: 'bg-violet-600/15 border-violet-500/60 text-white shadow-violet-500/10', icon: 'text-violet-400', check: 'bg-violet-500' },
-  amber:   { selected: 'bg-amber-600/15 border-amber-500/60 text-white shadow-amber-500/10', icon: 'text-amber-400', check: 'bg-amber-500' },
-  emerald: { selected: 'bg-emerald-600/15 border-emerald-500/60 text-white shadow-emerald-500/10', icon: 'text-emerald-400', check: 'bg-emerald-500' },
+  blue:    { selected: 'accent-bg-soft accent-border', icon: 'accent-text', check: 'accent-bg' },
+  violet:  { selected: 'accent-bg-soft accent-border', icon: 'accent-text', check: 'accent-bg' },
+  amber:   { selected: 'bg-warning-soft border-warning-soft', icon: 'text-warning', check: 'bg-warning' },
+  emerald: { selected: 'bg-success-soft border-success-soft', icon: 'text-success', check: 'bg-success' },
 }
 
 // Timezone data with approximate map positions (% from top-left)
@@ -320,14 +320,20 @@ export default function Setup({ onComplete }) {
   // INIT-09: show loading until mode check resolves
   if (!IS09_modeChecked) {
     return (
-      <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center">
-        <span className="text-neutral-600 text-sm">Checking system mode...</span>
+      <div
+        className="fixed inset-0 flex flex-col items-center justify-center gap-4"
+        style={{ background: 'var(--bg-base)' }}
+      >
+        <span className="spinner w-7 h-7" aria-hidden="true" />
+        <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          Checking system mode…
+        </span>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 bg-neutral-950 overflow-hidden">
+    <div className="fixed inset-0 overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       {/* Animated background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[15%] left-[25%] w-[600px] h-[600px] rounded-full opacity-[0.05] blur-[180px] animate-pulse" style={{ animationDuration: '8s', background: 'var(--accent)' }} />
@@ -335,32 +341,22 @@ export default function Setup({ onComplete }) {
         <div className="absolute top-[50%] left-[60%] w-[300px] h-[300px] rounded-full opacity-[0.02] blur-[120px] animate-pulse" style={{ animationDuration: '10s', background: 'color-mix(in srgb, var(--accent) 40%, #06b6d4)' }} />
       </div>
 
-      <div className="relative h-full flex flex-col items-center justify-center px-6">
-        {/* Theme toggle + fullscreen hint */}
-        <div className="absolute top-4 right-4">
-          <ThemeToggle />
-        </div>
-        <div className="absolute bottom-4">
-          <FullscreenHint />
-        </div>
+      <div className="relative h-full flex flex-col">
+        {/* Header: step progress + theme toggle */}
+        <header className="shrink-0 safe-pt safe-px">
+          <div className="mx-auto w-full max-w-xl px-6 pt-5 pb-2 flex items-center gap-4">
+            <WizardProgress steps={IS09_activeSteps} step={step} onJump={goTo} />
+            <ThemeToggle />
+          </div>
+        </header>
 
-        {/* Progress dots */}
-        <div className="absolute top-8 flex gap-2">
-          {IS09_activeSteps.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => i < step && goTo(i)}
-              aria-label={`Go to step ${i + 1}`}
-              aria-current={i === step ? 'step' : undefined}
-              disabled={i > step}
-              className={`h-2 rounded-full transition-all duration-500
-                ${i === step ? 'accent-bg w-6' : i < step ? 'accent-bg w-2 opacity-50 cursor-pointer hover:opacity-100' : 'w-2 bg-neutral-800'}`}
-            />
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className={`w-full max-w-xl transition-all duration-200 ${transitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
+        {/* Scrollable content region — centers when there's room, scrolls when not */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden safe-px">
+          <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
+            <div
+              className={`w-full max-w-xl transition-all duration-300 ${transitioning ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}
+              style={{ transitionTimingFunction: 'var(--ease-out)' }}
+            >
             {current === 'welcome' && <WelcomeStep onNext={next} />}
             {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'IS09_chooser' && (
@@ -427,8 +423,68 @@ export default function Setup({ onComplete }) {
             {/* Shared steps (pin + ready used by both flows) */}
             {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
+            </div>
+          </div>
         </div>
+
+        {/* Footer: fullscreen hint */}
+        <footer className="shrink-0 safe-pb safe-px">
+          <div className="flex justify-center pb-4 pt-1">
+            <FullscreenHint />
+          </div>
+        </footer>
       </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// Wizard progress — a slim segmented bar that scales to any step count and
+// stays legible on a phone (18 dots would overflow). Completed segments are
+// clickable to jump back; the future is dimmed and inert.
+// ═══════════════════════════════════
+function WizardProgress({ steps, step, onJump }) {
+  const total = steps.length
+  return (
+    <div className="flex-1 flex items-center gap-3 min-w-0">
+      <div
+        className="flex-1 flex items-center gap-1"
+        role="progressbar"
+        aria-valuenow={step + 1}
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-label={`Setup step ${step + 1} of ${total}`}
+      >
+        {steps.map((_, i) => {
+          const done = i < step
+          const active = i === step
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => done && onJump(i)}
+              aria-label={`Go to step ${i + 1}`}
+              aria-current={active ? 'step' : undefined}
+              disabled={!done}
+              className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${
+                done ? 'cursor-pointer hover:opacity-80' : active ? '' : ''
+              }`}
+              style={{
+                background: done || active ? 'var(--accent)' : 'var(--border-strong)',
+                opacity: done ? 0.55 : active ? 1 : 1,
+                boxShadow: active ? '0 0 12px color-mix(in srgb, var(--accent) 55%, transparent)' : 'none',
+              }}
+            />
+          )
+        })}
+      </div>
+      <span
+        className="text-[11px] font-mono tabular-nums shrink-0 whitespace-nowrap"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        {String(step + 1).padStart(2, '0')}
+        <span style={{ color: 'var(--text-ghost)' }}> / {String(total).padStart(2, '0')}</span>
+      </span>
     </div>
   )
 }
@@ -439,15 +495,25 @@ export default function Setup({ onComplete }) {
 function WelcomeStep({ onNext }) {
   const { t } = useI18n()
   return (
-    <div className="text-center">
-      <div className="mb-6 flex flex-col items-center">
-        <img src="/icon-128.png" alt="Vulos OS" className="w-20 h-20 mb-4" />
-        <div className="text-5xl font-extralight text-neutral-100 tracking-[0.2em] mb-3">vula</div>
-        <div className="h-px w-16 mx-auto mb-3" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
-        <p className="text-neutral-500 text-lg font-light">{t('setup.welcome.tagline')}</p>
-        <p className="text-neutral-700 text-sm mt-1 italic">{t('setup.welcome.zulu')}</p>
+    <div className="text-center animate-[fadeIn_0.4s_ease-out]">
+      <div className="mb-8 flex flex-col items-center">
+        <div className="relative mb-6">
+          <div
+            className="absolute inset-0 -m-6 rounded-full blur-2xl opacity-60"
+            style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%)' }}
+            aria-hidden="true"
+          />
+          <img src="/icon-128.png" alt="Vulos OS" className="relative w-24 h-24 drop-shadow-xl" />
+        </div>
+        <div className="text-6xl font-extralight tracking-[0.22em] mb-4" style={{ color: 'var(--text-primary)' }}>vula</div>
+        <div className="h-px w-20 mx-auto mb-4" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
+        <p className="text-lg sm:text-xl font-light" style={{ color: 'var(--text-tertiary)' }}>{t('setup.welcome.tagline')}</p>
+        <p className="text-sm mt-2 italic" style={{ color: 'var(--text-faint)' }}>{t('setup.welcome.zulu')}</p>
       </div>
-      <button onClick={onNext} className="btn-primary px-10 py-3 text-base mt-8">
+      <button
+        onClick={onNext}
+        className="btn-primary px-12 py-3.5 text-base mt-4 elevate-md hover:elevate-lg transition-shadow"
+      >
         {t('setup.welcome.cta')}
       </button>
     </div>
@@ -495,9 +561,10 @@ function DeviceStep({ config, update, onNext, onPrev }) {
             <button
               key={profile.id}
               onClick={() => update('deviceProfile', profile.id)}
+              style={isSelected ? { color: 'var(--text-primary)' } : undefined}
               className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all border-2
                 ${isSelected
-                  ? `${ac.selected} shadow-lg`
+                  ? `${ac.selected} elevate-lg`
                   : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
             >
               <span className={isSelected ? ac.icon : 'text-neutral-500'}>
@@ -505,7 +572,7 @@ function DeviceStep({ config, update, onNext, onPrev }) {
               </span>
               <div>
                 <div className="text-sm font-medium leading-snug">{profile.label}</div>
-                <div className="text-[11px] text-neutral-500 mt-0.5 leading-snug">{profile.desc}</div>
+                <div className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>{profile.desc}</div>
               </div>
               {detected === profile.id && !isSelected && (
                 <div className="absolute top-2 right-2 text-[9px] font-semibold tracking-wider text-neutral-500 uppercase">
@@ -564,10 +631,10 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
         {/* Join existing card */}
         <button
           onClick={onChooseJoin}
-          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-violet-500/50 hover:bg-violet-600/5 transition-all"
+          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover-accent-border hover-accent-bg-soft transition-all"
         >
-          <div className="w-14 h-14 rounded-2xl bg-violet-600/15 flex items-center justify-center group-hover:bg-violet-600/25 transition-colors">
-            <svg viewBox="0 0 24 24" className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-14 h-14 rounded-2xl accent-bg-soft flex items-center justify-center transition-colors">
+            <svg viewBox="0 0 24 24" className="w-7 h-7 accent-text" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
               <circle cx="9" cy="7" r="4" />
               <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
@@ -809,13 +876,13 @@ function IS09_SyncingStep({ onNext, onComplete }) {
   return (
     <div className="text-center">
       <div className="mb-6 flex flex-col items-center">
-        <div className="w-16 h-16 rounded-2xl bg-violet-600/15 flex items-center justify-center mb-4">
+        <div className="w-16 h-16 rounded-2xl accent-bg-soft flex items-center justify-center mb-4">
           {IS09_done ? (
             <svg viewBox="0 0 24 24" className="w-8 h-8 text-success" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" className="w-8 h-8 text-violet-400 animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ animationDuration: '2s' }}>
+            <svg viewBox="0 0 24 24" className="w-8 h-8 accent-text animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ animationDuration: '2s' }}>
               <path d="M21 12a9 9 0 11-6.219-8.56" />
             </svg>
           )}
@@ -854,10 +921,10 @@ function IS09_SyncingStep({ onNext, onComplete }) {
           const isCurrent = i === IS09_phaseIdx && !IS09_done
           return (
             <div key={phase.key} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors
-              ${isCurrent ? 'bg-violet-600/10 border border-violet-500/20' : ''}
+              ${isCurrent ? 'accent-bg-soft border accent-border-soft' : ''}
             `}>
               <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px]
-                ${isDone ? 'bg-success-soft text-success' : isCurrent ? 'bg-violet-500/20 text-violet-400' : 'bg-neutral-800 text-neutral-600'}`}>
+                ${isDone ? 'bg-success-soft text-success' : isCurrent ? 'accent-bg-soft accent-text' : 'bg-neutral-800 text-neutral-600'}`}>
                 {isDone ? '✓' : isCurrent ? '·' : '○'}
               </span>
               <span className={`text-sm ${isDone ? 'text-neutral-400' : isCurrent ? 'text-neutral-200' : 'text-neutral-600'}`}>
@@ -866,7 +933,7 @@ function IS09_SyncingStep({ onNext, onComplete }) {
               {isCurrent && (
                 <span className="ml-auto flex gap-0.5">
                   {[0, 1, 2].map(d => (
-                    <span key={d} className="w-1 h-1 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />
+                    <span key={d} className="w-1 h-1 accent-bg rounded-full animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />
                   ))}
                 </span>
               )}
@@ -1045,7 +1112,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
         className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
           ${scanning
             ? 'bg-neutral-800 text-neutral-500'
-            : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover:text-white'}`}
+            : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover-accent-text'}`}
       >
         {scanning ? (
           <span className="flex items-center justify-center gap-2">
@@ -1291,10 +1358,10 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
           {/* Connect Vulos Cloud card */}
           <button
             onClick={pickCloud}
-            className="group flex flex-col items-start gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover:border-violet-500/50 hover:bg-violet-600/5 transition-all"
+            className="group flex flex-col items-start gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover-accent-border hover-accent-bg-soft transition-all"
           >
-            <div className="w-14 h-14 rounded-2xl bg-violet-600/15 flex items-center justify-center group-hover:bg-violet-600/25 transition-colors">
-              <svg viewBox="0 0 24 24" className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <div className="w-14 h-14 rounded-2xl accent-bg-soft flex items-center justify-center transition-colors">
+              <svg viewBox="0 0 24 24" className="w-7 h-7 accent-text" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17.5 19H9a7 7 0 110-14 7.5 7.5 0 017.5 7.5" />
                 <path d="M17 12h5M19 10l3 2-3 2" />
               </svg>
@@ -1307,7 +1374,7 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
             </div>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {['Remote access', 'Sync', '2FA'].map(tag => (
-                <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-violet-600/10 text-violet-400 border border-violet-500/20">
+                <span key={tag} className="text-[10px] font-medium px-2 py-0.5 rounded-full accent-bg-soft accent-text border accent-border-soft">
                   {tag}
                 </span>
               ))}
@@ -1828,7 +1895,7 @@ function AccountStep({ config, update, onNext, onPrev }) {
           <path d="M8 10v4M6 12h4" />
         </svg>
       ),
-      activeColour: 'text-emerald-400',
+      activeColour: 'text-success',
     },
     {
       id: 'cloud',
@@ -1838,7 +1905,7 @@ function AccountStep({ config, update, onNext, onPrev }) {
           <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
         </svg>
       ),
-      activeColour: 'text-violet-400',
+      activeColour: 'accent-text',
     },
   ]
 
@@ -1904,11 +1971,11 @@ function AccountStep({ config, update, onNext, onPrev }) {
       {mode === 'create' && (
         <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
           {/* Info banner */}
-          <div className="flex items-start gap-3 bg-emerald-600/10 border border-emerald-500/20 rounded-xl px-4 py-3">
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0">
+          <div className="flex items-start gap-3 bg-success-soft border border-success-soft rounded-xl px-4 py-3">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-success mt-0.5 shrink-0">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
             </svg>
-            <p className="text-xs text-emerald-300 leading-relaxed">
+            <p className="text-xs text-success leading-relaxed">
               Create a free Vulos Cloud account. Enables remote access, sync, and 2FA across your devices.
             </p>
           </div>
@@ -1976,11 +2043,11 @@ function AccountStep({ config, update, onNext, onPrev }) {
       {mode === 'cloud' && (
         <div className="space-y-4 animate-[fadeIn_0.15s_ease-out]">
           {/* Info banner */}
-          <div className="flex items-start gap-3 bg-violet-600/10 border border-violet-500/20 rounded-xl px-4 py-3">
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-violet-400 mt-0.5 shrink-0">
+          <div className="flex items-start gap-3 accent-bg-soft border accent-border-soft rounded-xl px-4 py-3">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 accent-text mt-0.5 shrink-0">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
             </svg>
-            <p className="text-xs text-violet-300 leading-relaxed">
+            <p className="text-xs accent-text leading-relaxed">
               Sign in with your existing Vulos Cloud account. Your cloud credentials will be used for OS login; a local user will be created automatically.
             </p>
           </div>
@@ -2072,8 +2139,8 @@ function PinStep({ config, update, onNext, onPrev }) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 max-w-sm mx-auto">
-      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 flex items-center justify-center mb-4">
-        <svg viewBox="0 0 24 24" className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <div className="w-12 h-12 rounded-2xl bg-warning-soft flex items-center justify-center mb-4">
+        <svg viewBox="0 0 24 24" className="w-6 h-6 text-warning" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
           <rect x="3" y="11" width="18" height="11" rx="2" />
           <path d="M7 11V7a5 5 0 0110 0v4" />
           <circle cx="12" cy="16.5" r="1.5" fill="currentColor" />
@@ -2094,7 +2161,8 @@ function PinStep({ config, update, onNext, onPrev }) {
         onChange={e => { update('pin', e.target.value.replace(/\D/g, '')); setError('') }}
         placeholder={t('setup.pin.placeholder')}
         maxLength={8}
-        className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-3"
+        className="w-full rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] outline-none placeholder:tracking-normal placeholder:text-sm mb-3 transition-colors focus:border-[color-mix(in_srgb,var(--status-warning)_55%,transparent)]"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
       />
 
       {config.pin && (
@@ -2109,7 +2177,8 @@ function PinStep({ config, update, onNext, onPrev }) {
             maxLength={8}
             aria-describedby={confirm ? 'pin-confirm-msg' : undefined}
             aria-invalid={(confirm && config.pin !== confirm) || undefined}
-            className="w-full bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] text-neutral-100 outline-none placeholder:text-neutral-600 placeholder:tracking-normal placeholder:text-sm focus:border-amber-500/50 mb-1"
+            className="w-full rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] outline-none placeholder:tracking-normal placeholder:text-sm mb-1 transition-colors focus:border-[color-mix(in_srgb,var(--status-warning)_55%,transparent)]"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
           />
           {confirm && (
             <p
@@ -2131,7 +2200,7 @@ function PinStep({ config, update, onNext, onPrev }) {
         <button onClick={() => { update('pin', ''); onNext() }} className="py-3 px-5 rounded-xl text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
           {t('setup.pin.skip')}
         </button>
-        <button onClick={handleNext} disabled={config.pin && config.pin.length < 4} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-40 transition-colors">
+        <button onClick={handleNext} disabled={config.pin && config.pin.length < 4} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-warning hover:opacity-90 disabled:opacity-40 transition-opacity">
           {config.pin ? t('setup.pin.set') : t('setup.pin.skip')}
         </button>
       </div>
@@ -2276,7 +2345,7 @@ function AppsStep({ config, update, onNext, onPrev }) {
           onToggle={() => update('suiteWorkspace', !workspace)}
           title="Install the productivity app — Ofisi"
           desc="Ofisi — Docs, Sheets, Slides, PDF and Whiteboards. Uncheck for a lean OS without the productivity app. Files, Calendar and Contacts are always included."
-          accent="border-violet-500/60 bg-violet-600/10"
+          accent="accent-border accent-bg-soft"
         />
       </div>
 
@@ -2364,7 +2433,7 @@ function AppearanceStep({ onNext, onPrev }) {
           </div>
           <button
             onClick={() => setNightShiftMode(nightShiftMode === 'off' ? 'auto' : 'off')}
-            className={`w-10 h-5 rounded-full transition-colors relative ${nightShiftMode !== 'off' ? 'bg-amber-600' : 'bg-neutral-700'}`}
+            className={`w-10 h-5 rounded-full transition-colors relative ${nightShiftMode !== 'off' ? 'bg-warning' : 'bg-neutral-700'}`}
           >
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${nightShiftMode !== 'off' ? 'left-5' : 'left-0.5'}`} />
           </button>
@@ -2681,7 +2750,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
               value={IS05_passphraseConfirm}
               onChange={e => { IS05_setPassphraseConfirm(e.target.value); IS05_setError('') }}
               placeholder={t('Confirm passphrase')}
-              className={`input text-base py-3 ${IS05_passphraseConfirm && config.IS05_storagePassphrase !== IS05_passphraseConfirm ? 'border-red-500/60' : ''}`}
+              className={`input text-base py-3 ${IS05_passphraseConfirm && config.IS05_storagePassphrase !== IS05_passphraseConfirm ? 'border-danger-soft' : ''}`}
             />
           </div>
 
@@ -2824,7 +2893,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
           className={`w-full py-3 rounded-xl text-sm font-medium transition-all
             ${IS05_generating
               ? 'bg-neutral-800 text-neutral-500'
-              : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover:text-white'}`}
+              : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover-accent-text'}`}
         >
           {IS05_generating ? (
             <span className="flex items-center justify-center gap-2">
@@ -2838,10 +2907,10 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
         {IS05_privateKey && (
           <div className="bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
             <div className="flex items-center justify-between px-4 py-2 bg-neutral-900/60 border-b border-neutral-800">
-              <span className="text-[11px] text-amber-400 font-medium">{t('Private Key — shown once, copy now')}</span>
+              <span className="text-[11px] text-warning font-medium">{t('Private Key — shown once, copy now')}</span>
               <button
                 onClick={IS05_copy}
-                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft text-success' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
+                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft text-success' : 'bg-neutral-800 text-neutral-400 hover-accent-text'}`}
               >
                 {IS05_copied ? t('Copied!') : t('Copy')}
               </button>
@@ -3139,7 +3208,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
       <div className="bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-4 mb-2">
         <p className="text-sm text-neutral-400 mb-3">
           {t('Type ')}
-          <code className="bg-neutral-800 text-amber-400 px-1.5 py-0.5 rounded text-xs font-mono">confirm</code>
+          <code className="bg-neutral-800 text-warning px-1.5 py-0.5 rounded text-xs font-mono">confirm</code>
           {t(' to proceed')}
         </p>
         <input
@@ -3281,9 +3350,18 @@ function ReadyStep({ config, onFinish, onPrev }) {
   }
 
   return (
-    <div className="text-center">
-      <div className="text-4xl mb-2">✓</div>
-      <StepHeader title={t('setup.ready.title')} subtitle={t('setup.ready.subtitle')} />
+    <div className="text-center animate-[fadeIn_0.3s_ease-out]">
+      <div
+        className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center"
+        style={{ background: 'var(--status-success-soft)' }}
+      >
+        <svg viewBox="0 0 24 24" className="w-8 h-8 text-success" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      </div>
+      <div className="flex flex-col items-center">
+        <StepHeader title={t('setup.ready.title')} subtitle={t('setup.ready.subtitle')} />
+      </div>
 
       <div className="grid grid-cols-2 gap-3 text-left mb-8">
         {config.deviceProfile && (
@@ -3301,24 +3379,24 @@ function ReadyStep({ config, onFinish, onPrev }) {
       <button
         onClick={handleFinish}
         disabled={creating}
-        className="btn-primary px-10 py-3 text-base"
+        className="btn-primary px-10 py-3.5 text-base elevate-md hover:elevate-lg transition-shadow disabled:opacity-60"
       >
         {creating ? (
           <span className="flex items-center gap-2">
-            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <span className="spinner w-4 h-4" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} />
             {t('setup.ready.setting_up')}
           </span>
         ) : t('setup.ready.enter')}
       </button>
 
-      <button onClick={onPrev} className="block mx-auto mt-4 text-sm text-neutral-600 hover:text-neutral-400">
+      <button onClick={onPrev} className="block mx-auto mt-4 text-sm transition-colors hover-accent-text" style={{ color: 'var(--text-muted)' }}>
         {t('setup.ready.go_back')}
       </button>
 
       {/* kitBackup-IK11: recovery kit hint — additive, admin context */}
-      <div className="mt-6 mx-auto max-w-sm rounded-xl border border-neutral-800/50 bg-neutral-900/40 px-4 py-3 text-left">
-        <p className="text-xs text-neutral-500 leading-relaxed">
-          <span className="text-neutral-400 font-medium">Recovery kit</span> — your credentials JSON was shown once during setup.
+      <div className="mt-6 mx-auto max-w-sm rounded-xl px-4 py-3 text-left" style={{ border: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>Recovery kit</span> — your credentials JSON was shown once during setup.
           You can re-download it any time as an admin via{' '}
           <code className="accent-text text-[11px]">GET /api/recovery/kit</code>
           {' '}from a trusted local session.
@@ -3406,9 +3484,9 @@ export function PrivateAIStep({ onDone }) {
           add the model any time in <span className="text-neutral-400">Settings → AI Models</span>.
         </p>
         {deps && !deps.ready && (
-          <p className="text-[11px] text-amber-400/90 leading-relaxed mt-2">
+          <p className="text-[11px] text-warning leading-relaxed mt-2">
             Note: running embeddings also needs the vula-embed Python packages on the box:
-            <code className="block mt-1 font-mono text-amber-300 bg-neutral-950/60 rounded px-2 py-1 select-all">
+            <code className="block mt-1 font-mono text-warning bg-neutral-950/60 rounded px-2 py-1 select-all">
               {deps.install_hint || 'pip install onnxruntime tokenizers numpy'}
             </code>
             These are never installed automatically.
@@ -3469,8 +3547,8 @@ export function PrivateAIStep({ onDone }) {
 function StepHeader({ title, subtitle }) {
   return (
     <div className="mb-6">
-      <h2 className="text-2xl font-light text-neutral-100">{title}</h2>
-      {subtitle && <p className="text-sm text-neutral-500 mt-1">{subtitle}</p>}
+      <h2 className="text-2xl font-light tracking-tight" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+      {subtitle && <p className="text-sm mt-1.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>}
     </div>
   )
 }
@@ -3479,13 +3557,13 @@ function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip, nextDisabled }) 
   const { t } = useI18n()
   const resolvedNext = nextLabel ?? t('nav.continue')
   return (
-    <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
-      <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+    <div className="flex items-center justify-between mt-6 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+      <button onClick={onPrev} className="text-sm transition-colors hover-accent-text" style={{ color: 'var(--text-muted)' }}>
         {t('nav.back')}
       </button>
       <div className="flex items-center gap-3">
         {skipLabel && (
-          <button onClick={onSkip} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+          <button onClick={onSkip} className="text-sm transition-colors hover-accent-text" style={{ color: 'var(--text-muted)' }}>
             {skipLabel}
           </button>
         )}
@@ -3499,12 +3577,15 @@ function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip, nextDisabled }) 
 
 function SummaryCard({ icon, label, value }) {
   return (
-    <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
+    <div
+      className="rounded-xl px-4 py-3 transition-colors"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
+    >
       <div className="flex items-center gap-2 mb-1">
         <span className="text-sm">{icon}</span>
-        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</span>
       </div>
-      <div className="text-sm text-neutral-300 truncate">{value}</div>
+      <div className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{value}</div>
     </div>
   )
 }

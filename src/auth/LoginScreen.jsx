@@ -108,30 +108,47 @@ export default function LoginScreen() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center">
-        <span className="text-neutral-600 text-sm">Loading...</span>
+      <div
+        className="fixed inset-0 flex flex-col items-center justify-center gap-4"
+        style={{ background: 'var(--bg-base)' }}
+      >
+        <span className="spinner w-7 h-7" aria-hidden="true" />
+        <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</span>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 bg-neutral-950 flex flex-col items-center justify-center px-6">
+    <div
+      className="fixed inset-0 flex flex-col items-center justify-center px-6 py-10 overflow-y-auto safe-px safe-pt safe-pb"
+      style={{ background: 'var(--bg-base)' }}
+    >
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[30%] left-[40%] w-[400px] h-[400px] rounded-full opacity-[0.04] blur-[150px]" style={{ background: 'var(--accent)' }} />
-        <div className="absolute bottom-[30%] right-[30%] w-[300px] h-[300px] rounded-full opacity-[0.03] blur-[150px]" style={{ background: 'color-mix(in srgb, var(--accent) 60%, #a855f7)' }} />
+        <div className="absolute top-[28%] left-[38%] w-[440px] h-[440px] rounded-full opacity-[0.05] blur-[160px]" style={{ background: 'var(--accent)' }} />
+        <div className="absolute bottom-[26%] right-[28%] w-[320px] h-[320px] rounded-full opacity-[0.04] blur-[160px]" style={{ background: 'color-mix(in srgb, var(--accent) 60%, #a855f7)' }} />
       </div>
 
       {/* Logo */}
-      <div className="relative mb-8 flex flex-col items-center">
-        <img src="/icon-96.png" alt="Vulos OS" className="w-16 h-16 mb-3" />
-        <h1 className="text-3xl font-light text-neutral-200 tracking-wider">vula</h1>
-        <p className="text-sm text-neutral-600 mt-1">open</p>
+      <div className="relative mb-8 flex flex-col items-center animate-[fadeIn_0.4s_ease-out]">
+        <div className="relative mb-4">
+          <div
+            className="absolute inset-0 -m-4 rounded-full blur-xl opacity-60"
+            style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 40%, transparent), transparent 70%)' }}
+            aria-hidden="true"
+          />
+          <img src="/icon-96.png" alt="Vulos OS" className="relative w-16 h-16 drop-shadow-lg" />
+        </div>
+        <h1 className="text-3xl font-light tracking-[0.18em]" style={{ color: 'var(--text-primary)' }}>vula</h1>
+        <p className="text-sm mt-1 tracking-wide" style={{ color: 'var(--text-faint)' }}>open</p>
       </div>
+
+      {/* Auth card */}
+      <div className="relative w-full max-w-sm rounded-2xl glass elevate-xl p-6 sm:p-7 animate-[fadeIn_0.5s_ease-out]" style={{ border: '1px solid var(--glass-border)' }}>
 
       {/* UNIFIED-SIGNIN: cloud-account form */}
       {cloudMode ? (
-        <form onSubmit={handleCloudSubmit} className="relative w-full max-w-sm space-y-4">
-          <h2 className="text-lg text-neutral-300 text-center mb-2">Sign in with Vulos Cloud</h2>
+        <form onSubmit={handleCloudSubmit} className="space-y-4">
+          <h2 className="text-lg font-medium text-center mb-2" style={{ color: 'var(--text-secondary)' }}>Sign in with Vulos Cloud</h2>
 
           <div>
             <label className="block text-xs text-neutral-500 mb-1">Cloud email</label>
@@ -186,8 +203,8 @@ export default function LoginScreen() {
           </button>
         </form>
       ) : (
-      <form onSubmit={handleSubmit} className="relative w-full max-w-sm space-y-4">
-        <h2 className="text-lg text-neutral-300 text-center mb-2">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <h2 className="text-lg font-medium text-center mb-2" style={{ color: 'var(--text-secondary)' }}>
           {isSetup ? 'Create your account' : 'Sign in'}
         </h2>
 
@@ -251,19 +268,28 @@ export default function LoginScreen() {
 
         {/* UNIFIED-SIGNIN affordance: shown when this box is cloud-enrolled */}
         {cloudEnrolled && !isSetup && (
-          <button
-            type="button"
-            onClick={() => { setCloudMode(true); setError('') }}
-            className="w-full py-2.5 rounded-xl text-sm font-medium text-violet-300 border border-violet-500/30 hover:bg-violet-600/10 transition-colors flex items-center justify-center gap-2"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
-              <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
-            </svg>
-            Sign in with Vulos Cloud
-          </button>
+          <>
+            <div className="flex items-center gap-3 pt-1" aria-hidden="true">
+              <span className="flex-1 h-px" style={{ background: 'var(--border-default)' }} />
+              <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--text-faint)' }}>or</span>
+              <span className="flex-1 h-px" style={{ background: 'var(--border-default)' }} />
+            </div>
+            <button
+              type="button"
+              onClick={() => { setCloudMode(true); setError('') }}
+              className="w-full py-2.5 rounded-xl text-sm font-medium accent-text hover-accent-bg-soft transition-colors flex items-center justify-center gap-2"
+              style={{ border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)' }}
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+                <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
+              </svg>
+              Sign in with Vulos Cloud
+            </button>
+          </>
         )}
       </form>
       )}
+      </div>
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
