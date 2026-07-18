@@ -401,7 +401,6 @@ type prefixRT struct {
 func (p *prefixRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	// req.URL is "https://api.cloudflare.com/client/v4/zones/…"
 	// Strip the CF origin and replace with test server URL.
-	const cfOrigin = "https://api.cloudflare.com"
 	path := req.URL.RequestURI() // "/client/v4/zones/…"
 	newURL := p.base + strings.TrimPrefix(path, "/client/v4")
 	newReq, err := http.NewRequestWithContext(req.Context(), req.Method, newURL, req.Body)

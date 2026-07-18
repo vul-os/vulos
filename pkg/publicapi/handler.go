@@ -6,13 +6,11 @@
 package publicapi
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // Handler is the public API HTTP handler.
@@ -310,11 +308,4 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeAPIError(w http.ResponseWriter, status int, msg string) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
-}
-
-// stubAccountStore is used when real account data is not needed.
-type stubAccountStore struct{}
-
-func (s *stubAccountStore) GetAccountByID(_ context.Context, accountID string) (string, string, time.Time, error) {
-	return "user@example.com", "pro", time.Now(), nil
 }

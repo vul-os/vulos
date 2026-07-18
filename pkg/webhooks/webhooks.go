@@ -515,18 +515,6 @@ func (d *Dispatcher) recordAttempt(ctx context.Context, deliveryID string, count
 	)
 }
 
-// topicsContain checks if a JSON topics string contains the given topic.
-func topicsContain(topicsJSON, topic string) bool {
-	var topics []string
-	_ = json.Unmarshal([]byte(topicsJSON), &topics)
-	for _, t := range topics {
-		if t == topic {
-			return true
-		}
-	}
-	return false
-}
-
 // DeliveryStatus returns the current status of a delivery.
 func (s *Store) DeliveryStatus(ctx context.Context, deliveryID string) (string, error) {
 	var status string

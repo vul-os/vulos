@@ -1,22 +1,10 @@
 package ddos
 
 import (
-	"net"
 	"net/http/httptest"
 	"os"
 	"testing"
 )
-
-// netIPStubDB satisfies geoIPDB using net.IP.
-type netIPStubDB struct {
-	ipToCountry map[string]string
-}
-
-func (s *netIPStubDB) LookupCountry(ip net.IP) (string, error) {
-	return s.ipToCountry[ip.String()], nil
-}
-
-func (s *netIPStubDB) Close() error { return nil }
 
 func TestGeoIPFilter_BlockedByHeader(t *testing.T) {
 	os.Unsetenv(envTrustHeader)

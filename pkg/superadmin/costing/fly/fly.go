@@ -158,11 +158,6 @@ func (s *Store) Sweep(ctx context.Context) error {
 
 // ─── GraphQL response types (defensive: unknown fields ignored) ──────────────
 
-// graphqlRequest is the JSON body for a GraphQL POST.
-type graphqlRequest struct {
-	Query string `json:"query"`
-}
-
 // orgBillingResponse is the partial GraphQL response we care about.
 // We use json.RawMessage for nested objects so unknown schema changes don't crash.
 type orgBillingResponse struct {
