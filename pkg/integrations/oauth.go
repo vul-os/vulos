@@ -72,7 +72,7 @@ var (
 
 // googleScopes is the connected-account scope set: identify the account
 // (openid/email), plus offline data access for the apps that consume it —
-// Gmail (read+send+labels), Calendar, Drive. Wave 5 narrows these per-app.
+// Gmail (read-only import), Calendar, Drive. Wave 5 narrows these per-app.
 // "profile" is included so the browser-session use-case renders a signed-in
 // Google identity.
 //
@@ -94,7 +94,10 @@ var googleScopes = []string{
 	"openid",
 	"email",
 	"profile",
-	"https://www.googleapis.com/auth/gmail.modify",
+	// Least-privilege: the CP only brokers a READ grant for the box-side importer
+	// (MAIL-09) — it never sends or mutates the user's Gmail — so request
+	// gmail.readonly, not gmail.modify. Mirrors the .readonly pattern below.
+	"https://www.googleapis.com/auth/gmail.readonly",
 	"https://www.googleapis.com/auth/calendar",
 	ScopeDrive,
 	ScopeDriveReadonly,
