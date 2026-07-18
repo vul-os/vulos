@@ -271,3 +271,103 @@ func do(t *testing.T, url, method, secret, body string) int {
 	defer resp.Body.Close()
 	return resp.StatusCode
 }
+
+// ── Demand API: fail-closed + edge branches ─────────────────────────────────
+
+// TestDemandAPI_ObserveFailsClosedWithoutSecret proves the observe endpoint
+// refuses (503) when no shared secret is configured — it never accepts an
+// anonymous load push that could steer the published desired state.
+func TestDemandAPI_ObserveFailsClosedWithoutSecret(t *testing.T) {
+	store := NewDemandStore(time.Minute, nil)
+	// Empty secret ⇒ observe disabled.
+	api := NewDemandAPI(store, Policy{}, "manual", func() string { return "" })
+	mux := http.NewServeMux()
+	api.Register(mux, "/api/relay/scale")
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body := `{"regions":[{"region":"eu","instances":2,"saturation":0.9}]}`
+	// Even WITH a bearer, an unconfigured secret is 503 (disabled), never 200.
+	if code := do(t, srv.URL+"/api/relay/scale/observe", http.MethodPost, "anything", body); code != http.StatusServiceUnavailable {
+		t.Fatalf("observe with no configured secret = %d, want 503 (fail-closed)", code)
+	}
+	// And nothing was recorded — the push was rejected before Observe.
+	if n := len(store.Snapshot()); n != 0 {
+		t.Fatalf("store recorded %d regions despite disabled observe; want 0", n)
+	}
+}
+
+// TestDemandAPI_NilSecretDefaultsToDisabled proves NewDemandAPI treats a nil
+// secret func as the empty (disabled) secret — fail-closed, not a nil-deref.
+func TestDemandAPI_NilSecretDefaultsToDisabled(t *testing.T) {
+	api := NewDemandAPI(NewDemandStore(0, nil), Policy{}, "manual", nil)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/observe", strings.NewReader(`{}`))
+	api.ServeObserve(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("observe with nil secret = %d, want 503", rr.Code)
+	}
+}
+
+// TestDemandAPI_ObserveBadJSON proves a malformed body is a clean 400, not a
+// 500 or a panic — and does not mutate the store.
+func TestDemandAPI_ObserveBadJSON(t *testing.T) {
+	store := NewDemandStore(time.Minute, nil)
+	api := NewDemandAPI(store, Policy{}, "manual", func() string { return "sekret" })
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/observe", strings.NewReader(`{not-json`))
+	req.Header.Set("X-Relay-Auth", "sekret")
+	api.ServeObserve(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("observe bad json = %d, want 400", rr.Code)
+	}
+	if n := len(store.Snapshot()); n != 0 {
+		t.Fatalf("store mutated on bad json (%d regions); want 0", n)
+	}
+}
+
+// TestDemandAPI_ActuatedReflectsProvisioner proves the Actuated flag is derived
+// correctly: true only when a self-actuating provisioner (not manual/external)
+// is named. This is what tells an external scaler whether IT must act.
+func TestDemandAPI_ActuatedReflectsProvisioner(t *testing.T) {
+	cases := map[string]bool{
+		"manual":     false,
+		"external":   false,
+		"":           false,
+		"kubernetes": true,
+		"proxmox":    true,
+	}
+	for name, wantActuated := range cases {
+		api := NewDemandAPI(NewDemandStore(0, nil), Policy{}, name, func() string { return "s" })
+		if got := api.Demand().Actuated; got != wantActuated {
+			t.Errorf("provisioner %q: Actuated=%v, want %v", name, got, wantActuated)
+		}
+	}
+}
+
+// ── Policy env parsing ──────────────────────────────────────────────────────
+
+// Test_policyFromEnv proves RELAY_SCALE_* env is parsed into the Policy, and
+// that unset/garbage values fall back to the zero-value defaults rather than
+// erroring — a self-hoster who sets nothing gets a well-formed (default) policy.
+func Test_policyFromEnv(t *testing.T) {
+	// All set + valid.
+	env := map[string]string{
+		"RELAY_SCALE_UP_AT":          "0.8",
+		"RELAY_SCALE_DOWN_AT":        "0.2",
+		"RELAY_SCALE_MIN_PER_REGION": "2",
+		"RELAY_SCALE_MAX_PER_REGION": "9",
+		"RELAY_SCALE_STEP":           "3",
+	}
+	p := policyFromEnv(func(k string) string { return env[k] })
+	if p.ScaleUpAt != 0.8 || p.ScaleDownAt != 0.2 || p.MinPerRegion != 2 || p.MaxPerRegion != 9 || p.Step != 3 {
+		t.Fatalf("policyFromEnv parsed = %+v, want {0.8 0.2 2 9 3}", p)
+	}
+
+	// Unset + garbage ⇒ zero-value defaults (no error, no panic).
+	bad := map[string]string{"RELAY_SCALE_UP_AT": "not-a-float", "RELAY_SCALE_STEP": "xyz"}
+	p = policyFromEnv(func(k string) string { return bad[k] })
+	if p.ScaleUpAt != 0 || p.MinPerRegion != 0 || p.Step != 0 {
+		t.Fatalf("policyFromEnv on garbage = %+v, want zero-value policy", p)
+	}
+}

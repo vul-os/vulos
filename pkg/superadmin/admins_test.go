@@ -227,3 +227,76 @@ func TestHandleRevokeAdmin_StepUpRequired(t *testing.T) {
 		t.Fatal("revoke took effect despite a failed step-up — demotion must be step-up-gated")
 	}
 }
+
+// ── Handler-level error-mapping branches (authz + fail-closed HTTP surface) ───
+
+// Test: the list handler returns the current admin team as JSON with a count.
+func TestHandleListAdmins_HTTP(t *testing.T) {
+	adminID, _, _, _, saStore := twoAccountsOneAdmin(t)
+
+	req := adminCtx(httptest.NewRequest(http.MethodGet, "/api/superadmin/admins", nil), adminID)
+	rr := httptest.NewRecorder()
+	superadmin.HandleListAdmins(saStore)(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list admins = %d, want 200 (%s)", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Admins []map[string]any `json:"admins"`
+		Count  int              `json:"count"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode list body: %v (%s)", err, rr.Body.String())
+	}
+	if resp.Count != 1 || len(resp.Admins) != 1 {
+		t.Fatalf("list count=%d admins=%d, want 1/1", resp.Count, len(resp.Admins))
+	}
+	if got := rr.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store (admin data must not be cached)", got)
+	}
+}
+
+// Test: the grant handler rejects an empty email with 400 (never reaches the
+// store lookup).
+func TestHandleGrantAdmin_EmptyEmail400(t *testing.T) {
+	adminID, _, _, _, saStore := twoAccountsOneAdmin(t)
+
+	req := adminCtx(httptest.NewRequest(http.MethodPost, "/api/superadmin/admins", strings.NewReader(`{"email":"  "}`)), adminID)
+	rr := httptest.NewRecorder()
+	superadmin.HandleGrantAdmin(saStore, nil, nil)(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("grant empty email = %d, want 400 (%s)", rr.Code, rr.Body.String())
+	}
+}
+
+// Test: granting an email that maps to no account is 422 (the person must sign
+// up first) — the caller cannot promote a non-existent account.
+func TestHandleGrantAdmin_UnknownEmail422(t *testing.T) {
+	adminID, _, _, _, saStore := twoAccountsOneAdmin(t)
+
+	body, _ := json.Marshal(map[string]string{"email": "ghost@nowhere.example"})
+	req := adminCtx(httptest.NewRequest(http.MethodPost, "/api/superadmin/admins", strings.NewReader(string(body))), adminID)
+	rr := httptest.NewRecorder()
+	superadmin.HandleGrantAdmin(saStore, nil, nil)(rr, req)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("grant unknown email = %d, want 422 (%s)", rr.Code, rr.Body.String())
+	}
+}
+
+// Test: revoking an account that is not an admin is 404 — a no-op cannot be
+// confused with success, and the last-admin guard is not the cause here.
+func TestHandleRevokeAdmin_NotAnAdmin404(t *testing.T) {
+	adminID, _, otherID, _, saStore := twoAccountsOneAdmin(t)
+
+	// otherID is a plain account (never promoted). Revoking it must be 404.
+	req := adminCtx(httptest.NewRequest(http.MethodDelete, "/api/superadmin/admins/"+otherID, nil), adminID)
+	req.SetPathValue("id", otherID)
+	rr := httptest.NewRecorder()
+	superadmin.HandleRevokeAdmin(saStore, nil, nil)(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("revoke non-admin = %d, want 404 (%s)", rr.Code, rr.Body.String())
+	}
+}
