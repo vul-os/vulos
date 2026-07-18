@@ -557,7 +557,7 @@ Only output the viewport block — no explanations outside it.`
               key={app.id}
               onClick={() => { handleIntent(app.name); setQuery(''); setSuggestions([]) }}
               className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors
-                ${i === selectedIdx ? 'bg-neutral-800/60 text-white' : 'text-neutral-400 hover:bg-neutral-800/30'}`}
+                ${i === selectedIdx ? 'bg-neutral-800/60 text-[var(--text-primary)]' : 'text-neutral-400 hover:bg-neutral-800/30'}`}
             >
               <span className="text-sm w-5 text-center opacity-50">{app.icon}</span>
               <span className="text-sm">{app.name}</span>
@@ -578,14 +578,14 @@ Only output the viewport block — no explanations outside it.`
           onKeyDown={handleKeyNav}
           placeholder="What do you need?"
           disabled={thinking}
-          className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-neutral-600"
+          className="flex-1 bg-transparent text-[var(--text-primary)] text-sm outline-none placeholder:text-neutral-600"
         />
         {voiceSupported && (
           <button
             type="button"
             onClick={listening ? stopVoice : startVoice}
             className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors
-              ${listening ? 'bg-red-600 text-white animate-pulse' : 'bg-neutral-800 text-neutral-500 hover:text-white'}`}
+              ${listening ? 'bg-red-600 text-white animate-pulse' : 'bg-neutral-800 text-neutral-500 hover:text-[var(--text-primary)]'}`}
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5">
               <path d="M8 1a2 2 0 012 2v4a2 2 0 11-4 0V3a2 2 0 012-2z" fill="currentColor" />

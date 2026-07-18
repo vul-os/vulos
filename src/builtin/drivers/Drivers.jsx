@@ -97,7 +97,7 @@ export default function Drivers() {
             <button key={t.id} onClick={() => setTab(t.id)}
               aria-pressed={tab === t.id}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-(--motion-fast) ${
-                tab === t.id ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}>
+                tab === t.id ? 'bg-[var(--bg-active)] text-[var(--text-primary)] shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}>
               {t.label}
               {t.id === 'modules' && status?.modules && (
                 <span className="ml-1.5 tabular-nums text-neutral-600">{status.modules.length}</span>

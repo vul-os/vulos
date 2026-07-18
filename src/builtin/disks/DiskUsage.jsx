@@ -282,7 +282,7 @@ export default function DiskUsage() {
                           className="w-full text-left flex items-center gap-2.5 px-3 py-2 bg-neutral-900/30 hover:bg-neutral-800/40 transition-colors group">
                           <span className="w-2.5 h-2.5 rounded-sm shrink-0"
                             style={{ background: COLORS[i % COLORS.length] }} />
-                          <span className="text-xs truncate flex-1 min-w-0 group-hover:text-white transition-colors">
+                          <span className="text-xs truncate flex-1 min-w-0 group-hover:text-[var(--text-primary)] transition-colors">
                             {d.name}
                           </span>
                           <span className="text-[11px] text-neutral-500 shrink-0 tabular-nums">

@@ -531,7 +531,7 @@ export default function Home() {
           <div>
             <h1
               className="text-[30px] sm:text-[38px] font-light leading-[1.04] tracking-tight text-transparent bg-clip-text"
-              style={{ backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c9c9cf 100%)' }}>
+              style={{ backgroundImage: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-tertiary) 100%)' }}>
               {data?.greeting || 'Welcome'}
             </h1>
             <div className="mt-2 text-[12px] font-mono text-neutral-500">

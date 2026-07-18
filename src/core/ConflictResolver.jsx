@@ -130,7 +130,7 @@ export default function ConflictResolver({ onClose }) {
                     disabled={!!busy}
                     onClick={() => cl10Resolve(c.path, 'ours')}
                     className="flex-1 text-xs py-1.5 px-3 rounded-lg border border-neutral-600 text-neutral-300
-                               hover:bg-neutral-800 hover:text-white transition-colors disabled:opacity-40"
+                               hover:bg-neutral-800 hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
                   >
                     {busy === 'ours' ? 'Keeping mine...' : 'Keep mine'}
                   </button>

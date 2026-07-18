@@ -584,7 +584,7 @@ function AccentPicker({ accent, setAccent }) {
             style={{ background: p.value }}
             className={`w-7 h-7 rounded-full transition-all border-2 ${
               accent === p.value
-                ? 'border-white scale-110 shadow-lg'
+                ? 'border-[var(--text-primary)] scale-110 shadow-lg'
                 : 'border-transparent opacity-80 hover:opacity-100 hover:scale-105'
             }`}
           />
@@ -792,7 +792,7 @@ function AudioDevice({ device, type, onVolume, onMute, onDefault }) {
       </div>
       <input type="range" min="0" max="100" value={device.volume} onChange={e => onVolume(device.id, type, parseInt(e.target.value))}
         aria-label={`${device.name} volume`}
-        className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white" />
+        className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--text-primary)]" />
     </div>
   )
 }
@@ -811,7 +811,7 @@ function DisplaySettings() {
       {status?.brightness?.device !== 'none' && (
         <Field label={`Brightness (${status?.brightness?.current}%)`}>
           <input type="range" min="5" max="100" value={status?.brightness?.current || 100} onChange={e => setBrightness(parseInt(e.target.value))}
-            className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white" />
+            className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--text-primary)]" />
         </Field>
       )}
       <p className="text-xs text-[var(--text-faint)] mb-3">Compositor: {status?.compositor}</p>
@@ -853,7 +853,7 @@ function EnergySettings() {
         <div className="flex gap-2">
           {['performance', 'balanced', 'saver'].map(m => (
             <button key={m} onClick={() => setMode(m)}
-              className={`flex-1 py-2 rounded-lg text-sm capitalize transition-colors ${status?.mode === m ? 'bg-[var(--bg-hover)] text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]'}`}>
+              className={`flex-1 py-2 rounded-lg text-sm capitalize transition-colors ${status?.mode === m ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]'}`}>
               {m}
             </button>
           ))}

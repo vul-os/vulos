@@ -381,7 +381,7 @@ function AgendaList({ groups, now, onEvent, loading }) {
                   </div>
                   <div className="w-0.5 self-stretch rounded-full shrink-0 transition-colors" style={{ background: 'var(--accent)', opacity: 0.55 }} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] text-neutral-100 truncate group-hover:text-white transition-colors">{ev.title || '(untitled)'}</div>
+                    <div className="text-[13px] text-neutral-100 truncate group-hover:text-[var(--text-primary)] transition-colors">{ev.title || '(untitled)'}</div>
                     {ev.location && (
                       <div className="flex items-center gap-1 text-[11px] text-neutral-500 truncate mt-0.5">
                         <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M8 1.5c-2.5 0-4.5 2-4.5 4.5 0 3 4.5 8 4.5 8s4.5-5 4.5-8c0-2.5-2-4.5-4.5-4.5z"/><circle cx="8" cy="6" r="1.5"/></svg>

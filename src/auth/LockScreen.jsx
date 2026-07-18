@@ -131,7 +131,7 @@ export default function LockScreen({ onUnlock, userName }) {
               aria-invalid={error}
               aria-describedby="lockscreen-error"
               style={error ? { borderColor: 'var(--status-danger)' } : undefined}
-              className={`focus-primary w-40 text-center text-lg tracking-[0.5em] bg-neutral-900/60 border rounded-xl px-4 py-3 text-white outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+              className={`focus-primary w-40 text-center text-lg tracking-[0.5em] bg-neutral-900/60 border rounded-xl px-4 py-3 text-[var(--text-primary)] outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed
                 ${error ? 'animate-[shake_0.3s_ease-in-out]' : 'border-neutral-800 focus:border-neutral-600'}`}
             />
           </div>

@@ -180,7 +180,7 @@ function ApmPopover({ onClose }) {
         ref={panelRef}
         role="dialog"
         aria-label="Adopt a local port"
-        className="w-[420px] max-h-[70vh] flex flex-col rounded-2xl bg-[var(--glass-bg)] backdrop-blur-2xl border border-[var(--border-strong)] shadow-2xl shadow-black/60 animate-[fadeIn_0.15s_ease-out] overflow-hidden"
+        className="w-[420px] max-w-[calc(100vw-2rem)] max-h-[70vh] flex flex-col rounded-2xl bg-[var(--glass-bg)] backdrop-blur-2xl border border-[var(--border-strong)] shadow-2xl shadow-black/60 animate-[fadeIn_0.15s_ease-out] overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] shrink-0">
           <div>

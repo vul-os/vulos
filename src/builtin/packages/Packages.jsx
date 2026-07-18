@@ -183,7 +183,7 @@ export default function Packages() {
         {/* Installed count card */}
         {status && (
           <div className="mx-3 mb-4 px-3 py-3 rounded-xl bg-neutral-900/60 border border-neutral-800/40">
-            <div className="text-2xl font-bold text-white leading-none tabular-nums">{status.installed_count?.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-[var(--text-primary)] leading-none tabular-nums">{status.installed_count?.toLocaleString()}</div>
             <div className="text-[11px] text-neutral-500 mt-1">packages installed</div>
           </div>
         )}
@@ -195,7 +195,7 @@ export default function Packages() {
               aria-pressed={tab === item.id}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-(--motion-fast) ${
                 tab === item.id
-                  ? 'accent-bg-soft text-white'
+                  ? 'accent-bg-soft accent-text'
                   : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/60'
               }`}>
               <span className={tab === item.id ? 'accent-text' : 'text-neutral-600'}>{item.icon}</span>
