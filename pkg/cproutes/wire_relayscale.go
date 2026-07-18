@@ -26,17 +26,36 @@ import (
 	"github.com/vul-os/vulos-management/pkg/relayscale"
 )
 
-// wireRelayScaleDemand mounts the demand API using the injected provisioner (its
-// Name() tells consumers whether the CP actuates) + the policy from env. A nil
-// provisioner defaults to manual. The DemandStore lives for the process lifetime;
-// there is no closer (in-memory, bounded to one row per region).
-func wireRelayScaleDemand(mux *http.ServeMux, prov relayscale.RelayProvisioner) {
+// wireRelayScaleDemand mounts the demand API AND starts the control loop, both
+// bound to the injected provisioner (its Name()/Enabled() tell consumers whether
+// the CP actuates) + the policy from env. A nil provisioner defaults to manual.
+//
+// The DemandAPI (POST /observe, GET /demand) and the Controller share ONE
+// DemandStore, so the loop reconciles against exactly the load the PoPs push in.
+// The Controller runs in the background and is ADVISORY for manual/external
+// (computes + surfaces desired counts, actuates nothing); for an actuating
+// provisioner it converges the fleet, draining before destroy and cooldown-gated.
+//
+// It also mounts the superadmin read surface GET /api/relay/scale/controller —
+// per-region {current, desired, draining, last_action} — aggregate operational
+// telemetry (no tenant data), consistent with the unauthenticated /demand read.
+//
+// Returns a closer that stops the background loop; the caller adds it to the
+// operational closer set so it is cancelled on server shutdown.
+func wireRelayScaleDemand(mux *http.ServeMux, prov relayscale.RelayProvisioner) func() {
 	if prov == nil {
 		prov = relayscale.NewManualProvisioner()
 	}
 	store := relayscale.NewDemandStore(0, nil)
-	api := relayscale.NewDemandAPI(store, relayscale.PolicyFromEnv(), prov.Name(), func() string {
+	policy := relayscale.PolicyFromEnv()
+	api := relayscale.NewDemandAPI(store, policy, prov.Name(), func() string {
 		return secretOrEnv(context.Background(), "CP_SHARED_SECRET")
 	})
 	api.Register(mux, "/api/relay/scale")
+
+	ctrl := relayscale.NewController(prov, policy, relayscale.SpecFromEnv(), store, relayscale.ControllerConfigFromEnv(), nil)
+	ctrl.Register(mux, "/api/relay/scale")
+	ctx, cancel := context.WithCancel(context.Background())
+	go ctrl.Run(ctx)
+	return func() { cancel() }
 }

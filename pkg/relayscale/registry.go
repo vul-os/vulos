@@ -89,6 +89,29 @@ func policyFromEnv(getenv func(string) string) Policy {
 	}
 }
 
+// SpecFromEnv builds the SpecFunc the controller/actuator hand a provisioner when
+// bringing up a node, derived from the deployment's VULOS_RELAY_* / VULOS_CP_* env
+// (the same vars the relay binary itself reads). Every region gets the same base
+// spec; a provider fills the rest from its own defaults. Irrelevant in advisory
+// (manual/external) mode, where no node is ever provisioned.
+func SpecFromEnv() SpecFunc {
+	return specFromEnv(os.Getenv)
+}
+
+func specFromEnv(getenv func(string) string) SpecFunc {
+	base := RelaySpec{
+		Image:              getenv("RELAY_IMAGE"),
+		Domain:             getenv("VULOS_RELAY_DOMAIN"),
+		PublicEndpointTmpl: getenv("RELAY_PUBLIC_ENDPOINT_TMPL"),
+		SoftMaxAgents:      atoiOr(getenv("VULOS_RELAY_SOFT_MAX_AGENTS"), 0),
+		SoftMaxStreams:     atoiOr(getenv("VULOS_RELAY_SOFT_MAX_STREAMS"), 0),
+		SoftMaxBytesPerSec: int64(atoiOr(getenv("VULOS_RELAY_SOFT_MAX_BYTES_PER_SEC"), 0)),
+		CPURL:              getenv("VULOS_CP_URL"),
+		CPSharedSecret:     getenv("CP_SHARED_SECRET"),
+	}
+	return func(string) RelaySpec { return base }
+}
+
 func atoiOr(s string, def int) int {
 	if v, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
 		return v

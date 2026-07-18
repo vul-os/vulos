@@ -196,7 +196,7 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// Publishes desired per-region relay counts for an external scaler regardless
 	// of the active provisioner (manual by default). Observe is CP_SHARED_SECRET-
 	// gated (fail-closed).
-	wireRelayScaleDemand(mux, deps.RelayProvisioner)
+	add(wireRelayScaleDemand(mux, deps.RelayProvisioner))
 
 	// NOT wired by this zero-config default (inherently commercial, or a library
 	// package with no operational HTTP handler in this module — a configured or
