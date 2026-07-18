@@ -37,7 +37,7 @@ export default function Popout() {
         <div className="flex items-center gap-2">
           <button
             onClick={closePopout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-neutral-300 hover:text-[var(--text-primary)] bg-neutral-800 hover:bg-neutral-700 transition-colors"
           >
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
             Exit Fullscreen

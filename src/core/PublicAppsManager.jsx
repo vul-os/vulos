@@ -61,7 +61,7 @@ function PamConfirmPublicDialog({ appId, onConfirm, onCancel }) {
         role="dialog"
         aria-modal="true"
         aria-label="Make app public?"
-        className="relative z-10 w-[360px] rounded-2xl bg-neutral-900 border border-neutral-700/60 shadow-2xl shadow-black/60 p-6 animate-[fadeIn_0.15s_ease-out]">
+        className="relative z-10 w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl bg-neutral-900 border border-neutral-700/60 shadow-2xl shadow-black/60 p-6 animate-[fadeIn_0.15s_ease-out]">
         <div className="flex items-start gap-3 mb-4">
           <div className="w-9 h-9 rounded-xl bg-green-900/30 border border-green-700/30 flex items-center justify-center shrink-0 mt-0.5">
             <svg viewBox="0 0 16 16" className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -225,7 +225,7 @@ function PamPopover({ onClose }) {
     <div className="fixed inset-0 z-[150] flex items-start justify-end pt-10 pr-4">
       <div
         ref={panelRef}
-        className="w-[420px] max-h-[70vh] flex flex-col rounded-2xl bg-neutral-900/97 backdrop-blur-2xl border border-neutral-700/50 shadow-2xl shadow-black/60 animate-[fadeIn_0.15s_ease-out] overflow-hidden"
+        className="w-[420px] max-w-[calc(100vw-2rem)] max-h-[70vh] flex flex-col rounded-2xl bg-neutral-900/97 backdrop-blur-2xl border border-neutral-700/50 shadow-2xl shadow-black/60 animate-[fadeIn_0.15s_ease-out] overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/60 shrink-0">
