@@ -31,6 +31,7 @@ import (
 	"vulos/backend/internal/lan"
 	"vulos/backend/internal/llmuxclient"
 	"vulos/backend/internal/multiinstance"
+	"vulos/backend/internal/osroute"
 	"vulos/backend/internal/storage"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/anchorinbox"
@@ -4079,7 +4080,18 @@ func main() {
 			next.ServeHTTP(w, r)
 		})
 	}
-	handler := secHeadersMiddleware(authHandler.Middleware(mainHandler))
+	// OS-ROUTE PROVENANCE (fail-closed when a cloud router sits in front):
+	// when VULOS_ROUTER_SECRET is configured this box is behind the CP router, so
+	// verify the X-Vulos-OS-Route handoff token the CP stamps. A present-but-forged/
+	// expired/wrong-audience token is rejected 403 BEFORE it reaches the auth layer.
+	// A self-hosted box has no secret configured → the verifier is disabled and this
+	// wrap is a zero-overhead passthrough (the box is directly reachable). See
+	// internal/osroute for the (deliberately non-locking) semantics.
+	routeVerifier := osroute.VerifierFromEnv()
+	if routeVerifier.Enabled() {
+		log.Printf("[osroute] X-Vulos-OS-Route verification ENABLED (behind cloud router)")
+	}
+	handler := secHeadersMiddleware(routeVerifier.Middleware(authHandler.Middleware(mainHandler)))
 	server := &http.Server{Addr: addr, Handler: handler}
 
 	// lanSvc holds the opt-in OFFLINE-01 LAN reachability service (started below,
