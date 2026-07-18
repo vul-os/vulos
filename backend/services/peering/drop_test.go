@@ -53,6 +53,11 @@ func (f *dropFakeMedia) SendFile(_ context.Context, targetAddr, mediaPath, mimeT
 	return "txn-001", nil
 }
 
+func (f *dropFakeMedia) ReceiveFile(_ context.Context, downloadURL, fileName, mimeType string) error {
+	f.calls = append(f.calls, dropFakeMediaCall{downloadURL, fileName, mimeType})
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import AskAIButton from '../../core/AskAIButton'
+import SharePeerModal from './SharePeerModal.jsx'
 
 /* ── SVG Icon Components ── */
 
@@ -267,6 +268,7 @@ export default function FileManager() {
   const [hidden, setHidden] = useState(false)
   const [resolvedHome, setResolvedHome] = useState(null)
   const [ctxMenu, setCtxMenu] = useState(null) // { x, y, entry, filePath }
+  const [shareTarget, setShareTarget] = useState(null) // { name, path, isDir } for peer share
   const searchRef = useRef(null)
 
   // Resolve actual home path once
@@ -437,6 +439,13 @@ export default function FileManager() {
       ? `Tell me about the directory "${filePath}". What might it contain and how is it typically used?`
       : `Tell me about the file "${filePath}" (name: "${entry.name}"). What is its purpose, format, and how is it typically used?`
     dispatchAskAI(prompt)
+    setCtxMenu(null)
+  }, [ctxMenu])
+
+  const handleShareToPeer = useCallback(() => {
+    if (!ctxMenu) return
+    const { entry, filePath } = ctxMenu
+    setShareTarget({ name: entry.name, path: filePath, isDir: entry.isDir })
     setCtxMenu(null)
   }, [ctxMenu])
 
@@ -916,8 +925,24 @@ export default function FileManager() {
             >
               Ask AI about this
             </button>
+            <button
+              onClick={handleShareToPeer}
+              className="w-full text-left px-3 py-1.5 text-[13px] text-neutral-200 hover:bg-neutral-700/60 transition-colors"
+            >
+              Share to peer…
+            </button>
           </div>
         </div>
+      )}
+
+      {/* Share-to-peer sheet — hands the selection to the peering Drop transport */}
+      {shareTarget && (
+        <SharePeerModal
+          target={shareTarget}
+          home={resolvedHome}
+          exec={exec}
+          onClose={() => setShareTarget(null)}
+        />
       )}
     </div>
   )

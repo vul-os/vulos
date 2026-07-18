@@ -2745,9 +2745,28 @@ func main() {
 				peering.RegisterFeedHandlers(peeringMux, feedStore, callerVulaID)
 			}
 
-			// Drop (LAN mDNS file drop). media nil → drop send returns a
-			// graceful error (drop.go handles nil media sender).
-			dropSvc := peering.NewDropService(pVulaID, "", contactStore, nil)
+			// Drop (LAN mDNS file drop). Wire a real media sender (DropTransfer)
+			// so drop/send actually moves bytes over the shared media pipeline
+			// (content-hash bucket + signed fetch URL) instead of returning
+			// "media service unavailable". The sender uses its own MediaStore
+			// over the same home/key, so it shares the on-disk content store and
+			// URL-signing secret with the media handlers registered below.
+			var dropSender peering.DropMediaSender
+			if dms, dmErr := peering.NewMediaStore(pHome, pPriv, peerClient); dmErr != nil {
+				log.Printf("[peering] drop media sender init: %v", dmErr)
+			} else {
+				// selfBaseURL is this node's externally reachable base URL used
+				// to build signed fetch URLs the recipient pulls from. Prefer an
+				// explicit public URL, then the relay base; empty ⇒ send fails
+				// fast with a clear error rather than emitting an unfetchable URL.
+				selfBaseURL := os.Getenv("VULOS_PUBLIC_BASE_URL")
+				if selfBaseURL == "" {
+					selfBaseURL = os.Getenv("VULOS_RELAY_BASE_URL")
+				}
+				downloadDir := filepath.Join(pHome, "Downloads")
+				dropSender = peering.NewDropTransfer(dms, peerClient, pVulaID, "", selfBaseURL, downloadDir)
+			}
+			dropSvc := peering.NewDropService(pVulaID, "", contactStore, dropSender)
 			dropSvc.Start(context.Background())
 			peering.RegisterDropHandlers(peeringMux, dropSvc)
 		}

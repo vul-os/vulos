@@ -1,0 +1,82 @@
+// SharePeerModal.test.jsx — the Files "Share to peer" sheet.
+//
+// Guards: it loads the peering Drop roster, and sharing a file POSTs the
+// drop/send contract (absolute media_path resolved from ~) to the real
+// transport endpoint; folders are archived via the exec bridge first.
+
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import SharePeerModal from '../SharePeerModal.jsx'
+
+let fetchMock
+
+beforeEach(() => {
+  fetchMock = vi.fn(async (url) => {
+    if (String(url).endsWith('/api/peering/drop/nearby')) {
+      return {
+        ok: true,
+        json: async () => ([
+          { vula_id: 'vula:bob', display_name: 'Bob', addr: '10.0.0.5:8080', is_contact: true },
+        ]),
+      }
+    }
+    if (String(url).endsWith('/api/peering/drop/send')) {
+      return { ok: true, json: async () => ({ transfer_id: 'tx-1' }), text: async () => '' }
+    }
+    return { ok: false, status: 404, text: async () => 'nope' }
+  })
+  global.fetch = fetchMock
+})
+afterEach(cleanup)
+
+it('lists nearby peers and sends a file with a resolved absolute path', async () => {
+  const onClose = vi.fn()
+  render(
+    <SharePeerModal
+      target={{ name: 'report.pdf', path: '~/Documents/report.pdf', isDir: false }}
+      home="/home/vula"
+      exec={vi.fn()}
+      onClose={onClose}
+    />,
+  )
+
+  await waitFor(() => expect(screen.getByText('Bob')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByText('Bob'))
+
+  await waitFor(() => {
+    const sendCall = fetchMock.mock.calls.find(c => String(c[0]).endsWith('/api/peering/drop/send'))
+    expect(sendCall).toBeTruthy()
+    const body = JSON.parse(sendCall[1].body)
+    expect(body).toMatchObject({
+      target_vula_id: 'vula:bob',
+      media_path: '/home/vula/Documents/report.pdf',
+      mime_type: 'application/pdf',
+      target_addr: 'http://10.0.0.5:8080',
+    })
+  })
+})
+
+it('archives a folder via exec before sending', async () => {
+  const exec = vi.fn(async () => 'OK\n')
+  render(
+    <SharePeerModal
+      target={{ name: 'Photos', path: '~/Photos', isDir: true }}
+      home="/home/vula"
+      exec={exec}
+      onClose={vi.fn()}
+    />,
+  )
+  await waitFor(() => expect(screen.getByText('Bob')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Bob'))
+
+  await waitFor(() => expect(exec).toHaveBeenCalled())
+  expect(exec.mock.calls[0][0]).toContain('tar -czf')
+
+  await waitFor(() => {
+    const sendCall = fetchMock.mock.calls.find(c => String(c[0]).endsWith('/api/peering/drop/send'))
+    const body = JSON.parse(sendCall[1].body)
+    expect(body.media_path).toMatch(/Photos\.tar\.gz$/)
+    expect(body.mime_type).toBe('application/gzip')
+  })
+})
