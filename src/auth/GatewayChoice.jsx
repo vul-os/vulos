@@ -156,27 +156,25 @@ export default function GatewayChoice({ value, onChange, idPrefix = 'gw' }) {
               type="button"
               onClick={useCloud}
               aria-pressed={mode === 'cloud'}
-              className={`text-left px-3 py-2.5 rounded-lg border-2 transition-all ${
-                mode === 'cloud'
-                  ? 'border-violet-500/50 bg-violet-600/10'
-                  : 'border-neutral-800/60 bg-neutral-900/40 hover:border-neutral-700'
-              }`}
+              className="text-left px-3 py-2.5 rounded-lg border-2 transition-all"
+              style={mode === 'cloud'
+                ? { borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)', background: 'color-mix(in srgb, var(--accent) 10%, transparent)' }
+                : { borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
             >
-              <div className="text-sm font-medium text-neutral-200">Use Vulos Cloud</div>
-              <div className="text-[11px] text-neutral-500">Default — recommended</div>
+              <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Use Vulos Cloud</div>
+              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Default — recommended</div>
             </button>
             <button
               type="button"
               onClick={useCustom}
               aria-pressed={mode === 'custom'}
-              className={`text-left px-3 py-2.5 rounded-lg border-2 transition-all ${
-                mode === 'custom'
-                  ? 'border-violet-500/50 bg-violet-600/10'
-                  : 'border-neutral-800/60 bg-neutral-900/40 hover:border-neutral-700'
-              }`}
+              className="text-left px-3 py-2.5 rounded-lg border-2 transition-all"
+              style={mode === 'custom'
+                ? { borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)', background: 'color-mix(in srgb, var(--accent) 10%, transparent)' }
+                : { borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
             >
-              <div className="text-sm font-medium text-neutral-200">Use my own gateway</div>
-              <div className="text-[11px] text-neutral-500">Self-hosted control plane</div>
+              <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Use my own gateway</div>
+              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Self-hosted control plane</div>
             </button>
           </div>
 
@@ -212,14 +210,14 @@ export default function GatewayChoice({ value, onChange, idPrefix = 'gw' }) {
               </p>
 
               {result?.ok && (
-                <div className="flex items-center gap-2 text-xs text-emerald-400" role="status">
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
+                <div className="flex items-center gap-2 text-xs text-success" role="status">
+                  <span className="inline-block w-2 h-2 rounded-full bg-success" aria-hidden="true" />
                   Gateway reachable — you can continue.
                 </div>
               )}
               {result && !result.ok && (
                 <div className="flex items-start gap-2 text-xs text-danger" role="alert">
-                  <span className="inline-block w-2 h-2 rounded-full bg-red-400 mt-1" aria-hidden="true" />
+                  <span className="inline-block w-2 h-2 rounded-full bg-danger mt-1" aria-hidden="true" />
                   <span>{result.error}</span>
                 </div>
               )}

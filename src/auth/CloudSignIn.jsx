@@ -223,18 +223,25 @@ export function CloudSignInFlowExtras({ flow }) {
 
   if (flow.phase === 'enroll' && flow.enrollInfo) {
     return (
-      <div className="bg-neutral-900/60 border border-violet-500/30 rounded-xl px-5 py-4 animate-[fadeIn_0.15s_ease-out]" data-testid="enroll-panel">
-        <p className="text-sm text-neutral-300 mb-2 font-medium">Approve this device</p>
-        <p className="text-xs text-neutral-500 leading-relaxed mb-3">
+      <div
+        className="rounded-xl px-5 py-4 animate-[fadeIn_0.15s_ease-out]"
+        style={{ background: 'var(--bg-surface)', border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)' }}
+        data-testid="enroll-panel"
+      >
+        <p className="text-sm mb-2 font-medium" style={{ color: 'var(--text-secondary)' }}>Approve this device</p>
+        <p className="text-xs leading-relaxed mb-3" style={{ color: 'var(--text-muted)' }}>
           This device is not linked to your account yet. Open{' '}
-          <span className="text-violet-300 font-mono break-all">{flow.enrollInfo.verification_uri}</span>{' '}
+          <span className="accent-text font-mono break-all">{flow.enrollInfo.verification_uri}</span>{' '}
           on another device, sign in, and enter this code:
         </p>
-        <div className="text-center text-2xl font-mono tracking-[0.25em] text-violet-300 bg-neutral-950/60 border border-neutral-800/60 rounded-lg py-3 select-all">
+        <div
+          className="text-center text-2xl font-mono tracking-[0.25em] accent-text rounded-lg py-3 select-all"
+          style={{ background: 'var(--bg-base)', border: '1px solid var(--border-default)' }}
+        >
           {flow.enrollInfo.user_code}
         </div>
-        <p className="text-[11px] text-neutral-600 mt-3 flex items-center gap-2">
-          <span className="w-3 h-3 border-2 border-violet-400/30 border-t-violet-400 rounded-full animate-spin" aria-hidden="true" />
+        <p className="text-[11px] mt-3 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+          <span className="spinner w-3 h-3" aria-hidden="true" />
           Waiting for approval — you’ll be signed in automatically…
         </p>
       </div>
