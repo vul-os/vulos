@@ -61,6 +61,12 @@ type DropMediaSender interface {
 	// mediaPath is the local absolute path of the file to send.
 	// Returns a transfer ID or error.
 	SendFile(ctx context.Context, targetAddr, mediaPath, mimeType string) (transferID string, err error)
+
+	// ReceiveFile downloads an accepted inbound transfer from the sender's
+	// signed downloadURL and lands it locally (content store + a user-visible
+	// copy under the recipient's Downloads). fileName is the sender-declared
+	// name, used for the landed copy.
+	ReceiveFile(ctx context.Context, downloadURL, fileName, mimeType string) error
 }
 
 // ---------------------------------------------------------------------------
@@ -549,15 +555,17 @@ func (s *DropService) dropExecuteAccept(req *dropInboundRequest) {
 		log.Printf("[drop] accept transfer %s: media service unavailable", req.TransferID)
 		return
 	}
+	fileName := req.FileName
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		// Use the peer's download URL as the target; media service handles fetch.
-		_, err := s.media.SendFile(ctx, req.DownloadURL, "", req.MimeType)
+		// Fetch from the sender's signed download URL; media service verifies
+		// the content hash and lands a copy in Downloads under fileName.
+		err := s.media.ReceiveFile(ctx, req.DownloadURL, fileName, req.MimeType)
 		if err != nil {
 			log.Printf("[drop] transfer %s download error: %v", req.TransferID, err)
 		} else {
-			log.Printf("[drop] transfer %s complete: %s", req.TransferID, req.FileName)
+			log.Printf("[drop] transfer %s complete: %s", req.TransferID, fileName)
 		}
 	}()
 }
