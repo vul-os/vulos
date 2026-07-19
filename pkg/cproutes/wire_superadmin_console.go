@@ -62,6 +62,9 @@ type superAdminConsoleDeps struct {
 	AuthDB    *cpdb.DB
 	Audit     *auditlog.Logger
 	Security  *security.Store // may be nil → the security JSON endpoint returns empty sections
+	// RelayScale returns the live #41 control-loop snapshot + published demand for
+	// the operator relay-scaling panel. May be nil → the endpoint is not mounted.
+	RelayScale func() RelayScaleAdminView
 }
 
 // wireSuperAdminConsole opens the super-admin store (sharing the auth DB),
@@ -182,6 +185,17 @@ func wireSuperAdminConsole(mux *http.ServeMux, deps superAdminConsoleDeps) []fun
 	mux.Handle("GET /api/superadmin/whoami", apiAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"account_id": superadmin.AdminAccountIDFromCtx(r.Context()), "ok": true})
 	})))
+
+	// Relay scaling (#41): the live control-loop snapshot + published demand, behind
+	// the full RequireSuperAdmin gate. Reads the SAME running loop the CP acts on —
+	// per-region {current, desired, draining, last_action, reason}, the active
+	// provisioner, and whether the CP actuates. Real data, no mock; the operator
+	// relay panel (/console/admin/relay) consumes it.
+	if deps.RelayScale != nil {
+		mux.Handle("GET /api/superadmin/relay-scale", apiAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, deps.RelayScale())
+		})))
+	}
 	log.Println("[superadmin] JSON admin API mounted (/api/superadmin/*)")
 
 	return []func(){}

@@ -127,6 +127,15 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	secR := WireSecurity(deps.DBDir)
 	add(secR.Closer)
 
+	// Relay-scaling surface: the demand API + the #41 control loop, bound to one
+	// shared DemandStore. Built HERE (before the operator console) so its live
+	// snapshot can be threaded into the console as a gated operator view. The
+	// public endpoints (GET /demand, POST /observe, GET /controller) are mounted
+	// via mountPublic; the loop runs in the background until stop() on shutdown.
+	relayScale := newRelayScaleSurface(deps.RelayProvisioner)
+	relayScale.mountPublic(mux)
+	add(relayScale.stop)
+
 	// Operator (super-admin) console — OPT-IN (VULOS_ENABLE_SUPERADMIN=1 or a
 	// VULOS_BOOTSTRAP_SUPERADMIN email). Mounts the operator HTML pages + the JSON
 	// admin API the React /console/admin section consumes. Left disabled by
@@ -142,10 +151,11 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// the console enabled (dead-gated). With this order the gate authenticates.
 	if superAdminConsoleEnabled() {
 		closers = append(closers, wireSuperAdminConsole(mux, superAdminConsoleDeps{
-			AuthStore: deps.AuthStore,
-			AuthDB:    deps.AuthDB,
-			Audit:     al,
-			Security:  secR.Store,
+			AuthStore:  deps.AuthStore,
+			AuthDB:     deps.AuthDB,
+			Audit:      al,
+			Security:   secR.Store,
+			RelayScale: relayScale.AdminView,
 		})...)
 	}
 
@@ -192,11 +202,9 @@ func RegisterOperational(mux *http.ServeMux, deps OperationalDeps) []func() {
 	// Boot/first-run endpoints.
 	RegisterBoot(mux)
 
-	// Relay-scaling demand API (GET /api/relay/scale/demand, POST .../observe).
-	// Publishes desired per-region relay counts for an external scaler regardless
-	// of the active provisioner (manual by default). Observe is CP_SHARED_SECRET-
-	// gated (fail-closed).
-	add(wireRelayScaleDemand(mux, deps.RelayProvisioner))
+	// (The relay-scaling demand API + #41 control loop are wired earlier, next to
+	// the operator console, so the console can surface the loop's live state behind
+	// the RequireSuperAdmin gate — see relayScale above.)
 
 	// NOT wired by this zero-config default (inherently commercial, or a library
 	// package with no operational HTTP handler in this module — a configured or
