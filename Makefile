@@ -20,9 +20,11 @@ ANCHOR       := $(KEYS)/trust-anchor.pub
 CERT         := $(KEYS)/release-cert.json
 RELEASE_PRIV := $(KEYS)/release.priv.json
 REGISTRY     := registry.json
+REGISTRY_FEED := registry-feed.json
 
 .PHONY: build test-local test-dev test-all coverage help \
-        dev-keys sign-registry verify-registry verify-registry-prod
+        dev-keys sign-registry verify-registry verify-registry-prod \
+        publish-feed verify-feed
 
 ## build: compile backend and build frontend assets.
 build:
@@ -80,6 +82,30 @@ verify-registry:
 verify-registry-prod:
 	cd $(BACKEND) && go run ./cmd/sign verify-registry -require-prod-keys \
 	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY)
+
+## publish-feed: append a signed entry to registry-feed.json recording this
+## publication of registry.json (anti-rollback distribution, phase 1 — see
+## backend/services/appnet/feed.go and roadmap/APP-STORE.md). Additive: does
+## not change registry.json or install-time verification. Run after
+## sign-registry. Defaults to the dev release key, same as sign-registry.
+publish-feed:
+	@if [ ! -f "$(RELEASE_PRIV)" ]; then \
+	  if [ "$(RELEASE_PRIV)" = "keys/release.priv.json" ]; then \
+	    echo "▸ dev release key missing — regenerating (make dev-keys)"; \
+	    $(SCRIPTS)/signing/dev-keys.sh >/dev/null; \
+	  else \
+	    echo "ERROR: release key not found: $(RELEASE_PRIV)"; exit 1; \
+	  fi; \
+	fi
+	cd $(BACKEND) && go run ./cmd/sign publish-feed \
+	  -release-priv ../$(RELEASE_PRIV) -registry ../$(REGISTRY) -feed ../$(REGISTRY_FEED)
+	@$(MAKE) --no-print-directory verify-feed
+
+## verify-feed: verify registry-feed.json's hash chain + signed head against
+## the shipped anchor. Public keys only — no private key required.
+verify-feed:
+	cd $(BACKEND) && go run ./cmd/sign verify-feed \
+	  -anchor ../$(ANCHOR) -cert ../$(CERT) -feed ../$(REGISTRY_FEED)
 
 ## coverage: run tests with coverage and print a per-package summary.
 coverage:

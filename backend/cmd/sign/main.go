@@ -39,6 +39,11 @@
 //	sign-registry         Sign every registry.json entry with the release key.
 //	verify-registry       Verify registry.json against the anchor + release cert
 //	                      (public keys only — this is what CI runs).
+//	publish-feed          Append a signed entry to registry-feed.json recording
+//	                      this publication of registry.json (phase 1, additive —
+//	                      see backend/services/appnet/feed.go).
+//	verify-feed           Verify registry-feed.json's hash chain + signed head
+//	                      against the anchor + release cert.
 //
 // # Exit codes
 //
@@ -80,6 +85,10 @@ func main() {
 		cmdSignRegistry(os.Args[2:])
 	case "verify-registry":
 		cmdVerifyRegistry(os.Args[2:])
+	case "publish-feed":
+		cmdPublishFeed(os.Args[2:])
+	case "verify-feed":
+		cmdVerifyFeed(os.Args[2:])
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -128,6 +137,22 @@ Subcommands:
         -anchor    path to trust-anchor public key (default: `+signing.DefaultAnchorPath+`)
         -cert      path to release cert JSON (omit for the single-key model)
         -registry  path to registry.json (default: registry.json)
+
+  publish-feed  [RELEASE-KEY OPERATION]
+      Append a signed entry to registry-feed.json recording this publication
+      of registry.json (anti-rollback distribution, phase 1 — additive, does
+      not change registry.json or install-time verification). A no-op if
+      registry.json is unchanged since the last publish.
+        -release-priv  path to release private-key JSON file
+        -registry      path to registry.json (default: registry.json)
+        -feed          path to registry-feed.json (default: registry-feed.json)
+
+  verify-feed
+      Verify registry-feed.json's hash chain and signed head against the
+      trust anchor (and, if given, the release cert). Needs no private key.
+        -anchor  path to trust-anchor public key (default: `+signing.DefaultAnchorPath+`)
+        -cert    path to release cert JSON (omit for the single-key model)
+        -feed    path to registry-feed.json (default: registry-feed.json)
 
   issue-release-cert  [OFFLINE ROOT OPERATION]
       Root key signs a release-key certificate.
