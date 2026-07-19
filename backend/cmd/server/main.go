@@ -1032,10 +1032,6 @@ func main() {
 	// the browser). See routes_pim.go.
 	registerPIMRoutes(mux, mailBaseURLFromEnv(), assistantBrokerHeaders())
 
-	// Board: mint short-lived HMAC tokens for the Vulos Board sync server.
-	// Fails closed in prod when BOARD_AUTH_SECRET is unset (no anonymous collab).
-	registerBoardRoutes(mux, activeEnv)
-
 	// Files: OS Files metadata/control-plane API (Drive index, ACL-gated
 	// object-scoped grants, shares, share links, versions). Session-authed.
 	registerFilesRoutes(mux, filesSvc)

@@ -183,6 +183,16 @@ Versioning: [SemVer](https://semver.org/).
 - **Honest stream auth reporting.** Stopped reporting passkey assertions that
   never actually happened in the stream WebAuthn gate.
 
+### Removed
+
+- **Board (whiteboard sync) retired.** Deleted the dead `/api/board/token`
+  HMAC-minting surface (`registerBoardRoutes`, `BOARD_AUTH_SECRET`) and its
+  fail-closed table/env-var entries in `docs/SECURITY.md`. Whiteboards were
+  already folded into Ofisi as a first-class document type (routes, sidebar,
+  thumbnails, E2E-encrypted P2P collab, CRDT persistence); this repo's Board
+  route had no consumer — nothing called it, no `board-ui` exists, there was
+  no Board data anywhere. Pure dead-code removal.
+
 ---
 
 ## [1.1.0] - 2026-07-07

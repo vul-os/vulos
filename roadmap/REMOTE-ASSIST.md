@@ -29,16 +29,17 @@ Everything it composes is already OS-level and exists nowhere else:
 
 A separate repo would re-import all of the above and add a network hop for
 nothing. The only genuinely reusable sub-primitive — a co-presence/cursor layer —
-already exists at the **document** level (Office/Board Yjs awareness); the new
-work is the **shell**-level version, which is OS.
+already exists at the **document** level (Ofisi's Yjs awareness, including its
+whiteboard document type); the new work is the **shell**-level version, which
+is OS.
 
 ---
 
 ## Capabilities, in increasing privilege (each a distinct grant)
 
 1. **Co-presence (view cursors).** Two+ users viewing a *shared surface* see each
-   other's cursors + selection, labelled by identity. Already real in
-   Office/Board (Yjs awareness); the roadmap item is lifting it to the OS shell
+   other's cursors + selection, labelled by identity. Already real in Ofisi
+   (Yjs awareness); the roadmap item is lifting it to the OS shell
    (desktop-level co-presence) and to streamed app windows.
 2. **Screen view (read-only).** User B watches User A's live session (or a single
    app window) over WebRTC. No input. A always sees B is watching.

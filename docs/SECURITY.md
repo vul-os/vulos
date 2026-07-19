@@ -117,7 +117,6 @@ A recurring pattern in this codebase: when a security prerequisite is missing, t
 | Surface | Missing prerequisite | Behaviour |
 |---|---|---|
 | Passkeys in prod | `VULOS_RPID` / `VULOS_ORIGIN` unset or localhost | Server exits at startup with a clear error |
-| Board (whiteboard) sync | `BOARD_AUTH_SECRET` unset in prod | Board proxy answers `503 board sync disabled` — no anonymous collab |
 | Assistant egress | Endpoint classified `brokered`/`external`, `VULOS_ASSISTANT_ALLOW_EXTERNAL` not `1` | Request blocked before any mail content leaves the box; anything unclassifiable lands in the blocked `external` bucket |
 | AI code execution | `VULOS_SANDBOX_ENABLED` unset | `Run()` errors immediately — no arbitrary Python execution |
 | Netboot (`vulos.netboot=1`) | Verity/signature inputs absent in the initramfs | Boot **halts** rather than falling into an unverified loop mount |
@@ -140,7 +139,6 @@ Every variable below is read by code in this repo. "Omitting" means leaving it u
 |---|---|---|
 | `VULOS_ENV` | Chooses the posture table above | `prod` (strict) |
 | `VULOS_RPID`, `VULOS_ORIGIN` | WebAuthn relying-party domain + origin | Prod refuses to start; dev uses localhost defaults |
-| `BOARD_AUTH_SECRET` | Enables authenticated board sync (shared with the board sync server) | Board sync 503s in prod |
 | `VULOS_ASSISTANT_ALLOW_EXTERNAL=1` | Authorizes brokered/external LLM endpoints — mail content may genuinely leave the box | Assistant egress limited to local/sovereign tiers |
 | `VULOS_SANDBOX_ENABLED=1` | Allows AI-generated Python to execute (see sandbox section) | Execution disabled |
 | `VULOS_DISABLE_EXEC` (any value) | Kill-switch: disables routes that shell out (Wi-Fi control, network mode, etc.) | Exec-backed routes available (audited) |
@@ -202,8 +200,6 @@ The server is deliberately loud at startup about anything running in a degraded 
 [direct] disabled / self-reachability check ...  → direct fast path not actually reachable
 [env] debug endpoints enabled ...                → you are in local mode; do not expose this
 ```
-
-(The board gate is a runtime one: with `BOARD_AUTH_SECRET` unset in prod there is no startup line — the token endpoint answers `503 board sync disabled: BOARD_AUTH_SECRET unset` when first used.)
 
 A clean prod boot has none of the warnings above. This is the cheapest security audit you will ever run.
 
@@ -284,7 +280,7 @@ Work through this before forwarding a port or pointing public DNS at the box:
 2. **Terminate TLS.** Either the direct listener with ACME (`VULOS_DIRECT_ENABLE=1` + `VULOS_DIRECT_HOSTNAME`), certs at `/etc/vulos/tls/cert.pem|key.pem`, or your own reverse proxy. Session cookies are only `Secure` when the request actually arrives over HTTPS.
 3. **Bind passkeys to your domain.** Set `VULOS_RPID` and `VULOS_ORIGIN` (prod refuses to start otherwise) and **enroll a passkey for the admin account** before exposure, so password login is your fallback rather than your front door.
 4. **Set a device PIN policy consciously.** PIN unlock is device-local and lockout-protected, but only enroll it on physically-controlled devices.
-5. **Check the fail-closed table above** for anything you actually use: `BOARD_AUTH_SECRET` if you collaborate on boards, `VULOS_FABRIC_SECRET` (+ `VULOS_FABRIC_KEY_HEX`) for multi-box LANs. `VULOS_STORAGE_STS_ENDPOINT` self-configures automatically against your own object store when one is configured — a storage-permitted app never gets a static credential either way; watch for the startup `[storage] ABORT` if you've explicitly disabled STS (`VULOS_STORAGE_STS_DISABLE=1`) while running a storage-permitted app against a configured object store.
+5. **Check the fail-closed table above** for anything you actually use: `VULOS_FABRIC_SECRET` (+ `VULOS_FABRIC_KEY_HEX`) for multi-box LANs. `VULOS_STORAGE_STS_ENDPOINT` self-configures automatically against your own object store when one is configured — a storage-permitted app never gets a static credential either way; watch for the startup `[storage] ABORT` if you've explicitly disabled STS (`VULOS_STORAGE_STS_DISABLE=1`) while running a storage-permitted app against a configured object store.
 6. **Audit the opt-ins.** `VULOS_ASSISTANT_ALLOW_EXTERNAL`, `VULOS_SANDBOX_ENABLED`, `VULOS_PEER_ALLOW_LAN`, and every `*_ALLOW_INSECURE` variable should be unset unless you can say why not.
 7. **Probe your surface from outside.** `/metrics` must 403 without credentials; only the ports you chose in [NETWORKING.md](NETWORKING.md)'s firewall section should answer (`nmap` from a remote host, not from the LAN).
 8. **Have a way back in.** Record the recovery phrase offline, and know the backup story before you need it — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).

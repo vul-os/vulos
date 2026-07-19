@@ -177,7 +177,7 @@ Contents (each section is skipped gracefully and the gap recorded in the archive
 - `calendar.ics` / `contacts.vcf` — when the mail service exposes them.
 - `settings.json` — your OS preferences, secret-scrubbed through a strict allowlist (no API keys, PINs, or password hashes can ride along).
 
-Not covered, and the manifest says so: Board/Docs documents, per-app data, and content held only on a peer via a content-blind share (which the server cannot decrypt — that is the guarantee working, not a gap; export it from the instance holding the keys). Chat/video call history lives with your third-party comms apps (Cinny/Element, Jitsi Meet/Element Call) — Vulos never holds it, so there's nothing to export here by design.
+Not covered, and the manifest says so: Ofisi documents, per-app data, and content held only on a peer via a content-blind share (which the server cannot decrypt — that is the guarantee working, not a gap; export it from the instance holding the keys). Chat/video call history lives with your third-party comms apps (Cinny/Element, Jitsi Meet/Element Call) — Vulos never holds it, so there's nothing to export here by design.
 
 ## The recovery phrase and the master key
 
