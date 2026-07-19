@@ -6,6 +6,14 @@ Apps available for install from the Vulos app store. These are not bundled with 
 > **Non-goals.** Becoming the Debian package archive. Hosting third-party app binaries — we point at upstream releases with pinned checksums.
 > **Status.** ✅ SHIPPED. MCP platform (Model Context Protocol server), `@vulos/apps` agent-operable surface, and `vat_` (Vulos App Token) scoped-capability tokens are all implemented and wired. The `vk_` API-key auth layer (scoped to individual apps, issued per-user, revocable) is also shipped alongside the registry Ed25519 publisher-signing gate (REGISTRY-SIGN-01). Outstanding: more curated registry entries (gaming, Matrix, Vaultwarden, LibreTranslate, productivity apps), auto-gaming-mode flag for known gaming apps.
 
+### Forward plan: registry-as-feed (anti-rollback distribution) — design note, not shipped
+
+`registry.json` is currently signed and distributed as a single object: the release key signs the file, and the release key is itself certified by the offline root key (root→release chain, see [KEY-CEREMONY.md](../docs/KEY-CEREMONY.md)). That proves *authenticity* (a box only accepts a registry the root-anchored chain vouches for) but not *freshness* — a box that only ever fetches "the current `registry.json`" has no built-in way to detect that it has been handed a stale, previously-superseded copy (a rollback/downgrade to a version with since-patched or since-revoked entries).
+
+The planned fix is to **additionally** publish the registry as a **signed, append-only feed** per DMTAP-PUB §22 (the same feed primitive as the `substrate/` "Feeds & blobs" capability in `VULOS-PRODUCT-STANDARD.md`): each registry update becomes a new signed entry appended to the author's feed, chained to the previous entry, so a box can verify not just "this object is validly signed" but "this is the latest entry in a monotonic sequence I've verified from the start (or from my last-seen checkpoint)." A box that is shown an old entry as if it were current can detect the gap. `kerf-pub` (referenced in the DMTAP repo) is the intended reference implementation of the feed primitive; the existing root→release Ed25519 chain and `registry_*` acceptance/preflight checks in `backend/services/appnet/` would remain as the authenticity layer underneath it.
+
+This is a design note only — no code has been written against it, and the current single-object signed `registry.json` distribution (REGISTRY-SIGN-01) is unchanged today.
+
 ---
 
 ## Full App Checklist
