@@ -243,6 +243,16 @@ Vulos push is **sovereign by default**: your box sends Web Push messages *direct
 - **Payloads are end-to-end encrypted** per RFC 8291 (aes128gcm) to your subscription's keys before leaving the box. The vendor routes the message but cannot read it. Only notifications addressed to you are pushed, Do Not Disturb is honored on the box before anything is sent, and dead subscriptions (404/410) are pruned automatically.
 - **Outbound-only**: this works behind NAT with no central dependency and no open inbound port.
 
+**Deviation from the DMTAP substrate's Wake capability, by design.** The
+[DMTAP substrate spec](https://github.com/vul-os/dmtap) (`substrate/ROLES.md`
+§8) defines wake pushes as strictly *content-free* — an opaque "sync now"
+token, with the device pulling the real object afterward over its own
+connection. This box instead pushes real notification content (title/body)
+end-to-end encrypted per RFC 8291, trading the spec's fixed ciphertext-size
+metadata privacy for one fewer round trip; the vendor still never reads the
+content either way. See `backend/internal/webpush/README.md` for the full
+rationale and what would be involved in adding a content-free wake-only mode.
+
 ### Cloud-relayed push (managed cells only)
 
 A managed cell that scales to zero cannot push while asleep. For that case only, the box registers a *second*, cloud-keyed subscription with the control plane (`POST /api/notifications/push/cp-subscribe` locally; `POST /api/mail/push/register` on the control plane) so the always-on cloud can send a **generic "new mail" notice** on the sleeping cell's behalf.

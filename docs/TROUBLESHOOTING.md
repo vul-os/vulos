@@ -409,6 +409,6 @@ Large uploads use resumable, chunked (tus-style) endpoints under `/api/files/upl
 ## Still stuck?
 
 - Run `curl -s http://localhost:8080/api/health | jq` and read the failing check — a full disk or read-only data dir explains a surprising amount of misbehavior.
-- Grep the backend log for the bracketed subsystem tags used throughout this chapter: `[cloudenroll]`, `[cloudlogin]`, `[direct]`, `[lan]`, `[llmuxclient]`, `[ai]`, `[assistant]`, `[appnet]`, `[storage]`, `[meethost]`, `[integrations]`.
+- Grep the backend log for the bracketed subsystem tags used throughout this chapter: `[cloudenroll]`, `[cloudlogin]`, `[direct]`, `[lan]`, `[llmuxclient]`, `[ai]`, `[assistant]`, `[appnet]`, `[storage]`, `[gpuhost]`, `[integrations]`.
 - `curl -s http://localhost:8080/api/version` tells you exactly which build you are running before you file a report.
 - For backup and restore paths, see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md); for peering/federation problems, see [PEERING.md](PEERING.md).
