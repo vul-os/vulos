@@ -39,6 +39,8 @@ Vulos ships **[llmux](docs/ASSISTANT.md), a sovereign AI gateway**: you run AI *
 - **Bring your own key** to any provider (OpenAI, Anthropic, or anything else). Your keys, your box in the middle — **no Vulos middleman** and no Vulos account required to use AI.
 - **Local models** where your hardware allows, so nothing leaves the box at all.
 
+**Compute stance:** AI/GPU compute always runs **on your own box** via llmux — Vulos does not host or provision any AI/GPU compute of its own, and there is no compute billing. Managed/hosted compute is a documented "later," not something offered today (see `VULOS-PRODUCT-STANDARD.md`).
+
 "Sovereign AI" here means *your gateway + your keys + your box controlling where the data goes* — **not** a promise that every box ships a free frontier LLM (most hardware can't run large models locally). AI on your terms, mediated by a machine you own.
 
 At the center is a **sovereign assistant**: an on-box agent aware of your calendar, contacts, files, and reminders that can act on your behalf — but only under a hard security contract. Every side-effecting action is a confirmation-gated *proposal*, off-box egress is fenced by a tier-aware sovereignty Guard, and its LLM traffic runs through llmux by default. See [the security model](#the-sovereign-assistant-security-model) below.

@@ -1,8 +1,10 @@
 # AI
 
 > **Goal.** Make the AI assistant feel like the OS's brain rather than a separate app — surfaced from the desktop, the dock, app empty/error states, and right-click context menus. Let users generate, save, and iterate on small "AI apps" (HTML + optional Python sandbox).
-> **Non-goals.** Replacing real apps with chat. Training models. Running models inside the OS — providers (Ollama, Claude, OpenAI) are pluggable.
+> **Non-goals.** Replacing real apps with chat. Training models. Running models inside the OS — providers (Ollama, Claude, OpenAI) are pluggable. **Vulos hosting AI/GPU compute on its own infrastructure** — see the compute stance below.
 > **Status.** Foundation is in: AI apps (viewport rendering + Python sandbox), save/launch, and deeper context-menu integration. **airouter REMOVED** (2026-06) — the custom multi-provider Go airouter service has been replaced by the **llmux gateway**. All LLM calls now route through `LLMUX_URL` (the llmux service URL, configured per instance; the legacy name `VULOS_LLMUX_URL` is still accepted as an alias). The `backend/internal/airouter/` package is retired; callers use the llmux HTTP API directly. Outstanding: editing/versioning AI apps, public-app visibility + topbar warning.
+>
+> **Compute stance.** AI/GPU compute always runs on **the user's own box** — mediated by the on-box `llmux` gateway, either against a local model or a bring-your-own-key call out to a provider the user chose. **Vulos does not host or provision AI/GPU compute today**; there is no Vulos-run inference fleet and no per-hour/per-token compute billing in this repo. A managed/hosted-compute option is a documented **"later"** — see `VULOS-PRODUCT-STANDARD.md` ("Vulos does not host or provision boxes; managed hosting is a documented 'later' premium, not something offered today") — not a current feature, and any such offering would be opt-in and separate from the sovereign default described here.
 
 ## Choosing a Harness
 

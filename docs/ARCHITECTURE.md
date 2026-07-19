@@ -67,6 +67,8 @@ flowchart TD
 
 **Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through the on-box `llmux` gateway by default. See [THREAT-MODEL.md](THREAT-MODEL.md) Component 5.
 
+**Compute stance.** All AI/GPU compute (the assistant, AI apps, streaming encode) runs on the **user's own box**, mediated by `llmux` (local model or BYOK to an external provider). Vulos does not host or provision AI/GPU compute, and there is no compute billing in this codebase; a managed/hosted-compute option is a documented "later," not a current feature (`VULOS-PRODUCT-STANDARD.md`).
+
 **Authentication.** Email + password + optional WebAuthn/TOTP. No third-party identity providers. Passkeys are the primary login for new accounts (with sign-counter clone/replay detection). Device PIN and QR/phone-approval cover kiosk and shared clients. A per-user master key is wrapped by both the password and a 24-word recovery phrase, so account recovery never needs a server-held plaintext key.
 
 **Streaming on demand.** Native Linux apps (GIMP, LibreOffice, games) launch in their own Xvfb virtual display and stream via WebRTC. Close the window, stream stops. No persistent VNC session.
