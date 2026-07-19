@@ -79,6 +79,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OSS/private split leaks removed**: two spots baked a proprietary/commercial
+  identifier into every build of this OSS control plane. `pkg/obs.serviceName`
+  was a hardcoded `"vulos-cloud-cp"` (the private service's own name) stamped
+  on OTel traces; it is now a `var` defaulting to the neutral
+  `"vulos-management"`, overridable via `OTEL_SERVICE_NAME` — `vulos-cloud`
+  calls `obs.Init()` with no arguments, so nothing there relied on the old
+  literal. `pkg/env.Defaults.PaystackBaseURL` hardcoded
+  `https://api.paystack.co` — a named commercial payment processor — into
+  every environment's defaults (local/dev/prod), even though billing lives
+  entirely behind the `BillingProvider` seam with a no-op default; the default
+  is now empty in all three environments (confirmed dead: `vulos-cloud`'s real
+  Paystack client uses its own local `paystackBaseURL` const and never reads
+  this field, so nothing downstream regresses). Swept the same class of issue
+  in `Defaults.SMTPHost`/`SMTPPort`, which hardcoded a specific commercial
+  relay (`smtp.eu.mailgun.org`) into the dev/prod defaults although nothing in
+  either this repo or `vulos-cloud` currently reads those fields; also cleared
+  to empty. `Defaults.S3Endpoint`/`OTAPublicBucketBase` were already correctly
+  empty for dev/prod ("deployment supplies…") and `pkg/superadmin/costing/fly`
+  + `pkg/customdomain`'s Fly.io GraphQL endpoints were left as-is — those are
+  optional, explicitly opt-in integrations (gated on `FLY_API_TOKEN`/
+  `FLY_MOCK`) available to any self-hoster who deploys on Fly, not a
+  proprietary billing identifier forced on every build.
 - **Product mini-site landing pages rendered blank** in production: the apex SPA
   handler stamped the strict SPA CSP (`frame-ancestors 'none'`) plus
   `X-Frame-Options: DENY` onto the self-contained `landing.html` files, which the
@@ -96,6 +118,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   today they are library packages with no operational HTTP handler. See
   [`docs/SELF-HOST.md`](docs/SELF-HOST.md#whats-wired-in-today) for exactly
   what the self-host binary serves today.
+
+### Known gaps
+
+- **No lint config, no CI.** This repo ships no `.golangci*` config and no
+  `.github/workflows/` at all — nothing runs `go vet`/lint/tests
+  automatically on push or PR today. `go vet ./...` is currently clean and
+  `go build ./...` succeeds, but that is only verified by whoever runs it by
+  hand; there is no enforcement gate. Recorded here so the absence is a known,
+  visible gap rather than an assumed-handled one. Setting up CI is a deliberate
+  follow-up, not done as a side effect of this entry.
 
 ## [0.2.0] - 2026-07-17
 

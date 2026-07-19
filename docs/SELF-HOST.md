@@ -198,6 +198,16 @@ connectors**: the control plane authenticates users and points routing at your
 boxes, and you run whichever application backends you choose behind it. There are
 no first-party application products bundled in this module.
 
+## Build hygiene: no CI, no lint config
+
+This repo currently ships **no `.golangci*` config and no `.github/workflows/`
+at all** — there is no automated lint or CI gate on push or PR. `go build ./...`
+and `go vet ./...` are clean as of this writing, but that is only true because
+whoever last touched the tree ran them by hand; nothing enforces it going
+forward. If you're evaluating this repo for a fork or a production dependency,
+treat that as a known gap, not an oversight to assume away. Setting up CI is a
+deliberate future addition, tracked in [CHANGELOG.md](../CHANGELOG.md).
+
 ## Upgrading
 
 Pull, rebuild, restart:

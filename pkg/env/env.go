@@ -371,8 +371,13 @@ type Defaults struct {
 	// enroll / boot flows. Always true in prod; false in local.
 	RequireDeviceSig bool
 
-	// PaystackBaseURL is the payment-processor API base URL. Identical for all
-	// envs — the key prefix (test vs. live) determines live vs. test mode.
+	// PaystackBaseURL is the payment-processor API base URL. Empty by default in
+	// every environment: this is the OSS control-plane repo, billing lives behind
+	// the BillingProvider seam (pkg/billingport) with a NoOp default, and a
+	// self-host build must never carry a named commercial payment processor
+	// baked in. The private vulos-cloud composition supplies this explicitly
+	// (its own const/env var) — it does not read this field. Set
+	// PAYSTACK_BASE_URL to override if a caller does consult this default.
 	PaystackBaseURL string
 
 	// AllowAllRelayQuotas bypasses payment-processor-backed quota checks in the
@@ -409,15 +414,15 @@ func get(e Env) Defaults {
 			RateLimitEnabled:    false,
 			EmailVerifyRequired: false,
 			RequireDeviceSig:    false,
-			PaystackBaseURL:     "https://api.paystack.co",
+			PaystackBaseURL:     "",
 			AllowAllRelayQuotas: true,
 			OTAPublicBucketBase: "http://localhost:9000/vulos-dev",
 		}
 	case EnvDev:
 		return Defaults{
 			BindAddr:            ":8081",
-			SMTPHost:            "smtp.eu.mailgun.org",
-			SMTPPort:            "587",
+			SMTPHost:            "", // deployment supplies the outbound SMTP relay
+			SMTPPort:            "",
 			S3Endpoint:          "", // deployment supplies the managed S3 endpoint
 			S3Region:            "auto",
 			SecureCookie:        true,
@@ -425,15 +430,15 @@ func get(e Env) Defaults {
 			RateLimitEnabled:    true,
 			EmailVerifyRequired: true,
 			RequireDeviceSig:    false, // relaxed for staging test devices
-			PaystackBaseURL:     "https://api.paystack.co",
+			PaystackBaseURL:     "",
 			AllowAllRelayQuotas: false,
 			OTAPublicBucketBase: "", // deployment supplies the OTA public base
 		}
 	default: // prod
 		return Defaults{
 			BindAddr:            ":8081",
-			SMTPHost:            "smtp.eu.mailgun.org",
-			SMTPPort:            "587",
+			SMTPHost:            "", // deployment supplies the outbound SMTP relay
+			SMTPPort:            "",
 			S3Endpoint:          "", // deployment supplies the managed S3 endpoint
 			S3Region:            "auto",
 			SecureCookie:        true,
@@ -441,7 +446,7 @@ func get(e Env) Defaults {
 			RateLimitEnabled:    true,
 			EmailVerifyRequired: true,
 			RequireDeviceSig:    true,
-			PaystackBaseURL:     "https://api.paystack.co",
+			PaystackBaseURL:     "",
 			AllowAllRelayQuotas: false,
 			OTAPublicBucketBase: "", // deployment supplies the OTA public base
 		}

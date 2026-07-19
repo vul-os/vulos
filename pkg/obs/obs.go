@@ -1,4 +1,4 @@
-// Package obs wires Prometheus metrics and OTel tracing for the Vulos Cloud
+// Package obs wires Prometheus metrics and OTel tracing for the Vulos
 // control-plane server. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
 package obs
 
@@ -19,7 +19,18 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-const serviceName = "vulos-cloud-cp"
+// serviceName identifies this process to OTel traces. It defaults to a
+// neutral OSS name — an OSS control-plane binary must not hardcode the
+// proprietary "vulos-cloud-cp" identity. A deployment (e.g. the private
+// vulos-cloud composition) that wants the old identity sets OTEL_SERVICE_NAME.
+var serviceName = defaultServiceName()
+
+func defaultServiceName() string {
+	if v := strings.TrimSpace(os.Getenv("OTEL_SERVICE_NAME")); v != "" {
+		return v
+	}
+	return "vulos-management"
+}
 
 var (
 	RequestCount = prometheus.NewCounter(prometheus.CounterOpts{
