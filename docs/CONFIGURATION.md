@@ -198,7 +198,7 @@ Shared mesh identity, domain, TLS, and cloud endpoint settings. **Edit this firs
 ```yaml
 domain: os.yourdomain.com
 acme_email: you@yourdomain.com
-cloud_endpoint: https://app.vulos.org   # leave as-is for Vulos Cloud
+cloud_endpoint: https://api.vulos.org   # leave as-is for Vulos Cloud
 ```
 
 ### `/etc/vulos/storage.yaml`

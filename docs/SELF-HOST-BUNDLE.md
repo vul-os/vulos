@@ -328,7 +328,7 @@ applies them consistently to all three services:
    relay, fleet dashboards); it is **not** required to run a self-hosted instance.
 
    If you *want* those managed conveniences, visit
-   [https://app.vulos.org/setup/bundle](https://app.vulos.org/setup/bundle) and paste
+   [https://vulos.org/setup/bundle](https://vulos.org/setup/bundle) and paste
    your domain + public keys. Skipping this step keeps you fully independent of
    Vulos Cloud — nothing about your instance phones home or depends on it.
 

@@ -186,7 +186,7 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "1. Edit ${CONFIG_DIR}/fabric.yaml — set domain + cloud endpoint"
   plan "2. Run:  vulos-mail keygen   — generate X25519 keypair"
   plan "3. Enable services:  systemctl enable --now vulos-bundle.target"
-  plan "4. Register at:  https://app.vulos.org/setup/bundle"
+  plan "4. Register at:  https://vulos.org/setup/bundle"
 
   printf "\n${GRN}Dry-run complete. No changes made.${RST}\n\n"
   exit 0
@@ -506,7 +506,7 @@ if [ ! -f "${FABRIC_CONFIG}" ]; then
 domain: ""            # REQUIRED — e.g. "vulos.example.com"
 
 # ── Vulos Cloud control-plane ─────────────────────────────────────────────────
-cloud_endpoint: "https://app.vulos.org"
+cloud_endpoint: "https://api.vulos.org"
 
 # ── TLS ───────────────────────────────────────────────────────────────────────
 tls:
@@ -1198,7 +1198,7 @@ case "${INIT_SYSTEM}" in
 esac
 
 printf "  5. ${BLD}Register with Vulos Cloud:${RST}\n"
-printf "     ${CYN}https://app.vulos.org/setup/bundle${RST}\n"
+printf "     ${CYN}https://vulos.org/setup/bundle${RST}\n"
 printf "     → Paste your domain and public keys to activate cloud routing.\n\n"
 printf "  6. ${BLD}Configure your domain DNS:${RST}\n"
 printf "     → A record pointing to this server's IP\n"
