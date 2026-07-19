@@ -43,6 +43,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The Vitest suite (unit + RTL/MSW integration) is the frontend security
+      # contract described in README § Frontend test layers — it asserts the
+      # UI-level security invariants, so a regression here must break the build,
+      # not be discovered later. Fully mocked backend: no Go server or DB needed.
+      - name: Test (Vitest — frontend security contract)
+        run: npm run test
+
       - name: Build
         run: npm run build
 

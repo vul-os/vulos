@@ -173,16 +173,42 @@ Open **http://localhost:8080** and complete first-boot setup.
 
 Prerequisites: **Node.js 22+** and **Go 1.25+**.
 
+> **Before `npm install`: two sibling repos must be cloned next to this one.**
+> `package.json` depends on `@vulos/relay-client` and `@vulos/office-client`
+> through `file:../vulos-relay/client` and `file:../vulos-office`. Those paths
+> are resolved relative to the *parent* directory, so a fresh clone of `vulos`
+> alone cannot `npm install`. `@vulos/relay-client` also has to be built,
+> because its subpath exports (`./endpoints`, `./offlineBootstrap`, …) point at
+> a `dist-lib/` that is not committed.
+
 ```bash
+# 0. Clone the siblings first — into the PARENT directory, beside vulos/
 git clone https://github.com/vul-os/vulos.git
+git clone https://github.com/vul-os/vulos-relay.git
+git clone https://github.com/vul-os/vulos-office.git
+
+# 1. Build the relay client library (provides dist-lib/)
+cd vulos-relay/client && npm install && npm run build:lib && cd ../..
+
+# 2. Now vulos itself installs
 cd vulos
 npm install
 
 # Terminal 1 — backend (no cloud account needed)
-go run ./backend/cmd/server --env=local
+cd backend && go run ./cmd/server --env=local
 
 # Terminal 2 — frontend
 npm run dev
+```
+
+Your directory layout must end up looking like this — CI does exactly the same
+thing before every build (`.github/workflows/ci.yml`):
+
+```
+parent/
+├── vulos/          ← this repo
+├── vulos-relay/    ← provides @vulos/relay-client (client/)
+└── vulos-office/   ← provides @vulos/office-client
 ```
 
 Open **http://localhost:5173** — Vite proxies `/api` to the backend on `:8080`.
@@ -191,9 +217,11 @@ Or run both together with `./dev.sh`.
 ### Build for production
 
 ```bash
-npm run build          # frontend → dist/ (embedded into the Go binary)
-go build ./backend/... # backend
+npm run build              # frontend → dist/ (embedded into the Go binary)
+cd backend && go build ./...   # backend
 ```
+
+Or both at once with `make build`.
 
 ---
 
@@ -221,12 +249,30 @@ npm run lint         # ESLint
 npm run test         # Vitest unit + RTL/MSW integration tests (jsdom)
 npm run test:e2e     # Playwright real-browser E2E (chromium)
 
-go build ./backend/...                       # Compile the backend
-go test ./backend/...                        # Go tests
-go run ./backend/cmd/server --env=local      # Run the backend locally
-
 ./dev.sh             # Go + Vite together
 ./dev.sh deploy      # Full Docker build on localhost:8080
+```
+
+The Go module root is `backend/` (`module vulos/backend`) — there is **no
+`go.mod` at the repository root**, so every Go command runs from inside
+`backend/`:
+
+```bash
+cd backend
+go build ./...                  # Compile the backend
+go test ./...                   # Go tests
+go vet ./...
+go run ./cmd/server --env=local # Run the backend locally
+```
+
+Or via the Makefile from the repo root, which handles the `cd` for you:
+
+```bash
+make build        # backend build + frontend build
+make test-local   # backend tests, no race detector (fast)
+make test-dev     # backend tests with -race + seeded firstboot e2e
+make smoke        # SMOKE-01 peering-route regression (same script CI runs)
+make help         # list every target
 ```
 
 ### Frontend test layers
@@ -312,7 +358,7 @@ We take security seriously and welcome good-faith research under a documented sa
 
 ## Contributing
 
-Contributions are welcome. Pick a task, branch as `task/<ID>` or `feat/`/`fix/`/`docs/`, and run `go build ./backend/...`, `npm run build`, and `go test ./backend/...` before opening a PR. The full guide — task format, decision log, and disclosure process — is in [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. Pick a task, branch as `task/<ID>` or `feat/`/`fix/`/`docs/`, and run `make build` and `make test-local` (or `cd backend && go build ./... && go test ./...` plus `npm run build`) before opening a PR. The full guide — task format, decision log, and disclosure process — is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

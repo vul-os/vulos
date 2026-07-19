@@ -4,6 +4,13 @@ Thanks for being here. Vula OS is a small project with a large surface area, so 
 
 If you just want to get the project running, that lives in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
+> **First-run gotcha:** cloning only this repo is not enough. `npm install`
+> resolves `@vulos/relay-client` and `@vulos/office-client` from
+> `../vulos-relay/client` and `../vulos-office`, so both sibling repos must be
+> cloned beside `vulos/` — and `vulos-relay/client` must be built once
+> (`npm install && npm run build:lib`) to produce its `dist-lib/`. See the
+> quickstart in [README.md](README.md#develop-with-hot-reload).
+
 ---
 
 ## TL;DR
@@ -36,11 +43,12 @@ git checkout -b feat/<short-name>   # or fix/… , docs/…
 
 # … edit, build, test …
 
-go build ./...                      # backend changes
+cd backend && go build ./... && cd ..   # backend changes (module root is backend/)
 npm run build                       # frontend changes
-go test ./backend/...               # if you touched Go code
+cd backend && go test ./... && cd ..   # if you touched Go code
                                     # (run the targeted subtree if the full
                                     # test set is too slow on your laptop)
+                                    # or just: make build && make test-local
 
 git commit -m "short summary (#<issue>)"
 git push -u origin feat/<short-name>
@@ -124,12 +132,16 @@ chore: bump Go 1.22 → 1.23
 Before opening a PR:
 
 ```bash
-go test ./...          # backend
-go vet ./...
+cd backend && go test ./... && go vet ./... && cd ..   # backend
 npm run lint           # frontend
-npm test
-make smoke             # if you touched firstboot/installer
+npm test               # Vitest — the frontend security contract (also runs in CI)
+make smoke             # SMOKE-01 peering routes; if you touched firstboot/installer
 ```
+
+There is no `go.mod` at the repository root — the Go module is `backend/`
+(`module vulos/backend`). Go commands run from inside `backend/`, or use the
+Makefile wrappers from the root: `make build`, `make test-local`, `make
+test-dev`, `make smoke`, `make help`.
 
 All existing tests must pass. Security-relevant changes must include tests.
 

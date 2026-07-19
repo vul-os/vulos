@@ -24,7 +24,7 @@ REGISTRY_FEED := registry-feed.json
 
 .PHONY: build test-local test-dev test-all coverage help \
         dev-keys sign-registry verify-registry verify-registry-prod \
-        publish-feed verify-feed
+        publish-feed verify-feed smoke
 
 ## build: compile backend and build frontend assets.
 build:
@@ -46,6 +46,14 @@ test-dev:
 ## Equivalent to running scripts/test-all.sh directly.
 test-all:
 	$(SCRIPTS)/test-all.sh
+
+## smoke: run the peering-route smoke test (SMOKE-01) — builds the server, starts
+## it, waits for /health, then probes every registered peering route and fails if
+## any returns HTTP 501. This is the same script CI runs in the smoke-peering job.
+## The live-USB QEMU smoke test (SMOKE-02) needs qemu+OVMF+docker and is not part
+## of this target — run scripts/smoke-liveusb.sh directly for that.
+smoke:
+	sh $(SCRIPTS)/smoke-peering.sh
 
 ## dev-keys: regenerate the repo's DEVELOPMENT signing keys (not secret; refused in prod).
 dev-keys:
