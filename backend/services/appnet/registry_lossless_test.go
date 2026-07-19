@@ -137,7 +137,7 @@ func tamperValue(needle string) string {
 	}
 }
 
-// TestShippedRegistry_RoundTripsLosslessly — re-serialising the real 52-entry
+// TestShippedRegistry_RoundTripsLosslessly — re-serialising the real 55-entry
 // registry must not drop a key. If it did, `make sign-registry` would quietly
 // delete data from the file it rewrites.
 func TestShippedRegistry_RoundTripsLosslessly(t *testing.T) {

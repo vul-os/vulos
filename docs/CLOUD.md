@@ -15,8 +15,10 @@ Vulos-managed box). **Mail is a connector** — the inbox talks to a mailbox you
 already own (Gmail/Outlook/any IMAP/SMTP), so Vulos runs no mail server for you
 by default. **Real-time chat and video are third-party** — Vulos Talk and Vulos
 Meet are retired as first-party products; install Cinny/Element (Matrix chat)
-or Jitsi Meet/Element Call (video) from the App Store instead. Nothing about
-comms runs centrally in Vulos Cloud. The cloud's scope is exactly three things:
+or Jitsi Meet/Element Call (video) from the App Store instead (see
+[COMMS.md](COMMS.md) for why, and how self-hosting the servers fits in).
+Nothing about comms runs centrally in Vulos Cloud. The cloud's scope is exactly
+three things:
 
 - **Relay** — reachability fallback for boxes behind NAT.
 - **Provisioning** — standing up a managed box for you.
