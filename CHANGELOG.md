@@ -15,6 +15,41 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Changed
 
+- **ESLint cleanup + wired into CI.** An independent verification pass found
+  `npm run lint` reporting 12 errors / 18 warnings — small enough to actually
+  clear rather than defer. Fixed all 12 errors: an unused `req` param in an
+  e2e route stub, a genuinely-unused `no-unused-vars`-flagged arg in
+  `webPush.js` (documented inline, matching the repo's existing
+  underscore-prefix-plus-disable-comment convention), and 10
+  `react-refresh/only-export-components` hits in `src/auth/CloudSignIn.jsx`,
+  `src/auth/GatewayChoice.jsx`, and `src/builtin/drive/Drive.jsx` — each of
+  these files deliberately co-locates a component with plain helper
+  functions/hooks it exports for direct unit testing (documented in each
+  file's header comment); rather than a blanket rule disable, added
+  file-scoped `allowExportNames` overrides in `eslint.config.js` naming the
+  exact non-component exports. Of the 18 warnings, fixed 5: a dead
+  `eslint-disable-line no-proto` (the rule isn't even enabled) in
+  `appBridge.test.js`, and 4 real `react-hooks/exhaustive-deps` hits caused by
+  un-memoized values recreated every render — `ShellProvider.jsx`'s
+  `allWindows` array (now wrapped in `useMemo`, which also stabilizes
+  `closeWindow`/`focusWindow`/`minimizeWindow` identities) and `Window.jsx`'s
+  `applySnap` (now a stable `useCallback`), plus a genuinely-unused
+  `resizeWindow` dep that fell out of that same callback. The remaining 13
+  warnings are deliberate patterns, left as warnings rather than silenced:
+  mount-only-fetch effects with intentionally empty deps (`Setup.jsx`,
+  `FileManager.jsx`), effects/memos deliberately narrowed to specific
+  primitive fields of a larger object to avoid over-firing (`Setup.jsx`
+  `config`, `ShellProvider.jsx` `state`, `ThemeProvider.jsx`'s `tick`
+  invalidation-signal trick), unmount-only cleanup effects with `[]` deps
+  (`useMeshCall.js`, `useSFUCall.js`), forward-reference TDZ cases where the
+  callback is declared before the helper it calls and adding the dep would
+  crash the component at mount (`useSFUCall.js` ×2, `useVideoCall.js`,
+  `Portal.jsx` — the same TDZ reasoning is already documented in-file for a
+  sibling callback), and `FileManager.jsx`'s `goUp`, whose only real
+  dependency (`cwd`) is already tracked. `npm run lint` now runs as part of
+  the `frontend` CI job (`.github/workflows/ci.yml`), alongside the existing
+  `npm run build` and `npm run test:e2e` frontend checks.
+
 - **Docs: retired the last live-looking meethost/SFU-host references.**
   `docs/NETWORKING.md`'s "Hosting big calls: BYO SFU" section still described
   `VULOS_SFU_HOST`, `VULOS_SFU_ENDPOINT`, `VULOS_SFU_WORKER_BINARY`,
