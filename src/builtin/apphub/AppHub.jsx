@@ -278,7 +278,8 @@ export default function AppHub() {
       const q = search.toLowerCase()
       return app.name.toLowerCase().includes(q) ||
         app.description.toLowerCase().includes(q) ||
-        app.id.toLowerCase().includes(q)
+        app.id.toLowerCase().includes(q) ||
+        (app.keywords || []).some(k => k.toLowerCase().includes(q))
     }
     return true
   })
