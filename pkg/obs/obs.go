@@ -32,30 +32,48 @@ func defaultServiceName() string {
 	return "vulos-management"
 }
 
+// MetricNamespace is the Prometheus namespace prefix applied to every metric
+// this binary exports (e.g. "vulos_management_request_count_total"). It
+// defaults to a neutral OSS name for the same reason serviceName does — an
+// OSS control-plane binary must not hardcode the proprietary "vulos_cloud_cp"
+// identity. A deployment that wants the old metric names (the private
+// vulos-cloud composition, whose existing Grafana/Prometheus queries are
+// pinned to "vulos_cloud_cp_*") sets PROMETHEUS_NAMESPACE=vulos_cloud_cp
+// before the process starts — package-level metric registration reads this
+// once at load time, so it must be set in the environment, not after Init().
+var MetricNamespace = defaultMetricNamespace()
+
+func defaultMetricNamespace() string {
+	if v := strings.TrimSpace(os.Getenv("PROMETHEUS_NAMESPACE")); v != "" {
+		return v
+	}
+	return "vulos_management"
+}
+
 var (
 	RequestCount = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "request_count_total",
 		Help:      "Total HTTP requests handled by the control plane.",
 	})
 	RequestDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "request_duration_seconds",
 		Help:      "HTTP request latency.",
 		Buckets:   prometheus.DefBuckets,
 	})
 	ErrorCount = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "error_count_total",
 		Help:      "Total error responses.",
 	})
 	QueueDepth = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "queue_depth",
 		Help:      "Pending background work items.",
 	})
 	CacheHitRatio = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "cache_hit_ratio",
 		Help:      "Session / tenant cache hit ratio (0–1).",
 	})
@@ -65,14 +83,14 @@ var (
 	// response status-class ("2xx".."5xx"). The route-class keeps cardinality
 	// bounded — we never label on the raw path. See RouteClass.
 	HTTPRequestsByClass = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "http_requests_by_class_total",
 		Help:      "HTTP requests by route-class and status-class.",
 	}, []string{"route_class", "status_class"})
 
 	// HTTPLatencyByClass is request latency bucketed by route-class.
 	HTTPLatencyByClass = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "http_request_duration_by_class_seconds",
 		Help:      "HTTP request latency by route-class.",
 		Buckets:   prometheus.DefBuckets,
@@ -82,7 +100,7 @@ var (
 	// session, HMAC, or shared-secret gates). Incremented by call-sites that
 	// reject a request for an auth reason.
 	AuthFailures = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "auth_failures_total",
 		Help:      "Authentication / authorization failures (401/403).",
 	})
@@ -90,7 +108,7 @@ var (
 	// RateLimited counts requests rejected with 429 by the rate-limit / DDoS
 	// throttling layers.
 	RateLimited = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "rate_limited_total",
 		Help:      "Requests rejected with HTTP 429 Too Many Requests.",
 	})
@@ -99,7 +117,7 @@ var (
 	// by outcome: "applied" (first-seen, items accumulated), "duplicate" (replay
 	// no-op), or "rejected" (over-quota / auth / malformed).
 	RelayUsageReports = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "relay_usage_reports_total",
 		Help:      "Relay-usage reports received, by outcome.",
 	}, []string{"outcome"})
@@ -107,7 +125,7 @@ var (
 	// RelayQuotaRejections counts relay/TURN quota-gate rejections (over-cap
 	// tenants denied at /api/quota or the relay-usage path).
 	RelayQuotaRejections = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "relay_quota_rejections_total",
 		Help:      "Relay/TURN requests rejected because the tenant is over its tier cap.",
 	})
@@ -115,7 +133,7 @@ var (
 	// GPURentals counts GPU-rental lifecycle events, labelled by action
 	// (e.g. "start", "stop", "reap").
 	GPURentals = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "gpu_rentals_total",
 		Help:      "GPU-rental lifecycle events, by action.",
 	}, []string{"action"})
@@ -124,7 +142,7 @@ var (
 	// Paystack event type ("charge.success", "charge.failed",
 	// "invoice.payment_failed", …) and outcome ("processed"|"rejected").
 	WebhookEvents = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: MetricNamespace,
 		Name:      "webhook_events_total",
 		Help:      "Billing webhook events received, by event type and outcome.",
 	}, []string{"event", "outcome"})

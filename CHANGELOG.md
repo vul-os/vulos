@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (operational): Prometheus metric namespace is no longer
+  hardcoded to `vulos_cloud_cp`.** Every metric this binary exports
+  (`request_count_total`, `http_requests_by_class_total`,
+  `servingpool_fleet_load`, …) was prefixed with the private cloud product's
+  identity — the same class of OSS/private leak as the `serviceName` fix
+  above, just missed at the time. `pkg/obs.MetricNamespace` now defaults to
+  the neutral `vulos_management` and is overridable via
+  `PROMETHEUS_NAMESPACE` (same pattern as `OTEL_SERVICE_NAME` for the trace
+  service name). `pkg/servingpool`'s autoscaler gauges now reuse
+  `obs.MetricNamespace` instead of their own hardcoded copy of the same
+  string, so there is one source of truth.
+
+  **If you scrape this binary's `/metrics` endpoint, every metric name
+  changes** from `vulos_cloud_cp_*` to `vulos_management_*` unless you set
+  `PROMETHEUS_NAMESPACE=vulos_cloud_cp` in the environment before the process
+  starts (the namespace is read once at package load, so it cannot be
+  changed after the binary has started). Update saved
+  Prometheus/Grafana queries accordingly, or set the env var to keep the old
+  names.
+
 ### Fixed
 
 - **Documented quickstart couldn't boot the binary**: README.md and

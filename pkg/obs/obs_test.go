@@ -55,15 +55,16 @@ func TestMetricsEndpointExposesCoreCounters(t *testing.T) {
 	}
 	body := rec.Body.String()
 
-	for _, want := range []string{
-		"vulos_cloud_cp_http_requests_by_class_total",
-		"vulos_cloud_cp_auth_failures_total",
-		"vulos_cloud_cp_rate_limited_total",
-		"vulos_cloud_cp_relay_usage_reports_total",
-		"vulos_cloud_cp_relay_quota_rejections_total",
-		"vulos_cloud_cp_gpu_rentals_total",
-		"vulos_cloud_cp_webhook_events_total",
+	for _, name := range []string{
+		"http_requests_by_class_total",
+		"auth_failures_total",
+		"rate_limited_total",
+		"relay_usage_reports_total",
+		"relay_quota_rejections_total",
+		"gpu_rentals_total",
+		"webhook_events_total",
 	} {
+		want := obs.MetricNamespace + "_" + name
 		if !strings.Contains(body, want) {
 			t.Errorf("/metrics output missing counter %q", want)
 		}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/vul-os/vulos-management/pkg/obs"
 )
 
 // Autoscaler observes the pool and emits autoscale-by-load signals an
@@ -31,31 +32,31 @@ type Autoscaler struct {
 // on first NewAutoscaler call.
 var (
 	fleetLoad = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: obs.MetricNamespace,
 		Subsystem: "servingpool",
 		Name:      "fleet_load",
 		Help:      "Mean load_score across healthy bundle nodes (0..1).",
 	})
 	healthyNodes = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: obs.MetricNamespace,
 		Subsystem: "servingpool",
 		Name:      "healthy_nodes",
 		Help:      "Count of bundle nodes currently in 'healthy' state.",
 	})
 	totalNodes = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: obs.MetricNamespace,
 		Subsystem: "servingpool",
 		Name:      "total_nodes",
 		Help:      "Total bundle nodes registered in the pool (any health).",
 	})
 	totalLeases = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: obs.MetricNamespace,
 		Subsystem: "servingpool",
 		Name:      "total_leases",
 		Help:      "Total active tenant→node leases.",
 	})
 	autoscaleSignals = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "vulos_cloud_cp",
+		Namespace: obs.MetricNamespace,
 		Subsystem: "servingpool",
 		Name:      "autoscale_signals_total",
 		Help:      "Autoscale signals emitted, by action.",

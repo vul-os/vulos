@@ -71,6 +71,9 @@ provider-specific knowledge. Everything has a sensible self-host default.
 | `CP_SQLITE_PATH` | *(empty)* | On-disk SQLite path used when `DATABASE_URL` is empty. Empty ⇒ in-memory (non-durable; dev/smoke only — set a path for anything you want to keep). |
 | `CP_ENV` | `dev` | Free-form environment label surfaced on `/version`. **Not** the same knob as `VULOS_ENV` above — this one is cosmetic only and does not affect any safety guard. |
 | `CP_VERSION` | `dev` | Build/version string surfaced on `/version`. |
+| `PROMETHEUS_NAMESPACE` | `vulos_management` | Prefix applied to every Prometheus metric exported at `GET /metrics` (e.g. `vulos_management_request_count_total`). Read once at process start — set it in the environment before launch, not after. A private deployment with existing dashboards pinned to different metric names sets this to match. |
+| `OTEL_SERVICE_NAME` | `vulos-management` | The `service.name` this process reports to OTel traces. Also read once at process start. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | *(unset ⇒ tracing disabled)* | OTLP/HTTP collector endpoint. Unset means tracing is a no-op; metrics at `/metrics` are always on regardless of this var. |
 
 ### SQLite vs Postgres
 
