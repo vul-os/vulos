@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "seq": 0,
+      "registry_hash": "sha256:878355d598d725956ca14c8ed4776275347b1d8b98d6073fa5367c8f37f44aae",
+      "ts": "2026-07-19T16:31:50Z"
+    }
+  ],
+  "head": {
+    "v": 0,
+    "seq": 0,
+    "tip": "sha256:481c38a5cd3fd746d12064302dfbbea13eab8fe84d4d3a09309edfea2c911a49",
+    "ts": "2026-07-19T16:31:50Z",
+    "signer": "uosei+A8s83COsu0CBIjmCf4H4PpxXaTQJar7rUafwE=",
+    "sig": "q0S0htAbZ+KUKwcyDjG530jI3oijfoK+F0Uj4RUgKQ7Atv9QsGA+EOcw7YuCB51moyYmjdfcOv0a/eI5ejx0BQ=="
+  }
+}

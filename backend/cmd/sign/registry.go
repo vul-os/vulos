@@ -198,6 +198,115 @@ func releaseKeyGate(verifyKey ed25519.PublicKey, requireProd bool, registryPath 
 		registryPath)
 }
 
+// ─── publish-feed ─────────────────────────────────────────────────────────────
+//
+// Registry-as-feed, phase 1 (see backend/services/appnet/feed.go and
+// roadmap/APP-STORE.md's "Forward plan: registry-as-feed" note). This is
+// PURELY ADDITIVE: it appends a signed entry to registry-feed.json recording
+// "the release key published this exact registry.json at this time", chained
+// to every prior publication. It does not change what sign-registry does to
+// registry.json, and no install-time verification path consults the feed yet.
+
+func cmdPublishFeed(args []string) {
+	fs := flag.NewFlagSet("publish-feed", flag.ExitOnError)
+	releasePrivPath := fs.String("release-priv", "", "path to the release private-key JSON file")
+	registryPath := fs.String("registry", "registry.json", "path to registry.json (read-only — the feed records its hash)")
+	feedPath := fs.String("feed", "registry-feed.json", "path to registry-feed.json (appended to in place)")
+	_ = fs.Parse(args)
+
+	if *releasePrivPath == "" {
+		fatalf(1, "publish-feed: -release-priv is required")
+	}
+
+	privBytes, err := readPrivateKey(*releasePrivPath)
+	if err != nil {
+		fatalf(2, "publish-feed: read release private key: %v", err)
+	}
+	releasePriv := ed25519.PrivateKey(privBytes)
+	releasePub, ok := releasePriv.Public().(ed25519.PublicKey)
+	if !ok {
+		fatalf(2, "publish-feed: release key is not Ed25519")
+	}
+
+	before, err := appnet.LoadFeed(*feedPath)
+	if err != nil {
+		fatalf(2, "publish-feed: load %s: %v", *feedPath, err)
+	}
+	beforeN := len(before.Entries)
+
+	feed, err := appnet.AppendFeedEntry(*feedPath, *registryPath, releasePub, releasePriv)
+	if err != nil {
+		fatalf(2, "publish-feed: %v", err)
+	}
+
+	if len(feed.Entries) == beforeN {
+		fmt.Printf("publish-feed: no-op — %s is unchanged since the last publish (tip seq=%d, %s)\n",
+			*registryPath, feed.Head.Seq, feed.Head.Tip)
+		return
+	}
+
+	// Publishing is worthless if we cannot prove the result verifies — re-read
+	// from disk and check the chain + signature, same discipline as
+	// sign-registry's post-write verification.
+	reloaded, err := appnet.LoadFeed(*feedPath)
+	if err != nil {
+		fatalf(2, "publish-feed: reload %s: %v", *feedPath, err)
+	}
+	if err := appnet.VerifyFeed(reloaded, releasePub); err != nil {
+		fatalf(2, "publish-feed: post-write verification FAILED: %v", err)
+	}
+
+	fmt.Printf("publish-feed: appended seq=%d to %s (%d total entries)\n", feed.Head.Seq, *feedPath, len(feed.Entries))
+	fmt.Printf("  registry_hash: %s\n", feed.Entries[len(feed.Entries)-1].RegistryHash)
+	fmt.Printf("  tip:           %s\n", feed.Head.Tip)
+	fmt.Printf("  signer (base64): %s\n", encodeB64(releasePub))
+}
+
+// ─── verify-feed ───────────────────────────────────────────────────────────────
+
+func cmdVerifyFeed(args []string) {
+	fs := flag.NewFlagSet("verify-feed", flag.ExitOnError)
+	anchorPath := fs.String("anchor", signing.DefaultAnchorPath, "path to the trust-anchor public key (root)")
+	certPath := fs.String("cert", "", "path to the root-signed release cert (omit for the single-key model)")
+	feedPath := fs.String("feed", "registry-feed.json", "path to registry-feed.json")
+	_ = fs.Parse(args)
+
+	anchor, err := signing.LoadAnchor(*anchorPath)
+	if err != nil {
+		fatalf(2, "verify-feed: %v", err)
+	}
+
+	verifyKey := anchor
+	keyDesc := fmt.Sprintf("trust anchor %s", *anchorPath)
+	if *certPath != "" {
+		cert, err := signing.LoadReleaseCert(*certPath)
+		if err != nil {
+			fatalf(2, "verify-feed: %v", err)
+		}
+		releasePub, err := signing.ReleaseKeyFromCert(anchor, cert)
+		if err != nil {
+			fatalf(2, "verify-feed: release cert %s does not chain to anchor %s: %v",
+				*certPath, *anchorPath, err)
+		}
+		verifyKey = releasePub
+		keyDesc = fmt.Sprintf("release key %q (cert %s, expires %s)", cert.KeyID, *certPath, cert.NotAfter)
+	}
+
+	feed, err := appnet.LoadFeed(*feedPath)
+	if err != nil {
+		fatalf(2, "verify-feed: load %s: %v", *feedPath, err)
+	}
+	if len(feed.Entries) == 0 {
+		fatalf(2, "verify-feed: %s has never been published (no entries)", *feedPath)
+	}
+	if err := appnet.VerifyFeed(feed, verifyKey); err != nil {
+		fatalf(2, "verify-feed: %v", err)
+	}
+
+	fmt.Printf("verify-feed: OK — %s (%d entries, tip seq=%d) verifies against %s\n",
+		*feedPath, len(feed.Entries), feed.Head.Seq, keyDesc)
+}
+
 // ─── shared ───────────────────────────────────────────────────────────────────
 
 // verifyRegistryFile loads registryPath and verifies every entry against pub.
