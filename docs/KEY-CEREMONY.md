@@ -350,7 +350,7 @@ exactly that reason.
 `backend/services/appnet/registry_acceptance_test.go` stages a temp directory as
 the box's `/etc/vulos` and asserts, with **no insecure flag anywhere**:
 
-- a box holding only the **shipped anchor** verifies all 52 committed entries;
+- a box holding only the **shipped anchor** verifies all 55 committed entries;
 - a box holding a **ceremony anchor** installs a signed app end-to-end **under
   `VULOS_ENV=prod`**;
 - a **tampered** entry, an **unsigned** entry, an entry signed by a **foreign

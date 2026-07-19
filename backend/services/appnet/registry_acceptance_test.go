@@ -8,7 +8,7 @@ package appnet
 //
 // The two halves:
 //
-//	fresh box, SHIPPED anchor  → the 52 committed registry.json entries verify,
+//	fresh box, SHIPPED anchor  → the 55 committed registry.json entries verify,
 //	                             and an install completes with NO insecure flag.
 //	fresh box, PROD anchor     → the same, under VULOS_ENV=prod, using an anchor
 //	                             from a simulated offline ceremony.
