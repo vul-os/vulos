@@ -84,7 +84,7 @@ describe('storage namespacing — an app cannot name anything but its own data',
       expect(writeAppItem('clock', k, `v-${k}`)).toBe(true)
     }
     const snap = readAppSnapshot('clock')
-    expect(snap.__proto__).toBe('v-__proto__') // eslint-disable-line no-proto
+    expect(snap.__proto__).toBe('v-__proto__')
     expect(snap.constructor).toBe('v-constructor')
     expect(snap.toString).toBe('v-toString')
     // Nothing was polluted: a fresh object is unaffected.

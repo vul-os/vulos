@@ -236,7 +236,7 @@ export default function Window({ win, pointerBlock }) {
   // tileWindow() applies the geometry AND records the tile zone (+ pre-tile
   // floating geometry) so the drag-snap path and the keyboard-tiling path stay
   // in lock-step and share one restore path.
-  const applySnap = (zone) => tileWindow(win.id, zone)
+  const applySnap = useCallback((zone) => tileWindow(win.id, zone), [win.id, tileWindow])
 
   const onDragStart = useCallback((e) => {
     if (e.target.closest('[data-no-drag]')) return
@@ -268,7 +268,7 @@ export default function Window({ win, pointerBlock }) {
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-  }, [win, focusWindow, moveWindow, resizeWindow])
+  }, [win, focusWindow, moveWindow, applySnap])
 
   const onResizeStart = useCallback((e) => {
     e.preventDefault()

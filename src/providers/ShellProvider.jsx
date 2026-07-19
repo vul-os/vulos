@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
+import { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
@@ -373,16 +373,22 @@ export function ShellProvider({ children }) {
 
   // ALL windows across all desktops — for persistent rendering
   // Each window gets a `_visible` flag (true only if on active desktop and not minimized)
-  const allWindows = []
-  for (const [deskId, desk] of Object.entries(state.desktops)) {
-    for (const win of desk.windows) {
-      allWindows.push({
-        ...win,
-        _visible: deskId === state.activeDesktop,
-        _active: deskId === state.activeDesktop && desk.activeWindow === win.id,
-      })
+  // Memoized so callbacks that depend on it (closeWindow, focusWindow,
+  // minimizeWindow) only get a new identity when the underlying window data
+  // actually changes, not on every unrelated render.
+  const allWindows = useMemo(() => {
+    const out = []
+    for (const [deskId, desk] of Object.entries(state.desktops)) {
+      for (const win of desk.windows) {
+        out.push({
+          ...win,
+          _visible: deskId === state.activeDesktop,
+          _active: deskId === state.activeDesktop && desk.activeWindow === win.id,
+        })
+      }
     }
-  }
+    return out
+  }, [state.desktops, state.activeDesktop])
 
   const openWindow = useCallback(({ appId, title, url, icon, component, html, _saveable }) => {
     dispatch({ type: 'OPEN_WINDOW', appId, title, url, icon, component, html, _saveable })
