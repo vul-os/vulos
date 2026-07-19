@@ -371,6 +371,19 @@ export default function IncomingCall() {
     }
   }, [])
 
+  // KNOWN BREAKAGE (peer calling is non-functional end-to-end).
+  //
+  // This accepts the call on the wire and then dismisses the banner without
+  // mounting any media UI, so the user answers and sees nothing happen. The
+  // media surface is CallView (./CallView.jsx), which still exists but is
+  // orphaned: its only importer was Peering.jsx, and Peering.jsx was dropped
+  // from the builtin registry when Messages replaced it. Nothing renders a
+  // call.
+  //
+  // Fixing this is a product decision — restore the peering surface, or mount
+  // CallView from DesktopCanvas alongside this banner, or retire peer calling
+  // and remove this component. Do NOT "fix" it by deleting CallView; that
+  // makes the breakage permanent rather than latent.
   const handleAccept = useCallback(async () => {
     if (!incomingCall) return
     const { callId } = incomingCall

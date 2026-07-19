@@ -192,7 +192,6 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
               <p className="text-sm text-neutral-400">No peers available</p>
               <p className="text-xs text-neutral-600 max-w-xs leading-relaxed">
                 Approve a contact and make sure they are reachable, then refresh.
-                You can also share from Peering &rsaquo; Drop.
               </p>
             </div>
           ) : (
