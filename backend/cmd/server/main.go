@@ -2733,6 +2733,11 @@ func main() {
 			} else {
 				relayStore.WithBilling(billingClient)
 				peering.RegisterRelayHandlers(peeringMux, relayStore)
+				// Launch the background blob reaper. Without this the store
+				// grows without bound: expired blobs are only dropped lazily
+				// on pickup, so a blob nobody ever picks up lives forever.
+				// The goroutine exits when ctx is cancelled at shutdown.
+				relayStore.Start(ctx)
 			}
 
 			// Feeds (own append-only feeds; peers-gating uses contacts).

@@ -617,6 +617,9 @@ func (rs *RelayStore) Ack(recipientVulaID, authTimestampUnix, sigB64URL string, 
 func (rs *RelayStore) reapLoop(ctx context.Context) {
 	ticker := time.NewTicker(relayReaperInterval)
 	defer ticker.Stop()
+	// Sweep once on startup: a box restarted more often than relayReaperInterval
+	// would otherwise never reap, letting expired blobs accumulate forever.
+	rs.reapExpired()
 	for {
 		select {
 		case <-ctx.Done():
