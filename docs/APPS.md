@@ -279,7 +279,19 @@ Self-hosters running fully standalone simply leave this off and use platform app
 
 ## Bots and agent apps
 
-The **Apps & Bots platform** (mounted at `/api/apps`) is how you give an external program — a cron script, a webhook consumer, an LLM agent — a scoped credential to act on your box. It is entirely on-box by default (a local SQLite registry) and can be disabled wholesale with `VULOS_APPS=off`.
+> **Scope note (read this first).** The Apps & Bots platform described in this
+> section — the `vat_` token registry, the `/api/apps/v1/*` runtime, webhooks,
+> and the MCP endpoint — is implemented in the **Vulos control plane**
+> (`vulos-management`, `pkg/appsplatform`), **not** in the OS box backend in
+> this repository. None of the `POST /api/apps`, `/api/apps/v1/*`,
+> `/api/apps/{id}/rotate/*` or `/mcp` routes below are served by the box, so
+> the examples will not work against a box URL. The MCP server in particular is
+> not currently implemented in either repository. Treat this section as a
+> description of the platform product, and see the control-plane repository for
+> its live surface. Tracking which repository should own this documentation is
+> an open product decision.
+
+The **Apps & Bots platform** is how you give an external program — a cron script, a webhook consumer, an LLM agent — a scoped credential to act on your account.
 
 ### Registering a bot
 
@@ -348,7 +360,7 @@ If it is off (the default), asking the assistant for an interactive app still yi
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VULOS_APPS` | on | `off` disables the Apps & Bots platform and `/mcp` |
+| `VULOS_APPS` | on | `off` disables the box's apps surface: every `/api/apps` route (app launch, stop, ports, traffic, proxy) and `/mcp`. Unrecognised values fail closed (disabled) |
 | `VULOS_REGISTRY` | built-in | Alternative app-registry source |
 | `VULOS_TRUST_ANCHOR` | `/etc/vulos/trust-anchor.pub` | Path to the root public key (the trust anchor) |
 | `VULOS_RELEASE_CERT` | `/etc/vulos/release-cert.json` | Path to the root-signed release cert |

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"vulos/backend/internal/appsgate"
 	"vulos/backend/internal/datadir"
 
 	apikeyseam "vulos/backend/internal/apikey"
@@ -4096,7 +4097,11 @@ func main() {
 	if routeVerifier.Enabled() {
 		log.Printf("[osroute] X-Vulos-OS-Route verification ENABLED (behind cloud router)")
 	}
-	handler := secHeadersMiddleware(routeVerifier.Middleware(authHandler.Middleware(mainHandler)))
+	// VULOS_APPS=off disables the apps platform (/api/apps) and the MCP
+	// endpoint (/mcp) wholesale, as documented in docs/APPS.md. The gate sits
+	// ahead of auth so a disabled surface is refused without doing any auth
+	// work, and fails closed on an unrecognised value.
+	handler := secHeadersMiddleware(appsgate.Middleware(routeVerifier.Middleware(authHandler.Middleware(mainHandler))))
 	server := &http.Server{Addr: addr, Handler: handler}
 
 	// lanSvc holds the opt-in OFFLINE-01 LAN reachability service (started below,

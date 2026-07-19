@@ -267,7 +267,12 @@ Everything in the first row is enforced by code (the Guard choke point plus the 
 
 ## Connecting an outside agent (MCP)
 
-Your box also runs a **Model Context Protocol (MCP) server at `/mcp`**, so an external agent — Claude, or any MCP-speaking client — can operate parts of the OS with a scoped token. This is a separate surface from the built-in assistant, with its own (deliberately narrower) capabilities.
+> **Not currently implemented.** No `/mcp` handler exists in this repository's
+> backend (or in the control plane), so the requests in this section will not
+> succeed against a box today. The section is retained as the intended design;
+> wiring it up is outstanding work.
+
+The design is that your box also runs a **Model Context Protocol (MCP) server at `/mcp`**, so an external agent — Claude, or any MCP-speaking client — can operate parts of the OS with a scoped token. This is a separate surface from the built-in assistant, with its own (deliberately narrower) capabilities.
 
 ### How it authenticates
 
@@ -305,7 +310,7 @@ curl -s $BOX/mcp -H "Authorization: Bearer $TOKEN" -H "Content-Type: application
 
 The server speaks JSON-RPC 2.0 over plain HTTP POST (`initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`). Resources are addressed as `vulos://os/<kind>/<node-id>` URIs.
 
-Set `VULOS_APPS=off` to disable the apps platform and the MCP server entirely.
+Set `VULOS_APPS=off` to disable the box's apps surface — every `/api/apps` route and `/mcp` — entirely. The switch is enforced by a middleware ahead of authentication, and an unrecognised value fails closed (the surface is disabled rather than left exposed).
 
 ---
 
