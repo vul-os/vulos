@@ -497,6 +497,96 @@
       },
       "signature": "9esqdVpb/USX8aHsLdJywXzXGQNUKbRfL8n0VwRZ6uGnKmO9nbOSDFFWjvrF2rKTLqBQkGdPrOqd1Aor++vFAg=="
     },
+    "element": {
+      "name": "Element",
+      "vetted": true,
+      "type": "desktop",
+      "arch": null,
+      "description": "Secure, decentralized messaging and collaboration client for the Matrix protocol — chat, voice, and video calls across any Matrix homeserver (works with a local Conduit instance or any public server)",
+      "category": "network",
+      "author": "Element (New Vector Ltd / Matrix.org Foundation)",
+      "homepage": "https://element.io",
+      "icon": "E",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "chat",
+        "messaging",
+        "client",
+        "collaboration",
+        "voice",
+        "video",
+        "cinny-alternative"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "im.riot.Riot",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run im.riot.Riot",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "camera",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "hOC3uU788jS//vFbyP4f78M+RgOAl98LP6piD/NPG1GpnGya3m7/Bb2hQ3AsUwXw+Qm3FdD0aeH3q3mWQFstBQ=="
+    },
+    "element-call": {
+      "_note": "Static frontend only \u2014 requires a LiveKit SFU (or compatible focus) and a Matrix homeserver that supports MSC3401 group calls; edit static/config.json post-install to point at them. This is the 'hosted-web experience the user configures' shape, same as Cinny needing a homeserver URL.",
+      "arch": null,
+      "author": "Element (New Vector Ltd / Matrix.org Foundation)",
+      "category": "network",
+      "description": "Native Matrix group video calling (MSC3401) — static web client that plugs into any Matrix homeserver + a LiveKit SFU for group calls; configure your homeserver and SFU URL in config.json after install (also embeddable inside Element/Cinny as a widget)",
+      "homepage": "https://element.io/call",
+      "icon": "E",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "video",
+        "calls",
+        "webrtc",
+        "conferencing",
+        "meet-alternative",
+        "livekit"
+      ],
+      "license": "AGPL-3.0",
+      "name": "Element Call",
+      "signature": "JuXEiQ2EqatZtGLZ8lZ2gXo7kndu+FU97bfrnX9FyHQn6DFSJuLemm8be3tFlywfcx1fWFjT8nSmreYGi5quBw==",
+      "type": "web",
+      "versions": {
+        "0.21.0": {
+          "install": "wget -qO /tmp/element-call.tar.gz https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz \u0026\u0026 echo '6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36  /tmp/element-call.tar.gz' | sha256sum -c - \u0026\u0026 tar xzf /tmp/element-call.tar.gz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/element-call.tar.gz",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "port": 8082,
+          "post_install": "mkdir -p static",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "camera",
+            "microphone"
+          ],
+          "checksum": "sha256:6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    },
     "excalidraw": {
       "name": "Excalidraw",
       "vetted": true,
@@ -1056,6 +1146,51 @@
       },
       "vetted": true
     },
+    "jitsi-meet": {
+      "name": "Jitsi Meet",
+      "vetted": true,
+      "type": "desktop",
+      "arch": null,
+      "description": "Free, open-source video conferencing — join any Jitsi deployment (including the public meet.jit.si) with no account required; screen sharing, chat, and end-to-end encrypted calls",
+      "category": "network",
+      "author": "8x8, Inc. (Jitsi)",
+      "homepage": "https://jitsi.org",
+      "icon": "J",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "conferencing",
+        "calls",
+        "meet",
+        "webrtc",
+        "jitsi",
+        "meet-alternative"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.jitsi.jitsi-meet",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.jitsi.jitsi-meet",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "camera",
+            "microphone",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "f/Hbq0Vv+NZnHwp1GlL/EYVqfPEww6w2X8nLAa3tAxRU8pQDB04Q9bOqNXY0IeARNdhsaAWgticQq2iCjOVXBg=="
+    },
     "jupyter": {
       "name": "Jupyter Lab",
       "vetted": true,
@@ -1480,7 +1615,7 @@
       "versions": {
         "0.22.4": {
           "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
+          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 \u2014 update download_url and obtain a checksum before re-enabling",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -2107,7 +2242,7 @@
       "versions": {
         "1.23.16": {
           "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
+          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 \u2014 update download_url and obtain a checksum before re-enabling",
           "archive_strip": 1,
           "auto_start": false,
           "checksum": "",
