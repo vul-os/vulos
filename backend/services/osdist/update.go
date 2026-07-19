@@ -50,6 +50,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"vulos/backend/services/signing"
@@ -110,6 +111,12 @@ type UpdaterConfig struct {
 	// Logger is used for structured logging.  Defaults to slog.Default() when
 	// nil.
 	Logger *slog.Logger
+
+	// Store, when non-nil, is updated with the outcome of every check
+	// (RecordSuccess/RecordError) so the /api/os/update/status HTTP handler
+	// (see handlers.go) reflects the periodic loop's real state instead of
+	// staying permanently empty/"never checked".
+	Store *StatusStore
 }
 
 // DefaultUpdateInterval is the default polling interval for the update loop.
@@ -147,6 +154,9 @@ func AutoUpdateEnabled() bool {
 type Updater struct {
 	cfg UpdaterConfig
 	log *slog.Logger
+
+	mu         sync.Mutex
+	lastLatest string // manifest.Latest from the most recent successful fetchManifest
 }
 
 // NewUpdater creates an Updater from cfg.  It returns an error if required
@@ -197,15 +207,44 @@ func (u *Updater) Run(ctx context.Context) {
 }
 
 // runOnce executes a single update check iteration, logging errors but not
-// propagating them (the loop continues regardless).
+// propagating them (the loop continues regardless). It also records the
+// outcome into cfg.Store (when configured) so the status HTTP handler can
+// report the periodic loop's real state.
 func (u *Updater) runOnce(ctx context.Context) {
-	if err := u.CheckAndUpdate(ctx); err != nil {
-		if errors.Is(err, ErrAlreadyUpToDate) {
-			u.log.Debug("osdist/update: up to date", "version", u.cfg.RunningVersion)
-			return
+	err := u.CheckAndUpdate(ctx)
+	if err == nil {
+		if u.cfg.Store != nil {
+			u.cfg.Store.RecordSuccess(u.getLastLatest())
 		}
-		u.log.Error("osdist/update: check failed", "error", err)
+		return
 	}
+	if errors.Is(err, ErrAlreadyUpToDate) {
+		u.log.Debug("osdist/update: up to date", "version", u.cfg.RunningVersion)
+		if u.cfg.Store != nil {
+			u.cfg.Store.RecordSuccess("") // "" == already up to date, per RecordSuccess's contract
+		}
+		return
+	}
+	u.log.Error("osdist/update: check failed", "error", err)
+	if u.cfg.Store != nil {
+		u.cfg.Store.RecordError(err)
+	}
+}
+
+// setLastLatest/getLastLatest track the most recently fetched manifest's
+// Latest field so runOnce can report it to Store on a successful stage
+// (CheckAndUpdate itself only returns error, so this is how the version
+// survives past the fetch step for RecordSuccess).
+func (u *Updater) setLastLatest(v string) {
+	u.mu.Lock()
+	u.lastLatest = v
+	u.mu.Unlock()
+}
+
+func (u *Updater) getLastLatest() string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.lastLatest
 }
 
 // CheckAndUpdate performs a single update check.
@@ -315,6 +354,7 @@ func (u *Updater) fetchManifest(ctx context.Context) (*StableManifest, error) {
 		return nil, fmt.Errorf("verify manifest: %w", err)
 	}
 
+	u.setLastLatest(manifest.Latest)
 	return manifest, nil
 }
 

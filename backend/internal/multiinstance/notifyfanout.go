@@ -166,17 +166,28 @@ func (nf *NotifyFanout) Notify(ctx context.Context, n Notification) error {
 	return nil
 }
 
+// purgeInterval is how often RunBatcher sweeps expired seen_notifications rows.
+// The TTL itself is 7 days (see markSeen); sweeping once a day is plenty.
+const purgeInterval = 24 * time.Hour
+
 // RunBatcher starts the P2/P3 batch worker using the default batchWindow tick.
 // It blocks until ctx is cancelled. Call this in a dedicated goroutine.
+//
+// It also periodically calls PurgeExpiredSeen so the seen_notifications dedup
+// table doesn't grow unboundedly — that method existed but nothing ever
+// invoked it (deadcode-flagged as unreachable) until this wiring.
 func (nf *NotifyFanout) RunBatcher(ctx context.Context) {
-	nf.runBatcherWithTick(ctx, batchWindow)
+	nf.runBatcherWithTick(ctx, batchWindow, purgeInterval)
 }
 
-// runBatcherWithTick is the internal implementation that accepts a configurable
-// tick duration so tests can use a shorter interval without changing the constant.
-func (nf *NotifyFanout) runBatcherWithTick(ctx context.Context, tick time.Duration) {
+// runBatcherWithTick is the internal implementation that accepts configurable
+// tick durations so tests can use shorter intervals without changing the
+// constants.
+func (nf *NotifyFanout) runBatcherWithTick(ctx context.Context, tick, purgeTick time.Duration) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
+	purgeTicker := time.NewTicker(purgeTick)
+	defer purgeTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -185,6 +196,10 @@ func (nf *NotifyFanout) runBatcherWithTick(ctx context.Context, tick time.Durati
 			return
 		case <-ticker.C:
 			nf.flushBatch(ctx)
+		case <-purgeTicker.C:
+			if err := nf.PurgeExpiredSeen(); err != nil {
+				log.Printf("[notifyfanout] PurgeExpiredSeen: %v", err)
+			}
 		}
 	}
 }

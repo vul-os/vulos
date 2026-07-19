@@ -1718,7 +1718,6 @@ func main() {
 		// Use manifest values authoritatively; client WorkDir/AppPort are hints only
 		// when manifest does not override them.
 		manifestCmd := manifest.Command
-		manifestWorkDir := manifest.WorkDir
 		manifestAppPort := manifest.Port
 		if req.AppPort != 0 && manifestAppPort == 0 {
 			manifestAppPort = req.AppPort
@@ -1734,9 +1733,10 @@ func main() {
 				return
 			}
 		}
-		// Merge manifest env (authoritative) with caller-supplied extra env
-		launchEnv := manifest.EnvSlice()
-		launchEnv = append(launchEnv, req.Env...)
+		// Extra env beyond the manifest's own (LaunchManifest merges manifest env
+		// + this slice, in that order, so manifest values still win last-write
+		// conflicts the way the manifest's own EnvSlice() ordering intends).
+		launchEnv := append([]string{}, req.Env...)
 		// Allocate host port from pool
 		hostPort, ok := portPool.Allocate(req.AppID)
 		if !ok {
@@ -1749,7 +1749,14 @@ func main() {
 
 		userID := r.Header.Get("X-User-ID")
 		execAuditLog(r, "POST /api/apps/launch", fmt.Sprintf("app_id=%s cmd=%q", req.AppID, manifestCmd))
-		app, err := launcher.Launch(ctx, req.AppID, userID, hostPort, manifestAppPort, manifestCmd, req.Args, manifestWorkDir, launchEnv)
+		// Use LaunchManifest (not Launch) so manifest.Concurrency is honored —
+		// Launch always defaults to singleton run-lease gating, which silently
+		// mis-gated replicated/collaborative-concurrency apps declared in their
+		// manifest (that field was validated at install time but never read at
+		// launch time). Manifest command/work-dir/port are still authoritative
+		// (read inside LaunchManifest from m itself); appSecret+API env and
+		// caller args still flow through as extraEnv/extraArgs.
+		app, err := launcher.LaunchManifest(ctx, manifest, userID, "default", hostPort, manifestAppPort, req.Args, launchEnv)
 		if err != nil {
 			portPool.Release(req.AppID)
 			appGateway.RemoveAppSecret(req.AppID)
@@ -3015,7 +3022,7 @@ func main() {
 	// New-feature routes: airouter, identity, multiinstance, appnet subdomain
 	// provisioning, recovery handlers, cloud-sync, edge-cache.
 	// Must be called AFTER RegisterVisibilityHandlers.
-	fabricAppSync := registerNewFeatureRoutes(mux, newFeatureDeps{
+	fabricAppSync, lmNoteStore := registerNewFeatureRoutes(mux, newFeatureDeps{
 		dbDir:              dbDir,
 		netMgr:             netMgr,
 		visStore:           visStore,
@@ -3023,6 +3030,9 @@ func main() {
 		integrationsClient: integrationsClient,
 		activeEnv:          activeEnv,
 	}, ctx)
+	if lmNoteStore != nil {
+		defer lmNoteStore.Close()
+	}
 
 	// MinIO storage provisioning — H2 fix: admin-only + IsProvisioned guard
 	storageprov.RegisterHandlers(mux, home, authStore)
@@ -3458,6 +3468,11 @@ func main() {
 				SlotManager:    osdistSlotMgr,
 				AnchorPub:      anchorPub,
 				RunningVersion: os.Getenv("VULOS_OS_VERSION"),
+				// Store: so the periodic loop's outcome is visible via the
+				// /api/os/update/status handler registered above (osdistStore) —
+				// previously unwired, meaning the status endpoint always looked
+				// like updates had never been checked.
+				Store: osdistStore,
 			}
 			if updater, updErr := osdist.NewUpdater(updaterCfg); updErr == nil {
 				go updater.Run(ctx)

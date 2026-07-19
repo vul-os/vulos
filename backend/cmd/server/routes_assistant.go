@@ -129,12 +129,14 @@ func registerAssistantRoutesWithDeps(mux *http.ServeMux, deps assistantDeps) {
 		a := newAssistant()
 		sv := a.Sovereignty()
 		writeJSON(w, map[string]any{
-			"tier":           sv.Tier,
-			"label":          sv.Label,
-			"sovereignty":    sv,
-			"tier_options":   assistantTierOptions(),
-			"mail_source":    a.MailName(),
-			"semantic_index": a.Indexed(),
+			"tier":              sv.Tier,
+			"label":             sv.Label,
+			"sovereignty":       sv,
+			"tier_options":      assistantTierOptions(),
+			"mail_source":       a.MailName(),
+			"semantic_index":    a.Indexed(),
+			"files_enabled":     a.FilesEnabled(),
+			"reminders_enabled": a.RemindersEnabled(),
 		})
 	})
 

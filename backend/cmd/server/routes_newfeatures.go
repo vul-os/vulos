@@ -64,8 +64,13 @@ type newFeatureDeps struct {
 // P2P same-LAN sync service WITHOUT opening a second *sql.DB to the
 // single-writer file (audit P1-4). Returns nil when the registry is
 // unavailable.
-func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) *multiinstance.AppSync {
+//
+// It also returns the *llmuxclient.Store (note-embedding SQLite handle, may be
+// nil if init failed) so the caller can defer-close it on shutdown — it used to
+// be opened and handed to RegisterHandlers with nothing ever closing it.
+func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) (*multiinstance.AppSync, *llmuxclient.Store) {
 	var sharedAppSync *multiinstance.AppSync
+	var lmStore *llmuxclient.Store
 	// Resolve the server shutdown context.  A variadic parameter lets existing
 	// call-sites compile without change; pass serverCtx explicitly to bind
 	// background goroutines to the server lifecycle.
@@ -104,7 +109,8 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			log.Printf("[llmuxclient] LLMUX_URL unset — /api/ai/* routes will return 503 (set LLMUX_URL, or its alias VULOS_LLMUX_URL, to enable)")
 		}
 		lmClient := llmuxclient.New(lmCfg)
-		lmStore, lmErr := llmuxclient.NewStoreFromEnv(deps.dbDir)
+		var lmErr error
+		lmStore, lmErr = llmuxclient.NewStoreFromEnv(deps.dbDir)
 		if lmErr != nil {
 			log.Printf("[llmuxclient] store init warning: %v — note embeddings disabled", lmErr)
 			lmStore = nil
@@ -194,7 +200,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			deployStore, dsErr = appnet.NewDeploymentStore()
 			if dsErr != nil {
 				log.Printf("[appnet/subdomain] deployment store fallback error: %v — subdomain routes disabled", dsErr)
-				return sharedAppSync
+				return sharedAppSync, lmStore
 			}
 		}
 		provisioner := appnet.NewProvisioner(deployStore, nil)
@@ -417,7 +423,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		}
 	}
 
-	return sharedAppSync
+	return sharedAppSync, lmStore
 }
 
 // openSharedRegistry opens the single multiinstance registry handle shared by

@@ -182,9 +182,14 @@ func (l *Launcher) LaunchWithProfile(ctx context.Context, appID, userID, profile
 }
 
 // LaunchManifest is like LaunchWithProfile but accepts the manifest so the
-// launcher can read the concurrency field directly.
-func (l *Launcher) LaunchManifest(ctx context.Context, m *AppManifest, userID, profile string, hostPort, appPort int) (*App, error) {
-	return l.launchWithConcurrency(ctx, m.ID, userID, profile, m.Concurrency, hostPort, appPort, m.Command, nil, m.WorkDir, m.EnvSlice())
+// launcher can read the concurrency field directly — replicated/collaborative
+// apps (m.Concurrency != "" and != ConcurrencySingleton) bypass the run-lease
+// gate that LaunchWithProfile/Launch always apply. extraArgs/extraEnv are
+// appended after the manifest's own args/env (e.g. caller-supplied args,
+// injected app-secret env vars).
+func (l *Launcher) LaunchManifest(ctx context.Context, m *AppManifest, userID, profile string, hostPort, appPort int, extraArgs, extraEnv []string) (*App, error) {
+	env := append(append([]string{}, m.EnvSlice()...), extraEnv...)
+	return l.launchWithConcurrency(ctx, m.ID, userID, profile, m.Concurrency, hostPort, appPort, m.Command, extraArgs, m.WorkDir, env)
 }
 
 // launchWithConcurrency is the shared implementation used by LaunchWithProfile
@@ -446,14 +451,6 @@ func (l *Launcher) StopAll(ctx context.Context) {
 	for _, id := range ids {
 		l.Stop(ctx, id)
 	}
-}
-
-// Status returns info about a running app.
-func (l *Launcher) Status(appID string) (*App, bool) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	app, ok := l.apps[appID]
-	return app, ok
 }
 
 // ListRunning returns all running apps.
