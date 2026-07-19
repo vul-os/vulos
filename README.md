@@ -68,7 +68,7 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 - **Two browsers, your choice** — a lightweight **Smart Browser** (a client-side web app that opens in your host browser, no server session) sits alongside **Streaming Chrome**: a real Chromium running *on the box*, streamed over WebRTC, with a persistent per-user profile (cookies/history/logins). Pick per task; both are launcher tiles.
 - **Comms are third-party** — real-time chat and video are delegated to established platforms rather than shipped as first-party OS apps: **Talk → Matrix/Element**, **Meet → Element-Call/Jitsi** (final pick pending). The OS integrates/links out to them; it keeps its own sovereign peer-to-peer **Messages** for direct encrypted messaging. (A box can still self-host the media/SFU for those platforms via `VULOS_SFU_HOST` where supported.)
 - **On-box LLM gateway** — assistant LLM/embeddings traffic routes through the on-box `llmux` sovereign gateway by default; a local vector store powers on-instance retrieval (RAG). You choose the provider and sovereignty tier.
-- **Peering & sync** — every instance has its own Ed25519 identity; leaderless CRDT sync across your nodes; a full VulaID key lifecycle (rotation, revocation, account-anchored recovery, X3DH-style forward secrecy); AirDrop-style local Drop; real-time collaboration over Yjs with per-document ACL.
+- **Peering & sync** — every instance has its own Ed25519 identity; a pure-Go leaderless CRDT keeps the app registry in sync across your same-LAN nodes today (general structured-data sync across the internet is a documented forward plan, not yet shipped — see `roadmap/SYNC.md`); a full VulaID key lifecycle (rotation, revocation, account-anchored recovery, X3DH-style forward secrecy); AirDrop-style local Drop; real-time collaboration over Yjs with per-document ACL.
 - **Local-first storage** — SQLite on the box, S3/Restic for encrypted backup. Your data lives on your machine first.
 - **One binary, immutable image** — the Go server embeds the SPA. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
 
@@ -84,7 +84,7 @@ A single Go backend serves the embedded React frontend and exposes the system ov
 - **auth / passkeys** — WebAuthn passkeys, PIN, TOTP, QR/phone approval, recovery-phrase master key, credential vault
 - **files** — Files service with a viewer/editor/owner ACL and content-blind (sealed) sharing
 - **notify** — the notifications system
-- **peering / fabric** — Ed25519 identity, VulaID key lifecycle, leaderless CRDT sync mesh, and Drop
+- **peering / fabric** — Ed25519 identity, VulaID key lifecycle, a pure-Go leaderless CRDT for the app registry (same-LAN via mDNS, not yet WAN), and Drop
 - **storage** — local-first file storage, app filesystems, and backup
 - **joincode / joinsync / cloudenroll** — device/box join and enrollment
 - **apps / appnet / stream / gpu** — bundled app manifests, per-app network namespaces, GPU host, and streaming

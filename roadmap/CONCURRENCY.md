@@ -7,6 +7,7 @@ For the exclusion primitive (run-leases, fencing) see COORDINATION.md. For chang
 > **Goal.** Let the same profile be active in several places without data loss or split-brain: pick the right conflict strategy per data type, make every app **safe by default**, and let apps explicitly opt into active-active / collaborative behavior.
 > **Non-goals.** Forcing every app to be replication-aware (default is safe single-owner). A global lock service (COORDINATION.md handles exclusion). Treating multi-location as anomalous — it is **intended** (see NETWORK.md's security caveat).
 > **Status.** Design. CONC-*/COLLAB-* add the manifest `concurrency` field (extends APP-MANIFEST.md / `backend/services/appnet/manifest.go`), the infra-enforced run-lease for singletons, and the presence/awareness channel for collaborative apps.
+> **Reality check (2026-07-19).** This doc assumes cr-sqlite provides the leaderless CRDT merge for structured data (see the "Conflict Policy Per Data Type" table below, and CLUSTER.md/SYNC.md). **cr-sqlite is not integrated** — it conflicts with the pure-Go/no-CGO rule (`docs/decisions.md` D23/D94-J) and is not shippable as-is; see the reality checks in CLUSTER.md and SYNC.md for the full picture. The only leaderless CRDT that actually merges data across instances today is the pure-Go app-registry CRDT (`backend/internal/multiinstance/appsync.go`, LAN-only via `backend/internal/fabric/`), which is narrower than "structured store" in general. The forward plan is the shared DMTAP-substrate Sync spec (CRDT op algebra + version-vectors + snapshots) — see CLUSTER.md's reality check — not cr-sqlite. This document's *policy* framework (LWW / CRDT-counter / sequence-CRDT / lease, per data kind) is still the intended design; only the "cr-sqlite already does this" assumption is wrong today.
 
 ---
 
@@ -21,7 +22,7 @@ Different data wants different resolution (this extends CLUSTER.md's per-data-ty
 | Co-edited documents | **sequence / collaborative CRDT** (Automerge/Yjs-style) | preserves concurrent edits + intent |
 | Exclusive resources | **lease** (COORDINATION.md fencing lease) | only one owner at a time |
 
-cr-sqlite already provides leaderless CRDT merge for the structured store (CLUSTER.md); this table says *which* discipline applies to *which* data.
+The forward-plan Sync spec (see CLUSTER.md's reality check) is intended to provide leaderless CRDT merge for the structured store; this table says *which* discipline applies to *which* data once that lands. Today, only the app-registry has a working leaderless CRDT (pure-Go, LAN-only — see CLUSTER.md/SYNC.md).
 
 ---
 

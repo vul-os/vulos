@@ -43,7 +43,7 @@ This maps cleanly onto the OS dispatch lanes (ROADMAP.md §0):
 
 1. **Registry entry.** Add `kerf` to `registry.json` tagged `web` (host-browser lane). Default all CAD intents in the Open Router to kerf.
 2. **Compute-worker jobs.** Heavy solves dispatch through the `compute_job` lane to a kerf worker (Fly Machine, `fly.worker.toml`-style), metered like any other job; the result blob lands back in the host browser. No interactive session is streamed.
-3. **Storage + collaboration.** Projects live in the standard Vulos storage layer; project state (parameters, sketches, assembly tree) syncs via the existing **cr-sqlite + sync** stack — the same local-first CRDT merge used elsewhere. Geometry artifacts sync as files.
+3. **Storage + collaboration.** Projects live in the standard Vulos storage layer; project state (parameters, sketches, assembly tree) would sync via the **planned** sync stack (roadmap/SYNC.md's forward plan — a CRDT op algebra + version-vector reconciliation; cr-sqlite itself is not integrated, see SYNC.md/CLUSTER.md's reality checks) — the same local-first CRDT merge intended elsewhere. Geometry artifacts sync as files.
 4. **No server-side GUI.** kerf never enters the CPU-stream or GPU-route lanes for interactive use. Those lanes remain for genuine native-only apps (e.g. Blender for mesh/sculpt/render, which kerf does **not** replace).
 
 ---
@@ -55,7 +55,7 @@ This maps cleanly onto the OS dispatch lanes (ROADMAP.md §0):
 | Interactive parametric modelling / sketching | kerf in the host browser (WASM kernel + WebGL) | ~zero |
 | Heavy FEA solve / big-assembly regen / mesh gen | Vulos compute worker (`compute_job` lane) | per-job |
 | GPU-bound mesh sculpt / photoreal render | Blender on the GPU route (BYO peer) — separate from kerf | paid / BYO |
-| Project storage + multi-user collaboration | cr-sqlite + sync + storage (CRDT, local-first) | non-interactive |
+| Project storage + multi-user collaboration | sync (planned CRDT spec, see SYNC.md) + storage, local-first | non-interactive |
 
 ---
 

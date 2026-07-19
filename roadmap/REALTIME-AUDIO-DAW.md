@@ -79,7 +79,7 @@ The result: the heavy project lives in the cloud, the thin client only does the 
 
 ## Collaboration
 
-**Local-first + CRDT**, reusing Vulos's existing **cr-sqlite + sync + storage** stack:
+**Local-first + CRDT**, reusing Vulos's **sync + storage** stack — the CRDT merge itself is the planned forward-plan Sync spec (roadmap/SYNC.md), not yet built; cr-sqlite is not integrated (see SYNC.md/CLUSTER.md reality checks):
 
 - Everyone runs **their own local audio engine** (low latency, no shared real-time path).
 - **Project state** — arrangement, automation, notes, MIDI — syncs via **CRDT**.

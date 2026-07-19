@@ -71,7 +71,7 @@ flowchart TD
 
 **Streaming on demand.** Native Linux apps (GIMP, LibreOffice, games) launch in their own Xvfb virtual display and stream via WebRTC. Close the window, stream stops. No persistent VNC session.
 
-**CRDT sync.** Multi-instance data sync uses cr-sqlite (leaderless CRDTs). Every instance holds a full mergeable copy; concurrent writes converge without a leader. Sync state travels over the peering mesh (live) and S3 (cold checkpoint).
+**Multi-instance sync (narrower than originally designed).** The design goal is a leaderless CRDT where every instance holds a full mergeable copy and concurrent writes converge without a leader — via cr-sqlite. **cr-sqlite is not integrated** (it needs CGO/a native extension load, which conflicts with the pure-Go/no-CGO rule, `docs/decisions.md` D23/D94-J), so that merge does not run today. What is real: a pure-Go leaderless CRDT for the **app registry only** (`backend/internal/multiinstance/`), synced same-LAN via mDNS (`backend/internal/fabric/`); and a real S3 cold-path **snapshot of one instance's local DB file** (`backend/services/sync/`), not a cross-node merge. See roadmap/SYNC.md and roadmap/CLUSTER.md for the full reality check and the forward plan (a shared DMTAP-substrate Sync spec, relay as WAN rendezvous).
 
 ---
 
@@ -259,19 +259,20 @@ the numbers above describe encoder *configuration*, not measured performance.
 
 ---
 
-## Multi-instance CRDT sync
+## Multi-instance sync — design intent vs shipped (see roadmap/SYNC.md for the full reality check)
 
 ```mermaid
 flowchart LR
-    A["Instance A"] -->|"peering mesh (WebSocket/Ziti)"| B["Instance B"]
-    A --> S3["S3 bucket (checkpoint + compaction)"]
+    A["Instance A"] -->|"peering mesh (WebSocket/Ziti) — hot path code exists, non-functional: no cr-sqlite"| B["Instance B"]
+    A --> S3["S3 bucket (checkpoint + compaction) — real, per-instance snapshot"]
     B --> S3
 ```
 
-- **Hot path**: live instances stream `crsql_changes` directly over the peering mesh (relay fallback for NAT/cross-location)
-- **Cold path**: periodic durable checkpoint to the shared S3 bucket; offline instances catch up from the bucket
-- **Snapshot/compaction**: periodic compacted snapshot so new instances bootstrap from `snapshot + short tail`, not unbounded replay
-- **Coordination**: bucket-backed leases with fencing tokens (`If-Match` CAS) prevent concurrent compaction
+- **Hot path (not functional in production)**: the intent is for live instances to stream `crsql_changes` directly over the peering mesh (relay fallback for NAT/cross-location). The transport code (`backend/services/sync/hotpath.go`) and its tests exist, but `crsql_changes` never populates because cr-sqlite is not integrated (no CGO) — so no data moves over this path today.
+- **Cold path (real)**: periodic durable checkpoint of each instance's own local DB file to the shared S3 bucket; offline instances catch up from the bucket.
+- **Snapshot/compaction (real)**: periodic compacted snapshot so new instances bootstrap from `snapshot + short tail`, not unbounded replay — this snapshots one instance's local state, not a cross-node merge.
+- **Coordination (real)**: bucket-backed leases with fencing tokens (`If-Match` CAS) prevent concurrent compaction.
+- **What actually merges across instances today**: only the app registry, via a pure-Go CRDT (`backend/internal/multiinstance/`) over same-LAN mDNS (`backend/internal/fabric/`) — no CGO, no cr-sqlite, no WAN path yet.
 
 ---
 

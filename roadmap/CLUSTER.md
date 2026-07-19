@@ -4,11 +4,20 @@ How multiple Vula instances share state. Each node is a full, independent Vula i
 
 For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For bare metal boot see BAREMETAL-INIT.md.
 
-> **See also (new design extensions).** This doc covers the foundational cr-sqlite + S3 model. Three follow-on docs build on it: **SYNC.md** (two-tier sync — instance↔instance hot path over the peering mesh + the existing durable bucket cold path — and bucket-side snapshot/compaction so a new instance bootstraps from a snapshot + short tail instead of an unbounded changeset log); **COORDINATION.md** (bucket-backed leases with monotonic fencing tokens — generalizing the advisory presence lease below into the cluster's one exclusion/ownership primitive, no leader election); **CONCURRENCY.md** (per-data-type conflict policy + the manifest-declared `concurrency` posture). The **data bucket** here is distinct from the public read-only **OS bucket** (OS-DISTRIBUTION.md).
+> **See also (new design extensions).** This doc covers the foundational S3 sync model. Three follow-on docs build on it: **SYNC.md** (two-tier sync — instance↔instance hot path over the peering mesh + the existing durable bucket cold path — and bucket-side snapshot/compaction so a new instance bootstraps from a snapshot + short tail instead of an unbounded changeset log); **COORDINATION.md** (bucket-backed leases with monotonic fencing tokens — generalizing the advisory presence lease below into the cluster's one exclusion/ownership primitive, no leader election); **CONCURRENCY.md** (per-data-type conflict policy + the manifest-declared `concurrency` posture). The **data bucket** here is distinct from the public read-only **OS bucket** (OS-DISTRIBUTION.md).
 
-> **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. CRDT-backed (cr-sqlite) so two nodes editing concurrently merge cleanly. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
-> **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS.
-> **Status.** Complete. All CLUSTER tasks shipped. SQLite-backed auth write-through (CLUSTER-02) landed inline via the D76 checkpoint — CGO-free (modernc), one-time auth.json import, all 5 regression tests pass. S3 client, node identity, cr-sqlite changeset sync, file sync with conflict copies, conflict-resolver UI, MinIO registry entry, and presence leases are all in.
+> **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
+> **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS. **cr-sqlite** as the merge engine — see the reality check immediately below; it conflicts with the pure-Go/no-CGO rule (D23/D94-J).
+> **Status — REALITY CHECK (2026-07-19).** The rest of this document (original text, kept below for design context) describes a **cr-sqlite CRDT** model as the multi-node merge engine. **cr-sqlite is not integrated, and cannot be under the current pure-Go/no-CGO rule** (`docs/decisions.md` D23; reaffirmed D94 item J — *"Stay Go for everything... no Rust. Consistent with the CGO-free/modernc SQLite rule"*). `backend/services/store/store.go` does attempt to `load_extension()` a native `crsqlite.{so,dylib,dll}` at runtime, but `modernc.org/sqlite` is a pure-Go SQLite reimplementation — it cannot `dlopen` a real C-ABI SQLite extension, so `DB.CRSQLiteLoaded` is false on every real build and `registerCRRs`/`crsql_as_crr` never actually runs. Consequently `backend/services/sync/hotpath.go`'s `crsql_changes` streaming is dead code in production today (its own doc comment: *"if not loaded, pushes are silently skipped"*); its tests exercise a plain emulated table, not real cr-sqlite. `backend/services/cluster/reconcile.go` says so directly: the `installed_apps` CRR table "in production... lives in a cr-sqlite database; here it is persisted as JSON."
+>
+> **What is actually shipped and working today:**
+> - A real, pure-Go **leaderless CRDT** for the app registry only (LWW + OR-set + writer tie-break + signed uninstall quorum) in `backend/internal/multiinstance/appsync.go` — no CGO, no cr-sqlite.
+> - A **same-LAN transport** for that CRDT over mDNS discovery + authenticated HTTPS in `backend/internal/fabric/` (`fabric.go`'s own doc comment: *"Pure-Go: no CGO, no cr-sqlite."*). LAN-only; there is no WAN path for it yet.
+> - The **S3/MinIO cold path** described below: node presence/heartbeat (`cluster/cluster.go`, `cluster/s3.go`, SSE-C + Argon2id encryption) and whole-database-file snapshot/restore via `VACUUM INTO` (`services/sync/dbio.go`, `snapshot.go`, `bootstrap.go`) — this genuinely works, but it snapshots **one node's local SQLite file**, not a cross-node CRDT-merged state. There is no general-purpose cross-node merge for auth/settings/sessions today.
+>
+> **Forward plan (not shipped):** adopt the shared DMTAP-substrate **Sync** spec — a CRDT op algebra + version-vector/reconciliation wire protocol + first-class snapshots (`VULOS-PRODUCT-STANDARD.md` substrate capability 3) — with the relay as the WAN rendezvous point, replacing the cr-sqlite framing below. This is a design direction, not code; the goal is one shared sync engine used by bindings rather than every product hand-rolling its own.
+>
+> Read the remainder of this document (original text) as historical design intent: wherever it says "cr-sqlite" or presents changeset sync as shipped, read it as "the planned CRDT merge engine (not yet integrated)" unless a passage explicitly says JSON/file-based today.
 
 ---
 
@@ -136,24 +145,24 @@ Storage
 
 Multiple nodes read and write the same data. Nodes may be on different networks. The same user may be active on two nodes simultaneously. No node should be required to be online for others to work.
 
-### Strategy Per Data Type
+### Strategy Per Data Type — DESIGN INTENT, not current shipped behaviour
 
-Different data needs different conflict resolution:
+The table below is the **original design intent**: different data gets a different conflict resolution discipline, with cr-sqlite as the assumed engine for structured data. Per the reality check at the top of this document, **the "cr-sqlite → S3" rows are not implemented** — there is no working cross-node CRDT merge for the auth DB, settings, or chat history today. The one row that *is* real is the app install list, and it is real via the pure-Go `multiinstance`/`fabric` CRDT (LAN-only), not cr-sqlite.
 
-| Data | Storage | Sync Method | Conflict Strategy |
-|------|---------|-------------|-------------------|
-| **Auth DB** (users, sessions, profiles) | SQLite | cr-sqlite → S3 | CRDT auto-merge |
-| **Settings / preferences** | SQLite | cr-sqlite → S3 | Last-write-wins per field |
-| **App install list** | SQLite | cr-sqlite → S3 | Last-write-wins (union) |
-| **User files** (documents, downloads) | Local disk | rclone bisync → S3 | Conflict copies |
-| **Recall / embeddings** | Local | Rebuilt from synced files | Regenerated per node |
-| **App runtime state** | Memory | Not synced | Ephemeral, per-node |
-| **Chat history** | SQLite | cr-sqlite → S3 | CRDT merge (append-only) |
-| **Browser profiles** | Local disk | rclone → S3 | Conflict copies |
+| Data | Storage | Sync Method (design intent) | Conflict Strategy | Actually shipped? |
+|------|---------|-------------|-------------------|-------------------|
+| **Auth DB** (users, sessions, profiles) | SQLite | cr-sqlite → S3 | CRDT auto-merge | **No** — single-node only; DB file is snapshotted to S3 (SYNC-02/03) but not cross-node merged |
+| **Settings / preferences** | SQLite | cr-sqlite → S3 | Last-write-wins per field | **No** — same as above |
+| **App install list** | SQLite (JSON today) | cr-sqlite → S3 | Last-write-wins (union) | **Partially** — real pure-Go LWW+OR-set CRDT (`multiinstance.AppSync`), synced LAN-only over mDNS (`internal/fabric`), not via cr-sqlite/S3 |
+| **User files** (documents, downloads) | Local disk | rclone bisync → S3 | Conflict copies | Design intent; see FILES.md for what Files actually ships |
+| **Recall / embeddings** | Local | Rebuilt from synced files | Regenerated per node | Design intent |
+| **App runtime state** | Memory | Not synced | Ephemeral, per-node | N/A (correct as stated) |
+| **Chat history** | SQLite | cr-sqlite → S3 | CRDT merge (append-only) | **No** |
+| **Browser profiles** | Local disk | rclone → S3 | Conflict copies | Design intent |
 
-### Why These Choices
+### Why These Choices (design rationale, engine not yet built)
 
-**cr-sqlite (CRDT for SQLite)** — for structured data (auth, settings, app lists, chat). Each node has a local SQLite database. cr-sqlite tracks changes as conflict-free replicated data types. When two nodes sync, changes merge automatically without conflicts. This is how Apple Notes and Figma handle multi-device sync.
+**cr-sqlite (CRDT for SQLite)** was the original plan for structured data (auth, settings, app lists, chat): each node has a local SQLite database, and cr-sqlite tracks changes as conflict-free replicated data types so that when two nodes sync, changes merge automatically without conflicts — the same idea Apple Notes and Figma use for multi-device sync. **This plan is superseded** by the forward plan in the reality check above (the shared DMTAP-substrate Sync spec) because cr-sqlite cannot be adopted without CGO, which conflicts with D23/D94-J. The rationale below (why CRDT vs LWW vs conflict-copies per data kind) still holds — only the specific engine (cr-sqlite) is off the table.
 
 **Conflict copies** — for user files. If the same file is edited on two nodes before sync, the system keeps both versions:
 ```
@@ -224,9 +233,11 @@ Instead: **local-first writes + async sync + conflict resolution.** Every write 
 
 ## Sync Implementation
 
+> **Phase status.** Phase 1's non-CRDT half landed: `backend/services/store/` exists, is CGO-free (`modernc.org/sqlite`), and auth is SQLite-backed. What did **not** land is the cr-sqlite half — `store.Open` tries to `load_extension()` a native cr-sqlite shared library, but that call cannot succeed in a pure-Go binary (no CGO, no `dlopen` of a real C-ABI extension), so `crsql_as_crr` never actually registers any CRR and `DB.CRSQLiteLoaded` is false in every real build. Phases 2-5 below describe the cr-sqlite-dependent sync layer as originally planned; they are superseded by the forward plan in the reality check at the top of this document.
+
 ### Phase 1: SQLite Migration
 
-Replace JSON file stores with SQLite + cr-sqlite.
+Replace JSON file stores with SQLite (+ cr-sqlite, as originally planned — see the phase-status note above for why the CRDT half did not land).
 
 **Current JSON stores to migrate:**
 - `~/.vulos/db/auth.json` → `auth` table (users, sessions, profiles)
@@ -236,7 +247,7 @@ Replace JSON file stores with SQLite + cr-sqlite.
 
 **What changes in code:**
 
-1. New package `backend/services/store/` — SQLite wrapper with cr-sqlite extension
+1. New package `backend/services/store/` — SQLite wrapper attempting a cr-sqlite extension load (shipped; the load itself cannot succeed under the no-CGO rule, see phase-status note)
 2. `auth.Store` switches from JSON read/write to SQLite queries
 3. `Flush()` becomes a no-op (SQLite handles persistence)
 4. Other services that persist JSON follow the same pattern
@@ -403,9 +414,10 @@ Apps don't sync as binaries — each node installs natively from the registry. W
 
 ### What Syncs: The Installed Apps List
 
-The cr-sqlite database has an `installed_apps` table that replicates across all nodes:
+**This is the one part of this document that is actually shipped** — not via cr-sqlite (per the reality check at the top), but via a real, pure-Go leaderless CRDT: `backend/internal/multiinstance/appsync.go` (LWW + OR-set + writer-node tie-break + signed uninstall quorum), transported same-LAN-only over mDNS + authenticated HTTPS by `backend/internal/fabric/`. `backend/services/cluster/reconcile.go` persists the row set as JSON today ("in production this lives in a cr-sqlite database; here it is persisted as JSON" — its own comment), not the SQL schema below, which remains the *design* shape:
 
 ```sql
+-- Design shape (not the real storage — see note above; reconcile.go uses JSON)
 CREATE TABLE installed_apps (
     app_id       TEXT PRIMARY KEY,
     version      TEXT NOT NULL,
@@ -413,10 +425,10 @@ CREATE TABLE installed_apps (
     installed_at TEXT,
     status       TEXT DEFAULT 'active'  -- 'active', 'removed', 'pending'
 );
-SELECT crsql_as_crr('installed_apps');
+SELECT crsql_as_crr('installed_apps'); -- aspirational; never actually runs (no CGO)
 ```
 
-When you install GIMP on home, this row syncs to all nodes via cr-sqlite. When laptop pulls that changeset, it sees a new app in `installed_apps` that isn't locally installed yet.
+When you install GIMP on home, this row syncs to other nodes **on the same LAN** via the pure-Go app-registry CRDT above (not cr-sqlite, and not yet over the internet/relay). When laptop's fabric sync pulls that changeset, it sees a new app in `installed_apps` that isn't locally installed yet.
 
 ### The Reconciliation Loop
 
@@ -605,13 +617,15 @@ Each phase is independently useful. Phase 1 improves reliability (SQLite vs JSON
 
 ## Key Dependencies
 
-| Component | Library / Tool | Purpose |
-|-----------|---------------|---------|
-| cr-sqlite | `go-crsqlite` or CGo bindings | CRDT-enabled SQLite |
-| MinIO client | `github.com/minio/minio-go/v7` | S3 API for sync + storage |
-| MinIO server | `minio` binary | Self-hosted S3 (optional app) |
-| fsnotify | `github.com/fsnotify/fsnotify` | File change watching for sync |
-| argon2 | `golang.org/x/crypto/argon2` | Encryption key derivation from passphrase |
-| go-qrcode | `github.com/skip2/go-qrcode` | QR code generation for join codes |
+| Component | Library / Tool | Purpose | Status |
+|-----------|---------------|---------|--------|
+| cr-sqlite | `go-crsqlite` or CGo bindings | CRDT-enabled SQLite | **Rejected in practice** — requires CGO or a native `dlopen`'d extension, which conflicts with the pure-Go/no-CGO rule (D23/D94-J). `store.go` attempts the load but it cannot succeed under `modernc.org/sqlite`. Superseded by the forward-plan Sync spec (see reality check at top) |
+| modernc.org/sqlite | `modernc.org/sqlite` | Pure-Go SQLite driver (actually used) | Shipped |
+| MinIO client | `github.com/minio/minio-go/v7` | S3 API for sync + storage | Shipped |
+| MinIO server | `minio` binary | Self-hosted S3 (optional app) | Shipped |
+| fsnotify | `github.com/fsnotify/fsnotify` | File change watching for sync | Design intent |
+| argon2 | `golang.org/x/crypto/argon2` | Encryption key derivation from passphrase | Shipped |
+| go-qrcode | `github.com/skip2/go-qrcode` | QR code generation for join codes | Shipped |
+| pion/mdns | `github.com/pion/mdns/v2` | Same-LAN peer discovery for the app-registry CRDT (`internal/fabric`) | Shipped |
 
-**cr-sqlite vs Litestream:** cr-sqlite gives true multi-writer merge (both nodes can write simultaneously). Litestream is simpler but single-writer — only one node can write at a time, others are read replicas. For Vula's use case (multiple nodes active simultaneously), cr-sqlite is the right choice.
+**cr-sqlite vs Litestream (original rationale, engine since rejected):** cr-sqlite gives true multi-writer merge (both nodes can write simultaneously); Litestream is simpler but single-writer. The multi-writer requirement still holds — it just cannot be met by cr-sqlite under this project's no-CGO rule, hence the forward plan to adopt the shared DMTAP-substrate Sync spec instead of either option.
