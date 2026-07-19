@@ -253,21 +253,19 @@ AI-generated sandbox backends bind `127.0.0.1` only and are reached through the 
 
 ---
 
-## Hosting big calls: BYO SFU
+## Group calls: in-process SFU, no host-registry escalation
 
-Group calls beyond the small mesh cap can escalate to a selective-forwarding unit (SFU). By default that is relay-side infrastructure; a self-hoster can opt in to serving big calls from their **own** box:
+First-party Vulos Meet (and the self-host SFU host-registry escalation path
+that used to back it — `internal/meethost`, `VULOS_SFU_HOST`, `/api/meethost/status`)
+is retired; video calling is third-party (Jitsi Meet / Element Call, installed
+from the App Store — see [COMMS.md](COMMS.md), including its own BYO LiveKit
+SFU option for Element Call). What remains first-party is the sovereign P2P
+**Messages** builtin's own group calling: an in-process Pion SFU
+(`backend/services/peering/sfu`, `/api/sfu/rooms/*`) for peer group calls
+within the small mesh cap, with **no** opt-in to advertise a box as a
+dedicated big-call SFU host the way the retired Meet host registry did.
 
-```bash
-VULOS_SFU_HOST=1                      # opt in ("1"/"true"/"yes")
-VULOS_RELAY_BASE_URL=https://relay.example.net
-VULOS_RELAY_NAME=mybox
-VULOS_RELAY_TOKEN=...                 # the token the relay authorizes you with
-VULOS_SFU_ENDPOINT=https://box1.example.net   # your public SFU serverUrl
-```
-
-All three of `VULOS_RELAY_BASE_URL` (or the `MEET_HOST_RELAY_URL` override), `VULOS_RELAY_NAME`, and `VULOS_SFU_ENDPOINT` are required or the host stays disabled with a log line telling you which to set. The relay verifies your advertised endpoint with the same ownership probe as direct mode before surfacing it to any caller. Optional extras: `VULOS_SFU_WORKER_BINARY` (supervise an external SFU worker instead of the in-process one) and `VULOS_SFU_REGION` (capability hint). Status: `GET /api/meethost/status`.
-
-A similar opt-in exists for GPU streaming hosts (`VULOS_GPU_HOST=1`, `VULOS_GPU_ADVERTISE_HOST`, `VULOS_STREAMER_BINARY`; status at `/api/gpuhost/status`). Both roles use the box's single fabric identity — the same Ed25519 keypair (VulaID) the box advertises for peering — so the relay always sees one consistent identity per box.
+A BYO opt-in still exists for GPU streaming hosts (`VULOS_GPU_HOST=1`, `VULOS_GPU_ADVERTISE_HOST`, `VULOS_STREAMER_BINARY`; status at `/api/gpuhost/status`) — an unrelated role that uses the box's single fabric identity, the same Ed25519 keypair (VulaID) the box advertises for peering.
 
 ---
 

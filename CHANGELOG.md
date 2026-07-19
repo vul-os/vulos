@@ -13,6 +13,37 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs: retired the last live-looking meethost/SFU-host references.**
+  `docs/NETWORKING.md`'s "Hosting big calls: BYO SFU" section still described
+  `VULOS_SFU_HOST`, `VULOS_SFU_ENDPOINT`, `VULOS_SFU_WORKER_BINARY`,
+  `VULOS_SFU_REGION`, and `GET /api/meethost/status` as if they were live
+  config — none of it exists in the code anymore (only a `// former Meet-SFU
+  host registry` comment remains in `main.go`), so it read as a working
+  feature. Replaced with an accurate description of the sovereign P2P
+  Messages builtin's in-process Pion SFU (`/api/sfu/rooms/*`, small mesh cap,
+  no host-registry escalation) and pointed to COMMS.md for third-party
+  large-group video. Also dropped `docs/ARCHITECTURE.md`'s name-drop of the
+  dead `internal/meethost` / `VULOS_SFU_HOST` identifiers (the retirement
+  note itself was already accurate) and swapped the dead `[meethost]` log tag
+  in `docs/TROUBLESHOOTING.md`'s grep list for the real `[gpuhost]` tag. This
+  doc set is build-ingested by `vulos-cloud`'s `scripts/sync-docs.mjs` into
+  `content/docs/vulos-os/*`, so fixing it here is the actual fix for the
+  stale copy found there.
+- **Documented the Web Push / DMTAP Wake capability deviation.** The DMTAP
+  substrate spec (`substrate/ROLES.md` §8, capability ⑤ Wake) defines wake
+  pushes as strictly content-free — an opaque token, device pulls the real
+  object afterward. `backend/internal/webpush` instead sends real
+  RFC-8291-encrypted notification content (title/body/tag/url) directly to
+  the vendor. Assessed this as a deliberate superset (the vendor still never
+  reads plaintext either way; sending real content saves a round trip) that
+  gives up the spec's fixed ciphertext-size metadata privacy (payload size
+  now correlates with notification length) — no silent behavior change, no
+  new mode added, just written down. Full rationale in
+  `backend/internal/webpush/README.md`, cross-linked from
+  `docs/ARCHITECTURE.md` and `docs/CLOUD.md`.
+
 ### Added
 
 - **Conduit homeserver, enabled.** The `conduit` registry entry (self-hosted
