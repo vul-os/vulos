@@ -1,25 +1,31 @@
-package notify
-
-// webpush.go — cell-side DIRECT Web Push send-path (PUSH-CELL-01).
+// Package webpush is a self-contained, sovereign Web Push (VAPID / RFC 8291)
+// implementation: box-held VAPID key material, a per-owner subscription store
+// (in-memory or SQLite), SSRF-guarded subscription validation, and an
+// SSRF-guarded HTTP sender that POSTs encrypted payloads DIRECTLY to the
+// browser-vendor push service (FCM / Apple / Mozilla) named by each
+// subscription's endpoint.
 //
-// The box (cell) holds a VAPID key pair and POSTs RFC 8291 (aes128gcm) encrypted
-// payloads DIRECTLY to the browser-vendor push service (FCM / Apple / Mozilla)
-// named by each subscription's endpoint. This is OUTBOUND-ONLY, so it works
+// # PUSH-CELL-01
+//
+// The box (cell) holds a VAPID key pair and sends OUTBOUND-ONLY, so it works
 // behind NAT with no inbound reachability and no central dependency — the
 // sovereign path per vulos-unified-reachability-architecture (push section).
 // Vendors ROUTE but CANNOT READ: the payload is E2E-encrypted to the
 // subscription's keys by the Web Push protocol.
 //
-// This whole feature is ADDITIVE and FLAG-GATED: with no VAPID keys configured,
-// PushConfig.Enabled() is false, the subscribe routes 503, and SendNotification
-// takes exactly its prior path. The private VAPID key is a secret and is never
-// logged nor returned in any response.
+// This package has no dependency on any particular caller's notification
+// model; it is deliberately generic so any service in this repo can send a
+// push without importing backend/services/notify. See
+// backend/services/notify/webpush_service.go for how the notify service
+// wires this package in (SetPush / maybeWebPush / pushBinding).
 //
-// The Web Push (VAPID) design is a standard, self-contained implementation in
-// the OS notify package.
+// The whole feature is ADDITIVE and FLAG-GATED: with no VAPID keys
+// configured, Config.Enabled() is false and callers should treat the
+// feature as off. The private VAPID key is a secret and is never logged nor
+// returned in any response.
+package webpush
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -32,7 +38,7 @@ import (
 	"sync"
 	"time"
 
-	webpush "github.com/SherClockHolmes/webpush-go"
+	webpushgo "github.com/SherClockHolmes/webpush-go"
 	_ "modernc.org/sqlite" // SQLite driver for the push subscription store
 
 	"vulos/backend/internal/safedial"
@@ -40,13 +46,14 @@ import (
 
 // ---- configuration -----------------------------------------------------------
 
-// PushConfig holds the VAPID key material and delivery knobs, sourced from the
+// Config holds the VAPID key material and delivery knobs, sourced from the
 // environment so the feature is CONFIG-GATED and FAIL-SAFE-OFF. With nothing
-// set, Web Push is disabled and only the existing in-app WebSocket path runs.
-type PushConfig struct {
+// set, Web Push is disabled and callers should fall back to their non-push
+// path.
+type Config struct {
 	// VAPIDPublic / VAPIDPrivate are base64url keys as produced by webpush-go's
 	// GenerateVAPIDKeys. Push is OFF unless BOTH are present (explicitly or via
-	// VAPIDKeyFile, resolved by ResolvePushVAPID). The private key is a SECRET.
+	// VAPIDKeyFile, resolved by ResolveVAPID). The private key is a SECRET.
 	VAPIDPublic  string
 	VAPIDPrivate string
 	// VAPIDSubject is the RFC 8292 contact ("mailto:..." or an https origin).
@@ -59,10 +66,10 @@ type PushConfig struct {
 	TTL int
 }
 
-// LoadPushConfig reads the push configuration from the environment. It does not
-// resolve/generate keys — call ResolvePushVAPID after.
-func LoadPushConfig() PushConfig {
-	c := PushConfig{
+// LoadConfig reads the push configuration from the environment. It does not
+// resolve/generate keys — call ResolveVAPID after.
+func LoadConfig() Config {
+	c := Config{
 		VAPIDPublic:  os.Getenv("VULOS_PUSH_VAPID_PUBLIC"),
 		VAPIDPrivate: os.Getenv("VULOS_PUSH_VAPID_PRIVATE"),
 		VAPIDSubject: os.Getenv("VULOS_PUSH_VAPID_SUBJECT"),
@@ -76,8 +83,8 @@ func LoadPushConfig() PushConfig {
 }
 
 // Enabled reports whether Web Push is configured. Fail-safe: OFF unless BOTH
-// halves of the VAPID key pair are present (resolved by ResolvePushVAPID first).
-func (c PushConfig) Enabled() bool {
+// halves of the VAPID key pair are present (resolved by ResolveVAPID first).
+func (c Config) Enabled() bool {
 	return c.VAPIDPublic != "" && c.VAPIDPrivate != ""
 }
 
@@ -87,7 +94,7 @@ type vapidFileFormat struct {
 	Public  string `json:"public"`
 }
 
-// ResolvePushVAPID fills in the VAPID key pair on c when it is not set
+// ResolveVAPID fills in the VAPID key pair on c when it is not set
 // explicitly:
 //   - if both keys are already present, it is a no-op;
 //   - else if VAPIDKeyFile is set, it loads-or-generates a pair at that path
@@ -96,7 +103,7 @@ type vapidFileFormat struct {
 //
 // It returns an error only when a configured key file cannot be read/written; an
 // unconfigured push feature is not an error.
-func ResolvePushVAPID(c *PushConfig) error {
+func ResolveVAPID(c *Config) error {
 	if c.VAPIDPublic != "" && c.VAPIDPrivate != "" {
 		return nil // explicit keys win
 	}
@@ -110,16 +117,16 @@ func ResolvePushVAPID(c *PushConfig) error {
 			return nil
 		}
 	}
-	priv, pub, err := webpush.GenerateVAPIDKeys()
+	priv, pub, err := webpushgo.GenerateVAPIDKeys()
 	if err != nil {
-		return fmt.Errorf("notify: generate VAPID keys: %w", err)
+		return fmt.Errorf("webpush: generate VAPID keys: %w", err)
 	}
 	raw, err := json.Marshal(vapidFileFormat{Private: priv, Public: pub})
 	if err != nil {
-		return fmt.Errorf("notify: marshal VAPID keys: %w", err)
+		return fmt.Errorf("webpush: marshal VAPID keys: %w", err)
 	}
 	if err := os.WriteFile(c.VAPIDKeyFile, raw, 0600); err != nil {
-		return fmt.Errorf("notify: write VAPID key file %s: %w", c.VAPIDKeyFile, err)
+		return fmt.Errorf("webpush: write VAPID key file %s: %w", c.VAPIDKeyFile, err)
 	}
 	c.VAPIDPrivate, c.VAPIDPublic = priv, pub
 	return nil
@@ -127,13 +134,11 @@ func ResolvePushVAPID(c *PushConfig) error {
 
 // ---- subscription model ------------------------------------------------------
 
-// PushSubscription mirrors the browser's PushSubscription.toJSON() shape (the
-// object PushManager.subscribe() yields). OwnerID is the server-assigned owner;
-// it is NEVER read from the client body — the handler stamps it from the
-// verified session, which is what makes subscriptions per-owner isolated. It is
-// the SAME identity space as Notification.UserID, so the dispatcher can target a
-// notification's owner directly.
-type PushSubscription struct {
+// Subscription mirrors the browser's PushSubscription.toJSON() shape (the
+// object PushManager.subscribe() yields). OwnerID is the caller-assigned
+// owner; callers should stamp it from a verified session rather than trusting
+// the client body, which is what makes subscriptions per-owner isolated.
+type Subscription struct {
 	OwnerID   string    `json:"owner_id"`
 	Endpoint  string    `json:"endpoint"`
 	P256DH    string    `json:"p256dh"`
@@ -149,11 +154,11 @@ const MaxSubsPerUser = 20
 // length) so a client cannot store an oversized blob.
 const maxEndpointLen = 2048
 
-// ValidateSubscription checks a client-supplied subscription is well-formed and
+// Validate checks a client-supplied subscription is well-formed and
 // within bounds before it is stored. It does NOT validate the crypto material
 // beyond presence/length — an invalid key simply fails to receive pushes and is
 // pruned on the 410 Gone response.
-func ValidateSubscription(sub PushSubscription) error {
+func Validate(sub Subscription) error {
 	if sub.Endpoint == "" || sub.P256DH == "" || sub.Auth == "" {
 		return fmt.Errorf("subscription missing required fields")
 	}
@@ -211,36 +216,36 @@ func screenPushEndpoint(endpoint string) error {
 	return nil
 }
 
-// PushStore persists Web Push subscriptions, isolated per owner. Every method is
+// Store persists Web Push subscriptions, isolated per owner. Every method is
 // scoped by ownerID: there is no cross-owner read, and Save stamps the owner
 // from the caller, so one user can never read, overwrite, or delete another
 // user's subscriptions.
-type PushStore interface {
+type Store interface {
 	// Save upserts a subscription for ownerID (keyed by endpoint). Enforces the
 	// per-user cap: past MaxSubsPerUser the OLDEST endpoint for that owner is
 	// evicted so a live device always registers.
-	Save(ownerID string, sub PushSubscription) error
+	Save(ownerID string, sub Subscription) error
 	// Delete removes one endpoint for ownerID (idempotent). It NEVER deletes
 	// another owner's row even if the endpoint string collides.
 	Delete(ownerID, endpoint string) error
 	// List returns ownerID's subscriptions (empty when none).
-	List(ownerID string) ([]PushSubscription, error)
+	List(ownerID string) ([]Subscription, error)
 	Close() error
 }
 
 // ---- in-memory store (tests / ephemeral) ------------------------------------
 
-type memPushStore struct {
+type memStore struct {
 	mu  sync.Mutex
-	byU map[string]map[string]PushSubscription // ownerID → endpoint → sub
+	byU map[string]map[string]Subscription // ownerID → endpoint → sub
 }
 
-// NewMemPushStore returns an in-memory PushStore.
-func NewMemPushStore() PushStore {
-	return &memPushStore{byU: map[string]map[string]PushSubscription{}}
+// NewMemStore returns an in-memory Store.
+func NewMemStore() Store {
+	return &memStore{byU: map[string]map[string]Subscription{}}
 }
 
-func (m *memPushStore) Save(ownerID string, sub PushSubscription) error {
+func (m *memStore) Save(ownerID string, sub Subscription) error {
 	if ownerID == "" || sub.Endpoint == "" {
 		return fmt.Errorf("push: owner and endpoint required")
 	}
@@ -248,7 +253,7 @@ func (m *memPushStore) Save(ownerID string, sub PushSubscription) error {
 	defer m.mu.Unlock()
 	set := m.byU[ownerID]
 	if set == nil {
-		set = map[string]PushSubscription{}
+		set = map[string]Subscription{}
 		m.byU[ownerID] = set
 	}
 	sub.OwnerID = ownerID
@@ -269,7 +274,7 @@ func (m *memPushStore) Save(ownerID string, sub PushSubscription) error {
 	return nil
 }
 
-func (m *memPushStore) Delete(ownerID, endpoint string) error {
+func (m *memStore) Delete(ownerID, endpoint string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if set := m.byU[ownerID]; set != nil {
@@ -281,11 +286,11 @@ func (m *memPushStore) Delete(ownerID, endpoint string) error {
 	return nil
 }
 
-func (m *memPushStore) List(ownerID string) ([]PushSubscription, error) {
+func (m *memStore) List(ownerID string) ([]Subscription, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	set := m.byU[ownerID]
-	out := make([]PushSubscription, 0, len(set))
+	out := make([]Subscription, 0, len(set))
 	for _, s := range set {
 		out = append(out, s)
 	}
@@ -293,18 +298,18 @@ func (m *memPushStore) List(ownerID string) ([]PushSubscription, error) {
 	return out, nil
 }
 
-func (m *memPushStore) Close() error { return nil }
+func (m *memStore) Close() error { return nil }
 
 // ---- SQLite store ------------------------------------------------------------
 
-type sqlitePushStore struct {
+type sqliteStore struct {
 	db *sql.DB
 }
 
-// NewSQLitePushStore opens (or creates) a SQLite database at dsn dedicated to
+// NewSQLiteStore opens (or creates) a SQLite database at dsn dedicated to
 // push subscriptions and ensures the schema. It keeps its own handle so it never
 // contends on any other write path.
-func NewSQLitePushStore(dsn string) (PushStore, error) {
+func NewSQLiteStore(dsn string) (Store, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("push: open db: %w", err)
@@ -324,10 +329,10 @@ func NewSQLitePushStore(dsn string) (PushStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("push: init schema: %w", err)
 	}
-	return &sqlitePushStore{db: db}, nil
+	return &sqliteStore{db: db}, nil
 }
 
-func (s *sqlitePushStore) Save(ownerID string, sub PushSubscription) error {
+func (s *sqliteStore) Save(ownerID string, sub Subscription) error {
 	if ownerID == "" || sub.Endpoint == "" {
 		return fmt.Errorf("push: owner and endpoint required")
 	}
@@ -367,14 +372,14 @@ func (s *sqlitePushStore) Save(ownerID string, sub PushSubscription) error {
 	return tx.Commit()
 }
 
-func (s *sqlitePushStore) Delete(ownerID, endpoint string) error {
+func (s *sqliteStore) Delete(ownerID, endpoint string) error {
 	_, err := s.db.Exec(
 		`DELETE FROM push_subscriptions WHERE owner_id = ? AND endpoint = ?`,
 		ownerID, endpoint)
 	return err
 }
 
-func (s *sqlitePushStore) List(ownerID string) ([]PushSubscription, error) {
+func (s *sqliteStore) List(ownerID string) ([]Subscription, error) {
 	rows, err := s.db.Query(
 		`SELECT endpoint, p256dh, auth, created_at FROM push_subscriptions
 		 WHERE owner_id = ? ORDER BY created_at ASC`, ownerID)
@@ -382,9 +387,9 @@ func (s *sqlitePushStore) List(ownerID string) ([]PushSubscription, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []PushSubscription
+	var out []Subscription
 	for rows.Next() {
-		var sub PushSubscription
+		var sub Subscription
 		var createdNanos int64
 		if err := rows.Scan(&sub.Endpoint, &sub.P256DH, &sub.Auth, &createdNanos); err != nil {
 			return nil, err
@@ -396,17 +401,17 @@ func (s *sqlitePushStore) List(ownerID string) ([]PushSubscription, error) {
 	return out, rows.Err()
 }
 
-func (s *sqlitePushStore) Close() error { return s.db.Close() }
+func (s *sqliteStore) Close() error { return s.db.Close() }
 
 // ---- send transport ----------------------------------------------------------
 
-// PushPayload is the JSON the service worker's `push` handler receives. It is
-// deliberately minimal and carries only what the SW needs to render the OS
+// Payload is the JSON a service worker's `push` handler receives. It is
+// deliberately minimal and carries only what the SW needs to render an OS
 // notification: a title, a short body snippet, a tag (for coalescing), a source,
 // and an optional deep-link URL. It NEVER carries a recipient identifier — the
-// payload is encrypted end-to-end to the subscription's keys (RFC 8291), and the
-// dispatcher only ever hands a payload to that owner's own subscriptions.
-type PushPayload struct {
+// payload is encrypted end-to-end to the subscription's keys (RFC 8291), and a
+// caller should only ever hand a payload to that owner's own subscriptions.
+type Payload struct {
 	Title  string `json:"title"`
 	Body   string `json:"body"`
 	Tag    string `json:"tag"`
@@ -414,14 +419,17 @@ type PushPayload struct {
 	URL    string `json:"url,omitempty"`
 }
 
-// pushSender abstracts the webpush transport so tests can assert dispatch
-// without a live push service. It returns the vendor HTTP status so gone
-// subscriptions (404/410) can be pruned.
-type pushSender interface {
-	send(sub PushSubscription, payload []byte, cfg PushConfig) (statusCode int, err error)
+// Sender abstracts the webpush transport so callers/tests can assert
+// dispatch without a live push service. It returns the vendor HTTP status so
+// gone subscriptions (404/410) can be pruned. Exported so other packages (e.g.
+// backend/services/notify) can hold and swap a sender.
+type Sender interface {
+	Send(sub Subscription, payload []byte, cfg Config) (statusCode int, err error)
 }
 
-type livePushSender struct{}
+// LiveSender is the production Sender: it POSTs the encrypted payload
+// straight to the vendor endpoint named by the subscription.
+type LiveSender struct{}
 
 // pushHTTPClient is the SSRF-guarded HTTP client the box uses to POST encrypted
 // push payloads to vendor endpoints. Its dialer re-screens the RESOLVED IP right
@@ -443,21 +451,22 @@ var pushHTTPClient = &http.Client{
 	},
 }
 
-func (livePushSender) send(sub PushSubscription, payload []byte, cfg PushConfig) (int, error) {
+// Send implements Sender.
+func (LiveSender) Send(sub Subscription, payload []byte, cfg Config) (int, error) {
 	ttl := cfg.TTL
 	if ttl <= 0 {
 		ttl = 300
 	}
 	// Defense-in-depth: re-screen the endpoint host FORM here too, so a sender is
-	// never handed a subscription that skipped ValidateSubscription (e.g. a legacy
+	// never handed a subscription that skipped Validate (e.g. a legacy
 	// row persisted before this guard existed).
 	if err := screenPushEndpoint(sub.Endpoint); err != nil {
 		return 0, err
 	}
-	resp, err := webpush.SendNotification(payload, &webpush.Subscription{
+	resp, err := webpushgo.SendNotification(payload, &webpushgo.Subscription{
 		Endpoint: sub.Endpoint,
-		Keys:     webpush.Keys{P256dh: sub.P256DH, Auth: sub.Auth},
-	}, &webpush.Options{
+		Keys:     webpushgo.Keys{P256dh: sub.P256DH, Auth: sub.Auth},
+	}, &webpushgo.Options{
 		HTTPClient:      pushHTTPClient,
 		Subscriber:      cfg.VAPIDSubject,
 		VAPIDPublicKey:  cfg.VAPIDPublic,
@@ -472,8 +481,5 @@ func (livePushSender) send(sub PushSubscription, payload []byte, cfg PushConfig)
 }
 
 // pushPumpTimeout bounds a full round of push sends for one notification so a
-// slow vendor cannot pin the SendNotification goroutine (the pump runs async, so
-// this is belt-and-suspenders).
+// slow vendor cannot pin the caller's send goroutine.
 const pushPumpTimeout = 20 * time.Second
-
-var _ = context.Background // reserved for a future context-aware sender

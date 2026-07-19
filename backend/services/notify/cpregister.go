@@ -65,6 +65,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/safedial"
+	"vulos/backend/internal/webpush"
 )
 
 // cpAuthHeader is the request header carrying the edge↔CP HMAC. It MUST match
@@ -223,7 +224,7 @@ type unregisterBody struct {
 // subscription. NO VAPID key material is ever sent. It is a no-op on a nil
 // (self-host) registrar. Best-effort: a CP error is logged and returned so the
 // caller can decide, but it never blocks the user's own subscribe.
-func (r *CPRegistrar) Register(ctx context.Context, sub PushSubscription) error {
+func (r *CPRegistrar) Register(ctx context.Context, sub webpush.Subscription) error {
 	if !r.Enabled() {
 		return nil
 	}
