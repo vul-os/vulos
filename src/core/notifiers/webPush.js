@@ -115,7 +115,7 @@ export async function enableWebPush(deps = {}) {
 
 // registrationOf recovers the ServiceWorkerRegistration for a subscription so the
 // CP-keyed subscribe can reuse the same PushManager. Falls back to ready.
-async function registrationOf(_subscription) {
+async function registrationOf(_subscription) { // eslint-disable-line no-unused-vars -- kept for call-site clarity; no browser API derives a registration from a subscription
   try {
     return await navigator.serviceWorker.ready
   } catch {

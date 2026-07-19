@@ -46,7 +46,7 @@ test('the menubar bell reflects the backend unread count and opens the center', 
 test('"Mark all read" clears the count and syncs to the backend', async ({ page }) => {
   let readPosted = false
   await boot(page, {
-    'POST /api/notifications/read': (req) => {
+    'POST /api/notifications/read': () => {
       readPosted = true
       return { status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) }
     },

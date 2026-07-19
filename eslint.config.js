@@ -72,4 +72,36 @@ export default defineConfig([
       },
     },
   },
+  // A handful of files deliberately co-locate a component with the plain
+  // helper functions / hooks it needs, and export both — the helpers are
+  // exercised directly by unit tests (see each file's own "exported for
+  // tests" header comment) rather than only through the component. Splitting
+  // them into a second file per component would add indirection with no
+  // Fast-Refresh benefit here (these screens don't hot-reload in a loop the
+  // way app views do), so the specific non-component export names are
+  // allow-listed instead of disabling the rule file-wide.
+  {
+    files: ['src/auth/CloudSignIn.jsx'],
+    rules: {
+      'react-refresh/only-export-components': ['error', {
+        allowExportNames: ['cloudLoginRequest', 'cloudEnrollStart', 'cloudEnrollStatus', 'cloudErrorMessage', 'useCloudSignIn'],
+      }],
+    },
+  },
+  {
+    files: ['src/auth/GatewayChoice.jsx'],
+    rules: {
+      'react-refresh/only-export-components': ['error', {
+        allowExportNames: ['getGateway', 'checkGateway', 'setGateway', 'clearGateway'],
+      }],
+    },
+  },
+  {
+    files: ['src/builtin/drive/Drive.jsx'],
+    rules: {
+      'react-refresh/only-export-components': ['error', {
+        allowExportNames: ['resumableUpload'],
+      }],
+    },
+  },
 ])
