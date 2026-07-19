@@ -41,15 +41,27 @@ local SQLite with zero configuration.
 git clone https://github.com/vul-os/vulos-management.git
 cd vulos-management
 make build   # ./bin/cp
+make dev     # build + run with VULOS_ENV=local (bare `./bin/cp` fails closed — see below)
 make test    # go test ./...
 make vet     # go vet ./...
 ```
+
+> `./bin/cp` on its own refuses to start (`SESSION_SECRET is unset in prod`) —
+> that's the prod fail-closed guard working correctly, not a bug. `make dev`
+> sets `VULOS_ENV=local` so it boots with a dev fallback secret instead. See
+> [`docs/SELF-HOST.md`](docs/SELF-HOST.md#a-note-on-vulos_env).
 
 See [`docs/SELF-HOST.md`](docs/SELF-HOST.md) for the full configuration
 surface and a breakdown of what `cmd/server` wires in today versus what's
 still pending a `RouteRegistrar`.
 
 ## Before opening a PR
+
+There is currently **no CI** on this repo (no `.golangci*`, no
+`.github/workflows/`) — see [`docs/SELF-HOST.md`](docs/SELF-HOST.md#build-hygiene-no-ci-no-lint-config).
+Nothing enforces the checks below automatically; you are expected to run them
+by hand before every commit/PR. All of them are green as of this writing —
+keep them that way:
 
 ```sh
 go build ./...
@@ -58,8 +70,15 @@ go test ./...
 gofmt -l .        # should print nothing
 ```
 
+If you touched `web/` (the console SPA), also run:
+
+```sh
+cd web && npm run lint   # eslint . — should exit 0 (warnings are tolerated, errors are not)
+```
+
 - Keep the module building and testing green with **no** environment
-  variables set beyond what a bare self-host deployment needs.
+  variables set beyond what a bare self-host deployment needs (`make dev`,
+  i.e. `VULOS_ENV=local` and nothing else).
 - Add or update tests alongside behavior changes — most packages here carry
   both an in-memory/SQLite test path and a `*_pg_test.go` Postgres path
   (skipped automatically when no test Postgres DSN is configured).

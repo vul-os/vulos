@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Documented quickstart couldn't boot the binary**: README.md and
+  `docs/SELF-HOST.md` told a reader to run `make build && ./bin/cp`, which
+  fails immediately with `SESSION_SECRET is unset in prod — refusing to
+  start`. That guard is correct — prod posture must refuse to start without a
+  real secret — but `VULOS_ENV` (the env var that opts a run into non-prod
+  posture) was never mentioned in either doc, and the repo's own smoke test
+  (`cmd/server/selfhost_smoke_test.go`) only passes because it sets
+  `VULOS_ENV=local` itself, sidestepping the exact path the docs told readers
+  to run. Added a `make dev` target (`make build && VULOS_ENV=local
+  ./bin/cp`) and repointed the README/SELF-HOST/CONTRIBUTING quickstarts at
+  it; `make run` is now explicitly documented as the production-posture path
+  that requires real secrets. `docs/SELF-HOST.md` also gained a `VULOS_ENV`
+  row in the configuration table and a corrected "durable self-host example"
+  that sets `SESSION_SECRET` explicitly so it actually runs as written. No
+  code/guard behavior changed — this is a docs + one new Makefile target fix.
+- **`gofmt -l .` was non-empty**, contradicting CONTRIBUTING.md's stated
+  invariant ("should print nothing"). Ran `gofmt -w` on the 9 drifted files
+  (`pkg/billingport/billingport.go`, `pkg/ddos/{budget.go,budget_test.go,pages.go}`,
+  `pkg/oauthclient/oauthclient.go`, `pkg/storage/{byo_ssrf_test.go,minter_test.go}`,
+  `pkg/storagesel/storagesel.go`, `pkg/superadmin/remoteip_internal_test.go`) —
+  formatting only, no behavior change. `gofmt -l .` is now empty; `go build
+  ./...`, `go vet ./...`, and `go test ./...` remain green.
+- **Documented local pre-commit checks, since nothing enforces them**: this
+  repo ships no CI (`docs/SELF-HOST.md#build-hygiene-no-ci-no-lint-config`
+  already said so). CONTRIBUTING.md now states plainly that `go build ./...`,
+  `go vet ./...`, `go test ./...`, `gofmt -l .` (Go) and `npm run lint`
+  (`web/`, eslint) are the expected pre-commit checks, all currently green,
+  and that running them is on the contributor by hand until CI exists.
+
 ### Removed
 
 - **Talk/Meet product sweep**: Vulos Talk and Vulos Meet are removed products —

@@ -28,14 +28,23 @@ any of that.**
 ## Build and run
 
 ```sh
-make build      # produces ./bin/cp
-./bin/cp        # serves the control plane on :8080
+make dev        # = make build && VULOS_ENV=local ./bin/cp — serves on :8080
 ```
 
-`make build` is a thin wrapper over `go build -o bin/cp ./cmd/server`. The binary
-is the **thin self-host main**: it reads generic configuration from the
-environment, wires the free no-op billing seam and bring-your-own-bucket storage
-seam, and starts the control plane via the `pkg/cpserver` builder.
+`make build` (`go build -o bin/cp ./cmd/server`) produces the binary; `make dev`
+also sets `VULOS_ENV=local` before running it. That env var matters: the control
+plane **fails safe to production posture whenever `VULOS_ENV` is unset**, and
+prod posture refuses to start without a real `SESSION_SECRET` (and several other
+provider secrets). A bare `./bin/cp` with no environment therefore exits
+immediately with `SESSION_SECRET is unset in prod — refusing to start` — that is
+the guard working as intended, not a bug, but it means **`./bin/cp` alone is not
+the self-host quickstart.** `make dev` (or manually exporting `VULOS_ENV=local`)
+is. See [the `VULOS_ENV` note below](#a-note-on-vulos_env) for the full story and
+`make run` / `VULOS_ENV=prod` for a real deployment.
+
+The binary itself is the **thin self-host main**: it reads generic configuration
+from the environment, wires the free no-op billing seam and bring-your-own-bucket
+storage seam, and starts the control plane via the `pkg/cpserver` builder.
 
 Verify it is up:
 
@@ -55,11 +64,12 @@ provider-specific knowledge. Everything has a sensible self-host default.
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `VULOS_ENV` | *(unset ⇒ prod posture)* | **The important one.** `local`\|`dev`\|`prod`. Governs the fail-safe-to-prod guards (`SESSION_SECRET`, KEKs, push credentials): unset or `prod` refuses to boot without real secrets; `local`/`dev` fall back to dev-mode defaults so you can evaluate the binary with zero secrets configured. `make dev` sets this to `local` for you. See [the note below](#a-note-on-vulos_env). |
 | `CP_ADDR` | `:8080` | TCP listen address. |
 | `VULOS_DOMAIN` | `vulos.org` | Your deployment's own domain — identity emails, cookie scope, CT zone. Set this to your domain. |
 | `DATABASE_URL` | *(empty)* | Postgres DSN. **Empty ⇒ local SQLite** (the zero-config default). |
 | `CP_SQLITE_PATH` | *(empty)* | On-disk SQLite path used when `DATABASE_URL` is empty. Empty ⇒ in-memory (non-durable; dev/smoke only — set a path for anything you want to keep). |
-| `CP_ENV` | `dev` | Free-form environment label surfaced on `/version`. |
+| `CP_ENV` | `dev` | Free-form environment label surfaced on `/version`. **Not** the same knob as `VULOS_ENV` above — this one is cosmetic only and does not affect any safety guard. |
 | `CP_VERSION` | `dev` | Build/version string surfaced on `/version`. |
 
 ### SQLite vs Postgres
@@ -78,8 +88,15 @@ export VULOS_DOMAIN=vulos.example.com
 export DATABASE_URL=postgres://vulos:secret@db.internal:5432/cp
 export CP_ADDR=:8080
 export CP_ENV=prod CP_VERSION=$(cat VERSION)
+export VULOS_ENV=prod                          # explicit; unset also resolves to prod (fail-safe)
+export SESSION_SECRET=$(openssl rand -base64 32)  # REQUIRED in prod posture — persist this, don't regenerate it on restart
 ./bin/cp
 ```
+
+Prod posture is deliberately strict: with `VULOS_ENV` unset or `prod` and no
+`SESSION_SECRET`, the binary refuses to start (`SESSION_SECRET is unset in prod`)
+rather than run with a guessable dev secret. Generate the secret once and keep it
+— rotating it invalidates every existing session.
 
 Put the binary behind your own TLS-terminating reverse proxy (Caddy, nginx,
 Traefik) for an internet-reachable deployment. The control plane speaks plain
@@ -210,12 +227,14 @@ deliberate future addition, tracked in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Upgrading
 
-Pull, rebuild, restart:
+Pull, rebuild, restart with whatever environment your deployment already runs
+with (`make dev` for local evaluation; `make run` with your real `VULOS_ENV` /
+`SESSION_SECRET` / other secrets exported for anything durable):
 
 ```sh
 git pull
 make build
-./bin/cp
+make dev     # or: make run   (see "A note on VULOS_ENV" above)
 ```
 
 Database migrations run automatically on start. On SQLite this is transparent; on

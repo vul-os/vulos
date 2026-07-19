@@ -169,12 +169,20 @@ this repo, is in [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md).
 > SQLite out of the box; the commercial pricing tables Postgres carries are
 > simply absent, so every metered path is free.
 
-Build and run the control plane:
+Build and run the control plane for local evaluation:
 
 ```sh
-make build            # produces ./bin/cp  (or: go build -o bin/cp ./cmd/server)
-./bin/cp              # serves on :8080 with the free no-op billing seam
+make dev               # = make build && VULOS_ENV=local ./bin/cp, serves on :8080
 ```
+
+> **Why not just `./bin/cp`?** The control plane **fails safe to production
+> posture** whenever `VULOS_ENV` is unset — that's deliberate (an unconfigured
+> box must never silently run with weak secrets), but it means a bare `./bin/cp`
+> refuses to start with `SESSION_SECRET is unset in prod`. `make dev` sets
+> `VULOS_ENV=local`, which is the one env var that tells it "this is a local
+> evaluation, use the dev fallback secret instead of refusing to boot." Use
+> `make run` (or set real secrets and `VULOS_ENV=prod`) for anything you'd
+> actually deploy — see [**docs/SELF-HOST.md**](docs/SELF-HOST.md#a-note-on-vulos_env).
 
 Then probe it:
 

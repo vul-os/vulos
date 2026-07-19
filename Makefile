@@ -10,7 +10,7 @@ CP_BIN   ?= $(BIN_DIR)/cp
 VERSION  ?= $(shell cat VERSION 2>/dev/null || echo dev)
 LDFLAGS  := -X main.version=$(VERSION)
 
-.PHONY: all build run test vet tidy fmt clean screenshots console
+.PHONY: all build run dev test vet tidy fmt clean screenshots console
 
 all: build
 
@@ -25,9 +25,17 @@ build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(CP_BIN) ./cmd/server
 	@echo "built $(CP_BIN) ($(VERSION))"
 
-## run: build and run the control plane (self-host defaults; in-memory SQLite)
+## run: build and run the control plane with PRODUCTION posture (fails closed
+## without a real SESSION_SECRET — see `make dev` for a local quickstart).
 run: build
 	CP_VERSION=$(VERSION) $(CP_BIN)
+
+## dev: build and run the control plane for local evaluation. Sets
+## VULOS_ENV=local so the prod fail-closed guards (SESSION_SECRET, KEKs, push
+## creds) step aside for a dev fallback instead of refusing to start — this is
+## the command a first-time reader should run, NOT `make run` / bare `./bin/cp`.
+dev: build
+	VULOS_ENV=local CP_VERSION=$(VERSION) $(CP_BIN)
 
 ## test: run the full test suite
 test:
