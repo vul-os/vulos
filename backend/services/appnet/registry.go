@@ -987,6 +987,10 @@ type RegistryListEntry struct {
 	Installed   bool     `json:"installed"`
 	Homepage    string   `json:"homepage"`
 	License     string   `json:"license"`
+	// Keywords surfaces RegistryEntry.Keywords to the App Hub list/search API
+	// (GET /api/store/registry) — without this the registry's per-app keywords
+	// data reaches neither the API response nor the frontend search box.
+	Keywords []string `json:"keywords"`
 }
 
 // ListEntries returns a flat list of all registry apps, marking which are installed.
@@ -1035,6 +1039,7 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 			Installed:   installed,
 			Homepage:    entry.Homepage,
 			License:     entry.License,
+			Keywords:    entry.Keywords,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
