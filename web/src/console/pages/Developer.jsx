@@ -251,7 +251,6 @@ function McpServers() {
   useEffect(() => {
     let cancelled = false
     apiJSON('/api/developer/mcp-servers')
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       .then((j) => { if (!cancelled) { setServers(Array.isArray(j) ? j : (j?.servers ?? [])); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }

@@ -61,7 +61,6 @@ export const commercial = Object.freeze({
  * @param {string} name display name for DevTools
  */
 function noopSlot(name) {
-  // eslint-disable-next-line no-unused-vars
   function NoOpSlot(_props) {
     return null
   }

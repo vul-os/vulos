@@ -52,7 +52,6 @@ export default function AdminTeam() {
 
   async function revoke(row) {
     if (busy) return
-    // eslint-disable-next-line no-alert -- deliberate confirm for a destructive, audited action.
     if (!window.confirm(`Revoke admin access for ${row.email}? Their admin session ends immediately.`)) return
     setBusy(true); setNotice(null)
     try {

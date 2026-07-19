@@ -251,6 +251,20 @@ node capture.mjs
 
 Requires a built `web/dist` (`npm --prefix web run build`) and Chromium (via Playwright).
 
+### Linting the console
+
+```sh
+cd web && npm install && npm run lint
+```
+
+`web/eslint.config.js` is a flat config matched to the same tooling used in
+`vulos-cloud`/`vulos` (`eslint` + `eslint-plugin-react-hooks` +
+`eslint-plugin-react-refresh`). This repo runs **no CI** by design (see
+`docs/SELF-HOST.md` / the two-repo model above), so lint is not enforced
+automatically anywhere — it's a local/manual check. Current baseline: **0
+errors, 4 warnings** (see CHANGELOG "Added" for what those warnings are and
+why they're deliberately left as warnings rather than fixed or silenced).
+
 ## Contributing
 
 Issues and pull requests are welcome. Keep the two-repo line honest: anything a

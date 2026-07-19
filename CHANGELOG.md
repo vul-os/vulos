@@ -76,6 +76,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fail-closed drift guard so an *accidental* edit to an applied migration is
   still caught. (`pkg/cpdb/migrate.go`, regression test in
   `pkg/cpdb/migrate_runner_test.go`.)
+- **`web/` JS lint now actually runs.** `npm run lint` (`web/package.json`) has
+  always invoked `eslint .`, but `eslint` itself was never listed in
+  `devDependencies` — the script failed with "command not found" for the
+  entire life of the console frontend, so no JS/TS lint has ever been enforced
+  (no CI exists either; this repo deliberately runs no GitHub Actions). Added
+  `eslint` + `@eslint/js` + `eslint-plugin-react-hooks` +
+  `eslint-plugin-react-refresh` + `globals` to `web/devDependencies` (versions
+  matched to the same tools in `vulos-cloud`/`vulos`) and a new
+  `web/eslint.config.js` (flat config, same shape as those sibling repos).
+  First-ever run surfaced 7 findings across 55 source files: 3 were stale/
+  incorrect `eslint-disable` comments (removed — genuinely dead, not a design
+  choice) and 4 are real `react-hooks/set-state-in-effect` /
+  `react-refresh/only-export-components` hits against idiomatic patterns
+  already used throughout the console (resetting loading/error state before a
+  fetch inside `useEffect`; an icon-name lookup table module). Rather than
+  restructure working code to satisfy a first-ever lint pass, both rules are
+  configured as `warn` (a pragmatic baseline, not maximal strictness) so they
+  stay visible without blocking. **Baseline as of this commit: 0 errors, 4
+  warnings, `npm run build` unaffected.** Lint is not wired into CI (none
+  exists for this repo, by design) — running it is a local/manual habit for
+  now; the count above is the honest starting point, not a claim that lint is
+  “handled.”
 
 ### Fixed
 
