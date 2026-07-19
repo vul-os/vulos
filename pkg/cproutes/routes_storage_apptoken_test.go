@@ -2,9 +2,10 @@ package cproutes
 
 // routes_storage_apptoken_test.go — SECURITY-C1 at the storage gateway.
 //
-// A proxied cloud-central app (Meet is the one still hosted after the box-
-// federated pivot) presigns objects on the user's behalf by forwarding the
-// credential the proxy handed it. Two properties have to hold there:
+// A proxied cloud-central app (Files is one of the two Class-P audiences the
+// CP still recognises for storage presign — see knownStorageApps) presigns
+// objects on the user's behalf by forwarding the credential the proxy handed
+// it. Two properties have to hold there:
 //
 //  1. that credential still WORKS (otherwise stripping the session just breaks
 //     the app), and
@@ -53,31 +54,31 @@ func storageAppTokenEnv(t *testing.T) (*storageTestEnv, string) {
 	return e, uid
 }
 
-// Meet's own prefix: the app token works, and the presign lands under
-// <account>/meet/.
+// Files' own prefix: the app token works, and the presign lands under
+// <account>/files/.
 func TestStoragePresign_AppTokenPresignsItsOwnPrefix(t *testing.T) {
 	e, uid := storageAppTokenEnv(t)
-	tok := appTokenFor(t, uid, "meet")
+	tok := appTokenFor(t, uid, "files")
 
 	w := e.doWithAppToken(t, "/api/storage/presign/put", map[string]any{
 		"account_id": uid,
 		"bucket":     "vulos-" + strings.ToLower(boxULID(uid)),
-		"key":        uid + "/meet/doc-1.bin",
-		"app_id":     "meet",
+		"key":        uid + "/files/doc-1.bin",
+		"app_id":     "files",
 	}, tok)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("meet's own presign must still work: got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("files' own presign must still work: got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-// THE escalation this closes: a meet-audience token asking to presign under
+// THE escalation this closes: a files-audience token asking to presign under
 // another app's prefix. Before the fix, app_id was whatever the body said.
 func TestStoragePresign_AppTokenCannotClaimAnotherAppsPrefix(t *testing.T) {
 	e, uid := storageAppTokenEnv(t)
-	tok := appTokenFor(t, uid, "meet")
+	tok := appTokenFor(t, uid, "files")
 
-	for _, other := range []string{"mail", "files", "os"} {
+	for _, other := range []string{"mail", "os"} {
 		w := e.doWithAppToken(t, "/api/storage/presign/put", map[string]any{
 			"account_id": uid,
 			"bucket":     "vulos-" + strings.ToLower(boxULID(uid)),
@@ -85,21 +86,21 @@ func TestStoragePresign_AppTokenCannotClaimAnotherAppsPrefix(t *testing.T) {
 			"app_id":     other,
 		}, tok)
 		if w.Code != http.StatusForbidden {
-			t.Errorf("meet token presigned as %q: got %d, want 403", other, w.Code)
+			t.Errorf("files token presigned as %q: got %d, want 403", other, w.Code)
 		}
 	}
 }
 
-// Even with app_id omitted, the audience pins the prefix — a meet token
-// cannot reach a key outside <account>/meet/ by leaving the field blank.
+// Even with app_id omitted, the audience pins the prefix — a files token
+// cannot reach a key outside <account>/files/ by leaving the field blank.
 func TestStoragePresign_OmittedAppIDIsBoundToAudience(t *testing.T) {
 	e, uid := storageAppTokenEnv(t)
-	tok := appTokenFor(t, uid, "meet")
+	tok := appTokenFor(t, uid, "files")
 
 	w := e.doWithAppToken(t, "/api/storage/presign/put", map[string]any{
 		"account_id": uid,
 		"bucket":     "vulos-" + strings.ToLower(boxULID(uid)),
-		"key":        uid + "/files/stolen.bin",
+		"key":        uid + "/os/stolen.bin",
 		// app_id deliberately omitted — pre-fix this meant "no app scoping".
 	}, tok)
 
@@ -111,7 +112,7 @@ func TestStoragePresign_OmittedAppIDIsBoundToAudience(t *testing.T) {
 // Delete is destructive: same binding.
 func TestStorageDelete_AppTokenCannotDeleteAnotherAppsObjects(t *testing.T) {
 	e, uid := storageAppTokenEnv(t)
-	tok := appTokenFor(t, uid, "meet")
+	tok := appTokenFor(t, uid, "files")
 
 	w := e.doWithAppToken(t, "/api/storage/delete", map[string]any{
 		"account_id": uid,
@@ -121,7 +122,7 @@ func TestStorageDelete_AppTokenCannotDeleteAnotherAppsObjects(t *testing.T) {
 	}, tok)
 
 	if w.Code != http.StatusForbidden {
-		t.Fatalf("meet token deleted a mail object: got %d, want 403: %s", w.Code, w.Body.String())
+		t.Fatalf("files token deleted a mail object: got %d, want 403: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -147,13 +148,13 @@ func TestStoragePresign_AudienceWithoutStorageIsRefused(t *testing.T) {
 func TestStoragePresign_AppTokenIsStillSelfOnly(t *testing.T) {
 	e, uid := storageAppTokenEnv(t)
 	victim, _ := sessionFor(t, e.authSt, "victim-storage@example.com")
-	tok := appTokenFor(t, uid, "meet")
+	tok := appTokenFor(t, uid, "files")
 
 	w := e.doWithAppToken(t, "/api/storage/presign/get", map[string]any{
 		"account_id": victim,
 		"bucket":     "vulos-" + strings.ToLower(boxULID(victim)),
-		"key":        victim + "/meet/secret.bin",
-		"app_id":     "meet",
+		"key":        victim + "/files/secret.bin",
+		"app_id":     "files",
 	}, tok)
 
 	if w.Code != http.StatusForbidden {
@@ -165,15 +166,15 @@ func TestStoragePresign_AppTokenIsStillSelfOnly(t *testing.T) {
 func TestStoragePresign_ForgedAppTokenRejected(t *testing.T) {
 	e, uid := storageAppTokenEnv(t)
 
-	forged, err := apptoken.NewMinter([]byte("attacker-key-not-the-cps-000000"), apptoken.DefaultTTL).Mint(uid, "meet")
+	forged, err := apptoken.NewMinter([]byte("attacker-key-not-the-cps-000000"), apptoken.DefaultTTL).Mint(uid, "files")
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
 	w := e.doWithAppToken(t, "/api/storage/presign/put", map[string]any{
 		"account_id": uid,
 		"bucket":     "vulos-" + strings.ToLower(boxULID(uid)),
-		"key":        uid + "/meet/doc.bin",
-		"app_id":     "meet",
+		"key":        uid + "/files/doc.bin",
+		"app_id":     "files",
 	}, forged)
 
 	if w.Code != http.StatusUnauthorized {
@@ -192,8 +193,8 @@ func TestStoragePresign_UserSessionUnaffected(t *testing.T) {
 	req := map[string]any{
 		"account_id": uid,
 		"bucket":     "vulos-" + strings.ToLower(boxULID(uid)),
-		"key":        uid + "/meet/doc.bin",
-		"app_id":     "meet",
+		"key":        uid + "/files/doc.bin",
+		"app_id":     "files",
 	}
 	if w := e.do(t, http.MethodPost, "/api/storage/presign/put", req, tok); w.Code != http.StatusOK {
 		t.Fatalf("a real user session must still presign: got %d: %s", w.Code, w.Body.String())

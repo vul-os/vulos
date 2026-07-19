@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Talk/Meet product sweep**: Vulos Talk and Vulos Meet are removed products —
+  comms are third-party (Matrix/Element for chat; Element Call/Jitsi for
+  video), offered as downloadable OSS apps in the OS app store, never CP
+  first-party products. Closed out the remaining live references left over
+  from the 2026-07-15 pivot: `resolver.Service` dropped `ServiceTalk`/
+  `ServiceMeet` (the `/api/resolve/backend` and `/backend/{service}` routes no
+  longer accept `talk`/`meet`); the storage-presign app whitelist
+  (`knownStorageApps`) dropped `"meet"` (Files and the OS gateway remain the
+  only two Class-P storage audiences); `orgadmin.UsageResponse` dropped the
+  dead `meet_participant_minutes`/`meet_recording_minutes` fields (never
+  populated by any production adapter); the superadmin per-account billing
+  view (`account_detail.js`) dropped the `meet_*` row/labels. Updated stale
+  doc-comments across `pkg/auth`, `pkg/cproutes`, `pkg/customdomain`,
+  `pkg/servingpool`, and test literals that still named Talk/Meet as if they
+  were live app backends. No behavior change beyond narrowing accepted
+  audiences/services (fail-closed, not fail-open).
+
 ### Added
 
 - **Remaining operational route groups wired into the self-host binary**

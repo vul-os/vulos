@@ -911,8 +911,8 @@ type Introspection struct {
 // IntrospectSession validates a raw session token and reports whether it is
 // currently usable, returning the owning account and expiry. This is the CP
 // half of the SSO design: the CP is the identity provider in cloud, and a
-// service (Talk/Office) that holds the CP shared secret can introspect a user's
-// session without holding any signing power.
+// service (e.g. Office) that holds the CP shared secret can introspect a
+// user's session without holding any signing power.
 //
 // FAIL-CLOSED, NO ORACLE: any invalid/expired/revoked/partial/suspended/unknown
 // session resolves to {Valid:false} with empty fields and a nil error — the
@@ -940,7 +940,7 @@ func (s *Store) IntrospectSessionForAudience(ctx context.Context, token, expecte
 	}
 
 	// SECURITY-C1: app-identity tokens introspect too. The reverse proxy hands
-	// Office/Talk one of these in place of the user's session, and introspection
+	// Office one of these in place of the user's session, and introspection
 	// is exactly how they learn who the request is for — so resolving it here is
 	// what lets those apps keep working while holding a credential that is
 	// useless against the session-gated CP surface (see RequireSession).
@@ -991,7 +991,7 @@ func (s *Store) IntrospectSessionForAudience(ctx context.Context, token, expecte
 	//
 	// MANDATORY-PASSWORD gate: also reject a session whose account still holds the
 	// LockedPasswordHash sentinel (a social sign-up that has not set a password).
-	// This is the apps' session→user path (Office/Talk POST /api/session/
+	// This is the apps' session→user path (Office POST /api/session/
 	// introspect); a password-less account must be unusable there too, matching
 	// LookupSession's fail-closed verdict. password_hash rides the same query.
 	var suspended int
@@ -1617,8 +1617,8 @@ func (s *Store) requireSession(ctx context.Context, w http.ResponseWriter, r *ht
 	// (minted by the reverse proxy for a lower-trust app backend, see
 	// cmd/server/wire_apptoken.go) is not a session and can never act as one —
 	// no matter that it arrives in the vc_session cookie. This is what stops a
-	// compromised Office/Talk/Meet/Board backend from replaying what it was
-	// given against the session-gated CP surface.
+	// compromised Office/Board backend from replaying what it was given
+	// against the session-gated CP surface.
 	if apptoken.Looks(token) {
 		http.Error(w, `{"error":"app_token_is_not_a_session"}`, http.StatusForbidden)
 		return nil

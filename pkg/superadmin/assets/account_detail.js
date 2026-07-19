@@ -18,11 +18,10 @@
     llm_enabled: "LLM enabled", llm_budget_usd: "LLM budget USD (remaining)",
     relay_enabled: "Relay enabled", relay_bytes_budget: "Relay bytes (remaining)",
     gpu_enabled: "GPU enabled", gpu_session_cap: "GPU session cap",
-    meet_enabled: "Meet enabled", meet_minutes_budget: "Meet minutes (remaining)", meet_max_rooms: "Meet max rooms",
     compute_enabled: "Compute enabled", compute_box_cap: "Compute box cap", compute_storage_gb: "Compute storage GB",
     send_count: "Sends", storage_bytes: "Storage bytes", seats_count: "Seats",
     llm_tokens: "LLM tokens", llm_cost_usd_micros: "LLM cost (uUSD)",
-    meet_minutes: "Meet minutes", compute_minutes: "Compute minutes", compute_machine: "Compute machines",
+    compute_minutes: "Compute minutes", compute_machine: "Compute machines",
     relay_bytes: "Relay bytes", gpu_sessions: "GPU sessions"
   };
 
@@ -51,7 +50,7 @@
     .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(function (b) {
       tierEl.textContent = "Tier: " + (b.tier || "free") + "  ·  Suspended: " + (b.suspended ? "yes" : "no");
-      var order = ["mail", "office", "meet", "llm", "compute", "relay", "gpu"];
+      var order = ["mail", "office", "llm", "compute", "relay", "gpu"];
       order.forEach(function (p) {
         var row = (b.products && b.products[p]) || {};
         var ent = row.entitlement || {};

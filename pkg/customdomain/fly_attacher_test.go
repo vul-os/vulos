@@ -267,8 +267,8 @@ func TestFlyAttacherMockMode(t *testing.T) {
 // TestFrontDoorAppResolverUsesFlyAppName verifies the production appResolver
 // wiring targets the CP's OWN Fly app (FLY_APP_NAME, injected by Fly into
 // every machine) rather than any per-tenant serving-pool bundle node — a
-// mail/hub custom domain must attach to the CP's front door, not a VDI/Meet
-// dedicated placement. The tenantID argument is deliberately ignored: every
+// mail/hub custom domain must attach to the CP's front door, not a dedicated/
+// VDI compute placement. The tenantID argument is deliberately ignored: every
 // tenant's custom domain resolves to the same front-door app.
 func TestFrontDoorAppResolverUsesFlyAppName(t *testing.T) {
 	t.Setenv("FLY_APP_NAME", "vulos-cp-prod")

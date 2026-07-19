@@ -259,8 +259,8 @@ func attachDomain(t *testing.T, svc *Service, tenant, domain string, dns *fakeDN
 // CUSTOM-DOMAIN-LEAN-2-RECORD-01: a customer needs to attach only the two
 // RecommendedCustomDomainLabels (mail. and app.) under their own domain, and
 // each routes independently to the SAME tenant/bundle-node — no per-app
-// (office./meet./talk./board./files.) record is required, since those are all
-// embedded inside the Workspace hub served at app.<domain>.
+// (office./board./files.) record is required, since those are all embedded
+// inside the Workspace hub served at app.<domain>.
 func TestLean2RecordModel_MailAndAppBothRouteUnderOneTenant(t *testing.T) {
 	if got := RecommendedCustomDomainLabels; len(got) != 2 || got[0] != "mail" || got[1] != "app" {
 		t.Fatalf("RecommendedCustomDomainLabels = %v, want [mail app]", got)

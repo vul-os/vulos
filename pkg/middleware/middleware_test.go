@@ -413,7 +413,7 @@ func TestIsAllowedOrigin_SubdomainOfParent(t *testing.T) {
 	if !middleware.IsAllowedOrigin("https://mail.vulos.org", allowlist, "vulos.org") {
 		t.Error("expected subdomain of parent domain to be accepted")
 	}
-	if !middleware.IsAllowedOrigin("https://meet.vulos.org", allowlist, "vulos.org") {
+	if !middleware.IsAllowedOrigin("https://board.vulos.org", allowlist, "vulos.org") {
 		t.Error("expected another subdomain of parent domain to be accepted")
 	}
 }

@@ -111,7 +111,7 @@ var _ DomainAttacher = (*FlyAttacher)(nil)
 // FlyAttacher: every custom domain (mail.<domain>, app.<domain> — see
 // RecommendedCustomDomainLabels) is served by the CP's OWN front-door Fly app,
 // never a per-tenant serving-pool bundle node. servingpool.Scheduler exists for
-// a different job — VDI/Meet dedicated placement — and LookupNode legitimately
+// a different job — dedicated/VDI compute placement — and LookupNode legitimately
 // returns "" for the vast majority of tenants that never got a pooled node, so
 // wiring it here made every non-pooled tenant's Attach fail with "no Fly app id
 // for tenant". Fly injects FLY_APP_NAME automatically into every machine

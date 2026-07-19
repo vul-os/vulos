@@ -38,7 +38,7 @@ import (
 
 // MigrationEntry is one product in the migration manifest.
 type MigrationEntry struct {
-	// Product is the human-readable product name (e.g. "mail", "meet", "cp").
+	// Product is the human-readable product name (e.g. "mail", "office", "cp").
 	Product string `json:"product"`
 	// StatusURL is the full URL of the product's migration-status endpoint.
 	// The superadmin process must be able to reach it (internal network).

@@ -1,8 +1,11 @@
 // Package servingpool implements a generic bundle-node serving pool and
 // tenant-affinity scheduler (originally specced as CLOUD-POOL-01). It is LIVE
 // and WIRED today — but not for mail. Current callers: hosted-OS-instance
-// placement (internal/orgadmin's InstanceLister, the autoscaler) and Meet's
-// dedicated-node pinning (internal/meetalloc via servingpool.DedicatedManager).
+// placement (internal/orgadmin's InstanceLister, the autoscaler) and the
+// dormant dedicated-node/VDI compute-billing plane (servingpool.DedicatedManager
+// — see the "managed-compute billing" open founder decision; Talk and Meet,
+// which this package's dedicated-node pinning once served, were withdrawn as
+// products 2026-07-15).
 //
 // MAIL-TOPOLOGY-FENCE-01 (2026-07-11): CLOUD-POOL-01 was originally envisioned
 // as THE mail cloud topology — a fleet of bundle nodes serving many mail
@@ -12,7 +15,7 @@
 // central CP mail plane was removed, so nothing schedules a mail tenant through
 // this pool. This package itself is
 // NOT deprecated — only its mail-pooling INTENT is; keep using it for
-// compute/Meet placement. Revisit mail-pooling only if a single central-app
+// compute placement. Revisit mail-pooling only if a single central-app
 // fleet later needs load-based sharding beyond horizontal scaling behind the
 // reverse proxy.
 //

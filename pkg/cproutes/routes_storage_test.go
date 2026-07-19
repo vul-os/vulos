@@ -327,14 +327,14 @@ func TestStorageRoutes_PresignPut(t *testing.T) {
 // <accountID>/<appID>/ prefix succeeds.
 func TestStorageRoutes_PresignAppScoped_Allowed(t *testing.T) {
 	e := newStorageTestEnv(t)
-	uid, tok := sessionFor(t, e.authSt, "meet-app@example.com")
+	uid, tok := sessionFor(t, e.authSt, "os-app@example.com")
 	ownBucket := "vulos-" + strings.ToLower(boxULID(uid))
 
 	body := map[string]any{
 		"account_id":  uid,
 		"bucket":      ownBucket,
-		"key":         uid + "/meet/doc-1.bin",
-		"app_id":      "meet",
+		"key":         uid + "/os/doc-1.bin",
+		"app_id":      "os",
 		"ttl_seconds": 60,
 	}
 	w := e.do(t, http.MethodPost, "/api/storage/presign/put", body, tok)
@@ -357,9 +357,9 @@ func TestStorageRoutes_PresignAppScoped_WrongAppDenied(t *testing.T) {
 		key  string
 	}{
 		{"different app's prefix", uid + "/files/secret.bin"},
-		{"bare prefix, no object", uid + "/meet/"},
-		{"path traversal escape", uid + "/meet/../files/secret.bin"},
-		{"missing account segment", "meet/doc-1.bin"},
+		{"bare prefix, no object", uid + "/os/"},
+		{"path traversal escape", uid + "/os/../files/secret.bin"},
+		{"missing account segment", "os/doc-1.bin"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -367,7 +367,7 @@ func TestStorageRoutes_PresignAppScoped_WrongAppDenied(t *testing.T) {
 				"account_id":  uid,
 				"bucket":      ownBucket,
 				"key":         tc.key,
-				"app_id":      "meet",
+				"app_id":      "os",
 				"ttl_seconds": 60,
 			}
 			w := e.do(t, http.MethodPost, "/api/storage/presign/put", body, tok)
@@ -428,7 +428,7 @@ func TestStorageRoutes_PresignUnscoped_StillWorks(t *testing.T) {
 func TestStorageRoutes_Delete_Unauthenticated(t *testing.T) {
 	e := newStorageTestEnv(t)
 	w := e.do(t, http.MethodPost, "/api/storage/delete", map[string]any{
-		"account_id": "acct1", "bucket": "vulos-x", "app_id": "meet", "key": "doc.bin",
+		"account_id": "acct1", "bucket": "vulos-x", "app_id": "os", "key": "doc.bin",
 	}, "")
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", w.Code)
@@ -440,26 +440,26 @@ func TestStorageRoutes_Delete_Unauthenticated(t *testing.T) {
 // credential) and returns 204.
 func TestStorageRoutes_Delete_HappyPath(t *testing.T) {
 	e := newStorageTestEnv(t)
-	uid, tok := sessionFor(t, e.authSt, "delete-meet@example.com")
+	uid, tok := sessionFor(t, e.authSt, "delete-os@example.com")
 	ownBucket := "vulos-" + strings.ToLower(boxULID(uid))
 
 	// Seed the object directly in the provider.
-	if err := e.mem.PutObject(context.Background(), ownBucket, uid+"/meet/doc-1.bin", strings.NewReader("hello"), 5); err != nil {
+	if err := e.mem.PutObject(context.Background(), ownBucket, uid+"/os/doc-1.bin", strings.NewReader("hello"), 5); err != nil {
 		t.Fatalf("seed object: %v", err)
 	}
 
 	w := e.do(t, http.MethodPost, "/api/storage/delete", map[string]any{
 		"account_id": uid,
 		"bucket":     ownBucket,
-		"app_id":     "meet",
-		"key":        "doc-1.bin", // relative to <accountID>/meet/
+		"app_id":     "os",
+		"key":        "doc-1.bin", // relative to <accountID>/os/
 	}, tok)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// The object must actually be gone.
-	if _, err := e.mem.GetObject(context.Background(), ownBucket, uid+"/meet/doc-1.bin"); err == nil {
+	if _, err := e.mem.GetObject(context.Background(), ownBucket, uid+"/os/doc-1.bin"); err == nil {
 		t.Fatal("expected object to be deleted, but GetObject succeeded")
 	}
 }
@@ -510,7 +510,7 @@ func TestStorageRoutes_Delete_ForeignBucketDenied(t *testing.T) {
 	w := e.do(t, http.MethodPost, "/api/storage/delete", map[string]any{
 		"account_id": uid,
 		"bucket":     victimBucket,
-		"app_id":     "meet",
+		"app_id":     "os",
 		"key":        "doc-1.bin",
 	}, tok)
 	if w.Code != http.StatusForbidden {
@@ -526,7 +526,7 @@ func TestStorageRoutes_Delete_TraversalRejected(t *testing.T) {
 	uid, tok := sessionFor(t, e.authSt, "delete-traversal@example.com")
 	ownBucket := "vulos-" + strings.ToLower(boxULID(uid))
 
-	// A secret belonging to a different app, adjacent to meet/'s prefix.
+	// A secret belonging to a different app, adjacent to os/'s prefix.
 	victimKey := uid + "/files/secret.bin"
 	if err := e.mem.PutObject(context.Background(), ownBucket, victimKey, strings.NewReader("shh"), 3); err != nil {
 		t.Fatalf("seed victim object: %v", err)
@@ -544,7 +544,7 @@ func TestStorageRoutes_Delete_TraversalRejected(t *testing.T) {
 			w := e.do(t, http.MethodPost, "/api/storage/delete", map[string]any{
 				"account_id": uid,
 				"bucket":     ownBucket,
-				"app_id":     "meet",
+				"app_id":     "os",
 				"key":        tc.key,
 			}, tok)
 			if tc.key == "" {
@@ -573,7 +573,7 @@ func TestStorageRoutes_Delete_NotFoundMapsTo404(t *testing.T) {
 	w := e.do(t, http.MethodPost, "/api/storage/delete", map[string]any{
 		"account_id": uid,
 		"bucket":     ownBucket,
-		"app_id":     "meet",
+		"app_id":     "os",
 		"key":        "never-existed.bin",
 	}, tok)
 	if w.Code != http.StatusNotFound {

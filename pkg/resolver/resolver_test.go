@@ -131,7 +131,7 @@ func TestResolveBackend_AllServices(t *testing.T) {
 	st := r.Storage.(*MemStorageSource)
 	st.Set("acct-all", false)
 
-	services := []Service{ServiceMail, ServiceOffice, ServiceTalk, ServiceCalendar, ServiceMeet}
+	services := []Service{ServiceMail, ServiceOffice, ServiceCalendar}
 	for _, svc := range services {
 		t.Run(string(svc), func(t *testing.T) {
 			target, err := r.ResolveBackend(context.Background(), "acct-all", svc)
@@ -201,7 +201,7 @@ func TestResolveBackend_SelfHostAllServices(t *testing.T) {
 	st.Set("acct-sh-all", true)
 	en.Set("acct-sh-all", "https://home.example.net:8443")
 
-	for _, svc := range []Service{ServiceMail, ServiceOffice, ServiceCalendar, ServiceMeet, ServiceTalk} {
+	for _, svc := range []Service{ServiceMail, ServiceOffice, ServiceCalendar} {
 		t.Run(string(svc), func(t *testing.T) {
 			target, err := r.ResolveBackend(context.Background(), "acct-sh-all", svc)
 			if err != nil {

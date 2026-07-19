@@ -1,6 +1,7 @@
 // Package resolver resolves the backend target for a logged-in user on
-// mail.vulos.org / office.vulos.org / talk.vulos.org / calendar.vulos.org /
-// meet.vulos.org.
+// mail.vulos.org / office.vulos.org / calendar.vulos.org. (Talk and Meet are
+// no longer Vulos products — comms are third-party: Matrix/Element for chat,
+// Element Call/Jitsi for video.)
 //
 // Decision (per account):
 //   - hosted  → our the managed store-backed JMAP endpoint at the cloud service.
@@ -69,18 +70,16 @@ type Service string
 const (
 	ServiceMail     Service = "mail"
 	ServiceOffice   Service = "office"
-	ServiceTalk     Service = "talk"
 	ServiceCalendar Service = "calendar"
-	ServiceMeet     Service = "meet"
 )
 
-// validServices is the set of accepted Service values.
+// validServices is the set of accepted Service values. Talk and Meet were
+// withdrawn (2026-07-15): comms are third-party now, not a Vulos-hosted
+// service.
 var validServices = map[Service]bool{
 	ServiceMail:     true,
 	ServiceOffice:   true,
-	ServiceTalk:     true,
 	ServiceCalendar: true,
-	ServiceMeet:     true,
 }
 
 // BackendKind identifies how the cloud should route API traffic.

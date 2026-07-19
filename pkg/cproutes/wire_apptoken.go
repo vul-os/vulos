@@ -1,16 +1,18 @@
 // wire_apptoken.go — SECURITY-C1: stop handing the user's CP session to the
 // app backends we reverse-proxy to.
 //
-// THE HOLE. VULOS_COOKIE_DOMAIN scopes `vc_session` to the apex (vulos.org), so
-// the browser attaches it to EVERY app subdomain — office./meet./talk./board./
-// files./mail.${VULOS_DOMAIN}. Both reverse proxies (wire_appproxy.go,
-// wire_mailproxy.go) forwarded the request verbatim, so each app backend
-// received a live, 30-day, full-privilege CP session credential. Office and Talk
-// even depend on it today: they introspect it to learn who the user is, and
-// Office replays it to the CP storage gateway to presign objects. Any one of
-// those backends — a separately deployed, lower-trust, partly open-source
-// product — could therefore act as the user across all ~217 session-gated CP
-// routes (billing, account, security settings, storage config).
+// THE HOLE (historical). VULOS_COOKIE_DOMAIN scopes `vc_session` to the apex
+// (vulos.org), so the browser attaches it to EVERY app subdomain — office./
+// board./files.${VULOS_DOMAIN}. The reverse proxies forwarded the request
+// verbatim, so each app backend received a live, 30-day, full-privilege CP
+// session credential. Office even depended on it: it introspected it to learn
+// who the user is, and replayed it to the CP storage gateway to presign
+// objects. Any one of those backends — a separately deployed, lower-trust,
+// partly open-source product — could therefore act as the user across all
+// ~217 session-gated CP routes (billing, account, security settings, storage
+// config). (Talk and Meet were withdrawn as products entirely, 2026-07-15:
+// comms are third-party now, so they never held this credential in the first
+// place.)
 //
 // THE FIX. The proxy now strips `vc_session` and stamps a CP-minted
 // app-identity token in its place (internal/apptoken): audience-bound to exactly
@@ -22,16 +24,16 @@
 // BACK-COMPAT (no app-repo change required). The minted token is stamped in TWO
 // places: the `X-Vulos-App-Auth` header (the clean, forward-looking contract an
 // app can verify or introspect), AND as the value of the forwarded `vc_session`
-// cookie. Office/Talk keep working untouched, because the only two things they
-// ever do with that cookie are (a) POST it to /api/session/introspect — which
+// cookie. Office keeps working untouched, because the only two things it ever
+// does with that cookie are (a) POST it to /api/session/introspect — which
 // now resolves app tokens (auth.IntrospectSession) — and (b) forward it to
 // /api/storage/presign|delete — which now accepts app tokens and binds the
-// object prefix to the token's audience (routes_storage.go). Once the apps move
+// object prefix to the token's audience (routes_storage.go). Once the app moves
 // to reading the header, the cookie stamp can be dropped.
 //
 // KEYING. The signing key is DERIVED from CP_SHARED_SECRET (domain-separated by
 // appTokenKeyLabel) rather than being a new deploy secret: every deployment
-// where Office/Talk work already sets CP_SHARED_SECRET, because introspection
+// where Office works already sets CP_SHARED_SECRET, because introspection
 // fail-closes without it. Rotation is honoured — a token minted under the
 // previous shared secret still verifies while CP_SHARED_SECRET_PREVIOUS is set.
 // CP_APP_TOKEN_SECRET overrides the derivation if an operator wants an
@@ -146,8 +148,8 @@ func mintAppToken(ctx context.Context, userID, aud string) (string, bool) {
 // The cost is revocation lag: for up to appIdentityCacheTTL after a logout we
 // may still mint an app token for the dead session. That is bounded and
 // acceptable — the tokens themselves live ~2 minutes, and CP logout already does
-// not terminate an app's own downstream session (Office/Talk mint their own
-// product session after introspecting). Keep the TTL short.
+// not terminate an app's own downstream session (Office mints its own product
+// session after introspecting). Keep the TTL short.
 const appIdentityCacheTTL = 15 * time.Second
 
 // appIdentityCacheMax caps the cache so a flood of distinct cookies cannot grow
@@ -215,8 +217,8 @@ func resolveAppIdentity(ctx context.Context, sessionToken string) (string, bool)
 //     the forwarded vc_session cookie.
 //
 // Authorization is deliberately left ALONE: `vk_` API keys are the app's own
-// credential, deliberately presented to it by the user, and Talk's product JWT
-// rides there too. Stripping it would break both without closing this hole.
+// credential, deliberately presented to it by the user. Stripping it would
+// break that flow without closing this hole.
 //
 // aud is the app slug the token is minted for ("office", "mail", …).
 func stampAppIdentity(r *http.Request, aud string) {

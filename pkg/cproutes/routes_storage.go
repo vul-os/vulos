@@ -726,8 +726,6 @@ func (h *storageHandlers) hostingKindFor(ctx context.Context, accountID string) 
 // shaped prefix through. The set is:
 //
 //   - "files" — Cloud Files (the Drive), served directly by the CP to the cockpit.
-//   - "meet"  — the one Class-P app that keeps a cloud-central deployment
-//     (its central POP + Meet CP), which presigns its own recording/asset objects.
 //   - "os"    — the OS gateway (the user's box), requesting on behalf of a
 //     locally-installed app in the managed presign-broker path.
 //
@@ -735,10 +733,11 @@ func (h *storageHandlers) hostingKindFor(ctx context.Context, accountID string) 
 // retired their DEPLOY_MODE=cloud path, so no cloud-central Office/Talk/Board
 // backend exists to presign here anymore. Self-hosted/OS-app instances presign
 // against their OWN box (the OS gateway, "os"), never against the CP with an
-// office/talk/board audience. An app_id the CP no longer recognises is refused
-// fail-closed (400 "unknown app_id").
+// office/talk/board audience. Talk and Meet were withdrawn as products
+// entirely (2026-07-15: comms are third-party) so neither ever presigns here.
+// An app_id the CP no longer recognises is refused fail-closed (400 "unknown
+// app_id").
 var knownStorageApps = map[string]bool{
-	"meet":  true,
 	"files": true,
 	"os":    true,
 }

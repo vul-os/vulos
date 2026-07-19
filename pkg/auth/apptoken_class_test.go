@@ -2,8 +2,8 @@ package auth
 
 // apptoken_class_test.go — SECURITY-C1: the credential-class boundary.
 //
-// The reverse proxy hands a lower-trust app backend (Office/Talk/Meet/Board/
-// Mail) an app-identity token INSTEAD of the user's CP session. The whole point
+// The reverse proxy hands a lower-trust app backend (Office/Board/Files) an
+// app-identity token INSTEAD of the user's CP session. The whole point
 // of that swap is that the token it receives is useless as a session: whatever
 // an app does with what we gave it, it must never be able to act as the user
 // against the session-gated CP surface.
@@ -47,7 +47,7 @@ func wireTestIntrospector(st *Store) {
 }
 
 // THE headline invariant: an app token presented in the session cookie is NOT a
-// session, on any route. This is what stops a compromised Office/Talk backend
+// session, on any route. This is what stops a compromised Office/Board backend
 // from replaying what the proxy gave it against the ~217 session-gated routes.
 func TestRequireSession_RejectsAppToken(t *testing.T) {
 	st := openTestStore(t)
@@ -114,7 +114,7 @@ func TestRequireSession_StillAcceptsRealSession(t *testing.T) {
 }
 
 // Introspection is the OTHER half of the swap: it must resolve app tokens, or
-// Office/Talk (which introspect the cookie to learn who the user is) break.
+// Office (which introspects the cookie to learn who the user is) breaks.
 func TestIntrospectSession_ResolvesAppToken(t *testing.T) {
 	st := openTestStore(t)
 	ctx := context.Background()

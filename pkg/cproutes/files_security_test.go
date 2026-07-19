@@ -4,7 +4,8 @@
 // single app's prefix, so its gates matter more than any other storage route's:
 //
 //   - only a real user SESSION may drive it (an app-identity token — the
-//     credential a proxied Office/Talk/Meet/Board backend holds — must not);
+//     credential a proxied app backend such as Office or Board holds — must
+//     not);
 //   - identity comes from the session and nothing else (no X-User-ID header);
 //   - a node belongs to exactly one owner, and nobody else can list, read, move,
 //     delete or version it, nor have a grant minted for it;
@@ -221,7 +222,7 @@ func TestFilesSecurity_AppTokenCannotPresignTheDrivePrefix(t *testing.T) {
 	e, uid, _ := filesAppTokenEnv(t)
 	bucket := "vulos-" + strings.ToLower(boxULID(uid))
 
-	for _, aud := range []string{"files", "meet"} {
+	for _, aud := range []string{"files", "os"} {
 		tok := appTokenFor(t, uid, aud)
 		for _, path := range []string{"/api/storage/presign/get", "/api/storage/presign/put"} {
 			w := e.do(t, http.MethodPost, path, map[string]any{

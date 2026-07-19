@@ -153,8 +153,8 @@ func TestProductStatusStore_MemAndSQLite(t *testing.T) {
 			if err := st.SetProductStatus(ctx, "org-1", "mail", "off"); err != nil {
 				t.Fatalf("set mail: %v", err)
 			}
-			if err := st.SetProductStatus(ctx, "org-1", "meet", "configured"); err != nil {
-				t.Fatalf("set meet: %v", err)
+			if err := st.SetProductStatus(ctx, "org-1", "office", "configured"); err != nil {
+				t.Fatalf("set office: %v", err)
 			}
 			// Update mail (upsert path).
 			if err := st.SetProductStatus(ctx, "org-1", "mail", "available"); err != nil {
@@ -164,8 +164,8 @@ func TestProductStatusStore_MemAndSQLite(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read: %v", err)
 			}
-			if got["mail"] != "available" || got["meet"] != "configured" {
-				t.Errorf("read = %v, want mail=available meet=configured", got)
+			if got["mail"] != "available" || got["office"] != "configured" {
+				t.Errorf("read = %v, want mail=available office=configured", got)
 			}
 			// Tenant scoping.
 			other, err := st.ProductStatuses(ctx, "org-2")

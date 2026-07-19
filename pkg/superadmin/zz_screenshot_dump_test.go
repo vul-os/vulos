@@ -168,7 +168,7 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 		}
 		return []superadmin.ProductUsageTrend{
 			mk("mail", "sends", 41_000),
-			mk("meet", "min", 2_600),
+			mk("board", "edits", 2_600),
 			mk("relay", "GiB", 1_380),
 			mk("office", "edits", 8_900),
 		}
@@ -186,7 +186,7 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 		func(_ context.Context, orgID string) *superadmin.OrgAdminDetail {
 			return &superadmin.OrgAdminDetail{
 				OrgAdminRow:  superadmin.OrgAdminRow{ID: orgID, Slug: "acme-corp", Name: "Acme Corp", OwnerEmail: "linus@acme.test", MemberCount: 42, SeatCount: 40, Tier: "pro", CreatedAt: "2026-02-11"},
-				UsageSummary: "2.1M mail sends, 640 GiB storage, 18.4k meet-min in the current period.",
+				UsageSummary: "2.1M mail sends, 640 GiB storage, 3.2k board edits in the current period.",
 				Members: []superadmin.OrgMemberRow{
 					{AccountID: "acct-l", Email: "linus@acme.test", Role: "owner", JoinedAt: "2026-02-11"},
 					{AccountID: "acct-m", Email: "margaret@acme.test", Role: "admin", JoinedAt: "2026-02-12"},
@@ -222,7 +222,7 @@ func TestScreenshotDumpAdminConsole(t *testing.T) {
 	pages.SetMigrationManifest([]superadmin.MigrationEntry{
 		{Product: "control-plane", StatusURL: migSrv.URL + "/cp/migrate/status"},
 		{Product: "mail", StatusURL: migSrv.URL + "/mail/migrate/status"},
-		{Product: "meet", StatusURL: migSrv.URL + "/meet/migrate/status/pending"},
+		{Product: "board", StatusURL: migSrv.URL + "/board/migrate/status/pending"},
 		{Product: "relay", StatusURL: migSrv.URL + "/relay/migrate/status"},
 	})
 

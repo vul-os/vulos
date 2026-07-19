@@ -24,7 +24,7 @@
 // mail.<domain> (the Mail exception's cloud-central webmail) and
 // app.<domain> (the Workspace hub, which embeds every other Class-P app via
 // iframe+SSO — see WORKSPACE-INTEGRATION.md) — never one record per
-// office./meet./talk./board./files. subdomain. This constant is consumed by
+// office./board./files. subdomain. This constant is consumed by
 // the frontend custom-domain settings UI; the backend routing already
 // supports any two (or more) domain rows per tenant with zero code changes.
 package customdomain
@@ -38,9 +38,8 @@ import (
 // needs to point at Vulos to run the whole suite on their own domain — the
 // lean 2-record model. mail.<domain> serves the Mail-exception webmail client
 // (cloud-central always); app.<domain> serves the Workspace hub, which
-// embeds every other Class-P app (office/talk/meet/board/files) via
-// iframe+SSO, so those apps need no DNS record of their own on a custom
-// domain.
+// embeds every other Class-P app (office/board/files) via iframe+SSO, so
+// those apps need no DNS record of their own on a custom domain.
 var RecommendedCustomDomainLabels = []string{"mail", "app"}
 
 // Verification states.

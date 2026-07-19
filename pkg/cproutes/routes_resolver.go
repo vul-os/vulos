@@ -3,7 +3,7 @@
 // Routes registered:
 //
 //	GET  /api/resolve/backend            — session-gated; returns BackendTarget
-//	     ?service=mail|office|talk|calendar|meet
+//	     ?service=mail|office|calendar
 //
 //	ANY  /backend/{service}/{path...}    — reverse-proxy; the web client
 //	     (webmail-vulos / office bundles) hits this path. The cloud forwards:

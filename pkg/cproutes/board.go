@@ -111,9 +111,7 @@ const maxBoardRoomLen = 320
 // The OSS board sync server (board-ui/server-go) binds a minted token to a room
 // by FULL-STRING equality — its verifier requires claims.room to equal the room
 // taken verbatim from the WebSocket URL path (/ws/<room>); it never splits the
-// room on ":" into a "<tenant>:<room>" pair. So — unlike vulos-meet's LiveKit
-// rooms, where meetalloc must reject ":" to protect the "<tenant>:<room>" prefix
-// invariant (see internal/meetalloc/tenant.go) — a ":" here has no prefix
+// room on ":" into a "<tenant>:<room>" pair. So a ":" here has no prefix
 // meaning and enables no prefix-confusion. That lets us accept the
 // "<email>:default" per-account default room Vulos Workspace mints
 // (BoardSurface.jsx), whose id is the account email and therefore legitimately

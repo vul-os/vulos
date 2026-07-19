@@ -290,7 +290,7 @@ func TestEntitlementFilter_NarrowsProducts(t *testing.T) {
 	ctx := context.Background()
 
 	rawKey, _, err := st.IssueKey(ctx, "acc-narrow", "k",
-		[]string{"meet.join"}, []string{"office", "meet"})
+		[]string{"relay.send"}, []string{"office", "relay"})
 	if err != nil {
 		t.Fatalf("IssueKey: %v", err)
 	}
@@ -304,8 +304,8 @@ func TestEntitlementFilter_NarrowsProducts(t *testing.T) {
 		t.Fatalf("no filter wired: want 2 products verbatim, got %v", res.Products)
 	}
 
-	// Wire a filter that denies "meet" for this account (e.g. free tier with
-	// no TURN quota) but keeps "office".
+	// Wire a filter that denies "relay" for this account (e.g. free tier with
+	// no relay quota) but keeps "office".
 	st.SetEntitlementFilter(stubEntitlementFilter{
 		allowed: map[string]map[string]bool{
 			"acc-narrow": {"office": true},
@@ -322,7 +322,7 @@ func TestEntitlementFilter_NarrowsProducts(t *testing.T) {
 		t.Errorf("filtered products = %v, want [office]", res2.Products)
 	}
 	// Scopes are untouched by the product filter.
-	if len(res2.Scopes) != 1 || res2.Scopes[0] != "meet.join" {
+	if len(res2.Scopes) != 1 || res2.Scopes[0] != "relay.send" {
 		t.Errorf("scopes must be untouched by the entitlement filter, got %v", res2.Scopes)
 	}
 }
@@ -331,7 +331,7 @@ func TestEntitlementFilter_FailsOpenOnError(t *testing.T) {
 	st := openTestStore(t)
 	ctx := context.Background()
 
-	rawKey, _, err := st.IssueKey(ctx, "acc-failopen", "k", nil, []string{"office", "meet"})
+	rawKey, _, err := st.IssueKey(ctx, "acc-failopen", "k", nil, []string{"office", "relay"})
 	if err != nil {
 		t.Fatalf("IssueKey: %v", err)
 	}

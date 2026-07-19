@@ -143,15 +143,17 @@ type GPUHours struct {
 }
 
 // UsageResponse is the GET /api/org/usage body. JSX reads: active_users,
-// active_users_cap, gpu_hours{…}, meet_participant_minutes,
-// meet_recording_minutes, storage_gb.
+// active_users_cap, gpu_hours{…}, storage_gb.
+//
+// (meet_participant_minutes / meet_recording_minutes were removed 2026-07-19:
+// Talk and Meet are no longer Vulos products — comms are third-party — and no
+// adapter ever populated these fields in production; billing is Relay +
+// backup storage only.)
 type UsageResponse struct {
-	ActiveUsers        int      `json:"active_users"`
-	ActiveUsersCap     *int     `json:"active_users_cap,omitempty"` // nil → JSX shows "no cap"
-	GPUHours           GPUHours `json:"gpu_hours"`
-	MeetParticipantMin int64    `json:"meet_participant_minutes"`
-	MeetRecordingMin   int64    `json:"meet_recording_minutes"`
-	StorageGB          float64  `json:"storage_gb"`
+	ActiveUsers    int      `json:"active_users"`
+	ActiveUsersCap *int     `json:"active_users_cap,omitempty"` // nil → JSX shows "no cap"
+	GPUHours       GPUHours `json:"gpu_hours"`
+	StorageGB      float64  `json:"storage_gb"`
 }
 
 // ── Quotas ───────────────────────────────────────────────────────────────────

@@ -57,7 +57,7 @@ type InstanceLister interface {
 }
 
 // UsageReader backs the Usage tab. The adapter pulls active-users (billing/
-// activeuser), gpu-hours (gpusku), meet minutes (meetalloc) and storage.
+// activeuser), gpu-hours (gpusku) and storage.
 type UsageReader interface {
 	Usage(ctx context.Context, tenantID string) (UsageResponse, error)
 }

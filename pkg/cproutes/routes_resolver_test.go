@@ -438,7 +438,7 @@ func TestParseFabricPath(t *testing.T) {
 		{"/backend/mail", "mail", ""},
 		{"/backend/mail/", "mail", ""},
 		{"/backend/office/docs/1", "office", "docs/1"},
-		{"/backend/talk/rooms/abc/messages", "talk", "rooms/abc/messages"},
+		{"/backend/calendar/events/abc/rsvp", "calendar", "events/abc/rsvp"},
 		{"/backend/", "", ""},
 	}
 	for _, tc := range cases {
