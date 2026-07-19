@@ -121,17 +121,12 @@ managed billing).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VULOS_RELAY_BASE_URL` | _(empty; feature disabled)_ | Vulos relay endpoint used for GPU streaming registration, Meet SFU registration, and push fan-out |
+| `VULOS_RELAY_BASE_URL` | _(empty; feature disabled)_ | Vulos relay endpoint used for GPU streaming registration, peering federation/resolve, and push fan-out |
 | `VULOS_RELAY_NAME` | _(empty)_ | This box's advertised name on the relay |
 | `VULOS_RELAY_TOKEN` | _(empty)_ | Auth token presented to the relay |
 | `VULOS_GPU_HOST` | disabled | Set truthy (`1`/`true`/`yes`) to enable direct-IP GPU streaming host mode |
 | `VULOS_GPU_ADVERTISE_HOST` | _(empty)_ | Hostname the GPU host advertises to the relay |
 | `VULOS_GPU_VENDOR` | auto-detected | GPU vendor hint |
-| `VULOS_SFU_HOST` | disabled | Set truthy to enable self-host/BYO SFU (Meet) registration |
-| `VULOS_SFU_ENDPOINT` | _(empty; feature disabled without it)_ | Public SFU endpoint advertised to the relay |
-| `VULOS_SFU_WORKER_BINARY` | _(empty; uses the in-process Pion SFU)_ | Path to an external SFU worker binary to supervise instead |
-| `VULOS_MEET_TRANSCRIBE_ENABLE` | off | Set to `1` to enable Meet call transcription |
-| `VULOS_WHISPER_URL` / `VULOS_WHISPER_KEY` | _(empty)_ | Whisper transcription provider endpoint/key |
 | `VULOS_STREAM_STRICT_INPUT_GATE` | unset (see note) | Forces fail-closed gating of remote input injection on streamed app sessions (AUTH-13). If explicitly set, `1` = strict/fail-closed, anything else = explicitly non-strict. **If left entirely unset, the server now defaults to strict in `--env=prod`** and non-strict in `local`/`dev` — set explicitly to override either way. |
 | `VULOS_LAN_ENABLE` | off | Enables the LAN-reachability HTTPS listener |
 | `VULOS_LAN_CERT` / `VULOS_LAN_KEY` | _(empty)_ | TLS cert/key paths for the LAN listener |

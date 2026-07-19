@@ -73,7 +73,7 @@ func TestPreflight_InsecureIsAllowedOutsideProd(t *testing.T) {
 
 // TestPreflight_NoAnchorInProdIsDegradedNotFatal — the state a box ships in
 // before the founder runs the key ceremony: verification is ON and refuses
-// everything, so installs fail closed, but mail/meet keep serving.
+// everything, so new installs fail closed, but already-installed apps keep serving.
 func TestPreflight_NoAnchorInProdIsDegradedNotFatal(t *testing.T) {
 	t.Setenv("VULOS_ENV", "prod")
 	t.Setenv(envRegistryInsecure, "")

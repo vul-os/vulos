@@ -23,6 +23,10 @@ import (
 //
 // Apps with type:"web" already classify via AppType without needing explicit
 // flags here, but we include the Web flag for belt-and-suspenders clarity.
+// NOTE: no "meet" entry — first-party Vulos Meet is retired; video calling is
+// third-party (Jitsi Meet / Element Call), installed from the App Store and
+// classified through the ordinary registry.json type:"web"/"desktop" path
+// below, not a built-in AppID.
 var registryLaneFlags = map[string]openrouter.Intent{
 	// ── Web-native built-in apps ────────────────────────────────────────────
 	"office":    {AppID: "office", AppType: "web", Web: true},
@@ -33,7 +37,6 @@ var registryLaneFlags = map[string]openrouter.Intent{
 	"browser":   {AppID: "browser", AppType: "web", Web: true}, // Smart Browser (client-side)
 	"spaces":    {AppID: "spaces", AppType: "web", Web: true},
 	"calendar":  {AppID: "calendar", AppType: "web", Web: true},
-	"meet":      {AppID: "meet", AppType: "web", Web: true},
 	"dashboard": {AppID: "dashboard", AppType: "web", Web: true},
 	"messages":  {AppID: "messages", AppType: "web", Web: true},
 

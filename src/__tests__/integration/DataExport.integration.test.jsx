@@ -54,7 +54,7 @@ describe('DataExportPanel — account portability', () => {
     expect(screen.getByText('Settings')).toBeInTheDocument()
     // Honest boundary about per-app data.
     expect(screen.getByText(/Not in this archive/i)).toBeInTheDocument()
-    expect(screen.getByText(/Talk \/ Meet call history/i)).toBeInTheDocument()
+    expect(screen.getByText(/Chat\/video call history/i)).toBeInTheDocument()
     // No-secret promise stated in the UI too.
     expect(screen.getByText(/API keys, PINs and passwords are never included/i)).toBeInTheDocument()
   })

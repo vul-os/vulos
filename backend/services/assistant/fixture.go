@@ -58,7 +58,7 @@ func NewFixtureSource() *FixtureSource {
 				Summary:   "Pilot expansion kickoff",
 				Start:     base.AddDate(0, 0, 2).Format(time.RFC3339),
 				End:       base.AddDate(0, 0, 2).Add(time.Hour).Format(time.RFC3339),
-				Location:  "Vulos Meet",
+				Location:  "Jitsi Meet",
 				Organizer: "marcus@northwind.co",
 				UID:       "evt-kickoff-107@northwind.co",
 				RSVP:      "needs-action",
@@ -210,7 +210,7 @@ func (f *FixtureSource) ListEvents(_ context.Context, _ Auth, fromISO, toISO str
 		return day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute).Format(time.RFC3339)
 	}
 	seeded := []CalendarEvent{
-		{ID: "demo-standup", Title: "Team standup", Start: at(9, 30), End: at(9, 45), Location: "Meet"},
+		{ID: "demo-standup", Title: "Team standup", Start: at(9, 30), End: at(9, 45), Location: "Jitsi Meet"},
 		{ID: "demo-1on1", Title: "1:1 with Priya", Start: at(14, 0), End: at(14, 30), Location: "Calendly"},
 		{ID: "demo-focus", Title: "Focus: contract review", Start: at(16, 0), End: at(17, 0)},
 		{ID: "demo-dinner", Title: "Dinner at Mom's", Start: day.AddDate(0, 0, 2).Add(18 * time.Hour).Format(time.RFC3339), AllDay: false},

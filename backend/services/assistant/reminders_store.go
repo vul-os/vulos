@@ -16,7 +16,7 @@ package assistant
 // by TestRemindersStorePerUserIsolation). The per-user count is BOUNDED
 // (maxRemindersPerUser) so a flood cannot grow the table without limit.
 //
-// SCHEDULER — the OS mail-snooze / Talk-scheduled pattern: a poll loop wakes on
+// SCHEDULER — the OS mail-snooze / scheduled-notification pattern: a poll loop wakes on
 // a short interval, asks the store for reminders whose remind_at has passed and
 // are not yet done, and FIRES a notification for each (reusing the OS
 // notifications system through the Notifier seam) then marks it done so it fires

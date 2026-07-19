@@ -52,6 +52,6 @@ trivially diffable in code review.
 ## Pointers
 
 - `vulos/public/sw.js` — OS shell SW.
-- `vulos-office/public/sw.js` — office (Spaces / Office / Calendar / Talk) SW.
+- `vulos-office/public/sw.js` — Ofisi (Docs / Sheets / Slides / PDF / Whiteboard) SW. (Spaces, Calendar, and Talk were extracted/retired and no longer live in this shell — Calendar is now a standalone OS builtin, and Talk is a retired product; see README.md.)
 - `vulos-mail/webmail-vulos/public/sw.js` — webmail SW (built from
   `src/sw.js`, which defines three caches).

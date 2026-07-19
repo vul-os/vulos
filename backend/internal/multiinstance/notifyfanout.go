@@ -15,9 +15,9 @@
 // Default: https://relay.vulos.org
 //
 // NOTE (seam P2-4): the base-URL env var is VULOS_RELAY_BASE_URL — the SAME
-// var the rest of the OS reachability layer (Meet host resolve, relay client)
-// reads. It was previously VULOS_RELAY_URL here, which nothing else set, so
-// the fanout always fell back to the default host.
+// var the rest of the OS reachability layer (peering federation/resolve, relay
+// client) reads. It was previously VULOS_RELAY_URL here, which nothing else
+// set, so the fanout always fell back to the default host.
 //
 // Cross-instance delivery contract (completed): the fanout POSTs a
 // relayEnvelope {target_ulid, target, sender, notification} with an

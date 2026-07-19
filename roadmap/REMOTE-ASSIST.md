@@ -69,8 +69,9 @@ posture: capability-first, consent-visible, fail-closed.
 - **Un-hideable "someone is here" indicator.** Whenever a session is being viewed
   or controlled, a persistent, server-authored banner + participant list is shown
   in the owner's shell. It is rendered by the OS chrome, not by the assist app, so
-  a malicious grantee cannot suppress it (same discipline as Meet's
-  server-authored, RoomAdmin-gated indicators).
+  a malicious grantee cannot suppress it (the same discipline used for any
+  server-authored, admin-gated presence indicator — client-rendered "you're
+  being watched" banners are trivially spoofable or suppressible).
 - **Scoped, not all-or-nothing.** view-only vs control, and single-app vs
   whole-session, are independent axes. "Look at my spreadsheet" never implies
   "type into my terminal."
@@ -91,8 +92,8 @@ posture: capability-first, consent-visible, fail-closed.
 - **Cross-box within one account:** driving your own Pi from your laptop is a
   same-account capability, no external grant needed.
 - **Cross-account (helping someone else):** an out-of-band, expiring invite
-  (like the Meet guest-invite pattern: unguessable code, hash-stored, bounded,
-  revocable) that the helper redeems for a scoped, time-boxed grant.
+  (unguessable code, hash-stored, bounded, revocable) that the helper redeems
+  for a scoped, time-boxed grant.
 - **Cloud/managed:** same capability model; the WebRTC media may transit a Vulos
   POP only if the owner is on a placement that discloses it — never silently.
 

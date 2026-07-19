@@ -1,6 +1,7 @@
 package sfu
 
-// Billing-gate tests for Meet room creation (surface 4).
+// Billing-gate tests for Messages group-call room creation (surface 4,
+// cpbilling.ProductMeet — see the note on that constant in cpbilling.go).
 
 import (
 	"encoding/json"
