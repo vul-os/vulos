@@ -21,8 +21,8 @@ import { useFocusTrap } from './useFocusTrap'
 // limit we admit. `state`: 'e2e' (green, content-blind), 'readable' (amber,
 // provider-readable by design).
 const AT_REST = [
-  { label: 'Messages (Talk)', state: 'e2e',
-    note: 'Content-blind. Encrypted with keys only your devices hold.' },
+  { label: 'Messages', state: 'e2e',
+    note: 'Content-blind. Encrypted with keys only your devices hold. (The OS’s own sovereign peer-to-peer builtin — separate from third-party Talk/Meet apps like Cinny, Element, Jitsi Meet, or Element Call.)' },
   { label: 'File shares', state: 'e2e',
     note: 'Content-blind end-to-end — including filenames — for cross-instance shares.' },
   { label: 'Mail', state: 'readable',
@@ -37,7 +37,8 @@ const EXPORT_COVERS = [
   'Calendar (.ics) & Contacts (.vcf) — if your mail service exposes them',
 ]
 const EXPORT_NOT = [
-  'Talk / Meet history, Ofisi documents (docs, sheets, slides, whiteboards) — not yet exportable here',
+  'Ofisi documents (docs, sheets, slides, whiteboards) — not yet exportable here',
+  'Chat/video history from third-party comms apps (Cinny/Element, Jitsi Meet/Element Call) — lives with those services, not Vulos',
   'Content held only on a peer instance behind an end-to-end share — that stays',
   'encrypted server-side, so you export it from the box that holds the keys',
 ]

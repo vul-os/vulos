@@ -25,8 +25,11 @@ package main
 //                 API keys, PIN hashes and password hashes are NEVER included.
 //
 // NOT covered (and the manifest says so, rather than faking completeness):
-//   - Talk/Meet history, Board/Docs documents, app data, and anything held only
-//     on a peer instance (content-blind shares we cannot decrypt server-side).
+//   - Board/Docs documents, app data, and anything held only on a peer
+//     instance (content-blind shares we cannot decrypt server-side). Chat/video
+//     history from third-party comms apps (Cinny/Element, Jitsi Meet/Element
+//     Call) lives with those services, not Vulos, so there is nothing to
+//     export here by design.
 //
 // Session-authed: identity is ALWAYS the X-User-ID header injected by the auth
 // middleware, never the request body — same rule as routes_files.go.
@@ -399,8 +402,11 @@ func buildManifest(userID, ts string, notes []string) string {
 		b.WriteString("\r\n")
 	}
 	b.WriteString("\r\nNOT INCLUDED (honest boundaries)\r\n--------------------------------\r\n")
-	b.WriteString("  - Talk / Meet call history, Board & Docs documents, and per-app data\r\n")
-	b.WriteString("    are not yet exportable through this endpoint.\r\n")
+	b.WriteString("  - Board & Docs documents and per-app data are not yet exportable\r\n")
+	b.WriteString("    through this endpoint.\r\n")
+	b.WriteString("  - Chat/video call history from third-party comms apps (Cinny/Element,\r\n")
+	b.WriteString("    Jitsi Meet/Element Call) lives with those services, not Vulos, so\r\n")
+	b.WriteString("    there is nothing to export here by design.\r\n")
 	b.WriteString("  - Content held only on a PEER instance via a content-blind (end-to-end)\r\n")
 	b.WriteString("    share cannot be decrypted server-side, so it is not in this archive —\r\n")
 	b.WriteString("    that is the privacy guarantee working as intended, not a gap in your\r\n")

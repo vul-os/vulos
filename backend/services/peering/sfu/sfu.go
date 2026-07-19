@@ -38,9 +38,11 @@ type SFU struct {
 	rooms map[string]*roomEntry
 
 	// billing GATES room creation (meet_enabled, suspended, meet_minutes_budget,
-	// meet_max_rooms) and METERS rooms against cp. Nil or disabled (CP_URL
-	// unset) = standalone OS: Meet is ungated/unmetered. See WithBilling for
-	// enforcement-status notes.
+	// meet_max_rooms — cpbilling's ProductMeet, which bills this Messages
+	// group-call SFU, not first-party Vulos Meet; see the note on that
+	// constant) and METERS rooms against cp. Nil or disabled (CP_URL unset) =
+	// standalone OS: ungated/unmetered. See WithBilling for enforcement-status
+	// notes.
 	billing *cpbilling.Client
 }
 
@@ -168,8 +170,10 @@ func (s *SFU) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	ownerID := r.Header.Get("X-User-ID")
 
-	// BILLING GATE (surface 4: Meet). Enforces meet_enabled, suspended,
-	// meet_minutes_budget, and the meet_max_rooms concurrent-room cap
+	// BILLING GATE (surface 4: cpbilling.ProductMeet — see the note on that
+	// constant: this bills the sovereign P2P Messages builtin's own group-call
+	// SFU, not first-party Vulos Meet, which is retired). Enforces meet_enabled,
+	// suspended, meet_minutes_budget, and the meet_max_rooms concurrent-room cap
 	// (in-process RoomCount is authoritative). Fail-open/degraded on a cold cp
 	// outage. No-op when billing is disabled (standalone OS).
 	if s.billing.Enabled() {
@@ -181,7 +185,8 @@ func (s *SFU) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	room := s.CreateRoom(req.LastN, ownerID)
 
-	// METER (surface 4: Meet). One room created. No-op when disabled.
+	// METER (surface 4: cpbilling.ProductMeet — Messages group-call SFU, see
+	// note above). One room created. No-op when disabled.
 	s.billing.MeterAsync(cpbilling.UsageEvent{
 		Product:   cpbilling.ProductMeet,
 		AccountID: ownerID,

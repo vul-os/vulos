@@ -10,9 +10,10 @@ import { useState, useCallback, useRef } from 'react'
 // STANDARD portable formats that need nothing Vulos to read back.
 //
 // Honesty is a feature here: the panel states plainly what the archive covers
-// AND what it does not (per-app data that lives in Talk/Meet/Ofisi docs, and
-// content held only on a peer via an end-to-end share), rather than implying
-// completeness. The MANIFEST.txt inside the zip says the same.
+// AND what it does not (Ofisi docs, chat/video history that lives with
+// third-party comms apps rather than Vulos, and content held only on a peer
+// via an end-to-end share), rather than implying completeness. The
+// MANIFEST.txt inside the zip says the same.
 //
 // The download is session-authed by the same cookie the shell already carries;
 // there is no way to request another user's export (the server derives identity
@@ -29,7 +30,8 @@ const COVERED = [
 ]
 
 const NOT_COVERED = [
-  'Talk / Meet call history, and Ofisi documents (docs, sheets, slides, whiteboards) — export those from within each app.',
+  'Ofisi documents (docs, sheets, slides, whiteboards) — export those from within Ofisi.',
+  'Chat/video call history — Talk and Meet are third-party apps (Cinny/Element, Jitsi Meet/Element Call); that history lives with those services, not Vulos, so export it from within each app.',
   'Anything held only on another instance via an end-to-end (content-blind) share — that instance holds the keys, so export it there. This is the privacy guarantee working, not a gap in your access.',
 ]
 

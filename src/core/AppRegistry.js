@@ -143,10 +143,12 @@ const builtinRegistry = [
   // MAIL-PIM block below).
   //
   // Real-time comms (chat/video) are THIRD-PARTY now, not first-party OS apps:
-  // Talk → Matrix/Element, Meet → Element-Call/Jitsi (final pick TBD). They are
-  // reached as external services, so no `vulos-talk`/`vulos-meet` launcher tiles
-  // are registered here. The OS keeps its own sovereign peer-to-peer `messages`
-  // builtin for direct encrypted messaging.
+  // Talk → Matrix (Cinny/Element), Meet → Jitsi Meet/Element Call. All four are
+  // installable one-click from the App Store (registry.json: cinny, element,
+  // jitsi-meet, element-call) — they are reached as external services, so no
+  // `vulos-talk`/`vulos-meet` launcher tiles are registered here. The OS keeps
+  // its own sovereign peer-to-peer `messages` builtin for direct encrypted
+  // messaging.
 
   // Two user-selectable browsers, side by side:
   //

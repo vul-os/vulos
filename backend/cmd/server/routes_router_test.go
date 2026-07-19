@@ -28,7 +28,6 @@ func TestClassifyAppID_KnownEntries(t *testing.T) {
 		{"browser", openrouter.LaneWebApp},
 		{"spaces", openrouter.LaneWebApp},
 		{"calendar", openrouter.LaneWebApp},
-		{"meet", openrouter.LaneWebApp},
 		{"dashboard", openrouter.LaneWebApp},
 		{"messages", openrouter.LaneWebApp},
 
@@ -160,7 +159,7 @@ func TestRouterClassifyEndpoint_InvalidChars(t *testing.T) {
 func TestWebAppLaunchSpawnsNoStreamSession(t *testing.T) {
 	webNativeApps := []string{
 		"office", "mail", "terminal", "notes", "browser",
-		"spaces", "calendar", "meet", "dashboard", "messages",
+		"spaces", "calendar", "dashboard", "messages",
 		"navidrome", "gitea", "grafana", "drawio", "cinny",
 	}
 	for _, appID := range webNativeApps {

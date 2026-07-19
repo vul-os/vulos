@@ -203,10 +203,6 @@ curl -s -H "X-Vulos-Direct-Probe: hello" https://box1.example.net/_vulos-direct/
 # a healthy listener echoes back: hello
 ```
 
-**Symptom:** self-hosted Meet SFU never registers; boot log shows
-`[meethost] disabled: set VULOS_RELAY_BASE_URL (or MEET_HOST_RELAY_URL), VULOS_RELAY_NAME and VULOS_SFU_ENDPOINT to advertise a self-host SFU`.
-**Fix:** exactly what it says — all three variables are required to advertise an SFU through the relay.
-
 **LAN-only access with the internet down:** set `VULOS_LAN_ENABLE=1` and the box advertises `vulos.local` over mDNS and serves HTTPS on the LAN; a healthy start logs `[lan] reachable at https://... (mDNS vulos.local)`.
 
 ---

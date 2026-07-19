@@ -4,7 +4,9 @@ Apps available for install from the Vulos app store. These are not bundled with 
 
 > **Goal.** A curated registry that turns "self-hosting an app" into one click. Recipes for apt + Flatpak (already working), static binaries, and download-and-extract artefacts (Vaultwarden, Navidrome, Memos, etc.). Each installed app gets its own subdomain and isolated network namespace.
 > **Non-goals.** Becoming the Debian package archive. Hosting third-party app binaries — we point at upstream releases with pinned checksums.
-> **Status.** ✅ SHIPPED. MCP platform (Model Context Protocol server), `@vulos/apps` agent-operable surface, and `vat_` (Vulos App Token) scoped-capability tokens are all implemented and wired. The `vk_` API-key auth layer (scoped to individual apps, issued per-user, revocable) is also shipped alongside the registry Ed25519 publisher-signing gate (REGISTRY-SIGN-01). Outstanding: more curated registry entries (gaming, Matrix, Vaultwarden, LibreTranslate, productivity apps), auto-gaming-mode flag for known gaming apps.
+> **Status.** ✅ SHIPPED. MCP platform (Model Context Protocol server), `@vulos/apps` agent-operable surface, and `vat_` (Vulos App Token) scoped-capability tokens are all implemented and wired. The `vk_` API-key auth layer (scoped to individual apps, issued per-user, revocable) is also shipped alongside the registry Ed25519 publisher-signing gate (REGISTRY-SIGN-01). Outstanding: more curated registry entries (gaming, Vaultwarden, LibreTranslate, productivity apps), auto-gaming-mode flag for known gaming apps.
+>
+> **Comms answer (2026-07-19 founder ruling).** Vulos Talk and Vulos Meet are removed products — Vulos does not ship its own chat or video-calling engine. The comms answer is third-party open-source, installed the same one-click way as everything else in this store: **Element** (Matrix chat client, Flatpak desktop — `im.riot.Riot`) and **Cinny** (lightweight Matrix web client, already shipped) for chat; **Jitsi Meet** (Flatpak desktop — `org.jitsi.jitsi-meet`) and **Element Call** (Matrix-native group video, static web bundle) for video. All four are in `registry.json` today.
 
 ### Forward plan: registry-as-feed (anti-rollback distribution) — design note, not shipped
 
@@ -74,14 +76,16 @@ This is a design note only — no code has been written against it, and the curr
 | | draw.io | Web-native | No | Yes | Planned |
 | **Password Manager** | KeePassXC | Streamed | Yes | Yes | Done |
 | | Vaultwarden | Web-native | No | Yes | Planned |
-| **Messaging** | Matrix Client | Web-native | No | Yes | Planned |
+| **Messaging** | Cinny (Matrix client) | Web-native | Yes | Yes | Done |
+| | Element (Matrix client) | Flatpak (desktop) | Yes | Yes | Done |
 | **Telephony** | Vulos Phone (Go webapp) | Web-native | No | Yes | Planned |
 | **Media Player** | VLC | Streamed | Yes | Yes | Done |
-| **Video Calling** | Jitsi Meet | Web-native | No | Yes | Planned |
+| **Video Calling** | Jitsi Meet | Flatpak (desktop) | Yes | Yes | Done |
+| | Element Call (Matrix group calls) | Web-native | Yes | Yes | Done |
 | **Developer** | Hoppscotch (API testing) | Web-native | No | Yes | Planned |
 | **Translation** | LibreTranslate | Web-native | No | Yes | Planned |
 
-**Summary: 16 Done, 31 Planned** (Thunderbird removed — mail is a connector, not a bundled mail client)
+**Summary: 20 Done, 29 Planned** (Thunderbird removed — mail is a connector, not a bundled mail client; Vulos Talk/Meet removed — comms are third-party OSS, see below)
 
 ---
 
@@ -311,13 +315,22 @@ No mature open-source web-based video editors exist. Best approach: lightweight 
 
 ## Video Calling
 
-### Jitsi Meet (web-native)
+Vulos Meet was removed as a product (2026-07-19 founder ruling) — Vulos does not build or run its own video-calling engine (SFU cascade was a hard R&D pole; not worth the maintenance). Video calling is answered by installing third-party open-source apps from this store, same as everything else.
+
+### Jitsi Meet ✅ Done — in registry (`jitsi-meet`, Flatpak desktop)
 - **What**: video conferencing — no account needed, share a link and join
 - **Project**: [jitsi/jitsi-meet](https://github.com/jitsi/jitsi-meet) — Apache-2.0, 24k+ stars
-- **Install**: self-hosted (Ocker or deb packages)
+- **Install**: Flatpak (`org.jitsi.jitsi-meet`) — a genuine desktop package exists on Flathub, so the registry recipe is a plain Flatpak install (same pattern as Firefox/FileZilla), not a self-hosted server stack. The client connects to any Jitsi deployment, including the public `meet.jit.si`, or a domain the user configures.
 - **Capabilities**: video/audio calls, screen sharing, chat, recording, breakout rooms, up to 100+ participants
-- **Replaces**: Zoom, Google Meet, Microsoft Teams
-- **Why**: the only serious open-source self-hosted video calling platform. Web-native — callers just click a link, no app install.
+- **Replaces**: Zoom, Google Meet, Microsoft Teams, Vulos Meet
+- **Why**: the only serious open-source video calling platform with a genuine one-click desktop install and no server stack required from us.
+
+### Element Call ✅ Done — in registry (`element-call`, web-native)
+- **What**: native Matrix group video calling (MSC3401) — works with any Matrix homeserver + a LiveKit SFU, and embeds as a widget inside Element/Cinny
+- **Project**: [element-hq/element-call](https://github.com/element-hq/element-call) — AGPL-3.0
+- **Install**: static web bundle (download + checksum-verified extract, served via `python3 -m http.server`), the same "web-native, user configures" shape as Cinny — after install, point `static/config.json` at your homeserver and LiveKit SFU
+- **Replaces**: the group-calling half of Zoom/Meet for Matrix-native workflows
+- **Why**: pairs naturally with the Matrix chat stack (Cinny/Element) already in the store — one federated identity for chat and calls, no separate account
 
 ---
 
@@ -422,20 +435,26 @@ No mature open-source web-based video editors exist. Best approach: lightweight 
 
 ## Messaging — Matrix Client
 
-Unified messaging app with bridges to WhatsApp, Telegram, Signal, and more. Built on the Matrix protocol.
+Vulos Talk was removed as a product (2026-07-19 founder ruling) — Vulos does not build or run its own chat engine. The comms answer is Matrix: install a client from this store and point it at any Matrix homeserver (your own, or someone else's).
+
+✅ **Done — two clients in the registry today:**
+- **Cinny** (`cinny`, web-native) — lightweight React web client, shipped first as the recommended base
+- **Element** (`element`, Flatpak desktop, `im.riot.Riot`) — the reference-implementation client, added 2026-07-19 as the fuller-featured option (voice/video calling, more mature bridge/widget support)
+
+Bridges to WhatsApp, Telegram, Signal, etc. below remain **planned** — the clients and (optionally) a homeserver are the shipped part; bridge installers are not yet wired into the app store.
 
 ### Lightweight open-source web clients (pick one as base)
 
 | Client | Tech | License | Stars | Notes |
 |--------|------|---------|-------|-------|
-| [Cinny](https://github.com/cinnyapp/cinny) | React | AGPLv3 | 4k+ | Clean, Discord-like UI. Lightweight. **Best candidate** — modern React, easy to theme for Vulos |
+| [Cinny](https://github.com/cinnyapp/cinny) | React | AGPLv3 | 4k+ | Clean, Discord-like UI. Lightweight. **Shipped** — `cinny` in registry.json |
 | [Hydrogen](https://github.com/nicoleahmed/hydrogen-web) | Vanilla JS | Apache-2.0 | 3k+ | Ultra-lightweight, designed for low-end devices and embedded use. Minimal dependencies |
-| [Element Web](https://github.com/element-hq/element-web) | React | AGPLv3 | 11k+ | Most feature-complete but heavy (Electron heritage). Reference implementation |
+| [Element Web / Element Desktop](https://github.com/element-hq/element-web) | React | AGPLv3 | 11k+ | Most feature-complete. **Shipped** — `element` in registry.json (Flatpak desktop, `im.riot.Riot`) |
 | [FluffyChat](https://github.com/krille-chan/fluffychat) | Flutter | AGPLv3 | 1k+ | Cross-platform (mobile + web). Lighter than Element |
 
 ### Recommendation
 
-**Cinny** as the base — React (matches our stack), lightweight, clean UI, easy to restyle for Vulos. Hydrogen as fallback for extremely constrained devices.
+**Cinny** as the lightweight default, **Element** for users who want the full feature set (voice/video calling via Element Call, more mature bridge support). Hydrogen as fallback for extremely constrained devices.
 
 ### Bridges (run as services)
 
@@ -472,11 +491,12 @@ flowchart TD
 
 ### Install plan
 
-- [ ] Bundle Conduit as a Vulos service (single Rust binary, ~10MB)
-- [ ] Cinny as the web UI, themed to match Vulos
+- [ ] Bundle Conduit as a Vulos service (single Rust binary, ~10MB) — Conduit is in the registry (`conduit`) but `_disabled` pending a verified upstream checksum
+- [x] Cinny as the web UI (`cinny` in registry.json)
+- [x] Element as the full-featured alternative client (`element` in registry.json, Flatpak)
 - [ ] Bridge installer in settings: "Connect WhatsApp", "Connect Telegram", etc.
 - [ ] First-run wizard: create local Matrix account, optionally connect bridges
-- [ ] E2E encryption enabled by default
+- [ ] E2E encryption enabled by default (both Cinny and Element support Matrix E2EE per-room; not yet wired as an OS-level default/wizard step)
 
 ---
 

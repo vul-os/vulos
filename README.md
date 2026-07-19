@@ -68,7 +68,7 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 - **Whiteboards** — an embedded collaborative infinite-canvas whiteboard, surfaced through **Ofisi** (whiteboards are an Ofisi document type, not a separate product).
 - **On-demand app streaming** — native Linux apps stream into shell windows via WebRTC with GPU-accelerated encoding (NVENC / VA-API / VP8 fallback). Three modes share one pipeline: **native app windows** (dirty-region capture, idle-throttled — tuned for a still desktop), a low-latency **gaming mode** that auto-engages only for real games (Wine / Lutris / Steam, or a `category: gaming` manifest) with a zero-latency encoder profile and a minimal client jitter buffer, and **Streaming Chrome** (below). Close the window and the stream stops. Real frame-rate/latency/GPU behaviour is deployment-dependent, not a fixed guarantee.
 - **Two browsers, your choice** — a lightweight **Smart Browser** (a client-side web app that opens in your host browser, no server session) sits alongside **Streaming Chrome**: a real Chromium running *on the box*, streamed over WebRTC, with a persistent per-user profile (cookies/history/logins). Pick per task; both are launcher tiles.
-- **Comms are third-party** — real-time chat and video are delegated to established platforms rather than shipped as first-party OS apps: **Talk → Matrix/Element**, **Meet → Element-Call/Jitsi** (final pick pending). The OS integrates/links out to them; it keeps its own sovereign peer-to-peer **Messages** for direct encrypted messaging. (A box can still self-host the media/SFU for those platforms via `VULOS_SFU_HOST` where supported.)
+- **Comms are third-party** — real-time chat and video are delegated to established platforms rather than shipped as first-party OS apps: **Talk → Matrix (Cinny/Element)**, **Meet → Jitsi Meet/Element Call** — all four are one-click installs from the App Store. The OS integrates/links out to them; it keeps its own sovereign peer-to-peer **Messages** (with its own in-process group-call SFU) for direct encrypted messaging.
 - **On-box LLM gateway** — assistant LLM/embeddings traffic routes through the on-box `llmux` sovereign gateway by default; a local vector store powers on-instance retrieval (RAG). You choose the provider and sovereignty tier.
 - **Peering & sync** — every instance has its own Ed25519 identity; a pure-Go leaderless CRDT keeps the app registry in sync across your same-LAN nodes today (general structured-data sync across the internet is a documented forward plan, not yet shipped — see `roadmap/SYNC.md`); a full VulaID key lifecycle (rotation, revocation, account-anchored recovery, X3DH-style forward secrecy); AirDrop-style local Drop; real-time collaboration over Yjs with per-document ACL.
 - **Local-first storage** — SQLite on the box, S3/Restic for encrypted backup. Your data lives on your machine first.
@@ -297,9 +297,9 @@ Vulos-hosted email address: your account is email + password, plus OAuth and pas
 Excalidraw-based whiteboard is an Ofisi document type, not a separate Board
 product), served as a standalone app under the auth-enforcing gateway. **Files**
 (and P2P sharing) live in the OS. **Real-time comms are third-party**: chat and video are
-delegated to established platforms (Talk → Matrix/Element; Meet →
-Element-Call/Jitsi, final pick pending) rather than shipped as first-party OS
-apps. The OS keeps its own sovereign peer-to-peer **Messages** for direct
+delegated to established platforms (Talk → Matrix, via Cinny/Element; Meet →
+Jitsi Meet/Element Call) rather than shipped as first-party OS
+apps. All four are installable from the App Store. The OS keeps its own sovereign peer-to-peer **Messages** for direct
 encrypted messaging.
 
 ---

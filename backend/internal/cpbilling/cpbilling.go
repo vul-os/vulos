@@ -57,6 +57,15 @@ import (
 const DefaultCacheTTL = 30 * time.Second
 
 // Product identifiers used on the wire. cp keys caps/usage by product.
+//
+// NOTE on ProductMeet: first-party Vulos Meet is a retired product (video
+// calling is now third-party — Jitsi Meet / Element Call from the App Store).
+// "meet" here is the surviving cp wire-contract name for billing the sovereign
+// P2P Messages builtin's own in-process group-call SFU (backend/services/
+// peering/sfu) — group video calls between your own contacts, not a Vulos Meet
+// room. Renaming the wire string is a cross-repo change (cp keys entitlements
+// by this literal string) and is left alone here; this comment exists so the
+// name isn't mistaken for evidence that first-party Meet still exists.
 const (
 	ProductLLM     = "llm"
 	ProductCompute = "compute"
