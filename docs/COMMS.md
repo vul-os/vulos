@@ -96,20 +96,45 @@ make for any federated protocol.
 
 ### Matrix homeserver
 
-The registry carries a **Conduit** entry (`conduit`, Rust, SQLite-backed,
-single binary) as the intended self-host path — but it currently ships
-`_disabled: true`, because no verified upstream sha256 for a pre-built
-`x86_64-unknown-linux-musl` binary exists yet (Famedly's GitLab releases ship
-source archives only). A disabled registry entry cannot be installed — the
-supply-chain rule ([APPS.md § Supply-chain rules](APPS.md#supply-chain-rules))
-that a pinned checksum is mandatory applies here too, so this isn't cut as a
-shortcut. Until an upstream release ships a checksummed binary, self-hosting a
-homeserver on the box means either:
+The registry carries a **Conduit** entry (`conduit`, Rust, single binary,
+`admin_only: true` since a homeserver is infrastructure, not a personal app)
+as the self-host path, and it's enabled.
 
-- Running Conduit (or Synapse, Dendrite, etc.) yourself outside the App Store
-  flow — any Docker host or VM works, since Matrix federation doesn't care
-  where the homeserver runs — and pointing Element/Cinny's homeserver field at
-  it, or
+Famedly's own `famedly/conduit` GitLab releases remain source-archives-only
+(no prebuilt binary, so no sha256 to pin) — that project stalling on
+distributable binaries is exactly why the entry shipped `_disabled: true`
+for a while. The entry now tracks **[Continuwuity](https://continuwuity.org)**
+instead: the actively-maintained community continuation of Conduit/conduwuit,
+which does publish signed prebuilt Linux binaries. The shipped version
+(`0.5.9`, `conduwuit-linux-amd64`) was downloaded directly and its sha256
+computed locally — no vendor-published digest exists to compare against, so
+this is a first-party-verified checksum, not a copied one — and boot-tested
+in a container matching the box's runtime image (fresh RocksDB store, admin
+room created, listening on `127.0.0.1:6167`) before being enabled. Same
+supply-chain rule as everything else in the registry
+([APPS.md § Supply-chain rules](APPS.md#supply-chain-rules)): a pinned
+checksum is mandatory, and this one is real.
+
+#### Running your own homeserver
+
+Install `conduit` from the App Hub (or `POST /api/store/registry/install`
+with `{"appId":"conduit","version":"0.5.9"}`) like any other registry app.
+Its `post_install` step writes a minimal `conduit.toml` (server name
+`localhost` by default, RocksDB storage under the app's `data/` directory,
+registration disabled) and it listens on `127.0.0.1:6167`. Then point
+Element's or Cinny's homeserver field at it. Federation, TLS termination,
+and exposing `6167` outside `localhost` (see [NETWORKING.md](NETWORKING.md)
+for the box's reverse-proxy/ingress options) are yours to configure — the
+registry entry installs and runs the binary; it doesn't make routing
+decisions for you.
+
+If you'd rather not run a homeserver on this box at all, self-hosting a
+homeserver still doesn't require the App Store:
+
+- Running Conduit/Continuwuity (or Synapse, Dendrite, etc.) yourself outside
+  the App Store flow — any Docker host or VM works, since Matrix federation
+  doesn't care where the homeserver runs — and pointing Element/Cinny's
+  homeserver field at it, or
 - Using an existing homeserver you already trust (matrix.org, or one your
   organization runs).
 
@@ -164,5 +189,5 @@ conferencing.
 | Ad-hoc video call, no account | Jitsi Meet, join a public instance |
 | Native Matrix group video calls | Element Call, configured against a homeserver + LiveKit SFU |
 | Direct encrypted messaging/calls with approved contacts, no server | Messages (Peering), see [PEERING.md](PEERING.md) |
-| To self-host the homeserver | Run Conduit/Synapse/Dendrite yourself (Conduit's registry entry is disabled pending a verified checksum) and point Element/Cinny at it |
+| To self-host the homeserver | Install `conduit` from the App Hub (Continuwuity), or run Synapse/Dendrite/etc. yourself, and point Element/Cinny at it |
 | To self-host the video conferencing server | Run [docker-jitsi-meet](https://github.com/jitsi/docker-jitsi-meet) yourself and point Jitsi Meet at it |

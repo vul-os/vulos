@@ -15,6 +15,33 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Added
 
+- **Conduit homeserver, enabled.** The `conduit` registry entry (self-hosted
+  Matrix homeserver) shipped `_disabled: true` pending a verified upstream
+  checksum, since `famedly/conduit`'s GitLab releases remain source-archives
+  only (no prebuilt binary). It now tracks
+  [Continuwuity](https://continuwuity.org) instead — the actively-maintained
+  community continuation of Conduit/conduwuit, which does publish signed
+  prebuilt Linux binaries. `0.5.9`'s `conduwuit-linux-amd64` binary was
+  downloaded directly and its sha256
+  (`4189cd91086b0e46b6ab8b0b3677ccd4abfca6686e66915e1857a963430564de`)
+  computed locally — no vendor-published digest exists to diff against — and
+  boot-tested in a container matching the box runtime (fresh RocksDB store,
+  admin room created, listening on `127.0.0.1:6167`) before being enabled.
+  Switched from the old SQLite-era config shape to Continuwuity's RocksDB
+  `database_path`, added the `liburing2`/`ca-certificates` runtime deps it
+  needs, and restricted `arch` to `amd64` (the only binary verified so far).
+  Re-signed via `make sign-registry` (55 entries, all verify) and republished
+  via `make publish-feed`/`make verify-feed`. [docs/COMMS.md](docs/COMMS.md)
+  drops the "self-hosting means running outside the App Store" caveat and
+  adds a "Running your own homeserver" section.
+- **App Hub search now matches registry keywords.** `RegistryListEntry` (the
+  shape `GET /api/store/registry` returns) had no `Keywords` field even
+  though `RegistryEntry.Keywords` was already modelled and signed — the data
+  reached neither the API response nor the App Hub search box. Added
+  `Keywords []string` to `RegistryListEntry`, populated it in
+  `Registry.ListEntries` (`backend/services/appnet/registry.go`), and the App
+  Hub search filter (`src/builtin/apphub/AppHub.jsx`) now matches a query
+  against keywords in addition to name/description/id.
 - **Comms answer: Element, Jitsi Meet, Element Call.** Founder ruling
   (2026-07-19): Vulos Talk and Vulos Meet are removed as first-party
   products; real-time chat and video are delegated to established,

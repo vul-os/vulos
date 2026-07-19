@@ -310,14 +310,15 @@
       "vetted": true
     },
     "conduit": {
-      "_disabled": true,
-      "_note": "awaiting verified upstream checksum \u2014 famedly/conduit GitLab releases ship source archives only; no sha256-signed pre-built x86_64-unknown-linux-musl binary confirmed as of 2026-05-16",
+      "_note": "upstream famedly/conduit (conduit.rs) still ships GitLab source-archive-only releases (no prebuilt binary) as of 2026-07-19, so this entry tracks Continuwuity (continuwuity.org) instead \u2014 the actively-maintained community continuation of Conduit/conduwuit, which publishes signed prebuilt linux-amd64/arm64 binaries. The v0.5.9 conduwuit-linux-amd64 binary was downloaded directly and its sha256 computed locally (no vendor-published digest exists to compare against) and functionally boot-tested (fresh RocksDB store, admin room created, listened on 127.0.0.1:6167) in a debian:trixie-slim container matching the box runtime image.",
       "admin_only": true,
-      "arch": null,
-      "author": "Famedly GmbH",
+      "arch": [
+        "amd64"
+      ],
+      "author": "Continuwuity Contributors (community continuation of Famedly's Conduit / conduwuit)",
       "category": "network",
-      "description": "Lightweight Matrix homeserver written in Rust — SQLite backend, federation-ready, single binary, runs on localhost",
-      "homepage": "https://conduit.rs",
+      "description": "Lightweight Matrix homeserver written in Rust — RocksDB backend, federation-ready, single binary, runs on localhost. Ships as Continuwuity, the actively maintained continuation of Conduit/conduwuit.",
+      "homepage": "https://continuwuity.org",
       "icon": "C",
       "icon_url": "",
       "keywords": [
@@ -326,35 +327,37 @@
         "homeserver",
         "messaging",
         "federation",
-        "self-hosted"
+        "self-hosted",
+        "conduwuit",
+        "continuwuity"
       ],
       "license": "Apache-2.0",
       "name": "Conduit",
-      "signature": "QKa2U1PVsmuiYr5lLE8fEOiUP8xwaYKiTJJ/v/cRFGU3o3meqIrRHUIMD8DYgEC70hKci6eMxMyrj56dCNapAg==",
+      "signature": "t4BuHpcUOPwZs5Y7PXlfZ+Uj8QLOY2gWkZ6GViPN8Du7W+aNKbS8ZWpFPpVO3cd9TQixc7MJsA0Ya7QaJspcDg==",
       "type": "service",
       "versions": {
-        "0.10.0": {
-          "_disabled": true,
-          "_note": "no verified upstream checksum; pending real release with sha256",
+        "0.5.9": {
+          "install": "",
+          "flatpak_id": "",
+          "download_url": "https://forgejo.ellis.link/continuwuation/continuwuity/releases/download/v0.5.9/conduwuit-linux-amd64",
           "archive_strip": 0,
-          "auto_start": false,
-          "checksum": "",
-          "command": "data/bin/conduit",
-          "deps": null,
-          "download_url": "",
+          "command": "bin/conduwuit-linux-amd64 --config data/conduit.toml",
+          "port": 6167,
+          "post_install": "mkdir -p data \u0026\u0026 printf '[global]\\nserver_name = \"%s\"\\naddress = [\"127.0.0.1\"]\\nport = %s\\ndatabase_path = \"%s/data/db\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"${PORT}\" \"$APP_DIR\" \u003e data/conduit.toml",
+          "deps": [
+            "liburing2",
+            "ca-certificates"
+          ],
           "env": {
-            "CONDUIT_CONFIG": "data/conduit.toml",
             "SERVER_NAME": "localhost"
           },
-          "flatpak_id": "",
-          "install": "wget -qO data/bin/conduit https://gitlab.com/famedly/conduit/-/releases/v0.10.0/downloads/conduit-x86_64-unknown-linux-musl \u0026\u0026 chmod +x data/bin/conduit",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "port": 6167,
-          "post_install": "mkdir -p data \u0026\u0026 printf '[global]\\nserver_name = \"%s\"\\ndatabase_backend = \"sqlite\"\\ndatabase_path = \"%s/data/db\"\\nport = %s\\naddress = \"127.0.0.1\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"$APP_DIR\" \"${PORT}\" \u003e data/conduit.toml",
-          "singleton": true
+          "checksum": "4189cd91086b0e46b6ab8b0b3677ccd4abfca6686e66915e1857a963430564de",
+          "singleton": true,
+          "auto_start": false
         }
       },
       "vetted": true
