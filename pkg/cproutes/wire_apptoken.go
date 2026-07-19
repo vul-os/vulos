@@ -43,6 +43,20 @@
 // cookie: the app sees an unauthenticated request (401) rather than inheriting
 // the user's session. Denying access is the safe direction; leaking the session
 // is not.
+//
+// WHERE THIS RUNS. This OSS module operates NO app reverse proxy of its own —
+// self-host reaches the Class-P apps directly, and the hosted CP's
+// reverse-proxy front door (the code that actually calls stampAppIdentity while
+// forwarding a request to office./files./… app backends) is deployed in the
+// vulos-cloud control-plane repo, backend/cp/cmd/server, which vendors this
+// package and carries its own copy of these mint helpers. There is no
+// wire_appproxy.go / wire_mailproxy.go in this repo. What this file provides
+// HERE is (1) the REFERENCE mint implementation (stampAppIdentity / mintAppToken)
+// that such a proxy calls, and (2) the RECEIVE side that is live in every
+// deployment: initAppIdentity teaches auth.Store to introspect these tokens, and
+// routes_storage.go binds a presign/delete to the token's audience. Because this
+// module never proxies, it never forwards a user session to an app backend —
+// the SECURITY-C1 invariant holds here vacuously.
 package cproutes
 
 import (

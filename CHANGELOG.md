@@ -26,6 +26,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were live app backends. No behavior change beyond narrowing accepted
   audiences/services (fail-closed, not fail-open).
 
+### Changed
+
+- **apptoken seam doc-comments corrected (SECURITY-C1)**: `pkg/apptoken` and
+  `pkg/cproutes/wire_apptoken.go` doc-comments referenced a `wire_appproxy.go` /
+  `wire_mailproxy.go` reverse proxy that does not exist in this OSS module. This
+  module operates NO app reverse proxy of its own; the CP reverse-proxy front
+  door that mints app-identity tokens (`stampAppIdentity`) is deployed in the
+  vulos-cloud control-plane repo (`backend/cp/cmd/server`), which vendors this
+  package and carries its own copy of the mint helpers. The comments now state
+  that split explicitly: mgmt carries the REFERENCE mint helpers plus the live
+  RECEIVE side (`initAppIdentity` introspection + `routes_storage` audience-bound
+  presign/delete), and — operating no proxy — forwards no user session to any
+  app backend, so the SECURITY-C1 invariant holds here vacuously. Comment-only;
+  no behavior change. (The `board` product surface — `pkg/cproutes/board.go` /
+  the `board` catalog entry — was investigated in the same sweep and DELIBERATELY
+  KEPT: `vulos-cloud`'s `backend/cp/cmd/server/main.go` calls
+  `cproutes.RegisterBoard` to serve the hosted Vulos Board room-token mint, so it
+  is load-bearing; the product-standard reconciliation is a founder decision, see
+  FOUNDER-DECISIONS.md.)
+
 ### Added
 
 - **Remaining operational route groups wired into the self-host binary**

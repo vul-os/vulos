@@ -4,10 +4,12 @@
 // (office/board/files/mail). (Talk and Meet were withdrawn as products
 // entirely, 2026-07-15: comms are third-party now.)
 //
-// SECURITY-C1: the reverse proxies (wire_appproxy.go / wire_mailproxy.go)
-// STRIP the visiting user's live `vc_session` cookie and any `Authorization`
-// header before forwarding, so a compromised or malicious app backend can
-// never replay the user's CP session against the ~65 session-gated CP routes.
+// SECURITY-C1: the CP reverse-proxy front door (deployed in the vulos-cloud
+// control-plane repo, backend/cp/cmd/server — NOT in this OSS module, which
+// operates no app proxy) STRIPs the visiting user's live `vc_session` cookie
+// and any `Authorization` header before forwarding, so a compromised or
+// malicious app backend can never replay the user's CP session against the
+// session-gated CP routes.
 // When an upstream legitimately needs to know WHO the request is for, the
 // proxy injects one of these tokens instead. Unlike the raw session it:
 //
