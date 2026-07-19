@@ -33,8 +33,8 @@ func TestVerify_AudienceIsBinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
-	if _, err := Verify(key, tok, "talk", time.Now()); !errors.Is(err, ErrAudience) {
-		t.Fatalf("office token accepted for talk: err=%v", err)
+	if _, err := Verify(key, tok, "board", time.Now()); !errors.Is(err, ErrAudience) {
+		t.Fatalf("office token accepted for board: err=%v", err)
 	}
 	// An empty expected audience is never a wildcard on this path.
 	if _, err := Verify(key, tok, "", time.Now()); !errors.Is(err, ErrAudience) {

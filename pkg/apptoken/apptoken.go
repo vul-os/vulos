@@ -1,7 +1,8 @@
 // Package apptoken mints and verifies short-lived, audience-bound identity
 // tokens the CP reverse-proxy front door injects when forwarding an
 // already-authenticated request to a lower-trust Class-P app backend
-// (office/meet/talk/board/files/mail).
+// (office/board/files/mail). (Talk and Meet were withdrawn as products
+// entirely, 2026-07-15: comms are third-party now.)
 //
 // SECURITY-C1: the reverse proxies (wire_appproxy.go / wire_mailproxy.go)
 // STRIP the visiting user's live `vc_session` cookie and any `Authorization`
@@ -11,7 +12,7 @@
 // proxy injects one of these tokens instead. Unlike the raw session it:
 //
 //   - is AUDIENCE-BOUND to exactly one app (aud="office", "mail", …). A token
-//     minted for office is meaningless to talk and to the CP itself.
+//     minted for office is meaningless to any other app and to the CP itself.
 //   - is SHORT-LIVED (default 2 minutes) so a leaked token is useless quickly.
 //   - is NOT a `vc_session`: it is delivered in the `X-Vulos-App-Auth` header,
 //     never as the session cookie, and CP session routes only ever read the

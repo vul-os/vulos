@@ -226,7 +226,7 @@ type presignRequest struct {
 	// doc comment). Optional: empty means "no app scoping requested" (the
 	// pre-existing, unscoped presign — still gated by callerOwnsBucket/
 	// selfOnly, just not additionally prefix-restricted). Cloud callers that
-	// want per-app isolation (Meet/Files, and the OS gateway on behalf of a
+	// want per-app isolation (Files, and the OS gateway on behalf of a
 	// box-local app — see knownStorageApps) should always set this.
 	AppID string `json:"app_id,omitempty"`
 }
