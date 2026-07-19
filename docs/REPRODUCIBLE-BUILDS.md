@@ -79,7 +79,11 @@ The manifest file `build/manifest.json` records:
 }
 ```
 
-`scripts/gen-manifest.sh` generates this file as part of the CI build.
+> **Status:** `scripts/gen-manifest.sh` does not exist and no CI job emits this
+> file — nothing in `.github/workflows/` writes a `manifest.json`. The schema
+> above is the intended format; generating it (and publishing it alongside the
+> release artefacts) is outstanding work, tracked with the rest of the gaps
+> called out in §2 and §6.
 
 ---
 

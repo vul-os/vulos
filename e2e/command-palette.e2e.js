@@ -80,7 +80,11 @@ test('palette groups results into sections and Tab jumps between them', async ({
 
   // Selection starts on the first (Apps) row; Tab jumps to the first row of the
   // NEXT section, walking across sections until an Actions row is highlighted.
-  const activeAncestor = 'xpath=ancestor::div[contains(@class,"bg-neutral-800/70")]'
+  // Row highlighting is exposed as data-active on the row element (see Row() in
+  // src/shell/CommandPalette.jsx) — not as a Tailwind background class. The row
+  // was restyled to a CSS-variable theme (.vshell-row) and the old
+  // bg-neutral-800/70 selector this assertion used stopped matching anything.
+  const activeAncestor = 'xpath=ancestor::div[@data-active]'
   await expect(async () => {
     await page.keyboard.press('Tab')
     await expect(composeRow.locator(activeAncestor)).toBeVisible({ timeout: 500 })
