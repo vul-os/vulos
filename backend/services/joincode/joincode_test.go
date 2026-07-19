@@ -16,7 +16,7 @@ import (
 func setupHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0700); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}

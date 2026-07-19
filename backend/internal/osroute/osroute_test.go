@@ -103,10 +103,10 @@ func TestVerify(t *testing.T) {
 			wantErr: ErrExpired,
 		},
 		{
-			name:   "wrong audience rejected",
-			verify: NewVerifier([][]byte{[]byte(testSecret)}, "someone-else.os.vulos.org"),
-			token:  mint(t, testSecret, validClaims(now)),
-			now:    now,
+			name:    "wrong audience rejected",
+			verify:  NewVerifier([][]byte{[]byte(testSecret)}, "someone-else.os.vulos.org"),
+			token:   mint(t, testSecret, validClaims(now)),
+			now:     now,
 			wantErr: ErrAudience,
 		},
 		{

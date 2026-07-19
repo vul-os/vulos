@@ -19,7 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/lease"
@@ -40,8 +40,7 @@ func defaultDBPath() string {
 	if p := os.Getenv("VULOS_BACKUP_DB"); p != "" {
 		return p
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".vulos", "db", "auth.db")
+	return datadir.Join("db", "auth.db")
 }
 
 // resolveBackupEnv loads S3 + passphrase + node id + DB path from the

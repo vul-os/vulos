@@ -51,7 +51,7 @@ func TestLoadPersistFile(t *testing.T) {
 	inst, _ := Load(home)
 
 	// Verify file exists at the expected path with mode 0600.
-	path := filepath.Join(home, ".vulos", "db", "instance.json")
+	path := filepath.Join(home, "db", "instance.json")
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("instance.json not found: %v", err)
@@ -74,7 +74,7 @@ func TestLoadPersistFile(t *testing.T) {
 func TestLoadLegacyMigration(t *testing.T) {
 	home := t.TempDir()
 	// Write a legacy instance-id file.
-	vulosDir := filepath.Join(home, ".vulos")
+	vulosDir := home
 	os.MkdirAll(vulosDir, 0755)
 	legacyID := "01HZXXXXXXXXXXXXXXXXXX"
 	os.WriteFile(filepath.Join(vulosDir, "instance-id"), []byte(legacyID+"\n"), 0600)
@@ -87,7 +87,7 @@ func TestLoadLegacyMigration(t *testing.T) {
 		t.Errorf("expected legacy ULID %q, got %q", legacyID, inst.ULID)
 	}
 	// The new path should now exist.
-	newPath := filepath.Join(home, ".vulos", "db", "instance.json")
+	newPath := filepath.Join(home, "db", "instance.json")
 	if _, err := os.Stat(newPath); err != nil {
 		t.Error("expected migrated instance.json to exist")
 	}
@@ -104,7 +104,7 @@ func TestSave(t *testing.T) {
 	if err := Save(inst, home); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
-	path := filepath.Join(home, ".vulos", "db", "instance.json")
+	path := filepath.Join(home, "db", "instance.json")
 	data, _ := os.ReadFile(path)
 	if !strings.Contains(string(data), "TESTULIDVALUE") {
 		t.Error("saved file does not contain ULID")

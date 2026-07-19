@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/internal/safedial"
 	"vulos/backend/services/signing"
@@ -56,8 +57,7 @@ func wkPeeringDataDir() string {
 	if d := os.Getenv("VULOS_PEERING_DIR"); d != "" {
 		return d
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".vulos", "peering")
+	return datadir.Join("peering")
 }
 
 // --------------------------------------------------------------------------

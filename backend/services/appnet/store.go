@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 	"vulos/backend/services/packages"
 )
 
@@ -416,7 +417,7 @@ func (s *AppStore) Uninstall(appID string) error {
 	}
 
 	// Remove symlinked data directory
-	dataDir := filepath.Join(os.Getenv("HOME"), ".vulos", "data", appID)
+	dataDir := datadir.Join("data", appID)
 	if info, err := os.Lstat(dataDir); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			os.Remove(dataDir)

@@ -89,7 +89,7 @@ func TestNewOutboxQueue_CreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOutboxQueue error: %v", err)
 	}
-	outboxDir := filepath.Join(home, ".vulos", "peering", "outbox")
+	outboxDir := filepath.Join(home, "peering", "outbox")
 	if _, err := os.Stat(outboxDir); os.IsNotExist(err) {
 		t.Errorf("outbox directory not created at %s", outboxDir)
 	}

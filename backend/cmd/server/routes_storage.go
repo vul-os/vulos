@@ -34,7 +34,7 @@ type cl06StorageStatus struct {
 // registerStorageRoutes wires the storage status endpoint into mux.
 // The enable toggle is provided by the existing POST /api/setup/storage — NOT duplicated here.
 func registerStorageRoutes(mux *http.ServeMux, home string) {
-	storagePath := filepath.Join(home, ".vulos", "db", "storage.json")
+	storagePath := filepath.Join(home, "db", "storage.json")
 
 	// GET /api/storage/status — public-safe: no credentials in response.
 	mux.HandleFunc("GET /api/storage/status", func(w http.ResponseWriter, r *http.Request) {

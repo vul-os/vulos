@@ -18,7 +18,7 @@ import (
 
 // hostKeyPath returns the path to the Ed25519 host private key.
 func hostKeyPath(home string) string {
-	return filepath.Join(home, ".vulos", "db", "ssh_host_ed25519_key")
+	return filepath.Join(home, "db", "ssh_host_ed25519_key")
 }
 
 // EnsureHostKey generates an Ed25519 host key at

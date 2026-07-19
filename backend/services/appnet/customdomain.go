@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 )
 
 // ---------------------------------------------------------------------------
@@ -89,11 +90,7 @@ type CustomDomainStore struct {
 func NewCustomDomainStore() (*CustomDomainStore, error) {
 	path := os.Getenv("VULOS_CUSTOMDOMAIN_DB")
 	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			home = "."
-		}
-		path = filepath.Join(home, ".vulos", "db", customDomainDBFilename)
+		path = datadir.Join("db", customDomainDBFilename)
 	}
 	return NewCustomDomainStoreAt(path)
 }

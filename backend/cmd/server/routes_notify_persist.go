@@ -27,7 +27,7 @@ import (
 // home is os.UserHomeDir(). A store-open failure is logged and the server
 // continues memory-only (persistence is best-effort, never fatal).
 func registerNotifyPersistRoutes(mux *http.ServeMux, notifySvc *notify.Service, home string) {
-	storePath := filepath.Join(home, ".vulos", "db", "notifications.json")
+	storePath := filepath.Join(home, "db", "notifications.json")
 
 	store, err := notify.OpenStore(storePath)
 	if err != nil {

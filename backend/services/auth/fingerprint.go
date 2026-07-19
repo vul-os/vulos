@@ -67,6 +67,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 )
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -145,11 +146,11 @@ type FingerprintService struct {
 //     returned on successful fingerprint verification.
 func NewFingerprintService(dataDir string, pinSvc *DevicePINService) (*FingerprintService, error) {
 	if dataDir == "" {
-		home, err := os.UserHomeDir()
+		_, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("fingerprint: cannot determine home dir: %w", err)
 		}
-		dataDir = filepath.Join(home, ".vulos", "auth")
+		dataDir = datadir.Join("auth")
 	}
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return nil, fmt.Errorf("fingerprint: mkdir %s: %w", dataDir, err)

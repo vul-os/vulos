@@ -3,8 +3,8 @@ package storage
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
+	"vulos/backend/internal/datadir"
 )
 
 // Resolution is the per-user object-store binding handed to OS subsystems and,
@@ -116,7 +116,6 @@ type ResolverConfig struct {
 // bucket, so existing cluster behaviour is preserved without leaking that bucket
 // to per-user app storage.
 func LoadResolverConfig() ResolverConfig {
-	home, _ := os.UserHomeDir()
 	return ResolverConfig{
 		Endpoint:     firstNonEmpty(os.Getenv("VULOS_STORAGE_ENDPOINT"), os.Getenv("VULOS_S3_ENDPOINT")),
 		Region:       firstNonEmpty(os.Getenv("VULOS_STORAGE_REGION"), os.Getenv("VULOS_S3_REGION"), "us-east-1"),
@@ -129,7 +128,7 @@ func LoadResolverConfig() ResolverConfig {
 		BucketPrefix: firstNonEmpty(os.Getenv("VULOS_STORAGE_BUCKET_PREFIX"), "vulos-"),
 		// OS/box bucket keeps the legacy cluster default.
 		OSBucket:  firstNonEmpty(os.Getenv("VULOS_STORAGE_OS_BUCKET"), os.Getenv("VULOS_S3_BUCKET"), defaultOSBucket),
-		LocalRoot: firstNonEmpty(os.Getenv("VULOS_STORAGE_LOCAL_ROOT"), filepath.Join(home, ".vulos", "storage")),
+		LocalRoot: firstNonEmpty(os.Getenv("VULOS_STORAGE_LOCAL_ROOT"), datadir.Join("storage")),
 	}
 }
 

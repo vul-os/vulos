@@ -26,7 +26,7 @@ import (
 // mode is allowed for any authenticated user because the dashboard panel
 // renders it for everyone, but only admins may flip the selector.
 func registerStorageModeRoutes(mux *http.ServeMux, home string, authStore *auth.Store) {
-	dbPath := filepath.Join(home, ".vulos", "db", "storagemode.db")
+	dbPath := filepath.Join(home, "db", "storagemode.db")
 	store, err := storagemode.Open(dbPath)
 	if err != nil {
 		// FIX-STORE-LOCAL-LOG-01: surface the open failure. Soft-degrade

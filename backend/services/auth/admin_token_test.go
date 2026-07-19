@@ -14,7 +14,7 @@ func AT10_tmpHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	// Ensure db subdir exists (IssueAdminToken creates it, but tests may check paths).
-	os.MkdirAll(filepath.Join(dir, ".vulos", "db"), 0700)
+	os.MkdirAll(filepath.Join(dir, "db"), 0700)
 	return dir
 }
 

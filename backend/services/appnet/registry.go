@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"vulos/backend/internal/datadir"
 	"vulos/backend/services/env"
 	"vulos/backend/services/packages"
 	"vulos/backend/services/signing"
@@ -952,7 +953,7 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	}
 
 	// Symlink data dir to user data directory
-	userDataDir := filepath.Join(os.Getenv("HOME"), ".vulos", "data", appID)
+	userDataDir := datadir.Join("data", appID)
 	appDataDir := filepath.Join(appDir, "data")
 	if _, err := os.Stat(userDataDir); os.IsNotExist(err) {
 		os.MkdirAll(filepath.Dir(userDataDir), 0755)

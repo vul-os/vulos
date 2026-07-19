@@ -36,7 +36,7 @@ type at10Record struct {
 
 // at10TokenPath returns the path to the admin token file.
 func at10TokenPath(home string) string {
-	return filepath.Join(home, ".vulos", "db", "admin-token.json")
+	return filepath.Join(home, "db", "admin-token.json")
 }
 
 var at10Mu sync.Mutex

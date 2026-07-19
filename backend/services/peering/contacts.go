@@ -197,7 +197,7 @@ type ContactStore struct {
 // If the file does not exist it is created with an empty contacts list.
 // If the file exists but is malformed, NewContactStore returns an error.
 func NewContactStore(home string) (*ContactStore, error) {
-	dir := filepath.Join(home, ".vulos", "peering")
+	dir := filepath.Join(home, "peering")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("peering/contacts: mkdir %s: %w", dir, err)
 	}

@@ -124,7 +124,7 @@ func TestStorageprovEnabled(t *testing.T) {
 	}
 
 	// Verify storage.json exists and does NOT contain the passphrase
-	stateFile := filepath.Join(home, ".vulos", "db", "storage.json")
+	stateFile := filepath.Join(home, "db", "storage.json")
 	data, err := os.ReadFile(stateFile)
 	if err != nil {
 		t.Fatalf("storage.json not written: %v", err)

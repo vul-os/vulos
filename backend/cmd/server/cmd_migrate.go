@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/services/auth"
 	"vulos/backend/services/files"
@@ -34,8 +35,7 @@ import (
 // defaultMigrateDBs returns the canonical db paths for auth.db and files.db
 // under $HOME/.vulos/db/, overridable by env vars.
 func defaultMigrateDBs() (authDB, filesDB string) {
-	home, _ := os.UserHomeDir()
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := datadir.Join("db")
 	authDB = os.Getenv("VULOS_AUTH_DB")
 	if authDB == "" {
 		authDB = filepath.Join(dbDir, "auth.db")

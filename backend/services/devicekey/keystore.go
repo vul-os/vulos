@@ -12,6 +12,7 @@ import (
 	"crypto"
 	"fmt"
 	"os"
+	"vulos/backend/internal/datadir"
 )
 
 // BackendType identifies which key-storage backend is in use.
@@ -63,11 +64,7 @@ const defaultTPMPath = "/dev/tpmrm0"
 
 // defaultKeyDir returns ~/.vulos/auth/tpm/ creating it if needed.
 func defaultKeyDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("devicekey: cannot determine home directory: %w", err)
-	}
-	dir := home + "/.vulos/auth/tpm"
+	dir := datadir.Join("auth", "tpm")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("devicekey: cannot create key dir %q: %w", dir, err)
 	}

@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver — never CGo
 )
@@ -61,7 +62,7 @@ func DefaultDBPath() (string, error) {
 	if err != nil || home == "" {
 		return "", fmt.Errorf("anchorinbox: cannot resolve home dir: %w", err)
 	}
-	return filepath.Join(home, ".vulos", "db", "anchorinbox.db"), nil
+	return datadir.Join("db", "anchorinbox.db"), nil
 }
 
 // Open opens (or creates) the anchor inbox database at dbPath and applies the

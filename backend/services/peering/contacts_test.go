@@ -792,7 +792,7 @@ func TestPersistence_AtomicWrite(t *testing.T) {
 	cs, _ := NewContactStore(dir)
 	cs.Add(aliceID, "Alice", "") //nolint:errcheck
 
-	peeringDir := filepath.Join(dir, ".vulos", "peering")
+	peeringDir := filepath.Join(dir, "peering")
 	entries, err := os.ReadDir(peeringDir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)

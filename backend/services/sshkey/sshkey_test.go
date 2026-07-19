@@ -31,7 +31,7 @@ func IS03_TestEnsureHostKey_Generates(t *testing.T) {
 	}
 
 	// Key file must exist with mode 0600.
-	path := filepath.Join(home, ".vulos", "db", "ssh_host_ed25519_key")
+	path := filepath.Join(home, "db", "ssh_host_ed25519_key")
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("key file missing: %v", err)

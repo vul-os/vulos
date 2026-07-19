@@ -80,7 +80,7 @@ func TestSuiteApps_RoundTripOptOut(t *testing.T) {
 	}
 
 	// File actually exists on disk.
-	if _, err := os.Stat(filepath.Join(home, ".vulos", "db", "suite-selection.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, "db", "suite-selection.json")); err != nil {
 		t.Fatalf("selection file not persisted: %v", err)
 	}
 }
@@ -113,7 +113,7 @@ func TestSuiteApps_PartialBodyDefaultsOn(t *testing.T) {
 
 func TestSuiteApps_CorruptFileFailsOpen(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".vulos", "db")
+	dir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestSuiteApps_POSTGatedOncePersonalized(t *testing.T) {
 	}
 
 	// The refused writes must not have touched disk — the launcher still shows everything.
-	if _, err := os.Stat(filepath.Join(home, ".vulos", "db", "suite-selection.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "db", "suite-selection.json")); !os.IsNotExist(err) {
 		t.Fatalf("a refused POST persisted a selection file (err=%v)", err)
 	}
 
@@ -186,7 +186,7 @@ func TestSuiteApps_POSTGatedOncePersonalized(t *testing.T) {
 		t.Fatalf("admin POST: want 200, got %d (body %s)", w.Code, w.Body.String())
 	}
 	var sel suiteSelection
-	data, err := os.ReadFile(filepath.Join(home, ".vulos", "db", "suite-selection.json"))
+	data, err := os.ReadFile(filepath.Join(home, "db", "suite-selection.json"))
 	if err != nil {
 		t.Fatalf("admin POST did not persist: %v", err)
 	}

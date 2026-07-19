@@ -19,7 +19,7 @@ func newServiceForModeTest(t *testing.T) *Service {
 
 // modePath returns the canonical persistence location for a given home root.
 func modePathFor(home string) string {
-	return filepath.Join(home, ".vulos", "db", "network-mode.json")
+	return filepath.Join(home, "db", "network-mode.json")
 }
 
 func TestLoadMode_DefaultsToFabricAndPersistsAt0600(t *testing.T) {
@@ -136,7 +136,7 @@ func TestLocalMode_BlocksExternalListener(t *testing.T) {
 // is byte-for-byte identical.
 func TestModeSwitchDoesNotTouchInstanceJSON(t *testing.T) {
 	home := t.TempDir()
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestTriggerDirectReenroll_WritesSignalFile(t *testing.T) {
 	if err := s.SetMode(ModeDirect); err != nil {
 		t.Fatalf("SetMode(direct): %v", err)
 	}
-	signal := filepath.Join(home, ".vulos", "db", "network-reenroll.signal")
+	signal := filepath.Join(home, "db", "network-reenroll.signal")
 	if _, err := os.Stat(signal); err != nil {
 		t.Fatalf("expected re-enroll signal file at %s: %v", signal, err)
 	}

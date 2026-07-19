@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	apikeyseam "vulos/backend/internal/apikey"
 	internalauth "vulos/backend/internal/auth"
@@ -186,18 +187,21 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Data directory
-	home, _ := os.UserHomeDir()
-	dataDir := filepath.Join(home, ".vulos", "data")
+	// Data directory. `home` is the box DATA ROOT (not the OS home dir):
+	// datadir.Root honours VULOS_DATA_DIR and defaults to $HOME/.vulos. Every
+	// subsystem below takes this root and appends its own subdirectory, so the
+	// whole box lives under one operator-selectable path.
+	home := datadir.Root()
+	dataDir := datadir.Join("data")
 	os.MkdirAll(dataDir, 0755)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := datadir.Join("db")
 	os.MkdirAll(dbDir, 0755)
 
 	// GATEWAY-01: load any persisted control-plane ("gateway") override before any
 	// CP broker resolves its base URL. gwurl is the single source of truth read by
 	// cloud login/signup/enroll, identity claim, instance routing, cloud sync, and
 	// the OAuth integrations broker. Missing/corrupt file → env/default (fail-safe).
-	if err := gwurl.Init(filepath.Join(home, ".vulos")); err != nil {
+	if err := gwurl.Init(datadir.Root()); err != nil {
 		log.Printf("[gateway] could not load persisted gateway override (%v) — using env/default %s", err, gwurl.Default)
 	}
 	if u, src := gwurl.Resolved(); src != gwurl.SourceDefault {
@@ -452,7 +456,7 @@ func main() {
 	}
 
 	// App store
-	appsDir := filepath.Join(home, ".vulos", "apps")
+	appsDir := datadir.Join("apps")
 	appStore := appnet.NewAppStore(appsDir)
 
 	// App visibility store (private|local|public per app)
@@ -464,7 +468,7 @@ func main() {
 	// TURN server (WebRTC relay for remote mode)
 	turnCfg := network.LoadTURNConfig()
 	if turnCfg.Enabled {
-		if cmd, err := turnCfg.StartCoturn(ctx, filepath.Join(home, ".vulos", "tunnel")); err != nil {
+		if cmd, err := turnCfg.StartCoturn(ctx, datadir.Join("tunnel")); err != nil {
 			log.Printf("[turn] start warning: %v", err)
 		} else {
 			go func() { cmd.Wait(); log.Printf("[turn] coturn exited") }()
@@ -472,10 +476,10 @@ func main() {
 	}
 
 	// Sandbox (AI-generated Python scripts)
-	sandboxSvc := sandbox.New(filepath.Join(home, ".vulos"))
+	sandboxSvc := sandbox.New(datadir.Root())
 
 	// Browser profiles (isolated cookie jars / contexts)
-	browserProfiles := bprofiles.NewStore(filepath.Join(home, ".vulos", "db"))
+	browserProfiles := bprofiles.NewStore(datadir.Join("db"))
 
 	// Device profile — form-factor selection (pc|tv|car|watch)
 	deviceProfile := bprofiles.NewDeviceProfileStore(dbDir)
@@ -490,7 +494,7 @@ func main() {
 	billingClient := cpbilling.New(cpbilling.Config{})
 
 	// Wine prefix management (create/delete/DXVK per user)
-	wineSvc := wine.New(filepath.Join(home, ".vulos", "wine"))
+	wineSvc := wine.New(datadir.Join("wine"))
 
 	// Web proxy (for remote mode — kept for API proxy use)
 	desktopSvc := desktop.New()
@@ -959,7 +963,7 @@ func main() {
 	// always reads the current value. nilSyncer is replaced once cluster is ready.
 	var clusterSyncer *sync.Syncer
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		handleClusterHealth(filepath.Join(home, ".vulos"), clusterSyncer)(w, r)
+		handleClusterHealth(datadir.Root(), clusterSyncer)(w, r)
 	})
 
 	// Setup status — public, no auth needed
@@ -1014,7 +1018,7 @@ func main() {
 
 	// Credential vault HTTP API (password manager, per-user, AES-256-GCM)
 	credVaultHandler := credvault.NewHandler(func(userID string) string {
-		return filepath.Join(home, ".vulos", "auth", "vault", userID)
+		return datadir.Join("auth", "vault", userID)
 	})
 	credVaultHandler.RegisterHandlers(mux)
 
@@ -1108,7 +1112,7 @@ func main() {
 	// streamVerifier is set here when passkeys are available; used below for
 	// AUTH-13 (input-injection re-auth gate).
 	var streamVerifier *passkeys.StreamVerifier
-	deviceKS, deviceKSErr := devicekey.Open(filepath.Join(home, ".vulos", "auth", "tpm"))
+	deviceKS, deviceKSErr := devicekey.Open(datadir.Join("auth", "tpm"))
 	if deviceKSErr != nil {
 		log.Printf("passkeys: devicekey unavailable, server-side passkeys disabled: %v", deviceKSErr)
 	} else {
@@ -1152,7 +1156,7 @@ func main() {
 		// self-host box enrolls against the same control plane every other broker
 		// targets. Bound at startup; a runtime gateway change applies on restart.
 		cloudEnrollBase := gwurl.URL()
-		enroller := cloudenroll.New(cloudEnrollBase, filepath.Join(home, ".vulos", "auth", "integrations"), deviceKS)
+		enroller := cloudenroll.New(cloudEnrollBase, datadir.Join("auth", "integrations"), deviceKS)
 		if ident, err := enroller.Load(); err != nil {
 			log.Printf("[integrations] cloud enrollment load: %v", err)
 		} else if ident != nil {
@@ -1192,7 +1196,7 @@ func main() {
 		})
 		authHandler.CloudEnroll = cloudEnrollAdapter{m: enrollMgr}
 
-		passkeysSvc := passkeys.New(filepath.Join(home, ".vulos", "auth", "passkeys"), deviceKS)
+		passkeysSvc := passkeys.New(datadir.Join("auth", "passkeys"), deviceKS)
 		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.
 		if activeEnv.IsProd() {
 			if err := passkeysSvc.ValidateConfig(); err != nil {
@@ -1280,7 +1284,7 @@ func main() {
 	// HTTP embeddings.Embedder (which may egress) here. If no local ONNX model is
 	// present the assistant transparently falls back to lexical retrieval.
 	var mailIndex *assistant.MailIndex
-	modelsDir := filepath.Join(home, ".vulos", "models")
+	modelsDir := datadir.Join("models")
 	if embeddings.OnnxAvailable(modelsDir) {
 		if onnx, oerr := embeddings.NewOnnxEmbedder(modelsDir); oerr != nil {
 			log.Printf("[assistant] ONNX embedder init failed: %v — semantic mail index disabled (lexical fallback)", oerr)
@@ -3132,7 +3136,7 @@ func main() {
 	})
 
 	// AI-generated apps gallery — hardened handlers in routes_aiapps_security.go (SEC-I).
-	aiAppsDir := filepath.Join(home, ".vulos", "ai-apps")
+	aiAppsDir := datadir.Join("ai-apps")
 	registerAIAppsSecurityWrappers(mux, aiAppsDir, authStore)
 	registerAIAppsRoutes(mux, aiAppsDir, authStore)
 
@@ -3430,7 +3434,7 @@ func main() {
 	})
 
 	// OS update status + apply (OSDIST-04 + OSDIST-05)
-	if osdistSlotMgr, osdistErr := osdist.NewSlotManager(filepath.Join(home, ".vulos", "os-cache")); osdistErr == nil {
+	if osdistSlotMgr, osdistErr := osdist.NewSlotManager(datadir.Join("os-cache")); osdistErr == nil {
 		osdistStore := osdist.NewStatusStore()
 		osdistIsAdmin := func(r *http.Request) bool {
 			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
@@ -3754,7 +3758,7 @@ func main() {
 
 	// App filesystem persistence — sandboxed read/write under
 	// ~/.vulos/<userID>/<appID>/ (APPFS-01: per-user AND per-app scoped).
-	appfsBaseDir := filepath.Join(home, ".vulos")
+	appfsBaseDir := datadir.Root()
 	appfsSvc := appfs.New(appfsBaseDir)
 	// One-time, single-user-only migration of data written under the OLD,
 	// un-scoped ~/.vulos/<appID>/ layout (pre-APPFS-01). Only runs when
@@ -4134,7 +4138,7 @@ func main() {
 
 	// TLS: check for mkcert certs (dev) or production certs
 	certPaths := []struct{ cert, key string }{
-		{filepath.Join(home, ".vulos", "localhost.pem"), filepath.Join(home, ".vulos", "localhost-key.pem")},
+		{datadir.Join("localhost.pem"), datadir.Join("localhost-key.pem")},
 		{"/etc/vulos/tls/cert.pem", "/etc/vulos/tls/key.pem"},
 	}
 	var tlsCert, tlsKey string
@@ -4340,7 +4344,7 @@ func main() {
 		// SEC: honor the LAN-only network mode — never bind a public listener when
 		// the operator has set connection mode to "local" (external listeners
 		// blocked), even if VULOS_DIRECT_ENABLE is set.
-		directEnv := directlisten.FromEnv(filepath.Join(home, ".vulos", "auth", "direct-acme"))
+		directEnv := directlisten.FromEnv(datadir.Join("auth", "direct-acme"))
 		if directEnv.Enabled && netSvc.ExternalListenerBlocked() {
 			log.Printf("[direct] disabled: network mode is LAN-only (external listeners blocked) — set connection mode to fabric/direct/own to use the direct fast path")
 		} else if directEnv.Enabled {

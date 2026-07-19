@@ -7,9 +7,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/internal/storage"
 )
@@ -242,8 +242,7 @@ func getenv(key, fallback string) string {
 
 // DataDir returns the default data directory to back up.
 func DataDir() string {
-	home, _ := os.UserHomeDir()
-	d := filepath.Join(home, ".vulos", "data")
+	d := datadir.Join("data")
 	os.MkdirAll(d, 0755)
 	return d
 }

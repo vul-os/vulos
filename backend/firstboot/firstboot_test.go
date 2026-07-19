@@ -123,7 +123,7 @@ func fbValidJoinReq() joinsync.JoinRequest {
 
 func fbReadStorageJSON(t *testing.T, home string) map[string]any {
 	t.Helper()
-	path := filepath.Join(home, ".vulos", "db", "storage.json")
+	path := filepath.Join(home, "db", "storage.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read storage.json: %v", err)
@@ -137,7 +137,7 @@ func fbReadStorageJSON(t *testing.T, home string) map[string]any {
 
 func fbReadSyncStateJSON(t *testing.T, home string) map[string]any {
 	t.Helper()
-	path := filepath.Join(home, ".vulos", "db", "sync-state.json")
+	path := filepath.Join(home, "db", "sync-state.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read sync-state.json: %v", err)
@@ -173,7 +173,7 @@ func TestStandalone_LocalAccount(t *testing.T) {
 	}
 
 	// 2. Verify instance.json is on disk.
-	instancePath := filepath.Join(home, ".vulos", "db", "instance.json")
+	instancePath := filepath.Join(home, "db", "instance.json")
 	if _, err := os.Stat(instancePath); err != nil {
 		t.Fatalf("standalone: instance.json not created: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestStandalone_LocalAccount(t *testing.T) {
 	}
 
 	// 4. storage.json must NOT exist (no bucket provisioned).
-	storagePath := filepath.Join(home, ".vulos", "db", "storage.json")
+	storagePath := filepath.Join(home, "db", "storage.json")
 	if _, err := os.Stat(storagePath); err == nil {
 		t.Fatal("standalone: storage.json was created despite no-bucket standalone path")
 	}
@@ -271,7 +271,7 @@ func TestNewCluster_BucketCreatedPassphraseSavedCRDTInit(t *testing.T) {
 	}
 
 	// instance.json must exist so bootmode can detect the node.
-	if _, err := os.Stat(filepath.Join(home, ".vulos", "db", "instance.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, "db", "instance.json")); err != nil {
 		t.Fatalf("new-cluster: instance.json not created: %v", err)
 	}
 
@@ -447,10 +447,10 @@ func TestJoinExisting_WrongPassphraseRejected(t *testing.T) {
 	}
 
 	// Nothing must be persisted.
-	if _, statErr := os.Stat(filepath.Join(home, ".vulos", "db", "storage.json")); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(home, "db", "storage.json")); statErr == nil {
 		t.Fatal("join-existing: storage.json written despite bad passphrase")
 	}
-	if _, statErr := os.Stat(filepath.Join(home, ".vulos", "db", "sync-state.json")); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(home, "db", "sync-state.json")); statErr == nil {
 		t.Fatal("join-existing: sync-state.json written despite bad passphrase")
 	}
 
@@ -478,7 +478,7 @@ func TestJoinExisting_UnreachableBucketRejected(t *testing.T) {
 	}
 
 	// No state written.
-	if _, statErr := os.Stat(filepath.Join(home, ".vulos", "db", "storage.json")); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(home, "db", "storage.json")); statErr == nil {
 		t.Fatal("join-existing: storage.json written despite unreachable bucket")
 	}
 }

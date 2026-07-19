@@ -320,7 +320,7 @@ func Progress(home string) syncState {
 
 // on-disk helpers -------------------------------------------------------------
 
-func dbDir(home string) string { return filepath.Join(home, ".vulos", "db") }
+func dbDir(home string) string { return filepath.Join(home, "db") }
 
 func writeStorageState(home string, req JoinRequest, cfg cluster.S3Config) error {
 	dir := dbDir(home)

@@ -144,7 +144,7 @@ func newE2EHarness(t *testing.T) *e2eHarness {
 	})
 
 	// --- Seed OS accounts ---
-	dataDir := filepath.Join(home, ".vulos", "data")
+	dataDir := filepath.Join(home, "data")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		t.Fatalf("mkdir data: %v", err)
 	}
@@ -237,7 +237,7 @@ func newE2EHarness(t *testing.T) *e2eHarness {
 	}
 
 	// Write anchor key to the path osdist reads.
-	anchorDir := filepath.Join(home, ".vulos", "keys")
+	anchorDir := filepath.Join(home, "keys")
 	if err := os.MkdirAll(anchorDir, 0o700); err != nil {
 		t.Fatalf("mkdir keys: %v", err)
 	}

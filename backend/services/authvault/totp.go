@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -66,11 +67,11 @@ type Store struct {
 
 // dataDir returns ~/.vulos/auth/totp, creating it if needed.
 func dataDir() (string, error) {
-	home, err := os.UserHomeDir()
+	_, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("authvault: cannot determine home dir: %w", err)
 	}
-	dir := filepath.Join(home, ".vulos", "auth", "totp")
+	dir := datadir.Join("auth", "totp")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("authvault: cannot create dir %s: %w", dir, err)
 	}

@@ -132,7 +132,7 @@ func NewOutboxQueue(home string, client *PeerClient) (*OutboxQueue, error) {
 	if client == nil {
 		return nil, fmt.Errorf("peering/outbox: client must not be nil")
 	}
-	root := filepath.Join(home, ".vulos", "peering", "outbox")
+	root := filepath.Join(home, "peering", "outbox")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, fmt.Errorf("peering/outbox: mkdir %s: %w", root, err)
 	}

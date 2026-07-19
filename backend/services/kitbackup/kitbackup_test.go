@@ -15,7 +15,7 @@ import (
 func makeHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".vulos", "db"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, "db"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	return home
@@ -55,7 +55,7 @@ func IK11_TestBuildKit_NoFiles(t *testing.T) {
 // read from instance.json correctly.
 func IK11_TestBuildKit_WithInstance(t *testing.T) {
 	home := makeHome(t)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 
 	writeJSON(t, filepath.Join(dbDir, "instance.json"), map[string]string{
 		"ulid":     "01HV2M5X7QABCDEF",
@@ -79,7 +79,7 @@ func IK11_TestBuildKit_WithInstance(t *testing.T) {
 // is absent in instance.json.
 func IK11_TestBuildKit_IDFallback(t *testing.T) {
 	home := makeHome(t)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 
 	writeJSON(t, filepath.Join(dbDir, "instance.json"), map[string]string{
 		"id":       "only-id-no-ulid",
@@ -99,7 +99,7 @@ func IK11_TestBuildKit_IDFallback(t *testing.T) {
 // included when storage.json is present.
 func IK11_TestBuildKit_WithStorage(t *testing.T) {
 	home := makeHome(t)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 
 	writeJSON(t, filepath.Join(dbDir, "instance.json"), map[string]string{
 		"ulid":     "01TEST",
@@ -135,7 +135,7 @@ func IK11_TestBuildKit_WithStorage(t *testing.T) {
 // contain the words passphrase, password, session, or token.
 func IK11_TestBuildKit_ExcludesSecrets(t *testing.T) {
 	home := makeHome(t)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 
 	writeJSON(t, filepath.Join(dbDir, "instance.json"), map[string]string{
 		"ulid":       "01TEST",
@@ -165,7 +165,7 @@ func IK11_TestBuildKit_ExcludesSecrets(t *testing.T) {
 // IK11_TestBuildKit_IssuedAt verifies that IssuedAt is set to a recent time.
 func IK11_TestBuildKit_IssuedAt(t *testing.T) {
 	home := makeHome(t)
-	writeJSON(t, filepath.Join(home, ".vulos", "db", "instance.json"), map[string]string{
+	writeJSON(t, filepath.Join(home, "db", "instance.json"), map[string]string{
 		"ulid":     "01TIMETEST",
 		"hostname": "timehost",
 	})

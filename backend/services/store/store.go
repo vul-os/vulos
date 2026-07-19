@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"vulos/backend/internal/datadir"
 
 	dbmigrate "vulos/backend/internal/migrate"
 
@@ -57,14 +58,12 @@ func candidateExtPaths() []string {
 		lib = "crsqlite.so"
 	}
 
-	home, _ := os.UserHomeDir()
-
 	return []string{
 		// Explicit override via env var (highest priority)
 		os.Getenv("CRSQLITE_PATH"),
 
 		// Standard Vulos installation directory
-		filepath.Join(home, ".vulos", "lib", lib),
+		datadir.Join("lib", lib),
 
 		// System-wide locations
 		filepath.Join("/usr/local/lib", lib),
@@ -94,11 +93,11 @@ type DB struct {
 
 // defaultDBPath returns the default database file path: ~/.vulos/db/vulos.db.
 func defaultDBPath() (string, error) {
-	home, err := os.UserHomeDir()
+	_, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("store: cannot determine home directory: %w", err)
 	}
-	return filepath.Join(home, ".vulos", "db", "vulos.db"), nil
+	return datadir.Join("db", "vulos.db"), nil
 }
 
 // Open opens (or creates) the Vulos SQLite database.

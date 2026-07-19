@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/internal/ulid"
 )
@@ -112,12 +113,9 @@ func Load(env string) *Config {
 	// Instance ULID — load from env or from ~/.vulos/instance-id (generated once).
 	instanceID := get("VULOS_INSTANCE_ID", "")
 	if instanceID == "" {
-		vulosDir := filepath.Join(os.Getenv("HOME"), ".vulos")
-		if vulosDir == "/.vulos" {
-			// Fallback when HOME is empty (e.g. container without HOME set).
-			vulosDir = "/root/.vulos"
-		}
-		id, err := ulid.LoadOrCreate(vulosDir)
+		// datadir.Root honours VULOS_DATA_DIR and already falls back to
+		// /root/.vulos when HOME is unset.
+		id, err := ulid.LoadOrCreate(datadir.Root())
 		if err != nil {
 			// Non-fatal: use in-memory ULID for this run.
 			id = ulid.NewULID()

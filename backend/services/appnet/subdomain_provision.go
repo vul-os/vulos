@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 )
 
 const (
@@ -68,11 +69,7 @@ type DeploymentStore struct {
 func NewDeploymentStore() (*DeploymentStore, error) {
 	path := os.Getenv("VULOS_DEPLOY_DB")
 	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			home = "."
-		}
-		path = filepath.Join(home, ".vulos", "db", deploymentDBFilename)
+		path = datadir.Join("db", deploymentDBFilename)
 	}
 	return NewDeploymentStoreAt(path)
 }

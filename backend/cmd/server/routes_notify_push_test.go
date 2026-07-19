@@ -23,16 +23,16 @@ import (
 func newPushMux(t *testing.T, withKeys bool) (*http.ServeMux, string) {
 	t.Helper()
 	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".vulos", "db"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, "db"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if withKeys {
 		// Pre-provision a VAPID pair at the default key-file path so cfg.Enabled().
-		t.Setenv("VULOS_PUSH_VAPID_KEYFILE", filepath.Join(home, ".vulos", "db", "vapid.json"))
+		t.Setenv("VULOS_PUSH_VAPID_KEYFILE", filepath.Join(home, "db", "vapid.json"))
 	} else {
 		// Force keys off even though the route defaults a key file: point the key
 		// file at a directory so resolve fails → push disabled, store still opens.
-		t.Setenv("VULOS_PUSH_VAPID_KEYFILE", filepath.Join(home, ".vulos", "db")) // a dir, not writable as a file
+		t.Setenv("VULOS_PUSH_VAPID_KEYFILE", filepath.Join(home, "db")) // a dir, not writable as a file
 	}
 	svc := notify.New()
 	mux := http.NewServeMux()

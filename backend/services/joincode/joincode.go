@@ -51,12 +51,12 @@ var mu sync.Mutex // protects read-modify-write on joincodes.json
 
 // dbPath returns the absolute path to joincodes.json for the given home directory.
 func dbPath(home string) string {
-	return filepath.Join(home, ".vulos", "db", "joincodes.json")
+	return filepath.Join(home, "db", "joincodes.json")
 }
 
 // storagePath returns the absolute path to storage.json for the given home directory.
 func storagePath(home string) string {
-	return filepath.Join(home, ".vulos", "db", "storage.json")
+	return filepath.Join(home, "db", "storage.json")
 }
 
 // loadDB reads joincodes.json from disk. Returns an empty map if the file is absent.

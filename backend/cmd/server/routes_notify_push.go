@@ -45,7 +45,7 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 	// pair on first boot (0600). This makes the sovereign direct-send path work
 	// out of the box while staying overridable by env.
 	if cfg.VAPIDPublic == "" && cfg.VAPIDPrivate == "" && cfg.VAPIDKeyFile == "" {
-		cfg.VAPIDKeyFile = filepath.Join(home, ".vulos", "db", "vapid.json")
+		cfg.VAPIDKeyFile = filepath.Join(home, "db", "vapid.json")
 	}
 	if err := webpush.ResolveVAPID(&cfg); err != nil {
 		// A key-file we cannot read/write → run WITHOUT push rather than fail boot.
@@ -53,7 +53,7 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 		cfg = webpush.LoadConfig() // discard the half-resolved config
 	}
 
-	storePath := filepath.Join(home, ".vulos", "db", "push_subs.sqlite")
+	storePath := filepath.Join(home, "db", "push_subs.sqlite")
 	store, err := webpush.NewSQLiteStore(storePath)
 	if err != nil {
 		log.Printf("[notify] push: subscription store unavailable (push disabled): %v", err)

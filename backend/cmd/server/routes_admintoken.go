@@ -85,7 +85,7 @@ func at10IsAdmin(w http.ResponseWriter, r *http.Request, authStore *auth.Store) 
 // at10InfoFromDisk reads the admin-token file and returns a safe preview and rotation time.
 // Returns ("", zero) if no token is stored.
 func at10InfoFromDisk(home string) (preview string, rotatesAt time.Time) {
-	p := filepath.Join(home, ".vulos", "db", "admin-token.json")
+	p := filepath.Join(home, "db", "admin-token.json")
 	data, err := os.ReadFile(p)
 	if err != nil {
 		return "", time.Time{}

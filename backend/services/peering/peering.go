@@ -77,7 +77,7 @@ func (s *Service) VulaID() string { return s.vulaID }
 //
 // home should be the value of os.UserHomeDir() (or the user's home path).
 func New(home string) *Service {
-	root := filepath.Join(home, ".vulos", "peering")
+	root := filepath.Join(home, "peering")
 
 	// Create subdirectories idempotently.
 	for _, sub := range subdirs {

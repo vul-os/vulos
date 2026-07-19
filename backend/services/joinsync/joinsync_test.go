@@ -147,10 +147,10 @@ func TestJoin_RejectsBadPassphrase(t *testing.T) {
 	}
 
 	// On a failed validation NOTHING must be persisted.
-	if _, statErr := os.Stat(filepath.Join(home, ".vulos", "db", storageFileName)); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(home, "db", storageFileName)); statErr == nil {
 		t.Fatal("storage.json was written despite a bad passphrase")
 	}
-	if _, statErr := os.Stat(filepath.Join(home, ".vulos", "db", syncStateFileName)); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(home, "db", syncStateFileName)); statErr == nil {
 		t.Fatal("sync-state.json was written despite a bad passphrase")
 	}
 }
@@ -184,7 +184,7 @@ func TestJoin_PersistsStorageWithoutPassphrase(t *testing.T) {
 		t.Fatalf("expected status syncing, got %q", res.Status)
 	}
 
-	dbPath := filepath.Join(home, ".vulos", "db")
+	dbPath := filepath.Join(home, "db")
 
 	storageRaw, err := os.ReadFile(filepath.Join(dbPath, storageFileName))
 	if err != nil {
@@ -266,7 +266,7 @@ func TestJoin_WritesSyncStateSyncing(t *testing.T) {
 		ProgressPct int    `json:"progress_pct"`
 		UpdatedAt   string `json:"updated_at"`
 	}
-	readJSONFile(t, filepath.Join(home, ".vulos", "db", syncStateFileName), &ss)
+	readJSONFile(t, filepath.Join(home, "db", syncStateFileName), &ss)
 	if ss.Status == "" {
 		t.Fatal("sync-state.json has empty status")
 	}
@@ -276,7 +276,7 @@ func TestJoin_WritesSyncStateSyncing(t *testing.T) {
 
 	// instance.json must also exist so bootmode.Detect can reach the
 	// sync-state rule (it returns "setup" if instance.json is absent).
-	if _, err := os.Stat(filepath.Join(home, ".vulos", "db", "instance.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, "db", "instance.json")); err != nil {
 		t.Fatalf("instance.json not created: %v", err)
 	}
 }
@@ -312,7 +312,7 @@ func TestJoin_BackgroundPullCompletes(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	walkAssertNoPassphrase(t, filepath.Join(home, ".vulos"), validReq().Passphrase)
+	walkAssertNoPassphrase(t, home, validReq().Passphrase)
 }
 
 func TestJoin_BackgroundPullErrorRecorded(t *testing.T) {
@@ -385,7 +385,7 @@ func TestJoin_PassphrasePassedToBackendInMemoryOnly(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("pull did not finish")
 	}
-	walkAssertNoPassphrase(t, filepath.Join(home, ".vulos"), req.Passphrase)
+	walkAssertNoPassphrase(t, home, req.Passphrase)
 }
 
 // --- helpers -----------------------------------------------------------------

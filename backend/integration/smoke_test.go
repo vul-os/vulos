@@ -43,7 +43,7 @@ func buildServer(t *testing.T) *httptest.Server {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0o700); err != nil {
 		t.Fatalf("setup: mkdir dbDir: %v", err)
 	}

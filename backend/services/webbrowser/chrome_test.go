@@ -137,7 +137,7 @@ func TestSessionIDForUser(t *testing.T) {
 func TestProfileDir_PerUserIsolationAndPersistence(t *testing.T) {
 	home := "/home/alice"
 	dir := profileDir(home, "alice")
-	want := filepath.Join(home, ".vulos", "browser", "profiles", "alice")
+	want := filepath.Join(home, "browser", "profiles", "alice")
 	if dir != want {
 		t.Errorf("profileDir = %q, want %q", dir, want)
 	}

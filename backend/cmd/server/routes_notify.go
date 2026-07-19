@@ -28,7 +28,7 @@ type notifyExt struct {
 // newNotifyExt constructs the DND manager and action registry.
 // home is the user's home directory (e.g. os.UserHomeDir()).
 func newNotifyExt(svc *notify.Service, home string) *notifyExt {
-	dndPath := filepath.Join(home, ".vulos", "db", "dnd.json")
+	dndPath := filepath.Join(home, "db", "dnd.json")
 	return &notifyExt{
 		svc:     svc,
 		dnd:     notify.NewDNDManager(dndPath),

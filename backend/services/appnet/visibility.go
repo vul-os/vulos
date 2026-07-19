@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"vulos/backend/internal/datadir"
 )
 
 // Visibility constants for app accessibility.
@@ -69,11 +70,7 @@ func dbPath() string {
 	if p := os.Getenv("VULOS_VISIBILITY_DB"); p != "" {
 		return p
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "."
-	}
-	return filepath.Join(home, ".vulos", "db", "visibility.json")
+	return datadir.Join("db", "visibility.json")
 }
 
 // NewVisibilityStore creates a VisibilityStore backed by the default path and

@@ -112,7 +112,7 @@ func profileDir(home, userID string) string {
 	if home == "" {
 		home = "/root"
 	}
-	return filepath.Join(home, ".vulos", "browser", "profiles", profileSlug(userID))
+	return filepath.Join(home, "browser", "profiles", profileSlug(userID))
 }
 
 // chromeArgs builds the Chromium command-line for a given per-user profile.

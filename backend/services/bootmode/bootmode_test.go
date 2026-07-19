@@ -18,7 +18,7 @@ func setupHome(t *testing.T) string {
 // makeDBDir creates ~/.vulos/db under home and returns the db path.
 func makeDBDir(t *testing.T, home string) string {
 	t.Helper()
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}

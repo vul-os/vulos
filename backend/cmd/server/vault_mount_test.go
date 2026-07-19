@@ -61,7 +61,7 @@ func vaultTestServer(t *testing.T) (*httptest.Server, *auth.Store) {
 	authvault.RegisterMigrationHandlers(mux, totpHandler)
 
 	credVaultHandler := credvault.NewHandler(func(userID string) string {
-		return filepath.Join(home, ".vulos", "auth", "vault", userID)
+		return filepath.Join(home, "auth", "vault", userID)
 	})
 	credVaultHandler.RegisterHandlers(mux)
 	credvault.RegisterImportHandlers(mux, credVaultHandler)

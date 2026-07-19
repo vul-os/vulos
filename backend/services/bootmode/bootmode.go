@@ -28,7 +28,7 @@ const instanceFile = "instance.json"
 // Detect inspects home to determine the current boot mode.
 // home is the user home directory; the db dir is home/.vulos/db.
 func Detect(home string) (Result, error) {
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 
 	// Rule 1: db dir absent → setup
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {

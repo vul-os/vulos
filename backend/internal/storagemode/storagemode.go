@@ -31,6 +31,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"vulos/backend/internal/datadir"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver — never CGo (D23)
 )
@@ -89,7 +90,7 @@ func DefaultDBPath() (string, error) {
 	if err != nil || home == "" {
 		return "", fmt.Errorf("storagemode: cannot resolve home dir: %w", err)
 	}
-	return filepath.Join(home, ".vulos", "db", "storagemode.db"), nil
+	return datadir.Join("db", "storagemode.db"), nil
 }
 
 // Open opens (or creates) the storagemode database at dbPath and runs the

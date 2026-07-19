@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/cmd/verify"
 	vulenv "vulos/backend/services/env"
@@ -536,7 +537,7 @@ func mountDataPartition() {
 	if err != nil {
 		home = "/root"
 	}
-	target := filepath.Join(home, ".vulos")
+	target := datadir.Root()
 
 	if err := os.MkdirAll(target, 0755); err != nil {
 		log.Printf("data partition: mkdir %s: %v", target, err)

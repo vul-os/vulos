@@ -277,7 +277,7 @@ func NewRelayStore(home string, contacts *ContactStore) (*RelayStore, error) {
 	if contacts == nil {
 		return nil, errors.New("peering/relay: contacts must not be nil")
 	}
-	root := filepath.Join(home, ".vulos", "peering", "relay")
+	root := filepath.Join(home, "peering", "relay")
 	storeDir := filepath.Join(root, "store")
 	for _, dir := range []string{root, storeDir} {
 		if err := os.MkdirAll(dir, 0700); err != nil {

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 )
 
 // ExternalUpstream records one adopted loopback service.
@@ -225,11 +226,7 @@ func externalKey(ownerID, appID, profile string) string {
 func NewExternalUpstreamStore() (*ExternalUpstreamStore, error) {
 	path := os.Getenv("VULOS_EXTERNAL_UPSTREAM_DB")
 	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			home = "."
-		}
-		path = filepath.Join(home, ".vulos", "db", externalUpstreamDBFilename)
+		path = datadir.Join("db", externalUpstreamDBFilename)
 	}
 	return NewExternalUpstreamStoreAt(path)
 }

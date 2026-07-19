@@ -41,6 +41,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo — matches services/store)
 )
@@ -99,11 +100,11 @@ type RemindersStore struct {
 // each boot).
 func OpenRemindersStore(path string) (*RemindersStore, error) {
 	if path == "" {
-		home, err := os.UserHomeDir()
+		_, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("reminders: cannot determine home dir: %w", err)
 		}
-		path = filepath.Join(home, ".vulos", "db", "reminders.db")
+		path = datadir.Join("db", "reminders.db")
 	}
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		path = filepath.Join(path, "reminders.db")

@@ -32,9 +32,9 @@ const legacyFile = "instance-id"
 // Preferred path: <home>/.vulos/db/instance.json
 // Fallback path:  <home>/.vulos/instance-id  (NET-06 legacy)
 func Load(home string) (*Instance, error) {
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	newPath := filepath.Join(dbDir, instanceFile)
-	legacyPath := filepath.Join(home, ".vulos", legacyFile)
+	legacyPath := filepath.Join(home, legacyFile)
 
 	// Try the preferred new path first.
 	if inst, err := readJSON(newPath); err == nil {
@@ -92,7 +92,7 @@ func instanceRegion() string {
 
 // Save persists the instance to ~/.vulos/db/instance.json with mode 0600.
 func Save(inst *Instance, home string) error {
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return err
 	}

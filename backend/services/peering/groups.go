@@ -145,7 +145,7 @@ type GroupStore struct {
 //
 // The directory is created idempotently.
 func NewGroupStore(home string) (*GroupStore, error) {
-	root := filepath.Join(home, ".vulos", "peering", "groups")
+	root := filepath.Join(home, "peering", "groups")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, fmt.Errorf("peering/groups: mkdir %s: %w", root, err)
 	}

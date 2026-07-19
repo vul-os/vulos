@@ -34,7 +34,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	t.Helper()
 
 	home := t.TempDir()
-	pRoot := filepath.Join(home, ".vulos", "peering")
+	pRoot := filepath.Join(home, "peering")
 	if err := os.MkdirAll(pRoot, 0o700); err != nil {
 		t.Fatalf("mkdir pRoot: %v", err)
 	}

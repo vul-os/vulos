@@ -65,7 +65,7 @@ type storageFile struct {
 //   - storage.json is included only when the file exists and is parseable.
 //   - Password hashes, passphrases, and session tokens are NEVER included.
 func BuildKit(home string) (*Kit, error) {
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 
 	kit := &Kit{
 		SchemaVersion: SchemaVersion,

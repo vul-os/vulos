@@ -49,6 +49,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"golang.org/x/crypto/argon2"
 
@@ -121,11 +122,11 @@ type DevicePINService struct {
 //   - store is the auth.Store used to issue/validate OS session tokens.
 func NewDevicePINService(dataDir string, ks devicekey.KeyStore, minLength int, store *Store) (*DevicePINService, error) {
 	if dataDir == "" {
-		home, err := os.UserHomeDir()
+		_, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("devicepin: cannot determine home dir: %w", err)
 		}
-		dataDir = filepath.Join(home, ".vulos", "auth")
+		dataDir = datadir.Join("auth")
 	}
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return nil, fmt.Errorf("devicepin: mkdir %s: %w", dataDir, err)

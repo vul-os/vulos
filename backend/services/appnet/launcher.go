@@ -11,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"vulos/backend/services/lease"
 )
@@ -60,11 +61,11 @@ const (
 // The returned *os.File must be closed by the caller when the app exits.
 // On any error a nil is returned so callers can fall back to os.Stdout.
 func openAppLog(appID string) *os.File {
-	home, err := os.UserHomeDir()
+	_, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	logsDir := filepath.Join(home, ".vulos", "logs")
+	logsDir := datadir.Join("logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return nil
 	}

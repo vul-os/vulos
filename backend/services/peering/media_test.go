@@ -74,7 +74,7 @@ func TestNewMediaStore_CreatesDirectory(t *testing.T) {
 	if ms == nil {
 		t.Fatal("expected non-nil MediaStore")
 	}
-	want := filepath.Join(home, ".vulos", "peering", "media")
+	want := filepath.Join(home, "peering", "media")
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("media directory not created: %v", err)
 	}

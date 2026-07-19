@@ -120,7 +120,7 @@ type InboxStore struct {
 //
 // The inbox directory is created idempotently on the first call.
 func NewInboxStore(home string) (*InboxStore, error) {
-	root := filepath.Join(home, ".vulos", "peering", "inbox")
+	root := filepath.Join(home, "peering", "inbox")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, fmt.Errorf("peering/inbox: mkdir %s: %w", root, err)
 	}

@@ -19,7 +19,7 @@ import (
 func provisionedHome(t *testing.T) string {
 	t.Helper()
 	home := tmpHome(t)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0o700); err != nil {
 		t.Fatalf("mkdir db: %v", err)
 	}
@@ -43,7 +43,7 @@ func freshHome(t *testing.T) string {
 func syncingHome(t *testing.T) string {
 	t.Helper()
 	home := tmpHome(t)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0o700); err != nil {
 		t.Fatalf("mkdir db: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestJoin_RefusedWhenProvisioned_NothingPersisted(t *testing.T) {
 
 	_, _ = Join(validReq(), home)
 
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	// storage.json must not have been created (only instance.json exists).
 	if _, err := os.Stat(filepath.Join(dbDir, storageFileName)); err == nil {
 		t.Fatal("storage.json was written despite provisioned gate — should not touch disk")

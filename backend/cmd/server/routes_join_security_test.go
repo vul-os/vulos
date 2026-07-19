@@ -135,7 +135,7 @@ func TestJoin_ProvisionedGate(t *testing.T) {
 	home := t.TempDir()
 	// Make bootmode.Detect report "normal": db dir + instance.json present,
 	// no active sync-state.
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

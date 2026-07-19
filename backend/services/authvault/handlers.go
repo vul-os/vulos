@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
+	"vulos/backend/internal/datadir"
 )
 
 // Handler exposes TOTP store operations over HTTP.
@@ -69,11 +69,11 @@ func (h *Handler) storeFor(userID string) (*Store, error) {
 	if s, ok := h.stores[userID]; ok {
 		return s, nil
 	}
-	home, err := os.UserHomeDir()
+	_, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("authvault: cannot determine home dir: %w", err)
 	}
-	dir := filepath.Join(home, ".vulos", "auth", "totp", userID)
+	dir := datadir.Join("auth", "totp", userID)
 	s, err := NewStoreAt(dir)
 	if err != nil {
 		return nil, err

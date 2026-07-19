@@ -250,7 +250,7 @@ func (s *Service) LoadMode(home string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	s.modePath = filepath.Join(dbDir, "network-mode.json")
 
 	// Default before reading — guarantees a valid mode even on I/O failure.

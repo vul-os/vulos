@@ -544,7 +544,7 @@ func TestE2E_RelayOpacity(t *testing.T) {
 
 	// Opacity assertion: scan the relay's store directory and confirm that the
 	// raw plaintext bytes are NOT present in any stored file.
-	relayStoreDir := relay.home + "/.vulos/peering/relay/store"
+	relayStoreDir := relay.home + "/peering/relay/store"
 	err = walkAndCheck(relayStoreDir, plaintext)
 	if err != nil {
 		t.Fatalf("relay opacity violation: plaintext found in relay store: %v", err)

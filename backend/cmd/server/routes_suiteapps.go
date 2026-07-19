@@ -78,7 +78,7 @@ func defaultSuiteSelection() suiteSelection {
 // exists the caller must be an authenticated ADMIN. Anonymous reachability of
 // the box's HTTP port is then no longer enough to rewrite the launcher.
 func registerSuiteAppsRoutes(mux *http.ServeMux, authStore *auth.Store, home string) {
-	selPath := filepath.Join(home, ".vulos", "db", "suite-selection.json")
+	selPath := filepath.Join(home, "db", "suite-selection.json")
 
 	// writeGate mirrors handleRegister: open pre-account, admin-only afterwards.
 	writeGate := func(w http.ResponseWriter, r *http.Request) bool {

@@ -181,7 +181,7 @@ func NewMediaStore(home string, signingKey []byte, peerClient *PeerClient) (*Med
 	if len(signingKey) < 32 {
 		return nil, fmt.Errorf("peering/media: signing key too short (%d bytes)", len(signingKey))
 	}
-	root := filepath.Join(home, ".vulos", "peering", "media")
+	root := filepath.Join(home, "peering", "media")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, fmt.Errorf("peering/media: mkdir %s: %w", root, err)
 	}

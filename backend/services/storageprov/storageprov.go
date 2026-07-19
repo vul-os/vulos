@@ -135,7 +135,7 @@ func storageprovHandle(w http.ResponseWriter, r *http.Request, home string) {
 	minioRunning, degraded, degradedMsg := storageprovEnsureMinIO(accessKey, secretKey, req.SizeGB)
 
 	// Persist state (passphrase is intentionally excluded)
-	dbDir := filepath.Join(home, ".vulos", "db")
+	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0700); err != nil {
 		log.Printf("[storageprov] failed to create db dir: %v", err)
 	}

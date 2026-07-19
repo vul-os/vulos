@@ -32,6 +32,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"vulos/backend/internal/datadir"
 
 	"github.com/fsnotify/fsnotify"
 	"vulos/backend/services/cluster"
@@ -77,8 +78,7 @@ type Config struct {
 
 // defaultVulosRoot returns the default ~/.vulos path.
 func defaultVulosRoot() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".vulos")
+	return datadir.Root()
 }
 
 // defaultConfig returns a Config populated from the OS environment / home dir.
