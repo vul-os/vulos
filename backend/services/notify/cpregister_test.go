@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"vulos/backend/internal/webpush"
 )
 
 // verifyCPAuth re-implements the CP's verification independently (NOT by calling
@@ -116,7 +118,7 @@ func TestCPRegistrar_Register_HMACAndBody(t *testing.T) {
 	defer srv.Close()
 
 	r := liveRegistrar(t, srv)
-	sub := PushSubscription{Endpoint: "https://fcm.googleapis.com/x/abc", P256DH: "p256", Auth: "authsalt"}
+	sub := webpush.Subscription{Endpoint: "https://fcm.googleapis.com/x/abc", P256DH: "p256", Auth: "authsalt"}
 	if err := r.Register(context.Background(), sub); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -177,7 +179,7 @@ func TestCPRegistrar_Register_SkipsEmptySubscription(t *testing.T) {
 	srv := fakeCP(t, &cap)
 	defer srv.Close()
 	r := liveRegistrar(t, srv)
-	if err := r.Register(context.Background(), PushSubscription{}); err != nil {
+	if err := r.Register(context.Background(), webpush.Subscription{}); err != nil {
 		t.Fatalf("Register (empty sub) should be a benign no-op, got %v", err)
 	}
 	if atomic.LoadInt32(&cap.hitCount) != 0 {

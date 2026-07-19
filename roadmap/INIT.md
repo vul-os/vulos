@@ -430,7 +430,7 @@ Dedicated sync UI with real-time progress. **Reentrant** — if the node reboots
 
 **Sync order (by priority):**
 
-1. **Database** (cr-sqlite changesets) — users, sessions, profiles, settings. Small, fast. The node becomes usable for login after this step.
+1. **Database** (design intent: cr-sqlite changesets; not shipped today — see CLUSTER.md's reality check. Today this step is the S3 whole-DB-file snapshot restore) — users, sessions, profiles, settings. Small, fast. The node becomes usable for login after this step.
 2. **User files** — documents, downloads, browser profiles. Largest payload, streamed in parallel.
 3. **App registry** — pull the installed apps list from the cluster state.
 4. **Install apps** — for each app in the synced install list, run the registry install recipe. Slowest step — apt/flatpak installs take time.

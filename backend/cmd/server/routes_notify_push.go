@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"vulos/backend/internal/webpush"
 	"vulos/backend/services/notify"
 )
 
@@ -38,7 +39,7 @@ import (
 // still opened (so a later key config would work after a restart) but sends are
 // inert; a store-open failure is logged and the server continues without push.
 func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, home string, dnd *notify.DNDManager) {
-	cfg := notify.LoadPushConfig()
+	cfg := webpush.LoadConfig()
 	// Default the key file to a stable box-local path when the operator did not
 	// pin explicit keys, so a self-host box auto-provisions a persistent VAPID
 	// pair on first boot (0600). This makes the sovereign direct-send path work
@@ -46,14 +47,14 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 	if cfg.VAPIDPublic == "" && cfg.VAPIDPrivate == "" && cfg.VAPIDKeyFile == "" {
 		cfg.VAPIDKeyFile = filepath.Join(home, ".vulos", "db", "vapid.json")
 	}
-	if err := notify.ResolvePushVAPID(&cfg); err != nil {
+	if err := webpush.ResolveVAPID(&cfg); err != nil {
 		// A key-file we cannot read/write → run WITHOUT push rather than fail boot.
 		log.Printf("[notify] push: VAPID unavailable (push disabled): %v", err)
-		cfg = notify.LoadPushConfig() // discard the half-resolved config
+		cfg = webpush.LoadConfig() // discard the half-resolved config
 	}
 
 	storePath := filepath.Join(home, ".vulos", "db", "push_subs.sqlite")
-	store, err := notify.NewSQLitePushStore(storePath)
+	store, err := webpush.NewSQLiteStore(storePath)
 	if err != nil {
 		log.Printf("[notify] push: subscription store unavailable (push disabled): %v", err)
 		return
@@ -119,13 +120,13 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 			writeErr(w, http.StatusBadRequest, "invalid subscription body")
 			return
 		}
-		sub := notify.PushSubscription{
+		sub := webpush.Subscription{
 			OwnerID:  owner, // authoritative; body cannot override
 			Endpoint: body.Endpoint,
 			P256DH:   body.Keys.P256DH,
 			Auth:     body.Keys.Auth,
 		}
-		if err := notify.ValidateSubscription(sub); err != nil {
+		if err := webpush.Validate(sub); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -199,18 +200,18 @@ func registerNotifyPushRoutes(mux *http.ServeMux, notifySvc *notify.Service, hom
 			writeErr(w, http.StatusBadRequest, "invalid subscription body")
 			return
 		}
-		sub := notify.PushSubscription{
+		sub := webpush.Subscription{
 			OwnerID:  owner,
 			Endpoint: body.Endpoint,
 			P256DH:   body.Keys.P256DH,
 			Auth:     body.Keys.Auth,
 		}
-		if err := notify.ValidateSubscription(sub); err != nil {
+		if err := webpush.Validate(sub); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		// Best-effort + detached: a slow/absent CP must never block the user.
-		go func(sub notify.PushSubscription) {
+		go func(sub webpush.Subscription) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			if err := cpReg.Register(ctx, sub); err != nil {

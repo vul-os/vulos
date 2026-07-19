@@ -10,9 +10,16 @@ Read it like this:
 
 > **Most roadmap areas are fully implemented.**
 > Remaining shipped-area work is intentional later-phase *depth*, tracked as
-> explicit notes inside the relevant design docs (CLUSTER → full cr-sqlite CRDT;
-> NOTIFICATIONS → push-over-peering). The Ladybird browser spike has been
-> **removed** — Chromium is the sole engine.
+> explicit notes inside the relevant design docs (NOTIFICATIONS → push-over-peering).
+> The Ladybird browser spike has been **removed** — Chromium is the sole engine.
+>
+> **Exception: CLUSTER/SYNC/CONCURRENCY are not "full cr-sqlite CRDT."** Those
+> three docs originally described a shipped cr-sqlite CRDT engine; it was never
+> integrated and cannot be under the pure-Go/no-CGO rule (`docs/decisions.md`
+> D23/D94-J). Each of those docs now carries a reality-check callout at the top
+> describing what is actually shipped (S3 snapshot cold path + a LAN-only
+> pure-Go app-registry CRDT) versus the forward plan (a shared DMTAP-substrate
+> Sync spec, relay as WAN rendezvous — not yet built).
 >
 > **New design track (planned, not yet built): image-based OS distribution.**
 > Seven new design docs lock in the shift from flash-and-SSH to a signed,
@@ -33,7 +40,7 @@ Read it like this:
 | Default web apps | [`DEFAULT-WEB-APPS.md`](DEFAULT-WEB-APPS.md) | The small apps that ship in the OS: calculator, calendar, clock, text editor, weather, maps, music, video, etc. | shipped |
 | Bare-metal init | [`BAREMETAL-INIT.md`](BAREMETAL-INIT.md) | Power-on → compositor → desktop. labwc + cage, Plymouth splash, live USB + installer, ARM device variants | shipped |
 | First-boot setup | [`INIT.md`](INIT.md) | The setup wizard that runs the first time the desktop loads: identity, storage, SSH, recovery kit, join flow | shipped |
-| Cluster & storage | [`CLUSTER.md`](CLUSTER.md) | Multi-node sync via S3 (MinIO) + cr-sqlite CRDT replication, file sync, presence leases, conflicts | shipped |
+| Cluster & storage | [`CLUSTER.md`](CLUSTER.md) | Multi-node sync via S3 (MinIO): node presence, encrypted snapshot cold path, file sync, presence leases, conflicts | partially shipped — see doc's reality check (cr-sqlite CRDT layer not integrated; app-registry CRDT is LAN-only) |
 | Network & remote access | [`NETWORK.md`](NETWORK.md) | Subdomain routing, connection modes (fabric / direct / local), TURN/coturn, `{app}--{profile}` naming | shipped |
 | Notifications | [`NOTIFICATIONS.md`](NOTIFICATIONS.md) | Structured notification model, notification center, DND, action buttons, push-via-peering | shipped |
 | Peering | [`PEERING.md`](PEERING.md) | The big one: Ed25519 identity, contacts, signed S2S envelopes, messaging, media, WebRTC calls, SFU, drop, relays, feeds | shipped |
