@@ -303,6 +303,14 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 	}
 	log.Printf("[appnet] started %s pid=%d", instanceID, cmd.Process.Pid)
 
+	// Resource containment: cap memory/CPU/PIDs for the app so a runaway
+	// process cannot exhaust the box. Best-effort and deliberately non-fatal —
+	// an app that cannot be capped still runs (matching the pre-existing
+	// behaviour) but the failure is logged loudly. No-op on non-Linux hosts.
+	if err := ApplyCgroup(instanceID, cmd.Process.Pid, DefaultLimits()); err != nil {
+		log.Printf("[appnet] WARNING: resource limits NOT applied to %s: %v — app runs uncapped", instanceID, err)
+	}
+
 	stopRenew := make(chan struct{})
 
 	app := &App{
@@ -418,6 +426,10 @@ func (l *Launcher) Stop(ctx context.Context, appID string) error {
 			syscall.Kill(-app.Process.Pid, syscall.SIGKILL)
 		}
 	}
+
+	// Release the app's cgroup now its processes are gone (rmdir only succeeds
+	// once the group is empty, so this is naturally ordered after the kill).
+	RemoveCgroup(key)
 
 	return l.manager.Destroy(ctx, key)
 }

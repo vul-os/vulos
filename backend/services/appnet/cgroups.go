@@ -5,8 +5,23 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 )
+
+// cgroupRoot is the cgroup v2 hierarchy. Limits are a Linux-only facility; on
+// other platforms (macOS dev builds) every function here is a no-op rather than
+// failing noisily against a filesystem that does not exist.
+const cgroupRoot = "/sys/fs/cgroup"
+
+// supported reports whether per-app cgroup limits can be applied on this host.
+func supported() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(cgroupRoot, "cgroup.controllers"))
+	return err == nil
+}
 
 // ResourceLimits defines cgroup v2 resource constraints for an app.
 type ResourceLimits struct {
@@ -27,7 +42,10 @@ func DefaultLimits() ResourceLimits {
 // ApplyCgroup creates a cgroup v2 for an app and applies limits.
 // The app's PID should be added to the cgroup after this.
 func ApplyCgroup(appID string, pid int, limits ResourceLimits) error {
-	cgroupPath := filepath.Join("/sys/fs/cgroup", "vulos", appID)
+	if !supported() {
+		return nil
+	}
+	cgroupPath := filepath.Join(cgroupRoot, "vulos", appID)
 	if err := os.MkdirAll(cgroupPath, 0755); err != nil {
 		return fmt.Errorf("create cgroup dir: %w", err)
 	}
@@ -68,14 +86,20 @@ func ApplyCgroup(appID string, pid int, limits ResourceLimits) error {
 
 // RemoveCgroup removes an app's cgroup.
 func RemoveCgroup(appID string) {
-	cgroupPath := filepath.Join("/sys/fs/cgroup", "vulos", appID)
+	if !supported() {
+		return
+	}
+	cgroupPath := filepath.Join(cgroupRoot, "vulos", appID)
 	os.Remove(cgroupPath) // rmdir — only works if empty (processes exited)
 }
 
 // ReadCgroupStats reads current resource usage from cgroup.
 func ReadCgroupStats(appID string) map[string]string {
-	cgroupPath := filepath.Join("/sys/fs/cgroup", "vulos", appID)
 	stats := make(map[string]string)
+	if !supported() {
+		return stats
+	}
+	cgroupPath := filepath.Join(cgroupRoot, "vulos", appID)
 
 	if data, err := os.ReadFile(filepath.Join(cgroupPath, "memory.current")); err == nil {
 		stats["memory_bytes"] = string(data)
@@ -94,6 +118,8 @@ func writeFile(path, content string) error {
 }
 
 func init() {
-	// Ensure parent cgroup directory exists
-	os.MkdirAll("/sys/fs/cgroup/vulos", 0755)
+	// Ensure the parent cgroup directory exists (Linux hosts only).
+	if supported() {
+		os.MkdirAll(filepath.Join(cgroupRoot, "vulos"), 0755)
+	}
 }
