@@ -4,7 +4,7 @@ Every Vulos instance has its own cryptographic identity — a Vula ID — and ca
 
 The design premise is simple: **every Vulos instance is a server**. If you're running Vulos, you can receive — messages, files, and calls arrive at your box, gated by your explicit approval, without relay infrastructure or third-party accounts in the required path.
 
-Related chapters: [USER-GUIDE.md](USER-GUIDE.md) for day-to-day use, [FILES.md](FILES.md) for file sharing specifics, [NETWORKING.md](NETWORKING.md) for how your box is reached, [SECURITY.md](SECURITY.md) for the wider security model, [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for recovery procedures, and [CLOUD.md](CLOUD.md) for the optional control-plane seams.
+Related chapters: [USER-GUIDE.md](USER-GUIDE.md) for day-to-day use, [FILES.md](FILES.md) for file sharing specifics, [NETWORKING.md](NETWORKING.md) for how your box is reached, [SECURITY.md](SECURITY.md) for the wider security model, [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for recovery procedures, [CLOUD.md](CLOUD.md) for the optional control-plane seams, and [COMMS.md](COMMS.md) for federated group chat/video (Matrix, Jitsi) when you want more than direct peer-to-peer messaging.
 
 ---
 

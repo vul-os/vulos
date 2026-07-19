@@ -6,6 +6,7 @@ This directory contains architecture, deployment, and API documentation for the 
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture overview (shell, assistant, auth, files, sync) |
 | [GETTING-STARTED.md](GETTING-STARTED.md) | Install and first boot |
+| [COMMS.md](COMMS.md) | Chat/video: why third-party (Element/Cinny, Jitsi Meet/Element Call), install + self-host |
 | [CONFIGURATION.md](CONFIGURATION.md) | Environment variables and config files |
 | [DEPLOY.md](DEPLOY.md) | Self-hosting guide |
 | [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) | Forkable self-host bundle (trust anchor, bucket) |

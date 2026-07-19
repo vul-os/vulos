@@ -13,6 +13,39 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Comms answer: Element, Jitsi Meet, Element Call.** Founder ruling
+  (2026-07-19): Vulos Talk and Vulos Meet are removed as first-party
+  products; real-time chat and video are delegated to established,
+  federated, self-hostable protocols instead. Three new signed
+  `registry.json` App Store entries alongside the existing Cinny/Conduit
+  Matrix entries: `element` (Element, Matrix chat/voice/video, Flatpak
+  `im.riot.Riot`), `jitsi-meet` (Jitsi Meet video conferencing, Flatpak
+  `org.jitsi.jitsi-meet`, joins any Jitsi deployment including public
+  `meet.jit.si`), and `element-call` (Element Call, native Matrix group
+  video calling/MSC3401, static web bundle with a pinned sha256 checksum —
+  configure `static/config.json` post-install to point at your homeserver
+  + LiveKit SFU). All 55 registry entries verify against the release key
+  (`make verify-registry`, `make verify-feed`). New docs chapter
+  [docs/COMMS.md](docs/COMMS.md) explains the reasoning, installing from
+  the App Store, and how self-hosting a Matrix homeserver or Jitsi
+  instance fits the sovereign-box story; cross-linked from APPS.md,
+  CLOUD.md, ARCHITECTURE.md, PEERING.md, and docs/README.md.
+- **Registry-as-feed, phase 1.** `registry.json` is signed but distributed
+  as a single object, so a box previously had no way to detect a
+  stale/rolled-back copy. Adds a signed, append-only feed alongside it
+  (`backend/services/appnet/feed.go`, `registry-feed.json`) — publish-only
+  and additive: it does not change `registry.json` or install-time
+  verification. New targets `make publish-feed` / `make verify-feed`.
+
+### Fixed
+
+- Stale "52 committed registry.json entries" comments in
+  `registry_acceptance_test.go`, `registry_lossless_test.go`, and
+  `docs/KEY-CEREMONY.md`, left over from before the three comms apps
+  were added (registry is now 55 entries).
+
 ## [1.2.0] - 2026-07-17
 
 ### Added
