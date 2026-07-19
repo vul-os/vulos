@@ -51,7 +51,6 @@ func TestProductsDefaultDomain(t *testing.T) {
 	want := map[string]string{
 		"os":     "https://os.vulos.org",
 		"office": "https://office.vulos.org",
-		"board":  "https://board.vulos.org",
 		"files":  "https://files.vulos.org",
 		"relay":  "https://relay.vulos.org",
 	}
@@ -249,8 +248,8 @@ func TestPatchProduct_ReflectsInBuild(t *testing.T) {
 	if byID["office"] != "configured" {
 		t.Errorf("office status = %q, want configured", byID["office"])
 	}
-	if byID["board"] != "available" {
-		t.Errorf("board status = %q, want available (default preserved)", byID["board"])
+	if byID["files"] != "available" {
+		t.Errorf("files status = %q, want available (default preserved)", byID["files"])
 	}
 }
 

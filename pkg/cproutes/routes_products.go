@@ -59,12 +59,11 @@ type shellProduct struct {
 //
 // BOX-FEDERATED PIVOT (2026-07-15): mail (box-level PIM via lilmail, not a CP
 // product), Talk and Meet (third-party comms) are no longer first-party products
-// here. The suite is OS + Office + Board + Files + Relay; the box runs lilmail
+// here. The suite is OS + Office + Files + Relay; the box runs lilmail
 // directly for PIM.
 var shellProductCatalog = []shellProduct{
 	{id: "os", name: "Vulos OS", blurb: "The web-native desktop", sub: "os", icon: "Monitor", embed: true},
 	{id: "office", name: "Office", blurb: "Collaborative documents", sub: "office", icon: "FileText", embed: true},
-	{id: "board", name: "Board", blurb: "Collaborative whiteboard", sub: "board", icon: "PenTool", embed: true},
 	{id: "files", name: "Files", blurb: "Your unified bucket", sub: "files", icon: "FolderOpen", embed: true},
 	{id: "relay", name: "Relay", blurb: "Sovereign peer fabric", sub: "relay", icon: "Radio", embed: false},
 }

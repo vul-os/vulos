@@ -1,4 +1,4 @@
-import{n as e,t}from"./jsx-runtime-Qy3n81sD.js";import{d as n,l as r}from"./index-D1tNtzbM.js";import{i}from"./ui-CTsMyeue.js";var a=e(),o=t(),s=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;function c({size:e=14}){return(0,o.jsx)(`span`,{"aria-hidden":`true`,style:{display:`inline-block`,width:e,height:e,borderRadius:`50%`,border:`2px solid color-mix(in srgb, currentColor 25%, transparent)`,borderTopColor:`currentColor`,animation:`vcAuthSpin 0.7s linear infinite`}})}var l=`
+import{n as e,t}from"./jsx-runtime-Qy3n81sD.js";import{d as n,l as r}from"./index-BD8qXn_g.js";import{i}from"./ui-CTsMyeue.js";var a=e(),o=t(),s=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;function c({size:e=14}){return(0,o.jsx)(`span`,{"aria-hidden":`true`,style:{display:`inline-block`,width:e,height:e,borderRadius:`50%`,border:`2px solid color-mix(in srgb, currentColor 25%, transparent)`,borderTopColor:`currentColor`,animation:`vcAuthSpin 0.7s linear infinite`}})}var l=`
   @keyframes vcAuthSpin { to { transform: rotate(360deg); } }
 
   .vc-ar-wrap {

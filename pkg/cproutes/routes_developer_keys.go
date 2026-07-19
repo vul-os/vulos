@@ -60,7 +60,6 @@ var knownProducts = map[string]bool{
 	"office": true,
 	"relay":  true,
 	"drive":  true,
-	"board":  true, // SUBDOMAIN-ROUTING-01
 	"files":  true, // SUBDOMAIN-ROUTING-01
 }
 

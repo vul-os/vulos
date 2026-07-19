@@ -20,12 +20,12 @@ import (
 func TestBillingEntitlementFilter_KeepsApps(t *testing.T) {
 	f := billingEntitlementFilter{ent: billingport.NewNoopResolver()}
 
-	got, err := f.FilterProducts(context.Background(), "acct-x", []string{"office", "board"})
+	got, err := f.FilterProducts(context.Background(), "acct-x", []string{"office", "files"})
 	if err != nil {
 		t.Fatalf("FilterProducts: %v", err)
 	}
 	if len(got) != 2 {
-		t.Errorf("filtered products = %v, want both [office board] (apps are entitled for every account)", got)
+		t.Errorf("filtered products = %v, want both [office files] (apps are entitled for every account)", got)
 	}
 }
 
@@ -33,7 +33,7 @@ func TestBillingEntitlementFilter_KeepsApps(t *testing.T) {
 // filter (ent==nil) never panics and returns products unchanged.
 func TestBillingEntitlementFilter_NilResolverPassesThrough(t *testing.T) {
 	var f billingEntitlementFilter // ent == nil
-	got, err := f.FilterProducts(context.Background(), "acct-x", []string{"office", "board"})
+	got, err := f.FilterProducts(context.Background(), "acct-x", []string{"office", "files"})
 	if err != nil {
 		t.Fatalf("FilterProducts: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestWireDeveloperKeys_IntrospectKeepsProducts(t *testing.T) {
 	t.Cleanup(func() { _ = ks.Close() })
 	ks.SetEntitlementFilter(billingEntitlementFilter{ent: billingport.NewNoopResolver()})
 
-	rawKey, _, err := ks.IssueKey(context.Background(), "acct-1", "k", nil, []string{"office", "board"})
+	rawKey, _, err := ks.IssueKey(context.Background(), "acct-1", "k", nil, []string{"office", "files"})
 	if err != nil {
 		t.Fatalf("IssueKey: %v", err)
 	}

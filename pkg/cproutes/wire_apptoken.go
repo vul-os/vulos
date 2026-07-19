@@ -3,7 +3,7 @@
 //
 // THE HOLE (historical). VULOS_COOKIE_DOMAIN scopes `vc_session` to the apex
 // (vulos.org), so the browser attaches it to EVERY app subdomain — office./
-// board./files.${VULOS_DOMAIN}. The reverse proxies forwarded the request
+// files.${VULOS_DOMAIN}. The reverse proxies forwarded the request
 // verbatim, so each app backend received a live, 30-day, full-privilege CP
 // session credential. Office even depended on it: it introspected it to learn
 // who the user is, and replayed it to the CP storage gateway to presign

@@ -1,8 +1,10 @@
 // Package apptoken mints and verifies short-lived, audience-bound identity
 // tokens the CP reverse-proxy front door injects when forwarding an
 // already-authenticated request to a lower-trust Class-P app backend
-// (office/board/files/mail). (Talk and Meet were withdrawn as products
-// entirely, 2026-07-15: comms are third-party now.)
+// (office/files/mail). (Talk and Meet were withdrawn as products
+// entirely, 2026-07-15: comms are third-party now. Board was retired
+// 2026-07-19: Ofisi covers collaborative whiteboards as a first-class
+// document type.)
 //
 // SECURITY-C1: the CP reverse-proxy front door (deployed in the vulos-cloud
 // control-plane repo, backend/cp/cmd/server — NOT in this OSS module, which

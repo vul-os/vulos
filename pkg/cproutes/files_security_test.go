@@ -4,7 +4,7 @@
 // single app's prefix, so its gates matter more than any other storage route's:
 //
 //   - only a real user SESSION may drive it (an app-identity token — the
-//     credential a proxied app backend such as Office or Board holds — must
+//     credential a proxied app backend such as Office holds — must
 //     not);
 //   - identity comes from the session and nothing else (no X-User-ID header);
 //   - a node belongs to exactly one owner, and nobody else can list, read, move,

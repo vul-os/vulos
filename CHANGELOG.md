@@ -92,12 +92,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   RECEIVE side (`initAppIdentity` introspection + `routes_storage` audience-bound
   presign/delete), and — operating no proxy — forwards no user session to any
   app backend, so the SECURITY-C1 invariant holds here vacuously. Comment-only;
-  no behavior change. (The `board` product surface — `pkg/cproutes/board.go` /
-  the `board` catalog entry — was investigated in the same sweep and DELIBERATELY
-  KEPT: `vulos-cloud`'s `backend/cp/cmd/server/main.go` calls
-  `cproutes.RegisterBoard` to serve the hosted Vulos Board room-token mint, so it
-  is load-bearing; the product-standard reconciliation is a founder decision, see
-  FOUNDER-DECISIONS.md.)
+  no behavior change. (The `board` product surface was investigated in the same
+  sweep and deliberately kept at the time: `vulos-cloud`'s
+  `backend/cp/cmd/server/main.go` still called `cproutes.RegisterBoard`, so
+  deleting it here would have broken that caller. See "Board product retired"
+  below for the resolution.)
+
+### Removed
+
+- **Board product retired**: the deferral above is now resolved. `vulos-cloud`
+  landed step 1 first (`b46311c`): it no longer calls `cproutes.RegisterBoard`,
+  and its board catalog entry, cloudlet stub, compose services and docs are
+  gone, so the OSS side of the wiring is no longer load-bearing for that
+  caller. This is pure retirement, not migration: Ofisi already has
+  whiteboards as a first-class document type (E2E-encrypted P2P collab,
+  CRDT-native persistence), there is no Board data anywhere in this repo, and
+  `board-ui` never existed in any form here. Removed `pkg/cproutes/board.go`
+  and `pkg/cproutes/board_test.go` (the hosted room-token mint, BOARD-01);
+  dropped the `board` entry from `shellProductCatalog`
+  (`pkg/cproutes/routes_products.go` — the suite is now OS + Office + Files +
+  Relay) and from the developer-key `knownProducts` subdomain-routing
+  allowlist (`pkg/cproutes/routes_developer_keys.go`); updated the frontend's
+  mirrored product list (`web/src/console/pages/Developer.jsx`) and the
+  handful of doc-comments across `pkg/cproutes`, `pkg/apptoken`, and
+  `pkg/customdomain` that still named Board alongside Office/Files as a live
+  app. `pkg/appsplatform`'s `ProductBoard` (a generic app-targeting library
+  constant, unrelated to the retired CP surface) and the `pkg/auth`
+  doc-comment prose are intentionally untouched. No behavior change beyond
+  removing the now-dead `/api/board/token` endpoint and narrowing the two
+  allowlists (fail-closed, not fail-open).
 
 ### Added
 

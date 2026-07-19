@@ -1,5 +1,5 @@
 // shared_test_helpers_test.go — cross-file test helpers used by the moved route
-// tests (board, devicelink, files, storage, …). Ported from the package-main
+// tests (devicelink, files, storage, …). Ported from the package-main
 // test infrastructure in cmd/server, with the commercial billing store replaced
 // by the provider-agnostic billingport seam so these tests never import a
 // commercial package (see internal/archtest).

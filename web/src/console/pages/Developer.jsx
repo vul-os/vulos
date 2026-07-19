@@ -17,7 +17,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Section, Card, Pill, Button } from '../../ui/index.jsx'
 
 const KNOWN_SCOPES = ['documents.read', 'documents.write', 'drive.read', 'drive.write', 'relay.send']
-const KNOWN_PRODUCTS = ['office', 'relay', 'drive', 'board', 'files']
+const KNOWN_PRODUCTS = ['office', 'relay', 'drive', 'files']
 
 async function apiJSON(url, init) {
   const res = await fetch(url, {
