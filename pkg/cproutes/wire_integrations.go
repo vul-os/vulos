@@ -30,7 +30,6 @@ func WireIntegrations(dbDir string) IntegrationsResult {
 	var pingDB *cpdb.DB
 	var closer func()
 
-	// COORDINATOR: needs openCPDB — defined in wire_stores.go (NOT in my subsystem)
 	db, dbErr := openCPDB(dbDir, "integrations")
 	var sqlSt *integrations.SQLStore
 	var openErr error
@@ -41,7 +40,6 @@ func WireIntegrations(dbDir string) IntegrationsResult {
 	}
 
 	if openErr != nil {
-		// COORDINATOR: needs warnMemStoreFallback — defined in wire_stores.go (NOT in my subsystem)
 		warnMemStoreFallback("integrations", openErr)
 		if db != nil {
 			_ = db.Close()

@@ -33,7 +33,6 @@ func WireLLMKeys(mux *http.ServeMux, dbDir string, authStore *auth.Store) func()
 		log.Printf("[llmkeys] WARNING: KEK unavailable (%v) — BYO LLM keys disabled", err)
 		return func() {}
 	}
-	// COORDINATOR: needs setDBDirIfUnset (composition-root helper, routes_developer_keys.go)
 	if err := setDBDirIfUnset(dbDir); err != nil {
 		log.Printf("[llmkeys] WARNING: could not set DB dir (%v) — BYO LLM keys disabled", err)
 		return func() {}

@@ -23,7 +23,6 @@ import (
 // WireMobilePush opens (or creates) the mobilepush database via cpdb and returns
 // the Subscriber + Dispatcher. Called after env is initialised.
 func WireMobilePush(dbDir string) (sub *mobilepush.Subscriber, disp *mobilepush.Dispatcher, closer func()) {
-	// COORDINATOR: needs setDBDirIfUnset (composition-root helper, routes_developer_keys.go)
 	if err := setDBDirIfUnset(dbDir); err != nil {
 		log.Fatalf("[mobilepush] failed to set DB dir: %v", err)
 	}

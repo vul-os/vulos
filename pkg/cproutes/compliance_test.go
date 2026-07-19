@@ -1,9 +1,5 @@
 package cproutes
 
-// COORDINATOR: shared test helpers openAuthStoreForTest, post, decodeResp live in
-// a package-main test file (routes_billing_checkout_test.go et al.) — they must be
-// available in package cproutes for this test to compile.
-
 import (
 	"context"
 	"net/http"

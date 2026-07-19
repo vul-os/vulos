@@ -19,8 +19,6 @@
 //	ErrUnknownAccount | ErrUnknownBucket → 404
 //	ErrProviderFailed                    → 502
 //	Missing Tigris creds                 → 503
-//
-// Do NOT touch backend/cp/cmd/server/main.go.
 package cproutes
 
 import (

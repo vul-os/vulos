@@ -188,7 +188,6 @@ func (h *integrationsHandlers) verifyFleetHMAC(ctx context.Context, msg, sig str
 	if sig == "" {
 		return false
 	}
-	// COORDINATOR: needs secretCandidates — defined in wire_secrets.go (NOT in my subsystem)
 	for _, secret := range secretCandidates(ctx, "DEVICE_SHARED_SECRET") {
 		mac := hmac.New(sha256.New, []byte(secret))
 		mac.Write([]byte(msg))

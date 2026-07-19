@@ -286,12 +286,10 @@ func RegisterAuthRoutes(mux *http.ServeMux, st *auth.Store) {
 
 		// ANCHOR-01: provision the always-on @vulos.org anchor inbox for the new
 		// account.  Errors are logged but do not fail the signup.
-		// COORDINATOR: needs provisionAnchorInbox — defined in wire_anchorinbox.go (NOT in my subsystem)
 		provisionAnchorInbox(r.Context(), u.ID, handle)
 
 		// ORG-MULTI-01: every signup creates/owns an org. Async + never blocks
 		// signup. (No hosted root mailbox — Vulos runs no hosted mail.)
-		// COORDINATOR: needs provisionOrgOnSignup — defined in wire_orgs.go/wire_orgadmin.go (NOT in my subsystem)
 		provisionOrgOnSignup(r.Context(), u.ID, handle, handle)
 
 		// RECOVERY: the account we just minted IS its own mailbox, so the

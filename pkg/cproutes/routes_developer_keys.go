@@ -284,13 +284,11 @@ func RegisterDeveloperKeyRoutes(mux *http.ServeMux, st *apikeys.Store, authStore
 		// Service-auth gate: fail-closed.
 		requireSig := os.Getenv("RELAY_REQUIRE_POP_SIG") != "0"
 		if requireSig {
-			// COORDINATOR: needs hasSharedSecret — defined in wire_secrets.go (NOT in my subsystem)
 			if !hasSharedSecret(r.Context()) {
 				httpx.Err(w, http.StatusServiceUnavailable, "no shared secret configured (set CP_SHARED_SECRET, or RELAY_REQUIRE_POP_SIG=0 in dev)")
 				return
 			}
 			presented := r.Header.Get("X-Relay-Auth")
-			// COORDINATOR: needs validSharedSecretEither — defined in wire_secrets.go (NOT in my subsystem)
 			if !validSharedSecretEither(r.Context(), presented) {
 				httpx.Err(w, http.StatusUnauthorized, "invalid or missing X-Relay-Auth")
 				return

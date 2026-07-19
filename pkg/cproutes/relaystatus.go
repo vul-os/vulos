@@ -15,12 +15,6 @@
 //
 // Session-gated: transfer is scoped to the authenticated account.
 //
-// COORDINATOR: the popLister interface is DEFINED here (moved with this file) but
-// is ALSO referenced by cloud cmd/server/main.go, routes_cloudstatus.go,
-// routes_relayusage.go and wire_superadmin_ops.go — those files will lose the
-// symbol when routes_relaystatus.go is deleted; redeclare popLister in cloud (or
-// promote it into pkg/routing) so the cloud package still compiles.
-//
 // NOTE: the original used the package-main `timeNow` test-clock hook
 // (var timeNow = func() time.Time { return time.Now().UTC() }, from
 // cmd/server/routes_auth.go). That hook is not part of this route's contract, so

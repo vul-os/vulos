@@ -22,7 +22,6 @@ var cpAuditLog *auditlog.Logger
 // WireAuditLog opens (or creates) the admin audit log at <dbDir>/auditlog.db.
 // Returns a closer that must be called on server shutdown.
 func WireAuditLog(dbDir string) func() {
-	// COORDINATOR: needs setDBDirIfUnset (composition-root helper, routes_developer_keys.go)
 	if err := setDBDirIfUnset(dbDir); err != nil {
 		log.Printf("[auditlog] WARNING: could not set DB dir (%v) — audit logging disabled", err)
 		return func() {}

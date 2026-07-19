@@ -73,7 +73,6 @@ func WireDDoS(
 	tigrisStore ddosEgressReader,
 ) DDoSResult {
 	// ── Blocklist store (ddos.db) ─────────────────────────────────────────────
-	// COORDINATOR: needs setDBDirIfUnset (composition-root helper, routes_developer_keys.go)
 	if err := setDBDirIfUnset(dbDir); err != nil {
 		log.Printf("[ddos] WARNING: could not set DB dir (%v) — blocklist unavailable", err)
 	}
@@ -147,7 +146,6 @@ func WireDDoS(
 	// Super-admin DDoS dashboard — gated by RequireSuperAdminStub (same pattern
 	// as wire_superadmin_data.go). Replace with real RequireSuperAdmin when
 	// integrating with the superadmin core agent.
-	// COORDINATOR: needs RequireSuperAdminStub (composition-root, wire_superadmin_data.go)
 	mux.HandleFunc("GET /superadmin/ddos", RequireSuperAdminStub(pages.HandleDDoSDashboard))
 	mux.HandleFunc("POST /superadmin/ddos/toggle-captcha",
 		RequireSuperAdminStub(pages.HandleDDoSToggleCaptcha))

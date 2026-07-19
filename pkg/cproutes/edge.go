@@ -305,7 +305,6 @@ func (h *edgeHandlers) deleteDomainConfig(w http.ResponseWriter, r *http.Request
 func (h *edgeHandlers) ingestBandwidth(w http.ResponseWriter, r *http.Request) {
 	// RISK-SEC-01: source via the SecretsProvider (env default; KMS-ready).
 	// M1: constant-time comparison to avoid leaking the secret via timing.
-	// COORDINATOR: needs secretOrEnv (package main helper, cloud cmd/server wire_secrets.go)
 	secret := secretOrEnv(r.Context(), "EDGE_INGEST_SECRET")
 	provided := r.Header.Get("X-Edge-Secret")
 	if secret == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {

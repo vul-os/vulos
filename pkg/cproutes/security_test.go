@@ -1,8 +1,5 @@
 package cproutes
 
-// COORDINATOR: loginInnerHandler is a package var from routes_auth.go — it must be
-// present in package cproutes for this test (and RegisterSecurity) to compile.
-
 import (
 	"bytes"
 	"net/http"

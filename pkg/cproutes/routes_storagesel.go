@@ -10,8 +10,6 @@
 // Auth: both endpoints require a valid vc_session cookie.
 // Self-check: account_id must match the session user ID.
 // Audit: every PUT is logged via cpAuditLog.
-//
-// Do NOT touch other agents' packages, anchors, or main.go outside STORAGE_WIRE.
 package cproutes
 
 import (

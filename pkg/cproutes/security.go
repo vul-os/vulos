@@ -49,8 +49,6 @@ func (a authInboxSenderAdapter) Send(ctx context.Context, toEmail, subject, body
 // NewStepUpSender returns a security.InboxSender backed by the forgotPasswordSender
 // (the same auth.InboxSender used for password-reset delivery). Call after
 // SetForgotPasswordSender has been called (i.e. during wire_stores / main init).
-//
-// COORDINATOR: needs forgotPasswordSender (package var, routes_auth.go)
 func NewStepUpSender() security.InboxSender {
 	return authInboxSenderAdapter{inner: forgotPasswordSender}
 }
@@ -79,7 +77,6 @@ type SecurityResult struct {
 // initialises WAF + egress tracker, and returns the bundle.
 // Call after WireAuditLog and wireSuperAdmin.
 func WireSecurity(dbDir string) SecurityResult {
-	// COORDINATOR: needs setDBDirIfUnset (composition-root helper, routes_developer_keys.go)
 	if err := setDBDirIfUnset(dbDir); err != nil {
 		log.Fatalf("[security] could not set DB dir: %v", err)
 	}
@@ -166,9 +163,6 @@ func RegisterSecurity(
 	// delegates through loginInnerHandler (package var in routes_auth.go), so
 	// replacing loginInnerHandler here atomically enables the step-up gate
 	// without any ServeMux re-registration.
-	//
-	// COORDINATOR: needs loginInnerHandler (package var, routes_auth.go) — read
-	// and reassigned here to install the step-up gate.
 	if loginInnerHandler == nil {
 		log.Println("[security] WARNING: loginInnerHandler not set — step-up middleware not applied (call registerAuthRoutes before RegisterSecurity)")
 		return

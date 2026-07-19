@@ -13,11 +13,6 @@
 //     whose app-scoped keys always live under "<account>/<app>/".
 package cproutes
 
-// COORDINATOR: depends on the storage test harness (storageTestEnv,
-// newStorageTestEnv / newStorageEnvWith, sessionFor, byoStatusResponse) defined
-// in routes_storage_test.go — that harness (and its call to RegisterFiles /
-// RegisterAccountExport) must land in package cproutes for this test to compile.
-
 import (
 	"bytes"
 	"encoding/json"

@@ -21,16 +21,6 @@
 //	POST   /api/fleet/heartbeat                        — device heartbeat (HMAC or unsigned dev)
 //	POST   /api/fleet/invite                           — create invite (session, admin)
 //	POST   /api/fleet/invite/{id}/revoke               — revoke invite (session, admin)
-//
-// COORDINATOR: this file references three shared `package main` helpers that
-// still live in vulos-cloud's composition root and must be promoted into
-// vulos-management (or otherwise provided) before this compiles:
-//   - parsePageParams / newPagedResponse — from cmd/server/pagination.go
-//   - secretOrEnv                        — from cmd/server/wire_secrets.go
-//
-// COORDINATOR: verifyFleetSig is DEFINED here (moved with this file) but is ALSO
-// used by cloud cmd/server/routes_ota.go — that file will lose the symbol when
-// routes_fleet.go is deleted; keep a copy in cloud or share it.
 package cproutes
 
 import (
@@ -527,7 +517,6 @@ func (fh *fleetHandlers) heartbeat(w http.ResponseWriter, r *http.Request) {
 	if requireSig {
 		// RISK-SEC-01: source the device HMAC secret via the SecretsProvider
 		// (env default; KMS-ready).
-		// COORDINATOR: needs secretOrEnv (cmd/server/wire_secrets.go).
 		secret := secretOrEnv(r.Context(), "DEVICE_SHARED_SECRET")
 		if secret == "" {
 			// DEVICE_SHARED_SECRET is unset and FLEET_REQUIRE_DEVICE_SIG=1:

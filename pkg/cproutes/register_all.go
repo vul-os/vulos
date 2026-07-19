@@ -9,11 +9,13 @@
 // SCOPE. This wires every operational route whose collaborators can be
 // constructed from the core inputs here (the shared auth store + DB, the
 // entitlement seam, the DB dir, and the deployment domain) plus the Wire* store
-// helpers that already live in this package. Route groups whose store-opening
-// Wire* helper still lives in the commercial module (fleet, enroll, storage
-// service, routing, keydir, compliance, edge, cdn, residency, telemetry, …) are
-// mounted by that module's own composition root once those helpers migrate; each
-// is noted below. Nothing here opens a commercial store or charges money.
+// helpers that live in this package — which by now is every operational route
+// group, including fleet, enrollment, storage/files, routing, keydir,
+// compliance, edge, cdn, and residency (see registerConsoleOperational and
+// registerNetworkOperational below). Only genuinely commercial surfaces (box
+// billing reads, account-export's storage.Service) are left to a commercial
+// composition root via the billingport/storageport seams. Nothing here opens a
+// commercial store or charges money.
 package cproutes
 
 import (

@@ -58,7 +58,6 @@ func (cloudHomeAuditor) RecordKeyAccess(ctx context.Context, op, accountID, vula
 	for k, v := range detail {
 		meta[k] = v
 	}
-	// COORDINATOR: needs auditRecord (package main helper, cloud cmd/server wire_auditlog.go)
 	auditRecord(ctx, "cloudhome", "cloudhome.key_"+op, vulaID, meta)
 }
 
@@ -270,7 +269,6 @@ func RegisterCloudHome(mux *http.ServeMux, svc *cloudhome.Service, authStore *au
 func cloudHomeCaller(ctx context.Context, r *http.Request, authStore *auth.Store) (key string, trusted bool) {
 	// Relay/service-to-service caller (rotation-aware, constant-time compare).
 	if presented := strings.TrimSpace(r.Header.Get("X-Relay-Auth")); presented != "" {
-		// COORDINATOR: needs validSharedSecretEither (package main helper, cloud cmd/server wire_secrets.go)
 		if validSharedSecretEither(ctx, presented) {
 			return "relay", true
 		}

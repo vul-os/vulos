@@ -52,10 +52,8 @@ const filesGrantTTL = 15 * time.Minute
 // RegisterFiles wires the Files control plane onto mux. svc may be nil
 // (the DB failed to open), in which case every route answers 503.
 //
-// COORDINATOR: sh is the *storageHandlers value from routes_storage.go (borrows
-// the storage plane's quota / hosting-kind / bucket-ownership gates). That type
-// is owned by the storage route set — unify once routes_storage.go lands in
-// cproutes.
+// sh is the *storageHandlers value from routes_storage.go (borrows the storage
+// plane's quota / hosting-kind / bucket-ownership gates).
 func RegisterFiles(mux *http.ServeMux, sh *storageHandlers, svc *files.Service) {
 	h := &filesHandlers{sh: sh, svc: svc}
 
@@ -73,7 +71,7 @@ func RegisterFiles(mux *http.ServeMux, sh *storageHandlers, svc *files.Service) 
 // the storage plane's own gates (quota, hosting kind, bucket ownership) rather
 // than restating them.
 type filesHandlers struct {
-	sh  *storageHandlers // COORDINATOR: needs storageHandlers (routes_storage.go)
+	sh  *storageHandlers
 	svc *files.Service
 }
 
@@ -236,11 +234,9 @@ func (h *filesHandlers) uploadGrant(w http.ResponseWriter, r *http.Request) {
 	// A cloud account that has never provisioned a box has no bucket yet, and a
 	// presigned PUT at a bucket that does not exist fails at the browser with an
 	// opaque S3 error. Provision lazily here — idempotent, and it also writes the
-	// config row callerOwnsBucket resolves the managed pin from.
-	//
-	// COORDINATOR: needs storageport.StorageProvisioner — bucket provisioning is
-	// brokered through h.sh.svc (storage.Service). boxULID is a composition-root
-	// helper (boxid.go).
+	// config row callerOwnsBucket resolves the managed pin from. Bucket
+	// provisioning is brokered through h.sh.svc (storage.Service), which in turn
+	// injects a storageport.StorageProvisioner.
 	if _, err := h.sh.svc.ProvisionBucketIfAbsent(r.Context(), userID, boxULID(userID), storage.ProvisionOptions{}); err != nil {
 		h.sh.mapErr(w, err)
 		return

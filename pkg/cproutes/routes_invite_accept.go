@@ -22,9 +22,10 @@
 //
 // On success it: AddMember(orgID, accountID, invite.Role) →
 // MemberNamer.SetDisplayName(invite.DisplayName) → MarkInviteAccepted →
-// audit "org.member.accept". The display-name application is the explicit
-// requirement from invite_name.go's TODO ("when the membership row is later
-// created from the invite, the stored name is applied via SetDisplayName").
+// audit "org.member.accept". The display-name application fulfils
+// invite_name.go's documented requirement ("when the membership row is later
+// created from the invite, the stored name is applied via SetDisplayName") —
+// this route is that invite-accept→member flow.
 package cproutes
 
 import (
@@ -120,7 +121,6 @@ func RegisterInviteAcceptRoutes(mux *http.ServeMux, st fleet.Store, authStore *a
 
 			// Org-scoped so the accepted membership surfaces in the target org's
 			// audit trail (ORGADMIN-AUDIT-01). The actor is the accepting user.
-			// COORDINATOR: needs auditRecordOrg — defined in wire_auditlog.go (NOT in my subsystem)
 			auditRecordOrg(r.Context(), inv.OrgID, u.Email, "org.member.accept", "tenant:"+inv.OrgID,
 				map[string]string{
 					"invite_id":  inviteID,

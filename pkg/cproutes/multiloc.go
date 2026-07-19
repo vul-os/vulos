@@ -118,7 +118,6 @@ func (h *multiLocHandlers) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// COORDINATOR: needs auditRecord (package main helper, cloud cmd/server wire_auditlog.go)
 	auditRecord(r.Context(), u.Email, "multiloc.enroll", req.OrgID, map[string]string{
 		"location_id": req.LocationID,
 		"endpoint":    req.Endpoint,
@@ -189,7 +188,6 @@ func (h *multiLocHandlers) healthReport(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// COORDINATOR: needs auditRecord (package main helper, cloud cmd/server wire_auditlog.go)
 	auditRecord(r.Context(), u.Email, "multiloc.health_report", req.OrgID, map[string]string{
 		"location_id": req.LocationID,
 		"healthy":     boolStr(req.Healthy),

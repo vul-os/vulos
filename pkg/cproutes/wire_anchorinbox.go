@@ -1,7 +1,7 @@
 // wire_anchorinbox.go — opens the anchor-inbox SQLite store and exposes it
 // package-wide so the signup handler can provision an inbox at account creation.
 //
-// ANCHOR_WIRE anchor block: parallel agents must NOT edit this file.
+// ANCHOR_WIRE anchor block.
 package cproutes
 
 import (

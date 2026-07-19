@@ -93,7 +93,6 @@ func (a *auditlogAuditAdapter) Record(ctx context.Context, actor, action, target
 // WireAbuse opens the abuse store via cpdb, builds the detector, and registers routes.
 // Returns a closer that must be called on shutdown.
 func WireAbuse(mux *http.ServeMux, dbDir string, authStore *auth.Store, adminAccountID string, audit *auditlog.Logger, sharedSecret string) (*abuse.Detector, func()) {
-	// COORDINATOR: needs setDBDirIfUnset (composition-root helper, routes_developer_keys.go)
 	if err := setDBDirIfUnset(dbDir); err != nil {
 		log.Printf("[abuse] WARNING: could not set DB dir (%v) — abuse subsystem disabled", err)
 		return nil, func() {}
@@ -117,7 +116,6 @@ func WireAbuse(mux *http.ServeMux, dbDir string, authStore *auth.Store, adminAcc
 
 	// SECRET-ROTATE-01: accept the current OR previous CP_SHARED_SECRET on
 	// X-CP-Auth so an internal caller can roll its key without downtime.
-	// COORDINATOR: needs secretOrEnv (composition-root helper, wire_secrets.go)
 	h := abuse.NewHandler(det, st, authAdapter, sharedSecret).
 		WithPreviousSecret(secretOrEnv(context.Background(), "CP_SHARED_SECRET_PREVIOUS"))
 	h.Register(mux)

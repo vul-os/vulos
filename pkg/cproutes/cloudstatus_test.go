@@ -10,9 +10,6 @@
 //   - fail-closed auth  : no session ⇒ 401 with no body data.
 package cproutes
 
-// COORDINATOR: shared test helper openAuthStoreForTest lives in a package-main
-// test file — it must be available in package cproutes to compile.
-
 import (
 	"context"
 	"encoding/json"

@@ -12,10 +12,9 @@
 // The DB handle is deliberately not closed: it lives for the process lifetime
 // and is released at exit, like the process's other long-lived pools.
 //
-// COORDINATOR: this file depends on the *storageHandlers value from
-// routes_storage.go (sh.svc, sh.callerOwnsBucket, sh.svc.ProviderForAccount,
-// sh.svc.GetConfig) and on boxULID (composition-root helper, boxid.go). Unify
-// once routes_storage.go lands in cproutes.
+// This file depends on the *storageHandlers value from routes_storage.go
+// (sh.svc, sh.callerOwnsBucket, sh.svc.ProviderForAccount, sh.svc.GetConfig)
+// and on boxULID (boxid.go).
 package cproutes
 
 import (
@@ -97,7 +96,7 @@ func filesBucketResolver(sh *storageHandlers) files.BucketResolver {
 //     are already derived server-side from the DB path, so this can only fail on a
 //     row that should not exist; it is refused rather than signed.
 type filesBroker struct {
-	sh *storageHandlers // COORDINATOR: needs storageHandlers (routes_storage.go)
+	sh *storageHandlers
 }
 
 var _ files.Broker = (*filesBroker)(nil)
