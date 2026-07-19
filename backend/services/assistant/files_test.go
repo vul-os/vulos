@@ -100,13 +100,6 @@ type forbiddenErr struct{}
 
 func (*forbiddenErr) Error() string { return "files: forbidden" }
 
-// filesAssistant builds an assistant wired to a fake files backend at localCfg.
-func filesAssistant(t *testing.T, b *fakeFilesBackend) *Assistant {
-	t.Helper()
-	m := &fakeModel{replies: []string{"answer"}}
-	return New(m, localCfg(), NewFixtureSource(), false).WithFiles(NewOSFilesSource(b))
-}
-
 // find_file returns ONLY the caller's own (and shared-with-them) files, never
 // another user's — proving the ACL is enforced, not bypassed.
 func TestFindFileReturnsOnlyUsersFiles(t *testing.T) {

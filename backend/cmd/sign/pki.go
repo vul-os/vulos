@@ -44,9 +44,6 @@ import (
 // See signing.ReleaseCert for the wire format and the signed byte range.
 type ReleaseCert = signing.ReleaseCert
 
-// certBody is the subset of ReleaseCert that the root key signs.
-type certBody = signing.CertBody
-
 // ─── Offline root operation ───────────────────────────────────────────────────
 
 // IssueReleaseCert creates a root-signed release-key certificate.

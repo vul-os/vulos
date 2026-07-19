@@ -123,13 +123,6 @@ func (f *fakeLeaseFacade) ReleaseSnapshot(_ context.Context) error {
 	return nil
 }
 
-// currentFence returns the latest fence value (for assertions).
-func (f *fakeLeaseFacade) currentFence() int64 {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.fence
-}
-
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
 // simpleFakeSnapshot returns a DBSnapshot that always returns the given data

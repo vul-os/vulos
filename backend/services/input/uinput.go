@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -381,7 +380,6 @@ const (
 // Injector manages virtual input devices and injects events.
 // Uses uinput when available, falls back to xdotool via persistent pipe.
 type Injector struct {
-	mu        sync.Mutex
 	mouse     *Device
 	keyboard  *Device
 	gamepad   *Device

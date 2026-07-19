@@ -133,12 +133,6 @@ func (s *AppStore) InstallFromRegistry(ctx context.Context, appID, version strin
 	return InstallFromRegistry(ctx, s.registry, appID, version, s.appsDir)
 }
 
-// IsInstalling returns true if an app install is currently in progress.
-func (s *AppStore) IsInstalling(appID string) bool {
-	_, ok := s.installing.Load(appID)
-	return ok
-}
-
 // Catalog fetches the app catalog from the remote store.
 func (s *AppStore) Catalog(ctx context.Context) ([]StoreEntry, error) {
 	if s.catalogURL == "" {

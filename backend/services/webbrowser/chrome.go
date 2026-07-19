@@ -239,18 +239,6 @@ func (s *Service) startPulseAudioLocked() error {
 	return nil
 }
 
-// OpenTab opens a URL in a new browser tab via CDP and activates it. Requires a
-// running streaming session with --remote-debugging-port=9222 (the default
-// session). Returns an error if CDP is unavailable.
-func (s *Service) OpenTab(url string) (*cdpTab, error) {
-	tab, err := cdpNewTab(url)
-	if err != nil {
-		return nil, err
-	}
-	cdpActivateTab(tab.ID)
-	return tab, nil
-}
-
 // RegisterHandlers exposes browser-specific API endpoints. WebRTC signaling is
 // NOT here — the streaming browser reuses the generic /api/stream/ws endpoint
 // (the frontend StreamViewer connects with the per-user session ID).

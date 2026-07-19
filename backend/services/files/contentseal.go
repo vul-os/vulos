@@ -99,12 +99,11 @@ const (
 // Domain-separation strings. These are part of the wire contract and MUST match
 // src/lib/contentSeal.js byte for byte.
 var (
-	sealContentAAD  = []byte("vulos-seal-content-v1")
-	sealWrapAAD     = []byte("vulos-seal-wrap-v1")
-	sealWrapInfo    = []byte("vulos-seal-wrap-v1")
-	contentKeyInfo  = []byte("vulos-content-x25519-v1")
-	sealZeroSalt32  = make([]byte, sha256.Size)
-	x25519Basepoint = func() []byte { b := make([]byte, 32); b[0] = 9; return b }()
+	sealContentAAD = []byte("vulos-seal-content-v1")
+	sealWrapAAD    = []byte("vulos-seal-wrap-v1")
+	sealWrapInfo   = []byte("vulos-seal-wrap-v1")
+	contentKeyInfo = []byte("vulos-content-x25519-v1")
+	sealZeroSalt32 = make([]byte, sha256.Size)
 )
 
 // ErrSeal is the coarse, fail-closed error for anything wrong with a sealed

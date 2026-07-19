@@ -30,18 +30,11 @@ const (
 // ErrStateMismatch is returned when the callback state fails CSRF/binding checks.
 var ErrStateMismatch = errors.New("selfhost: OAuth state mismatch")
 
-// stateCookieValue is the JSON-free payload stored in the cookie:
+// The cookie value is a JSON-free payload:
 //
 //	base64url( nonce|ts|userID|provider|pkceVerifier|HMAC )
 //
 // The HMAC covers nonce|ts|userID|provider|pkceVerifier so none can be tampered.
-type flowState struct {
-	Nonce        string
-	TS           int64
-	UserID       string
-	Provider     string
-	PKCEVerifier string
-}
 
 func stateHMAC(secret []byte, payload string) string {
 	mac := hmac.New(sha256.New, secret)

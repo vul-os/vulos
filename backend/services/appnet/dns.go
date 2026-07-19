@@ -98,19 +98,3 @@ func (d *DNSManager) Remove() {
 	}
 	os.WriteFile("/etc/hosts", []byte(strings.Join(clean, "\n")), 0644)
 }
-
-// Resolve returns the namespace IP for an app subdomain.
-// NET-04: uses ParseSubdomain to extract the app identifier from the new
-// {app}--default.{domain} format as well as the legacy {app}.{domain} form.
-func (d *DNSManager) Resolve(subdomain string) (string, bool) {
-	appID, _, ok := ParseSubdomain(subdomain, d.domain)
-	if !ok {
-		// Fallback: strip domain suffix directly (handles bare {app}.{domain}).
-		appID = strings.TrimSuffix(subdomain, "."+d.domain)
-	}
-	ns, nsOK := d.netMgr.Get(appID)
-	if !nsOK {
-		return "", false
-	}
-	return ns.NSIP, true
-}

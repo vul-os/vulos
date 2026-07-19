@@ -44,7 +44,6 @@ type Supervisor struct {
 
 	mu       sync.Mutex
 	cmd      *exec.Cmd
-	cancel   context.CancelFunc
 	doneCh   chan struct{} // closed when the watch goroutine exits
 	stopReq  bool
 	alive    atomic.Bool

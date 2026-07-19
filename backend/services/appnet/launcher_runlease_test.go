@@ -39,47 +39,6 @@ func TestIsSingleton(t *testing.T) {
 	}
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-// newTestLeaseMgr returns a lease.Manager backed by a fresh in-memory mockBackend.
-// The mockBackend type lives in the lease package (internal), so we construct
-// it via the package's exported NewWithBackend / EnsureLease API.
-func newTestLeaseMgr(t *testing.T) *lease.Manager {
-	t.Helper()
-	// Use a nil backend manager and let EnsureLease bootstrap the scope.
-	// We must go through the exported API since mockBackend is unexported.
-	// For unit tests we rely on EnsureLease + unconditional PUT (which
-	// NewWithBackend + EnsureLease provides via the in-process mock).
-	//
-	// Since we can't directly call newMockBackend (unexported), we use the
-	// public interface: just spin up a real in-memory manager via
-	// lease.NewWithBackend with a freshly constructed mock.
-	// However, since mockBackend is package-private to the lease package,
-	// we use the alternative: build a small local fake that satisfies the
-	// same surface.  Actually, the cleanest approach for a cross-package
-	// test is to use EnsureLease via a round-trip: in the lease package tests
-	// mockBackend is used internally — here we need the exported Manager only.
-	//
-	// We'll use a temporary workaround: call lease.NewWithBackend with a
-	// locally defined backend that satisfies the interface via only the
-	// exported symbols.  Since the backend interface itself is unexported,
-	// we cannot implement it from outside the package.
-	//
-	// Therefore: these tests live in package appnet (not appnet_test) and
-	// call the lease package's exported Manager surface only.  The in-memory
-	// backend is opaque to us; we drive everything via the high-level
-	// AcquireRunLease / Renew / Release API.
-	//
-	// For true unit testing of lease logic see services/lease/runlease_test.go.
-	// Here we verify the Launcher plumbing: that it calls AcquireRunLease for
-	// singleton apps and skips it for replicated/collaborative.
-	//
-	// We cannot do a full end-to-end LaunchWithProfile test here because
-	// Manager.Create shells out to ip/iptables.  Instead we test the helpers
-	// and the exported NewLauncherWithLease constructor surface.
-	return nil // signals: no real manager available in this context
-}
-
 // ── TestLauncher_NewLauncherWithLease_StoresManager ───────────────────────────
 
 func TestLauncher_NewLauncherWithLease_Constructors(t *testing.T) {

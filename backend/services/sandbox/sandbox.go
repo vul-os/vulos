@@ -276,14 +276,6 @@ func (s *Sandbox) Stop(id string) {
 	}
 }
 
-// Get returns a script by ID.
-func (s *Sandbox) Get(id string) (*Script, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	script, ok := s.scripts[id]
-	return script, ok
-}
-
 // List returns all scripts.
 func (s *Sandbox) List() []*Script {
 	s.mu.Lock()

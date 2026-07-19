@@ -241,20 +241,6 @@ func namespaceSteps(ns *Namespace) []nsStep {
 	}
 }
 
-// Exec runs a command inside an app's network namespace.
-func (m *Manager) Exec(ctx context.Context, appID string, cmd string, args ...string) *exec.Cmd {
-	m.mu.Lock()
-	ns, ok := m.namespaces[appID]
-	m.mu.Unlock()
-
-	if !ok {
-		return nil
-	}
-
-	fullArgs := append([]string{"netns", "exec", ns.Name, cmd}, args...)
-	return exec.CommandContext(ctx, "ip", fullArgs...)
-}
-
 // Destroy tears down a namespace and its networking.
 func (m *Manager) Destroy(ctx context.Context, appID string) error {
 	m.mu.Lock()

@@ -66,18 +66,6 @@ func (p *PortPool) Release(appID string) int {
 	return 0
 }
 
-// PortFor returns the allocated port for an app, or 0.
-func (p *PortPool) PortFor(appID string) int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for port, id := range p.allocated {
-		if id == appID {
-			return port
-		}
-	}
-	return 0
-}
-
 // InUse returns how many ports are currently allocated.
 func (p *PortPool) InUse() int {
 	p.mu.Lock()

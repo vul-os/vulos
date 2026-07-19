@@ -51,9 +51,6 @@ func New() *Service {
 	return &Service{iface: iface}
 }
 
-// Interface returns the WiFi interface name.
-func (s *Service) Interface() string { return s.iface }
-
 // Scan returns visible WiFi networks.
 func (s *Service) Scan(ctx context.Context) ([]Network, error) {
 	s.mu.Lock()

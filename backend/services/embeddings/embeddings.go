@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -59,41 +58,6 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	default:
 		return nil, fmt.Errorf("unknown embedding backend: %s", e.backend)
 	}
-}
-
-// EmbedBatch embeds multiple texts with concurrency control.
-func (e *Embedder) EmbedBatch(ctx context.Context, texts []string, concurrency int) ([][]float32, error) {
-	if concurrency <= 0 {
-		concurrency = 4
-	}
-	results := make([][]float32, len(texts))
-	errs := make([]error, len(texts))
-	sem := make(chan struct{}, concurrency)
-	var wg sync.WaitGroup
-
-	for i, text := range texts {
-		wg.Add(1)
-		go func(idx int, t string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			if ctx.Err() != nil {
-				errs[idx] = ctx.Err()
-				return
-			}
-			emb, err := e.Embed(ctx, t)
-			results[idx] = emb
-			errs[idx] = err
-		}(i, text)
-	}
-	wg.Wait()
-
-	for _, err := range errs {
-		if err != nil {
-			return results, err
-		}
-	}
-	return results, nil
 }
 
 // Dimension returns the embedding dimension (detected on first call).

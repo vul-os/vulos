@@ -174,14 +174,3 @@ func Start(ctx context.Context, op string) (context.Context, trace.Span) {
 func Handler() http.Handler {
 	return promhttp.Handler()
 }
-
-// statusRecorder captures the HTTP status code written by a handler.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
-}

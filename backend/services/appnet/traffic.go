@@ -1,9 +1,7 @@
 package appnet
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -72,16 +70,6 @@ func (tm *TrafficMonitor) Sample(ns *Namespace) TrafficStats {
 	return stats
 }
 
-// IdleSince returns how long an app has been idle (no traffic).
-func (tm *TrafficMonitor) IdleSince(appID string) time.Duration {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	if t, ok := tm.lastSeen[appID]; ok {
-		return time.Since(t)
-	}
-	return 0
-}
-
 // Forget removes tracking for a stopped app.
 func (tm *TrafficMonitor) Forget(appID string) {
 	tm.mu.Lock()
@@ -126,24 +114,3 @@ func (tm *TrafficMonitor) FindIdle(mgr *Manager, threshold time.Duration) []stri
 	return idle
 }
 
-// WatchAndKill runs a loop that checks for idle apps and stops them.
-func (tm *TrafficMonitor) WatchAndKill(ctx context.Context, launcher *Launcher, mgr *Manager, idleTimeout time.Duration, checkInterval time.Duration) {
-	ticker := time.NewTicker(checkInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			idle := tm.FindIdle(mgr, idleTimeout)
-			for _, appID := range idle {
-				log.Printf("[energy] app %s idle for >%s — stopping", appID, idleTimeout)
-				if err := launcher.Stop(ctx, appID); err != nil {
-					log.Printf("[energy] failed to stop %s: %v", appID, err)
-				}
-				tm.Forget(appID)
-			}
-		}
-	}
-}

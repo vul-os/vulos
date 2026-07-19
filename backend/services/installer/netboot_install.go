@@ -125,12 +125,8 @@ type NetbootInstallRequest struct {
 // Service extension — netboot hub + handler
 // ---------------------------------------------------------------------------
 
-// netbootHub and netbootMu mirror the existing hub/mu pattern for progress
-// tracking.  They are stored on Service to keep state for concurrent WS clients.
-type netbootHub struct {
-	hub *progressHub
-}
-
+// netbootMu mirrors the existing hub/mu pattern for progress tracking, keyed
+// per Service to keep state for concurrent WS clients.
 var (
 	netbootMu   sync.Mutex
 	netbootHubs = make(map[*Service]*progressHub)

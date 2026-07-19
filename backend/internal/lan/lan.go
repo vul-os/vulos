@@ -105,9 +105,6 @@ func New(cfg Config) (*Service, error) {
 // Hostname returns the box's LAN hostname (box.<id>.lan.vulos.org).
 func (s *Service) Hostname() string { return s.hostname }
 
-// LANIP returns the LAN IP the service advertises and resolves to.
-func (s *Service) LANIP() net.IP { return s.lanIP }
-
 // HTTPSAddr returns the actual address the HTTPS listener is bound to. This is
 // only meaningful after Start (and is how tests learn the ephemeral port).
 func (s *Service) HTTPSAddr() string {

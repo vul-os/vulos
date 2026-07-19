@@ -58,11 +58,6 @@ func InvalidateFlatpakCache() {
 	flatpakCache.mu.Unlock()
 }
 
-// IsFlatpakInstalled checks whether a specific Flatpak app is installed.
-func IsFlatpakInstalled(flatpakID string) bool {
-	return InstalledFlatpaks()[flatpakID]
-}
-
 // FlatpakInstall installs an app from Flathub.
 func FlatpakInstall(ctx context.Context, flatpakID string) error {
 	log.Printf("[flatpak] installing %s", flatpakID)

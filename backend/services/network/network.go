@@ -88,26 +88,6 @@ func New(c ...*config.Config) *Service {
 	return svc
 }
 
-// InstanceID returns the stable ULID for this node.
-func (s *Service) InstanceID() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.instanceID
-}
-
-// Hostname returns the human-readable hostname.
-func (s *Service) Hostname() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.hostname
-}
-
-// Mode returns the node operating mode ("server" or "local").
-func (s *Service) Mode() config.NodeMode {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.nodeMode
-}
 
 // Domain returns the public domain for this node.
 //

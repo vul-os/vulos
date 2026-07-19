@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 )
 
 // Handler wraps a Client and Store and exposes HTTP endpoints for the llmux
@@ -420,8 +419,6 @@ func accountKey(r *http.Request) string {
 	}
 	return r.RemoteAddr
 }
-
-var jsonMu sync.Mutex // prevents the helpers being inlined away
 
 func jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

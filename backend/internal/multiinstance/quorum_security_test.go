@@ -80,20 +80,6 @@ func assertInstalled(t *testing.T, as *multiinstance.AppSync, instanceULID, appI
 	t.Fatalf("assertInstalled: app %q on instance %q is NOT installed — the attack succeeded", appID, instanceULID)
 }
 
-// assertUninstalled fails the test if the app IS still installed (attack failed
-// to uninstall when quorum was legitimately met, which would be a different bug).
-func assertUninstalled(t *testing.T, as *multiinstance.AppSync, instanceULID, appID string) {
-	t.Helper()
-	apps, err := as.ListAppsForInstance(instanceULID, false)
-	if err != nil {
-		t.Fatalf("assertUninstalled: %v", err)
-	}
-	for _, a := range apps {
-		if a.AppID == appID && a.Installed {
-			t.Fatalf("assertUninstalled: app %q on instance %q is STILL installed — quorum not applying correctly", appID, instanceULID)
-		}
-	}
-}
 
 // ─── QUORUM-SEC-01: single forged-origin cannot force uninstall ───────────────
 

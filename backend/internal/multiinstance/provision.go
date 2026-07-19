@@ -37,7 +37,6 @@ package multiinstance
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -378,36 +377,6 @@ func (p *Provisioner) updateRequestStatus(instanceULID, status, endpointURL, err
 		instanceULID,
 	)
 	return err
-}
-
-// GetProvisionRequest returns the ProvisionRequest for the given request ID, or
-// (nil, false) if not found.
-func (p *Provisioner) GetProvisionRequest(id string) (*ProvisionRequest, bool) {
-	row := p.reg.db.QueryRow(`
-		SELECT id, region, plan, status, instance_ulid, endpoint_url, error_message, requested_at, updated_at
-		FROM provision_requests WHERE id = ?`, id)
-
-	var req ProvisionRequest
-	var requestedAt, updatedAt string
-	err := row.Scan(
-		&req.ID, &req.Region, &req.Plan, &req.Status,
-		&req.InstanceULID, &req.EndpointURL, &req.ErrorMessage,
-		&requestedAt, &updatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, false
-	}
-	if err != nil {
-		log.Printf("[provisioner] GetProvisionRequest %s: %v", id, err)
-		return nil, false
-	}
-	if t, err := time.Parse(time.RFC3339Nano, requestedAt); err == nil {
-		req.RequestedAt = t
-	}
-	if t, err := time.Parse(time.RFC3339Nano, updatedAt); err == nil {
-		req.UpdatedAt = t
-	}
-	return &req, true
 }
 
 // RegisterProvisionHandlers wires the provisioning endpoints into mux.
