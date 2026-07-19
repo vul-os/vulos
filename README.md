@@ -17,7 +17,7 @@
 
 <p align="center">
   <em>This is the core OS repo. The Vulos suite spans companion repos:<br/>
-  <a href="https://github.com/vul-os/vulos-office">vulos-office</a> &middot;
+  <a href="https://github.com/vul-os/ofisi">ofisi</a> &middot;
   <a href="https://github.com/vul-os/vulos-relay">vulos-relay</a> &middot;
   <a href="https://github.com/vul-os/vulos-cloud">vulos-cloud</a></em>
 </p>
@@ -60,7 +60,7 @@ No Electron, no VNC, no always-on remote-desktop session, no third-party login. 
 - **Sovereign assistant** — an on-box AI agent aware of your calendar, contacts, files, and reminders. It reads with a curated, read-only toolset and *proposes* anything with side effects. Answers stream token-by-token over SSE. See [the security model](#the-sovereign-assistant-security-model) below.
 - **Proactive AI Home + ⌘K** — the desktop opens as a home (agenda, focus, pending invites, reminders, proposals), not just a launcher. A unified `⌘K` command palette drives the whole shell.
 - **Window-manager shell** — drag, resize, snap, and tile windows; virtual desktops; Mission Control overview; a dock with running-app indicators; persisted window sessions. Pure JSX React 19 + Vite + Tailwind.
-- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, standalone **Calendar** and **Contacts** (over lilmail's `/v1` via the box PIM proxy), App Hub, Activity Monitor, Settings, Notes, Messages (peer-to-peer), both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more. **Ofisi** (docs/sheets/slides/PDF/whiteboards) is the standalone `vulos-office`, reached through the App Hub.
+- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, standalone **Calendar** and **Contacts** (over lilmail's `/v1` via the box PIM proxy), App Hub, Activity Monitor, Settings, Notes, Messages (peer-to-peer), both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more. **Ofisi** (docs/sheets/slides/PDF/whiteboards) is the standalone `ofisi` repo, reached through the App Hub.
 - **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor (with clone/replay counter detection), QR / phone-approval login for shared clients, device PIN, and TOTP 2FA fallback. Forced recovery-phrase signup with a client-side master-key unwrap. No Google SSO, no OAuth login flows.
 - **Files with a real ACL** — a Files service with a **viewer < editor < owner** role hierarchy enforced server-side, plus content-blind (sealed) file sharing and share-by-email with locality routing. Large files use a **resumable, chunked upload** (tus-style): each chunk rides the relay as an ordinary bounded request, the box reassembles into your own storage with per-chunk + whole-file integrity, and an interrupted upload **resumes from the committed offset** instead of restarting.
 - **Notifications + sovereign Web Push** — a real notifications system, plus opt-in **Web Push** where *your box* sends notifications directly to your device's browser vendor (FCM/Apple/Mozilla). It's outbound-only (works behind NAT, no central relay), and payloads are end-to-end encrypted per RFC 8291 — the vendor routes but can't read them. Enable it per-device under **Settings → Notifications**; Do Not Disturb is honoured by the box before any push is sent.
@@ -173,19 +173,18 @@ Open **http://localhost:8080** and complete first-boot setup.
 
 Prerequisites: **Node.js 22+** and **Go 1.25+**.
 
-> **Before `npm install`: two sibling repos must be cloned next to this one.**
-> `package.json` depends on `@vulos/relay-client` and `@vulos/office-client`
-> through `file:../vulos-relay/client` and `file:../vulos-office`. Those paths
-> are resolved relative to the *parent* directory, so a fresh clone of `vulos`
-> alone cannot `npm install`. `@vulos/relay-client` also has to be built,
-> because its subpath exports (`./endpoints`, `./offlineBootstrap`, …) point at
-> a `dist-lib/` that is not committed.
+> **Before `npm install`: one sibling repo must be cloned next to this one.**
+> `package.json` depends on `@vulos/relay-client` through
+> `file:../vulos-relay/client`. That path is resolved relative to the *parent*
+> directory, so a fresh clone of `vulos` alone cannot `npm install`.
+> `@vulos/relay-client` also has to be built, because its subpath exports
+> (`./endpoints`, `./offlineBootstrap`, …) point at a `dist-lib/` that is not
+> committed.
 
 ```bash
-# 0. Clone the siblings first — into the PARENT directory, beside vulos/
+# 0. Clone the sibling first — into the PARENT directory, beside vulos/
 git clone https://github.com/vul-os/vulos.git
 git clone https://github.com/vul-os/vulos-relay.git
-git clone https://github.com/vul-os/vulos-office.git
 
 # 1. Build the relay client library (provides dist-lib/)
 cd vulos-relay/client && npm install && npm run build:lib && cd ../..
@@ -207,8 +206,7 @@ thing before every build (`.github/workflows/ci.yml`):
 ```
 parent/
 ├── vulos/          ← this repo
-├── vulos-relay/    ← provides @vulos/relay-client (client/)
-└── vulos-office/   ← provides @vulos/office-client
+└── vulos-relay/    ← provides @vulos/relay-client (client/)
 ```
 
 Open **http://localhost:5173** — Vite proxies `/api` to the backend on `:8080`.

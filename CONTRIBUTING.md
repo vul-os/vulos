@@ -5,10 +5,9 @@ Thanks for being here. Vula OS is a small project with a large surface area, so 
 If you just want to get the project running, that lives in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 > **First-run gotcha:** cloning only this repo is not enough. `npm install`
-> resolves `@vulos/relay-client` and `@vulos/office-client` from
-> `../vulos-relay/client` and `../vulos-office`, so both sibling repos must be
-> cloned beside `vulos/` — and `vulos-relay/client` must be built once
-> (`npm install && npm run build:lib`) to produce its `dist-lib/`. See the
+> resolves `@vulos/relay-client` from `../vulos-relay/client`, so that sibling
+> repo must be cloned beside `vulos/` — and `vulos-relay/client` must be built
+> once (`npm install && npm run build:lib`) to produce its `dist-lib/`. See the
 > quickstart in [README.md](README.md#develop-with-hot-reload).
 
 ---

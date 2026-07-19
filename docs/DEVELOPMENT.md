@@ -5,14 +5,13 @@
 - Node.js 22+
 - Go 1.25+
 - Docker (with OrbStack recommended on macOS)
-- **The two sibling repos, cloned beside `vulos/`**: `npm install` resolves
-  `@vulos/relay-client` from `../vulos-relay/client` and `@vulos/office-client`
-  from `../vulos-office`. Clone both, then build the relay client library once
-  (its `dist-lib/` is not committed but its subpath exports point at it):
+- **The sibling repo, cloned beside `vulos/`**: `npm install` resolves
+  `@vulos/relay-client` from `../vulos-relay/client`. Clone it, then build the
+  relay client library once (its `dist-lib/` is not committed but its subpath
+  exports point at it):
 
   ```sh
   git clone https://github.com/vul-os/vulos-relay.git
-  git clone https://github.com/vul-os/vulos-office.git
   cd vulos-relay/client && npm install && npm run build:lib && cd ../..
   ```
 

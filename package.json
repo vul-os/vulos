@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
-    "@vulos/office-client": "file:../vulos-office",
     "@vulos/relay-client": "file:../vulos-relay/client",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",

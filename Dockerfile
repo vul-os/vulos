@@ -2,7 +2,7 @@
 #
 # ── Default build (pre-built frontend + backend binary) ───────────────────────
 #
-#   Step 1 — build frontend (requires vulos-relay + vulos-office siblings):
+#   Step 1 — build frontend (requires the vulos-relay sibling):
 #     cd ../vulos-relay/client && npm install && npm run build:lib
 #     npm ci && npm run build
 #

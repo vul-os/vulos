@@ -21,7 +21,7 @@ The suite is open-core and free to self-host. Vulos bills for exactly two option
 - **Login isolates the credential, not the browsing.** Passkeys + a server-side token vault; no streamed login; no third-party SSO required.
 - **Security from signing, not gatekeeping.** Signed, immutable, A/B-updatable images from a public bucket with a hard-baked trust anchor. Forkable with your own key.
 - **PIM is bring-your-own.** [lilmail](docs/MAIL-LILMAIL.md) connects the user's IMAP/CalDAV/CardDAV and exposes a stable `/v1`; the OS ships standalone Calendar + Contacts over the box PIM proxy. Vulos hosts no mailbox.
-- **Owned apps vs third-party comms.** **Ofisi** (docs/sheets/slides/PDF/whiteboards — whiteboards are an Ofisi document type, not a separate Board) is the standalone `vulos-office`, reached through the App Hub. Real-time chat/video are delegated to established platforms (Matrix/Element, Element-Call/Jitsi); the OS keeps its own sovereign peer-to-peer **Messages**.
+- **Owned apps vs third-party comms.** **Ofisi** (docs/sheets/slides/PDF/whiteboards — whiteboards are an Ofisi document type, not a separate Board) is the standalone `ofisi` repo, reached through the App Hub. Real-time chat/video are delegated to established platforms (Matrix/Element, Element-Call/Jitsi); the OS keeps its own sovereign peer-to-peer **Messages**.
 - **Stack is frozen:** Go backend (pure-Go `modernc.org/sqlite`, no CGO); React/JSX only (never `.tsx`); no Rust; cage compositor; pluggable AI providers (no vendor lock-in); every service has a self-hosted path. (see [`docs/decisions.md`](docs/decisions.md))
 
 ---
