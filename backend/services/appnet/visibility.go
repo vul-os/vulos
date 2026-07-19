@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"vulos/backend/internal/datadir"
 )
 
 // Visibility constants for app accessibility.
@@ -53,31 +52,13 @@ type visibilityDB struct {
 	Apps map[string]string `json:"apps"`
 }
 
-// VisibilityStore persists per-app visibility settings to
-// ~/.vulos/db/visibility.json (or the path set via VULOS_VISIBILITY_DB).
+// VisibilityStore persists per-app visibility settings to the JSON file it is
+// constructed with (see NewVisibilityStoreAt).
 // All methods are safe for concurrent use.
 type VisibilityStore struct {
 	mu   sync.RWMutex
 	path string
 	db   visibilityDB
-}
-
-// dbPath returns the resolved path for the visibility database file.
-// Order of precedence:
-//  1. VULOS_VISIBILITY_DB environment variable
-//  2. $HOME/.vulos/db/visibility.json
-func dbPath() string {
-	if p := os.Getenv("VULOS_VISIBILITY_DB"); p != "" {
-		return p
-	}
-	return datadir.Join("db", "visibility.json")
-}
-
-// NewVisibilityStore creates a VisibilityStore backed by the default path and
-// loads any existing data from disk.  It is not an error if the file does not
-// yet exist — the store starts empty in that case.
-func NewVisibilityStore() (*VisibilityStore, error) {
-	return NewVisibilityStoreAt(dbPath())
 }
 
 // NewVisibilityStoreAt creates a VisibilityStore backed by path and loads any

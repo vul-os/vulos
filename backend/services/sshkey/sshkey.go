@@ -5,7 +5,6 @@ package sshkey
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -240,12 +239,4 @@ func (s *AuthStore) readAll() ([]AuthorizedKey, error) {
 		})
 	}
 	return out, nil
-}
-
-// fingerprintSHA256 returns a SHA256 fingerprint of raw bytes, in
-// "SHA256:<base64>" format (mirrors ssh.FingerprintSHA256 for raw key bytes).
-// Exported for test convenience.
-func fingerprintSHA256(raw []byte) string {
-	h := sha256.Sum256(raw)
-	return fmt.Sprintf("SHA256:%x", h)
 }

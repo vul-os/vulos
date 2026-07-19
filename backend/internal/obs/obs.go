@@ -175,22 +175,6 @@ func Handler() http.Handler {
 	return promhttp.Handler()
 }
 
-// Middleware wraps an http.Handler to increment RequestCount and record
-// RequestDuration for every request. Wire it around the top-level mux to
-// cover all routes with a single call.
-func Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		timer := prometheus.NewTimer(RequestDuration)
-		rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rw, r)
-		timer.ObserveDuration()
-		RequestCount.Inc()
-		if rw.status >= 500 {
-			ErrorCount.Inc()
-		}
-	})
-}
-
 // statusRecorder captures the HTTP status code written by a handler.
 type statusRecorder struct {
 	http.ResponseWriter

@@ -81,19 +81,6 @@ func saWebauthn_unregister(sessID string) {
 	delete(saWebauthn_gates, sessID)
 }
 
-// saWebauthn_isVerified reports whether the gate for sessID has been lifted.
-func saWebauthn_isVerified(sessID string) bool {
-	saWebauthn_mu.Lock()
-	g, ok := saWebauthn_gates[sessID]
-	saWebauthn_mu.Unlock()
-	if !ok {
-		return false
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.verified
-}
-
 // RegisterGatedSessionForTest installs a bare, input-gated session into the
 // pool and arms its AUTH-13 gate for userID. It exists so the HTTP handlers in
 // package main (which cannot reach the unexported p.sessions map or spin up a

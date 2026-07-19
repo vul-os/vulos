@@ -12,7 +12,6 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"os"
 	"time"
 
 	dbmigrate "vulos/backend/internal/migrate"
@@ -276,12 +275,4 @@ func runMigrations(db *sql.DB) error {
 // provided.  Not a full ULID — just enough entropy for tests and startup.
 func defaultULID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
-}
-
-// getenv returns the value of the environment variable or the fallback.
-func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

@@ -47,9 +47,6 @@ type ReleaseCert = signing.ReleaseCert
 // certBody is the subset of ReleaseCert that the root key signs.
 type certBody = signing.CertBody
 
-// bodyOf converts a ReleaseCert into its signable form (certBody).
-func bodyOf(c ReleaseCert) certBody { return signing.BodyOf(c) }
-
 // ─── Offline root operation ───────────────────────────────────────────────────
 
 // IssueReleaseCert creates a root-signed release-key certificate.
@@ -84,12 +81,6 @@ func IssueReleaseCert(
 // release key.
 func ValidateReleaseCert(rootPub ed25519.PublicKey, cert ReleaseCert) error {
 	return signing.ValidateReleaseCert(rootPub, cert)
-}
-
-// validateReleaseCertAt is the testable inner implementation that accepts a
-// clock value so tests can exercise expiry without sleeping.
-func validateReleaseCertAt(rootPub ed25519.PublicKey, cert ReleaseCert, now time.Time) error {
-	return signing.ValidateReleaseCertAt(rootPub, cert, now)
 }
 
 // ─── Release-key signing helpers ─────────────────────────────────────────────

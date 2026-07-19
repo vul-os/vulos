@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"vulos/backend/internal/datadir"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -63,46 +62,6 @@ type Store struct {
 	keychainKey  []byte              // 32-byte AES key derived from keyfile
 	keychainPath string
 	metaPath     string
-}
-
-// dataDir returns ~/.vulos/auth/totp, creating it if needed.
-func dataDir() (string, error) {
-	_, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("authvault: cannot determine home dir: %w", err)
-	}
-	dir := datadir.Join("auth", "totp")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", fmt.Errorf("authvault: cannot create dir %s: %w", dir, err)
-	}
-	return dir, nil
-}
-
-// NewStore opens (or creates) the TOTP store in the default location.
-// The encryption key is derived from a persistent keyfile; one is generated
-// on first run and kept at ~/.vulos/auth/totp/keyfile (mode 0600).
-func NewStore() (*Store, error) {
-	dir, err := dataDir()
-	if err != nil {
-		return nil, err
-	}
-	keyfilePath := filepath.Join(dir, "keyfile")
-	key, err := loadOrCreateKeyfile(keyfilePath)
-	if err != nil {
-		return nil, err
-	}
-
-	s := &Store{
-		accounts:     make(map[string]*Account),
-		secrets:      make(map[string]string),
-		keychainKey:  key,
-		keychainPath: filepath.Join(dir, "keychain.enc"),
-		metaPath:     filepath.Join(dir, "accounts.json"),
-	}
-	if err := s.load(); err != nil {
-		return nil, err
-	}
-	return s, nil
 }
 
 // NewStoreAt opens (or creates) the TOTP store at an explicit directory.

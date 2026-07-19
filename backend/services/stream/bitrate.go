@@ -97,12 +97,6 @@ type bitrateController struct {
 const resDownThreshold = 3 // consecutive bad evals before stepping resolution down
 const resUpThreshold = 5   // consecutive good evals before stepping resolution up
 
-// newBitrateController creates a controller with optional resolution adaptation.
-// Pass resizeFn=nil or gaming=true to disable resolution stepping.
-func newBitrateController(pc *webrtc.PeerConnection, initial Quality, onChange func(Quality)) *bitrateController {
-	return newBitrateControllerFull(pc, initial, onChange, false, nil)
-}
-
 // newBitrateControllerFull creates a controller with explicit gaming flag and resize hook.
 func newBitrateControllerFull(pc *webrtc.PeerConnection, initial Quality, onChange func(Quality), gaming bool, resizeFn func(w, h int)) *bitrateController {
 	bc := &bitrateController{

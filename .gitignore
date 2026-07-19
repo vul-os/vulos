@@ -29,6 +29,15 @@ backend/verify
 /blob-report/
 /playwright/.cache/
 
+# ── Environment files ─────────────────────────────────────────────────────────
+# .env is tracked on purpose: it holds non-secret local-dev defaults and is read
+# by internal/config for --env=local. Every other env file may hold real
+# credentials and must never be committed.
+.env.local
+.env.*.local
+.env.main
+.env.dev
+
 # ── Signing keys ──────────────────────────────────────────────────────────────
 # NEVER commit a private key. The public halves (keys/trust-anchor.pub,
 # keys/release-cert.json, keys/*.pub.json) ARE committed — they are what the

@@ -61,13 +61,6 @@ const (
 	AccessWrite Access = "write"
 )
 
-func (a Access) requiredRole() Role {
-	if a == AccessWrite {
-		return RoleEditor
-	}
-	return RoleViewer
-}
-
 // Node is a file or folder in the Drive index.
 type Node struct {
 	ID               string    `json:"id"`

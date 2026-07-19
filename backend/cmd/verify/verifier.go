@@ -37,7 +37,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"vulos/backend/services/signing"
 )
@@ -64,18 +63,6 @@ type certBody = signing.CertBody
 
 // bodyOf converts a ReleaseCert into its signable certBody.
 func bodyOf(c ReleaseCert) certBody { return signing.BodyOf(c) }
-
-// validateReleaseCertAt is the core cert-validation logic.  Accepts an
-// explicit 'now' so unit tests can exercise expiry paths without sleeping.
-//
-// Checks (in order, fail-closed on every path):
-//  1. rootPub length sanity.
-//  2. NotAfter — cert must not be expired relative to now.
-//  3. MinEpoch non-negative sanity.
-//  4. RootSig — Ed25519 verification of canonical(certBody) against rootPub.
-func validateReleaseCertAt(rootPub []byte, cert ReleaseCert, now time.Time) error {
-	return signing.ValidateReleaseCertAt(rootPub, cert, now)
-}
 
 // ValidateReleaseCert verifies a ReleaseCert against the baked root public key.
 //

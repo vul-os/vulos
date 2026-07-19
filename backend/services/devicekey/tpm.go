@@ -21,7 +21,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -328,9 +327,4 @@ func marshalECDSASig(r, s []byte) ([]byte, error) {
 	si := encInt(append([]byte(nil), s...))
 	seq := append(ri, si...)
 	return append([]byte{0x30, byte(len(seq))}, seq...), nil
-}
-
-// tpmStatusJSON serialises the backend Status as JSON (used by AUTH-10 HTTP handler).
-func tpmStatusJSON(ks KeyStore) ([]byte, error) {
-	return json.Marshal(ks.Status())
 }

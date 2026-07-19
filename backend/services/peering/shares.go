@@ -40,7 +40,6 @@
 package peering
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"log"
@@ -594,11 +593,3 @@ func sharesWriteErr(w http.ResponseWriter, msg string, code int) {
 }
 
 // ─── Ensure context value type is used (avoids unused import) ─────────────────
-
-// ctxEnvelope extracts the verified envelope from a request context.
-// Returns nil if no envelope is present (e.g. for GET routes that bypass
-// InboundMiddleware).
-func ctxEnvelope(ctx context.Context) *Envelope {
-	env, _ := ctx.Value(EnvelopeKey).(*Envelope)
-	return env
-}
