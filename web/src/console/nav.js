@@ -69,6 +69,7 @@ export function buildNavGroups(opts = {}) {
         { href: '/admin', label: 'Overview', icon: 'dashboard' },
         { href: '/admin/accounts', label: 'Accounts', icon: 'status' },
         { href: '/admin/admins', label: 'Admins', icon: 'privacy' },
+        { href: '/admin/relay', label: 'Relay scaling', icon: 'telemetry' },
         { href: '/admin/audit', label: 'Audit', icon: 'audit' },
         { href: '/admin/security', label: 'Security', icon: 'privacy' },
       ],

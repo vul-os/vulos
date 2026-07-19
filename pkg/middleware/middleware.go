@@ -375,6 +375,11 @@ var csrfExemptPaths = map[string]bool{
 	"/api/pop/heartbeat":       true,
 	"/api/relay/pop/register":  true,
 	"/api/relay/pop/heartbeat": true,
+	// Relay-scale load ingest (#41): relay PoPs / an aggregator push per-region
+	// load here, authenticated by the same CP_SHARED_SECRET (X-Relay-Auth) and
+	// fail-closed (503) when the secret is unset. Same S2S, cookie-less profile as
+	// the relay endpoints above — a cross-site POST gains an attacker nothing.
+	"/api/relay/scale/observe": true,
 }
 
 func CSRFOriginCheck(allowedOrigins []string) func(http.Handler) http.Handler {

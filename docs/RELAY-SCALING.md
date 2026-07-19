@@ -38,8 +38,16 @@ state so an operator's own scaler — or a dashboard — can read it:
 
 ```
 GET  /api/relay/scale/demand                 # published desired state (no auth; aggregate only)
+GET  /api/relay/scale/controller             # live control-loop state (no auth; aggregate only)
 POST /api/relay/scale/observe                 # push per-region load (X-Relay-Auth: $CP_SHARED_SECRET)
 ```
+
+`POST /observe` is a cookie-less server-to-server endpoint (a relay PoP or an
+aggregator, authenticated by `CP_SHARED_SECRET`), so it is **exempt from the
+browser CSRF Origin/Referer check** — exactly like `/api/relay/usage` and the PoP
+register/heartbeat endpoints. It still fails closed (503) when no secret is set,
+and the shared-secret compare is constant-time, so a cross-site POST gains an
+attacker nothing they could not do by curling directly.
 
 `GET /demand` returns, per region: current instances, mean saturation, the
 policy's **desired** count, and a reason:
@@ -64,6 +72,24 @@ feed load in:
 ```json
 {"regions": [{"region": "eu-central", "instances": 2, "saturation": 0.82}]}
 ```
+
+### The control loop (`#41`) and the operator panel
+
+`GET /api/relay/scale/controller` exposes the live state of the periodic **control
+loop** — the stateful driver that reads the freshest observed demand, computes the
+desired count per region, and (only for an *actuating* provisioner) converges the
+fleet with graceful drain + anti-flap cooldowns. Per region it reports
+`{current, desired, draining, last_action, last_action_at, reason}`, plus the
+active `provisioner` and whether the CP `actuated`. For `manual`/`external` the
+loop is **advisory**: it computes and surfaces desired counts but calls no
+provisioner (`actuated: false`), matching the demand API.
+
+The operator console renders this at **Operator → Relay scaling**
+(`/console/admin/relay`), behind the full `RequireSuperAdmin` gate via
+`GET /api/superadmin/relay-scale` (the same live loop state, not a second source).
+The unauthenticated `/demand` + `/controller` reads remain available for an
+external scaler or a public dashboard; the gated view is for operators who want it
+inside the console alongside the rest of the fleet surfaces.
 
 ### Policy thresholds (`RELAY_SCALE_*`)
 

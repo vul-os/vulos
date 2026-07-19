@@ -51,6 +51,7 @@ const AdminAccounts    = lazy(() => import('./console/admin/AdminAccounts.jsx'))
 const AdminTeam        = lazy(() => import('./console/admin/AdminTeam.jsx'))
 const AdminAudit       = lazy(() => import('./console/admin/AdminAudit.jsx'))
 const AdminSecurity    = lazy(() => import('./console/admin/AdminSecurity.jsx'))
+const AdminRelay       = lazy(() => import('./console/admin/AdminRelay.jsx'))
 
 const ROUTES = {
   '/': Dashboard,
@@ -71,6 +72,7 @@ const ROUTES = {
   '/admin/admins': AdminTeam,
   '/admin/audit': AdminAudit,
   '/admin/security': AdminSecurity,
+  '/admin/relay': AdminRelay,
 }
 
 function PageLoader() {

@@ -142,6 +142,7 @@ func TestRoleSeparation_PortalUserDeniedOverHTTP(t *testing.T) {
 		{http.MethodGet, "/api/superadmin/accounts"},
 		{http.MethodGet, "/api/superadmin/admins"},
 		{http.MethodGet, "/api/superadmin/dashboard"},
+		{http.MethodGet, "/api/superadmin/relay-scale"},
 		{http.MethodGet, "/api/superadmin/whoami"},
 		{http.MethodPost, "/api/superadmin/admins"},
 		{http.MethodDelete, "/api/superadmin/admins/some-id"},

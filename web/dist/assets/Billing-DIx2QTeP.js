@@ -1,4 +1,4 @@
-import{t as e}from"./jsx-runtime-Qy3n81sD.js";import{a as t,c as n,i as r,s as i}from"./index-D7ZOq_3S.js";import{i as a}from"./ui-CTsMyeue.js";var o=e(),s=`
+import{t as e}from"./jsx-runtime-Qy3n81sD.js";import{a as t,c as n,i as r,s as i}from"./index-D1tNtzbM.js";import{i as a}from"./ui-CTsMyeue.js";var o=e(),s=`
   .cm-header { margin-bottom: var(--sp-4); }
   .cm-title { font-family: var(--font-mono); font-size: clamp(1.125rem, 2.2vw, 1.375rem); font-weight: 700; letter-spacing: -0.025em; margin: 0; }
   .cm-sub { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-faint); margin-top: var(--sp-0-5); }
