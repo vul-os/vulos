@@ -58,4 +58,3 @@ func TestStaticFallbackMinter_ReturnsMaster(t *testing.T) {
 		t.Fatalf("bucket: got %q", c.Bucket)
 	}
 }
-

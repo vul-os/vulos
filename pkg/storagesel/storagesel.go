@@ -30,7 +30,7 @@ type Kind string
 
 const (
 	KindManaged Kind = "managed" // Vulos-managed backend (default)
-	KindMinIO  Kind = "minio"  // Customer-provided MinIO / S3-compatible
+	KindMinIO   Kind = "minio"   // Customer-provided MinIO / S3-compatible
 )
 
 // SyncMode is the central/local backup-sync axis (STORE-LOCAL-01), orthogonal

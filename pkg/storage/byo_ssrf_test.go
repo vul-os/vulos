@@ -12,16 +12,16 @@ import (
 // literals are used so no DNS is required.
 func TestNewBYOProvider_RejectsSSRFEndpoints(t *testing.T) {
 	blocked := []string{
-		"https://169.254.169.254",       // cloud metadata
-		"https://127.0.0.1:9000",        // loopback
-		"https://10.0.0.5",              // RFC1918
-		"https://192.168.1.10",          // RFC1918
-		"https://172.16.0.9",            // RFC1918
-		"https://[::1]",                 // IPv6 loopback
-		"https://[fd00::1]",             // IPv6 ULA
-		"https://[fe80::1]",             // IPv6 link-local
-		"https://0.0.0.0",               // unspecified
-		"https://100.64.0.1",            // carrier-grade NAT
+		"https://169.254.169.254", // cloud metadata
+		"https://127.0.0.1:9000",  // loopback
+		"https://10.0.0.5",        // RFC1918
+		"https://192.168.1.10",    // RFC1918
+		"https://172.16.0.9",      // RFC1918
+		"https://[::1]",           // IPv6 loopback
+		"https://[fd00::1]",       // IPv6 ULA
+		"https://[fe80::1]",       // IPv6 link-local
+		"https://0.0.0.0",         // unspecified
+		"https://100.64.0.1",      // carrier-grade NAT
 	}
 	for _, ep := range blocked {
 		_, err := NewBYOProvider(Config{

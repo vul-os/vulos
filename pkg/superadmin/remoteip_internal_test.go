@@ -16,7 +16,7 @@ func TestRemoteIP_IgnoresSpoofedFlyHeaderWithoutTrust(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/superadmin/", nil)
 	r.RemoteAddr = "203.0.113.7:4444"
-	r.Header.Set("Fly-Client-IP", "10.0.0.1")       // spoofed "allowlisted" IP
+	r.Header.Set("Fly-Client-IP", "10.0.0.1")        // spoofed "allowlisted" IP
 	r.Header.Set("X-Forwarded-For", "192.168.1.250") // spoofed
 
 	if got := remoteIP(r); got != "203.0.113.7" {

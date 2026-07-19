@@ -37,12 +37,12 @@ import (
 
 // InitRequest starts a hosted-checkout / authorisation flow with the rail.
 type InitRequest struct {
-	Email           string            // customer-visible email (receipt + auth)
-	AmountMinor     int64             // amount in minor currency units (e.g. cents), > 0
-	Currency        string            // ISO-4217 code, e.g. "ZAR", "USD"
-	Reference       string            // caller-unique idempotency key
-	CallbackURL     string            // optional post-checkout redirect
-	Metadata        map[string]string // free-form; round-tripped to the webhook
+	Email       string            // customer-visible email (receipt + auth)
+	AmountMinor int64             // amount in minor currency units (e.g. cents), > 0
+	Currency    string            // ISO-4217 code, e.g. "ZAR", "USD"
+	Reference   string            // caller-unique idempotency key
+	CallbackURL string            // optional post-checkout redirect
+	Metadata    map[string]string // free-form; round-tripped to the webhook
 }
 
 // InitResponse is the rail-agnostic result of a successful InitTransaction.

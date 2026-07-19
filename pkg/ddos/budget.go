@@ -45,11 +45,11 @@ type BudgetReaders struct {
 
 // BudgetState tracks the current watermark and halt flag.
 type BudgetState struct {
-	mu             sync.RWMutex
-	FlyMachines    int
+	mu              sync.RWMutex
+	FlyMachines     int
 	ManagedEgressGB float64
-	HaltAutoscale  bool
-	TrippedAt      *time.Time
+	HaltAutoscale   bool
+	TrippedAt       *time.Time
 }
 
 // BudgetCircuitBreaker polls resource usage and flips HaltAutoscale when

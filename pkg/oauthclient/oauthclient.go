@@ -438,9 +438,9 @@ func (r *Registry) fetchDiscordIdentity(ctx context.Context, p Provider, accessT
 		return nil, fmt.Errorf("oauthclient: discord profile has no id")
 	}
 	return &Identity{
-		Provider:      p.ID,
-		Subject:       me.ID,
-		Email:         strings.ToLower(strings.TrimSpace(me.Email)),
+		Provider: p.ID,
+		Subject:  me.ID,
+		Email:    strings.ToLower(strings.TrimSpace(me.Email)),
 		// Discord only returns an email at all when the `email` scope was granted;
 		// `verified` reflects whether Discord verified it.
 		EmailVerified: me.Verified && me.Email != "",
