@@ -15,7 +15,11 @@ repo and isn't listed here.
   linked sign-in, deployment-configured.
 - **`pkg/relayscale`** — a pluggable relay-pool scaling seam (manual /
   external / kubernetes / firecracker / proxmox OSS providers) with the same
-  seam shape as `BillingProvider` / `StorageProvisioner`.
+  seam shape as `BillingProvider` / `StorageProvisioner`, a demand API
+  (`GET /demand`, secret-gated `POST /observe`), the **#41 periodic control
+  loop** (graceful drain + anti-flap cooldowns; advisory for manual/external),
+  and an operator **Relay-scaling** console panel (`/console/admin/relay`) that
+  reads the live loop state behind the `RequireSuperAdmin` gate.
 - A self-host security pass: global middleware chain applied to the bare mux,
   nonce-based CSP, BYO-storage SSRF guard, presign TTL clamp, open-redirect
   rejection, step-up TOTP on the refund endpoint.
