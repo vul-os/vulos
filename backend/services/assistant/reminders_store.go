@@ -5,7 +5,7 @@ package assistant
 //
 // This is the durable, per-user backing store for the assistant's REMINDERS
 // capability ("remind me to call the dentist tomorrow at 3pm"). It mirrors the
-// OS's other on-box SQLite stores (services/store, notify's persistent store):
+// OS's other on-box SQLite stores (notify's persistent store):
 // a single SQLite file under the instance data dir, opened with the pure-Go
 // modernc driver (no CGo), WAL + busy-timeout, idempotent schema creation.
 //
@@ -43,7 +43,7 @@ import (
 	"time"
 	"vulos/backend/internal/datadir"
 
-	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo — matches services/store)
+	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo)
 )
 
 // ErrReminderNotFound is returned when a reminder id does not exist FOR THIS
@@ -89,7 +89,7 @@ type Reminder struct {
 
 // RemindersStore is the durable, per-user SQLite store of reminders. It is safe
 // for concurrent use (SQLite serializes writes; a single-writer connection is
-// used, matching services/store).
+// used).
 type RemindersStore struct {
 	db *sql.DB
 }

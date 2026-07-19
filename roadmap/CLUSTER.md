@@ -8,7 +8,7 @@ For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For 
 
 > **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
 > **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS. **cr-sqlite** as the merge engine — see the reality check immediately below; it conflicts with the pure-Go/no-CGO rule (D23/D94-J).
-> **Status — REALITY CHECK (2026-07-19).** The rest of this document (original text, kept below for design context) describes a **cr-sqlite CRDT** model as the multi-node merge engine. **cr-sqlite is not integrated, and cannot be under the current pure-Go/no-CGO rule** (`docs/decisions.md` D23; reaffirmed D94 item J — *"Stay Go for everything... no Rust. Consistent with the CGO-free/modernc SQLite rule"*). `backend/services/store/store.go` does attempt to `load_extension()` a native `crsqlite.{so,dylib,dll}` at runtime, but `modernc.org/sqlite` is a pure-Go SQLite reimplementation — it cannot `dlopen` a real C-ABI SQLite extension, so `DB.CRSQLiteLoaded` is false on every real build and `registerCRRs`/`crsql_as_crr` never actually runs. Consequently `backend/services/sync/hotpath.go`'s `crsql_changes` streaming is dead code in production today (its own doc comment: *"if not loaded, pushes are silently skipped"*); its tests exercise a plain emulated table, not real cr-sqlite. `backend/services/cluster/reconcile.go` says so directly: the `installed_apps` CRR table "in production... lives in a cr-sqlite database; here it is persisted as JSON."
+> **Status — REALITY CHECK (2026-07-19).** The rest of this document (original text, kept below for design context) describes a **cr-sqlite CRDT** model as the multi-node merge engine. **cr-sqlite is not integrated, and cannot be under the current pure-Go/no-CGO rule** (`docs/decisions.md` D23; reaffirmed D94 item J — *"Stay Go for everything... no Rust. Consistent with the CGO-free/modernc SQLite rule"*). A former `backend/services/store/store.go` attempted to `load_extension()` a native `crsqlite.{so,dylib,dll}` at runtime, but `modernc.org/sqlite` is a pure-Go SQLite reimplementation that refuses the call outright (`load_extension` → "not authorized"), so `DB.CRSQLiteLoaded` was false on every build and `crsql_as_crr` never ran. That package and the `crsql_changes` streaming in `backend/services/sync/hotpath.go` were **deleted on 2026-07-20** as unreachable dead code (both had zero callers). `backend/services/cluster/reconcile.go` says so directly: the `installed_apps` CRR table "in production... lives in a cr-sqlite database; here it is persisted as JSON."
 >
 > **What is actually shipped and working today:**
 > - A real, pure-Go **leaderless CRDT** for the app registry only (LWW + OR-set + writer tie-break + signed uninstall quorum) in `backend/internal/multiinstance/appsync.go` — no CGO, no cr-sqlite.
@@ -233,7 +233,7 @@ Instead: **local-first writes + async sync + conflict resolution.** Every write 
 
 ## Sync Implementation
 
-> **Phase status.** Phase 1's non-CRDT half landed: `backend/services/store/` exists, is CGO-free (`modernc.org/sqlite`), and auth is SQLite-backed. What did **not** land is the cr-sqlite half — `store.Open` tries to `load_extension()` a native cr-sqlite shared library, but that call cannot succeed in a pure-Go binary (no CGO, no `dlopen` of a real C-ABI extension), so `crsql_as_crr` never actually registers any CRR and `DB.CRSQLiteLoaded` is false in every real build. Phases 2-5 below describe the cr-sqlite-dependent sync layer as originally planned; they are superseded by the forward plan in the reality check at the top of this document.
+> **Phase status.** Phase 1's non-CRDT half landed only in part: auth is SQLite-backed and CGO-free (`modernc.org/sqlite`). What did **not** land is the cr-sqlite half — `store.Open` tried to `load_extension()` a native cr-sqlite shared library, but that call cannot succeed in a pure-Go binary, so `crsql_as_crr` never registered any CRR. `backend/services/store/` was never wired to anything and was deleted on 2026-07-20. Phases 2-5 below describe the cr-sqlite-dependent sync layer as originally planned; they are superseded by the forward plan in the reality check at the top of this document.
 
 ### Phase 1: SQLite Migration
 
@@ -247,7 +247,7 @@ Replace JSON file stores with SQLite (+ cr-sqlite, as originally planned — see
 
 **What changes in code:**
 
-1. New package `backend/services/store/` — SQLite wrapper attempting a cr-sqlite extension load (shipped; the load itself cannot succeed under the no-CGO rule, see phase-status note)
+1. New package `backend/services/store/` — SQLite wrapper attempting a cr-sqlite extension load (shipped, then deleted 2026-07-20: the load cannot succeed under the no-CGO rule and nothing imported the package)
 2. `auth.Store` switches from JSON read/write to SQLite queries
 3. `Flush()` becomes a no-op (SQLite handles persistence)
 4. Other services that persist JSON follow the same pattern

@@ -269,7 +269,7 @@ flowchart LR
     B --> S3
 ```
 
-- **Hot path (not functional in production)**: the intent is for live instances to stream `crsql_changes` directly over the peering mesh (relay fallback for NAT/cross-location). The transport code (`backend/services/sync/hotpath.go`) and its tests exist, but `crsql_changes` never populates because cr-sqlite is not integrated (no CGO) — so no data moves over this path today.
+- **Hot path (not implemented)**: the intent is for live instances to stream changesets directly over the peering mesh (relay fallback for NAT/cross-location). An earlier transport implementation streamed `crsql_changes`, but that table never populated because cr-sqlite cannot load under the no-CGO rule; the dead code was removed. No data moves over this path today.
 - **Cold path (real)**: periodic durable checkpoint of each instance's own local DB file to the shared S3 bucket; offline instances catch up from the bucket.
 - **Snapshot/compaction (real)**: periodic compacted snapshot so new instances bootstrap from `snapshot + short tail`, not unbounded replay — this snapshots one instance's local state, not a cross-node merge.
 - **Coordination (real)**: bucket-backed leases with fencing tokens (`If-Match` CAS) prevent concurrent compaction.

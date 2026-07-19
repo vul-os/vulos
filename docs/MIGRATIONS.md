@@ -22,7 +22,6 @@ whole upgrade model: forward-only, one file per change, applied in order.
 
 | DB | Owner package | Migrations |
 |---|---|---|
-| `vulos.db` | `services/store` | `services/store/migrations/` |
 | `auth.db` | `services/auth` | `services/auth/migrations/` |
 | `files.db` | `services/files` | `services/files/migrations/` |
 | registry | `internal/multiinstance` | `internal/multiinstance/migrations/` |

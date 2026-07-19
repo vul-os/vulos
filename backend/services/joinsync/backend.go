@@ -88,8 +88,8 @@ func (realBackend) validate(ctx context.Context, cfg cluster.S3Config, passphras
 // The passphrase is NEVER written anywhere — it lives only in this call stack
 // for the lifetime of the derived SSE-C key.  The live services/sync engine
 // (started via sync.NewFromCluster in cmd/server) takes over normal incremental
-// sync once the server boots.  (Historical note: an older cluster.SyncLoop is
-// superseded and no longer wired — see services/cluster/sync.go.)
+// sync once the server boots.  (Historical note: an older cluster.SyncLoop was
+// superseded and its implementation has since been removed.)
 func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase string, progress func(phase string, pct int)) error {
 	progress("connecting", 5)
 

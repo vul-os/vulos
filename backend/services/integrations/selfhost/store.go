@@ -11,7 +11,7 @@ import (
 
 	dbmigrate "vulos/backend/internal/migrate"
 
-	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo — matches services/store)
+	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo)
 )
 
 //go:embed migrations/*.sql
