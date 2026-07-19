@@ -9,6 +9,7 @@ This document explains how to build a verity-signed Vulos OS rootfs that is repr
 All Go binaries must be built with:
 
 ```sh
+cd backend   # the Go module root is backend/ — there is no root go.mod
 CGO_ENABLED=0 \
   GOFLAGS="-trimpath -buildvcs=false" \
   SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
@@ -35,10 +36,17 @@ sha256sum build1/vulos build2/vulos
 
 The Vulos rootfs is packaged as a read-only SquashFS image.
 
+> **Status:** the rootfs tree is assembled by `build.sh`, the real image
+> builder. There is no `make rootfs` target and no `scripts/build-squashfs.sh`
+> — the deterministic-SquashFS wrapper described below is a **specification of
+> the intended canonical invocation, not a script that exists yet**. Run
+> `build.sh --live` for the live-USB/SquashFS path that is implemented today.
+
 ```sh
 # 1. Build the Go binary (see §1 above)
-# 2. Assemble the rootfs tree
-make rootfs   # produces build/rootfs/
+# 2. Assemble the rootfs tree — build.sh does the debootstrap and lays out
+#    the tree under ./output/rootfs (use --live for the SquashFS image path)
+sudo ./build.sh --live
 
 # 3. Build a deterministic SquashFS
 SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
@@ -48,7 +56,7 @@ SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
     -mkfs-time "$(git log -1 --format=%ct)"
 ```
 
-**Determinism note**: `mksquashfs` is not reproducible by default. The `-mkfs-time` flag sets the image timestamp. File ordering must be controlled via a filelist (`-sort-file`). Refer to `scripts/build-squashfs.sh` for the canonical invocation.
+**Determinism note**: `mksquashfs` is not reproducible by default. The `-mkfs-time` flag sets the image timestamp. File ordering must be controlled via a filelist (`-sort-file`). Factoring this into a canonical `scripts/build-squashfs.sh` is still **outstanding work** — the invocation above is the specification for it; today the SquashFS is produced inline by `build.sh --live`.
 
 ---
 
@@ -137,9 +145,14 @@ Anyone with the source at the tagged commit can reproduce the build:
 
 ```sh
 git checkout v0.3.1
-SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) make reproducible-build
-sha256sum build/vulos-rootfs.sqfs
+SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) sudo ./build.sh --live
+sha256sum output/vulos-rootfs.sqfs
 # Compare against the published manifest.json sqfs_sha256
 ```
 
-The CI pipeline (`scripts/ci-reproducible.sh`) performs this check on every release tag and fails if the digest does not match the published manifest.
+> **Status:** there is no `make reproducible-build` target and no
+> `scripts/ci-reproducible.sh`; **no CI job currently re-builds a release tag
+> and compares the digest against the published manifest.** Closing that gap —
+> a one-command reproducible build plus the CI check that enforces it — is
+> outstanding work, and until it lands the reproducibility claim in this
+> document is a design intent that is verified by hand, not automatically.

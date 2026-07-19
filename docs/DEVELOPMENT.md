@@ -5,14 +5,40 @@
 - Node.js 22+
 - Go 1.25+
 - Docker (with OrbStack recommended on macOS)
+- **The two sibling repos, cloned beside `vulos/`**: `npm install` resolves
+  `@vulos/relay-client` from `../vulos-relay/client` and `@vulos/office-client`
+  from `../vulos-office`. Clone both, then build the relay client library once
+  (its `dist-lib/` is not committed but its subpath exports point at it):
+
+  ```sh
+  git clone https://github.com/vul-os/vulos-relay.git
+  git clone https://github.com/vul-os/vulos-office.git
+  cd vulos-relay/client && npm install && npm run build:lib && cd ../..
+  ```
 
 ## Quick Start
 
 ### Docker (full stack)
 
+`dist/` and `bin/` are gitignored, and the Dockerfile defaults to
+`BINARY_SOURCE=prebuilt` (it COPYs binaries built on the host — the CI path).
+From a fresh clone, either build the frontend first and let Docker compile Go
+from source:
+
 ```sh
-docker build -t vulos .
+npm run build                                    # produces dist/
+docker build --build-arg BINARY_SOURCE=built -t vulos .
 docker run -p 8080:8080 --shm-size=1g -v vulos-data:/root/.vulos vulos
+```
+
+…or reproduce the CI path exactly by pre-building both halves on the host:
+
+```sh
+npm run build
+mkdir -p bin
+cd backend && go build -o ../bin/vulos-server ./cmd/server \
+           && go build -o ../bin/vulos-init ./cmd/init && cd ..
+docker build -t vulos .                          # BINARY_SOURCE=prebuilt (default)
 ```
 
 Open http://localhost:8080
@@ -55,8 +81,8 @@ Dockerfile         Production container image (Debian)
 ## Rebuilding
 
 ```sh
-# Full rebuild
-docker build -t vulos .
+# Full rebuild (see the Docker note above — dist/ must exist first)
+npm run build && docker build --build-arg BINARY_SOURCE=built -t vulos .
 
 # Backend only
 cd backend && go build ./cmd/server

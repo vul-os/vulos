@@ -81,7 +81,9 @@ And by `.gitignore`: `keys/*.priv.json`, `keys/*.key`, `keys/*.pem`.
 
 ## 3. The dev keypair
 
-A fresh clone must be able to run `make dev` and `go test ./...` and have real
+A fresh clone must be able to run `make dev` and `make test-local` (the Go
+module root is `backend/`, so the raw form is `cd backend && go test ./...`)
+and have real
 signature verification pass — with no flags, no key material to fetch, and no
 insecure mode. So the repo ships a **development** anchor and cert:
 

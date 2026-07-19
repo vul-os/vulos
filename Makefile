@@ -24,7 +24,7 @@ REGISTRY_FEED := registry-feed.json
 
 .PHONY: build test-local test-dev test-all coverage help \
         dev-keys sign-registry verify-registry verify-registry-prod \
-        publish-feed verify-feed smoke
+        publish-feed verify-feed smoke dev
 
 ## build: compile backend and build frontend assets.
 build:
@@ -46,6 +46,13 @@ test-dev:
 ## Equivalent to running scripts/test-all.sh directly.
 test-all:
 	$(SCRIPTS)/test-all.sh
+
+## dev: run the Go backend and the Vite dev server together (wraps ./dev.sh).
+## Declared explicitly (and in .PHONY) because without it make's implicit
+## copy rule silently turns `make dev` into `cp dev.sh dev`, leaving a stray
+## executable behind instead of starting anything.
+dev:
+	./dev.sh
 
 ## smoke: run the peering-route smoke test (SMOKE-01) — builds the server, starts
 ## it, waits for /health, then probes every registered peering route and fails if
