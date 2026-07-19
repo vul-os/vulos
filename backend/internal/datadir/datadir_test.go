@@ -1,6 +1,6 @@
 // datadir_test.go — VULOS_DATA_DIR is documented in README.md and
-// deploy/box/README.md as the way to point the box at a mounted volume. It
-// previously had no reader at all: the data root was hardcoded to $HOME/.vulos,
+// README.md as the way to point the box at a mounted volume. It previously
+// had no reader at all: the data root was hardcoded to $HOME/.vulos,
 // so an operator who mounted a volume per the docs silently lost state on every
 // restart. These tests pin the documented behaviour.
 package datadir

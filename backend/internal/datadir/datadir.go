@@ -2,8 +2,7 @@
 // all of its persistent state (databases, keys, peering material, app data).
 //
 // The location is operator-overridable via VULOS_DATA_DIR, which is documented
-// in README.md and deploy/box/README.md as the way to point the box at a
-// mounted volume. Before this package existed the root was hardcoded to
+// in README.md as the way to point the box at a mounted volume. Before this package existed the root was hardcoded to
 // $HOME/.vulos at every call site, so an operator who mounted a volume per the
 // docs silently lost all state on restart.
 //

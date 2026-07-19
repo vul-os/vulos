@@ -646,8 +646,7 @@ html, body, #root {
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
 
-/* Secondary action button — token-driven neutral surface, pairs with .btn-primary.
-   Was referenced (ResetPasswordSignedIn) with no definition, rendering unstyled. */
+/* Secondary action button — token-driven neutral surface, pairs with .btn-primary. */
 .btn-secondary {
   padding: 0.5rem 1.25rem;
   background: var(--bg-elevated);
