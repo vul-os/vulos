@@ -6,10 +6,14 @@
    social, system-info, phone, camera, …) reads as one product.
 
    The bundled apps are self-contained HTML served under a strict CSP
-   (style-src 'self' 'unsafe-inline'); rather than link this file (which each
-   server.py would have to serve), the same :root block is inlined into each
-   app's <head>. Keep this file and those inlined blocks in sync — this is the
-   canonical copy.
+   (style-src 'self' 'unsafe-inline', which permits same-origin stylesheet
+   links). Each app's <head> actually links this file —
+   <link rel="stylesheet" href="vulos-tokens.css"> — and each app's own
+   server.py serves it from ../_shared/vulos-tokens.css (apps/browser,
+   apps/social use a path allowlist; apps/camera, apps/phone, apps/system-info
+   likewise special-case the request so it can escape their own sandboxed
+   APP_DIR for this one, fixed, non-user-controlled path). This file is the
+   only copy — there is nothing to keep "in sync" anymore.
 
    Canonical names match /src/index.css (--bg-*, --text-*, --border-*,
    --accent). Short aliases (--surface, --text, --accent2, status colors) are

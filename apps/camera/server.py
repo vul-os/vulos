@@ -31,6 +31,8 @@ class CameraHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/" or path == "":
             self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
+        elif path == "/vulos-tokens.css":
+            self.serve_file(os.path.join(APP_DIR, "..", "_shared", "vulos-tokens.css"), "text/css")
         else:
             self.send_error(404)
 

@@ -225,6 +225,8 @@ class BrowserHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/" or self.path == "":
             self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
+        elif self.path == "/vulos-tokens.css":
+            self.serve_file(os.path.join(APP_DIR, "..", "_shared", "vulos-tokens.css"), "text/css")
         elif self.path.startswith("/browse?url="):
             self.handle_browse()
         else:

@@ -377,6 +377,8 @@ class SystemInfoHandler(http.server.BaseHTTPRequestHandler):
             self._serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
         elif self.path == "/icon.svg":
             self._serve_file(os.path.join(APP_DIR, "icon.svg"), "image/svg+xml")
+        elif self.path == "/vulos-tokens.css":
+            self._serve_file(os.path.join(APP_DIR, "..", "_shared", "vulos-tokens.css"), "text/css")
         elif self.path == "/api/info":
             self._send_json(get_system_info())
         elif self.path == "/api/disks":

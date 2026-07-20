@@ -511,6 +511,9 @@ class SocialHandler(http.server.BaseHTTPRequestHandler):
         if path in ("/", ""):
             self.serve_file(os.path.join(APP_DIR, "index.html"), "text/html")
 
+        elif path == "/vulos-tokens.css":
+            self.serve_file(os.path.join(APP_DIR, "..", "_shared", "vulos-tokens.css"), "text/css")
+
         # FED-06: share target — prefilled compose
         elif path == "/share":
             self._handle_share_redirect(p("text"), p("url"), p("title"))

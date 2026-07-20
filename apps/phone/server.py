@@ -25,6 +25,12 @@ class PhoneHandler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/" or path == "":
             path = "/index.html"
+        if path == "/vulos-tokens.css":
+            # Shared design tokens live one level up in apps/_shared/, outside
+            # this app's own sandboxed APP_DIR — serve it explicitly rather
+            # than through the path-traversal-guarded resolver below.
+            self.serve_shared_tokens()
+            return
         filepath = os.path.join(APP_DIR, path.lstrip("/"))
         # Only serve files directly inside APP_DIR (no path traversal)
         if not os.path.realpath(filepath).startswith(os.path.realpath(APP_DIR) + os.sep):
@@ -46,6 +52,19 @@ class PhoneHandler(http.server.BaseHTTPRequestHandler):
         else:
             # SPA fallback — serve index.html for any unknown path
             self.serve_index()
+
+    def serve_shared_tokens(self):
+        filepath = os.path.join(APP_DIR, "..", "_shared", "vulos-tokens.css")
+        try:
+            with open(filepath, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except FileNotFoundError:
+            self.send_error(404)
 
     def serve_index(self):
         filepath = os.path.join(APP_DIR, "index.html")
