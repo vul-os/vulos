@@ -432,24 +432,19 @@ html, body, #root {
   .show-mobile { display: none !important; }
 }
 
-/* Media that must never overflow its column on small screens. Opt-in so it can
-   never surprise a fixed-size icon that relies on explicit width/height. */
-.media-responsive { max-width: 100%; height: auto; }
-
-/* Horizontal-scroll escape hatch: wide content (tables, token strips, diagrams)
-   scrolls inside its own box so the shell frame never scrolls sideways. */
-.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-
 /* ═══════════════════════════════════════════════════════════════════════════
    ELEVATION + GLASS UTILITIES
    Token-driven so a lifted surface is correct in both themes automatically.
+   Registered as @utility (not plain classes) so Tailwind v4 generates
+   variants for them — `hover:elevate-lg`, `focus:elevate-md`, etc. actually
+   emit `.hover\:elevate-lg:hover{...}`. Plain `.elevate-lg{}` authored CSS
+   is invisible to Tailwind's variant machinery: `hover:elevate-lg` would
+   parse as "no known utility named elevate-lg", so Tailwind emits nothing
+   and the class is a silent no-op in the compiled bundle.
    ═══════════════════════════════════════════════════════════════════════════ */
-.elevate-sm     { box-shadow: var(--shadow-sm); }
-.elevate-md     { box-shadow: var(--shadow-md); }
-.elevate-lg     { box-shadow: var(--shadow-lg); }
-.elevate-xl     { box-shadow: var(--shadow-xl); }
-.elevate-2xl    { box-shadow: var(--shadow-2xl); }
-.elevate-window { box-shadow: var(--shadow-window); }
+@utility elevate-md { box-shadow: var(--shadow-md); }
+@utility elevate-lg { box-shadow: var(--shadow-lg); }
+@utility elevate-xl { box-shadow: var(--shadow-xl); }
 
 /* Frosted-glass surface for menu bar / dock / popovers / sheets. Falls back to a
    solid --bg-surface where backdrop-filter is unsupported (progressive: the
@@ -703,18 +698,22 @@ html, body, #root {
 .hover-accent-bg:hover { background: var(--accent); }
 .hover-accent-bg-soft:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 
-.text-success { color: var(--status-success); }
-.text-danger  { color: var(--status-danger); }
-.text-warning { color: var(--status-warning); }
-.bg-success   { background: var(--status-success); }
-.bg-danger    { background: var(--status-danger); }
-.bg-warning   { background: var(--status-warning); }
-.bg-danger-soft  { background: var(--status-danger-soft); }
-.bg-warning-soft { background: var(--status-warning-soft); }
-.bg-success-soft { background: var(--status-success-soft); }
-.border-danger-soft  { border-color: color-mix(in srgb, var(--status-danger) 34%, transparent); }
-.border-warning-soft { border-color: color-mix(in srgb, var(--status-warning) 30%, transparent); }
-.border-success-soft { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); }
+/* @utility (not plain classes): the same hover:/focus: variant hole as the
+   elevate-* family above — `hover:bg-danger-soft` / `hover:text-danger` are
+   live in the codebase (Calendar.jsx, Contacts.jsx, InstancesPanel.jsx,
+   MobileStack.jsx) and were silently dead as plain CSS. */
+@utility text-success { color: var(--status-success); }
+@utility text-danger  { color: var(--status-danger); }
+@utility text-warning { color: var(--status-warning); }
+@utility bg-success   { background: var(--status-success); }
+@utility bg-danger    { background: var(--status-danger); }
+@utility bg-warning   { background: var(--status-warning); }
+@utility bg-danger-soft  { background: var(--status-danger-soft); }
+@utility bg-warning-soft { background: var(--status-warning-soft); }
+@utility bg-success-soft { background: var(--status-success-soft); }
+@utility border-danger-soft  { border-color: color-mix(in srgb, var(--status-danger) 34%, transparent); }
+@utility border-warning-soft { border-color: color-mix(in srgb, var(--status-warning) 30%, transparent); }
+@utility border-success-soft { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); }
 
 /* ═══════════════════════════════════════
    Shell-wide keyboard focus ring (WAVE-23)
