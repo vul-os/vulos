@@ -213,5 +213,3 @@ export function StepTrace({ steps, className = '' }) {
     </details>
   )
 }
-
-export { PROPOSAL_VERB }

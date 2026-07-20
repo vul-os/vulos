@@ -229,10 +229,6 @@ export function getMasterKey() {
   return _masterKey
 }
 
-export function hasMasterKey() {
-  return _masterKey !== null
-}
-
 export function clearMasterKey() {
   if (_masterKey) _masterKey.fill(0)
   _masterKey = null

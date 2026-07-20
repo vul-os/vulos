@@ -35,10 +35,6 @@ const BASE_SANDBOX = 'allow-scripts allow-forms allow-popups'
 // resolve, so failing closed is also the only thing that works.
 let originConfig = { enabled: false, baseDomain: '', profile: DEFAULT_PROFILE }
 
-export function getOriginConfig() {
-  return originConfig
-}
-
 // setOriginConfig is exported for tests and for the boot fetch below.
 export function setOriginConfig(cfg) {
   originConfig = {

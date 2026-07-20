@@ -71,28 +71,6 @@ export function canSpawnNativeWindow() {
   return _mode === 'native'
 }
 
-// Returns true if running on embedded WebKit (device, not dev browser)
-export function isOnDevice() {
-  return _mode !== 'browser'
-}
-
-// Hook for React components that need to react to mode
-export function useNativeMode() {
-  const [mode, setMode] = useState(_mode)
-
-  useEffect(() => {
-    detectMode().then(m => setMode(m))
-  }, [])
-
-  return {
-    mode,
-    isNative: mode === 'native',
-    isBaremetal: mode === 'baremetal',
-    isBrowser: mode === 'browser',
-    canSpawnNativeWindow: mode === 'native',
-  }
-}
-
 // useThinWM — returns true when the React WM should operate in "thin" mode
 // (D93 v2 labwc unification, BMINIT-18).
 //
