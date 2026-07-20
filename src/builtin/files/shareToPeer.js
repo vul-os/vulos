@@ -1,12 +1,17 @@
 /**
  * shareToPeer.js — pure helpers for the Files "Share to peer" flow.
  *
- * The Files app hands a selected file (or folder) to the existing peering
- * "Drop" transport, which is the same LAN-first / internet-fallback,
- * signed-URL + content-hash pipeline used by the AirDrop-style Drop panel
- * (src/builtin/peering/Drop.jsx). We do NOT reinvent the wire protocol here —
- * we only translate a Files selection into the `/api/peering/drop/send`
- * request that the DropService already understands.
+ * The Files app hands a selected file (or folder) to the peering "Drop"
+ * transport: a LAN-first / internet-fallback, signed-URL + content-hash
+ * pipeline. We do NOT reinvent the wire protocol here — we only translate a
+ * Files selection into the `/api/peering/drop/send` request that the backend
+ * DropService already understands.
+ *
+ * The protocol lives in the backend (backend/services/peering/drop*.go); Files
+ * is now its only client. The old AirDrop-style Drop panel that used to be the
+ * reference implementation was retired with the rest of the orphaned peering UI
+ * — it had lost its entry point when Messages replaced Peering in the builtin
+ * registry, and comms are third-party per the product standard.
  *
  * Kept dependency-free and side-effect-free so the path/MIME logic can be
  * unit-tested without a DOM or a backend.
