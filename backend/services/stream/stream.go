@@ -631,12 +631,12 @@ func (s *Session) noteInput() {
 }
 
 // idleThresholdFPS is the FPS to drop to when the session has been idle
-// (no input events) for idleStaticSeconds. Not applied when Gaming=true.
+// (no input events) for idleStaticThreshold. Not applied when Gaming=true.
 const idleThresholdFPS = 2
 
-// idleStaticSeconds is how long the session must be without input before
+// idleStaticThreshold is how long the session must be without input before
 // the FPS is throttled to idleThresholdFPS.
-const idleStaticSeconds = 10 * time.Second
+const idleStaticThreshold = 10 * time.Second
 
 // idleSuspendDuration is how long the session must be without input AND
 // without any connected peer before Xvfb/app processes are suspended (SIGSTOP).
@@ -681,8 +681,8 @@ func (s *Session) startIdleWatcher() {
 						syscall.Kill(-proc.Process.Pid, syscall.SIGSTOP)
 					}
 
-				case since >= idleStaticSeconds && !idleAlready:
-					// Static for idleStaticSeconds → drop FPS.
+				case since >= idleStaticThreshold && !idleAlready:
+					// Static for idleStaticThreshold → drop FPS.
 					s.mu.Lock()
 					s.idleFPS = true
 					s.mu.Unlock()
@@ -690,7 +690,7 @@ func (s *Session) startIdleWatcher() {
 						s.Name, idleThresholdFPS, since.Seconds())
 					s.SetFPS(idleThresholdFPS)
 
-				case since < idleStaticSeconds && idleAlready:
+				case since < idleStaticThreshold && idleAlready:
 					// Input resumed but noteInput ramp-up beat us here — still
 					// clear the flag in case it didn't fire.
 					s.mu.Lock()

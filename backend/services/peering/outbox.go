@@ -117,10 +117,14 @@ type QueuedEnvelope struct {
 //
 // Obtain one via NewOutboxQueue; the zero value is not usable.
 type OutboxQueue struct {
-	root     string      // absolute path to ~/.vulos/peering/outbox/
-	client   *PeerClient // outbound HTTP client (shared with messages.go)
-	mu       sync.Mutex  // guards in-memory NextAttempt updates
-	workerID uint64      // atomic counter; each retryPeerDir call gets a unique ID
+	root   string      // absolute path to ~/.vulos/peering/outbox/
+	client *PeerClient // outbound HTTP client (shared with messages.go)
+	// mu is reserved for the in-memory NextAttempt updates the retry path will
+	// need once the outbox is wired to a live sender. It guards nothing today --
+	// stated plainly so nobody reads this struct as already thread-safe.
+	//lint:ignore U1000 reserved for the retry path; see the note above
+	mu       sync.Mutex
+	workerID uint64 // atomic counter; each retryPeerDir call gets a unique ID
 }
 
 // NewOutboxQueue creates an OutboxQueue backed by

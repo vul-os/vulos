@@ -135,7 +135,7 @@ func (s *Service) Handler() http.HandlerFunc {
 		pinnedIP, err := s.resolveAndValidate(hostname)
 		if err != nil {
 			log.Printf("[webproxy] blocked %s: %v", hostname, err)
-			http.Error(w, `{"error":"cannot proxy to private or unresolvable addresses"}`, 403)
+			http.Error(w, `{"error":"cannot proxy to private or unresolvable addresses"}`, http.StatusForbidden)
 			return
 		}
 

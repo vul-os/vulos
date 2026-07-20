@@ -1,5 +1,9 @@
 package vault
 
+//lint:file-ignore SA2001 The Lock/Unlock with an empty body is a liveness probe:
+// it blocks until the worker goroutine releases the mutex, which is how the test
+// proves the goroutine exited. See TestVault_CancelStopsWorker.
+
 import (
 	"context"
 	"os"
@@ -203,6 +207,8 @@ func TestStartScheduleFiresAfterInterval(t *testing.T) {
 	// Confirm the mutex is acquirable — proves the goroutine released it and exited.
 	acquired := make(chan struct{})
 	go func() {
+		// Acquiring and immediately releasing is the whole test: it blocks until
+		// the worker goroutine has let go of the lock, proving it exited.
 		v.mu.Lock()
 		v.mu.Unlock()
 		close(acquired)

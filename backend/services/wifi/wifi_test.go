@@ -108,7 +108,7 @@ func TestParseIWScan_BSSID(t *testing.T) {
 
 func TestParseIWScan_Empty(t *testing.T) {
 	nets := parseIWScan("")
-	if nets != nil && len(nets) != 0 {
+	if len(nets) != 0 {
 		t.Errorf("expected empty result for empty input, got %v", nets)
 	}
 }

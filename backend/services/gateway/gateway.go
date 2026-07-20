@@ -563,7 +563,7 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		// --- Auth check ---
 		session := g.validateSession(r)
 		if session == nil {
-			http.Error(w, `{"error":"unauthorized"}`, 401)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 
@@ -581,7 +581,7 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		// --- Rate limit per app (200 req/s per app) ---
 		if g.isRateLimited(appID) {
 			w.Header().Set("Retry-After", "1")
-			http.Error(w, `{"error":"rate limited"}`, 429)
+			http.Error(w, `{"error":"rate limited"}`, http.StatusTooManyRequests)
 			return
 		}
 
@@ -666,7 +666,7 @@ func (g *Gateway) proxyWebSocket(w http.ResponseWriter, r *http.Request, ns *app
 	upstream := net.JoinHostPort(ns.NSIP, fmt.Sprintf("%d", ns.AppPort))
 	upConn, err := net.DialTimeout("tcp", upstream, 5*time.Second)
 	if err != nil {
-		http.Error(w, "app unreachable", 502)
+		http.Error(w, "app unreachable", http.StatusBadGateway)
 		return
 	}
 

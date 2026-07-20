@@ -88,7 +88,6 @@ func New(c ...*config.Config) *Service {
 	return svc
 }
 
-
 // Domain returns the public domain for this node.
 //
 // In "fabric" or "direct" modes the domain is derived as {ulid}.vulos.org.

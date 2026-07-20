@@ -309,7 +309,7 @@ func buildBrowserProfileMux(t *testing.T, bp *bprofiles.Store, store *auth.Store
 		}
 		if prof.UserID != userID {
 			if p, _ := store.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
-				http.Error(w, `{"error":"forbidden"}`, 403)
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
 			}
 		}
@@ -333,7 +333,7 @@ func buildBrowserProfileMux(t *testing.T, bp *bprofiles.Store, store *auth.Store
 		}
 		if prof.UserID != userID {
 			if p, _ := store.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
-				http.Error(w, `{"error":"forbidden"}`, 403)
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
 			}
 		}
@@ -351,7 +351,7 @@ func buildBrowserProfileMux(t *testing.T, bp *bprofiles.Store, store *auth.Store
 		}
 		if prof.UserID != userID {
 			if p, _ := store.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
-				http.Error(w, `{"error":"forbidden"}`, 403)
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
 			}
 		}
@@ -369,7 +369,7 @@ func buildBrowserProfileMux(t *testing.T, bp *bprofiles.Store, store *auth.Store
 		}
 		if prof.UserID != userID {
 			if p, _ := store.GetProfile(userID); p == nil || p.Role != auth.RoleAdmin {
-				http.Error(w, `{"error":"forbidden"}`, 403)
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
 			}
 		}

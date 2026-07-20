@@ -129,7 +129,8 @@ func TestSessionIDForUser(t *testing.T) {
 		t.Error("distinct users must map to distinct session IDs")
 	}
 	// Same user is stable (pool dedupe onto one live session).
-	if sessionIDForUser("alice") != sessionIDForUser("alice") {
+	aliceOnce, aliceTwice := sessionIDForUser("alice"), sessionIDForUser("alice")
+	if aliceOnce != aliceTwice {
 		t.Error("session ID must be stable for the same user")
 	}
 }
@@ -361,7 +362,7 @@ func TestCDPListTabs_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("testCDPListTabs: %v", err)
 	}
-	if pages != nil && len(pages) != 0 {
+	if len(pages) != 0 {
 		t.Errorf("expected nil/empty slice, got %v", pages)
 	}
 }

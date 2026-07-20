@@ -11,6 +11,10 @@
 //	POST /api/auth/totp/export   – produce an encrypted export blob
 package authvault
 
+//lint:file-ignore ST1005 These errors end in a URI template
+// (otpauth-migration://offline?data=...), not a sentence period -- the trailing
+// ellipsis is part of the example the operator has to type.
+
 import (
 	"crypto/aes"
 	"crypto/cipher"

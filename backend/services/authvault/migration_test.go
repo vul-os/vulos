@@ -339,18 +339,14 @@ func TestExportReimportIdentical(t *testing.T) {
 		t.Errorf("blob.Count: want 3, got %d", blob.Count)
 	}
 
-	// Re-import into a fresh store (same key — same srcDir, new Store instance).
-	dstStore, err := NewStoreAt(srcDir)
-	if err != nil {
-		t.Fatalf("NewStoreAt dst: %v", err)
-	}
-	// Clear the dst store (it loaded the same keychain as src).
-	// Use a fresh temp dir so we get an empty store with the same key.
+	// Re-import into a fresh, EMPTY store that carries the same key: a store
+	// opened at srcDir would already hold the accounts, so a no-op import would
+	// look like a successful round-trip.
 	dstDir := t.TempDir()
 	// Copy keyfile so decryption key matches.
 	keyfileSrc, _ := os.ReadFile(srcDir + "/keyfile")
 	os.WriteFile(dstDir+"/keyfile", keyfileSrc, 0600)
-	dstStore, err = NewStoreAt(dstDir)
+	dstStore, err := NewStoreAt(dstDir)
 	if err != nil {
 		t.Fatalf("NewStoreAt dst2: %v", err)
 	}

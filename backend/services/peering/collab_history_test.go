@@ -280,7 +280,7 @@ func TestHandleInboundSyncV2_StateVectorMatch_ReturnsNoop(t *testing.T) {
 	_ = s.persistUpdate("noop-doc", stateBlob)
 
 	// Compute expected base64 of stored blob (same function the handler uses).
-	sv := encodeBase64(stateBlob)
+	sv := encodeToBase64Bytes(stateBlob)
 
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/peering/collab-sync-v2?doc_id=noop-doc&state_vector="+sv, nil)
@@ -306,7 +306,7 @@ func TestHandleInboundSyncV2_StateVectorMismatch_ReturnsFullState(t *testing.T) 
 	_ = s.persistUpdate("diff-doc", stateBlob)
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/api/peering/collab-sync-v2?doc_id=diff-doc&state_vector="+encodeBase64([]byte("old-state")), nil)
+		"/api/peering/collab-sync-v2?doc_id=diff-doc&state_vector="+encodeToBase64Bytes([]byte("old-state")), nil)
 	req.Header.Set("X-User-ID", "os-user")
 	rr := httptest.NewRecorder()
 	syncV2Mux(s).ServeHTTP(rr, req)
@@ -336,11 +336,11 @@ func TestEncodeBase64_Roundtrip(t *testing.T) {
 		[]byte("any-yjs-binary-data"),
 	}
 	for _, c := range cases {
-		got := encodeBase64(c)
+		got := encodeToBase64Bytes(c)
 		// Verify by decoding with encoding/base64
 		import_enc_b64_decoded, err := decodeBase64ForTest(got)
 		if err != nil {
-			t.Errorf("encodeBase64(%q) → %q, decode error: %v", c, got, err)
+			t.Errorf("encodeToBase64Bytes(%q) → %q, decode error: %v", c, got, err)
 			continue
 		}
 		if string(import_enc_b64_decoded) != string(c) {

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	tstrs "strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -33,38 +32,6 @@ func newTestEnv(t *testing.T, id, from, to string) *Envelope {
 		t.Fatalf("env.Sign: %v", err)
 	}
 	return env
-}
-
-// mockPeerClient is a PeerClient replacement for tests.
-// It intercepts Post calls and records them. When failUntil > 0 the first
-// failUntil calls return an error; subsequent calls succeed.
-type mockPeerClient struct {
-	mu        sync.Mutex
-	calls     []mockCall
-	failUntil int32 // atomic; Post fails when attempts < failUntil
-}
-
-type mockCall struct {
-	baseURL      string
-	envelopeType string
-	envID        string
-}
-
-func (m *mockPeerClient) post(_ context.Context, baseURL, envelopeType string, env *Envelope) error {
-	attempt := atomic.AddInt32(&m.failUntil, -1)
-	m.mu.Lock()
-	m.calls = append(m.calls, mockCall{baseURL: baseURL, envelopeType: envelopeType, envID: env.ID})
-	m.mu.Unlock()
-	if attempt >= 0 {
-		return fmt.Errorf("mock: peer unreachable")
-	}
-	return nil
-}
-
-func (m *mockPeerClient) callCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.calls)
 }
 
 // newTestOutboxQueue creates an OutboxQueue backed by a temp directory.
@@ -278,7 +245,7 @@ func TestPullMissed_ReturnsItemsAfterLastSeen(t *testing.T) {
 func TestPullMissed_EmptyQueueReturnsNil(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
 	missed := q.PullMissed("vula:ed25519:IIII", time.Now().Add(-1*time.Hour))
-	if missed != nil && len(missed) != 0 {
+	if len(missed) != 0 {
 		t.Errorf("expected nil/empty, got %d items", len(missed))
 	}
 }
@@ -524,28 +491,6 @@ func TestOutboxSortByQueuedAt(t *testing.T) {
 }
 
 // ─── Medium fix #9: concurrent outbox double-delivery prevention ─────────────
-
-// newMockOutboxQueue creates an OutboxQueue with a mockPeerClient for delivery
-// testing. The mock is embedded via the internal client field.
-func newMockOutboxQueue(t *testing.T, mock *mockPeerClient) *OutboxQueue {
-	t.Helper()
-	home := t.TempDir()
-	// NewOutboxQueue needs a *PeerClient which is a real struct. We create a
-	// real one then swap the internal field for our mock via the deliverFn hook
-	// by substituting the client's deliver mechanism through the test wrapper.
-	// Since mockPeerClient is already embedded in the test (see mock above),
-	// we create a queue with a real client and then replace the client field.
-	realClient := NewPeerClient()
-	q, err := NewOutboxQueue(home, realClient)
-	if err != nil {
-		t.Fatalf("NewOutboxQueue: %v", err)
-	}
-	// Swap the client: OutboxQueue.client is a *PeerClient, but our mock
-	// only has Post() compatible method. We test via a local deliverer wrapper.
-	// Instead: we test the atomic-rename logic by verifying QueueDepth directly.
-	_ = mock // used in the sub-test below
-	return q
-}
 
 // TestConcurrentWorkers_NoDoubleDelivery verifies that two concurrent
 // runRetryPass calls process each item at most once.

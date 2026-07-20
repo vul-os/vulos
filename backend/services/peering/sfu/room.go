@@ -35,23 +35,6 @@ const DefaultLastN = 6
 // MaxParticipants is the hard cap on participants per room.
 const MaxParticipants = 50
 
-// trackEntry holds a received simulcast track and the RTP packets
-// buffered for each layer (high/low). The SFU picks the appropriate
-// layer to forward to each subscriber.
-type trackEntry struct {
-	// trackID is the RTP track source identifier.
-	trackID string
-	// kind is "video" or "audio".
-	kind string
-	// rid is the RTP stream ID (simulcast layer identifier: "h" = high, "l" = low).
-	rid string
-	// remote is the Pion remote track.
-	remote *webrtc.TrackRemote
-	// local maps receiver participant ID → output track written to that peer.
-	local map[string]*webrtc.TrackLocalStaticRTP
-	mu    sync.Mutex
-}
-
 // Participant represents a single peer connection inside a Room.
 type Participant struct {
 	// ID is a stable identifier for this participant (assigned on join).
@@ -384,35 +367,6 @@ func (r *Room) sendPeriodicPLI(p *Participant, remote *webrtc.TrackRemote, recei
 			}
 		case <-r.done:
 			return
-		}
-	}
-}
-
-// forwardAudio delivers an audio RTP packet from sender p to all other
-// participants' output audio tracks.
-func (r *Room) forwardAudio(sender *Participant, pkt *rtp.Packet) {
-	raw, err := pkt.Marshal()
-	if err != nil {
-		return
-	}
-
-	r.mu.RLock()
-	receivers := make([]*Participant, 0, len(r.participants))
-	for _, ep := range r.participants {
-		if ep.ID != sender.ID {
-			receivers = append(receivers, ep)
-		}
-	}
-	r.mu.RUnlock()
-
-	for _, recv := range receivers {
-		recv.mu.Lock()
-		track := recv.outputAudio
-		recv.mu.Unlock()
-		if track != nil {
-			if _, err := track.Write(raw); err != nil {
-				log.Printf("[sfu] audio write to %s: %v", recv.ID, err)
-			}
 		}
 	}
 }

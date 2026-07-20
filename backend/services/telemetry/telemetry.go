@@ -59,13 +59,10 @@ func Handler() http.HandlerFunc {
 			return
 		}
 
-		for {
-			select {
-			case <-ticker.C:
-				if err := sendStats(ws, collect()); err != nil {
-					log.Printf("[telemetry] client disconnected")
-					return
-				}
+		for range ticker.C {
+			if err := sendStats(ws, collect()); err != nil {
+				log.Printf("[telemetry] client disconnected")
+				return
 			}
 		}
 	}

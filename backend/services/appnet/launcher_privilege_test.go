@@ -147,9 +147,6 @@ func TestEnv_HomeIsNotRoot(t *testing.T) {
 		if e == "HOME=/root" {
 			t.Fatal("ISOLATION-PRIV-01 REGRESSION: HOME=/root in app env — nobody cannot write there; use HOME=/tmp")
 		}
-		if strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "HOME=/root") {
-			// Some non-root HOME is fine.
-		}
 	}
 	// Ensure HOME is explicitly set to something.
 	hasHOME := false

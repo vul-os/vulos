@@ -216,9 +216,7 @@ func (f *FixtureSource) ListEvents(_ context.Context, _ Auth, fromISO, toISO str
 		{ID: "demo-dinner", Title: "Dinner at Mom's", Start: day.AddDate(0, 0, 2).Add(18 * time.Hour).Format(time.RFC3339), AllDay: false},
 	}
 	f.mu.Lock()
-	for _, e := range f.events {
-		seeded = append(seeded, e)
-	}
+	seeded = append(seeded, f.events...)
 	f.mu.Unlock()
 
 	from, _ := time.Parse(time.RFC3339, fromISO)

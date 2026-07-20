@@ -545,26 +545,6 @@ func TestFetchFromPeer_EmptySignedURL(t *testing.T) {
 
 // ─── HandleInboundMedia ───────────────────────────────────────────────────────
 
-// buildInboundEnvelope creates a minimal signed Envelope for inbound media tests.
-func buildInboundEnvelopeMedia(t *testing.T, priv ed25519.PrivateKey, vulaID string, payload []byte) *Envelope {
-	t.Helper()
-	env, err := NewEnvelope("test-media-"+randomSuffix(), vulaID, "vula:ed25519:"+strings.Repeat("z", 44), TypeMessage, json.RawMessage(payload))
-	if err != nil {
-		t.Fatalf("NewEnvelope: %v", err)
-	}
-	if err := env.Sign(priv); err != nil {
-		t.Fatalf("Sign: %v", err)
-	}
-	return env
-}
-
-// randomSuffix generates a short random hex string for unique IDs.
-func randomSuffix() string {
-	b := make([]byte, 4)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
 func TestHandleInboundMedia_MissingEnvelopeInContext(t *testing.T) {
 	ms, _ := newTestMediaStore(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/peering/inbound/media",

@@ -160,7 +160,11 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 // re-deriving the JSON shape — and to keep the contract documented in one
 // place. Unused methods are valid Go and do not affect build/vet.
 //
+// features that are declared in the API contract but not yet implemented. It is
+// kept so the contract lives in one place rather than being re-derived per route.
+//
 //nolint:unused
+//lint:ignore U1000 Reserved: this is the documented 501 responder for peering
 func (s *Service) stub(feature string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

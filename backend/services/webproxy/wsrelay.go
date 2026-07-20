@@ -37,7 +37,7 @@ func (s *Service) WSRelayHandler() http.HandlerFunc {
 		// isPrivate calls safedial.ValidateHost which handles IP literals,
 		// obfuscated encodings, and hostname resolution.
 		if isPrivate(host) {
-			http.Error(w, `{"error":"cannot relay to private addresses"}`, 403)
+			http.Error(w, `{"error":"cannot relay to private addresses"}`, http.StatusForbidden)
 			return
 		}
 
@@ -55,7 +55,7 @@ func (s *Service) WSRelayHandler() http.HandlerFunc {
 		upConn, err := d.DialContext(context.Background(), "tcp", targetAddr)
 		if err != nil {
 			log.Printf("[wsrelay] dial %s: %v", targetAddr, err)
-			http.Error(w, `{"error":"upstream unreachable"}`, 502)
+			http.Error(w, `{"error":"upstream unreachable"}`, http.StatusBadGateway)
 			return
 		}
 

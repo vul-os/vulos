@@ -90,16 +90,6 @@ func secSignedDeposit(t *testing.T, senderPriv ed25519.PrivateKey, senderID, rec
 	return req
 }
 
-// secPickupAuth builds a valid relay pickup Authorization header value.
-func secPickupAuth(t *testing.T, priv ed25519.PrivateKey, vulaID string) (tsStr, sigB64 string) {
-	t.Helper()
-	tsStr = fmt.Sprintf("%d", time.Now().Unix())
-	msg := []byte(vulaID + "." + tsStr)
-	sig := ed25519.Sign(priv, msg)
-	sigB64 = base64.RawURLEncoding.EncodeToString(sig)
-	return
-}
-
 // ─── PEER-SEC-01: Envelope bad signature rejected ─────────────────────────────
 
 // TestSEC_Envelope_BadSigRejected verifies that a corrupted signature causes

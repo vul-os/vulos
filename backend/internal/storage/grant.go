@@ -212,7 +212,7 @@ func (b *GrantBroker) mintObjectSTS(bucket, key string, durSec int) (ScopedCreds
 	if err != nil {
 		return ScopedCreds{}, false
 	}
-	v, err := creds.Get()
+	v, err := creds.GetWithContext(nil)
 	if err != nil {
 		return ScopedCreds{}, false
 	}

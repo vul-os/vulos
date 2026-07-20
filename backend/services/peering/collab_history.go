@@ -48,6 +48,7 @@
 package peering
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -364,49 +365,11 @@ func (s *CollabStore) handleInboundSyncV2(w http.ResponseWriter, r *http.Request
 	w.Write(data) //nolint:errcheck
 }
 
-// encodeToBase64Bytes returns the standard base64 encoding of b.
-// Using Go's encoding/base64 to match what the browser sends.
+// encodeToBase64Bytes returns the standard base64 encoding of b, matching what
+// the browser sends.
 func encodeToBase64Bytes(b []byte) string {
-	const table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	if len(b) == 0 {
 		return ""
 	}
-	// Use encoding/base64 via import at package level — but we can't add
-	// imports in a function body.  Compute inline using the stdlib approach.
-	// (encoding/base64 is already imported by collab.go via its use in
-	// HandleInboundCollabUpdate.)
-	return encodeBase64(b)
-}
-
-// encodeBase64 is a thin wrapper so we don't need to import encoding/base64
-// again in this file (the package already imports it in collab.go).
-// Rather than duplicate the import list we use a simple manual encode.
-func encodeBase64(src []byte) string {
-	const enc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	dst := make([]byte, (len(src)+2)/3*4)
-	i := 0
-	for j := 0; j < len(src); j += 3 {
-		b0 := src[j]
-		var b1, b2 byte
-		if j+1 < len(src) {
-			b1 = src[j+1]
-		}
-		if j+2 < len(src) {
-			b2 = src[j+2]
-		}
-		dst[i] = enc[b0>>2]
-		dst[i+1] = enc[(b0&0x03)<<4|b1>>4]
-		if j+1 < len(src) {
-			dst[i+2] = enc[(b1&0x0f)<<2|b2>>6]
-		} else {
-			dst[i+2] = '='
-		}
-		if j+2 < len(src) {
-			dst[i+3] = enc[b2&0x3f]
-		} else {
-			dst[i+3] = '='
-		}
-		i += 4
-	}
-	return string(dst)
+	return base64.StdEncoding.EncodeToString(b)
 }

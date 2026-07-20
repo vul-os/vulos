@@ -740,7 +740,7 @@ func VerifyEntrySignature(entry *RegistryEntry, appID string, pubKey ed25519.Pub
 		}
 		return fmt.Errorf("registry: no trust anchor configured for entry %q and "+
 			"%s is not usable here — install refused (C1/REGISTRY-SIGN-01). "+
-			"Configure a trust anchor (%s or %s) before installing apps.",
+			"configure a trust anchor (%s or %s) before installing apps",
 			appID, envRegistryInsecure, envRegistryPubKey, signing.DefaultAnchorPath)
 	}
 	if entry.Signature == "" {

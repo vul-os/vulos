@@ -171,7 +171,7 @@ func (a *dropBLEOSAdapter) StartScan(cb func(dropBLEAdvertisement)) error {
 		return err
 	}
 	a.scanning = true
-	go dropBLEPollDevices(cb)
+	go dropBLEPollDevicesFn(cb)
 	return nil
 }
 

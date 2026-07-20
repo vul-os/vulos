@@ -29,6 +29,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
+	"github.com/google/go-tpm/tpm2/transport/linuxtpm"
 )
 
 // tpmStore is the hardware TPM-backed KeyStore.
@@ -52,9 +53,9 @@ func openTPM(keyDir string) (*tpmStore, error) {
 	}
 	f.Close()
 
-	tpm, err := transport.OpenTPM(defaultTPMPath)
+	tpm, err := linuxtpm.Open(defaultTPMPath)
 	if err != nil {
-		return nil, fmt.Errorf("devicekey/tpm: transport.OpenTPM: %w", err)
+		return nil, fmt.Errorf("devicekey/tpm: linuxtpm.Open: %w", err)
 	}
 
 	s := &tpmStore{tpm: tpm, keyDir: keyDir}

@@ -60,18 +60,6 @@ const meshPingPeriod = 50 * time.Second
 
 // ─── Wire types ───────────────────────────────────────────────────────────────
 
-// meshFrame is the generic signaling frame exchanged between browsers.
-// The server does not interpret the payload beyond routing.
-type meshFrame struct {
-	Type   string `json:"type"`
-	From   string `json:"from,omitempty"`
-	To     string `json:"to,omitempty"`
-	RoomID string `json:"roomId,omitempty"`
-	// The rest of the fields are arbitrary and forwarded verbatim.
-	// We use json.RawMessage so we can re-serialise the whole frame unchanged.
-	raw json.RawMessage // original bytes — used for forwarding
-}
-
 // meshGenericFrame is used for forwarding the raw frame bytes and for injecting
 // error frames before closing.
 type meshGenericFrame map[string]json.RawMessage

@@ -117,7 +117,7 @@ func (r *Resolver) NewMinIOSTSMinter(cfg STSConfig) CredentialMinter {
 		if err != nil {
 			return ScopedCreds{}, false
 		}
-		v, err := creds.Get()
+		v, err := creds.GetWithContext(nil)
 		if err != nil {
 			return ScopedCreds{}, false
 		}

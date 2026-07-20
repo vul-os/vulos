@@ -38,7 +38,6 @@
 package peering
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
@@ -508,26 +507,4 @@ func (a *MessageAPI) pushMessageFrame(convID string, msg StoredMessage) {
 		From:    msg.From,
 		Payload: json.RawMessage(payload),
 	})
-}
-
-// deliverWithRetry attempts to deliver env to baseURL/api/peering/inbound/message.
-// Retries up to maxRetries times with simple backoff.  Used for background
-// queue delivery (future enhancement; currently delivery is synchronous).
-func (a *MessageAPI) deliverWithRetry(ctx context.Context, baseURL string, env *Envelope, maxRetries int) error {
-	backoff := []time.Duration{time.Second, 5 * time.Second, 30 * time.Second}
-	var lastErr error
-	for i := 0; i <= maxRetries; i++ {
-		lastErr = a.client.Post(ctx, baseURL, "message", env)
-		if lastErr == nil {
-			return nil
-		}
-		if i < len(backoff) {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(backoff[i]):
-			}
-		}
-	}
-	return lastErr
 }

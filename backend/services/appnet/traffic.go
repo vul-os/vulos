@@ -113,4 +113,3 @@ func (tm *TrafficMonitor) FindIdle(mgr *Manager, threshold time.Duration) []stri
 	}
 	return idle
 }
-

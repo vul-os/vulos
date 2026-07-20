@@ -45,6 +45,7 @@ type Supervisor struct {
 	mu       sync.Mutex
 	cmd      *exec.Cmd
 	doneCh   chan struct{} // closed when the watch goroutine exits
+	stopCh   chan struct{} // closed by Stop; lets the backoff sleep wake early
 	stopReq  bool
 	alive    atomic.Bool
 	starts   atomic.Uint64
@@ -78,11 +79,13 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	}
 	s.stopReq = false
 	s.doneCh = make(chan struct{})
+	s.stopCh = make(chan struct{})
 	s.mu.Unlock()
 
 	if err := s.spawnLocked(); err != nil {
 		s.mu.Lock()
 		s.doneCh = nil
+		s.stopCh = nil
 		s.mu.Unlock()
 		return err
 	}
@@ -171,10 +174,16 @@ func (s *Supervisor) supervise() {
 			log.Printf("[gpuhost/supervisor] streamer exited cleanly — restarting in %s", backoff)
 		}
 
-		// Sleep but be responsive to Stop during backoff.
+		// Sleep, but wake immediately if Stop is called during the backoff.
+		s.mu.Lock()
+		stopCh := s.stopCh
+		s.mu.Unlock()
 		t := time.NewTimer(backoff)
 		select {
 		case <-t.C:
+		case <-stopCh:
+			t.Stop()
+			return
 		}
 		t.Stop()
 
@@ -208,6 +217,17 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 		return nil
 	}
 	s.stopReq = true
+	// Wake a supervise loop that is asleep in its restart backoff. Without this
+	// the loop sleeps out the full interval (up to SupervisorMaxBackoff, 30s)
+	// before it notices stopReq, so Stop always burned its whole grace period
+	// and the goroutine outlived the call.
+	if s.stopCh != nil {
+		select {
+		case <-s.stopCh: // already closed by a previous Stop
+		default:
+			close(s.stopCh)
+		}
+	}
 	cmd := s.cmd
 	doneCh := s.doneCh
 	s.mu.Unlock()

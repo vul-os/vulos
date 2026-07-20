@@ -318,7 +318,10 @@ func safeExtractTarGz(archivePath, destDir string) error {
 				return fmt.Errorf("mkdir %q: %w", targetPath, err)
 			}
 
-		case tar.TypeReg, tar.TypeRegA:
+		// TypeRegA (old-GNU '\x00') is not listed: archive/tar normalizes it to
+		// TypeReg when reading, so an old-GNU tarball still lands here. The
+		// security test builds one with TypeRegA to prove that normalization.
+		case tar.TypeReg:
 			// --- Per-entry size cap ---
 			if hdr.Size > maxExtractEntry {
 				return fmt.Errorf("tar entry %q too large (%d bytes, max %d)", name, hdr.Size, maxExtractEntry)

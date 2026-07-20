@@ -1,5 +1,9 @@
 package appnet
 
+//lint:file-ignore SA1019 tar.TypeRegA is deprecated, and that is exactly why it
+// appears here: these tests construct old-GNU headers on purpose to prove the
+// extractor still handles archives that use them.
+
 import (
 	"archive/tar"
 	"bytes"
@@ -108,6 +112,34 @@ func TestInstallIDValidation(t *testing.T) {
 // ---------------------------------------------------------------------------
 // safeExtractTarGz — malicious archive tests
 // ---------------------------------------------------------------------------
+
+// TestSafeExtractTarGz_OldGNURegularFile pins the assumption behind dropping
+// tar.TypeRegA from the extractor's switch: archive/tar has normalized the
+// old-GNU regular-file flag ('\x00') to TypeReg on read since Go 1.11, so such
+// an entry still extracts through the TypeReg branch. Nothing exercised this
+// before -- buildTarGz mentioned TypeRegA but no case ever used it -- which
+// meant removing the branch was an untested bet. If the normalization ever
+// stops, this fails instead of app archives silently losing files.
+func TestSafeExtractTarGz_OldGNURegularFile(t *testing.T) {
+	destDir := t.TempDir()
+
+	data := buildTarGz(t, []tarEntry{
+		{name: "legacy.txt", typeflag: tar.TypeRegA, content: []byte("old-gnu content")},
+	})
+	archivePath := writeTempTarGz(t, data)
+
+	if err := safeExtractTarGz(archivePath, destDir); err != nil {
+		t.Fatalf("safeExtractTarGz: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(destDir, "legacy.txt"))
+	if err != nil {
+		t.Fatalf("old-GNU regular file was not extracted: %v", err)
+	}
+	if string(got) != "old-gnu content" {
+		t.Fatalf("content = %q, want %q", got, "old-gnu content")
+	}
+}
 
 func TestSafeExtractTarGz_PathTraversal(t *testing.T) {
 	destDir := t.TempDir()

@@ -52,7 +52,7 @@ func TestFilterMessages_ExcludesRole(t *testing.T) {
 
 func TestFilterMessages_EmptyInput(t *testing.T) {
 	got := filterMessages(nil, "system")
-	if got != nil && len(got) != 0 {
+	if len(got) != 0 {
 		t.Errorf("expected empty result for nil input, got %v", got)
 	}
 }
@@ -720,39 +720,6 @@ func TestStreamOpenAI_OverLongLineSurfaces(t *testing.T) {
 // ---------------------------------------------------------------------------
 // 11. streamClaude via httptest — SSE parsing
 // ---------------------------------------------------------------------------
-
-func TestStreamClaude_SSEParsing(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify headers Claude expects
-		if r.Header.Get("anthropic-version") == "" {
-			t.Error("missing anthropic-version header")
-		}
-		lines := []string{
-			`data: {"type":"content_block_delta","delta":{"text":"hi"}}`,
-			`data: {"type":"content_block_delta","delta":{"text":" there"}}`,
-			`data: {"type":"message_stop"}`,
-		}
-		for _, l := range lines {
-			fmt.Fprintln(w, l)
-		}
-	}))
-	defer ts.Close()
-
-	svc := &Service{client: ts.Client()}
-	cfg := Config{
-		Provider: ProviderClaude,
-		Model:    "claude-test",
-		APIKey:   "test-key",
-	}
-
-	// Override the hardcoded Claude URL by temporarily pointing the client through our server.
-	// Because completeClaude hardcodes the URL we skip this path for the live model
-	// and instead test the SSE-parsing helper indirectly via streamOllama which shares the
-	// same line-splitting pattern.  For Claude specifically we test request-shape & header.
-	t.Skip("Claude URL is hardcoded to api.anthropic.com — verified header logic via unit inspection")
-	_ = svc
-	_ = cfg
-}
 
 // ---------------------------------------------------------------------------
 // 12. completeClaude — non-200 error path (via httptest + custom client trick)

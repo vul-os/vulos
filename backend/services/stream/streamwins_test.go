@@ -10,7 +10,7 @@ import (
 
 // TestIdleFPSDropAndRampNonGaming verifies that:
 //   - noteInput resets the idle clock.
-//   - When no input arrives for idleStaticSeconds the idle watcher drops FPS to
+//   - When no input arrives for idleStaticThreshold the idle watcher drops FPS to
 //     idleThresholdFPS (detected via SetFPS → fpsC channel).
 //   - noteInput while in idle state immediately ramps FPS back to normalFPS.
 //
@@ -37,10 +37,10 @@ func TestIdleFPSDropAndRampNonGaming(t *testing.T) {
 		}
 	}()
 
-	// --- Phase 1: idle beyond idleStaticSeconds ---
+	// --- Phase 1: idle beyond idleStaticThreshold ---
 	// Backdate lastInputAt past the threshold.
 	sess.mu.Lock()
-	sess.lastInputAt = time.Now().Add(-(idleStaticSeconds + time.Second))
+	sess.lastInputAt = time.Now().Add(-(idleStaticThreshold + time.Second))
 	sess.mu.Unlock()
 
 	// Simulate what the watcher ticker does.
@@ -49,7 +49,7 @@ func TestIdleFPSDropAndRampNonGaming(t *testing.T) {
 	idleAlready := sess.idleFPS
 	sess.mu.Unlock()
 
-	if since >= idleStaticSeconds && !idleAlready {
+	if since >= idleStaticThreshold && !idleAlready {
 		sess.mu.Lock()
 		sess.idleFPS = true
 		sess.mu.Unlock()
@@ -91,7 +91,7 @@ func TestIdleFPSGamingNoOp(t *testing.T) {
 		Name:        "test-gaming-idle",
 		Gaming:      true,
 		normalFPS:   144,
-		lastInputAt: time.Now().Add(-(idleStaticSeconds + time.Minute)),
+		lastInputAt: time.Now().Add(-(idleStaticThreshold + time.Minute)),
 		fpsC:        make(chan int, 4),
 	}
 
@@ -125,8 +125,8 @@ func TestIdleSuspendThresholds(t *testing.T) {
 	if idleThresholdFPS < 1 || idleThresholdFPS > 5 {
 		t.Errorf("idleThresholdFPS=%d: must be 1–5", idleThresholdFPS)
 	}
-	if idleStaticSeconds < 5*time.Second {
-		t.Errorf("idleStaticSeconds=%s: too short (must be ≥5 s)", idleStaticSeconds)
+	if idleStaticThreshold < 5*time.Second {
+		t.Errorf("idleStaticThreshold=%s: too short (must be ≥5 s)", idleStaticThreshold)
 	}
 	if idleSuspendDuration < time.Minute {
 		t.Errorf("idleSuspendDuration=%s: too short (must be ≥1 min)", idleSuspendDuration)

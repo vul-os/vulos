@@ -18,6 +18,11 @@
 // See docs/KEY-CEREMONY.md.
 package main
 
+//lint:file-ignore ST1005 The release-refusal error is a multi-line operator
+// banner, not a wrapped error string: it ends in a runnable command example
+// (make sign-registry RELEASE_PRIV=...), and reflowing it to satisfy the style
+// rule would cost the reader the instructions that make the refusal actionable.
+
 import (
 	"crypto/ed25519"
 	"encoding/base64"

@@ -32,19 +32,6 @@ func newTempStore(t *testing.T) *ContactStore {
 	return cs
 }
 
-// reloadStore reopens the store from the same path as src.
-func reloadStore(t *testing.T, src *ContactStore) *ContactStore {
-	t.Helper()
-	// The filePath is ~/.vulos/peering/contacts.json under the temp dir.
-	// Home is two levels up: <tmp>/.vulos/peering → <tmp>
-	home := filepath.Dir(filepath.Dir(filepath.Dir(src.filePath)))
-	cs2, err := NewContactStore(home)
-	if err != nil {
-		t.Fatalf("reload ContactStore: %v", err)
-	}
-	return cs2
-}
-
 const (
 	aliceID = "vula:ed25519:AliceAliceAliceAlice"
 	bobID   = "vula:ed25519:BobBobBobBobBobBobBo"

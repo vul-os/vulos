@@ -883,7 +883,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 	// Launch a new streaming session (admin only — arbitrary command execution)
 	mux.HandleFunc("POST /api/stream/launch", func(w http.ResponseWriter, r *http.Request) {
 		if !adminGate(r) {
-			http.Error(w, `{"error":"admin only"}`, 403)
+			http.Error(w, `{"error":"admin only"}`, http.StatusForbidden)
 			return
 		}
 		var req struct {
@@ -976,7 +976,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 	// Launch a VNC streaming session (admin only — SSRF risk via host parameter)
 	mux.HandleFunc("POST /api/stream/vnc", func(w http.ResponseWriter, r *http.Request) {
 		if !adminGate(r) {
-			http.Error(w, `{"error":"admin only"}`, 403)
+			http.Error(w, `{"error":"admin only"}`, http.StatusForbidden)
 			return
 		}
 		var req struct {
@@ -995,7 +995,7 @@ func (p *Pool) RegisterHandlers(mux *http.ServeMux, isAdmin ...func(*http.Reques
 		}
 		// Validate host to prevent SSRF to loopback / metadata addresses.
 		if req.Host != "" && isBlockedVNCHost(req.Host) {
-			http.Error(w, `{"error":"vnc host resolves to a restricted address"}`, 403)
+			http.Error(w, `{"error":"vnc host resolves to a restricted address"}`, http.StatusForbidden)
 			return
 		}
 		sess, err := p.LaunchVNC(VNCOpts{

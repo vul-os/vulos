@@ -57,48 +57,6 @@ func makeGroupDef(creatorVulaID string, members []string, policy GroupPolicy) Gr
 	}
 }
 
-// makeGroupAPI builds a GroupAPI wired to in-process test infrastructure.
-//
-// It also returns:
-//   - contacts: the shared ContactStore (caller adds peers)
-//   - deliveries: a *[]string slice that records baseURL values delivered to (nil client = skip delivery)
-func makeGroupAPI(t *testing.T) (api *GroupAPI, groups *GroupStore, contacts *ContactStore, inbox *InboxStore) {
-	t.Helper()
-	home := t.TempDir()
-	groups, err := NewGroupStore(home)
-	if err != nil {
-		t.Fatalf("NewGroupStore: %v", err)
-	}
-
-	contacts, err = NewContactStore(home)
-	if err != nil {
-		t.Fatalf("NewContactStore: %v", err)
-	}
-
-	inbox, err = NewInboxStore(home)
-	if err != nil {
-		t.Fatalf("NewInboxStore: %v", err)
-	}
-
-	_, _, vulaID := makeTestIdentity(t)
-	_, priv, _ := func() (ed25519.PublicKey, ed25519.PrivateKey, string) {
-		pub, priv, err := ed25519.GenerateKey(nil)
-		if err != nil {
-			t.Fatalf("generate key: %v", err)
-		}
-		return pub, priv, encodeVulaID(pub)
-	}()
-
-	// Use a no-op PeerClient (nil http — not used directly in unit tests because
-	// we stub contacts with no server addr so delivery is skipped).
-	client := &PeerClient{http: nil}
-
-	api = NewGroupAPI(groups, contacts, inbox, nil, nil, priv, vulaID)
-	// Override client with noop client so delivery attempts don't panic.
-	api.client = client
-	return api, groups, contacts, inbox
-}
-
 // makeGroupAPIWithIdentity builds a GroupAPI with a known identity.
 func makeGroupAPIWithIdentity(t *testing.T, priv ed25519.PrivateKey, vulaID string) (
 	api *GroupAPI, groups *GroupStore, contacts *ContactStore, inbox *InboxStore,

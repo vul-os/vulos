@@ -80,7 +80,6 @@ func assertInstalled(t *testing.T, as *multiinstance.AppSync, instanceULID, appI
 	t.Fatalf("assertInstalled: app %q on instance %q is NOT installed — the attack succeeded", appID, instanceULID)
 }
 
-
 // ─── QUORUM-SEC-01: single forged-origin cannot force uninstall ───────────────
 
 // TestSEC_Quorum_ForgedMultipleOriginsCantUninstall is the core CRDT-QUORUM-01
