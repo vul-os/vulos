@@ -205,6 +205,24 @@ Two practical notes:
 
 If you run more than one box on a LAN, the fabric sync loop discovers sibling boxes over mDNS and exchanges app-registry changesets directly — no cloud, no S3. It is gated on a shared secret: set the same `VULOS_FABRIC_SECRET` on every sibling box. Without the secret the exchange handlers stay **off (fail-closed)** rather than open an unauthenticated endpoint. The fabric handlers are mounted only on the LAN-pinned listener, never on the public surface.
 
+### File sync is bidirectional
+
+Files placed in the data directory are uploaded to your bucket by an fsnotify
+watcher, and remote changes are fetched back on boot and then every two minutes
+(`PullInterval`, default `2m`).
+
+Downward sync is conservative about your local work. A remote file is applied
+directly when the local copy is absent or unchanged since the last sync. If the
+local copy was edited while the box was away, the local version is preserved
+beside the remote one as `<name>.conflict-<node>-<timestamp>.<ext>` and the
+remote version takes the canonical path — so a divergence costs you a file to
+reconcile, never an edit.
+
+Files this node uploaded are skipped on the way down, so a box does not
+re-download its own writes.
+
+A negative `PullInterval` disables downward sync and leaves the box upload-only.
+
 ### Box-to-box sync across the internet (fabric over rendezvous)
 
 mDNS only sees multicast, so LAN discovery alone means two of your own boxes in

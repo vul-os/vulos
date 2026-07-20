@@ -25,6 +25,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -43,6 +44,18 @@ import (
 type S3Client interface {
 	PutEncrypted(ctx context.Context, key string, data []byte) error
 	GetEncrypted(ctx context.Context, key string) ([]byte, error)
+}
+
+// S3Lister is the optional half of S3Client that lets the syncer discover what
+// the remote holds. Without it the syncer can only push: Pull needs to be told
+// which keys to fetch, and nothing else in the process knows them.
+//
+// It is a separate interface rather than a method on S3Client so that a client
+// which genuinely cannot list (a write-only credential, a test double) stays a
+// valid S3Client instead of being forced to implement a stub that lies.
+// *cluster.Client satisfies it via ListPrefix.
+type S3Lister interface {
+	ListPrefix(ctx context.Context, prefix string) ([]string, error)
 }
 
 // FileMeta is the JSON sidecar uploaded alongside each file as
@@ -71,6 +84,13 @@ type Config struct {
 	// (default ~/.vulos/db/browser-profiles).
 	BrowserProfileDir string
 
+	// PullInterval is how often to fetch remote changes. Zero means unset and
+	// New substitutes DefaultPullInterval; a negative value disables downward
+	// sync, leaving the syncer push-only. Zero is deliberately not the "off"
+	// switch: the production call site passes a bare Config{} and would then
+	// silently keep the push-only behaviour this field exists to end.
+	PullInterval time.Duration
+
 	// IgnoreDir is the directory that must never be synced
 	// (default ~/.vulos/apps/bin).
 	IgnoreDir string
@@ -89,8 +109,15 @@ func defaultConfig() Config {
 		DataDir:           filepath.Join(vulos, "data"),
 		BrowserProfileDir: filepath.Join(vulos, "db", "browser-profiles"),
 		IgnoreDir:         filepath.Join(vulos, "apps", "bin"),
+		PullInterval:      DefaultPullInterval,
 	}
 }
+
+// DefaultPullInterval is how often a box fetches remote changes when Config
+// does not say. Two minutes is well under the window in which a person notices
+// a file is missing on their other machine, and far above the rate at which a
+// LIST costs anything.
+const DefaultPullInterval = 2 * time.Minute
 
 // Syncer watches local directories and syncs file changes to/from S3.
 type Syncer struct {
@@ -130,6 +157,17 @@ func New(cfg Config, client S3Client) (*Syncer, error) {
 	}
 	if cfg.IgnoreDir == "" {
 		cfg.IgnoreDir = def.IgnoreDir
+	}
+	// A zero PullInterval means "unset" here, not "disabled": the production
+	// call site passes sync.Config{} and relies on New to fill the blanks, so
+	// treating zero as disabled would leave the shipped box push-only -- exactly
+	// the bug this loop exists to fix. A caller that genuinely wants upload-only
+	// sets it negative.
+	if cfg.PullInterval == 0 {
+		cfg.PullInterval = def.PullInterval
+	}
+	if cfg.PullInterval < 0 {
+		cfg.PullInterval = 0
 	}
 	if cfg.VulosRoot == "" {
 		cfg.VulosRoot = def.VulosRoot
@@ -183,6 +221,25 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 	defer s.watcher.Close()
 
+	// Downward sync (SYNC-PULL-01). The upload path is driven by fsnotify, but
+	// nothing ever called Pull, so this service has been push-only in practice:
+	// a change made on one box reached S3 and stopped there, and the docs
+	// described a bidirectional sync that did not exist.
+	//
+	// Pull already had the careful part -- it skips keys this node uploaded,
+	// compares hashes, and writes a .conflict-<node>-<ts> copy before letting a
+	// remote version win, so a local edit is never silently destroyed. What it
+	// lacked was a caller. It runs once at boot (the state a box has been away
+	// from is exactly the state it needs on waking) and then on a timer.
+	//
+	// A pull failure is logged, never fatal: losing downward sync must not take
+	// the upload watcher down with it.
+	if s.cfg.PullInterval > 0 {
+		go s.pullLoop(ctx)
+	} else {
+		log.Printf("[sync] downward sync disabled (PullInterval is 0) -- this box uploads but never fetches")
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -197,6 +254,33 @@ func (s *Syncer) Start(ctx context.Context) error {
 				return nil
 			}
 			log.Printf("[sync] watcher error: %v", err)
+		}
+	}
+}
+
+// pullLoop fetches remote changes at boot and then every PullInterval until ctx
+// is cancelled.
+func (s *Syncer) pullLoop(ctx context.Context) {
+	pull := func() {
+		if err := s.PullAll(ctx); err != nil {
+			if errors.Is(err, ErrNoLister) {
+				// Structural, not transient: log once and stop trying.
+				log.Printf("[sync] downward sync unavailable: %v", err)
+				return
+			}
+			log.Printf("[sync] pull: %v", err)
+		}
+	}
+	pull()
+
+	t := time.NewTicker(s.cfg.PullInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			pull()
 		}
 	}
 }
@@ -340,6 +424,28 @@ func (s *Syncer) Pull(ctx context.Context, remoteKeys []string) error {
 	}
 	return nil
 }
+
+// PullAll lists the remote files/ prefix and applies everything it finds.
+//
+// Pull takes an explicit key list because the S3Client contract cannot list.
+// PullAll is the loop's entry point: it needs a client that also implements
+// S3Lister, and reports ErrNoLister when handed one that does not, so a
+// deployment that cannot pull says so rather than appearing to sync.
+func (s *Syncer) PullAll(ctx context.Context) error {
+	lister, ok := s.client.(S3Lister)
+	if !ok {
+		return ErrNoLister
+	}
+	keys, err := lister.ListPrefix(ctx, "files/")
+	if err != nil {
+		return fmt.Errorf("sync: list files/: %w", err)
+	}
+	return s.Pull(ctx, keys)
+}
+
+// ErrNoLister is returned by PullAll when the configured S3Client cannot
+// enumerate remote keys, which makes downward sync impossible.
+var ErrNoLister = errors.New("sync: S3Client does not implement S3Lister; downward sync unavailable")
 
 // pullOne applies a single remote S3 key (e.g. "files/docs/notes.txt") to the
 // local filesystem.
