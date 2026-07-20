@@ -299,7 +299,7 @@ func TestBootEnroll_Poll_AfterExpiry(t *testing.T) {
 		ExpiresIn:       -1,
 		ExpiresAt:       time.Now().UTC().Add(-1 * time.Second), // already expired
 	}
-	if err := est.StartGrant(nil, expiredGrant, pub); err != nil { //nolint:staticcheck
+	if err := est.StartGrant(context.Background(), expiredGrant, pub); err != nil { //nolint:staticcheck
 		t.Fatalf("StartGrant: %v", err)
 	}
 
@@ -415,7 +415,7 @@ func TestBootEnroll_Approve_BindsRoutingStore(t *testing.T) {
 	decodeBootEnrollResp(t, rr, &result)
 
 	// The ULID should be enrolled in the routing store.
-	b, err := routingSt.GetBinding(nil, result.ULID) //nolint:staticcheck
+	b, err := routingSt.GetBinding(context.Background(), result.ULID) //nolint:staticcheck
 	if err != nil {
 		t.Fatalf("GetBinding: %v", err)
 	}

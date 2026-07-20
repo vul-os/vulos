@@ -57,6 +57,15 @@
 // routes_storage.go binds a presign/delete to the token's audience. Because this
 // module never proxies, it never forwards a user session to an app backend —
 // the SECURITY-C1 invariant holds here vacuously.
+//lint:file-ignore U1000 The mint/proxy half of the app-identity seam is a reference
+// implementation here. It is deployed in vulos-cloud, which carries its own copy of this
+// file and calls stampAppIdentity from its reverse-proxy front door. This module operates
+// no app proxy at all (no httputil.ReverseProxy anywhere), so nothing local calls it —
+// but the RECEIVE side IS wired, via initAppIdentity in register_all.go, and routes_storage.go
+// binds presign/delete to the token audience. Kept whole so both halves stay readable
+// together, and so SECURITY-C1 (a CP proxy must never forward a user session to an app
+// backend) can be checked against one file rather than reconstructed from two repos.
+
 package cproutes
 
 import (
@@ -83,9 +92,15 @@ const appTokenKeyLabel = "vulos-apptoken-v1"
 // _PREVIOUS suffix.
 const appTokenSecretEnv = "CP_APP_TOKEN_SECRET"
 
+// seam is deployed in vulos-cloud, which carries its own copy of this file and calls
+// stampAppIdentity from its reverse-proxy front door; this repo operates no app proxy
+// (no httputil.ReverseProxy anywhere) and only serves the RECEIVE side, which IS wired
+// via initAppIdentity in register_all.go. Kept so the two halves stay readable together.
 // appIdentityStore is the auth store used to resolve a session cookie to the
 // user it authenticates. Set once at startup by initAppIdentity. Nil means the
 // proxies mint nothing (and still strip the session cookie — fail-closed).
+//
+//lint:ignore U1000 Reference implementation. The proxy/mint side of the app-identity
 var appIdentityStore *auth.Store
 
 // initAppIdentity wires the session→user resolver used by the reverse proxies,

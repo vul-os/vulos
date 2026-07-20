@@ -1,6 +1,9 @@
 package integrations
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // TestValidateExternalHost_BlocksInternal verifies the SSRF deny-list rejects
 // loopback, RFC1918, and the cloud metadata endpoint while allowing public IPs
@@ -93,7 +96,7 @@ func TestSSRF_H5_IPLiteralBlocked(t *testing.T) {
 		"fc00::1",         // ULA IPv6
 	}
 	for _, ip := range blocked {
-		_, _, err := ssrfSafeTCPDial(nil, ip, 993, 0) //nolint:staticcheck
+		_, _, err := ssrfSafeTCPDial(context.Background(), ip, 993, 0) //nolint:staticcheck
 		if err == nil {
 			t.Errorf("SEC-H5: ssrfSafeTCPDial(%q) must be blocked, got nil", ip)
 		}

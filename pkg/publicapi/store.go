@@ -48,7 +48,6 @@ func newAPIID() (string, error) {
 // Store is the public-API backend.
 type Store struct {
 	db *cpdb.DB
-	mu sync.Mutex
 }
 
 // Open applies migrations to db and returns a ready Store.

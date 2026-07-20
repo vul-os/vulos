@@ -35,12 +35,6 @@ var ValidRoles = map[string]bool{
 	"member": true,
 }
 
-// adminRoles are roles that may perform admin actions.
-var adminRoles = map[string]bool{
-	"owner": true,
-	"admin": true,
-}
-
 // Org is a fleet organisation that groups devices.
 type Org struct {
 	ID           string

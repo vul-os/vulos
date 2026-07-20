@@ -33,9 +33,14 @@ import (
 	"github.com/vul-os/vulos-management/pkg/env"
 )
 
+// wire_recovery.go and its scheduler calls PurgeExpiredIDUploads on it, so the
+// ID-upload retention sweep does run in production. Unlike filesPurgeSvc this half
+// exposes no accessor, because nothing in THIS module needs to read it.
 // recoveryPurgeSvc is the recovery store the scheduler's ID-upload purge job
 // sweeps. Set once by wireRecovery; nil (recovery failed to open) makes the job
 // a no-op. Same package-level-handoff idiom as filesPurgeSvc (wire_files.go).
+//
+//lint:ignore U1000 Written here, read in vulos-cloud: cloud carries its own
 var recoveryPurgeSvc *recovery.Store
 
 // recoveryIDDir is the directory encrypted government-ID uploads are written to.

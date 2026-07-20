@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/vul-os/vulos-management/pkg/cpdb"
@@ -25,7 +24,6 @@ import (
 // Obtain one via Open.
 type Store struct {
 	db *cpdb.DB
-	mu sync.Mutex // serialises writes (SQLite requires MaxOpenConns(1))
 }
 
 // Open applies migrations to db and returns a ready Store.

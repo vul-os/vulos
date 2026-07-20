@@ -1,6 +1,7 @@
 package integrations
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"testing"
@@ -92,7 +93,7 @@ func TestMicrosoftScopeHelpers(t *testing.T) {
 // TestMicrosoftRevokeNoop documents that Microsoft has no refresh-token revoke
 // endpoint — Revoke is a best-effort no-op and Disconnect still deletes locally.
 func TestMicrosoftRevokeNoop(t *testing.T) {
-	if err := (MicrosoftExchanger{}).Revoke(nil, "some-refresh-token"); err != nil {
+	if err := (MicrosoftExchanger{}).Revoke(context.Background(), "some-refresh-token"); err != nil {
 		t.Fatalf("Revoke should be a no-op, got %v", err)
 	}
 }

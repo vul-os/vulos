@@ -2,7 +2,6 @@ package status
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -231,7 +230,7 @@ func TestStoreInterfaceParity(t *testing.T) {
 		{"mem", NewMemStore()},
 	} {
 		if tc.s == nil {
-			t.Fatal(fmt.Sprintf("%s store is nil", tc.name))
+			t.Fatalf("%s store is nil", tc.name)
 		}
 	}
 }

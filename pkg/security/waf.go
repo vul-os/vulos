@@ -16,11 +16,6 @@ import (
 	"github.com/corazawaf/coraza/v3/types"
 )
 
-// wafAuditLogger is an internal audit-log sink for coraza.
-type wafAuditLogger struct{}
-
-func (wafAuditLogger) Write(p []byte) (int, error) { return len(p), nil } // swallowed; we log per-interrupt below
-
 // trustedWAFRoutes are prefixes that bypass WAF inspection entirely.
 // These are endpoints that receive signed/structured bodies (webhooks, JMAP).
 var trustedWAFRoutes = []string{

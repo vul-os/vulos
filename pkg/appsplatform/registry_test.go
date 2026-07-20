@@ -15,9 +15,16 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 	}
 }
 
+// Sign must be a pure function of its inputs: the same app, body and secret has
+// to produce the same signature on every call, or a signature minted by one
+// process would not verify in another.
 func TestSignDeterministic(t *testing.T) {
-	if Sign("123", []byte("x"), "s") != Sign("123", []byte("x"), "s") {
-		t.Fatal("Sign is not deterministic")
+	// Two separate calls compared via variables: a Sign that reached for a clock
+	// or a random source would differ here.
+	first := Sign("123", []byte("x"), "s")
+	second := Sign("123", []byte("x"), "s")
+	if first != second {
+		t.Fatalf("Sign is not deterministic: %q != %q", first, second)
 	}
 }
 
@@ -34,8 +41,12 @@ func TestVerifyWrongSecretAndTamper(t *testing.T) {
 
 // ---- tokens -----------------------------------------------------------------
 
+// A token's hash has to be stable (the same token always hashes the same, or a
+// stored hash could never match a presented token) and distinct (two tokens must
+// not collide).
 func TestHashTokenStableAndDistinct(t *testing.T) {
 	tok := GenerateToken()
+	//lint:ignore SA4000 Hashing the same token twice is the stability check itself.
 	if HashToken(tok) != HashToken(tok) {
 		t.Fatal("hash not stable")
 	}

@@ -79,9 +79,10 @@ func TestSQLStore_Enroll_IdempotentSameAccount(t *testing.T) {
 	if !b2.CreatedAt.Equal(b1.CreatedAt) {
 		t.Errorf("CreatedAt changed on re-enroll: was %v now %v", b1.CreatedAt, b2.CreatedAt)
 	}
-	if b2.UpdatedAt.Before(b1.UpdatedAt) || b2.UpdatedAt.Equal(b1.UpdatedAt) {
-		// UpdatedAt may be equal if sub-second; just ensure it didn't go backward.
-		// Allow equal (fast test).
+	// UpdatedAt may legitimately be equal when the two writes land inside the
+	// same clock tick, so equality is allowed; going backward never is.
+	if b2.UpdatedAt.Before(b1.UpdatedAt) {
+		t.Errorf("UpdatedAt went backward on re-enroll: was %v now %v", b1.UpdatedAt, b2.UpdatedAt)
 	}
 }
 

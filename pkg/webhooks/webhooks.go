@@ -363,7 +363,6 @@ func isDeadLetter(attempt int) bool {
 type Dispatcher struct {
 	store      *Store
 	httpClient *http.Client
-	mu         sync.Mutex
 }
 
 // NewDispatcher creates a Dispatcher backed by the given store.

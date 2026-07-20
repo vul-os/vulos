@@ -24,10 +24,13 @@ import (
 // startup; nil until then (provisionOrgOnSignup is nil-safe).
 var orgService *orgadmin.OrgService
 
+// calls this constructor there. See the note on appIdentityStore in wire_apptoken.go.
 // wireOrgs builds the OrgService over the given org store. The paidPlan checker
 // (may be nil) drives the anti-farming org caps (CLOUD-BILLING-EDGES edge #1).
 // Returns the service (also stored in the package var). The mailer is nil and the
 // mail domain is empty — hosted mailboxes are not provisioned (no hosted mail).
+//
+//lint:ignore U1000 Reference implementation; vulos-cloud has its own wire_orgs.go and
 func wireOrgs(store orgadmin.OrgStore, paidPlan orgadmin.PaidPlanFunc) *orgadmin.OrgService {
 	svc := orgadmin.NewOrgService(store, nil, "")
 	svc.PaidPlanChecker = paidPlan
