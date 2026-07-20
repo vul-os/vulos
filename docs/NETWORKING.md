@@ -205,6 +205,43 @@ Two practical notes:
 
 If you run more than one box on a LAN, the fabric sync loop discovers sibling boxes over mDNS and exchanges app-registry changesets directly — no cloud, no S3. It is gated on a shared secret: set the same `VULOS_FABRIC_SECRET` on every sibling box. Without the secret the exchange handlers stay **off (fail-closed)** rather than open an unauthenticated endpoint. The fabric handlers are mounted only on the LAN-pinned listener, never on the public surface.
 
+### Box-to-box sync across the internet (fabric over rendezvous)
+
+mDNS only sees multicast, so LAN discovery alone means two of your own boxes in
+two different houses can never find each other. Set `VULOS_RENDEZVOUS_URL` to any
+relay running the open rendezvous role and they can:
+
+```sh
+VULOS_RENDEZVOUS_URL=https://relay.example.org/rendezvous
+```
+
+Each box announces its reachable endpoints under its **own Ed25519 key** — the
+same per-instance key the CRDT already uses to verify signed uninstall
+observations, so no second identity is introduced — and resolves the keys of the
+siblings in its registry roster. Everything after discovery is unchanged: the
+changeset exchange still runs directly to the peer over TLS, still requires
+`VULOS_FABRIC_SECRET`, and still fails closed without it.
+
+This **composes with mDNS rather than replacing it**. A box in the same house is
+still found by multicast with no round trip to anyone; the same box moved behind
+a different NAT is found through the relay. If either source fails you keep the
+peers the other one found.
+
+What the relay learns is which keys are online and what endpoints they claim —
+that is the price of NAT traversal. It sees no app data: announce and resolve
+carry none, and it never sees a changeset. A relay that lies can withhold a peer
+or point at an address you cannot authenticate to; it cannot forge a changeset,
+because signature checking happens at the peer and is downstream of discovery.
+
+Any conforming relay works — self-host `vulos-relayd`, use Vulos's, or set
+nothing at all and stay LAN-only. The protocol is documented in
+`vulos-relay/docs/RENDEZVOUS.md`.
+
+| Variable | Effect |
+|---|---|
+| `VULOS_RENDEZVOUS_URL` | Relay rendezvous prefix. Unset = mDNS only (previous behaviour). |
+| `VULOS_PUBLIC_URL` | Announced ahead of the LAN address, for peers resolving from outside. |
+
 ### Drop (nearby file sharing)
 
 Drop advertises the service `_vula-drop._tcp.local` over mDNS so nearby Vulos peers discover each other, then transfers files over HTTP on the box's main port (8080). Discoverability is a per-box setting; inbound requests from non-contacts require approval. Cross-box shares that target private/LAN addresses are blocked by the SSRF guard unless you explicitly allow LAN peers with `VULOS_PEER_ALLOW_LAN=1` — legitimate for self-hosted boxes that genuinely live on the same network. See [PEERING.md](PEERING.md) and [FILES.md](FILES.md).

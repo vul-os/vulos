@@ -1080,6 +1080,26 @@ func (as *AppSync) upsertEntry(tx *sql.Tx, e AppRegistryEntry) error {
 	return err
 }
 
+// PeerPublicKeys returns the base64url Ed25519 public keys of every rostered
+// instance except self, skipping any that has not yet published one.
+//
+// It is the roster source for rendezvous discovery: mDNS addresses a peer by a
+// multicast name, which only works on one LAN, whereas the rendezvous role
+// addresses a peer by its key and therefore works anywhere. These are the same
+// keys the CRDT already uses to verify signed uninstall observations, so a box
+// reachable over the WAN is exactly the box whose observations already count —
+// no second identity is introduced.
+func (as *AppSync) PeerPublicKeys(excludeSelfULID string) []string {
+	ids := as.PeerInstanceIDs(excludeSelfULID)
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if k := as.rosteredPubKey(id); k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // PeerInstanceIDs returns the ULIDs of every instance in the registry roster,
 // optionally excluding self. It is the roster source the fabric mDNS discoverer
 // uses to build per-instance qualified query names (InstanceFabricName) so a

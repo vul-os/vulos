@@ -4239,11 +4239,13 @@ func main() {
 				log.Printf("[fabric] WARNING: key-at-rest sealing unavailable (%v) — falling back to UNENCRYPTED signing key file", sealErr)
 				fabricSealer = nil
 			}
+			var fabricSigner ed25519.PrivateKey
 			if instKey, kerr := multiinstance.LoadOrCreateSealedInstanceKey(fabricKeyPath, fabricSealer); kerr != nil {
 				log.Printf("[fabric] WARNING: could not load/create signing key (%v) — uninstall observations from this box will NOT count toward peer quorum", kerr)
 			} else if serr := fabricAppSync.SetIdentity(cfg.InstanceID, instKey); serr != nil {
 				log.Printf("[fabric] WARNING: could not set signing identity (%v) — uninstall observations from this box will NOT count toward peer quorum", serr)
 			} else {
+				fabricSigner = instKey
 				log.Printf("[fabric] per-instance signing identity active (CRDT-QUORUM-01: signed uninstall observations)")
 			}
 
@@ -4267,6 +4269,32 @@ func main() {
 				disc = fabric.NewStaticDiscoverer()
 			} else {
 				disc = mdisc
+			}
+
+			// Rendezvous discovery (FABRIC-WAN-01): mDNS only sees multicast, so
+			// until now two of your own boxes in two different houses could never
+			// find each other. Pointing VULOS_RENDEZVOUS_URL at any relay running
+			// the open rendezvous role closes that — self-hosted relayd, Vulos's,
+			// or none at all. Unset, behaviour is exactly as before.
+			//
+			// It composes with mDNS rather than replacing it: a peer in the same
+			// house is still found by multicast with no round trip to anyone, and
+			// the same peer moved behind a different NAT is found through the
+			// relay. Either source failing does not cost you the other.
+			if rdvURL := strings.TrimSpace(os.Getenv("VULOS_RENDEZVOUS_URL")); rdvURL != "" {
+				if fabricSigner == nil {
+					log.Printf("[fabric] rendezvous disabled: no per-instance signing identity — a peer could not be addressed by key")
+				} else {
+					rdv := &fabric.RendezvousDiscoverer{
+						BaseURL:       rdvURL,
+						Key:           fabricSigner,
+						SelfEndpoints: fabricSelfEndpoints(httpsAddr),
+						PeerKeys:      fabricAppSync.PeerPublicKeys(cfg.InstanceID),
+						HTTPClient:    fabric.NewLANClient(10 * time.Second),
+					}
+					disc = fabric.NewMultiDiscoverer(disc, rdv)
+					log.Printf("[fabric] rendezvous discovery active via %s (WAN peers; self key %s)", rdvURL, rdv.SelfKey())
+				}
 			}
 
 			fs, ferr := fabric.New(fabric.Config{
@@ -4633,4 +4661,23 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	fmt.Fprintf(w, `{"error":%q}`, msg)
+}
+
+// fabricSelfEndpoints reports the URLs at which this box is reachable, most
+// specific first, for a rendezvous announcement.
+//
+// A relay-tunnel URL is listed ahead of the LAN address when one is configured:
+// a peer resolving us over the WAN cannot use our RFC1918 address, and the
+// tunnel is the only endpoint that works from outside. The LAN address is kept
+// as a second entry because it is strictly better when the peer turns out to be
+// local, and the relay does not dial either — it just repeats what we claim.
+func fabricSelfEndpoints(httpsAddr string) []string {
+	var out []string
+	if pub := strings.TrimSpace(os.Getenv("VULOS_PUBLIC_URL")); pub != "" {
+		out = append(out, strings.TrimRight(pub, "/"))
+	}
+	if ip := lan.DetectLANIP(); ip != nil {
+		out = append(out, fmt.Sprintf("https://%s:%d", ip.String(), fabric.PortFromAddr(httpsAddr, 443)))
+	}
+	return out
 }
