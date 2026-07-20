@@ -9,22 +9,21 @@
  * plus the pending state and a friendly error on bad credentials.
  */
 import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { server, http, HttpResponse } from './msw/server.js'
-import { AuthProvider } from '../../auth/AuthProvider'
-import { ThemeProvider } from '../../core/ThemeProvider'
+import { renderWithProviders } from './helpers.jsx'
 
 import LoginScreen from '../../auth/LoginScreen.jsx'
 
+// renderWithProviders wraps in I18nProvider + ThemeProvider + AuthProvider +
+// SovereigntyProvider (see helpers.jsx). LoginScreen only needs Theme + Auth,
+// but the extra two are harmless here — their endpoints (/api/assistant/status,
+// /api/auth/masterkey/envelope) are answered by the default MSW handlers — and
+// sharing one provider stack with the rest of the suite beats hand-rolling a
+// bespoke subset per test file.
 function mount() {
-  return render(
-    <ThemeProvider>
-      <AuthProvider>
-        <LoginScreen />
-      </AuthProvider>
-    </ThemeProvider>,
-  )
+  return renderWithProviders(<LoginScreen />)
 }
 
 afterEach(() => cleanup())
