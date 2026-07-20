@@ -178,6 +178,23 @@ func (c *JA3Conn) Read(b []byte) (int, error) {
 	return c.Conn.Read(b)
 }
 
+// Close removes this connection's fingerprint from the store, then closes the
+// underlying connection.
+//
+// The store is keyed by RemoteAddr, which includes the ephemeral client port and
+// is therefore unique per connection. Nothing else deletes from it: the exported
+// Delete/CleanHelloStore helpers had no callers in this repo or in vulos-cloud,
+// which wraps its PRODUCTION TLS listener with this listener. Every accepted
+// connection added an entry that was never removed, so the map grew for the life
+// of the process. Cleaning up here rather than asking callers to remember is the
+// point -- the previous design depended on a call nobody made.
+func (c *JA3Conn) Close() error {
+	if c.store != nil {
+		c.store.Delete(c.RemoteAddr().String())
+	}
+	return c.Conn.Close()
+}
+
 // ─── ClientHello parser ───────────────────────────────────────────────────────
 
 // parseAndStoreFingerprint parses raw TLS record bytes to extract ClientHello

@@ -90,10 +90,18 @@ func newVirtualAuthenticator(t *testing.T, rpID, origin string) *virtualAuthenti
 // matching the canonical integer-keyed map go-webauthn's Unmarshal decodes.
 func (va *virtualAuthenticator) coseKey(t *testing.T) []byte {
 	t.Helper()
-	x := make([]byte, 32)
-	y := make([]byte, 32)
-	va.key.PublicKey.X.FillBytes(x)
-	va.key.PublicKey.Y.FillBytes(y)
+	// Bytes() yields the uncompressed point (0x04 || X || Y), each coordinate
+	// fixed-width for the curve -- 32 bytes on P-256. Reading X/Y off the struct
+	// works too but those fields are deprecated: big.Int is the wrong type for
+	// cryptographic values, and Bytes() is the supported encoding path.
+	pub, err := va.key.PublicKey.Bytes()
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	if len(pub) != 65 || pub[0] != 4 {
+		t.Fatalf("want a 65-byte uncompressed P-256 point, got %d bytes (prefix %#x)", len(pub), pub[0])
+	}
+	x, y := pub[1:33], pub[33:65]
 
 	// COSE key as an integer-keyed map: 1=kty, 3=alg, -1=crv, -2=x, -3=y.
 	// fxamacker/cbor sorts map keys canonically, which is what go-webauthn expects.
