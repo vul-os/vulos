@@ -18,6 +18,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { notify } from '../../../core/notificationStore'
 
 // ---------- helpers -------------------------------------------------------
 
@@ -384,12 +385,23 @@ export default function IncomingCall() {
   // CallView from DesktopCanvas alongside this banner, or retire peer calling
   // and remove this component. Do NOT "fix" it by deleting CallView; that
   // makes the breakage permanent rather than latent.
+  //
+  // Interim honesty fix: until CallView is remounted, "Answer" must not
+  // silently accept-then-strand the user with no media UI. Decline on the
+  // wire instead (the caller sees a real decline rather than a call that
+  // rings forever) and tell the user why via the shell notification store.
   const handleAccept = useCallback(async () => {
     if (!incomingCall) return
-    const { callId } = incomingCall
+    const { callId, peerDisplay, peerId } = incomingCall
     setIncomingCall(null)
+    notify({
+      title: 'Calling is unavailable',
+      body: `Couldn't connect the call from ${peerDisplay || peerId || 'this peer'} — voice/video calling isn't wired up yet.`,
+      source: 'peering',
+      level: 'warning',
+    })
     try {
-      await fetch('/api/peering/call/answer', {
+      await fetch('/api/peering/call/reject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ call_id: callId }),
