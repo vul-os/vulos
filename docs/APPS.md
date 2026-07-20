@@ -334,7 +334,7 @@ On Vulos OS the actions and read kinds are a conservative, Files-centric set: ac
 
 ### MCP
 
-The same registry and adapter are also exposed as a **Model Context Protocol server at `/mcp`**, so any MCP-speaking agent (Claude, for instance) can use a `vat_` token to list and call these tools over JSON-RPC. The full walkthrough, including example requests and the security boundary between MCP and the built-in assistant's proposal system, is in [ASSISTANT.md](ASSISTANT.md#connecting-an-outside-agent-mcp).
+A Model Context Protocol server at `/mcp`, exposing the same registry and adapter to outside agents, is a **planned surface that is not built** — no `/mcp` handler exists in this repository or the control plane. See [ASSISTANT.md](ASSISTANT.md#connecting-an-outside-agent-mcp).
 
 That is the whole bots story: there is no separate bot entity or bot framework — "bot" is what you call a platform app whose token is held by a program instead of a human.
 

@@ -267,52 +267,16 @@ Everything in the first row is enforced by code (the Guard choke point plus the 
 
 ## Connecting an outside agent (MCP)
 
-> **Not currently implemented.** No `/mcp` handler exists in this repository's
-> backend (or in the control plane), so the requests in this section will not
-> succeed against a box today. The section is retained as the intended design;
-> wiring it up is outstanding work.
+Not built. There is no `/mcp` handler in this repository or the control plane,
+and no MCP server ships with a box today.
 
-The design is that your box also runs a **Model Context Protocol (MCP) server at `/mcp`**, so an external agent — Claude, or any MCP-speaking client — can operate parts of the OS with a scoped token. This is a separate surface from the built-in assistant, with its own (deliberately narrower) capabilities.
+An earlier draft of this document described the intended design in detail —
+token minting, JSON-RPC shape, worked `curl` calls. That walkthrough was removed
+because it read as operable and was not: every request in it failed. If an MCP
+surface is built later, document it then, against code that exists.
 
-### How it authenticates
-
-MCP requests carry a **`vat_` app token** as a Bearer credential. You mint one by registering an app on the apps platform (see [APPS.md](APPS.md) for the full flow): `POST /api/apps` from your OS session creates the app and shows the token once; `POST /api/apps/{id}/rotate/token` rotates it. Tokens are stored hashed and checked in constant time. The `/mcp` path bypasses the OS *session* middleware only because it enforces its own token auth — it is not open.
-
-### What an MCP agent can do
-
-The MCP server exposes the OS product adapter — a conservative, Files-centric surface:
-
-- **Tools** (require the `apps:write` scope): `files.folder.create`, `files.write`, `files.move`, `files.share`, `files.unshare`, `files.delete`
-- **Resources** (require `apps:read`): `files.list`, `files.read` (capped at 1 MiB), `files.versions`, `files.shares`, `files.shared-with-me`, plus read-only `apps` (installed app metadata) and `system` (coarse build/runtime info)
-
-Every file operation runs through the same per-node ACL as the Files app, acting as the account that installed the app — the agent can touch exactly what that account can, never more. There is no shell access, no host mutation, and no raw filesystem path access.
-
-**An honest boundary note:** MCP tool calls are authorized by token scope plus the Files ACL, and `apps:write` tools execute *directly* — they do **not** go through the assistant's per-action proposal ledger. Your approval moment is when you grant the token its scopes. If you want a review step on every mutation, give the agent a read-only token (`apps:read` only) and do writes yourself. The assistant's mail/calendar tools are *not* exposed over MCP at all.
-
-### Example session
-
-```bash
-BOX=https://os.example.com
-TOKEN=vat_2f8a1c9d4e0b7a6castade93f1b52c4d   # shown once at app creation
-
-# Handshake
-curl -s $BOX/mcp -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}'
-
-# List tools
-curl -s $BOX/mcp -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-
-# Write a file into the Drive root
-curl -s $BOX/mcp -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"files.write","arguments":{"name":"notes.txt","content":"hello from an agent"}}}'
-```
-
-The server speaks JSON-RPC 2.0 over plain HTTP POST (`initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`). Resources are addressed as `vulos://os/<kind>/<node-id>` URIs.
-
-Set `VULOS_APPS=off` to disable the box's apps surface — every `/api/apps` route and `/mcp` — entirely. The switch is enforced by a middleware ahead of authentication, and an unrecognised value fails closed (the surface is disabled rather than left exposed).
-
----
+The apps gate (`VULOS_APPS=off`) already covers the `/mcp` path defensively, so
+the kill switch works from the moment such a handler is added.
 
 ## Troubleshooting
 

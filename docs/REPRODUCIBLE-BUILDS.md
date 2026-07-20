@@ -1,6 +1,22 @@
 # Vulos OS – Reproducible Builds
 
-This document explains how to build a verity-signed Vulos OS rootfs that is reproducible and verifiable against the published source.
+> **Status: this describes an intended design, not an enforced guarantee.**
+>
+> Reproducibility is a security claim, and a reader is entitled to assume a
+> document like this describes something machine-checked. It does not. Concretely:
+>
+> - `scripts/gen-manifest.sh`, `scripts/build-squashfs.sh`, `scripts/ci-reproducible.sh`,
+>   `make rootfs` and `make reproducible-build` **do not exist**.
+> - **No CI job verifies release-tag digests against a published manifest**, and no
+>   `manifest.json` is ever emitted — nothing in `.github/workflows/` writes one.
+> - The determinism flags in §1 are real and worth using. Everything downstream of
+>   them is a procedure a human would have to run by hand, and nobody currently does.
+>
+> Treat the sections below as the specification to build against, not as a
+> description of what happens today. Each section carries its own status note.
+
+This document describes how a verity-signed Vulos OS rootfs *would* be built so
+that it is reproducible and verifiable against the published source.
 
 ---
 
