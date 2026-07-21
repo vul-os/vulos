@@ -294,13 +294,6 @@ what's next is in [`ROADMAP.md`](ROADMAP.md).
 [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) — © VulOS. Vulos Management
 is a VulOS project; source and issues at
 [github.com/vul-os/vulos-management](https://github.com/vul-os/vulos-management).
-
----
-
-<div align="center">
-<sub><picture><source media="(prefers-color-scheme: dark)" srcset="assets/vulos-logo-dark.svg"><img src="assets/vulos-logo.png" height="14" alt="Vulos"></picture> · <strong>Vula OS</strong> — Built with purpose. Open by design.</sub>
-</div>
-
 ---
 
 <p align="center">
