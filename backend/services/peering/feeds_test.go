@@ -248,6 +248,67 @@ func TestFeedGetEntries_Since0ReturnsAll(t *testing.T) {
 	}
 }
 
+// TestFeedGetEntries_RejectsNonPositiveSequenceOnDisk is the ordered-domain
+// invariant guard (dmtap FEEDS.md §4.3 / SYNC.md §3): FeedEntry.Sequence is
+// documented as a 1-based monotonically increasing position, but
+// encoding/json decodes it into a signed int64, so a corrupt or tampered
+// entry file could carry a non-positive value. feedLoadEntriesSince must
+// treat that the same as any other malformed entry (skip it) rather than let
+// it flow into the `Sequence > since` ordering comparison as if it were a
+// legitimate position.
+//
+// This test writes a tampered entry file directly (bypassing FeedPublish,
+// which never produces a non-positive Sequence itself) to simulate what a
+// corrupt/tampered on-disk entry would look like, and calls FeedGetEntries
+// with a negative `since` cursor (the Go-level API accepts any int64; only
+// the HTTP handler rejects a negative since — see
+// TestHTTPFeedEntries_NegativeSinceRejected for that boundary). With since
+// more negative than the tampered Sequence, `Sequence > since` alone is
+// satisfied (e.g. -1 > -5), so this fails without the explicit
+// `e.Sequence < 1` skip in feedLoadEntriesSince.
+func TestFeedGetEntries_RejectsNonPositiveSequenceOnDisk(t *testing.T) {
+	fs, _, _ := feedTestStore(t)
+	meta, _ := fs.FeedCreate("Negative Seq Test", "", FeedAccessPublic)
+
+	if _, err := fs.FeedPublish(meta.FeedID, "post", json.RawMessage(`{"v":1}`)); err != nil {
+		t.Fatalf("publish entry 1: %v", err)
+	}
+
+	// Tamper: overwrite entry 1's Sequence field with a negative value, the
+	// way a corrupted disk or a bug elsewhere might. FeedPublish itself can
+	// never produce this — the sequence is always computed locally as
+	// last+1 — so this simulates an out-of-band write, not a reachable API
+	// path.
+	entriesDir := fs.feedDir(meta.FeedID) + "/entries"
+	firstFile := entriesDir + "/00000000000000000001.json"
+	data, err := os.ReadFile(firstFile)
+	if err != nil {
+		t.Fatalf("read first entry: %v", err)
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal entry: %v", err)
+	}
+	m["sequence"] = json.RawMessage("-1")
+	tampered, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal tampered entry: %v", err)
+	}
+	if err := os.WriteFile(firstFile, tampered, 0600); err != nil {
+		t.Fatalf("write tampered entry: %v", err)
+	}
+
+	entries, err := fs.FeedGetEntries(meta.FeedID, -5)
+	if err != nil {
+		t.Fatalf("FeedGetEntries: %v", err)
+	}
+	for _, e := range entries {
+		if e.Sequence < 1 {
+			t.Fatalf("FeedGetEntries returned an entry with non-positive Sequence=%d; the ordered-domain guard should have skipped it", e.Sequence)
+		}
+	}
+}
+
 // ─── FeedVerifyChain ──────────────────────────────────────────────────────────
 
 func TestFeedVerifyChain_Clean(t *testing.T) {
@@ -506,6 +567,28 @@ func TestHTTPFeedEntries_SinceQuery(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 	if len(resp.Entries) != 2 {
 		t.Errorf("expected 2 entries since=3, got %d", len(resp.Entries))
+	}
+}
+
+// TestHTTPFeedEntries_NegativeSinceRejected is the HTTP-boundary half of the
+// ordered-domain invariant guard: since is documented as a 1-based sequence
+// cursor, so a negative value is not a value any legitimate caller would
+// send. Without the `v < 0` check in handleFeedEntries this previously fell
+// through to `since = v` and was silently treated the same as since=0 instead
+// of being rejected as a bad request.
+func TestHTTPFeedEntries_NegativeSinceRejected(t *testing.T) {
+	store, _, mux, _ := feedTestHandlerSetup(t)
+	meta, _ := store.FeedCreate("Negative Since Test", "", FeedAccessPublic)
+	slug := feedSafeID(meta.FeedID)
+	_, _ = store.FeedPublish(meta.FeedID, "post", json.RawMessage(`{}`))
+
+	req := httptest.NewRequest("GET", "/api/feeds/"+slug+"/entries?since=-1", nil)
+	req.SetPathValue("feed_id", slug)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for since=-1; body: %s", w.Code, w.Body.String())
 	}
 }
 

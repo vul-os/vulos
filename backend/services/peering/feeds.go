@@ -601,6 +601,13 @@ func (h *feedHandler) handleFeedEntries(w http.ResponseWriter, r *http.Request, 
 			feedWriteErr(w, http.StatusBadRequest, "since must be an integer sequence number")
 			return
 		}
+		if v < 0 {
+			// Sequence is 1-based (see FeedEntry.Sequence); a negative cursor is
+			// not a value any legitimate entry can carry, so reject it explicitly
+			// rather than silently treating it the same as since=0.
+			feedWriteErr(w, http.StatusBadRequest, "since must not be negative")
+			return
+		}
 		since = v
 	}
 
@@ -694,6 +701,19 @@ func (fs *FeedStore) feedLoadEntriesSince(feedID string, since int64) ([]*FeedEn
 		}
 		var e FeedEntry
 		if err := json.Unmarshal(data, &e); err != nil {
+			continue
+		}
+		// Sequence is documented as the 1-based monotonically increasing
+		// position in the log (see FeedEntry.Sequence). encoding/json decodes
+		// it as a signed int64, so a corrupt or tampered entry file could in
+		// principle carry a non-positive value; treat that the same as any
+		// other malformed entry (skip) rather than let it flow into ordering
+		// comparisons as if it were a legitimate position. This mirrors the
+		// §22.4 ordered-domain invariant: the anti-rollback/monotonicity rule
+		// is only sound over the domain FeedEntry.Sequence is documented to
+		// occupy (1-based, unsigned in spirit), not whatever encoding/json's
+		// signed int64 happens to admit.
+		if e.Sequence < 1 {
 			continue
 		}
 		if e.Sequence > since {
