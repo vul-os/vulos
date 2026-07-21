@@ -13,7 +13,9 @@ Run your own Vulos: **accounts, OS routing, relay autoscaling, and a hardened
 admin console** — one self-hostable control plane. Billing is a pluggable
 seam with a no-op default, so **self-hosting is fully functional and free.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-2DD4BF.svg)](LICENSE)
+<sub><img src="assets/vulos-logo.png" height="14" alt="VulOS"> Part of <strong><a href="https://vulos.org">VulOS</a></strong> — the open, self-hostable web OS &amp; app suite. Runs standalone, or as an app hosted by the Vulos OS.</sub>
+
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-2DD4BF.svg)](LICENSE-MIT)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-free-14B8A6.svg)](docs/SELF-HOST.md)
 [![Tests](https://img.shields.io/badge/tests-passing-14B8A6.svg)](docs/)
@@ -101,12 +103,12 @@ exact split, or build your own thin `main` against `pkg/cpserver` (the same way
 Vulos is split into two repositories along one honest line:
 
 > **If a self-hoster needs it to run their deployment → it lives in
-> vulos-management (OSS, MIT). If it exists only because we charge money → it
+> vulos-management (OSS, MIT OR Apache-2.0). If it exists only because we charge money → it
 > lives in vulos-cloud (private).**
 
 | | **vulos-management** (this repo) | **vulos-cloud** (private) |
 |---|---|---|
-| **License** | MIT, open source | Proprietary |
+| **License** | MIT OR Apache-2.0, open source | Proprietary |
 | **Role** | The complete operational control plane anyone can self-host | The commercial layer only |
 | **Contains** | Accounts, auth, 2FA, OAuth sign-in, device enrollment, OS routing + org/box directory, relay autoscaler + PoP fleet, the React `/console` (auth + user console + operator admin) with a NoOp billing seam, status pages, the seam interfaces + no-op defaults | A commercial billing provider, commercial pricing/catalog, managed bucket provisioning, the injected billing/usage/invoice console UI, the hosted marketing site |
 | **Billing** | `BillingProvider` seam, **no-op default** — metered but free, no phone-home | Injects a commercial `BillingProvider` |
@@ -291,7 +293,9 @@ what's next is in [`ROADMAP.md`](ROADMAP.md).
 
 ## License
 
-[MIT](LICENSE) — free to use, modify, and distribute.
+[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) — © VulOS. Vulos Management
+is a VulOS project; source and issues at
+[github.com/vul-os/vulos-management](https://github.com/vul-os/vulos-management).
 
 ---
 
