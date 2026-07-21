@@ -51,14 +51,19 @@ type backupDeps struct {
 
 // clusterBackupDeps wires backupDeps to the production cluster client + lease
 // config. s3 may be nil when the cluster is disabled.
-func clusterBackupDeps(authStore *auth.Store, s3 *cluster.Client, leaseCfg lease.S3Config, nodeID, dbPath string) backupDeps {
+//
+// passphrase is the cluster passphrase (VULOS_CLUSTER_PASSPHRASE); it is
+// forwarded so the Compactor/Restorer authenticate cluster/snapshot/latest.json
+// before trusting its Version/Key (see services/sync/snapshot.go's package
+// doc comment on the anti-rollback-authenticity gap this closes).
+func clusterBackupDeps(authStore *auth.Store, s3 *cluster.Client, leaseCfg lease.S3Config, nodeID, dbPath, passphrase string) backupDeps {
 	deps := backupDeps{authStore: authStore, dbPath: dbPath}
 	if s3 != nil {
 		deps.newCompactor = func() (*sync.Compactor, error) {
-			return sync.BuildCompactor(sync.BackupConfig{NodeID: nodeID, DBPath: dbPath}, s3, leaseCfg)
+			return sync.BuildCompactor(sync.BackupConfig{NodeID: nodeID, DBPath: dbPath}, s3, leaseCfg, passphrase)
 		}
 		deps.newRestorer = func() (*sync.Restorer, error) {
-			return sync.BuildRestorer(s3, dbPath)
+			return sync.BuildRestorer(s3, dbPath, passphrase)
 		}
 	}
 	return deps

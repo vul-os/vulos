@@ -232,7 +232,7 @@ func TestBackupRestoreRoundtripThroughLibrary(t *testing.T) {
 
 // TestBuildRestorerRequiresClient verifies the production builder guards inputs.
 func TestBuildRestorerRequiresClient(t *testing.T) {
-	if _, err := BuildRestorer(nil, "/tmp/x.db"); err == nil {
+	if _, err := BuildRestorer(nil, "/tmp/x.db", ""); err == nil {
 		t.Error("BuildRestorer(nil, ...) should error")
 	}
 }

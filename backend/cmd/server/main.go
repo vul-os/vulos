@@ -3585,7 +3585,7 @@ func main() {
 					if backupDBPath == "" {
 						backupDBPath = filepath.Join(dbDir, "auth.db")
 					}
-					registerBackupRoutes(mux, clusterBackupDeps(authStore, s3c, backupLeaseCfg, backupNodeID, backupDBPath))
+					registerBackupRoutes(mux, clusterBackupDeps(authStore, s3c, backupLeaseCfg, backupNodeID, backupDBPath, clusterPassphrase))
 					log.Printf("[backup] admin backup/restore endpoints registered (db=%s)", backupDBPath)
 
 					// Optional config-gated periodic backup. Enable by setting
@@ -3594,7 +3594,7 @@ func main() {
 						if d, perr := time.ParseDuration(iv); perr == nil && d > 0 {
 							if compactor, cerr := sync.BuildCompactor(
 								sync.BackupConfig{NodeID: backupNodeID, DBPath: backupDBPath},
-								s3c, backupLeaseCfg,
+								s3c, backupLeaseCfg, clusterPassphrase,
 							); cerr == nil {
 								go func() {
 									ticker := time.NewTicker(d)

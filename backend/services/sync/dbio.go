@@ -237,7 +237,14 @@ type BackupConfig struct {
 //   - a VACUUM-INTO DBSnapshot over cfg.DBPath.
 //
 // leaseCfg must point at the same bucket/credentials as the cluster client.
-func BuildCompactor(cfg BackupConfig, s3 *cluster.Client, leaseCfg lease.S3Config) (*Compactor, error) {
+//
+// passphrase is the cluster passphrase (VULOS_CLUSTER_PASSPHRASE) — the same
+// one used to build the cluster.Client's SSE-C key. It is forwarded into
+// CompactorConfig.Passphrase so the anti-rollback check authenticates
+// latest.json before trusting its Version (see snapshot.go's package doc
+// comment). Pass "" only when no passphrase is available; the Compactor then
+// falls back to trusting Version unconditionally.
+func BuildCompactor(cfg BackupConfig, s3 *cluster.Client, leaseCfg lease.S3Config, passphrase string) (*Compactor, error) {
 	if s3 == nil {
 		return nil, errors.New("sync: BuildCompactor: nil cluster client")
 	}
@@ -250,7 +257,7 @@ func BuildCompactor(cfg BackupConfig, s3 *cluster.Client, leaseCfg lease.S3Confi
 	}
 	facade := NewLeaseManagerFacade(mgr)
 	return NewCompactor(
-		CompactorConfig{NodeID: cfg.NodeID, LeaseTTL: cfg.LeaseTTL},
+		CompactorConfig{NodeID: cfg.NodeID, LeaseTTL: cfg.LeaseTTL, Passphrase: passphrase},
 		facade,
 		s3,
 		SnapshotDB(cfg.DBPath),
@@ -261,12 +268,22 @@ func BuildCompactor(cfg BackupConfig, s3 *cluster.Client, leaseCfg lease.S3Confi
 // S3 client and a RehydrateDB that atomically swaps the latest snapshot into
 // dbPath. Restore is lease-free by design (read of an immutable versioned blob
 // + local apply).
-func BuildRestorer(s3 *cluster.Client, dbPath string) (*Restorer, error) {
+//
+// passphrase is the cluster passphrase; when non-empty it is used to derive
+// the latest.json authenticity MAC key (WithLatestMACKey) so Restore refuses
+// (ErrSnapshotTampered) rather than applies a snapshot doc that anyone with
+// bucket write access — but not the passphrase — could have forged. Pass ""
+// only when no passphrase is available.
+func BuildRestorer(s3 *cluster.Client, dbPath string, passphrase string) (*Restorer, error) {
 	if s3 == nil {
 		return nil, errors.New("sync: BuildRestorer: nil cluster client")
 	}
 	if dbPath == "" {
 		return nil, errors.New("sync: BuildRestorer: empty DB path")
 	}
-	return NewRestorer(s3, RehydrateDB(dbPath)), nil
+	var opts []RestorerOption
+	if passphrase != "" {
+		opts = append(opts, WithLatestMACKey(deriveLatestMACKey(passphrase)))
+	}
+	return NewRestorer(s3, RehydrateDB(dbPath), opts...), nil
 }

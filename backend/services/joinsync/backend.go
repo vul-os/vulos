@@ -81,14 +81,20 @@ func (realBackend) validate(ctx context.Context, cfg cluster.S3Config, passphras
 //
 //  1. Connects to S3 with the derived SSE-C key (passphrase lives only here).
 //  2. Calls sync.Bootstrap which:
-//     a. reads latest.json; if present, downloads + installs the snapshot DB;
+//     a. reads latest.json, authenticates it against the passphrase-derived
+//        MAC key (see snapshot.go's package doc comment), then downloads +
+//        installs the snapshot DB;
 //     b. replays only the changeset tail above the snapshot version;
-//     c. falls back to full changeset replay when no snapshot exists.
+//     c. falls back to full changeset replay when no snapshot exists (also
+//        the fallback when latest.json fails authenticity).
 //
 // The passphrase is NEVER written anywhere — it lives only in this call stack
-// for the lifetime of the derived SSE-C key.  The live services/sync engine
-// (started via sync.NewFromCluster in cmd/server) takes over normal incremental
-// sync once the server boots.  (Historical note: an older cluster.SyncLoop was
+// and is used in-process for two derivations: the SSE-C key (inside
+// cluster.NewClient) and the latest.json MAC key (inside sync.Bootstrap, via
+// BootstrapConfig.Passphrase). Neither the passphrase nor either derived key
+// is ever persisted or sent anywhere. The live services/sync engine (started
+// via sync.NewFromCluster in cmd/server) takes over normal incremental sync
+// once the server boots.  (Historical note: an older cluster.SyncLoop was
 // superseded and its implementation has since been removed.)
 func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase string, progress func(phase string, pct int)) error {
 	progress("connecting", 5)
@@ -124,7 +130,7 @@ func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase st
 
 	if err := vulossync.Bootstrap(
 		ctx,
-		vulossync.BootstrapConfig{NodeID: cfg.Bucket},
+		vulossync.BootstrapConfig{NodeID: cfg.Bucket, Passphrase: passphrase},
 		client,
 		noopInstall,
 		noopApply,

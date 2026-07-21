@@ -4,7 +4,7 @@
 // merged cr-sqlite DB state to:
 //
 //	cluster/snapshot/<version>.db.enc   — encrypted snapshot blob
-//	cluster/snapshot/latest.json        — {version, key, created_at}
+//	cluster/snapshot/latest.json        — {version, key, created_at, mac}
 //
 // Exactly one instance compacts at a time, guarded by the snapshot ownership
 // lease (leases/snapshot.json, LEASE-01) with fencing so a stalled compactor
@@ -14,10 +14,24 @@
 // The SSE-C key is derived in-process from a caller-supplied passphrase using
 // Argon2id (matching the cluster/s3.go parameters).  The passphrase and derived
 // key are NEVER persisted to disk or sent to the cloud control plane.
+//
+// latest.json authenticity: the anti-rollback check (`version <= existing`)
+// below is only as sound as the authenticity of the `existing` value it reads.
+// cluster/snapshot/latest.json lives in the same bucket every node's shared S3
+// credentials can write — there is no per-writer bucket ACL distinguishing
+// "the current lease holder" from "any node with cluster credentials" (see
+// cluster/s3.go, lease/lease.go: same credential pair drives all of it).
+// Without authenticity, anyone who can reach the bucket could set Version
+// arbitrarily — either freezing the cluster (an absurdly high Version makes
+// every real snapshot look stale forever) or pointing Key at a stale/malicious
+// blob to force a rollback on restore. See deriveLatestMACKey / verifyLatestDoc.
 package sync
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,6 +61,47 @@ const (
 // derived key is ever written to disk or sent to the control plane.
 func deriveSnapshotKey(passphrase string, salt []byte) []byte {
 	return argon2.IDKey([]byte(passphrase), salt, snapshotArgonTime, snapshotArgonMem, snapshotArgonThreads, snapshotArgonKeyLen)
+}
+
+// ── latest.json authenticity (anti-rollback authenticity, see package doc) ──
+
+// latestMACDomain domain-separates the latest.json MAC key from the SSE-C
+// encryption key derived from the same passphrase. It is a fixed, public
+// constant — not a secret — so computing the MAC key never needs a bucket
+// round-trip for a salt, unlike the SSE-C key (whose salt lives in the bucket
+// at cluster/encryption-salt). Verification must work even when the object
+// under suspicion is the one you'd otherwise have to trust for that salt.
+const latestMACDomain = "vulos-sync-latest-json-mac-v1"
+
+// deriveLatestMACKey derives the key that authenticates cluster/snapshot/
+// latest.json from the cluster passphrase (the same passphrase already
+// required to reach the bucket's SSE-C content — see cmd_backup.go/main.go's
+// VULOS_CLUSTER_PASSPHRASE). It uses Argon2id with the same work parameters as
+// deriveSnapshotKey but a distinct, fixed domain salt: reusing an encryption
+// key as a MAC key is a classic key-separation mistake, so this is a different
+// key even though both trace back to one shared passphrase.
+func deriveLatestMACKey(passphrase string) []byte {
+	return argon2.IDKey([]byte(passphrase), []byte(latestMACDomain), snapshotArgonTime, snapshotArgonMem, snapshotArgonThreads, snapshotArgonKeyLen)
+}
+
+// latestDocMAC computes the hex-encoded HMAC-SHA256 authenticating a
+// LatestDoc's Version/Key/CreatedAt under macKey. It is computed over an
+// explicit canonical string — not raw marshaled JSON — so verification never
+// depends on encoding/json's field ordering or time-formatting matching
+// byte-for-byte between the writer and a later reader.
+func latestDocMAC(macKey []byte, version int64, key string, createdAt time.Time) string {
+	mac := hmac.New(sha256.New, macKey)
+	fmt.Fprintf(mac, "v1|%d|%s|%s", version, key, createdAt.UTC().Format(time.RFC3339Nano))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// verifyLatestDoc reports whether doc.MAC authenticates doc's Version/Key/
+// CreatedAt under macKey. Callers must gate on macKey != nil themselves (a nil
+// macKey means no cluster passphrase was configured, i.e. authenticity
+// enforcement is off — see CompactorConfig.Passphrase / WithLatestMACKey).
+func verifyLatestDoc(macKey []byte, doc LatestDoc) bool {
+	want := latestDocMAC(macKey, doc.Version, doc.Key, doc.CreatedAt)
+	return hmac.Equal([]byte(want), []byte(doc.MAC))
 }
 
 // ── S3 abstraction (mockable) ─────────────────────────────────────────────────
@@ -143,6 +198,12 @@ type LatestDoc struct {
 	Key string `json:"key"`
 	// CreatedAt is the wall-clock time this snapshot was written.
 	CreatedAt time.Time `json:"created_at"`
+	// MAC authenticates Version/Key/CreatedAt (see deriveLatestMACKey /
+	// latestDocMAC) so an anti-rollback decision never trusts Version until
+	// its authenticity is established. Empty when written without a cluster
+	// passphrase configured. Consumers MUST call verifyLatestDoc before
+	// trusting Version/Key — see existingSnapshotVersion and LatestSnapshot.
+	MAC string `json:"mac,omitempty"`
 }
 
 // ── S3 key helpers ────────────────────────────────────────────────────────────
@@ -173,6 +234,12 @@ type Compactor struct {
 	snapshot DBSnapshot
 	leaseTTL time.Duration
 
+	// macKey authenticates cluster/snapshot/latest.json (see the package doc
+	// and deriveLatestMACKey). nil means no Passphrase was configured in
+	// CompactorConfig, so the anti-rollback check below falls back to
+	// trusting Version unconditionally — same as before this was added.
+	macKey []byte
+
 	// lastSeenFence is the highest snapshot lease fence this Compactor has
 	// successfully used.  It is an in-process guard against stale-fence writes.
 	lastSeenFence int64
@@ -185,6 +252,14 @@ type CompactorConfig struct {
 	// LeaseTTL is the duration for which the snapshot lease is held.
 	// Default: 5 minutes.
 	LeaseTTL time.Duration
+	// Passphrase is the cluster passphrase (VULOS_CLUSTER_PASSPHRASE) used to
+	// derive the HMAC key that authenticates cluster/snapshot/latest.json
+	// before its Version is trusted for the anti-rollback check — see the
+	// package doc comment above and deriveLatestMACKey. BuildCompactor always
+	// sets this in production. Leave empty only in tests that don't care
+	// about latest.json authenticity (existingSnapshotVersion then falls back
+	// to trusting Version unconditionally, matching pre-authenticity behavior).
+	Passphrase string
 }
 
 // NewCompactor creates a Compactor.
@@ -202,12 +277,17 @@ func NewCompactor(cfg CompactorConfig, leaseFcd LeaseFacade, s3 SnapshotS3, snap
 	if nodeID == "" {
 		nodeID = "unknown"
 	}
+	var macKey []byte
+	if cfg.Passphrase != "" {
+		macKey = deriveLatestMACKey(cfg.Passphrase)
+	}
 	return &Compactor{
 		nodeID:   nodeID,
 		leaseFcd: leaseFcd,
 		s3:       s3,
 		snapshot: snapshot,
 		leaseTTL: ttl,
+		macKey:   macKey,
 	}
 }
 
@@ -216,9 +296,12 @@ func NewCompactor(cfg CompactorConfig, leaseFcd LeaseFacade, s3 SnapshotS3, snap
 //  1. Acquire the snapshot lease (returns immediately if another node holds it).
 //  2. Validate the fence token — abort if stale.
 //  3. Capture the merged DB state via the DBSnapshot function.
-//  4. Read latest.json; abort if the snapshot's version is not newer.
+//  4. Read latest.json; abort if the snapshot's version is not newer. An
+//     existing doc whose MAC fails authenticity (see the package doc comment)
+//     is treated the same as an absent/malformed one — it does not block the
+//     write, which defeats a forged-high-Version freeze attempt.
 //  5. Write the encrypted snapshot blob (cluster/snapshot/<version>.db.enc).
-//  6. Write latest.json.
+//  6. Write latest.json, MAC'd when a Passphrase is configured.
 //  7. Prune per-node changesets below the covered version.
 //  8. Release the lease.
 //
@@ -293,6 +376,9 @@ func (c *Compactor) Run(ctx context.Context) error {
 		Key:       blobKey,
 		CreatedAt: time.Now().UTC(),
 	}
+	if c.macKey != nil {
+		latest.MAC = latestDocMAC(c.macKey, latest.Version, latest.Key, latest.CreatedAt)
+	}
 	latestJSON, err := json.Marshal(latest)
 	if err != nil {
 		return fmt.Errorf("snapshot: marshal latest.json: %w", err)
@@ -340,6 +426,16 @@ type RestoreResult struct {
 // latest.json (nothing has ever been backed up).
 var ErrNoSnapshot = errors.New("sync: no snapshot present (latest.json absent)")
 
+// ErrSnapshotTampered is returned by LatestSnapshot/Restore when latest.json's
+// MAC does not authenticate under the configured macKey (see WithLatestMACKey
+// and the package doc comment) — i.e. the document was not produced by
+// someone holding the cluster passphrase, so its Version/Key cannot be
+// trusted. This is a fail-closed rejection: Restore does NOT fall back to
+// applying it anyway, unlike Compactor's own anti-rollback check (which fails
+// open toward "proceed", since a stuck compactor is the worse outcome there —
+// a stuck Restore is the safe default here, since Restore is destructive).
+var ErrSnapshotTampered = errors.New("sync: latest.json failed authenticity check (bad or missing MAC) — refusing to restore")
+
 // Restorer pulls the latest snapshot from the bucket and rehydrates local state.
 // It is the inverse of Compactor and shares the same SnapshotS3 abstraction, so
 // it works against the real SSE-C cluster client in production and the in-memory
@@ -352,6 +448,28 @@ var ErrNoSnapshot = errors.New("sync: no snapshot present (latest.json absent)")
 type Restorer struct {
 	s3        SnapshotS3
 	rehydrate DBRehydrate
+
+	// macKey authenticates cluster/snapshot/latest.json (see the package doc
+	// and deriveLatestMACKey). nil means no WithLatestMACKey option was
+	// supplied, so LatestSnapshot falls back to trusting Version/Key
+	// unconditionally — same as before this was added.
+	macKey []byte
+}
+
+// RestorerOption configures optional Restorer behavior. See WithLatestMACKey.
+type RestorerOption func(*Restorer)
+
+// WithLatestMACKey enables authenticity verification of latest.json: Restorer
+// will reject (ErrSnapshotTampered, fail-closed) any latest.json whose MAC
+// does not authenticate under macKey, rather than trusting Version/Key from
+// an object anyone with bucket write access could have forged — see the
+// package doc comment for the threat this closes.
+//
+// macKey should come from deriveLatestMACKey(passphrase) — the SAME cluster
+// passphrase already required to reach the bucket's SSE-C content. Never pass
+// the SSE-C encryption key itself; it is a different, domain-separated key.
+func WithLatestMACKey(macKey []byte) RestorerOption {
+	return func(r *Restorer) { r.macKey = macKey }
 }
 
 // NewRestorer creates a Restorer.
@@ -360,8 +478,15 @@ type Restorer struct {
 //     SSE-C key is managed by the cluster.Client layer; the Restorer never sees
 //     a passphrase).
 //   - rehydrate applies the decrypted blob to local state.
-func NewRestorer(s3 SnapshotS3, rehydrate DBRehydrate) *Restorer {
-	return &Restorer{s3: s3, rehydrate: rehydrate}
+//   - opts may include WithLatestMACKey to enable latest.json authenticity
+//     verification (strongly recommended in production — BuildRestorer always
+//     sets it when a passphrase is available).
+func NewRestorer(s3 SnapshotS3, rehydrate DBRehydrate, opts ...RestorerOption) *Restorer {
+	r := &Restorer{s3: s3, rehydrate: rehydrate}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // LatestSnapshot reads and parses cluster/snapshot/latest.json. It returns
@@ -381,6 +506,9 @@ func (r *Restorer) LatestSnapshot(ctx context.Context) (LatestDoc, error) {
 	}
 	if doc.Key == "" {
 		return LatestDoc{}, fmt.Errorf("sync: latest.json has empty snapshot key")
+	}
+	if r.macKey != nil && !verifyLatestDoc(r.macKey, doc) {
+		return LatestDoc{}, ErrSnapshotTampered
 	}
 	return doc, nil
 }
@@ -433,6 +561,16 @@ func (c *Compactor) existingSnapshotVersion(ctx context.Context) (int64, error) 
 	var doc LatestDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return 0, fmt.Errorf("snapshot: parse latest.json: %w", err)
+	}
+	if c.macKey != nil && !verifyLatestDoc(c.macKey, doc) {
+		// doc.Version cannot be trusted as an anti-rollback counter until its
+		// authenticity is established (see the package doc comment). Treat
+		// exactly like the parse-failure case above: Run's caller falls back
+		// to "no known existing version" and proceeds with the write. This is
+		// what defeats a forged-high-Version freeze attack — an attacker who
+		// can write the bucket but not produce a valid MAC cannot permanently
+		// block legitimate compaction by claiming an absurd Version.
+		return 0, fmt.Errorf("snapshot: latest.json failed authenticity check (bad or missing MAC)")
 	}
 	return doc.Version, nil
 }

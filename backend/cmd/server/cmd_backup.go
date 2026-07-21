@@ -107,6 +107,7 @@ func runBackupCLI(ctx context.Context, args []string) int {
 		sync.BackupConfig{NodeID: env.nodeID, DBPath: env.dbPath},
 		client,
 		leaseCfgFromS3(env.s3Cfg),
+		env.passphrase,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "backup: build compactor: %v\n", err)
@@ -151,7 +152,7 @@ func runRestoreCLI(ctx context.Context, args []string) int {
 		return 1
 	}
 
-	restorer, err := sync.BuildRestorer(client, env.dbPath)
+	restorer, err := sync.BuildRestorer(client, env.dbPath, env.passphrase)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "restore: build restorer: %v\n", err)
 		return 1

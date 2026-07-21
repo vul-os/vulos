@@ -71,6 +71,14 @@ type ChangesetApplier func(ctx context.Context, s3 BootstrapS3, key string) erro
 type BootstrapConfig struct {
 	// NodeID is used only for logging; it identifies the bootstrapping instance.
 	NodeID string
+	// Passphrase is the cluster passphrase used to derive the HMAC key that
+	// authenticates cluster/snapshot/latest.json before its Version/Key are
+	// trusted to install a snapshot — see snapshot.go's package doc comment
+	// (deriveLatestMACKey) for the anti-rollback-authenticity threat this
+	// closes. Leave empty only when the caller doesn't have the passphrase in
+	// scope; bootstrapReadSnapshot then falls back to trusting the doc
+	// unconditionally, matching pre-authenticity behavior.
+	Passphrase string
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -109,9 +117,13 @@ func Bootstrap(
 	if nodeID == "" {
 		nodeID = "unknown"
 	}
+	var macKey []byte
+	if cfg.Passphrase != "" {
+		macKey = deriveLatestMACKey(cfg.Passphrase)
+	}
 
 	// ── 1. Read latest.json ───────────────────────────────────────────────────
-	snapshotVersion, err := bootstrapReadSnapshot(ctx, s3, nodeID, install)
+	snapshotVersion, err := bootstrapReadSnapshot(ctx, s3, nodeID, macKey, install)
 	if err != nil {
 		return err
 	}
@@ -130,6 +142,7 @@ func bootstrapReadSnapshot(
 	ctx context.Context,
 	s3 BootstrapS3,
 	nodeID string,
+	macKey []byte,
 	install DBInstaller,
 ) (snapshotVersion int64, err error) {
 	// Try to read latest.json.
@@ -148,6 +161,14 @@ func bootstrapReadSnapshot(
 		// Malformed latest.json — treat as no snapshot and fall back.
 		log.Printf("[bootstrap/%s] latest.json malformed (version=%d key=%q) — full changeset replay",
 			nodeID, doc.Version, doc.Key)
+		return 0, nil
+	}
+	if macKey != nil && !verifyLatestDoc(macKey, doc) {
+		// doc.Version/Key cannot be trusted enough to install as the new
+		// node's DB base — treat exactly like the malformed case above and
+		// fall back to a full changeset replay (always a safe, if slower,
+		// path). See snapshot.go's package doc comment for the threat model.
+		log.Printf("[bootstrap/%s] latest.json failed authenticity check (bad or missing MAC) — full changeset replay", nodeID)
 		return 0, nil
 	}
 
