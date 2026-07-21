@@ -369,12 +369,6 @@ VulOS project; source and issues at
 ---
 
 <p align="center">
-  <sub><img src="docs/assets/vulos-logo.png" height="16" alt="VulOS" /> · <strong>Built with purpose. Open by design.</strong></sub>
-</p>
-
----
-
-<p align="center">
   <a href="https://vulos.org"><img src="docs/assets/vulos-logo.png" alt="vulos" height="20"></a><br>
   <sub><a href="https://vulos.org"><b>vulos</b></a> — open by design</sub>
 </p>
