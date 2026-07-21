@@ -13,8 +13,6 @@ Run your own Vulos: **accounts, OS routing, relay autoscaling, and a hardened
 admin console** — one self-hostable control plane. Billing is a pluggable
 seam with a no-op default, so **self-hosting is fully functional and free.**
 
-<sub><img src="assets/vulos-logo.png" height="14" alt="VulOS"> Part of <strong><a href="https://vulos.org">VulOS</a></strong> — the open, self-hostable web OS &amp; app suite. Runs standalone, or as an app hosted by the Vulos OS.</sub>
-
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-2DD4BF.svg)](LICENSE-MIT)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-free-14B8A6.svg)](docs/SELF-HOST.md)
@@ -302,3 +300,10 @@ is a VulOS project; source and issues at
 <div align="center">
 <sub><picture><source media="(prefers-color-scheme: dark)" srcset="assets/vulos-logo-dark.svg"><img src="assets/vulos-logo.png" height="14" alt="Vulos"></picture> · <strong>Vula OS</strong> — Built with purpose. Open by design.</sub>
 </div>
+
+---
+
+<p align="center">
+  <a href="https://vulos.org"><img src="assets/vulos-logo.png" alt="vulos" height="20"></a><br>
+  <sub><a href="https://vulos.org"><b>vulos</b></a> — open by design</sub>
+</p>
