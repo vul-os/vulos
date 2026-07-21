@@ -9,7 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <sub><img src="docs/assets/vulos-logo.png" height="14" alt="VulOS"> Part of <strong><a href="https://vulos.org">VulOS</a></strong> — the open, self-hostable web OS &amp; app suite. Runs standalone, or as an app hosted by the Vulos OS.</sub>
+</p>
+
+<p align="center">
+  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0" /></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.2.0-informational.svg" alt="Version 1.2.0" /></a>
   <img src="https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61dafb.svg" alt="React 19 + Vite" />
   <img src="https://img.shields.io/badge/backend-Go%201.25-00ADD8.svg" alt="Go 1.25" />
@@ -362,7 +366,9 @@ Contributions are welcome. Pick a task, branch as `task/<ID>` or `feat/`/`fix/`/
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) — © VulOS. Vulos OS is a
+VulOS project; source and issues at
+[github.com/vul-os/vulos](https://github.com/vul-os/vulos).
 
 ---
 

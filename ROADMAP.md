@@ -79,4 +79,4 @@ Deep, per-area design lives in [`roadmap/`](roadmap/) — one document per syste
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT OR Apache-2.0 — see [LICENSE-MIT](LICENSE-MIT) / [LICENSE-APACHE](LICENSE-APACHE).
