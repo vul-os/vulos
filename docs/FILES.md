@@ -171,6 +171,50 @@ When a share to a remote recipient has to pass through infrastructure neither of
 
 Your master key — and therefore your ability to open sealed content — is protected by your recovery phrase. See [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) and [SECURITY.md](SECURITY.md).
 
+### Cloud storage default sealing
+
+**Storage is not content-blind by default.** A normal Drive upload — `POST
+/api/files/upload-grant` then a direct `PUT` of your file's raw bytes — is
+plaintext on the wire and plaintext in the bucket. When your bucket is a
+self-hosted S3/MinIO/Tigris endpoint you configured yourself, that plaintext
+never leaves infrastructure you control. When your bucket is **provisioned by
+Vulos Cloud** (`DEPLOY_MODE=cloud`), the control plane holds the Tigris master
+credential and *brokers* the presigned PUT/GET URL — so it is technically
+capable of reading those bytes. See vulos-cloud's `DEPLOY-SECURITY.md` §1 for
+that trust boundary in full; this is the honest default, not a defect.
+
+To close that gap for the common case, a cloud-provisioned deployment now
+defaults **single-shot Drive uploads** to client-side sealed:
+
+- `POST /api/files/upload-grant` returns `grant.seal_default: true` exactly
+  when `DEPLOY_MODE=cloud` **and** the grant is a presigned URL to a real
+  bucket (never for self-host, and never for `DEPLOY_MODE=os`, where you — not
+  the CP — hold the bucket credential).
+- When true, the Drive app seals the file client-side to **your own**
+  published X25519 content key — the identical VSEAL1 envelope + WebCrypto
+  primitives used for [content-blind sharing](#sealed-content-blind-sharing)
+  above, just wrapped to one recipient (you) instead of a peer. The CP's
+  presign broker then only ever sees ciphertext; only a device holding your
+  master key can open it. Downloading is unchanged — the Drive app already
+  auto-detects and opens any VSEAL1 envelope, sealed-by-default or shared.
+- **Fail-closed, not fail-silent:** if no master key is unlocked in the
+  browser, the upload is refused with an explicit "Unlock your account to
+  upload to cloud storage sealed by default" error — it never falls back to a
+  silent plaintext upload.
+- File name and content-type are **not** wrapped into the seal for this case
+  (unlike a share): they already live only in your box's own SQLite index,
+  which the CP never sees, so there is nothing to hide there.
+
+**Known, honest gap — not yet covered:** the **resumable/chunked** upload path
+(files ≥ 16 MiB) is **not** sealed. VSEAL1 authenticates one AEAD tag over the
+*whole* plaintext, which does not compose with per-chunk streaming without a
+wire-format change (a real, tracked follow-up — not silently assumed done).
+Large files uploaded to a cloud-provisioned bucket are plaintext to the CP
+today exactly like any other unsealed upload. `DEPLOY_MODE=os` deployments and
+self-hosted object stores are entirely unaffected by any of this — sealing is
+a client-added confidentiality layer on top of whatever bucket you point at,
+never a storage-tier guarantee.
+
 ## External drives and importing
 
 ### Mounting Google Drive, Dropbox, or Google Cloud Storage

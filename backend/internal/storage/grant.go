@@ -64,6 +64,20 @@ type ObjectGrant struct {
 	Creds     ScopedCreds `json:"creds,omitempty"`      // GrantSTS
 	LocalPath string      `json:"local_path,omitempty"` // GrantLocal
 	ExpiresAt time.Time   `json:"expires_at"`
+	// SealDefault (WRITE grants only) tells the client this object is landing in
+	// CP-provisioned cloud storage (DEPLOY_MODE=cloud), where the control plane
+	// holds the presign-brokering credential and can read plaintext bytes. When
+	// true, the caller SHOULD content-seal (src/lib/contentSeal.js VSEAL1, wrapped
+	// to the uploader's own published content key) before PUTting, using the
+	// SAME box-side content-seal path already used for cross-account file
+	// shares — so the bytes the CP brokers are ciphertext it cannot open. This
+	// field is advisory: the broker itself never seals anything and has no way
+	// to enforce it, so a caller that ignores it still uploads plaintext. See
+	// files.Service.UploadGrant (the only place that sets this) for the exact
+	// condition and docs/FILES.md "Cloud storage default sealing" for the
+	// honest scope (single-shot uploads only; resumable/chunked uploads are not
+	// yet sealed — see that doc for why).
+	SealDefault bool `json:"seal_default,omitempty"`
 }
 
 // GrantBroker mints object-scoped grants. It reuses the existing Resolver for

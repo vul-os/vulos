@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"vulos/backend/internal/deploymode"
 	"vulos/backend/internal/storage"
 	"vulos/backend/internal/ulid"
 )
@@ -290,9 +291,45 @@ func (s *Service) UploadGrant(ctx context.Context, userID, parentID, name, conte
 	if err != nil {
 		return nil, storage.ObjectGrant{}, err
 	}
+	// SealDefault (WRITE grants only, WAVE-3 follow-up): a CP-provisioned cloud
+	// deployment (DEPLOY_MODE=cloud) presign-brokers this PUT, so the control
+	// plane is *technically capable* of reading the plaintext bytes it hands the
+	// URL for (see vulos-cloud DEPLOY-SECURITY.md §1 — honest, not content-blind
+	// by default). Advertising SealDefault=true tells the client it SHOULD seal
+	// the bytes first with the existing content-seal path (contentseal.go /
+	// contentSeal.js), wrapped to the uploader's OWN published content key, so
+	// what the CP brokers is ciphertext it cannot open. Gated strictly on the
+	// grant actually being a presigned URL to a real object store — a local-FS
+	// fallback or an object-scoped STS credential (self-host, no CP in the
+	// loop) gets no such advisory. This flag is ADVISORY ONLY: the broker
+	// cannot force a client to seal, so ignoring it still uploads plaintext.
+	if grant.Type == storage.GrantPresigned && s.sealDefaultMode() {
+		grant.SealDefault = true
+	}
 	s.audit(userID, "grant.write", n.ID, string(grant.Type))
 	return n, grant, nil
 }
+
+// sealDefaultMode reports whether this deployment is the CP-provisioned,
+// multi-tenant cloud (DEPLOY_MODE=cloud) — the case DEPLOY-SECURITY.md
+// documents as "the control plane holds the presign-brokering credential and
+// can read object bytes". It deliberately does NOT include DEPLOY_MODE=os
+// (a self-hosted/operator-provisioned box that is merely CP-adjacent for
+// optional features): that operator already holds their own bucket keys, so
+// there is no CP standing between them and their bytes to seal against. An
+// unset/invalid DEPLOY_MODE resolves to Standalone (false) — the same
+// fail-safe default deploymode.FromEnv() uses everywhere else; this reads the
+// env directly (not deploymode.Load()) so a per-request call never spams the
+// boot log.
+func (s *Service) sealDefaultMode() bool {
+	mode, _ := deploymode.FromEnv()
+	return mode == deploymode.Cloud
+}
+
+// SealDefault exports sealDefaultMode for the HTTP layer (GET
+// /api/files/seal-policy) so the UI can honestly surface this deployment's
+// default posture WITHOUT requiring an upload-grant round trip first.
+func (s *Service) SealDefault() bool { return s.sealDefaultMode() }
 
 // DownloadGrant mints an ACL-gated object-scoped READ grant for nodeID. Requires
 // viewer+. Folders have no bytes, so they are rejected.

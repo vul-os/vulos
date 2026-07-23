@@ -121,6 +121,16 @@ func registerFilesRoutes(mux *http.ServeMux, svc *files.Service) {
 		writeJSON(w, map[string]any{"node": n, "grant": grant})
 	}))
 
+	// GET /api/files/seal-policy — honest, live posture check for the UI
+	// (TransparencyPanel): whether uploads to this deployment's storage default
+	// to client-side content-sealed (DEPLOY_MODE=cloud only — see
+	// files.Service.SealDefault). Mirrors the per-upload grant.seal_default
+	// advisory without requiring an upload first. No credentials, no user
+	// data — session-authed only to match the rest of this surface.
+	mux.HandleFunc("GET /api/files/seal-policy", guard(func(w http.ResponseWriter, r *http.Request, uid string) {
+		writeJSON(w, map[string]any{"seal_default": svc.SealDefault()})
+	}))
+
 	// OS-mediated data plane (PHASE-2A). The Files app uploads/downloads bytes
 	// here when a direct presigned PUT/GET is unavailable — chiefly STANDALONE
 	// (local-FS) mode, where the browser cannot touch a filesystem path, and the

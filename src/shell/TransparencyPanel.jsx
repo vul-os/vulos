@@ -12,10 +12,28 @@
  *   • the tier picker  (POST /api/assistant/tier — where your AI runs)
  *   • "Download my data" (GET /api/export/data — the anti-lock-in proof)
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSovereignty } from '../core/useSovereignty'
 import { tierInfo } from '../core/sovereignty'
 import { useFocusTrap } from './useFocusTrap'
+
+// useSealPolicy fetches the LIVE, honest posture from GET /api/files/seal-policy
+// (backend/services/files/service.go SealDefault) — whether this deployment
+// defaults Drive uploads to client-side content-sealed. null = not yet loaded
+// (never guessed); true/false is what the box actually reports for itself.
+function useSealPolicy(open) {
+  const [sealDefault, setSealDefault] = useState(null)
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetch('/api/files/seal-policy', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setSealDefault(d ? !!d.seal_default : null) })
+      .catch(() => { if (!cancelled) setSealDefault(null) })
+    return () => { cancelled = true }
+  }, [open])
+  return sealDefault
+}
 
 // AT_REST — the honest at-rest posture. Each row is a claim we have earned or a
 // limit we admit. `state`: 'e2e' (green, content-blind), 'readable' (amber,
@@ -132,12 +150,35 @@ function AiTierSection() {
   )
 }
 
-function AtRestSection({ hasMasterKey }) {
+// driveStorageRow renders the Drive/cloud-storage row from LIVE seal-policy
+// state rather than a hardcoded claim — sealDefault is null (still loading, no
+// claim made), true (this deployment IS cloud-provisioned and DOES seal
+// single-shot uploads by default), or false (self-host/standalone/os, or the
+// endpoint failed — either way, NOT sealed by default, so labelled honestly
+// amber, never green). true still carries an explicit caveat: resumable/large
+// uploads are not covered yet (see docs/FILES.md).
+function driveStorageRow(sealDefault) {
+  if (sealDefault === true) {
+    return {
+      label: 'Drive uploads (cloud storage)', state: 'e2e',
+      note: 'Small/single-shot uploads are content-sealed to your own key before they reach cloud storage, so the control plane only ever brokers ciphertext. Large (resumable) uploads are NOT sealed yet — plaintext to the control plane, like any unsealed upload.',
+    }
+  }
+  return {
+    label: 'Drive uploads', state: 'readable',
+    note: sealDefault === false
+      ? 'Provider-readable by default. Either this is a self-hosted bucket you control (no Vulos Cloud in the loop), or this is a Vulos-Cloud-provisioned bucket where sealing has not (yet) been enabled for this deployment.'
+      : 'Checking this deployment’s storage-sealing default…',
+  }
+}
+
+function AtRestSection({ hasMasterKey, sealDefault }) {
+  const rows = [...AT_REST, driveStorageRow(sealDefault)]
   return (
     <div>
       <SectionTitle>Encrypted at rest vs provider-readable</SectionTitle>
       <div className="rounded-lg border border-neutral-800 divide-y divide-neutral-800/70 overflow-hidden">
-        {AT_REST.map(r => (
+        {rows.map(r => (
           <div key={r.label} className="flex items-start gap-2.5 px-3 py-2">
             <Dot color={r.state === 'e2e' ? 'var(--status-success)' : 'var(--status-warning)'} />
             <div className="min-w-0 flex-1">
@@ -235,6 +276,7 @@ function ExportSection() {
 
 export default function TransparencyPanel() {
   const { panelOpen, closePanel, egress, hasMasterKey } = useSovereignty()
+  const sealDefault = useSealPolicy(panelOpen)
   // A11Y: trap focus inside the panel while open + restore to the opener (the
   // TrustBadge) on close. Esc dismisses, matching the shell's overlay contract.
   const trapRef = useFocusTrap(panelOpen)
@@ -279,7 +321,7 @@ export default function TransparencyPanel() {
         <div className="p-5 space-y-5">
           <EgressBanner egress={egress} />
           <AiTierSection />
-          <AtRestSection hasMasterKey={hasMasterKey} />
+          <AtRestSection hasMasterKey={hasMasterKey} sealDefault={sealDefault} />
           <KeysSection hasMasterKey={hasMasterKey} />
           <ExportSection />
           <div className="text-[10px] text-neutral-600 leading-snug pt-1 border-t border-neutral-800/60">

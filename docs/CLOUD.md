@@ -175,7 +175,8 @@ Every claim here is checked against the box-side code that produces the traffic.
 
 | Data | Does the cloud see it? | Grounding |
 |---|---|---|
-| Your files, documents, media | **No.** They never transit the control plane; cross-box sharing is end-to-end encrypted through the relay (see [PEERING.md](PEERING.md) and [FILES.md](FILES.md)) | `backend/services/peering/` |
+| Your files, documents, media *(this chapter's coordination CP: sign-in, relay, enrollment)* | **No.** File bytes never transit the coordination control plane described in this chapter; cross-box sharing is end-to-end encrypted through the relay (see [PEERING.md](PEERING.md) and [FILES.md](FILES.md)) | `backend/services/peering/` |
+| Your Drive bytes, if your **storage bucket** is Vulos-Cloud-**provisioned** (a *separate* cloud role — Tigris bucket provisioning, not this chapter's CP) | **Yes, unless sealed.** That storage tier brokers presigned URLs with a master credential and is NOT content-blind by default — see [FILES.md § Cloud storage default sealing](FILES.md#cloud-storage-default-sealing) for the honest scope and what is/isn't sealed today | `backend/services/files/service.go` (`UploadGrant`), vulos-cloud `DEPLOY-SECURITY.md` §1 |
 | Notification content | **No.** Web Push payloads are RFC 8291 encrypted on your box to your browser's subscription keys; both browser vendors and any relay can route but not read them | `backend/services/notify/webpush.go` |
 | Your box's VAPID push private key | **No.** It is generated and kept on-box (`~/.vulos/db/vapid.json`, mode 0600) and never leaves | `backend/services/notify/webpush.go` |
 | Mail content for sleeping managed cells | **No.** The cloud can send only a generic, content-blind "new mail" nudge using its *own* push key; registration sends the cloud only your cell's ULID and a subscription handle | `backend/services/notify/cpregister.go` |

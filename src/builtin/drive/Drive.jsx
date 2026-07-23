@@ -296,9 +296,43 @@ async function downloadExternal(mountId, node) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+// sealForCloudDefault seals `file`'s bytes to the CALLER'S OWN published content
+// key (WAVE-3's VSEAL1 envelope — the same path shareFileContentBlind uses for
+// cross-account shares) so that a cloud-provisioned bucket's presign broker
+// (the CP) only ever receives ciphertext it cannot open. Unlike a share, there
+// is no separate recipient: the uploader is sealing to themselves, so a single
+// wrap (their own content pubkey) is enough — Open() decrypts it identically on
+// download. The file name/type stay OUT of the seal (packMeta is NOT used):
+// they already live safely in the box's own SQLite Node row, which the CP never
+// sees, so wrapping them again here would only add overhead for no
+// confidentiality gain. Fails closed (throws) if no master key is unlocked —
+// mirrors shareFileContentBlind's contract, never silently falls back to
+// plaintext. Returns a Blob ready to PUT.
+async function sealForCloudDefault(file) {
+  const { getMasterKey } = await import('../../lib/masterKey.js')
+  const mk = getMasterKey()
+  if (!mk) throw new Error('Unlock your account to upload to cloud storage sealed by default.')
+  const { deriveContentPubKeyB64, seal } = await import('../../lib/contentSeal.js')
+  const myPub = await deriveContentPubKeyB64(mk)
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const sealed = await seal(bytes, [myPub])
+  return new Blob([sealed], { type: 'application/octet-stream' })
+}
+
 // uploadOne: upload-grant → PUT bytes (direct presigned, else OS data plane) →
 // commit. Returns the committed node. `onProgress(fraction)` reports byte-level
 // PUT progress (0..1) when the transport can compute it.
+//
+// Cloud-provisioned storage default sealing: when the upload grant advertises
+// seal_default (DEPLOY_MODE=cloud — see backend/services/files/service.go
+// UploadGrant), the bytes are content-sealed client-side (sealForCloudDefault)
+// BEFORE the presigned PUT, so the control-plane's presign broker sees only a
+// VSEAL1 ciphertext envelope, never plaintext. This applies to the single-shot
+// path only: the RESUMABLE/chunked path below (files ≥ RESUMABLE_THRESHOLD) is
+// NOT yet wired to seal — VSEAL1 authenticates the WHOLE plaintext under one
+// AEAD call, which doesn't compose with per-chunk streaming without a wire
+// format change. See docs/FILES.md "Cloud storage default sealing" for the
+// honest, currently-shipped scope.
 async function uploadOne(parentId, file, onProgress, onResume) {
   // Large files: chunked/resumable path (each chunk ≤ relay cap; box reassembles
   // + commits server-side). Small files keep the single-shot grant→PUT→commit.
@@ -314,19 +348,25 @@ async function uploadOne(parentId, file, onProgress, onResume) {
     }
   }
   const { node, grant } = await filesApi.uploadGrant(parentId, file.name, file.type || 'application/octet-stream')
+  const willSeal = !!(grant && grant.type === 'presigned' && grant.seal_default)
+  const body = willSeal ? await sealForCloudDefault(file) : file
+  const contentTypeHeader = willSeal ? 'application/octet-stream' : (file.type || '')
   if (grant && grant.type === 'presigned' && grant.url) {
-    await putWithProgress(grant.url, file, {
-      headers: file.type ? { 'Content-Type': file.type } : {},
+    await putWithProgress(grant.url, body, {
+      headers: contentTypeHeader ? { 'Content-Type': contentTypeHeader } : {},
       credentials: false,
       onProgress,
     })
   } else {
-    await putWithProgress(apiUrl(`/files/content?node=${encodeURIComponent(node.id)}`), file, {
-      headers: file.type ? { 'Content-Type': file.type } : {},
+    await putWithProgress(apiUrl(`/files/content?node=${encodeURIComponent(node.id)}`), body, {
+      headers: contentTypeHeader ? { 'Content-Type': contentTypeHeader } : {},
       credentials: true,
       onProgress,
     })
   }
+  // Node.Size/ContentType record the ORIGINAL plaintext file (what the user
+  // sees in Drive) regardless of sealing — the seal envelope's larger, opaque
+  // byte count on the wire is an implementation detail, not user-facing state.
   await filesApi.commit(node.id, file.size, file.type || '', '')
   return node
 }
