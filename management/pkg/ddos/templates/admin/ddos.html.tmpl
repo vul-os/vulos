@@ -1,0 +1,137 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>DDoS defence — Vulos Operator Console</title>
+<link rel="stylesheet" href="/superadmin/admin.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="tb-brand" href="/superadmin/">
+    <span class="tb-mark">V</span>
+    <span class="tb-word">Vulos</span>
+    <span class="tb-tag">Operator</span>
+  </a>
+  <nav class="tb-nav" aria-label="Primary">
+    <span class="tb-group">
+      <a href="/superadmin/">Overview</a>
+      <a href="/superadmin/analytics">Analytics</a>
+    </span>
+    <span class="tb-group">
+      <a href="/superadmin/security">Security</a>
+      <a href="/superadmin/ddos" class="active">DDoS</a>
+      <a href="/superadmin/auditlog">Audit Log</a>
+    </span>
+  </nav>
+  <div class="tb-right">
+    <span class="tb-op"><span class="dot"></span>operator</span>
+    <a class="tb-logout" href="/superadmin/logout">Log out</a>
+  </div>
+</header>
+<main>
+<div class="page-head">
+  <h1>DDoS defence</h1>
+  <p class="page-sub">Live edge traffic, offender IPs and the cost circuit breaker that halts autoscale before a volumetric attack runs up the bill. Every state change here is audit-logged.</p>
+</div>
+
+<div class="tiles">
+  <div class="tile accent"><div class="num">{{printf "%.1f" .ReqPerSec}}</div><div class="lbl">Requests / sec (5m)</div></div>
+  <div class="tile {{if gt .BlocklistSize 0}}warn{{end}}"><div class="num">{{.BlocklistSize}}</div><div class="lbl">Blocklist entries</div></div>
+  <div class="tile"><div class="num">{{.FlyMachines}}</div><div class="lbl">Machines / {{.BudgetMaxMachines}} max</div></div>
+  <div class="tile {{if .TrippedAt}}danger{{else if .HaltAutoscale}}warn{{end}}"><div class="num">{{if .HaltAutoscale}}HALT{{else}}OK{{end}}</div><div class="lbl">Autoscale state</div></div>
+</div>
+
+<h2>Live traffic (last 5 min)</h2>
+<pre class="spark">{{.Sparkline}}</pre>
+
+<h2>Top IPs — last hour</h2>
+{{if .TopIPs}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Client IP</th><th class="right">Requests</th></tr></thead>
+<tbody>
+{{range .TopIPs}}
+<tr><td class="mono">{{.Key}}</td><td class="num-cell">{{.Count}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<div class="empty">No traffic data yet.</div>{{end}}
+
+<h2>Top routes by 4xx rate — last hour</h2>
+{{if .Top4xxRoutes}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Route</th><th class="right">4xx count</th></tr></thead>
+<tbody>
+{{range .Top4xxRoutes}}
+<tr><td class="mono">{{.Key}}</td><td class="num-cell">{{.Count}}</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<div class="empty">No route data yet.</div>{{end}}
+
+<h2>Recent honeypot hits</h2>
+{{if .HoneypotHits}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Source IP</th><th>Path</th><th>At</th></tr></thead>
+<tbody>
+{{range .HoneypotHits}}
+<tr>
+  <td class="mono"><span class="pill danger">{{.IP}}</span></td>
+  <td class="mono">{{.Path}}</td>
+  <td class="mono">{{.At.Format "2006-01-02 15:04:05"}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<div class="empty">No honeypot hits.</div>{{end}}
+
+<h2>IP blocklist</h2>
+<p class="ro">Active entries: <strong>{{.BlocklistSize}}</strong> · <a href="/api/superadmin/ddos/blocklist">view full blocklist (JSON) →</a></p>
+<form method="POST" action="/api/superadmin/ddos/blocklist-form" class="filter-bar">
+  <input type="text" name="cidr" placeholder="1.2.3.4 or 10.0.0.0/8">
+  <input type="text" name="reason" placeholder="reason">
+  <button type="submit" class="danger">Block</button>
+</form>
+
+<h2>Geo-block countries</h2>
+<p class="ro">{{if .GeoBlockCountries}}Blocked: <strong>{{joinStr .GeoBlockCountries}}</strong>{{else}}No countries blocked.{{end}}</p>
+<form method="POST" action="/api/superadmin/ddos/geo-block-form" class="filter-bar">
+  <input type="text" name="countries" placeholder="KP,CU,IR" value="{{joinStr .GeoBlockCountries}}">
+  <button type="submit" class="primary">Update</button>
+</form>
+
+<h2>Captcha-everywhere</h2>
+<p class="ro">
+  Status: {{if .CaptchaEverywhere}}<span class="pill warn">enabled</span>{{else}}<span class="pill neutral">disabled</span>{{end}}
+  — when enabled, proof-of-work is required on <em>all</em> POST routes, not just auth.
+</p>
+<form method="POST" action="/superadmin/ddos/toggle-captcha" class="inline-form">
+  <button type="submit">Toggle captcha-everywhere</button>
+</form>
+
+<h2>Cost circuit breaker</h2>
+<div class="note">
+  Fly machines <strong class="mono">{{.FlyMachines}}</strong> / {{.BudgetMaxMachines}} max ·
+  managed egress <strong class="mono">{{printf "%.2f" .ManagedEgressGB}} GB</strong> ·
+  hourly budget <strong class="mono">${{printf "%.2f" .BudgetMaxUSD}}</strong>
+</div>
+{{if .TrippedAt}}
+<div class="banner warn">&#9888; Budget exceeded — halt-autoscale tripped at {{.TrippedAt.Format "2006-01-02 15:04:05 UTC"}}</div>
+{{end}}
+<p class="ro">Autoscale: {{if .HaltAutoscale}}<span class="pill danger">halted</span>{{else}}<span class="pill ok">running</span>{{end}}</p>
+<form method="POST" action="/superadmin/ddos/toggle-halt" class="inline-form">
+  <button type="submit" class="{{if .HaltAutoscale}}primary{{else}}danger{{end}}">{{if .HaltAutoscale}}Resume autoscale{{else}}Halt autoscale{{end}}</button>
+</form>
+
+<p class="ro spaced-top">All state-changing actions are audit-logged.</p>
+</main>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,66 @@
+{{define "account_detail"}}
+<div class="page-head">
+  <h1>{{.Account.Email}}</h1>
+  <p class="page-sub">Account detail — verification / TOTP / session state, entitlements and recorded usage. Every operator action is audit-logged.</p>
+</div>
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+<table class="kv">
+  <tr><th>ID</th><td>{{.Account.ID}}</td></tr>
+  <tr><th>Email</th><td>{{.Account.Email}}</td></tr>
+  <tr><th>Status</th><td>{{if .Account.Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td></tr>
+  <tr><th>Email Verified</th><td>{{if .Account.EmailVerified}}<span class="pill ok">verified</span>{{else}}<span class="pill warn">unverified</span>{{end}}</td></tr>
+  <tr><th>TOTP Enabled</th><td>{{if .Account.TOTPEnabled}}<span class="pill ok">enabled</span>{{else}}<span class="pill neutral">off</span>{{end}}</td></tr>
+  <tr><th>Active Sessions</th><td>{{.Account.Sessions}}</td></tr>
+  <tr><th>Created</th><td>{{.Account.CreatedAt}}</td></tr>
+</table>
+
+<h2>Actions</h2>
+<span class="actions">
+{{if .Account.Suspended}}
+<form method="POST" action="/superadmin/accounts/{{.Account.ID}}/action">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input type="hidden" name="action" value="unsuspend">
+  <button type="submit">Unsuspend</button>
+</form>
+{{else}}
+<a class="btn danger" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=suspend">Suspend</a>
+{{end}}
+<a class="btn" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=force-password-reset">Force Password Reset</a>
+<a class="btn danger" href="/superadmin/accounts/{{.Account.ID}}/confirm?action=2fa-reset">Reset 2FA</a>
+</span>
+
+<h2>Entitlements &amp; recorded usage</h2>
+<p id="billing-tier"><span class="muted">Loading entitlements + recorded usage…</span></p>
+<div class="table-wrap">
+<table id="billing-table" data-account-id="{{.Account.ID}}" hidden>
+  <thead><tr><th>Product</th><th>Entitlement</th><th>Recorded usage (this account)</th></tr></thead>
+</table>
+</div>
+<script src="/superadmin/account_detail.js" defer></script>
+
+<h2>Recent Transactions</h2>
+{{if .Account.Transactions}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Txn ID</th><th class="right">Amount (ZAR cents)</th><th>Status</th><th>Created</th><th>Refund</th></tr></thead>
+<tbody>
+{{range .Account.Transactions}}
+<tr>
+  <td class="mono">{{.TxnID}}</td>
+  <td class="num-cell">{{.AmountZAR}}</td>
+  <td>{{if eq .Status "refunded"}}<span class="pill neutral">refunded</span>{{else if eq .Status "failed"}}<span class="pill danger">failed</span>{{else if eq .Status "success"}}<span class="pill ok">success</span>{{else}}<span class="pill">{{.Status}}</span>{{end}}</td>
+  <td class="mono muted">{{.CreatedAt}}</td>
+  <td><a class="btn danger sm" href="/superadmin/accounts/{{$.Account.ID}}/refund/confirm?txn_id={{.TxnID}}">Refund</a></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<div class="empty">
+  <span class="empty-t">No transactions</span>
+  <span class="empty-d">This account has no recorded billing transactions.</span>
+</div>
+{{end}}
+{{end}}

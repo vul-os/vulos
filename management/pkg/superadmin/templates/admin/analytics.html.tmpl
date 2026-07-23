@@ -1,0 +1,73 @@
+{{define "analytics"}}
+<div class="page-head">
+  <h1>Analytics</h1>
+  <p class="page-sub">Product usage — signups, active users and per-product trends. Usage signals only; no revenue.</p>
+</div>
+
+<div class="tiles">
+  <div class="tile accent"><div class="num">{{humanInt .TotalUsers}}</div><div class="lbl">Total users</div></div>
+  <div class="tile"><div class="num">{{humanInt .NewUsers30d}}</div><div class="lbl">New (30d)</div></div>
+  <div class="tile"><div class="num">{{humanInt .DAU}}</div><div class="lbl">DAU (24h)</div></div>
+  <div class="tile"><div class="num">{{humanInt .MAU}}</div><div class="lbl">MAU (30d)</div></div>
+</div>
+
+<h2>Signups — last 30 days</h2>
+{{if .SignupBars}}
+<div class="chart-wrap">
+  <svg class="sparkline tall" viewBox="0 0 30 40" preserveAspectRatio="none"
+       role="img" aria-label="Daily signups over the last 30 days">
+    {{range $i,$b := .SignupBars}}
+      <rect x="{{$i}}" y="{{$b.BarY}}" width="0.85" height="{{$b.BarH}}"
+            fill="#17a2a6" opacity="0.9">
+        <title>{{$b.Day}}: {{$b.Count}}</title>
+      </rect>
+    {{end}}
+  </svg>
+  {{if .SignupsByDay}}
+  <div class="chart-labels">
+    {{with index .SignupsByDay 0}}<span>{{.Day}}</span>{{end}}
+    {{with index .SignupsByDay (add (len .SignupsByDay) -1)}}<span>{{.Day}}</span>{{end}}
+  </div>
+  {{end}}
+</div>
+<p class="ro">Peak day: {{.SignupPeak}} signups. Bars show daily new-account counts.</p>
+{{else}}
+<div class="empty">No signup data yet.</div>
+{{end}}
+
+{{if .ProductTrends}}
+<h2>Per-product usage — last 7 days</h2>
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Product</th>
+  <th class="right">7-day total</th>
+  <th>Unit</th>
+  <th class="col-trend">Daily trend</th>
+</tr></thead>
+<tbody>
+{{range .ProductTrends}}
+<tr>
+  <td>{{.Product}}</td>
+  <td class="num-cell">{{humanInt64 .Total7d}}</td>
+  <td class="muted">{{.Unit}}</td>
+  <td>
+    {{if .ChartBars}}
+    <svg class="trendbars" viewBox="0 0 49 40" preserveAspectRatio="none"
+         role="img" aria-label="7-day trend for {{.Product}}">
+      {{range $i,$b := .ChartBars}}
+        <rect x="{{mul7i $i}}" y="{{$b.BarY}}" width="5" height="{{$b.BarH}}"
+              fill="#17a2a6" opacity="0.9">
+          <title>{{$b.Day}}: {{$b.Count}}</title>
+        </rect>
+      {{end}}
+    </svg>
+    {{else}}<span class="muted">—</span>{{end}}
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+{{end}}

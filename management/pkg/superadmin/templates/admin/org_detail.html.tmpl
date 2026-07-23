@@ -1,0 +1,60 @@
+{{define "org_detail"}}
+{{if .Org}}
+<div class="page-head">
+  <h1>{{.Org.Name}} <span class="ro">/ {{.Org.Slug}}</span></h1>
+  <p class="page-sub">Organisation detail — member roster, roles, seats and suspension state.</p>
+</div>
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+
+<table class="kv">
+  <tr><th>ID</th><td>{{.Org.ID}}</td></tr>
+  <tr><th>Slug</th><td>{{.Org.Slug}}</td></tr>
+  <tr><th>Name</th><td>{{.Org.Name}}</td></tr>
+  <tr><th>Owner</th><td>{{.Org.OwnerEmail}}</td></tr>
+  <tr><th>Members</th><td>{{.Org.MemberCount}}</td></tr>
+  <tr><th>Seats</th><td>{{.Org.SeatCount}}</td></tr>
+  <tr><th>Tier</th><td><span class="pill neutral">{{.Org.Tier}}</span></td></tr>
+  <tr><th>Status</th><td>{{if .Org.Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td></tr>
+  <tr><th>Created</th><td>{{.Org.CreatedAt}}</td></tr>
+</table>
+
+{{if .Org.UsageSummary}}
+<h2>Usage</h2>
+<pre class="code">{{.Org.UsageSummary}}</pre>
+{{end}}
+
+<h2>Members</h2>
+{{if .Org.Members}}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Account ID</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+<tbody>
+{{range .Org.Members}}
+<tr>
+  <td><a href="/superadmin/accounts/{{.AccountID}}">{{.AccountID}}</a></td>
+  <td>{{.Email}}</td>
+  <td><span class="pill">{{.Role}}</span></td>
+  <td class="muted">{{.JoinedAt}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<div class="empty">No members loaded.</div>
+{{end}}
+
+<h2>Actions</h2>
+{{if .Org.Suspended}}
+<a class="btn" href="/superadmin/orgs/{{.Org.ID}}/confirm?action=restore">Restore org</a>
+{{else}}
+<a class="btn danger" href="/superadmin/orgs/{{.Org.ID}}/confirm?action=suspend">Suspend org</a>
+{{end}}
+<a class="btn" href="/superadmin/accounts/{{.Org.ID}}">View owner account</a>
+{{else}}
+<h1>Org not found</h1>
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+<p>Org data provider may not be wired.</p>
+{{end}}
+{{end}}

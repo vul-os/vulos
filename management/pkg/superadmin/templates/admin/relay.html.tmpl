@@ -1,0 +1,41 @@
+{{define "relay"}}
+<div class="page-head">
+  <h1>Relay health</h1>
+  <p class="page-sub">The relay is the one bandwidth-bound service the fleet runs. Per-region PoP health and data-plane throughput — operational signals only.</p>
+</div>
+{{if not .Available}}
+<div class="note"><strong>Relay health not wired.</strong> This control plane is not
+aggregating relay PoP health (self-hosted, or dev without a relay-status store).</div>
+{{else}}
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+
+<div class="tiles">
+  <div class="tile accent"><div class="num">{{printf "%.1f" .Overview.TotalGBMonth}}</div><div class="lbl">GB relayed ({{.Overview.Period}})</div></div>
+  <div class="tile"><div class="num">{{len .Overview.PoPs}}</div><div class="lbl">Regions</div></div>
+</div>
+
+<h2>PoP health by region</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Region</th><th class="right">PoPs (healthy / total)</th><th>Status</th><th class="right">GB this month</th></tr></thead>
+<tbody>
+{{range .Overview.PoPs}}
+<tr>
+  <td><code>{{.Region}}</code></td>
+  <td class="num-cell">{{.Healthy}} / {{.Total}}</td>
+  <td>
+    {{if eq .Status "up"}}<span class="pill ok">up</span>
+    {{else if eq .Status "degraded"}}<span class="pill warn">degraded</span>
+    {{else}}<span class="pill danger">down</span>{{end}}
+  </td>
+  <td class="num-cell">{{printf "%.1f" .RelayGBMonth}}</td>
+</tr>
+{{else}}
+<tr><td colspan="4"><div class="empty">No PoP data reported by the relay fleet.</div></td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{end}}
+{{end}}

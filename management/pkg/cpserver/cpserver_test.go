@@ -1,0 +1,160 @@
+package cpserver_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/vul-os/vulos-management/pkg/billingport"
+	"github.com/vul-os/vulos-management/pkg/cpserver"
+)
+
+// TestNew_SelfHostDefaults proves a zero-config control plane assembles with the
+// free no-op seams and serves the always-on operational endpoints, and that the
+// version endpoint reports the no-op billing rail (never charges).
+func TestNew_SelfHostDefaults(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()}, cpserver.Deps{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	h := srv.Handler()
+
+	// Liveness.
+	if rr := do(h, "GET", "/healthz"); rr.Code != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200", rr.Code)
+	}
+	// Readiness (in-memory SQLite answers).
+	if rr := do(h, "GET", "/readyz"); rr.Code != http.StatusOK {
+		t.Fatalf("/readyz = %d, want 200; body=%s", rr.Code, do(h, "GET", "/readyz").Body.String())
+	}
+	// Version reports the no-op billing rail.
+	rr := do(h, "GET", "/version")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("/version = %d, want 200", rr.Code)
+	}
+	var v map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &v); err != nil {
+		t.Fatalf("decode /version: %v", err)
+	}
+	if v["billing_rail"] != "noop" {
+		t.Fatalf("billing_rail = %q, want noop (self-host never charges)", v["billing_rail"])
+	}
+	if v["domain"] != "vulos.org" {
+		t.Fatalf("domain = %q, want default vulos.org", v["domain"])
+	}
+	// M2: the entitlement rail identity is exposed so a fail-open-to-free
+	// composition regression is machine-checkable, not log-only.
+	if v["entitlements_rail"] != "noop" {
+		t.Fatalf("entitlements_rail = %q, want noop (self-host defaults)", v["entitlements_rail"])
+	}
+}
+
+// TestHealthz_ReportsRails proves M2: /healthz — the always-on liveness probe —
+// reports the wired billing + entitlement rails, so a fail-open-to-free
+// regression (cloud booting with the no-op resolver) is observable there too.
+func TestHealthz_ReportsRails(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()}, cpserver.Deps{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/healthz")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200", rr.Code)
+	}
+	var v map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &v); err != nil {
+		t.Fatalf("decode /healthz: %v", err)
+	}
+	if v["status"] != "ok" {
+		t.Fatalf("status = %q, want ok", v["status"])
+	}
+	if v["billing_rail"] != "noop" || v["entitlements_rail"] != "noop" {
+		t.Fatalf("rails = billing:%q entitlements:%q, want both noop", v["billing_rail"], v["entitlements_rail"])
+	}
+}
+
+// realResolver is a minimal non-noop EntitlementResolver so the guard sees a
+// "custom" rail. It embeds the noop for the methods we don't exercise, but its
+// concrete type is NOT *billingport.NoopResolver, so billingport.IsNoopResolver
+// reports false — exactly the shape a real commercial resolver has.
+type realResolver struct{ *billingport.NoopResolver }
+
+// TestVersionRealResolver_ReportsCustom proves the /version rail identity flips
+// to "custom" when a real (non-noop) entitlement resolver is injected — the
+// machine-checkable half of M2.
+func TestVersionRealResolver_ReportsCustom(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()},
+		cpserver.Deps{Entitlements: realResolver{billingport.NewNoopResolver()}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/version")
+	var v map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &v); err != nil {
+		t.Fatalf("decode /version: %v", err)
+	}
+	if v["entitlements_rail"] != "custom" {
+		t.Fatalf("entitlements_rail = %q, want custom for an injected resolver", v["entitlements_rail"])
+	}
+}
+
+// TestNew_RouteRegistrarHook proves feature routes compose through the hook with
+// access to the shared runtime and injected seams.
+func TestNew_RouteRegistrarHook(t *testing.T) {
+	reg := func(mux *http.ServeMux, rt *cpserver.Runtime) error {
+		mux.HandleFunc("GET /api/tier", func(w http.ResponseWriter, r *http.Request) {
+			tier, _ := rt.Entitlements.EffectiveTierFor(r.Context(), "acct-1")
+			_, _ = w.Write([]byte(tier))
+		})
+		return nil
+	}
+	srv, err := cpserver.New(cpserver.Config{DBDir: t.TempDir()}, cpserver.Deps{Routes: []cpserver.RouteRegistrar{reg}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/api/tier")
+	if rr.Code != http.StatusOK || rr.Body.String() != "selfhost" {
+		t.Fatalf("/api/tier = %d %q, want 200 \"selfhost\"", rr.Code, rr.Body.String())
+	}
+}
+
+func do(h http.Handler, method, path string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	return rr
+}
+
+// TestNew_GlobalMiddlewareApplied proves the M1 fix: the assembled handler is no
+// longer a bare mux — it is wrapped in the global defence-in-depth chain, so every
+// response carries the RequestID + SecureHeaders that main.go's chain applies.
+func TestNew_GlobalMiddlewareApplied(t *testing.T) {
+	srv, err := cpserver.New(cpserver.Config{Version: "test", DBDir: t.TempDir()}, cpserver.Deps{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	rr := do(srv.Handler(), "GET", "/healthz")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("/healthz = %d, want 200", rr.Code)
+	}
+	if rr.Header().Get("X-Request-ID") == "" {
+		t.Error("missing X-Request-ID header — RequestID middleware not wrapping the mux")
+	}
+	if got := rr.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff — SecureHeaders not wrapping the mux", got)
+	}
+	if got := rr.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("X-Frame-Options = %q, want DENY — SecureHeaders not wrapping the mux", got)
+	}
+}

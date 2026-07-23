@@ -1,0 +1,55 @@
+/* app.css — global base layer for the vulos-management console SPA.
+ *
+ * Tokens-only: every colour/space/size comes from theme.css (copied verbatim
+ * from the marketing site), so the console reads as the same product as
+ * vulos.org. No hardcoded hex. The two app worlds own their own structural CSS:
+ *
+ *   · the authed console shell → console/console.css  (.vkl-*)
+ *   · the bare auth surface     → Root.jsx AuthLayout  (.vm-auth-main, inline)
+ *
+ * This file is only the thin, app-wide base beneath both: the root sizing plus
+ * a few polish primitives (selection, scrollbars, focus, motion) that make the
+ * whole surface feel considered rather than defaulted. */
+
+#root {
+  min-height: 100dvh;
+}
+
+/* Selection: a soft accent wash rather than the OS default blue. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--text-primary);
+}
+
+/* App-wide thin scrollbars, tuned to the instrument-panel voice. Firefox first,
+   then the WebKit pseudo-elements. Individual scrollers (the sidebar) may still
+   restyle their own track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-emphasis) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-emphasis);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 99px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-ghost);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Never let a stray wide element push the whole document sideways. */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

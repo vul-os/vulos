@@ -1,0 +1,60 @@
+{{define "orgs_list"}}
+<div class="page-head">
+  <h1>Organisations</h1>
+  <p class="page-sub">The org directory — members, seats, tier and suspension state. Open one to see its member roster and usage.</p>
+</div>
+{{if .Flash}}<div class="flash-ok">{{.Flash}}</div>{{end}}
+{{if .FlashErr}}<div class="flash-err">{{.FlashErr}}</div>{{end}}
+<form method="GET" action="/superadmin/orgs" class="filter-bar">
+  <input type="search" name="q" value="{{.Q}}" placeholder="search slug / name / owner email">
+  <button type="submit" class="primary">Search</button>
+</form>
+{{if .Orgs}}
+<div class="table-wrap">
+<table>
+<thead><tr>
+  <th>Slug</th>
+  <th>Name</th>
+  <th>Owner</th>
+  <th class="right">Members</th>
+  <th>Tier</th>
+  <th>Status</th>
+  <th>Created</th>
+  <th>Actions</th>
+</tr></thead>
+<tbody>
+{{range .Orgs}}
+<tr>
+  <td class="mono"><a href="/superadmin/orgs/{{.ID}}">{{.Slug}}</a></td>
+  <td>{{.Name}}</td>
+  <td class="muted">{{.OwnerEmail}}</td>
+  <td class="num-cell">{{.MemberCount}}</td>
+  <td><span class="pill neutral">{{.Tier}}</span></td>
+  <td>{{if .Suspended}}<span class="pill suspended">suspended</span>{{else}}<span class="pill active">active</span>{{end}}</td>
+  <td class="mono muted">{{.CreatedAt}}</td>
+  <td>
+    <span class="actions">
+    {{if .Suspended}}
+    <a class="btn sm" href="/superadmin/orgs/{{.ID}}/confirm?action=restore">Restore</a>
+    {{else}}
+    <a class="btn danger sm" href="/superadmin/orgs/{{.ID}}/confirm?action=suspend">Suspend</a>
+    {{end}}
+    <a class="btn sm" href="/superadmin/orgs/{{.ID}}">Detail</a>
+    </span>
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<div class="pager">
+  {{if gt .Offset 0}}<a href="?q={{.Q}}&offset={{.PrevOffset}}&limit={{.Limit}}">&larr; Prev</a>{{end}}
+  {{if .HasMore}}<a href="?q={{.Q}}&offset={{.NextOffset}}&limit={{.Limit}}">Next &rarr;</a>{{end}}
+</div>
+{{else}}
+<div class="empty">
+  <span class="empty-t">No organisations{{if .Q}} match “{{.Q}}”{{end}}</span>
+  <span class="empty-d">{{if .Q}}Try an org slug, name or owner email.{{else}}Nothing to show — org data requires the org store to be wired on this control plane.{{end}}</span>
+</div>
+{{end}}
+{{end}}
