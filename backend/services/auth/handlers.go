@@ -746,6 +746,12 @@ func (h *Handler) handleMasterKeyResetActive(w http.ResponseWriter, r *http.Requ
 		writeErr(w, 400, err.Error())
 		return
 	}
+	// ACCOUNTSECURITY-IP: record the Tier-2 active-session master-key reset here
+	// (this handler has the real request → real client IP/user-agent), matching
+	// how handleChangePassword records password_change/masterkey_reset. This path
+	// resets the login password via the in-memory master key with no old password,
+	// so it is a sensitive account mutation the sign-in-security feed must show.
+	h.store.fireSensitiveActionHook(userID, "password_reset_active", extractIP(r), r.UserAgent())
 	h.store.Flush()
 	// Keep the caller signed in: refresh their (unchanged) session cookie.
 	if keepToken != "" {
