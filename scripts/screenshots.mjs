@@ -18,7 +18,11 @@
  *
  * Output: docs/screenshots/<name>.png            (dark theme, canonical)
  *         docs/screenshots/<name>-light.png      (light theme, where supported)
- * Captured at 1440x900 @ 2x (deviceScaleFactor:2 → 2880x1800 retina PNGs).
+ * Captured at 1600x1000. Per-shot `dsf` (deviceScaleFactor) defaults to 1 —
+ * heavy maximized apps (App Hub's 52 cards, Dashboard's tables) intermittently
+ * capture a BLACK GPU frame in headless Chromium at 2x (a known high-DPI
+ * compositor glitch). Lighter shots opt into `dsf: 2` for retina crispness; see
+ * the SHOTS array below.
  *
  * Usage:
  *   npm run screenshots
@@ -214,6 +218,41 @@ const DEMO_TELEMETRY = {
   net_rx: 2.4 * 1e6, net_tx: 640 * 1e3, disk_read: 1.1 * 1e6, disk_write: 340 * 1e3,
 }
 
+// Calendar (`calendar` shot) — a full month's worth of events (not just today's
+// two) so the month grid reads as a lived-in calendar rather than an almost-
+// empty one. Spread across the ~42-cell 6-week grid around "today".
+const CALENDAR_EVENTS = [
+  { uid: 'e1', summary: 'Design review', start: iso(todayAt(14, 0)), end: iso(todayAt(15, 0)), location: 'Meet · war-room', allDay: false },
+  { uid: 'e2', summary: '1:1 with Sam', start: iso(todayAt(16, 30)), end: iso(todayAt(17, 0)), location: '', allDay: false },
+  { uid: 'e3', summary: 'Sprint planning', start: iso(todayAt(9, 0) + dayMs), end: iso(todayAt(10, 0) + dayMs), location: 'Office', allDay: false },
+  { uid: 'e4', summary: 'Dentist', start: iso(todayAt(11, 0) - 2 * dayMs), end: iso(todayAt(11, 30) - 2 * dayMs), location: '', allDay: false },
+  { uid: 'e5', summary: 'Team offsite — Lisbon', start: iso(todayAt(9, 0) + 3 * dayMs), end: iso(todayAt(18, 0) + 4 * dayMs), location: 'Lisbon', allDay: true },
+  { uid: 'e6', summary: 'Quarterly board call', start: iso(todayAt(10, 0) - 5 * dayMs), end: iso(todayAt(11, 0) - 5 * dayMs), location: '', allDay: false },
+  { uid: 'e7', summary: 'Coffee with Priya', start: iso(todayAt(9, 30) + 6 * dayMs), end: iso(todayAt(10, 0) + 6 * dayMs), location: 'Design Studio', allDay: false },
+  { uid: 'e8', summary: "Ada's birthday", start: iso(todayAt(0) + 9 * dayMs), end: iso(todayAt(0) + 9 * dayMs), location: '', allDay: true },
+  { uid: 'e9', summary: 'Backup verification', start: iso(todayAt(8, 0) - 8 * dayMs), end: iso(todayAt(8, 30) - 8 * dayMs), location: '', allDay: false },
+]
+
+// Contacts (`contacts` shot) — a small, recognisable address book so the list +
+// detail panes both render real content instead of an empty state.
+const CONTACTS_CARDS = [
+  { uid: 'c1', name: 'Priya Menon', org: 'Acme, Inc.', title: 'Head of Product', emails: ['priya@acme.io'], phones: ['+1 415 555 0134'] },
+  { uid: 'c2', name: 'Sam Okafor', org: 'Acme, Inc.', title: 'Engineering Lead', emails: ['sam@acme.io'], phones: ['+1 415 555 0198'] },
+  { uid: 'c3', name: 'Marta Costa', org: 'Lisbon Design Collective', title: 'Creative Director', emails: ['marta@lisbondesign.pt'], phones: ['+351 21 555 0198'] },
+  { uid: 'c4', name: 'Billing · Hetzner', org: 'Hetzner Online GmbH', title: '', emails: ['billing@hetzner.com'], phones: [] },
+  { uid: 'c5', name: 'Events Team', org: 'Acme, Inc.', title: '', emails: ['events@acme.io'], phones: [] },
+]
+
+// Assistant (`assistant` shot) — the answer returned for the "What needs my
+// attention" quick action, so the shot shows a real Q&A turn instead of the
+// empty composer state. Mirrors HOME_PAYLOAD's brief so the story is consistent
+// across shots.
+const ASSISTANT_ATTENTION_ANSWER =
+  "You're mostly clear this morning. Priya is waiting on your ack on the Q3 " +
+  "roadmap timeline, and the Hetzner invoice is due Friday — auto-pay is on, so " +
+  "no action needed unless you want to review it. Design review moved to 2pm. " +
+  "Nothing else is on fire."
+
 // Common overrides applied to every capture.
 async function demoOverrides() {
   const { registry, installed } = await buildStoreFixtures()
@@ -222,12 +261,12 @@ async function demoOverrides() {
     'GET /api/assistant/home': json(HOME_PAYLOAD),
     // Calendar: return live events so the agenda badge reads "live" and no
     // "Calendar unavailable" toast fires.
-    'GET /api/pim/calendar/events': json({
-      events: [
-        { uid: 'e1', summary: 'Design review', start: iso(todayAt(14, 0)), end: iso(todayAt(15, 0)), location: 'Meet · war-room', allDay: false },
-        { uid: 'e2', summary: '1:1 with Sam', start: iso(todayAt(16, 30)), end: iso(todayAt(17, 0)), location: '', allDay: false },
-      ],
-    }),
+    'GET /api/pim/calendar/events': json({ events: CALENDAR_EVENTS }),
+    // Contacts: address book over the same PIM proxy.
+    'GET /api/pim/contacts/cards': json({ contacts: CONTACTS_CARDS }),
+    // Assistant quick action ("What needs my attention") — a real answer so the
+    // `assistant` shot shows a populated conversation, not the empty composer.
+    'POST /api/assistant/attention': json({ answer: ASSISTANT_ATTENTION_ANSWER }),
     // File Explorer runs `ls`/`echo $HOME` through /api/exec — feed it the demo tree.
     'POST /api/exec': (req) => {
       let cmd = ''
@@ -247,6 +286,12 @@ async function demoOverrides() {
     'GET /api/routing/apps': json(ROUTING_APPS),
     // AI status for Settings → AI Assistant.
     'GET /api/ai/status': json({ available: true, mode: 'byo', provider: 'ollama', model: 'llama3', providers: [{ id: 'ollama', label: 'Ollama (on-device)', ready: true }], tier: 'local' }),
+    // Launchpad (`mobile-apps` shot) — apt-installed desktop entries. Must be an
+    // array: the unmocked-endpoint catch-all returns `{}`, and Launchpad's
+    // `desktopEntries.filter(...)` throws on a non-array, white-screening the
+    // whole overlay (a real crash, not a rendering quirk — hence the solid
+    // black frame this fixture fixes).
+    'GET /api/desktop/entries': json([]),
     // Activity Monitor (`tiled` shot) — process table + network connections.
     // The live CPU/mem/net numbers come over the /api/telemetry WS, mocked
     // per-context in captureTheme() alongside the PTY.
@@ -298,6 +343,7 @@ const SHOTS = [
   {
     name: 'hero',
     light: true,
+    dsf: 2,
     desc: 'Desktop / Home — the sovereign-instance backdrop',
     async drive(page) {
       // No windows: the Home backdrop is the desktop.
@@ -324,6 +370,40 @@ const SHOTS = [
       await launchApp(page, 'Settings')
       await page.getByRole('button', { name: 'Appearance' }).first().click().catch(() => {})
       await page.waitForTimeout(600)
+    },
+  },
+  {
+    name: 'calendar',
+    light: false,
+    dsf: 2,
+    desc: 'Calendar — month view, a lived-in schedule over connected accounts',
+    async drive(page) {
+      await launchApp(page, 'Calendar')
+      await page.waitForTimeout(400)
+    },
+  },
+  {
+    name: 'assistant',
+    light: false,
+    dsf: 2,
+    desc: 'Assistant — private AI over your mail, with the sovereignty badge and a real answer',
+    async drive(page) {
+      await launchApp(page, 'Assistant')
+      await page.getByRole('button', { name: /What needs my attention/ }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
+    },
+  },
+  {
+    name: 'contacts',
+    light: false,
+    dsf: 2,
+    desc: 'Contacts — the address book over your connected accounts',
+    async drive(page) {
+      await launchApp(page, 'Contacts')
+      // Select a contact so the detail pane shows a real card instead of the
+      // "Select a contact" empty state.
+      await page.getByRole('button', { name: /Priya Menon/ }).first().click().catch(() => {})
+      await page.waitForTimeout(400)
     },
   },
   {
@@ -385,23 +465,41 @@ const SHOTS = [
   {
     name: 'mobile',
     light: false,
-    desc: 'MobileStack — phone layout (narrow viewport, single-column home)',
+    dsf: 2,
+    desc: 'MobileStack — File Explorer running fullscreen on a phone',
     // MOBILE-06 (src/App.jsx): `layout` comes from useViewport(), purely a
     // window-width media query (<768px → 'mobile') — no device-profile API
     // override needed. A 390px-wide context alone flips `useDesktop` false and
     // renders <MobileStack/> instead of <DesktopCanvas/>.
+    //
+    // MobileStack has no desktop-style window chrome to maximize, and its
+    // bottom-dock "Apps" button is the RUNNING-apps switcher (disabled with
+    // zero windows open) — not an app launcher, so clicking it before any app
+    // is open does nothing and previously left the shot on the mostly-empty
+    // assistant home. The real fix: launch a builtin exactly like the desktop
+    // shots do (⌘K still works — CommandPalette is mounted in MobileStack
+    // too); ShellProvider's window-count effect then flips MobileStack to its
+    // fullscreen "app" view automatically.
     viewport: { width: 390, height: 844 },
     async drive(page) {
       await page.waitForTimeout(700)
-      // The assistant-first home is intentionally sparse; open the Apps grid
-      // from the bottom dock for a richer, more representative phone view.
-      const apps = page.getByRole('button', { name: /^Apps$/ }).first()
-      if (await apps.isVisible().catch(() => false)) {
-        await apps.click().catch(() => {})
-      } else {
-        await page.getByText('Apps', { exact: true }).first().click().catch(() => {})
-      }
-      await page.waitForTimeout(900)
+      await launchApp(page, 'File Explorer', { maximize: false })
+      await page.waitForTimeout(500)
+    },
+  },
+  {
+    name: 'mobile-apps',
+    light: false,
+    dsf: 2,
+    desc: 'MobileStack — the full app grid (Library) on a phone',
+    viewport: { width: 390, height: 844 },
+    async drive(page) {
+      await page.waitForTimeout(700)
+      // The bottom dock's "Library" button opens the Launchpad app-grid
+      // overlay — a richer, more representative phone view than the sparse
+      // assistant-first home.
+      await page.getByRole('button', { name: 'Library' }).first().click().catch(() => {})
+      await page.waitForTimeout(700)
     },
   },
 ]
@@ -445,7 +543,11 @@ async function captureTheme(browser, theme, overrides, results) {
     const isMobileShot = !!shot.viewport
     const context = await browser.newContext({
       viewport: shot.viewport || VIEWPORT,
-      deviceScaleFactor: isMobileShot ? 2 : 1, // phone shot: retina-ish is safe (light view, no black-frame risk)
+      // Per-shot override (see SHOTS above): lighter views opt into dsf:2 for
+      // retina crispness; heavy maximized apps (App Hub, Dashboard, Instances,
+      // tiled multi-window) stay at the default 1 — headless Chromium
+      // intermittently captures a BLACK GPU frame for those at 2x.
+      deviceScaleFactor: shot.dsf || 1,
       isMobile: isMobileShot,
       hasTouch: isMobileShot,
       reducedMotion: 'reduce', // kills window open/maximize animations → no mid-transition black frames

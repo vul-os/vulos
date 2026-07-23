@@ -423,7 +423,10 @@ export default function Assistant() {
           <div className="min-w-0">
             <div className="text-[13px] font-medium text-neutral-100 leading-tight">Assistant</div>
             <div className="text-[11px] text-neutral-500 leading-tight truncate">
-              Private AI over your mail{status?.mail_source ? ` · ${status.mail_source}` : ''}
+              {/* Only surface the mail source when it's an EXTERNAL provider the
+                  user connected (e.g. "Gmail"); the built-in mail engine's
+                  internal id is not a user-facing brand. */}
+              Private AI over your mail{status?.mail_source && status.mail_source !== 'lilmail' ? ` · ${status.mail_source}` : ''}
             </div>
           </div>
         </div>
