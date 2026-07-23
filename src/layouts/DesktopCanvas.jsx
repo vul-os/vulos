@@ -83,35 +83,54 @@ export default function DesktopCanvas() {
     return () => { alive = false }
   }, [focusWindow, openWindow])
 
-  // First-boot background. Use a SOLID color (not a gradient) for the
-  // placeholder — Chromium under SwiftShader (the bare-metal software-GPU
-  // path) doesn't reliably composite radial-gradients to virtio-gpu's
-  // pixman framebuffer; they render transparent and the outer wrapper
-  // (bg-neutral-950 ≈ #0a0a0a) shows through, which is visually identical
-  // to a crashed kiosk. Solid colors always work.
-  const placeholderBg = isDark ? '#1f0e3d' : '#e9deff'
+  // First-boot background. A layered gradient MESH (accent-tinted, cool, with a
+  // soft vignette) replaces the old flat purple so first paint reads as a premium
+  // OS rather than a placeholder. CRITICAL: this sits ON TOP of a SOLID base
+  // colour — Chromium under SwiftShader (the bare-metal software-GPU path)
+  // doesn't reliably composite radial-gradients to virtio-gpu's pixman
+  // framebuffer; they can render transparent. Because the outer wrapper is a
+  // deliberate solid tone (not near-black), a gradient failure degrades to a
+  // clean, intentional colour instead of the "crashed kiosk" black we used to hit.
+  const solidBase = isDark ? '#0a0b10' : '#f4f6fb'
+  const wallpaperMesh = isDark
+    ? 'radial-gradient(120% 90% at 12% -8%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 55%),' +
+      'radial-gradient(100% 80% at 108% 116%, rgba(18,58,94,0.32), transparent 55%),' +
+      'radial-gradient(90% 90% at 92% -12%, rgba(42,29,94,0.26), transparent 60%),' +
+      'linear-gradient(160deg, #0a0b10 0%, #08090c 55%, #060709 100%)'
+    : 'radial-gradient(120% 90% at 10% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 55%),' +
+      'radial-gradient(100% 80% at 110% 115%, rgba(207,224,255,0.55), transparent 55%),' +
+      'radial-gradient(90% 90% at 95% -10%, rgba(239,234,255,0.9), transparent 60%),' +
+      'linear-gradient(160deg, #fbfcfe 0%, #f4f6fb 55%, #eef1f7 100%)'
+  const vignette = isDark
+    ? 'radial-gradient(130% 100% at 50% 45%, transparent 55%, rgba(0,0,0,0.30))'
+    : 'radial-gradient(130% 100% at 50% 45%, transparent 60%, rgba(15,23,42,0.06))'
 
   return (
     <div
       className="fixed inset-0 overflow-hidden"
-      style={{ background: isDark ? '#1f0e3d' : '#e9deff' }}
+      style={{ background: solidBase }}
     >
-      {/* Desktop wallpaper — always visible behind windows */}
+      {/* Desktop wallpaper — always visible behind windows. A user-set image wins;
+          otherwise the gradient mesh + vignette + brand mark. */}
       <div
         data-desktop-bg
-        className="absolute inset-0 overflow-hidden flex items-center justify-center transition-colors duration-500"
-        style={{ background: wallpaper ? (isDark ? '#0c0c0c' : '#f0f0f0') : placeholderBg }}
+        className="absolute inset-0 overflow-hidden flex items-center justify-center transition-[background] duration-500"
+        style={{ background: wallpaper ? solidBase : wallpaperMesh }}
       >
         {wallpaper ? (
           <img src={wallpaper} alt="" className="block w-full h-full object-cover" />
         ) : (
-          <div className="flex flex-col items-center gap-3 select-none">
-            <img src={DEFAULT_WALLPAPER} alt="" className="w-24 h-24" style={{ opacity: isDark ? 0.85 : 0.55, filter: isDark ? 'brightness(1.6)' : 'none' }} />
-            <div style={{ opacity: isDark ? 0.95 : 0.85 }}>
-              <div className="text-center text-3xl font-light tracking-[0.3em]" style={{ color: isDark ? '#fff' : '#1a1a1a' }}>Vulos</div>
-              <div className="text-center text-[10px] tracking-[0.2em] mt-1" style={{ color: isDark ? '#c9b6ff' : '#5a3aa3' }}>alpha</div>
+          <>
+            {/* Vignette for depth — a whisper, never a frame. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ background: vignette }} />
+            <div className="relative flex flex-col items-center gap-3.5 select-none">
+              <img src={DEFAULT_WALLPAPER} alt="" className="w-20 h-20 sm:w-24 sm:h-24" style={{ opacity: isDark ? 0.9 : 0.6, filter: isDark ? 'brightness(1.55)' : 'none' }} />
+              <div className="text-center">
+                <div className="text-3xl sm:text-4xl font-semibold tracking-[0.28em] pl-[0.28em]" style={{ color: 'var(--text-primary)', opacity: isDark ? 0.95 : 0.9 }}>Vulos</div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.36em] pl-[0.36em] mt-2" style={{ color: 'var(--accent)', opacity: 0.85 }}>alpha</div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 

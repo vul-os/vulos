@@ -118,12 +118,12 @@ export default function Launchpad() {
       onClick={(e) => { if (e.target === e.currentTarget) close() }}
     >
       {/* Search bar */}
-      <div className="flex justify-center pt-10 pb-4 px-6" style={{ paddingTop: 'max(2.5rem, var(--safe-top))' }}>
-        <div className="w-full max-w-lg relative vshell-pop">
-          <div className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
-            <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <div className="flex justify-center px-6 pb-4" style={{ paddingTop: 'max(clamp(1.75rem, 6vh, 3.5rem), var(--safe-top))' }}>
+        <div className="vshell-pop relative w-full max-w-[520px]">
+          <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="7" cy="7" r="5" />
-              <path d="M11 11l3.5 3.5" strokeLinecap="round" />
+              <path d="M11 11l3.5 3.5" />
             </svg>
           </div>
           <input
@@ -131,49 +131,59 @@ export default function Launchpad() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search applications..."
-            className="vshell-input w-full rounded-xl pl-10 pr-9 py-3 text-sm"
+            placeholder="Search applications"
+            className="vshell-input w-full rounded-[13px] py-3 pl-11 pr-10 text-sm"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
               aria-label="Clear search"
-              className="focus-primary rounded absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none"
-              style={{ color: 'var(--text-faint)' }}
+              className="focus-primary absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-colors"
+              style={{ color: 'var(--text-faint)', background: 'color-mix(in srgb, var(--bg-hover) 70%, transparent)' }}
             >
-              {'\u00D7'}
+              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
             </button>
           )}
         </div>
       </div>
 
       {/* App grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-4">
-        <div className="max-w-3xl mx-auto">
+      <div className="flex-1 overflow-y-auto px-5 pb-8 sm:px-6">
+        <div className="mx-auto w-full max-w-[820px]">
           {grouped ? (
-            Object.entries(grouped).map(([cat, catApps]) => (
-              <div key={cat} className="mb-6">
-                <h3 className="text-[11px] font-mono uppercase tracking-[0.14em] mb-2.5 px-1" style={{ color: 'var(--text-faint)' }}>
+            Object.entries(grouped).map(([cat, catApps], i) => (
+              <div key={cat} className={i === 0 ? '' : 'mt-6'}>
+                <h3
+                  className="mb-3 mt-4 px-0.5 text-[11px] font-semibold uppercase tracking-[0.09em]"
+                  style={{ color: 'var(--text-faint)' }}
+                >
                   {categoryLabels[cat] || cat}
                 </h3>
-                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-2">
-                  {catApps.map(app => (
-                    <AppTile key={app.id} app={app} onLaunch={launch} />
-                  ))}
-                </div>
+                <AppGrid apps={catApps} onLaunch={launch} />
               </div>
             ))
           ) : (
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-2">
-              {apps.map(app => (
-                <AppTile key={app.id} app={app} onLaunch={launch} />
-              ))}
+            <div className="pt-1">
+              <AppGrid apps={apps} onLaunch={launch} />
             </div>
           )}
 
           {apps.length === 0 && (
-            <div className="text-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>
-              No applications found
+            <div className="flex flex-col items-center gap-3 py-20 text-center">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-[14px]"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-faint)' }}
+              >
+                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+                  <circle cx="9" cy="9" r="6" />
+                  <path d="M13.5 13.5L17 17" />
+                </svg>
+              </div>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                No applications match {search.trim() ? `"${search.trim()}"` : 'that'}
+              </p>
             </div>
           )}
         </div>
@@ -181,12 +191,12 @@ export default function Launchpad() {
 
       {/* Bottom bar — chat input + ESC hint */}
       <div className="vshell-border-t flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-elevated) 40%, transparent)', paddingBottom: 'var(--safe-bottom)' }}>
-        <div className="max-w-lg mx-auto px-6 py-3">
+        <div className="mx-auto max-w-[520px] px-6 py-3">
           <form onSubmit={handleChatSubmit} className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
-                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor" opacity="0.7">
-                  <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" />
+            <div className="relative flex-1">
+              <div className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-faint)' }}>
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2.5 4a2 2 0 012-2h7a2 2 0 012 2v5a2 2 0 01-2 2H6l-3 2.5V11a2 2 0 01-.5-1.3z" />
                 </svg>
               </div>
               <input
@@ -194,14 +204,14 @@ export default function Launchpad() {
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask anything..."
-                className="vshell-input w-full rounded-lg pl-9 pr-3 py-2 text-sm"
+                placeholder="Ask anything"
+                className="vshell-input w-full rounded-[11px] py-2 pl-10 pr-3 text-sm"
               />
             </div>
             <button
               type="submit"
               disabled={!chatInput.trim()}
-              className="focus-primary px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-30 disabled:cursor-default"
+              className="focus-primary rounded-[11px] px-3.5 py-2 text-xs font-medium transition-colors disabled:cursor-default disabled:opacity-30"
               style={{ background: chatInput.trim() ? 'var(--accent)' : 'color-mix(in srgb, var(--bg-hover) 70%, transparent)', color: chatInput.trim() ? '#fff' : 'var(--text-tertiary)' }}
             >
               Send
@@ -239,15 +249,31 @@ function groupByCategory(apps) {
   return groups
 }
 
+// The responsive tile grid. Columns reflow from 4 (phone) up to 7 (wide /
+// ultrawide) using the design-direction breakpoints (520 / 720 / 920), with a
+// wider row gap than column gap so labels breathe without drifting apart.
+function AppGrid({ apps, onLaunch }) {
+  return (
+    <div className="grid grid-cols-4 gap-x-1.5 gap-y-4 min-[520px]:grid-cols-5 min-[720px]:grid-cols-6 min-[920px]:grid-cols-7">
+      {apps.map(app => (
+        <AppTile key={app.id} app={app} onLaunch={onLaunch} />
+      ))}
+    </div>
+  )
+}
+
 function AppTile({ app, onLaunch }) {
   return (
     <button
       onClick={() => onLaunch(app)}
       aria-label={`Open ${app.name}`}
-      className="vshell-tile focus-primary flex flex-col items-center gap-1.5 p-2.5 rounded-xl group"
+      title={app.name}
+      className="vshell-tile focus-primary group flex flex-col items-center gap-2 rounded-[13px] px-1 py-2"
     >
-      <AppIconTile id={app.id} size={48} unicode={app.icon} />
-      <span className="vshell-tile-label text-[11px] text-center truncate w-full">{app.name}</span>
+      <AppIconTile id={app.id} size={54} unicode={app.icon} />
+      <span className="vshell-tile-label max-w-[76px] truncate text-center text-[11.5px] leading-tight">
+        {app.name}
+      </span>
     </button>
   )
 }

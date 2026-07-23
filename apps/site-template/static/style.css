@@ -1,0 +1,30 @@
+/* static/style.css — a real same-origin stylesheet asset.
+ * Its only job (beyond looking tidy) is to be a second /static/ file so
+ * asset serving + cache headers are covered by more than one content type. */
+
+#app h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.75rem;
+}
+
+#app p {
+  margin: 0 0 1rem;
+}
+
+#app code {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+#app a {
+  color: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  #app a {
+    color: #7aa2ff;
+  }
+}

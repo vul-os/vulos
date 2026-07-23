@@ -84,6 +84,10 @@ describe('locationReporter — watchPosition happy path', () => {
     expect(url).toBe('/api/location')
     expect(init.method).toBe('POST')
     expect(init.headers['Content-Type']).toBe('application/json')
+    // /api/location is auth-scoped (X-User-ID derived from the session), so the
+    // POST MUST carry credentials — without this the box can't attribute the
+    // fix and 401s. Asserted explicitly so the fix can't silently regress.
+    expect(init.credentials).toBe('include')
     expect(JSON.parse(init.body)).toEqual({
       lat: -26.2,
       lng: 28.05,

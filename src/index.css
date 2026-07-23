@@ -29,55 +29,67 @@
      pickers, ::selection) match the OS theme. Overridden in the light block. ── */
   color-scheme: dark;
 
-  /* ── Accent (user-customisable; ThemeProvider overrides --accent via JS) ── */
-  --accent: #3b82f6; /* blue-500 default */
-  --accent-hover: color-mix(in srgb, var(--accent) 80%, black);
-  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  /* ── Typography (WAVE-32): humanist system sans is the OS voice; mono is
+     scoped to code / terminal / keycaps / tabular figures ONLY. Flipping the
+     base font from mono → sans is the single biggest lift in the redesign. ── */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Inter', system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code',
+    'Fira Code', Menlo, monospace;
+
+  /* ── Accent — "Iris": a confident blue-violet with identity that stays
+     professional. Used sparingly (focus rings, primary button, active dock dot,
+     ask-bar glow). User-customisable; ThemeProvider overrides --accent via JS. ── */
+  --accent: #5b6cff; /* Iris (dark default) */
+  --accent-hover: color-mix(in srgb, var(--accent) 82%, black);
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
   --accent-contrast: #ffffff; /* text/glyph colour that sits ON an accent fill */
 
   /* ═══ DARK PALETTE (shipped default) ═══ */
-  /* Surfaces — an even elevation ramp so stacked layers read distinctly. */
-  --bg-base: #0b0b0c;      /* desktop / root canvas */
-  --bg-surface: #121214;   /* panels, bars, cards */
-  --bg-elevated: #1a1a1d;  /* menus, popovers, inputs */
-  --bg-hover: #202024;     /* hover state on interactive surfaces */
-  --bg-active: #26262b;    /* pressed / active surface */
-  --bg-selected: #17203a;  /* accent-tinted selection background */
-  --bg-selected-border: #223056;
+  /* Surfaces — near-black with a faint cool cast; wider separation between
+     layers so stacked panels read distinctly off the canvas. */
+  --bg-base: #08090c;      /* desktop / root canvas */
+  --bg-surface: #0f1116;   /* panels, bars, cards */
+  --bg-elevated: #171a21;  /* menus, popovers, inputs */
+  --bg-hover: #1e222b;     /* hover state on interactive surfaces */
+  --bg-active: #262b35;    /* pressed / active surface */
+  --bg-selected: #182136;  /* accent-tinted selection background */
+  --bg-selected-border: #263453;
 
-  /* Borders — subtle → emphasis, for hairlines up to focal edges. */
-  --border-subtle: #141416;
-  --border-default: #1e1e21;
-  --border-strong: #27272b;
-  --border-emphasis: #34343a;
+  /* Borders — subtle → emphasis; lifted off the surfaces so edges actually read. */
+  --border-subtle: #14171d;
+  --border-default: #1f232c;
+  --border-strong: #2b303b;
+  --border-emphasis: #3a4150;
 
   /* Text — a legibility ramp from primary copy down to near-invisible dividers. */
-  --text-primary: #ededed;
-  --text-secondary: #cccccc;
-  --text-tertiary: #999999;
-  --text-muted: #888888;
-  --text-faint: #666666;
-  --text-ghost: #555555;
-  --text-dim: #444444;
-  --text-invisible: #333333;
-  --graph-grid: #1a1a1a;
+  --text-primary: #f2f4f8;
+  --text-secondary: #c3c8d2;
+  --text-tertiary: #8b93a2;
+  --text-muted: #6d7585;
+  --text-faint: #545b69;
+  --text-ghost: #414653;
+  --text-dim: #2f333d;
+  --text-invisible: #23262e;
+  --graph-grid: #171a20;
 
-  /* Elevation / shadows — deeper + tighter in dark so lifted surfaces pop off
-     the near-black canvas. --shadow-window adds a hairline top-edge for the
-     crisp "pane of glass" OS-window feel. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.55);
-  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.6);
-  --shadow-window: 0 20px 60px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  /* Elevation / shadows — deeper + layered in dark, with an inset top-light so
+     lifted surfaces read as a true "pane of glass" off the near-black canvas. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 3px 10px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 30px -8px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 52px -12px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 28px 72px -14px rgba(0, 0, 0, 0.66);
+  --shadow-window: 0 28px 72px -14px rgba(0, 0, 0, 0.7),
+    0 8px 24px -10px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   /* Blur + glass — frosted surfaces for menu bar, dock, popovers, sheets. */
   --blur-sm: 6px;
-  --blur-md: 12px;
-  --blur-lg: 24px;
-  --glass-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
-  --glass-border: color-mix(in srgb, #ffffff 8%, transparent);
+  --blur-md: 14px;
+  --blur-lg: 26px;
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 66%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 9%, transparent);
 
   /* Overlays — modal scrims + drawer backdrops. */
   --overlay: rgba(0, 0, 0, 0.6);   /* modal / dialog backdrop */
@@ -86,9 +98,9 @@
   /* Semantic status tokens (WAVE-23): one source of truth for success / warning
      / danger / info tints so panels stop hardcoding emerald-/amber-/red-/blue-
      Tailwind classes. `-soft` variants are the low-alpha background tints. */
-  --status-success: #22c55e;
-  --status-warning: #f59e0b;
-  --status-danger: #f87171;
+  --status-success: #35c081;
+  --status-warning: #f0b232;
+  --status-danger: #f2565b;
   --status-info: var(--accent);
   --status-success-soft: color-mix(in srgb, var(--status-success) 14%, transparent);
   --status-warning-soft: color-mix(in srgb, var(--status-warning) 14%, transparent);
@@ -96,13 +108,13 @@
 
   /* ═══ STRUCTURAL TOKENS (theme-agnostic — identical in light + dark) ═══ */
 
-  /* Radius scale — one rounding language across the OS. */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 22px;
+  /* Radius scale — a slightly more generous squircle language across the OS. */
+  --radius-xs: 5px;
+  --radius-sm: 7px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
   --radius-full: 9999px;
 
   /* Spacing scale — 4px base grid, for token-driven gaps/padding. */
@@ -139,7 +151,7 @@
   --motion-fast: 0.12s;
   --motion-base: 0.18s;
   --motion-slow: 0.28s;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -148,36 +160,38 @@
    Values mirror the :root dark defaults above (single source: change both). */
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg-base: #0b0b0c;
-  --bg-surface: #121214;
-  --bg-elevated: #1a1a1d;
-  --bg-hover: #202024;
-  --bg-active: #26262b;
-  --bg-selected: #17203a;
-  --bg-selected-border: #223056;
-  --border-subtle: #141416;
-  --border-default: #1e1e21;
-  --border-strong: #27272b;
-  --border-emphasis: #34343a;
-  --text-primary: #ededed;
-  --text-secondary: #cccccc;
-  --text-tertiary: #999999;
-  --text-muted: #888888;
-  --text-faint: #666666;
-  --text-ghost: #555555;
-  --text-dim: #444444;
-  --text-invisible: #333333;
-  --graph-grid: #1a1a1a;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.55);
-  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.6);
-  --shadow-window: 0 20px 60px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  --glass-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
-  --glass-border: color-mix(in srgb, #ffffff 8%, transparent);
-  --overlay: rgba(0, 0, 0, 0.6);
-  --scrim: rgba(0, 0, 0, 0.4);
+  --bg-base: #08090c;
+  --bg-surface: #0f1116;
+  --bg-elevated: #171a21;
+  --bg-hover: #1e222b;
+  --bg-active: #262b35;
+  --bg-selected: #182136;
+  --bg-selected-border: #263453;
+  --border-subtle: #14171d;
+  --border-default: #1f232c;
+  --border-strong: #2b303b;
+  --border-emphasis: #3a4150;
+  --text-primary: #f2f4f8;
+  --text-secondary: #c3c8d2;
+  --text-tertiary: #8b93a2;
+  --text-muted: #6d7585;
+  --text-faint: #545b69;
+  --text-ghost: #414653;
+  --text-dim: #2f333d;
+  --text-invisible: #23262e;
+  --graph-grid: #171a20;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 3px 10px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 30px -8px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 52px -12px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 28px 72px -14px rgba(0, 0, 0, 0.66);
+  --shadow-window: 0 28px 72px -14px rgba(0, 0, 0, 0.7),
+    0 8px 24px -10px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 66%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 9%, transparent);
+  --overlay: rgba(0, 0, 0, 0.62);
+  --scrim: rgba(0, 0, 0, 0.42);
 }
 
 /* Collapse motion-token durations under reduced-motion so any transition
@@ -207,6 +221,11 @@
 [data-theme="light"] {
   color-scheme: light;
 
+  /* Accent shifts a touch deeper on white so it holds AA contrast for the
+     primary button / focus ring. Re-derive the soft tint at 12% for light. */
+  --accent: #4d5efb; /* Iris (light) */
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+
   /* Remap Tailwind's neutral scale (swap dark ↔ light) so utility classes that
      lean on `neutral-*` invert correctly without per-component work. */
   --color-neutral-950: #fafafa;
@@ -223,47 +242,51 @@
 
   /* Surfaces */
   --bg-base: #ffffff;
-  --bg-surface: #f6f7f8;
-  --bg-elevated: #eeeff1;
-  --bg-hover: #e6e8ea;
-  --bg-active: #dcdfe3;
-  --bg-selected: #dde7fb;
-  --bg-selected-border: #b6ccf5;
+  --bg-surface: #f7f8fa;
+  --bg-elevated: #eef0f4;
+  --bg-hover: #e7eaf0;
+  --bg-active: #dde1ea;
+  --bg-selected: #e4e8fe;
+  --bg-selected-border: #c2cafb;
 
   /* Borders */
-  --border-subtle: #eeeeee;
-  --border-default: #e2e3e6;
-  --border-strong: #cdced2;
-  --border-emphasis: #b6b8bd;
+  --border-subtle: #eef0f3;
+  --border-default: #e2e5eb;
+  --border-strong: #cfd4dd;
+  --border-emphasis: #b7bdc9;
 
   /* Text */
-  --text-primary: #17181b;
-  --text-secondary: #33353a;
-  --text-tertiary: #55575d;
-  --text-muted: #6a6c72;
-  --text-faint: #8a8c92;
-  --text-ghost: #a9abb1;
-  --text-dim: #cbccd0;
-  --text-invisible: #dddee1;
-  --graph-grid: #e5e6e9;
+  --text-primary: #12141a;
+  --text-secondary: #333844;
+  --text-tertiary: #565d6b;
+  --text-muted: #6b7280;
+  --text-faint: #8b93a1;
+  --text-ghost: #aab0bc;
+  --text-dim: #cbcfd8;
+  --text-invisible: #dde0e6;
+  --graph-grid: #e5e7ec;
 
-  /* Elevation / shadows — soft, low-alpha, cool-tinted (slate). */
+  /* Elevation / shadows — soft, low-alpha, cool-tinted (slate), with a white
+     inset top-light so cards read as lit glass rather than flat rectangles. */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.10);
-  --shadow-xl: 0 16px 48px rgba(15, 23, 42, 0.12);
-  --shadow-2xl: 0 24px 64px rgba(15, 23, 42, 0.14);
-  --shadow-window: 0 20px 60px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 3px 10px -2px rgba(15, 23, 42, 0.09);
+  --shadow-lg: 0 12px 30px -8px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 20px 52px -12px rgba(15, 23, 42, 0.14);
+  --shadow-2xl: 0 28px 72px -14px rgba(15, 23, 42, 0.16);
+  --shadow-window: 0 28px 72px -14px rgba(15, 23, 42, 0.18),
+    0 8px 24px -10px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
   /* Blur + glass */
-  --glass-bg: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  --glass-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
   --glass-border: color-mix(in srgb, #0f172a 8%, transparent);
 
   /* Overlays */
   --overlay: rgba(15, 23, 42, 0.4);
   --scrim: rgba(15, 23, 42, 0.22);
 
-  /* Status danger reads slightly deeper on white for contrast. */
+  /* Status colours read slightly deeper on white for contrast. */
   --status-danger: #dc2626;
   --status-warning: #d97706;
   --status-success: #16a34a;
@@ -285,36 +308,44 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
+    --accent: #4d5efb;
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
     --bg-base: #ffffff;
-    --bg-surface: #f6f7f8;
-    --bg-elevated: #eeeff1;
-    --bg-hover: #e6e8ea;
-    --bg-active: #dcdfe3;
-    --bg-selected: #dde7fb;
-    --bg-selected-border: #b6ccf5;
-    --border-subtle: #eeeeee;
-    --border-default: #e2e3e6;
-    --border-strong: #cdced2;
-    --border-emphasis: #b6b8bd;
-    --text-primary: #17181b;
-    --text-secondary: #33353a;
-    --text-tertiary: #55575d;
-    --text-muted: #6a6c72;
-    --text-faint: #8a8c92;
-    --text-ghost: #a9abb1;
-    --text-dim: #cbccd0;
-    --text-invisible: #dddee1;
-    --graph-grid: #e5e6e9;
+    --bg-surface: #f7f8fa;
+    --bg-elevated: #eef0f4;
+    --bg-hover: #e7eaf0;
+    --bg-active: #dde1ea;
+    --bg-selected: #e4e8fe;
+    --bg-selected-border: #c2cafb;
+    --border-subtle: #eef0f3;
+    --border-default: #e2e5eb;
+    --border-strong: #cfd4dd;
+    --border-emphasis: #b7bdc9;
+    --text-primary: #12141a;
+    --text-secondary: #333844;
+    --text-tertiary: #565d6b;
+    --text-muted: #6b7280;
+    --text-faint: #8b93a1;
+    --text-ghost: #aab0bc;
+    --text-dim: #cbcfd8;
+    --text-invisible: #dde0e6;
+    --graph-grid: #e5e7ec;
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-    --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.08);
-    --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.10);
-    --shadow-xl: 0 16px 48px rgba(15, 23, 42, 0.12);
-    --shadow-2xl: 0 24px 64px rgba(15, 23, 42, 0.14);
-    --shadow-window: 0 20px 60px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.06);
-    --glass-bg: color-mix(in srgb, #f6f7f8 78%, transparent);
+    --shadow-md: 0 3px 10px -2px rgba(15, 23, 42, 0.09);
+    --shadow-lg: 0 12px 30px -8px rgba(15, 23, 42, 0.12);
+    --shadow-xl: 0 20px 52px -12px rgba(15, 23, 42, 0.14);
+    --shadow-2xl: 0 28px 72px -14px rgba(15, 23, 42, 0.16);
+    --shadow-window: 0 28px 72px -14px rgba(15, 23, 42, 0.18),
+      0 8px 24px -10px rgba(15, 23, 42, 0.12),
+      0 0 0 1px rgba(15, 23, 42, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --glass-bg: color-mix(in srgb, #f7f8fa 72%, transparent);
     --glass-border: color-mix(in srgb, #0f172a 8%, transparent);
     --overlay: rgba(15, 23, 42, 0.4);
     --scrim: rgba(15, 23, 42, 0.22);
+    --status-danger: #dc2626;
+    --status-warning: #d97706;
+    --status-success: #16a34a;
   }
 }
 
@@ -349,11 +380,26 @@ html, body, #root {
   overflow: hidden;
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  /* WAVE-32: the OS speaks in a humanist system sans. Mono is opt-in via .mono
+     (code / terminal / keycaps / tabular figures) — never the default voice. */
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  letter-spacing: -0.006em;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Opt-in monospace for code, terminals, keycaps and tabular figures. Components
+   that need mono set this class instead of hardcoding a font stack, and get
+   slashed-zero / tabular numerals for free where the face supports them. */
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1, 'zero' 1, 'cv01' 1;
+  letter-spacing: 0;
 }
 
 /* Token-driven scrollbars — adapt to light/dark automatically (no per-theme
@@ -456,12 +502,12 @@ html, body, #root {
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
     background: var(--glass-bg);
-    -webkit-backdrop-filter: blur(var(--blur-md)) saturate(1.6);
-    backdrop-filter: blur(var(--blur-md)) saturate(1.6);
+    -webkit-backdrop-filter: blur(var(--blur-md)) saturate(1.7);
+    backdrop-filter: blur(var(--blur-md)) saturate(1.7);
   }
   .glass-strong {
-    -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(1.8);
-    backdrop-filter: blur(var(--blur-lg)) saturate(1.8);
+    -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(1.9);
+    backdrop-filter: blur(var(--blur-lg)) saturate(1.9);
   }
 }
 

@@ -25,6 +25,12 @@ import '../shell/shell-chrome.css'
 //
 // Every open window stays MOUNTED (hidden, not unmounted) so switching apps
 // preserves their scroll/iframe/component state — exactly like a native OS.
+//
+// STYLING (WAVE-32): the whole surface is token-driven so it is correct in light
+// AND dark. Thumb-reach ergonomics: the status bar and dock own the top/bottom
+// safe-area, every control clears the 44px touch floor, scroll surfaces carry
+// momentum + overscroll containment, and press feedback replaces hover (there is
+// no hover on touch). Iconography follows the OS system stroke (1.7px, rounded).
 
 export default function MobileStack() {
   const { windows, activeWindow, focusWindow, toggleLaunchpad } = useShell()
@@ -55,24 +61,24 @@ export default function MobileStack() {
       {/* Status bar — safe-area padded so it clears a notch. Shows the active
           app's identity while an app is fullscreen, else the shell brand. */}
       <div className="vmob-bar safe-pt safe-px shrink-0">
-        <div className="px-3 h-10 flex items-center justify-between">
+        <div className="px-3 h-11 flex items-center justify-between gap-2">
           {showApp ? (
             <button
               onClick={() => setView('home')}
               aria-label="Back to home"
-              className="focus-primary -ml-1 h-8 px-1.5 flex items-center gap-2 rounded-lg text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-hover)] transition-colors min-w-0"
+              className="focus-primary -ml-1.5 h-9 pl-1.5 pr-3 flex items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
             >
-              <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
-              <AppIcon id={activeWin.appId} size={16} />
-              <span className="text-sm font-medium truncate">{activeWin.title}</span>
+              <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
+              <AppIcon id={activeWin.appId} size={18} />
+              <span className="text-[13px] font-semibold tracking-[-0.01em] truncate">{activeWin.title}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-2">
-              <img src="/vulos.png" alt="" className="w-4 h-4 opacity-70" />
-              <span className="text-sm font-semibold text-[color:var(--text-secondary)]">vula</span>
+            <div className="flex items-center gap-2 pl-1">
+              <span className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: 'var(--accent)' }} aria-hidden="true" />
+              <span className="text-[13px] font-semibold tracking-[-0.01em] text-[color:var(--text-secondary)]">vula</span>
             </div>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             <TrustBadge compact />
             <LifePulse compact />
           </div>
@@ -91,7 +97,7 @@ export default function MobileStack() {
             assistant conversation survives app switches. */}
         <div className={`absolute inset-0 flex flex-col ${view === 'home' ? '' : 'hidden'}`}>
           {windows.length === 0 && (
-            <div className="shrink-0 flex flex-col items-center justify-center pt-8 pb-4">
+            <div className="shrink-0 flex flex-col items-center justify-center pt-8 pb-5">
               <LifePulse />
             </div>
           )}
@@ -122,14 +128,14 @@ export default function MobileStack() {
           home indicator never overlaps the targets; every target ≥44px. */}
       <nav
         aria-label="System navigation"
-        className="vmob-dock safe-pb safe-px shrink-0 flex items-stretch"
+        className="vmob-dock safe-pb safe-px shrink-0 flex items-stretch pt-1"
       >
         <DockButton
           label="Home"
           active={view === 'home'}
           onClick={() => setView('home')}
         >
-          <svg viewBox="0 0 16 16" className="w-5 h-5"><path d="M8 1.5L1.5 7H3v6.5a.5.5 0 00.5.5H6v-4h4v4h2.5a.5.5 0 00.5-.5V7h1.5L8 1.5z" fill="currentColor" /></svg>
+          <svg viewBox="0 0 20 20" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L10 3.5l7 6M5 8.5V16a.5.5 0 00.5.5H8v-4.5h4V16.5h2.5a.5.5 0 00.5-.5V8.5" /></svg>
         </DockButton>
         <DockButton
           label="Apps"
@@ -138,15 +144,15 @@ export default function MobileStack() {
           disabled={windows.length === 0}
           onClick={() => setView(v => (v === 'switcher' ? (activeWin ? 'app' : 'home') : 'switcher'))}
         >
-          <svg viewBox="0 0 16 16" className="w-5 h-5">
-            <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.4" fill="currentColor" />
-            <rect x="9" y="1.5" width="5.5" height="5.5" rx="1.4" fill="currentColor" opacity="0.6" />
-            <rect x="1.5" y="9" width="5.5" height="5.5" rx="1.4" fill="currentColor" opacity="0.6" />
-            <rect x="9" y="9" width="5.5" height="5.5" rx="1.4" fill="currentColor" opacity="0.35" />
+          <svg viewBox="0 0 20 20" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <rect x="2.5" y="2.5" width="6.2" height="6.2" rx="1.8" />
+            <rect x="11.3" y="2.5" width="6.2" height="6.2" rx="1.8" />
+            <rect x="2.5" y="11.3" width="6.2" height="6.2" rx="1.8" />
+            <rect x="11.3" y="11.3" width="6.2" height="6.2" rx="1.8" />
           </svg>
         </DockButton>
         <DockButton label="Library" onClick={toggleLaunchpad}>
-          <svg viewBox="0 0 16 16" className="w-5 h-5"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M8 5v6M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+          <svg viewBox="0 0 20 20" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="10" cy="10" r="7.2" /><path d="M10 6.5v7M6.5 10h7" /></svg>
         </DockButton>
       </nav>
 
@@ -171,7 +177,7 @@ function MobileAppFrame({ win }) {
   const src = win.html ? undefined : (win.appId ? appFrameSrc(win.url, win.appId) : win.url)
 
   if (win.component) {
-    return <div className="vmob-frame absolute inset-0 overflow-y-auto overscroll-contain">{win.component}</div>
+    return <div className="vmob-frame absolute inset-0 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">{win.component}</div>
   }
   return (
     <iframe
@@ -193,29 +199,33 @@ function MobileSwitcher({ onOpen, onHome }) {
   const { windows, closeWindow } = useShell()
 
   return (
-    <div className="vmob-switcher absolute inset-0 z-10 overflow-y-auto anim-sheet-up">
-      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[color:var(--text-secondary)]">Running apps</h2>
-        <span className="text-xs text-[color:var(--text-faint)]">{windows.length} open</span>
+    <div className="vmob-switcher absolute inset-0 z-10 overflow-y-auto overscroll-contain anim-sheet-up [-webkit-overflow-scrolling:touch]">
+      {/* Grab handle + header — signals the overview is a dismissible sheet. */}
+      <div className="safe-px px-4 pt-2.5 pb-1">
+        <div className="mx-auto mb-3.5 h-1 w-9 rounded-full" style={{ background: 'var(--border-emphasis)' }} aria-hidden="true" />
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--text-primary)]">Running apps</h2>
+          <span className="text-xs font-medium text-[color:var(--text-faint)] tabular-nums">{windows.length} open</span>
+        </div>
       </div>
       {windows.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center px-6">
           <p className="text-sm text-[color:var(--text-tertiary)]">No apps are running</p>
-          <button onClick={onHome} className="mt-3 text-xs accent-text hover:underline">Back to home</button>
+          <button onClick={onHome} className="focus-primary mt-3 text-xs font-medium accent-text active:opacity-70 transition-opacity">Back to home</button>
         </div>
       ) : (
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="safe-px p-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           {windows.map(win => (
-            <div key={win.id} className="vmob-card rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-2 px-3 h-11">
-                <AppIcon id={win.appId} size={18} />
-                <span className="text-sm text-[color:var(--text-secondary)] truncate flex-1">{win.title}</span>
+            <div key={win.id} className="vmob-card rounded-[var(--radius-xl)] overflow-hidden transition-transform duration-200 active:scale-[0.985]">
+              <div className="flex items-center gap-2.5 px-3 h-12">
+                <AppIcon id={win.appId} size={20} />
+                <span className="text-[13px] font-medium text-[color:var(--text-secondary)] truncate flex-1">{win.title}</span>
                 <button
                   onClick={() => closeWindow(win.id)}
                   aria-label={`Close ${win.title}`}
-                  className="focus-primary touch-target -mr-2 flex items-center justify-center rounded-lg text-[color:var(--text-tertiary)] hover:text-danger transition-colors"
+                  className="focus-primary touch-target -mr-1.5 flex items-center justify-center rounded-full text-[color:var(--text-tertiary)] active:text-[color:var(--status-danger)] active:bg-[color:var(--status-danger-soft)] transition-colors"
                 >
-                  <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+                  <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
                 </button>
               </div>
               <button
@@ -223,7 +233,7 @@ function MobileSwitcher({ onOpen, onHome }) {
                 aria-label={`Switch to ${win.title}`}
                 className="block w-full text-left"
               >
-                <div className="vmob-card-body h-40 relative pointer-events-none">
+                <div className="vmob-card-body h-44 relative pointer-events-none overflow-hidden">
                   <MobileAppFrame win={win} />
                 </div>
               </button>
@@ -242,16 +252,19 @@ function DockButton({ children, label, active, badge, disabled, onClick }) {
       disabled={disabled}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
-      className={`touch-target flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors
-        ${disabled ? 'opacity-30' : active ? 'text-[color:var(--accent)]' : 'text-[color:var(--text-tertiary)] hover:text-[color:var(--text-primary)]'}`}
+      className={`touch-target flex-1 flex flex-col items-center justify-center gap-1 py-1.5 select-none transition-colors duration-150
+        ${disabled ? 'opacity-30' : active ? 'text-[color:var(--accent)]' : 'text-[color:var(--text-tertiary)] active:text-[color:var(--text-primary)]'}`}
     >
-      <span className="relative flex items-center justify-center">
+      <span
+        className="relative flex items-center justify-center h-8 min-w-[3.25rem] rounded-full transition-colors duration-150"
+        style={active ? { background: 'var(--accent-soft)' } : undefined}
+      >
         {children}
         {badge ? (
-          <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 accent-bg rounded-full text-[9px] text-[color:var(--accent-contrast)] font-semibold flex items-center justify-center">{badge}</span>
+          <span className="absolute -top-1 right-1.5 min-w-[1rem] h-4 px-1 accent-bg rounded-full text-[9px] leading-none text-[color:var(--accent-contrast)] font-semibold flex items-center justify-center tabular-nums">{badge}</span>
         ) : null}
       </span>
-      <span className="text-[10px] leading-none">{label}</span>
+      <span className="text-[10px] leading-none font-medium tracking-[0.01em]">{label}</span>
     </button>
   )
 }

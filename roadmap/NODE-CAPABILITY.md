@@ -1,6 +1,6 @@
 # Node Capability — store-only members (NODE-CAP-01)
 
-**Status.** 🟢 Box side implemented + tested. 🟡 CP side (vulos-management / vulos-cloud) is a contract for core, below.
+**Status.** 🟢 Box side implemented + tested. 🟡 CP side (cloud control plane) is a contract for core, below.
 
 A personal device — a laptop, a desktop — can join a user's cluster as a **connected member that syncs data but never serves routed traffic.** It replicates the account, participates in presence and CRDT sync, and shows up in the fleet as online — but the relay never routes client traffic to it, the CP never advertises it, and it is never billed or health-checked as an ingress endpoint.
 
@@ -61,7 +61,7 @@ Tests: `store_only_test.go` — default-is-serving, persistence, setter, routing
 
 ---
 
-## CP side — contract for core (vulos-management / vulos-cloud)
+## CP side — contract for core (cloud control plane)
 
 The box already honors its own flag **locally**. For a store-only choice to be honored **cluster-wide** — so *other* members, the relay, and DNS stop treating the laptop as reachable — the flag must round-trip through the control plane.
 

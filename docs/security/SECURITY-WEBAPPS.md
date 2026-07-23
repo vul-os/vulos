@@ -58,10 +58,13 @@ ${escHtml(n.title || 'Untitled')}
 
 `escHtml()` was already defined in the same file (HTML entity encoding). The note preview was already escaped; only the title was missed.
 
-### Finding — Accepted: `apps/social/index.html` raw Mastodon content
-`renderStatus()` renders `actual.content` as raw HTML. The Mastodon ActivityPub spec mandates that `content` contains only sanitized inline HTML (`<a>`, `<p>`, `<br>`, `<span>`, `<strong>`, `<em>`). This is intentional for correct Fediverse post rendering. A code comment was added to document the trust assumption.
+### Finding — RESOLVED (app removed 2026-07-23): `apps/social` raw Mastodon content
+> The `social` (Fediverse) app was removed from Vulos on 2026-07-23, along with
+> `maps` and `pdf-viewer`. This finding is therefore moot — the accepted XSS
+> risk no longer ships. Their CSP/storage entries elsewhere in this doc describe
+> apps that are no longer part of the OS.
 
-**Residual risk:** If the backend proxy (`/proxy?`) forwards content from a malicious Mastodon-compatible instance that does not sanitize, XSS could occur. Mitigation: add DOMPurify client-side if untrusted instances are in scope.
+*(Original finding, retained for history:)* `renderStatus()` rendered `actual.content` as raw HTML, trusting the Mastodon instance to have sanitized it. **Residual risk** was proxy-forwarded content from a non-sanitizing instance; mitigation would have been client-side DOMPurify. Removing the app eliminates the surface entirely.
 
 ### Review of other apps
 All other apps that use `innerHTML` with user-supplied data were verified to use an `esc()`/`escHtml()`/`escapeHtml()` function. Each app defines its own local escape function — consistent coverage.

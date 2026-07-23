@@ -17,12 +17,13 @@
  * SOVEREIGN: the brief uses the on-instance assistant behind the egress Guard —
  * no new egress is introduced here.
  *
- * LAYOUT (wave-79 hero redesign): a composed, responsive "home canvas" rather
- * than a single narrow list. A prominent greeting + sovereignty posture, a hero
- * ask-bar with an ambient accent glow, then a bento split — the assistant brief
- * and focus items lead on the left while the day's agenda / invites / reminders
- * stack on the right; recent activity + quick-launch anchor a full-width lower
- * row. Everything stacks to one clean column on narrow screens. Pure
+ * LAYOUT (WAVE-31 redesign): a composed, responsive "home canvas". A confident
+ * greeting + sovereignty posture, a hero ask-bar with an ambient Iris glow, then
+ * a bento split — the assistant brief and focus items lead on the left while the
+ * day's agenda / invites / reminders stack on the right; recent activity +
+ * quick-launch anchor a full-width lower row. Everything stacks to one clean
+ * column on narrow screens and breathes wider on ultrawide. Every colour is a
+ * semantic token, so it reads correctly in BOTH light and dark. Pure
  * presentation: no state, endpoints, labels, or a11y semantics changed.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -38,7 +39,7 @@ import { ProposalCard } from '../../builtin/assistant/ProposalCard'
 
 // Curated quick-launch tiles — the everyday surfaces. "All apps" opens the
 // full Launchpad, so Home complements rather than replaces it.
-const QUICK_LAUNCH = ['lilmail', 'vulos-calendar', 'drive', 'assistant', 'vulos-office', 'terminal', 'persona']
+const QUICK_LAUNCH = ['lilmail', 'vulos-calendar', 'drive', 'assistant', 'notes', 'terminal', 'persona']
 
 const TIER_DOT = {
   local: 'var(--status-success)',
@@ -49,13 +50,14 @@ const TIER_DOT = {
 
 // ── shared surface + control vocabulary ───────────────────────────────────────
 // One card / button / link language so every section reads as the same system —
-// consistent radius, border, translucency and hover, tuned for the dark scrim
-// Home floats over. Kept as constants (not ad-hoc repeated strings) so the whole
+// consistent radius, hairline border, translucency and hover, built entirely
+// from semantic tokens so it retunes with the theme (light AND dark) and the
+// user's accent. Kept as constants (not ad-hoc repeated strings) so the whole
 // surface stays coherent and is retuned in one place.
-const CARD = 'rounded-2xl border border-neutral-800/70 bg-neutral-900/50 backdrop-blur-sm'
-const CARD_ROW = `${CARD} px-3.5 py-3 transition-colors hover:border-neutral-700/90 hover:bg-neutral-900/70`
-const BTN = 'text-[11px] px-2.5 py-1 rounded-md bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700 transition-colors disabled:opacity-40'
-const LINK = 'text-[11px] font-mono text-neutral-500 hover:text-neutral-300 transition-colors'
+const CARD = 'rounded-[var(--radius-xl)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_80%,transparent)] backdrop-blur-xl'
+const CARD_ROW = `${CARD} px-3.5 py-3 transition-[background-color,border-color] duration-200 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_72%,transparent)]`
+const BTN = 'text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-hover)_50%,transparent)] text-[color:var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[color:var(--text-primary)] transition-colors disabled:opacity-40 disabled:hover:text-[color:var(--text-secondary)]'
+const LINK = 'text-[11.5px] font-medium text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors'
 
 // Module-scoped cache of the last Home payload. Home remounts each time you
 // close all windows (it's the desktop backdrop), so we render the cached brief/
@@ -95,15 +97,15 @@ function reminderWhen(iso) {
 }
 
 // ── section shell ─────────────────────────────────────────────────────────────
-// A labelled block: an accent tick + mono eyebrow on the left, an optional
-// action/status on the right. The tick and tightened tracking give each section
-// a crisp, intentional header instead of a lone grey caption.
+// A labelled block: an accent tick + eyebrow (SANS, not mono) on the left, an
+// optional action/status on the right. The tick and tightened tracking give each
+// section a crisp, intentional header instead of a lone grey caption.
 function Section({ label, right, children, className = '' }) {
   return (
     <section className={className}>
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="flex items-center gap-2 text-[10.5px] font-mono uppercase tracking-[0.2em] text-neutral-400">
-          <span aria-hidden="true" className="inline-block h-px w-4 rounded-full" style={{ background: 'var(--accent)' }} />
+        <h2 className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-[color:var(--text-tertiary)]">
+          <span aria-hidden="true" className="inline-block h-[2px] w-4 rounded-full" style={{ background: 'var(--accent)' }} />
           {label}
         </h2>
         {right}
@@ -306,23 +308,23 @@ export default function Home() {
 
   const briefSection = (
     <Section label="What needs you today"
-      right={data?.brief && <button onClick={openAssistant} className={LINK}>open assistant →</button>}>
+      right={data?.brief && <button onClick={openAssistant} className={LINK}>Open assistant →</button>}>
       {loading && !data ? (
         <div className="space-y-2">
-          <div className="h-3.5 bg-neutral-800/70 rounded animate-pulse w-4/5" />
-          <div className="h-3.5 bg-neutral-800/70 rounded animate-pulse w-3/5" />
+          <div className="h-3.5 rounded animate-pulse w-4/5 bg-[color-mix(in_srgb,var(--text-primary)_9%,transparent)]" />
+          <div className="h-3.5 rounded animate-pulse w-3/5 bg-[color-mix(in_srgb,var(--text-primary)_9%,transparent)]" />
         </div>
       ) : offline ? (
-        <p className="text-[13px] text-neutral-500">Assistant offline — Home is still here. Reconnect your box to get today's brief.</p>
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">Assistant offline — Home is still here. Reconnect your box to get today's brief.</p>
       ) : data?.brief ? (
-        <div className="text-[14px] text-neutral-200 leading-relaxed whitespace-pre-wrap">{data.brief}</div>
+        <div className="text-[14px] text-[color:var(--text-secondary)] leading-[1.6] whitespace-pre-wrap">{data.brief}</div>
       ) : data?.brief_error ? (
-        <p className="text-[13px] text-neutral-500">
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">
           The assistant couldn't produce a brief right now ({data.mail_error ? 'mail unavailable' : 'model offline'}).
           Your mail and agenda below are still live.
         </p>
       ) : (
-        <p className="text-[13px] text-neutral-500">Nothing urgent — you're clear. Enjoy the calm.</p>
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">Nothing urgent — you're clear. Enjoy the calm.</p>
       )}
 
       {focus.length > 0 && (
@@ -335,10 +337,10 @@ export default function Home() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
-                    <span className="text-[13px] text-neutral-100 font-medium truncate">{item.subject}</span>
+                    <span className="text-[13.5px] text-[color:var(--text-primary)] font-semibold truncate">{item.subject}</span>
                   </div>
-                  <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate pl-3.5">{item.from_name || item.from}</div>
-                  {item.preview && <div className="text-[12px] text-neutral-500/90 mt-1 line-clamp-2 pl-3.5">{item.preview}</div>}
+                  <div className="text-[12px] text-[color:var(--text-muted)] mt-0.5 truncate pl-3.5">{item.from_name || item.from}</div>
+                  {item.preview && <div className="text-[12px] text-[color:var(--text-tertiary)] mt-1 line-clamp-2 pl-3.5">{item.preview}</div>}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pl-3.5">
@@ -346,8 +348,10 @@ export default function Home() {
                 <button onClick={() => replyWith(item)} disabled={busy} className={BTN}>Reply with assistant</button>
                 {snoozing === item.uid ? (
                   <>
-                    <button onClick={() => snooze(item)} className="text-[11px] px-2.5 py-1 rounded-md text-white bg-warning transition-[filter] hover:brightness-110">Confirm snooze</button>
-                    <button onClick={() => setSnoozing(null)} className="text-[11px] px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Cancel</button>
+                    <button onClick={() => snooze(item)}
+                      style={{ background: 'color-mix(in srgb, var(--status-warning) 20%, transparent)', color: 'var(--status-warning)', border: '1px solid color-mix(in srgb, var(--status-warning) 40%, transparent)' }}
+                      className="text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110">Confirm snooze</button>
+                    <button onClick={() => setSnoozing(null)} className="text-[11.5px] px-2 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Cancel</button>
                   </>
                 ) : (
                   <button onClick={() => setSnoozing(item.uid)} disabled={snoozing === `busy:${item.uid}`} className={BTN}>
@@ -367,31 +371,31 @@ export default function Home() {
       right={
         <div className="flex items-center gap-2.5">
           {data && (
-            <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-600" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-faint)]" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
               <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: data.agenda_fresh ? 'var(--status-success)' : 'var(--status-danger)' }} />
-              {data.agenda_fresh ? 'live' : 'stale'}
+              {data.agenda_fresh ? 'Live' : 'Stale'}
             </span>
           )}
-          <button onClick={() => openApp('vulos-calendar')} className={LINK}>calendar →</button>
+          <button onClick={() => openApp('vulos-calendar')} className={LINK}>Calendar →</button>
         </div>
       }>
       {loading && !data ? (
-        <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
+        <div className="h-10 rounded-[var(--radius-lg)] animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_7%,transparent)]" />
       ) : agenda.length === 0 ? (
-        <p className="text-[13px] text-neutral-500">
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">
           {data?.agenda_error ? 'Calendar unavailable right now.' : 'Nothing on your calendar for the week ahead.'}
         </p>
       ) : (
         <ul className="space-y-2">
           {agenda.map((ev, i) => (
             <li key={ev.id || i} className={`flex items-center gap-3.5 ${CARD_ROW}`}>
-              <div className="flex-shrink-0 w-[64px] rounded-lg px-2 py-1.5 text-center" style={{ background: 'var(--accent-soft)' }}>
-                <div className="text-[12px] font-mono text-neutral-100 leading-tight">{ev.all_day ? 'All day' : eventTime(ev.start)}</div>
-                <div className="text-[9.5px] font-mono uppercase tracking-wide text-neutral-400 mt-0.5">{relDay(ev.start)}</div>
+              <div className="flex-shrink-0 w-[62px] rounded-[var(--radius-md)] px-2 py-1.5 text-center" style={{ background: 'var(--accent-soft)' }}>
+                <div className="text-[12.5px] font-semibold tabular-nums text-[color:var(--text-primary)] leading-tight">{ev.all_day ? 'All day' : eventTime(ev.start)}</div>
+                <div className="text-[9.5px] font-semibold uppercase tracking-[0.06em] text-[color:var(--text-tertiary)] mt-0.5">{relDay(ev.start)}</div>
               </div>
               <div className="min-w-0">
-                <div className="text-[13px] text-neutral-100 truncate">{ev.title || '(untitled)'}</div>
-                {ev.location && <div className="text-[11px] text-neutral-500 truncate">{ev.location}</div>}
+                <div className="text-[13px] text-[color:var(--text-primary)] truncate">{ev.title || '(untitled)'}</div>
+                {ev.location && <div className="text-[11.5px] text-[color:var(--text-muted)] truncate">{ev.location}</div>}
               </div>
             </li>
           ))}
@@ -403,12 +407,12 @@ export default function Home() {
   const invitesSection = (invites.length > 0 || data?.invites_error) && (
     <Section label="Invites awaiting your response"
       right={invites.length > 0 && (
-        <span className="text-[11px] font-mono text-neutral-500">
+        <span className="text-[11px] font-medium text-[color:var(--text-muted)] tabular-nums">
           {invites.length} · soonest {relDay(invites[0]?.invite?.start)}
         </span>
       )}>
       {data?.invites_error ? (
-        <p className="text-[13px] text-neutral-500">Couldn't check for invites right now.</p>
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">Couldn't check for invites right now.</p>
       ) : (
         <ul className="space-y-2">
           {invites.map((inv) => {
@@ -417,20 +421,21 @@ export default function Home() {
               <li key={inv.message_uid} className={CARD_ROW}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[13px] text-neutral-100 font-medium truncate">{iv.summary || inv.subject || '(untitled invite)'}</div>
-                    <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">
+                    <div className="text-[13.5px] text-[color:var(--text-primary)] font-semibold truncate">{iv.summary || inv.subject || '(untitled invite)'}</div>
+                    <div className="text-[12px] text-[color:var(--text-muted)] mt-0.5 truncate">
                       {!isNaN(new Date(iv.start)) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
                       {iv.location ? ` · ${iv.location}` : ''}
                     </div>
-                    <div className="text-[11px] text-neutral-600 mt-0.5 truncate">from {iv.organizer || inv.from}</div>
+                    <div className="text-[11.5px] text-[color:var(--text-faint)] mt-0.5 truncate">from {iv.organizer || inv.from}</div>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                   <button onClick={() => rsvpInvite(inv, 'accept')} disabled={busy}
-                    className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-700/70 text-emerald-100 hover:bg-emerald-600 transition-colors disabled:opacity-40">Accept</button>
+                    style={{ background: 'color-mix(in srgb, var(--status-success) 18%, transparent)', color: 'var(--status-success)', border: '1px solid color-mix(in srgb, var(--status-success) 38%, transparent)' }}
+                    className="text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110 disabled:opacity-40">Accept</button>
                   <button onClick={() => rsvpInvite(inv, 'tentative')} disabled={busy} className={BTN}>Tentative</button>
                   <button onClick={() => rsvpInvite(inv, 'decline')} disabled={busy} className={BTN}>Decline</button>
-                  <button onClick={openMail} className="text-[11px] px-2.5 py-1 rounded-md text-neutral-500 hover:text-neutral-300 transition-colors">Open</button>
+                  <button onClick={openMail} className="text-[11.5px] px-2.5 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Open</button>
                 </div>
               </li>
             )
@@ -443,20 +448,20 @@ export default function Home() {
   const remindersSection = (reminders.length > 0 || data?.reminders_error) && (
     <Section label="Reminders"
       right={reminders.length > 0 && (
-        <span className="text-[11px] font-mono text-neutral-500">
+        <span className="text-[11px] font-medium text-[color:var(--text-muted)] tabular-nums">
           {reminders.length} · next {reminderWhen(reminders[0]?.remind_at)}
         </span>
       )}>
       {data?.reminders_error ? (
-        <p className="text-[13px] text-neutral-500">Couldn't load your reminders right now.</p>
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">Couldn't load your reminders right now.</p>
       ) : (
         <ul className="space-y-2">
           {reminders.map((rem) => (
             <li key={rem.id} className={CARD_ROW}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[13px] text-neutral-100 truncate">{rem.text}</div>
-                  <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">{reminderWhen(rem.remind_at)}</div>
+                  <div className="text-[13px] text-[color:var(--text-primary)] truncate">{rem.text}</div>
+                  <div className="text-[12px] text-[color:var(--text-muted)] mt-0.5 truncate tabular-nums">{reminderWhen(rem.remind_at)}</div>
                 </div>
                 <button
                   onClick={() => cancelReminder(rem)}
@@ -474,20 +479,20 @@ export default function Home() {
 
   const activitySection = (
     <Section label="Recent activity"
-      right={<button onClick={openMail} className={LINK}>mail →</button>}>
+      right={<button onClick={openMail} className={LINK}>Mail →</button>}>
       {loading && !data ? (
-        <div className="h-10 bg-neutral-800/50 rounded-xl animate-pulse" />
+        <div className="h-10 rounded-[var(--radius-lg)] animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_7%,transparent)]" />
       ) : activity.length === 0 ? (
-        <p className="text-[13px] text-neutral-500">{data?.mail_error ? 'Mail unavailable right now.' : 'No recent activity.'}</p>
+        <p className="text-[13.5px] text-[color:var(--text-muted)]">{data?.mail_error ? 'Mail unavailable right now.' : 'No recent activity.'}</p>
       ) : (
-        <ul className={`${CARD} divide-y divide-neutral-800/70 overflow-hidden`}>
+        <ul className={`${CARD} divide-y divide-[var(--border-subtle)] overflow-hidden`}>
           {activity.map((a, i) => (
             <li key={a.uid || i}>
-              <button onClick={openMail} className="w-full text-left px-3.5 py-2.5 hover:bg-neutral-800/40 transition-colors flex items-center gap-3">
-                <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-strong)' }} />
+              <button onClick={openMail} className="w-full text-left px-3.5 py-2.5 hover:bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] transition-colors flex items-center gap-3">
+                <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-emphasis)' }} />
                 <div className="min-w-0 flex-1">
-                  <div className={`text-[13px] truncate ${a.unread ? 'text-neutral-100' : 'text-neutral-300'}`}>{a.title}</div>
-                  <div className="text-[11px] text-neutral-500 truncate">{a.subtitle}</div>
+                  <div className={`text-[13px] truncate ${a.unread ? 'text-[color:var(--text-primary)] font-medium' : 'text-[color:var(--text-secondary)]'}`}>{a.title}</div>
+                  <div className="text-[11.5px] text-[color:var(--text-muted)] truncate">{a.subtitle}</div>
                 </div>
               </button>
             </li>
@@ -499,16 +504,16 @@ export default function Home() {
 
   const quickLaunchSection = (
     <Section label="Quick launch"
-      right={<button onClick={() => setLaunchpad(true)} className={LINK}>all apps →</button>}>
+      right={<button onClick={() => setLaunchpad(true)} className={LINK}>All apps →</button>}>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
         {QUICK_LAUNCH.map(id => {
           const app = getAppById(id)
           if (!app) return null
           return (
             <button key={id} onClick={() => openApp(id)}
-              className="group flex items-center gap-2.5 rounded-xl border border-neutral-800/70 bg-neutral-900/50 px-3 py-2.5 hover:border-neutral-700/90 hover:bg-neutral-900/80 transition-colors">
-              <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-[15px] leading-none transition-colors group-hover:brightness-125" style={{ background: 'var(--accent-soft)' }}>{app.icon}</span>
-              <span className="text-[12.5px] text-neutral-200 truncate">{app.name}</span>
+              className="group flex items-center gap-2.5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_70%,transparent)] px-3 py-2.5 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] transition-[background-color,border-color]">
+              <span className="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-[10px] text-[16px] leading-none border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors group-hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--border-strong))]">{app.icon}</span>
+              <span className="text-[12.5px] text-[color:var(--text-secondary)] group-hover:text-[color:var(--text-primary)] truncate transition-colors">{app.name}</span>
             </button>
           )
         })}
@@ -517,43 +522,46 @@ export default function Home() {
   )
 
   return (
-    <div className="absolute inset-0 overflow-y-auto bg-neutral-950/55 backdrop-blur-md">
-      <div className="relative mx-auto w-full max-w-5xl px-5 sm:px-8 py-9 sm:py-12">
+    <div className="absolute inset-0 overflow-y-auto bg-[color-mix(in_srgb,var(--bg-base)_55%,transparent)] backdrop-blur-xl">
+      <div
+        className="relative mx-auto w-full max-w-5xl xl:max-w-6xl 2xl:max-w-[1320px] px-5 sm:px-8 xl:px-10 py-9 sm:py-12"
+        style={{ paddingLeft: 'max(env(safe-area-inset-left), 1.25rem)', paddingRight: 'max(env(safe-area-inset-right), 1.25rem)' }}
+      >
 
         {/* Ambient accent glow — pure decoration behind the greeting + ask-bar,
             giving the hero depth without introducing any chrome. */}
         <div aria-hidden="true"
-          className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-80 w-[820px] max-w-full opacity-70"
+          className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-80 w-[820px] max-w-full opacity-80"
           style={{ background: 'radial-gradient(50% 60% at 50% 0%, var(--accent-soft), transparent 72%)' }} />
 
         {/* Header — greeting + live clock + sovereignty posture */}
         <header className="relative mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <h1
-              className="text-[30px] sm:text-[38px] font-light leading-[1.04] tracking-tight text-transparent bg-clip-text"
-              style={{ backgroundImage: 'linear-gradient(135deg, var(--text-primary) 0%, var(--text-tertiary) 100%)' }}>
+              className="text-[clamp(26px,5vw,38px)] font-semibold leading-[1.05] tracking-[-0.022em] text-transparent bg-clip-text"
+              style={{ backgroundImage: 'linear-gradient(135deg, var(--text-primary) 0%, color-mix(in srgb, var(--text-primary) 52%, var(--text-tertiary)) 100%)' }}>
               {data?.greeting || 'Welcome'}
             </h1>
-            <div className="mt-2 text-[12px] font-mono text-neutral-500">
+            <div className="mt-1.5 text-[12.5px] text-[color:var(--text-muted)] tabular-nums">
               {fmtDate(clock)} · {fmtTime(clock)}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={openAssistant}
               title="Where your AI runs"
-              className="flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 backdrop-blur px-3 py-1.5 text-[11px] text-neutral-300 hover:border-neutral-700 hover:text-neutral-100 transition-colors"
+              className="flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] backdrop-blur px-3 py-1.5 text-[11.5px] font-medium text-[color:var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[color:var(--text-primary)] transition-colors"
             >
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: TIER_DOT[tier] || TIER_DOT.external }} />
-              <span className="font-mono">{tierLabel || 'sovereign'}</span>
+              <span className="capitalize">{tierLabel || 'sovereign'}</span>
             </button>
             <button
               type="button"
               onClick={load}
               disabled={loading}
               title="Refresh"
-              className="w-8 h-8 flex items-center justify-center rounded-full border border-neutral-800 bg-neutral-900/60 text-neutral-500 hover:text-neutral-200 hover:border-neutral-700 transition-colors disabled:opacity-40"
+              className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] hover:border-[var(--border-emphasis)] transition-colors disabled:opacity-40"
             >
               <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" className={loading ? 'animate-spin' : ''}>
                 <path d="M13.5 8a5.5 5.5 0 10-1.6 3.9M13.5 12.5V9h-3.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -567,10 +575,10 @@ export default function Home() {
         <div ref={composerRef} className="relative mb-9">
           <div className="relative">
             <div aria-hidden="true"
-              className="pointer-events-none absolute -inset-x-3 -top-2 -bottom-2 rounded-3xl opacity-60"
+              className="pointer-events-none absolute -inset-x-3 -top-2 -bottom-2 rounded-[var(--radius-2xl)] opacity-70"
               style={{ background: 'radial-gradient(60% 130% at 50% 0%, var(--accent-soft), transparent 70%)' }} />
             <form onSubmit={submitAsk}
-              className="relative rounded-2xl border border-neutral-700/70 bg-neutral-900/70 backdrop-blur-md px-4 py-3.5 shadow-xl shadow-black/30 transition-colors focus-within:border-[var(--accent)]">
+              className="relative rounded-[var(--radius-xl)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] backdrop-blur-xl px-4 py-3.5 shadow-[var(--shadow-lg)] transition-[border-color,box-shadow] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_var(--accent-soft)]">
               <div className="flex items-end gap-3">
                 <span className="text-lg leading-none mb-1 select-none" style={{ color: 'var(--accent)' }}>✦</span>
                 <textarea
@@ -581,11 +589,11 @@ export default function Home() {
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submitAsk(e) }}
                   placeholder="Ask your assistant, or tell it to do something…"
                   aria-label="Ask your assistant"
-                  className="flex-1 resize-none bg-transparent text-[14px] text-neutral-100 placeholder-neutral-600 focus:outline-none leading-relaxed py-1"
+                  className="flex-1 resize-none bg-transparent text-[14px] text-[color:var(--text-primary)] placeholder:text-[color:var(--text-faint)] focus:outline-none leading-relaxed py-1"
                 />
                 <button type="submit" disabled={busy || !input.trim()}
                   style={{ background: 'var(--accent)' }}
-                  className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
+                  className="flex-shrink-0 w-9 h-9 rounded-[var(--radius-md)] text-white flex items-center justify-center transition-[filter] hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100 focus-primary"
                   aria-label="Send" title="Send (Enter)">
                   <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
                     <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
@@ -600,7 +608,7 @@ export default function Home() {
               {turns.map(t => (
                 t.proposal ? (
                   <div key={t.id} className="space-y-2">
-                    {t.content && <div className="text-[13px] text-neutral-300 leading-relaxed whitespace-pre-wrap">{t.content}</div>}
+                    {t.content && <div className="text-[13px] text-[color:var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{t.content}</div>}
                     <ProposalCard proposal={t.proposal} state={t.state} compact
                       onApprove={() => approve(t.id, t.proposal)} onReject={() => reject(t.id)} />
                   </div>
@@ -611,10 +619,10 @@ export default function Home() {
                     <div
                       style={t.role === 'user' ? { background: 'var(--accent)' } : undefined}
                       aria-live={t.role === 'assistant' ? 'polite' : undefined}
-                      className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
-                      t.role === 'user' ? 'text-white rounded-br-sm' : 'bg-neutral-800/70 text-neutral-200 rounded-bl-sm'}`}>
+                      className={`max-w-[85%] rounded-[var(--radius-lg)] px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
+                      t.role === 'user' ? 'text-white rounded-br-sm' : 'bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] text-[color:var(--text-secondary)] rounded-bl-sm'}`}>
                       {t.content}
-                      {t.pending && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-neutral-400 animate-pulse" aria-hidden="true" />}
+                      {t.pending && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-[var(--text-tertiary)] animate-pulse" aria-hidden="true" />}
                     </div>
                   </div>
                 )

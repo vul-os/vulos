@@ -30,8 +30,8 @@ const COVERED = [
 ]
 
 const NOT_COVERED = [
-  'Ofisi documents (docs, sheets, slides, whiteboards) — export those from within Ofisi.',
-  'Chat/video call history — Talk and Meet are third-party apps (Cinny/Element, Jitsi Meet/Element Call); that history lives with those services, not Vulos, so export it from within each app.',
+  'Office documents (docs, sheets, slides, whiteboards) — export those from within Office.',
+  'Chat/video call history — the chat and video apps you install keep their own history; that history lives with those apps, not Vulos, so export it from within each app.',
   'Anything held only on another instance via an end-to-end (content-blind) share — that instance holds the keys, so export it there. This is the privacy guarantee working, not a gap in your access.',
 ]
 

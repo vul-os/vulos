@@ -13,6 +13,10 @@ export function AuthProvider({ children }) {
   // on a locally-unlocked offline session (cached identity, no live server auth).
   const [offline, setOffline] = useState(false)
   const [offlineMode, setOfflineMode] = useState(false)
+  // SESSION-TAKEOVER: when set (after a fresh sign-in that finds the account
+  // already active elsewhere), the shell shows the "take over / keep other"
+  // prompt. { others: number, sessions: [...] }. Null = no conflict / dismissed.
+  const [sessionConflict, setSessionConflict] = useState(null)
 
   const checkAuth = useCallback(async () => {
     try {
@@ -78,6 +82,42 @@ export function AuthProvider({ children }) {
     setOfflineMode(false)
   }, [])
 
+  // SESSION-TAKEOVER: called by the login screen right after a successful
+  // sign-in. If the account is already active on another device, raise the
+  // conflict so the shell can prompt. Best-effort — never blocks or fails a
+  // login (offline / older box without the endpoint simply skips the prompt).
+  const checkConcurrentSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/sessions')
+      if (!res.ok) return
+      const data = await res.json()
+      if (data && data.others > 0) {
+        setSessionConflict({ others: data.others, sessions: Array.isArray(data.sessions) ? data.sessions : [] })
+      }
+    } catch {
+      /* offline / unreachable — no prompt, login proceeds normally */
+    }
+  }, [])
+
+  // "Use only here": sign out every OTHER device, keep this one. The current
+  // session cookie is unaffected, so the shell stays mounted.
+  const takeOverSession = useCallback(async () => {
+    try {
+      await fetch('/api/auth/sessions/revoke-others', { method: 'POST' })
+    } catch {
+      /* best-effort; a failure just leaves the other sessions alive */
+    }
+    setSessionConflict(null)
+  }, [])
+
+  // "Keep my other session": leave the other device signed in and sign THIS one
+  // out (single-active-session semantics until multi-session ships —
+  // roadmap/MULTI-SESSION.md).
+  const keepOtherSessionAndSignOut = useCallback(async () => {
+    setSessionConflict(null)
+    await logout()
+  }, [logout])
+
   const updateProfile = useCallback(async (updates) => {
     if (!user || offlineMode) return // no server writes in an offline session
     const res = await fetch(`/api/profiles/${user.id}`, {
@@ -95,6 +135,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, profile, loading, error, offline, offlineMode,
       logout, updateProfile, checkAuth, unlockOffline,
+      sessionConflict, checkConcurrentSessions, takeOverSession, keepOtherSessionAndSignOut,
     }}>
       {children}
     </AuthContext.Provider>

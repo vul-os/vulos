@@ -23,7 +23,7 @@ describe('iframeSandboxForURL — the allow-same-origin gate', () => {
     const shellOriginUrls = [
       '/app/clock/',
       '/app/calculator/',
-      '/app/pdf-viewer/',
+      '/app/text-editor/',
       '/app/text-editor/',
       '/app/weather/',
       '/apps/browser/',
@@ -82,7 +82,7 @@ describe('expectedFrameOrigin — what the bridge will accept', () => {
 describe('gatewayAppId', () => {
   it('extracts the id from gateway path-prefix urls only', () => {
     expect(gatewayAppId('/app/clock/')).toBe('clock')
-    expect(gatewayAppId('/app/pdf-viewer/deep/path')).toBe('pdf-viewer')
+    expect(gatewayAppId('/app/text-editor/deep/path')).toBe('text-editor')
     expect(gatewayAppId('/app/clock')).toBe('clock')
     expect(gatewayAppId('/apps/browser/')).toBeNull()
     expect(gatewayAppId('/api/ai-apps/x/html')).toBeNull()
@@ -134,8 +134,8 @@ describe('resolveAppFrameURL / appFrameURLFor', () => {
     const cfg = setOriginConfig({ enabled: true, base_domain: 'box.example.com', profile: 'default' })
     expect(resolveAppFrameURL('/app/clock/', cfg, loc('box.example.com')))
       .toBe('http://clock--default.box.example.com/')
-    expect(resolveAppFrameURL('/app/pdf-viewer/view/1', cfg, loc('box.example.com')))
-      .toBe('http://pdf-viewer--default.box.example.com/view/1')
+    expect(resolveAppFrameURL('/app/text-editor/view/1', cfg, loc('box.example.com')))
+      .toBe('http://text-editor--default.box.example.com/view/1')
     expect(appFrameURLFor('weather', cfg, loc('box.example.com')))
       .toBe('http://weather--default.box.example.com/')
   })

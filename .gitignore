@@ -45,3 +45,6 @@ backend/verify
 keys/*.priv.json
 keys/*.key
 keys/*.pem
+
+# Compiled dev server binary (see backend/vulos-server above)
+backend/vulos

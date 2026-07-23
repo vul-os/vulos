@@ -5,7 +5,7 @@ import { useAuth } from './AuthProvider'
 import { useCloudSignIn, CloudSignInFlowExtras } from './CloudSignIn'
 
 export default function LoginScreen() {
-  const { checkAuth } = useAuth()
+  const { checkAuth, checkConcurrentSessions } = useAuth()
   const [hasUsers, setHasUsers] = useState(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -22,7 +22,7 @@ export default function LoginScreen() {
   const [cloudEmail, setCloudEmail] = useState('')
   const [cloudPassword, setCloudPassword] = useState('')
   const cloudFlow = useCloudSignIn({
-    onSuccess: async () => { await checkAuth() },
+    onSuccess: async () => { await checkAuth(); await checkConcurrentSessions() },
   })
 
   // Check if this is first-time setup (no users yet)
@@ -110,6 +110,10 @@ export default function LoginScreen() {
         // user via AuthProvider instead — React unmounts LoginScreen and
         // mounts the Shell with no Chromium-side navigation.
         await checkAuth()
+        // SESSION-TAKEOVER: only after a real sign-in (not on boot) — if the
+        // account is already active elsewhere, the shell will prompt to take
+        // over or keep the other session. Best-effort; never blocks entry.
+        if (!isSetup) { await checkConcurrentSessions() }
       } else {
         setError(data.error || (isSetup
           ? 'Could not create your account. Check your details and try again.'

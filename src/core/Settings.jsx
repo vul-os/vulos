@@ -22,6 +22,7 @@ import WebhooksPanel from './settings/WebhooksPanel.jsx'
 import DeveloperPanel from './settings/DeveloperPanel.jsx'
 import DomainPanel from './settings/DomainPanel.jsx'
 import CDNPanel from './settings/CDNPanel.jsx'
+import LocationPanel from './settings/LocationPanel.jsx'
 
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
@@ -51,6 +52,7 @@ const sectionGroups = [
       { id: 'audio', label: 'Sound', icon: '\u{1F509}' },
       { id: 'display', label: 'Display', icon: '\u{25AD}' },
       { id: 'energy', label: 'Battery & Energy', icon: '\u{26A1}' },
+      { id: 'location', label: 'Location', icon: '\u{25C9}' },
     ],
   },
   {
@@ -310,6 +312,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'pin' && <DevicePINSettings />}
         {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
+        {active === 'location' && <LocationPanel />}
         {active === 'offlinedata' && <OfflineDataPanel />}
         {active === 'dataexport' && <DataExportPanel />}
         {active === 'security' && <SecurityPanel />}

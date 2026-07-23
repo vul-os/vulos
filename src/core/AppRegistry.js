@@ -201,15 +201,6 @@ const builtinRegistry = [
     port: 80,
     category: 'media',
   },
-  {
-    id: 'social',
-    name: 'Fediverse',
-    icon: '◎',
-    description: 'Read-only ActivityPub social client — browse public Mastodon timelines',
-    keywords: ['social', 'fediverse', 'mastodon', 'activitypub', 'timeline', 'feed'],
-    port: 80,
-    category: 'network',
-  },
 
   // --- Vulos Suite (UNIFIED-STORAGE) ---
   // The suite apps are separate products served as EXTERNAL, gateway-proxied web
@@ -232,18 +223,6 @@ const builtinRegistry = [
     url: '/app/lilmail/',
     port: 80,
     // No storage permission: lilmail is IMAP/SMTP-backed (server is the store).
-  },
-  {
-    id: 'vulos-office',
-    name: 'Ofisi',
-    icon: '⊟',
-    description: 'Docs, Sheets, Slides, PDF, and Whiteboards — collaborative editing with per-user file storage',
-    keywords: ['docs', 'sheets', 'slides', 'pdf', 'word', 'excel', 'spreadsheet', 'presentation', 'document', 'office', 'whiteboard', 'board', 'canvas', 'draw', 'diagram'],
-    category: 'office',
-    type: 'web',
-    url: '/app/vulos-office/',
-    port: 80,
-    permissions: ['storage'], // file-bearing: documents persisted to the object store
   },
   // WORKSPACE REMOVED: the standalone "Workspace" shell app is dead — the OS IS
   // the shell. Its launcher tile, gateway deep-link, and hub embedding are gone.
@@ -321,18 +300,6 @@ const defaultWebApps = [
     needsSameOrigin: true,
   },
   {
-    id: 'pdf-viewer',
-    name: 'PDF Viewer',
-    icon: '▤',
-    description: 'Local PDF reader with notes and quick controls',
-    keywords: ['pdf', 'reader', 'document', 'annotations', 'notes'],
-    category: 'productivity',
-    url: '/app/pdf-viewer/',
-    port: 80,
-    // ORIGIN-01: stores per-doc notes/annotations + recents in localStorage (bridge-backed).
-    needsSameOrigin: true,
-  },
-  {
     id: 'text-editor',
     name: 'Text Editor',
     icon: '⌨',
@@ -380,16 +347,6 @@ const defaultWebApps = [
     keywords: ['image', 'edit', 'photo', 'crop', 'filter', 'draw', 'annotate'],
     category: 'media',
     url: '/app/image-editor/',
-    port: 80,
-  },
-  {
-    id: 'maps',
-    name: 'Maps',
-    icon: '⊕',
-    description: 'OpenStreetMap navigation with place search, directions and favourites',
-    keywords: ['maps', 'navigation', 'directions', 'location', 'gps', 'osm', 'openstreetmap'],
-    category: 'productivity',
-    url: '/app/maps/',
     port: 80,
   },
   {
@@ -474,7 +431,6 @@ const defaultWebApps = [
 // persisted) ⇒ every group enabled, so this is invisible to existing installs.
 const suiteBundleOf = new Map([
   ['lilmail', 'email'],
-  ['vulos-office', 'workspace'],
 ])
 
 // suiteSelection mirrors GET /api/setup/apps. Defaults to everything-on so tiles

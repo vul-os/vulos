@@ -1,162 +1,67 @@
-<p align="center">
-  <img src="docs/assets/vulos-logo.png" width="120" alt="Vulos" />
-</p>
+<div align="center">
 
-<h1 align="center">Vulos</h1>
+<img src="docs/assets/vulos-logo.png" width="112" alt="Vulos" />
 
-<p align="center">
-  <strong>A sovereign personal server — web-native desktop + private AI — on hardware you own.<br/>Agency over your computing, your data, and your AI.</strong>
-</p>
+# Vulos
 
-<p align="center">
+**Your own personal server, on hardware you own — a full desktop, your files, and private AI, all in one place.**
+
+Your server. Your AI. Your rules.
+
+<p>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0" /></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.2.0-informational.svg" alt="Version 1.2.0" /></a>
+  <img src="https://img.shields.io/badge/version-1.2.0-informational.svg" alt="Version 1.2.0" />
   <img src="https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61dafb.svg" alt="React 19 + Vite" />
   <img src="https://img.shields.io/badge/backend-Go%201.25-00ADD8.svg" alt="Go 1.25" />
 </p>
 
-<p align="center">
-  <em>This is the core OS repo. The Vulos suite spans companion repos:<br/>
-  <a href="https://github.com/vul-os/ofisi">ofisi</a> &middot;
-  <a href="https://github.com/vul-os/vulos-relay">vulos-relay</a> &middot;
-  <a href="https://github.com/vul-os/vulos-cloud">vulos-cloud</a></em>
-</p>
+<img src="docs/screenshots/hero.png" alt="The Vulos desktop" width="880" />
 
-![Vulos desktop](docs/screenshots/hero.png)
+</div>
 
 ---
 
 ## What is Vulos?
 
-Vulos is a **sovereign personal server with a web-native desktop** you run on your own self-provisioned box. The shell is a React single-page app — a real window manager with virtual desktops, a dock, and bundled apps — that runs in any browser. Open it from a laptop, a phone, or a shared screen and you get the same full desktop, backed by a single self-contained Go binary that embeds the entire frontend. Reach your box from anywhere through the relay; install apps from the app store; every piece is open source and self-hostable.
+Vulos is a **sovereign personal server** — your own computer in the cloud (or in your closet) that you actually own. Open it in any browser and you land on a real desktop: windows, a dock, your files, a calendar, notes, a terminal, apps you install yourself, and an AI assistant that lives on *your* machine.
 
-The wedge is **agency**, not privacy-absolutism. This isn't a "we can never see anything" pitch — it's *ownership*. You own the server, you own the data, and you control the AI. What that buys you is agency over your own computing, without handing your inbox, calendar, and files to a third-party cloud.
+Nothing here runs on someone else's servers by default. Your data sits on hardware you control, your AI runs through a gateway you own, and there's no third party you have to sign in through to use any of it. The idea isn't secrecy for its own sake — it's **agency**: keeping your inbox, calendar, files, and AI on a machine that answers to you.
 
-### Sovereign AI, honestly
+It runs the same whether you flash it to a mini-PC, boot it on a spare laptop, or deploy it to a cloud server. One clone, one build, and it's yours.
 
-Vulos ships **[llmux](docs/ASSISTANT.md), a sovereign AI gateway**: you run AI **through your own box**, and the box mediates the routing and data-flow. Two honest modes:
-
-- **Bring your own key** to any provider (OpenAI, Anthropic, or anything else). Your keys, your box in the middle — **no Vulos middleman** and no Vulos account required to use AI.
-- **Local models** where your hardware allows, so nothing leaves the box at all.
-
-**Compute stance:** AI/GPU compute always runs **on your own box** via llmux — Vulos does not host or provision any AI/GPU compute of its own, and there is no compute billing. Managed/hosted compute is a documented "later," not something offered today (see `VULOS-PRODUCT-STANDARD.md`).
-
-"Sovereign AI" here means *your gateway + your keys + your box controlling where the data goes* — **not** a promise that every box ships a free frontier LLM (most hardware can't run large models locally). AI on your terms, mediated by a machine you own.
-
-At the center is a **sovereign assistant**: an on-box agent aware of your calendar, contacts, files, and reminders that can act on your behalf — but only under a hard security contract. Every side-effecting action is a confirmation-gated *proposal*, off-box egress is fenced by a tier-aware sovereignty Guard, and its LLM traffic runs through llmux by default. See [the security model](#the-sovereign-assistant-security-model) below.
-
-### Honest privacy, not zero-access
-
-Because you own the box and the data, your privacy posture is genuinely strong — but be clear-eyed about the trust model. Vulos is **honest-privacy, not zero-access**: there are recovery paths, so "impossible for anyone, ever" is not the claim. You get a **client-side recovery phrase** by default, **trusted-device** recovery, and **opt-in HSM** for stronger key custody. Sovereignty means you decide the trade-off between recoverability and lock-down — not that a lost secret is unrecoverable by design.
-
-No Electron, no VNC, no always-on remote-desktop session, no third-party login. Web apps run natively in the shell; native Linux GUI apps stream over WebRTC only while their window is open. The whole thing flashes to a USB stick, deploys to a cloud server, or runs in Docker.
-
-*"Vula" is isiZulu for "open."*
+> *"Vula" is isiZulu for "open."*
 
 ---
 
-## Features
+## One person, many instances
 
-- **Sovereign assistant** — an on-box AI agent aware of your calendar, contacts, files, and reminders. It reads with a curated, read-only toolset and *proposes* anything with side effects. Answers stream token-by-token over SSE. See [the security model](#the-sovereign-assistant-security-model) below.
-- **Proactive AI Home + ⌘K** — the desktop opens as a home (agenda, focus, pending invites, reminders, proposals), not just a launcher. A unified `⌘K` command palette drives the whole shell.
-- **Window-manager shell** — drag, resize, snap, and tile windows; virtual desktops; Mission Control overview; a dock with running-app indicators; persisted window sessions. Pure JSX React 19 + Vite + Tailwind.
-- **Bundled apps** — Terminal (persistent PTY over xterm.js), Files / Drive, standalone **Calendar** and **Contacts** (over lilmail's `/v1` via the box PIM proxy), App Hub, Activity Monitor, Settings, Notes, Messages (peer-to-peer), both browsers (Smart Browser + Streaming Chrome), plus a suite under `apps/`: Calculator, Camera, Clock, Gallery, Image Editor, Maps, Music, PDF Viewer, Weather, and more. **Ofisi** (docs/sheets/slides/PDF/whiteboards) is the standalone `ofisi` repo, reached through the App Hub.
-- **Passwordless auth, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor (with clone/replay counter detection), QR / phone-approval login for shared clients, device PIN, and TOTP 2FA fallback. Forced recovery-phrase signup with a client-side master-key unwrap. No Google SSO, no OAuth login flows.
-- **Files with a real ACL** — a Files service with a **viewer < editor < owner** role hierarchy enforced server-side, plus content-blind (sealed) file sharing and share-by-email with locality routing. Large files use a **resumable, chunked upload** (tus-style): each chunk rides the relay as an ordinary bounded request, the box reassembles into your own storage with per-chunk + whole-file integrity, and an interrupted upload **resumes from the committed offset** instead of restarting.
-- **Notifications + sovereign Web Push** — a real notifications system, plus opt-in **Web Push** where *your box* sends notifications directly to your device's browser vendor (FCM/Apple/Mozilla). It's outbound-only (works behind NAT, no central relay), and payloads are end-to-end encrypted per RFC 8291 — the vendor routes but can't read them. Enable it per-device under **Settings → Notifications**; Do Not Disturb is honoured by the box before any push is sent.
-- **Portability & transparency** — one-click **"Export my data"** account portability, and legible-trust surfaces that make your sovereignty level visible.
-- **Whiteboards** — an embedded collaborative infinite-canvas whiteboard, surfaced through **Ofisi** (whiteboards are an Ofisi document type, not a separate product).
-- **On-demand app streaming** — native Linux apps stream into shell windows via WebRTC with GPU-accelerated encoding (NVENC / VA-API / VP8 fallback). Three modes share one pipeline: **native app windows** (dirty-region capture, idle-throttled — tuned for a still desktop), a low-latency **gaming mode** that auto-engages only for real games (Wine / Lutris / Steam, or a `category: gaming` manifest) with a zero-latency encoder profile and a minimal client jitter buffer, and **Streaming Chrome** (below). Close the window and the stream stops. Real frame-rate/latency/GPU behaviour is deployment-dependent, not a fixed guarantee.
-- **Two browsers, your choice** — a lightweight **Smart Browser** (a client-side web app that opens in your host browser, no server session) sits alongside **Streaming Chrome**: a real Chromium running *on the box*, streamed over WebRTC, with a persistent per-user profile (cookies/history/logins). Pick per task; both are launcher tiles.
-- **Comms are third-party** — real-time chat and video are delegated to established platforms rather than shipped as first-party OS apps: **Talk → Matrix (Cinny/Element)**, **Meet → Jitsi Meet/Element Call** — all four are one-click installs from the App Store. The OS integrates/links out to them; it keeps its own sovereign peer-to-peer **Messages** (with its own in-process group-call SFU) for direct encrypted messaging.
-- **On-box LLM gateway** — assistant LLM/embeddings traffic routes through the on-box `llmux` sovereign gateway by default; a local vector store powers on-instance retrieval (RAG). You choose the provider and sovereignty tier.
-- **Peering & sync** — every instance has its own Ed25519 identity; a pure-Go leaderless CRDT keeps the app registry in sync across your same-LAN nodes today (general structured-data sync across the internet is a documented forward plan, not yet shipped — see `roadmap/SYNC.md`); a full VulaID key lifecycle (rotation, revocation, account-anchored recovery, X3DH-style forward secrecy); AirDrop-style local Drop; real-time collaboration over Yjs with per-document ACL.
-- **Local-first storage** — SQLite on the box, S3/Restic for encrypted backup. Your data lives on your machine first.
-- **One binary, immutable image** — the Go server embeds the SPA. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
+Vulos isn't locked to a single machine. Run it on your always-on home box **and** your laptop, and they sync — your apps, settings, and workspace follow you. One instance serves your traffic; the others stay in step. Reach any of them from your phone, whether you're on the couch or across the world.
 
----
+```mermaid
+flowchart LR
+    You(("You"))
+    Phone["📱 Phone<br/>Android app / browser<br/>(thin client + launcher)"]
+    You --> Phone
 
-## Architecture
+    subgraph Yours["Your Vulos — instances you own"]
+        direction TB
+        Home["🏠 Home box<br/><i>always-on · serves your traffic</i>"]
+        Laptop["💻 Laptop<br/><i>travels with you</i>"]
+        Home <-->|"peer sync<br/>(CRDT · Ed25519 identity)"| Laptop
+    end
 
-A single Go backend serves the embedded React frontend and exposes the system over HTTP and WebSocket. The backend is organized into focused services under `backend/services/` and domain packages under `backend/internal/`:
-
-- **assistant** — the sovereign AI agent: curated toolset, proposal ledger, tier-aware egress Guard, on-instance mail/RAG index (`services/assistant/`)
-- **ai / llmuxclient** — LLM/embeddings seam, routed through the on-box `llmux` gateway, with a local vector DB (`internal/vecdb`)
-- **gateway** — request routing, auth enforcement, and the API surface
-- **auth / passkeys** — WebAuthn passkeys, PIN, TOTP, QR/phone approval, recovery-phrase master key, credential vault
-- **files** — Files service with a viewer/editor/owner ACL and content-blind (sealed) sharing
-- **notify** — the notifications system
-- **peering / fabric** — Ed25519 identity, VulaID key lifecycle, a pure-Go leaderless CRDT for the app registry (same-LAN via mDNS, not yet WAN), and Drop
-- **storage** — local-first file storage, app filesystems, and backup
-- **joincode / joinsync / cloudenroll** — device/box join and enrollment
-- **apps / appnet / stream / gpu** — bundled app manifests, per-app network namespaces, GPU host, and streaming
-
-```
-vulos/
-├── src/            # React frontend: shell, window manager, auth, providers
-│   ├── shell/      #   desktop, dock, menu bar, window chrome
-│   └── apps/       #   bundled app UIs
-├── apps/           # App manifests + per-app frontends (browser, office, mail, …)
-├── backend/        # Go backend
-│   ├── cmd/        #   entrypoints: server, installer, sign, verify, init
-│   ├── services/   #   assistant, ai, gateway, auth, files, notify, apps, …
-│   └── internal/   #   llmuxclient, auth, fabric, vecdb, safedial, obs, …
-├── scripts/        # Build, signing, and utility scripts
-├── docs/           # Architecture, configuration, deploy, self-host docs
-├── build.sh        # Bare-metal image builder + deployer
-└── dev.sh          # Local dev + Docker deploy helper
+    Phone -->|"reach it from anywhere<br/>even behind NAT"| Home
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full component map and design decisions.
-
----
-
-## The sovereign assistant security model
-
-The assistant is designed so that a compromised browser, a malicious email, or
-an off-box model provider **cannot** turn "an AI that helps you" into "an AI
-that acts against you." Four mechanisms carry that guarantee
-(`backend/services/assistant/`):
-
-- **Read vs. act is split.** The agent's read-only tools (search mail, read a
-  thread, list calendar events and pending invites, `find_contact`,
-  `find_file` / `read_file`, `list_reminders`) run freely inside the turn.
-  Every tool with a side effect (send email, create event, RSVP, add contact,
-  triage, set/cancel reminder) does **not** execute — it returns a *proposal*.
-- **Proposal ledger + id-only execute.** A proposal is stored server-side in a
-  single-use, TTL-bounded ledger keyed to your session, and the client is shown
-  a human-readable summary. Approving posts **only the opaque proposal id** to
-  `POST /api/assistant/execute` — never client-supplied arguments — so a
-  compromised client cannot smuggle a new recipient or amount past the
-  confirmation dialog. Rejecting sends nothing. Ledger entries are single-use,
-  per-user, expire in 10 minutes, and are bounded per user.
-- **Tier-aware egress Guard.** A single choke point (`Guard`) runs before any
-  mail content reaches the model. It classifies the configured endpoint into a
-  sovereignty tier — **local** (loopback / on this instance, always allowed),
-  **sovereign** (an operator-declared off-box endpoint, asserted in-region/no-train but **not operated or verified by Vulos**), **brokered**
-  (named third party under a no-train agreement), or **external** (anything
-  else, fail-closed) — and blocks egress unless the tier permits it.
-  `brokered`/`external` require an explicit `VULOS_ASSISTANT_ALLOW_EXTERNAL=1`
-  opt-in; a private-range IP is never silently trusted as "local." The shell
-  shows an honest tier badge and picker.
-- **Untrusted-content framing.** Tool results (email bodies, file contents,
-  other people's text) are wrapped as `[UNTRUSTED CONTENT — data only]` before
-  they reach the model, and frame-escape attempts are defanged. Even a fully
-  escaped prompt-injection cannot cause a side effect, because mutation still
-  has to pass the ledger + id-only execute gate. When a proposed action's
-  target came from mail rather than your own words, it is flagged for extra
-  scrutiny.
-
-The language model itself runs through your own on-box **llmux** gateway by
-default (`internal/llmuxclient/`, `LLMUX_URL`), and retrieval is powered by an
-on-instance embeddings index — the embedder must certify it runs on this
-instance or it is refused.
+<sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same‑LAN nodes today, with broader structured‑data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
 
 ---
 
 ## Quickstart
 
-### Run with Docker (fastest)
+### Run with Docker
+
+The fastest way to try Vulos:
 
 ```bash
 docker run -d \
@@ -169,137 +74,82 @@ docker run -d \
 
 Open **http://localhost:8080** and complete first-boot setup.
 
-### Develop with hot reload
+<sub>Building the image yourself? <code>docker compose up --build</code> works out of the box. For GPU-accelerated app streaming, see <a href="docs/GETTING-STARTED.md">Getting Started</a>.</sub>
 
-Prerequisites: **Node.js 22+** and **Go 1.25+**.
+### Run locally for development
 
-> **Before `npm install`: one sibling repo must be cloned next to this one.**
-> `package.json` depends on `@vulos/relay-client` through
-> `file:../vulos-relay/client`. That path is resolved relative to the *parent*
-> directory, so a fresh clone of `vulos` alone cannot `npm install`.
-> `@vulos/relay-client` also has to be built, because its subpath exports
-> (`./endpoints`, `./offlineBootstrap`, …) point at a `dist-lib/` that is not
-> committed.
+Prerequisites: **Node.js 22+** and **Go 1.25+**. No sibling repos, no cloud account — a clean clone builds and runs on its own.
 
 ```bash
-# 0. Clone the sibling first — into the PARENT directory, beside vulos/
 git clone https://github.com/vul-os/vulos.git
-git clone https://github.com/vul-os/vulos-relay.git
-
-# 1. Build the relay client library (provides dist-lib/)
-cd vulos-relay/client && npm install && npm run build:lib && cd ../..
-
-# 2. Now vulos itself installs
 cd vulos
 npm install
 
-# Terminal 1 — backend (no cloud account needed)
-cd backend && go run ./cmd/server --env=local
-
-# Terminal 2 — frontend
+# Terminal 1 — frontend (hot reload on http://localhost:5173)
 npm run dev
+
+# Terminal 2 — backend (on :8080; Vite proxies /api to it)
+cd backend && go run ./cmd/server --env=local
 ```
 
-Your directory layout must end up looking like this — CI does exactly the same
-thing before every build (`.github/workflows/ci.yml`):
+Or run both together with **`./dev.sh`** (equivalently `make dev`). Open **http://localhost:5173**.
 
-```
-parent/
-├── vulos/          ← this repo
-└── vulos-relay/    ← provides @vulos/relay-client (client/)
-```
-
-Open **http://localhost:5173** — Vite proxies `/api` to the backend on `:8080`.
-Or run both together with `./dev.sh`.
-
-### Build for production
-
-```bash
-npm run build              # frontend → dist/ (embedded into the Go binary)
-cd backend && go build ./...   # backend
-```
-
-Or both at once with `make build`.
+Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)**.
 
 ---
 
-## Configuration
+## Features
 
-Vulos runs locally with zero configuration via `--env=local`. Common knobs:
-
-| Setting | Purpose |
-|---------|---------|
-| `--env=local` | Run without a cloud account; data under `~/.vulos` |
-| `VULOS_DATA_DIR` | Override the data directory (default `~/.vulos`) |
-| Port `8080` | Backend HTTP/WebSocket server |
-| `.env` | Local dev overrides (frontend + dev scripts) |
-
-The full list of environment variables, config files, and installer flags lives in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- **A real desktop, in the browser** — drag, resize, snap, and tile windows; virtual desktops; a dock with running-app indicators; Mission Control; persisted sessions. No Electron, no VNC.
+- **A sovereign AI assistant** — an on-box agent that knows your calendar, contacts, files, and reminders and can act for you. It reads freely but *proposes* anything with side effects, so it can never act against you without your confirmation.
+- **Proactive home + ⌘K** — the desktop opens as a home (agenda, focus, pending items, proposals), and one command palette drives the whole shell.
+- **Your files, your rules** — a Files service with proper viewer/editor/owner permissions, sealed sharing, share-by-email, and resumable chunked uploads that pick up where they left off.
+- **Bundled apps** — the essentials, built in: Files, Notes, a Text Editor, Calculator, Clock, Calendar, Contacts, Terminal, Camera, Gallery, an Image Editor, Music, Voice Recorder, Weather, a Browser, plus an app hub, activity monitor, and settings. Install more from the hub whenever you want.
+- **Passwordless sign-in, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, plus QR/phone-approval login, device PIN, and TOTP fallback. No Google login, no OAuth middleman.
+- **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central relay.
+- **On-demand app streaming** — native Linux apps stream into desktop windows over WebRTC with GPU acceleration; a dedicated low-latency mode auto-engages for games. Close the window and the stream stops.
+- **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet.
+- **One binary, immutable image** — a single Go server serves the whole shell. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
 
 ---
 
-## Development & testing
+## On your phone
 
-```bash
-npm run dev          # Vite dev server (localhost:5173)
-npm run build        # Production frontend build → dist/
-npm run lint         # ESLint
-npm run test         # Vitest unit + RTL/MSW integration tests (jsdom)
-npm run test:e2e     # Playwright real-browser E2E (chromium)
+Vulos has a **native Android app** that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your **home-screen launcher**, making Vulos the front door of your phone. An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets and box-attached SMS and calling.
 
-./dev.sh             # Go + Vite together
-./dev.sh deploy      # Full Docker build on localhost:8080
-```
+See **[mobile/README.md](mobile/README.md)** for the model and build path.
 
-The Go module root is `backend/` (`module vulos/backend`) — there is **no
-`go.mod` at the repository root**, so every Go command runs from inside
-`backend/`:
+---
 
-```bash
-cd backend
-go build ./...                  # Compile the backend
-go test ./...                   # Go tests
-go vet ./...
-go run ./cmd/server --env=local # Run the backend locally
-```
+## Sovereign AI, honestly
 
-Or via the Makefile from the repo root, which handles the `cd` for you:
+Vulos runs AI **through your own box**. Two honest modes: **bring your own key** to any provider (your keys, your box in the middle, no Vulos account or middleman), or run **local models** where your hardware allows so nothing leaves the box at all.
 
-```bash
-make build        # backend build + frontend build
-make test-local   # backend tests, no race detector (fast)
-make test-dev     # backend tests with -race + seeded firstboot e2e
-make smoke        # SMOKE-01 peering-route regression (same script CI runs)
-make help         # list every target
-```
+This is agency, not a magic promise: "sovereign AI" means *your gateway, your keys, your box deciding where data goes* — not that every box ships a free frontier model. The assistant is bound by a hard security contract: every side-effecting action is a confirmation-gated proposal, off-box egress passes a tier-aware Guard, and untrusted content (email bodies, file text) is framed as data so prompt-injection can't turn a helper into an attacker.
 
-### Frontend test layers
+Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)**.
 
-The shell has two runnable frontend test layers, both with a fully **mocked
-backend** — no Go server or database is needed to run either.
+---
 
-| Layer | Command | Runtime | Backend mock | Lives in |
-|-------|---------|---------|--------------|----------|
-| Unit + integration | `npm run test` | vitest / jsdom | [MSW](https://mswjs.io) intercepts `fetch` (`src/__tests__/integration/msw/server.js`) | `src/**/*.test.jsx`, `src/__tests__/integration/**` |
-| End-to-end | `npm run test:e2e` | Playwright / chromium | `page.route('**/api/**', …)` (`e2e/mock-backend.js`) | `e2e/**/*.e2e.js` |
+## How it's built
 
-- **Integration (RTL + MSW):** renders real component trees (command palette,
-  assistant panel, Drive, settings, notifications, auth) wired to their real
-  providers, with only the network boundary mocked. The assistant SSE stream is
-  answered with a real `ReadableStream`, so `agentStream.js` runs for real. These
-  run under `npm run test` alongside the unit tests.
-- **E2E (Playwright):** builds the app, serves it with `vite preview`, and drives
-  a real Chromium through boot/login, window management, and the ⌘K palette.
-  First run needs the browser: `npx playwright install --with-deps chromium`.
-  Use `npm run test:e2e:ui` for the interactive runner. CI runs it via
-  `.github/workflows/e2e.yml`.
+A single Go binary serves the embedded React shell and exposes the system over HTTP, WebSocket, and WebRTC. The backend is organized into focused services (assistant, auth, files, notifications, peering, streaming) with local-first SQLite storage and optional encrypted S3/Restic backup.
 
-Both layers assert the **wave-13 assistant security contract** at the UI level:
-approving an AI proposal posts **only** the opaque proposal id to
-`/api/assistant/execute` (never client-supplied args), and rejecting sends
-nothing.
+Read the full component map and design decisions in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
-**Frozen invariants** (enforced in review): no CGO in OSS Go code; frontend is JSX only (no `.tsx`); no Google SSO/OAuth login; billing lives in `vulos-cloud`, not here.
+---
+
+## Documentation
+
+| Guide | What's inside |
+|---|---|
+| [Getting Started](docs/GETTING-STARTED.md) | Install, first boot, requirements, upgrading |
+| [User Guide](docs/USER-GUIDE.md) | Living in the desktop day to day |
+| [Architecture](docs/ARCHITECTURE.md) | Component map and design decisions |
+| [Development](docs/DEVELOPMENT.md) | Building, testing, and the dev workflow |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables, config files, flags |
+| [Deploy](docs/DEPLOY.md) · [Self-Host Bundle](docs/SELF-HOST-BUNDLE.md) | Ship it to your own server or bare metal |
+| [Security](docs/SECURITY.md) · [Threat Model](docs/THREAT-MODEL.md) | The security posture, top to bottom |
 
 ---
 
@@ -308,7 +158,7 @@ nothing.
 Vulos is built to be owned end to end. Deploy it to your own server:
 
 ```bash
-./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com --dns-namecheap USER APIKEY
+./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
 ```
 
 Or flash a signed image to bare metal:
@@ -317,58 +167,26 @@ Or flash a signed image to bare metal:
 gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
-The image is forkable: supply your own trust-anchor key and bucket URL for a fully independent build. See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md).
-
-### The OS is the shell
-
-The Vulos **OS is the shell** — the launcher, window manager, dock, assistant,
-notification center, global ⌘K, and system apps all live here (`src/`). Opening
-`http://YOUR_BOX:8080/` serves this React window-manager desktop. It is the one
-shell for the box, whether you're local or remote. There is no separate
-"Workspace" front end — that concept is retired; the OS *is* the workspace.
-
-**PIM follows the GNOME model.** [lilmail](docs/MAIL-LILMAIL.md) is the
-"Evolution-Data-Server": it connects the user's IMAP/CalDAV/CardDAV (directly or
-via an OAuth-linked Google/Microsoft account) and exposes a stable **`/v1`**
-contract. The OS ships thin, standalone **Calendar** and **Contacts** apps (the
-"GNOME Calendar/Contacts") that read/write that data through the box's
-credential-brokering PIM proxy — `/api/pim/{calendar,contacts}/*` → lilmail
-`/v1/*` — so mail credentials never reach the browser. Calendar is also an
-always-on desktop agenda widget. There is no Vulos-hosted mailbox and no
-Vulos-hosted email address: your account is email + password, plus OAuth and passkeys.
-
-**Owned apps** are **Ofisi** (Docs/Sheets/Slides/PDF and **whiteboards** — the
-Excalidraw-based whiteboard is an Ofisi document type, not a separate Board
-product), served as a standalone app under the auth-enforcing gateway. **Files**
-(and P2P sharing) live in the OS. **Real-time comms are third-party**: chat and video are
-delegated to established platforms (Talk → Matrix, via Cinny/Element; Meet →
-Jitsi Meet/Element Call) rather than shipped as first-party OS
-apps. All four are installable from the App Store. The OS keeps its own sovereign peer-to-peer **Messages** for direct
-encrypted messaging.
+The image is forkable — supply your own trust-anchor key for a fully independent build. See **[docs/DEPLOY.md](docs/DEPLOY.md)** and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
 
 ---
 
 ## Security
 
-We take security seriously and welcome good-faith research under a documented safe-harbor policy. Report vulnerabilities via GitHub Security Advisories or `security@vulos.org`. See [SECURITY.md](SECURITY.md) and the [THREAT-MODEL.md](docs/THREAT-MODEL.md).
+We take security seriously and welcome good-faith research under a documented safe-harbor policy. Report vulnerabilities via GitHub Security Advisories or `security@vulos.org`. See **[SECURITY.md](SECURITY.md)** and the **[threat model](docs/THREAT-MODEL.md)**.
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Pick a task, branch as `task/<ID>` or `feat/`/`fix/`/`docs/`, and run `make build` and `make test-local` (or `cd backend && go build ./... && go test ./...` plus `npm run build`) before opening a PR. The full guide — task format, decision log, and disclosure process — is in [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. Branch as `feat/`, `fix/`, or `docs/`, and run `make build` and `make test-local` (or `cd backend && go build ./... && go test ./...` plus `npm run build`) before opening a PR. The full guide is in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ---
 
 ## License
 
-[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) — © VulOS. Vulos OS is a
-VulOS project; source and issues at
-[github.com/vul-os/vulos](https://github.com/vul-os/vulos).
+[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) — © VulOS.
 
----
-
-<p align="center">
-  <a href="https://vulos.org"><img src="docs/assets/vulos-logo.png" alt="vulos" height="20"></a><br>
-  <sub><a href="https://vulos.org"><b>vulos</b></a> — open by design</sub>
-</p>
+<div align="center">
+<sub><a href="https://vulos.org"><b>vulos</b></a> — open by design</sub>
+</div>

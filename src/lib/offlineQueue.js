@@ -420,11 +420,3 @@ export function startOfflineQueueFlushLoop(deps) {
   // First-shot attempt right after registration.
   tryFlush()
 }
-
-/** Stop the background flusher (used by tests). */
-export function stopOfflineQueueFlushLoop() {
-  if (_flushTimer != null) {
-    clearInterval(_flushTimer)
-    _flushTimer = null
-  }
-}

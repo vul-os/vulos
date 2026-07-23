@@ -90,7 +90,7 @@ const HOME_PAYLOAD = {
       preview: 'Your monthly invoice is ready. Auto-pay is on, no action needed unless you want to review.' },
   ],
   agenda: [
-    { id: 'e1', start: iso(todayAt(14, 0)), title: 'Design review', location: 'Meet · war-room' },
+    { id: 'e1', start: iso(todayAt(14, 0)), title: 'Design review', location: 'Design Studio' },
     { id: 'e2', start: iso(todayAt(16, 30)), title: '1:1 with Sam', location: '' },
     { id: 'e3', start: iso(todayAt(9, 0) + dayMs), title: 'Sprint planning', location: 'Office' },
   ],
@@ -100,8 +100,9 @@ const HOME_PAYLOAD = {
       invite: { summary: 'Team offsite — Lisbon', start: iso(NOW + 3 * dayMs), location: 'Lisbon', organizer: 'events@acme.io' } },
   ],
   activity: [
-    { id: 'a1', kind: 'mail', text: 'Priya replied to “Q3 roadmap sign-off”', ts: iso(NOW - 22 * 60_000) },
-    { id: 'a2', kind: 'file', text: 'sovereign-notes.pdf synced to Cloud · eu-central', ts: iso(NOW - 95 * 60_000) },
+    { uid: 'a1', unread: true, title: 'Priya replied to “Q3 roadmap sign-off”', subtitle: 'Priya Menon · 22m ago' },
+    { uid: 'a2', unread: false, title: 'sovereign-notes.pdf synced across your instances', subtitle: 'Files · 1h ago' },
+    { uid: 'a3', unread: false, title: 'Nightly encrypted backup completed', subtitle: 'Backup · 3h ago' },
   ],
   sovereignty: { tier: 'local', label: 'On your device' },
 }
@@ -123,13 +124,13 @@ const INSTANCES = {
 
 const ROUTING_APPS = [
   { app_id: 'lilmail', instance_id: INST_CLOUD, fqdn: 'mail.ada.vulos.app' },
-  { app_id: 'vulos-office', instance_id: INST_DEVICE, fqdn: 'office.ada.vulos.app' },
+  { app_id: 'immich', instance_id: INST_DEVICE, fqdn: 'photos.ada.vulos.app' },
   { app_id: 'jellyfin', instance_id: INST_PI, fqdn: 'media.ada.vulos.app' },
 ]
 
 const APP_VISIBILITY = [
   { app_id: 'lilmail', visibility: 'public' },
-  { app_id: 'vulos-office', visibility: 'public' },
+  { app_id: 'immich', visibility: 'public' },
   { app_id: 'jellyfin', visibility: 'private' },
   { app_id: 'gitea', visibility: 'private' },
   { app_id: 'grafana', visibility: 'private' },
@@ -137,7 +138,7 @@ const APP_VISIBILITY = [
 
 const CGROUPS = [
   { app_id: 'lilmail', cpu_pct: 3.2, mem_current: 148 * 1e6, mem_high: 512 * 1e6, mem_max: 1024 * 1e6 },
-  { app_id: 'vulos-office', cpu_pct: 11.7, mem_current: 386 * 1e6, mem_high: 768 * 1e6, mem_max: 1536 * 1e6 },
+  { app_id: 'immich', cpu_pct: 11.7, mem_current: 386 * 1e6, mem_high: 768 * 1e6, mem_max: 1536 * 1e6 },
   { app_id: 'jellyfin', cpu_pct: 6.4, mem_current: 512 * 1e6, mem_high: 1024 * 1e6, mem_max: 2048 * 1e6 },
   { app_id: 'gitea', cpu_pct: 0.8, mem_current: 96 * 1e6, mem_high: 256 * 1e6, mem_max: 512 * 1e6 },
   { app_id: 'grafana', cpu_pct: 1.5, mem_current: 132 * 1e6, mem_high: 384 * 1e6, mem_max: 768 * 1e6 },
@@ -186,10 +187,32 @@ const TERM_SESSION = [
   `  assistant  ${E}[35mlocal${E}[0m · llama3 (on-device)\r\n\r\n`,
   `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ vulos apps ls --published\r\n`,
   `  ${E}[32mmail${E}[0m       mail.ada.vulos.app\r\n`,
-  `  ${E}[32moffice${E}[0m     office.ada.vulos.app\r\n`,
+  `  ${E}[32moffice${E}[0m     photos.ada.vulos.app\r\n`,
   `  ${E}[32mjellyfin${E}[0m   media.ada.vulos.app\r\n\r\n`,
   `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ ${E}[7m ${E}[0m\r\n`,
 ].join('')
+
+// Activity Monitor's demo data — used by the `tiled` shot so the third window
+// shows real content instead of its "Connecting to system telemetry…" spinner
+// (it needs a WS + two REST endpoints; wired the same honest way as the PTY).
+const DEMO_PROCESSES = [
+  { pid: 1024, name: 'vulos-shelld', command: '/usr/bin/vulos-shelld', user: 'ada', state: 'running', cpu: 4.2, mem_rss: 86 * 1e6, threads: 12 },
+  { pid: 1189, name: 'lilmail', command: '/opt/apps/lilmail/bin/server', user: 'ada', state: 'running', cpu: 2.1, mem_rss: 148 * 1e6, threads: 8 },
+  { pid: 1204, name: 'immich', command: '/opt/apps/immich/bin/immich', user: 'ada', state: 'sleeping', cpu: 11.7, mem_rss: 386 * 1e6, threads: 14 },
+  { pid: 1310, name: 'jellyfin', command: '/opt/apps/jellyfin/jellyfin', user: 'ada', state: 'running', cpu: 6.4, mem_rss: 512 * 1e6, threads: 22 },
+  { pid: 1422, name: 'chromium', command: 'chromium --type=renderer', user: 'ada', state: 'sleeping', cpu: 3.8, mem_rss: 210 * 1e6, threads: 10 },
+  { pid: 1508, name: 'sshd', command: '/usr/sbin/sshd -D', user: 'root', state: 'sleeping', cpu: 0.1, mem_rss: 12 * 1e6, threads: 1 },
+]
+const DEMO_NET_CONNS = [
+  { proto: 'tcp', local_addr: '10.0.0.4', local_port: 443, remote_addr: '203.0.113.9', remote_port: 51422, state: 'ESTABLISHED', process: 'lilmail' },
+  { proto: 'tcp', local_addr: '10.0.0.4', local_port: 22, remote_addr: '0.0.0.0', remote_port: 0, state: 'LISTEN', process: 'sshd' },
+  { proto: 'tcp', local_addr: '10.0.0.4', local_port: 8080, remote_addr: '0.0.0.0', remote_port: 0, state: 'LISTEN', process: 'immich' },
+  { proto: 'udp', local_addr: '10.0.0.4', local_port: 51820, remote_addr: '198.51.100.7', remote_port: 51820, state: 'ESTABLISHED', process: 'relay' },
+]
+const DEMO_TELEMETRY = {
+  cpu: 18, mem_percent: 34, mem_used: 5.6 * 1e9, mem_total: 16 * 1e9, mem_cached: 1.9 * 1e9,
+  net_rx: 2.4 * 1e6, net_tx: 640 * 1e3, disk_read: 1.1 * 1e6, disk_write: 340 * 1e3,
+}
 
 // Common overrides applied to every capture.
 async function demoOverrides() {
@@ -224,6 +247,11 @@ async function demoOverrides() {
     'GET /api/routing/apps': json(ROUTING_APPS),
     // AI status for Settings → AI Assistant.
     'GET /api/ai/status': json({ available: true, mode: 'byo', provider: 'ollama', model: 'llama3', providers: [{ id: 'ollama', label: 'Ollama (on-device)', ready: true }], tier: 'local' }),
+    // Activity Monitor (`tiled` shot) — process table + network connections.
+    // The live CPU/mem/net numbers come over the /api/telemetry WS, mocked
+    // per-context in captureTheme() alongside the PTY.
+    'GET /api/system/processes': json(DEMO_PROCESSES),
+    'GET /api/system/network': json(DEMO_NET_CONNS),
   }
 }
 
@@ -339,6 +367,43 @@ const SHOTS = [
       await page.waitForTimeout(900)
     },
   },
+  {
+    name: 'tiled',
+    light: true,
+    desc: 'Desktop — multiple app windows open at once (real multitasking)',
+    async drive(page) {
+      // Launch a few real apps WITHOUT maximizing. ShellProvider cascades each
+      // new window's default position by +32px (OPEN_WINDOW), so three
+      // unmaximized 720x500 windows land staggered — overlapping enough to read
+      // as a tiled desktop, each title bar and a slice of its content visible.
+      await launchApp(page, 'File Explorer', { maximize: false })
+      await launchApp(page, 'Terminal', { maximize: false })
+      await launchApp(page, 'Activity Monitor', { maximize: false })
+      await page.waitForTimeout(400)
+    },
+  },
+  {
+    name: 'mobile',
+    light: false,
+    desc: 'MobileStack — phone layout (narrow viewport, single-column home)',
+    // MOBILE-06 (src/App.jsx): `layout` comes from useViewport(), purely a
+    // window-width media query (<768px → 'mobile') — no device-profile API
+    // override needed. A 390px-wide context alone flips `useDesktop` false and
+    // renders <MobileStack/> instead of <DesktopCanvas/>.
+    viewport: { width: 390, height: 844 },
+    async drive(page) {
+      await page.waitForTimeout(700)
+      // The assistant-first home is intentionally sparse; open the Apps grid
+      // from the bottom dock for a richer, more representative phone view.
+      const apps = page.getByRole('button', { name: /^Apps$/ }).first()
+      if (await apps.isVisible().catch(() => false)) {
+        await apps.click().catch(() => {})
+      } else {
+        await page.getByText('Apps', { exact: true }).first().click().catch(() => {})
+      }
+      await page.waitForTimeout(900)
+    },
+  },
 ]
 
 // ── runner ───────────────────────────────────────────────────────────────────
@@ -373,9 +438,16 @@ async function captureTheme(browser, theme, overrides, results) {
     // FRESH context per shot: the shell persists open-window state to
     // localStorage, so a shared context would restore prior shots' windows.
     // Isolation guarantees each shot starts from a clean desktop.
+    // A shot may request its own (narrower) viewport — e.g. `mobile`, which
+    // needs <768px to flip the shell's useViewport() media query and render
+    // MobileStack instead of DesktopCanvas (see src/App.jsx `useDesktop`).
+    // Existing shots omit `viewport` and get the standard desktop VIEWPORT.
+    const isMobileShot = !!shot.viewport
     const context = await browser.newContext({
-      viewport: VIEWPORT,
-      deviceScaleFactor: 1,
+      viewport: shot.viewport || VIEWPORT,
+      deviceScaleFactor: isMobileShot ? 2 : 1, // phone shot: retina-ish is safe (light view, no black-frame risk)
+      isMobile: isMobileShot,
+      hasTouch: isMobileShot,
       reducedMotion: 'reduce', // kills window open/maximize animations → no mid-transition black frames
       ignoreHTTPSErrors: true,
     })
@@ -393,8 +465,20 @@ async function captureTheme(browser, theme, overrides, results) {
         ws.onMessage(() => { /* swallow client keystrokes */ })
         ws.send(TERM_SESSION)
       })
+      // Mock Activity Monitor's telemetry WebSocket (`tiled` shot) with one
+      // steady demo reading — enough for useTelemetry() to flip `connected`
+      // and render real CPU/mem gauges instead of the connecting spinner.
+      await page.routeWebSocket(/\/api\/telemetry/, (ws) => {
+        ws.send(JSON.stringify(DEMO_TELEMETRY))
+      })
       await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
-      await page.getByTitle('Applications').first().waitFor({ timeout: 20_000 })
+      // The desktop TopBar's "Applications" button doesn't exist in
+      // MobileStack — wait for that layout's own root marker instead.
+      if (isMobileShot) {
+        await page.locator('[data-shell="mobile"]').first().waitFor({ timeout: 20_000 })
+      } else {
+        await page.getByTitle('Applications').first().waitFor({ timeout: 20_000 })
+      }
       await page.waitForTimeout(600)
       await shot.drive(page)
       // Force two paint frames to settle before capture (belt-and-braces

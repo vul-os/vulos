@@ -167,7 +167,7 @@ export default function GatewayPanel() {
         The gateway is the control plane your device authenticates against for cloud
         sign-in, account enrollment, and instance routing. Managed devices use
         <strong className="text-[var(--text-tertiary)]"> Vulos Cloud</strong>. Point it at your own
-        <span className="font-mono"> vulos-management</span> control plane if you self-host.
+        <strong className="text-[var(--text-tertiary)]"> Vulos control plane</strong> if you self-host.
       </p>
 
       {loadErr && (

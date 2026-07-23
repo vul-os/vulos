@@ -68,13 +68,13 @@ The OS distribution model is moving from "flash a disk, patch over SSH" to "pull
 
 ### Future / exploratory
 
-The `future/` subdirectory holds areas that are designed but not actively being shipped (or where the tasks are still long-tail backlog). These are real designs, not napkin sketches — they're just lower priority than the items above. (The Ladybird browser spike was removed — Chromium is the sole engine; its doc is retained as historical context only.)
+These areas are designed but not actively being shipped (or where the tasks are still long-tail backlog). They're real designs, not napkin sketches — just lower priority than the items above. (The Ladybird browser spike in the `future/` subdirectory was removed — Chromium is the sole engine; its doc is retained there as historical context only.)
 
 | Area | File | What it's about |
 |---|---|---|
-| Authentication | [`future/AUTHENTICATION.md`](future/AUTHENTICATION.md) | TPM-sealed device identity, TOTP, password manager, FIDO2 passkeys, mTLS client certs, SMS-over-VoIP |
-| Mobile / telephony | [`future/MOBILE.md`](future/MOBILE.md) | ModemManager-backed SMS, voice calls, eSIM management; Messages + Dialer apps |
-| ActivityPub | [`future/ACTIVITYPUB.md`](future/ACTIVITYPUB.md) | A single Fediverse client (Mastodon, Pixelfed, PeerTube, Lemmy) as a default app |
+| Authentication | [`AUTHENTICATION.md`](AUTHENTICATION.md) | TPM-sealed device identity, TOTP, password manager, FIDO2 passkeys, mTLS client certs, SMS-over-VoIP |
+| Mobile / telephony | [`MOBILE.md`](MOBILE.md) | ModemManager-backed SMS, voice calls, eSIM management; Messages + Dialer apps |
+| ActivityPub | [`ACTIVITYPUB.md`](ACTIVITYPUB.md) | A single Fediverse client (Mastodon, Pixelfed, PeerTube, Lemmy) as a default app |
 
 ## Where to start reading
 

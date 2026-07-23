@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vulos Site Template</title>
+  <!-- Inline CSS only — no CDN, no external assets, so this deploys as a pure static bundle.
+       The shared stylesheet in static/style.css is loaded to exercise asset serving,
+       but the page is fully usable even if that request is not yet warm. -->
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* Minimal above-the-fold styling kept inline so the first paint needs no round-trip. */
+    :root { color-scheme: light dark; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; }
+    #app { max-width: 42rem; margin: 0 auto; padding: 2rem 1.25rem; }
+    nav { display: flex; gap: 1rem; margin-bottom: 2rem; }
+    nav a { text-decoration: none; }
+    nav a[aria-current="page"] { font-weight: 700; text-decoration: underline; }
+    footer { margin-top: 3rem; opacity: 0.6; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <nav>
+      <a href="#/" data-route="/">Home</a>
+      <a href="#/about" data-route="/about">About</a>
+      <a href="#/does-not-exist" data-route="/does-not-exist">Broken link</a>
+    </nav>
+    <main id="view"><!-- rendered by the router --></main>
+    <footer>
+      <span id="asset-status">loading assets…</span>
+    </footer>
+  </div>
+
+  <!-- Client-side router lives inline so /about and any deep link resolve entirely in the
+       browser AFTER the box's SPA fallback has served this same index.html. The hash router
+       works with zero server config; the optional History API upgrade is described below. -->
+  <script>
+    (function () {
+      "use strict";
+
+      // ---- Route table -------------------------------------------------------
+      // Each entry returns an HTML string for #view. "404" is the catch-all.
+      var routes = {
+        "/": function () {
+          return "<h1>Hello from Vulos</h1>" +
+            "<p>This is the static site template. It is a single <code>index.html</code> " +
+            "plus two files under <code>/static/</code>. Everything is inline or same-origin — " +
+            "no CDN, no build step.</p>" +
+            "<p>Navigate to <a href=\"#/about\">/about</a> then hit reload: the box serves this " +
+            "same <code>index.html</code> (SPA fallback) and the router below re-resolves the route.</p>";
+        },
+        "/about": function () {
+          return "<h1>About</h1>" +
+            "<p>Deep links like <code>/about</code> must return <code>index.html</code> with a " +
+            "<code>200</code> so the client router can take over. Real (existing) assets under " +
+            "<code>/static/</code> are served directly and never fall through to this page.</p>" +
+            "<p><a href=\"#/\">Back home</a></p>";
+        },
+        "404": function (path) {
+          return "<h1>404 — Not found</h1>" +
+            "<p>No client route matched <code>" + escapeHtml(path) + "</code>.</p>" +
+            "<p>The box already served <code>index.html</code>; this 404 is rendered by the SPA, " +
+            "not the server. <a href=\"#/\">Go home</a>.</p>";
+        }
+      };
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+      }
+
+      // ---- Router ------------------------------------------------------------
+      // Hash-based by default (works with any static host). If the host is
+      // configured with an SPA fallback, plain "/about" paths also resolve here.
+      function currentPath() {
+        var h = window.location.hash;
+        if (h && h.charAt(0) === "#") {
+          return h.slice(1) || "/";
+        }
+        // History-API style deep link (relies on server SPA fallback).
+        return window.location.pathname || "/";
+      }
+
+      function render() {
+        var path = currentPath();
+        var view = document.getElementById("view");
+        var handler = routes[path];
+        if (handler) {
+          view.innerHTML = handler();
+          document.title = "Vulos Site Template — " + path;
+        } else {
+          view.innerHTML = routes["404"](path);
+          document.title = "Vulos Site Template — 404";
+        }
+        // Highlight the active nav link.
+        var links = document.querySelectorAll("nav a[data-route]");
+        for (var i = 0; i < links.length; i++) {
+          var r = links[i].getAttribute("data-route");
+          if (r === path) {
+            links[i].setAttribute("aria-current", "page");
+          } else {
+            links[i].removeAttribute("aria-current");
+          }
+        }
+      }
+
+      window.addEventListener("hashchange", render);
+      window.addEventListener("popstate", render);
+      window.addEventListener("DOMContentLoaded", function () {
+        // Normalise "/" or a fallback-served deep link into the hash router so
+        // reloads and shared links behave identically.
+        if (!window.location.hash && window.location.pathname !== "/") {
+          window.history.replaceState(null, "", "#" + window.location.pathname);
+        }
+        render();
+      });
+    })();
+  </script>
+
+  <!-- Same-origin asset to prove /static/*.js is served (and cache-headered) by the box. -->
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

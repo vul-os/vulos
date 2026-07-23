@@ -16,12 +16,12 @@ function DesktopIndicator({ narrow }) {
   const idx = list.findIndex((d) => d.id === activeDesktop)
 
   return (
-    <div className="flex items-center gap-1 ml-1.5">
+    <div className="flex items-center gap-1 ml-1">
       <span
-        className="text-[11px] leading-none px-1.5 py-0.5 rounded-md"
+        className="text-[11px] font-medium leading-none px-2 py-1 rounded-md"
         style={{
           color: 'var(--text-tertiary)',
-          background: 'color-mix(in srgb, var(--bg-hover) 60%, transparent)',
+          background: 'color-mix(in srgb, var(--bg-hover) 55%, transparent)',
         }}
         title={`Desktop ${idx + 1} of ${list.length}`}
       >
@@ -31,7 +31,7 @@ function DesktopIndicator({ narrow }) {
         onClick={() => removeDesktop(activeDesktop)}
         title="Close desktop (windows move to next)"
         aria-label="Close desktop"
-        className="vshell-btn focus-primary w-4 h-4 flex items-center justify-center rounded text-[10px]"
+        className="vshell-btn focus-primary w-5 h-5 flex items-center justify-center rounded-md text-[11px] leading-none"
       >
         {'×'}
       </button>
@@ -40,6 +40,8 @@ function DesktopIndicator({ narrow }) {
 }
 
 // ── Shared icon button ───────────────────────────────────────────────────────
+// One calm, tappable affordance for every bar action. Lifts to a token surface
+// on hover and shows an accent-tinted state when toggled (vshell-btn CSS).
 function BarButton({ onClick, title, label, active, pressed, className = '', children }) {
   return (
     <button
@@ -48,48 +50,55 @@ function BarButton({ onClick, title, label, active, pressed, className = '', chi
       aria-label={label || title}
       aria-pressed={pressed}
       data-active={active ? 'true' : undefined}
-      className={`vshell-btn focus-primary w-6 h-6 flex items-center justify-center rounded-md ${className}`}
+      className={`vshell-btn focus-primary w-7 h-7 flex items-center justify-center rounded-md ${className}`}
     >
       {children}
     </button>
   )
 }
 
+// Shared stroke-icon presets — one weight (1.7), rounded joins, 24-unit grid,
+// monochrome (inherits currentColor). The whole bar reads as one icon system.
+const ICON = {
+  viewBox: '0 0 24 24',
+  className: 'w-4 h-4',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.7,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+}
+
 // ── The desktop top bar / menu bar ───────────────────────────────────────────
-// Premium, token-driven, translucent chrome. Left: system menu, spaces,
+// Premium, token-driven, translucent chrome. Left: system pulse, spaces,
 // launchpad + mission control. Right: sovereignty + theme + comms + tray.
-// Collapses gracefully on small screens (non-essential affordances hide first).
+// Collapses gracefully on small screens (non-essential affordances hide first),
+// and respects horizontal safe-area insets on notched/rounded displays.
 export default function TopBar() {
   const { chatOpen, toggleMissionControl, toggleLaunchpad, toggleChat } = useShell()
   const narrow = useNarrow(680)
 
   return (
-    <div className="vshell-bar absolute top-0 left-0 right-0 z-40 h-8 flex items-center justify-between px-1.5 backdrop-blur-xl">
+    <div className="vshell-bar absolute top-0 left-0 right-0 z-40 h-8 flex items-center justify-between px-2 backdrop-blur-xl safe-px">
       {/* Left cluster */}
       <div className="flex items-center gap-0.5 min-w-0">
         <LifePulse />
         <DesktopIndicator narrow={narrow} />
-        <span className="vshell-div mx-1 hidden sm:block" />
-        {/* Launchpad — rocket */}
-        <BarButton onClick={toggleLaunchpad} title="Applications">
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.3">
-            <path d="M8 1.5c0 0-3 3-3 7.5h6c0-4.5-3-7.5-3-7.5z" fill="currentColor" opacity="0.4" stroke="none" />
-            <path d="M8 1.5c0 0-3 3-3 7.5h6c0-4.5-3-7.5-3-7.5z" />
-            <path d="M5 9l-1.5 3L5 11" />
-            <path d="M11 9l1.5 3L11 11" />
-            <path d="M6.5 12.5h3" strokeLinecap="round" />
-            <circle cx="8" cy="6.5" r="1" fill="currentColor" stroke="none" opacity="0.7" />
+        <span className="vshell-div mx-1.5 hidden sm:block" />
+        {/* Launchpad — application grid */}
+        <BarButton onClick={toggleLaunchpad} title="Applications" label="Applications">
+          <svg {...ICON}>
+            <rect x="4" y="4" width="6.2" height="6.2" rx="1.9" />
+            <rect x="13.8" y="4" width="6.2" height="6.2" rx="1.9" />
+            <rect x="4" y="13.8" width="6.2" height="6.2" rx="1.9" />
+            <rect x="13.8" y="13.8" width="6.2" height="6.2" rx="1.9" />
           </svg>
         </BarButton>
-        {/* Mission Control — staggered windows */}
-        <BarButton onClick={toggleMissionControl} title="Mission Control (F3)">
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <rect x="1" y="4" width="8" height="6" rx="1" fill="currentColor" opacity="0.25" />
-            <rect x="1" y="4" width="8" height="6" rx="1" />
-            <line x1="1" y1="6" x2="9" y2="6" />
-            <rect x="7" y="1.5" width="8" height="6" rx="1" fill="currentColor" opacity="0.15" />
-            <rect x="7" y="1.5" width="8" height="6" rx="1" />
-            <line x1="7" y1="3.5" x2="15" y2="3.5" />
+        {/* Mission Control — staggered spaces */}
+        <BarButton onClick={toggleMissionControl} title="Mission Control (F3)" label="Mission Control">
+          <svg {...ICON}>
+            <rect x="2.6" y="6.4" width="11.4" height="8" rx="2.1" />
+            <rect x="10.4" y="3" width="10.6" height="7.4" rx="2.1" />
           </svg>
         </BarButton>
       </div>
@@ -98,13 +107,13 @@ export default function TopBar() {
       <div className="flex items-center gap-0.5 min-w-0">
         {/* Always-on sovereignty indicator — AI tier + egress + at-rest lock. */}
         <TrustBadge />
-        <span className="vshell-div mx-1" />
+        <span className="vshell-div mx-1.5" />
         {/* Quick theme cycle: System → Light → Dark */}
         <ThemeToggle variant="bar" />
         {/* Chat toggle */}
         <BarButton onClick={toggleChat} title="Chat (Ctrl+K)" label="Chat" active={chatOpen} pressed={chatOpen}>
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5">
-            <path d="M2 3a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6l-3 3V11H4a2 2 0 01-2-2V3z" fill="currentColor" opacity="0.75" />
+          <svg {...ICON}>
+            <path d="M4 6.5A2.5 2.5 0 016.5 4h11A2.5 2.5 0 0120 6.5v6A2.5 2.5 0 0117.5 15H9l-4 3.2V15h-.2A.8.8 0 014 14.2z" />
           </svg>
         </BarButton>
         {/* Fullscreen — first to hide on small screens */}
@@ -116,12 +125,12 @@ export default function TopBar() {
             }}
             title="Toggle fullscreen"
           >
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-              <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" />
+            <svg {...ICON}>
+              <path d="M4 8.5V4h4.5M15.5 4H20v4.5M20 15.5V20h-4.5M8.5 20H4v-4.5" />
             </svg>
           </BarButton>
         )}
-        <span className="vshell-div mx-1 hidden sm:block" />
+        <span className="vshell-div mx-1.5 hidden sm:block" />
         {/* System tray — wifi · battery · notifications · clock · exposure chip */}
         <LifePulse compact />
       </div>

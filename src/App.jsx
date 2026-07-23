@@ -19,9 +19,11 @@ import Popout from './shell/Popout'
 import Screensaver from './shell/Screensaver'
 import ShortcutsLegend from './shell/ShortcutsLegend'
 import OfflineIndicator from './components/OfflineIndicator'
+import SessionTakeoverModal from './auth/SessionTakeoverModal'
 import { loadOriginConfig } from './core/AppOrigins'
 import { startNotificationBridge } from './core/notificationBridge'
 import { startAttentionNotifier } from './core/notifiers/attentionNotifier'
+import { startLocationReporting, stopLocationReporting } from './core/location/reporter.js'
 
 function DesktopShortcuts() {
   const { desktops, switchDesktop, addDesktop } = useShell()
@@ -133,7 +135,12 @@ function Shell() {
   useEffect(() => {
     const stopBridge = startNotificationBridge()
     const stopNotifier = startAttentionNotifier()
-    return () => { stopBridge(); stopNotifier() }
+    // LOCATION-01: resume opt-in location reporting if the user enabled it
+    // (Settings → Devices → Location). Off by default; never starts unarmed.
+    let locationOn = false
+    try { locationOn = localStorage.getItem('vulos.location.share') === 'on' } catch { /* no localStorage */ }
+    if (locationOn) startLocationReporting()
+    return () => { stopBridge(); stopNotifier(); stopLocationReporting() }
   }, [])
   if (locked) {
     // In an offline session the online PIN lock (server-verified) can never
@@ -249,6 +256,9 @@ export default function App() {
           <AuthProvider>
             <AuthGate />
             <OfflineIndicator />
+            {/* SESSION-TAKEOVER: global; renders only when a fresh sign-in
+                finds the account already active on another device. */}
+            <SessionTakeoverModal />
           </AuthProvider>
         </WallpaperProvider>
       </ThemeProvider>

@@ -5,15 +5,10 @@
 - Node.js 22+
 - Go 1.25+
 - Docker (with OrbStack recommended on macOS)
-- **The sibling repo, cloned beside `vulos/`**: `npm install` resolves
-  `@vulos/relay-client` from `../vulos-relay/client`. Clone it, then build the
-  relay client library once (its `dist-lib/` is not committed but its subpath
-  exports point at it):
 
-  ```sh
-  git clone https://github.com/vul-os/vulos-relay.git
-  cd vulos-relay/client && npm install && npm run build:lib && cd ../..
-  ```
+Vulos builds **standalone** — no sibling repos. `npm install` resolves
+everything from this repo (the endpoint/offline-boot layer lives natively in
+`src/lib/net/`, aliased in `vite.config.js`).
 
 ## Quick Start
 

@@ -147,7 +147,7 @@ export default function GatewayChoice({ value, onChange, idPrefix = 'gw' }) {
           <p className="text-xs text-neutral-500 leading-relaxed">
             The gateway is the control plane your device authenticates against. Leave
             it on <strong className="text-neutral-300">Vulos Cloud</strong> unless you run
-            your own <span className="font-mono">vulos-management</span> control plane.
+            your own <strong className="text-neutral-300">Vulos control plane</strong>.
           </p>
 
           {/* Choice radios */}

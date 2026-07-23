@@ -1,0 +1,18 @@
+{
+  "id": "site-template",
+  "name": "Static Site Template",
+  "icon": "◍",
+  "icon_path": "icon.svg",
+  "description": "Hello-world static SPA — the canonical shape for `vulos web deploy` with client-side routing and SPA fallback",
+  "version": "0.1.0",
+  "type": "web",
+  "port": 80,
+  "category": "developer",
+  "keywords": ["template", "static", "spa", "web", "hello-world", "deploy", "example", "fallback"],
+  "deps": [],
+  "auto_start": false,
+  "singleton": true,
+  "permissions": [],
+  "author": "Vulos",
+  "license": "MIT"
+}

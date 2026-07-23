@@ -116,7 +116,7 @@ Uses existing Vulos WebRTC streaming pipeline — no separate system.
 
 ## Web UI (React)
 
-Runs in WPE WebKit like all Vulos apps. DNS-mapped: `phone.vulos → localhost:<port>`
+Runs in Chromium (via cage) like all Vulos apps. DNS-mapped: `phone.vulos → localhost:<port>`
 
 ### Dialer
 - [ ] Numpad with T9-style layout
@@ -208,167 +208,25 @@ These won't be installed as apps in Vulos (we're building our own Go webapp), bu
 
 ---
 
-## Camera
+## Superseded — handset-hardware notes (Vulos-on-a-Linux-phone)
 
-libcamera is the modern camera stack replacing V4L2, supporting mobile SoC ISPs (Qualcomm, MediaTek, Rockchip).
-
-**Current state:**
-- Working on a handful of devices (PinePhone, Librem 5, some Qualcomm phones)
-- Megapixels (GTK camera app) works but quality lags behind Android — auto-exposure, HDR immature
-- WebRTC camera access from browsers works where libcamera works
-- Each SoC needs specific libcamera pipeline support, most aren't upstreamed
-
-**For Vulos:**
-- Web-first approach means camera access via WebRTC/getUserMedia — works where libcamera works
-- Target devices with upstream libcamera support
-- Camera quality will improve as libcamera matures
-
----
-
-## NFC
-
-**Status: deprioritized.**
-
-NFC on mobile Linux is nearly nonfunctional:
-- PinePhone and Librem 5 have no NFC hardware
-- Android phones running postmarketOS can't use NFC — requires proprietary firmware/HAL blobs
-- libnfc and nfcd exist but device support is thin
-- neard (BlueZ NFC daemon) is mostly abandoned
-- Sailfish OS on Xperia 10 series is the only Linux-adjacent platform with basic NFC tag read/write
-
-**NFC payments are gated by institutional trust, not technology:**
-- EMVCo certification costs millions, takes years
-- Secure element keys are provisioned by OEM for Android/iOS specifically
-- No bank will trust an open-source TEE (OP-TEE) without certification
-- HCE (Host Card Emulation) requires Google Play Services
-
-**Where NFC still matters:**
-- Transit cards (bus/metro tap) — big in Asia, Europe
-- Access control (office badges, hotel keys, car keys)
-- Identity (ePassports, national ID)
-- Quick device pairing
-
-**Where NFC is losing:**
-- Payments — QR codes proved you don't need it (China, India)
-- Data transfer — WiFi Direct won (AirDrop, Nearby Share)
-- Smart home — BLE and WiFi won
-- Ticketing — moving to QR codes
-
-**Decision: focus on camera (QR payments/scanning) and BLE (device pairing) instead. Covers 95% of real use cases.**
-
----
-
-## Payments
-
-QR-code scan-to-pay dominates in China (Alipay, WeChat Pay) and India (UPI), proving NFC is unnecessary for mobile payments.
-
-**QR payments require only:**
-- A camera (improving via libcamera)
-- A web browser
-- Internet connection
-
-No secure element, no NFC chip, no bank certification, no proprietary firmware. A web app on Vulos can integrate with QR payment systems. This is the path forward.
-
----
-
-## Battery Life
-
-Battery life is a critical gap. PinePhone gets 4-6 hours vs 1-2 days on Android.
-
-### Strategy: aggressive suspend + app freezing
-
-```mermaid
-flowchart TD
-    subgraph ScreenOff["Screen off"]
-        O1["10s timeout → freeze all UI/apps (cgroup freezer)"]
-        O2["15s timeout → enter S2idle/S3 suspend"]
-        O3["wake only on: modem ring, RTC alarm, power button"]
-        O1 --> O2 --> O3
-    end
-    subgraph ScreenOn["Screen on"]
-        N1["unfreeze apps"]
-        N2["CPU governor ramps up"]
-        N3["radios wake as needed"]
-        N1 --> N2 --> N3
-    end
-    subgraph BG["Background policy"]
-        B1["web apps get ZERO background runtime (web-first advantage)"]
-        B2["only system services (modem, push listener) stay alive"]
-        B3["single lightweight push daemon wakes for notifications"]
-        B1 --> B2 --> B3
-    end
-```
-
-### Key optimizations
-
-| Layer | What | Effort |
-|-------|------|--------|
-| Userspace | Autosuspend policy, app freezing, service stripping, push daemon | Fully in our control |
-| Userspace | Display timeout, dark themes, radio power toggling | Easy |
-| System | CPU governor tuning (powersave default), cgroup freezer | Moderate |
-| Kernel/firmware | Proper S3 suspend, modem wake, WiFi power save | Device-specific, harder |
-
-### Why web-first helps
-
-Web apps can't hold wakelocks, can't run background services, can't drain battery behind our back. We control the runtime entirely — genuine advantage over Android where apps constantly fight to stay alive.
-
----
-
-## GPS / Location
-
-- Works but slow to get a fix — no SUPL (assisted GPS) since it phones home to Google
-- No indoor positioning (WiFi/BLE triangulation) like Android/iOS
-- Web geolocation API depends on the underlying stack
-- Need an open SUPL alternative or local AGPS data cache
-
----
-
-## Push Notifications
-
-- No unified push notification system on Linux (UnifiedPush exists but barely adopted)
-- Apps can't reliably wake the device or receive pushes while suspended
-- Breaks messaging, email, delivery alerts — everything users expect
-
-**Solution:** single lightweight push daemon that stays alive during suspend, receives notifications over a persistent connection, wakes device only when needed. Web-first means we control the notification pipeline end-to-end.
-
----
-
-## Bluetooth
-
-- Basic audio works (A2DP)
-- BLE is functional but flaky on some devices
-- No codec parity (no aptX, LDAC is partial)
-- Bluetooth calling (HFP) is hit or miss
-- Improvements are upstream kernel work
-
----
-
-## Biometrics
-
-- No fingerprint reader support on basically any Linux phone
-- No face unlock
-- Hardware dependent — low priority until device targets are chosen
-
----
-
-## Display / Graphics
-
-- GPU drivers are SoC-dependent — Qualcomm is worst (freedreno improving but slow)
-- Screen rotation, scaling, touch responsiveness all worse than Android
-- Compositor should use damage tracking — only redraw what changed, reduce wake-ups when static
-
----
-
-## Priority Matrix
-
-| Issue | Severity | Solvable by us? |
-|-------|----------|-----------------|
-| Battery life | Critical | Partially (software optimization) |
-| VoLTE | Critical | Hard — carrier dependent |
-| Push notifications | Critical | Yes — custom push daemon |
-| App ecosystem | Critical | Yes — web-first is the answer |
-| Camera | Medium | Improving via libcamera |
-| GPS speed | Medium | Open SUPL alternative needed |
-| Bluetooth codecs | Low | Upstream kernel work |
-| NFC | Low | Deprioritized — QR/BLE instead |
-| Biometrics | Low | Hardware dependent |
+> **This section has been removed as superseded.** It previously analyzed running
+> Vulos itself *as the OS on a Linux handset* (PinePhone / Librem 5): libcamera,
+> on-device NFC, PinePhone battery-life tuning, on-device GPS/SUPL, Bluetooth
+> codecs, biometrics, and SoC display drivers.
+>
+> That architecture is **ruled out.** The settled model is that the phone is a
+> **thin client to the user's box** — an installable PWA first, an APK later —
+> *not* a Vulos instance. Handset battery, camera, NFC, biometrics, and radios are
+> the stock phone OS's concern, not Vulos's. See
+> **[`mobile/DECISIONS.md`](../mobile/DECISIONS.md)** (MOB-01…07, phone-as-instance
+> ruled out permanently) and **[`mobile/README.md`](../mobile/README.md)** for the
+> governing decisions.
+>
+> The **telephony** half of this doc (above) stays valid on a *different* basis:
+> the modem is a USB/onboard device on the **box**, exposing the owner's line to
+> browsers over the existing pipeline — it is not a phone running Vulos.
+>
+> *Future ideas (not committed, decoupled from the ruled-out handset-OS framing):*
+> QR-code scan-to-pay via a web camera, and a single lightweight push daemon, were
+> noted as web-first-friendly directions. They survive only as generic ideas.

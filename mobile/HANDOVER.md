@@ -1,7 +1,7 @@
 # Handover — Vulos Mobile & Client-Offline workstream
 
 You are picking up the **mobile + client-offline** track for Vulos. The core team is focused elsewhere
-(DMTAP spec, the isango gateway, and the envoir project) — **those are out of scope for you.** Your remit
+(the DMTAP spec and the envoir project — the gateway lives inside envoir) — **those are out of scope for you.** Your remit
 is: make Vulos great on a phone, and make it work offline.
 
 ## Read first (source of truth — do not re-derive)
@@ -89,17 +89,22 @@ and that's fine.
 3. Argon2id params that won't OOM low-end Android — same.
 4. Waydroid/WhatsApp ban reality + the GSM hardware list — only when writing those docs.
 
-## Cross-cutting PRIORITY the founder flagged — laptop-as-non-serving-instance
+## Cross-cutting the founder flagged — laptop-as-non-serving-instance (shipped box-side)
 
-A laptop (or any personal device) should be able to **join as a cluster member that SYNCS data but does NOT
-serve routed traffic** — it participates in the data layer, but Relay must not route to it, Management must
-not bill it as hosting or health-check it as an ingress, and Cloud must not advertise it in routing. In the
-roles model this is clean: it runs the `store`/sync role, not the ingress/`relay` role. **This touches core
-repos (`vulos`, `vulos-management`, `vulos-relay`, `vulos-cloud`) — coordinate with the core team.** Treat
-"connected member, not an ingress target" as a first-class node state and audit all four surfaces for it.
+A laptop (or any personal device) can **join as a cluster member that SYNCS data but does NOT
+serve routed traffic** — it participates in the data layer, but Relay must not route to it, the cloud
+control plane must not bill it as hosting or health-check it as an ingress, and it must not be advertised
+in routing. In the roles model this is clean: it runs the `store`/sync role, not the ingress/`relay` role.
+
+**This shipped box-side as NODE-CAP-01** (`backend/internal/multiinstance`, the `store_only` flag — see
+[`roadmap/NODE-CAPABILITY.md`](../roadmap/NODE-CAPABILITY.md)): the box honors its own flag, excludes
+store-only members from routing and fan-out, and learns a peer's flag on sync. **What's left is the CP
+side** (persist + echo + exclude from routing/DNS/billing, plus the box→CP push of a local change) — a
+contract for the core team, not this workstream. Treat "connected member, not an ingress target" as a
+first-class node state.
 
 ## Explicitly OUT of scope for this workstream
 
-DMTAP spec, the isango gateway, envoir. If your work seems to need them, it's a sign you've drifted — the
+DMTAP spec, envoir (the gateway lives inside it). If your work seems to need them, it's a sign you've drifted — the
 mobile/offline track depends on none of them. Reachability for the phone is just the existing `vulos-relay`
 (client→box, SNI-passthrough); box↔box mesh relay (libp2p Circuit Relay v2) is the core team's concern, not yours.
