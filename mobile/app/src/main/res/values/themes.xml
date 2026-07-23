@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- No action bar (the shell is the whole UI). windowBackground is a dark
+         shell-colored drawable so a cold start shows no white flash (MOB-05). -->
+    <style name="Theme.Vulos" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@drawable/window_background</item>
+        <item name="android:statusBarColor">@color/vulos_bg</item>
+        <item name="android:navigationBarColor">@color/vulos_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

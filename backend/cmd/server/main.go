@@ -35,6 +35,7 @@ import (
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/osroute"
 	"vulos/backend/internal/storage"
+	"vulos/backend/services/accountsecurity"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/anchorinbox"
 	"vulos/backend/services/appfs"
@@ -47,6 +48,7 @@ import (
 	"vulos/backend/services/bootmode"
 	"vulos/backend/services/cloudenroll"
 	"vulos/backend/services/cluster"
+	"vulos/backend/services/compliance"
 	"vulos/backend/services/credvault"
 	"vulos/backend/services/desktop"
 	"vulos/backend/services/devicekey"
@@ -918,6 +920,9 @@ func main() {
 	// HTTP routes
 	mux := http.NewServeMux()
 
+	// Step-up re-auth seam (short-lived elevated-trust cookie for sensitive actions)
+	registerStepupRoutes(mux, authStore)
+
 	// Peering: well-known identity endpoint + peer profile fetch (PEER-12).
 	peering.RegisterWellKnownHandlers(mux)
 
@@ -1435,6 +1440,12 @@ func main() {
 		userID := r.Header.Get("X-User-ID")
 		writeJSON(w, map[string]int{"active": missionStore.ActiveCount(userID)})
 	})
+
+	// Telephony (TELE-01): box GSM — SMS + calls via a USB LTE modem / SIM through
+	// ModemManager. Hardware-gated; idles cleanly when no modem is attached. Fires
+	// a sovereign notification on each inbound SMS (via notifySvc, below). Scoped to
+	// the box owner (authStore.AdminUserID). Stopped in the shutdown block.
+	telephonySvc := registerTelephonyRoutes(mux, notifySvc, authStore)
 
 	// Notifications
 	mux.Handle("/api/notifications/stream", notifySvc.Handler())
@@ -3037,6 +3048,10 @@ func main() {
 	// MinIO storage provisioning — H2 fix: admin-only + IsProvisioned guard
 	storageprov.RegisterHandlers(mux, home, authStore)
 
+	// Public API (vkl_ bearer-token developer keys)
+	publicAPICloser := registerPublicAPIRoutes(mux, authStore, dbDir)
+	defer publicAPICloser()
+
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
 	mux.HandleFunc("/api/proxy/", proxySvc.Handler())
@@ -3974,6 +3989,14 @@ func main() {
 
 	// Recovery Kit re-download (admin-only)
 	registerKitRoutes(mux, authStore, home)
+	// Compliance (data export/audit records) — own-data, not admin-gated
+	if complianceStore, err := compliance.OpenStore(dbDir); err != nil {
+		log.Printf("[compliance] DISABLED: could not open store: %v", err)
+	} else {
+		registerComplianceRoutes(mux, complianceStore)
+	}
+	// Webhooks (owner-gated outbound event delivery)
+	registerWebhooksRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
 	registerIdentityRoutes(mux, home)
 	// IDENTITY-01: account-username claim proxies (check/claim → Vulos Cloud CP)
@@ -3986,6 +4009,14 @@ func main() {
 	registerJoinRoutes(mux, home)
 	// Persistent notification store + prune endpoint (NOTIF-02)
 	registerNotifyPersistRoutes(mux, notifySvc, home)
+	// Account security (login/session anomaly feed + emergency lock)
+	acctSecSvc, acctSecErr := accountsecurity.Open(dbDir, notifySvc)
+	if acctSecErr != nil {
+		log.Printf("[accountsecurity] init warning: %v", acctSecErr)
+	}
+	registerAccountSecurityRoutes(mux, acctSecSvc, authStore)
+	// Support (help requests: records + classifies, no outbound delivery)
+	registerSupportRoutes(mux, dbDir, authStore, notifySvc, billingClient)
 
 	// WORKSPACE REMOVED: the standalone "Vulos Workspace" browser shell is dead —
 	// the OS desktop shell (served from "/" below) IS the shell, for both the local
@@ -4132,6 +4163,7 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		log.Println("shutting down...")
+		telephonySvc.StopPolling()
 		browserSvc.StopAll()
 		streamPool.StopAll()
 		sandboxSvc.StopAll()

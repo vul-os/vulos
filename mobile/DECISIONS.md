@@ -67,6 +67,13 @@ between records and the auth tag still validates.
 
 ## MOB-05 — `CATEGORY_HOME` (launcher) deferred
 
+> ⚠️ **REVISED by TEL-01 (2026-07-23):** the launcher is now ENABLED (the `HOME`
+> intent-filter is active), with the safeguards this section demanded — the home
+> surface paints from the locally-bundled shell, the WebView is pre-warmed in
+> `VulosApplication.onCreate()`, and `windowBackground` is a dark shell-colored
+> drawable. The reasoning below is why it *was* deferred; it now ships because
+> those preconditions are met.
+
 **Decided.** Ship the APK as a normal app. Adding the launcher role later is one manifest line plus an
 opt-in toggle.
 
@@ -110,6 +117,11 @@ the guard, that quietly reopens an SSRF hole.
 
 ## MOB-07 — SMS yes, call log yes, in-call UI no
 
+> ⚠️ **REVISED by TEL-01 (2026-07-23):** SMS and calling are now EMBEDDED in the
+> APK (no longer v2). The one line this section drew — **do not own the in-call UI
+> / dialer** — is kept exactly: calling is place-call + call-log only, the system
+> dialer owns the in-call experience, so emergency calls stay safe. See TEL-01.
+
 **Decided.** Deferred to v2, and scoped when it happens.
 
 WebView can only *hand off*: `tel:` and `sms:` open the system apps with a prefilled draft (and even that
@@ -134,6 +146,48 @@ permissions entirely — it is just data arriving at your box, rendered in a pla
 records this telephony service (ModemManager D-Bus) as already shipped. Costs a second number.
 
 ---
+
+## TEL-01 — embedded SMS + calling, launcher on (2026-07-23)
+
+**Decided.** The APK now embeds SMS and calling and ships as an enabled launcher.
+This supersedes MOB-05's deferral and MOB-07's "v2". Implemented in
+`mobile/app/` (`TelephonyBridge.kt`, `SmsReceiver.kt`, `TelephonyEvents.kt`,
+`VulosApplication.kt`, wired in `MainActivity.kt`).
+
+**What ships:**
+- **SMS** — send (`SEND_SMS`), read recent (`READ_SMS`), receive inbound
+  (`RECEIVE_SMS` via `SmsReceiver`, a *non-default-handler* `SMS_RECEIVED` receiver
+  — we observe/read/send without taking the full `SMS_DELIVER` default-app
+  contract). Inbound messages are pushed to the shell; the shell renders threads
+  and compose (native does telephony, the web shell does UI).
+- **Calling** — place calls (`CALL_PHONE`) and read call history
+  (`READ_CALL_LOG`). **The system dialer owns the in-call UI.** We deliberately do
+  NOT take `ROLE_DIALER`/`InCallService`, so emergency calls (112/10111) stay the
+  system's responsibility — the one boundary MOB-07 drew and TEL-01 keeps.
+- **Launcher** — the `HOME` intent-filter is active (MOB-05's safeguards met).
+
+**The security model (the load-bearing part):** the native telephony bridge —
+which can send SMS and place calls — must never be reachable from remote/untrusted
+web content the WebView loads. So it is exposed via
+`WebViewCompat.addWebMessageListener` with **allowed-origin rules** (the local
+shell, `os.vulos.org` + subdomains, the instance host, the paired instance), not a
+blanket `addJavascriptInterface`. Every action additionally requires the **main
+frame** (a trusted page's cross-origin iframe can't act) and a **runtime
+permission** grant (requested on first use, never at install).
+
+**Costs, acknowledged:**
+- `READ_SMS`/`RECEIVE_SMS`/`READ_CALL_LOG` are Google Play **restricted
+  permissions** — they need a Permissions Declaration + default-handler
+  justification, and rejections are common. The sovereign / F-Droid APK is
+  unaffected; this is a Play-distribution constraint to plan for.
+- To *reliably* be the SMS app (own the SMS database, guaranteed delivery) you must
+  become the default handler (`ROLE_SMS` + the full `SMS_DELIVER`/MMS/quick-response
+  contract). TEL-01 ships the non-default path first (works, lower surface); taking
+  `ROLE_SMS` is the next step if the utility warrants it.
+- MMS and RCS are out of scope (RCS is impossible — Jibe-controlled).
+
+*Reverses if:* owning the in-call UI / dialer is ever justified — but only with a
+deliberate plan for emergency calls.
 
 ## Ruled out
 

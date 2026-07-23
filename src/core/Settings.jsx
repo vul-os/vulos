@@ -16,6 +16,12 @@ import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
 import OfflineDataPanel from './settings/OfflineDataPanel.jsx'
 import GatewayPanel from './settings/GatewayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
+import PrivacyPanel from './settings/PrivacyPanel.jsx'
+import SecurityPanel from './settings/SecurityPanel.jsx'
+import WebhooksPanel from './settings/WebhooksPanel.jsx'
+import EncryptionPanel from './settings/EncryptionPanel.jsx'
+import SupportPanel from './settings/SupportPanel.jsx'
+import DeveloperPanel from './settings/DeveloperPanel.jsx'
 
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
@@ -54,6 +60,7 @@ const sectionGroups = [
       { id: 'recall', label: 'Search & Index', icon: '\u{1F50D}' },
       { id: 'storage', label: 'Storage', icon: '\u{25F4}' },
       { id: 'storagemode', label: 'Storage Mode', icon: '\u{25F1}' },
+      { id: 'encryption', label: 'Encryption', owner: true, icon: '\u{1F510}' },
     ],
   },
   {
@@ -66,6 +73,13 @@ const sectionGroups = [
     ],
   },
   {
+    label: 'Developer',
+    items: [
+      { id: 'webhooks', label: 'Webhooks', owner: true, icon: '\u{2197}' },
+      { id: 'developer', label: 'Developer', icon: '\u{2328}' },
+    ],
+  },
+  {
     label: 'Account & Security',
     items: [
       { id: 'users', label: 'Users & Profiles', icon: '\u{1F464}' },
@@ -74,6 +88,8 @@ const sectionGroups = [
       { id: 'account', label: 'Account', icon: '\u{2699}' },
       { id: 'offlinedata', label: 'Offline Data', icon: '\u{2601}' },
       { id: 'dataexport', label: 'Export My Data', icon: '\u{2913}' },
+      { id: 'privacy', label: 'Privacy', icon: '\u{1F6E1}' },
+      { id: 'security', label: 'Security', icon: '\u{1F6E1}' },
       { id: 'plan', label: 'Plan & Billing', icon: '\u{25C6}' },
     ],
   },
@@ -82,6 +98,7 @@ const sectionGroups = [
     items: [
       { id: 'osupdate', label: 'OS Update', icon: '\u{2B06}' },
       { id: 'boxhealth', label: 'Box Health', owner: true, icon: '\u{2665}' },
+      { id: 'support', label: 'Help & Support', owner: true, icon: '\u{2753}' },
       { id: 'about', label: 'About', icon: '\u{24D8}' },
     ],
   },
@@ -280,19 +297,25 @@ export default function Settings({ initialSection } = {}) {
         {active === 'recall' && <RecallSettings />}
         {active === 'storage' && <StoragePanel />}
         {active === 'storagemode' && <StorageModeSettings />}
+        {active === 'encryption' && <EncryptionPanel />}
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
         {active === 'gateway' && <GatewayPanel />}
         {active === 'turnSettings' && <TURNSettingsSection />}
+        {active === 'webhooks' && <WebhooksPanel />}
+        {active === 'developer' && <DeveloperPanel />}
         {active === 'users' && <UsersSettings profile={profile} />}
         {active === 'pin' && <DevicePINSettings />}
         {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'offlinedata' && <OfflineDataPanel />}
         {active === 'dataexport' && <DataExportPanel />}
+        {active === 'privacy' && <PrivacyPanel />}
+        {active === 'security' && <SecurityPanel />}
         {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'boxhealth' && <BoxHealthPanel />}
+        {active === 'support' && <SupportPanel />}
         {active === 'about' && <AboutSettings />}
        </div>
       </div>

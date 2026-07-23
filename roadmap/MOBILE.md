@@ -4,7 +4,24 @@ Go webapp for SMS and voice calls on Linux, with remote streaming support via th
 
 > **Goal.** Treat the modem as another OS service. ModemManager (D-Bus) for SMS + voice + signal, lpac for eSIM management, a `phone` app for Messages + Dialer. Calls hand off to the existing peering audio pipeline where possible.
 > **Non-goals.** Becoming a SIP/VoIP provider. Replacing the phone app on Android.
-> **Status.** ✅ SHIPPED. Telephony service (ModemManager D-Bus), SMS + voice + eSIM backend, and Messages + Dialer UI are all implemented and wired. Outstanding: responsive shell polish (MOBILE-06). Promoted from `roadmap/future/` 2026-06.
+> **Status (corrected 2026-07-23).** Earlier this said "✅ SHIPPED … SMS + voice +
+> eSIM backend" — that was **aspirational**: the `phone` app UI existed but pointed
+> at a `/api/telephony/*` backend that **did not exist**. Now real:
+> **`backend/services/telephony/` (TELE-01)** — an mmcli-based service that is
+> hardware-gated and wired into the server. **SMS is fully implemented** (list
+> threads, read, send, and an inbound-SMS poll that fires a **sovereign
+> notification** + a live WS event). The box's single SIM is treated as the **box
+> owner's line**: the whole `/api/telephony/*` surface + the WS feed are
+> owner-gated, and the inbound-SMS notification is **targeted to the owner** so it
+> web-pushes (reaching a closed app) rather than being an untargeted box-level
+> event. Sending quotes/escapes the message text so a crafted body can't inject
+> mmcli dictionary keys, and every `mmcli` call has a 5s timeout so a wedged modem
+> can't hang the box. **Voice is best-effort** (place/hangup/answer
+> via mmcli `--voice-*`, which many data/SMS-only USB modems don't support; the UI
+> degrades gracefully) and there is **no persistent call log** (ModemManager keeps
+> none). **eSIM/lpac is NOT built.** The `phone` app UI is complete and now has a
+> live backend. Outstanding: voice reliability, a self-maintained call log, eSIM,
+> responsive shell polish (MOBILE-06).
 
 ---
 

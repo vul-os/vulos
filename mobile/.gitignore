@@ -1,0 +1,20 @@
+# Android / Gradle build output
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+
+# The web shell is copied in by the `syncShell` Gradle task at build time from
+# vulos/dist/ — never commit the copy. The placeholder index.html IS committed.
+app/src/main/assets/shell/
+!app/src/main/assets/shell/
+!app/src/main/assets/shell/index.html
+
+# The gradle-wrapper.jar is a binary bootstrap; generate it with `gradle wrapper`
+# (see README) or let Android Studio create it on first open.

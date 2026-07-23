@@ -187,6 +187,13 @@ var publicPrefixes = []string{
 	// server-to-server surface (messages, calls, media, group + collab updates,
 	// presence, drop); without it every inbound peer envelope is 401'd here first.
 	"/api/peering/inbound/",
+
+	// PUBLICAPI (vkl_ bearer-token developer keys). publicapi does its own
+	// bearer-token auth (see services/publicapi) — it must not be gated by the
+	// OS session middleware, or every vkl_ request 401s before reaching it.
+	// NOTE: /api/developer/keys (mint/list/revoke keys) stays SESSION-gated —
+	// it is NOT under /api/v1/, so it is unaffected by this prefix.
+	"/api/v1/",
 }
 
 func isPublicPath(rawPath string) bool {

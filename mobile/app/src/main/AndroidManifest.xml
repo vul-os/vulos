@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Embedded telephony (mobile/DECISIONS.md TEL-01, revising MOB-07). All are
+         RUNTIME-requested on first use, never at install. READ_SMS / RECEIVE_SMS /
+         READ_CALL_LOG are Play "restricted" permissions (need a Permissions
+         Declaration + default-handler justification); the sovereign / F-Droid APK
+         is unaffected. -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <application
+        android:name=".VulosApplication"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:theme="@style/Theme.Vulos">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|density|uiMode"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Launcher role ENABLED (TEL-01/LAUNCH-01, revising MOB-05). Vulos
+                 becomes a selectable home app; the user still chooses it as default.
+                 Safe because: the home surface paints from the locally-bundled shell
+                 (no network on cold start), the WebView is pre-warmed in
+                 VulosApplication.onCreate(), and windowBackground is a dark
+                 shell-colored drawable (no white flash). -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Incoming SMS. android:permission="BROADCAST_SMS" means ONLY the system
+             (which holds that signature permission) can deliver here — no other app
+             can forge an inbound SMS. Requires RECEIVE_SMS at runtime to actually
+             receive. This is a NON-default-handler receiver (SMS_RECEIVED, not
+             SMS_DELIVER): we observe + read + send, without taking the full
+             default-SMS-app contract. -->
+        <receiver
+            android:name=".SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

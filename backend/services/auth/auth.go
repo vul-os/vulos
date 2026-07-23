@@ -677,3 +677,13 @@ func (s *Store) at10FirstUser() *User {
 	}
 	return nil
 }
+
+// AdminUserID returns the box owner's user id (the first admin, by convention),
+// or "" if there are no users. Used to scope box-owner-only features such as the
+// GSM telephony service (TELE-01), where the single SIM is the owner's line.
+func (s *Store) AdminUserID() string {
+	if u := s.at10FirstUser(); u != nil {
+		return u.ID
+	}
+	return ""
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the web shell (public/manifest.json background_color / theme_color). -->
+    <color name="vulos_bg">#0A0A0F</color>
+    <color name="vulos_accent">#863BFF</color>
+    <color name="ic_launcher_background">#0A0A0F</color>
+</resources>
