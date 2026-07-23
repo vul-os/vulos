@@ -28,6 +28,12 @@
 //	                        entirely (ice.go's stunURLs) — the last piece
 //	                        needed for a box that wants NO third-party network
 //	                        dependency for call setup.
+//
+// RELAY-01 additions: RelayProvider and Ingress report the box's
+// owner-selected relay/reachability provider (backend/services/relayconfig —
+// wakala by default) and its resolved ingress posture, so this profile stays
+// the ONE coherent place to see the box's full federation/reachability
+// stance, rather than a second, parallel status struct.
 package peering
 
 import (
@@ -35,7 +41,7 @@ import (
 	"os"
 	"strings"
 
-	"vulos/backend/services/network"
+	"vulos/backend/services/relayconfig"
 )
 
 // FederationProfile is the box's current sovereign-federation configuration,
@@ -75,6 +81,14 @@ type FederationProfile struct {
 	// AND the public STUN fallback has been explicitly disabled. This is the
 	// "fully sovereign for call setup" signal the plan calls for.
 	NoThirdPartySTUN bool `json:"no_third_party_stun"`
+
+	// RelayProvider is the box's currently-selected relay/reachability
+	// provider (RELAY-01, backend/services/relayconfig) — "wakala" unless the
+	// owner brought their own (turn/libp2p/wireguard/none).
+	RelayProvider relayconfig.Provider `json:"relay_provider"`
+	// Ingress is how the box is currently reachable from outside its own NAT
+	// under RelayProvider (relay-tunnel/direct-portforward/libp2p-circuit-relay/wireguard-mesh).
+	Ingress relayconfig.IngressDescriptor `json:"ingress"`
 }
 
 // LoadFederationProfile reads the sovereign-federation env surface into one
@@ -91,7 +105,10 @@ func LoadFederationProfile() FederationProfile {
 	if rendezvous == "" {
 		rendezvous = proxDefaultRendezvousBase
 	}
-	tc := network.LoadTURNConfig()
+	// Effective config (admin-store-authoritative, env-fallback) — the SAME
+	// resolver /api/peering/ice and /api/turn/credentials use — so this
+	// status profile can't drift from what ICE actually serves.
+	tc := relayconfig.EffectiveTURNConfig()
 	disablePublic := publicSTUNDisabled()
 
 	return FederationProfile{
@@ -105,6 +122,8 @@ func LoadFederationProfile() FederationProfile {
 		TURNHost:             tc.Host,
 		PublicSTUNDisabled:   disablePublic,
 		NoThirdPartySTUN:     tc.Enabled && disablePublic,
+		RelayProvider:        relayconfig.CurrentProvider(),
+		Ingress:              relayconfig.IngressInfo(),
 	}
 }
 

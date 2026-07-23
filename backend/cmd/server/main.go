@@ -76,6 +76,7 @@ import (
 	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
 	"vulos/backend/services/recall"
+	"vulos/backend/services/relayconfig"
 	"vulos/backend/services/sandbox"
 	"vulos/backend/services/signing"
 	"vulos/backend/services/snapshot"
@@ -210,6 +211,9 @@ func main() {
 	if u, src := gwurl.Resolved(); src != gwurl.SourceDefault {
 		log.Printf("[gateway] control-plane URL = %s (source: %s)", u, src)
 	}
+	if err := relayconfig.Init(dbDir); err != nil {
+		log.Printf("[relayconfig] could not load persisted relay provider override (%v) — using wakala default", err)
+	}
 
 	// S3 storage
 	s3cfg := storage.LoadS3Config()
@@ -316,6 +320,7 @@ func main() {
 		log.Printf("[turn] store init warning: %v", err)
 		turnStore, _ = network.NewTURNStore(os.TempDir())
 	}
+	relayconfig.SetTURNStore(turnStore) // fixes the ICE/TURN split-brain
 
 	// AI service
 	aiSvc := ai.New()
@@ -1498,6 +1503,13 @@ func main() {
 	// registry entry stays inert until the founder signs it.
 	registerAndroidRoutes(mux, authStore)
 
+	// Web hosting (PUBWEB): "vulos web deploy" — publish a built static/SPA site
+	// from your own box, served at <site>.<user>.os.vulos.org with an SPA
+	// fallback + hardened tar extraction, per-user quota, and a swappable cert
+	// backend (honest no-op default until DNS-01/acme-dns is wired). Management
+	// API is X-User-ID scoped (401 fail-closed); serving is public.
+	registerWebhostRoutes(mux)
+
 	// Notifications
 	mux.Handle("/api/notifications/stream", notifySvc.Handler())
 	mux.HandleFunc("GET /api/notifications", func(w http.ResponseWriter, r *http.Request) {
@@ -2074,6 +2086,7 @@ func main() {
 	// TURN/coturn settings routes (NET-10)
 	// H2 fix: POST /api/turn/config and POST /api/turn/test are admin-only.
 	registerTURNRoutes(mux, turnStore, authStore)
+	registerRelayConfigRoutes(mux, authStore)
 	registerNetModeRoutes(mux, netSvc, authStore)
 
 	// --- System Settings ---
@@ -3866,14 +3879,18 @@ func main() {
 	}
 	appfsSvc.Register(mux)
 
-	// TURN credentials (for WebRTC relay in remote mode)
+	// TURN credentials (for WebRTC relay in remote mode). Routed through
+	// relayconfig.EffectiveTURNConfig() — the SAME admin-store-authoritative,
+	// env-fallback resolver /api/peering/ice uses — so this isn't a second,
+	// env-only TURN producer split-brained against the admin's turn.json.
 	mux.HandleFunc("GET /api/turn/credentials", func(w http.ResponseWriter, r *http.Request) {
-		if !turnCfg.Enabled {
+		tc := relayconfig.EffectiveTURNConfig()
+		if !tc.Enabled {
 			writeErr(w, 503, "TURN not configured")
 			return
 		}
 		userID := r.Header.Get("X-User-ID")
-		writeJSON(w, turnCfg.GenerateCredentials(userID))
+		writeJSON(w, tc.GenerateCredentials(userID))
 	})
 
 	// Storage status (CLUSTER-06) — reads ~/.vulos/db/storage.json, no creds leaked
@@ -4049,11 +4066,15 @@ func main() {
 
 	// Recovery Kit re-download (admin-only)
 	registerKitRoutes(mux, authStore, home)
-	// Compliance (data export/audit records) — own-data, not admin-gated
-	if complianceStore, err := compliance.OpenStore(dbDir); err != nil {
-		log.Printf("[compliance] DISABLED: could not open store: %v", err)
-	} else {
-		registerComplianceRoutes(mux, complianceStore)
+	// Compliance (data export/audit records). MANAGED-TIER surface — its UI was
+	// dropped in the management fold, so a self-host box must not expose orphan
+	// endpoints. Off unless VULOS_MANAGED_TIER is set (greenfield 2026-07-23).
+	if managedTierEnabled() {
+		if complianceStore, err := compliance.OpenStore(dbDir); err != nil {
+			log.Printf("[compliance] DISABLED: could not open store: %v", err)
+		} else {
+			registerComplianceRoutes(mux, complianceStore)
+		}
 	}
 	// Webhooks (owner-gated outbound event delivery). Opened earlier (see the
 	// AUTH-12 passkey section above) so webhooksDispatcher is ready in time to
@@ -4078,8 +4099,12 @@ func main() {
 	// AUTH-12 passkey section above) so it's ready in time to also be threaded
 	// into registerPasskeysRoutes.
 	registerAccountSecurityRoutes(mux, acctSecSvc, authStore)
-	// Support (help requests: records + classifies, no outbound delivery)
-	registerSupportRoutes(mux, dbDir, authStore, notifySvc, billingClient)
+	// Support (help requests: records + classifies, no outbound delivery).
+	// MANAGED-TIER surface (UI dropped in the fold) — off for self-host unless
+	// VULOS_MANAGED_TIER is set (greenfield 2026-07-23).
+	if managedTierEnabled() {
+		registerSupportRoutes(mux, dbDir, authStore, notifySvc, billingClient)
+	}
 
 	// WORKSPACE REMOVED: the standalone "Vulos Workspace" browser shell is dead —
 	// the OS desktop shell (served from "/" below) IS the shell, for both the local

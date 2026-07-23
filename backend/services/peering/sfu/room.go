@@ -8,6 +8,7 @@
 package sfu
 
 import (
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -16,7 +17,29 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
+
+	"vulos/backend/services/relayconfig"
 )
+
+// pionICEServers converts the box's currently-configured relay/reachability
+// ICE list (relayconfig.ICEServers — the SINGLE source of truth; wakala by
+// default, BYO turn/libp2p/wireguard/none otherwise) into Pion's
+// webrtc.ICEServer shape. This package must never hardcode a STUN/TURN
+// server itself (RELAY-01) — see relayconfig's package doc for why a
+// non-ICE-capable provider (libp2p/wireguard/none) still yields a full ICE
+// list here via its wakala fallback.
+func pionICEServers() []webrtc.ICEServer {
+	resolved := relayconfig.ICEServers(context.Background(), "sfu")
+	servers := make([]webrtc.ICEServer, 0, len(resolved))
+	for _, s := range resolved {
+		servers = append(servers, webrtc.ICEServer{
+			URLs:       s.URLs,
+			Username:   s.Username,
+			Credential: s.Credential,
+		})
+	}
+	return servers
+}
 
 // SimulcastLayer identifies a simulcast encoding layer.
 type SimulcastLayer int
@@ -134,9 +157,7 @@ func (r *Room) Join(offer webrtc.SessionDescription) (*Participant, webrtc.Sessi
 	r.mu.Unlock()
 
 	pc, err := r.api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.l.google.com:19302"}},
-		},
+		ICEServers: pionICEServers(),
 	})
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err

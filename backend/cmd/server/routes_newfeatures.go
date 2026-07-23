@@ -342,8 +342,12 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		registerSelfHostIntegrations(mux, deps.dbDir, deps.activeEnv)
 	}
 
-	// KMS (envelope encryption keys — owner-gated rotate/export)
-	registerKMSRoutes(mux, deps.authStore, deps.dbDir, deps.activeEnv)
+	// KMS (envelope encryption keys — owner-gated rotate/export). MANAGED-TIER
+	// surface (UI dropped in the fold) — off for self-host unless
+	// VULOS_MANAGED_TIER is set (greenfield 2026-07-23).
+	if managedTierEnabled() {
+		registerKMSRoutes(mux, deps.authStore, deps.dbDir, deps.activeEnv)
+	}
 
 	// ── 7. cgroup Alerter (internal/cgroups, PUBWEB-08) ─────────────────────────
 	//

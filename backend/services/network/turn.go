@@ -58,7 +58,12 @@ type TURNCredentials struct {
 // Coturn supports use-auth-secret with SHA-256 via the --sha256 flag; ensure the
 // turnserver.conf includes "sha256" when consuming these credentials.
 func (tc TURNConfig) GenerateCredentials(userID string) TURNCredentials {
-	ttl := 24 * 3600 // 24 hours
+	// SECURITY: kept to <=1h. A 24h-lived credential handed to every WebRTC
+	// caller (including "guest") was an unnecessarily long-lived bearer
+	// secret for a value that is regenerated on every /api/turn/credentials
+	// or /api/peering/ice call anyway — short TTL bounds the blast radius of
+	// a leaked credential with no loss of function (callers just re-fetch).
+	ttl := 3600 // 1 hour
 	expiry := time.Now().Unix() + int64(ttl)
 	username := fmt.Sprintf("%d:%s", expiry, userID)
 

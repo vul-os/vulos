@@ -15,6 +15,7 @@ import ModelsPanel from './settings/ModelsPanel.jsx'
 import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
 import OfflineDataPanel from './settings/OfflineDataPanel.jsx'
 import GatewayPanel from './settings/GatewayPanel.jsx'
+import RelayPanel from './settings/RelayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
 import SecurityPanel from './settings/SecurityPanel.jsx'
 import WebhooksPanel from './settings/WebhooksPanel.jsx'
@@ -68,6 +69,7 @@ const sectionGroups = [
       { id: 'network', label: 'Remote Access', icon: '\u{1F310}' },
       { id: 'domain', label: 'Custom Domain', icon: '\u{1F517}' },
       { id: 'gateway', label: 'Control Plane', owner: true, icon: '\u{25C9}' },
+      { id: 'relay', label: 'Relay & Reachability', owner: true, icon: '⇆' },
       { id: 'cdn', label: 'CDN', owner: true, icon: '\u{25C7}' },
       { id: 'turnSettings', label: 'TURN / WebRTC', icon: '\u{21C4}' },
     ],
@@ -299,6 +301,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'network' && <NetworkSettings />}
         {active === 'domain' && <DomainPanel />}
         {active === 'gateway' && <GatewayPanel />}
+        {active === 'relay' && <RelayPanel />}
         {active === 'cdn' && <CDNPanel />}
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'webhooks' && <WebhooksPanel />}

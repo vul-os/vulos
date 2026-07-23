@@ -5,12 +5,11 @@ package peering
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
-	"vulos/backend/services/network"
+	"vulos/backend/services/relayconfig"
 )
 
 // iceServer represents a single STUN or TURN server entry as defined by the
@@ -28,16 +27,14 @@ type iceConfigResponse struct {
 }
 
 // envDisablePublicSTUN, when set truthy, suppresses the public Google STUN
-// servers from the ICE config (sovereign-federation config profile: a fully
-// self-hosted TURN deployment already answers STUN binding requests on the
-// same port — see selfHostedSTUNURL — so a fully-sovereign box can opt out of
-// any third-party STUN dependency entirely). Off by default: most boxes
-// benefit from the public STUN servers as a free, always-available fallback,
-// and turning them off is a deliberate sovereignty choice, not the default.
+// servers from the ICE config (sovereign-federation config profile). It is
+// read by relayconfig's wakala provider now (see relayconfig/wakala.go); kept
+// here too only because federation_profile.go's publicSTUNDisabled() (an
+// existing, separately-consumed status field) still reads it directly.
 const envDisablePublicSTUN = "VULOS_STUN_DISABLE_PUBLIC"
 
 // publicSTUNDisabled reports whether the operator opted out of the public
-// STUN fallback.
+// STUN fallback. Used by federation_profile.go's status view.
 func publicSTUNDisabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(envDisablePublicSTUN))) {
 	case "1", "true", "yes":
@@ -46,73 +43,47 @@ func publicSTUNDisabled() bool {
 	return false
 }
 
-// stunURLs returns the public STUN URLs included in the ICE config, unless
-// the operator has disabled them (envDisablePublicSTUN) for a fully-sovereign
-// deployment. Public Google STUN servers are used by default so calls work
-// even without a local TURN deployment.
-func stunURLs() []string {
-	if publicSTUNDisabled() {
-		return nil
-	}
-	return []string{
-		"stun:stun.l.google.com:19302",
-		"stun:stun1.l.google.com:19302",
-	}
-}
-
-// selfHostedSTUNURLs returns a STUN entry pointing at the operator's OWN TURN
-// server, when one is configured. Coturn answers plain STUN binding requests
-// on the SAME port it serves TURN on, so a box that self-hosts TURN already
-// has a fully self-hosted STUN option with zero extra infrastructure — this
-// is what lets a fully-sovereign box (envDisablePublicSTUN=1) need no
-// third-party STUN server at all.
-func selfHostedSTUNURLs(tc network.TURNConfig) []string {
-	if !tc.Enabled {
-		return nil
-	}
-	host := tc.Host
-	if host == "" {
-		host = "localhost"
-	}
-	return []string{fmt.Sprintf("stun:%s:%d", host, tc.Port)}
-}
-
 // handleICEConfig serves GET /api/peering/ice.
 //
-// Response always includes STUN servers. When the TURN_SECRET environment
-// variable is set, short-lived TURN credentials are appended using the
-// existing network.TURNConfig.GenerateCredentials API — no new TURN code.
+// SINGLE SOURCE OF TRUTH (RELAY-01): the ICE server list is produced
+// EXCLUSIVELY by relayconfig.ICEServers — the box's chosen relay/TURN
+// provider (wakala by default; BYO turn/libp2p/wireguard/none otherwise).
+// This also fixes the historical split-brain where Settings' "TURN / WebRTC"
+// panel persisted network.TURNStore's turn.json but this handler only ever
+// read the TURN_SECRET/TURN_HOST env vars — relayconfig's wakala provider now
+// treats the admin-configured store as authoritative when set (see
+// relayconfig.SetTURNStore, wired in cmd/server/main.go).
+//
+// This handler must NEVER branch on which provider is active — whatever
+// relayconfig.ICEServers returns is already the right list for the box's
+// current configuration, always including app-media ICE even when the
+// active provider only affects ingress/rendezvous (libp2p/wireguard/none —
+// see relayconfig's package doc on the three-facet reachability model).
 //
 // The caller identity comes from the X-User-ID header injected by the auth
 // middleware. An anonymous "guest" string is used as the TURN username when
 // no authenticated user is present (TURN credentials are still valid; the
-// username is part of the HMAC-SHA1 time-based credential, not an auth check).
+// username is part of the HMAC-SHA256 time-limited credential, not an auth
+// check).
 func handleICEConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	servers := []iceServer{}
-	if urls := stunURLs(); len(urls) > 0 {
-		servers = append(servers, iceServer{URLs: urls})
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "guest"
 	}
 
-	tc := network.LoadTURNConfig()
-	if urls := selfHostedSTUNURLs(tc); len(urls) > 0 {
-		servers = append(servers, iceServer{URLs: urls})
-	}
-	if tc.Enabled {
-		userID := r.Header.Get("X-User-ID")
-		if userID == "" {
-			userID = "guest"
-		}
-		creds := tc.GenerateCredentials(userID)
+	resolved := relayconfig.ICEServers(r.Context(), userID)
+	servers := make([]iceServer, 0, len(resolved))
+	for _, s := range resolved {
 		servers = append(servers, iceServer{
-			URLs:       creds.URLs,
-			Username:   creds.Username,
-			Credential: creds.Credential,
-			TTL:        creds.TTL,
+			URLs:       s.URLs,
+			Username:   s.Username,
+			Credential: s.Credential,
+			TTL:        s.TTL,
 		})
 	}
 

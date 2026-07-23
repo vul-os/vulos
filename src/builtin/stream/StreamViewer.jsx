@@ -298,9 +298,27 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       }
       streamSize.current = { w: session.width || 1280, h: session.height || 720 }
 
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      })
+      // RELAY-01: ICE servers come from the box's single relay/TURN provider
+      // seam (wakala by default; BYO turn/libp2p/wireguard/none otherwise —
+      // see Settings > Network > Relay & Reachability) instead of a
+      // hardcoded public STUN server, so a self-hoster's choice there
+      // actually applies here too. A transient fetch failure keeps
+      // iceServers EMPTY rather than leaking to public Google STUN, which
+      // would silently defeat VULOS_STUN_DISABLE_PUBLIC.
+      let iceServers = []
+      try {
+        const iceRes = await fetch('/api/peering/ice')
+        if (iceRes.ok) {
+          const iceData = await iceRes.json()
+          if (Array.isArray(iceData?.ice_servers) && iceData.ice_servers.length) {
+            iceServers = iceData.ice_servers
+          }
+        }
+      } catch {
+        // keep iceServers empty — never fall back to third-party STUN
+      }
+
+      const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
 
       pc.ontrack = (e) => {

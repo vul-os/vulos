@@ -25,12 +25,29 @@ import (
 
 	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/input"
+	"vulos/backend/services/relayconfig"
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/webrtc/v4"
 )
+
+// pionICEServers converts the box's currently-configured relay/reachability
+// ICE list (relayconfig.ICEServers) into Pion's webrtc.ICEServer shape. See
+// stream.go's HandleSignaling for why this package never hardcodes STUN/TURN.
+func pionICEServers(ctx context.Context, userID string) []webrtc.ICEServer {
+	resolved := relayconfig.ICEServers(ctx, userID)
+	servers := make([]webrtc.ICEServer, 0, len(resolved))
+	for _, s := range resolved {
+		servers = append(servers, webrtc.ICEServer{
+			URLs:       s.URLs,
+			Username:   s.Username,
+			Credential: s.Credential,
+		})
+	}
+	return servers
+}
 
 // inputInjector is the seam the input handlers drive. *input.Injector satisfies
 // it structurally; tests substitute a recording fake to assert that every remote
@@ -292,8 +309,16 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 	webrtc.RegisterDefaultInterceptors(m, ir)
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(ir))
+	// RELAY-01: ICE servers come EXCLUSIVELY from relayconfig.ICEServers — the
+	// box's single, owner-configurable relay/TURN provider (wakala default;
+	// BYO turn/libp2p/wireguard/none otherwise). This package must never
+	// hardcode a STUN/TURN server itself.
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "guest"
+	}
 	pc, err := api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{{URLs: []string{"stun:stun.l.google.com:19302"}}},
+		ICEServers: pionICEServers(r.Context(), userID),
 	})
 	if err != nil {
 		return

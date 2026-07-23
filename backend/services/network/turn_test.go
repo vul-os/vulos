@@ -121,8 +121,8 @@ func TestGenerateCredentials_TTLAndExpiry(t *testing.T) {
 	creds := tc.GenerateCredentials("carol")
 	after := time.Now().Unix()
 
-	if creds.TTL != 24*3600 {
-		t.Errorf("TTL = %d; want %d", creds.TTL, 24*3600)
+	if creds.TTL != 3600 {
+		t.Errorf("TTL = %d; want %d (SECURITY: bounded to <=1h)", creds.TTL, 3600)
 	}
 
 	parts := strings.SplitN(creds.Username, ":", 2)
