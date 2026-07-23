@@ -188,12 +188,17 @@ func (s *softwareStore) Rotate(reason string) (*RotationCert, error) {
 // forceInstallIdentity implements the unexported KeyStore primitive: install
 // newPriv unconditionally, no old-key signature required. Only reachable from
 // BreakGlassRotate (rotation.go), which enforces the quorum check first.
-func (s *softwareStore) forceInstallIdentity(newPriv *ecdsa.PrivateKey) ([]byte, error) {
+func (s *softwareStore) forceInstallIdentity(newPriv *ecdsa.PrivateKey, expectedOldPubDER []byte) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	oldPubDER, err := x509.MarshalPKIXPublicKey(&s.privKey.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("devicekey/software: forceInstallIdentity: marshal old pubkey: %w", err)
+	}
+	// Compare-and-swap under the lock: refuse if the active key changed since
+	// the caller verified the quorum against it (TOCTOU close).
+	if err := checkExpectedOldKey(oldPubDER, expectedOldPubDER); err != nil {
+		return nil, err
 	}
 	if err := s.installNewIdentity(newPriv, oldPubDER); err != nil {
 		return nil, fmt.Errorf("devicekey/software: forceInstallIdentity: %w", err)

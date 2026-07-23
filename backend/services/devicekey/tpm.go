@@ -425,12 +425,17 @@ func (s *tpmStore) Rotate(reason string) (*RotationCert, error) {
 // forceInstallIdentity implements the unexported KeyStore primitive (see
 // keystore.go's doc comment on the interface method for the security
 // rationale). Only reachable from BreakGlassRotate.
-func (s *tpmStore) forceInstallIdentity(newPriv *ecdsa.PrivateKey) ([]byte, error) {
+func (s *tpmStore) forceInstallIdentity(newPriv *ecdsa.PrivateKey, expectedOldPubDER []byte) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	oldPubDER, err := s.activeIdentityDER()
 	if err != nil {
 		return nil, fmt.Errorf("devicekey/tpm: forceInstallIdentity: marshal old pubkey: %w", err)
+	}
+	// Compare-and-swap under the lock: refuse if the active key changed since
+	// the caller verified the quorum against it (TOCTOU close).
+	if err := checkExpectedOldKey(oldPubDER, expectedOldPubDER); err != nil {
+		return nil, err
 	}
 	if err := s.installRotatedIdentity(newPriv, oldPubDER); err != nil {
 		return nil, fmt.Errorf("devicekey/tpm: forceInstallIdentity: %w", err)

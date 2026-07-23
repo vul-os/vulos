@@ -35,6 +35,7 @@
 package devicekey
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -51,6 +52,27 @@ import (
 	"vulos/backend/services/fleetid"
 	"vulos/backend/services/signing"
 )
+
+// ErrActiveKeyChanged is returned by forceInstallIdentity (and surfaced by
+// BreakGlassRotate/BreakGlassRevoke) when the active device key no longer
+// matches the key the quorum was verified against — a concurrent rotation
+// swapped it in the gap between the caller's identity read and the install.
+// The operation installs/records nothing; the caller should re-read the
+// current key, gather a fresh quorum over it, and retry.
+var ErrActiveKeyChanged = errors.New("devicekey: active identity key changed between quorum verification and install (concurrent rotation?); nothing installed — retry with a fresh quorum over the current key")
+
+// checkExpectedOldKey is the compare-and-swap guard shared by both backends'
+// forceInstallIdentity: it fails closed (ErrActiveKeyChanged) unless the
+// currently-active key exactly equals the key the caller verified the quorum
+// against. Caller must already hold the store lock so current cannot change
+// under it. A nil/empty expected is itself a failure — break-glass callers
+// always know the old key.
+func checkExpectedOldKey(current, expected []byte) error {
+	if len(expected) == 0 || !bytes.Equal(current, expected) {
+		return ErrActiveKeyChanged
+	}
+	return nil
+}
 
 // RotationOverlap is the grace window during which the PREVIOUS identity key
 // is still considered valid by a verifier that checks PreviousIdentity() —
@@ -309,7 +331,11 @@ func BreakGlassRotate(ks KeyStore, candidatePriv *ecdsa.PrivateKey, reason, subj
 
 	// Quorum verified — now (and only now) install the new identity. This is
 	// the ONLY call site of forceInstallIdentity in the entire codebase.
-	gotOldPubDER, err := ks.forceInstallIdentity(candidatePriv)
+	// Pass the old key the quorum was verified against so the install is a
+	// compare-and-swap: if a concurrent rotation changed the active key in the
+	// gap since ks.DeviceIdentity() above, this fails closed (ErrActiveKeyChanged)
+	// rather than binding the cert to a key the quorum never signed over.
+	gotOldPubDER, err := ks.forceInstallIdentity(candidatePriv, oldPubDER)
 	if err != nil {
 		return nil, fmt.Errorf("devicekey: BreakGlassRotate: install: %w", err)
 	}

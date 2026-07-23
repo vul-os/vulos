@@ -102,6 +102,16 @@ type KeyStore interface {
 	// and returns the OLD public key (PKIX DER) so the caller can build the
 	// RotationCert.
 	//
+	// COMPARE-AND-SWAP: expectedOldPubDER is the active-key PKIX DER the caller
+	// verified the quorum against. The install is atomic under the store lock:
+	// if the CURRENTLY active key no longer equals expectedOldPubDER (e.g. a
+	// concurrent Rotate swapped it between the caller's DeviceIdentity() read
+	// and this call), it returns ErrActiveKeyChanged and installs nothing —
+	// closing the TOCTOU that would otherwise bind the cert's OldPubKey to a
+	// key the quorum never signed over (an unauditable cert) or revoke a
+	// superseded key. The returned oldPubKeyDER therefore always equals
+	// expectedOldPubDER on success.
+	//
 	// Deliberately UNEXPORTED: in Go, a type outside this package cannot
 	// implement an interface that has an unexported method, so KeyStore can
 	// only ever be satisfied by types defined in package devicekey (today:
@@ -114,7 +124,7 @@ type KeyStore interface {
 	// (Rotate) OR a verified peer quorum (BreakGlassRotate). This is the
 	// compile-time enforcement of the hard rule: a box can never self-authorize
 	// its own break-glass rotation.
-	forceInstallIdentity(newPriv *ecdsa.PrivateKey) (oldPubKeyDER []byte, err error)
+	forceInstallIdentity(newPriv *ecdsa.PrivateKey, expectedOldPubDER []byte) (oldPubKeyDER []byte, err error)
 }
 
 // defaultTPMPath is the Linux resource-managed TPM character device.

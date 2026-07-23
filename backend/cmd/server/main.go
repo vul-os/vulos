@@ -3163,7 +3163,19 @@ func main() {
 	if deviceKSErr == nil {
 		deviceRevStore, drErr := devicekey.NewRevocationStore(datadir.Join("auth", "tpm"))
 		if drErr != nil {
-			log.Printf("[devicekey] revocation store unavailable, admission gate not wired: %v", drErr)
+			// FAIL CLOSED, not open. NewRevocationStore deliberately fails closed
+			// on a corrupt store (refuses to open rather than start falsely-empty).
+			// Merely logging and skipping would leave the process-wide checker nil,
+			// so IsDeviceKeyRevoked would report NOTHING revoked for the whole
+			// process lifetime — converting the store's LOCAL fail-closed into a
+			// GLOBAL fail-OPEN. Instead install a checker that treats EVERY device
+			// key as untrusted: Sign/Rotate refuse (ErrActiveKeyRevoked) and remote
+			// device-signature checks reject, disabling device-key operations (the
+			// same posture as the passkeys-disabled path when deviceKS itself fails)
+			// until the operator repairs the store. Better a visible degradation
+			// than a silent hole in revocation enforcement.
+			log.Printf("[devicekey] ERROR: revocation store unavailable (%v) — FAILING CLOSED: device-key signing/verification disabled until %s is repaired", drErr, datadir.Join("auth", "tpm", "revocations.json"))
+			devicekey.SetRevocationChecker(func(string) bool { return true })
 		} else {
 			devicekey.SetRevocationChecker(deviceRevStore.IsRevoked)
 			registerDeviceKeyLifecycleRoutes(mux, dkLifecycleDeps{

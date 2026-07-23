@@ -51,6 +51,13 @@ const DefaultRevSyncInterval = 5 * time.Minute
 // cannot stall an entire pull round.
 const revSyncHTTPTimeout = 10 * time.Second
 
+// maxRevEntriesPerPeerRound caps how many revocation entries a single peer can
+// contribute in ONE pull round. A self-revocation cert is valid for any key
+// its own signature covers, so a malicious rostered peer could otherwise serve
+// an ever-growing list and grow every other box's store unbounded. This bounds
+// the per-round rate; RevocationStore.maxEntries bounds the absolute total.
+const maxRevEntriesPerPeerRound = 256
+
 // PeerSource reports the current set of fleet peer base URLs (e.g.
 // "https://10.0.0.4:7443") to pull revocations from. Implementations are
 // expected to exclude this box itself (mirrors internal/fabric.Service's
@@ -244,6 +251,11 @@ func (rs *RevSyncer) pullPeer(ctx context.Context, client *http.Client, peerBase
 	batch, err := UnmarshalRevocationBatch(data)
 	if err != nil {
 		return 0, err
+	}
+	// Rate-cap a single peer's contribution per round (anti-poisoning).
+	if len(batch.Revocations) > maxRevEntriesPerPeerRound {
+		log.Printf("[devicekey] revocation pull from %s: batch has %d entries, capping at %d this round (possible poisoning)", peerBaseURL, len(batch.Revocations), maxRevEntriesPerPeerRound)
+		batch.Revocations = batch.Revocations[:maxRevEntriesPerPeerRound]
 	}
 
 	merged, mergeErrs := MergeRevocationBatch(rs.Store, batch, roster, threshold, now)

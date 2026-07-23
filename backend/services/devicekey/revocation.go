@@ -211,7 +211,23 @@ type RevocationStore struct {
 	mu   sync.RWMutex
 	path string
 	rec  revocationRecord
+
+	// maxEntries bounds total stored revocations as a poisoning/DoS backstop.
+	// A self-revocation cert only needs to match its OWN embedded key, so any
+	// party can mint unlimited valid self-revocations for throwaway keys and
+	// serve them via GET /api/auth/device/revocations; without a cap a single
+	// rostered peer could grow every fleet box's store without bound (see
+	// revsync.go's per-round cap for the companion rate limit). Once at
+	// capacity MergeVerified refuses NEW fingerprints (already-present ones
+	// stay idempotent). Generous relative to any real fleet's device count.
+	// <= 0 disables the cap. Defaults to DefaultMaxRevocationEntries.
+	maxEntries int
 }
+
+// DefaultMaxRevocationEntries is the default RevocationStore.maxEntries cap —
+// far above any realistic fleet's lifetime device-key count, low enough to
+// bound a poisoning peer's disk/CPU impact.
+const DefaultMaxRevocationEntries = 10000
 
 // revocationFileName is the on-disk file name under the directory passed to
 // NewRevocationStore (typically the same directory devicekey.Open uses, e.g.
@@ -229,8 +245,9 @@ func NewRevocationStore(dir string) (*RevocationStore, error) {
 		return nil, fmt.Errorf("devicekey: NewRevocationStore: mkdir: %w", err)
 	}
 	s := &RevocationStore{
-		path: filepath.Join(dir, revocationFileName),
-		rec:  revocationRecord{Revoked: map[string]*DeviceRevocationCert{}},
+		path:       filepath.Join(dir, revocationFileName),
+		rec:        revocationRecord{Revoked: map[string]*DeviceRevocationCert{}},
+		maxEntries: DefaultMaxRevocationEntries,
 	}
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -314,6 +331,12 @@ func (s *RevocationStore) MergeVerified(cert *DeviceRevocationCert, roster fleet
 	defer s.mu.Unlock()
 	if _, already := s.rec.Revoked[cert.Fingerprint]; already {
 		return nil // idempotent union
+	}
+	// Poisoning/DoS backstop: refuse NEW fingerprints once at capacity. A
+	// self-revocation is valid for ANY key its own signature covers, so an
+	// unbounded store is a griefing vector for a malicious rostered peer.
+	if s.maxEntries > 0 && len(s.rec.Revoked) >= s.maxEntries {
+		return fmt.Errorf("devicekey: MergeVerified: revocation store at capacity (%d entries); refusing new fingerprint %s (possible poisoning by a fleet peer — inspect %s)", s.maxEntries, cert.Fingerprint, s.path)
 	}
 	// Mark revoked in memory FIRST: any concurrent admission check
 	// (IsRevoked/IsDeviceKeyRevoked) sees the revocation immediately even if
