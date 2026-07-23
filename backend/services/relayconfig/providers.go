@@ -211,20 +211,38 @@ func (libp2pProvider) Name() Provider                                 { return P
 func (libp2pProvider) Capabilities() Facet                            { return FacetIngress | FacetRendezvous }
 func (libp2pProvider) ICEServers(context.Context, string) []ICEServer { return nil }
 
+// Ingress calls Reconcile() (libp2p_manager.go) so the optional embedded
+// host self-heals to match the current config on every read, then reports
+// honestly on whatever that reconciliation found: a live host's peer ID
+// when both opt-in gates are satisfied and construction succeeded, why it
+// isn't live otherwise (env gate not set, or a fail-closed construction
+// error), or the pre-existing report-only detail as a last resort.
 func (p libp2pProvider) Ingress() IngressDescriptor {
-	return IngressDescriptor{
-		Mode:   "libp2p-circuit-relay",
-		Detail: fmt.Sprintf("%d relay peer(s) configured", len(p.cfg.RelayPeers)),
+	st := ensureLibp2pManager(currentConfig())
+	base := fmt.Sprintf("%d relay peer(s) configured", len(p.cfg.RelayPeers))
+	switch {
+	case st.Running:
+		return IngressDescriptor{Mode: "libp2p-circuit-relay", Detail: fmt.Sprintf("%s, live host peer_id=%s", base, st.PeerID)}
+	case st.LastError != "":
+		return IngressDescriptor{Mode: "libp2p-circuit-relay", Detail: fmt.Sprintf("%s (embedded host disabled: %s)", base, st.LastError)}
+	case !st.HostEnvEnabled:
+		return IngressDescriptor{Mode: "libp2p-circuit-relay", Detail: fmt.Sprintf("%s (report-only — set %s=1 to embed a real libp2p host)", base, envLibp2pHostEnable)}
+	default:
+		return IngressDescriptor{Mode: "libp2p-circuit-relay", Detail: base}
 	}
 }
 
-// ResolvePeer is honestly a stub today: this OS backend does not embed a
-// live libp2p node (that stack lives in the envoir project) — this seam
-// only records WHICH relay peers the operator wants used. Wiring an actual
-// dial-through-Circuit-Relay-v2 resolution is future work; until then this
-// always reports not-ok, which correctly falls through to nothing (facet C
-// stays unresolved rather than lying about success).
-func (libp2pProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }
+// ResolvePeer keeps the embedded host (if any) reconciled via the same
+// Reconcile() path as Ingress, but still honestly reports not-ok: even with
+// a live host maintaining relay reservations, this seam does not yet
+// implement dial-through-Circuit-Relay-v2 peer resolution (that would need
+// to know which specific peer ID to dial and via which reservation) — wiring
+// that is future work. Facet C therefore still stays unresolved rather than
+// lying about success, exactly as before.
+func (libp2pProvider) ResolvePeer(_ context.Context, _ string) (string, bool) {
+	ensureLibp2pManager(currentConfig())
+	return "", false
+}
 
 // --- wireguard: mesh coordinator endpoint. Facet B ONLY. No key material. ---
 
