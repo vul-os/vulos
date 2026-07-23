@@ -56,6 +56,14 @@ type KeyStore interface {
 	// Sign produces a signature over digest using the device identity key.
 	// The hash parameter identifies the algorithm used to produce digest
 	// (e.g. crypto.SHA256). Implementations use ECDSA P-256.
+	//
+	// SELF FAIL-CLOSED (see revocation.go's ErrActiveKeyRevoked): if the
+	// CURRENTLY ACTIVE identity key's fingerprint is known-revoked by the
+	// process-wide checker (SetRevocationChecker), Sign returns
+	// ErrActiveKeyRevoked and mints nothing — a revoked key cannot be used to
+	// authenticate anywhere in this process, not merely at remote verifiers
+	// that happen to have pulled the revocation. This is independent of, and
+	// in addition to, VerifyDeviceSignatureChecked's remote-side rejection.
 	Sign(digest []byte, hash crypto.Hash) (signature []byte, err error)
 
 	// DeviceIdentity returns the stable public key bytes (PKIX DER) that
@@ -82,6 +90,10 @@ type KeyStore interface {
 	// exported way to force a rotation without the old key's signature — see
 	// forceInstallIdentity and BreakGlassRotate in rotation.go for the
 	// quorum-gated alternative used when the old key is lost or compromised.
+	//
+	// SELF FAIL-CLOSED: like Sign, Rotate refuses (ErrActiveKeyRevoked) when
+	// the CURRENT active key is already revoked — signing with a revoked key
+	// proves nothing, so a box in that state must use BreakGlassRotate.
 	Rotate(reason string) (*RotationCert, error)
 
 	// forceInstallIdentity is the MECHANICAL-ONLY primitive behind break-glass

@@ -466,3 +466,39 @@ func VerifyDeviceSignatureChecked(pubKeyDER, digest, sig []byte) error {
 	}
 	return nil
 }
+
+// ─── Self fail-closed admission (this box refusing to mint its OWN sigs) ────
+//
+// Everything above this point is about REMOTE verifiers rejecting a revoked
+// key. That alone leaves a gap: a box whose own active device key is
+// self-revoked (planned decommission) or break-glass-revoked (compromise
+// confirmed by fleet quorum) would, without this guard, happily keep MINTING
+// fresh signatures under that key for as long as the process stays up —
+// Status().Revoked only REPORTS the fact (see its doc comment), it never
+// stopped anything. ErrActiveKeyRevoked / assertActiveKeyNotRevoked close
+// that gap: KeyStore.Sign (software.go, tpm.go) and KeyStore.Rotate's
+// self-authorized path (which signs the RotationCert with the CURRENT active
+// key, exactly like Sign) both call this before touching key material, so a
+// revoked active key can mint no NEW authority-bearing signature anywhere in
+// this process — not just at a remote verifier that happens to have pulled
+// the revocation.
+//
+// This deliberately does NOT block forceInstallIdentity / BreakGlassRotate /
+// BreakGlassRevoke: those are exactly the sanctioned recovery path for a
+// revoked-and-untrusted active key, and BreakGlassRotate signs its resulting
+// RotationCert with the NEW key (never the revoked old one), so a box stuck
+// with a revoked active key is barred from minting MORE signatures under the
+// bad key, never permanently bricked.
+var ErrActiveKeyRevoked = errors.New("devicekey: active device identity key is revoked; refusing to mint a new signature (fail-closed; use break-glass rotation/revocation to recover)")
+
+// assertActiveKeyNotRevoked fails closed (returns ErrActiveKeyRevoked) when
+// activePubDER's fingerprint is known-revoked by the process-wide checker
+// (SetRevocationChecker). With no checker installed it never blocks — the
+// same "subsystem entirely unwired" convention IsDeviceKeyRevoked already
+// documents.
+func assertActiveKeyNotRevoked(activePubDER []byte) error {
+	if IsDeviceKeyRevoked(Fingerprint(activePubDER)) {
+		return ErrActiveKeyRevoked
+	}
+	return nil
+}

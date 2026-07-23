@@ -104,6 +104,16 @@ func (s *softwareStore) Unseal(ciphertext []byte) ([]byte, error) {
 func (s *softwareStore) Sign(digest []byte, _ crypto.Hash) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	pubDER, err := x509.MarshalPKIXPublicKey(&s.privKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: Sign: marshal active pubkey: %w", err)
+	}
+	// SELF FAIL-CLOSED (see revocation.go): a revoked active key mints no
+	// further signatures, regardless of who is asking (integrations
+	// device-signer mint, self-revoke, self-rotate, ...).
+	if err := assertActiveKeyNotRevoked(pubDER); err != nil {
+		return nil, err
+	}
 	return ecdsa.SignASN1(rand.Reader, s.privKey, digest)
 }
 
@@ -139,6 +149,14 @@ func (s *softwareStore) Rotate(reason string) (*RotationCert, error) {
 	oldPubDER, err := x509.MarshalPKIXPublicKey(&oldPriv.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("devicekey/software: Rotate: marshal old pubkey: %w", err)
+	}
+	// SELF FAIL-CLOSED (see revocation.go): normal rotation signs with the
+	// CURRENT (old) key to prove possession — meaningless if that key is
+	// already revoked (self-revoked, or break-glass-revoked by fleet
+	// quorum). A box in that state must use BreakGlassRotate instead, which
+	// never relies on the revoked key's signature.
+	if err := assertActiveKeyNotRevoked(oldPubDER); err != nil {
+		return nil, err
 	}
 
 	newPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

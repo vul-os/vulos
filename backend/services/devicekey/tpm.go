@@ -226,6 +226,16 @@ func (s *tpmStore) Sign(digest []byte, _ crypto.Hash) ([]byte, error) {
 		return nil, fmt.Errorf("tpm Sign: digest must be 32 bytes (SHA-256)")
 	}
 
+	// SELF FAIL-CLOSED (see revocation.go): a revoked active key mints no
+	// further signatures, regardless of who is asking.
+	activeDER, err := s.activeIdentityDER()
+	if err != nil {
+		return nil, fmt.Errorf("tpm Sign: marshal active pubkey: %w", err)
+	}
+	if err := assertActiveKeyNotRevoked(activeDER); err != nil {
+		return nil, err
+	}
+
 	if s.rotatedPriv != nil {
 		return ecdsa.SignASN1(rand.Reader, s.rotatedPriv, digest)
 	}
@@ -379,6 +389,12 @@ func (s *tpmStore) Rotate(reason string) (*RotationCert, error) {
 	oldPubDER, err := s.activeIdentityDER()
 	if err != nil {
 		return nil, fmt.Errorf("devicekey/tpm: Rotate: marshal old pubkey: %w", err)
+	}
+	// SELF FAIL-CLOSED (see revocation.go): normal rotation signs with the
+	// CURRENT (old) key to prove possession — meaningless if that key is
+	// already revoked. A box in that state must use BreakGlassRotate instead.
+	if err := assertActiveKeyNotRevoked(oldPubDER); err != nil {
+		return nil, err
 	}
 	newPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

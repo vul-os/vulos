@@ -1,6 +1,9 @@
 package devicekey
 
 import (
+	"bytes"
+	"crypto/x509"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,6 +42,15 @@ func TestSelfRevoke_RecordsAndGatesAdmission(t *testing.T) {
 		t.Fatal("key should not be revoked before SelfRevoke")
 	}
 
+	// Sign something BEFORE revocation so we can later prove a remote
+	// verifier still rejects a signature that was validly made while the key
+	// was still trusted (revocation is retroactive from the verifier's POV).
+	digest := make([]byte, 32)
+	preRevokeSig, err := ks.Sign(digest, 0)
+	if err != nil {
+		t.Fatalf("Sign (pre-revoke): %v", err)
+	}
+
 	cert, err := SelfRevoke(ks, store, "decommissioning box")
 	if err != nil {
 		t.Fatalf("SelfRevoke: %v", err)
@@ -56,13 +68,113 @@ func TestSelfRevoke_RecordsAndGatesAdmission(t *testing.T) {
 		t.Fatal("IsDeviceKeyRevoked should report true once wired")
 	}
 
-	digest := make([]byte, 32)
-	sig, err := ks.Sign(digest, 0)
-	if err != nil {
-		t.Fatalf("Sign: %v", err)
+	// SELF FAIL-CLOSED: the box itself must now refuse to mint ANY further
+	// signature under this revoked active key — Sign is the chokepoint every
+	// out-of-package caller (integrations device-signer mint, etc.) goes
+	// through.
+	if _, err := ks.Sign(digest, 0); !errors.Is(err, ErrActiveKeyRevoked) {
+		t.Fatalf("Sign after self-revoke: err = %v, want ErrActiveKeyRevoked", err)
 	}
-	if err := VerifyDeviceSignatureChecked(pubDER, digest, sig); err == nil {
+
+	// REMOTE fail-closed: a verifier must reject even a signature that was
+	// validly made before the revocation.
+	if err := VerifyDeviceSignatureChecked(pubDER, digest, preRevokeSig); err == nil {
 		t.Fatal("VerifyDeviceSignatureChecked should reject a signature from a revoked key")
+	}
+}
+
+// TestSign_FailsClosedWhenActiveKeyRevoked isolates the self fail-closed
+// guard from SelfRevoke's own mechanics: once the process-wide checker marks
+// the store's active key fingerprint revoked (however that happened — self,
+// break-glass, or a propagated peer batch), Sign must refuse immediately.
+func TestSign_FailsClosedWhenActiveKeyRevoked(t *testing.T) {
+	resetRevocationChecker(t)
+	ks := newTestSoftwareStore(t)
+	pubDER, _ := ks.DeviceIdentity()
+	fp := Fingerprint(pubDER)
+
+	// Not revoked yet: Sign works.
+	if _, err := ks.Sign(make([]byte, 32), 0); err != nil {
+		t.Fatalf("Sign before revocation: %v", err)
+	}
+
+	SetRevocationChecker(func(f string) bool { return f == fp })
+
+	_, err := ks.Sign(make([]byte, 32), 0)
+	if !errors.Is(err, ErrActiveKeyRevoked) {
+		t.Fatalf("Sign after revocation: err = %v, want ErrActiveKeyRevoked", err)
+	}
+}
+
+// TestRotate_Self_FailsClosedWhenActiveKeyRevoked proves normal (self-
+// authorized) rotation cannot be used to "launder" a revoked key: it signs
+// with the CURRENT (revoked) key, which the guard must refuse. The identity
+// must not change either.
+func TestRotate_Self_FailsClosedWhenActiveKeyRevoked(t *testing.T) {
+	resetRevocationChecker(t)
+	ks := newTestSoftwareStore(t)
+	oldPub, _ := ks.DeviceIdentity()
+	fp := Fingerprint(oldPub)
+
+	SetRevocationChecker(func(f string) bool { return f == fp })
+
+	_, err := ks.Rotate("trying to rotate away from a revoked key")
+	if !errors.Is(err, ErrActiveKeyRevoked) {
+		t.Fatalf("Rotate: err = %v, want ErrActiveKeyRevoked", err)
+	}
+
+	stillOldPub, _ := ks.DeviceIdentity()
+	if !bytes.Equal(stillOldPub, oldPub) {
+		t.Fatal("device identity changed despite Rotate being refused — fail-closed violated")
+	}
+}
+
+// TestBreakGlassRotate_SucceedsEvenWhenActiveKeyRevoked proves the recovery
+// path stays open: BreakGlassRotate never signs with the OLD (possibly
+// revoked) key, so it must still succeed when the active key is already
+// revoked — otherwise a revoked box would be permanently bricked instead of
+// merely barred from minting more signatures under the bad key.
+func TestBreakGlassRotate_SucceedsEvenWhenActiveKeyRevoked(t *testing.T) {
+	resetRevocationChecker(t)
+	ks := newTestSoftwareStore(t)
+	oldPub, _ := ks.DeviceIdentity()
+	fp := Fingerprint(oldPub)
+	SetRevocationChecker(func(f string) bool { return f == fp })
+
+	subject := newFleetBox(t)
+	voucher1 := newFleetBox(t)
+	voucher2 := newFleetBox(t)
+	roster := newTestRoster(subject, voucher1, voucher2)
+
+	candidate, err := GenerateCandidateKey()
+	if err != nil {
+		t.Fatalf("GenerateCandidateKey: %v", err)
+	}
+	candidateDER, _ := x509.MarshalPKIXPublicKey(&candidate.PublicKey)
+
+	now := time.Now()
+	requestID := "recover-revoked-box"
+	payloadHash := BreakGlassPayloadHash(requestID, oldPub, candidateDER)
+	certs := []fleetid.VouchCert{
+		vouchFor(t, voucher1, subject.vulaID, payloadHash, now),
+		vouchFor(t, voucher2, subject.vulaID, payloadHash, now),
+	}
+
+	cert, err := BreakGlassRotate(ks, candidate, "recovering from revoked key", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	if err != nil {
+		t.Fatalf("BreakGlassRotate should succeed despite the active key being revoked: %v", err)
+	}
+	if cert.Method != RotationMethodBreakGlass {
+		t.Fatalf("Method = %q, want %q", cert.Method, RotationMethodBreakGlass)
+	}
+
+	newPub, _ := ks.DeviceIdentity()
+	if !bytes.Equal(newPub, candidateDER) {
+		t.Error("device identity was not installed to the candidate key")
+	}
+	// The new key is not itself revoked, so it must be able to sign again.
+	if _, err := ks.Sign(make([]byte, 32), 0); err != nil {
+		t.Fatalf("Sign with the newly-installed (non-revoked) key: %v", err)
 	}
 }
 

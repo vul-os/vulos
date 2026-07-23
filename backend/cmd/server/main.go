@@ -59,6 +59,7 @@ import (
 	"vulos/backend/services/energy"
 	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/files"
+	"vulos/backend/services/fleetid"
 	"vulos/backend/services/gateway"
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/gwurl"
@@ -3172,6 +3173,40 @@ func main() {
 				Registry:        sharedInstanceRegistry,
 			})
 			log.Printf("[devicekey] rotation/revocation API registered (owner+step-up; break-glass via fleetid quorum)")
+
+			// DEVICEKEY-ROTATE-02: fleet-wide revocation propagation. Periodically
+			// pull every peer's GET /api/auth/device/revocations and merge what
+			// re-verifies (MergeRevocationBatch is fail-closed per entry), so a
+			// self- or quorum-revoked device key becomes known on boxes that never
+			// issued the revocation. PeerSource is this box's own registry view —
+			// non-self (skip the owner-role entry), non-revoked instances with a
+			// reachable endpoint; pulling from self, if it ever happened, is a
+			// harmless idempotent no-op. The loop is a safe no-op until peers exist.
+			revSyncer := devicekey.NewRevSyncer(
+				deviceRevStore,
+				func(context.Context) ([]string, error) {
+					if sharedInstanceRegistry == nil {
+						return nil, nil
+					}
+					insts, lerr := sharedInstanceRegistry.List()
+					if lerr != nil {
+						return nil, lerr
+					}
+					var peers []string
+					for _, in := range insts {
+						if in.Role == multiinstance.RoleOwner || in.Revoked || in.EndpointURL == "" {
+							continue
+						}
+						peers = append(peers, in.EndpointURL)
+					}
+					return peers, nil
+				},
+				func() (fleetid.Roster, int) {
+					return registryRoster{sharedInstanceRegistry}, fleetid.MinThreshold
+				},
+				0,
+			)
+			go revSyncer.Run(ctx)
 		}
 	}
 
