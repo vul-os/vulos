@@ -260,7 +260,10 @@ func (nf *NotifyFanout) fanOutNow(ctx context.Context, notifications []Notificat
 	}
 	var jobs []job
 	for _, inst := range instances {
-		if inst.Status != StatusOnline || inst.EndpointURL == "" {
+		// NODE-CAP-01: store-only members sync but are never a route/ingress
+		// target — the relay has no serving tunnel to forward a notification to,
+		// so exclude them from fan-out even when online with an endpoint.
+		if inst.Status != StatusOnline || inst.EndpointURL == "" || inst.StoreOnly {
 			continue
 		}
 		for _, n := range notifications {

@@ -9,6 +9,7 @@ import { ShellProvider, useShell } from './providers/ShellProvider'
 import { SovereigntyProvider } from './core/useSovereignty'
 import { useSpatialNav } from './core/useSpatialNav'
 import LoginScreen from './auth/LoginScreen'
+import OfflineLockScreen from './auth/OfflineLockScreen'
 import LockScreen from './auth/LockScreen'
 import Setup from './auth/Setup'
 import DesktopCanvas from './layouts/DesktopCanvas'
@@ -113,7 +114,7 @@ function useOriginConfig() {
 
 function Shell() {
   const { layout, popout } = useShell()
-  const { profile } = useAuth()
+  const { profile, offlineMode, unlockOffline } = useAuth()
   const { profile: deviceProfile } = useDeviceProfile()
   const { locked, screensaver, unlock, dismissScreensaver } = useEnergyState()
   useOriginConfig()
@@ -134,7 +135,20 @@ function Shell() {
     const stopNotifier = startAttentionNotifier()
     return () => { stopBridge(); stopNotifier() }
   }, [])
-  if (locked) return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
+  if (locked) {
+    // In an offline session the online PIN lock (server-verified) can never
+    // succeed — it POSTs to the box we can't reach. Re-lock with the offline
+    // password unlock instead, then dismiss the energy lock on success.
+    if (offlineMode) {
+      return (
+        <OfflineLockScreen
+          onUnlock={async (pw) => { await unlockOffline(pw); unlock() }}
+          identity={{ name: profile?.display_name }}
+        />
+      )
+    }
+    return <LockScreen onUnlock={unlock} userName={profile?.display_name} />
+  }
   if (screensaver) return <Screensaver onDismiss={dismissScreensaver} />
   if (popout) return <Popout />
   if (deviceProfile === 'tv') return <TVHome />
@@ -150,8 +164,12 @@ function Shell() {
 }
 
 function AuthGate() {
-  const { user, loading } = useAuth()
+  const { user, loading, offline, unlockOffline } = useAuth()
   const [setupDone, setSetupDone] = useState(null)
+  // OFFLINE-AUTH-01: can this device attempt an offline unlock, and who for?
+  // null = still checking; false = not enrolled (fall back to online login).
+  const [offlineEnrolled, setOfflineEnrolled] = useState(null)
+  const [offlineIdentity, setOfflineIdentity] = useState(null)
 
   // Check if first-boot setup has been completed (public endpoint, no auth needed)
   useEffect(() => {
@@ -161,7 +179,36 @@ function AuthGate() {
       .catch(() => setSetupDone(true))
   }, [])
 
-  if (loading || setupDone === null) {
+  useEffect(() => {
+    let alive = true
+    const done = (enrolled, id) => { if (alive) { setOfflineEnrolled(enrolled); setOfflineIdentity(id || null) } }
+    // Never let the offline-enrollment probe block boot. A blocked/slow IndexedDB
+    // would otherwise hang the "Loading…" gate for EVERY user (online included),
+    // so race the probe against a timeout and fall through to online login.
+    const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 3000))
+    Promise.race([
+      import('./lib/offlineAuth.js').then(async (oa) => {
+        const enrolled = await oa.isEnrolled().catch(() => false)
+        const id = enrolled ? await oa.getCachedIdentity().catch(() => null) : null
+        return { enrolled, id }
+      }),
+      timeout,
+    ])
+      .then((r) => { if (r === 'timeout') done(false, null); else done(r.enrolled, r.id) })
+      .catch(() => done(false, null))
+
+    // After a wipe (attempt cap crossed / explicit "forget offline data"), the
+    // credential is gone — clear the shell-owned app data too, and drop back to
+    // online login rather than trapping the user on a disabled offline lock screen.
+    const onWipe = () => {
+      import('./core/AppBridge.js').then((b) => b.clearAllAppData?.()).catch(() => {})
+      if (alive) { setOfflineEnrolled(false); setOfflineIdentity(null) }
+    }
+    window.addEventListener('vulos:offline-wipe', onWipe)
+    return () => { alive = false; window.removeEventListener('vulos:offline-wipe', onWipe) }
+  }, [])
+
+  if (loading || setupDone === null || offlineEnrolled === null) {
     return (
       <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center">
         <span className="text-neutral-600 text-sm">Loading...</span>
@@ -172,7 +219,14 @@ function AuthGate() {
   // First boot — show setup wizard
   if (!setupDone) return <Setup onComplete={() => setSetupDone(true)} />
 
-  if (!user) return <LoginScreen />
+  if (!user) {
+    // Box unreachable AND this device has a cached offline credential → offer the
+    // fail-closed offline unlock instead of an online login that cannot succeed.
+    if (offline && offlineEnrolled) {
+      return <OfflineLockScreen onUnlock={unlockOffline} identity={offlineIdentity} />
+    }
+    return <LoginScreen />
+  }
 
   return (
     <ShellProvider>

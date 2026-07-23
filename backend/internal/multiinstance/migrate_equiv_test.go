@@ -86,6 +86,21 @@ func applyLegacyRegistry(t *testing.T, db *sql.DB) {
 			t.Fatalf("exec legacy shim %q: %v", s, err)
 		}
 	}
+
+	// Post-fold additive migrations: NOT part of the original 0001–0006 chain,
+	// but real forward migrations shipped after the fold (migrations/0002+).
+	// Each must be mirrored here so this equivalence proof continues to assert
+	// "migrations/ dir == the reconstructed true schema". Append new ones in
+	// migration-file order as they land.
+	postFold := []string{
+		// migrations/0002_store_only.sql — NODE-CAP-01
+		`ALTER TABLE instances ADD COLUMN store_only INTEGER NOT NULL DEFAULT 0`,
+	}
+	for _, s := range postFold {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("exec post-fold migration %q: %v", s, err)
+		}
+	}
 }
 
 // TestMigrationFold_SchemaEquivalent proves the folded 0001_initial.sql produces

@@ -39,6 +39,13 @@ package gateway
 //	app → shell   vulos.storage.remove     {key}          namespaced to this app
 //	app → shell   vulos.storage.clear      (this app's namespace only)
 //	shell → app   vulos.storage.snapshot   {data}         this app's keys only
+//	app → shell   vulos.offline.state      {id} → reply {unlocked}   (OFFLINE-AUTH-01)
+//	app → shell   vulos.offline.appKey     {id} → reply {key}  this app's CryptoKey
+//
+// The app-facing surface is exposed as window.vulos.offline.{isUnlocked,appKey}
+// (frozen). appKey() returns a non-extractable CryptoKey the shell scopes to THIS
+// app from the trusted frame identity — an app can never name or reach another
+// app's key.
 //
 // That is the whole protocol. There is no shell→app command channel, no DOM
 // access, no navigation, no capability to read another app's data: the shell
@@ -135,7 +142,7 @@ func bridgeScript(shellOrigin string) string {
 	return `<script>(function(){"use strict";
 var SHELL=` + jsStringLiteral(shellOrigin) + `,V=1;
 if(window.top===window.self)return;            // not framed: nothing to bridge
-var store=Object.create(null),port=null,pending=[];
+var store=Object.create(null),port=null,pending=[],reqId=0,waiting=Object.create(null);
 
 // (1) Synchronous seed from the URL fragment (never sent to the server).
 try{
@@ -152,6 +159,11 @@ try{
 try{if(window.location.hash.indexOf("__vulos_s=")>=0)history.replaceState(null,"",window.location.pathname+window.location.search);}catch(e){}
 
 function send(m){m.v=V;if(port){try{port.postMessage(m);}catch(e){}}else{pending.push(m);}}
+
+// request/response over the same private port (OFFLINE-AUTH-01). Each call gets a
+// fresh id; the shell echoes it on the reply. Resolves null on timeout so a
+// missing shell never hangs an app.
+function request(type){return new Promise(function(resolve){var id=++reqId;var to=setTimeout(function(){if(waiting[id]){delete waiting[id];resolve(null);}},5000);waiting[id]=function(v){clearTimeout(to);resolve(v);};send({type:type,id:id});});}
 
 // (2) localStorage shim. Reads are served from the seeded snapshot (synchronous,
 // exactly like the real thing); writes are applied locally and mirrored to the
@@ -180,11 +192,26 @@ try{
     if(msg.type==="vulos.storage.snapshot"&&msg.data&&typeof msg.data==="object"){
       for(var k in msg.data){if(typeof msg.data[k]==="string"&&!(k in store))store[k]=msg.data[k];}
     }
+    else if((msg.type==="vulos.offline.state.reply"||msg.type==="vulos.offline.appKey.reply")&&waiting[msg.id]){
+      var w=waiting[msg.id];delete waiting[msg.id];
+      w(msg.type==="vulos.offline.state.reply"?!!msg.unlocked:(msg.key||null));
+    }
   };
   port=ch.port1;
   window.parent.postMessage({type:"vulos.bridge.hello",v:V},SHELL,[ch.port2]);
   for(var j=0;j<pending.length;j++){try{port.postMessage(pending[j]);}catch(e){}}
   pending.length=0;
+}catch(e){}
+
+// (4) OFFLINE-AUTH-01: the app-facing offline API. An app gates its cached UI on
+// isUnlocked() and encrypts its cache with appKey() (a non-extractable CryptoKey
+// scoped to THIS app by the shell, from the trusted frame identity — the app
+// cannot name another app). Read-only, minimal surface.
+try{
+  Object.defineProperty(window,"vulos",{value:Object.freeze({offline:Object.freeze({
+    isUnlocked:function(){return request("vulos.offline.state");},
+    appKey:function(){return request("vulos.offline.appKey");}
+  })}),configurable:false,writable:false});
 }catch(e){}
 })();</script>`
 }

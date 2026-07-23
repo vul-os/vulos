@@ -1,0 +1,13 @@
+-- NODE-CAP-01: store-only members — a cluster member that SYNCS data but is
+-- never an ingress / route target (e.g. a personal laptop that replicates the
+-- account but must not serve app traffic to the cluster).
+--
+-- Additive, NOT NULL DEFAULT 0 (= serving). Every existing instance row reads
+-- back as 0, so an upgrade changes nothing: a box only becomes store-only when
+-- a human explicitly opts in (Settings toggle) or a headless box sets
+-- VULOS_STORE_ONLY. It is NEVER derived from NodeMode/DomainMode=local, because
+-- a single-box local install is its own only server and must keep serving
+-- itself. The routing/fan-out gates (router.go BuildTable, notifyfanout.go)
+-- read this column; the CP must round-trip it (store_only in the /api/instances
+-- wire format) so peers other than this box learn it.
+ALTER TABLE instances ADD COLUMN store_only INTEGER NOT NULL DEFAULT 0;

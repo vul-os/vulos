@@ -27,20 +27,27 @@ const REGISTRY_ROWS = [
 
 // mockBox records every call so a test can assert what the panel asked the box
 // to do — a route that is never called is exactly the bug this panel had.
-function mockBox({ rename, remove } = {}) {
+function mockBox({ rename, remove, storeOnly, rows } = {}) {
   const calls = []
+  const registryRows = rows || REGISTRY_ROWS
   global.fetch = vi.fn((url, init = {}) => {
     const u = String(url)
     calls.push({ url: u, method: init.method || 'GET', body: init.body })
 
     if (u === '/api/instances') {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ instances: REGISTRY_ROWS }) })
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ instances: registryRows }) })
     }
     if (u === '/api/routing/apps') {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })
     }
     if (u.endsWith('/rename')) {
       const res = rename || { ok: true, status: 200, body: { ulid: '01HWZPEER00000000000000002', display_name: 'Renamed' } }
+      return Promise.resolve({ ok: res.ok, status: res.status, json: () => Promise.resolve(res.body) })
+    }
+    // NODE-CAP-01: match store-only by method+path BEFORE the generic prefix
+    // branch, so a toggle isn't silently answered by the remove-shaped mock.
+    if (u.endsWith('/store-only')) {
+      const res = storeOnly || { ok: true, status: 200, body: { ulid: '01HWZPEER00000000000000002', store_only: true } }
       return Promise.resolve({ ok: res.ok, status: res.status, json: () => Promise.resolve(res.body) })
     }
     if (u.startsWith('/api/instances/')) {
@@ -161,4 +168,60 @@ describe('InstancesPanel — remove', () => {
     expect(screen.getAllByText('Cloud Node').length).toBeGreaterThan(0)
     expect(screen.getByText('Offline (1)')).toBeInTheDocument()
   })
+})
+
+describe('InstancesPanel — store-only (NODE-CAP-01)', () => {
+  it('shows the Sync-only badge and a "Make serving" toggle for a store-only instance', async () => {
+    mockBox({ rows: [
+      REGISTRY_ROWS[0],
+      { ...REGISTRY_ROWS[1], store_only: true },
+    ] })
+    render(<InstancesPanel />)
+    await screen.findByText('Cloud Node')
+
+    expect(screen.getByText('Sync-only')).toBeInTheDocument()
+    // The store-only card's toggle offers to make it serve again (visible text
+    // is the accessible name — WCAG 2.5.3).
+    expect(screen.getByRole('button', { name: 'Make serving' })).toBeInTheDocument()
+  })
+
+  it('PATCHes /store-only and optimistically flips without waiting for a poll', async () => {
+    const user = userEvent.setup()
+    const calls = mockBox()
+    render(<InstancesPanel />)
+    await screen.findByText('Cloud Node')
+
+    // Both default rows are serving → their toggles read "Make sync-only".
+    // Index [1] is the offline peer (Cloud Node).
+    const toggles = screen.getAllByRole('button', { name: 'Make sync-only' })
+    await user.click(toggles[1])
+
+    const patch = calls.find(c => c.method === 'PATCH' && c.url.endsWith('/store-only'))
+    expect(patch).toBeDefined()
+    expect(patch.url).toBe('/api/instances/01HWZPEER00000000000000002/store-only')
+    expect(JSON.parse(patch.body)).toEqual({ store_only: true })
+
+    // Optimistic flip: the badge appears immediately (before any 10s poll).
+    expect(await screen.findByText('Sync-only')).toBeInTheDocument()
+  })
+
+  it('does not flip and surfaces the error when the box refuses', async () => {
+    const user = userEvent.setup()
+    mockBox({ storeOnly: { ok: false, status: 403, body: { error: 'admin only' } } })
+    render(<InstancesPanel />)
+    await screen.findByText('Cloud Node')
+
+    const toggles = screen.getAllByRole('button', { name: 'Make sync-only' })
+    await user.click(toggles[1])
+
+    expect(await screen.findByText('admin only')).toBeInTheDocument()
+    // The refused toggle did NOT apply — no Sync-only badge appeared.
+    expect(screen.queryByText('Sync-only')).not.toBeInTheDocument()
+  })
+
+  // NOTE: the poll-vs-optimistic overlay (pendingStoreOnlyRef in loadData) is
+  // verified by code review rather than an RTL test — driving the 10s setInterval
+  // under fake timers alongside async fetch flushing proved too brittle to be a
+  // reliable guard. The overlay is small and self-contained; if it grows, extract
+  // the merge into a pure helper and unit-test that directly.
 })

@@ -86,6 +86,14 @@ type CloudInstance struct {
 	// Phase-0: the CP always returns "eu"; the field is present so the OS can
 	// persist and route without a second parse step when a second cell arrives.
 	Region string `json:"region,omitempty"`
+	// StoreOnly marks a member that syncs but is never an ingress / route target
+	// (NODE-CAP-01). CONTRACT FOR CORE (vulos-management / vulos-cloud): the CP
+	// MUST persist this per instance and echo it here, or a store-only laptop's
+	// choice never reaches its peers and they will keep advertising a route to
+	// it. Omitted (false) means serving — the safe default for every existing
+	// instance. This box already honors its own flag locally; the wire field is
+	// what makes it cluster-wide.
+	StoreOnly bool `json:"store_only,omitempty"`
 }
 
 // PresenceEvent is the wire format for WebSocket presence update messages
@@ -142,6 +150,10 @@ func (cs *CloudSyncer) Sync(ctx context.Context) error {
 
 	for _, ci := range instances {
 		inst := cloudInstanceToLocal(ci)
+		// NODE-CAP-01: a plain Upsert is safe here. Registry.Upsert preserves an
+		// EXISTING owner row's store_only in SQL (box-authoritative serving
+		// posture), so the CP — which does not yet round-trip the flag — cannot
+		// clobber a locally-set owner store-only. Peers take the CP value.
 		if uErr := cs.reg.Upsert(inst); uErr != nil {
 			log.Printf("[cloudsync] upsert %s: %v", ci.ULID, uErr)
 		}
@@ -228,6 +240,8 @@ func (cs *CloudSyncer) ApplyPresenceEvent(ev PresenceEvent) {
 			return
 		}
 		inst := cloudInstanceToLocal(*ev.Instance)
+		// Registry.Upsert preserves an existing owner row's store_only in SQL
+		// (NODE-CAP-01), so a presence "upsert" cannot clobber it either.
 		if err := cs.reg.Upsert(inst); err != nil {
 			log.Printf("[cloudsync] upsert from event: %v", err)
 		}
@@ -293,6 +307,7 @@ func cloudInstanceToLocal(ci CloudInstance) Instance {
 		Role:             Role(ci.Role),
 		Status:           Status(ci.Status),
 		Region:           ci.Region,
+		StoreOnly:        ci.StoreOnly,
 	}
 	if ci.LastSeenAt != "" {
 		if t, err := time.Parse(time.RFC3339Nano, ci.LastSeenAt); err == nil {

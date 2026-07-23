@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,24 @@ type Instance struct {
 	// observations NEVER count toward quorum (verification fails closed),
 	// regardless of which (current or previous) key signed them.
 	Revoked bool `json:"revoked,omitempty"`
+
+	// ── NODE-CAP-01: store-only members ──────────────────────────────────────
+	//
+	// StoreOnly marks this instance as a cluster member that SYNCS data but is
+	// never an ingress / route target (e.g. a personal laptop that replicates
+	// the account but must not serve app traffic to the cluster). The routing
+	// table (router.go BuildTable) and notification fan-out (notifyfanout.go)
+	// exclude store-only instances; presence/sync are unaffected, so a
+	// store-only member still shows online and still replicates.
+	//
+	// The zero value (false) means "serves normally" — this is deliberate: every
+	// existing code path that constructs an Instance without touching the field
+	// keeps serving, and existing DB rows default to 0. A box becomes store-only
+	// only by explicit opt-in (the Settings toggle, or VULOS_STORE_ONLY on a
+	// headless box); it is NEVER derived from NodeMode/DomainMode=local, because
+	// a single-box local install is its own only server and must keep serving
+	// itself.
+	StoreOnly bool `json:"store_only,omitempty"`
 }
 
 // Registry is the local persistent store of all account instances.
@@ -141,6 +160,10 @@ func (r *Registry) Upsert(inst Instance) error {
 	if inst.Revoked {
 		revoked = 1
 	}
+	storeOnly := 0
+	if inst.StoreOnly {
+		storeOnly = 1
+	}
 	region := inst.Region
 	if region == "" {
 		region = "eu"
@@ -152,8 +175,8 @@ func (r *Registry) Upsert(inst Instance) error {
 	_, err := r.db.Exec(`
 		INSERT INTO instances
 			(ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
-			 region, prev_ed25519_public_key, prev_key_expires_at, revoked)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 region, prev_ed25519_public_key, prev_key_expires_at, revoked, store_only)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(ulid) DO UPDATE SET
 			display_name      = excluded.display_name,
 			kind              = excluded.kind,
@@ -168,7 +191,19 @@ func (r *Registry) Upsert(inst Instance) error {
 			region                  = excluded.region,
 			prev_ed25519_public_key = excluded.prev_ed25519_public_key,
 			prev_key_expires_at     = excluded.prev_key_expires_at,
-			revoked                 = excluded.revoked`,
+			revoked                 = excluded.revoked,
+			-- NODE-CAP-01: an EXISTING owner row's serving posture is
+			-- box-authoritative — only SetStoreOnly (a targeted UPDATE) may
+			-- change it. A sync/rotation/identity Upsert must never move it, so
+			-- the CP (which does not yet round-trip the flag) can't clobber a
+			-- locally-set owner store-only back to serving. This is done in SQL,
+			-- atomically with the write, so there is no read-then-write TOCTOU
+			-- against a concurrent SetStoreOnly. Peers (role != owner) and the
+			-- first INSERT (no conflict) take the provided value as before.
+			store_only              = CASE
+				WHEN instances.role = 'owner' THEN instances.store_only
+				ELSE excluded.store_only
+			END`,
 		inst.ULID,
 		inst.DisplayName,
 		string(inst.Kind),
@@ -181,6 +216,7 @@ func (r *Registry) Upsert(inst Instance) error {
 		inst.PrevEd25519PublicKey,
 		prevExpires,
 		revoked,
+		storeOnly,
 	)
 	if err != nil {
 		return fmt.Errorf("multiinstance: Upsert %s: %w", inst.ULID, err)
@@ -195,7 +231,7 @@ func (r *Registry) Get(ulid string) (Instance, bool) {
 
 	row := r.db.QueryRow(`
 		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
-		       region, prev_ed25519_public_key, prev_key_expires_at, revoked
+		       region, prev_ed25519_public_key, prev_key_expires_at, revoked, store_only
 		FROM instances WHERE ulid = ?`, ulid)
 	inst, err := scanInstance(row)
 	if err == sql.ErrNoRows {
@@ -216,7 +252,7 @@ func (r *Registry) List() ([]Instance, error) {
 
 	rows, err := r.db.Query(`
 		SELECT ulid, display_name, kind, endpoint_url, ed25519_public_key, role, status, last_seen_at,
-		       region, prev_ed25519_public_key, prev_key_expires_at, revoked
+		       region, prev_ed25519_public_key, prev_key_expires_at, revoked, store_only
 		FROM instances ORDER BY ulid`)
 	if err != nil {
 		return nil, fmt.Errorf("multiinstance: List: %w", err)
@@ -340,7 +376,54 @@ func (r *Registry) MarkSeen(ulid string) error {
 	return nil
 }
 
+// SetStoreOnly sets the store-only flag on one instance and returns the updated
+// row. A store-only instance syncs but is excluded from routing / notification
+// fan-out (NODE-CAP-01). An unknown ULID yields ErrNotFound.
+//
+// Propagation caveat: this writes the LOCAL registry only. For a store-only
+// choice to be honored by peers other than this box, the control plane must
+// round-trip the flag (store_only in the /api/instances wire format). Setting
+// it on a remote peer's row here affects only this box's local view until that
+// CP round-trip exists. In practice the Settings toggle targets the owner
+// (this box), which takes effect immediately because this box builds its own
+// routing table from this registry.
+func (r *Registry) SetStoreOnly(ulid string, storeOnly bool) (Instance, error) {
+	v := 0
+	if storeOnly {
+		v = 1
+	}
+
+	r.mu.Lock()
+	res, err := r.db.Exec(`UPDATE instances SET store_only = ? WHERE ulid = ?`, v, ulid)
+	r.mu.Unlock()
+	if err != nil {
+		return Instance{}, fmt.Errorf("multiinstance: SetStoreOnly %s: %w", ulid, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return Instance{}, ErrNotFound
+	}
+
+	inst, ok := r.Get(ulid)
+	if !ok {
+		return Instance{}, ErrNotFound
+	}
+	return inst, nil
+}
+
 // --- helpers ---
+
+// storeOnlyEnv reports whether this box was configured store-only via the
+// VULOS_STORE_ONLY environment variable — the headless equivalent of the
+// Settings toggle. Explicit opt-in only ({1,true,yes}); it is deliberately NOT
+// derived from NodeMode/DomainMode=local, because a single-box local install is
+// its own only server and must keep serving itself (NODE-CAP-01).
+func storeOnlyEnv() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VULOS_STORE_ONLY"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
 
 // scanner is the common interface satisfied by *sql.Row and *sql.Rows.
 type scanner interface {
@@ -356,6 +439,7 @@ func scanInstance(s scanner) (Instance, error) {
 		lastSeenRaw    string
 		prevExpiresRaw string
 		revokedInt     int
+		storeOnlyInt   int
 	)
 	err := s.Scan(
 		&inst.ULID,
@@ -370,6 +454,7 @@ func scanInstance(s scanner) (Instance, error) {
 		&inst.PrevEd25519PublicKey,
 		&prevExpiresRaw,
 		&revokedInt,
+		&storeOnlyInt,
 	)
 	if err != nil {
 		return Instance{}, err
@@ -378,6 +463,7 @@ func scanInstance(s scanner) (Instance, error) {
 	inst.Role = Role(role)
 	inst.Status = Status(status)
 	inst.Revoked = revokedInt != 0
+	inst.StoreOnly = storeOnlyInt != 0
 	if lastSeenRaw != "" {
 		if t, err := time.Parse(time.RFC3339Nano, lastSeenRaw); err == nil {
 			inst.LastSeenAt = t

@@ -5,6 +5,7 @@ import http.server
 import json
 import os
 import time
+import urllib.parse
 import urllib.request
 
 PORT = int(os.environ.get("PORT", os.environ.get("VULOS_PORT", 8080)))
@@ -15,6 +16,23 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # Realpath of DATA_DIR used for containment checks (resolved once at startup)
 _DATA_DIR_REAL = os.path.realpath(DATA_DIR)
+# Realpath of the app source dir — static assets (index.html, collab.js, vendor/,
+# src/) are served from here for the offline/collab code to load (OFFLINE-DATA-01).
+_APP_DIR_REAL = os.path.realpath(APP_DIR)
+
+# Static asset types served from the app dir. Extension allow-list — nothing else
+# is servable, so there is no way to read arbitrary files even before the
+# containment check below.
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js":   "text/javascript; charset=utf-8",
+    ".mjs":  "text/javascript; charset=utf-8",
+    ".css":  "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg":  "image/svg+xml",
+    ".map":  "application/json; charset=utf-8",
+    ".woff2": "font/woff2",
+}
 
 CSP = (
     "default-src 'self'; "
@@ -108,7 +126,30 @@ class NotesHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content.encode())
         else:
+            self.serve_static()
+
+    def serve_static(self):
+        """Serve an app static asset (collab.js, vendor/*, src/*) from APP_DIR.
+
+        Two guards, both required: an extension allow-list (STATIC_TYPES) so only
+        web assets are servable at all, and a realpath containment check so a
+        crafted path (``..``/encoded/symlink) can never escape the app directory.
+        """
+        raw = urllib.parse.unquote(self.path.split("?", 1)[0].split("#", 1)[0])
+        rel = raw.lstrip("/")
+        ext = os.path.splitext(rel)[1].lower()
+        if not rel or ext not in STATIC_TYPES:
             self.send_error(404)
+            return
+        target = os.path.realpath(os.path.join(APP_DIR, rel))
+        # Must stay strictly within the app dir (blocks traversal + symlink escape).
+        if target != _APP_DIR_REAL and not target.startswith(_APP_DIR_REAL + os.sep):
+            self.send_error(404)
+            return
+        if not os.path.isfile(target):
+            self.send_error(404)
+            return
+        self.serve_file(target, STATIC_TYPES[ext])
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))

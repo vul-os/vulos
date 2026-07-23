@@ -15,12 +15,23 @@
 //   app → shell   vulos.storage.remove    {key}
 //   app → shell   vulos.storage.clear     (this app's namespace only)
 //   shell → app   vulos.storage.snapshot  {data}  this app's keys only
+//   app → shell   vulos.offline.state     {id}  → reply {unlocked}   (OFFLINE-AUTH-01)
+//   app → shell   vulos.offline.appKey    {id}  → reply {key}  this app's per-app CryptoKey
 //
 // No DOM access. No navigation. No cookie access. No network proxying. No way to
 // name another app. The app never supplies its own identity: the shell derives it
 // from the FRAME the message arrived on, and every key is scoped to that identity
 // before it touches storage. An app therefore cannot address another app's data
 // or the shell's own keys even if it lies about everything in the message.
+//
+// OFFLINE-AUTH-01: an app can ask whether the OS offline session is unlocked (to
+// gate its cached UI) and request ITS OWN per-app offline key (to encrypt its
+// cache). The key is derived from the TRUSTED appId (the frame identity above),
+// NEVER an appId the app names — this is the precondition that makes the per-app
+// isolation real: an app can only ever obtain its own key. The CryptoKey is
+// non-extractable and sent over the point-to-point MessagePort (structured clone
+// preserves non-extractability), so the app can encrypt/decrypt but never export
+// the raw bytes, and no key material crosses `postMessage(*)`.
 //
 // TRUST MODEL — two independent checks, both required, on every inbound message:
 //
@@ -45,6 +56,7 @@
 // nowhere in this protocol, in either direction.
 
 import { expectedFrameOrigin } from './AppOrigins'
+import { isUnlocked as offlineIsUnlocked, appKey as offlineAppKey } from '../lib/offlineAuth.js'
 
 export const BRIDGE_VERSION = 1
 
@@ -169,6 +181,27 @@ export function clearAppData(appId) {
   }
 }
 
+// clearAllAppData drops EVERY app's bridge-stored data (all namespaces under the
+// shell prefix). Used by the offline-auth wipe (OFFLINE-AUTH-01) so a credential
+// wipe actually erases the app data the shell holds. It does NOT reach an app's
+// own-origin IndexedDB/caches — only the app can clear those (on the wipe event);
+// this clears the shell-owned copy, which is the part the OS can guarantee.
+export function clearAllAppData() {
+  const ls = store()
+  if (!ls) return false
+  try {
+    const doomed = []
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i)
+      if (typeof k === 'string' && k.startsWith(PREFIX)) doomed.push(k)
+    }
+    for (const k of doomed) ls.removeItem(k)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // encodeSeed renders a snapshot for the iframe URL fragment. Returns '' when the
 // snapshot is empty or too large to seed (the app then hydrates over the port).
 export function encodeSeed(snapshot) {
@@ -195,8 +228,12 @@ export function appFrameSrc(url, appId) {
 }
 
 // handleBridgeMessage applies one port message. Exported so tests can drive the
-// protocol directly without a real iframe.
-export function handleBridgeMessage(appId, msg) {
+// protocol directly without a real iframe. `reply`, when provided, posts a
+// response back over the app's MessagePort (used by the request/response offline
+// verbs); the storage verbs are fire-and-forget and ignore it. Returns a boolean
+// "handled" synchronously even for the async offline.appKey verb (whose reply
+// arrives later over the port), so existing callers/tests keep their contract.
+export function handleBridgeMessage(appId, msg, reply) {
   if (!msg || typeof msg !== 'object') return false
   if (msg.v !== BRIDGE_VERSION) return false
   switch (msg.type) {
@@ -206,10 +243,31 @@ export function handleBridgeMessage(appId, msg) {
       return removeAppItem(appId, msg.key)
     case 'vulos.storage.clear':
       return clearAppData(appId)
+    case 'vulos.offline.state':
+      // Synchronous: does the OS offline session hold a key right now?
+      if (typeof reply === 'function') {
+        reply({ v: BRIDGE_VERSION, type: 'vulos.offline.state.reply', id: msg.id, unlocked: offlineIsUnlocked() })
+      }
+      return true
+    case 'vulos.offline.appKey':
+      // Async: derive THIS app's per-app key (from the trusted appId) and reply
+      // over the port. Locked → key null. Never throws to the caller.
+      replyOfflineAppKey(appId, msg.id, reply)
+      return true
     default:
       // Unknown verb — the surface is closed, not extensible by the app.
       return false
   }
+}
+
+// replyOfflineAppKey derives the app's non-extractable per-app CryptoKey and posts
+// it back over the port. `appId` is the TRUSTED frame identity, so an app can only
+// ever receive its own key. Failure/locked yields key:null, never an exception.
+function replyOfflineAppKey(appId, id, reply) {
+  if (typeof reply !== 'function') return
+  const send = (key) => reply({ v: BRIDGE_VERSION, type: 'vulos.offline.appKey.reply', id, key })
+  if (!offlineIsUnlocked()) { send(null); return }
+  offlineAppKey(appId).then(send, () => send(null))
 }
 
 // attachAppBridge wires an app iframe to the shell. Returns a detach function.
@@ -240,7 +298,11 @@ export function attachAppBridge(iframeEl, { appId, frameUrl }) {
     // replaces the old port; the old one is dropped.
     if (port) { try { port.close() } catch { /* already gone */ } }
     port = p
-    port.onmessage = (ev) => { handleBridgeMessage(appId, ev.data) }
+    port.onmessage = (ev) => {
+      handleBridgeMessage(appId, ev.data, (obj) => {
+        try { port.postMessage(obj) } catch { /* frame went away */ }
+      })
+    }
     // Reply on the PORT — never postMessage(..., '*').
     try {
       port.postMessage({

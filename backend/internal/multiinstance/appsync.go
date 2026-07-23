@@ -247,6 +247,20 @@ func (as *AppSync) SetIdentity(selfULID string, priv ed25519.PrivateKey) error {
 				Role:             RoleOwner,
 				Status:           StatusOnline,
 				Ed25519PublicKey: pubB64,
+				// NODE-CAP-01: seed the store-only flag from VULOS_STORE_ONLY on
+				// FIRST registration only. Later SetIdentity calls take the
+				// existing-instance branch above (Get→Upsert), which preserves a
+				// value the operator has since changed via the Settings toggle.
+				//
+				// Ordering assumption: this self-registration is expected to run
+				// before any cloud sync first touches the owner ULID. If a future
+				// wiring ever ran Sync() first, the owner row would be created as
+				// serving (the CP has no VULOS_STORE_ONLY) and this env seed would
+				// then be skipped by the existing-row branch — a headless
+				// store-only intent could be lost. Cloud sync is currently unwired,
+				// so this is a latent ordering constraint, noted so it isn't a
+				// surprise when Sync/presence polling is turned on.
+				StoreOnly: storeOnlyEnv(),
 			}); err != nil {
 				return fmt.Errorf("appsync: SetIdentity: register self: %w", err)
 			}

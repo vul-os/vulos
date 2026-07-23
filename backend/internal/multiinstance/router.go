@@ -142,10 +142,19 @@ func (ar *AppRouter) BuildTable(apps []PublishedApp) ([]AppEntry, error) {
 			if !ok {
 				continue // instance not in registry
 			}
+			// NODE-CAP-01: a store-only member syncs but is never an ingress /
+			// route target — advertising an FQDN for it would send client
+			// traffic to a box that does not serve. Skip it even when pinned.
+			if inst.StoreOnly {
+				continue
+			}
 			table = append(table, ar.entry(pub.App, pub.Profile, inst))
 		} else {
 			// Expand across all known instances.
 			for _, inst := range instances {
+				if inst.StoreOnly {
+					continue // NODE-CAP-01: store-only members are not route targets
+				}
 				table = append(table, ar.entry(pub.App, pub.Profile, inst))
 			}
 		}

@@ -6,9 +6,11 @@ import {
   readAppSnapshot,
   writeAppItem,
   clearAppData,
+  clearAllAppData,
   encodeSeed,
   appFrameSrc,
 } from '../core/AppBridge'
+import { holdMasterKey, clearMasterKey } from '../lib/masterKey.js'
 
 // ORIGIN-01 — the shell side of the shell↔app bridge.
 //
@@ -99,23 +101,51 @@ describe('storage namespacing — an app cannot name anything but its own data',
     expect(readAppSnapshot('clock')).toEqual({})
     expect(localStorage.getItem('theme')).toBe('dark')
   })
+
+  // OFFLINE-AUTH-01: the wipe path clears EVERY app's data but never the shell's.
+  it('clearAllAppData drops all app namespaces and leaves shell keys untouched', () => {
+    localStorage.setItem('theme', 'dark')             // shell-owned key
+    localStorage.setItem('vulos_session_hint', 'S')   // shell-owned key
+    writeAppItem('clock', 'a', '1')
+    writeAppItem('weather', 'b', '2')
+
+    expect(clearAllAppData()).toBe(true)
+
+    expect(readAppSnapshot('clock')).toEqual({})
+    expect(readAppSnapshot('weather')).toEqual({})
+    // Shell keys survive — a wipe must not brick the desktop.
+    expect(localStorage.getItem('theme')).toBe('dark')
+    expect(localStorage.getItem('vulos_session_hint')).toBe('S')
+  })
 })
 
 describe('the capability surface is closed', () => {
   beforeEach(() => localStorage.clear())
 
-  it('accepts exactly set / remove / clear — and nothing else', () => {
+  it('accepts exactly the known verbs — and nothing else', () => {
     expect(handleBridgeMessage('clock', { v: BRIDGE_VERSION, type: 'vulos.storage.set', key: 'k', value: 'v' })).toBe(true)
     expect(handleBridgeMessage('clock', { v: BRIDGE_VERSION, type: 'vulos.storage.remove', key: 'k' })).toBe(true)
     expect(handleBridgeMessage('clock', { v: BRIDGE_VERSION, type: 'vulos.storage.clear' })).toBe(true)
+    // OFFLINE-AUTH-01 request/response verbs (reply is a no-op callback here).
+    expect(handleBridgeMessage('clock', { v: BRIDGE_VERSION, type: 'vulos.offline.state', id: 1 }, () => {})).toBe(true)
+    expect(handleBridgeMessage('clock', { v: BRIDGE_VERSION, type: 'vulos.offline.appKey', id: 1 }, () => {})).toBe(true)
 
     // Anything an attacker might wish for.
     for (const type of [
       'vulos.storage.readShell', 'vulos.exec', 'vulos.navigate', 'vulos.fetch',
-      'vulos.storage.snapshot', 'eval', '__proto__',
+      'vulos.storage.snapshot', 'vulos.offline.wipe', 'eval', '__proto__',
     ]) {
       expect(handleBridgeMessage('clock', { v: BRIDGE_VERSION, type, key: 'k', value: 'v' }), type).toBe(false)
     }
+  })
+
+  it('offline verbs never let an app name another app — the key is bound to the trusted appId', async () => {
+    // (full assertions live in the dedicated describe below; here we just confirm
+    //  they are part of the "closed but known" surface, not app-nameable.)
+    const reply = vi.fn()
+    // An app cannot pass an appId in the message; only the frame-derived id is used.
+    handleBridgeMessage('clock', { v: BRIDGE_VERSION, type: 'vulos.offline.state', id: 1, appId: 'mail' }, reply)
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ type: 'vulos.offline.state.reply' }))
   })
 
   it('rejects a mismatched protocol version', () => {
@@ -274,5 +304,56 @@ describe('seed encoding', () => {
     const src = appFrameSrc('/app/clock/', 'clock')
     expect(src).toContain('#__vulos_s=')
     expect(src.split('#')[0]).toBe('/app/clock/') // nothing added to path or query
+  })
+})
+
+describe('offline-auth bridge verbs (OFFLINE-AUTH-01)', () => {
+  beforeEach(() => clearMasterKey())
+  afterEach(() => clearMasterKey())
+
+  it('offline.state reports locked when the OS holds no offline key', () => {
+    const reply = vi.fn()
+    handleBridgeMessage('notes', { v: BRIDGE_VERSION, type: 'vulos.offline.state', id: 7 }, reply)
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'vulos.offline.state.reply', id: 7, unlocked: false }),
+    )
+  })
+
+  it('offline.state reports unlocked once a key is held', () => {
+    holdMasterKey(new Uint8Array(32))
+    const reply = vi.fn()
+    handleBridgeMessage('notes', { v: BRIDGE_VERSION, type: 'vulos.offline.state', id: 3 }, reply)
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ unlocked: true }))
+  })
+
+  it('offline.appKey returns null when locked (fail-closed)', async () => {
+    const reply = vi.fn()
+    handleBridgeMessage('notes', { v: BRIDGE_VERSION, type: 'vulos.offline.appKey', id: 2 }, reply)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'vulos.offline.appKey.reply', id: 2, key: null }),
+    )
+  })
+
+  it('offline.appKey returns THIS app’s non-extractable key, bound to the trusted appId', async () => {
+    holdMasterKey(crypto.getRandomValues(new Uint8Array(32)))
+    const replyNotes = vi.fn()
+    const replyMail = vi.fn()
+    handleBridgeMessage('notes', { v: BRIDGE_VERSION, type: 'vulos.offline.appKey', id: 1 }, replyNotes)
+    handleBridgeMessage('mail', { v: BRIDGE_VERSION, type: 'vulos.offline.appKey', id: 1 }, replyMail)
+    for (let i = 0; i < 100 && !(replyNotes.mock.calls.length && replyMail.mock.calls.length); i++) {
+      await new Promise((r) => setTimeout(r, 1))
+    }
+
+    const notesKey = replyNotes.mock.calls[0][0].key
+    const mailKey = replyMail.mock.calls[0][0].key
+    expect(notesKey.extractable).toBe(false)
+
+    // The two apps get DIFFERENT keys — an app can only ever obtain its own.
+    const iv = new Uint8Array(12)
+    const pt = new TextEncoder().encode('secret')
+    const cN = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, notesKey, pt))
+    const cM = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, mailKey, pt))
+    expect(Array.from(cN)).not.toEqual(Array.from(cM))
   })
 })

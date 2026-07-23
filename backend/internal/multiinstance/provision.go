@@ -188,6 +188,11 @@ func (p *Provisioner) Provision(ctx context.Context, account, region, plan strin
 
 	// Immediately upsert the new instance into the Registry so routing/dashboard
 	// can display it (status=unknown until PollStatus confirms ready).
+	//
+	// This builds a bare Instance for a FRESHLY provisioned ULID, so StoreOnly
+	// defaults false (serving) — correct: a just-provisioned cloud box is an
+	// ingress target by definition, and there is no prior store-only choice to
+	// preserve on a brand-new ULID (NODE-CAP-01).
 	if cloudResp.InstanceULID != "" {
 		inst := Instance{
 			ULID:        cloudResp.InstanceULID,

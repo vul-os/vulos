@@ -13,6 +13,7 @@ import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 import DataExportPanel from './settings/DataExportPanel.jsx'
 import ModelsPanel from './settings/ModelsPanel.jsx'
 import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
+import OfflineDataPanel from './settings/OfflineDataPanel.jsx'
 import GatewayPanel from './settings/GatewayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
 
@@ -71,6 +72,7 @@ const sectionGroups = [
       { id: 'pin', label: 'Device PIN', icon: '\u{25A3}' },
       { id: 'fingerprint', label: 'Fingerprint', icon: '\u{25CC}' },
       { id: 'account', label: 'Account', icon: '\u{2699}' },
+      { id: 'offlinedata', label: 'Offline Data', icon: '\u{2601}' },
       { id: 'dataexport', label: 'Export My Data', icon: '\u{2913}' },
       { id: 'plan', label: 'Plan & Billing', icon: '\u{25C6}' },
     ],
@@ -286,6 +288,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'pin' && <DevicePINSettings />}
         {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
+        {active === 'offlinedata' && <OfflineDataPanel />}
         {active === 'dataexport' && <DataExportPanel />}
         {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}

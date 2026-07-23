@@ -238,12 +238,20 @@ export function clearMasterKey() {
 // in user and unwraps it client-side, holding the key in memory. Returns true on
 // success, false if the account has no master key (legacy) — callers should treat
 // a thrown error (wrong password / tamper) as fail-closed.
-export async function unlockMasterKeyForSession(password, fetchImpl = fetch) {
+// `onEnvelope`, when provided, is called with the fetched password-wrapped slot
+// AFTER a successful unwrap. The OS offline-auth gate uses this to cache the
+// envelope for later offline unlock (OFFLINE-AUTH-01) — without a second fetch,
+// and only once the password has proven correct. It is best-effort: a failure to
+// cache never fails login.
+export async function unlockMasterKeyForSession(password, fetchImpl = fetch, onEnvelope = null) {
   const res = await fetchImpl('/api/auth/masterkey/envelope')
   if (res.status === 404) return false // legacy account without a master key
   if (!res.ok) throw new Error(`masterKey: envelope fetch failed (${res.status})`)
   const slot = await res.json()
   const mk = await unwrapMasterKeyWithPassword(slot, password)
   holdMasterKey(mk)
+  if (typeof onEnvelope === 'function') {
+    try { await onEnvelope(slot) } catch { /* caching is best-effort; never block login */ }
+  }
   return true
 }

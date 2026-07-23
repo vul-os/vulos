@@ -14,8 +14,10 @@
  *   const session = await startCollab(noteId, textarea, statusEl, displayName)
  *   session.destroy()   // when switching notes / unmounting
  *
- * This file intentionally has NO CDN dependencies.  Yjs is imported from
- * the project's node_modules via the importmap injected by index.html.
+ * This file intentionally has NO CDN dependencies. Yjs is imported via the
+ * same-origin `<script type="importmap">` in index.html (yjs -> ./vendor/yjs.js),
+ * vendored by scripts/vendor-apps.mjs. If that vendored bundle is not present
+ * (importmap unresolved), the yjs import throws and collab degrades gracefully.
  */
 
 /* ── Message type constants (mirror collab.go) ──────────────────────────── */
@@ -221,6 +223,20 @@ export async function startCollab(noteId, textarea, statusEl, displayName = 'Me'
   const ytext = ydoc.getText('content')
   const awareness = new SimpleAwareness(ydoc.clientID)
 
+  // OFFLINE-DATA-01: persist the Y.Doc locally so notes survive reloads / dead
+  // zones and re-converge with the server on reconnect (Yjs union-merge). Loaded
+  // BEFORE we connect, so cached content shows immediately offline. Best-effort +
+  // graceful (like the yjs import): works standalone with plaintext at rest
+  // (device encryption); seals the cache at rest when running under Vulos (the
+  // per-app key from window.vulos.offline). See roadmap/OFFLINE-DATA.md.
+  let offlinePersist = null
+  try {
+    const { persistYDoc, resolveOfflineKey } = await import('./vendor/vulos-offline.js')
+    const key = await resolveOfflineKey()
+    offlinePersist = await persistYDoc(ydoc, { name: `notes:${noteId}`, key })
+    await offlinePersist.whenSynced
+  } catch (_) { /* offline persistence unavailable — collab still works online */ }
+
   let ws        = null
   let retries   = 0
   let alive     = true
@@ -281,9 +297,19 @@ export async function startCollab(noteId, textarea, statusEl, displayName = 'Me'
               ignoreYjs = true
               textarea.value = ytext.toString()
               ignoreYjs = false
-            } else if (textarea.value.length > 0) {
-              // Push existing local content into Y.Text.
+            } else if (ytext.length === 0 && textarea.value.length > 0) {
+              // Server has no snapshot AND the Y.Text is empty — seed it from the
+              // textarea. The `ytext.length === 0` guard is essential now that the
+              // offline cache (OFFLINE-DATA-01) can pre-populate ytext before this
+              // runs: without it we would insert the textarea on top of restored
+              // content and duplicate it. When the offline cache already holds
+              // content, ytext is non-empty here and we leave it as the source.
               ydoc.transact(() => { ytext.insert(0, textarea.value) })
+            } else if (ytext.length > 0) {
+              // Offline-restored content is authoritative for the view.
+              ignoreYjs = true
+              textarea.value = ytext.toString()
+              ignoreYjs = false
             }
           } else if (payloadBytes && payloadBytes.length > 0) {
             Y.applyUpdate(ydoc, payloadBytes, 'remote')
@@ -415,6 +441,7 @@ export async function startCollab(noteId, textarea, statusEl, displayName = 'Me'
     awareness.off('change', renderAwareness)
     awareness.destroy()
     if (ws) { ws.close(); ws = null }
+    if (offlinePersist) { try { offlinePersist.flush(); offlinePersist.destroy() } catch (_) {} }
     ydoc.destroy()
     overlay.destroy()
     statusEl.textContent = 'Ready'

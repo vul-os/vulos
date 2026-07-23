@@ -38,6 +38,10 @@ async function ipFetchInstances() {
     online: inst.status === 'online',
     last_seen: inst.last_seen_at,
     is_owner: inst.role === 'owner',
+    // NODE-CAP-01: a store-only member syncs but is never a route/ingress
+    // target. Absent/false = serving (the safe default from a box or CP that
+    // predates the field).
+    store_only: !!inst.store_only,
     cpu_pct: inst.cpu_pct,
     ram_pct: inst.ram_pct,
   }))
@@ -62,6 +66,20 @@ async function ipRenameInstance(id, name) {
 async function ipRemoveInstance(id) {
   const r = await fetch(`/api/instances/${id}`, { method: 'DELETE' })
   if (!r.ok) throw await ipError(r, 'remove failed')
+  return r.json()
+}
+
+// ipSetStoreOnly flips whether an instance serves the cluster (NODE-CAP-01).
+// store_only=true → syncs but is never a route target. For this box (owner) the
+// change is effective immediately; for a remote peer it is a local-view change
+// until the control plane round-trips the flag.
+async function ipSetStoreOnly(id, storeOnly) {
+  const r = await fetch(`/api/instances/${id}/store-only`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store_only: storeOnly }),
+  })
+  if (!r.ok) throw await ipError(r, 'update failed')
   return r.json()
 }
 
@@ -229,9 +247,27 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
 
 // ── InstanceCard ──────────────────────────────────────────────────────────────
 
-function InstanceCard({ instance, apps, onRename, onRemove }) {
+function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }) {
   const [expanded, setExpanded] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [toggleErr, setToggleErr] = useState(null)
   const instanceApps = (apps || []).filter(a => a.instance_id === instance.id)
+
+  const handleToggleStoreOnly = useCallback(async () => {
+    if (toggling) return
+    setToggling(true)
+    setToggleErr(null)
+    const next = !instance.store_only
+    try {
+      await ipSetStoreOnly(instance.id, next)
+      onStoreOnlyChanged(instance.id, next)
+    } catch (e) {
+      // Leave the state as-is: the box did not change it.
+      setToggleErr(e.message || 'Update failed.')
+    } finally {
+      setToggling(false)
+    }
+  }, [instance.id, instance.store_only, toggling, onStoreOnlyChanged])
 
   const typeLabel = instance.type === 'cloud' ? 'Cloud' : 'Device'
   const typeColor = instance.type === 'cloud'
@@ -252,6 +288,15 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
             <span className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${typeColor}`}>
               {typeLabel}
             </span>
+            {/* NODE-CAP-01: store-only members sync but never serve routed traffic. */}
+            {instance.store_only && (
+              <span
+                className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold border bg-warning-soft text-warning border-warning-soft"
+                title="Syncs data but does not serve app traffic — never a route target"
+              >
+                Sync-only
+              </span>
+            )}
             {/* Name */}
             <span className="text-sm font-medium text-neutral-200 truncate">
               {instance.display_name || truncateId(instance.id)}
@@ -312,12 +357,26 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
 
       {/* Actions — the owner instance is this box: it cannot remove itself from
           its own fleet (the box refuses with a 409), so it is not offered. */}
-      <div className="px-3 pb-3 flex gap-2">
+      <div className="px-3 pb-3 flex flex-wrap items-center gap-2">
         <button
           onClick={onRename}
           className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors focus-primary"
         >
           Rename
+        </button>
+        {/* NODE-CAP-01: toggle whether this device serves the cluster. */}
+        {/* aria-pressed conveys current serving state; the visible text is the
+            accessible name (WCAG 2.5.3 — no divergent aria-label). */}
+        <button
+          onClick={handleToggleStoreOnly}
+          disabled={toggling}
+          aria-pressed={!!instance.store_only}
+          title={instance.store_only
+            ? 'Currently sync-only. Make this device serve app traffic to the cluster.'
+            : 'Currently serving. Make this device sync data only — never a route target.'}
+          className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors focus-primary disabled:opacity-40"
+        >
+          {toggling ? 'Updating…' : instance.store_only ? 'Make serving' : 'Make sync-only'}
         </button>
         {!instance.is_owner && (
           <button
@@ -327,6 +386,7 @@ function InstanceCard({ instance, apps, onRename, onRemove }) {
             Remove
           </button>
         )}
+        {toggleErr && <span role="alert" className="text-[10px] text-danger w-full">{toggleErr}</span>}
       </div>
     </div>
   )
@@ -341,6 +401,12 @@ export default function InstancesPanel() {
   const [renaming, setRenaming] = useState(null)   // instance object
   const [removing, setRemoving] = useState(null)   // instance object
   const pollRef = useRef(null)
+  // NODE-CAP-01: optimistic-override map (id → store_only just set by the user).
+  // The 10s poll does a wholesale setInstances; a GET that was already in flight
+  // when the user toggled would otherwise resolve with pre-toggle data and
+  // revert the switch for one cycle. We re-apply pending values over every poll
+  // result until the server reflects them, then drop the override.
+  const pendingStoreOnlyRef = useRef({})
 
   const loadData = useCallback(async () => {
     try {
@@ -348,7 +414,29 @@ export default function InstancesPanel() {
         ipFetchInstances(),
         ipFetchRoutingApps(),
       ])
-      setInstances(instData || [])
+      const pending = pendingStoreOnlyRef.current
+      const liveIds = new Set()
+      const merged = (instData || []).map(i => {
+        liveIds.add(i.id)
+        const p = pending[i.id]
+        if (!p) return i
+        if (i.store_only === p.value) {
+          delete pending[i.id] // server caught up — stop overriding
+          return i
+        }
+        p.ttl -= 1
+        if (p.ttl <= 0) {
+          delete pending[i.id] // server never converged — trust it, don't override forever
+          return i
+        }
+        return { ...i, store_only: p.value } // stale poll — hold the optimistic value
+      })
+      // Prune overrides whose instance left the roster (removed/vanished), so the
+      // pending map can't grow unbounded.
+      for (const id of Object.keys(pending)) {
+        if (!liveIds.has(id)) delete pending[id]
+      }
+      setInstances(merged)
       setApps(appsData || [])
       setError(null)
     } catch {
@@ -371,6 +459,13 @@ export default function InstancesPanel() {
   const handleRemoveSuccess = useCallback((instanceId) => {
     setInstances(prev => (prev || []).filter(i => i.id !== instanceId))
     setRemoving(null)
+  }, [])
+
+  const handleStoreOnlyChanged = useCallback((instanceId, storeOnly) => {
+    // Record the override (with a small poll budget) so an in-flight poll can't
+    // revert it, but it can't override server truth forever either (see loadData).
+    pendingStoreOnlyRef.current[instanceId] = { value: storeOnly, ttl: 3 }
+    setInstances(prev => (prev || []).map(i => i.id === instanceId ? { ...i, store_only: storeOnly } : i))
   }, [])
 
   const online = (instances || []).filter(i => i.online)
@@ -433,6 +528,7 @@ export default function InstancesPanel() {
                   apps={apps}
                   onRename={() => setRenaming(inst)}
                   onRemove={() => setRemoving(inst)}
+                  onStoreOnlyChanged={handleStoreOnlyChanged}
                 />
               ))}
             </div>
@@ -453,6 +549,7 @@ export default function InstancesPanel() {
                   apps={apps}
                   onRename={() => setRenaming(inst)}
                   onRemove={() => setRemoving(inst)}
+                  onStoreOnlyChanged={handleStoreOnlyChanged}
                 />
               ))}
             </div>

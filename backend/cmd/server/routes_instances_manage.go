@@ -5,8 +5,9 @@ package main
 //
 // Routes registered:
 //
-//	PATCH  /api/instances/{ulid}/rename — set an instance's display name
-//	DELETE /api/instances/{ulid}        — remove an instance from the fleet
+//	PATCH  /api/instances/{ulid}/rename     — set an instance's display name
+//	PATCH  /api/instances/{ulid}/store-only — mark member sync-only vs serving
+//	DELETE /api/instances/{ulid}            — remove an instance from the fleet
 //
 // The panel has always called both; neither was registered, so the SPA
 // catch-all answered them and the UI's `if (!r.ok)` never fired: "Remove"
@@ -54,6 +55,38 @@ func registerInstanceManageRoutes(mux *http.ServeMux, reg *multiinstance.Registr
 			// A validation failure is the caller's fault (empty / too long /
 			// control chars); the registry reports it as a plain error.
 			writeErr(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		writeJSON(w, inst)
+	})
+
+	// NODE-CAP-01: mark a member store-only (syncs but never a route/ingress
+	// target) or serving. Body: {"store_only": true|false}. Admin-only, like
+	// the other fleet mutations — it changes routing. In practice the Settings
+	// toggle targets the owner (this box), which takes effect immediately
+	// because this box builds its own routing table from the local registry;
+	// for a remote peer the choice is cluster-wide only once the CP round-trips
+	// the flag (see multiinstance.CloudInstance.StoreOnly).
+	mux.HandleFunc("PATCH /api/instances/{ulid}/store-only", func(w http.ResponseWriter, r *http.Request) {
+		if !instRequireAdmin(w, r, authStore) {
+			return
+		}
+		var body struct {
+			StoreOnly bool `json:"store_only"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+
+		inst, err := reg.SetStoreOnly(r.PathValue("ulid"), body.StoreOnly)
+		switch {
+		case errors.Is(err, multiinstance.ErrNotFound):
+			writeErr(w, http.StatusNotFound, "instance not found")
+			return
+		case err != nil:
+			log.Printf("[multiinstance/manage] store-only %s: %v", r.PathValue("ulid"), err)
+			writeErr(w, http.StatusInternalServerError, "could not update instance")
 			return
 		}
 		writeJSON(w, inst)

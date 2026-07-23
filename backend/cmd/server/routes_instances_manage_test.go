@@ -162,9 +162,62 @@ func TestInstanceRemove_RefusesOwner(t *testing.T) {
 	}
 }
 
+// TestInstanceStoreOnly_AdminTogglesForReal — a 200 means the registry actually
+// flipped store_only, both directions (NODE-CAP-01).
+func TestInstanceStoreOnly_AdminTogglesForReal(t *testing.T) {
+	mux, reg, adminID, _ := newInstanceManageMux(t)
+
+	rec := doManage(t, mux, http.MethodPatch, "/api/instances/"+peerULID+"/store-only", adminID,
+		`{"store_only":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("store-only true = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var out multiinstance.Instance
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v (body %q)", err, rec.Body.String())
+	}
+	if !out.StoreOnly {
+		t.Errorf("response StoreOnly = false, want true")
+	}
+	if stored, ok := reg.Get(peerULID); !ok || !stored.StoreOnly {
+		t.Errorf("registry not marked store-only: %+v", stored)
+	}
+
+	// Toggle back to serving.
+	rec = doManage(t, mux, http.MethodPatch, "/api/instances/"+peerULID+"/store-only", adminID,
+		`{"store_only":false}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("store-only false = %d, want 200", rec.Code)
+	}
+	if stored, _ := reg.Get(peerULID); stored.StoreOnly {
+		t.Errorf("store-only was not cleared")
+	}
+}
+
+func TestInstanceStoreOnly_UnknownInstanceIs404(t *testing.T) {
+	mux, _, adminID, _ := newInstanceManageMux(t)
+	rec := doManage(t, mux, http.MethodPatch, "/api/instances/01HWZNOSUCH00000000000003/store-only", adminID,
+		`{"store_only":true}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("store-only unknown instance = %d, want 404", rec.Code)
+	}
+}
+
+func TestInstanceStoreOnly_BadJSONIs400(t *testing.T) {
+	mux, reg, adminID, _ := newInstanceManageMux(t)
+	rec := doManage(t, mux, http.MethodPatch, "/api/instances/"+peerULID+"/store-only", adminID, `{not json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("malformed body = %d, want 400", rec.Code)
+	}
+	if stored, _ := reg.Get(peerULID); stored.StoreOnly {
+		t.Errorf("a rejected request still mutated the registry")
+	}
+}
+
 // TestInstanceManage_RequiresAdmin — the registry is account-wide fleet state
 // (it drives routing and CRDT sync peers). A signed-in NON-admin, and an
-// unauthenticated caller, must not be able to rename or remove instances.
+// unauthenticated caller, must not be able to rename, remove, or re-classify
+// instances.
 func TestInstanceManage_RequiresAdmin(t *testing.T) {
 	mux, reg, _, userID := newInstanceManageMux(t)
 
@@ -172,6 +225,7 @@ func TestInstanceManage_RequiresAdmin(t *testing.T) {
 		method, path, body string
 	}{
 		{http.MethodPatch, "/api/instances/" + peerULID + "/rename", `{"display_name":"Pwned"}`},
+		{http.MethodPatch, "/api/instances/" + peerULID + "/store-only", `{"store_only":true}`},
 		{http.MethodDelete, "/api/instances/" + peerULID, ""},
 	}
 

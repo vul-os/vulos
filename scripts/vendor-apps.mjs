@@ -69,6 +69,8 @@ const MODS = {
 const APP_ENTRIES = {
   'sheets': ['yjs', 'y-websocket'],
   'text-editor': Object.keys(MODS),
+  // notes: Yjs for collab + the OFFLINE-DATA-01 local persistence (vendor/vulos-offline.js).
+  'notes': ['yjs'],
 }
 
 // Third-party assets vendored as plain files rather than esbuild bundles

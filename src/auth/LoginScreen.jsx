@@ -73,7 +73,23 @@ export default function LoginScreen() {
         // persisted). Legacy accounts without a master key are a no-op.
         try {
           const { unlockMasterKeyForSession, getMasterKey } = await import('../lib/masterKey.js')
-          await unlockMasterKeyForSession(password)
+          // OFFLINE-AUTH-01: cache the wrapped envelope (only after the password
+          // proves correct) so the OS can offer a fail-closed offline unlock when
+          // the box is later unreachable. Best-effort — never blocks login.
+          const cacheOfflineEnvelope = async (slot) => {
+            try {
+              const oa = await import('../lib/offlineAuth.js')
+              await oa.cacheEnvelope(slot)
+              const u = data && data.user
+              await oa.cacheIdentity({
+                id: (u && u.id) || '',
+                name: (u && (u.display_name || u.username)) || displayName || username || '',
+              })
+            } catch (e) {
+              console.warn('[offlineAuth] envelope cache skipped:', e?.message || e)
+            }
+          }
+          await unlockMasterKeyForSession(password, fetch, cacheOfflineEnvelope)
           // WAVE-3 content-blind sharing: publish this user's PUBLIC X25519 content
           // key to their profile so peers can wrap file content to it. Idempotent
           // (same master key -> same key); best-effort, never blocks login.

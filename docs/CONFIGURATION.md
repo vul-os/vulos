@@ -114,6 +114,7 @@ managed billing).
 | `VULOS_CLOUD_ALLOW_INSECURE` | off | **Dev-only.** Allows plaintext/insecure cloud connections — never set in production |
 | `VULOS_DEVICE_ULID` | _(empty)_ | This device's ULID, sent to the cloud/integrations client |
 | `VULOS_REGION` | derived from `VULOS_CLOUD_URL` | Declared region for identity/storage-provisioning |
+| `VULOS_STORE_ONLY` | `0` (serving) | Set `1`/`true`/`yes` to join the account as a **sync-only** member (NODE-CAP-01): this box replicates data and shows online, but is never a route/ingress target — the relay/DNS never send it client traffic. Explicit opt-in only (seeded on first self-registration; the Instances dashboard toggle changes it later). Use for a personal laptop/desktop that should sync but not serve. **Never** set this on a single-box install — it is its own only server. |
 
 ---
 

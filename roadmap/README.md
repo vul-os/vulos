@@ -43,6 +43,8 @@ Read it like this:
 | Cluster & storage | [`CLUSTER.md`](CLUSTER.md) | Multi-node sync via S3 (MinIO): node presence, encrypted snapshot cold path, file sync, presence leases, conflicts | partially shipped — see doc's reality check (cr-sqlite CRDT layer not integrated; app-registry CRDT is LAN-only) |
 | Network & remote access | [`NETWORK.md`](NETWORK.md) | Subdomain routing, connection modes (fabric / direct / local), TURN/coturn, `{app}--{profile}` naming | shipped |
 | Notifications | [`NOTIFICATIONS.md`](NOTIFICATIONS.md) | Structured notification model, notification center, DND, action buttons, push-via-peering | shipped |
+| Client offline | [`OFFLINE.md`](OFFLINE.md) | Client↔box offline: cache-not-truth, outbox queue, per-app offline scope, degraded state. Not a CRDT — see SYNC.md for box↔box | design only |
+| Offline auth | [`OFFLINE-AUTH.md`](OFFLINE-AUTH.md) | The OS auth gate for offline access: local unwrap of the cached master-key envelope (reuses `masterKey.js`), fail-closed, per-app HKDF keys. Apps own cache; OS owns the gate | design only |
 | Peering | [`PEERING.md`](PEERING.md) | The big one: Ed25519 identity, contacts, signed S2S envelopes, messaging, media, WebRTC calls, SFU, drop, relays, feeds | shipped |
 | Device profiles | [`DEVICE-PROFILES.md`](DEVICE-PROFILES.md) | pc / tv / car / watch — different layouts, focus models, and behaviors per form factor | shipped |
 | Streaming optimizations | [`STREAMING-OPTIMIZATIONS.md`](STREAMING-OPTIMIZATIONS.md) | GPU encoder selection, NVENC/VA-API low-latency tuning, adaptive bitrate, audio backends, Wayland capture | shipped |
