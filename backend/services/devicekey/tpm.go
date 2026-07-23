@@ -12,11 +12,26 @@
 //   - Sign() re-creates the primary key handle per call (stateless across restarts).
 //   - DeviceIdentity() returns the PKIX-DER of the primary ECC public key; this is
 //     stable across reboots because TPM primary keys are derived deterministically.
+//
+// Rotation HONEST LIMITATION: the primary key above is DETERMINISTIC (same
+// template + same TPM ⇒ same key, by design — that is what makes it stable
+// across reboots without a persistent handle). A genuinely fresh TPM-resident
+// replacement key after rotation would require minting a persistent TPM child
+// key object (TPM2_Create + TPM2_Load + TPM2_EvictControl) — real engineering
+// this package does not implement against real hardware here (this
+// environment has no TPM to validate it against). Until that lands, a ROTATED
+// identity on this backend is held AES-wrapped at rest using wrapKey (already
+// derived from the TPM's own deterministic public key — the SAME protection
+// level Seal/Unseal already provide, see above) and signed in software rather
+// than inside the TPM. The PRE-rotation identity (before Rotate/
+// forceInstallIdentity is ever called) remains fully TPM-resident, unchanged
+// from today. This trade-off is deliberate and documented, not silent.
 package devicekey
 
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -26,6 +41,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
@@ -40,6 +56,11 @@ type tpmStore struct {
 	wrapKey []byte // AES-256 wrap key sealing Seal() payloads; derived from TPM public key
 	pubDER  []byte
 	status  Status
+
+	// ── Rotation (device-key lifecycle) — see package doc HONEST LIMITATION ──
+	rotatedPriv   *ecdsa.PrivateKey // non-nil once this store has rotated away from the TPM primary
+	prevPubKeyDER []byte
+	prevExpiresAt time.Time
 }
 
 // openTPM attempts to open the TPM at defaultTPMPath.
@@ -153,6 +174,11 @@ func (s *tpmStore) init() error {
 		KeyDir:     s.keyDir,
 		DeviceID:   hex.EncodeToString(h[:16]),
 	}
+
+	// Restore a rotated identity (if any) and rotation-overlap state left from
+	// a previous process's Rotate/forceInstallIdentity call.
+	s.loadRotatedIdentity()
+	s.prevPubKeyDER, s.prevExpiresAt = loadPrevKeyState(s.keyDir)
 	return nil
 }
 
@@ -188,14 +214,20 @@ func (s *tpmStore) Unseal(ciphertext []byte) ([]byte, error) {
 	return aesGCMDecrypt(s.wrapKey, ciphertext)
 }
 
-// Sign produces an ASN.1 DER ECDSA-Sig-Value over digest using the TPM primary key.
-// digest must be a 32-byte SHA-256 hash.
+// Sign produces an ASN.1 DER ECDSA-Sig-Value over digest. It signs with the
+// TPM primary key, UNLESS this store has rotated to a replacement identity (see
+// the package doc HONEST LIMITATION), in which case it signs in software with
+// the AES-wrapped rotated key. digest must be a 32-byte SHA-256 hash.
 func (s *tpmStore) Sign(digest []byte, _ crypto.Hash) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if len(digest) != 32 {
 		return nil, fmt.Errorf("tpm Sign: digest must be 32 bytes (SHA-256)")
+	}
+
+	if s.rotatedPriv != nil {
+		return ecdsa.SignASN1(rand.Reader, s.rotatedPriv, digest)
 	}
 
 	cr, err := s.createPrimary()
@@ -238,6 +270,9 @@ func (s *tpmStore) Sign(digest []byte, _ crypto.Hash) ([]byte, error) {
 func (s *tpmStore) DeviceIdentity() ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.rotatedPriv != nil {
+		return x509.MarshalPKIXPublicKey(&s.rotatedPriv.PublicKey)
+	}
 	out := make([]byte, len(s.pubDER))
 	copy(out, s.pubDER)
 	return out, nil
@@ -246,13 +281,189 @@ func (s *tpmStore) DeviceIdentity() ([]byte, error) {
 func (s *tpmStore) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.status
+	st := s.status
+	activeDER := s.pubDER
+	if s.rotatedPriv != nil {
+		if der, err := x509.MarshalPKIXPublicKey(&s.rotatedPriv.PublicKey); err == nil {
+			activeDER = der
+		}
+	}
+	st.Revoked = IsDeviceKeyRevoked(Fingerprint(activeDER))
+	return st
 }
 
 func (s *tpmStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tpm.Close()
+}
+
+// --- rotation (device-key lifecycle; see package doc HONEST LIMITATION) ---
+
+func (s *tpmStore) rotatedPrivPath() string { return filepath.Join(s.keyDir, "identity_rotated.priv") }
+func (s *tpmStore) rotatedPubPath() string  { return filepath.Join(s.keyDir, "identity_rotated.pub") }
+
+// loadRotatedIdentity restores a previously-installed rotated identity, if
+// any. Best-effort: any read/parse/decrypt failure leaves rotatedPriv nil,
+// which means Sign/DeviceIdentity fall back to the TPM primary — narrowing,
+// never widening, what this process will present as its identity.
+func (s *tpmStore) loadRotatedIdentity() {
+	enc, err := os.ReadFile(s.rotatedPrivPath())
+	if err != nil || len(enc) == 0 {
+		return
+	}
+	der, err := aesGCMDecrypt(s.wrapKey, enc)
+	if err != nil {
+		return
+	}
+	priv, err := x509.ParseECPrivateKey(der)
+	if err != nil {
+		return
+	}
+	s.rotatedPriv = priv
+}
+
+// activeIdentityDER returns the PKIX DER of whichever key is currently active
+// (rotated replacement if present, else the TPM primary). Caller must hold s.mu.
+func (s *tpmStore) activeIdentityDER() ([]byte, error) {
+	if s.rotatedPriv != nil {
+		return x509.MarshalPKIXPublicKey(&s.rotatedPriv.PublicKey)
+	}
+	out := make([]byte, len(s.pubDER))
+	copy(out, s.pubDER)
+	return out, nil
+}
+
+// signWithActive signs digest with whichever key is currently active. Caller
+// must hold s.mu.
+func (s *tpmStore) signWithActive(digest []byte) ([]byte, error) {
+	if s.rotatedPriv != nil {
+		return ecdsa.SignASN1(rand.Reader, s.rotatedPriv, digest)
+	}
+	cr, err := s.createPrimary()
+	if err != nil {
+		return nil, fmt.Errorf("CreatePrimary: %w", err)
+	}
+	defer tpm2.FlushContext{FlushHandle: cr.ObjectHandle}.Execute(s.tpm) //nolint:errcheck
+
+	signCmd := tpm2.Sign{
+		KeyHandle: tpm2.NamedHandle{Handle: cr.ObjectHandle, Name: cr.Name},
+		Digest:    tpm2.TPM2BDigest{Buffer: digest},
+		InScheme: tpm2.TPMTSigScheme{
+			Scheme: tpm2.TPMAlgECDSA,
+			Details: tpm2.NewTPMUSigScheme(
+				tpm2.TPMAlgECDSA,
+				&tpm2.TPMSSchemeHash{HashAlg: tpm2.TPMAlgSHA256},
+			),
+		},
+		Validation: tpm2.TPMTTKHashCheck{Tag: tpm2.TPMSTHashCheck},
+	}
+	rsp, err := signCmd.Execute(s.tpm)
+	if err != nil {
+		return nil, fmt.Errorf("tpm Sign: %w", err)
+	}
+	ecSig, err := rsp.Signature.Signature.ECDSA()
+	if err != nil {
+		return nil, fmt.Errorf("tpm Sign extract ECDSA: %w", err)
+	}
+	return marshalECDSASig(ecSig.SignatureR.Buffer, ecSig.SignatureS.Buffer)
+}
+
+// Rotate implements KeyStore.Rotate: a NORMAL, self-authorized rotation. The
+// CURRENTLY ACTIVE key (TPM primary, or a previously-rotated key) signs the
+// RotationCert binding old→new before the new key becomes active.
+func (s *tpmStore) Rotate(reason string) (*RotationCert, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oldPubDER, err := s.activeIdentityDER()
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: Rotate: marshal old pubkey: %w", err)
+	}
+	newPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: Rotate: generate new key: %w", err)
+	}
+	newPubDER, err := x509.MarshalPKIXPublicKey(&newPriv.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: Rotate: marshal new pubkey: %w", err)
+	}
+
+	cert := newRotationCert(RotationMethodSelf, oldPubDER, newPubDER, reason)
+	digest, err := rotationSigningDigest(cert)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: Rotate: digest: %w", err)
+	}
+	sig, err := s.signWithActive(digest)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: Rotate: sign with old key: %w", err)
+	}
+	cert.setSig(sig)
+
+	if err := s.installRotatedIdentity(newPriv, oldPubDER); err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: Rotate: install new identity: %w", err)
+	}
+	return cert, nil
+}
+
+// forceInstallIdentity implements the unexported KeyStore primitive (see
+// keystore.go's doc comment on the interface method for the security
+// rationale). Only reachable from BreakGlassRotate.
+func (s *tpmStore) forceInstallIdentity(newPriv *ecdsa.PrivateKey) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	oldPubDER, err := s.activeIdentityDER()
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: forceInstallIdentity: marshal old pubkey: %w", err)
+	}
+	if err := s.installRotatedIdentity(newPriv, oldPubDER); err != nil {
+		return nil, fmt.Errorf("devicekey/tpm: forceInstallIdentity: %w", err)
+	}
+	return oldPubDER, nil
+}
+
+// installRotatedIdentity persists newPriv (AES-wrapped with wrapKey — see the
+// package doc HONEST LIMITATION), records oldPubDER as the previous key with a
+// grace-window expiry, and switches the in-memory active signer. Caller must
+// hold s.mu.
+func (s *tpmStore) installRotatedIdentity(newPriv *ecdsa.PrivateKey, oldPubDER []byte) error {
+	der, err := x509.MarshalECPrivateKey(newPriv)
+	if err != nil {
+		return fmt.Errorf("marshal new private key: %w", err)
+	}
+	enc, err := aesGCMEncrypt(s.wrapKey, der)
+	if err != nil {
+		return fmt.Errorf("encrypt new private key: %w", err)
+	}
+	if err := atomicWrite(s.rotatedPrivPath(), enc, 0600); err != nil {
+		return fmt.Errorf("persist new private key: %w", err)
+	}
+	newPubDER, err := x509.MarshalPKIXPublicKey(&newPriv.PublicKey)
+	if err != nil {
+		return fmt.Errorf("marshal new public key: %w", err)
+	}
+	_ = atomicWrite(s.rotatedPubPath(), newPubDER, 0644) // best-effort
+
+	expiresAt := writePrevKeyState(s.keyDir, oldPubDER)
+
+	s.rotatedPriv = newPriv
+	s.prevPubKeyDER = append([]byte(nil), oldPubDER...)
+	s.prevExpiresAt = expiresAt
+
+	h := sha256.Sum256(newPubDER)
+	s.status.DeviceID = hex.EncodeToString(h[:16])
+	return nil
+}
+
+// PreviousIdentity returns the identity key rotated AWAY FROM and its grace
+// expiry, or (nil, zero-time) if no rotation overlap is currently active.
+func (s *tpmStore) PreviousIdentity() ([]byte, time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.prevPubKeyDER) == 0 || time.Now().UTC().After(s.prevExpiresAt) {
+		return nil, time.Time{}
+	}
+	return append([]byte(nil), s.prevPubKeyDER...), s.prevExpiresAt
 }
 
 // --- encoding helpers ---

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // softwareStore is a KeyStore backed by AES-256-GCM encryption.
@@ -35,6 +36,14 @@ type softwareStore struct {
 	wrapKey []byte // 32-byte AES-256 key used for Seal/Unseal
 	privKey *ecdsa.PrivateKey
 	status  Status
+
+	// ── Rotation overlap (mirrors FABRIC-KEY-01) ─────────────────────────────
+	// prevPubKeyDER + prevExpiresAt record the identity key rotated AWAY FROM,
+	// so a signature made just before a rotation (still propagating) can be
+	// verified by a caller that checks both the current and previous key
+	// until the grace window closes. Empty/zero when no rotation has occurred.
+	prevPubKeyDER []byte
+	prevExpiresAt time.Time
 }
 
 // openSoftware initialises the software key store, creating key material on
@@ -62,7 +71,10 @@ func openSoftware(keyDir string) (*softwareStore, error) {
 	}
 	s.privKey = priv
 
-	// 4. Build status.
+	// 4. Load any rotation-overlap state left from a previous rotation.
+	s.prevPubKeyDER, s.prevExpiresAt = loadPrevKeyState(keyDir)
+
+	// 5. Build status.
 	pub, _ := x509.MarshalPKIXPublicKey(&priv.PublicKey)
 	h := sha256.Sum256(pub)
 	s.status = Status{
@@ -104,10 +116,116 @@ func (s *softwareStore) DeviceIdentity() ([]byte, error) {
 func (s *softwareStore) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.status
+	st := s.status
+	if pub, err := x509.MarshalPKIXPublicKey(&s.privKey.PublicKey); err == nil {
+		st.Revoked = IsDeviceKeyRevoked(Fingerprint(pub))
+	}
+	return st
 }
 
 func (s *softwareStore) Close() error { return nil }
+
+// --- rotation (device-key lifecycle) ---
+
+// Rotate implements KeyStore.Rotate: a NORMAL, self-authorized rotation. The
+// CURRENT key signs the RotationCert binding old→new BEFORE the new key
+// becomes active, so the signature genuinely proves possession of the key
+// being retired.
+func (s *softwareStore) Rotate(reason string) (*RotationCert, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oldPriv := s.privKey
+	oldPubDER, err := x509.MarshalPKIXPublicKey(&oldPriv.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: Rotate: marshal old pubkey: %w", err)
+	}
+
+	newPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: Rotate: generate new key: %w", err)
+	}
+	newPubDER, err := x509.MarshalPKIXPublicKey(&newPriv.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: Rotate: marshal new pubkey: %w", err)
+	}
+
+	cert := newRotationCert(RotationMethodSelf, oldPubDER, newPubDER, reason)
+	digest, err := rotationSigningDigest(cert)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: Rotate: digest: %w", err)
+	}
+	sig, err := ecdsa.SignASN1(rand.Reader, oldPriv, digest)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: Rotate: sign with old key: %w", err)
+	}
+	cert.setSig(sig)
+
+	if err := s.installNewIdentity(newPriv, oldPubDER); err != nil {
+		return nil, fmt.Errorf("devicekey/software: Rotate: install new identity: %w", err)
+	}
+	return cert, nil
+}
+
+// forceInstallIdentity implements the unexported KeyStore primitive: install
+// newPriv unconditionally, no old-key signature required. Only reachable from
+// BreakGlassRotate (rotation.go), which enforces the quorum check first.
+func (s *softwareStore) forceInstallIdentity(newPriv *ecdsa.PrivateKey) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	oldPubDER, err := x509.MarshalPKIXPublicKey(&s.privKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey/software: forceInstallIdentity: marshal old pubkey: %w", err)
+	}
+	if err := s.installNewIdentity(newPriv, oldPubDER); err != nil {
+		return nil, fmt.Errorf("devicekey/software: forceInstallIdentity: %w", err)
+	}
+	return oldPubDER, nil
+}
+
+// installNewIdentity persists newPriv as the active identity key, records
+// oldPubDER as the previous key with a grace-window expiry, and switches the
+// in-memory signer. Caller must hold s.mu.
+func (s *softwareStore) installNewIdentity(newPriv *ecdsa.PrivateKey, oldPubDER []byte) error {
+	der, err := x509.MarshalECPrivateKey(newPriv)
+	if err != nil {
+		return fmt.Errorf("marshal new private key: %w", err)
+	}
+	enc, err := aesGCMEncrypt(s.wrapKey, der)
+	if err != nil {
+		return fmt.Errorf("encrypt new private key: %w", err)
+	}
+	if err := atomicWrite(s.privKeyPath(), enc, 0600); err != nil {
+		return fmt.Errorf("persist new private key: %w", err)
+	}
+	newPubDER, err := x509.MarshalPKIXPublicKey(&newPriv.PublicKey)
+	if err != nil {
+		return fmt.Errorf("marshal new public key: %w", err)
+	}
+	_ = atomicWrite(s.pubKeyPath(), newPubDER, 0644) // best-effort, mirrors loadOrCreateIdentityKey
+
+	expiresAt := writePrevKeyState(s.keyDir, oldPubDER)
+
+	s.privKey = newPriv
+	s.prevPubKeyDER = append([]byte(nil), oldPubDER...)
+	s.prevExpiresAt = expiresAt
+
+	h := sha256.Sum256(newPubDER)
+	s.status.DeviceID = hex.EncodeToString(h[:16])
+	return nil
+}
+
+// PreviousIdentity returns the identity key rotated AWAY FROM and its grace
+// expiry, or (nil, zero-time) if no rotation overlap is currently active
+// (either no rotation has occurred, or the grace window has closed).
+func (s *softwareStore) PreviousIdentity() ([]byte, time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.prevPubKeyDER) == 0 || time.Now().UTC().After(s.prevExpiresAt) {
+		return nil, time.Time{}
+	}
+	return append([]byte(nil), s.prevPubKeyDER...), s.prevExpiresAt
+}
 
 // --- internal helpers ---
 

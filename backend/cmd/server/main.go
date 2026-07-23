@@ -3156,6 +3156,25 @@ func main() {
 	publicAPICloser := registerPublicAPIRoutes(mux, authStore, dbDir, sharedInstanceRegistry)
 	defer publicAPICloser()
 
+	// DEVICEKEY-ROTATE-01: device-key rotation/revocation HTTP API + admission gate.
+	// Break-glass rotation/revocation is authorized ONLY by a fleetid.VerifyQuorum
+	// of OTHER rostered boxes — a box can never self-authorize (see rotation.go).
+	if deviceKSErr == nil {
+		deviceRevStore, drErr := devicekey.NewRevocationStore(datadir.Join("auth", "tpm"))
+		if drErr != nil {
+			log.Printf("[devicekey] revocation store unavailable, admission gate not wired: %v", drErr)
+		} else {
+			devicekey.SetRevocationChecker(deviceRevStore.IsRevoked)
+			registerDeviceKeyLifecycleRoutes(mux, dkLifecycleDeps{
+				KeyStore:        deviceKS,
+				RevocationStore: deviceRevStore,
+				AuthStore:       authStore,
+				Registry:        sharedInstanceRegistry,
+			})
+			log.Printf("[devicekey] rotation/revocation API registered (owner+step-up; break-glass via fleetid quorum)")
+		}
+	}
+
 	// Web proxy (kept for API-level proxying)
 	mux.HandleFunc("/api/proxy/ws/", proxySvc.WSRelayHandler())
 	mux.HandleFunc("/api/proxy/", proxySvc.Handler())

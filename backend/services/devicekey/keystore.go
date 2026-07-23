@@ -10,6 +10,7 @@ package devicekey
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"fmt"
 	"os"
 	"vulos/backend/internal/datadir"
@@ -30,6 +31,16 @@ type Status struct {
 	DevicePath string      `json:"device_path"` // e.g. /dev/tpmrm0 or ""
 	KeyDir     string      `json:"key_dir"`     // directory holding key material
 	DeviceID   string      `json:"device_id"`   // stable identity (public key fingerprint)
+
+	// Revoked reports whether the CURRENTLY ACTIVE identity key is known-revoked
+	// by the process-wide revocation checker installed via SetRevocationChecker
+	// (see revocation.go). This is a LOCAL observability signal only — a box
+	// cannot un-compromise itself by ignoring this flag; real enforcement happens
+	// at every REMOTE verifier via IsDeviceKeyRevoked / VerifyDeviceSignatureChecked.
+	// Always false when no checker is installed (fail-open only in the sense that
+	// an entirely unwired subsystem reports nothing — matches the isVulaIDRevoked
+	// convention in services/peering).
+	Revoked bool `json:"revoked"`
 }
 
 // KeyStore is the core abstraction for TPM/software-keystore operations.
@@ -57,6 +68,41 @@ type KeyStore interface {
 
 	// Close releases any held resources (TPM file descriptor, etc.).
 	Close() error
+
+	// Rotate performs a NORMAL (self-authorized) device-key rotation: it
+	// generates a fresh identity key, signs a RotationCert binding the CURRENT
+	// (old) device key to the new one using the OLD key — proving possession
+	// of the key being rotated away from — then installs the new key as the
+	// active identity. The previous public key is retained internally with a
+	// grace-window expiry so a signature made just before the rotation still
+	// verifies for a short period (mirrors FABRIC-KEY-01's overlap window).
+	// reason is a short human-readable note recorded on the returned cert.
+	//
+	// This is the ONLY exported way to rotate a device identity. There is no
+	// exported way to force a rotation without the old key's signature — see
+	// forceInstallIdentity and BreakGlassRotate in rotation.go for the
+	// quorum-gated alternative used when the old key is lost or compromised.
+	Rotate(reason string) (*RotationCert, error)
+
+	// forceInstallIdentity is the MECHANICAL-ONLY primitive behind break-glass
+	// rotation. It installs newPriv as the active identity key WITHOUT
+	// requiring any signature from the previous (possibly compromised) key,
+	// and returns the OLD public key (PKIX DER) so the caller can build the
+	// RotationCert.
+	//
+	// Deliberately UNEXPORTED: in Go, a type outside this package cannot
+	// implement an interface that has an unexported method, so KeyStore can
+	// only ever be satisfied by types defined in package devicekey (today:
+	// softwareStore and tpmStore) — and only code inside this package can call
+	// the method at all. The SOLE call site is BreakGlassRotate (rotation.go),
+	// which requires a successful fleetid.VerifyQuorum from a quorum of OTHER
+	// boxes BEFORE this is ever invoked. There is structurally no path — from
+	// this package, from cmd/server, or from any other package — to
+	// force-rotate a device identity without EITHER the old key's signature
+	// (Rotate) OR a verified peer quorum (BreakGlassRotate). This is the
+	// compile-time enforcement of the hard rule: a box can never self-authorize
+	// its own break-glass rotation.
+	forceInstallIdentity(newPriv *ecdsa.PrivateKey) (oldPubKeyDER []byte, err error)
 }
 
 // defaultTPMPath is the Linux resource-managed TPM character device.
