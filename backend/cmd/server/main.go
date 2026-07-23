@@ -68,7 +68,6 @@ import (
 	"vulos/backend/services/models"
 	"vulos/backend/services/network"
 	"vulos/backend/services/notify"
-	"vulos/backend/services/osdist"
 	"vulos/backend/services/packages"
 	"vulos/backend/services/passkeys"
 	"vulos/backend/services/peering"
@@ -78,7 +77,6 @@ import (
 	"vulos/backend/services/recall"
 	"vulos/backend/services/relayconfig"
 	"vulos/backend/services/sandbox"
-	"vulos/backend/services/signing"
 	"vulos/backend/services/snapshot"
 	"vulos/backend/services/storageprov"
 	"vulos/backend/services/stream"
@@ -1142,9 +1140,11 @@ func main() {
 	// down by the rest of the admin-settings routes below) so
 	// webhooksDispatcher exists in time to be threaded into the real event
 	// sites registered below: auth.new_signin (authHandler.OnSignIn, wired
-	// right after this), device.enrolled/removed (instance manage + provision
-	// sections of registerNewFeatureRoutes), and snapshot.created (both the
-	// manual admin endpoint and the scheduler).
+	// right after this, plus the passkey login handler further down),
+	// device.enrolled/removed (instance manage + provision sections of
+	// registerNewFeatureRoutes), snapshot.created (both the manual admin
+	// endpoint and the scheduler), backup.completed (manual + periodic backup
+	// below), and storage.low (the poller started right after this block).
 	webhooksDispatcher := registerWebhooksRoutes(mux, authStore, home)
 	// auth.new_signin: authHandler (created earlier, above) calls this on every
 	// successful local/cloud sign-in with the real client IP/user-agent.
@@ -1156,6 +1156,41 @@ func main() {
 			"user_agent": userAgent,
 		})
 	}
+
+	// storage.low: periodically re-check disk usage (same disks.GetStatus()
+	// the proactive low-disk-space check above uses, same proactiveDiskThreshold
+	// bar) and emit once per threshold-crossing per mount point — NOT on every
+	// poll — so a persistently-full disk doesn't spam the subscriber. wasLow
+	// tracks per-mount state across ticks; the event fires only on the
+	// false->true transition and re-arms once the mount recovers.
+	go func() {
+		wasLow := make(map[string]bool)
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				status := disks.GetStatus()
+				for _, m := range status.Mounts {
+					if m.TotalMB <= 0 {
+						continue
+					}
+					low := m.Percent >= proactiveDiskThreshold
+					if low && !wasLow[m.MountPoint] {
+						emitWebhookEvent(webhooksDispatcher, "storage.low", map[string]any{
+							"mount_point": m.MountPoint,
+							"free_mb":     m.FreeMB,
+							"total_mb":    m.TotalMB,
+							"percent":     m.Percent,
+						})
+					}
+					wasLow[m.MountPoint] = low
+				}
+			}
+		}
+	}()
 
 	// AUTH-12: server-side passkey (FIDO2/WebAuthn) authenticator. Credentials
 	// are sealed at rest per-user via the device KeyStore (TPM or software).
@@ -1258,7 +1293,11 @@ func main() {
 		// LOGINISO-02: QR / phone-approval kiosk login.
 		loginSvc := passkeys.NewLoginService(passkeysSvc, authStore)
 		qrSvc := passkeys.NewQRLoginService(authStore)
-		registerPasskeyLoginRoutes(mux, loginSvc, qrSvc)
+		// auth.new_signin: passkey login (unlike password/cloud login above) has
+		// no auth.Handler.OnSignIn hook to piggyback on, so registerPasskeyLoginRoutes
+		// is handed webhooksDispatcher directly and emits after a successful
+		// finishLogin, matching the payload shape used by the password path.
+		registerPasskeyLoginRoutes(mux, loginSvc, qrSvc, webhooksDispatcher)
 		// AUTH-10c: device identity / TPM status / seal-unseal HTTP API.
 		devicekey.RegisterHandlers(mux, deviceKS, func(r *http.Request) bool {
 			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
@@ -3524,48 +3563,14 @@ func main() {
 		writeJSON(w, energyMgr.State())
 	})
 
-	// OS update status + apply (OSDIST-04 + OSDIST-05)
-	if osdistSlotMgr, osdistErr := osdist.NewSlotManager(datadir.Join("os-cache")); osdistErr == nil {
-		osdistStore := osdist.NewStatusStore()
-		osdistIsAdmin := func(r *http.Request) bool {
-			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
-			return p != nil && p.Role == auth.RoleAdmin
-		}
-		osdist.NewUpdateHandlers(osdistSlotMgr, os.Getenv("VULOS_OS_VERSION"), osdistStore, osdistIsAdmin).RegisterHandlers(mux)
-
-		// OSDIST-04: start the 4-hour background update-fetch loop.
-		// Trust anchor is optional — skip updater when key is absent (dev/CI).
-		// PHONE-HOME: this signed manifest check is the only outbound connection a
-		// fresh un-configured self-host box makes by default. It sends no usage
-		// data, but operators can opt out with VULOS_OS_AUTOUPDATE=off for a box
-		// with zero default egress (updates then only apply via the admin endpoint).
-		if !osdist.AutoUpdateEnabled() {
-			log.Printf("[osdist] auto-update loop disabled by operator (%s) — no default egress; update via admin endpoint", osdist.AutoUpdateEnvKey)
-		} else if anchorPub, anchorErr := signing.LoadAnchor(signing.DefaultAnchorPath); anchorErr == nil {
-			osdistSrc := osdist.NewSource()
-			updaterCfg := osdist.UpdaterConfig{
-				Source:         osdistSrc,
-				SlotManager:    osdistSlotMgr,
-				AnchorPub:      anchorPub,
-				RunningVersion: os.Getenv("VULOS_OS_VERSION"),
-				// Store: so the periodic loop's outcome is visible via the
-				// /api/os/update/status handler registered above (osdistStore) —
-				// previously unwired, meaning the status endpoint always looked
-				// like updates had never been checked.
-				Store: osdistStore,
-			}
-			if updater, updErr := osdist.NewUpdater(updaterCfg); updErr == nil {
-				go updater.Run(ctx)
-				log.Printf("[osdist] update loop started (version=%s)", os.Getenv("VULOS_OS_VERSION"))
-			} else {
-				log.Printf("[osdist] updater init warning: %v", updErr)
-			}
-		} else {
-			log.Printf("[osdist] trust anchor not found (%v) — update loop disabled", anchorErr)
-		}
-	} else {
-		log.Printf("[osdist] slot manager init warning: %v", osdistErr)
-	}
+	// OS update (OTA): OPT-IN, verify-only. The box polls the vulos.org release
+	// channel to surface available updates in Settings -> OS Update, and fires a
+	// PRIORITY notification to the owner on a new SECURITY update — but it NEVER
+	// auto-stages. The user chooses to download + stage; the reboot/flip stays
+	// manual. This replaces the old osdist auto-update loop (which auto-staged by
+	// default, contradicting the opt-in model); the real A/B staging under the
+	// hood still uses osdist.SlotManager via services/ota.
+	otaClient := registerOTARoutes(mux, notifySvc, authStore)
 
 	// Cluster heartbeat + peer discovery (services/cluster).
 	// Conditional on S3 being configured and VULOS_CLUSTER_PASSPHRASE being set.
@@ -3673,7 +3678,7 @@ func main() {
 					if backupDBPath == "" {
 						backupDBPath = filepath.Join(dbDir, "auth.db")
 					}
-					registerBackupRoutes(mux, clusterBackupDeps(authStore, s3c, backupLeaseCfg, backupNodeID, backupDBPath, clusterPassphrase))
+					registerBackupRoutes(mux, clusterBackupDeps(authStore, s3c, backupLeaseCfg, backupNodeID, backupDBPath, clusterPassphrase, webhooksDispatcher))
 					log.Printf("[backup] admin backup/restore endpoints registered (db=%s)", backupDBPath)
 
 					// Optional config-gated periodic backup. Enable by setting
@@ -3694,6 +3699,12 @@ func main() {
 										case <-ticker.C:
 											if err := compactor.Run(ctx); err != nil {
 												log.Printf("[backup] periodic backup failed: %v", err)
+											} else {
+												emitWebhookEvent(webhooksDispatcher, "backup.completed", map[string]any{
+													"db":           backupDBPath,
+													"kind":         "scheduled",
+													"completed_at": time.Now().UTC().Format(time.RFC3339),
+												})
 											}
 										}
 									}
@@ -4252,6 +4263,9 @@ func main() {
 		<-ctx.Done()
 		log.Println("shutting down...")
 		telephonySvc.StopPolling()
+		if otaClient != nil {
+			otaClient.StopPolling()
+		}
 		browserSvc.StopAll()
 		streamPool.StopAll()
 		sandboxSvc.StopAll()

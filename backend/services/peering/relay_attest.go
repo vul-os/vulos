@@ -34,9 +34,9 @@
 //
 // Providers implement [AttestVerifier].  The package ships one built-in
 // implementation: [AttestNitroVerifier] (AWS Nitro Enclaves).  The registry is
-// DEFAULT-DENY: [AttestNoopVerifier] is no longer registered and is itself
-// fail-closed (its Verify always rejects), so there is no built-in way to pass
-// attestation without a deliberately-registered, real verifier.
+// DEFAULT-DENY: there is no built-in "accept anything" verifier, so there is
+// no built-in way to pass attestation without a deliberately-registered,
+// real verifier.
 //
 // # Reject-on-failure guarantee
 //
@@ -209,10 +209,10 @@ type AttestVerifier interface {
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
-// The default registry is DEFAULT-DENY. AttestNoopVerifier is deliberately NOT
-// registered here — registering an "accept anything" verifier by default would
-// silently disable attestation. A deployment that genuinely wants no TEE checks
-// must make that an explicit, auditable choice by registering its own verifier.
+// The default registry is DEFAULT-DENY. No "accept anything" verifier is
+// registered here — doing so by default would silently disable attestation.
+// A deployment that genuinely wants no TEE checks must make that an explicit,
+// auditable choice by registering its own verifier.
 var (
 	attestRegistryMu sync.RWMutex
 	attestRegistry   = map[AttestProvider]AttestVerifier{
@@ -646,21 +646,6 @@ func attestCheckPCRs(actual, expected map[string]string) error {
 	return nil
 }
 
-// ─── AttestNoopVerifier ───────────────────────────────────────────────────────
-
-// AttestNoopVerifier formerly accepted every document. It is now FAIL-CLOSED:
-// Verify always returns an error, and it is no longer registered by default.
-// This removes the "accept anything" bypass entirely — there is no way to pass
-// attestation without a real, deliberately-registered verifier.
-type AttestNoopVerifier struct{}
-
-// Verify implements [AttestVerifier] and always REJECTS. A no-op verifier that
-// returned nil would silently disable attestation.
-func (AttestNoopVerifier) Verify(_ AttestDoc, _ AttestPolicy) error {
-	return attestErr("noop-rejected",
-		"AttestNoopVerifier performs no cryptographic checks and is fail-closed: rejecting", nil)
-}
-
 // ─── Relay-side: AttestStore ──────────────────────────────────────────────────
 
 // AttestStore holds the attestation document served by the relay to senders.
@@ -742,23 +727,9 @@ func (as *AttestStore) handleGetAttest(w http.ResponseWriter, r *http.Request) {
 
 // ─── Sender-side helper: fetch + verify ───────────────────────────────────────
 
-// AttestFetchAndVerify fetches the attestation document from relayAttestURL,
-// decodes it, and calls [AttestVerifyRelay] with the given policy.
-//
-// relayAttestURL is the full URL of the relay's attest endpoint, e.g.:
-//
-//	https://relay.example.com/api/peering/relay/attest
-//
-// The HTTP client used is the standard http.DefaultClient.  Callers that need
-// custom timeouts should use [AttestFetchAndVerifyWithClient].
-//
-// A non-nil error means the relay MUST be rejected — do NOT deposit.
-func AttestFetchAndVerify(relayAttestURL string, policy AttestPolicy) (AttestDoc, error) {
-	return AttestFetchAndVerifyWithClient(http.DefaultClient, relayAttestURL, policy)
-}
-
-// AttestFetchAndVerifyWithClient is like [AttestFetchAndVerify] but accepts a
-// custom *http.Client.
+// AttestFetchAndVerifyWithClient fetches the attestation document from
+// relayAttestURL, decodes it, and calls [AttestVerifyRelay] with the given
+// policy, using the given *http.Client.
 func AttestFetchAndVerifyWithClient(client *http.Client, relayAttestURL string, policy AttestPolicy) (AttestDoc, error) {
 	if client == nil {
 		return AttestDoc{}, attestErr("nil-client", "http client must not be nil", nil)

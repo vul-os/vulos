@@ -25,11 +25,18 @@ import (
 
 	"vulos/backend/services/auth"
 	"vulos/backend/services/passkeys"
+	"vulos/backend/services/webhooks"
 )
 
 // registerPasskeyLoginRoutes wires the LOGINISO endpoints into mux.
-func registerPasskeyLoginRoutes(mux *http.ServeMux, ls *passkeys.LoginService, qr *passkeys.QRLoginService) {
-	h := &loginISOHandler{ls: ls, qr: qr}
+//
+// webhooksDispatcher is threaded in so finishLogin can emit "auth.new_signin"
+// on a successful passkey login — the password/cloud-login paths (services/auth
+// handlers.go) already fire this via auth.Handler.OnSignIn, but passkey login
+// bypasses that handler entirely, so it needs its own emit call here. nil-safe
+// via emitWebhookEvent (nil dispatcher = webhooks disabled = no-op).
+func registerPasskeyLoginRoutes(mux *http.ServeMux, ls *passkeys.LoginService, qr *passkeys.QRLoginService, webhooksDispatcher *webhooks.Dispatcher) {
+	h := &loginISOHandler{ls: ls, qr: qr, webhooksDispatcher: webhooksDispatcher}
 
 	// LOGINISO-01: passkey register (requires existing session).
 	mux.HandleFunc("POST /api/auth/passkey/register/begin", h.beginRegister)
@@ -46,8 +53,9 @@ func registerPasskeyLoginRoutes(mux *http.ServeMux, ls *passkeys.LoginService, q
 }
 
 type loginISOHandler struct {
-	ls *passkeys.LoginService
-	qr *passkeys.QRLoginService
+	ls                 *passkeys.LoginService
+	qr                 *passkeys.QRLoginService
+	webhooksDispatcher *webhooks.Dispatcher
 }
 
 // ─── LOGINISO-01: register ────────────────────────────────────────────────────
@@ -174,6 +182,16 @@ func (h *loginISOHandler) finishLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	auth.SetSessionCookie(w, r, sess.Token)
+
+	// auth.new_signin: mirror what services/auth's password/cloud-login paths
+	// fire via Handler.OnSignIn — passkey login has no such hook, so emit here
+	// directly with the real client IP/user-agent, same payload shape.
+	emitWebhookEvent(h.webhooksDispatcher, "auth.new_signin", map[string]any{
+		"user_id":    sess.UserID,
+		"ip":         stepupClientIP(r),
+		"user_agent": r.UserAgent(),
+	})
+
 	writeJSON(w, map[string]any{"session": sess})
 }
 

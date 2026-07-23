@@ -38,7 +38,7 @@ func newLoginTestMux(t *testing.T) (*http.ServeMux, *passkeys.Service, *auth.Sto
 	qr := passkeys.NewQRLoginService(store)
 
 	mux := http.NewServeMux()
-	registerPasskeyLoginRoutes(mux, ls, qr)
+	registerPasskeyLoginRoutes(mux, ls, qr, nil)
 	return mux, svc, store
 }
 

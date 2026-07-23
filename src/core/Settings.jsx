@@ -2381,32 +2381,48 @@ function UsersSettings({ profile }) {
   )
 }
 
-// --- OS Update (OSDIST-05) ---
+// --- OS Update (box-side OTA client: verify-only, opt-in) ---
+//
+// The box polls vulos.org's release channel in the background and verifies
+// every manifest against the baked release-signing trust chain — see
+// backend/services/ota. That poll NEVER downloads the OS image and NEVER
+// stages anything on its own. This panel just shows what the last verified
+// check found and lets the owner explicitly choose to download + stage it;
+// a security release additionally fires a priority notification, but even
+// then nothing is staged until the button below is clicked.
 function OSUpdateSettings() {
   const [status, setStatus] = useState(null)
-  const [applying, setApplying] = useState(false)
-  const [applyResult, setApplyResult] = useState(null)
+  const [staging, setStaging] = useState(false)
+  const [stageResult, setStageResult] = useState(null)
   const [error, setError] = useState('')
 
   const refresh = () => {
     fetch('/api/os/update/status')
-      .then(r => r.json())
-      .then(d => { setStatus(d); setError('') })
-      .catch(() => setError('Could not reach server'))
+      .then(async r => {
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status))
+        setStatus(d)
+        setError('')
+      })
+      .catch(e => setError(e.message || 'Could not reach server'))
   }
 
   useEffect(() => { refresh() }, [])
 
-  const apply = async () => {
-    if (!confirm('Flip the staged update slot now?\n\nThe change will take effect after the next reboot.')) return
-    setApplying(true)
-    setApplyResult(null)
+  const stage = async () => {
+    if (!confirm(
+      `Download and stage Vulos ${status?.latest_version || 'the update'}?\n\n` +
+      'It will be verified and written to the inactive slot. Nothing is applied ' +
+      'until you separately reboot — the box keeps running the current version until then.'
+    )) return
+    setStaging(true)
+    setStageResult(null)
     setError('')
     try {
-      const r = await fetch('/api/os/update/apply', { method: 'POST' })
+      const r = await fetch('/api/os/update/stage', { method: 'POST' })
       const d = await r.json().catch(() => ({}))
-      if (r.status === 202) {
-        setApplyResult(d.status || 'Slot flipped — reboot to apply')
+      if (r.ok) {
+        setStageResult(d.message || 'Staged — reboot to activate')
         refresh()
       } else {
         setError(d.error || ('HTTP ' + r.status))
@@ -2414,82 +2430,114 @@ function OSUpdateSettings() {
     } catch {
       setError('Request failed')
     } finally {
-      setApplying(false)
+      setStaging(false)
     }
   }
 
-  const hasPending = status?.slot_state?.pending && status.slot_state.pending !== ''
+  const isSecurity = !!status?.is_security
 
   return (
-    <Section title="OS Update">
+    <Section
+      title="OS Update"
+      desc="Vulos checks vulos.org for new releases and verifies them cryptographically — nothing is ever installed automatically. You choose when to stage an update, and when to reboot into it."
+    >
+      {isSecurity && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg px-3.5 py-3 bg-[var(--status-danger-soft)] border border-[var(--status-danger)]/30">
+          <span className="text-base leading-none mt-0.5">⚠</span>
+          <div>
+            <p className="text-sm font-semibold text-[var(--status-danger)]">
+              Security update{status?.severity ? ` — ${status.severity}` : ''}
+            </p>
+            <p className="text-xs text-[var(--status-danger)]/90 mt-0.5">
+              Version {status.latest_version} addresses a security issue. Staging and rebooting soon is recommended.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-5">
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">Running version</span>
           <span className="text-sm font-mono text-[var(--text-secondary)]">
-            {status == null ? '…' : (status.running_version || '—')}
+            {status == null ? '…' : (status.current_version || '—')}
           </span>
         </div>
-        {status?.available_version && (
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">Available version</span>
-            <span className="text-sm font-mono text-[var(--status-success)]">{status.available_version}</span>
-          </div>
-        )}
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-          <span className="text-xs text-[var(--text-muted)]">Active slot</span>
-          <span className="text-sm font-mono text-[var(--text-secondary)]">
-            {status?.slot_state?.active || '—'}
-          </span>
+          <span className="text-xs text-[var(--text-muted)]">Latest available</span>
+          {status?.available ? (
+            <span className="flex items-center gap-1.5 text-sm font-mono text-[var(--status-success)]">
+              {status.latest_version}
+              {isSecurity && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-[var(--status-danger)] text-white">
+                  SECURITY
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-sm text-[var(--text-tertiary)]">{status == null ? '…' : 'up to date'}</span>
+          )}
         </div>
-        {hasPending && (
+        {status?.published_at && (
           <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">Staged slot</span>
-            <span className="text-sm font-mono text-[var(--status-warning)]">{status.slot_state.pending} (pending)</span>
-          </div>
-        )}
-        {status?.last_check && (
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">Last check</span>
+            <span className="text-xs text-[var(--text-muted)]">Published</span>
             <span className="text-sm text-[var(--text-tertiary)]">
-              {new Date(status.last_check).toLocaleString()}
+              {new Date(status.published_at).toLocaleDateString()}
             </span>
           </div>
         )}
+        {status?.checked_at && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
+            <span className="text-xs text-[var(--text-muted)]">Last checked</span>
+            <span className="text-sm text-[var(--text-tertiary)]">
+              {new Date(status.checked_at).toLocaleString()}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
+          <span className="text-xs text-[var(--text-muted)]">Channel</span>
+          <span className="text-sm font-mono text-[var(--text-faint)] truncate max-w-[60%]" title={status?.channel_url}>
+            {status?.channel_url || '—'}
+          </span>
+        </div>
       </div>
+
+      {status?.notes && (
+        <div className="mb-4 text-xs rounded-lg px-3.5 py-3 bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
+          {status.notes}
+        </div>
+      )}
 
       {status?.last_error && (
         <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
-          Last error: {status.last_error}
+          Last check error: {status.last_error}
         </div>
       )}
 
-      {applyResult && (
+      {stageResult && (
         <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-success-soft)] text-[var(--status-success)]">
-          {applyResult}
+          {stageResult}
         </div>
       )}
 
-      <div className="flex gap-3 items-center">
-        {hasPending ? (
+      <div className="flex gap-3 items-center flex-wrap">
+        {status?.available ? (
           <button
-            onClick={apply}
-            disabled={applying}
-            className="btn text-sm"
+            onClick={stage}
+            disabled={staging}
+            className={'btn text-sm' + (isSecurity ? ' !bg-[var(--status-danger)] !border-[var(--status-danger)]' : '')}
           >
-            {applying ? 'Applying…' : 'Reboot to apply'}
+            {staging ? 'Downloading & staging…' : 'Download & stage update'}
           </button>
         ) : (
-          <button disabled className="btn text-sm opacity-40 cursor-not-allowed">
-            {status?.available_version ? 'Apply update' : 'Up to date'}
-          </button>
+          <button disabled className="btn text-sm opacity-40 cursor-not-allowed">Up to date</button>
         )}
         <button onClick={refresh} className="btn-ghost text-sm">Refresh</button>
       </div>
 
-      {!hasPending && status?.available_version && (
+      {status?.available && (
         <p className="text-xs text-[var(--text-faint)] mt-3">
-          Version {status.available_version} is available but has not been staged yet.
-          The background update service will download and verify it automatically.
+          Staging downloads and verifies the release, then writes it to the inactive slot — the box keeps
+          running the current version. Reboot separately whenever you're ready to switch to it.
         </p>
       )}
 

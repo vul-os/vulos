@@ -23,11 +23,13 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"vulos/backend/services/auth"
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/lease"
 	"vulos/backend/services/sync"
+	"vulos/backend/services/webhooks"
 )
 
 // restoreConfirmToken is the exact string a caller must send in the request
@@ -47,6 +49,11 @@ type backupDeps struct {
 	newRestorer func() (*sync.Restorer, error)
 	// dbPath is reported in responses/logs.
 	dbPath string
+	// webhooksDispatcher, when non-nil, is used to emit "backup.completed" for
+	// a manual on-demand backup. nil-safe via emitWebhookEvent (no dispatcher =
+	// no-op). The periodic backup loop (cmd/server/main.go) emits the same
+	// event directly since it doesn't go through these HTTP handlers.
+	webhooksDispatcher *webhooks.Dispatcher
 }
 
 // clusterBackupDeps wires backupDeps to the production cluster client + lease
@@ -56,8 +63,8 @@ type backupDeps struct {
 // forwarded so the Compactor/Restorer authenticate cluster/snapshot/latest.json
 // before trusting its Version/Key (see services/sync/snapshot.go's package
 // doc comment on the anti-rollback-authenticity gap this closes).
-func clusterBackupDeps(authStore *auth.Store, s3 *cluster.Client, leaseCfg lease.S3Config, nodeID, dbPath, passphrase string) backupDeps {
-	deps := backupDeps{authStore: authStore, dbPath: dbPath}
+func clusterBackupDeps(authStore *auth.Store, s3 *cluster.Client, leaseCfg lease.S3Config, nodeID, dbPath, passphrase string, webhooksDispatcher *webhooks.Dispatcher) backupDeps {
+	deps := backupDeps{authStore: authStore, dbPath: dbPath, webhooksDispatcher: webhooksDispatcher}
 	if s3 != nil {
 		deps.newCompactor = func() (*sync.Compactor, error) {
 			return sync.BuildCompactor(sync.BackupConfig{NodeID: nodeID, DBPath: dbPath}, s3, leaseCfg, passphrase)
@@ -93,6 +100,11 @@ func registerBackupRoutes(mux *http.ServeMux, deps backupDeps) {
 			return
 		}
 		log.Printf("[backup] on-demand backup complete (actor=%s db=%s)", actor, deps.dbPath)
+		emitWebhookEvent(deps.webhooksDispatcher, "backup.completed", map[string]any{
+			"db":           deps.dbPath,
+			"kind":         "manual",
+			"completed_at": time.Now().UTC().Format(time.RFC3339),
+		})
 		writeJSON(w, map[string]string{"status": "ok", "db": deps.dbPath})
 	})
 

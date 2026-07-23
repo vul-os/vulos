@@ -6,12 +6,14 @@
 //  1. Fetches the full list of instances enrolled under the same account
 //     (GET https://api.vulos.org/api/instances) and upserts every entry into
 //     the local Registry.
-//  2. Subscribes to wss://api.vulos.org/ws/instances for real-time presence
-//     updates (instance online / offline) and applies them to the registry via
-//     MarkSeen / Upsert.
-//  3. Exposes GET /api/instances on the local OS HTTP server, returning the
+//  2. Exposes GET /api/instances on the local OS HTTP server, returning the
 //     merged registry list. When the cloud is unreachable the endpoint
 //     gracefully degrades to the last-known registry state.
+//
+// HONEST STATUS (audit P2-7): there is no live wss://api.vulos.org/ws/instances
+// transport. ApplyPresenceEvent remains exported as the applier building block
+// (instance online/offline → MarkSeen/Upsert) for when a real streaming
+// transport lands and for tests; nothing currently drives it in production.
 //
 // Wiring: call RegisterSyncHandlers(mux, syncer) from a routes_*.go file
 // in cmd/server — do NOT import from main.go.
@@ -160,52 +162,6 @@ func (cs *CloudSyncer) Sync(ctx context.Context) error {
 	}
 	cs.setSyncErr(nil)
 	return nil
-}
-
-// SubscribePresence keeps the local registry current with the cloud's view of
-// the account's instances until ctx is cancelled.
-//
-// HONEST STATUS (audit P2-7): there is NO live WebSocket transport yet. The
-// cloud /ws/instances endpoint is not implemented on either side, so this
-// method runs a 30-second full-resync poll loop — it does not open a socket and
-// does not stream PresenceEvents. The previous code routed through a
-// connectAndReceive "WebSocket" wrapper that immediately fell back to the same
-// poll, which produced misleading "presence feed disconnected; reconnecting"
-// logs for a feed that never connected. That dead branch has been removed; the
-// poll loop is now called directly and logged honestly. ApplyPresenceEvent
-// remains exported for when the real streaming transport lands and for tests.
-//
-// Call this in a goroutine after a successful Sync:
-//
-//	go cs.SubscribePresence(ctx)
-//
-// It returns when ctx is cancelled (graceful shutdown).
-func (cs *CloudSyncer) SubscribePresence(ctx context.Context) {
-	log.Printf("[cloudsync] presence: no live feed implemented — using %s full-resync poll", presencePollInterval)
-	cs.pollPresence(ctx)
-}
-
-// presencePollInterval is the cadence of the full-resync presence poll used in
-// lieu of a live streaming feed.
-const presencePollInterval = 30 * time.Second
-
-// pollPresence re-syncs the full instance list every presencePollInterval so
-// the registry stays current without a live WebSocket. It returns when ctx is
-// cancelled. Resync errors are logged and the loop continues (graceful
-// degradation — the OS keeps operating on last-known state).
-func (cs *CloudSyncer) pollPresence(ctx context.Context) {
-	ticker := time.NewTicker(presencePollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := cs.Sync(ctx); err != nil {
-				log.Printf("[cloudsync] presence poll resync: %v", err)
-			}
-		}
-	}
 }
 
 // ApplyPresenceEvent applies a single decoded presence event to the registry.
