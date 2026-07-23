@@ -4435,6 +4435,26 @@ func main() {
 			} else {
 				fabricSigner = instKey
 				log.Printf("[fabric] per-instance signing identity active (CRDT-QUORUM-01: signed uninstall observations)")
+
+				// FLEETID-VOUCH-01: let OTHER boxes ask this box to vouch for
+				// their break-glass identity recovery. The default policy NEVER
+				// auto-approves — an operator must explicitly approve the exact
+				// (action, subject, payload, request) tuple via the approve
+				// endpoint (admin-gated) before any VouchCert is signed, and the
+				// request handler refuses a self-vouch before the policy is even
+				// consulted. The request endpoint is peer-facing (approval, not
+				// caller auth, is the protection); the approve endpoint is
+				// admin-only, matching devicekey.RegisterHandlers' gate.
+				vouchPolicy := fleetid.NewManualApprovalPolicy()
+				if voucherSvc, verr := fleetid.NewVoucherService(fabricSigner, vouchPolicy); verr != nil {
+					log.Printf("[fleetid] WARNING: voucher service unavailable (%v) — this box cannot vouch for peers' break-glass requests", verr)
+				} else {
+					voucherSvc.RegisterHandlers(mux, func(r *http.Request) bool {
+						p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+						return p != nil && p.Role == auth.RoleAdmin
+					})
+					log.Printf("[fleetid] voucher service registered (request: peer-facing; approve: admin-gated, default-deny policy)")
+				}
 			}
 
 			// mDNS discoverer: advertise this box and resolve peers. Falls back
