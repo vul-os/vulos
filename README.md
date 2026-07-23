@@ -15,7 +15,10 @@ Your server. Your AI. Your rules.
   <img src="https://img.shields.io/badge/backend-Go%201.25-00ADD8.svg" alt="Go 1.25" />
 </p>
 
-<img src="docs/screenshots/hero.png" alt="The Vulos desktop" width="880" />
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/hero-light.png" />
+  <img src="docs/screenshots/hero.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="880" />
+</picture>
 
 </div>
 
@@ -33,27 +36,57 @@ It runs the same whether you flash it to a mini-PC, boot it on a spare laptop, o
 
 ---
 
+## A look inside
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/apphub.png" alt="The app hub" width="100%" /><br /><sub><b>App hub</b> — install what you want, remove what you don't.</sub></td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/tiled-light.png" />
+        <img src="docs/screenshots/tiled.png" alt="Multiple tiled windows" width="100%" />
+      </picture>
+      <br /><sub><b>Real windowing</b> — drag, snap, and tile just like a native desktop.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/terminal.png" alt="The built-in terminal" width="100%" /><br /><sub><b>Terminal</b> — a real shell into the machine you own.</sub></td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/settings-light.png" />
+        <img src="docs/screenshots/settings.png" alt="System settings" width="100%" />
+      </picture>
+      <br /><sub><b>Settings</b> — appearance, accounts, and system controls in one place.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/files-light.png" />
+        <img src="docs/screenshots/files.png" alt="The Files app" width="100%" />
+      </picture>
+      <br /><sub><b>Files</b> — your storage, with real permissions and sealed sharing.</sub>
+    </td>
+    <td width="50%"><img src="docs/screenshots/instances.png" alt="The instances manager" width="100%" /><br /><sub><b>Instances</b> — see and manage every box you own from one view.</sub></td>
+  </tr>
+</table>
+
+<sub>More screens and a full walkthrough live in the <a href="docs/USER-GUIDE.md">User Guide</a>.</sub>
+
+---
+
 ## One person, many instances
 
 Vulos isn't locked to a single machine. Run it on your always-on home box **and** your laptop, and they sync — your apps, settings, and workspace follow you. One instance serves your traffic; the others stay in step. Reach any of them from your phone, whether you're on the couch or across the world.
 
-```mermaid
-flowchart LR
-    You(("You"))
-    Phone["📱 Phone<br/>Android app / browser<br/>(thin client + launcher)"]
-    You --> Phone
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/peer-sync-light.svg" />
+  <img src="docs/assets/peer-sync-dark.svg" alt="Your phone reaches your own Vulos instances from anywhere; a home box and a laptop you own stay in sync as peers over their own Ed25519 identities." width="880" />
+</picture>
+</div>
 
-    subgraph Yours["Your Vulos — instances you own"]
-        direction TB
-        Home["🏠 Home box<br/><i>always-on · serves your traffic</i>"]
-        Laptop["💻 Laptop<br/><i>travels with you</i>"]
-        Home <-->|"peer sync<br/>(CRDT · Ed25519 identity)"| Laptop
-    end
-
-    Phone -->|"reach it from anywhere<br/>even behind NAT"| Home
-```
-
-<sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same‑LAN nodes today, with broader structured‑data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
+<sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same-LAN nodes today, with broader structured-data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
 
 ---
 
@@ -106,7 +139,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 - **Your files, your rules** — a Files service with proper viewer/editor/owner permissions, sealed sharing, share-by-email, and resumable chunked uploads that pick up where they left off.
 - **Bundled apps** — the essentials, built in: Files, Notes, a Text Editor, Calculator, Clock, Calendar, Contacts, Terminal, Camera, Gallery, an Image Editor, Music, Voice Recorder, Weather, a Browser, plus an app hub, activity monitor, and settings. Install more from the hub whenever you want.
 - **Passwordless sign-in, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, plus QR/phone-approval login, device PIN, and TOTP fallback. No Google login, no OAuth middleman.
-- **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central relay.
+- **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central middleman.
 - **On-demand app streaming** — native Linux apps stream into desktop windows over WebRTC with GPU acceleration; a dedicated low-latency mode auto-engages for games. Close the window and the stream stops.
 - **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet.
 - **One binary, immutable image** — a single Go server serves the whole shell. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
@@ -115,9 +148,18 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 ## On your phone
 
-Vulos has a **native Android app** that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your **home-screen launcher**, making Vulos the front door of your phone. An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets and box-attached SMS and calling.
-
-See **[mobile/README.md](mobile/README.md)** for the model and build path.
+<table>
+  <tr>
+    <td width="62%">
+Vulos has a <b>native Android app</b> that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your <b>home-screen launcher</b>, making Vulos the front door of your phone.
+<br /><br />
+An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets and box-attached SMS and calling.
+<br /><br />
+See <b><a href="mobile/README.md">mobile/README.md</a></b> for the model and build path.
+    </td>
+    <td width="38%" align="center"><img src="docs/screenshots/mobile.png" alt="Vulos on a phone" width="220" /></td>
+  </tr>
+</table>
 
 ---
 
@@ -128,6 +170,31 @@ Vulos runs AI **through your own box**. Two honest modes: **bring your own key**
 This is agency, not a magic promise: "sovereign AI" means *your gateway, your keys, your box deciding where data goes* — not that every box ships a free frontier model. The assistant is bound by a hard security contract: every side-effecting action is a confirmation-gated proposal, off-box egress passes a tier-aware Guard, and untrusted content (email bodies, file text) is framed as data so prompt-injection can't turn a helper into an attacker.
 
 Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)**.
+
+---
+
+## One binary, three ways to run
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/run-light.svg" />
+  <img src="docs/assets/run-dark.svg" alt="The same single Vulos image runs on a mini-PC, a spare laptop, or a cloud server." width="820" />
+</picture>
+</div>
+
+Vulos is built to be owned end to end. Deploy it to your own server:
+
+```bash
+./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
+```
+
+Or flash a signed image to bare metal:
+
+```bash
+gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+```
+
+The image is forkable — supply your own trust-anchor key for a fully independent build. See **[docs/DEPLOY.md](docs/DEPLOY.md)** and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
 
 ---
 
@@ -150,24 +217,6 @@ Read the full component map and design decisions in **[docs/ARCHITECTURE.md](doc
 | [Configuration](docs/CONFIGURATION.md) | Environment variables, config files, flags |
 | [Deploy](docs/DEPLOY.md) · [Self-Host Bundle](docs/SELF-HOST-BUNDLE.md) | Ship it to your own server or bare metal |
 | [Security](docs/SECURITY.md) · [Threat Model](docs/THREAT-MODEL.md) | The security posture, top to bottom |
-
----
-
-## Self-hosting
-
-Vulos is built to be owned end to end. Deploy it to your own server:
-
-```bash
-./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
-```
-
-Or flash a signed image to bare metal:
-
-```bash
-gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
-```
-
-The image is forkable — supply your own trust-anchor key for a fully independent build. See **[docs/DEPLOY.md](docs/DEPLOY.md)** and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
 
 ---
 

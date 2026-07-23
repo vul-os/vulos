@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 210" width="900" height="210" role="img" aria-labelledby="rl-title rl-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title id="rl-title">One binary, three ways to run Vulos</title>
+  <desc id="rl-desc">The same single Vulos image runs on a mini-PC, a spare laptop, or a cloud server.</desc>
+
+  <!-- branch connectors -->
+  <path d="M450 60 C450 78 170 78 170 94" fill="none" stroke="#8b93a7" stroke-width="1.5"/>
+  <path d="M450 60 L450 94" fill="none" stroke="#8b93a7" stroke-width="1.5"/>
+  <path d="M450 60 C450 78 730 78 730 94" fill="none" stroke="#8b93a7" stroke-width="1.5"/>
+
+  <!-- top chip -->
+  <rect x="352" y="22" width="196" height="38" rx="12" fill="#eef0ff" stroke="#5b6cff" stroke-width="1.4"/>
+  <circle cx="378" cy="41" r="4" fill="#5b6cff"/>
+  <text x="392" y="46" font-size="13" font-weight="600" fill="#4453d6">one Go binary &#183; one image</text>
+
+  <!-- card 1: Mini-PC -->
+  <rect x="60" y="94" width="220" height="94" rx="14" fill="#ffffff" stroke="#dbe0ec" stroke-width="1.4"/>
+  <rect x="82" y="124" width="40" height="40" rx="8" fill="#f4f6fb" stroke="#5b6cff" stroke-width="1.5"/>
+  <rect x="90" y="134" width="24" height="4" rx="2" fill="#cdd4e4"/>
+  <rect x="90" y="144" width="24" height="4" rx="2" fill="#cdd4e4"/>
+  <circle cx="114" cy="156" r="3" fill="#22b07d"/>
+  <text x="140" y="140" font-size="14" font-weight="600" fill="#1c2230">Mini-PC</text>
+  <text x="140" y="160" font-size="11.5" fill="#5b6478">flash the signed image</text>
+
+  <!-- card 2: Spare laptop -->
+  <rect x="340" y="94" width="220" height="94" rx="14" fill="#ffffff" stroke="#dbe0ec" stroke-width="1.4"/>
+  <rect x="362" y="122" width="42" height="28" rx="4" fill="#f4f6fb" stroke="#5b6cff" stroke-width="1.5"/>
+  <path d="M356 152 H410 L416 162 H350 Z" fill="#f4f6fb" stroke="#5b6cff" stroke-width="1.5" stroke-linejoin="round"/>
+  <text x="420" y="140" font-size="14" font-weight="600" fill="#1c2230">Spare laptop</text>
+  <text x="420" y="160" font-size="11.5" fill="#5b6478">boot it, keep it on</text>
+
+  <!-- card 3: Cloud server -->
+  <rect x="620" y="94" width="220" height="94" rx="14" fill="#ffffff" stroke="#dbe0ec" stroke-width="1.4"/>
+  <rect x="642" y="122" width="40" height="14" rx="4" fill="#f4f6fb" stroke="#5b6cff" stroke-width="1.4"/>
+  <rect x="642" y="140" width="40" height="14" rx="4" fill="#f4f6fb" stroke="#5b6cff" stroke-width="1.4"/>
+  <circle cx="650" cy="129" r="2.4" fill="#22b07d"/>
+  <circle cx="650" cy="147" r="2.4" fill="#5b6cff"/>
+  <text x="700" y="140" font-size="14" font-weight="600" fill="#1c2230">Cloud server</text>
+  <text x="700" y="160" font-size="11.5" fill="#5b6478">deploy in one command</text>
+</svg>
