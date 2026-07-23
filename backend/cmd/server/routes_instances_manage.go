@@ -28,12 +28,15 @@ import (
 
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/services/auth"
+	"vulos/backend/services/webhooks"
 )
 
 // registerInstanceManageRoutes wires the rename/remove routes onto mux against
 // the shared registry. authStore may be nil in degraded boot (no auth store);
 // the routes then fail closed (403) rather than mutate the fleet unauthorized.
-func registerInstanceManageRoutes(mux *http.ServeMux, reg *multiinstance.Registry, authStore *auth.Store) {
+// dispatcher, when non-nil, emits "device.removed" on a successful DELETE
+// (nil-safe via emitWebhookEvent).
+func registerInstanceManageRoutes(mux *http.ServeMux, reg *multiinstance.Registry, authStore *auth.Store, dispatcher *webhooks.Dispatcher) {
 	mux.HandleFunc("PATCH /api/instances/{ulid}/rename", func(w http.ResponseWriter, r *http.Request) {
 		if !instRequireAdmin(w, r, authStore) {
 			return
@@ -98,6 +101,10 @@ func registerInstanceManageRoutes(mux *http.ServeMux, reg *multiinstance.Registr
 		}
 
 		ulid := r.PathValue("ulid")
+		// Best-effort: fetch the instance BEFORE deleting so the emitted event
+		// can carry its display name/kind. A miss here (already gone) just
+		// means Delete below will report ErrNotFound as usual.
+		inst, _ := reg.Get(ulid)
 		err := reg.Delete(ulid)
 		switch {
 		case errors.Is(err, multiinstance.ErrNotFound):
@@ -111,6 +118,11 @@ func registerInstanceManageRoutes(mux *http.ServeMux, reg *multiinstance.Registr
 			writeErr(w, http.StatusInternalServerError, "could not remove instance")
 			return
 		}
+		emitWebhookEvent(dispatcher, "device.removed", map[string]any{
+			"ulid":         ulid,
+			"display_name": inst.DisplayName,
+			"kind":         string(inst.Kind),
+		})
 		writeJSON(w, map[string]string{"status": "removed", "ulid": ulid})
 	})
 }

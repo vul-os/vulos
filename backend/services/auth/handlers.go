@@ -21,6 +21,12 @@ type Handler struct {
 	OnUserCreated func(username, password, role string) // called after a new user is registered
 	OnUserLogin   func(username, password, role string) // called on every successful login to sync credentials
 	OnRoleChanged func(username, role string)           // called when a user's role changes
+	// OnSignIn is called after every successful sign-in (local password,
+	// cloud token, cloud unified) with the real client IP/user-agent. Lets
+	// callers (e.g. cmd/server's webhooks wiring, "auth.new_signin") observe
+	// sign-ins without this package importing services/webhooks — same
+	// decoupling pattern as OnRoleChanged/OnUserLogin. nil-safe: unset = no-op.
+	OnSignIn func(userID, clientIP, userAgent string)
 	// CLOGIN-06: device-local PIN service (nil if not configured).
 	DevicePIN *DevicePINService
 	// CLOGIN-07: fingerprint unlock service (nil if not configured).
@@ -59,6 +65,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
 	mux.HandleFunc("POST /api/auth/logout", h.handleLogout)
+
+	// SESSION-TAKEOVER: list the caller's concurrent sessions + "take over this
+	// device" (sign out the others). Session-required (not in publicPaths).
+	mux.HandleFunc("GET /api/auth/sessions", h.handleListSessions)
+	mux.HandleFunc("POST /api/auth/sessions/revoke-others", h.handleRevokeOtherSessions)
 
 	// Profile management
 	mux.HandleFunc("GET /api/profiles", h.handleListProfiles)
@@ -495,6 +506,10 @@ func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, sessionCookie(r, sess.Token))
 
+	if h.OnSignIn != nil {
+		h.OnSignIn(user.ID, ip, r.UserAgent())
+	}
+
 	writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
 }
 
@@ -564,6 +579,10 @@ func (h *Handler) handleCloudLogin(w http.ResponseWriter, r *http.Request) {
 	// Set session cookie so the browser is authenticated from here on.
 	http.SetCookie(w, sessionCookie(r, info.SessionToken))
 
+	if h.OnSignIn != nil {
+		h.OnSignIn(info.UserID, ip, r.UserAgent())
+	}
+
 	writeJSON(w, info)
 }
 
@@ -592,12 +611,20 @@ func (h *Handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	// ACCOUNTSECURITY-IP: record the sensitive-action here (not inside
+	// Store.ChangePassword) because this handler has the real request and can
+	// supply a real client IP/user-agent instead of "" — see ChangePassword's
+	// comment for why the Store-internal hook call was removed.
+	h.store.fireSensitiveActionHook(userID, "password_change", extractIP(r), r.UserAgent())
 	// WAVE2-RECOVERY: keep the master-key password wrap in sync with the login
 	// credential. The bcrypt password already changed above; if the master-key
 	// rewrap fails we log CRITICAL but do not fail the request — the phrase wrap is
 	// unaffected, so recovery via phrase still restores access.
 	if err := h.store.RewrapMasterKeyOnPasswordChange(userID, req.OldPassword, req.NewPassword); err != nil {
 		log.Printf("[auth] CRITICAL: master-key rewrap on password change failed for %s: %v", userID, err)
+	} else {
+		// ACCOUNTSECURITY-IP: see RewrapMasterKeyOnPasswordChange's comment.
+		h.store.fireSensitiveActionHook(userID, "masterkey_reset", extractIP(r), r.UserAgent())
 	}
 	h.store.Flush()
 	writeJSON(w, map[string]string{"status": "password changed"})
@@ -662,6 +689,13 @@ func (h *Handler) handleMasterKeyRecover(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.limiter.RecordSuccess(ip)
+	// ACCOUNTSECURITY-IP: record here (not inside ResetPasswordWithPhrase) so
+	// the real client IP/user-agent is captured — see that method's comment.
+	// The user ID isn't known until after a successful recovery (only the
+	// username is in the request), so it's looked up post-success.
+	if u := h.store.GetUserByUsername(req.Username); u != nil {
+		h.store.fireSensitiveActionHook(u.ID, "recovery_used", ip, r.UserAgent())
+	}
 	h.store.Flush()
 	writeJSON(w, map[string]string{"status": "account recovered; sign in with your new password"})
 }
@@ -1089,6 +1123,9 @@ func (h *Handler) handleSetRole(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, err.Error())
 		return
 	}
+	// ACCOUNTSECURITY-IP: record here (not inside Store.SetRole) so the real
+	// client IP/user-agent is captured — see SetRole's comment.
+	h.store.fireSensitiveActionHook(userID, "role_change", extractIP(r), r.UserAgent())
 	h.store.Flush()
 
 	// Sync Linux group membership

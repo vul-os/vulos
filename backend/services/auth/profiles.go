@@ -106,7 +106,10 @@ func (s *Store) SetRole(userID string, role Role) error {
 	p.Role = role
 	p.UpdatedAt = time.Now()
 	s.persistProfile(p)
-	s.fireSensitiveActionHook(userID, "role_change", "", "")
+	// ACCOUNTSECURITY-IP: "role_change" is fired by the HTTP handler
+	// (Handler.handleSetRole) with the real client IP/user-agent — see that
+	// handler's comment. SetRole has exactly one caller (that handler); firing
+	// here too would double-record the same logical event.
 	return nil
 }
 

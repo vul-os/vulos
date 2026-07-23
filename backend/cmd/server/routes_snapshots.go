@@ -27,6 +27,7 @@ import (
 
 	"vulos/backend/services/auth"
 	"vulos/backend/services/snapshot"
+	"vulos/backend/services/webhooks"
 )
 
 // snapshotDeps holds the dependencies the snapshot handlers need.
@@ -37,6 +38,9 @@ type snapshotDeps struct {
 	newSnapshotter func() (*snapshot.Snapshotter, error)
 	// policy is the retention policy applied by the prune endpoint + scheduler.
 	policy snapshot.Policy
+	// webhooksDispatcher, when non-nil, is used to emit "snapshot.created" for
+	// a manual snapshot. nil-safe via emitWebhookEvent (no dispatcher = no-op).
+	webhooksDispatcher *webhooks.Dispatcher
 }
 
 // registerSnapshotRoutes wires the admin snapshot endpoints into mux.
@@ -59,6 +63,11 @@ func registerSnapshotRoutes(mux *http.ServeMux, deps snapshotDeps) {
 		}
 		log.Printf("[snapshot] manual snapshot %s (actor=%s objects=%d added=%dB)",
 			idx.ID, r.Header.Get("X-User-ID"), idx.ObjectCount, idx.BlobBytesAdded)
+		emitWebhookEvent(deps.webhooksDispatcher, "snapshot.created", map[string]any{
+			"id":           idx.ID,
+			"kind":         idx.Kind,
+			"object_count": idx.ObjectCount,
+		})
 		writeJSON(w, idx)
 	})
 

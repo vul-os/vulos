@@ -687,7 +687,11 @@ func (s *Store) ChangePassword(userID, oldPassword, newPassword string) error {
 		s.deleteSession(token)
 	}
 
-	s.fireSensitiveActionHook(userID, "password_change", "", "")
+	// ACCOUNTSECURITY-IP: the sensitive-action hook for "password_change" is
+	// fired by the HTTP handler (Handler.handleChangePassword), which has the
+	// real *http.Request and can pass a real client IP/user-agent instead of
+	// "". ChangePassword has exactly one caller (that handler), so firing it
+	// here too would double-record the same logical event.
 
 	return nil
 }

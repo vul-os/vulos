@@ -11,6 +11,14 @@ type Scheduler struct {
 	snap     *Snapshotter
 	interval time.Duration
 	policy   Policy
+
+	// OnCreated, when set, is invoked (best-effort — its result is not
+	// checked, and a panic-free caller is the caller's responsibility) after
+	// each scheduled snapshot succeeds. Lets callers (e.g. cmd/server's
+	// webhooks wiring) observe snapshot creation without this package
+	// importing services/webhooks — same decoupling pattern as
+	// auth.Store.sensitiveActionHook.
+	OnCreated func(idx *Index)
 }
 
 // NewScheduler builds a scheduler that snapshots every interval and applies the
@@ -34,6 +42,9 @@ func (sc *Scheduler) RunOnce(ctx context.Context) error {
 		return err
 	}
 	log.Printf("[snapshot] scheduled snapshot %s created (objects=%d added=%dB)", idx.ID, idx.ObjectCount, idx.BlobBytesAdded)
+	if sc.OnCreated != nil {
+		sc.OnCreated(idx)
+	}
 	pr, err := sc.snap.Prune(ctx, sc.policy)
 	if err != nil {
 		return err

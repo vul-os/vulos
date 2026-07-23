@@ -91,6 +91,22 @@ type Provisioner struct {
 	// against the cp control plane. Nil or disabled (CP_URL unset) = standalone
 	// OS: provisioning is ungated/unmetered exactly as before.
 	billing *cpbilling.Client
+
+	// onEnrolled, when set, is invoked (best-effort — Provision does not fail
+	// or slow down if it panics or blocks; keep it fast and non-blocking) right
+	// after Provision successfully upserts a newly provisioned instance into
+	// the Registry. Lets callers (e.g. cmd/server's webhooks wiring) observe
+	// enrollment without this package importing services/webhooks — same
+	// decoupling pattern as auth.Store.sensitiveActionHook.
+	onEnrolled func(Instance)
+}
+
+// WithOnEnrolled wires a callback invoked after Provision successfully
+// upserts a newly provisioned instance into the Registry. Returns p for
+// chaining, mirroring WithBilling.
+func (p *Provisioner) WithOnEnrolled(fn func(Instance)) *Provisioner {
+	p.onEnrolled = fn
+	return p
 }
 
 // NewProvisioner creates a Provisioner backed by reg.
@@ -204,6 +220,8 @@ func (p *Provisioner) Provision(ctx context.Context, account, region, plan strin
 		}
 		if uErr := p.reg.Upsert(inst); uErr != nil {
 			log.Printf("[provisioner] upsert new instance %s: %v", cloudResp.InstanceULID, uErr)
+		} else if p.onEnrolled != nil {
+			p.onEnrolled(inst)
 		}
 	}
 

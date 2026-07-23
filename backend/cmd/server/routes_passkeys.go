@@ -16,10 +16,12 @@ package main
 // passed in explicitly (no globals captured from main.go).
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 
+	"vulos/backend/services/accountsecurity"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/passkeys"
 )
@@ -27,9 +29,11 @@ import (
 // registerPasskeysRoutes wires the passkeys REST API into mux.
 // authStore is accepted for parity with other session-authed route files;
 // the authenticated user is taken from the X-User-ID header set by the
-// existing auth middleware.
-func registerPasskeysRoutes(mux *http.ServeMux, svc *passkeys.Service, authStore *auth.Store) {
-	h := &au12PasskeysHandler{svc: svc, authStore: authStore}
+// existing auth middleware. acctSec feeds the account-takeover monitoring
+// feed (services/accountsecurity) on passkey add/remove; it may be nil
+// (degraded boot), in which case those calls are a documented no-op.
+func registerPasskeysRoutes(mux *http.ServeMux, svc *passkeys.Service, authStore *auth.Store, acctSec *accountsecurity.Service) {
+	h := &au12PasskeysHandler{svc: svc, authStore: authStore, acctSec: acctSec}
 
 	mux.HandleFunc("POST /api/passkeys/register/begin", h.beginRegister)
 	mux.HandleFunc("POST /api/passkeys/register/finish", h.finishRegister)
@@ -43,6 +47,21 @@ func registerPasskeysRoutes(mux *http.ServeMux, svc *passkeys.Service, authStore
 type au12PasskeysHandler struct {
 	svc       *passkeys.Service
 	authStore *auth.Store
+	acctSec   *accountsecurity.Service
+}
+
+// recordSensitive best-effort logs a passkey add/remove to the account-
+// security anomaly feed with the REAL client IP/user-agent (this handler has
+// the request, unlike auth.Store's internal sensitive-action hook). Called
+// AFTER the passkey mutation has already succeeded — mirrors the
+// RecordAndCheck contract (observes, never gates) — and its error is
+// intentionally not surfaced to the HTTP caller: monitoring must never break
+// the passkey flow it's observing.
+func (h *au12PasskeysHandler) recordSensitive(r *http.Request, userID string) {
+	if h.acctSec == nil {
+		return
+	}
+	h.acctSec.RecordAndCheck(context.Background(), userID, accountsecurity.ActionPasskeyChange, stepupClientIP(r), r.UserAgent()) //nolint:errcheck
 }
 
 // POST /api/passkeys/register/begin
@@ -110,6 +129,7 @@ func (h *au12PasskeysHandler) finishRegister(w http.ResponseWriter, r *http.Requ
 		writeErr(w, 400, err.Error())
 		return
 	}
+	h.recordSensitive(r, userID) // a passkey was just added
 	writeJSON(w, map[string]string{"credential_id": credID})
 }
 
@@ -208,6 +228,7 @@ func (h *au12PasskeysHandler) delete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, err.Error())
 		return
 	}
+	h.recordSensitive(r, userID) // a passkey was just removed
 	writeJSON(w, map[string]string{"status": "deleted"})
 }
 

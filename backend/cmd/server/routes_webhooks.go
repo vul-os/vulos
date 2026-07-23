@@ -30,6 +30,7 @@ package main
 // this file never bypasses it.
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -90,19 +91,24 @@ func whDeliveryViewOf(d webhooks.Delivery) whDeliveryView {
 	return v
 }
 
-// registerWebhooksRoutes wires the box-owner webhooks surface onto mux.
+// registerWebhooksRoutes wires the box-owner webhooks surface onto mux and
+// returns the *webhooks.Dispatcher it built, so real event sites elsewhere in
+// cmd/server (device enroll/remove, sign-in, snapshots, ...) can call Emit on
+// the SAME dispatcher instead of opening a second store handle. Returns nil
+// if the store failed to open — callers must treat that as "webhooks
+// disabled" and skip emitting (see emitWebhookEvent, which is nil-safe).
 //
 // Opens (or creates) the webhooks SQLite store under <home>/db. On open
 // failure it logs and registers nothing — the feature is simply unavailable
 // rather than crashing the box on a corrupt/unwritable store, matching the
 // fail-closed pattern used by the other package-owned stores wired here
 // (see registerSelfHostIntegrations).
-func registerWebhooksRoutes(mux *http.ServeMux, authStore *auth.Store, home string) {
+func registerWebhooksRoutes(mux *http.ServeMux, authStore *auth.Store, home string) *webhooks.Dispatcher {
 	dbDir := filepath.Join(home, "db")
 	store, err := webhooks.OpenStore(dbDir)
 	if err != nil {
 		log.Printf("[webhooks] DISABLED: could not open store: %v", err)
-		return
+		return nil
 	}
 	dispatcher := webhooks.NewDispatcher(store)
 
@@ -307,6 +313,26 @@ func registerWebhooksRoutes(mux *http.ServeMux, authStore *auth.Store, home stri
 	})
 
 	log.Printf("[webhooks] registered /api/webhooks (owner-only; SSRF guard enforced on create/edit + every delivery dial)")
+	return dispatcher
+}
+
+// emitWebhookEvent is a nil-safe, best-effort wrapper around
+// webhooks.Dispatcher.Emit. Every real event site in cmd/server calls this
+// instead of Emit directly so a nil dispatcher (the store failed to open, see
+// registerWebhooksRoutes) or a marshal/enqueue error never breaks the
+// operation being observed — webhooks are an observer, not a gate.
+func emitWebhookEvent(d *webhooks.Dispatcher, topic string, payload map[string]any) {
+	if d == nil {
+		return
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("[webhooks] marshal %s payload: %v", topic, err)
+		return
+	}
+	if err := d.Emit(context.Background(), topic, b); err != nil {
+		log.Printf("[webhooks] emit %s: %v", topic, err)
+	}
 }
 
 // whRequireAdmin authorises an owner-only webhooks request. A nil auth store

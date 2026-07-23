@@ -139,7 +139,11 @@ func (s *Store) ResetPasswordWithPhrase(userID, mnemonic, newPassword string) er
 	if err := s.SaveMasterKeyBlob(userID, newBlob); err != nil {
 		return err
 	}
-	s.fireSensitiveActionHook(userID, "recovery_used", "", "")
+	// ACCOUNTSECURITY-IP: "recovery_used" is fired by the HTTP handler
+	// (Handler.handleMasterKeyRecover) with the real client IP/user-agent —
+	// see that handler's comment. ResetPasswordWithPhrase's only caller is
+	// RecoverAccountWithPhrase, which that handler drives; firing here too
+	// would double-record the same logical event.
 	return nil
 }
 
@@ -167,7 +171,11 @@ func (s *Store) RewrapMasterKeyOnPasswordChange(userID, oldPassword, newPassword
 	if err := s.SaveMasterKeyBlob(userID, newBlob); err != nil {
 		return err
 	}
-	s.fireSensitiveActionHook(userID, "masterkey_reset", "", "")
+	// ACCOUNTSECURITY-IP: "masterkey_reset" is fired by the HTTP handler
+	// (Handler.handleChangePassword) with the real client IP/user-agent — see
+	// that handler's comment. RewrapMasterKeyOnPasswordChange has exactly one
+	// caller (that handler); firing here too would double-record the same
+	// logical event.
 	return nil
 }
 

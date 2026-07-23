@@ -37,6 +37,7 @@ import (
 	svcauth "vulos/backend/services/auth"
 	vulenv "vulos/backend/services/env"
 	"vulos/backend/services/integrations"
+	"vulos/backend/services/webhooks"
 )
 
 // newFeatureDeps carries the server-level objects that the new-feature routes
@@ -53,6 +54,10 @@ type newFeatureDeps struct {
 	// activeEnv gates the self-host integrations KEK fail-closed posture (prod
 	// requires INTEGRATIONS_KEK). Zero value ("") parses as prod-strict.
 	activeEnv vulenv.Env
+	// webhooksDispatcher, when non-nil, is used to emit "device.enrolled" (cloud
+	// instance provisioning, section 8) and "device.removed"
+	// (registerInstanceManageRoutes, section 6). nil-safe via emitWebhookEvent.
+	webhooksDispatcher *webhooks.Dispatcher
 }
 
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
@@ -68,7 +73,12 @@ type newFeatureDeps struct {
 // It also returns the *llmuxclient.Store (note-embedding SQLite handle, may be
 // nil if init failed) so the caller can defer-close it on shutdown — it used to
 // be opened and handed to RegisterHandlers with nothing ever closing it.
-func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) (*multiinstance.AppSync, *llmuxclient.Store) {
+//
+// It also returns the shared *multiinstance.Registry itself (may be nil if
+// unavailable) so callers such as registerPublicAPIRoutes can read from the
+// SAME handle (e.g. for GET /api/v1/devices) instead of opening a second
+// *sql.DB onto the single-writer registry file.
+func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx ...context.Context) (*multiinstance.AppSync, *llmuxclient.Store, *multiinstance.Registry) {
 	var sharedAppSync *multiinstance.AppSync
 	var lmStore *llmuxclient.Store
 	// Resolve the server shutdown context.  A variadic parameter lets existing
@@ -200,7 +210,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			deployStore, dsErr = appnet.NewDeploymentStore()
 			if dsErr != nil {
 				log.Printf("[appnet/subdomain] deployment store fallback error: %v — subdomain routes disabled", dsErr)
-				return sharedAppSync, lmStore
+				return sharedAppSync, lmStore, sharedReg
 			}
 		}
 		provisioner := appnet.NewProvisioner(deployStore, nil)
@@ -299,7 +309,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			// deviceToken is empty at startup; it is updated on successful cloud login.
 			syncer := multiinstance.NewCloudSyncer(reg, "")
 			multiinstance.RegisterSyncHandlers(mux, syncer)
-			registerInstanceManageRoutes(mux, reg, deps.authStore)
+			registerInstanceManageRoutes(mux, reg, deps.authStore, deps.webhooksDispatcher)
 			log.Printf("[multiinstance/sync] registered GET /api/instances, PATCH /api/instances/{ulid}/rename, DELETE /api/instances/{ulid} (cloud_url=%s)", multiinstance.DefaultCloudBaseURL)
 		} else {
 			log.Printf("[multiinstance/sync] registry unavailable — /api/instances disabled")
@@ -378,7 +388,14 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		reg := sharedReg
 		if reg != nil {
 			provisioner := multiinstance.NewProvisioner(reg, "").
-				WithBilling(cpbilling.New(cpbilling.Config{}))
+				WithBilling(cpbilling.New(cpbilling.Config{})).
+				WithOnEnrolled(func(inst multiinstance.Instance) {
+					emitWebhookEvent(deps.webhooksDispatcher, "device.enrolled", map[string]any{
+						"ulid":         inst.ULID,
+						"display_name": inst.DisplayName,
+						"kind":         string(inst.Kind),
+					})
+				})
 			multiinstance.RegisterProvisionHandlers(mux, provisioner)
 			log.Printf("[multiinstance/provision] registered POST /api/instances/provision, GET /api/instances/{ulid}/status")
 		} else {
@@ -426,7 +443,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		}
 	}
 
-	return sharedAppSync, lmStore
+	return sharedAppSync, lmStore, sharedReg
 }
 
 // openSharedRegistry opens the single multiinstance registry handle shared by

@@ -1113,6 +1113,45 @@ func main() {
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)
 
+	// Account security (login/session anomaly feed + emergency lock). Opened
+	// here (rather than down by registerAccountSecurityRoutes below) so
+	// acctSecSvc exists in time to be threaded into registerPasskeysRoutes,
+	// which needs it to record passkey add/remove with a real client IP.
+	acctSecSvc, acctSecErr := accountsecurity.Open(dbDir, notifySvc)
+	if acctSecErr != nil {
+		log.Printf("[accountsecurity] init warning: %v", acctSecErr)
+	}
+	// Feed auth's sensitive-mutation hook into the account-security anomaly
+	// feed (kept as the fallback path for any Store method that doesn't have
+	// an HTTP-handler-layer call — see ACCOUNTSECURITY-IP comments in
+	// services/auth for the handlers that record directly instead). Best-
+	// effort: acctSecSvc may be nil if Open() above failed, in which case
+	// this closure is a documented no-op.
+	authStore.SetSensitiveActionHook(func(uid, action, ip, ua string) {
+		if acctSecSvc != nil {
+			acctSecSvc.RecordAndCheck(context.Background(), uid, accountsecurity.Action(action), ip, ua) //nolint:errcheck
+		}
+	})
+
+	// Webhooks (owner-gated outbound event delivery). Opened here (rather than
+	// down by the rest of the admin-settings routes below) so
+	// webhooksDispatcher exists in time to be threaded into the real event
+	// sites registered below: auth.new_signin (authHandler.OnSignIn, wired
+	// right after this), device.enrolled/removed (instance manage + provision
+	// sections of registerNewFeatureRoutes), and snapshot.created (both the
+	// manual admin endpoint and the scheduler).
+	webhooksDispatcher := registerWebhooksRoutes(mux, authStore, home)
+	// auth.new_signin: authHandler (created earlier, above) calls this on every
+	// successful local/cloud sign-in with the real client IP/user-agent.
+	// Best-effort — emitWebhookEvent is nil-safe if webhooksDispatcher is nil.
+	authHandler.OnSignIn = func(userID, ip, userAgent string) {
+		emitWebhookEvent(webhooksDispatcher, "auth.new_signin", map[string]any{
+			"user_id":    userID,
+			"ip":         ip,
+			"user_agent": userAgent,
+		})
+	}
+
 	// AUTH-12: server-side passkey (FIDO2/WebAuthn) authenticator. Credentials
 	// are sealed at rest per-user via the device KeyStore (TPM or software).
 	// streamVerifier is set here when passkeys are available; used below for
@@ -1209,7 +1248,7 @@ func main() {
 				log.Fatalf("[passkeys] %v", err)
 			}
 		}
-		registerPasskeysRoutes(mux, passkeysSvc, authStore)
+		registerPasskeysRoutes(mux, passkeysSvc, authStore, acctSecSvc)
 		// LOGINISO-01: promote WebAuthn from re-auth gate to full login flow.
 		// LOGINISO-02: QR / phone-approval kiosk login.
 		loginSvc := passkeys.NewLoginService(passkeysSvc, authStore)
@@ -3045,13 +3084,14 @@ func main() {
 	// New-feature routes: airouter, identity, multiinstance, appnet subdomain
 	// provisioning, recovery handlers, cloud-sync, edge-cache.
 	// Must be called AFTER RegisterVisibilityHandlers.
-	fabricAppSync, lmNoteStore := registerNewFeatureRoutes(mux, newFeatureDeps{
+	fabricAppSync, lmNoteStore, sharedInstanceRegistry := registerNewFeatureRoutes(mux, newFeatureDeps{
 		dbDir:              dbDir,
 		netMgr:             netMgr,
 		visStore:           visStore,
 		authStore:          authStore,
 		integrationsClient: integrationsClient,
 		activeEnv:          activeEnv,
+		webhooksDispatcher: webhooksDispatcher,
 	}, ctx)
 	if lmNoteStore != nil {
 		defer lmNoteStore.Close()
@@ -3061,7 +3101,7 @@ func main() {
 	storageprov.RegisterHandlers(mux, home, authStore)
 
 	// Public API (vkl_ bearer-token developer keys)
-	publicAPICloser := registerPublicAPIRoutes(mux, authStore, dbDir)
+	publicAPICloser := registerPublicAPIRoutes(mux, authStore, dbDir, sharedInstanceRegistry)
 	defer publicAPICloser()
 
 	// Web proxy (kept for API-level proxying)
@@ -3541,7 +3581,7 @@ func main() {
 	// live INSIDE the box's own bucket under the OS data prefix, so they work
 	// identically for provisioned and bring-your-own-bucket boxes.
 	snapPolicy := snapshot.DefaultPolicy
-	snapDeps := snapshotDeps{authStore: authStore, policy: snapPolicy}
+	snapDeps := snapshotDeps{authStore: authStore, policy: snapPolicy, webhooksDispatcher: webhooksDispatcher}
 	if osStore.Configured() {
 		snapAccount := os.Getenv("VULOS_ACCOUNT_ID") // box billing account (metering); may be empty on self-host
 		snapRes := osStore
@@ -3566,7 +3606,15 @@ func main() {
 						log.Printf("[snapshot] scheduler init failed: %v", err)
 						return
 					}
-					snapshot.NewScheduler(s, d, snapPolicy).Start(ctx)
+					sched := snapshot.NewScheduler(s, d, snapPolicy)
+					sched.OnCreated = func(idx *snapshot.Index) {
+						emitWebhookEvent(webhooksDispatcher, "snapshot.created", map[string]any{
+							"id":           idx.ID,
+							"kind":         idx.Kind,
+							"object_count": idx.ObjectCount,
+						})
+					}
+					sched.Start(ctx)
 				}()
 				log.Printf("[snapshot] scheduled snapshots enabled (interval=%s)", d)
 			} else {
@@ -4007,8 +4055,10 @@ func main() {
 	} else {
 		registerComplianceRoutes(mux, complianceStore)
 	}
-	// Webhooks (owner-gated outbound event delivery)
-	registerWebhooksRoutes(mux, authStore, home)
+	// Webhooks (owner-gated outbound event delivery). Opened earlier (see the
+	// AUTH-12 passkey section above) so webhooksDispatcher is ready in time to
+	// be threaded into the real event sites (sign-in, snapshots, instance
+	// enroll/remove) registered before this point.
 	// CDN (owner-gated edge cache + firewall)
 	registerCDNRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
@@ -4023,21 +4073,11 @@ func main() {
 	registerJoinRoutes(mux, home)
 	// Persistent notification store + prune endpoint (NOTIF-02)
 	registerNotifyPersistRoutes(mux, notifySvc, home)
-	// Account security (login/session anomaly feed + emergency lock)
-	acctSecSvc, acctSecErr := accountsecurity.Open(dbDir, notifySvc)
-	if acctSecErr != nil {
-		log.Printf("[accountsecurity] init warning: %v", acctSecErr)
-	}
+	// Account security (login/session anomaly feed + emergency lock). acctSecSvc
+	// was opened + wired to auth's sensitive-action hook earlier (see the
+	// AUTH-12 passkey section above) so it's ready in time to also be threaded
+	// into registerPasskeysRoutes.
 	registerAccountSecurityRoutes(mux, acctSecSvc, authStore)
-	// Feed auth's sensitive-mutation hook into the account-security anomaly
-	// feed (password change / recovery / master-key rewrap / role change).
-	// Best-effort: acctSecSvc may be nil if Open() above failed, in which case
-	// this closure is a documented no-op.
-	authStore.SetSensitiveActionHook(func(uid, action, ip, ua string) {
-		if acctSecSvc != nil {
-			acctSecSvc.RecordAndCheck(context.Background(), uid, accountsecurity.Action(action), ip, ua) //nolint:errcheck
-		}
-	})
 	// Support (help requests: records + classifies, no outbound delivery)
 	registerSupportRoutes(mux, dbDir, authStore, notifySvc, billingClient)
 

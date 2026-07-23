@@ -60,7 +60,7 @@ func newInstanceManageMux(t *testing.T) (*http.ServeMux, *multiinstance.Registry
 	}
 
 	mux := http.NewServeMux()
-	registerInstanceManageRoutes(mux, reg, st)
+	registerInstanceManageRoutes(mux, reg, st, nil)
 	return mux, reg, admin.ID, user.ID
 }
 
@@ -260,7 +260,7 @@ func TestInstanceManage_NilAuthStoreFailsClosed(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	registerInstanceManageRoutes(mux, reg, nil)
+	registerInstanceManageRoutes(mux, reg, nil, nil)
 
 	rec := doManage(t, mux, http.MethodDelete, "/api/instances/"+peerULID, "some-user", "")
 	if rec.Code != http.StatusForbidden {

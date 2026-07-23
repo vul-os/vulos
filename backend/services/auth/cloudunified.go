@@ -289,6 +289,9 @@ func (h *Handler) handleCloudUnifiedLogin(w http.ResponseWriter, r *http.Request
 	h.limiter.RecordSuccess(ip)
 	h.store.Flush()
 	http.SetCookie(w, sessionCookie(r, info.SessionToken))
+	if h.OnSignIn != nil {
+		h.OnSignIn(info.UserID, ip, r.UserAgent())
+	}
 	writeJSON(w, info)
 }
 

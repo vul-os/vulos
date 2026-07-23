@@ -41,7 +41,7 @@ func newPasskeysTestMux(t *testing.T) (*http.ServeMux, *passkeys.Service) {
 	}
 
 	mux := http.NewServeMux()
-	registerPasskeysRoutes(mux, svc, store)
+	registerPasskeysRoutes(mux, svc, store, nil)
 	return mux, svc
 }
 

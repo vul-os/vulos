@@ -12,7 +12,8 @@ package main
 //
 //	GET    /api/v1/account/me        bearer vkl_ auth, 60 req/min  box account profile
 //	GET    /api/v1/account/usage     bearer vkl_ auth, 60 req/min  box storage + device usage
-//	GET    /api/v1/devices           bearer vkl_ auth, 60 req/min  paired devices (empty until wired)
+//	GET    /api/v1/devices           bearer vkl_ auth, 60 req/min  paired devices (from the
+//	                                                                shared multiinstance registry)
 //
 //	GET    /api/developer/keys       session auth   list this user's public-API keys (metadata only)
 //	POST   /api/developer/keys       session auth + step-up   issue a new key (raw secret shown once)
@@ -38,6 +39,7 @@ import (
 	"strings"
 
 	"vulos/backend/internal/apikey"
+	"vulos/backend/internal/multiinstance"
 	"vulos/backend/services/auth"
 	"vulos/backend/services/publicapi"
 	"vulos/backend/services/stepup"
@@ -50,14 +52,20 @@ import (
 //
 // authStore may be nil in degraded boot (no auth store); routes then fail
 // closed (503/401) rather than serve without an identity source.
-func registerPublicAPIRoutes(mux *http.ServeMux, authStore *auth.Store, dbDir string) func() {
+//
+// instReg is the box's ONE shared *multiinstance.Registry handle (opened once
+// in registerNewFeatureRoutes and threaded through here — never a second
+// Registry.Open() on the same SQLite file, which the single-writer connection
+// does not tolerate). May be nil (degraded boot), in which case GET
+// /api/v1/devices falls back to an empty list, same as before this was wired.
+func registerPublicAPIRoutes(mux *http.ServeMux, authStore *auth.Store, dbDir string, instReg *multiinstance.Registry) func() {
 	store, err := apikey.OpenLocalStore(filepath.Join(dbDir, "publicapi_keys.db"))
 	if err != nil {
 		log.Printf("[publicapi] WARNING: could not open local key store (%v) — /api/v1/* and /api/developer/keys not registered", err)
 		return func() {}
 	}
 
-	h := publicapi.NewHandler(authStore, store, nil /* devices: see package doc */)
+	h := publicapi.NewHandler(authStore, store, publicapi.NewRegistryDeviceLister(instReg))
 
 	mux.HandleFunc("GET /api/v1/account/me", h.GetAccountMe)
 	mux.HandleFunc("GET /api/v1/account/usage", h.GetAccountUsage)
