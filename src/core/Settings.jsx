@@ -16,12 +16,11 @@ import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
 import OfflineDataPanel from './settings/OfflineDataPanel.jsx'
 import GatewayPanel from './settings/GatewayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
-import PrivacyPanel from './settings/PrivacyPanel.jsx'
 import SecurityPanel from './settings/SecurityPanel.jsx'
 import WebhooksPanel from './settings/WebhooksPanel.jsx'
-import EncryptionPanel from './settings/EncryptionPanel.jsx'
-import SupportPanel from './settings/SupportPanel.jsx'
 import DeveloperPanel from './settings/DeveloperPanel.jsx'
+import DomainPanel from './settings/DomainPanel.jsx'
+import CDNPanel from './settings/CDNPanel.jsx'
 
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
@@ -60,7 +59,6 @@ const sectionGroups = [
       { id: 'recall', label: 'Search & Index', icon: '\u{1F50D}' },
       { id: 'storage', label: 'Storage', icon: '\u{25F4}' },
       { id: 'storagemode', label: 'Storage Mode', icon: '\u{25F1}' },
-      { id: 'encryption', label: 'Encryption', owner: true, icon: '\u{1F510}' },
     ],
   },
   {
@@ -68,7 +66,9 @@ const sectionGroups = [
     items: [
       { id: 'connmode', label: 'Connection Mode', icon: '\u{29C9}' },
       { id: 'network', label: 'Remote Access', icon: '\u{1F310}' },
+      { id: 'domain', label: 'Custom Domain', icon: '\u{1F517}' },
       { id: 'gateway', label: 'Control Plane', owner: true, icon: '\u{25C9}' },
+      { id: 'cdn', label: 'CDN', owner: true, icon: '\u{25C7}' },
       { id: 'turnSettings', label: 'TURN / WebRTC', icon: '\u{21C4}' },
     ],
   },
@@ -88,8 +88,7 @@ const sectionGroups = [
       { id: 'account', label: 'Account', icon: '\u{2699}' },
       { id: 'offlinedata', label: 'Offline Data', icon: '\u{2601}' },
       { id: 'dataexport', label: 'Export My Data', icon: '\u{2913}' },
-      { id: 'privacy', label: 'Privacy', icon: '\u{1F6E1}' },
-      { id: 'security', label: 'Security', icon: '\u{1F6E1}' },
+      { id: 'security', label: 'Sign-in security', icon: '\u{1F6E1}' },
       { id: 'plan', label: 'Plan & Billing', icon: '\u{25C6}' },
     ],
   },
@@ -98,7 +97,6 @@ const sectionGroups = [
     items: [
       { id: 'osupdate', label: 'OS Update', icon: '\u{2B06}' },
       { id: 'boxhealth', label: 'Box Health', owner: true, icon: '\u{2665}' },
-      { id: 'support', label: 'Help & Support', owner: true, icon: '\u{2753}' },
       { id: 'about', label: 'About', icon: '\u{24D8}' },
     ],
   },
@@ -297,10 +295,11 @@ export default function Settings({ initialSection } = {}) {
         {active === 'recall' && <RecallSettings />}
         {active === 'storage' && <StoragePanel />}
         {active === 'storagemode' && <StorageModeSettings />}
-        {active === 'encryption' && <EncryptionPanel />}
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
+        {active === 'domain' && <DomainPanel />}
         {active === 'gateway' && <GatewayPanel />}
+        {active === 'cdn' && <CDNPanel />}
         {active === 'turnSettings' && <TURNSettingsSection />}
         {active === 'webhooks' && <WebhooksPanel />}
         {active === 'developer' && <DeveloperPanel />}
@@ -310,12 +309,10 @@ export default function Settings({ initialSection } = {}) {
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'offlinedata' && <OfflineDataPanel />}
         {active === 'dataexport' && <DataExportPanel />}
-        {active === 'privacy' && <PrivacyPanel />}
         {active === 'security' && <SecurityPanel />}
         {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'boxhealth' && <BoxHealthPanel />}
-        {active === 'support' && <SupportPanel />}
         {active === 'about' && <AboutSettings />}
        </div>
       </div>

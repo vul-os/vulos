@@ -136,7 +136,11 @@ func (s *Store) ResetPasswordWithPhrase(userID, mnemonic, newPassword string) er
 	if err != nil {
 		return fmt.Errorf("auth: ResetPasswordWithPhrase: %w", err)
 	}
-	return s.SaveMasterKeyBlob(userID, newBlob)
+	if err := s.SaveMasterKeyBlob(userID, newBlob); err != nil {
+		return err
+	}
+	s.fireSensitiveActionHook(userID, "recovery_used", "", "")
+	return nil
 }
 
 // RewrapMasterKeyOnPasswordChange keeps the master-key password wrap in sync when
@@ -160,7 +164,11 @@ func (s *Store) RewrapMasterKeyOnPasswordChange(userID, oldPassword, newPassword
 	if err != nil {
 		return fmt.Errorf("auth: RewrapMasterKeyOnPasswordChange: %w", err)
 	}
-	return s.SaveMasterKeyBlob(userID, newBlob)
+	if err := s.SaveMasterKeyBlob(userID, newBlob); err != nil {
+		return err
+	}
+	s.fireSensitiveActionHook(userID, "masterkey_reset", "", "")
+	return nil
 }
 
 // PasswordEnvelope returns the password-only wrap slot (JSON) for userID so the
@@ -197,7 +205,9 @@ func (s *Store) RecoverAccountWithPhrase(username, mnemonic, newPassword string)
 
 	// 1. Verify the phrase + re-wrap the master key under the new password. This
 	//    fails closed on a wrong phrase, so the login reset below never runs
-	//    unless the caller genuinely holds the recovery phrase.
+	//    unless the caller genuinely holds the recovery phrase. ResetPasswordWithPhrase
+	//    fires the "recovery_used" sensitive-action hook on success, which covers
+	//    this call path too — no separate hook call needed here.
 	if err := s.ResetPasswordWithPhrase(u.ID, mnemonic, newPassword); err != nil {
 		return err
 	}

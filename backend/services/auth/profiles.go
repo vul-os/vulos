@@ -106,6 +106,7 @@ func (s *Store) SetRole(userID string, role Role) error {
 	p.Role = role
 	p.UpdatedAt = time.Now()
 	s.persistProfile(p)
+	s.fireSensitiveActionHook(userID, "role_change", "", "")
 	return nil
 }
 

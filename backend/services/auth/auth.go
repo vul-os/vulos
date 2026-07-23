@@ -75,6 +75,41 @@ type Store struct {
 	path     string
 	secret   []byte
 	db       *sql.DB // CLUSTER-02: durable write-through (nil => degraded in-memory mode)
+
+	// hookMu + sensitiveActionHook are deliberately guarded by their OWN
+	// per-instance mutex, independent of mu above: several sensitive-mutation
+	// call sites (e.g. ChangePassword, SetRole) hold mu.Lock() across their
+	// entire body via defer, and sync.RWMutex is not reentrant — taking
+	// mu.RLock() from inside fireSensitiveActionHook while the same goroutine
+	// still holds mu.Lock() would deadlock. A dedicated mutex sidesteps that.
+	hookMu sync.RWMutex
+	// sensitiveActionHook, when set, is invoked (best-effort — never blocking
+	// or erroring the caller) after a sensitive account mutation succeeds. It
+	// exists so services/accountsecurity can observe these events without
+	// auth importing that package. clientIP/userAgent are "" when not
+	// available at the call site (auth's internal methods are not
+	// HTTP-request-shaped).
+	sensitiveActionHook func(userID, action, clientIP, userAgent string)
+}
+
+// SetSensitiveActionHook wires a callback invoked after sensitive account
+// mutations (password change, recovery, master-key rewrap, role change).
+// Nil-safe: passing nil disables the hook. Not required for auth to function.
+func (s *Store) SetSensitiveActionHook(hook func(userID, action, clientIP, userAgent string)) {
+	s.hookMu.Lock()
+	defer s.hookMu.Unlock()
+	s.sensitiveActionHook = hook
+}
+
+// fireSensitiveActionHook invokes the hook if set. Safe to call while holding
+// s.mu (Lock or RLock) — it never touches s.mu, only the independent hookMu.
+func (s *Store) fireSensitiveActionHook(userID, action, clientIP, userAgent string) {
+	s.hookMu.RLock()
+	hook := s.sensitiveActionHook
+	s.hookMu.RUnlock()
+	if hook != nil {
+		hook(userID, action, clientIP, userAgent)
+	}
 }
 
 type storeData struct {
@@ -651,6 +686,8 @@ func (s *Store) ChangePassword(userID, oldPassword, newPassword string) error {
 	for _, token := range revoked {
 		s.deleteSession(token)
 	}
+
+	s.fireSensitiveActionHook(userID, "password_change", "", "")
 
 	return nil
 }

@@ -1447,6 +1447,18 @@ func main() {
 	// the box owner (authStore.AdminUserID). Stopped in the shutdown block.
 	telephonySvc := registerTelephonyRoutes(mux, notifySvc, authStore)
 
+	// Location (LOCATION-01): box-side per-user position cache. The browser
+	// reports its geolocation via POST /api/location; box apps read it via GET
+	// /api/location so each doesn't need its own browser permission prompt.
+	// Modem-GPS is a stale/absent fallback and degrades cleanly with no modem.
+	registerLocationRoutes(mux)
+
+	// Android (redroid): opt-in, hardware/kernel-gated Android-in-a-container for
+	// the few apps with no web/Linux client. Owner-gated; reports an honest
+	// "unavailable" status when Docker/binder support is absent. The app-store
+	// registry entry stays inert until the founder signs it.
+	registerAndroidRoutes(mux, authStore)
+
 	// Notifications
 	mux.Handle("/api/notifications/stream", notifySvc.Handler())
 	mux.HandleFunc("GET /api/notifications", func(w http.ResponseWriter, r *http.Request) {
@@ -3997,6 +4009,8 @@ func main() {
 	}
 	// Webhooks (owner-gated outbound event delivery)
 	registerWebhooksRoutes(mux, authStore, home)
+	// CDN (owner-gated edge cache + firewall)
+	registerCDNRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
 	registerIdentityRoutes(mux, home)
 	// IDENTITY-01: account-username claim proxies (check/claim → Vulos Cloud CP)
@@ -4015,6 +4029,15 @@ func main() {
 		log.Printf("[accountsecurity] init warning: %v", acctSecErr)
 	}
 	registerAccountSecurityRoutes(mux, acctSecSvc, authStore)
+	// Feed auth's sensitive-mutation hook into the account-security anomaly
+	// feed (password change / recovery / master-key rewrap / role change).
+	// Best-effort: acctSecSvc may be nil if Open() above failed, in which case
+	// this closure is a documented no-op.
+	authStore.SetSensitiveActionHook(func(uid, action, ip, ua string) {
+		if acctSecSvc != nil {
+			acctSecSvc.RecordAndCheck(context.Background(), uid, accountsecurity.Action(action), ip, ua) //nolint:errcheck
+		}
+	})
 	// Support (help requests: records + classifies, no outbound delivery)
 	registerSupportRoutes(mux, dbDir, authStore, notifySvc, billingClient)
 
