@@ -34,11 +34,25 @@ It runs the same whether you flash it to a mini-PC, boot it on a spare laptop, o
 
 > *"Vula" is isiZulu for "open."*
 
+### Why Vulos — and who it's for
+
+Most of your digital life lives on machines you don't control. Vulos moves the whole thing — desktop, files, calendar, contacts, notifications, and AI — onto one server that answers to **you**, reachable from any browser or your phone.
+
+- **You want your own AI** without shipping your calendar, files, and inbox to a third party — bring your own provider key, or run local models on your own hardware.
+- **You self-host** and are tired of stitching together ten containers — Vulos is one binary that gives you a coherent desktop, not a pile of dashboards.
+- **You want continuity** — an always-on box plus a laptop that stay in sync, reachable from anywhere, with no vendor able to lock you out or read your data by default.
+
+If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If you want a computer that's actually *yours*, keep reading.
+
 ---
 
 ## A look inside
 
 <table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/assistant.png" alt="The private AI assistant answering a question" width="100%" /><br /><sub><b>Private AI</b> — an assistant that runs on <i>your</i> box, knows your day, and acts only with your OK.</sub></td>
+    <td width="50%"><img src="docs/screenshots/calendar.png" alt="The Calendar month view" width="100%" /><br /><sub><b>Calendar</b> — your schedule, on your server, feeding the assistant's context.</sub></td>
+  </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/apphub.png" alt="The app hub" width="100%" /><br /><sub><b>App hub</b> — install what you want, remove what you don't.</sub></td>
     <td width="50%">
@@ -50,16 +64,6 @@ It runs the same whether you flash it to a mini-PC, boot it on a spare laptop, o
     </td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/terminal.png" alt="The built-in terminal" width="100%" /><br /><sub><b>Terminal</b> — a real shell into the machine you own.</sub></td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/settings-light.png" />
-        <img src="docs/screenshots/settings.png" alt="System settings" width="100%" />
-      </picture>
-      <br /><sub><b>Settings</b> — appearance, accounts, and system controls in one place.</sub>
-    </td>
-  </tr>
-  <tr>
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/files-light.png" />
@@ -67,7 +71,17 @@ It runs the same whether you flash it to a mini-PC, boot it on a spare laptop, o
       </picture>
       <br /><sub><b>Files</b> — your storage, with real permissions and sealed sharing.</sub>
     </td>
-    <td width="50%"><img src="docs/screenshots/instances.png" alt="The instances manager" width="100%" /><br /><sub><b>Instances</b> — see and manage every box you own from one view.</sub></td>
+    <td width="50%"><img src="docs/screenshots/terminal.png" alt="The built-in terminal" width="100%" /><br /><sub><b>Terminal</b> — a real shell into the machine you own.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/contacts.png" alt="A selected contact card" width="100%" /><br /><sub><b>Contacts</b> — people and details that stay on your box, not a vendor's.</sub></td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/settings-light.png" />
+        <img src="docs/screenshots/settings.png" alt="System settings" width="100%" />
+      </picture>
+      <br /><sub><b>Settings</b> — appearance, accounts, and system controls in one place.</sub>
+    </td>
   </tr>
 </table>
 
@@ -87,6 +101,20 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 </div>
 
 <sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same-LAN nodes today, with broader structured-data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
+
+---
+
+## Reachability & redundancy
+
+**Run several boxes for redundancy.** They sync as peers (CRDT · Ed25519), so if one goes down your data and apps live on the others. And you reach them **however suits you — never locked to one relay:**
+
+- **Zero-config.** The default relay (**wakala**) reaches your box from anywhere, even behind NAT — the box dials *out*, so there's no port to forward and nothing exposed to the public internet.
+- **Self-hosted relay.** Run your *own* **wakala** — it's open and self-hostable — or bring your own, by pointing the box at it. No dependency on anyone else's infrastructure; the relay endpoint is config-driven, never baked in.
+- **No relay at all.** A box with a static IP or your own domain serves **directly** over TLS — no wakala, no middleman; multiple static-IP boxes DNS-load-balance and fail over across each other.
+
+Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass. It's a real provider seam (default · self-hosted · none-direct), not a lock-in.
+
+<sub>How it all wires up: <a href="docs/NETWORKING.md">docs/NETWORKING.md</a> (reachability, DNS, TLS, ports) and <a href="docs/PEERING.md">docs/PEERING.md</a> (peer identity and sync).</sub>
 
 ---
 
@@ -133,16 +161,30 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 ## Features
 
+**Desktop**
 - **A real desktop, in the browser** — drag, resize, snap, and tile windows; virtual desktops; a dock with running-app indicators; Mission Control; persisted sessions. No Electron, no VNC.
-- **A sovereign AI assistant** — an on-box agent that knows your calendar, contacts, files, and reminders and can act for you. It reads freely but *proposes* anything with side effects, so it can never act against you without your confirmation.
 - **Proactive home + ⌘K** — the desktop opens as a home (agenda, focus, pending items, proposals), and one command palette drives the whole shell.
-- **Your files, your rules** — a Files service with proper viewer/editor/owner permissions, sealed sharing, share-by-email, and resumable chunked uploads that pick up where they left off.
-- **Bundled apps** — the essentials, built in: Files, Notes, a Text Editor, Calculator, Clock, Calendar, Contacts, Terminal, Camera, Gallery, an Image Editor, Music, Voice Recorder, Weather, a Browser, plus an app hub, activity monitor, and settings. Install more from the hub whenever you want.
-- **Passwordless sign-in, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, plus QR/phone-approval login, device PIN, and TOTP fallback. No Google login, no OAuth middleman.
-- **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central middleman.
 - **On-demand app streaming** — native Linux apps stream into desktop windows over WebRTC with GPU acceleration; a dedicated low-latency mode auto-engages for games. Close the window and the stream stops.
-- **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet.
+
+**AI**
+- **A sovereign AI assistant** — an on-box agent that knows your calendar, contacts, files, and reminders and can act for you. It reads freely but *proposes* anything with side effects, so it can never act against you without your confirmation. Bring your own provider key, or run local models — see [docs/ASSISTANT.md](docs/ASSISTANT.md).
+
+**Files**
+- **Your files, your rules** — a Files service with proper viewer/editor/owner permissions, sealed sharing, share-by-email, and resumable chunked uploads that pick up where they left off. More in [docs/FILES.md](docs/FILES.md).
+
+**Comms & notifications**
+- **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central middleman. See [docs/COMMS.md](docs/COMMS.md).
+
+**Identity & security**
+- **Passwordless sign-in, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, plus QR/phone-approval login, device PIN, and TOTP fallback. No Google login, no OAuth middleman.
+
+**Reachability**
+- **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet; go direct with a static IP or domain, or self-host your own relay. See [docs/NETWORKING.md](docs/NETWORKING.md).
+
+**Distribution**
 - **One binary, immutable image** — a single Go server serves the whole shell. Ship it as a signed, immutable image with A/B slots and rollback, or just run the binary.
+
+**Bundled apps** — the essentials, built in: Files, Notes, a Text Editor, Calculator, Clock, Calendar, Contacts, Terminal, Camera, Gallery, an Image Editor, Music, Voice Recorder, Weather, a Browser, plus an app hub, activity monitor, and settings. Install more from the hub whenever you want — see [docs/APPS.md](docs/APPS.md).
 
 ---
 
@@ -157,7 +199,11 @@ An installable PWA is the everyday path (offline support and Web Push already wo
 <br /><br />
 See <b><a href="mobile/README.md">mobile/README.md</a></b> for the model and build path.
     </td>
-    <td width="38%" align="center"><img src="docs/screenshots/mobile.png" alt="Vulos on a phone" width="220" /></td>
+    <td width="38%" align="center">
+      <img src="docs/screenshots/mobile.png" alt="The Vulos File Explorer on a phone" width="200" />
+      &nbsp;
+      <img src="docs/screenshots/mobile-apps.png" alt="The Vulos app grid on a phone" width="200" />
+    </td>
   </tr>
 </table>
 
@@ -206,6 +252,25 @@ Read the full component map and design decisions in **[docs/ARCHITECTURE.md](doc
 
 ---
 
+## FAQ
+
+**Is my data really mine?**
+Yes — it lives on hardware you control, in local-first SQLite plus your own storage, and you hold the keys. Backups are opt-in and encrypted. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/FILES.md](docs/FILES.md).
+
+**Do I need the cloud?**
+No. A box runs standalone; the default relay is only a convenience for reaching it behind NAT, and you can self-host that relay or drop it entirely with a static IP or your own domain. See [docs/NETWORKING.md](docs/NETWORKING.md).
+
+**What hardware do I need?**
+A mini-PC, a spare laptop, or a cloud server all work — the same image runs on each. GPU is optional and only matters for accelerated app streaming. Requirements are in [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
+
+**Is the AI free?**
+"Sovereign AI" means your gateway and your keys, not a bundled frontier model. Bring your own provider key (you pay that provider directly) or run local models where your hardware allows, so nothing leaves the box. See [docs/ASSISTANT.md](docs/ASSISTANT.md).
+
+**How do multiple boxes stay in sync?**
+They peer over their own Ed25519 identities and reconcile as CRDTs — no central server in the middle. Today the app registry syncs; broader structured-data sync is on the [roadmap](roadmap/SYNC.md). See [docs/PEERING.md](docs/PEERING.md).
+
+---
+
 ## Documentation
 
 | Guide | What's inside |
@@ -213,6 +278,8 @@ Read the full component map and design decisions in **[docs/ARCHITECTURE.md](doc
 | [Getting Started](docs/GETTING-STARTED.md) | Install, first boot, requirements, upgrading |
 | [User Guide](docs/USER-GUIDE.md) | Living in the desktop day to day |
 | [Architecture](docs/ARCHITECTURE.md) | Component map and design decisions |
+| [Apps](docs/APPS.md) · [Assistant](docs/ASSISTANT.md) · [Files](docs/FILES.md) | Bundled apps, the AI assistant, and storage |
+| [Networking](docs/NETWORKING.md) · [Peering](docs/PEERING.md) · [Comms](docs/COMMS.md) | Reachability, peer sync, and notifications |
 | [Development](docs/DEVELOPMENT.md) | Building, testing, and the dev workflow |
 | [Configuration](docs/CONFIGURATION.md) | Environment variables, config files, flags |
 | [Deploy](docs/DEPLOY.md) · [Self-Host Bundle](docs/SELF-HOST-BUNDLE.md) | Ship it to your own server or bare metal |
