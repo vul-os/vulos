@@ -6,15 +6,23 @@ How the outside world reaches your Vulos box: direct connections, the relay fall
 
 ## The reachability model in one paragraph
 
-A Vulos box always works from behind NAT. By default, all inbound traffic arrives through the Vulos relay fabric — the box makes an *outbound* connection, so you never have to open a port. If your box has a public IP or hostname, you can opt in to a **direct** public TLS listener; clients then try the direct path first and fall back to the relay when it is unreachable. Direct is a faster transport, not a different security posture: the direct listener serves the exact same authenticated handler as the relay-fronted path, so an unauthenticated request gets the same 401 either way. On top of both, an opt-in **LAN layer** keeps the box reachable on your local network even with the internet down.
+Vulos is the OS. You run it on your own hardware or on any cloud VPS you rent, from any provider — it's the same binary either way. A box always works from behind NAT or CGNAT, because reachability rides through **Ephor**: an open-source, self-hostable broker (`github.com/vul-os/ephor`) that the box dials **out** to. There is never a port to open and nothing exposed on your side. Ephor is *hired, not depended on* — it only ever forwards ciphertext, it's swappable, and you can self-host it or point at anyone's instance. If your box instead has a public IP or a domain of its own, you can skip the broker entirely and serve **direct** over TLS. Clients try direct first and fall back to Ephor when it's unreachable. Direct is a faster transport, not a different security posture: the direct listener serves the exact same authenticated handler as the Ephor-fronted path, so an unauthenticated request gets the same 401 either way. On top of both, an opt-in **LAN layer** keeps the box reachable on your local network even with the internet down.
 
-If you remember one thing: **you never *have* to port-forward a Vulos box.** Everything below the "Direct mode" section is opt-in performance and independence, not a requirement.
+There are three ways to make a box reachable, and you can mix them:
+
+| # | Option | When to use it | Setup |
+|---|---|---|---|
+| (a) | **Use an Ephor gateway** | Zero-config default. Behind NAT/CGNAT, or you just want it to work. | [Jump to setup](#a-use-an-ephor-gateway-the-default) — nothing to configure |
+| (b) | **Run your own Ephor, or point at any Ephor** | You want to control the broker, self-host it, or use a friend's/provider's instance. | [Jump to setup](#b-run-your-own-ephor-or-point-at-any-ephor) — config-driven env vars |
+| (c) | **Direct** | Box has a public IP or your own domain (bare metal with a static IP, or a cloud VPS) — no broker at all. | [Jump to setup](#c-direct-public-ip-or-your-own-domain) |
+
+If you remember one thing: **you never *have* to port-forward a Vulos box.** Everything below option (a) is opt-in performance and independence, not a requirement.
 
 A quick map of the paths a request can take:
 
 ```mermaid
 flowchart LR
-  C(["client"]) -->|"internet · default"| R["vulos-relay<br/>(fallback path)"]
+  C(["client"]) -->|"internet · default"| R["Ephor<br/>(broker, fallback path)"]
   C -->|"internet · opt-in"| D["direct TLS :443"]
   C -->|"LAN"| L["vulos.local /<br/>box.&lt;id&gt;.lan.vulos.org"]
   R -->|"outbound tunnel"| B["your box<br/>one authenticated HTTP handler"]
@@ -32,9 +40,9 @@ The operator picks a high-level networking posture in Settings (persisted to `~/
 
 | Mode | What it means |
 |---|---|
-| `fabric` | Default. Traffic rides the Vulos relay fabric. No inbound ports needed. |
-| `direct` | Direct WAN exposure with periodic re-enrollment (public IP + DNS kept up to date). |
-| `own` | You bring your own domain and reverse proxy; Vulos sits behind it. |
+| `fabric` | Default. Traffic rides Ephor — option (a)/(b) below. No inbound ports needed. |
+| `direct` | Direct WAN exposure with periodic re-enrollment (public IP + DNS kept up to date) — option (c) below. |
+| `own` | You bring your own domain and reverse proxy; Vulos sits behind it — option (c) below. |
 | `local` | LAN-only. External listeners are blocked entirely. |
 
 `local` mode is enforced in code, not just cosmetic: when it is selected, the server refuses to start the direct public listener even if `VULOS_DIRECT_ENABLE=1` is set.
@@ -43,29 +51,59 @@ The mode-switching endpoint is one of the routes disabled by the `VULOS_DISABLE_
 
 ---
 
-## The sovereign tunnel (relay path)
+## Ephor: the reachability broker
 
-The relay itself — the server that terminates tunnels and forwards clients to your box — lives in a separate project (`vulos-relay`) and is not part of this repository. The relay *agent* that dials out from your machine is also a separate binary; the OS deliberately does not embed it. What this repo provides is the box side of the contract:
+**Ephor** (`github.com/vul-os/ephor`) is the piece that makes a NAT'd or CGNAT'd box reachable from anywhere. It's a small, open-source, self-hostable broker: your box dials **out** to an Ephor instance and holds the connection open; a client that wants to reach your box connects to that same Ephor instance, which forwards the traffic down the tunnel your box already opened. Nothing about your box ever has to accept an inbound connection.
 
-- **The env seam.** When the direct listener comes up, the OS publishes its advertised endpoint to a co-located relay agent by setting `VULOS_RELAY_DIRECT_ENDPOINT` in the process environment. The agent hands that endpoint to the relay in its Register frame; the relay verifies it before ever telling a client about it.
-- **The ownership probe.** The box serves an unauthenticated well-known path, `/_vulos-direct/probe`, on its direct listener. The relay GETs it with a one-time nonce in the `X-Vulos-Direct-Probe` header and the box echoes the nonce back. Only a box that actually controls the advertised endpoint can answer, so a box cannot advertise an endpoint it does not serve. This is the *only* unauthenticated route on the direct listener, and it carries no user data.
-- **Host registration.** Opt-in host roles (BYO GPU streaming host, cross-instance notify fan-out) register with a relay over HTTPS using:
+Two properties make this a broker you *hire*, not one you *depend on*:
 
-| Variable | Purpose |
-|---|---|
-| `VULOS_RELAY_BASE_URL` | HTTPS base URL of the vulos-relay node to register with. **Config-driven, never hardcoded** — set it to your OWN `vulos-relay` instance to self-host the relay; unset falls back to the managed relay (`https://relay.vulos.org`). |
-| `VULOS_RELAY_NAME` | The name this box registers under |
-| `VULOS_RELAY_TOKEN` | Bearer token the relay authorizes the box's registration/fan-out with |
+- **It only ever forwards ciphertext.** Ephor terminates a tunnel, not your session — the TLS/auth handshake your box already speaks travels through it unmodified. It is not a trusted intermediary in the security sense; it is transport.
+- **It's swappable.** The endpoint your box talks to is a config value (`VULOS_RELAY_BASE_URL`), never a hardcoded hostname. Run the box against Vulos's own Ephor, your own self-hosted Ephor, or someone else's — with no code change.
 
-The relay endpoint is fully config-driven: a self-hoster running their own `vulos-relay` points the box at it with `VULOS_RELAY_BASE_URL` (+ `VULOS_RELAY_TOKEN` for auth), and the managed relay is only the default when neither is set. No relay hostname is baked into the box wiring.
+Three concrete ways this plays out, matching the summary table above:
 
-Because the relay path is outbound-only from the box, it works behind NAT, CGNAT, and hotel Wi-Fi. It is the mode that "always works"; everything else is an optimization.
+### (a) Use an Ephor gateway — the default
+
+Out of the box, with nothing configured, the box uses Vulos's own hosted Ephor instance at `https://relay.vulos.org`. This is `fabric` mode (the default `network-mode.json` value) and needs **zero setup**:
+
+```bash
+# nothing to set — this is what happens with no relay env vars at all
+vulos    # or: docker run ... ghcr.io/vul-os/vulos:latest
+```
+
+Your box is now reachable from anywhere behind NAT/CGNAT/hotel Wi-Fi, with no port forwarded and nothing exposed. This is the mode that "always works"; everything else in this document is an optimisation or an alternative.
+
+### (b) Run your own Ephor, or point at any Ephor
+
+Because the endpoint is config-driven, you can self-host Ephor (clone `github.com/vul-os/ephor` and run it on any box with a public IP — see that project's own docs for deploying it) or point at a friend's/provider's instance instead of Vulos's:
+
+```bash
+VULOS_RELAY_BASE_URL=https://ephor.example.org   # your own or a third party's Ephor
+VULOS_RELAY_TOKEN=<bearer token the Ephor instance issued you>
+VULOS_RELAY_NAME=my-box                          # the name this box registers under
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VULOS_RELAY_BASE_URL` | `https://relay.vulos.org` | HTTPS base URL of the Ephor instance to register with. **Config-driven, never hardcoded** — point it at your own Ephor to self-host the broker; unset falls back to Vulos's hosted instance. |
+| `VULOS_RELAY_NAME` | — | The name this box registers under |
+| `VULOS_RELAY_TOKEN` | — | Bearer token the Ephor instance authorizes the box's registration/fan-out with |
+
+No Ephor hostname is baked into the box wiring — the fallback is only ever consulted when both are unset. This is the same seam whether you're running on hardware in your closet or a rented VPS.
+
+Under the hood, the OS side of the contract is:
+
+- **The env seam.** When the direct listener comes up (see option (c) below — you can run direct *and* keep Ephor as a fallback), the OS publishes its advertised endpoint to a co-located Ephor client agent by setting `VULOS_RELAY_DIRECT_ENDPOINT` in the process environment. The agent hands that endpoint to Ephor in its Register frame; Ephor verifies it before ever telling a client about it.
+- **The ownership probe.** The box serves an unauthenticated well-known path, `/_vulos-direct/probe`, on its direct listener. Ephor GETs it with a one-time nonce in the `X-Vulos-Direct-Probe` header and the box echoes the nonce back. Only a box that actually controls the advertised endpoint can answer, so a box cannot advertise an endpoint it does not serve. This is the *only* unauthenticated route on the direct listener, and it carries no user data.
+- **Host registration.** Opt-in host roles (BYO GPU streaming host, cross-instance notify fan-out) register with an Ephor instance over HTTPS using the same `VULOS_RELAY_BASE_URL` / `VULOS_RELAY_NAME` / `VULOS_RELAY_TOKEN` triple above.
+
+Note: the Ephor tunnel server itself, and the client agent that dials out from your machine, are separate binaries from the Ephor project (`github.com/vul-os/ephor`) — the OS deliberately does not embed either one. What this repo (the box) provides is the env seam, the ownership probe, and the registration calls described above.
 
 ---
 
 ## Direct mode: the public TLS listener
 
-Direct mode is **off by default** and config-gated, because most boxes are NAT'd and must stay on the relay path. Turn it on only when the box has a genuinely reachable public IP or hostname.
+Direct mode is **off by default** and config-gated, because most boxes are NAT'd and must stay on Ephor. Turn it on only when the box has a genuinely reachable public IP or hostname — including a cloud VPS, which almost always has one.
 
 ```bash
 VULOS_DIRECT_ENABLE=1
@@ -76,7 +114,7 @@ Full env surface (from `backend/internal/directlisten`):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VULOS_DIRECT_ENABLE` | unset (off) | `1` opts in. Unset means relay-only. |
+| `VULOS_DIRECT_ENABLE` | unset (off) | `1` opts in. Unset means Ephor-only. |
 | `VULOS_DIRECT_HOSTNAME` | — | Public DNS name. Required for ACME and for building the advertised endpoint. |
 | `VULOS_DIRECT_ADDR` | `:443` | Listen address. |
 | `VULOS_DIRECT_CERT_MODE` | `acme` | `acme` (Let's Encrypt via autocert) or `provided` (your own cert files). |
@@ -89,8 +127,34 @@ Behaviour worth knowing:
 
 - **TLS is required.** The listener only ever serves HTTPS (TLS 1.2 minimum). In `acme` mode the certificate is requested automatically for `VULOS_DIRECT_HOSTNAME` (the ACME host policy is pinned to that one hostname, so an attacker-supplied SNI can never trigger an issuance); the challenge is answered on the same `:443` listener. In `provided` mode you supply the cert — the option for boxes with only a static IP, or behind your own PKI.
 - **Fail-closed configuration.** ACME mode without a hostname, or provided mode without cert files, is a startup error, not a listener that silently cannot serve.
-- **Self-reachability pre-check.** After start, the box fetches its *own* probe path over the public endpoint with a fresh nonce. If a firewall silently drops the traffic, you get a log line telling you the endpoint is not externally reachable yet — clients simply keep using the relay until it is.
+- **Self-reachability pre-check.** After start, the box fetches its *own* probe path over the public endpoint with a fresh nonce. If a firewall silently drops the traffic, you get a log line telling you the endpoint is not externally reachable yet — clients simply keep using Ephor until it is.
 - **Status route.** `GET /api/network/direct` (session-authed) reports `{enabled, endpoint, addr}` so you can confirm the fast path is active from the UI or curl.
+
+### (c) Direct: public IP or your own domain
+
+This is the no-broker option. It works identically whether the box is bare metal with a static IP or a cloud VPS — a VPS just makes "genuinely reachable public IP" true from the moment you rent it.
+
+**On a cloud VPS (any provider — Hetzner, DigitalOcean, AWS, etc.):**
+
+1. **Rent a VPS and note its public IPv4/IPv6 address.** Any provider works; Vulos is the same binary regardless of who you rent from.
+2. **Point a DNS `A` (and `AAAA`, if you have IPv6) record at it** — e.g. `box1.example.net → 203.0.113.10`. Use whatever DNS provider you already use for the domain; nothing in Vulos provisions this for you in direct mode (that's different from the *published-app-subdomain* DNS automation below).
+3. **Open port 443 in the provider's firewall/security group.** Cloud VPS providers usually block everything by default at the network layer, on top of any host firewall — check both. Nothing else needs to be open; see [Ports](#ports) below.
+4. **Install Vulos on the VPS** (Docker, the binary, or a flashed image — see [DEPLOY.md](DEPLOY.md)) and set:
+   ```bash
+   VULOS_ENV=prod
+   VULOS_DIRECT_ENABLE=1
+   VULOS_DIRECT_HOSTNAME=box1.example.net
+   VULOS_RPID=box1.example.net        # bind passkeys to the same domain — see SECURITY.md
+   VULOS_ORIGIN=https://box1.example.net
+   ```
+5. **Start the box.** ACME issues the certificate automatically against port 443 on first start; watch the startup log for `[direct] public listener up` and the self-reachability check passing.
+6. **Confirm it from outside** the VPS's own network (see [Verifying reachability](#verifying-reachability-from-the-command-line) below).
+
+**On bare metal with a static IP** the steps are the same minus the "rent a VPS" step — you forward TCP 443 on your router to the box instead of opening a cloud security group.
+
+**Multiple static-IP boxes, DNS load-balanced:** point the same hostname at more than one box's IP (multiple `A`/`AAAA` records, or a provider's DNS load-balancing/health-check feature) and clients fail over across them — there's no coordinator in the loop, it's ordinary DNS.
+
+**`own` mode** is the same public-TLS idea but with your own reverse proxy (Caddy is the supported path) in front instead of the built-in direct listener — see the TLS table below and [Custom domains for published apps](#custom-domains-for-published-apps).
 
 ---
 
@@ -162,11 +226,11 @@ With the LAN layer enabled (below), the box itself answers DNS for `box.<instanc
 | Local dev (`./dev.sh`, `--env=local`) | The Go backend, *if* certs exist; otherwise plain HTTP on loopback | `~/.vulos/localhost.pem` + `~/.vulos/localhost-key.pem` — the mkcert convention. `dev.sh` mounts these into the Docker container when present. |
 | Docker / single binary in prod | The Go backend | `/etc/vulos/tls/cert.pem` + `/etc/vulos/tls/key.pem` (checked at startup, after the mkcert paths) |
 | Direct mode | The direct listener inside the backend | ACME/Let's Encrypt (autocert) or operator-provided files (see table above) |
-| LAN layer | The LAN HTTPS listener inside the backend | A cloud-issued certificate for `box.<id>.lan.vulos.org`, delivered to `/var/lib/vulos/tls/lan.crt` + `lan.key` (paths overridable via `VULOS_LAN_CERT` / `VULOS_LAN_KEY`), hot-reloaded on change; falls back to a self-signed cert until the real one arrives |
+| LAN layer | The LAN HTTPS listener inside the backend | An externally-issued certificate for `box.<id>.lan.vulos.org`, delivered to `/var/lib/vulos/tls/lan.crt` + `lan.key` (paths overridable via `VULOS_LAN_CERT` / `VULOS_LAN_KEY`), hot-reloaded on change; falls back to a self-signed cert until the real one arrives |
 | `own` mode / published apps | Your reverse proxy (Caddy is the supported path) | Caddy's automatic ACME, driven by the snippets Vulos writes into `VULOS_CADDY_DIR` |
 | Self-host bundle | Per-service listeners (OS on 8443, mail on 8444, office on 8445) | Configured via `/etc/vulos/fabric.yaml` (`domain`, `acme_email`) — see [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) |
 
-Fetching the trusted LAN certificate from the cloud control plane is itself opt-in (`VULOS_LANCERT_ENABLE=1`) and hardened: the puller accepts an extra CA bundle (`VULOS_LANCERT_CA_PEM` / `VULOS_LANCERT_CA_FILE`) or SPKI pins (`VULOS_LANCERT_SPKI_PINS`), and refuses a plaintext control-plane URL unless `VULOS_LANCERT_ALLOW_INSECURE=1` is set (never do this outside a lab).
+Fetching the trusted LAN certificate from an external issuance endpoint is itself opt-in (`VULOS_LANCERT_ENABLE=1`, endpoint at `VULOS_CLOUD_BASE_URL`, defaulting to `https://cp.vulos.org`) and hardened: the puller accepts an extra CA bundle (`VULOS_LANCERT_CA_PEM` / `VULOS_LANCERT_CA_FILE`) or SPKI pins (`VULOS_LANCERT_SPKI_PINS`), and refuses a plaintext endpoint URL unless `VULOS_LANCERT_ALLOW_INSECURE=1` is set (never do this outside a lab). Leave `VULOS_LANCERT_ENABLE` unset and the LAN layer just uses its self-signed fallback — nothing about the LAN listener depends on this being configured.
 
 For local development with real HTTPS, generate the certs once with [mkcert](https://github.com/FiloSottile/mkcert):
 
@@ -251,13 +315,14 @@ carry none, and it never sees a changeset. A relay that lies can withhold a peer
 or point at an address you cannot authenticate to; it cannot forge a changeset,
 because signature checking happens at the peer and is downstream of discovery.
 
-Any conforming relay works — self-host `vulos-relayd`, use Vulos's, or set
-nothing at all and stay LAN-only. The protocol is documented in
-`vulos-relay/docs/RENDEZVOUS.md`.
+Any conforming rendezvous role works here — the same Ephor instance you use for
+reachability (option (a)/(b) above), a separately self-hosted one, or set
+nothing at all and stay LAN-only. Consult the Ephor project
+(`github.com/vul-os/ephor`) for the rendezvous protocol details.
 
 | Variable | Effect |
 |---|---|
-| `VULOS_RENDEZVOUS_URL` | Relay rendezvous prefix. Unset = mDNS only (previous behaviour). |
+| `VULOS_RENDEZVOUS_URL` | Ephor rendezvous prefix. Unset = mDNS only (previous behaviour). |
 | `VULOS_PUBLIC_URL` | Announced ahead of the LAN address, for peers resolving from outside. |
 
 ### Drop (nearby file sharing)
@@ -295,13 +360,13 @@ AI-generated sandbox backends bind `127.0.0.1` only and are reached through the 
 - On the box's host firewall, allow from your LAN: TCP 8080 (or 443 + UDP 53/5353 if `VULOS_LAN_ENABLE=1`).
 - External listeners are blocked in software too; this mode is belt-and-braces.
 
-**Relay fallback (`fabric` mode — the default)**
-- Inbound from WAN: nothing. The relay agent dials out.
-- Outbound: allow HTTPS (443) to your relay and, if used, the Vulos cloud endpoints.
-- This is the right mode for CGNAT, and the safe default for everyone else.
+**Ephor fallback (`fabric` mode — the default)**
+- Inbound from WAN: nothing. The Ephor client agent dials out.
+- Outbound: allow HTTPS (443) to your configured Ephor instance (`VULOS_RELAY_BASE_URL`, default `https://relay.vulos.org`).
+- This is the right mode for CGNAT, and the safe default for everyone else. On a cloud VPS you can use it too — it's not just for NAT'd boxes — though a VPS usually has a real public IP, making option (c) direct available.
 
-**Direct + domain (`direct` or `own` mode)**
-- Forward TCP 443 to the box (the direct listener; also carries the ACME challenge).
+**Direct + domain (`direct` or `own` mode — includes most cloud VPS deployments)**
+- Forward TCP 443 to the box (the direct listener; also carries the ACME challenge). On a cloud VPS this means opening port 443 in the provider's firewall/security group, not a router.
 - Keep 8080 unforwarded — the direct listener already serves the full OS over TLS.
 - Point DNS at your public IP (`direct` mode keeps it updated automatically; in `own` mode your proxy handles the domain).
 - Work through the pre-exposure checklist in [SECURITY.md](SECURITY.md) *before* forwarding the port.
