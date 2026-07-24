@@ -152,7 +152,7 @@ function AiTierSection() {
 
 // driveStorageRow renders the Drive/cloud-storage row from LIVE seal-policy
 // state rather than a hardcoded claim — sealDefault is null (still loading, no
-// claim made), true (this deployment IS cloud-provisioned and DOES seal
+// claim made), true (this deployment DOES seal
 // single-shot uploads by default), or false (self-host/standalone/os, or the
 // endpoint failed — either way, NOT sealed by default, so labelled honestly
 // amber, never green). true still carries an explicit caveat: resumable/large
@@ -160,14 +160,14 @@ function AiTierSection() {
 function driveStorageRow(sealDefault) {
   if (sealDefault === true) {
     return {
-      label: 'Drive uploads (cloud storage)', state: 'e2e',
-      note: 'Small/single-shot uploads are content-sealed to your own key before they reach cloud storage, so the control plane only ever brokers ciphertext. Large (resumable) uploads are NOT sealed yet — plaintext to the control plane, like any unsealed upload.',
+      label: 'Drive uploads (remote storage)', state: 'e2e',
+      note: 'Small/single-shot uploads are content-sealed to your own key before they leave this box, so whoever holds the storage bucket only ever stores ciphertext. Large (resumable) uploads are NOT sealed yet — those land in the bucket as plaintext.',
     }
   }
   return {
     label: 'Drive uploads', state: 'readable',
     note: sealDefault === false
-      ? 'Provider-readable by default. Either this is a self-hosted bucket you control (no Vulos Cloud in the loop), or this is a Vulos-Cloud-provisioned bucket where sealing has not (yet) been enabled for this deployment.'
+      ? 'Provider-readable by default: uploads land in the storage bucket as plaintext, so whoever operates that bucket can read them. Seal-by-default is not switched on for this deployment.'
       : 'Checking this deployment’s storage-sealing default…',
   }
 }

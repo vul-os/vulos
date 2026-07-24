@@ -9,12 +9,10 @@ import { PamVisibilityControl } from './PublicAppsManager'
 import { useFocusTrap } from '../shell/useFocusTrap'
 import { useViewport } from '../shell/useViewport'
 import StoragePanel from './settings/StoragePanel.jsx'
-import PlanBillingPanel from './settings/PlanBillingPanel.jsx'
 import DataExportPanel from './settings/DataExportPanel.jsx'
 import ModelsPanel from './settings/ModelsPanel.jsx'
 import BoxHealthPanel from './settings/BoxHealthPanel.jsx'
 import OfflineDataPanel from './settings/OfflineDataPanel.jsx'
-import GatewayPanel from './settings/GatewayPanel.jsx'
 import RelayPanel from './settings/RelayPanel.jsx'
 import WebPushToggle from './notifiers/WebPushToggle.jsx'
 import SecurityPanel from './settings/SecurityPanel.jsx'
@@ -70,7 +68,6 @@ const sectionGroups = [
       { id: 'connmode', label: 'Connection Mode', icon: '\u{29C9}' },
       { id: 'network', label: 'Remote Access', icon: '\u{1F310}' },
       { id: 'domain', label: 'Custom Domain', icon: '\u{1F517}' },
-      { id: 'gateway', label: 'Control Plane', owner: true, icon: '\u{25C9}' },
       { id: 'relay', label: 'Relay & Reachability', owner: true, icon: '⇆' },
       { id: 'cdn', label: 'CDN', owner: true, icon: '\u{25C7}' },
       { id: 'turnSettings', label: 'TURN / WebRTC', icon: '\u{21C4}' },
@@ -93,7 +90,6 @@ const sectionGroups = [
       { id: 'offlinedata', label: 'Offline Data', icon: '\u{2601}' },
       { id: 'dataexport', label: 'Export My Data', icon: '\u{2913}' },
       { id: 'security', label: 'Sign-in security', icon: '\u{1F6E1}' },
-      { id: 'plan', label: 'Plan & Billing', icon: '\u{25C6}' },
     ],
   },
   {
@@ -302,7 +298,6 @@ export default function Settings({ initialSection } = {}) {
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
         {active === 'domain' && <DomainPanel />}
-        {active === 'gateway' && <GatewayPanel />}
         {active === 'relay' && <RelayPanel />}
         {active === 'cdn' && <CDNPanel />}
         {active === 'turnSettings' && <TURNSettingsSection />}
@@ -316,7 +311,6 @@ export default function Settings({ initialSection } = {}) {
         {active === 'offlinedata' && <OfflineDataPanel />}
         {active === 'dataexport' && <DataExportPanel />}
         {active === 'security' && <SecurityPanel />}
-        {active === 'plan' && <PlanBillingPanel />}
         {active === 'osupdate' && <OSUpdateSettings />}
         {active === 'boxhealth' && <BoxHealthPanel />}
         {active === 'about' && <AboutSettings />}
