@@ -35,11 +35,11 @@ type IngressDescriptor struct {
 	Detail string `json:"detail,omitempty"`
 }
 
-// ReachabilityProvider is implemented by each concrete backend (wakala/
+// ReachabilityProvider is implemented by each concrete backend (ephor/
 // turn/libp2p/wireguard/none). A provider only needs to behave sensibly for
 // the facets it claims via Capabilities() — callers (ICEServers/IngressInfo/
 // ResolvePeer below) never invoke a provider for a facet it doesn't claim;
-// that facet instead falls back to wakala's own gate. Implementations for
+// that facet instead falls back to ephor's own gate. Implementations for
 // unclaimed facets simply return zero values and are never reached.
 type ReachabilityProvider interface {
 	Name() Provider
@@ -50,8 +50,8 @@ type ReachabilityProvider interface {
 }
 
 // providerFor constructs the ReachabilityProvider for name, closing over
-// cfg's per-provider sections. wakala needs no config (it reads env/the
-// injected TURNStore); an unrecognised name fails safe to wakala.
+// cfg's per-provider sections. ephor needs no config (it reads env/the
+// injected TURNStore); an unrecognised name fails safe to ephor.
 func providerFor(name Provider, cfg Config) ReachabilityProvider {
 	switch name {
 	case ProviderNone:
@@ -63,7 +63,7 @@ func providerFor(name Provider, cfg Config) ReachabilityProvider {
 	case ProviderWireGuard:
 		return wireguardProvider{cfg: cfg.WireGuard}
 	default:
-		return wakalaProvider{}
+		return ephorProvider{}
 	}
 }
 
@@ -77,18 +77,18 @@ func activeProvider() ReachabilityProvider {
 // instead of hardcoding STUN/TURN. It NEVER goes dark just because the
 // active provider covers ingress/rendezvous but not ICE (none/libp2p/
 // wireguard): those providers don't claim FacetICE, so this automatically
-// falls back to wakala's ICE default. Callers must not branch on provider
+// falls back to ephor's ICE default. Callers must not branch on provider
 // name; the returned list is already the right one.
 func ICEServers(ctx context.Context, userID string) []ICEServer {
 	p := activeProvider()
 	if p.Capabilities().Has(FacetICE) {
 		return p.ICEServers(ctx, userID)
 	}
-	return wakalaProvider{}.ICEServers(ctx, userID)
+	return ephorProvider{}.ICEServers(ctx, userID)
 }
 
 // IngressInfo reports how the box is currently reachable from outside NAT —
-// the active provider if it claims FacetIngress, else wakala's default
+// the active provider if it claims FacetIngress, else ephor's default
 // (relay tunnel).
 //
 // HONESTY NOTE: for libp2p/wireguard this is REPORT-ONLY today — it
@@ -102,19 +102,19 @@ func IngressInfo() IngressDescriptor {
 	if p.Capabilities().Has(FacetIngress) {
 		return p.Ingress()
 	}
-	return wakalaProvider{}.Ingress()
+	return ephorProvider{}.Ingress()
 }
 
 // ResolvePeer resolves peerID to a base URL via the active rendezvous
-// provider, if it claims FacetRendezvous, else via wakala's default (the
+// provider, if it claims FacetRendezvous, else via ephor's default (the
 // existing peering.resolve.go cache/HTTP path, which this package does not
-// duplicate — see wakalaProvider.ResolvePeer).
+// duplicate — see ephorProvider.ResolvePeer).
 func ResolvePeer(ctx context.Context, peerID string) (string, bool) {
 	p := activeProvider()
 	if p.Capabilities().Has(FacetRendezvous) {
 		return p.ResolvePeer(ctx, peerID)
 	}
-	return wakalaProvider{}.ResolvePeer(ctx, peerID)
+	return ephorProvider{}.ResolvePeer(ctx, peerID)
 }
 
 // EffectiveRelay is the resolved, ready-to-display relay/reachability
@@ -148,19 +148,19 @@ func Effective(ctx context.Context, userID string) EffectiveRelay {
 	return eff
 }
 
-// --- wakala: the default. No special privilege — registered and dispatched
+// --- ephor: the default. No special privilege — registered and dispatched
 // exactly like every other provider. ---
 
-type wakalaProvider struct{}
+type ephorProvider struct{}
 
-func (wakalaProvider) Name() Provider      { return ProviderWakala }
-func (wakalaProvider) Capabilities() Facet { return FacetICE | FacetIngress | FacetRendezvous }
+func (ephorProvider) Name() Provider      { return ProviderEphor }
+func (ephorProvider) Capabilities() Facet { return FacetICE | FacetIngress | FacetRendezvous }
 
-func (wakalaProvider) ICEServers(_ context.Context, userID string) []ICEServer {
-	return wakalaICEServers(userID)
+func (ephorProvider) ICEServers(_ context.Context, userID string) []ICEServer {
+	return ephorICEServers(userID)
 }
 
-func (wakalaProvider) Ingress() IngressDescriptor {
+func (ephorProvider) Ingress() IngressDescriptor {
 	relay := strings.TrimSpace(os.Getenv("VULOS_RELAY_BASE_URL"))
 	if relay == "" {
 		relay = "https://relay.vulos.org"
@@ -168,14 +168,14 @@ func (wakalaProvider) Ingress() IngressDescriptor {
 	return IngressDescriptor{Mode: "relay-tunnel", Detail: relay}
 }
 
-// ResolvePeer intentionally returns not-ok: wakala's rendezvous facet is
+// ResolvePeer intentionally returns not-ok: ephor's rendezvous facet is
 // already served live by backend/services/peering/resolve.go's existing
 // cache/HTTP path. This package does not duplicate that logic (and must not
 // import the peering package — peering imports THIS package for ICE, and a
 // reverse import would cycle); ResolvePeer exists on this interface purely
 // so an alternative rendezvous provider (libp2p) can be swapped in without
 // peering.go ever branching on provider name.
-func (wakalaProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }
+func (ephorProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }
 
 // --- none: opts ingress out of the relay tunnel. Facets A/C untouched. ---
 
@@ -261,7 +261,7 @@ func (wireguardProvider) ResolvePeer(context.Context, string) (string, bool) { r
 // force=true. Only turn/wireguard are probed — they're the two providers
 // with a literal dialable endpoint AND enough lockout risk (a wrong TURN/mesh
 // endpoint silently breaks calls/ingress) to justify a default speed bump;
-// wakala/none/libp2p are never blocked (wakala is the safe fallback, none
+// ephor/none/libp2p are never blocked (ephor is the safe fallback, none
 // has nothing to dial, libp2p's multiaddrs aren't TCP-dialable without a
 // libp2p stack this package doesn't embed).
 func probeCandidate(cfg Config) error {

@@ -61,7 +61,7 @@ func TestEnsureLibp2pManager_FreshBoxDefaults_NoHostEverStarts(t *testing.T) {
 	t.Cleanup(resetLibp2pManagerForTest)
 	// Do NOT set VULOS_LIBP2P_HOST_ENABLE at all (simulates a fresh box's
 	// process environment) and use the package's actual zero-value default
-	// config (provider=wakala, no libp2p section) — exactly what a box that
+	// config (provider=ephor, no libp2p section) — exactly what a box that
 	// never touched Settings looks like.
 	st := ensureLibp2pManager(DefaultConfig())
 	if st.Running {
@@ -105,17 +105,17 @@ func TestEnsureLibp2pManager_EnvEnabledButProviderNotSelected_NoHost(t *testing.
 	resetLibp2pManagerForTest()
 	t.Cleanup(resetLibp2pManagerForTest)
 	// The inverse: env var IS set, but the box's selected provider is still
-	// wakala (gate #1 not satisfied) — must still be a no-op.
+	// ephor (gate #1 not satisfied) — must still be a no-op.
 	t.Setenv(envLibp2pHostEnable, "1")
-	st := ensureLibp2pManager(Config{Provider: ProviderWakala})
+	st := ensureLibp2pManager(Config{Provider: ProviderEphor})
 	if st.Running {
-		t.Fatal("host reported Running while provider=wakala — gate #1 was not enforced")
+		t.Fatal("host reported Running while provider=ephor — gate #1 was not enforced")
 	}
 	lp2pMgrMu.Lock()
 	host := lp2pMgrHost
 	lp2pMgrMu.Unlock()
 	if host != nil {
-		t.Fatal("a real libp2p host was constructed while provider=wakala")
+		t.Fatal("a real libp2p host was constructed while provider=ephor")
 	}
 }
 

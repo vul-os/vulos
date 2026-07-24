@@ -108,9 +108,9 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 
 **Run several boxes for redundancy.** They sync as peers (CRDT · Ed25519), so if one goes down your data and apps live on the others. And you reach them **however suits you — never locked to one relay:**
 
-- **Zero-config.** The default relay (**wakala**) reaches your box from anywhere, even behind NAT — the box dials *out*, so there's no port to forward and nothing exposed to the public internet.
-- **Self-hosted relay.** Run your *own* **wakala** — it's open and self-hostable — or bring your own, by pointing the box at it. No dependency on anyone else's infrastructure; the relay endpoint is config-driven, never baked in.
-- **No relay at all.** A box with a static IP or your own domain serves **directly** over TLS — no wakala, no middleman; multiple static-IP boxes DNS-load-balance and fail over across each other.
+- **Zero-config.** The default relay (**Ephor**) reaches your box from anywhere, even behind NAT — the box dials *out*, so there's no port to forward and nothing exposed to the public internet.
+- **Self-hosted relay.** Run your *own* **Ephor** — it's open and self-hostable — or bring your own, by pointing the box at it. No dependency on anyone else's infrastructure; the relay endpoint is config-driven, never baked in.
+- **No relay at all.** A box with a static IP or your own domain serves **directly** over TLS — no Ephor, no middleman; multiple static-IP boxes DNS-load-balance and fail over across each other.
 
 Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass. It's a real provider seam (default · self-hosted · none-direct), not a lock-in.
 

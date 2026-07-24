@@ -1,6 +1,6 @@
 // Package relayconfig is the SINGLE source of truth for the box's
 // relay/reachability + TURN "provider" — the concrete answer to "you use
-// wakala OR bring your own relay".
+// Ephor OR bring your own relay".
 //
 // # Why this exists
 //
@@ -29,7 +29,7 @@
 // thing the owner currently has selected", and that thing declares which of
 // three independent facets it actually covers (ReachabilityProvider.
 // Capabilities). A facet a provider doesn't cover keeps using its EXISTING
-// independent gate (wakala's own default) instead of going dark:
+// independent gate (Ephor's own default) instead of going dark:
 //
 //	Facet A — app-media ICE (STUN/TURN for browser WebRTC)
 //	Facet B — box HTTP ingress (reaching the box's HTTP surface from outside NAT)
@@ -40,7 +40,7 @@
 // would break Meet/Talk media while looking, from Settings, like a
 // perfectly reasonable choice). ICEServers() enforces this: it only ever
 // consults the active provider for ICE if that provider actually claims
-// FacetICE (wakala, turn); everything else still resolves through wakala's
+// FacetICE (ephor, turn); everything else still resolves through ephor's
 // ICE default. Callers must never branch on provider name — call
 // ICEServers()/IngressInfo()/ResolvePeer() and use the result.
 //
@@ -49,7 +49,7 @@
 // Config is persisted as a single JSON file (<dbDir>/relayconfig.json),
 // mirroring gwurl's pattern: Init loads it once at startup, Set
 // validates-then-optionally-probes-then-persists-then-swaps atomically, and
-// any load/parse/validation failure fails SAFE to the wakala default rather
+// any load/parse/validation failure fails SAFE to the ephor default rather
 // than bricking reachability or serving a malformed config. Set itself
 // validates (and, for turn/wireguard, health-probes) BEFORE touching any
 // persisted or in-memory state, so a rejected or unreachable change never
@@ -72,7 +72,7 @@
 //     own keys; this seam just points at the coordinator).
 //   - Get() (the safe public view) NEVER returns a TURN credential — only
 //     whether one is set (HasCredential), matching network.TURNStore's
-//     existing write-only secret handling. Credentials generated for wakala
+//     existing write-only secret handling. Credentials generated for ephor
 //     are short-lived HMAC (<=1h, see network.TURNConfig.GenerateCredentials).
 //   - Changing the provider is a reachability + security-relevant action
 //     (see backend/cmd/server/routes_relayconfig.go): gated owner/admin +
@@ -98,21 +98,29 @@ import (
 type Provider string
 
 const (
-	// ProviderWakala is the DEFAULT: Vulos's own relay/TURN/rendezvous path.
+	// ProviderEphor is the DEFAULT: Vulos's own relay/TURN/rendezvous path.
 	// It has NO special privilege in the resolver — it is registered and
 	// dispatched exactly like every other provider — it simply happens to be
 	// the one every facet falls back to when nothing else claims them.
-	ProviderWakala Provider = "wakala"
+	//
+	// NOTE ON THE STRING VALUE: changing this persisted string is safe by
+	// construction — see providerFor's default case and Init's fail-safe
+	// fallback below: ANY unrecognised persisted provider name resolves to
+	// this same DefaultConfig() / ephorProvider at both load time and
+	// dispatch time, so a box carrying a stale on-disk value reads as "using
+	// the default provider" exactly as it did before — it just logs a
+	// one-line "unknown relay provider" warning on Init.
+	ProviderEphor Provider = "ephor"
 	// ProviderNone opts the box's HTTP ingress OUT of the relay tunnel
 	// (static IP / port-forward setups). Facets A/C are unaffected (they
-	// keep resolving via wakala's fallback).
+	// keep resolving via ephor's fallback).
 	ProviderNone Provider = "none"
 	// ProviderTURN is a bring-your-own STUN/TURN ICE server list (facet A
 	// only). Facets B/C are unaffected.
 	ProviderTURN Provider = "turn"
 	// ProviderLibp2p is bring-your-own Circuit Relay v2 peer multiaddrs
 	// (facets B+C). Facet A (ICE) is unaffected — browsers still need a
-	// STUN/TURN answer, which keeps coming from wakala's fallback.
+	// STUN/TURN answer, which keeps coming from ephor's fallback.
 	ProviderLibp2p Provider = "libp2p"
 	// ProviderWireGuard points the box's ingress at a Tailscale/Headscale/
 	// Nebula coordinator (facet B only). Facets A/C are unaffected.
@@ -122,7 +130,7 @@ const (
 // Valid reports whether p is one of the known providers.
 func (p Provider) Valid() bool {
 	switch p {
-	case ProviderWakala, ProviderNone, ProviderTURN, ProviderLibp2p, ProviderWireGuard:
+	case ProviderEphor, ProviderNone, ProviderTURN, ProviderLibp2p, ProviderWireGuard:
 		return true
 	}
 	return false
@@ -137,7 +145,7 @@ type ICEServer struct {
 	URLs       []string `json:"urls"`
 	Username   string   `json:"username,omitempty"`
 	Credential string   `json:"credential,omitempty"`
-	// TTL is seconds until Credential expires, when known (wakala's
+	// TTL is seconds until Credential expires, when known (ephor's
 	// time-limited HMAC credential sets this; a static BYO TURN credential
 	// leaves it 0/omitted).
 	TTL int `json:"ttl,omitempty"`
@@ -181,10 +189,10 @@ type Config struct {
 	UpdatedAt string                  `json:"updated_at,omitempty"`
 }
 
-// DefaultConfig is wakala with no BYO sections configured — the box's
+// DefaultConfig is ephor with no BYO sections configured — the box's
 // out-of-the-box posture.
 func DefaultConfig() Config {
-	return Config{Provider: ProviderWakala}
+	return Config{Provider: ProviderEphor}
 }
 
 var (
@@ -202,9 +210,9 @@ var (
 // Init points the resolver at dbDir for persistence and loads any previously
 // saved provider config. Call once at startup (mirrors gwurl.Init). Idempotent.
 //
-// Fail-safe: a missing file is not an error (wakala default). A corrupt file
+// Fail-safe: a missing file is not an error (ephor default). A corrupt file
 // or a persisted config that no longer validates leaves the resolver on the
-// wakala default IN MEMORY (never bricking reachability) but does NOT delete
+// ephor default IN MEMORY (never bricking reachability) but does NOT delete
 // the on-disk file, so the owner can see/fix it from Settings rather than
 // silently losing their configuration. Either way the error is returned for
 // the caller to log.
@@ -219,16 +227,16 @@ func Init(dbDir string) error {
 	}
 	if err != nil {
 		state = DefaultConfig()
-		return fmt.Errorf("relayconfig: read %s: %w (fell back to wakala default)", persistPath, err)
+		return fmt.Errorf("relayconfig: read %s: %w (fell back to ephor default)", persistPath, err)
 	}
 	var loaded Config
 	if err := json.Unmarshal(raw, &loaded); err != nil {
 		state = DefaultConfig()
-		return fmt.Errorf("relayconfig: parse %s: %w (fell back to wakala default)", persistPath, err)
+		return fmt.Errorf("relayconfig: parse %s: %w (fell back to ephor default)", persistPath, err)
 	}
 	if err := Validate(loaded); err != nil {
 		state = DefaultConfig()
-		return fmt.Errorf("relayconfig: persisted config is no longer valid: %w (fell back to wakala default)", err)
+		return fmt.Errorf("relayconfig: persisted config is no longer valid: %w (fell back to ephor default)", err)
 	}
 	state = loaded
 	return nil
@@ -236,7 +244,7 @@ func Init(dbDir string) error {
 
 // SetTURNStore injects the box's persisted TURN admin config (Settings' "TURN
 // / WebRTC" panel — network.TURNStore) as an AUTHORITATIVE source for
-// wakala's self-hosted TURN entry, fixing the historical split-brain where
+// ephor's self-hosted TURN entry, fixing the historical split-brain where
 // Settings wrote turn.json but only the TURN_SECRET/TURN_HOST env vars were
 // ever consulted at serve time. When the store has no configured host, the
 // env-based network.LoadTURNConfig() is used, unchanged. Call once at
@@ -248,7 +256,7 @@ func SetTURNStore(store *network.TURNStore) {
 	turnStoreRef = store
 }
 
-// effectiveTURNConfig resolves wakala's self-hosted TURN entry: the
+// effectiveTURNConfig resolves ephor's self-hosted TURN entry: the
 // admin-configured store (if present and configured) wins, else the env.
 func effectiveTURNConfig() network.TURNConfig {
 	turnStoreMu.RLock()
@@ -294,7 +302,7 @@ func currentConfig() Config {
 	return state
 }
 
-// CurrentProvider returns the active provider (defaults to wakala before
+// CurrentProvider returns the active provider (defaults to ephor before
 // Init or when nothing has ever been configured).
 func CurrentProvider() Provider {
 	return currentConfig().Provider
@@ -338,11 +346,11 @@ func Set(newCfg Config, force bool) (PublicView, error) {
 	return buildPublicView(toPersist), nil
 }
 
-// ResetToWakala clears any BYO configuration and reverts to the wakala
+// ResetToEphor clears any BYO configuration and reverts to the ephor
 // default. Equivalent to Set(DefaultConfig(), true) but named for the common
-// "go back to the default relay" action in Settings. Never probed — wakala
+// "go back to the default relay" action in Settings. Never probed — ephor
 // is always assumed safe to return to.
-func ResetToWakala() (PublicView, error) {
+func ResetToEphor() (PublicView, error) {
 	return Set(DefaultConfig(), true)
 }
 

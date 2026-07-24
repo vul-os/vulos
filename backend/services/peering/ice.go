@@ -28,7 +28,7 @@ type iceConfigResponse struct {
 
 // envDisablePublicSTUN, when set truthy, suppresses the public Google STUN
 // servers from the ICE config (sovereign-federation config profile). It is
-// read by relayconfig's wakala provider now (see relayconfig/wakala.go); kept
+// read by relayconfig's ephor provider now (see relayconfig/ephor.go); kept
 // here too only because federation_profile.go's publicSTUNDisabled() (an
 // existing, separately-consumed status field) still reads it directly.
 const envDisablePublicSTUN = "VULOS_STUN_DISABLE_PUBLIC"
@@ -47,10 +47,10 @@ func publicSTUNDisabled() bool {
 //
 // SINGLE SOURCE OF TRUTH (RELAY-01): the ICE server list is produced
 // EXCLUSIVELY by relayconfig.ICEServers — the box's chosen relay/TURN
-// provider (wakala by default; BYO turn/libp2p/wireguard/none otherwise).
+// provider (ephor by default; BYO turn/libp2p/wireguard/none otherwise).
 // This also fixes the historical split-brain where Settings' "TURN / WebRTC"
 // panel persisted network.TURNStore's turn.json but this handler only ever
-// read the TURN_SECRET/TURN_HOST env vars — relayconfig's wakala provider now
+// read the TURN_SECRET/TURN_HOST env vars — relayconfig's ephor provider now
 // treats the admin-configured store as authoritative when set (see
 // relayconfig.SetTURNStore, wired in cmd/server/main.go).
 //

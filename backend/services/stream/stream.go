@@ -310,7 +310,7 @@ func (s *Session) HandleSignaling(w http.ResponseWriter, r *http.Request) {
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(ir))
 	// RELAY-01: ICE servers come EXCLUSIVELY from relayconfig.ICEServers — the
-	// box's single, owner-configurable relay/TURN provider (wakala default;
+	// box's single, owner-configurable relay/TURN provider (ephor default;
 	// BYO turn/libp2p/wireguard/none otherwise). This package must never
 	// hardcode a STUN/TURN server itself.
 	userID := r.Header.Get("X-User-ID")

@@ -23,7 +23,7 @@ const testDialTimeout = 5 * time.Second
 
 // TestReachability performs a best-effort, ADMIN-ONLY-gated (at the HTTP
 // layer) reachability probe of the currently-configured provider:
-//   - wakala: dials the box's own coturn if TURN_SECRET is set; otherwise
+//   - ephor: dials the box's own coturn if TURN_SECRET is set; otherwise
 //     reports that only public STUN is in play (nothing to dial).
 //   - turn:   TCP-dials the host:port of the first configured ICE server.
 //   - wireguard: TCP-dials the coordinator endpoint.
@@ -50,10 +50,10 @@ func TestReachability() TestResult {
 		return dialTest(host, port)
 	case ProviderLibp2p:
 		return TestResult{Success: false, Detail: "reachability test not supported for libp2p relay peers — check the box logs for a successful Circuit Relay v2 reservation instead"}
-	default: // wakala
+	default: // ephor
 		tc := effectiveTURNConfig()
 		if !tc.Enabled {
-			return TestResult{Success: true, Detail: "wakala default — public STUN only (configure TURN in Settings, or set TURN_SECRET, to enable this box's own TURN relay)"}
+			return TestResult{Success: true, Detail: "ephor default — public STUN only (configure TURN in Settings, or set TURN_SECRET, to enable this box's own TURN relay)"}
 		}
 		return dialTest(tc.Host, strconv.Itoa(tc.Port))
 	}

@@ -211,7 +211,7 @@ func main() {
 		log.Printf("[gateway] control-plane URL = %s (source: %s)", u, src)
 	}
 	if err := relayconfig.Init(dbDir); err != nil {
-		log.Printf("[relayconfig] could not load persisted relay provider override (%v) — using wakala default", err)
+		log.Printf("[relayconfig] could not load persisted relay provider override (%v) — using ephor default", err)
 	}
 
 	// S3 storage

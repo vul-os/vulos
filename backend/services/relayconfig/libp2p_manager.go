@@ -13,7 +13,7 @@ package relayconfig
 //     already requires an owner/admin authenticated + step-up-gated Set()
 //     call through the HTTP layer (see backend/cmd/server/routes_relayconfig.go
 //     and relayconfig.go's package doc) — Settings' "libp2p" choice is never
-//     the box's out-of-the-box default (DefaultConfig() is wakala).
+//     the box's out-of-the-box default (DefaultConfig() is ephor).
 //  2. The env var VULOS_LIBP2P_HOST_ENABLE=1 must ALSO be set in the box's
 //     OWN process environment (libp2p_env.go).
 //

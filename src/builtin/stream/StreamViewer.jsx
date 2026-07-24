@@ -299,7 +299,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       streamSize.current = { w: session.width || 1280, h: session.height || 720 }
 
       // RELAY-01: ICE servers come from the box's single relay/TURN provider
-      // seam (wakala by default; BYO turn/libp2p/wireguard/none otherwise —
+      // seam (ephor by default; BYO turn/libp2p/wireguard/none otherwise —
       // see Settings > Network > Relay & Reachability) instead of a
       // hardcoded public STUN server, so a self-hoster's choice there
       // actually applies here too. A transient fetch failure keeps

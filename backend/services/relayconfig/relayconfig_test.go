@@ -34,25 +34,25 @@ func resetState(t *testing.T) {
 
 var bg = context.Background()
 
-func TestDefaultConfig_IsWakala(t *testing.T) {
+func TestDefaultConfig_IsEphor(t *testing.T) {
 	resetState(t)
-	if CurrentProvider() != ProviderWakala {
-		t.Fatalf("CurrentProvider() = %q before Init, want wakala", CurrentProvider())
+	if CurrentProvider() != ProviderEphor {
+		t.Fatalf("CurrentProvider() = %q before Init, want ephor", CurrentProvider())
 	}
 }
 
-func TestInit_MissingFile_DefaultsToWakala(t *testing.T) {
+func TestInit_MissingFile_DefaultsToEphor(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init on empty dir: %v", err)
 	}
-	if CurrentProvider() != ProviderWakala {
-		t.Fatalf("CurrentProvider() = %q, want wakala", CurrentProvider())
+	if CurrentProvider() != ProviderEphor {
+		t.Fatalf("CurrentProvider() = %q, want ephor", CurrentProvider())
 	}
 }
 
-func TestInit_CorruptFile_FailsSafeToWakala(t *testing.T) {
+func TestInit_CorruptFile_FailsSafeToEphor(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "relayconfig.json"), []byte("{not json"), 0o600); err != nil {
@@ -62,8 +62,8 @@ func TestInit_CorruptFile_FailsSafeToWakala(t *testing.T) {
 	if err == nil {
 		t.Fatal("Init with corrupt file: want error")
 	}
-	if CurrentProvider() != ProviderWakala {
-		t.Fatalf("after corrupt-file Init, CurrentProvider() = %q, want wakala (fail-safe)", CurrentProvider())
+	if CurrentProvider() != ProviderEphor {
+		t.Fatalf("after corrupt-file Init, CurrentProvider() = %q, want ephor (fail-safe)", CurrentProvider())
 	}
 	// The corrupt file must NOT be silently deleted — the owner should be
 	// able to see/fix it.
@@ -72,7 +72,7 @@ func TestInit_CorruptFile_FailsSafeToWakala(t *testing.T) {
 	}
 }
 
-func TestInit_InvalidPersistedProvider_FailsSafeToWakala(t *testing.T) {
+func TestInit_InvalidPersistedProvider_FailsSafeToEphor(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	// Structurally valid JSON, but provider=turn with no ICE servers — invalid.
@@ -84,8 +84,8 @@ func TestInit_InvalidPersistedProvider_FailsSafeToWakala(t *testing.T) {
 	if err == nil {
 		t.Fatal("Init with invalid persisted config: want error")
 	}
-	if CurrentProvider() != ProviderWakala {
-		t.Fatalf("after invalid-config Init, CurrentProvider() = %q, want wakala (fail-safe)", CurrentProvider())
+	if CurrentProvider() != ProviderEphor {
+		t.Fatalf("after invalid-config Init, CurrentProvider() = %q, want ephor (fail-safe)", CurrentProvider())
 	}
 }
 
@@ -188,7 +188,7 @@ func TestSet_ProbeFailure_RejectedWithoutForce(t *testing.T) {
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// Establish a known-good wakala baseline.
+	// Establish a known-good ephor baseline.
 	cfg := Config{Provider: ProviderTURN, TURN: TURNProviderConfig{ICEServers: []ICEServer{
 		{URLs: []string{"turn:127.0.0.1:1"}}, // port 1: connection refused, deterministic
 	}}}
@@ -196,8 +196,8 @@ func TestSet_ProbeFailure_RejectedWithoutForce(t *testing.T) {
 	if err == nil {
 		t.Fatal("Set with an unreachable TURN endpoint (force=false) succeeded, want rejection")
 	}
-	if CurrentProvider() != ProviderWakala {
-		t.Fatalf("after rejected probe, CurrentProvider() = %q, want wakala (unchanged — never locked into a broken provider)", CurrentProvider())
+	if CurrentProvider() != ProviderEphor {
+		t.Fatalf("after rejected probe, CurrentProvider() = %q, want ephor (unchanged — never locked into a broken provider)", CurrentProvider())
 	}
 }
 
@@ -250,7 +250,7 @@ func TestSet_ProbeSucceeds_WhenEndpointIsReachable(t *testing.T) {
 	}
 }
 
-func TestSet_WakalaAndNone_NeverProbed(t *testing.T) {
+func TestSet_EphorAndNone_NeverProbed(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
@@ -261,12 +261,12 @@ func TestSet_WakalaAndNone_NeverProbed(t *testing.T) {
 	if _, err := Set(Config{Provider: ProviderNone}, false); err != nil {
 		t.Fatalf("Set(none, force=false): %v", err)
 	}
-	if _, err := Set(Config{Provider: ProviderWakala}, false); err != nil {
-		t.Fatalf("Set(wakala, force=false): %v", err)
+	if _, err := Set(Config{Provider: ProviderEphor}, false); err != nil {
+		t.Fatalf("Set(ephor, force=false): %v", err)
 	}
 }
 
-func TestResetToWakala(t *testing.T) {
+func TestResetToEphor(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
@@ -276,15 +276,15 @@ func TestResetToWakala(t *testing.T) {
 	if _, err := Set(turnCfg, true); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	view, err := ResetToWakala()
+	view, err := ResetToEphor()
 	if err != nil {
-		t.Fatalf("ResetToWakala: %v", err)
+		t.Fatalf("ResetToEphor: %v", err)
 	}
-	if view.Provider != ProviderWakala {
-		t.Fatalf("ResetToWakala provider = %q, want wakala", view.Provider)
+	if view.Provider != ProviderEphor {
+		t.Fatalf("ResetToEphor provider = %q, want ephor", view.Provider)
 	}
-	if CurrentProvider() != ProviderWakala {
-		t.Fatalf("CurrentProvider() after reset = %q, want wakala", CurrentProvider())
+	if CurrentProvider() != ProviderEphor {
+		t.Fatalf("CurrentProvider() after reset = %q, want ephor", CurrentProvider())
 	}
 }
 
@@ -293,8 +293,8 @@ func TestValidate_Provider(t *testing.T) {
 	if err := Validate(Config{Provider: "bogus"}); err == nil {
 		t.Fatal("Validate accepted an unknown provider")
 	}
-	if err := Validate(Config{Provider: ProviderWakala}); err != nil {
-		t.Fatalf("Validate rejected bare wakala: %v", err)
+	if err := Validate(Config{Provider: ProviderEphor}); err != nil {
+		t.Fatalf("Validate rejected bare ephor: %v", err)
 	}
 	if err := Validate(Config{Provider: ProviderNone}); err != nil {
 		t.Fatalf("Validate rejected bare none: %v", err)
@@ -404,7 +404,7 @@ func TestICEServers_NeverGoesDarkForLibp2p(t *testing.T) {
 	if _, err := Set(Config{Provider: ProviderLibp2p, Libp2p: Libp2pProviderConfig{RelayPeers: []string{peer}}}, true); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	// libp2p claims facets B+C, NOT A — ICE must still resolve via wakala's
+	// libp2p claims facets B+C, NOT A — ICE must still resolve via ephor's
 	// fallback, never an empty list.
 	ice := ICEServers(bg, "user-1")
 	if os.Getenv("VULOS_STUN_DISABLE_PUBLIC") == "" && len(ice) == 0 {
@@ -437,14 +437,14 @@ func TestICEServers_NoneStillServesICE(t *testing.T) {
 		t.Fatalf("Set: %v", err)
 	}
 	// "none" only opts OUT of the relay-tunnel ingress (facet B); ICE (facet
-	// A) is untouched and still resolves via wakala.
+	// A) is untouched and still resolves via ephor.
 	ice := ICEServers(bg, "user-1")
 	if os.Getenv("VULOS_STUN_DISABLE_PUBLIC") == "" && len(ice) == 0 {
 		t.Fatal("ICEServers() returned nothing while none is the active provider — facet A wrongly coupled to facet B")
 	}
 }
 
-func TestICEServers_TURN_ReplacesWakalaICE(t *testing.T) {
+func TestICEServers_TURN_ReplacesEphorICE(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
@@ -461,13 +461,13 @@ func TestICEServers_TURN_ReplacesWakalaICE(t *testing.T) {
 	}
 }
 
-func TestIngressInfo_FallsBackToWakalaWhenUnclaimed(t *testing.T) {
+func TestIngressInfo_FallsBackToEphorWhenUnclaimed(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// turn only claims facet A — ingress must fall back to wakala's relay-tunnel.
+	// turn only claims facet A — ingress must fall back to ephor's relay-tunnel.
 	if _, err := Set(Config{Provider: ProviderTURN, TURN: TURNProviderConfig{ICEServers: []ICEServer{
 		{URLs: []string{"turn:relay.example.org:3478"}},
 	}}}, true); err != nil {
@@ -475,7 +475,7 @@ func TestIngressInfo_FallsBackToWakalaWhenUnclaimed(t *testing.T) {
 	}
 	ing := IngressInfo()
 	if ing.Mode != "relay-tunnel" {
-		t.Fatalf("IngressInfo().Mode = %q, want relay-tunnel (wakala fallback) when turn doesn't claim ingress", ing.Mode)
+		t.Fatalf("IngressInfo().Mode = %q, want relay-tunnel (ephor fallback) when turn doesn't claim ingress", ing.Mode)
 	}
 }
 
@@ -500,11 +500,11 @@ func TestResolvePeer_FallsBackWhenUnclaimed(t *testing.T) {
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// wakala (default) does not implement live resolution in this package —
+	// ephor (default) does not implement live resolution in this package —
 	// it defers to peering/resolve.go — so this must report not-ok, not a
 	// fabricated URL.
 	if _, ok := ResolvePeer(bg, "some-peer"); ok {
-		t.Fatal("ResolvePeer() reported ok from the default wakala stub, want false")
+		t.Fatal("ResolvePeer() reported ok from the default ephor stub, want false")
 	}
 }
 
@@ -564,10 +564,10 @@ func TestEffective_Libp2p(t *testing.T) {
 	if len(eff.Libp2pRelayPeers) != 1 || eff.Libp2pRelayPeers[0] != peer {
 		t.Fatalf("Libp2pRelayPeers = %v, want [%s]", eff.Libp2pRelayPeers, peer)
 	}
-	// ICE must STILL be populated (wakala fallback) — see the "never goes
+	// ICE must STILL be populated (ephor fallback) — see the "never goes
 	// dark" tests above; just a light sanity check here too.
 	if os.Getenv("VULOS_STUN_DISABLE_PUBLIC") == "" && len(eff.ICEServers) == 0 {
-		t.Fatal("Effective().ICEServers empty for libp2p — facet A should fall back to wakala")
+		t.Fatal("Effective().ICEServers empty for libp2p — facet A should fall back to ephor")
 	}
 }
 
@@ -589,15 +589,15 @@ func TestEffective_WireGuard(t *testing.T) {
 	}
 }
 
-func TestEffective_Wakala_Default(t *testing.T) {
+func TestEffective_Ephor_Default(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	eff := Effective(bg, "user-1")
-	if eff.Provider != ProviderWakala {
-		t.Fatalf("Provider = %q, want wakala (default)", eff.Provider)
+	if eff.Provider != ProviderEphor {
+		t.Fatalf("Provider = %q, want ephor (default)", eff.Provider)
 	}
 	if eff.Ingress.Mode != "relay-tunnel" {
 		t.Fatalf("Ingress.Mode = %q, want relay-tunnel", eff.Ingress.Mode)
@@ -605,7 +605,7 @@ func TestEffective_Wakala_Default(t *testing.T) {
 	// Public STUN should be present unless VULOS_STUN_DISABLE_PUBLIC is set in
 	// this test environment (it shouldn't be by default).
 	if os.Getenv("VULOS_STUN_DISABLE_PUBLIC") == "" && len(eff.ICEServers) == 0 {
-		t.Fatal("wakala Effective() returned no ICE servers, want at least public STUN")
+		t.Fatal("ephor Effective() returned no ICE servers, want at least public STUN")
 	}
 }
 
@@ -631,8 +631,8 @@ func TestSetTURNStore_MakesAdminConfigAuthoritative(t *testing.T) {
 		t.Fatalf("effectiveTURNConfig() = %+v, want the admin-configured store to be authoritative", tc)
 	}
 
-	// And it must actually reach wakala's ICE list (the split-brain fix).
-	ice := wakalaICEServers("user-1")
+	// And it must actually reach ephor's ICE list (the split-brain fix).
+	ice := ephorICEServers("user-1")
 	found := false
 	for _, s := range ice {
 		for _, u := range s.URLs {
@@ -642,7 +642,7 @@ func TestSetTURNStore_MakesAdminConfigAuthoritative(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("wakalaICEServers() = %+v, want an entry referencing the admin-configured TURN host", ice)
+		t.Fatalf("ephorICEServers() = %+v, want an entry referencing the admin-configured TURN host", ice)
 	}
 }
 
@@ -739,7 +739,7 @@ func TestSet_NotInitialised(t *testing.T) {
 }
 
 func TestProviderValid(t *testing.T) {
-	valid := []Provider{ProviderWakala, ProviderNone, ProviderTURN, ProviderLibp2p, ProviderWireGuard}
+	valid := []Provider{ProviderEphor, ProviderNone, ProviderTURN, ProviderLibp2p, ProviderWireGuard}
 	for _, p := range valid {
 		if !p.Valid() {
 			t.Errorf("Provider(%q).Valid() = false, want true", p)

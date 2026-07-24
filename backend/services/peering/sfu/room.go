@@ -22,12 +22,12 @@ import (
 )
 
 // pionICEServers converts the box's currently-configured relay/reachability
-// ICE list (relayconfig.ICEServers — the SINGLE source of truth; wakala by
+// ICE list (relayconfig.ICEServers — the SINGLE source of truth; ephor by
 // default, BYO turn/libp2p/wireguard/none otherwise) into Pion's
 // webrtc.ICEServer shape. This package must never hardcode a STUN/TURN
 // server itself (RELAY-01) — see relayconfig's package doc for why a
 // non-ICE-capable provider (libp2p/wireguard/none) still yields a full ICE
-// list here via its wakala fallback.
+// list here via its ephor fallback.
 func pionICEServers() []webrtc.ICEServer {
 	resolved := relayconfig.ICEServers(context.Background(), "sfu")
 	servers := make([]webrtc.ICEServer, 0, len(resolved))

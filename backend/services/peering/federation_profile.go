@@ -31,7 +31,7 @@
 //
 // RELAY-01 additions: RelayProvider and Ingress report the box's
 // owner-selected relay/reachability provider (backend/services/relayconfig —
-// wakala by default) and its resolved ingress posture, so this profile stays
+// ephor by default) and its resolved ingress posture, so this profile stays
 // the ONE coherent place to see the box's full federation/reachability
 // stance, rather than a second, parallel status struct.
 package peering
@@ -83,7 +83,7 @@ type FederationProfile struct {
 	NoThirdPartySTUN bool `json:"no_third_party_stun"`
 
 	// RelayProvider is the box's currently-selected relay/reachability
-	// provider (RELAY-01, backend/services/relayconfig) — "wakala" unless the
+	// provider (RELAY-01, backend/services/relayconfig) — "ephor" unless the
 	// owner brought their own (turn/libp2p/wireguard/none).
 	RelayProvider relayconfig.Provider `json:"relay_provider"`
 	// Ingress is how the box is currently reachable from outside its own NAT

@@ -6,7 +6,7 @@ import { requireStepUp } from '../../lib/stepup'
 // to CHANGE; any signed-in user can view).
 //
 // RELAY-01: lets the owner pick the box's relay/TURN/rendezvous provider —
-// wakala (Vulos's own relay) is the DEFAULT, not a requirement. Bring your
+// Ephor (Vulos's own relay) is the DEFAULT, not a requirement. Bring your
 // own STUN/TURN, a libp2p Circuit Relay v2 peer, a Tailscale/Headscale/
 // Nebula WireGuard mesh, or turn the relay tunnel off entirely if this box
 // has a static IP / port-forward.
@@ -15,14 +15,14 @@ import { requireStepUp } from '../../lib/stepup'
 // makes Meet/Talk calls connect), box HTTP ingress (reaching this box from
 // outside your NAT), and box<->box rendezvous/discovery. Picking libp2p or
 // WireGuard here changes ingress/rendezvous ONLY — Meet/Talk calls keep
-// using wakala's ICE (public STUN + this box's own TURN, if configured)
+// using Ephor's ICE (public STUN + this box's own TURN, if configured)
 // automatically; this panel never lets you accidentally break call audio
 // while trying to change how the box itself is reached.
 //
 // Endpoints (backend/cmd/server/routes_relayconfig.go):
 //   GET  /api/relayconfig            — { config, effective }
 //   POST /api/relayconfig            — (step-up) { provider, turn?, libp2p?, wireguard?, force? }
-//   POST /api/relayconfig/reset      — (step-up) revert to wakala
+//   POST /api/relayconfig/reset      — (step-up) revert to ephor
 //   POST /api/relayconfig/test       — TCP-probe the active provider's endpoint
 // ---------------------------------------------------------------------------
 
@@ -56,11 +56,11 @@ async function jsonFetch(url, opts) {
 }
 
 const PROVIDERS = [
-  { value: 'wakala', label: 'Wakala (default)', blurb: "Vulos's own relay: public STUN + this box's TURN + relay tunnel + rendezvous. Nothing to configure." },
-  { value: 'turn', label: 'Bring your own STUN/TURN', blurb: 'Your own coturn (or any STUN/TURN provider) for call media. Ingress + rendezvous stay on wakala.' },
-  { value: 'libp2p', label: 'libp2p Circuit Relay v2', blurb: 'Your own relay peer(s) for box reachability + discovery. Call media (ICE) still uses wakala.' },
-  { value: 'wireguard', label: 'WireGuard mesh (Tailscale/Headscale/Nebula)', blurb: 'Reach this box over your own mesh instead of the relay tunnel. Call media (ICE) still uses wakala.' },
-  { value: 'none', label: 'None (static IP / port-forward)', blurb: 'No relay tunnel — you manage your own inbound path. Call media (ICE) still uses wakala.' },
+  { value: 'ephor', label: 'Ephor (default)', blurb: "Vulos's own relay: public STUN + this box's TURN + relay tunnel + rendezvous. Nothing to configure." },
+  { value: 'turn', label: 'Bring your own STUN/TURN', blurb: 'Your own coturn (or any STUN/TURN provider) for call media. Ingress + rendezvous stay on ephor.' },
+  { value: 'libp2p', label: 'libp2p Circuit Relay v2', blurb: 'Your own relay peer(s) for box reachability + discovery. Call media (ICE) still uses ephor.' },
+  { value: 'wireguard', label: 'WireGuard mesh (Tailscale/Headscale/Nebula)', blurb: 'Reach this box over your own mesh instead of the relay tunnel. Call media (ICE) still uses ephor.' },
+  { value: 'none', label: 'None (static IP / port-forward)', blurb: 'No relay tunnel — you manage your own inbound path. Call media (ICE) still uses ephor.' },
 ]
 
 function emptyTurnServer() {
@@ -72,7 +72,7 @@ export default function RelayPanel() {
   const [effective, setEffective] = useState(null) // resolved snapshot from GET (effective)
   const [loadError, setLoadError] = useState('')
 
-  const [provider, setProvider] = useState('wakala')
+  const [provider, setProvider] = useState('ephor')
   const [turnServers, setTurnServers] = useState([emptyTurnServer()])
   const [libp2pPeers, setLibp2pPeers] = useState('')
   const [wgEndpoint, setWgEndpoint] = useState('')
@@ -153,13 +153,13 @@ export default function RelayPanel() {
     }
   }
 
-  const resetToWakala = async () => {
+  const resetToEphor = async () => {
     setSaving(true)
     setSaveMsg(null)
     try {
       await requireStepUp()
       await jsonFetch('/api/relayconfig/reset', { method: 'POST' })
-      setSaveMsg({ ok: true, text: 'Reverted to the wakala default.' })
+      setSaveMsg({ ok: true, text: 'Reverted to the ephor default.' })
       load()
     } catch (e) {
       if (e?.code !== 'CANCELLED') setSaveMsg({ ok: false, text: e.message || 'Could not reset.' })
@@ -186,7 +186,7 @@ export default function RelayPanel() {
   return (
     <Section
       title="Relay & Reachability"
-      desc="Wakala is Vulos's default relay/TURN path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP."
+      desc="Ephor is Vulos's default relay/TURN path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP."
     >
       {loadError && (
         <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-4 py-3 mb-5 text-sm" role="alert">
@@ -304,7 +304,7 @@ export default function RelayPanel() {
           <p className="text-xs text-warning leading-relaxed">
             With no relay tunnel, this box is only reachable from outside your network if you've
             forwarded a port to it (or it has a static public IP). Remote access will stop working
-            until you do — or you switch back to wakala.
+            until you do — or you switch back to ephor.
           </p>
         </div>
       )}
@@ -328,9 +328,9 @@ export default function RelayPanel() {
         <button onClick={runTest} disabled={testing} className="btn-secondary text-sm disabled:opacity-40">
           {testing ? 'Testing…' : 'Test active provider'}
         </button>
-        {config?.provider !== 'wakala' && (
-          <button onClick={resetToWakala} disabled={saving} className="btn-secondary text-sm disabled:opacity-40">
-            Reset to wakala
+        {config?.provider !== 'ephor' && (
+          <button onClick={resetToEphor} disabled={saving} className="btn-secondary text-sm disabled:opacity-40">
+            Reset to ephor
           </button>
         )}
       </div>

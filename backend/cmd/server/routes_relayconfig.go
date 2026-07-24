@@ -1,7 +1,7 @@
 package main
 
 // routes_relayconfig.go — RELAY-01: owner-configurable relay/TURN provider
-// seam. Wakala (Vulos's own default relay/TURN/rendezvous path) is the
+// seam. Ephor (Vulos's own default relay/TURN/rendezvous path) is the
 // default; the owner may instead bring their own STUN/TURN, libp2p Circuit
 // Relay v2 peers, a WireGuard/Tailscale/Headscale/Nebula endpoint, or turn
 // the relay tunnel off entirely ("none" — static IP / port-forward). Every
@@ -33,7 +33,7 @@ package main
 //	                              reachability provider affects reachability
 //	                              + security, hence the step-up bar (same as
 //	                              CDN/KMS/webhooks config changes).
-//	POST /api/relayconfig/reset — ADMIN + STEP-UP gated. Reverts to wakala.
+//	POST /api/relayconfig/reset — ADMIN + STEP-UP gated. Reverts to ephor.
 //	POST /api/relayconfig/test  — ADMIN gated. Best-effort TCP reachability
 //	                              probe of the CURRENTLY ACTIVE provider's
 //	                              endpoint (mirrors /api/turn/test).
@@ -104,7 +104,7 @@ func registerRelayConfigRoutes(mux *http.ServeMux, authStore *auth.Store) {
 			writeErr(w, http.StatusForbidden, "step-up verification required: "+err.Error())
 			return
 		}
-		view, err := relayconfig.ResetToWakala()
+		view, err := relayconfig.ResetToEphor()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
