@@ -24,15 +24,6 @@ jobs:
 
       # Sibling packages referenced via file: in package.json (same as the CI
       # frontend-build job): @vulos/relay-client and @vulos/office-client.
-      - name: Clone vulos-relay (relay-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
-
-      - name: Clone vulos-office (office-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
-
-      - name: Build @vulos/relay-client lib
-        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22

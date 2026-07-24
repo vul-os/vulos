@@ -131,7 +131,7 @@ A recurring pattern in this codebase: when a security prerequisite is missing, t
 | Same-LAN fabric sync | `VULOS_FABRIC_SECRET` unset | Handlers not registered — no unauthenticated peer exchange (and the fabric signing key must seal under `VULOS_FABRIC_KEY_HEX` in prod) |
 | App subdomain provisioning in prod | `VULOS_DNS_API` or `VULOS_CADDY_DIR` unset | Routes not registered, so users are never told a domain is provisioned when nothing happened |
 | Direct public listener | ACME mode without hostname, cleartext advertised endpoint, LAN-only connection mode | Refuses to construct/start; endpoint must be `https://` |
-| Box→cloud channels | Plaintext control-plane URL | Refused unless the explicit dev-only escape hatch is set (`VULOS_CLOUD_ALLOW_INSECURE` / `VULOS_CP_ALLOW_INSECURE` / `VULOS_LANCERT_ALLOW_INSECURE`); billing likewise disables itself rather than leak its shared secret over HTTP |
+| Box→gateway channels | Plaintext gateway URL | Refused unless the explicit dev-only escape hatch is set (`VULOS_CLOUD_ALLOW_INSECURE` / `VULOS_CP_ALLOW_INSECURE` / `VULOS_LANCERT_ALLOW_INSECURE`) |
 | `/metrics` | No admin session, no scrape token | 403 — operational counters are owner-only |
 
 One deliberate exception you should know about: the remote-input WebAuthn gate (AUTH-13) for streaming sessions **warns loudly instead of failing closed** when no verifier is available in prod. Set `VULOS_STREAM_STRICT_INPUT_GATE=1` to make it fail closed if you use streaming and cannot wire passkeys.
@@ -156,7 +156,7 @@ Every variable below is read by code in this repo. "Omitting" means leaving it u
 | `VULOS_FABRIC_KEY_HEX` | Seals the fabric signing key at rest (AES-256-GCM); required in prod | Prod fails closed; dev derives a loud dev key |
 | `VULOS_STORAGE_STS_ENDPOINT` (+ `_ROLE_ARN`, `_DURATION_SECONDS`) | Apps get short-lived credentials scoped to their own `<user>/<app>/` prefix. Self-host **defaults this automatically** to the box's own object-store endpoint when one is configured — set `VULOS_STORAGE_STS_DISABLE=1` to opt out | No fallback to a static credential: a storage-permitted app gets **no** injected credential at all (fail-closed) and must use `POST /api/storage/presign` instead. If an object store is statically configured with a storage-permitted app installed and STS ends up unavailable anyway, the server **aborts at boot**. |
 | `VULOS_S3_*` + `VULOS_CLUSTER_PASSPHRASE` | Enables encrypted cluster backup/sync to S3 (passphrase encrypts what leaves the box) | Cluster backup disabled |
-| `VULOS_MAIL_BROKER_SECRET` | Broker auth between the OS/assistant and vulos-mail (shared `LILMAIL_BROKER_SECRET`) | Mail integration falls back to per-request session-cookie auth |
+| `VULOS_MAIL_BROKER_SECRET` | Broker auth between the OS/assistant and LilMail (shared `LILMAIL_BROKER_SECRET`) | Mail integration falls back to per-request session-cookie auth |
 | `VULOS_PEER_ALLOW_LAN=1` | SSRF guard admits private/LAN peer addresses for cross-box shares | LAN peer addresses blocked |
 | `VULOS_LANCERT_ALLOW_INSECURE`, `VULOS_CLOUD_ALLOW_INSECURE`, `VULOS_CP_ALLOW_INSECURE` | **Dev-only escape hatches** that permit plaintext HTTP to cloud endpoints | Plaintext refused (fail-closed) — leave these unset in production |
 

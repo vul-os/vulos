@@ -171,25 +171,26 @@ When a share to a remote recipient has to pass through infrastructure neither of
 
 Your master key — and therefore your ability to open sealed content — is protected by your recovery phrase. See [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) and [SECURITY.md](SECURITY.md).
 
-### Cloud storage default sealing
+### Storage sealing
 
 **Storage is not content-blind by default.** A normal Drive upload — `POST
 /api/files/upload-grant` then a direct `PUT` of your file's raw bytes — is
 plaintext on the wire and plaintext in the bucket. When your bucket is a
-self-hosted S3/MinIO/Tigris endpoint you configured yourself, that plaintext
-never leaves infrastructure you control. When your bucket is **provisioned by
-Vulos Cloud** (`DEPLOY_MODE=cloud`), the control plane holds the Tigris master
-credential and *brokers* the presigned PUT/GET URL — so it is technically
-capable of reading those bytes. See vulos-cloud's `DEPLOY-SECURITY.md` §1 for
-that trust boundary in full; this is the honest default, not a defect.
+self-hosted S3/MinIO/Tigris endpoint you configured yourself — the usual case —
+that plaintext never leaves infrastructure you control.
 
-To close that gap for the common case, a cloud-provisioned deployment now
-defaults **single-shot Drive uploads** to client-side sealed:
+A multi-tenant deployment (`DEPLOY_MODE=cloud`) is different: there the operator
+holds the bucket's master credential and *brokers* the presigned PUT/GET URL, so
+that operator is technically capable of reading those bytes. Stating it plainly
+is the point — it is the honest default, not a defect.
+
+To close that gap, such a deployment defaults **single-shot Drive uploads** to
+client-side sealed:
 
 - `POST /api/files/upload-grant` returns `grant.seal_default: true` exactly
   when `DEPLOY_MODE=cloud` **and** the grant is a presigned URL to a real
   bucket (never for self-host, and never for `DEPLOY_MODE=os`, where you — not
-  the CP — hold the bucket credential).
+  the operator — hold the bucket credential).
 - When true, the Drive app seals the file client-side to **your own**
   published X25519 content key — the identical VSEAL1 envelope + WebCrypto
   primitives used for [content-blind sharing](#sealed-content-blind-sharing)
@@ -246,7 +247,7 @@ A mount is a window into the provider; an **import** copies files *into* your Dr
 
 ## Quotas and limits
 
-There is currently **no per-user storage byte quota** enforced by the Files service on a self-hosted box — capacity is bounded by your disk or bucket. (Managed Vulos Cloud plans meter storage at the billing layer instead.) The enforced limits are operational:
+There is currently **no per-user storage byte quota** enforced by the Files service on a self-hosted box — capacity is bounded by your disk or bucket. The enforced limits are operational:
 
 | Limit | Value |
 |---|---|

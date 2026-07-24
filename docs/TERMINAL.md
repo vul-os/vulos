@@ -40,7 +40,7 @@ sudo systemctl status vulos.service              # just the OS backend
 ```bash
 sudo journalctl -u vulos -n 200 --no-pager        # OS backend, last 200 lines
 sudo journalctl -u vulos -f                       # follow live
-sudo journalctl -u vulos -u vulos-mail -u vulos-office -n 100   # mail + office together
+sudo journalctl -u vulos -u vulos-lilmail -u vulos-ofisi -n 100   # mail + office together
 ```
 
 If you're running under Docker instead of the systemd bundle:
@@ -67,7 +67,7 @@ curl -s http://localhost:8443/api/health | jq   # 8080 in Docker/dev instead of 
 
 ```bash
 sudo systemctl restart vulos.service         # OS backend only
-sudo systemctl restart vulos-mail.service    # mail only
+sudo systemctl restart vulos-lilmail.service    # mail only
 sudo systemctl restart vulos-bundle.target   # the whole bundle
 ```
 

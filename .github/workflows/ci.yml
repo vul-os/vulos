@@ -17,21 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Clone sibling packages referenced via file: in package.json.
-      # @vulos/relay-client  → ../vulos-relay/client
-      # @vulos/office-client → ../vulos-office
-      - name: Clone vulos-relay (relay-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
-
-      - name: Clone vulos-office (office-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
-
-      # Build sibling libs whose dist-lib/ directories are not committed.
-      # @vulos/relay-client subpath exports (./endpoints, ./offlineBootstrap, …)
-      # point at dist-lib/ — Rolldown/vite fails to resolve them without a build.
-      - name: Build @vulos/relay-client lib
-        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -111,12 +96,6 @@ jobs:
       # both toolchains and both dependency trees resolved — mirroring the
       # frontend + backend jobs' clone/setup.
 
-      - name: Clone vulos-relay (relay-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
-
-      - name: Clone vulos-office (office-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
@@ -126,9 +105,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-
-      - name: Build @vulos/relay-client lib
-        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
 
       - name: Resolve dependencies (populates the licence sources)
         run: |
@@ -230,22 +206,10 @@ jobs:
 
       # Clone sibling packages required by go.mod replace + npm file: deps.
 
-      - name: Clone vulos-relay (relay-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-relay ../vulos-relay
-
-      - name: Clone vulos-office (office-client)
-        run: git clone --depth 1 https://github.com/vul-os/vulos-office ../vulos-office
-
-      # ── Frontend: build on the runner, COPY dist/ into the Docker image ──────
-      # Sidesteps the file: dep path issue (../vulos-relay/client is outside
-      # the Docker build context: .).
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Build @vulos/relay-client lib
-        run: cd ../vulos-relay/client && npm install && (npm run build:lib || npm run build)
 
       - name: Pre-build frontend (dist/ is COPY'd into the Docker image)
         run: npm ci && npm run build

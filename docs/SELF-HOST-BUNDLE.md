@@ -38,7 +38,7 @@ curl -fsSL https://get.vulos.org | sudo bash
 |---|---|---|---|
 | vulos | `/usr/local/bin/vulos` | 8443 | OS backend — API gateway, app fabric |
 | vulos-office | `/usr/local/bin/vulos-office` | 8445 | Ofisi — collaborative office suite (Docs / Sheets / Slides / PDF / Whiteboard) |
-| vulos-mail (opt-in) | `/usr/local/bin/vulos-mail` | 25, 587, 8444 | Dormant/experimental self-hosted mail engine — installed only with `--with-mail` |
+| vulos-mail (opt-in) | `/usr/local/bin/lilmail` | 25, 587, 8444 | Dormant/experimental self-hosted mail engine — installed only with `--with-mail` |
 | minio (optional) | `/usr/local/bin/minio` | 9000 (loopback) | Local S3-compatible storage |
 
 All services run as the `vulos` system user (UID < 1000, no login shell).
@@ -225,8 +225,8 @@ flowchart TD
     Minio["vulos-minio.service<br/>(optional — only with --storage=minio)"]
     Fabric["vulos-fabric.service<br/>(oneshot — generates keypairs if absent)"]
     OS["vulos.service<br/>(OS backend, port 8443)"]
-    Mail["vulos-mail.service<br/>(opt-in mail-connector engine, --with-mail; ports 25/587/8444)"]
-    Office["vulos-office.service<br/>(office backend, port 8445)"]
+    Mail["vulos-lilmail.service<br/>(opt-in mail-connector engine, --with-mail; ports 25/587/8444)"]
+    Office["vulos-ofisi.service<br/>(office backend, port 8445)"]
     Bundle["vulos-bundle.target<br/>(all-up sentinel)"]
 
     Net --> Minio --> Fabric
@@ -249,19 +249,19 @@ sudo systemctl status vulos-bundle.target
 Individual services can be restarted independently:
 
 ```bash
-sudo systemctl restart vulos-mail.service
+sudo systemctl restart vulos-lilmail.service
 ```
 
 ### OpenRC (Alpine)
 
 On Alpine Linux the installer writes init scripts to `/etc/init.d/vulos`,
-`/etc/init.d/vulos-mail`, and `/etc/init.d/vulos-office`. Each script
+`/etc/init.d/vulos-lilmail`, and `/etc/init.d/vulos-ofisi`. Each script
 declares `need net` and `after vulos-fabric` ordering.
 
 ```bash
 sudo rc-update add vulos default
-sudo rc-update add vulos-mail default
-sudo rc-update add vulos-office default
+sudo rc-update add vulos-lilmail default
+sudo rc-update add vulos-ofisi default
 sudo rc-service vulos start
 ```
 
@@ -269,7 +269,7 @@ sudo rc-service vulos start
 
 ## Security hardening
 
-The installer inherits hardened patterns from `install-vulos-mail.sh` and
+The installer inherits hardened patterns from `install-vulos.sh` and
 applies them consistently to all three services:
 
 | Control | Detail |
@@ -345,7 +345,7 @@ To upgrade a single service:
 
 ```bash
 # Download and verify the new binary manually, then:
-sudo systemctl restart vulos-mail.service
+sudo systemctl restart vulos-lilmail.service
 ```
 
 ---
@@ -356,7 +356,7 @@ sudo systemctl restart vulos-mail.service
 
 ```bash
 sudo systemctl status vulos-bundle.target
-sudo journalctl -u vulos -u vulos-mail -u vulos-office -n 100
+sudo journalctl -u vulos -u vulos-lilmail -u vulos-ofisi -n 100
 ```
 
 ### Port 25 blocked by ISP

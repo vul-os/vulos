@@ -1107,11 +1107,11 @@ SCRIPT
     chmod 755 "${OPENRC_DIR}/vulos"
 
     # vulos-mail
-    cat > "${OPENRC_DIR}/vulos-mail" <<'SCRIPT'
+    cat > "${OPENRC_DIR}/vulos-lilmail" <<'SCRIPT'
 #!/sbin/openrc-run
 description="Vulos — self-hosted encrypted mail server"
 
-command="/usr/local/bin/vulos-mail"
+command="/usr/local/bin/lilmail"
 command_args="serve --config /etc/vulos/mail.yaml"
 command_user="vulos:vulos"
 command_background=true
@@ -1126,10 +1126,10 @@ start_pre() {
   checkpath --directory --owner vulos:vulos --mode 0750 /var/lib/vulos/mail
 }
 SCRIPT
-    chmod 755 "${OPENRC_DIR}/vulos-mail"
+    chmod 755 "${OPENRC_DIR}/vulos-lilmail"
 
     # vulos-office
-    cat > "${OPENRC_DIR}/vulos-office" <<'SCRIPT'
+    cat > "${OPENRC_DIR}/vulos-ofisi" <<'SCRIPT'
 #!/sbin/openrc-run
 description="Vulos — collaborative office suite backend"
 
@@ -1148,9 +1148,9 @@ start_pre() {
   checkpath --directory --owner vulos:vulos --mode 0750 /var/lib/vulos/office
 }
 SCRIPT
-    chmod 755 "${OPENRC_DIR}/vulos-office"
+    chmod 755 "${OPENRC_DIR}/vulos-ofisi"
 
-    info "OpenRC init scripts installed: ${OPENRC_DIR}/vulos{,-mail,-office}"
+    info "OpenRC init scripts installed: ${OPENRC_DIR}/vulos{,-lilmail,-ofisi}"
     ;;
 
   none)
@@ -1202,8 +1202,8 @@ case "${INIT_SYSTEM}" in
   openrc)
     printf "  4. ${BLD}Start the bundle:${RST}\n"
     printf "     ${CYN}sudo rc-update add vulos default${RST}\n"
-    printf "     ${CYN}sudo rc-update add vulos-mail default${RST}\n"
-    printf "     ${CYN}sudo rc-update add vulos-office default${RST}\n"
+    printf "     ${CYN}sudo rc-update add vulos-lilmail default${RST}\n"
+    printf "     ${CYN}sudo rc-update add vulos-ofisi default${RST}\n"
     printf "     ${CYN}sudo rc-service vulos start${RST}\n"
     printf "     ${CYN}sudo rc-service vulos-mail start${RST}\n"
     printf "     ${CYN}sudo rc-service vulos-office start${RST}\n\n"

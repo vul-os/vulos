@@ -10,15 +10,13 @@ lightweight, database-free IMAP/SMTP webmail client, paired with the
 `@vulos/mail-ui` surface. It is the bundled inbox for Vulos; it points at an
 external mail server (the one hosting your existing mailbox).
 
-The Vulos-hosted mail **engine** — the separate **vulos-mail** repository —
-is **dormant/experimental**: resurrectable, but not a primary on-box mail
-server and not the default. Most users bring their own mailbox and never run
-it. A Vulos-connected mailbox is an optional, separately-billed add-on
-($2/mailbox/mo under the box billing model).
+An on-box mail **engine** is dormant and experimental: resurrectable, but not a
+primary mail server and not the default. Most people bring their own mailbox and
+never run one.
 
-LilMail lives in its own repository and is consumed by the OS as a service,
-the same way the office suite (`vulos-office`) is kept separate. No LilMail
-source is vendored into this repo.
+LilMail lives in its own repository (github.com/vul-os/lilmail) and is consumed
+by the OS as a service, the same way Ofisi is kept separate. No LilMail source is
+vendored into this repo.
 
 ## How it is wired
 
