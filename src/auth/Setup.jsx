@@ -5,42 +5,16 @@ import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
-import { matchState } from './matchState'
-import { useCloudSignIn, CloudSignInFlowExtras } from './CloudSignIn'
-import GatewayChoice, { setGateway } from './GatewayChoice'
-import VulosAccountStep from '../../apps/setup-wizard/src/steps/VulosAccountStep'
-import IntentStep from '../../apps/setup-wizard/src/steps/IntentStep'
 
-// GATEWAY-01: persist the chosen control-plane gateway before any cloud login /
-// account-create / enroll runs, so all brokering targets it. Returns true when
-// brokering may proceed (Vulos Cloud default → nothing to persist; or a tested
-// custom gateway that persisted). On a bad/untested/failed gateway it sets an
-// error and returns false so the caller aborts before hitting the wrong CP.
-async function ensureGatewayPersisted(gw, setError) {
-  const g = gw || { mode: 'cloud' }
-  if (g.mode !== 'custom') return true
-  if (!g.url || !g.tested) {
-    setError('Test your gateway connection before continuing.')
-    return false
-  }
-  const res = await setGateway(g.url)
-  if (!res.ok) {
-    setError(res.error || 'Could not save the gateway. Check the URL and try again.')
-    return false
-  }
-  return true
-}
-
-// IDENTITY-01: 'cloudAccount' step ("Pick your Vulos username") is inserted after 'account' and before 'pin'.
-// 'intent' step ("How will you use Vulos?") is inserted after 'pin' and before 'appearance'.
-// The cloudAccount step is mandatory — no skip option in production (frozen invariant).
+// Vulos is free, self-hosted software — there is no Vulos Cloud account, no
+// sign-in/enrolment, and no paid add-on tier. The only account concept is the
+// user's own local account on their own box.
 // BUNDLE-01: the 'apps' step ("Your apps") reflects the default-everything
 // (batteries-included, opt-out) bundling model. It is pre-checked for EVERYTHING
 // — a Vulos account handle (enables Mail, still bring-your-own) + the full Ofisi
-// productivity suite — and lets a lean user opt out. Inserted after 'intent' and
-// before 'appearance' so it shows in every new-system flow (local and cloud
-// alike; a gamer must be able to trim down).
-const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'NETB05_account_choice', 'account', 'cloudAccount', 'pin', 'intent', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+// productivity suite — and lets a lean user opt out. Inserted after 'account' and
+// before 'appearance' so it shows in every new-system flow.
+const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
@@ -181,27 +155,6 @@ export default function Setup({ onComplete }) {
     IS05_sshFingerprint: '',
     IS05_s3AccessKey: '',
     IS05_s3SecretKey: '',
-    // CLOGIN-01/04: account mode for this install
-    CL01_accountMode: 'local', // 'local' | 'cloud' | 'create'
-    CL01_cloudEmail: '',
-    CL01_cloudPassword: '',
-    // CLOGIN-04: create-cloud-account fields
-    CL04_createEmail: '',
-    CL04_createPassword: '',
-    CL04_createConfirm: '',
-    CL04_createFullName: '',
-    // GATEWAY-01: control-plane ("gateway") selection for cloud sign-in/create.
-    // Default = Vulos Cloud (managed users never touch it). A self-hoster can
-    // switch to their own gateway; it must be connection-tested before use, and
-    // is persisted to the backend right before the cloud login/enroll runs.
-    GW01_gateway: { mode: 'cloud', url: '', tested: false },
-    // NETB-05: install-time account choice
-    NETB05_choice: '', // 'local' | 'cloud'
-    NETB05_clusterPassphrase: '',
-    // IDENTITY-01: claimed Vulos account address (populated by VulosAccountStep)
-    cloudAccountAddress: '',
-    // INTENT: how the user intends to use Vulos — 'none' | 'personal' | 'business'
-    intent: 'none',
     // BUNDLE-01: default-everything (batteries-included, opt-out) suite selection.
     // Everything is pre-selected; a lean user can uncheck these to trim down.
     //   suiteEmail     — claim a Vulos account handle (also enables the Mail app; Mail itself
@@ -216,24 +169,6 @@ export default function Setup({ onComplete }) {
   const [IS09_flowType, IS09_setFlowType] = useState('new')
   // INIT-09: whether mode check is done
   const [IS09_modeChecked, IS09_setModeChecked] = useState(false)
-
-  // CLOGIN-01: On mount, check whether this device is cloud-enrolled. If so,
-  // default the account step to cloud mode so cloud-managed instances default to
-  // "Cloud account" in the install wizard without any user action.
-  // NOTE: update() is called inside a .then() callback, not synchronously in
-  // the effect body, so this does not violate react-hooks/set-state-in-effect.
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/auth/cloud/status')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!cancelled && data?.enrolled) {
-          update('CL01_accountMode', 'cloud')
-        }
-      })
-      .catch(() => {}) // not enrolled or endpoint absent — stay local
-    return () => { cancelled = true }
-  }, [])
 
   // INIT-09: On mount, check /api/setup/mode. If mode==="sync", jump straight to syncing.
   useEffect(() => {
@@ -261,21 +196,15 @@ export default function Setup({ onComplete }) {
   // INIT-09: choose active step list based on flow type
   const IS09_baseSteps = IS09_flowType === 'join' ? IS09_JOIN_STEPS : STEPS
 
-  // NETB05 / IDENTITY-01: for local-only installs, cloudAccount and intent are
-  // not applicable (no Vulos Cloud account will be created at setup time).
-  // Compute effectiveSteps at render time — never mutate the STEPS constant.
-  const IS09_activeSteps = (IS09_flowType !== 'join' && config.NETB05_choice === 'local')
-    ? IS09_baseSteps.filter(s => s !== 'cloudAccount' && s !== 'intent')
-    : IS09_baseSteps
 
-  const current = IS09_activeSteps[step]
+  const current = IS09_baseSteps[step]
   const update = (key, val) => setConfig(c => ({ ...c, [key]: val }))
 
   const goTo = (idx) => {
     setTransitioning(true)
     setTimeout(() => { setStep(idx); setTransitioning(false) }, 200)
   }
-  const next = () => goTo(Math.min(step + 1, IS09_activeSteps.length - 1))
+  const next = () => goTo(Math.min(step + 1, IS09_baseSteps.length - 1))
   const prev = () => goTo(Math.max(step - 1, 0))
 
   // INIT-09: chooser handler — pick flow type and advance
@@ -345,7 +274,7 @@ export default function Setup({ onComplete }) {
         {/* Header: step progress + theme toggle */}
         <header className="shrink-0 safe-pt safe-px">
           <div className="mx-auto w-full max-w-xl px-6 pt-5 pb-2 flex items-center gap-4">
-            <WizardProgress steps={IS09_activeSteps} step={step} onJump={goTo} />
+            <WizardProgress steps={IS09_baseSteps} step={step} onJump={goTo} />
             <ThemeToggle />
           </div>
         </header>
@@ -380,24 +309,6 @@ export default function Setup({ onComplete }) {
             )}
             {current === 'account' && (
               <AccountStep
-                config={config}
-                update={update}
-                onNext={next}
-                onPrev={prev}
-              />
-            )}
-            {/* IDENTITY-01: mandatory Vulos account username step — no skip in production */}
-            {current === 'cloudAccount' && (
-              <VulosAccountStep
-                config={config}
-                update={update}
-                onNext={next}
-                onPrev={prev}
-              />
-            )}
-            {/* INTENT: Business / Personal intent + Vulos Cloud add-on pitch */}
-            {current === 'intent' && (
-              <IntentStep
                 config={config}
                 update={update}
                 onNext={next}
@@ -1602,14 +1513,6 @@ function NETB05_AccountChoiceStep({ config, update, onNext, onPrev }) {
         </div>
       )}
 
-      {/* ── GATEWAY-01: control-plane selection (Vulos Cloud vs own gateway) ── */}
-      <div className="mt-5">
-        <GatewayChoice
-          idPrefix="netb05"
-          value={config.GW01_gateway}
-          onChange={g => update('GW01_gateway', g)}
-        />
-      </div>
 
       {/* ── Optional: join existing data cluster ── */}
       <div className="mt-5">
@@ -2087,17 +1990,6 @@ function AccountStep({ config, update, onNext, onPrev }) {
         </div>
       )}
 
-      {/* GATEWAY-01: control-plane selection — only relevant when a cloud account
-          is involved (sign-in or create), not for a purely local account. */}
-      {(mode === 'cloud' || mode === 'create') && (
-        <div className="mt-5">
-          <GatewayChoice
-            idPrefix="account"
-            value={config.GW01_gateway}
-            onChange={g => update('GW01_gateway', g)}
-          />
-        </div>
-      )}
 
       {error && <p className="text-sm text-danger mt-2">{error}</p>}
 
@@ -2235,52 +2127,6 @@ function AppsStep({ config, update, onNext, onPrev }) {
   const workspace = config.suiteWorkspace !== false
   const [saving, setSaving] = useState(false)
 
-  // BUNDLE-01: on cloud/create-cloud installs the mandatory cloudAccount step
-  // (VulosAccountStep) already reserved the account username — config.cloudAccountAddress
-  // is set — so we do nothing here. The gap is the LOCAL install path: cloudAccount is
-  // filtered out of the step list, yet suiteEmail defaults on, so no username has been
-  // reserved. When the user keeps the email opt-in on that path we reserve one here
-  // (approach (b)): POST /api/identity/claim with a handle derived from the username,
-  // exactly the endpoint VulosAccountStep uses. (Mail itself is a bring-your-own
-  // connector — this only reserves the account username, it provisions no mailbox.)
-  //
-  // Defensive: the claim tolerates a network/CP failure — we log and let the user
-  // proceed rather than hard-blocking the install. But we NEVER pretend a username
-  // was reserved if it wasn't: cloudAccountAddress is only set on a real success.
-  const maybeClaimSuiteEmail = async () => {
-    if (!email) return // user opted out of Mail — nothing to reserve
-    if (config.cloudAccountAddress) return // already reserved in VulosAccountStep
-
-    const handle = (config.username || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, '')
-      .slice(0, 32)
-    if (!/^[a-z0-9][a-z0-9_-]{1,30}[a-z0-9]$|^[a-z0-9]{3}$/.test(handle)) {
-      // No usable handle to reserve (e.g. blank/too-short username) — skip silently;
-      // the user can still reserve one later from Settings.
-      console.warn('[BUNDLE-01] suiteEmail on but no valid handle to reserve from username')
-      return
-    }
-
-    try {
-      const res = await fetch('/api/identity/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (res.ok || res.status === 201) {
-        // Only record the username on a genuine claim success.
-        update('cloudAccountAddress', data.address || handle)
-      } else {
-        // Do not fabricate a reserved username; just let the install proceed.
-        console.warn(`[BUNDLE-01] suiteEmail username reservation failed (status ${res.status}) — proceeding without one`)
-      }
-    } catch (e) {
-      console.warn('[BUNDLE-01] suiteEmail username reservation network error — proceeding without one', e)
-    }
-  }
-
   const handleNext = async () => {
     setSaving(true)
     try {
@@ -2289,9 +2135,6 @@ function AppsStep({ config, update, onNext, onPrev }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, workspace }),
       }).catch(() => {})
-      // BUNDLE-01: reserve the account username if the email opt-in is on and none
-      // was reserved earlier. Best-effort — never blocks the install.
-      await maybeClaimSuiteEmail()
     } finally {
       setSaving(false)
       onNext()
