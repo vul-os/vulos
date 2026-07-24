@@ -12,16 +12,15 @@
 //     are open; no billing/entitlement gating; storage isolation still
 //     applies (it protects the box's own users from each other) but never
 //     requires a CP.
-//   - OS: a self-hosted (or operator-provisioned) box that is CP-adjacent —
-//     it may talk to a Vulos Cloud control plane for optional features
-//     (integrations, vk_ API keys, cloud login) but is not itself the
-//     multi-tenant cloud deployment. Entitlement gating is ENFORCED here
-//     for vk_-keyed requests (fail closed), matching cloud, since a
-//     CP-adjacent box already has billing wired.
-//   - Cloud: the multi-tenant cloud-hosted deployment (vulos-cloud's
-//     provisioned boxes / the shared cloud runtime). Entitlement gating is
-//     enforced (fail closed); Tigris-style object storage has no STS, so the
-//     presign path is used instead of STS-scoped credentials.
+//   - OS: a box that is gateway-adjacent — the owner has pointed it at a
+//     gateway for optional features (integrations, vk_ API keys) but it is not
+//     itself a multi-tenant deployment. Entitlement gating is ENFORCED here for
+//     vk_-keyed requests (fail closed), matching cloud, since a gateway-adjacent
+//     box resolves entitlements upstream.
+//   - Cloud: a multi-tenant hosted deployment, where one operator runs boxes for
+//     many tenants. Entitlement gating is enforced (fail closed); Tigris-style
+//     object storage has no STS, so the presign path is used instead of
+//     STS-scoped credentials.
 package deploymode
 
 import (

@@ -3,11 +3,11 @@
 //
 // # WHY THIS EXISTS
 //
-// In the cloud topology a box connects Google/Microsoft/Dropbox/GCS through the
-// control plane's OAuth broker (vulos-cloud INTEG-01/02): the CP custodies the
+// A box can instead point at an operator-configured OAuth broker
+// (INTEG-01/02, services/integrations/client.go): the broker custodies the
 // fleet OAuth client secret + the user's refresh token under INTEGRATIONS_KEK,
-// and the box mints short-lived access tokens over the device-HMAC channel
-// (services/integrations/client.go). A sovereign box has no CP.
+// and the box mints short-lived access tokens over the device-HMAC channel.
+// A sovereign box has no such broker configured.
 //
 // This package lets the OWNER connect their OWN accounts with the OWNER'S OWN
 // OAuth app credentials, entirely on the box:

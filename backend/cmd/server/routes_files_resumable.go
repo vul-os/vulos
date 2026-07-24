@@ -1,10 +1,11 @@
 package main
 
 // routes_files_resumable.go — RESUMABLE (tus-style) chunked upload control plane
-// for the OS Files service. See vulos-relay/docs/CONSOLIDATION.md §A-2.
+// for the OS Files service.
 //
-// Motivation: a single upload that rides the relay is capped at the relay's
-// MaxRequestBytes. Instead of raising that cap without bound, the BOX chunks
+// Motivation: a single upload that rides a relay (e.g. Ephor, an owner-run
+// broker the box dials out to — github.com/vul-os/ephor) is capped at the
+// relay's MaxRequestBytes. Instead of raising that cap without bound, the BOX chunks
 // large files: the client creates an upload here, then PATCHes bounded chunks
 // (each ≤ the relay cap) that each pass the relay as an ordinary request with
 // full rate-limit/timeout coverage. The relay needs NO changes — every chunk is

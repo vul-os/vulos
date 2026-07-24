@@ -3,7 +3,7 @@
 // # Why this exists
 //
 // PreKeyStore (prekeys.go) holds THIS node's own PRIVATE prekey material and can
-// only answer CLAIMs for its own identity. Browser peers (vulos-relay/fabric.js)
+// only answer CLAIMs for its own identity. Browser peers (Ephor/fabric.js)
 // generate their X3DH prekeys entirely client-side and hold ALL private scalars
 // themselves; they merely need somewhere to PUBLISH the PUBLIC halves so a sender
 // can claim a one-time prekey and open a forward-secret session.

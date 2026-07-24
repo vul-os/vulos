@@ -1,12 +1,12 @@
-// fabric.go — host registration with the vulos-relay fabric (HTTPS contract).
+// fabric.go — host registration with the Ephor fabric (HTTPS contract).
 //
 // The VULOS-STREAM/1 sub-protocol is a peering-envelope protocol used between
 // two boxes once a session is in flight, carried over the host's peering
 // backend. For *discovery* — telling the relay "I am a
 // streaming host, reach me at <addr>, here is my pubkey" — we use a tiny
-// HTTPS contract. Defining it here keeps gpuhost zero-dep from vulos-relay's
-// Go code (per task brief: "you don't need to import vulos-relay's Go code —
-// just speak its wire format / use HTTPS to a configured relay endpoint").
+// HTTPS contract. Defining it here keeps gpuhost free of any dependency on the
+// relay's own code: it speaks the wire format over HTTPS to a configured relay
+// endpoint, nothing more.
 //
 // Wire shape (HTTPS, JSON):
 //

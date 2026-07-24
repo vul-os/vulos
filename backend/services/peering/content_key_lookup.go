@@ -9,8 +9,7 @@ package peering
 // open it. As an INTEGRITY gate the cell also checks the seal is WRAPPED TO the
 // recipient's published X25519 content key (contentseal.VerifyTargets) — but that
 // check only runs when the cell can look the key up. This endpoint is that lookup:
-// the cell (vulos-cloud cloudhome.httpContentKeyLookup, via CLOUDHOME_CONTENT_KEY_URL)
-// calls it to resolve a recipient account's published content public key.
+// the cell calls it to resolve a recipient account's published content public key.
 //
 // It is NOT a confidentiality control — the recipient pubkey is public and the
 // recipient proves decryptability on download. It only stops the cell staging a

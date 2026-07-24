@@ -881,17 +881,17 @@ func main() {
 				// GoogleCalendarSource are registered alongside the file sources. Their
 				// DataKind() returns "contacts"/"calendar" so the job Kind is set
 				// automatically, and the runPIMImport path posts bulk vCard/iCal
-				// batches to vulos-mail rather than writing to the Drive.
+				// batches to lilmail rather than writing to the Drive.
 				filesSvc.WithImport(
 					files.NewGDriveProvider(),
 					files.NewOneDriveProvider(),
 					files.NewGoogleContactsSource(),
 					files.NewGoogleCalendarSource(),
 				)
-				// Wire the vulos-mail bulk import endpoint so the PIM runner knows
+				// Wire the lilmail bulk import endpoint so the PIM runner knows
 				// where to POST. VULOS_MAIL_URL defaults to the same URL the OS shell
 				// uses to embed the Mail app; VULOS_MAIL_BROKER_SECRET is the
-				// LILMAIL_BROKER_SECRET shared with vulos-mail.
+				// LILMAIL_BROKER_SECRET shared with lilmail.
 				pimMailURL := os.Getenv("VULOS_MAIL_URL")
 				if pimMailURL == "" {
 					pimMailURL = "http://localhost:3000"
@@ -4119,10 +4119,9 @@ func main() {
 		registerSupportRoutes(mux, dbDir, authStore, notifySvc, billingClient)
 	}
 
-	// WORKSPACE REMOVED: the standalone "Vulos Workspace" browser shell is dead —
-	// the OS desktop shell (served from "/" below) IS the shell, for both the local
-	// and the remote/browser client of the box. The old /workspace front door that
-	// redirected to /app/vulos-workspace/ has been removed along with the app.
+	// The OS desktop shell (served from "/" below) IS the shell, for both the local
+	// and the remote/browser client of the box. There is no separate standalone
+	// browser-shell app or /workspace front door.
 
 	// Terminal /api/ handler — a real JSON 404/405 for anything the API routes
 	// above did not claim. Registered BEFORE the SPA catch-all so an unmatched
@@ -4316,11 +4315,12 @@ func main() {
 	// privileged 443/53 and can be overridden for non-root runs.
 	if os.Getenv("VULOS_LAN_ENABLE") == "1" {
 		lanHost := lan.BoxHostname(cfg.InstanceID)
-		// Prefer the LANCERT-01 externally-issued cert at the documented cross-repo
-		// path (lan.DefaultCertPath / lan.DefaultKeyPath — kept in sync with
-		// vulos-cloud's lancert/contract.go). LoadCertSource silently falls back to
-		// the self-signed dev cert when the files are not yet present, so the LAN
-		// HTTPS path always has TLS material even before the puller has run.
+		// Prefer the LANCERT-01 externally-issued cert at the well-known local
+		// path (lan.DefaultCertPath / lan.DefaultKeyPath) — an owner's own ACME
+		// client or other cert tooling can drop a cert there. LoadCertSource
+		// silently falls back to the self-signed dev cert when the files are not
+		// yet present, so the LAN HTTPS path always has TLS material even before
+		// a real cert has been provisioned.
 		lanCertPath, lanKeyPath := lan.DefaultCertPath, lan.DefaultKeyPath
 		if v := os.Getenv("VULOS_LAN_CERT"); v != "" {
 			lanCertPath = v

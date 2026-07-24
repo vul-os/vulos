@@ -64,7 +64,7 @@ type Service struct {
 	importSources map[string]ImportSource
 
 	// PIM import seam (wired via WithPIMConfig; nil ⇒ contacts/calendar import
-	// jobs fail with ErrImportUnavailable). pimMailURL is the vulos-mail instance
+	// jobs fail with ErrImportUnavailable). pimMailURL is the lilmail instance
 	// base URL (e.g. "http://localhost:3000"); pimMailSecret is the
 	// LILMAIL_BROKER_SECRET shared secret. pimAccountResolver maps an OS ownerID
 	// to the mail account email address used as the CardDAV/CalDAV account key.
@@ -83,7 +83,7 @@ type Service struct {
 	capDeliverer  CapabilityDeliverer
 }
 
-// WithPIMConfig wires the PIM import seam: the URL of the vulos-mail instance
+// WithPIMConfig wires the PIM import seam: the URL of the lilmail instance
 // the OS importer will POST bulk contacts/events to, the matching broker secret
 // (LILMAIL_BROKER_SECRET), and a resolver that maps an OS ownerID to the mail
 // account email address (the CardDAV/CalDAV account key). Call this after
@@ -294,8 +294,8 @@ func (s *Service) UploadGrant(ctx context.Context, userID, parentID, name, conte
 	// SealDefault (WRITE grants only, WAVE-3 follow-up): a CP-provisioned cloud
 	// deployment (DEPLOY_MODE=cloud) presign-brokers this PUT, so the control
 	// plane is *technically capable* of reading the plaintext bytes it hands the
-	// URL for (see vulos-cloud DEPLOY-SECURITY.md §1 — honest, not content-blind
-	// by default). Advertising SealDefault=true tells the client it SHOULD seal
+	// URL for — honest, not content-blind by default. Advertising SealDefault=true
+	// tells the client it SHOULD seal
 	// the bytes first with the existing content-seal path (contentseal.go /
 	// contentSeal.js), wrapped to the uploader's OWN published content key, so
 	// what the CP brokers is ciphertext it cannot open. Gated strictly on the

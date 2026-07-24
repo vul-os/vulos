@@ -63,9 +63,3 @@ This mirrors the collab-share model (`RegisterCollabHandlers`) but for arbitrary
 - [ ] `src/files/ShareModal.jsx` — share-to-peer UI (contact picker + permission selector)
 - [ ] Revocation: `DELETE /api/files/shares/{doc_id}` → 410 propagation on next peer fetch
 - [ ] OneDrive import adapter (Microsoft Graph, OAuth2 device-flow for headless)
-
----
-
-## Org-Directory Sharing (future)
-
-For multi-user org deployments: a directory-visible share makes a file or folder accessible to anyone in the same org namespace (same cluster passphrase domain). Requires the cluster org-directory feature (planned, vulos-cloud).

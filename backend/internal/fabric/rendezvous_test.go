@@ -13,8 +13,9 @@ import (
 	"time"
 )
 
-// canonicalVectorHex is copied verbatim from vulos-relay's
-// tunnel/rendezvous/canonical_test.go. It is a cross-repo wire contract: this
+// canonicalVectorHex is the same vector Ephor asserts in
+// tunnel/rendezvous/canonical_test.go (github.com/vul-os/ephor). It is a
+// cross-implementation wire contract: this
 // side signs the preimage and the relay verifies it, so a one-byte divergence
 // is an authentication failure at runtime that no amount of local testing here
 // would otherwise catch. Both sides assert the same bytes; if either drifts,
@@ -27,7 +28,7 @@ const canonicalVectorHex = "0000001476756c6f732d7264762f616e6e6f756e63652f31" +
 func TestCanonicalMessageMatchesRelayVector(t *testing.T) {
 	m := canonicalMessage("vulos-rdv/announce/1", "AAAA", "1700000000", "300", "nonce123", "meta-x", "wss://a", "https://b")
 	if got := hex.EncodeToString(m); got != canonicalVectorHex {
-		t.Fatalf("canonical preimage diverged from vulos-relay:\n got=%s\nwant=%s", got, canonicalVectorHex)
+		t.Fatalf("canonical preimage diverged from the pinned vector:\n got=%s\nwant=%s", got, canonicalVectorHex)
 	}
 }
 

@@ -4,21 +4,21 @@ package files
 //
 // Architecture overview
 // ─────────────────────
-// Contacts and calendar live in vulos-mail's CardDAV/CalDAV stores, not in the
+// Contacts and calendar live in lilmail's CardDAV/CalDAV stores, not in the
 // OS Drive. Their import flow therefore diverges from the file import flow
 // (importWalk → importWriteFile → Drive bucket) after the provider API call:
 // instead of writing bytes into the Drive, the PIM runner POSTs bulk vCard /
-// iCal payloads to vulos-mail's broker-gated /api/admin/import/contacts and
+// iCal payloads to lilmail's broker-gated /api/admin/import/contacts and
 // /api/admin/import/events endpoints.
 //
 // PERSIST-AFTER-DISCONNECT guarantee: once a contact or event is written to
-// vulos-mail, it is the user's owned copy in the CardDAV/CalDAV store.
+// lilmail, it is the user's owned copy in the CardDAV/CalDAV store.
 // Disconnecting the Google or Microsoft integration does not remove it. The OS
 // removes only the import job metadata (files_import_jobs), not the data.
 //
 // Additive-only sync (mode=sync): the OS tracks (ownerID, provider, externalID)
 // in files_import_items. A re-pull only imports items not yet in that table — it
-// NEVER deletes the vulos-mail copy when the upstream entry is removed. This is
+// NEVER deletes the lilmail copy when the upstream entry is removed. This is
 // the same dedup/additive guarantee the files import engine has.
 //
 // SSRF safety: both sources talk ONLY to fixed Google API hosts
@@ -55,7 +55,7 @@ const (
 
 // GoogleContactsSource implements ImportSource for Google Contacts via the
 // People API v1. Each Google contact is pulled as a structured person resource,
-// mapped to a vCard 4.0 string, and posted to vulos-mail's
+// mapped to a vCard 4.0 string, and posted to lilmail's
 // /api/admin/import/contacts endpoint by runPIMImport.
 type GoogleContactsSource struct {
 	peopleBase string       // overridable in tests; production: peopleAPIBase
@@ -191,7 +191,7 @@ func (p *personResource) displayName() string {
 }
 
 // toVCard builds a minimal vCard 4.0 string. UID = resourceName for consistent
-// dedup between the OS files_import_items table and vulos-mail's store href.
+// dedup between the OS files_import_items table and lilmail's store href.
 func (p *personResource) toVCard() string {
 	var b strings.Builder
 	b.WriteString("BEGIN:VCARD\r\n")
@@ -238,7 +238,7 @@ func vcfEscape(s string) string {
 
 // GoogleCalendarSource implements ImportSource for Google Calendar via the
 // Calendar API v3. Each event from the primary calendar is mapped to an
-// iCalendar VCALENDAR string and posted to vulos-mail's /api/admin/import/events.
+// iCalendar VCALENDAR string and posted to lilmail's /api/admin/import/events.
 type GoogleCalendarSource struct {
 	calBase    string       // overridable in tests; production: calendarAPIBase
 	httpClient *http.Client // bounded; only ever contacts www.googleapis.com
@@ -419,15 +419,15 @@ type pimItem struct {
 //  1. Lists all items from the provider.
 //  2. Skips already-imported items (dedup via files_import_items).
 //  3. Fetches each new item's bytes (OpenForImport → vCard/iCal string).
-//  4. POSTs in batches to vulos-mail's /api/admin/import/{contacts,events}.
+//  4. POSTs in batches to lilmail's /api/admin/import/{contacts,events}.
 //  5. Records each imported item in files_import_items.
 //
-// PERSIST: once POSTed to vulos-mail, the item is the user's owned copy. The OS
-// never sends a delete to vulos-mail; Vulos-owned copies persist after the
+// PERSIST: once POSTed to lilmail, the item is the user's owned copy. The OS
+// never sends a delete to lilmail; the user's copies persist after the
 // integration is disconnected or the upstream entry is removed.
 //
 // ADDITIVE: a mode=sync re-run adds new items (absent from files_import_items)
-// and skips existing ones. It never removes vulos-mail copies.
+// and skips existing ones. It never removes lilmail copies.
 func (s *Service) runPIMImport(ctx context.Context, src ImportSource, job *ImportJob) (importCounts, error) {
 	if s.pimMailURL == "" || s.pimMailSecret == "" {
 		return importCounts{}, fmt.Errorf("files: PIM import not configured (set VULOS_MAIL_URL and VULOS_MAIL_BROKER_SECRET)")
@@ -527,7 +527,7 @@ func (s *Service) runPIMImport(ctx context.Context, src ImportSource, job *Impor
 	return counts, nil
 }
 
-// pimPost sends a broker-authenticated JSON POST to a vulos-mail admin endpoint.
+// pimPost sends a broker-authenticated JSON POST to a lilmail admin endpoint.
 // A non-2xx response is returned as an error.
 func (s *Service) pimPost(ctx context.Context, endpoint string, payload map[string]any) error {
 	body, err := json.Marshal(payload)

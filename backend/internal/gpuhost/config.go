@@ -48,8 +48,9 @@ type Config struct {
 	// Identity is the box's fabric identity. Required.
 	Identity FabricIdentity
 
-	// RelayBaseURL is the HTTPS base URL of a vulos-relay node that exposes
-	// the host-registration endpoint. Defaults to https://relay.vulos.org.
+	// RelayBaseURL is the HTTPS base URL of the Ephor node that exposes the
+	// host-registration endpoint. Required: there is no default, because nobody
+	// runs a relay on the owner's behalf.
 	RelayBaseURL string
 
 	// StreamerBinary is the absolute path to the external WebRTC+NVENC
@@ -128,9 +129,6 @@ func (c *Config) validate() error {
 
 // applyDefaults fills in zero-valued fields. Idempotent.
 func (c *Config) applyDefaults() {
-	if c.RelayBaseURL == "" {
-		c.RelayBaseURL = "https://relay.vulos.org"
-	}
 	if c.HeartbeatInterval <= 0 {
 		c.HeartbeatInterval = 30 * time.Second
 	}

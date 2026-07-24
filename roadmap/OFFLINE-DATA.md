@@ -14,7 +14,7 @@ Both reference apps already embody this exact philosophy — the library general
 |---|---|---|
 | Model | Browser-CRDT (Yjs + hand-rolled) + server-authoritative baseline | Local **Go server** + SQLite + append-only **oplog** + HLC + version-vector |
 | Offline | app-shell PWA + IndexedDB drafts + localStorage CRDT snapshots | the whole node runs locally; browser is a thin HTTP client |
-| Host coupling | **none required** — optional `window.__VULOS_ENDPOINTS__`, `bootstrapOffline({onBoot, tierHint})`, same-origin fallback | **none required** — optional `FrameAncestors` knob; a Vulos Relay is just an `https://` peer URL |
+| Host coupling | **none required** — optional `window.__VULOS_ENDPOINTS__`, `bootstrapOffline({onBoot, tierHint})`, same-origin fallback | **none required** — optional `FrameAncestors` knob; an Ephor endpoint is just an `https://` peer URL |
 | Merge | CRDT **union-merge, never count-gated** (offline edits on both sides preserved) | LWW register (catalog) + add-only set (ledgers) |
 | At rest | **plaintext**, relies on device encryption; SW refuses to cache doc bytes | **plaintext** SQLite, relies on device encryption |
 

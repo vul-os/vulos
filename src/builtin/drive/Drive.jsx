@@ -42,10 +42,11 @@ function putWithProgress(url, file, { headers = {}, credentials = false, onProgr
 
 // ── resumable (tus-style) chunked upload ────────────────────────────────────
 // Large files upload in bounded chunks so each PATCH rides the relay as an
-// ordinary ≤-cap request (see vulos-relay CONSOLIDATION §A-2). The box tracks
-// the committed offset, so a dropped connection resumes via a HEAD + PATCH from
-// the reported offset instead of restarting. Small files keep the single-shot
-// upload-grant path (uploadOne) — this only kicks in above RESUMABLE_THRESHOLD.
+// ordinary ≤-cap request, staying under its per-request size limit. The box
+// tracks the committed offset, so a dropped connection resumes via a HEAD +
+// PATCH from the reported offset instead of restarting. Small files keep the
+// single-shot upload-grant path (uploadOne) — this only kicks in above
+// RESUMABLE_THRESHOLD.
 
 // Files at or above this size use the resumable/chunked path; smaller files use
 // the existing single-shot direct/OS-plane upload. 16 MiB comfortably clears the

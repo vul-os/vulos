@@ -137,10 +137,9 @@ const builtinRegistry = [
     builtin: true,
   },
 
-  // The old embedded `mail`/`office`/`calendar` builtins are RETIRED. Mail is the
-  // gateway-proxied `lilmail` connector; Ofisi is the standalone `vulos-office`
-  // app; Calendar/Contacts are standalone OS builtins over lilmail's /v1 (see the
-  // MAIL-PIM block below).
+  // Mail is the gateway-proxied `lilmail` connector; Ofisi is the standalone
+  // office app; Calendar/Contacts are standalone OS builtins over lilmail's /v1
+  // (see the MAIL-PIM block below).
   //
   // Real-time comms (chat/video) are THIRD-PARTY now, not first-party OS apps:
   // Talk → Matrix (Cinny/Element), Meet → Jitsi Meet/Element Call. All four are

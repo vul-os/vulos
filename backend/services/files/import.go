@@ -55,8 +55,8 @@ var (
 // Import job kinds / modes / statuses.
 const (
 	ImportKindFiles    = "files"    // copy into owned Drive storage
-	ImportKindContacts = "contacts" // bulk-import into vulos-mail CardDAV store
-	ImportKindCalendar = "calendar" // bulk-import into vulos-mail CalDAV store
+	ImportKindContacts = "contacts" // bulk-import into lilmail CardDAV store
+	ImportKindCalendar = "calendar" // bulk-import into lilmail CalDAV store
 
 	ImportModeOnce = "once" // copy once and stop
 	ImportModeSync = "sync" // additive-only re-pull supported

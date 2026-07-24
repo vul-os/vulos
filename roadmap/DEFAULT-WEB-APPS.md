@@ -162,7 +162,7 @@ Apps every OS needs out of the box.
 - [ ] Auto-save drafts
 - [ ] Notification badge on dock icon
 - [ ] Credentials stored encrypted in `~/.vulos/mail/`
-- Tech: mail is a **connector** — the bundled inbox (LilMail + `@vulos/mail-ui`) connects to the mailbox the user already owns (Gmail/Outlook/any IMAP/SMTP). Vulos does not run a mail server by default; the `vulos-mail` engine is dormant/experimental. (Thunderbird was removed from the registry.)
+- Tech: mail is a **connector** — the bundled inbox (LilMail + `@vulos/mail-ui`) connects to the mailbox the user already owns (Gmail/Outlook/any IMAP/SMTP). Vulos does not run a mail server by default; LilMail's self-hosted mail engine is dormant/experimental unless enabled. (Thunderbird was removed from the registry.)
 
 ### Contacts
 - [ ] Contact list with name, email, phone, address, notes, photo

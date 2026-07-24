@@ -221,7 +221,7 @@ func TestGoogleCalendarSourceOpenForImport(t *testing.T) {
 
 // TestPIMImportContactsFlow exercises the full runPIMImport path for contacts:
 //   - Mocked People API returns two contacts.
-//   - Mocked vulos-mail bulk endpoint records received vCards.
+//   - Mocked lilmail bulk endpoint records received vCards.
 //   - After one run, both are in files_import_items (dedup).
 //   - A second run (additive-only) skips both.
 func TestPIMImportContactsFlow(t *testing.T) {
@@ -249,7 +249,7 @@ func TestPIMImportContactsFlow(t *testing.T) {
 	}))
 	defer peopleSrv.Close()
 
-	// Mock vulos-mail bulk contacts endpoint.
+	// Mock lilmail bulk contacts endpoint.
 	var mailReceived []string
 	mailSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Vulos-Broker-Auth") != "secret" {
@@ -317,7 +317,7 @@ func TestPIMImportContactsFlow(t *testing.T) {
 
 // TestPIMImportCalendarFlow exercises runPIMImport for calendar events:
 //   - Mocked Calendar API returns two events.
-//   - Mocked vulos-mail events endpoint records received iCal strings.
+//   - Mocked lilmail events endpoint records received iCal strings.
 //   - Verifies DataKind() dispatches to the calendar path.
 func TestPIMImportCalendarFlow(t *testing.T) {
 	ctx := context.Background()
@@ -396,9 +396,9 @@ func TestPIMImportCalendarFlow(t *testing.T) {
 }
 
 // TestPIMImportPersistAfterDisconnect proves that once contacts/events are
-// written to vulos-mail, disconnecting the integration (token goes dead) does
+// written to lilmail, disconnecting the integration (token goes dead) does
 // not remove them — the import job metadata can be deleted without affecting
-// the vulos-mail copies.
+// the lilmail copies.
 func TestPIMImportPersistAfterDisconnect(t *testing.T) {
 	ctx := context.Background()
 
@@ -443,8 +443,8 @@ func TestPIMImportPersistAfterDisconnect(t *testing.T) {
 	}
 	storedContact := mailStored[0]
 
-	// Disconnect: token goes dead. The vulos-mail data is untouched — the OS
-	// has no mechanism to delete from vulos-mail, by design.
+	// Disconnect: token goes dead. The lilmail data is untouched — the OS
+	// has no mechanism to delete from lilmail, by design.
 	svc.WithExternal(&fakeTokenSource{token: ""})
 	// The stored contact is whatever was POSTed to mailSrv; it remains there
 	// regardless of the OS integration state.
@@ -460,9 +460,9 @@ func TestPIMImportPersistAfterDisconnect(t *testing.T) {
 	if len(jobs) != 0 {
 		t.Errorf("job not deleted")
 	}
-	// The contact remains in mailStored (vulos-mail data is the source of truth).
+	// The contact remains in mailStored (lilmail data is the source of truth).
 	if len(mailStored) != 1 {
-		t.Errorf("vulos-mail contact was removed (should never happen): %v", mailStored)
+		t.Errorf("lilmail contact was removed (should never happen): %v", mailStored)
 	}
 }
 

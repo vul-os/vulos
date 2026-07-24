@@ -2078,7 +2078,7 @@ function StorageSettings() {
 // --- Storage Mode (STORE-LOCAL-01) ---
 // Bundle-wide selector between central Tigris (default) and a local
 // MinIO-with-sync source-of-truth. Toggling to local-minio-sync passes the
-// endpoint + bucket + creds-ref to the co-located vulos-mail and vulos-office
+// endpoint + bucket + creds-ref to the co-located lilmail and ofisi
 // services via VULOS_STORAGE_MODE / VULOS_MINIO_* env vars. The CRDT sync
 // layer (STORE-SYNC-01 / OFFICE-SYNC-01 / SYNC-P2P-01) lives in the sibling
 // repos and is engaged purely by the mode flip — no UI plumbing required.

@@ -14,7 +14,7 @@ package files
 //     the recipient's VulaID (IssueCapability) and deliver it to the recipient's
 //     server. For an account-only user the recipient server is the cell, which
 //     redeems on the account's behalf and stages the bytes into the account's
-//     Drive (vulos-cloud owns that redemption).
+//     Drive.
 //
 // The resolver + deliverer are SEAMS implemented by cmd/server (it can import the
 // peering directory and the auth store); the files package stays peering-free.

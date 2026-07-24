@@ -225,7 +225,7 @@ ON CONFLICT(id) DO UPDATE SET
 }
 
 // EnvFor returns the environment-variable map co-located services
-// (vulos-mail, vulos-office) read at startup to learn the bundle storage
+// (lilmail, ofisi) read at startup to learn the bundle storage
 // mode and, when applicable, the local MinIO endpoint.
 //
 // For ModeCentralTigris only VULOS_STORAGE_MODE is exported (the legacy

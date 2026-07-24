@@ -7,9 +7,8 @@
 // Note: the OS never talks to the Fly API directly. It forwards provision
 // requests to the gateway the owner has configured, if any, which owns the
 // FLY_API_TOKEN and performs the actual POST /v1/apps/{app}/machines call
-// against https://api.machines.dev. This keeps the cloud-provider credential
-// out of the OS and avoids any Go-module dependency from vulos OS on
-// vulos-cloud.
+// against https://api.machines.dev. This keeps the hosting provider's
+// credential out of the OS entirely — the box never holds it.
 //
 // Flow:
 //

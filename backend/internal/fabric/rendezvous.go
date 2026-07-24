@@ -38,9 +38,9 @@ import (
 //
 // # Any relay, or none
 //
-// The rendezvous protocol is open (see vulos-relay/docs/RENDEZVOUS.md). Point
-// this at a self-hosted relayd, at Vulos's, or at nothing at all: with no
-// RendezvousURL configured the fabric behaves exactly as before, mDNS-only.
+// The rendezvous protocol is open. Point this at your own Ephor
+// (github.com/vul-os/ephor), at one somebody else hosts, or at nothing at all:
+// with no RendezvousURL configured the fabric is mDNS-only.
 // It composes with MDNSDiscoverer rather than replacing it — see MultiDiscoverer.
 type RendezvousDiscoverer struct {
 	// BaseURL is the relay's rendezvous prefix, e.g. https://relay.example/rendezvous.
@@ -291,7 +291,7 @@ func (m *MultiDiscoverer) Peers(ctx context.Context) ([]Peer, error) {
 }
 
 const (
-	// domainRdvAnnounce must match vulos-relay's announce domain tag exactly;
+	// domainRdvAnnounce must match the relay's announce domain tag exactly;
 	// a mismatch is a signature failure, not a subtle bug.
 	domainRdvAnnounce = "vulos-rdv/announce/1"
 	// fabricMeta marks these announcements as fabric peers, so a relay shared
@@ -301,8 +301,9 @@ const (
 
 // canonicalMessage builds the relay's domain-separated, length-prefixed signing
 // preimage: each segment prefixed by its big-endian uint32 length, domain first.
-// Kept byte-identical to keyauth.CanonicalMessage in vulos-relay — the two are a
-// wire contract, and rendezvous_test.go pins the shared vector.
+// Kept byte-identical to keyauth.CanonicalMessage in Ephor
+// (github.com/vul-os/ephor, tunnel/internal/keyauth) — the two are a wire
+// contract, and rendezvous_test.go pins the shared vector.
 func canonicalMessage(domain string, fields ...string) []byte {
 	total := 4 + len(domain)
 	for _, f := range fields {

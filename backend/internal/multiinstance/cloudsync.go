@@ -95,7 +95,7 @@ type CloudInstance struct {
 	// persist and route without a second parse step when a second cell arrives.
 	Region string `json:"region,omitempty"`
 	// StoreOnly marks a member that syncs but is never an ingress / route target
-	// (NODE-CAP-01). CONTRACT FOR CORE (vulos-management / vulos-cloud): the CP
+	// (NODE-CAP-01). CONTRACT FOR ANY GATEWAY IMPLEMENTATION: the gateway
 	// MUST persist this per instance and echo it here, or a store-only laptop's
 	// choice never reaches its peers and they will keep advertising a route to
 	// it. Omitted (false) means serving — the safe default for every existing

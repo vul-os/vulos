@@ -2,8 +2,7 @@
 #
 # ── Default build (pre-built frontend + backend binary) ───────────────────────
 #
-#   Step 1 — build frontend (requires the vulos-relay sibling):
-#     cd ../vulos-relay/client && npm install && npm run build:lib
+#   Step 1 — build frontend:
 #     npm ci && npm run build
 #
 #   Step 2 — build the Go binary for the target platform:
@@ -47,10 +46,8 @@ ARG BINARY_SOURCE=prebuilt
 # ── Stage 1: Frontend (pre-built) ─────────────────────────────────────────────
 # The frontend is built on the CI runner (or locally via `npm run build`)
 # before `docker build` is invoked.  dist/ is COPY'd from the build context
-# rather than rebuilt inside Docker, avoiding the file: dep path issue where
-# ../vulos-relay/client is outside the Docker build context (context: .).
-# To build locally: cd ../vulos-relay/client && npm install && npm run build:lib
-#                   npm ci && npm run build && docker build .
+# rather than rebuilt inside Docker.
+# To build locally: npm ci && npm run build && docker build .
 FROM scratch AS frontend
 COPY dist/ /dist/
 

@@ -104,9 +104,9 @@ These are hard constraints. PRs that violate them will not be merged regardless 
 - **No CGO** in any OSS Go code. Pure Go only.
 - **No .tsx** files. Frontend is JSX only (`*.jsx`).
 - **No Google SSO / OAuth** login flows.
-- **No Stripe billing** integration — billing lives in vulos-cloud only.
+- **No Stripe billing** integration — Vulos doesn't do billing. It's free software you run yourself.
 - **No Rust rewrites** — Go throughout (see docs/decisions.md / D-language).
-- Features requiring closed-source cloud infrastructure belong in `vulos-cloud`, not here.
+- **No closed-source cloud dependencies.** Everything here must build and run standalone on the owner's own hardware or a rented VPS — no feature may require infrastructure we operate.
 - No new external runtime dependencies without prior discussion in a GitHub issue.
 
 ## Code of Conduct

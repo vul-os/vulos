@@ -8,7 +8,7 @@
 //   • The old ⌘K opened the right-side CHAT PANEL (src/core/Portal.jsx → /api/ai).
 //     That binding has been REMOVED from Portal; this palette now owns ⌘K. The
 //     chat panel stays reachable via its dock button.
-//   • The mail app (vulos-mail-ui) keeps its own app-scoped ⌘K — untouched.
+//   • The lilmail app keeps its own app-scoped ⌘K — untouched.
 //
 // Sections, all backed by real state:
 //   • Apps    — the shared AppRegistry (getApps), launched via the shared

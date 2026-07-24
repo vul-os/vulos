@@ -1,8 +1,8 @@
 // MINST-06: Multi-instance notifications — fan-out + dedup.
 //
-// NotifyFanout fans an OS notification out to all online account instances via
-// the vulos-relay S2S messaging channel, ensuring the user sees it on every
-// device.  Dedup is enforced by a seen_notifications SQLite table (7-day TTL)
+// NotifyFanout fans an OS notification out to all online account instances
+// through the server-to-server messaging channel of the Ephor the owner has
+// configured (github.com/vul-os/ephor), so the user sees it on every device.  Dedup is enforced by a seen_notifications SQLite table (7-day TTL)
 // so each instance delivers the notification to its local UI at most once.
 //
 // Priority mapping:
@@ -11,13 +11,15 @@
 //     deduplicated before the relay POST so redundant sends are skipped.
 //
 // Relay endpoint: POST {VULOS_RELAY_BASE_URL}/api/s2s/notify
-// Override VULOS_RELAY_BASE_URL for dev / self-hosted deployments.
-// Default: https://relay.vulos.org
 //
-// NOTE (seam P2-4): the base-URL env var is VULOS_RELAY_BASE_URL — the SAME
-// var the rest of the OS reachability layer (peering federation/resolve, relay
-// client) reads. It was previously VULOS_RELAY_URL here, which nothing else
-// set, so the fanout always fell back to the default host.
+// VULOS_RELAY_BASE_URL names the Ephor this box dials out to. There is no
+// built-in default: nobody runs a relay on the owner's behalf, so with the
+// variable unset the fan-out delivers locally and skips the S2S POST rather
+// than dialling a host nobody operates.
+//
+// NOTE (seam P2-4): this is the SAME var the rest of the OS reachability layer
+// (peering federation/resolve, relay client) reads, so one setting configures
+// the lot.
 //
 // Cross-instance delivery contract (completed): the fanout POSTs a
 // relayEnvelope {target_ulid, target, sender, notification} with an
@@ -49,6 +51,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -60,17 +63,11 @@ import (
 	"time"
 )
 
-// defaultRelayBaseURL is the production vulos-relay base URL.
-const defaultRelayBaseURL = "https://relay.vulos.org"
-
-// relayBaseURL returns the effective relay base URL (env override or default).
-// Unified on VULOS_RELAY_BASE_URL (seam P2-4) so it matches the rest of the OS
-// reachability layer instead of the orphaned VULOS_RELAY_URL.
+// relayBaseURL returns the Ephor base URL this box is configured to dial, or
+// "" when the owner has configured none. Unified on VULOS_RELAY_BASE_URL
+// (seam P2-4) so it matches the rest of the OS reachability layer.
 func relayBaseURL() string {
-	if v := os.Getenv("VULOS_RELAY_BASE_URL"); v != "" {
-		return v
-	}
-	return defaultRelayBaseURL
+	return os.Getenv("VULOS_RELAY_BASE_URL")
 }
 
 // seenTTL is how long a notification_id is remembered in the dedup table.
@@ -370,7 +367,12 @@ func tunnelNameForInstance(inst Instance) string {
 	return strings.ToLower(label)
 }
 
-// sendToRelay POSTs a single notification to the vulos-relay S2S endpoint for
+// errNoRelay is returned when the box dials no Ephor. It is not an outage:
+// the notification is still delivered locally, and callers treat it as "this
+// box has no relay" rather than as a failed send.
+var errNoRelay = errors.New("multiinstance: no relay configured for this box")
+
+// sendToRelay POSTs a single notification to the Ephor S2S endpoint for
 // the target instance.  Failures are logged but do not panic.
 //
 // The relay both authenticates the sender (via the box's own VULOS_RELAY_TOKEN
@@ -406,7 +408,11 @@ func (nf *NotifyFanout) sendToRelay(ctx context.Context, target Instance, n Noti
 		return fmt.Errorf("marshal envelope: %w", err)
 	}
 
-	endpoint := relayBaseURL() + "/api/s2s/notify"
+	base := relayBaseURL()
+	if base == "" {
+		return errNoRelay
+	}
+	endpoint := base + "/api/s2s/notify"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err

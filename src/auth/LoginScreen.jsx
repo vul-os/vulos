@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useAuth } from './AuthProvider'
-import { useCloudSignIn, CloudSignInFlowExtras } from './CloudSignIn'
 
 export default function LoginScreen() {
   const { checkAuth, checkConcurrentSessions } = useAuth()
@@ -15,16 +14,6 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
-  // UNIFIED-SIGNIN: when this box is cloud-enrolled, offer "Sign in with
-  // Vulos Cloud" — one Vulos account signs you in to the cloud AND the OS.
-  const [cloudEnrolled, setCloudEnrolled] = useState(false)
-  const [cloudMode, setCloudMode] = useState(false)
-  const [cloudEmail, setCloudEmail] = useState('')
-  const [cloudPassword, setCloudPassword] = useState('')
-  const cloudFlow = useCloudSignIn({
-    onSuccess: async () => { await checkAuth(); await checkConcurrentSessions() },
-  })
-
   // Check if this is first-time setup (no users yet)
   useEffect(() => {
     fetch('/api/auth/status')
@@ -34,18 +23,7 @@ export default function LoginScreen() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-    // Cloud-enrollment check drives the "Sign in with Vulos Cloud" affordance.
-    fetch('/api/auth/cloud/status')
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => setCloudEnrolled(Boolean(data?.enrolled)))
-      .catch(() => {})
   }, [])
-
-  const handleCloudSubmit = (e) => {
-    e.preventDefault()
-    if (cloudFlow.submitting) return
-    cloudFlow.submit({ email: cloudEmail, password: cloudPassword })
-  }
 
   const isSetup = hasUsers === false
 
@@ -165,64 +143,6 @@ export default function LoginScreen() {
       {/* Auth card */}
       <div className="relative w-full max-w-sm rounded-2xl glass elevate-xl p-6 sm:p-7 animate-[fadeIn_0.5s_ease-out]" style={{ border: '1px solid var(--glass-border)' }}>
 
-      {/* UNIFIED-SIGNIN: cloud-account form */}
-      {cloudMode ? (
-        <form onSubmit={handleCloudSubmit} className="space-y-4">
-          <h2 className="text-lg font-medium text-center mb-2" style={{ color: 'var(--text-secondary)' }}>Sign in with Vulos Cloud</h2>
-
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1">Cloud email</label>
-            <input
-              type="email"
-              value={cloudEmail}
-              onChange={e => { setCloudEmail(e.target.value); cloudFlow.setError('') }}
-              placeholder="you@vulos.org"
-              required
-              autoFocus
-              autoComplete="email"
-              className="input"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1">Cloud password</label>
-            <input
-              type="password"
-              value={cloudPassword}
-              onChange={e => { setCloudPassword(e.target.value); cloudFlow.setError('') }}
-              placeholder="Password"
-              required
-              autoComplete="current-password"
-              className="input"
-            />
-          </div>
-
-          <CloudSignInFlowExtras flow={cloudFlow} />
-
-          {cloudFlow.error && (
-            <p role="alert" className="text-sm text-center" style={{ color: 'var(--status-danger)' }}>{cloudFlow.error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={cloudFlow.submitting || cloudFlow.phase === 'enroll'}
-            className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {cloudFlow.submitting && (
-              <span aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            )}
-            {cloudFlow.submitting ? 'Signing in…' : cloudFlow.phase === 'totp' ? 'Verify code' : 'Sign In'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setCloudMode(false); cloudFlow.reset() }}
-            className="w-full text-xs text-neutral-600 hover:text-neutral-400 transition-colors"
-          >
-            ← Use a local account instead
-          </button>
-        </form>
-      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         <h2 className="text-lg font-medium text-center mb-2" style={{ color: 'var(--text-secondary)' }}>
           {isSetup ? 'Create your account' : 'Sign in'}
@@ -285,30 +205,7 @@ export default function LoginScreen() {
             ? (isSetup ? 'Creating account…' : 'Signing in…')
             : (isSetup ? 'Create Account' : 'Sign In')}
         </button>
-
-        {/* UNIFIED-SIGNIN affordance: shown when this box is cloud-enrolled */}
-        {cloudEnrolled && !isSetup && (
-          <>
-            <div className="flex items-center gap-3 pt-1" aria-hidden="true">
-              <span className="flex-1 h-px" style={{ background: 'var(--border-default)' }} />
-              <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--text-faint)' }}>or</span>
-              <span className="flex-1 h-px" style={{ background: 'var(--border-default)' }} />
-            </div>
-            <button
-              type="button"
-              onClick={() => { setCloudMode(true); setError('') }}
-              className="w-full py-2.5 rounded-xl text-sm font-medium accent-text hover-accent-bg-soft transition-colors flex items-center justify-center gap-2"
-              style={{ border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)' }}
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
-                <path d="M12.5 9.5a3 3 0 00-.5-5.9A4.5 4.5 0 003.5 6a2.5 2.5 0 00.5 5h8.5z" />
-              </svg>
-              Sign in with Vulos Cloud
-            </button>
-          </>
-        )}
       </form>
-      )}
       </div>
 
       {/* Top-right controls */}

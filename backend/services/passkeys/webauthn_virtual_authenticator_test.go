@@ -2,16 +2,13 @@
 // authenticator that drives the OS passkeys Finish* / StreamVerifier ceremonies
 // end-to-end (WAVE-46).
 //
-// Adapted from the vulos-cloud CP harness
-// (vulos-cloud/backend/cp/internal/auth/webauthn_virtual_authenticator_test.go,
-// WAVE-42). The CP version wraps a go-webauthn SessionData and exposes a
-// challenge() accessor; here the OS passkeys.Service returns the challenge as
-// JSON from Begin{Registration,Assertion}, so this harness parses the base64url
-// challenge straight out of that JSON. The rest -- CBOR attestation objects, COSE
-// EC2 public keys, ECDSA-SHA256 assertion signatures over
-// authData||SHA256(clientDataJSON), and the security knobs (tamper / wrong
-// challenge / wrong origin / sign-count regression / unknown credential) -- is
-// carried over so go-webauthn's real verifier is exercised, not hand-rolled bytes.
+// The OS passkeys.Service returns the challenge as JSON from
+// Begin{Registration,Assertion}, so this harness parses the base64url
+// challenge straight out of that JSON. It exercises go-webauthn's real
+// verifier -- CBOR attestation objects, COSE EC2 public keys, ECDSA-SHA256
+// assertion signatures over authData||SHA256(clientDataJSON), and the
+// security knobs (tamper / wrong challenge / wrong origin / sign-count
+// regression / unknown credential) -- not hand-rolled bytes.
 //
 // This lets the OS-side tests cover:
 //   - Service.FinishRegistration / FinishAssertion (the go-webauthn RP verify)

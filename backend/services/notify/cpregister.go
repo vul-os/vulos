@@ -30,9 +30,8 @@ package notify
 //
 // Header X-Vulos-Edge-CP-Auth = hex(HMAC-SHA256(secret,
 // method"\n"path"\n"hex(sha256(body)))), keyed by MAIL_EDGE_CP_SECRET — the
-// SAME construction the mail edge uses (vulos-cloud routes_mailedge.go
-// computeEdgeCPAuth / vulos-deliver edge.cpAuthHeader). The body is the exact
-// bytes POSTed.
+// SAME construction the mail edge uses (vulos-deliver edge.cpAuthHeader). The
+// body is the exact bytes POSTed.
 //
 // # Dedicated CP key — NO VAPID key material is EVER sent
 //
@@ -69,7 +68,7 @@ import (
 )
 
 // cpAuthHeader is the request header carrying the edge↔CP HMAC. It MUST match
-// the CP's edgeCPAuthHeader (vulos-cloud routes_mailedge.go).
+// the CP's edgeCPAuthHeader.
 const cpAuthHeader = "X-Vulos-Edge-CP-Auth"
 
 // Register/unregister paths on the CP. These are the exact paths the CP HMAC is

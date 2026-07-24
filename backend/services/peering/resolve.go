@@ -11,7 +11,7 @@
 //     ownership-probe mechanism) that it controls a publicly reachable
 //     endpoint. Fastest and most private — bypasses any relay entirely.
 //  2. relay-tunnel: the peer's box has no public IP but a co-located relay
-//     agent (vulos-relay, self-hostable, run alongside the OS — NOT embedded
+//     agent (Ephor, self-hostable, run alongside the OS — NOT embedded
 //     in this binary, see internal/directlisten's "the OS does not embed the
 //     relay agent" note) maintains a reverse tunnel, so requests routed to
 //     the relay's per-identity URL reach the box anyway. This is what makes
@@ -52,7 +52,7 @@ import (
 // relayResolvePath is the relay's peer-reachability resolve endpoint. It
 // shares the "_vulos-direct" path family with internal/directlisten.ProbePath
 // (the box-side ownership-proof probe) — both are the relay/box halves of the
-// SAME direct-reachability mechanism. MUST match vulos-relay's wire contract.
+// SAME direct-reachability mechanism. MUST match Ephor's wire contract.
 const relayResolvePath = "/_vulos-direct/resolve"
 
 // reachabilityHTTPTimeout bounds a single resolve request to the relay.
@@ -85,7 +85,7 @@ var (
 
 // relayResolveResponse is the wire shape returned by the relay's
 // peer-reachability resolve endpoint for a given vula_id. Both fields are
-// optional; either, both, or neither may be present. MUST match vulos-relay.
+// optional; either, both, or neither may be present. MUST match Ephor.
 type relayResolveResponse struct {
 	// Direct is the peer's verified-direct base URL (https), present only when
 	// the relay has successfully probed and verified it (see directlisten.go).

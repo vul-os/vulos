@@ -2,10 +2,8 @@
  * endpoints.js — vulos-native cloud↔LAN endpoint selection with same-origin
  * fallback (OS OFFLINE-02 frozen contract).
  *
- * The OS owns its endpoint layer natively. (was `
- * endpoints`, a sibling package (`../vulos-relay/client`) that is not part of
- * the vulos repo. To let the OS build and run STANDALONE, the endpoint layer is
- * now owned natively here, preserving the exact contract the OS depended on:
+ * The OS owns its endpoint layer natively, with no sibling-package dependency,
+ * so it builds and runs standalone. The contract:
  *
  *   • state persisted under a CONFIGURABLE localStorage key (the OS passes
  *     'vulos.os.endpoints.v1' — must NOT change, or every user's last-known-good

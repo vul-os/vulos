@@ -63,9 +63,8 @@ Versioning: [SemVer](https://semver.org/).
   dead `internal/meethost` / `VULOS_SFU_HOST` identifiers (the retirement
   note itself was already accurate) and swapped the dead `[meethost]` log tag
   in `docs/TROUBLESHOOTING.md`'s grep list for the real `[gpuhost]` tag. This
-  doc set is build-ingested by `vulos-cloud`'s `scripts/sync-docs.mjs` into
-  `content/docs/vulos-os/*`, so fixing it here is the actual fix for the
-  stale copy found there.
+  doc set is ingested by the public docs site build, so fixing it here is the
+  actual fix for the stale copy found there.
 - **Documented the Web Push / DMTAP Wake capability deviation.** The DMTAP
   substrate spec (`substrate/ROLES.md` §8, capability ⑤ Wake) defines wake
   pushes as strictly content-free — an opaque token, device pulls the real

@@ -44,14 +44,14 @@ import (
 )
 
 // ProbePath is the well-known path the relay GETs to verify this box's advertised
-// direct endpoint (reachability + ownership). It MUST match vulos-relay's
+// direct endpoint (reachability + ownership). It MUST match the relay's
 // wire.DirectProbePath. The box echoes the relay's nonce header verbatim, proving
-// it controls the endpoint. Kept as a local const so the OS does not import the
-// relay Go module (the two repos share only the wire string, like gpuhost).
+// it controls the endpoint. Kept as a local const so the OS does not depend on
+// the relay's code — the two share only the wire string, like gpuhost.
 const ProbePath = "/_vulos-direct/probe"
 
 // ProbeHeader carries the relay's one-time probe nonce; the box echoes it back in
-// the response body. MUST match vulos-relay's wire.DirectProbeHeader.
+// the response body. MUST match the relay's wire.DirectProbeHeader.
 const ProbeHeader = "X-Vulos-Direct-Probe"
 
 // maxProbeNonce bounds the nonce we will echo, so the probe path can never be used

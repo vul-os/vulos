@@ -40,8 +40,7 @@ type DiscoveryResult struct {
 	// wraps file content to this key so a content-blind (cloud-relayed) share can
 	// only be opened by the recipient. Empty means the peer has not published one;
 	// a content-blind share to them must fail closed (never plaintext through the
-	// relay). Part of the WAVE-3 wire contract shared with vulos-cloud's
-	// cloudhome.DiscoveryResult.
+	// relay). Part of the WAVE-3 wire contract.
 	ContentPubKey string `json:"content_pub_key,omitempty"`
 }
 

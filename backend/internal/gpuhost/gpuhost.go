@@ -23,7 +23,7 @@
 //   - It does NOT reimplement the streaming server. The wire/codec/NVENC path
 //     belongs to the external binary; we only generate its config, launch it,
 //     and watch it.
-//   - It does NOT import vulos-relay's Go code. The relay's VULOS-STREAM/1
+//   - It does NOT import the relay's code. The relay's VULOS-STREAM/1
 //     sub-protocol is reached via the HTTPS registration endpoint described
 //     by fabricEndpoints (defined in fabric.go); the wire shape is a small,
 //     stable JSON contract.

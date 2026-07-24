@@ -67,11 +67,10 @@ func (r *osShareResolver) ResolveRecipient(ctx context.Context, email string) (f
 }
 
 // httpCapabilityDeliverer POSTs a minted peer-share capability to a remote
-// recipient's server intake. For an account-only recipient the cell redeems the
-// capability on the account's behalf and stages the bytes into the account's
-// Drive (vulos-cloud owns the redemption side).
+// recipient's server intake. The recipient's own box redeems the capability
+// and stages the bytes into that owner's Drive.
 //
-// CROSS-REPO INTERFACE ASSUMPTION (reconcile with vulos-cloud):
+// CROSS-REPO INTERFACE ASSUMPTION (the recipient box's peer intake must accept):
 //
 //	POST <server>/api/files/peer/inbound
 //	Content-Type: application/json

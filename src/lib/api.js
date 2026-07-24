@@ -14,7 +14,7 @@
  * always works when the OS is served from the box), but new code — and any
  * code that needs cloud↔LAN failover — should route through this client.
  *
- * Mirrors the contract used by vulos-office and vulos-mail so all three OS
+ * Mirrors the contract used by ofisi and lilmail so all three OS
  * surfaces behave identically when the cloud is down.
  */
 

@@ -9,10 +9,11 @@
 //
 // Env surface (all optional; every field defaults to "off"/central):
 //
-//	VULOS_RELAY_BASE_URL    the box's configured vulos-relay instance — used
+//	VULOS_RELAY_BASE_URL    the box's configured Ephor instance — used
 //	                        both for reachability resolve (resolve.go) and, by
 //	                        other subsystems (gpuhost), for capability
-//	                        registration. Self-hostable (see vulos-relay).
+//	                        registration. Self-hostable (see Ephor,
+//	                        github.com/vul-os/ephor).
 //	VULOS_VERIFY_URL        the directory/verify service base URL (discovery.go
 //	                        + email verification). Defaults to the central
 //	                        vulos.org directory when unset.

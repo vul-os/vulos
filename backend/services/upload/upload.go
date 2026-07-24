@@ -2,9 +2,10 @@
 // tus.io-style protocol semantics (Upload-Length / Upload-Offset /
 // Upload-Metadata / POST-create / HEAD-offset / PATCH-append).
 //
-// Why this exists (see vulos-relay/docs/CONSOLIDATION.md §A-2): a single HTTP
-// upload that rides the relay is capped at the relay's MaxRequestBytes. Rather
-// than raise that cap without bound, the BOX APP chunks large files: the client
+// Why this exists: a single HTTP upload that rides the relay (Ephor, the open
+// self-hostable reachability broker the box dials out to) is capped at the
+// relay's MaxRequestBytes. Rather than raise that cap without bound, the BOX
+// APP chunks large files: the client
 // creates an upload, then PATCHes bounded chunks (each ≤ the relay cap) that
 // each pass the relay as an ordinary request with full rate-limit/timeout
 // coverage. The relay stays a dumb pipe and needs NO changes.
