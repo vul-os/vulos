@@ -77,7 +77,7 @@ Vulos boots into a fullscreen kiosk browser running the React shell. Native Linu
 curl -fsSL https://get.vulos.org | sudo bash
 ```
 
-Installs `vulos` and `vulos-office` as systemd services with shared config under `/etc/vulos/`. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP), so no mail server is installed by default; the dormant/experimental `vulos-mail` engine is opt-in via `--with-mail`. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup, DNS records, and post-install steps.
+Installs `vulos` and `vulos-office` (Ofisi, the office suite) as systemd services with shared config under `/etc/vulos/`. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP), so no mail server is installed by default; the dormant/experimental `vulos-mail` engine is opt-in via `--with-mail`. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup, DNS records, and post-install steps.
 
 ### Option 5 — Build from source (development)
 
@@ -113,15 +113,13 @@ you through:
 1. **Welcome** and **New vs. Join** — start a fresh install, or join an existing Vulos box/cluster.
 2. **Device** — pick a device profile (PC/tablet, TV, car, watch) that tunes the shell layout.
 3. **Language**, **Timezone**, **Network** (WiFi, if applicable).
-4. **Account type** — local-only account or a cloud-linked Vulos account.
-5. **Account** — create your admin account (email + password). Optionally enroll a passkey (WebAuthn/FIDO2) for phishing-resistant login.
-6. **Vulos username** (`@vulos` handle) — mandatory in production; there is no skip option once cloud identity is in play.
-7. **Device PIN** — optional quick-unlock PIN for the lock screen.
-8. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
-9. **Apps** — the default-everything bundle (the owned productivity app **Ofisi** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
-10. **Appearance**, **Identity** (display name), **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
-11. **SSH** and **Recovery kit** — download your account recovery material.
-12. **Ready** — setup completes and you land on the desktop.
+4. **Account** — create your admin account (display name, `@vulos` username, password). This is a local account only — Vulos has no cloud sign-in step. Optionally enroll a passkey (WebAuthn/FIDO2) for phishing-resistant login.
+5. **Device PIN** — optional quick-unlock PIN for the lock screen.
+6. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
+7. **Apps** — the default-everything bundle (the owned productivity app **Ofisi** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
+8. **Appearance**, **Identity** (display name), **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
+9. **SSH** and **Recovery kit** — download your account recovery material.
+10. **Ready** — setup completes and you land on the desktop.
 
 Choosing **Join** instead skips straight to picking up an existing installation's storage and syncing, then the shared PIN + Ready steps.
 

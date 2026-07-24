@@ -13,4 +13,4 @@
 
 - **Error budget**: 99.9% availability = 43.2 min downtime / 28-day month.
 - **Rollback trigger** means: the deploy pipeline should pause and alert oncall; it does not automatically revert unless the CI/CD gate is configured to do so.
-- These SLOs apply to the self-hosted OSS build running on recommended hardware (Raspberry Pi 5 or equivalent x86_64). Cloud-hosted SLOs are in `vulos-cloud/SLOs.md`.
+- These SLOs apply to the self-hosted OSS build running on recommended hardware (Raspberry Pi 5 or equivalent x86_64) — the only build Vulos ships. There is no Vulos-operated/cloud-hosted deployment, so these are the complete SLOs.

@@ -39,12 +39,13 @@ cd ..
 ## Environment Variables
 
 This guide covers the **self-host** deployment shapes — a sovereign box on your
-own hardware. That box runs as `DEPLOY_MODE=standalone` (default: no control
-plane, every app open) or, once you link it to Vulos Cloud, as `DEPLOY_MODE=os`.
-Both run the identical OS image; a Vulos-**managed** box is the same `os` image
-on hardware Vulos owns, and `cloud` is the same code operated multi-tenant by
-Vulos. See [ARCHITECTURE.md → Deployment modes](ARCHITECTURE.md#deployment-modes)
-for the canonical breakdown and [CLOUD.md](CLOUD.md) for the linking seams.
+own hardware or a VPS you rent. That box runs as `DEPLOY_MODE=standalone`
+(default: no control plane, every app open) or, once you point it at an
+external control plane, as `DEPLOY_MODE=os`. Both run the identical OS image —
+only the entitlement-gating and object-storage seams differ. See
+[ARCHITECTURE.md → Deployment modes](ARCHITECTURE.md#deployment-modes) for the
+canonical breakdown and [CLOUD.md](CLOUD.md) for the optional control-plane
+seams.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

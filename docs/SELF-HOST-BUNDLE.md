@@ -1,6 +1,6 @@
 # Vulos Bundle — Self-Host Guide
 
-One command installs the **Vulos OS backend + vulos-office** on a single Linux
+One command installs the **Vulos OS backend + Ofisi** (`vulos-office`) on a single Linux
 machine, supervised by systemd (or OpenRC on Alpine), sharing one config dir,
 one data dir, one fabric identity, and one S3 storage backend.
 
@@ -37,7 +37,7 @@ curl -fsSL https://get.vulos.org | sudo bash
 | Service | Binary | Port(s) | Purpose |
 |---|---|---|---|
 | vulos | `/usr/local/bin/vulos` | 8443 | OS backend — API gateway, app fabric |
-| vulos-office | `/usr/local/bin/vulos-office` | 8445 | Collaborative office suite |
+| vulos-office | `/usr/local/bin/vulos-office` | 8445 | Ofisi — collaborative office suite (Docs / Sheets / Slides / PDF / Whiteboard) |
 | vulos-mail (opt-in) | `/usr/local/bin/vulos-mail` | 25, 587, 8444 | Dormant/experimental self-hosted mail engine — installed only with `--with-mail` |
 | minio (optional) | `/usr/local/bin/minio` | 9000 (loopback) | Local S3-compatible storage |
 
@@ -189,7 +189,7 @@ All three services share the same config and data roots:
 
 ```
 /etc/vulos/
-  fabric.yaml       — shared mesh identity, domain, TLS, cloud endpoint
+  fabric.yaml       — shared mesh identity, domain, TLS
   storage.yaml      — S3/MinIO credentials and backend selector
   vulos.yaml        — OS backend config (inherits from fabric + storage)
   mail.yaml         — vulos-mail config (inherits from fabric + storage)
@@ -321,16 +321,12 @@ applies them consistently to all three services:
      records to publish (and they are shown in Settings → Mail → DNS). No cloud
      account is required to generate or read them.
 
-6. **(Optional) Register with Vulos Cloud:**
-   Your bundle is a **fully self-contained, sovereign server** — it routes, serves,
-   and delivers mail entirely on its own once DNS is configured above. Vulos Cloud
-   is only the *managed* billing and fleet layer (hosted routing, managed inbound
-   relay, fleet dashboards); it is **not** required to run a self-hosted instance.
-
-   If you *want* those managed conveniences, visit
-   [https://vulos.org/setup/bundle](https://vulos.org/setup/bundle) and paste
-   your domain + public keys. Skipping this step keeps you fully independent of
-   Vulos Cloud — nothing about your instance phones home or depends on it.
+Your bundle is a **fully self-contained, sovereign server** — it routes, serves,
+and delivers mail entirely on its own once DNS is configured above. Nothing
+about it phones home or depends on any Vulos-operated service. If the box
+sits behind NAT or CGNAT, see [NETWORKING.md](NETWORKING.md) for reaching it
+through **Ephor** (`github.com/vul-os/ephor`) — a hosted instance, your own
+self-hosted one, or direct TLS if you have a static IP.
 
 ---
 

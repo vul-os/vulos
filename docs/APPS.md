@@ -261,7 +261,7 @@ curl https://os.example.com/api/files/list \
 How they work on the box:
 
 - A `vk_` key is accepted by the auth middleware on the OS's `/api/*` surface, as an alternative to a browser session. On success the request runs as the local user account the key maps to.
-- Keys are **issued and revoked in the Vulos Cloud control plane**, not on the box. The box treats the key as opaque: it forwards it to the control plane's introspection endpoint and honors the verdict — validity, the owning account, the key's `scopes` (e.g. `files.read`, `files.write`), and its `products`. A key must carry the `os` product to be usable here.
+- Keys are **issued and revoked by an external control plane**, not on the box — the box only ever holds an opaque handle. It forwards the key to that control plane's introspection endpoint (see [CLOUD.md](CLOUD.md) for what runs there) and honors the verdict — validity, the owning account, the key's `scopes` (e.g. `files.read`, `files.write`), and its `products`. A key must carry the `os` product to be usable here.
 - Verdicts are cached in-process for about 60 seconds, so revocation in the control plane takes effect within a minute. The cache stores only a hash of the key, never the plaintext.
 - Everything fails closed: control-plane errors, invalid keys, missing `os` product, or an account that doesn't exist on this box all yield 401.
 
@@ -281,15 +281,11 @@ Self-hosters running fully standalone simply leave this off and use platform app
 
 > **Scope note (read this first).** The Apps & Bots platform described in this
 > section — the `vat_` token registry, the `/api/apps/v1/*` runtime, webhooks,
-> and the MCP endpoint — is implemented in the **Vulos control plane**
-> (`vulos-management`, `pkg/appsplatform`), **not** in the OS box backend in
-> this repository. None of the `POST /api/apps`, `/api/apps/v1/*`,
-> `/api/apps/{id}/rotate/*` or `/mcp` routes below are served by the box, so
-> the examples will not work against a box URL. The MCP server in particular is
-> not currently implemented in either repository. Treat this section as a
-> description of the platform product, and see the control-plane repository for
-> its live surface. Tracking which repository should own this documentation is
-> an open product decision.
+> and the MCP endpoint — is a **design, not a built feature**. None of the
+> `POST /api/apps`, `/api/apps/v1/*`, `/api/apps/{id}/rotate/*` or `/mcp` routes
+> below exist in this repository's backend, so the examples will not work
+> against a box. Treat this section as a specification for work that has not
+> shipped.
 
 The **Apps & Bots platform** is how you give an external program — a cron script, a webhook consumer, an LLM agent — a scoped credential to act on your account.
 

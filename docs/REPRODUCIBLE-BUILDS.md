@@ -155,7 +155,7 @@ veritysetup verify vulos-rootfs.sqfs vulos-rootfs.verity "${ROOT_HASH}" \
   && echo "verity OK" || echo "verity FAILED"
 ```
 
-**Key rotation**: documented in `docs/KMS.md` (vulos-cloud). For OSS builds, the signing key is held by the Vulos maintainers; see the GPG fingerprint in `SECURITY.md`.
+**Key rotation**: the signing key is held by the Vulos maintainers; verify it out-of-band against the GPG fingerprint published in `SECURITY.md`.
 
 ---
 

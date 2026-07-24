@@ -12,18 +12,18 @@ Vulos is one binary that runs in one of three shapes, selected by the `DEPLOY_MO
 
 | Mode | Who runs it | Control plane | Entitlement gating | Object storage |
 |---|---|---|---|---|
-| `standalone` (default) | You, on your own hardware — fully sovereign, off-grid | None. No cloud is contacted unless you set a cloud env var | Off — every installed app is open, no billing | Local FS, or your own S3/MinIO with short-lived **STS prefix-scoped** creds minted per app |
-| `os` | A self-hosted box you link to Vulos Cloud, **or** a box Vulos manages for you — identical software either way | CP-adjacent: optional cloud login, integrations broker, `vk_` API keys, managed-cell push | **Enforced, fail-closed** for `vk_`-keyed requests | Same STS prefix-scoped creds as standalone |
-| `cloud` | Vulos, multi-tenant, on shared infra (Fly) | This *is* the cloud runtime | **Enforced, fail-closed** | **Per-object presigned URLs** (Tigris has no STS) — never raw bucket creds |
+| `standalone` (default) | You, on your own hardware or VPS — fully sovereign, off-grid | None. Nothing is contacted unless you set a control-plane env var | Off — every installed app is open, no metering | Local FS, or your own S3/MinIO with short-lived **STS prefix-scoped** creds minted per app |
+| `os` | You, on your own hardware or VPS, optionally pointed at an external control plane | CP-adjacent: optional sign-in broker, integrations broker, `vk_` API keys, push relay — all config-driven, none built into the box | **Enforced, fail-closed** for `vk_`-keyed requests once a control plane is configured | Same STS prefix-scoped creds as standalone |
+| `cloud` | A multi-tenant deployment shape for whoever operates shared infrastructure under this mode | This *is* the multi-tenant control-plane runtime | **Enforced, fail-closed** | **Per-object presigned URLs** (Tigris has no STS) — never raw bucket creds |
 
-The one truth to hold onto: **a self-hosted box and a Vulos-managed box run the exact same OS image in `os` mode.** The only difference is who owns the hardware and is therefore billed. "Self-host" itself has two flavors — the full OS box above, or a single standalone app binary (see the sibling app repos, which read the same `DEPLOY_MODE` enum). "Cloud" is the same code operated multi-tenant by Vulos.
+The one truth to hold onto: **`os` mode runs the exact same OS image as `standalone`.** Nothing about the software changes — only whether a control-plane URL is configured. "Self-host" itself has two flavors — the full OS box above, or a single standalone app binary (see the sibling app repos, which read the same `DEPLOY_MODE` enum).
 
 Two independent switches distinguish `standalone` from `os`:
 
 - **`DEPLOY_MODE`** governs entitlement enforcement. `os`/`cloud` are treated as cloud-adjacent (`Mode.IsCloudAdjacent()`) and gate `vk_`-keyed app dispatch fail-closed; `standalone` leaves every app open.
-- **The control-plane URL** (`VULOS_CLOUD_URL` / `VULOS_CP_URL`) governs which optional cloud seams are live — unified sign-in, the integrations broker, managed-cell push. With no cloud URL set, those seams are inert regardless of mode.
+- **The control-plane URL** (`VULOS_CLOUD_URL` / `VULOS_CP_URL`) governs which optional control-plane seams are live — sign-in, the integrations broker, push relay. With no URL set, those seams are inert regardless of mode.
 
-Either way, per-user **storage isolation always applies** — it protects the box's own users from each other and is enforced on-box, never requiring a control plane. Linking a box to the cloud is a set of narrow, opt-in seams, each of which fails closed back to the sovereign path when the cloud is unreachable; see [CLOUD.md](CLOUD.md) for every one.
+Either way, per-user **storage isolation always applies** — it protects the box's own users from each other and is enforced on-box, never requiring a control plane. Pointing a box at a control plane is a set of narrow, opt-in seams, each of which fails closed back to the sovereign path when that control plane is unreachable; see [CLOUD.md](CLOUD.md) for every one.
 
 > Cloud-adjacent modes (`os`, `cloud`) refuse to boot with a plaintext software device keystore unless the operator sets `VULOS_ALLOW_SOFTWARE_KEYSTORE=1` — the TPM-less Fly cloud runtime uses that opt-out. `standalone` is unaffected: the software keystore is its documented fallback.
 
@@ -67,7 +67,7 @@ flowchart TD
 
 **Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through the on-box `llmux` gateway by default. See [THREAT-MODEL.md](THREAT-MODEL.md) Component 5.
 
-**Compute stance.** All AI/GPU compute (the assistant, AI apps, streaming encode) runs on the **user's own box**, mediated by `llmux` (local model or BYOK to an external provider). Vulos does not host or provision AI/GPU compute, and there is no compute billing in this codebase; a managed/hosted-compute option is a documented "later," not a current feature (`VULOS-PRODUCT-STANDARD.md`).
+**Compute stance.** All AI/GPU compute (the assistant, AI apps, streaming encode) runs on the **user's own box**, mediated by `llmux` (local model or BYOK to an external provider). Nothing in this codebase hosts, provisions, or meters AI/GPU compute on your behalf.
 
 **Authentication.** Email + password + optional WebAuthn/TOTP. No third-party identity providers. Passkeys are the primary login for new accounts (with sign-counter clone/replay detection). Device PIN and QR/phone-approval cover kiosk and shared clients. A per-user master key is wrapped by both the password and a 24-word recovery phrase, so account recovery never needs a server-held plaintext key.
 
@@ -286,7 +286,7 @@ The box is always the authority for its own data; a handful of seams let it work
 - **Resumable upload through the relay.** Large files (≥16 MiB by default) upload in bounded chunks so each `PATCH` rides the relay as an ordinary ≤-cap HTTP request — the relay needs no changes. The box (`services/upload`) reassembles into the owner's own storage with an offset persisted in SQLite (so a dropped connection resumes via `HEAD` + `PATCH` from the committed offset), per-chunk + whole-file SHA-256 integrity, and an hourly sweep of abandoned partials. Additive: `nil` manager ⇒ `503`, and the UI falls back to the single-shot grant→PUT→commit path on an older box.
 - **Sovereign Web Push (PUSH-CELL-01).** When VAPID keys are configured, the box sends Web Push **directly** to browser-vendor push services (FCM/Apple/Mozilla) — outbound-only, works behind NAT, no central dependency. Payloads are RFC-8291 encrypted (vendor routes but can't read). Only owner-targeted notifications are pushed, DND/prefs are honoured by the box first, and gone (404/410) subscriptions are pruned. Flag-gated: no keys ⇒ push off, the in-app WebSocket stream is unchanged. This sends real notification content, not the DMTAP substrate's content-free Wake token (`substrate/ROLES.md` §8) — a deliberate superset, documented with rationale in `backend/internal/webpush/README.md`.
 
-First-party Vulos Meet is retired — video calling is third-party (Jitsi Meet / Element Call, installed from the App Store; see [COMMS.md](COMMS.md)). The sovereign P2P **Messages** builtin keeps its own in-process Pion SFU (`backend/services/peering/sfu`) for peer group calls, with no host-registry escalation.
+Video calling is third-party: install Jitsi Meet / Element Call from the App Store (see [COMMS.md](COMMS.md)) — Vulos does not ship a first-party video product. The sovereign P2P **Messages** builtin keeps its own in-process Pion SFU (`backend/services/peering/sfu`) for peer group calls, with no host-registry escalation.
 
 ---
 

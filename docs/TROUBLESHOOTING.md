@@ -2,7 +2,7 @@
 
 Common Vulos OS failures, organized as symptom, cause, and fix. Every log line, error string, endpoint, environment variable, and unit name in this chapter is quoted from the actual code and scripts, so you can grep your logs for the exact text you see. Start with the logs section, find your area, and work through the checks in order.
 
-Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md), [CONFIGURATION.md](CONFIGURATION.md), [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md), [CLOUD.md](CLOUD.md), [NETWORKING.md](NETWORKING.md), [ASSISTANT.md](ASSISTANT.md), [APPS.md](APPS.md), [FILES.md](FILES.md), [SECURITY.md](SECURITY.md), [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md), [PEERING.md](PEERING.md), [USER-GUIDE.md](USER-GUIDE.md).
+Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md), [CONFIGURATION.md](CONFIGURATION.md), [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md), [NETWORKING.md](NETWORKING.md), [ASSISTANT.md](ASSISTANT.md), [APPS.md](APPS.md), [FILES.md](FILES.md), [SECURITY.md](SECURITY.md), [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md), [PEERING.md](PEERING.md), [USER-GUIDE.md](USER-GUIDE.md).
 
 ---
 
@@ -104,73 +104,15 @@ docker run ... --device /dev/uinput ...
 
 ---
 
-## Cloud enrollment and unified sign-in
+## Sign-in
 
-Enrolling the box with Vulos Cloud is an RFC 8628 device flow: the box POSTs to the control plane's `/enroll/start`, shows you a `user_code` + verification URL, then polls `/enroll/poll` until you approve the device in the cloud console. The control plane base URL comes from `VULOS_CLOUD_URL` (falling back to `VULOS_CLOUD_API_URL`, default `https://api.vulos.org`). The enrolled identity is persisted at `~/.vulos/auth/integrations/identity.json` with the sealed private key next to it (`enroll_key.sealed`).
-
-Check enrollment state at any time:
-
-```bash
-curl -s http://localhost:8080/api/auth/cloud/enroll/status | jq
-# {"state":"idle" | "pending" | "approved" | "error" | "unavailable", ...}
-```
-
-**Symptom:** starting enrollment returns `502` with `could not start device enrollment: cloudenroll: start status 403`.
-**Likely cause:** this is the currently-known failure mode — the control plane's browser-oriented request protections can reject the box's server-side enrollment POSTs with a 403 before the enrollment logic ever sees them. Nothing is wrong with your box or account.
-**Fix:** there is no box-side setting that fixes this; the fix is on the cloud side. Retry later, and keep both the OS and your cloud control plane up to date. If you run your own control plane, update it to a version that accepts device-enrollment posts from non-browser clients.
-
-**Symptom:** enrollment sits in `"state":"error"` with `cloudenroll: enrollment denied by owner` — but nobody denied anything.
-**Likely cause:** the box maps *any* HTTP 403 from `/enroll/poll` to "denied by owner". A control-plane-side 403 (the same known failure mode as above) is indistinguishable from a real denial, so the message can be misleading.
-**Fix:** if you (the account owner) did not actually press Deny in the cloud console, treat this like the 403-on-start case: retry later / update the cloud.
-
-**Symptom:** `could not start device enrollment: cloudenroll: timed out waiting for the cloud to issue a user code`.
-**Likely cause:** the control plane did not answer `/enroll/start` within 20 seconds — network problem, wrong `VULOS_CLOUD_URL`, or the CP is down.
-**Fix:** verify the box can reach the control plane (`curl -sv https://api.vulos.org/ -o /dev/null`), and check `VULOS_CLOUD_URL` / `VULOS_CLOUD_API_URL` in your config.
-
-**Symptom:** `cloudenroll: enrollment grant expired` or `cloudenroll: enrollment grant expired before approval`.
-**Likely cause:** the approval window lapsed before the owner entered the user code.
-**Fix:** start enrollment again and approve promptly at the verification URL shown.
-
-**Symptom:** enrollment start returns `503` with `device enrollment is not available on this box`.
-**Likely cause:** the device keystore failed to open at boot, so the whole enrollment machinery was never wired. Look for `passkeys: devicekey unavailable, server-side passkeys disabled: ...` in the boot log.
-**Fix:** check permissions on `~/.vulos/auth/tpm` and restart the server.
-
-**Symptom:** boot log shows `[integrations] cloud enrollment load: cloudenroll: corrupt identity pubkey` (or `corrupt identity cert`, or `cloudenroll: cannot unseal device key`).
-**Likely cause:** the persisted identity under `~/.vulos/auth/integrations/` is damaged, or the sealing key changed (e.g. the TPM/software keystore was reset).
-**Fix:** move the two files aside and re-enroll the device:
-
-```bash
-mv ~/.vulos/auth/integrations/identity.json ~/.vulos/auth/integrations/identity.json.bad
-mv ~/.vulos/auth/integrations/enroll_key.sealed ~/.vulos/auth/integrations/enroll_key.sealed.bad
-```
-
-A healthy enrolled boot logs `[integrations] using owner-attested device cert (ulid=...)`, and a fresh enrollment logs `[cloudenroll] device enrolled (ulid=...) — cert wired for integrations + identity claim`.
-
-### Signing in with a cloud account (`POST /api/auth/cloud/login`)
-
-The login endpoint returns structured errors. What they mean:
-
-| Response | Meaning / fix |
-|----------|---------------|
-| `401 invalid_credentials` | The cloud rejected the email/password pair. |
-| `401 invalid_totp` | Wrong TOTP or recovery code. |
-| `200 {"step":"totp_required"}` | Not an error — resubmit with `totp_code`. |
-| `200 {"step":"passkey_required"}` | Your cloud account is passkey-only; a WebAuthn ceremony cannot be driven from the box. Sign in with a password-capable method or use the cloud console directly. |
-| `200 {"step":"enrollment_required"}` | The box is not enrolled yet — run the enrollment flow above first. |
-| `403 cloud_reauth_required` | Your cloud session is too old to mint a device token; sign in to the cloud again with your password. |
-| `429 the cloud is rate limiting sign-in attempts — try again shortly` | Back off and retry. |
-| `502 could not reach Vulos Cloud — check your network connection` | Transport failure between box and control plane. |
-| `503 cloud broker key mismatch — refusing to sign in (re-enroll this device or contact your admin)` | The cloud served a broker signing key **different** from the one pinned on this device. This fails closed on purpose (a silently accepted key change is the shape of a key-swap attack). If the change is legitimate, re-enroll the device or set `VULOS_CLOUD_BROKER_PUBKEY` explicitly. |
-| `503 cloud login not configured on this device` | No broker key / not enrolled — cloud login was never set up here. |
-| `401 cloud token has expired` / `invalid cloud token signature` / `cloud token is not valid for this device` / `cloud token has already been used` | The minted login token failed local verification. Expired usually means clock skew — check the box's time (`timedatectl`). |
-
-If your control plane runs at a nonstandard origin and rejects the box's requests, `VULOS_CLOUD_ORIGIN` overrides the `Origin` header the box's cloud client sends.
+Vulos accounts are local to your box — email/password, passkey (WebAuthn/FIDO2), PIN, and TOTP, all created and verified on-box. There is no cloud console, no device enrollment flow, and no account that exists anywhere but on your own instance. If sign-in is failing, check [SECURITY.md](SECURITY.md) for the auth surface and its fail-closed defaults.
 
 ---
 
 ## Box not reachable remotely (relay and direct)
 
-Default reachability is via the Vulos relay: a separate relay agent (not embedded in the OS server) keeps a tunnel open to the relay, and clients fall back to it whenever a direct connection is not available. The agent is configured through `VULOS_RELAY_BASE_URL`, `VULOS_RELAY_NAME`, and `VULOS_RELAY_TOKEN` — if remote access fails entirely, check the relay agent's own logs and those variables first. See [NETWORKING.md](NETWORKING.md) and [CLOUD.md](CLOUD.md).
+Default reachability is via **Ephor** (`github.com/vul-os/ephor`), an open-source, self-hostable broker: a relay agent (a separate binary, not embedded in the OS server) dials **out** and keeps a tunnel open to an Ephor instance, and clients fall back to that tunnel whenever a direct connection is not available. The agent is configured through `VULOS_RELAY_BASE_URL` (the Ephor endpoint — defaults to Vulos's own hosted instance at `https://relay.vulos.org`; point it at your own self-hosted Ephor or anyone else's instead), `VULOS_RELAY_NAME`, and `VULOS_RELAY_TOKEN` — if remote access fails entirely, check the relay agent's own logs and those variables first. See [NETWORKING.md](NETWORKING.md) for the full reachability model.
 
 The **direct fast path** (`VULOS_DIRECT_ENABLE=1`) is opt-in and only for boxes with a real public endpoint. Clients try direct first and fall back to the relay on failure, so a broken direct listener degrades speed, not access. Its status:
 
@@ -409,6 +351,6 @@ Large uploads use resumable, chunked (tus-style) endpoints under `/api/files/upl
 ## Still stuck?
 
 - Run `curl -s http://localhost:8080/api/health | jq` and read the failing check — a full disk or read-only data dir explains a surprising amount of misbehavior.
-- Grep the backend log for the bracketed subsystem tags used throughout this chapter: `[cloudenroll]`, `[cloudlogin]`, `[direct]`, `[lan]`, `[llmuxclient]`, `[ai]`, `[assistant]`, `[appnet]`, `[storage]`, `[gpuhost]`, `[integrations]`.
+- Grep the backend log for the bracketed subsystem tags used throughout this chapter: `[direct]`, `[lan]`, `[llmuxclient]`, `[ai]`, `[assistant]`, `[appnet]`, `[storage]`, `[gpuhost]`, `[integrations]`.
 - `curl -s http://localhost:8080/api/version` tells you exactly which build you are running before you file a report.
 - For backup and restore paths, see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md); for peering/federation problems, see [PEERING.md](PEERING.md).

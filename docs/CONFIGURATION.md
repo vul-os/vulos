@@ -99,21 +99,20 @@ curl localhost:8080/api/browser/status | jq .gpu_tier
 
 ---
 
-## Cloud integration
+## Control-plane integration
 
-Vulos OS works fully standalone; these variables only matter when linking a
-box to Vulos Cloud (unified sign-in, region defaults, LAN-cert issuance,
-managed billing).
+Vulos OS works fully standalone; these variables only matter if you point the
+box at an external control plane (self-hosted or otherwise) for sign-in,
+region defaults, LAN-cert issuance, or brokered integrations — see
+[CLOUD.md](CLOUD.md) for what that buys you and what it doesn't.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VULOS_CLOUD_URL` | _(empty)_ | Cloud control-plane base URL — enrollment, cloud sign-up proxy, region default |
+| `VULOS_CLOUD_URL` | _(empty)_ | Control-plane base URL — enrollment, sign-up proxy, region default |
 | `VULOS_CLOUD_API_URL` | falls back to `VULOS_CLOUD_URL` | Alternate CP base for enrollment / identity-claim proxy |
-| `VULOS_CLOUD_ORIGIN` | derived from the CP URL | Overrides the expected Origin header the cloud client sends |
-| `VULOS_CLOUD_BROKER_PUBKEY` | baked-in prod key | Overrides the trusted cloud-broker public key used to verify CP-issued tokens |
-| `VULOS_CLOUD_ALLOW_INSECURE` | off | **Dev-only.** Allows plaintext/insecure cloud connections — never set in production |
-| `VULOS_DEVICE_ULID` | _(empty)_ | This device's ULID, sent to the cloud/integrations client |
-| `VULOS_REGION` | derived from `VULOS_CLOUD_URL` | Declared region for identity/storage-provisioning |
+| `VULOS_CLOUD_ALLOW_INSECURE` | off | **Dev-only.** Allows plaintext/insecure control-plane connections — never set in production |
+| `VULOS_DEVICE_ULID` | _(empty)_ | This device's ULID, sent to the control-plane/integrations client |
+| `VULOS_REGION` | `eu` | Declared region for identity/storage-provisioning |
 | `VULOS_STORE_ONLY` | `0` (serving) | Set `1`/`true`/`yes` to join the account as a **sync-only** member (NODE-CAP-01): this box replicates data and shows online, but is never a route/ingress target — the relay/DNS never send it client traffic. Explicit opt-in only (seeded on first self-registration; the Instances dashboard toggle changes it later). Use for a personal laptop/desktop that should sync but not serve. **Never** set this on a single-box install — it is its own only server. |
 
 ---
@@ -151,7 +150,7 @@ managed billing).
 ## Integrations / OAuth (self-host)
 
 Only needed when self-hosting external-account integrations yourself, rather
-than going through Vulos Cloud's managed OAuth broker.
+than going through a control plane's brokered OAuth flow.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -162,8 +161,8 @@ than going through Vulos Cloud's managed OAuth broker.
 | `INTEGRATIONS_KEK` | none; **required in production** | Base64, 32-byte key-encryption-key used to encrypt OAuth refresh tokens at rest. The server refuses to run with a default/dev key in `--env=prod` |
 
 Google Cloud Storage (GCS) has no local client-secret variable — it is
-accessed via Vulos Cloud's CP-brokered short-lived bearer tokens, not local
-OAuth credentials.
+accessed via CP-brokered short-lived bearer tokens (when a control plane is
+configured), not local OAuth credentials.
 
 ---
 
@@ -189,12 +188,12 @@ The one-line installer (`curl -fsSL https://get.vulos.org | sudo bash`) writes t
 
 ### `/etc/vulos/fabric.yaml`
 
-Shared mesh identity, domain, TLS, and cloud endpoint settings. **Edit this first after install.**
+Shared mesh identity, domain, TLS, and control-plane endpoint settings. **Edit this first after install.**
 
 ```yaml
 domain: os.yourdomain.com
 acme_email: you@yourdomain.com
-cloud_endpoint: https://api.vulos.org   # leave as-is for Vulos Cloud
+cloud_endpoint: https://api.vulos.org   # optional control-plane endpoint; only matters if you use one
 ```
 
 ### `/etc/vulos/storage.yaml`
@@ -255,11 +254,11 @@ OS backend config. Inherits from `fabric.yaml` and `storage.yaml`.
 
 ### `/etc/vulos/mail.yaml`
 
-vulos-mail config. Inherits from `fabric.yaml` and `storage.yaml`.
+Config for the self-hosted mail-server option (see [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md)). Inherits from `fabric.yaml` and `storage.yaml`.
 
 ### `/etc/vulos/office.yaml`
 
-vulos-office config. Inherits from `fabric.yaml` and `storage.yaml`.
+Ofisi (office suite) config. Inherits from `fabric.yaml` and `storage.yaml`.
 
 ---
 
@@ -287,11 +286,11 @@ curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
 
 ```
 /etc/vulos/
-  fabric.yaml       — mesh identity, domain, TLS, cloud endpoint
+  fabric.yaml       — mesh identity, domain, TLS, control-plane endpoint
   storage.yaml      — S3/MinIO credentials and backend selector
   vulos.yaml        — OS backend config
-  mail.yaml         — vulos-mail config
-  office.yaml       — vulos-office config
+  mail.yaml         — self-hosted mail-server config
+  office.yaml       — Ofisi (office suite) config
   bundle.yaml       — installer metadata (arch, distro, storage mode)
 
 /var/lib/vulos/
