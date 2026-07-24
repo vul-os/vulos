@@ -105,11 +105,24 @@ export function resolveEndpoints() {
 
 /**
  * seedFromResolveBackend persists a { cloud, lan } endpoint pair from a resolve
- * / bootstrap payload and returns it. Accepts the pair directly, or nested under
- * `.endpoints` / `.backend`.
+ * / bootstrap payload and returns it.
+ *
+ * Accepts either a lowercase { cloud, lan } pair directly (or nested under
+ * `.endpoints` / `.backend`), or the BackendTarget shape returned by the
+ * control plane's /api/resolve/backend endpoint:
+ *   { Endpoint: '<remote base url>', LANCandidate: { BoxID, Endpoint } | null }
  */
 export function seedFromResolveBackend(payload) {
   const src = payload || {}
+  if (typeof src.Endpoint === 'string' || 'LANCandidate' in src) {
+    const pair = {
+      cloud: src.Endpoint || '',
+      lan: (src.LANCandidate && src.LANCandidate.Endpoint) || '',
+    }
+    writePair(pair)
+    cachedSelection = null
+    return pair
+  }
   const e = src.endpoints || src.backend || src
   const pair = { cloud: e.cloud || '', lan: e.lan || '' }
   writePair(pair)
