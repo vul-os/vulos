@@ -46,7 +46,6 @@ import (
 	"vulos/backend/services/authvault"
 	"vulos/backend/services/bluetooth"
 	"vulos/backend/services/bootmode"
-	"vulos/backend/services/cloudenroll"
 	"vulos/backend/services/cluster"
 	"vulos/backend/services/compliance"
 	"vulos/backend/services/credvault"
@@ -1232,55 +1231,6 @@ func main() {
 		}()
 
 		// INTEG-SEC-01 method 1: if this box has completed owner-attested cloud
-		// enrollment, present its CA-signed device cert on mint (preferred over the
-		// TOFU device-key path — no first-use race).
-		// UNIFIED-SIGNIN: the enroller base URL falls back to VULOS_CLOUD_API_URL
-		// so a box configured for the cloud API (signup proxy / unified login)
-		// enrolls against the same CP without a second env var.
-		// GATEWAY-01: the enroller base URL resolves through the single gwurl
-		// accessor (configured override → canonical CP env vars → default), so a
-		// self-host box enrolls against the same control plane every other broker
-		// targets. Bound at startup; a runtime gateway change applies on restart.
-		cloudEnrollBase := gwurl.URL()
-		enroller := cloudenroll.New(cloudEnrollBase, datadir.Join("auth", "integrations"), deviceKS)
-		if ident, err := enroller.Load(); err != nil {
-			log.Printf("[integrations] cloud enrollment load: %v", err)
-		} else if ident != nil {
-			integrationsClient.SetCertProvider(ident)
-			log.Printf("[integrations] using owner-attested device cert (ulid=%s)", ident.ULID)
-			// IDENTITY-CLAIM-01 (offline first-boot): let the account-username claim proxy
-			// present this same device cert so the CP can authenticate the enrolled
-			// device when the wizard holds no CP session cookie yet.
-			SetIdentityDeviceAuth(ident, ident.ULID)
-			log.Printf("[identity] device-cert claim auth enabled (ulid=%s)", ident.ULID)
-		}
-
-		// UNIFIED-SIGNIN: expose asynchronous enrollment + this box's device
-		// identity to the auth handler so POST /api/auth/cloud/login can mint an
-		// OS session from a Vulos Cloud account, and the setup wizard can drive
-		// the RFC 8628 user-code approval flow. When a grant completes we hot-wire
-		// the fresh device cert exactly like the boot-time Load() path above.
-		enrollMgr := cloudenroll.NewManager(enroller, func(ident *cloudenroll.Identity) {
-			integrationsClient.SetCertProvider(ident)
-			SetIdentityDeviceAuth(ident, ident.ULID)
-			if err := auth.WriteEnrollmentFlag(); err != nil {
-				log.Printf("[cloudenroll] enrollment flag: %v", err)
-			}
-			// UNIFIED-SIGNIN: pin the cloud login-broker pubkey NOW (owner-approved
-			// enrollment is a strictly better trust anchor than first-login TOFU),
-			// so the very first /api/auth/cloud/login takes ensureBrokerPubkey's
-			// mismatch-checked (fail-closed) branch instead of trust-on-first-use.
-			// Non-fatal: a failure here just leaves today's first-login TOFU intact.
-			pinCtx, pinCancel := context.WithTimeout(context.Background(), 20*time.Second)
-			if err := auth.PinBrokerPubkeyAtEnrollment(pinCtx, enroller.FetchBrokerPubkey); err != nil {
-				log.Printf("[cloudenroll] broker pubkey pin at enrollment failed (%v) — will TOFU on first login", err)
-			} else {
-				log.Printf("[cloudenroll] broker pubkey pinned at enrollment (first-login TOFU window closed)")
-			}
-			pinCancel()
-			log.Printf("[cloudenroll] device enrolled (ulid=%s) — cert wired for integrations + identity claim", ident.ULID)
-		})
-		authHandler.CloudEnroll = cloudEnrollAdapter{m: enrollMgr}
 
 		passkeysSvc := passkeys.New(datadir.Join("auth", "passkeys"), deviceKS)
 		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.
@@ -1420,23 +1370,6 @@ func main() {
 		return p != nil && p.Role == auth.RoleAdmin
 	})
 
-	// GATEWAY-01: owner-configurable control-plane URL (self-host affordance).
-	// GET/check are reachable pre-session (first-boot); SET/DELETE are gated to
-	// the box owner once an owner exists (before that, the setup window is open).
-	registerGatewayRoutes(mux, gatewaySetGate{
-		isOwner: func(userID string) bool {
-			p, _ := authStore.GetProfile(userID)
-			return p != nil && p.Role == auth.RoleAdmin
-		},
-		hasOwner: func() bool {
-			for _, ur := range authStore.ListUsersWithRoles() {
-				if ur.Role == string(auth.RoleAdmin) {
-					return true
-				}
-			}
-			return false
-		},
-	})
 	// Seed the exported RAG-mode gauge at startup so /metrics reflects reality
 	// before the first model-management page load.
 	if listing, lerr := modelMgr.List(); lerr == nil {
@@ -4161,8 +4094,6 @@ func main() {
 	registerCDNRoutes(mux, authStore, home)
 	// Identity service (instance ULID + hostname)
 	registerIdentityRoutes(mux, home)
-	// IDENTITY-01: account-username claim proxies (check/claim → Vulos Cloud CP)
-	registerIdentityClaimRoutes(mux)
 	// Conflict resolver (CLUSTER-10)
 	registerConflictRoutes(mux, dataDir, notifySvc)
 	// Join codes — cross-device cluster joins via short-codes / QR (INIT-10)

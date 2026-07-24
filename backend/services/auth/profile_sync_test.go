@@ -14,6 +14,18 @@ import (
 	"vulos/backend/services/signing"
 )
 
+// makeTestStore builds a Store on a fresh temp dir. (Previously lived alongside
+// the cloud-login tests; rehomed here when that surface was removed.)
+func makeTestStore(t *testing.T) *Store {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	return s
+}
+
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
 // makeTestSyncer creates a ProfileSyncer backed by a fresh test store with

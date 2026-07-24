@@ -21,8 +21,8 @@ type Handler struct {
 	OnUserCreated func(username, password, role string) // called after a new user is registered
 	OnUserLogin   func(username, password, role string) // called on every successful login to sync credentials
 	OnRoleChanged func(username, role string)           // called when a user's role changes
-	// OnSignIn is called after every successful sign-in (local password,
-	// cloud token, cloud unified) with the real client IP/user-agent. Lets
+	// OnSignIn is called after every successful sign-in with the real client
+	// IP/user-agent. Lets
 	// callers (e.g. cmd/server's webhooks wiring, "auth.new_signin") observe
 	// sign-ins without this package importing services/webhooks — same
 	// decoupling pattern as OnRoleChanged/OnUserLogin. nil-safe: unset = no-op.
@@ -35,10 +35,6 @@ type Handler struct {
 	// Set to a non-nil value only when VULOS_CP_BASE_URL is configured;
 	// when nil, vk_ tokens fall through to session-only auth (self-host unchanged).
 	VKIntrospector apikey.Introspector
-	// CloudEnroll is the UNIFIED-SIGNIN device-enrollment seam (cloudenroll
-	// manager, wired in main.go). nil when the device keystore is unavailable —
-	// cloud login then reports enrollment as unavailable.
-	CloudEnroll CloudEnrollment
 }
 
 func NewHandler(store *Store) *Handler {
@@ -90,18 +86,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/security/unban", h.handleUnban)
 	mux.HandleFunc("GET /api/auth/security/stats", h.handleSecurityStats)
 
-	// CLOGIN-01: cloud login endpoints
-	mux.HandleFunc("POST /api/auth/cloudlogin", h.handleCloudLogin)
-	mux.HandleFunc("GET /api/auth/cloud/status", h.handleCloudStatus)
-
-	// CLOGIN-04: cloud account creation proxy
-	mux.HandleFunc("POST /api/auth/cloud/signup", h.handleCloudSignup)
-
-	// UNIFIED-SIGNIN: one Vulos account → cloud login → OS session.
-	mux.HandleFunc("POST /api/auth/cloud/login", h.handleCloudUnifiedLogin)
-	mux.HandleFunc("POST /api/auth/cloud/enroll/start", h.handleCloudEnrollStart)
-	mux.HandleFunc("GET /api/auth/cloud/enroll/status", h.handleCloudEnrollStatus)
-
 	// CLOGIN-07: fingerprint unlock (fprintd / D-Bus).
 	mux.HandleFunc("GET /api/auth/fingerprint/status", h.handleFingerprintStatus)
 	mux.HandleFunc("POST /api/auth/fingerprint/enroll/start", h.handleFingerprintEnrollStart)
@@ -129,12 +113,6 @@ var publicPaths = map[string]bool{
 	"/api/setup/join/status":          true, // INIT-08: unauthenticated join progress poll
 	"/api/browser/status":             true,
 	"/manifest.json":                  true,
-	"/api/auth/cloudlogin":            true, // CLOGIN-01: unauthenticated cloud login
-	"/api/auth/cloud/status":          true, // CLOGIN-01: enrollment status check (setup-time)
-	"/api/auth/cloud/signup":          true, // CLOGIN-04: unauthenticated cloud account creation (setup-time)
-	"/api/auth/cloud/login":           true, // UNIFIED-SIGNIN: cloud-account login (user is not signed in yet)
-	"/api/auth/cloud/enroll/start":    true, // UNIFIED-SIGNIN: setup-time enrollment kickoff — the grant only completes when the OWNER approves the user_code in the cloud console
-	"/api/auth/cloud/enroll/status":   true, // UNIFIED-SIGNIN: enrollment progress poll (setup-time; exposes only grant state)
 	"/api/identity/check":             true, // IDENTITY-01: account-username availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
 	"/api/gateway":                    true, // GATEWAY-01: control-plane URL. GET is a public read; POST/DELETE do their OWN owner-or-first-boot gate in the handler (like /metrics), so the session middleware must defer rather than 401 the setup wizard.
 	"/api/gateway/check":              true, // GATEWAY-01: dry-run validate + SSRF-scoped reachability probe (setup-time; no persistence).
@@ -511,89 +489,6 @@ func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]any{"user": user.Safe(), "session": sess})
-}
-
-// ─── CLOGIN-01: Cloud login ───────────────────────────────────────────────────
-
-// handleCloudLogin validates a cloud-signed login token and issues an OS session.
-//
-// Request body (JSON):
-//
-//	{
-//	  "token":     <canonical JSON bytes, base64-encoded>,
-//	  "signature": <base64 Ed25519 signature>
-//	}
-//
-// On success: sets session cookie + returns CloudSessionInfo JSON.
-// On failure: 401 with error details.
-//
-// This handler does NOT make any outgoing network call — the cloud token is
-// validated locally against the baked broker pubkey.
-func (h *Handler) handleCloudLogin(w http.ResponseWriter, r *http.Request) {
-	ip := extractIP(r)
-	if h.limiter.IsBanned(ip) {
-		writeErr(w, 429, "too many attempts")
-		return
-	}
-
-	var req CloudLoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, "invalid request body")
-		return
-	}
-	if len(req.Token) == 0 || req.Signature == "" {
-		writeErr(w, 400, "token and signature are required")
-		return
-	}
-
-	pub, err := LoadBrokerPubkey()
-	if err != nil {
-		// Device is not enrolled — cloud login not available.
-		writeErr(w, 503, "cloud login not configured on this device")
-		return
-	}
-
-	verifier := NewCloudLoginVerifier(h.store, pub)
-	info, err := verifier.Login(req.Token, req.Signature)
-	if err != nil {
-		h.limiter.RecordFailure(ip)
-		switch err {
-		case ErrTokenExpired:
-			writeErr(w, 401, "cloud token has expired")
-		case ErrBadSignature:
-			writeErr(w, 401, "invalid cloud token signature")
-		case ErrDeviceMismatch:
-			writeErr(w, 401, "cloud token is not valid for this device")
-		case ErrTokenReplay:
-			writeErr(w, 401, "cloud token has already been used")
-		case ErrNoBrokerPubkey:
-			writeErr(w, 503, "cloud login not configured on this device")
-		default:
-			writeErr(w, 401, err.Error())
-		}
-		return
-	}
-
-	h.limiter.RecordSuccess(ip)
-
-	// Set session cookie so the browser is authenticated from here on.
-	http.SetCookie(w, sessionCookie(r, info.SessionToken))
-
-	if h.OnSignIn != nil {
-		h.OnSignIn(info.UserID, ip, r.UserAgent())
-	}
-
-	writeJSON(w, info)
-}
-
-// handleCloudStatus reports whether this device is enrolled with Vulos Cloud.
-// Used by the login screen and install wizard to decide whether to show the
-// cloud account option by default.
-func (h *Handler) handleCloudStatus(w http.ResponseWriter, r *http.Request) {
-	enrolled := IsCloudEnrolled()
-	writeJSON(w, map[string]any{
-		"enrolled": enrolled,
-	})
 }
 
 func (h *Handler) handleChangePassword(w http.ResponseWriter, r *http.Request) {
