@@ -92,4 +92,4 @@ For background on accounts, roles, and the desktop shell that surrounds Settings
 Two things worth noting so you don't go looking for them:
 
 - There's no "AI Router" pane — routing an AI request to a local model, `llmux`, or an external provider is governed by the **AI Assistant** pane plus the operator's environment configuration (`AI_PROVIDER`, `LLMUX_URL`, and the sovereignty tier shown by the trust badge — see [ASSISTANT.md](ASSISTANT.md)), not a separate settings screen.
-- Signing in with an external account and its 2FA are covered in [CLOUD.md](CLOUD.md), not here — this page only documents what's inside the Settings app itself.
+- Sign-in and the wider account-security model are covered in [SECURITY.md](SECURITY.md), not here — this page only documents what's inside the Settings app itself.

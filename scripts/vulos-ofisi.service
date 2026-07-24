@@ -1,12 +1,16 @@
-# /etc/systemd/system/vulos-office.service
-# vulos-office — collaborative office suite backend.
+# /etc/systemd/system/vulos-ofisi.service
+# Ofisi — collaborative office suite backend (github.com/vul-os/ofisi).
 # Listens on port 8445. No raw network capabilities required.
 #
-# Install path:  /etc/systemd/system/vulos-office.service
+# Historical name: Ofisi's Go module and built binary are still literally
+# named `vulos-office` (kept deliberately to avoid a churny binary/module
+# rename) — the product, repo, and this unit are "Ofisi" everywhere else.
+#
+# Install path:  /etc/systemd/system/vulos-ofisi.service
 # Written by:    scripts/install-vulos.sh
 
 [Unit]
-Description=Vulos — collaborative office suite backend
+Description=Vulos — Ofisi collaborative office suite backend
 Documentation=https://docs.vulos.org/self-host/bundle
 After=network-online.target vulos-fabric.service vulos.service
 Wants=network-online.target
@@ -16,7 +20,11 @@ Requires=vulos-fabric.service
 Type=simple
 User=vulos
 Group=vulos
-ExecStart=/usr/local/bin/vulos-office serve --config /etc/vulos/office.yaml
+# NOTE: the real CLI (vulos-office/main.go) has no "serve" subcommand — it
+# takes server flags directly. A leading positional arg like "serve" would
+# make flag.Parse() stop before it ever sees -config, so config.yaml would
+# silently fall back to defaults. Use the flag directly.
+ExecStart=/usr/local/bin/vulos-office -config /etc/vulos/office.yaml
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s

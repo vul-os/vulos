@@ -250,7 +250,6 @@ What does **not** move, and what to do:
 | Item | Why | Fix |
 |---|---|---|
 | TPM-held device key (`auth/tpm/` on TPM hardware) | The private key physically lives in the old TPM | The new box generates its own; expect passkeys sealed under the old key to need re-registration |
-| Cloud enrollment (`auth/integrations/`) | The control plane pinned the *old* device's key | Re-enroll from Settings (owner approves the new device in the cloud console) — see [CLOUD.md](CLOUD.md) |
 | TLS/ACME material, IP-bound DNS | New host, new address | Update DNS; certificates re-issue — see [NETWORKING.md](NETWORKING.md) |
 
 ## Putting it together: a reference backup configuration
@@ -307,4 +306,4 @@ Test your restore. A backup you have never restored is a hope, not a backup.
 
 ---
 
-Related chapters: [FILES.md](FILES.md) (what the Drive stores and where), [SECURITY.md](SECURITY.md) (the trust model behind the master key), [PEERING.md](PEERING.md) (the box identity you are preserving), [CLOUD.md](CLOUD.md) (enrollment), [CONFIGURATION.md](CONFIGURATION.md) (every variable named here), [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+Related chapters: [FILES.md](FILES.md) (what the Drive stores and where), [SECURITY.md](SECURITY.md) (the trust model behind the master key), [PEERING.md](PEERING.md) (the box identity you are preserving), [CONFIGURATION.md](CONFIGURATION.md) (every variable named here), [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

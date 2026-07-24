@@ -103,8 +103,8 @@ curl localhost:8080/api/browser/status | jq .gpu_tier
 
 Vulos OS works fully standalone; these variables only matter if you point the
 box at an external control plane (self-hosted or otherwise) for sign-in,
-region defaults, LAN-cert issuance, or brokered integrations — see
-[CLOUD.md](CLOUD.md) for what that buys you and what it doesn't.
+region defaults, LAN-cert issuance, or brokered integrations. Leave them unset
+and every one of those seams stays inert.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

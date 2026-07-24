@@ -156,9 +156,8 @@ require a matching client version or a Vulos-specific integration.
 
 The sovereign-box property here isn't "the OS ships its own protocol" — it's
 "nothing about your chat or video traffic is *forced* through Vulos
-infrastructure." Real-time chat and video are third-party end to end (see
-[CLOUD.md](CLOUD.md) for what the optional control plane does and doesn't
-touch), and nothing about comms runs through it. Whether you point Element at
+infrastructure." Real-time chat and video are third-party end to end, and nothing about comms
+runs through Vulos infrastructure. Whether you point Element at
 matrix.org or at a homeserver you run yourself, the box is never relaying your
 messages through a Vulos-operated chat backend, because there isn't one.
 

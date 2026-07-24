@@ -23,7 +23,7 @@ Two independent switches distinguish `standalone` from `os`:
 - **`DEPLOY_MODE`** governs entitlement enforcement. `os`/`cloud` are treated as cloud-adjacent (`Mode.IsCloudAdjacent()`) and gate `vk_`-keyed app dispatch fail-closed; `standalone` leaves every app open.
 - **The control-plane URL** (`VULOS_CLOUD_URL` / `VULOS_CP_URL`) governs which optional control-plane seams are live — sign-in, the integrations broker, push relay. With no URL set, those seams are inert regardless of mode.
 
-Either way, per-user **storage isolation always applies** — it protects the box's own users from each other and is enforced on-box, never requiring a control plane. Pointing a box at a control plane is a set of narrow, opt-in seams, each of which fails closed back to the sovereign path when that control plane is unreachable; see [CLOUD.md](CLOUD.md) for every one.
+Either way, per-user **storage isolation always applies** — it protects the box's own users from each other and is enforced on-box, never requiring a control plane. Pointing a box at a control plane is a set of narrow, opt-in seams, each of which fails closed back to the sovereign path when that control plane is unreachable.
 
 > Cloud-adjacent modes (`os`, `cloud`) refuse to boot with a plaintext software device keystore unless the operator sets `VULOS_ALLOW_SOFTWARE_KEYSTORE=1` — the TPM-less Fly cloud runtime uses that opt-out. `standalone` is unaffected: the software keystore is its documented fallback.
 

@@ -218,7 +218,7 @@ Setting an app `public` provisions a subdomain of the form:
 {app}--{profile}.{instance-id}.vulos.org
 ```
 
-(e.g. `notes--default.01h5t3.vulos.org`). Provisioning goes through the Vulos DNS API (`VULOS_DNS_API`, default `https://api.vulos.org/dns/provision`); forks can point `VULOS_BASE_DOMAIN` elsewhere. TLS certificates are obtained automatically via ACME once DNS resolves. Check or tear down a deployment with `GET /api/apps/{id}/deployment` and `POST /api/apps/{id}/deprovision`. See [CLOUD.md](CLOUD.md) for how your box relates to the Vulos cloud services.
+(e.g. `notes--default.01h5t3.vulos.org`). `VULOS_BASE_DOMAIN` is the domain you have pointed at the box — there is no default, because no domain is handed out on your behalf. Creating the DNS record is yours to do: point `VULOS_DNS_API` at your provider's endpoint to have it done for you, or add the record by hand. TLS certificates are obtained automatically via ACME once DNS resolves. Check or tear down a deployment with `GET /api/apps/{id}/deployment` and `POST /api/apps/{id}/deprovision`.
 
 ### Custom domains
 
@@ -261,7 +261,7 @@ curl https://os.example.com/api/files/list \
 How they work on the box:
 
 - A `vk_` key is accepted by the auth middleware on the OS's `/api/*` surface, as an alternative to a browser session. On success the request runs as the local user account the key maps to.
-- Keys are **issued and revoked by an external control plane**, not on the box — the box only ever holds an opaque handle. It forwards the key to that control plane's introspection endpoint (see [CLOUD.md](CLOUD.md) for what runs there) and honors the verdict — validity, the owning account, the key's `scopes` (e.g. `files.read`, `files.write`), and its `products`. A key must carry the `os` product to be usable here.
+- Keys are **issued and revoked by an external control plane**, not on the box — the box only ever holds an opaque handle. It forwards the key to that control plane's introspection endpoint and honors the verdict — validity, the owning account, the key's `scopes` (e.g. `files.read`, `files.write`), and its `products`. A key must carry the `os` product to be usable here.
 - Verdicts are cached in-process for about 60 seconds, so revocation in the control plane takes effect within a minute. The cache stores only a hash of the key, never the plaintext.
 - Everything fails closed: control-plane errors, invalid keys, missing `os` product, or an account that doesn't exist on this box all yield 401.
 

@@ -4,7 +4,7 @@ Every Vulos instance has its own cryptographic identity — a Vula ID — and ca
 
 The design premise is simple: **every Vulos instance is a server**. If you're running Vulos, you can receive — messages, files, and calls arrive at your box, gated by your explicit approval, without relay infrastructure or third-party accounts in the required path.
 
-Related chapters: [USER-GUIDE.md](USER-GUIDE.md) for day-to-day use, [FILES.md](FILES.md) for file sharing specifics, [NETWORKING.md](NETWORKING.md) for how your box is reached, [SECURITY.md](SECURITY.md) for the wider security model, [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for recovery procedures, [CLOUD.md](CLOUD.md) for the optional control-plane seams, and [COMMS.md](COMMS.md) for federated group chat/video (Matrix, Jitsi) when you want more than direct peer-to-peer messaging.
+Related chapters: [USER-GUIDE.md](USER-GUIDE.md) for day-to-day use, [FILES.md](FILES.md) for file sharing specifics, [NETWORKING.md](NETWORKING.md) for how your box is reached, [SECURITY.md](SECURITY.md) for the wider security model, [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for recovery procedures, and [COMMS.md](COMMS.md) for federated group chat/video (Matrix, Jitsi) when you want more than direct peer-to-peer messaging.
 
 ---
 
@@ -184,7 +184,7 @@ Running your own relay: it's off by default (`~/.vulos/peering/relay/config.json
 
 **Trusting someone else's relay.** Before depositing with a relay you don't control, your box can demand proof that the relay runs inside a verified trusted-execution enclave (AWS Nitro attestation, checked against pinned code measurements with a freshness window). Any verification failure is a hard reject — no deposit. Even without attestation, remember the relay only ever holds ciphertext.
 
-Large file shares ride the same principles — sealed, capability-scoped, resumable in bounded chunks through the relay. See [FILES.md](FILES.md) for the sharing UX and [CLOUD.md](CLOUD.md) for what hosted infrastructure can and cannot see.
+Large file shares ride the same principles — sealed, capability-scoped, resumable in bounded chunks through the relay. See [FILES.md](FILES.md) for the sharing UX.
 
 ### Shared documents (live collaboration)
 

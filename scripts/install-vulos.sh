@@ -1,19 +1,29 @@
 #!/usr/bin/env bash
-# install-vulos.sh — idempotent meta-bundle installer for Vulos (OS + Mail + Office)
+# install-vulos.sh — idempotent meta-bundle installer for Vulos (OS + lilmail + Ofisi)
 # Usage:  curl -fsSL https://get.vulos.org | sudo bash
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
 #
 # Installs and supervises three co-located services on one machine:
-#   1. vulos          — Vulos OS backend (API gateway + app fabric)
-#   2. vulos-mail     — self-hosted encrypted mail server
-#   3. vulos-office   — collaborative office suite backend
+#   1. vulos    — Vulos OS backend (API gateway + app fabric)
+#   2. lilmail  — self-hosted mail/calendar/contacts CLIENT (github.com/vul-os/lilmail)
+#                 — connects OUTBOUND to the box owner's OWN IMAP/SMTP/CalDAV/
+#                   CardDAV account; it hosts no mail and binds no privileged port.
+#   3. ofisi    — collaborative office suite backend (github.com/vul-os/ofisi)
+#                 — binary/module name is still literally "vulos-office" (kept
+#                   deliberately by upstream to avoid a churny rename)
 #
 # Shared infrastructure:
 #   /etc/vulos/            — unified config directory
 #   /var/lib/vulos/        — unified data directory
 #   /etc/vulos/fabric.yaml — shared fabric identity + mesh credentials
 #   /etc/vulos/storage.yaml — shared S3/MinIO storage selector
+#
+# There is no Vulos Cloud and nothing here is operated by us: this installs
+# software the box owner runs on their own hardware or a VPS they rent.
+# Reachability (so the box is dialable from outside) is via Ephor
+# (github.com/vul-os/ephor), an open, self-hostable broker the box dials OUT
+# to — configure it yourself; this installer does not provision it.
 #
 # Supports:
 #   Linux x86_64 / arm64 — Debian/Ubuntu, Fedora/RHEL, Arch, Alpine
@@ -27,8 +37,8 @@
 #   - Services run as non-root 'vulos' system account (UID < 1000)
 #   - UID-collision guard: aborts if 'vulos' maps to a non-system account
 #   - Symlink-safe directory creation (aborts on /etc/vulos symlink)
-#   - CAP_NET_BIND_SERVICE only for vulos-mail (needs port 25/587)
-#   - No capabilities for vulos and vulos-office
+#   - No capabilities for vulos, lilmail, or ofisi — none of the three binds a
+#     privileged (< 1024) port, so CapabilityBoundingSet is empty for all three
 #   - ProtectSystem=strict, PrivateTmp=yes, NoNewPrivileges=yes for all units
 
 set -euo pipefail
@@ -90,30 +100,37 @@ DATA_DIR="/var/lib/vulos"
 FABRIC_CONFIG="${CONFIG_DIR}/fabric.yaml"
 STORAGE_CONFIG="${CONFIG_DIR}/storage.yaml"
 OS_CONFIG="${CONFIG_DIR}/vulos.yaml"
-MAIL_CONFIG="${CONFIG_DIR}/mail.yaml"
-OFFICE_CONFIG="${CONFIG_DIR}/office.yaml"
+OFISI_CONFIG="${CONFIG_DIR}/office.yaml"
 BUNDLE_CONFIG="${CONFIG_DIR}/bundle.yaml"
+
+# lilmail is a client, not a server: it hard-codes a literal "config.toml" in
+# its current working directory (no --config flag exists), so its config
+# lives in its own directory rather than a single file under CONFIG_DIR.
+LILMAIL_CONFIG_DIR="${CONFIG_DIR}/lilmail"
+LILMAIL_CONFIG="${LILMAIL_CONFIG_DIR}/config.toml"
 
 # Binary install paths
 BIN_VULOS="/usr/local/bin/vulos"
-BIN_MAIL="/usr/local/bin/vulos-mail"
-BIN_OFFICE="/usr/local/bin/vulos-office"
+BIN_LILMAIL="/usr/local/bin/lilmail"
+# Ofisi's binary is still literally named "vulos-office" upstream (kept
+# deliberately to avoid a churny module/binary rename) — see github.com/vul-os/ofisi.
+BIN_OFISI="/usr/local/bin/vulos-office"
 
 # GitHub release endpoints
 GITHUB_VULOS="https://github.com/vul-os/vulos/releases"
-GITHUB_MAIL="https://github.com/vul-os/vulos-mail/releases"
-GITHUB_OFFICE="https://github.com/vul-os/vulos-office/releases"
+GITHUB_LILMAIL="https://github.com/vul-os/lilmail/releases"
+GITHUB_OFISI="https://github.com/vul-os/ofisi/releases"
 
 API_VULOS="https://api.github.com/repos/vul-os/vulos/releases/latest"
-API_MAIL="https://api.github.com/repos/vul-os/vulos-mail/releases/latest"
-API_OFFICE="https://api.github.com/repos/vul-os/vulos-office/releases/latest"
+API_LILMAIL="https://api.github.com/repos/vul-os/lilmail/releases/latest"
+API_OFISI="https://api.github.com/repos/vul-os/ofisi/releases/latest"
 
 # systemd unit files
 SYSTEMD_DIR="/etc/systemd/system"
 UNIT_FABRIC="${SYSTEMD_DIR}/vulos-fabric.service"
 UNIT_OS="${SYSTEMD_DIR}/vulos.service"
-UNIT_MAIL="${SYSTEMD_DIR}/vulos-mail.service"
-UNIT_OFFICE="${SYSTEMD_DIR}/vulos-office.service"
+UNIT_LILMAIL="${SYSTEMD_DIR}/vulos-lilmail.service"
+UNIT_OFISI="${SYSTEMD_DIR}/vulos-ofisi.service"
 UNIT_MINIO="${SYSTEMD_DIR}/vulos-minio.service"
 UNIT_BUNDLE="${SYSTEMD_DIR}/vulos-bundle.target"
 
@@ -128,8 +145,9 @@ if [ "${DRY_RUN}" = "true" ]; then
 
   printf "${BLD}Services to be installed:${RST}\n"
   plan "vulos          — OS backend API gateway (port 8443)"
-  plan "vulos-mail     — encrypted mail server (ports 25, 587, 8444)"
-  plan "vulos-office   — office suite backend (port 8445)"
+  plan "lilmail        — mail/calendar/contacts client, connects to your OWN"
+  plan "                 IMAP/SMTP/CalDAV/CardDAV account (no inbound ports)"
+  plan "ofisi          — office suite backend (port 8445)"
   if [ "${INSTALL_MINIO}" = "true" ]; then
     plan "minio          — local S3-compatible object storage (port 9000)"
   fi
@@ -138,18 +156,18 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "Config dir:   ${CONFIG_DIR}/"
   plan "Data dir:     ${DATA_DIR}/"
   plan "  ${DATA_DIR}/vulos/        — OS backend data"
-  plan "  ${DATA_DIR}/mail/         — mail server data + X25519 keypair"
+  plan "  ${DATA_DIR}/mail/         — lilmail durable store (bbolt) + cache"
   plan "  ${DATA_DIR}/office/       — office suite data + uploads"
   if [ "${INSTALL_MINIO}" = "true" ]; then
     plan "  ${DATA_DIR}/minio/        — MinIO object store data"
   fi
 
   printf "\n${BLD}Shared config files:${RST}\n"
-  plan "${FABRIC_CONFIG}    — fabric mesh identity + cloud endpoint"
+  plan "${FABRIC_CONFIG}    — fabric mesh identity"
   plan "${STORAGE_CONFIG}  — S3 backend selector: ${STORAGE_MODE}"
   plan "${OS_CONFIG}        — vulos OS backend config"
-  plan "${MAIL_CONFIG}      — vulos-mail config"
-  plan "${OFFICE_CONFIG}    — vulos-office config"
+  plan "${LILMAIL_CONFIG}  — lilmail config (your IMAP/SMTP account — edit before starting)"
+  plan "${OFISI_CONFIG}    — ofisi config"
   plan "${BUNDLE_CONFIG}    — bundle-level metadata"
 
   printf "\n${BLD}Storage backend:${RST}\n"
@@ -169,24 +187,25 @@ if [ "${DRY_RUN}" = "true" ]; then
   fi
   plan "  → vulos-fabric.service  (shared mesh identity / fabric)"
   plan "  → vulos.service         (OS backend)"
-  plan "  → vulos-mail.service    (mail server — CAP_NET_BIND_SERVICE)"
-  plan "  → vulos-office.service  (office backend)"
+  plan "  → vulos-lilmail.service (mail/calendar/contacts client — no capabilities)"
+  plan "  → vulos-ofisi.service   (office backend)"
   plan "  → vulos-bundle.target   (all-up sentinel)"
 
   printf "\n${BLD}Security hardening:${RST}\n"
   plan "All services run as non-root user '${VULOS_USER}' (system UID < 1000)"
   plan "NoNewPrivileges=yes, ProtectSystem=strict, PrivateTmp=yes"
-  plan "CapabilityBoundingSet=CAP_NET_BIND_SERVICE — mail only (ports 25/587)"
-  plan "No capabilities — vulos, vulos-office, fabric"
+  plan "No capabilities — vulos, lilmail, ofisi, fabric (none binds a privileged port)"
   plan "SHA-256 checksum mandatory for every binary (no skip path)"
   plan "Symlink-safe directory creation (abort on /etc/vulos symlink)"
   plan "UID-collision guard: abort if 'vulos' maps to UID >= 1000"
 
   printf "\n${BLD}Next steps after install:${RST}\n"
-  plan "1. Edit ${CONFIG_DIR}/fabric.yaml — set domain + cloud endpoint"
-  plan "2. Run:  vulos-mail keygen   — generate X25519 keypair"
+  plan "1. Edit ${CONFIG_DIR}/fabric.yaml — set your domain"
+  plan "2. Edit ${LILMAIL_CONFIG} — set your own IMAP/SMTP account"
   plan "3. Enable services:  systemctl enable --now vulos-bundle.target"
-  plan "4. Register at:  https://vulos.org/setup/bundle"
+  plan "4. Reachability from outside your network is BYO: point a self-hosted"
+  plan "   Ephor broker (github.com/vul-os/ephor) at this box — there is no"
+  plan "   Vulos Cloud and nothing here is operated by us."
 
   printf "\n${GRN}Dry-run complete. No changes made.${RST}\n\n"
   exit 0
@@ -327,12 +346,12 @@ resolve_tag() {
 }
 
 TAG_VULOS="$(resolve_tag "${API_VULOS}" "v0.1.0")"
-TAG_MAIL="$(resolve_tag "${API_MAIL}" "v0.1.0")"
-TAG_OFFICE="$(resolve_tag "${API_OFFICE}" "v0.1.0")"
+TAG_LILMAIL="$(resolve_tag "${API_LILMAIL}" "v0.1.0")"
+TAG_OFISI="$(resolve_tag "${API_OFISI}" "v0.1.0")"
 
 info "vulos        release: ${TAG_VULOS}"
-info "vulos-mail   release: ${TAG_MAIL}"
-info "vulos-office release: ${TAG_OFFICE}"
+info "lilmail      release: ${TAG_LILMAIL}"
+info "ofisi        release: ${TAG_OFISI}"
 
 # ── Download + verify helper ──────────────────────────────────────────────────
 
@@ -765,19 +784,19 @@ download_and_verify \
   "${GITHUB_VULOS}/download/${TAG_VULOS}/checksums.txt" \
   "${BIN_VULOS}"
 
-step "Downloading vulos-mail ${TAG_MAIL}"
+step "Downloading lilmail ${TAG_LILMAIL}"
 download_and_verify \
   "vulos-mail_linux_${GOARCH}" \
-  "${GITHUB_MAIL}/download/${TAG_MAIL}/vulos-mail_linux_${GOARCH}" \
-  "${GITHUB_MAIL}/download/${TAG_MAIL}/checksums.txt" \
-  "${BIN_MAIL}"
+  "${GITHUB_LILMAIL}/download/${TAG_LILMAIL}/vulos-mail_linux_${GOARCH}" \
+  "${GITHUB_LILMAIL}/download/${TAG_LILMAIL}/checksums.txt" \
+  "${BIN_LILMAIL}"
 
-step "Downloading vulos-office ${TAG_OFFICE}"
+step "Downloading ofisi ${TAG_OFISI}"
 download_and_verify \
   "vulos-office_linux_${GOARCH}" \
-  "${GITHUB_OFFICE}/download/${TAG_OFFICE}/vulos-office_linux_${GOARCH}" \
-  "${GITHUB_OFFICE}/download/${TAG_OFFICE}/checksums.txt" \
-  "${BIN_OFFICE}"
+  "${GITHUB_OFISI}/download/${TAG_OFISI}/vulos-office_linux_${GOARCH}" \
+  "${GITHUB_OFISI}/download/${TAG_OFISI}/checksums.txt" \
+  "${BIN_OFISI}"
 
 # ── Install MinIO if requested ────────────────────────────────────────────────
 
@@ -960,7 +979,7 @@ UNIT
 
     # ── vulos-mail ──────────────────────────────────────────────────────────
     # CAP_NET_BIND_SERVICE required for ports 25 (SMTP) and 587 (submission).
-    cat > "${UNIT_MAIL}" <<UNIT
+    cat > "${UNIT_LILMAIL}" <<UNIT
 [Unit]
 Description=Vulos — self-hosted encrypted mail server
 Documentation=https://docs.vulos.org/self-host/bundle
@@ -972,7 +991,7 @@ Requires=vulos-fabric.service
 Type=simple
 User=${VULOS_USER}
 Group=${VULOS_GROUP}
-ExecStart=${BIN_MAIL} serve --config ${MAIL_CONFIG}
+ExecStart=${BIN_LILMAIL} serve --config ${MAIL_CONFIG}
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s
@@ -991,11 +1010,11 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 [Install]
 WantedBy=multi-user.target vulos-bundle.target
 UNIT
-    chmod 644 "${UNIT_MAIL}"
-    info "systemd unit installed: ${UNIT_MAIL}"
+    chmod 644 "${UNIT_LILMAIL}"
+    info "systemd unit installed: ${UNIT_LILMAIL}"
 
     # ── vulos-office ────────────────────────────────────────────────────────
-    cat > "${UNIT_OFFICE}" <<UNIT
+    cat > "${UNIT_OFISI}" <<UNIT
 [Unit]
 Description=Vulos — collaborative office suite backend
 Documentation=https://docs.vulos.org/self-host/bundle
@@ -1007,7 +1026,7 @@ Requires=vulos-fabric.service
 Type=simple
 User=${VULOS_USER}
 Group=${VULOS_GROUP}
-ExecStart=${BIN_OFFICE} serve --config ${OFFICE_CONFIG}
+ExecStart=${BIN_OFISI} serve --config ${OFFICE_CONFIG}
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s
@@ -1026,16 +1045,16 @@ AmbientCapabilities=
 [Install]
 WantedBy=multi-user.target vulos-bundle.target
 UNIT
-    chmod 644 "${UNIT_OFFICE}"
-    info "systemd unit installed: ${UNIT_OFFICE}"
+    chmod 644 "${UNIT_OFISI}"
+    info "systemd unit installed: ${UNIT_OFISI}"
 
     # ── vulos-bundle.target ─────────────────────────────────────────────────
     cat > "${UNIT_BUNDLE}" <<UNIT
 [Unit]
 Description=Vulos Bundle — OS + Mail + Office (all-up sentinel)
 Documentation=https://docs.vulos.org/self-host/bundle
-Wants=vulos.service vulos-mail.service vulos-office.service
-After=vulos.service vulos-mail.service vulos-office.service
+Wants=vulos.service vulos-lilmail.service vulos-ofisi.service
+After=vulos.service vulos-lilmail.service vulos-ofisi.service
 
 [Install]
 WantedBy=multi-user.target
@@ -1053,8 +1072,8 @@ UNIT
       fi
       systemctl enable vulos-fabric.service
       systemctl enable vulos.service
-      systemctl enable vulos-mail.service
-      systemctl enable vulos-office.service
+      systemctl enable vulos-lilmail.service
+      systemctl enable vulos-ofisi.service
       systemctl enable vulos-bundle.target
       info "All services enabled. Start with: systemctl start vulos-bundle.target"
     else
@@ -1149,8 +1168,8 @@ printf "${GRN}${BLD}%s${RST}\n" "$(printf '%.0s=' {1..52})"
 printf "\n"
 printf "${BLD}Versions:${RST}\n"
 printf "  vulos          %s\n" "${TAG_VULOS}"
-printf "  vulos-mail     %s\n" "${TAG_MAIL}"
-printf "  vulos-office   %s\n" "${TAG_OFFICE}"
+printf "  lilmail        %s\n" "${TAG_LILMAIL}"
+printf "  ofisi          %s\n" "${TAG_OFISI}"
 printf "  Storage:       %s\n" "${STORAGE_MODE}"
 printf "\n"
 printf "${BLD}Next steps:${RST}\n\n"
@@ -1168,7 +1187,7 @@ else
 fi
 printf "  3. ${BLD}Generate keypairs:${RST}\n"
 printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_VULOS} keygen --fabric${RST}\n"
-printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_MAIL} keygen${RST}\n\n"
+printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_LILMAIL} keygen${RST}\n\n"
 
 case "${INIT_SYSTEM}" in
   systemd)
@@ -1192,8 +1211,8 @@ case "${INIT_SYSTEM}" in
   none)
     printf "  4. ${BLD}Start the services manually:${RST}\n"
     printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_VULOS} serve --config ${OS_CONFIG}${RST}\n"
-    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_MAIL} serve --config ${MAIL_CONFIG}${RST}\n"
-    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_OFFICE} serve --config ${OFFICE_CONFIG}${RST}\n\n"
+    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_LILMAIL} serve --config ${MAIL_CONFIG}${RST}\n"
+    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_OFISI} serve --config ${OFFICE_CONFIG}${RST}\n\n"
     ;;
 esac
 

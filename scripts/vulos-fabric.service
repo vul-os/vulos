@@ -1,7 +1,7 @@
 # /etc/systemd/system/vulos-fabric.service
 # Vulos shared fabric identity initialisation (oneshot).
 # Run once at startup to validate config and generate keypairs if absent.
-# All three application services (vulos, vulos-mail, vulos-office) depend on
+# All three application services (vulos, lilmail, ofisi) depend on
 # this completing before they start.
 #
 # Install path:  /etc/systemd/system/vulos-fabric.service

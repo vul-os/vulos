@@ -3,8 +3,7 @@
 **Mail in Vulos is a connector, not a service Vulos runs.** The OS's built-in
 inbox connects to whatever mailbox the user already has — Gmail, Outlook, or
 any IMAP/SMTP account. There is no requirement to host mail on the box, and a
-mailbox is not the account anchor (identity is decoupled from mail; see
-[CLOUD.md](CLOUD.md)).
+mailbox is not the account anchor — your identity is decoupled from mail.
 
 The connector client is **LilMail** (github.com/exolutionza/lilmail) — a
 lightweight, database-free IMAP/SMTP webmail client, paired with the

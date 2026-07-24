@@ -44,8 +44,7 @@ own hardware or a VPS you rent. That box runs as `DEPLOY_MODE=standalone`
 external control plane, as `DEPLOY_MODE=os`. Both run the identical OS image —
 only the entitlement-gating and object-storage seams differ. See
 [ARCHITECTURE.md → Deployment modes](ARCHITECTURE.md#deployment-modes) for the
-canonical breakdown and [CLOUD.md](CLOUD.md) for the optional control-plane
-seams.
+canonical breakdown.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

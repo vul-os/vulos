@@ -219,7 +219,7 @@ never a storage-tier guarantee.
 
 ### Mounting Google Drive, Dropbox, or Google Cloud Storage
 
-If your box is enrolled with a control plane that brokers integrations (see [CLOUD.md](CLOUD.md)), you can connect external stores so they appear in the Drive sidebar as additional drives:
+If you have pointed the box at a gateway that brokers integrations, you can connect external stores so they appear in the Drive sidebar as additional drives:
 
 | Provider | Read | Write |
 |---|---|---|

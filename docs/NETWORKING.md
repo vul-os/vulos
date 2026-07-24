@@ -464,5 +464,4 @@ If step 4 times out but step 1 works, your firewall or NAT is dropping inbound 4
 - [DEPLOY.md](DEPLOY.md) and [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) — installing and running
 - [GETTING-STARTED.md](GETTING-STARTED.md) — first boot
 - [PEERING.md](PEERING.md) — box-to-box identity, contacts, and Drop
-- [CLOUD.md](CLOUD.md) — what the optional cloud control plane does (and doesn't)
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — when a box is unreachable
