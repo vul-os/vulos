@@ -1,8 +1,8 @@
 package lan
 
 // Package documentation now lives in doc.go (FIX-LAN-PATH-CONST-01) — it
-// covers both the LAN reachability rationale and the cross-repo cert delivery
-// contract with vulos-cloud's lancert package.
+// covers both the LAN reachability rationale and the cert delivery contract
+// with the externally operated LAN-cert issuer.
 
 import (
 	"crypto/ecdsa"

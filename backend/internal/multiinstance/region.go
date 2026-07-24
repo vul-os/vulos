@@ -1,9 +1,15 @@
 // Package multiinstance — Phase-0 multi-region seam.
 //
-// PlaceFor maps a region slug to the CP base URL for that cell.
-// For Phase-0 (single cell) every region resolves to DefaultCloudBaseURL.
-// To add a second cell later: add its entry to regionCPMap and set VULOS_REGION
-// on boxes in that cell — no other code changes are required.
+// PlaceFor resolves the control-plane base URL for a given region slug. Vulos
+// operates no control plane for any region, so there is no compiled-in
+// per-region directory: PlaceFor simply delegates to the single gwurl
+// resolver — a persisted override (Settings) or a canonical CP env var when
+// the operator has pointed the box at a self-hosted gateway (e.g. Ephor,
+// github.com/vul-os/ephor); otherwise "" (not configured). The region
+// parameter is accepted for API stability — a future self-hosted multi-cell
+// deployment could reintroduce per-region routing here without changing the
+// signature — but Phase-0 has exactly one resolution path and region does not
+// currently affect it.
 package multiinstance
 
 import (
@@ -11,12 +17,6 @@ import (
 
 	"vulos/backend/services/gwurl"
 )
-
-// regionCPMap is the authoritative region → CP base URL directory.
-// Phase-0: a single "eu" cell backed by DefaultCloudBaseURL.
-var regionCPMap = map[string]string{
-	"eu": DefaultCloudBaseURL,
-}
 
 // boxRegion returns this box's home region from the VULOS_REGION environment
 // variable, defaulting to "eu".
@@ -27,22 +27,10 @@ func boxRegion() string {
 	return "eu"
 }
 
-// PlaceFor returns the CP base URL for the given region slug.
-//
-// For Phase-0 (single cell) all regions resolve to DefaultCloudBaseURL.
-// A configured gateway override (Settings / first-boot) or a canonical CP env
-// var always takes precedence — resolved via the single gwurl accessor — so
-// dev / self-hosted deployments can repoint the OS without touching the region
-// map. Only when neither is set does the region map (else the eu default)
-// apply.
+// PlaceFor returns the configured gateway base URL, or "" if the box has no
+// gateway configured (no persisted override and no canonical CP env var). See
+// the package doc for the resolution path.
 func PlaceFor(region string) string {
-	// A configured override or env var always wins over the region map.
-	if u, src := gwurl.Resolved(); src != gwurl.SourceDefault {
-		return u
-	}
-	if base, ok := regionCPMap[region]; ok {
-		return base
-	}
-	// Unknown region: fall back to the eu cell (single-cell safety net).
-	return DefaultCloudBaseURL
+	u, _ := gwurl.Resolved()
+	return u
 }

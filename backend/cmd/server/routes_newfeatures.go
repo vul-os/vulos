@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"vulos/backend/services/gwurl"
 
 	internalauth "vulos/backend/internal/auth"
 	"vulos/backend/internal/cgroups"
@@ -300,8 +301,9 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//   PATCH  /api/instances/{ulid}/rename — set an instance's display name (admin)
 	//   DELETE /api/instances/{ulid}        — remove an instance from the fleet (admin)
 	//
-	// CloudSyncer contacts VULOS_CLOUD_URL (default https://api.vulos.org).  When
-	// the cloud is unreachable it returns the last-known local registry state.
+	// CloudSyncer contacts the gateway the owner has configured, if any. With no
+	// gateway configured — the usual case — it returns the last-known local
+	// registry state, exactly as it does when a configured gateway is offline.
 	// FIX (audit P1-4): reuse the single shared registry handle opened above.
 	{
 		reg := sharedReg
@@ -310,7 +312,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			syncer := multiinstance.NewCloudSyncer(reg, "")
 			multiinstance.RegisterSyncHandlers(mux, syncer)
 			registerInstanceManageRoutes(mux, reg, deps.authStore, deps.webhooksDispatcher)
-			log.Printf("[multiinstance/sync] registered GET /api/instances, PATCH /api/instances/{ulid}/rename, DELETE /api/instances/{ulid} (cloud_url=%s)", multiinstance.DefaultCloudBaseURL)
+			log.Printf("[multiinstance/sync] registered GET /api/instances, PATCH /api/instances/{ulid}/rename, DELETE /api/instances/{ulid} (gateway=%s)", gwurl.URL())
 		} else {
 			log.Printf("[multiinstance/sync] registry unavailable — /api/instances disabled")
 		}

@@ -2,8 +2,8 @@ package lan
 
 // lancert_puller.go — FIX-LANCERT-PULL-01: OS-side LAN-cert puller.
 //
-// This is the box-side counterpart to vulos-cloud's `cp/internal/lancert`
-// package (see doc.go for the cross-repo contract). The cloud control-plane
+// This is the box-side counterpart to an externally operated LAN-cert
+// issuer's `lancert` endpoints (see doc.go for the contract). The issuer
 // exposes two endpoints behind `X-Device-Auth: <CP_SHARED_SECRET>`:
 //
 //	POST /api/lancert/report-ip    { "box_id": "...", "lan_ip": "..." }

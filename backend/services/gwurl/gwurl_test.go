@@ -43,15 +43,22 @@ func stubProbe(t *testing.T) {
 	}
 }
 
-func TestResolved_DefaultWhenNothingSet(t *testing.T) {
+// TestResolved_UnconfiguredIsEmpty proves that a box with no persisted
+// override and no canonical CP env var resolves to "" (not a phantom
+// control-plane host) — Vulos operates no control plane, so consumers must
+// see an empty URL and report "not configured" themselves.
+func TestResolved_UnconfiguredIsEmpty(t *testing.T) {
 	resetState(t)
 	withEnv(t, nil)
 	u, src := Resolved()
-	if u != Default || src != SourceDefault {
-		t.Fatalf("Resolved() = (%q, %q), want (%q, %q)", u, src, Default, SourceDefault)
+	if u != "" || src != SourceDefault {
+		t.Fatalf("Resolved() = (%q, %q), want (\"\", %q)", u, src, SourceDefault)
 	}
-	if URL() != Default {
-		t.Fatalf("URL() = %q, want %q", URL(), Default)
+	if URL() != "" {
+		t.Fatalf("URL() = %q, want empty (unconfigured)", URL())
+	}
+	if Default != "" {
+		t.Fatalf("Default = %q, want empty — there is no compiled-in gateway host", Default)
 	}
 }
 

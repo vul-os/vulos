@@ -60,11 +60,11 @@ import (
 // hostile-archive threat model; a real fleet can tighten them per tier via
 // options.
 const (
-	defaultMaxBundleBytes int64 = 512 << 20  // 512 MiB decompressed, per bundle
-	defaultMaxFiles       int   = 50000       // regular files + dirs, per bundle
-	defaultMaxPathLen     int   = 4096         // per-entry name length ceiling
-	defaultMaxUserBytes   int64 = 2 << 30      // 2 GiB total on disk, per user
-	defaultMaxUserSites   int   = 25           // distinct sites, per user
+	defaultMaxBundleBytes int64 = 512 << 20 // 512 MiB decompressed, per bundle
+	defaultMaxFiles       int   = 50000     // regular files + dirs, per bundle
+	defaultMaxPathLen     int   = 4096      // per-entry name length ceiling
+	defaultMaxUserBytes   int64 = 2 << 30   // 2 GiB total on disk, per user
+	defaultMaxUserSites   int   = 25        // distinct sites, per user
 )
 
 // siteNamePattern matches a safe site slug: lowercase, digit-or-letter start,
@@ -111,8 +111,8 @@ type Service struct {
 	root           string
 	maxBundleBytes int64
 	maxFiles       int
-	maxUserBytes   int64 // aggregate on-disk cap across ALL of a user's sites
-	maxUserSites   int   // distinct-site cap per user
+	maxUserBytes   int64        // aggregate on-disk cap across ALL of a user's sites
+	maxUserSites   int          // distinct-site cap per user
 	instanceIPs    []string     // A records handed out for attached domains
 	certs          CertProvider // TLS issuance seam (cert.go)
 

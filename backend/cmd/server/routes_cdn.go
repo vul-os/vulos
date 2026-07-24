@@ -44,16 +44,16 @@ import (
 
 // cdnConfigView is the API-safe config shape.
 type cdnConfigView struct {
-	Provider        string   `json:"provider"`
-	OriginHost      string   `json:"origin_host"`
-	HostHeader      string   `json:"host_header"`
-	MTLSEnabled     bool     `json:"mtls_enabled"`
-	FirewallEnabled bool     `json:"firewall_enabled"`
-	SSHPort         int      `json:"ssh_port"`
-	ExtraAllowPorts []int    `json:"extra_allow_ports"`
-	LastRulesetAt   string   `json:"last_ruleset_at,omitempty"`
-	CreatedAt       string   `json:"created_at,omitempty"`
-	UpdatedAt       string   `json:"updated_at,omitempty"`
+	Provider        string `json:"provider"`
+	OriginHost      string `json:"origin_host"`
+	HostHeader      string `json:"host_header"`
+	MTLSEnabled     bool   `json:"mtls_enabled"`
+	FirewallEnabled bool   `json:"firewall_enabled"`
+	SSHPort         int    `json:"ssh_port"`
+	ExtraAllowPorts []int  `json:"extra_allow_ports"`
+	LastRulesetAt   string `json:"last_ruleset_at,omitempty"`
+	CreatedAt       string `json:"created_at,omitempty"`
+	UpdatedAt       string `json:"updated_at,omitempty"`
 }
 
 func cdnConfigViewOf(c cdn.Config) cdnConfigView {

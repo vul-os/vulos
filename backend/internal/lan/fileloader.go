@@ -9,11 +9,11 @@ import (
 )
 
 // DefaultCertPath and DefaultKeyPath are the canonical on-disk locations the
-// cloud-side LAN cert puller (FIX-LANCERT-PULL-01) writes to and that
+// LAN cert puller (FIX-LANCERT-PULL-01) writes to and that
 // [LoadCertSource] hot-reloads from. They MUST match the documented contract
-// declared in vulos-cloud's `cp/internal/lancert/contract.go` — see doc.go
-// for the cross-repo contract rationale. The OS server bootstrap and the
-// puller both reference these constants so the writer and reader never drift.
+// of the externally operated LAN-cert issuer — see doc.go for the contract
+// rationale. The OS server bootstrap and the puller both reference these
+// constants so the writer and reader never drift.
 const (
 	DefaultCertPath = "/var/lib/vulos/tls/lan.crt"
 	DefaultKeyPath  = "/var/lib/vulos/tls/lan.key"

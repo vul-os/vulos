@@ -5,7 +5,7 @@
 // the local instance Registry.
 //
 // Note: the OS never talks to the Fly API directly. It forwards provision
-// requests to the Vulos cloud control plane (api.vulos.org), which owns the
+// requests to the gateway the owner has configured, if any, which owns the
 // FLY_API_TOKEN and performs the actual POST /v1/apps/{app}/machines call
 // against https://api.machines.dev. This keeps the cloud-provider credential
 // out of the OS and avoids any Go-module dependency from vulos OS on
@@ -14,7 +14,7 @@
 // Flow:
 //
 //  1. Dashboard calls POST /api/instances/provision (handled here).
-//  2. Provisioner POSTs to https://api.vulos.org/api/instances/provision with
+//  2. Provisioner POSTs to {gateway}/api/instances/provision with
 //     the device credential and the requested region + plan.
 //  3. Cloud returns a provision request ID and the new instance ULID.
 //  4. Provisioner stores a provision_requests row and upserts the new instance

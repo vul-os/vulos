@@ -1,27 +1,32 @@
-// Package gwurl is the SINGLE source of truth for the Vulos control-plane
+// Package gwurl is the SINGLE source of truth for the control-plane
 // ("gateway") base URL that every box-side broker consumes: cloud login /
 // signup / enroll, identity-username claim, instance routing (PlaceFor), cloud
 // sync, and the OAuth integrations broker.
 //
 // # Why this exists
 //
-// Historically the CP base URL was read directly from a handful of environment
-// variables (VULOS_CP_URL, VULOS_CLOUD_URL, VULOS_CLOUD_API_URL) scattered
-// across packages, each with its own default. A self-hoster running their own
-// OSS control plane (vulos-management) could only repoint the OS by setting
-// every one of those vars before boot — brittle, and impossible to change from
-// the running OS. This package unifies them behind one resolver and adds a
-// PERSISTED, runtime-settable override so first-boot and Settings can point the
-// OS at any gateway without touching the environment.
+// Vulos does not operate a control plane. The OS is free, open-source software
+// the owner runs on their own hardware or a rented VPS; reachability goes
+// through Ephor (github.com/vul-os/ephor), an open, self-hostable broker the
+// box dials OUT to when the owner chooses to run one. The gateway base URL
+// used to be read directly from a handful of environment variables
+// (VULOS_CP_URL, VULOS_CLOUD_URL, VULOS_CLOUD_API_URL) scattered across
+// packages, each with its own default. This package unifies them behind one
+// resolver and adds a PERSISTED, runtime-settable override so first-boot and
+// Settings can point the OS at a self-hosted gateway without touching the
+// environment.
 //
 // # Resolution precedence (highest wins)
 //
 //  1. configured — a persisted override set via Set (the self-host affordance).
 //  2. env        — the first non-empty of the canonical CP env vars.
-//  3. default    — https://api.vulos.org (Vulos Cloud).
+//  3. default    — "" (not configured).
 //
-// Managed users never set an override, so they resolve to env (unset) → default
-// and nothing changes. The override is purely additive.
+// There is no compiled-in gateway host: a box with neither an override nor an
+// env var is simply unconfigured, and that is the expected state for most
+// installs. Every consumer of URL()/Resolved() MUST treat "" as "no gateway"
+// and report a clear "not configured" condition rather than dialling a URL
+// that was invented rather than set.
 //
 // # Security
 //
@@ -51,16 +56,18 @@ import (
 	"vulos/backend/internal/safedial"
 )
 
-// Default is the production Vulos Cloud control-plane base URL. It mirrors the
-// per-package DefaultCloudBaseURL constants so behaviour is byte-identical when
-// no override and no env var are present.
-const Default = "https://api.vulos.org"
+// Default is the resolved gateway base URL when nothing is configured: the
+// empty string. Vulos operates no control plane, so an unconfigured box has
+// nothing to dial — every consumer must treat "" as "not configured", never
+// invent a host.
+const Default = ""
 
 // Source describes where the effective gateway URL came from.
 type Source string
 
 const (
-	// SourceDefault: no override and no env var — the built-in Vulos Cloud URL.
+	// SourceDefault: no override and no env var — the gateway is unconfigured
+	// (URL() is "").
 	SourceDefault Source = "default"
 	// SourceEnv: a canonical CP env var supplied the URL.
 	SourceEnv Source = "env"
@@ -68,8 +75,8 @@ const (
 	SourceConfigured Source = "configured"
 )
 
-// canonicalEnvVars are the historical CP base-URL environment variables, in
-// precedence order. The first non-empty one wins when no override is set.
+// canonicalEnvVars are the CP base-URL environment variables, in precedence
+// order. The first non-empty one wins when no override is set.
 var canonicalEnvVars = []string{"VULOS_CP_URL", "VULOS_CLOUD_URL", "VULOS_CLOUD_API_URL"}
 
 // allowPrivateEnv opts CheckReachable into private/LAN gateway hosts (for a

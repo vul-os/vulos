@@ -2,14 +2,16 @@ package appnet
 
 // PUBWEB-02: Subdomain provisioning for published apps.
 //
-// When an app's visibility is set to "public", a subdomain is provisioned via
-// the Vulos cloud DNS API.  The FQDN is stored in an in-memory/file-backed
-// DeploymentStore.  A Caddyfile snippet is also emitted so self-hosters can
-// point their own domain.
+// When an app's visibility is set to "public", a subdomain is derived under the
+// domain the owner has pointed at this box (VULOS_BASE_DOMAIN). The FQDN is
+// stored in a file-backed DeploymentStore and a Caddyfile snippet is emitted so
+// the owner's proxy can serve it. Creating the DNS record itself is the owner's
+// job: point VULOS_DNS_API at your provider to have it done automatically,
+// otherwise add the record yourself.
 //
 // Subdomain scheme (from roadmap/NETWORK.md):
 //
-//	{app}--{profile}.{ulid}.vulos.org
+//	{app}--{profile}.{ulid}.{your-domain}
 //
 // The ulid is the instance ULID read from VULOS_INSTANCE_ID (defaults to
 // "local" for dev/testing).  The profile defaults to "default" when empty.
@@ -30,12 +32,18 @@ import (
 )
 
 const (
-	// defaultDNSAPI is the Vulos cloud DNS provisioning endpoint.
-	// Override with VULOS_DNS_API for self-hosted / dev stubs.
-	defaultDNSAPI = "https://api.vulos.org/dns/provision"
+	// defaultDNSAPI is the sentinel meaning "no DNS provider configured": the
+	// provisioner builds the FQDN and writes the Caddyfile snippet but makes no
+	// network call. Nobody operates a DNS API on the box's behalf, so an owner
+	// who wants records created automatically points VULOS_DNS_API at their own
+	// provider's endpoint.
+	defaultDNSAPI = "noop"
 
-	// defaultBaseDomain is the public-web TLD used in FQDN construction.
-	defaultBaseDomain = "vulos.org"
+	// defaultBaseDomain is empty: a box is reachable at whatever domain its
+	// owner controls and points at it, and there is no domain we could hand out
+	// on their behalf. appnet.Enabled treats "" as "no name to serve from", so
+	// per-app origins stay off until VULOS_BASE_DOMAIN names a real domain.
+	defaultBaseDomain = ""
 
 	// deploymentDBFilename is the filename for the deployment persistence file.
 	deploymentDBFilename = "app_deployments.json"
@@ -180,7 +188,7 @@ type Provisioner struct {
 	store      *DeploymentStore
 	httpClient *http.Client
 	dnsAPI     string // POST endpoint for DNS provisioning
-	baseDomain string // e.g. "vulos.org"
+	baseDomain string // the domain the owner points at this box; "" when unset
 	instanceID string // ULID of this instance
 	caddyDir   string // dir where Caddyfile snippets are written
 }
@@ -241,9 +249,9 @@ type dnsProvisionResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-// callDNSAPI sends the provisioning request to the Vulos cloud DNS endpoint.
-// In self-hosted or dev mode (VULOS_DNS_API unset) this is a no-op that returns
-// the pre-built FQDN immediately.
+// callDNSAPI sends the provisioning request to the owner's configured DNS
+// provider. With no provider configured (the default) this is a no-op that
+// returns the pre-built FQDN immediately.
 func (p *Provisioner) callDNSAPI(ctx context.Context, fqdn, appID string) error {
 	// If the API is the sentinel "noop" value skip the network call (dev/self-hosted).
 	if p.dnsAPI == "noop" {

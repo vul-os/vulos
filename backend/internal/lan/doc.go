@@ -5,10 +5,9 @@
 //
 // # Cross-repo cert contract (FIX-LAN-PATH-CONST-01)
 //
-// The trusted, no-warning LAN cert is issued by the cloud control-plane
-// (vulos-cloud, package `cp/internal/lancert`) via ACME DNS-01 against the
-// hostname `box.<id>.lan.vulos.org`. The cloud's contract — see the doc on
-// `vulos-cloud/backend/cp/internal/lancert/contract.go` — pins the on-disk
+// The trusted, no-warning LAN cert is issued by an externally operated
+// LAN-cert issuer via ACME DNS-01 against the hostname
+// `box.<id>.lan.vulos.org`. The issuer's HTTP contract pins the on-disk
 // delivery paths the OS must read from:
 //
 //	cert: /var/lib/vulos/tls/lan.crt
@@ -21,6 +20,6 @@
 // reader ([LoadCertSource]).
 //
 // [LoadCertSource] mtime-watches these paths and hot-reloads cert+key without
-// a listener restart, so a freshly-pulled cert from the cloud takes effect on
-// the next handshake.
+// a listener restart, so a freshly-pulled cert takes effect on the next
+// handshake.
 package lan

@@ -17,7 +17,7 @@ func TestCPConfigured_Selection(t *testing.T) {
 		}
 	})
 	t.Run("VULOS_CP_URL set → cloud", func(t *testing.T) {
-		t.Setenv("VULOS_CP_URL", "https://api.vulos.org")
+		t.Setenv("VULOS_CP_URL", "https://gateway.example.com")
 		t.Setenv("VULOS_CLOUD_URL", "")
 		if !cpConfigured() {
 			t.Fatalf("expected cloud (cpConfigured=true) when VULOS_CP_URL set")
@@ -25,7 +25,7 @@ func TestCPConfigured_Selection(t *testing.T) {
 	})
 	t.Run("VULOS_CLOUD_URL set → cloud", func(t *testing.T) {
 		t.Setenv("VULOS_CP_URL", "")
-		t.Setenv("VULOS_CLOUD_URL", "https://api.vulos.org")
+		t.Setenv("VULOS_CLOUD_URL", "https://gateway.example.com")
 		if !cpConfigured() {
 			t.Fatalf("expected cloud (cpConfigured=true) when VULOS_CLOUD_URL set")
 		}

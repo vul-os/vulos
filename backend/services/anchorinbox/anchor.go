@@ -120,7 +120,7 @@ func (s *AnchorStore) Close() error {
 // Provision ensures the account has an anchor inbox record. It is idempotent:
 // if a record already exists for accountID it is returned unchanged.
 // The actual Tigris bucket creation is handled server-side by the cloud
-// control plane when the instance connects to api.vulos.org.
+// gateway when the instance connects to it.
 func (s *AnchorStore) Provision(ctx context.Context, accountID string) (AnchorInboxStatus, error) {
 	if accountID == "" {
 		return AnchorInboxStatus{}, errors.New("anchorinbox: Provision: accountID must not be empty")

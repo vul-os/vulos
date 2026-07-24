@@ -202,12 +202,17 @@ func main() {
 	// GATEWAY-01: load any persisted control-plane ("gateway") override before any
 	// CP broker resolves its base URL. gwurl is the single source of truth read by
 	// cloud login/signup/enroll, identity claim, instance routing, cloud sync, and
-	// the OAuth integrations broker. Missing/corrupt file → env/default (fail-safe).
+	// the OAuth integrations broker. Missing/corrupt file → env/unconfigured
+	// (fail-safe) — Vulos operates no control plane, so an unconfigured box simply
+	// has no gateway until the owner points it at one (e.g. a self-hosted Ephor,
+	// github.com/vul-os/ephor) via env or Settings.
 	if err := gwurl.Init(datadir.Root()); err != nil {
-		log.Printf("[gateway] could not load persisted gateway override (%v) — using env/default %s", err, gwurl.Default)
+		log.Printf("[gateway] could not load persisted gateway override (%v) — falling back to env/unconfigured", err)
 	}
 	if u, src := gwurl.Resolved(); src != gwurl.SourceDefault {
 		log.Printf("[gateway] control-plane URL = %s (source: %s)", u, src)
+	} else {
+		log.Printf("[gateway] no gateway configured — gateway-dependent features (cloud login/sync, OAuth integrations broker) report not-configured until an operator sets one (VULOS_CP_URL / VULOS_CLOUD_URL / VULOS_CLOUD_API_URL, or Settings)")
 	}
 	if err := relayconfig.Init(dbDir); err != nil {
 		log.Printf("[relayconfig] could not load persisted relay provider override (%v) — using ephor default", err)

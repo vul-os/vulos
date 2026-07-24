@@ -1,8 +1,12 @@
-// Package integrations is the Vulos OS box-side consumer of the cloud OAuth
-// broker (INTEG-03).
+// Package integrations is the Vulos OS box-side consumer of an
+// operator-configured OAuth broker (INTEG-03) — used only when the owner has
+// pointed the box at one via gwurl (a self-hosted control-plane-shaped
+// broker). Vulos itself operates no such broker; when none is configured the
+// box uses the sovereign self-host path instead (services/integrations/
+// selfhost), never this client.
 //
-// The cloud control plane (vulos-cloud) custodies the long-lived Google refresh
-// token and the client secret. A box NEVER holds those: it mints a short-lived
+// The broker custodies the long-lived Google refresh token and the client
+// secret. A box NEVER holds those: it mints a short-lived
 // access token on demand over the device-HMAC channel — the same trust path as
 // fleet heartbeats (DEVICE_SHARED_SECRET + the box ULID, resolved to the owning
 // account via the CP routing binding).
@@ -39,9 +43,6 @@ import (
 
 	"vulos/backend/services/gwurl"
 )
-
-// DefaultCloudBaseURL mirrors multiinstance.DefaultCloudBaseURL.
-const DefaultCloudBaseURL = "https://api.vulos.org"
 
 // ProviderGoogle is the only provider in Wave 1.
 const ProviderGoogle = "google"
@@ -105,18 +106,17 @@ type Client struct {
 // NewClientFromEnv builds a Client from the box's provisioned environment:
 //
 //	gateway (gwurl)       — broker base URL: a configured override / canonical CP
-//	                        env var / default https://api.vulos.org, resolved via
-//	                        the single gwurl accessor. Bound once at startup; a
-//	                        runtime gateway change applies on the next restart.
+//	                        env var, resolved via the single gwurl accessor.
+//	                        Vulos operates no control plane, so an unconfigured
+//	                        box resolves to "" and the Client reports itself as
+//	                        not configured (see Configured) rather than dialling
+//	                        an invented host. Bound once at startup; a runtime
+//	                        gateway change applies on the next restart.
 //	VULOS_DEVICE_ULID     — this box's canonical ULID
 //	DEVICE_SHARED_SECRET  — fleet device secret (same as heartbeat signing)
 func NewClientFromEnv() *Client {
-	base := gwurl.URL()
-	if base == "" {
-		base = DefaultCloudBaseURL
-	}
 	return &Client{
-		cloudBaseURL: base,
+		cloudBaseURL: gwurl.URL(),
 		deviceULID:   os.Getenv("VULOS_DEVICE_ULID"),
 		deviceSecret: os.Getenv("DEVICE_SHARED_SECRET"),
 		httpClient:   &http.Client{Timeout: 15 * time.Second},
@@ -126,9 +126,14 @@ func NewClientFromEnv() *Client {
 	}
 }
 
-// Configured reports whether the box has the credentials to talk to the broker.
+// Configured reports whether the box has a gateway to dial and the
+// credentials to authenticate to it. An empty cloudBaseURL means no gateway
+// is configured (the default for a box with neither a gwurl override nor a
+// canonical CP env var) — Configured is false in that case regardless of
+// device credentials, so callers fail closed with ErrNotConfigured instead of
+// dialling an empty URL.
 func (c *Client) Configured() bool {
-	return c.deviceULID != "" && c.deviceSecret != ""
+	return c.cloudBaseURL != "" && c.deviceULID != "" && c.deviceSecret != ""
 }
 
 // SetDeviceSigner installs the on-box device identity key (INTEG-SEC-01). With a

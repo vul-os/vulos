@@ -164,7 +164,7 @@ func (s *Service) IsAvailable() bool {
 // Status is the modem snapshot the phone app shows.
 type Status struct {
 	Available bool   `json:"available"`
-	State     string `json:"state,omitempty"`         // e.g. "registered", "connected"
+	State     string `json:"state,omitempty"`          // e.g. "registered", "connected"
 	Signal    int    `json:"signal_quality,omitempty"` // 0-100
 	Operator  string `json:"operator,omitempty"`
 	Number    string `json:"number,omitempty"` // own number (often blank; SIMs seldom expose it)

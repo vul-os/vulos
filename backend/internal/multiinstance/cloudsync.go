@@ -4,13 +4,13 @@
 // authenticates and:
 //
 //  1. Fetches the full list of instances enrolled under the same account
-//     (GET https://api.vulos.org/api/instances) and upserts every entry into
+//     (GET {gateway}/api/instances) and upserts every entry into
 //     the local Registry.
 //  2. Exposes GET /api/instances on the local OS HTTP server, returning the
 //     merged registry list. When the cloud is unreachable the endpoint
 //     gracefully degrades to the last-known registry state.
 //
-// HONEST STATUS (audit P2-7): there is no live wss://api.vulos.org/ws/instances
+// HONEST STATUS (audit P2-7): there is no live {gateway}/ws/instances
 // transport. ApplyPresenceEvent remains exported as the applier building block
 // (instance online/offline → MarkSeen/Upsert) for when a real streaming
 // transport lands and for tests; nothing currently drives it in production.
@@ -18,14 +18,17 @@
 // Wiring: call RegisterSyncHandlers(mux, syncer) from a routes_*.go file
 // in cmd/server — do NOT import from main.go.
 //
-// The cloud endpoint base URL defaults to DefaultCloudBaseURL but can be
-// overridden via the VULOS_CLOUD_URL environment variable for dev / self-hosted
-// deployments.
+// The gateway base URL is resolved through gwurl (a persisted override set in
+// Settings, else a canonical CP env var). Vulos operates no gateway, so a box
+// whose owner has configured none resolves to "" and every call here fails
+// closed with a "no gateway configured" error rather than dialling a host
+// nobody runs.
 package multiinstance
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -37,19 +40,19 @@ import (
 	"time"
 )
 
-// DefaultCloudBaseURL is the production Vulos cloud control-plane base URL.
-const DefaultCloudBaseURL = "https://api.vulos.org"
-
-// cloudBaseURL returns the effective cloud base URL for this box's home region.
-// It delegates to PlaceFor so that CP calls are region-aware: in Phase-0
-// (single cell) this is identical to returning DefaultCloudBaseURL, but when a
-// second cell is added the resolver will automatically route boxes in that cell
-// to the correct CP without any further code changes.
+// cloudBaseURL returns the gateway base URL configured for this box's home
+// region, or "" when the owner has configured no gateway. It delegates to
+// PlaceFor, which resolves through the single gwurl accessor.
 func cloudBaseURL() string {
 	return PlaceFor(boxRegion())
 }
 
-// requireSecureCloudBase returns the effective cloud base URL only if it uses
+// errNoGateway is returned when the box has no gateway configured. It is not a
+// failure state: most installs never point at one, and callers surface it as
+// "not configured" rather than as an outage.
+var errNoGateway = errors.New("multiinstance: no gateway configured for this box")
+
+// requireSecureCloudBase returns the effective gateway base URL only if it uses
 // https. The device bearer token ("Authorization: VulosDevice <token>") is sent
 // on every connect-back, so a plaintext http base would let a network attacker
 // harvest it. Refuse plaintext unless the explicit insecure escape hatch
@@ -57,6 +60,9 @@ func cloudBaseURL() string {
 // (lan/lancert_puller.go).
 func requireSecureCloudBase() (string, error) {
 	base := cloudBaseURL()
+	if base == "" {
+		return "", errNoGateway
+	}
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("VULOS_CLOUD_ALLOW_INSECURE"))) {
 	case "1", "true", "yes":
 		return base, nil
@@ -99,7 +105,7 @@ type CloudInstance struct {
 }
 
 // PresenceEvent is the wire format for WebSocket presence update messages
-// from wss://api.vulos.org/ws/instances.  It is exported so that tests and
+// from {gateway}/ws/instances.  It is exported so that tests and
 // alternative transport implementations can construct and apply events directly.
 type PresenceEvent struct {
 	// Type is "online", "offline", or "upsert".

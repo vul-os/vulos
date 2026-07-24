@@ -82,11 +82,11 @@ func (realBackend) validate(ctx context.Context, cfg cluster.S3Config, passphras
 //  1. Connects to S3 with the derived SSE-C key (passphrase lives only here).
 //  2. Calls sync.Bootstrap which:
 //     a. reads latest.json, authenticates it against the passphrase-derived
-//        MAC key (see snapshot.go's package doc comment), then downloads +
-//        installs the snapshot DB;
+//     MAC key (see snapshot.go's package doc comment), then downloads +
+//     installs the snapshot DB;
 //     b. replays only the changeset tail above the snapshot version;
 //     c. falls back to full changeset replay when no snapshot exists (also
-//        the fallback when latest.json fails authenticity).
+//     the fallback when latest.json fails authenticity).
 //
 // The passphrase is NEVER written anywhere — it lives only in this call stack
 // and is used in-process for two derivations: the SSE-C key (inside
