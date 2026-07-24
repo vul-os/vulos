@@ -7,9 +7,9 @@ import { getInitialResolvedTheme } from './core/ThemeProvider.jsx'
 // configure() MUST run before any other relay-client import touches localStorage
 // so existing OS user state under 'vulos.os.endpoints.v1' survives the migration
 // (do NOT change the key — that would wipe the cached cloud↔LAN endpoint pair).
-import { configure } from '@vulos/relay-client/endpoints'
+import { configure } from './lib/net/endpoints.js'
 configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status' })
-import { bootstrapOffline } from '@vulos/relay-client/offlineBootstrap'
+import { bootstrapOffline } from './lib/net/offlineBootstrap.js'
 import { startOfflineQueueFlushLoop } from './lib/offlineQueue.js'
 
 // Synchronous OS tier resolver. Reads window.__VULOS_TIER (set by the OS

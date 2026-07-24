@@ -2,7 +2,7 @@
  * endpoints.js — vulos-native cloud↔LAN endpoint selection with same-origin
  * fallback (OS OFFLINE-02 frozen contract).
  *
- * GREENFIELD DECOUPLE 2026-07-23: this was previously `@vulos/relay-client/
+ * The OS owns its endpoint layer natively. (was `
  * endpoints`, a sibling package (`../vulos-relay/client`) that is not part of
  * the vulos repo. To let the OS build and run STANDALONE, the endpoint layer is
  * now owned natively here, preserving the exact contract the OS depended on:
@@ -18,7 +18,6 @@
  *   • same-origin '' is always reachable when the OS is served from the box —
  *     which, with no relay, is the common case.
  *
- * A Vite alias maps `@vulos/relay-client/endpoints` → this file so existing
  * import sites and tests are unchanged.
  */
 
@@ -163,4 +162,11 @@ export function invalidateEndpoint() {
 export function onEndpointChange(cb) {
   listeners.add(cb)
   return () => listeners.delete(cb)
+}
+
+/* Test-only: clear cached endpoint selection and listener binding so each test
+   starts from a clean slate. */
+export function _resetForTests() {
+  cachedSelection = null
+  onlineBound = false
 }

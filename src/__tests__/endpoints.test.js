@@ -1,7 +1,7 @@
 /**
  * endpoints.test.js — cloud↔LAN failover (OS OFFLINE-02 contract).
  *
- * RELAY-CLIENT-04: the implementation lives in @vulos/relay-client/endpoints
+ * RELAY-CLIENT-04: the implementation lives in src/lib/net/endpoints.js
  * now; this suite still owns the OS-specific guarantee that the shared
  * `configure({ lsKeyPrefix: 'vulos.os.endpoints.v1' })` migration seam keeps
  * existing OS user state intact (the cache key must NOT change — that would
@@ -33,7 +33,7 @@ const LAN = 'https://box.abc.lan.vulos.org'
 // preserved verbatim for backwards-compat).
 async function freshModule() {
   vi.resetModules()
-  const mod = await import('@vulos/relay-client/endpoints')
+  const mod = await import('../lib/net/endpoints.js')
   mod.configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status' })
   return mod
 }

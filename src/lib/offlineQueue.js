@@ -324,7 +324,7 @@ export function size() {
 
 /**
  * Default replay strategy — routes each record through the shared API client
- * (which handles cloud↔LAN failover via @vulos/relay-client/endpoints).
+ * (which handles cloud↔LAN failover via src/lib/net/endpoints.js).
  *
  * Records with a path starting with '/api' are stripped to the post-/api
  * suffix and replayed via request(); anything else is replayed via rawFetch()

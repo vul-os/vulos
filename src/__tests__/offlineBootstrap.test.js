@@ -14,12 +14,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 async function freshModule() {
   vi.resetModules()
   // RELAY-CLIENT-04: the offline-shell bootstrap was promoted to
-  // @vulos/relay-client/offlineBootstrap. The OS still owns the seam: the
+  // src/lib/net/offlineBootstrap.js. The OS still owns the seam: the
   // endpoints module needs its OS lsKeyPrefix re-applied per fresh module
   // graph so localStorage state lands under the OS-private key.
-  const endpoints = await import('@vulos/relay-client/endpoints')
+  const endpoints = await import('../lib/net/endpoints.js')
   endpoints.configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status' })
-  return import('@vulos/relay-client/offlineBootstrap')
+  return import('../lib/net/offlineBootstrap.js')
 }
 
 function makeRegistration() {

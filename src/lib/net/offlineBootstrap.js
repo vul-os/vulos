@@ -1,7 +1,7 @@
 /**
  * offlineBootstrap.js — vulos-native offline boot seam (OFFLINE-03).
  *
- * GREENFIELD DECOUPLE 2026-07-23: was `@vulos/relay-client/offlineBootstrap`.
+ * The OS owns its offline-boot layer natively.
  * Re-homed natively so the OS builds/runs standalone. Contract preserved:
  *   • registers the service worker ('/sw.js') EXACTLY once, even if called
  *     repeatedly (StrictMode double-invoke safe);
@@ -10,7 +10,6 @@
  *     is already controlled by an old one;
  *   • never throws when serviceWorker is unavailable.
  *
- * A Vite alias maps `@vulos/relay-client/offlineBootstrap` → this file.
  */
 
 import { configure, selectEndpoint } from './endpoints.js'
@@ -92,4 +91,12 @@ export function bootstrapOffline(opts = {}) {
       /* onBoot failure must not abort boot */
     }
   }
+}
+
+/* Test-only: reset module state so each test starts from a clean slate.
+   bootstrapOffline() is deliberately once-only per page load, so a suite that
+   exercises it repeatedly needs to clear the guard between cases. */
+export function _resetForTests() {
+  bootstrapped = false
+  updateListeners.clear()
 }

@@ -23,13 +23,13 @@ import {
   currentEndpoint,
   invalidateEndpoint,
   seedFromResolveBackend,
-} from '@vulos/relay-client/endpoints'
+} from './net/endpoints.js'
 
 const API_PREFIX = '/api'
 
 // Resolve the API base URL through the endpoint-failover layer. The selected
 // base is a same-origin '' by default, or a cloud/LAN origin when the OS shell
-// injects window.__VULOS_ENDPOINTS__. See @vulos/relay-client/endpoints.
+// injects window.__VULOS_ENDPOINTS__. See src/lib/net/endpoints.js.
 async function apiBase() {
   const base = await selectEndpoint()
   return base + API_PREFIX
