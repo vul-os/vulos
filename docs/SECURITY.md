@@ -4,6 +4,17 @@ A practical guide to running a Vulos box securely: what the auth surface actuall
 
 This chapter is operational. For the formal analysis (STRIDE, trust boundaries, honest residual risks) read [THREAT-MODEL.md](THREAT-MODEL.md). To report a vulnerability, see the security policy at [../SECURITY.md](../SECURITY.md).
 
+Vulos is the OS. There is no Vulos-operated cloud, managed hosting, billing, or control plane standing behind your box — you run the same binary on your own hardware or on any VPS you rent, and it protects itself the same way either way. The two positions that fall out of that, stated plainly:
+
+- **Nobody but you holds your keys.** Not Vulos, not a hosted service, not the reachability broker your box talks to. See [Key custody](#key-custody-yours-only) below and [KEY-CEREMONY.md](KEY-CEREMONY.md) for the full key model.
+- **We do not collect your data.** There is no telemetry or analytics SDK anywhere in this codebase; the only outbound connection an unconfigured box makes by default is a read-only, signed check for OS updates (see [Verified boot and the netboot signature chain](#verified-boot-and-the-netboot-signature-chain) and [CLOUD.md](CLOUD.md)) — no usage data rides along.
+
+---
+
+## Reachability: one authenticated handler, no bypass
+
+However a client reaches your box — through the hosted Ephor broker, through your own self-hosted Ephor, or direct over TLS to a public IP — every path lands on the **same** authenticated HTTP handler. There is no "trusted because it came from the relay", "trusted because it's direct", or "trusted because it's on the LAN" shortcut anywhere in the routing. An unauthenticated request gets the same 401 no matter which door it came through, and the direct listener's own unauthenticated probe path carries no user data and answers only a caller-supplied nonce. The full reachability model — the three connection options, how Ephor is "hired, not depended on" (it only ever forwards ciphertext), TLS termination, and the ports involved — lives in [NETWORKING.md](NETWORKING.md); this page assumes that model and covers what happens once a request actually arrives.
+
 ---
 
 ## The one flag that matters: `VULOS_ENV`
@@ -17,7 +28,6 @@ Everything security-relevant keys off the runtime environment, set with `--env` 
 | Self-signed upstream certs | accepted | accepted | rejected |
 | Debug endpoints (`/debug/env`, pprof) | **enabled** | off | off |
 | Strict cookies | per-request TLS state | per-request TLS state | enforced |
-| Staging cloud-broker key | no | accepted alongside prod | no |
 
 Two consequences worth spelling out. First, an unset `VULOS_ENV` means **prod**: you get the strict posture by default, including binding all interfaces — so a box on an untrusted network needs TLS and the checklist at the bottom of this page. Second, `local` mode exposes `/debug/env` and pprof; never point `--env=local` at a machine anyone else can reach.
 
@@ -35,7 +45,6 @@ All of this lives in `backend/services/auth` and `backend/services/passkeys`. At
 | Device PIN | Unlock only | Device-local | Requires prior full auth on that device; hard lockout |
 | QR / phone approval | Kiosk login | Yes — nothing typed on the untrusted device | Single-use, short-TTL challenge |
 | Fingerprint | Hardware-dependent | Local biometric | Part of the prod hardware checks |
-| Cloud unified sign-in | Optional | Inherits cloud account posture (incl. TOTP) | Verified locally against a pinned broker key |
 
 The design principle behind this lineup (from the threat model): *isolate the credential, not the browsing*. There is deliberately no third-party OAuth at the OS level and no "streamed login screen" — a password typed on a compromised client is captured wherever the pixels render, so the answer is credentials that cannot be captured (passkeys) or never typed (QR approval).
 
@@ -70,10 +79,7 @@ A short PIN (4–8 digits) can unlock the box on a device where you've already f
 
 ### TOTP
 
-Two distinct things, easy to conflate:
-
-- **Cloud sign-in TOTP**: when you attach the box to a Vulos Cloud account (`POST /api/auth/cloud/login`, enrollment via `/api/auth/cloud/enroll/*`), the cloud login flow handles the account's TOTP second factor as part of the sign-in conversation.
-- **The TOTP vault** (`/api/auth/totp/*`): an on-box authenticator keychain for *your other accounts* (GitHub, etc.), with secrets encrypted at rest (AES-256-GCM) under `~/.vulos/auth/totp/`. It is a feature, not the box's own 2FA.
+**The TOTP vault** (`/api/auth/totp/*`) is an on-box authenticator keychain for *your other accounts* (GitHub, etc.), with secrets encrypted at rest (AES-256-GCM) under `~/.vulos/auth/totp/`. It is a feature — a place to keep 2FA codes for services you use elsewhere — not the box's own second factor.
 
 ### Sessions
 
@@ -86,16 +92,6 @@ curl -s https://yourbox/api/auth/status -b "$COOKIE" | jq   # auth state
 curl -s https://yourbox/api/auth/me -b "$COOKIE" | jq       # who am I + session expiry
 ```
 
-### Attaching the box to a Vulos Cloud account (optional)
-
-Unified sign-in lets a cloud account open an OS session. The parts an admin should understand:
-
-- The OS-side client (`backend/services/cloudclient`) speaks the cloud's browser-grade defenses — CSRF Origin allowlist and an adaptive proof-of-work gate — and keeps the cloud session cookie in an **in-memory jar only**: the OS never persists your cloud session. One client per flow, then it's dropped.
-- What the box actually trusts is a **signed login token**: the cloud signs it with a login-broker Ed25519 key, and the box verifies locally against a pinned copy of that public key (`/var/lib/vulos/cloud/broker.pub`, or the `VULOS_CLOUD_BROKER_PUBKEY` env var holding a base64 key or a path). Verification is purely local — the cloud is not a runtime dependency for login, and no broker key configured simply means "cloud login not configured on this device".
-- Box→cloud channels refuse plaintext URLs unless a dev-only escape hatch is set (see the env table below).
-
-See [CLOUD.md](CLOUD.md) for what the cloud control plane does and does not see.
-
 ---
 
 ## Admin role, privileged routes, and audit logging
@@ -107,6 +103,17 @@ Vulos profiles carry roles; destructive and system-level routes require an authe
 - AI-app mutations (save/update/delete/snapshot/rollback) are admin-gated and audit-logged, with a fail-closed kill-switch (`DISABLE_AI_APP_EDIT=1`) that freezes all of them at once.
 
 The assistant deserves its own mention because it *reads* private data and can be *asked* to act. The containment model (detailed in [ASSISTANT.md](ASSISTANT.md) and THREAT-MODEL Component 5): read-only tools run freely, but every side-effecting action becomes a server-stored **proposal** — single-use, 10-minute TTL, bound to the session user. Execution accepts only the opaque proposal id and re-reads the server-stored arguments, so a compromised browser cannot swap the recipient between what you saw and what runs. Tool results (email bodies!) are framed as untrusted content, and the egress Guard is the single choke point deciding whether any of it may reach an off-box model.
+
+---
+
+## Key custody: yours only
+
+Two key systems live on a box, and both are held entirely by you:
+
+- **Your account master key.** A random 256-bit key generated at signup, wrapped under your password *and* under a 24-word recovery phrase shown to you once — the server persists only the doubly-wrapped, opaque envelope (`master_key_blobs` in `auth.db`) and never the plaintext key or the phrase. On a normal login the browser unwraps it client-side; the server never sees it. Recovery is entirely in your hands: `POST /api/auth/masterkey/recover` reconstructs the key from your own phrase, and a wrong phrase fails closed and changes nothing. Nobody — not Vulos, not whichever Ephor instance your box happens to be dialing out to — holds a copy or an escrow of this key, and there is no backdoor unwrap path in the code. See [KEY-CEREMONY.md](KEY-CEREMONY.md) for the full key model and [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for what the phrase can and cannot do.
+- **Your box's peering identity (Vula ID).** An Ed25519 keypair generated on first use and stored on disk under `~/.vulos/peering/identity/`; it is what other boxes verify you by. It never leaves the box except as a passphrase-encrypted export bundle you explicitly request (`POST /api/peering/identity/export`) — the passphrase is yours, chosen at export time, and nothing about the export touches any third party.
+
+The software-signing keys covered in [KEY-CEREMONY.md](KEY-CEREMONY.md) (the root/release keys that sign OS images and the App Hub registry) are a separate system with a separate purpose — they decide what *code* a box will trust, not what *your data* is encrypted with. Neither system is escrowed anywhere.
 
 ---
 

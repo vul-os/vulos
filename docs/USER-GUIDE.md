@@ -1,79 +1,65 @@
-# Living in Vulos OS Day to Day
+# Using the Vulos Desktop
 
-Your daily driver's manual for the Vulos OS desktop: first-boot setup, the shell (windows, desktops, dock, Mission Control), the Cmd-K palette, notifications, the Settings app, accounts and locking, and every keyboard shortcut the shell actually binds.
+Vulos is a full desktop that runs in your browser and lives on hardware you own — a mini-PC, a spare laptop, or a cloud VPS you rent from any provider. This is the daily-driver manual for what you actually see once you open it: first sign-in, the shell (windows, dock, tiling), Files, the App Hub, the assistant, Calendar/Contacts/Notes, notifications, the terminal, and using it from your phone.
 
-This chapter assumes you already have a running box — see [GETTING-STARTED.md](GETTING-STARTED.md) for installation and [CONFIGURATION.md](CONFIGURATION.md) for environment variables and flags.
+This chapter assumes a running box — see [GETTING-STARTED.md](GETTING-STARTED.md) for installation. Networking and reachability (Ephor, direct, your own domain) are their own chapter: [NETWORKING.md](NETWORKING.md).
 
 ---
 
-## First boot: the setup wizard
+## First sign-in: the setup wizard
 
-The first time you open your box in a browser, the shell checks `GET /api/setup/status`. If setup has never been completed, you land in the setup wizard instead of the login screen.
+The first time you open your box's address in a browser, it checks whether an account already exists. If not, you land in the setup wizard instead of the sign-in screen.
 
-The very first choice ("How would you like to set up?") splits the wizard into two flows:
+The wizard opens with a choice:
 
-- **Start fresh** — the full new-system flow below.
-- **Join an existing installation** — a short flow that connects to your existing S3-compatible storage with your encryption passphrase, syncs in the background, then asks only for a lock-screen PIN. Use this when restoring or adding a node. See [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
+- **New system** — set this device up from scratch.
+- **Join existing** — connect this device to storage from a Vulos box you already run, and sync into it. You give it your existing S3-compatible storage details and an encryption passphrase; it syncs in the background and then asks only for a lock-screen PIN. Use this to add a second box or restore one — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
-The new-system flow walks through these steps (a few are skippable):
+A **New system** setup walks through these steps, most skippable:
 
 | Step | What happens |
 |---|---|
-| Welcome | "Get Started". Vula is isiZulu for "open". |
-| Set up / Join | Start fresh, or join an existing installation. |
-| Device type | PC / Tablet / Mobile, TV, Car, or Watch — auto-detected, and it shapes the whole UI (the TV profile gets a 10-foot remote-driven home, for example). |
-| Language | 15 languages, English through isiZulu to Japanese. |
-| Timezone | Picked on a world map; defaults to what your browser reports. |
-| Network | Scan and join WiFi, or skip if you are on Ethernet. |
-| Manage this device | Local-only account, or connect Vulos Cloud. "You can always connect to Vulos Cloud later from Settings." |
-| Your Vulos account | Display name, username, password. This becomes the **administrator** account, and the same credentials work for `sudo` in the Terminal. |
-| Vulos username | Choose a username for your Vulos account (cloud identity). Sign-in uses your email/password or a linked Google/Microsoft account. |
-| Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; you can set it later in Settings. |
-| How will you use Vulos? | Intent question that tunes defaults (relay, AI tokens, backup quota, dedicated IP). |
-| Your apps | Everything is pre-checked by default — the owned productivity app Ofisi (Docs/Sheets/Slides/PDF/whiteboards) plus the PIM apps. Opt out of anything; you can add it back later. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP, via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address. See [APPS.md](APPS.md). |
+| Welcome | "Get Started". *Vula* is isiZulu for "open". |
+| Device type | PC / Tablet / Mobile, TV, Car, or Watch — auto-detected from `GET /api/device-profile`, and it reshapes the whole UI (a TV, for instance, gets a 10-foot remote-driven interface). |
+| Language | Pick from the OS's supported languages. |
+| Timezone | Picked on a map; defaults to what your browser reports. |
+| Network | Scan and join WiFi, or skip if you're on Ethernet. |
+| Your account | Display name, username, password. This becomes the **administrator** account — the same credentials you'll use for `sudo` in the Terminal. |
+| Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; set it later in Settings. |
+| Your apps | Two toggles, both on by default: claiming your Vulos username (which enables the Mail connector), and installing the Ofisi productivity app. Uncheck either for a leaner install. **Files, Calendar and Contacts are always included.** |
 | Appearance | Dark / Light / Auto theme. |
 | Node identity | Shows your instance's read-only ULID and lets you set a hostname (lowercase letters, numbers, hyphens). |
 | Storage | Optionally connect S3-compatible storage with an encryption passphrase. |
-| SSH | Optionally generate an Ed25519 SSH keypair for the box — the private key is shown once for you to copy. |
-| Recovery kit | A versioned credentials JSON (instance ULID, hostname, checksum) you must download and confirm — type `confirm` to proceed. Shown once. |
-| Ready | Summary of everything chosen; "Enter" creates the account and finishes. |
+| SSH | Optionally generate an Ed25519 SSH keypair for the box, client-side in your browser — the private key is shown once for you to copy. |
+| Recovery kit | A versioned credentials JSON (instance ULID, hostname, checksum) you download and confirm by typing `confirm`. Shown once. |
+| Ready | A summary of everything chosen; pressing the finish button creates the account. |
 
 ### The recovery phrase
 
-When the wizard creates your account, the server mints a per-user master key and returns a **24-word recovery phrase — exactly once**. The wizard forces a Proton-style reveal screen: you must tick "I have written down or securely stored my 24-word recovery phrase" before you can continue. The warning is literal: without the phrase, **a forgotten password cannot be recovered** — the master key wraps your encrypted content. Store it offline. More in [SECURITY.md](SECURITY.md) and [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
+The moment your account is created, the server mints a per-user master key and shows a **24-word recovery phrase — exactly once**. You must tick a box confirming you've written it down before the wizard lets you continue; there's no way to dismiss the screen without acknowledging it. The warning is literal: **a forgotten password cannot be recovered without this phrase** — the master key it protects wraps your encrypted content. Store it offline. More in [SECURITY.md](SECURITY.md) and [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
-The recovery **kit** (the JSON file) is separate from the recovery **phrase**. An admin can re-download the kit later from a trusted local session:
-
-```
-GET /api/recovery/kit
-```
-
-The phrase is never re-shown.
+The recovery **kit** (the JSON file from setup) is separate from the recovery **phrase**. An admin can re-download the kit later from a trusted local session at `GET /api/recovery/kit`. The phrase itself is never re-shown.
 
 ### Optional private AI
 
-Right before entering the desktop, the wizard offers to download an on-box embedding model ("Enable private AI search"). It is genuinely optional — search works in lexical mode without it — and the model is fetched from a pinned source and SHA-256-verified. See [ASSISTANT.md](ASSISTANT.md).
-
-### If you sign up with Vulos Cloud
-
-Choosing a cloud-managed account adds a short post-signup wizard:
-
-1. **Two-factor authentication** — scan a QR into any TOTP app, confirm with a 6-digit code, and save the 10 one-time recovery codes (copy or download as `.txt`; shown once).
-2. **Email verification** — a nudge with a resend button; you can continue without verifying and deal with the banner later.
-
-See [CLOUD.md](CLOUD.md) for what cloud enrollment actually does and does not give the cloud access to.
+Right before you enter the desktop, the wizard offers to download an on-box embedding model ("Enable private AI search"). It's genuinely optional — search still works in lexical mode without it — and the model is fetched from a pinned source and SHA-256-verified before use. You can enable it later from **Settings → AI Models** if you skip it here. See [ASSISTANT.md](ASSISTANT.md).
 
 ---
 
 ## The desktop at a glance
 
-After login you get the desktop shell: a wallpaper, a translucent **menu bar** across the top, the **Home** surface behind everything, and windows stacking above it.
+After signing in you land on the desktop shell: a wallpaper, a translucent **menu bar** across the top, the **Home** surface behind everything, and windows stacking above it.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/hero-light.png" />
+  <img src="screenshots/hero.png" alt="The Vulos desktop: menu bar, Home brief with agenda and assistant composer, and quick-launch tiles" width="880" />
+</picture>
 
 ### The menu bar
 
 Left to right:
 
-- **vula** — the system menu: your profile, hostname, uptime, live CPU / memory / temperature, and **Log Out**.
+- **vula** — the system menu: your profile, hostname, uptime, live CPU/memory/temperature, and **Log Out**.
 - **Desktop indicator** — "Desktop 2" plus a close button, shown only when you have more than one virtual desktop.
 - **Applications** (rocket icon) — opens the Launchpad.
 - **Mission Control** (stacked-windows icon) — same as pressing F3.
@@ -81,22 +67,22 @@ Left to right:
 - **Chat** — toggles the assistant chat panel on the right edge.
 - **Fullscreen** — browser fullscreen on/off (F11 also works, since Vulos runs in a browser).
 - **WiFi** — connection status; the dropdown scans and joins networks.
-- **Battery** — percentage, charging state, temperature, uptime (only on hardware that reports a battery).
-- **Notifications** (bell) — the Notification Center, described below.
+- **Battery** — percentage, charging state, temperature, uptime (only on hardware that reports one).
+- **Notifications** (bell) — opens the Notification Center, described below.
 - **Theme toggle** — dark / light.
 - **Clock** — time and date; the dropdown is a calendar.
 
 ### Home — the default surface
 
-When no windows are open on the current desktop, you see **Home**: not a launcher, a brief. It aggregates, in one round-trip to `GET /api/assistant/home`:
+When no windows are open on the current desktop, you see **Home**: not a launcher, a brief. It's assembled in one round-trip to `GET /api/assistant/home`:
 
 - **What needs you today** — the assistant's attention items, with snooze/handled actions.
 - **Agenda** — today's and upcoming events and reminders.
 - **Recent activity** — a light feed.
-- **A composer** — ask the assistant anything; actions that change state come back as a proposal card you explicitly approve before anything runs.
-- **Quick launch** — Mail, Calendar, Files, Assistant, Ofisi, Terminal, Settings, plus "All apps" for the full Launchpad.
+- **A composer** — ask the assistant anything; anything that would change state comes back as a proposal card you approve before it runs.
+- **Quick launch** — Mail, Calendar, Files, Assistant, Notes, Terminal, Settings, plus "All apps" for the full Launchpad.
 
-Each section fails independently — if the assistant is offline the brief says so, and the rest of Home still renders. The brief is computed on your box by the on-instance assistant; it introduces no new egress. Details in [ASSISTANT.md](ASSISTANT.md).
+Each section fails independently — if the assistant is offline, the brief says so and the rest of Home still renders. The brief is computed on your own box; it introduces no new network calls off it. Details in [ASSISTANT.md](ASSISTANT.md).
 
 ### The dock
 
@@ -114,11 +100,11 @@ A dot under each icon marks a running window; it takes your accent color when fo
 
 Three equivalent front doors:
 
-1. **Launchpad** — rocket icon in the menu bar. A fullscreen grid grouped by category, with a search field that focuses automatically ("Search applications..."). Esc closes it.
-2. **Command palette** — press **Cmd-K / Ctrl-K**, type a few letters of the app name, Enter. The fastest path once you know it.
+1. **Launchpad** — rocket icon in the menu bar. A fullscreen grid grouped by category, with a search field that focuses automatically. Esc closes it.
+2. **Command palette** — press **Cmd-K / Ctrl-K**, type a few letters of the app's name, Enter. The fastest path once you know it.
 3. **Home quick launch** — the curated tiles on the Home surface.
 
-What is installed, how the App Hub works, and how apps are sandboxed is covered in [APPS.md](APPS.md).
+What's installed and how the App Hub works is its own section below, and in full in [APPS.md](APPS.md).
 
 ---
 
@@ -134,27 +120,32 @@ Drag a window's title bar toward a screen edge and a snap preview appears (a 48 
 - **Top edge** → maximize.
 - **Any corner** → that quarter of the screen.
 
-Halves and quarters tile the usable area exactly, with no seams, below the 32 px menu bar. Dragging a tiled window frees it back to floating. Double-clicking the title bar toggles maximize / restore.
+Halves and quarters tile the usable area exactly, with no seams, below the menu bar. Dragging a tiled window frees it back to floating. Double-clicking the title bar toggles maximize / restore.
 
 ### Tile with the keyboard
 
-`Super+Arrow` (the Cmd key on a Mac keyboard) tiles the active window, and repeated presses walk a state machine: half → quarter → the other quarter. `Ctrl+Alt+Arrow` does the same for keyboards without a usable Super key. `Down` from a maximized or tiled window restores its remembered floating geometry — the shell preserves where the window was before you first tiled it.
+`Super+Arrow` (the Cmd key on a Mac keyboard) tiles the active window: `←`/`→` snap to a half, `↑` maximizes, `↓` restores the window's remembered floating geometry — the shell preserves where the window was before you first tiled it. `Ctrl+Alt+Arrow` does the same on keyboards without a usable Super key.
 
-`Alt+`\` (backtick) cycles through windows; add Shift to cycle backwards. `Ctrl/Cmd+W` closes the active window. None of these fire while you are typing in a text field.
+`Alt+`\` (backtick) cycles through windows; add Shift to cycle backwards. `Ctrl/Cmd+W` closes the active window. None of these fire while you're typing in a text field.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/tiled-light.png" />
+  <img src="screenshots/tiled.png" alt="Multiple windows tiled side by side on the Vulos desktop" width="880" />
+</picture>
 
 ### Window sessions persist
 
-The shell saves your desktops and windows to the browser (debounced, on every change) and restores them on reload: which desktop each window was on, its position, size, minimized state, and tile state. Two kinds of windows restore faithfully — web-app windows (rebuilt from their URL) and built-in apps (rebuilt from their app id). Streaming windows (the native-app browser, remote sessions) need a live backend session and are intentionally dropped on reload.
+The shell saves your desktops and windows to the browser (debounced, on every change) and restores them on reload: which desktop each window was on, its position, size, minimized state, and tile state. Built-in apps and web-app windows restore faithfully; streaming windows (a native-app browser, remote sessions) need a live backend session, so they're intentionally dropped on reload rather than shown broken.
 
 ### Virtual desktops
 
 - **Ctrl+1–9** switches desktops; **Ctrl+N** creates one.
-- The menu-bar indicator's × closes the current desktop — its windows move to the next desktop rather than closing (macOS-style).
+- The menu-bar indicator's × closes the current desktop — its windows move to the next desktop rather than closing.
 - In Mission Control you can also move windows between desktops.
 
 ### Mission Control
 
-**F3** (or **Ctrl+Up**) lays every window on the current desktop out in a grid, with a strip of desktops along the top. Click a window to jump to it, hit the × on a thumbnail to minimize it, Esc to leave. Minimized windows are hidden here — that is what the dock is for.
+**F3** (or **Ctrl+Up**) lays every window on the current desktop out in a grid, with a strip of desktops along the top. Click a window to jump to it, hit the × on a thumbnail to minimize it, Esc to leave. Minimized windows are hidden here — that's what the dock is for.
 
 ---
 
@@ -177,23 +168,146 @@ Built-in actions include composing an email, creating a calendar event, jumping 
 
 ---
 
+## Files
+
+Vulos ships two apps that deal with files, and it's worth knowing them apart:
+
+- **Files** (Launchpad tile "Files", app id `drive`) is your personal cloud drive — folders, uploads, versions, sharing, external mounts. This section is about this one.
+- **File Explorer** (app id `files`) is a system file manager for browsing the box's own local filesystem — useful if you're the admin poking at the machine itself, not where your documents live.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/files-light.png" />
+  <img src="screenshots/files.png" alt="The Files app browsing a folder of documents" width="880" />
+</picture>
+
+Files has three views in its sidebar:
+
+- **My Drive** — files and folders you own.
+- **Shared with me** — items other users granted you access to.
+- **Received** — items redeemed from a box-to-box share link, staged locally until you save them into your Drive.
+
+### Everyday actions
+
+1. **Upload** — toolbar → Upload, or just drag a file into the window. Small files go up in one shot; anything 16 MiB or larger uses a resumable, chunked upload that survives a dropped connection and picks up exactly where it left off.
+2. **Create a folder** — toolbar → New folder.
+3. **Rename or move** — row menu on any item. A move relocates the underlying bytes so the store always mirrors your folder tree; it either fully lands or fully rolls back.
+4. **Delete** — row menu → Delete. This is a soft delete with no trash view and no undo in the UI today — treat it as permanent.
+5. **View version history** — row menu → Versions. Every completed upload to an existing file records a new version (size, uploader, timestamp).
+6. **Download** — row menu → Download.
+
+Names are capped at 255 characters and can't contain `/`, `\`, or be `.`/`..`; two siblings can't share a name. You can't move an item into another user's Drive, or a folder into its own subtree.
+
+### Sharing
+
+Three ways to share, from the row menu:
+
+- **Share with a user** — grant a role by email address: **viewer** (list/download/see versions), **editor** (also upload, rename, move, delete, create folders), or **owner** (also manage shares and links). Permissions inherit down a folder, and only the owner can share, unshare, or manage links.
+- **Create a link** — an expiring, revocable token (7 days by default, 30 max) that grants read access to anyone signed in who has it. Revoke it any time from the Share dialog.
+- **Peer share** — for box-to-box sharing with no object store required at all: your box signs a capability (one file or folder, one access level, an expiry) with its own peering key, and the recipient's box verifies it and streams the bytes straight from yours. The recipient finds it under **Received** and redeems it there.
+
+Full detail on roles, sealed (content-blind) sharing, and external drive mounts (Google Drive, Dropbox, GCS) lives in [FILES.md](FILES.md).
+
+---
+
+## The App Hub
+
+The **App Hub** is the store front for everything installable beyond what ships by default — Navidrome, Gitea, Jellyfin, Grafana, Jupyter, draw.io, Cockpit, Firefox, and dozens more.
+
+<picture>
+  <img src="screenshots/apphub.png" alt="The App Hub browsing the app catalogue" width="880" />
+</picture>
+
+### Finding and installing an app
+
+1. Open **App Hub** from the Launchpad, Home quick launch, or Cmd-K.
+2. You land on the **Browse** tab: a searchable, filterable catalogue with category and type filters along the top.
+3. Click an app's tile to open its detail panel — description, version picker (where more than one is offered), and a details table (source, category, license, architecture, homepage).
+4. Click **Install**. A progress indicator shows what's happening (e.g. "Downloading from Flathub…" or "Installing packages…"); errors surface inline with the actual failure text, not a generic spinner that hangs.
+
+### Managing what's installed
+
+Switch to the **Installed** tab to see everything currently on your box, with a count badge. From here you can launch an installed app or remove it — removal shows the same kind of in-progress state as install.
+
+<picture>
+  <img src="screenshots/apphub-installed.png" alt="The App Hub's Installed tab listing apps already on the box" width="880" />
+</picture>
+
+Installing and removing apps is admin-gated — a non-admin account on the box can't add or remove software. Every registry entry is checksum-pinned and Ed25519-signed before it's allowed to install; the full supply-chain story, the sandboxing every app runs under, and publishing an app of your own to a subdomain are in [APPS.md](APPS.md).
+
+---
+
+## The assistant
+
+The assistant is a private AI that runs over your **mail**, on your own instance, with the headline being honesty about where it runs and what leaves the box.
+
+<picture>
+  <img src="screenshots/assistant.png" alt="The assistant answering a question, with its sovereignty tier shown" width="880" />
+</picture>
+
+### Talking to it
+
+Open **Assistant** from the Launchpad, Home, or Cmd-K (prefix a palette query with `?` to ask directly). Two quick-action shortcuts are offered up front — "What needs my attention" and "Summarize my inbox" — or just type a question.
+
+At the top of the panel sits the **sovereignty badge**: which tier the current model runs at (on your device, an operator-declared endpoint, a brokered no-train provider, or an external one), with a picker to change it. Click the badge for the full transparency panel — what leaves this box, and a "Download my data" export.
+
+### Proposals: nothing runs without your OK
+
+If you ask the assistant to *do* something — draft a reply, create an event — it doesn't just act. A mutating request comes back as a **proposal card**: you review what it intends to do and press **Approve** or **Reject**. Only your approval sends the opaque proposal id back to the server, which then executes exactly the action it already generated — never anything a forged request could substitute in. Nothing changes state until you say so.
+
+Full detail on tiers, egress, and the assistant's mail integration is in [ASSISTANT.md](ASSISTANT.md).
+
+---
+
+## Calendar, Contacts, and Notes
+
+Calendar and Contacts are thin, standalone apps over a mailbox you already own (Gmail, Outlook, or any IMAP/CalDAV/CardDAV account) — they store nothing of their own; connect a mailbox once in Mail and both come alive. If no mailbox is connected yet, each shows an honest **"Connect Mail"** state rather than an error.
+
+<picture>
+  <img src="screenshots/calendar.png" alt="The Calendar month view with events" width="880" />
+</picture>
+
+### Calendar
+
+1. Open **Calendar** from the Launchpad, Home, or Cmd-K.
+2. Switch between **Month** and **Agenda** view with the toggle in the header; `‹`/`›` step a month at a time.
+3. Click **+ New event** (or click a day in Month view) to open the event editor: title, all-day toggle, start/end, location, and notes.
+4. Save to add it, or open an existing event to edit or delete it from the same editor.
+
+Cmd-K's "New event" action deep-links straight into Calendar with the editor pre-opened.
+
+### Contacts
+
+<picture>
+  <img src="screenshots/contacts.png" alt="A contact selected in the Contacts app, showing name, title, and details" width="880" />
+</picture>
+
+1. Open **Contacts**. The list pane on the left is searchable; select anyone to see their detail card on the right.
+2. Click **New contact** (or the + button) to open the editor: name, title, organization, any number of emails and phone numbers (a blank row always trails so you can keep adding), and notes.
+3. Save to add them, or open an existing contact to edit it in place.
+
+### Notes
+
+**Notes** ("Universal Memory" in its own manifest) is a bundled notes and knowledge-base app, reachable from the Home quick launch, Launchpad, or Cmd-K — write and organize notes that stay indexed on your own box. It ships as one of the default apps rather than a PIM widget, so it has no separate editor walkthrough here; open it and start writing.
+
+---
+
 ## Notifications
 
 ### The bell and the panel
 
-The bell in the menu bar shows an unread badge (and a strike-through when Do Not Disturb is on). The panel groups notifications by day, then by source (Mail, Assistant, System, ...), with unread dots colored by severity. Per-item: mark read, dismiss. Panel-wide: **Mark all read** and **Clear**.
+The bell in the menu bar shows an unread badge (and a strike-through when Do Not Disturb is on). The panel groups notifications by day, then by source (Mail, Assistant, System, …), with unread dots colored by severity. Per-item: mark read, dismiss. Panel-wide: **Mark all read** and **Clear**.
 
 New notifications also appear briefly as **toasts**. Notifications come from two feeds folded into one store: client-side events, and the backend feed (`GET /api/notifications`, streamed over `/api/notifications/stream`).
 
 ### Do Not Disturb
 
-The toggle at the bottom of the notification panel (also in **Settings → Notifications**). DND silences pop-ups; notifications still collect quietly in the bell. The box also honours DND before sending Web Push, so a muted box does not buzz your phone.
+The toggle at the bottom of the notification panel (also in **Settings → Notifications**). DND silences pop-ups; notifications still collect quietly in the bell. The box also honours DND before sending Web Push, so a muted box doesn't buzz your phone.
 
 ### Settings → Notifications
 
 - **Do Not Disturb** and **Notification sounds** toggles.
-- **This device — Push notifications**: an opt-in, per-device Web Push toggle. When on, your box notifies this browser even while the Vulos tab is closed. The payload is end-to-end encrypted (RFC 8291) — the push vendor routes it but cannot read it. The toggle is honest about why it can't be enabled: unsupported browser, box has no Web Push send-path configured, or permission blocked in the browser.
-- **Sources**: turn a source (Mail, Assistant, System, ...) off entirely — it stops being collected at all, not just silenced.
+- **This device — Push notifications**: an opt-in, per-device Web Push toggle. When on, your box notifies this browser even while the Vulos tab is closed. The payload is end-to-end encrypted (RFC 8291) — whatever relays it can't read it. The toggle is honest about why it can't be enabled when it can't: unsupported browser, no send-path configured on the box, or permission blocked in the browser.
+- **Sources**: turn a source (Mail, Assistant, System, …) off entirely — it stops being collected at all, not just silenced.
 
 Notification preferences live on this device (browser storage), matching the per-device nature of Web Push.
 
@@ -201,47 +315,48 @@ Notification preferences live on this device (browser storage), matching the per
 
 ## The Settings app
 
-Open **Settings** from the Launchpad, Home quick launch, or Cmd-K (palette actions can deep-link straight to a section). The panes, exactly as they appear:
+Open **Settings** from the Launchpad, Home quick launch, or Cmd-K (palette actions can deep-link straight to a section). Panes are grouped in the sidebar:
 
-| Pane | What it covers |
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-light.png" />
+  <img src="screenshots/settings.png" alt="Settings, showing the AI Assistant panel and the full section sidebar" width="880" />
+</picture>
+
+| Group | Panes |
 |---|---|
-| AI Assistant | Assistant behaviour and personality. |
-| AI Router | Where AI requests are routed (local / brokered / external tiers). |
-| AI Models | Model management — **owner only**. |
-| AI Apps | Per-app AI access. |
-| Appearance | Theme (Dark / Light / Auto / Schedule), night light (off / sunset-to-sunrise / custom), accent color, density (Comfortable / Compact), wallpaper. |
-| Notifications | DND, sounds, Web Push, per-source toggles (above). |
-| WiFi | Scan and join networks. |
-| Bluetooth | Device pairing. |
-| Sound | Audio devices and volume. |
-| Display | Resolution and display settings. |
-| Battery & Energy | Power modes, screen dim/off behaviour. |
-| Backup & Sync | Vault backup targets and sync. See [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md). |
-| Search & Index | The on-box recall index. |
-| Storage | Disks and S3-compatible storage (endpoint, bucket, region, keys). |
-| Storage Mode | Where your data lives. |
-| Connection Mode | Fabric / Direct / Own Domain / Local Only — how the box is reached. See [NETWORKING.md](NETWORKING.md). |
-| Remote Access | Reaching your box from outside. See [NETWORKING.md](NETWORKING.md) and [PEERING.md](PEERING.md). |
-| TURN / WebRTC | Relay settings for real-time media. |
-| Users & Profiles | Lock-screen PIN, add users (admin), roles, remove users. |
-| Device PIN | Set / change / disable the lock-screen PIN, with lockout status. |
-| Fingerprint | Enroll a fingerprint if the box has a reader. |
-| Account | Display name, language, timezone; **Log Out**. |
-| Export My Data | Take your data out. |
-| Plan & Billing | Subscription and usage. |
-| OS Update | System updates. |
-| Box Health | Diagnostics — **owner only**. |
-| About | Version and system info. |
+| **Intelligence** | AI Assistant · AI Models (owner only) · AI Apps (per-app AI access) |
+| **Appearance** | Appearance · Notifications |
+| **Devices** | WiFi · Bluetooth · Sound · Display · Battery & Energy · Location |
+| **Data** | Backup & Sync · Search & Index · Storage · Storage Mode |
+| **Network** | Connection Mode · Remote Access · Custom Domain · Relay & Reachability (owner) · CDN (owner) · TURN / WebRTC |
+| **Developer** | Webhooks (owner) · Developer |
+| **Account & Security** | Users & Profiles · Device PIN · Fingerprint · Account · Offline Data · Export My Data · Sign-in security |
+| **System** | OS Update · Box Health (owner only) · About |
 
-Owner-only panes are hidden from non-admin users in the UI, and the backend independently rejects non-owners on those endpoints. Backend-level configuration (environment variables, `--env` profiles) is in [CONFIGURATION.md](CONFIGURATION.md).
+Owner-only panes are hidden from non-admin users in the UI, and the backend independently rejects non-owners on those endpoints.
+
+A few worth calling out:
+
+- **Appearance** — theme (Dark / Light / Auto / Schedule), night light (off / sunset-to-sunrise / custom), accent color, density (Comfortable / Compact), and wallpaper.
+
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-appearance-light.png" />
+    <img src="screenshots/settings-appearance.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />
+  </picture>
+
+- **Sign-in security** watches for account-takeover patterns on your own profile — a burst of sensitive changes (password, recovery key, passkeys, role, a bulk export or mass download), or one from an unfamiliar device or network. A flagged alert lets you say "this was me" and dismiss it, or "this wasn't me" and sign every device out.
+- **Export My Data** takes your data out in open formats: Mail as `.eml` per message, Files as your real Drive tree with original names, Calendar/Contacts as `.ics`/`.vcf` where your mail service exposes them, and your Settings as JSON (API keys, PINs, and passwords are never included).
+- **Relay & Reachability** and **Connection Mode** are how the box chooses to be reachable from outside — Ephor (the default, zero-config relay), your own relay, or a direct connection over your own domain. Full detail in [NETWORKING.md](NETWORKING.md).
+
+Backend-level configuration (environment variables, `--env` profiles) is in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 
-## Accounts, login, and locking
+## Accounts, sign-in, and locking
 
 ### Multi-user
 
-Vulos OS is multi-user with three roles: **Admin**, **User**, **Guest**. The first account created during setup is the admin. In **Settings → Users & Profiles** an admin can:
+Vulos is multi-user with three roles: **Admin**, **User**, **Guest**. The first account created during setup is the admin. In **Settings → Users & Profiles** an admin can:
 
 - Add a user (display name, username, password — 4+ characters).
 - Change any other user's role.
@@ -251,68 +366,73 @@ Every user gets their own profile, session, and per-user master key. Your OS use
 
 ### Signing in
 
-The login screen offers:
+Enter your username and password. On success the shell also unwraps your master key client-side and holds it in memory for the session (never persisted to disk), so encrypted content works without re-prompting.
 
-- **Local account** — username and password. On success the shell also unwraps your master key client-side and holds it in memory for the session (never persisted), so encrypted content works without re-prompting.
-- **Sign in with Vulos Cloud** — shown only when the box is cloud-enrolled. Email and password against your Vulos account; if the account has 2FA you'll be prompted for the 6-digit TOTP code. One Vulos account signs you into the cloud *and* the OS. See [CLOUD.md](CLOUD.md).
-
-If the box has no users at all (edge case outside the wizard), the same screen becomes a create-account form.
+If the box has no users at all (an edge case outside the wizard), the same screen becomes a create-account form.
 
 ### Locking
 
 - **Ctrl+L** locks the screen immediately.
-- Energy management locks automatically: when the backend reports the screen dimmed you get the clock **screensaver**; when it reports the screen off, the shell locks. Any key or tap wakes it (and tells the box to wake via the energy API).
+- Energy management locks automatically: when the backend reports the screen dimmed you get the clock **screensaver**; when it reports the screen off, the shell locks. Any key or tap wakes it.
 
-The lock screen asks for your **PIN** (the 4–8 digit one from setup or Settings). Wrong attempts shake, report attempts remaining, then back off — repeated failures temporarily lock retries, and persistent failure locks the device permanently until you do a full sign-in. If you never set a PIN, the lock screen unlocks with a plain Enter — set a PIN if the screen sits somewhere semi-public.
+The lock screen asks for your **PIN** (the 4–8 digit one from setup or Settings). Wrong attempts shake, report attempts remaining, then back off — repeated failures temporarily lock retries, and persistent failure locks the device permanently until you do a full sign-in. If you never set a PIN, the lock screen unlocks with a plain Enter — set one if the screen sits somewhere semi-public.
 
-### Two-factor and biometrics
+### Fingerprint
 
-- **TOTP 2FA** protects **Vulos Cloud** accounts (set up in the post-signup wizard, with one-time recovery codes). Local OS accounts authenticate with password + optional PIN; they do not have their own TOTP challenge.
-- **Fingerprint** — if your hardware has a reader, enroll in **Settings → Fingerprint** (start enrollment, scan, done).
-- The **Authenticator** app, separately, is a TOTP vault for your *other* accounts' codes — don't confuse it with 2FA on the box itself.
+If your hardware has a reader, enroll in **Settings → Fingerprint** (start enrollment, scan, done).
 
 ### Logging out
 
 **vula menu → Log Out**, or **Settings → Account → Log Out**. Logout ends your session; your windows and desktops are restored next time you sign in on the same browser.
 
+### More than one box, one account
+
+You're not locked to a single machine. Run Vulos on an always-on home box **and** a laptop, and they sync as peers over their own device identities — your apps, settings, and workspace follow you, and reaching either one from your phone works the same way regardless of which is answering. See [PEERING.md](PEERING.md) for how instances pair and stay in sync.
+
 ---
 
-## Keyboard shortcuts
+## The terminal
 
-Press **`?`** anywhere on the desktop (not while typing in a field) for the built-in shortcut legend. The complete set the shell binds:
+Terminal opens a **real shell into the machine itself** — the same account, the same `sudo` credentials you signed in with, over a live PTY (`/api/pty`), not a sandboxed toy.
 
-| Keys | Action |
-|---|---|
-| `Cmd/Ctrl` + `K` | Open the command palette (apps · mail · actions · ask) |
-| `Ctrl` + `1`–`9` | Switch to desktop 1–9 |
-| `Ctrl` + `N` | New virtual desktop |
-| `F3` or `Ctrl` + `↑` | Toggle Mission Control |
-| `Super/Cmd` + `←` `→` `↑` `↓` | Tile the active window (half → quarter → ...; `↑` maximizes, `↓` restores) |
-| `Ctrl` + `Alt` + `←` `→` `↑` `↓` | Same tiling, for keyboards without a usable Super key |
-| `Alt` + `` ` `` | Cycle windows (add `Shift` to reverse) |
-| `Ctrl/Cmd` + `W` | Close the active window |
-| `Ctrl` + `L` | Lock the screen |
-| `?` | Toggle the keyboard-shortcut legend |
-| `Esc` | Close the current overlay (palette, Launchpad, Mission Control, legend) |
+<picture>
+  <img src="screenshots/terminal.png" alt="The built-in terminal running a real shell session" width="880" />
+</picture>
 
-Inside the command palette: `↑`/`↓` navigate, `Tab` / `Shift+Tab` jump between sections, `Enter` activates, and `Y` / `N` approve or reject a pending assistant proposal.
+1. Open **Terminal** from the Launchpad, Home, or Cmd-K.
+2. If you have running sessions already, you land on a session picker: each one shows whether it's alive, detached, or attached elsewhere, with **Attach** (or **Takeover**, if it's attached in another window) and a kill button. Click **+ New Session** to start fresh.
+3. Sessions persist server-side — closing the window detaches it rather than killing it, so a long-running command keeps going and you can reattach later.
 
-Mouse equivalents: double-click a title bar to maximize/restore; drag a window to a screen edge or corner to snap it.
+Appearance is yours to tune: four color themes (Default, Solarized, Dracula, Light), a choice of monospace font families, and font sizes from 11 to 20 px — all remembered per browser.
 
-`F11` toggles browser fullscreen — that one belongs to your browser, not Vulos, but it matters because Vulos is at its best fullscreen. (On Firefox, set `browser.fullscreen.exit_on_escape` to `false` in `about:config` so Esc closes Vulos overlays instead of exiting fullscreen.)
+---
 
-Shell shortcuts never hijack keys while you are typing in an input, textarea, or rich editor.
+## Using it from your phone
+
+Vulos is the same box, the same URL, the same account — open it in your phone's browser and the shell **adapts** rather than shrinking a desktop into a postage stamp. There are no tiny draggable windows on a phone: a launched app takes the full screen, and a persistent bottom dock — **Home · Switcher · All apps** — is the one thumb-reachable way to move around.
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/mobile.png" alt="The Vulos Home surface on a phone" width="100%" /></td>
+    <td width="50%"><img src="screenshots/mobile-apps.png" alt="An app running fullscreen on a phone, reached from the bottom dock" width="100%" /></td>
+  </tr>
+</table>
+
+- **Home** — the same brief you get on desktop: agenda, assistant composer, quick launch.
+- **Switcher** — a full-height list of every running app as a large card; tap one to jump back in. Every open app stays mounted in the background (not unmounted) when you switch away, so its scroll position and state are exactly where you left them.
+- **All apps** — the full Launchpad grid.
+
+Because it's a real web app, you can **add it to your home screen** from your phone's browser share/menu (Vulos ships a standard web app manifest with a standalone display mode), so it opens full-screen like an installed app without an app-store round-trip.
 
 ---
 
 ## Where to next
 
-- [APPS.md](APPS.md) — the built-in apps and the App Hub.
-- [FILES.md](FILES.md) — the Files app and sharing.
-- [ASSISTANT.md](ASSISTANT.md) — the assistant, proposals, and private AI.
-- [NETWORKING.md](NETWORKING.md) — connection modes and remote access.
-- [PEERING.md](PEERING.md) — box-to-box connections and calls.
-- [CLOUD.md](CLOUD.md) — what Vulos Cloud enrollment adds.
+- [APPS.md](APPS.md) — the built-in apps and the App Hub, permissions, sandboxing, and publishing an app to a subdomain.
+- [FILES.md](FILES.md) — the Files app, uploads, sharing, and where your bytes live.
+- [ASSISTANT.md](ASSISTANT.md) — the assistant, proposals, and private AI in full.
+- [NETWORKING.md](NETWORKING.md) — connection modes, Ephor, and remote access.
+- [PEERING.md](PEERING.md) — box-to-box connections, peer sync, and calls.
 - [SECURITY.md](SECURITY.md) — the trust model behind the trust badge.
 - [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) — the recovery phrase, kit, and backups.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — when something misbehaves.
