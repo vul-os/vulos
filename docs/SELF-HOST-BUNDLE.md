@@ -52,6 +52,7 @@ because mail is normally a connector to an existing mailbox, not a hosted server
 - Linux x86\_64 or arm64 (aarch64)
 - systemd **or** OpenRC
 - `curl` and `sha256sum` on PATH
+- A current Go toolchain and `git` — the office and mail services are built on the box from a pinned release tag (install Go from https://go.dev/dl/)
 - Root access (`sudo`)
 - Open ports: 25, 587 (mail), 443 or 8443/8444/8445 (HTTPS)
 - 2 GB RAM minimum (4 GB recommended for all three services)
@@ -276,14 +277,14 @@ applies them consistently to all three services:
 |---|---|
 | Non-root service user | All services run as `vulos` system account (UID < 1000, `/usr/sbin/nologin`) |
 | UID-collision guard | Installer aborts if an existing `vulos` user has UID >= 1000 |
-| Mandatory SHA-256 | Every binary verified against `checksums.txt` before install — no skip path |
+| Verified acquisition | The OS backend is verified against `checksums.txt` before install (no skip path); the office and mail services are built on the box from a pinned release tag |
 | Symlink-safe dirs | Installer aborts if `/etc/vulos` is a symlink (prevents traversal attacks) |
 | `NoNewPrivileges=yes` | All systemd units — prevents privilege escalation via setuid |
 | `ProtectSystem=strict` | Filesystem namespace — writable only via `ReadWritePaths` |
 | `PrivateTmp=yes` | Private `/tmp` namespace per service |
 | `PrivateDevices=yes` | No access to raw device files |
-| `CapabilityBoundingSet=` | Empty for vulos, vulos-office, vulos-fabric, vulos-minio |
-| `CapabilityBoundingSet=CAP_NET_BIND_SERVICE` | vulos-mail only — needed for ports 25 + 587 |
+| `CapabilityBoundingSet=` | Empty for vulos, vulos-ofisi, vulos-fabric, vulos-minio |
+| `CapabilityBoundingSet=CAP_NET_BIND_SERVICE` | the mail engine only — needed for ports 25 + 587 |
 | Config file modes | `/etc/vulos/*.yaml` owned `root:vulos`, mode 640 |
 | Private key modes | `fabric_private.pem`, `x25519_private.pem` mode 600 |
 | MinIO loopback-only | MinIO binds `127.0.0.1:9000` — not exposed to external network |
@@ -333,8 +334,9 @@ self-hosted one, or direct TLS if you have a static IP.
 ## Upgrading
 
 Run the installer again — it is idempotent. Existing config files are never
-overwritten (the installer checks before writing). Binaries are re-downloaded
-and re-verified on every run.
+overwritten (the installer checks before writing). The OS backend is re-fetched
+and re-verified; the office and mail services are rebuilt from the latest
+release tag. The Go toolchain and git must be present for those builds.
 
 ```bash
 curl -fsSL https://get.vulos.org | sudo bash
@@ -344,7 +346,7 @@ sudo systemctl restart vulos-bundle.target
 To upgrade a single service:
 
 ```bash
-# Download and verify the new binary manually, then:
+# Re-run the installer to rebuild the service, then:
 sudo systemctl restart vulos-lilmail.service
 ```
 
@@ -375,13 +377,13 @@ sudo journalctl -u vulos-minio -n 50
 sudo ls -la /var/lib/vulos/minio/.minio_secret
 ```
 
-### Checksum verification failed
+### Build or checksum failure
 
-If a download is corrupted in transit the installer aborts with:
-```
-FATAL: SHA-256 mismatch for vulos-mail_linux_amd64!
-```
-Re-run the installer — it re-downloads and re-verifies from scratch.
+If the OS backend download is corrupted in transit the installer aborts on a
+SHA-256 mismatch — re-run it and it re-fetches and re-verifies from scratch. If
+the office or mail build fails, the usual cause is a Go toolchain older than the
+module's `go` directive; install a current toolchain from https://go.dev/dl/ and
+re-run.
 
 ### Config already exists warning
 
