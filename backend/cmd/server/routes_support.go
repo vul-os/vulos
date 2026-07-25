@@ -14,9 +14,9 @@
 //	                                       panel render the Free-tier wall without
 //	                                       a failed submit round-trip
 //
-// Tier resolution: when a Vulos Cloud control plane is configured
-// (cpbilling.Client.Enabled()), the owner's plan tier is read from the
-// authoritative entitlements lookup. Otherwise (standalone/self-hosted box,
+// Tier resolution: when a gateway with entitlements is configured
+// (cpbilling.Client.Enabled()), the owner's plan tier is read from that
+// authoritative lookup. Otherwise (standalone/self-hosted box,
 // the common case) the tier defaults to "free" — which is the honest state:
 // there is no live support desk behind a box that isn't enrolled anywhere.
 package main

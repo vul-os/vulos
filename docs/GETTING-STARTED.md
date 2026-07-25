@@ -77,7 +77,7 @@ Vulos boots into a fullscreen kiosk browser running the React shell. Native Linu
 curl -fsSL https://get.vulos.org | sudo bash
 ```
 
-Installs `vulos` and `vulos-office` (Ofisi, the office suite) as systemd services with shared config under `/etc/vulos/`. Mail is a connector to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP), so no mail server is installed by default; the dormant/experimental `vulos-mail` engine is opt-in via `--with-mail`. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup, DNS records, and post-install steps.
+Installs `vulos`, `lilmail`, and `vulos-office` (Ofisi, the office suite) as systemd services with shared config under `/etc/vulos/`. LilMail is a mail/calendar/contacts client for a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) — it hosts no mail; point its config at your own account. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup and post-install steps.
 
 ### Option 5 — Build from source (development)
 

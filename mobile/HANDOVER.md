@@ -106,5 +106,5 @@ first-class node state.
 ## Explicitly OUT of scope for this workstream
 
 DMTAP spec, envoir (the gateway lives inside it). If your work seems to need them, it's a sign you've drifted — the
-mobile/offline track depends on none of them. Reachability for the phone is just the existing `vulos-relay`
+mobile/offline track depends on none of them. Reachability for the phone is just the existing Ephor
 (client→box, SNI-passthrough); box↔box mesh relay (libp2p Circuit Relay v2) is the core team's concern, not yours.

@@ -565,7 +565,7 @@ step "Writing shared fabric config"
 if [ ! -f "${FABRIC_CONFIG}" ]; then
   cat > "${FABRIC_CONFIG}" <<'YAML'
 # /etc/vulos/fabric.yaml — shared fabric identity and mesh config
-# Shared by vulos, vulos-mail, and vulos-office.
+# Shared by vulos, lilmail, and ofisi.
 # Edit then restart the vulos-fabric service (or all bundle services).
 #
 # Full reference: https://docs.vulos.org/self-host/bundle#fabric
@@ -573,9 +573,6 @@ if [ ! -f "${FABRIC_CONFIG}" ]; then
 # ── Identity ──────────────────────────────────────────────────────────────────
 # Canonical hostname for this Vulos bundle node.
 domain: ""            # REQUIRED — e.g. "vulos.example.com"
-
-# ── Vulos Cloud control-plane ─────────────────────────────────────────────────
-cloud_endpoint: "https://api.vulos.org"
 
 # ── TLS ───────────────────────────────────────────────────────────────────────
 tls:
@@ -609,7 +606,7 @@ if [ ! -f "${STORAGE_CONFIG}" ]; then
   if [ "${STORAGE_MODE}" = "tigris" ]; then
     cat > "${STORAGE_CONFIG}" <<'YAML'
 # /etc/vulos/storage.yaml — shared S3 storage selector
-# Shared by vulos, vulos-mail, and vulos-office.
+# Shared by vulos, lilmail, and ofisi.
 #
 # backend: tigris   — Tigris hosted S3-compatible storage (recommended)
 # backend: minio    — local MinIO running on this machine
@@ -626,7 +623,7 @@ YAML
   else
     cat > "${STORAGE_CONFIG}" <<YAML
 # /etc/vulos/storage.yaml — shared S3 storage selector (local MinIO)
-# Shared by vulos, vulos-mail, and vulos-office.
+# Shared by vulos, lilmail, and ofisi.
 
 backend: "minio"
 
@@ -1258,8 +1255,8 @@ case "${INIT_SYSTEM}" in
     printf "     ${CYN}sudo rc-update add vulos-lilmail default${RST}\n"
     printf "     ${CYN}sudo rc-update add vulos-ofisi default${RST}\n"
     printf "     ${CYN}sudo rc-service vulos start${RST}\n"
-    printf "     ${CYN}sudo rc-service vulos-mail start${RST}\n"
-    printf "     ${CYN}sudo rc-service vulos-office start${RST}\n\n"
+    printf "     ${CYN}sudo rc-service vulos-lilmail start${RST}\n"
+    printf "     ${CYN}sudo rc-service vulos-ofisi start${RST}\n\n"
     ;;
   none)
     printf "  4. ${BLD}Start the services manually:${RST}\n"
@@ -1269,13 +1266,11 @@ case "${INIT_SYSTEM}" in
     ;;
 esac
 
-printf "  5. ${BLD}Register with Vulos Cloud:${RST}\n"
-printf "     ${CYN}https://vulos.org/setup/bundle${RST}\n"
-printf "     → Paste your domain and public keys to activate cloud routing.\n\n"
+printf "  5. ${BLD}Make the box reachable (optional):${RST}\n"
+printf "     → Point a self-hosted Ephor (github.com/vul-os/ephor) at this box,\n"
+printf "       or expose it directly with a static IP and an A record.\n\n"
 printf "  6. ${BLD}Configure your domain DNS:${RST}\n"
-printf "     → A record pointing to this server's IP\n"
-printf "     → MX record for the mail domain\n"
-printf "     → SPF / DKIM / DMARC records (shown in Vulos Cloud UI)\n\n"
+printf "     → A record pointing to this server's IP\n\n"
 printf "${YEL}Tip: Keep your private keys backed up offline.${RST}\n"
 printf "     Fabric key: ${FAB_PRIV}\n"
 printf "     Mail key:   ${PRIV_KEY_FILE}\n\n"

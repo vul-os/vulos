@@ -8,11 +8,11 @@ one data dir, one fabric identity, and one S3 storage backend.
 curl -fsSL https://get.vulos.org | sudo bash
 ```
 
-> **Mail is a connector, not a bundled server.** By default the Vulos inbox
-> connects to a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) via LilMail
-> + `@vulos/mail-ui` — see [MAIL-LILMAIL.md](MAIL-LILMAIL.md). The Vulos-hosted
-> mail **engine** (`vulos-mail`) is **dormant/experimental** and is installed only
-> when you opt in with `--with-mail` (off by default). Nothing below requires it.
+> **Mail is a client, not a bundled server.** The bundle installs **LilMail**, a
+> mail/calendar/contacts client that connects to a mailbox you already own
+> (Gmail/Outlook/any IMAP/SMTP) — see [MAIL-LILMAIL.md](MAIL-LILMAIL.md). It hosts
+> no mail and binds no privileged port; you point it at your own account in its
+> config before starting it.
 
 ---
 
@@ -38,12 +38,12 @@ curl -fsSL https://get.vulos.org | sudo bash
 |---|---|---|---|
 | vulos | `/usr/local/bin/vulos` | 8443 | OS backend — API gateway, app fabric |
 | vulos-office | `/usr/local/bin/vulos-office` | 8445 | Ofisi — collaborative office suite (Docs / Sheets / Slides / PDF / Whiteboard) |
-| vulos-mail (opt-in) | `/usr/local/bin/lilmail` | 25, 587, 8444 | Dormant/experimental self-hosted mail engine — installed only with `--with-mail` |
+| vulos-lilmail | `/usr/local/bin/lilmail` | 3000 | LilMail — mail/calendar/contacts client for your own mailbox |
 | minio (optional) | `/usr/local/bin/minio` | 9000 (loopback) | Local S3-compatible storage |
 
 All services run as the `vulos` system user (UID < 1000, no login shell).
-By default the bundle installs `vulos` + `vulos-office`; `vulos-mail` is opt-in
-because mail is normally a connector to an existing mailbox, not a hosted server.
+The bundle installs all three services — `vulos`, `lilmail`, and `vulos-office`.
+LilMail is a client for a mailbox you already own, so it hosts nothing itself.
 
 ---
 
@@ -54,7 +54,7 @@ because mail is normally a connector to an existing mailbox, not a hosted server
 - `curl` and `sha256sum` on PATH
 - A current Go toolchain and `git` — the office and mail services are built on the box from a pinned release tag (install Go from https://go.dev/dl/)
 - Root access (`sudo`)
-- Open ports: 25, 587 (mail), 443 or 8443/8444/8445 (HTTPS)
+- Open ports: 443 or 8443/8445 (HTTPS); LilMail serves on 3000 (behind your TLS)
 - 2 GB RAM minimum (4 GB recommended for all three services)
 - 10 GB disk (more for mail/office data)
 
@@ -117,8 +117,8 @@ Tested on Raspberry Pi OS Bookworm (64-bit) and Ubuntu Server 24.04 for Pi.
 curl -fsSL https://get.vulos.org | sudo bash
 ```
 
-Minimum: Pi 4 with 4 GB RAM. Port 25 forwarding must be enabled on your
-router/ISP (many residential ISPs block port 25 — use a VPS or relay instead).
+Minimum: Pi 4 with 4 GB RAM. No inbound mail ports are needed — LilMail
+connects outbound to your existing mailbox.
 
 ### Dry run (inspect the plan without making changes)
 
@@ -176,7 +176,6 @@ endpoint and credentials.
 | Flag | Default | Description |
 |---|---|---|
 | `--dry-run` | off | Print the install plan without making changes |
-| `--with-mail` | off | Also install the dormant/experimental `vulos-mail` engine (ports 25/587/8444). Omit it and mail stays a connector to your existing mailbox |
 | `--storage=tigris` | on | Use Tigris S3-compatible hosted storage |
 | `--storage=minio` | off | Install + use local MinIO (`--storage=local` is an alias) |
 | `--no-enable` | off | Install units but do not enable/start services (useful in CI or containers) |
@@ -193,17 +192,17 @@ All three services share the same config and data roots:
   fabric.yaml       — shared mesh identity, domain, TLS
   storage.yaml      — S3/MinIO credentials and backend selector
   vulos.yaml        — OS backend config (inherits from fabric + storage)
-  mail.yaml         — vulos-mail config (inherits from fabric + storage)
-  office.yaml       — vulos-office config (inherits from fabric + storage)
+  lilmail/
+    config.toml     — LilMail config (point [imap] at your own mailbox)
+  office.yaml       — Ofisi config (inherits from fabric + storage)
   bundle.yaml       — installer metadata (arch, distro, storage mode)
 
 /var/lib/vulos/
   fabric_public.pem   — shared fabric X25519 public key
   fabric_private.pem  — shared fabric X25519 private key (mode 600)
   vulos/              — OS backend data
-  mail/
-    x25519_public.pem   — mail encryption public key
-    x25519_private.pem  — mail encryption private key (mode 600)
+  lilmail/
+    cache/              — LilMail durable store (bbolt) + attachment staging
   office/
     uploads/            — office file uploads
   minio/              — MinIO data (only when --storage=minio)
@@ -226,7 +225,7 @@ flowchart TD
     Minio["vulos-minio.service<br/>(optional — only with --storage=minio)"]
     Fabric["vulos-fabric.service<br/>(oneshot — generates keypairs if absent)"]
     OS["vulos.service<br/>(OS backend, port 8443)"]
-    Mail["vulos-lilmail.service<br/>(opt-in mail-connector engine, --with-mail; ports 25/587/8444)"]
+    Mail["vulos-lilmail.service<br/>(LilMail mail client, port 3000)"]
     Office["vulos-ofisi.service<br/>(office backend, port 8445)"]
     Bundle["vulos-bundle.target<br/>(all-up sentinel)"]
 
@@ -283,10 +282,9 @@ applies them consistently to all three services:
 | `ProtectSystem=strict` | Filesystem namespace — writable only via `ReadWritePaths` |
 | `PrivateTmp=yes` | Private `/tmp` namespace per service |
 | `PrivateDevices=yes` | No access to raw device files |
-| `CapabilityBoundingSet=` | Empty for vulos, vulos-ofisi, vulos-fabric, vulos-minio |
-| `CapabilityBoundingSet=CAP_NET_BIND_SERVICE` | the mail engine only — needed for ports 25 + 587 |
+| `CapabilityBoundingSet=` | Empty for every service — none binds a privileged port |
 | Config file modes | `/etc/vulos/*.yaml` owned `root:vulos`, mode 640 |
-| Private key modes | `fabric_private.pem`, `x25519_private.pem` mode 600 |
+| Private key modes | `fabric_private.pem` mode 600 |
 | MinIO loopback-only | MinIO binds `127.0.0.1:9000` — not exposed to external network |
 
 ---
@@ -304,10 +302,10 @@ applies them consistently to all three services:
    sudo nano /etc/vulos/storage.yaml
    ```
 
-3. **Generate keypairs:**
+3. **Generate the fabric keypair and point LilMail at your mailbox:**
    ```bash
    sudo -u vulos /usr/local/bin/vulos keygen --fabric
-   sudo -u vulos /usr/local/bin/vulos-mail keygen
+   sudo nano /etc/vulos/lilmail/config.toml   # set [imap] to your own account
    ```
 
 4. **Start the bundle:**
@@ -317,10 +315,8 @@ applies them consistently to all three services:
 
 5. **Configure DNS:**
    - A record → this server's IP
-   - MX record → mail subdomain
-   - SPF, DKIM, DMARC records — your `vulos keygen` output prints the exact
-     records to publish (and they are shown in Settings → Mail → DNS). No cloud
-     account is required to generate or read them.
+   - No MX/SPF/DKIM records are needed: LilMail sends and receives through your
+     existing mailbox provider, so their mail DNS already applies.
 
 Your bundle is a **fully self-contained, sovereign server** — it routes, serves,
 and delivers mail entirely on its own once DNS is configured above. Nothing
@@ -361,12 +357,12 @@ sudo systemctl status vulos-bundle.target
 sudo journalctl -u vulos -u vulos-lilmail -u vulos-ofisi -n 100
 ```
 
-### Port 25 blocked by ISP
+### LilMail can't reach your mailbox
 
-Many residential and cloud ISPs block inbound port 25. Options:
-- Use a VPS with port 25 open (Hetzner, OVH, etc.)
-- Use a mail relay service (configured in `/etc/vulos/mail.yaml`)
-- Contact your ISP to unblock port 25
+LilMail connects outbound to the IMAP/SMTP account in its config. If it can't:
+- Check `[imap]` server/port in `/etc/vulos/lilmail/config.toml`
+- Confirm the box can reach your provider (some networks block outbound 993/587)
+- For Gmail/Outlook, use an app password or OAuth, not your login password
 
 ### MinIO not starting
 
@@ -389,6 +385,6 @@ re-run.
 
 The installer never overwrites existing config files. To reset a config:
 ```bash
-sudo mv /etc/vulos/mail.yaml /etc/vulos/mail.yaml.bak
+sudo mv /etc/vulos/lilmail/config.toml /etc/vulos/lilmail/config.toml.bak
 # Re-run the installer — it will write a fresh default
 ```

@@ -2,7 +2,7 @@
 
 **Scope:** FIX-SW-CACHE-COORD-01 (Wave A audit, 2026-05-24).
 
-Vulos ships three independent surfaces, each with its own service worker and
+Vulos ships two cache-bearing surfaces, each with its own service worker and
 its own `CACHE_NAME`. They share users — a single browser session may have
 all three installed at once — so a stale shell in one can be hidden behind a
 fresh shell in another. This file is the cross-repo coordination point.
@@ -13,11 +13,9 @@ fresh shell in another. This file is the cross-repo coordination point.
 | --- | --- | --- |
 | `vulos` (OS shell) | `public/sw.js` | `vulos-os-shell-v1` |
 | `vulos-office` (Spaces / Office) | `public/sw.js` | `vulos-office-v1` |
-| `vulos-mail` (webmail-vulos) | `public/sw.js` | `vulos-mail-shell-v2` *(plus `vulos-mail-static-v2`, `vulos-mail-jmap-v2` in `src/sw.js`)* |
 
-Source paths are stable; grep `CACHE_NAME` (or `CACHE_STATIC` / `CACHE_JMAP` /
-`CACHE_SHELL` in webmail-vulos) inside each repo to confirm the current value
-before bumping.
+Source paths are stable; grep `CACHE_NAME` inside each repo to confirm the
+current value before bumping.
 
 ## Coordination rule
 
@@ -53,5 +51,6 @@ trivially diffable in code review.
 
 - `vulos/public/sw.js` — OS shell SW.
 - `vulos-office/public/sw.js` — Ofisi (Docs / Sheets / Slides / PDF / Whiteboard) SW. (Spaces, Calendar, and Talk were extracted/retired and no longer live in this shell — Calendar is now a standalone OS builtin, and Talk is a retired product; see README.md.)
-- `vulos-mail/webmail-vulos/public/sw.js` — webmail SW (built from
-  `src/sw.js`, which defines three caches).
+LilMail (github.com/vul-os/lilmail) also registers a service worker
+(`assets/sw.js`), but it is push-only with no caching or offline logic, so it
+has no `CACHE_NAME` to coordinate here.

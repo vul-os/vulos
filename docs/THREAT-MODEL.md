@@ -90,7 +90,7 @@ Trust boundaries:
 
 ### Trust boundaries
 - Identity data (email address, keys) stored in local SQLite, accessed only by backend API.
-- External: Vulos Cloud verifies identity binding over HTTPS.
+- External: a configured gateway, if any, verifies identity binding over HTTPS.
 
 ### Top 3 STRIDE threats
 

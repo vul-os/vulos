@@ -1,6 +1,6 @@
 // Vulos OS — Service Worker (OFFLINE-03)
 //
-// Strategy (mirrors vulos-office + vulos-mail for OS-wide consistency):
+// Strategy (mirrors Ofisi + LilMail for OS-wide consistency):
 //   - App shell (index.html, JS/CSS chunks, fonts, icons) → cache-first with
 //     background revalidation. Hashed Vite filenames make this safe.
 //   - /api/**, /collab/**, /jmap/**, /dav/**, /auth/** → network-only (never
