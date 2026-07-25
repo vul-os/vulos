@@ -116,14 +116,20 @@ BIN_LILMAIL="/usr/local/bin/lilmail"
 # deliberately to avoid a churny module/binary rename) — see github.com/vul-os/ofisi.
 BIN_OFISI="/usr/local/bin/vulos-office"
 
-# GitHub release endpoints
+# GitHub release endpoints. The OS backend is fetched as a signed release
+# artefact; lilmail and ofisi are built from source (REPO_* below).
 GITHUB_VULOS="https://github.com/vul-os/vulos/releases"
-GITHUB_LILMAIL="https://github.com/vul-os/lilmail/releases"
-GITHUB_OFISI="https://github.com/vul-os/ofisi/releases"
 
 API_VULOS="https://api.github.com/repos/vul-os/vulos/releases/latest"
 API_LILMAIL="https://api.github.com/repos/vul-os/lilmail/releases/latest"
 API_OFISI="https://api.github.com/repos/vul-os/ofisi/releases/latest"
+
+# Source repositories. lilmail and ofisi ship source releases (their embedded
+# assets are committed at the tag), so the bundle builds them from a pinned tag
+# on the box — the same binary you would build by hand. Requires the Go
+# toolchain and git; both are checked in preflight.
+REPO_LILMAIL="https://github.com/vul-os/lilmail.git"
+REPO_OFISI="https://github.com/vul-os/ofisi.git"
 
 # systemd unit files
 SYSTEMD_DIR="/etc/systemd/system"
@@ -324,6 +330,16 @@ for tool in curl sha256sum; do
   fi
 done
 
+# lilmail and ofisi are built from source on the box, so the Go toolchain and
+# git must be present. These are not auto-installed: a distro's `go` package is
+# often older than the module's `go` directive, which fails the build in a
+# confusing way — better to ask the operator to install a current toolchain.
+for tool in go git; do
+  if ! command -v "${tool}" >/dev/null 2>&1; then
+    fatal "${tool} is required to build the office and mail services from source.\nInstall a current Go toolchain (https://go.dev/dl/) and git, then re-run."
+  fi
+done
+
 # ── Resolve release tags ──────────────────────────────────────────────────────
 
 step "Resolving latest release tags"
@@ -398,6 +414,40 @@ download_and_verify() {
   chown root:root "${dest_path}"
   chmod 755 "${dest_path}"
   info "Installed: ${dest_path}"
+}
+
+# build_from_source <name> <repo_url> <tag> <artifact> <dest_path>
+#
+# Clones a pinned tag over HTTPS and builds the binary on the box. Used for
+# services that publish source releases (their web assets are committed at the
+# tag, so `go build` alone reproduces the release binary — no npm step). The
+# trust anchor here is the tag on the official repo, not a checksummed artefact;
+# for a source-first project that is the intended model — you run what you build.
+build_from_source() {
+  local name="$1"
+  local repo_url="$2"
+  local tag="$3"
+  local artifact="$4"
+  local dest_path="$5"
+
+  local src="${BUNDLE_TMPDIR}/src-${name}"
+  rm -rf "${src}"
+
+  info "Cloning ${name} ${tag} from ${repo_url}"
+  if ! git clone --depth 1 --branch "${tag}" "${repo_url}" "${src}" >/dev/null 2>&1; then
+    warn "Tag ${tag} not found for ${name}; cloning the default branch instead."
+    git clone --depth 1 "${repo_url}" "${src}" >/dev/null 2>&1 \
+      || fatal "Could not clone ${name} from ${repo_url} — check network and the repository URL."
+  fi
+
+  info "Building ${name} (this can take a few minutes on first run)…"
+  if ! ( cd "${src}" && CGO_ENABLED=0 GOOS=linux GOARCH="${GOARCH}" go build -trimpath -o "${artifact}" . ); then
+    fatal "Build failed for ${name}.\nEnsure the installed Go toolchain satisfies the module's go directive (go version in ${src}/go.mod)."
+  fi
+
+  install -m 0755 -o root -g root "${src}/${artifact}" "${dest_path}" 2>/dev/null \
+    || { cp "${src}/${artifact}" "${dest_path}"; chown root:root "${dest_path}" 2>/dev/null || true; chmod 755 "${dest_path}"; }
+  info "Installed: ${dest_path} (built from ${tag})"
 }
 
 # download_data_and_verify <name> <url> <checksum_url> <dest_path>
@@ -784,18 +834,20 @@ download_and_verify \
   "${GITHUB_VULOS}/download/${TAG_VULOS}/checksums.txt" \
   "${BIN_VULOS}"
 
-step "Downloading lilmail ${TAG_LILMAIL}"
-download_and_verify \
-  "vulos-mail_linux_${GOARCH}" \
-  "${GITHUB_LILMAIL}/download/${TAG_LILMAIL}/vulos-mail_linux_${GOARCH}" \
-  "${GITHUB_LILMAIL}/download/${TAG_LILMAIL}/checksums.txt" \
+step "Building lilmail ${TAG_LILMAIL} from source"
+build_from_source \
+  "lilmail" \
+  "${REPO_LILMAIL}" \
+  "${TAG_LILMAIL}" \
+  "lilmail" \
   "${BIN_LILMAIL}"
 
-step "Downloading ofisi ${TAG_OFISI}"
-download_and_verify \
-  "vulos-office_linux_${GOARCH}" \
-  "${GITHUB_OFISI}/download/${TAG_OFISI}/vulos-office_linux_${GOARCH}" \
-  "${GITHUB_OFISI}/download/${TAG_OFISI}/checksums.txt" \
+step "Building ofisi ${TAG_OFISI} from source"
+build_from_source \
+  "ofisi" \
+  "${REPO_OFISI}" \
+  "${TAG_OFISI}" \
+  "vulos-office" \
   "${BIN_OFISI}"
 
 # ── Install MinIO if requested ────────────────────────────────────────────────
