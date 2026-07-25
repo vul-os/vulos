@@ -162,7 +162,7 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "Config dir:   ${CONFIG_DIR}/"
   plan "Data dir:     ${DATA_DIR}/"
   plan "  ${DATA_DIR}/vulos/        — OS backend data"
-  plan "  ${DATA_DIR}/mail/         — lilmail durable store (bbolt) + cache"
+  plan "  ${DATA_DIR}/lilmail/      — lilmail durable store (bbolt) + cache"
   plan "  ${DATA_DIR}/office/       — office suite data + uploads"
   if [ "${INSTALL_MINIO}" = "true" ]; then
     plan "  ${DATA_DIR}/minio/        — MinIO object store data"
@@ -549,7 +549,7 @@ fi
 # Service-specific subdirectories under the shared data root
 install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}"
 install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/vulos"
-install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/mail"
+install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/lilmail"
 install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/office"
 if [ "${INSTALL_MINIO}" = "true" ]; then
   install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/minio"
@@ -672,66 +672,81 @@ else
   info "OS config already exists — not overwriting."
 fi
 
-if [ ! -f "${MAIL_CONFIG}" ]; then
-  cat > "${MAIL_CONFIG}" <<'YAML'
-# /etc/vulos/mail.yaml — vulos-mail config
-# Inherits fabric identity and storage from /etc/vulos/fabric.yaml and storage.yaml.
+mkdir -p "${LILMAIL_CONFIG_DIR}" "${DATA_DIR}/lilmail/cache"
+chown -R "${VULOS_USER}:${VULOS_GROUP}" "${DATA_DIR}/lilmail" 2>/dev/null || true
+if [ ! -f "${LILMAIL_CONFIG}" ]; then
+  # lilmail is a webmail CLIENT: it connects outbound to a mailbox you already
+  # own and reads config.toml from its working directory. The [imap] block must
+  # point at your own account before the service is useful.
+  MAIL_JWT_SECRET="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  # 32-byte (64 hex chars) key lilmail uses to encrypt stored IMAP credentials;
+  # without it, login fails. Truncated to 32 chars so it is exactly 32 bytes.
+  MAIL_ENC_KEY="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  cat > "${LILMAIL_CONFIG}" <<TOML
+# /etc/vulos/lilmail/config.toml — lilmail (mail + calendar + contacts client).
+# lilmail connects OUTBOUND to a mailbox you already own; it hosts no mail and
+# binds no privileged port. EDIT [imap] (and [smtp] if it differs) to your own
+# account before starting the service.
 
-fabric:
-  config: "/etc/vulos/fabric.yaml"
+[server]
+port = 3000
+# lilmail sits behind the box's TLS; set true when it is served over HTTPS directly.
+secure_cookies = false
 
-storage:
-  config: "/etc/vulos/storage.yaml"
+[auth]
+allow_full_email_username = true
 
-keypair:
-  public_key_file:  "/var/lib/vulos/mail/x25519_public.pem"
-  private_key_file: "/var/lib/vulos/mail/x25519_private.pem"
+[imap]
+server = "mail.example.com"   # <-- EDIT: your IMAP host
+port = 993
+tls = true
 
-data_dir: "/var/lib/vulos/mail"
+[cache]
+folder = "${DATA_DIR}/lilmail/cache"
 
-ports:
-  https:      8444   # Mail admin API (distinct from OS backend port 8443)
-  smtp_in:    25     # Inbound SMTP (CAP_NET_BIND_SERVICE)
-  submission: 587    # Outbound submission (CAP_NET_BIND_SERVICE)
+[storage]
+backend = "bolt"
 
-log_level: "info"
-YAML
-  chmod 640 "${MAIL_CONFIG}"
-  chown root:"${VULOS_GROUP}" "${MAIL_CONFIG}"
-  info "Mail config written: ${MAIL_CONFIG}"
+[jwt]
+secret = "${MAIL_JWT_SECRET}"
+TOML
+  chmod 640 "${LILMAIL_CONFIG}"
+  chown root:"${VULOS_GROUP}" "${LILMAIL_CONFIG}"
+  info "lilmail config written: ${LILMAIL_CONFIG} (edit [imap] before starting)"
 else
-  info "Mail config already exists — not overwriting."
+  info "lilmail config already exists — not overwriting."
 fi
 
-if [ ! -f "${OFFICE_CONFIG}" ]; then
-  cat > "${OFFICE_CONFIG}" <<'YAML'
-# /etc/vulos/office.yaml — vulos-office config
-# Inherits fabric identity and storage from /etc/vulos/fabric.yaml and storage.yaml.
-
-fabric:
-  config: "/etc/vulos/fabric.yaml"
-
-storage:
-  config: "/etc/vulos/storage.yaml"
+mkdir -p "${DATA_DIR}/office/uploads"
+chown -R "${VULOS_USER}:${VULOS_GROUP}" "${DATA_DIR}/office" 2>/dev/null || true
+if [ ! -f "${OFISI_CONFIG}" ]; then
+  OFFICE_PASSWORD="$(openssl rand -hex 12 2>/dev/null || head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  cat > "${OFISI_CONFIG}" <<YAML
+# /etc/vulos/office.yaml — Ofisi (vulos-office binary) config.
+# Ofisi serves the collaborative office suite from its own store on this box.
 
 server:
-  port: "8445"
-  data_dir:    "/var/lib/vulos/office"
-  uploads_dir: "/var/lib/vulos/office/uploads"
+  addr: ":8445"
+  data_dir:    "${DATA_DIR}/office"
+  uploads_dir: "${DATA_DIR}/office/uploads"
 
 auth:
-  enabled:        true
-  max_attempts:   5
+  enabled:         true
+  password:        "${OFFICE_PASSWORD}"   # <-- generated; change it if you like
+  max_attempts:    5
   lockout_minutes: 15
-  session_hours:  24
+  session_hours:   24
+
+storage:
+  type: "local"
 
 log_level: "info"
 YAML
-  chmod 640 "${OFFICE_CONFIG}"
-  chown root:"${VULOS_GROUP}" "${OFFICE_CONFIG}"
-  info "Office config written: ${OFFICE_CONFIG}"
+  chmod 640 "${OFISI_CONFIG}"
+  chown root:"${VULOS_GROUP}" "${OFISI_CONFIG}"
+  info "Ofisi config written: ${OFISI_CONFIG} (login password: ${OFFICE_PASSWORD})"
 else
-  info "Office config already exists — not overwriting."
+  info "Ofisi config already exists — not overwriting."
 fi
 
 if [ ! -f "${BUNDLE_CONFIG}" ]; then
@@ -751,31 +766,8 @@ fi
 install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/office/uploads"
 info "Office uploads dir created: ${DATA_DIR}/office/uploads"
 
-# ── Set up mail keypair placeholder ──────────────────────────────────────────
-
-step "Setting up mail keypair placeholder"
-
-PUB_KEY_FILE="${DATA_DIR}/mail/x25519_public.pem"
-PRIV_KEY_FILE="${DATA_DIR}/mail/x25519_private.pem"
-
-if [ ! -f "${PUB_KEY_FILE}" ]; then
-  cat > "${PUB_KEY_FILE}" <<'PEM'
-# PLACEHOLDER — run `vulos-mail keygen` to generate real keys before starting.
-# The actual public key will be a PEM-encoded X25519 public key.
-# You will need to paste it into the Vulos Cloud setup UI.
-PEM
-  chown "${VULOS_USER}:${VULOS_GROUP}" "${PUB_KEY_FILE}"
-  chmod 644 "${PUB_KEY_FILE}"
-  info "Mail keypair placeholder created (run 'vulos-mail keygen' after start)."
-else
-  info "Mail keypair already exists — skipping."
-fi
-
-if [ ! -f "${PRIV_KEY_FILE}" ]; then
-  touch "${PRIV_KEY_FILE}"
-  chown "${VULOS_USER}:${VULOS_GROUP}" "${PRIV_KEY_FILE}"
-  chmod 600 "${PRIV_KEY_FILE}"
-fi
+# lilmail needs no keypair: it authenticates to your existing mailbox with your
+# own IMAP/SMTP credentials (set in config.toml), so there is nothing to generate.
 
 # ── Set up fabric keypair placeholder ────────────────────────────────────────
 
@@ -1029,11 +1021,13 @@ UNIT
     chmod 644 "${UNIT_OS}"
     info "systemd unit installed: ${UNIT_OS}"
 
-    # ── vulos-mail ──────────────────────────────────────────────────────────
-    # CAP_NET_BIND_SERVICE required for ports 25 (SMTP) and 587 (submission).
+    # ── lilmail (mail + calendar + contacts client) ─────────────────────────
+    # Not an inbound mail server: lilmail connects OUTBOUND to the owner's own
+    # mailbox and reads config.toml from its working directory (no --config
+    # flag, no privileged port), so no capabilities are needed.
     cat > "${UNIT_LILMAIL}" <<UNIT
 [Unit]
-Description=Vulos — self-hosted encrypted mail server
+Description=Vulos — lilmail (mail + calendar + contacts client)
 Documentation=https://docs.vulos.org/self-host/bundle
 After=network-online.target vulos-fabric.service vulos.service
 Wants=network-online.target
@@ -1043,21 +1037,22 @@ Requires=vulos-fabric.service
 Type=simple
 User=${VULOS_USER}
 Group=${VULOS_GROUP}
-ExecStart=${BIN_LILMAIL} serve --config ${MAIL_CONFIG}
+WorkingDirectory=${LILMAIL_CONFIG_DIR}
+ExecStart=${BIN_LILMAIL}
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s
 TimeoutStopSec=30s
 
-# Hardening — CAP_NET_BIND_SERVICE only (ports 25 + 587)
+# Hardening — no capabilities: lilmail only makes outbound connections.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=${DATA_DIR}/mail
+ReadWritePaths=${DATA_DIR}/lilmail
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 [Install]
 WantedBy=multi-user.target vulos-bundle.target
@@ -1065,10 +1060,12 @@ UNIT
     chmod 644 "${UNIT_LILMAIL}"
     info "systemd unit installed: ${UNIT_LILMAIL}"
 
-    # ── vulos-office ────────────────────────────────────────────────────────
+    # ── ofisi (vulos-office binary) ─────────────────────────────────────────
+    # The CLI takes server flags directly; a positional "serve" would make
+    # flag.Parse() stop before it sees -config, so config.yaml would be ignored.
     cat > "${UNIT_OFISI}" <<UNIT
 [Unit]
-Description=Vulos — collaborative office suite backend
+Description=Vulos — Ofisi collaborative office suite backend
 Documentation=https://docs.vulos.org/self-host/bundle
 After=network-online.target vulos-fabric.service vulos.service
 Wants=network-online.target
@@ -1078,7 +1075,7 @@ Requires=vulos-fabric.service
 Type=simple
 User=${VULOS_USER}
 Group=${VULOS_GROUP}
-ExecStart=${BIN_OFISI} serve --config ${OFFICE_CONFIG}
+ExecStart=${BIN_OFISI} -config ${OFISI_CONFIG}
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s
@@ -1158,13 +1155,14 @@ start_pre() {
 SCRIPT
     chmod 755 "${OPENRC_DIR}/vulos"
 
-    # vulos-mail
+    # lilmail — outbound mail/calendar/contacts client; reads config.toml from
+    # its working directory, binds no privileged port.
     cat > "${OPENRC_DIR}/vulos-lilmail" <<'SCRIPT'
 #!/sbin/openrc-run
-description="Vulos — self-hosted encrypted mail server"
+description="Vulos — lilmail (mail + calendar + contacts client)"
 
 command="/usr/local/bin/lilmail"
-command_args="serve --config /etc/vulos/mail.yaml"
+directory="/etc/vulos/lilmail"
 command_user="vulos:vulos"
 command_background=true
 pidfile="/run/${RC_SVCNAME}.pid"
@@ -1175,18 +1173,18 @@ depend() {
 }
 
 start_pre() {
-  checkpath --directory --owner vulos:vulos --mode 0750 /var/lib/vulos/mail
+  checkpath --directory --owner vulos:vulos --mode 0750 /var/lib/vulos/lilmail
 }
 SCRIPT
     chmod 755 "${OPENRC_DIR}/vulos-lilmail"
 
-    # vulos-office
+    # ofisi — office suite backend; the CLI takes -config directly (no "serve").
     cat > "${OPENRC_DIR}/vulos-ofisi" <<'SCRIPT'
 #!/sbin/openrc-run
-description="Vulos — collaborative office suite backend"
+description="Vulos — Ofisi collaborative office suite backend"
 
 command="/usr/local/bin/vulos-office"
-command_args="serve --config /etc/vulos/office.yaml"
+command_args="-config /etc/vulos/office.yaml"
 command_user="vulos:vulos"
 command_background=true
 pidfile="/run/${RC_SVCNAME}.pid"
@@ -1237,9 +1235,12 @@ else
   printf "     ${CYN}sudo cat ${DATA_DIR}/minio/.minio_secret${RST}\n"
   printf "     → Set MINIO_ROOT_PASSWORD in /etc/default/vulos-minio\n\n"
 fi
-printf "  3. ${BLD}Generate keypairs:${RST}\n"
+printf "  3. ${BLD}Generate the fabric keypair:${RST}\n"
 printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_VULOS} keygen --fabric${RST}\n"
-printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_LILMAIL} keygen${RST}\n\n"
+printf "     (lilmail needs no keypair — it signs in to your own mailbox.)\n\n"
+printf "  3b. ${BLD}Point lilmail at your mailbox:${RST}\n"
+printf "     ${CYN}sudo nano ${LILMAIL_CONFIG}${RST}\n"
+printf "     → Set [imap] server/port to your own account.\n\n"
 
 case "${INIT_SYSTEM}" in
   systemd)
@@ -1263,8 +1264,8 @@ case "${INIT_SYSTEM}" in
   none)
     printf "  4. ${BLD}Start the services manually:${RST}\n"
     printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_VULOS} serve --config ${OS_CONFIG}${RST}\n"
-    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_LILMAIL} serve --config ${MAIL_CONFIG}${RST}\n"
-    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_OFISI} serve --config ${OFFICE_CONFIG}${RST}\n\n"
+    printf "     ${CYN}cd ${LILMAIL_CONFIG_DIR} \&\& sudo -u ${VULOS_USER} ${BIN_LILMAIL}${RST}\n"
+    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_OFISI} -config ${OFISI_CONFIG}${RST}\n\n"
     ;;
 esac
 
