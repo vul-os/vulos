@@ -190,19 +190,19 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 ## On your phone
 
+Vulos has a **native Android app** that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your **home-screen launcher**, making Vulos the front door of your phone.
+
+An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets and box-attached SMS and calling. See **[mobile/README.md](mobile/README.md)** for the model and build path.
+
 <table>
   <tr>
-    <td width="62%">
-Vulos has a <b>native Android app</b> that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your <b>home-screen launcher</b>, making Vulos the front door of your phone.
-<br /><br />
-An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets and box-attached SMS and calling.
-<br /><br />
-See <b><a href="mobile/README.md">mobile/README.md</a></b> for the model and build path.
+    <td width="50%" align="center">
+      <img src="docs/screenshots/mobile.png" alt="The Vulos File Explorer on a phone" width="230" /><br />
+      <sub><b>Files, in your pocket</b> — the same storage as your desktop, thumb-first.</sub>
     </td>
-    <td width="38%" align="center">
-      <img src="docs/screenshots/mobile.png" alt="The Vulos File Explorer on a phone" width="200" />
-      &nbsp;
-      <img src="docs/screenshots/mobile-apps.png" alt="The Vulos app grid on a phone" width="200" />
+    <td width="50%" align="center">
+      <img src="docs/screenshots/mobile-apps.png" alt="The Vulos app grid on a phone" width="230" /><br />
+      <sub><b>Your app grid</b> — every app your box runs, one tap away.</sub>
     </td>
   </tr>
 </table>
