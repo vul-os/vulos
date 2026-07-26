@@ -30,7 +30,7 @@ Everything below is created by the Go backend (verified against the code, not as
 | `~/.vulos/auth/totp/` | Authenticator (TOTP) vault | 2FA codes you host for other sites |
 | `~/.vulos/auth/tpm/` | Device key store. On a box with a TPM the private key lives *in the TPM*; this directory then holds only references. Software fallback keeps key material here | Device identity; passkeys are sealed with it |
 | `~/.vulos/auth/passkeys/` | Server-side passkey (WebAuthn) credentials, sealed via the device key | Registered passkeys |
-| `~/.vulos/auth/integrations/` | Cloud-enrollment state binding this box to the control plane | Integration token minting until re-enrolled |
+| `~/.vulos/auth/integrations/` | The box's device-identity material for any gateway integrations you've configured | Re-connect the integration to re-issue it |
 | `~/.vulos/apps/`, `~/.vulos/ai-apps/`, `~/.vulos/models/`, `~/.vulos/os-cache/`, `~/.vulos/wine/`, `~/.vulos/lib/`, `~/.vulos/logs/`, `~/.vulos/tunnel/` | Installed apps, AI apps, downloaded LLM models, OS update slots, Wine prefixes, shared libs, app logs, coturn state | All re-downloadable or disposable |
 | `~/.vulos/<appID>/` | Built-in-app sandboxes (the `appfs` API) | Per-app documents (e.g. Notes) |
 

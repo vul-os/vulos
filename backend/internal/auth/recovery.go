@@ -6,7 +6,7 @@
 //     keypair and an OS keyring root key can be re-derived (HKDF-SHA256).
 //   - The mnemonic is encrypted at rest using XChaCha20-Poly1305 under a key
 //     derived from the user's login password (Argon2id).
-//   - Cloud escrow stores only the encrypted blob — the cloud never holds
+//   - The escrow blob is only ever the encrypted blob — the owner keeps it;
 //     plaintext.
 //
 // All crypto is pure-Go; no CGO.
@@ -47,7 +47,7 @@ const (
 // RecoveryKit holds the recovery seed and its encrypted form.
 //
 // On first-boot the kit is generated once, the Mnemonic displayed to the user,
-// and only the EncryptedBlob stored locally (+ optionally escrowed to cloud).
+// and only the EncryptedBlob stored locally (the owner may also keep a copy).
 // The plaintext mnemonic is never persisted on-disk.
 type RecoveryKit struct {
 	// Mnemonic is the 24-word space-separated recovery phrase.
@@ -57,7 +57,7 @@ type RecoveryKit struct {
 
 	// EncryptedBlob is the JSON-marshalled encryptedMnemonic struct encoded
 	// and sealed with XChaCha20-Poly1305 (key derived from the user's password).
-	// Safe to persist locally and escrow to cloud.
+	// Safe to persist locally and to hand to the owner to keep offline.
 	EncryptedBlob []byte `json:"encrypted_blob"`
 }
 
@@ -104,8 +104,8 @@ func GenerateRecoveryKit(password string) (*RecoveryKit, error) {
 	}, nil
 }
 
-// EscrowBlob returns the encrypted blob suitable for cloud escrow.
-// The cloud only ever stores this opaque blob; plaintext never leaves the device.
+// EscrowBlob returns the encrypted blob the owner keeps as their recovery kit.
+// It is opaque — plaintext never leaves the device, and Vulos never holds it.
 func (kit *RecoveryKit) EscrowBlob() []byte {
 	return kit.EncryptedBlob
 }
@@ -202,7 +202,7 @@ func DecryptRecoveryKit(encryptedBlob []byte, password string) (string, error) {
 
 // ─── RestoreFromEscrow ────────────────────────────────────────────────────────
 
-// RestoreFromEscrow decrypts a cloud-escrowed blob and restores keys.
+// RestoreFromEscrow decrypts an owner-kept recovery blob and restores keys.
 // Returns the keys, the mnemonic (for display), and any error.
 func RestoreFromEscrow(encryptedBlob []byte, password string) (*RestoredKeys, string, error) {
 	mnemonic, err := DecryptRecoveryKit(encryptedBlob, password)
@@ -375,7 +375,7 @@ func (h *recoveryHandlers) handleEscrow(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// The encrypted blob is safe to send to the cloud — it never holds plaintext.
+	// The encrypted blob is safe to hand back to the owner — it never holds plaintext.
 	writeRecoveryJSON(w, http.StatusOK, map[string]any{
 		"status":      "escrowed",
 		"blob_length": len(blob),
