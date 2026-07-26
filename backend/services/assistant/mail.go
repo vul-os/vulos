@@ -219,7 +219,7 @@ type MailSource interface {
 const defaultFolder = "INBOX"
 
 // LilmailSource reads mail from the local LilMail JSON API (/v1/*). LilMail is
-// the default Vulos mail service, embedded in the shell as the Mail app; it
+// the default mail connector, embedded in the shell as the Mail app; it
 // runs on the same instance, so this is a purely on-box read path.
 type LilmailSource struct {
 	baseURL string

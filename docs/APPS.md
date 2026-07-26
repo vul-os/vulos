@@ -364,7 +364,7 @@ If it is off (the default), asking the assistant for an interactive app still yi
 | `VULOS_REGISTRY_INSECURE` | unset | Skip signature verification. **Refused when `VULOS_ENV=prod`** |
 | `VULOS_APP_CATALOG` | _(empty)_ | Remote catalog URL for the base app store |
 | `VULOS_BUNDLED_APPS` | _(empty)_ | Override path to the bundled apps directory |
-| `VULOS_DNS_API` | `https://api.vulos.org/dns/provision` | Subdomain provisioning endpoint |
+| `VULOS_DNS_API` | `noop` | Subdomain provisioning endpoint (unset = no DNS provider; point at your own) |
 | `VULOS_BASE_DOMAIN` | `vulos.org` | Base domain for app subdomains |
 | `VULOS_CADDY_DIR` | _(empty)_ | Emit Caddyfile snippets for custom domains |
 | `VULOS_NGINX_DIR` | `/etc/nginx/vulos-apps` | Edge-cache config directory |

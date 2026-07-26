@@ -901,7 +901,7 @@ const NET9_MODES = [
   {
     id: 'fabric',
     label: 'Fabric',
-    desc: 'Route through the Vulos relay fabric (default; works behind NAT).',
+    desc: 'Route through the reachability relay fabric (default; works behind NAT).',
   },
   {
     id: 'direct',

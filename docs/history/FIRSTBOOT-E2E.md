@@ -12,10 +12,10 @@ absent.  At the OS-account-creation step the user chooses one of three shapes:
 | 2 | **New cluster** | setup → sync → normal | No (self-hosted) |
 | 3 | **Join existing cluster** | setup → sync → normal | No (self-hosted) |
 
-A fourth option — **Connect Vulos Cloud** — is available at the
-`NETB05_account_choice` step and links the OS account to a Vulos Cloud identity
-(email + password + optional 2FA), but this is independent of the cluster shape
-above and is not detailed here.
+Historical note: earlier drafts described a fourth option that linked the OS
+account to a hosted identity. That no longer exists — Vulos is free, self-hosted
+software with no hosted account, sign-in, or enrolment. The only account concept
+is the user's own local account on their own box (see `src/auth/Setup.jsx`).
 
 ---
 

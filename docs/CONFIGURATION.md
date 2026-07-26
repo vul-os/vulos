@@ -121,7 +121,7 @@ and every one of those seams stays inert.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VULOS_RELAY_BASE_URL` | _(empty; feature disabled)_ | Vulos relay endpoint used for GPU streaming registration, peering federation/resolve, and push fan-out |
+| `VULOS_RELAY_BASE_URL` | _(empty; feature disabled)_ | Reachability broker (Ephor) endpoint used for GPU streaming registration, peering federation/resolve, and push fan-out |
 | `VULOS_RELAY_NAME` | _(empty)_ | This box's advertised name on the relay |
 | `VULOS_RELAY_TOKEN` | _(empty)_ | Auth token presented to the relay |
 | `VULOS_GPU_HOST` | disabled | Set truthy (`1`/`true`/`yes`) to enable direct-IP GPU streaming host mode |
@@ -193,7 +193,7 @@ Shared mesh identity, domain, TLS, and control-plane endpoint settings. **Edit t
 ```yaml
 domain: os.yourdomain.com
 acme_email: you@yourdomain.com
-cloud_endpoint: https://api.vulos.org   # optional control-plane endpoint; only matters if you use one
+cloud_endpoint: ""                      # optional; leave empty unless you run your own control plane. There is no default host — an unconfigured box never dials out.
 ```
 
 ### `/etc/vulos/storage.yaml`

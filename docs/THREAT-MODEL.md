@@ -84,9 +84,9 @@ Trust boundaries:
 ## Component 2: Vulos Account Identity Management
 
 > Historical naming note: this component was designed as "Vulos Mail Identity" back when a
-> Vulos mailbox doubled as the account identity. Identity is now the **Vulos account** (unified
-> sign-in); mail itself is an experimental **connector** (bring your own IMAP/SMTP), not a product
-> Vulos runs or bills. The identity/key-management threat model below is unchanged.
+> mailbox doubled as the account identity. Identity is now the **Vulos account** (unified
+> sign-in); mail itself is the experimental **lilmail** connector (bring your own IMAP/SMTP), not
+> a product Vulos runs or bills. The identity/key-management threat model below is unchanged.
 
 ### Trust boundaries
 - Identity data (email address, keys) stored in local SQLite, accessed only by backend API.

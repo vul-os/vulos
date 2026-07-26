@@ -21,7 +21,7 @@ The boot sequence is correctly wired and fail-closed:
 `backend/services/cluster/s3.go` implements SSE-C with Argon2id (time=3, mem=64 MiB, threads=4, keyLen=32). Confirmed correct.
 
 ### Cloud-side naming (code URLs)
-`backend/services/auth/cloudsignup.go:26` uses `const defaultCloudAPIURL = "https://api.vulos.org"`. Correct per D90.
+> Superseded: `cloudsignup.go` and its `defaultCloudAPIURL` / `api.vulos.org` constant no longer exist. Vulos is free, self-hosted software with no hosted control plane — there is no default cloud host, and an unconfigured box never dials out.
 
 ### Broker pubkey path
 `backend/services/auth/cloudlogin.go:45` uses `/var/lib/vulos/cloud/broker.pub` with `VULOS_CLOUD_BROKER_PUBKEY` env override. Consistent with `cloudsignup.go`.

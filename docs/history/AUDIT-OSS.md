@@ -121,7 +121,7 @@ No `TODO`, `FIXME`, or `XXX` markers were found in JSX source files.
 
 The OSS side reads the broker public key from `/var/lib/vulos/cloud/broker.pub` (constant in `services/auth/cloudlogin.go`). The env override `VULOS_CLOUD_BROKER_PUBKEY` allows test injection. This path must match what vulos-cloud writes during device enrollment. The constant is correct and consistent across `cloudlogin.go` and `cloudsignup.go`.
 
-The cloud API base URL is `https://api.vulos.org` (constant in `services/auth/cloudsignup.go`), matching the canonical URL documented in `VULOS_NAMING.md`.
+> Superseded: there is no default cloud API base URL. The `cloudsignup.go` constant that once held `api.vulos.org` no longer exists — Vulos is free, self-hosted software with no hosted control plane, and an unconfigured box never dials a default host.
 
 ### joinsync Data-Bucket Protocol — CRITICAL MISMATCH
 
@@ -160,7 +160,7 @@ Passphrase string `json:"passphrase"`
 `Setup.jsx` correctly implements all three shapes via `NETB05_AccountChoiceStep`:
 - **`local`** — standalone, no cluster, no cloud account
 - **`cloud-login`** — existing cloud account, cloud-managed deployment
-- **`cloud-create`** — new cloud account (proxied via `/api/auth/cloud/signup` → `api.vulos.org`)
+- **`cloud-create`** — historical branch for a hosted account; superseded. Setup.jsx is now local-only (no hosted account, no default host to proxy to).
 
 The STEPS and IS09_JOIN_STEPS wizard arrays cover: welcome, OS verification, network choice, account choice (three branches), sync progress, and landing. The flow maps to the three shapes documented in the roadmap.
 

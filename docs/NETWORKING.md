@@ -188,12 +188,12 @@ When you publish an app (visibility "public"), the box provisions a subdomain of
 {app}--{profile}.{instance-ulid}.vulos.org
 ```
 
-The DNS record is created by calling a cloud DNS provisioning API. The relevant env vars:
+The DNS record is created by calling whatever DNS provisioning API you point the box at — there is no default host. The relevant env vars:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VULOS_DNS_API` | `https://api.vulos.org/dns/provision` | The DNS provisioning endpoint. The sentinel value `noop` skips the network call entirely (dev/CI/self-hosted). |
-| `VULOS_BASE_DOMAIN` | `vulos.org` | The base domain used to build app FQDNs. |
+| `VULOS_DNS_API` | `noop` | The DNS provisioning endpoint. Unset means no DNS provider is configured; the sentinel value `noop` skips the network call entirely (dev/CI/self-hosted). Point it at your own provider's endpoint to have records created automatically. |
+| `VULOS_BASE_DOMAIN` | _(empty)_ | The base domain used to build app FQDNs. |
 | `VULOS_CADDY_DIR` | `/etc/caddy/vulos-apps` | Directory where per-app Caddyfile snippets are written so self-hosters can `include` them from their main Caddyfile. `noop` skips snippet writes. |
 
 This surface fails closed in production: in `VULOS_ENV=prod`, if `VULOS_DNS_API` or `VULOS_CADDY_DIR` is unset the server **refuses to register the subdomain routes at all**, so customers are never falsely told their domain is being provisioned while nothing happens. In dev/local both default to `noop` with a logged warning.

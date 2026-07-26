@@ -60,7 +60,7 @@ Every step is permission-checked server-side before any byte moves.
 
 ### Large files (16 MiB and up): resumable chunked upload
 
-Large files use a [tus.io](https://tus.io)-style resumable protocol (version 1.0.0). The file is cut into bounded chunks so each request stays small enough to ride the Vulos relay, and an interrupted upload resumes exactly where it left off instead of starting over.
+Large files use a [tus.io](https://tus.io)-style resumable protocol (version 1.0.0). The file is cut into bounded chunks so each request stays small enough to ride the relay, and an interrupted upload resumes exactly where it left off instead of starting over.
 
 Endpoints (session-authenticated, like the rest of `/api`):
 
@@ -163,7 +163,7 @@ UI: row menu → *Peer share* to issue; sidebar → *Received* → *Redeem link*
 
 ### Sealed (content-blind) sharing
 
-When a share to a remote recipient has to pass through infrastructure neither of you controls (for example the Vulos cloud staging a file for an account-only recipient), the Drive app can **seal** the content first:
+When a share to a remote recipient has to pass through infrastructure neither of you controls (for example a shared relay you don't run, staging a file for an account-only recipient), the Drive app can **seal** the content first:
 
 - Your browser encrypts the file (X25519 key agreement, HKDF-SHA256, AES-256-GCM — all standard WebCrypto) to the recipient's published content key and to your own, producing a `VSEAL1` envelope. The file name and type ride *inside* the encryption.
 - The relaying server transports ciphertext it cannot open; only the recipient's device (holding their master key) can decrypt.
