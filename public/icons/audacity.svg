@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="audacity">
+  <rect width="512" height="512" rx="114" fill="#1A1AAE"/>
+    <rect x="165" y="206" width="24" height="100" rx="12" fill="#fff"/>
+    <rect x="209" y="166" width="24" height="180" rx="12" fill="#fff"/>
+    <rect x="253" y="136" width="24" height="240" rx="12" fill="#fff"/>
+    <rect x="297" y="166" width="24" height="180" rx="12" fill="#fff"/>
+    <rect x="341" y="206" width="24" height="100" rx="12" fill="#fff"/>
+</svg>

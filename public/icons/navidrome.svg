@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="navidrome">
+  <rect width="512" height="512" rx="114" fill="#8B5CF6"/>
+    <path d="M320 156 V300" stroke="#fff" stroke-width="24" stroke-linecap="round"/>
+    <ellipse cx="290" cy="308" rx="42" ry="32" fill="#fff"/>
+    <path d="M320 156 h40 v40" fill="none" stroke="#fff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

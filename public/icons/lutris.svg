@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="lutris">
+  <rect width="512" height="512" rx="114" fill="#E8663B"/>
+    <path d="M186 214 h140 a70 60 0 0 1 66 88 l-6 20 a34 30 0 0 1 -58 8 l-16 -22 h-78 l-16 22 a34 30 0 0 1 -58 -8 l-6 -20 a70 60 0 0 1 66 -88 z" fill="#fff"/>
+    <path d="M176 258 h44 M198 236 v44" stroke="#E8663B" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="322" cy="250" r="13" fill="#E8663B"/>
+    <circle cx="352" cy="278" r="13" fill="#E8663B"/>
+</svg>

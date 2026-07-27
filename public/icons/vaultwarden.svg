@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="vaultwarden">
+  <rect width="512" height="512" rx="114" fill="#175DDC"/>
+    <path d="M256 150 L350 186 V266 c0 60 -48 86 -94 110 c-46 -24 -94 -50 -94 -110 V186 Z" fill="#fff"/>
+    <path d="M224 256 l22 24 46 -52" fill="none" stroke="#175DDC" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

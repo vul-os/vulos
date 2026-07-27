@@ -65,8 +65,12 @@ function getSourceType(app) {
   return 'apt'
 }
 
-function AppIcon({ appId, size = 44 }) {
+function AppIcon({ appId, letter, size = 44 }) {
   const [failed, setFailed] = useState(false)
+  // Resolve the bundled brand mark / hue by the real app id. `letter` (the
+  // registry `icon` field — often a label or emoji) is only a fallback glyph;
+  // it must NOT shadow the id, or ids whose icon field differs (jellyfin,
+  // navidrome, vaultwarden, …) would never find their coloured tile.
   const logo = APP_LOGOS[appId]
   const color = APP_COLORS[appId] || '#555'
   const radius = Math.round(size * 0.22)
@@ -98,7 +102,7 @@ function AppIcon({ appId, size = 44 }) {
         fontSize: size * 0.36,
       }}
     >
-      {APP_LETTERS[appId] || appId?.[0]?.toUpperCase() || '?'}
+      {APP_LETTERS[appId] || (letter || appId || '?')[0]?.toUpperCase() || '?'}
     </div>
   )
 }
@@ -478,7 +482,7 @@ export default function AppHub() {
                     }`}
                     onClick={() => selectApp(app)}
                   >
-                    <AppIcon appId={app.icon || app.id} size={42} />
+                    <AppIcon appId={app.id} letter={app.icon} size={42} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">{app.name}</span>
@@ -539,7 +543,7 @@ export default function AppHub() {
           <div className="flex-1 overflow-y-auto">
             {/* Hero section */}
             <div className="px-6 pb-5 flex flex-col items-center text-center">
-              <AppIcon appId={selectedApp.icon || selectedApp.id} size={80} />
+              <AppIcon appId={selectedApp.id} letter={selectedApp.icon} size={80} />
               <h2 className="text-[18px] font-bold text-[var(--text-primary)] mt-4 flex items-center gap-2">
                 {selectedApp.name}
                 {selectedApp.vetted && (

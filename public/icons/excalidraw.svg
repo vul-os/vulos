@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="excalidraw">
+  <rect width="512" height="512" rx="114" fill="#6965DB"/>
+    <path d="M304 152 l56 56 -150 150 -70 14 14 -70 z" fill="#fff"/>
+    <path d="M292 176 l44 44" stroke="#6965DB" stroke-width="18" stroke-linecap="round"/>
+</svg>

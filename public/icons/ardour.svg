@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="ardour">
+  <rect width="512" height="512" rx="114" fill="#B33A3A"/>
+    <rect x="165" y="211" width="24" height="90"  rx="12" fill="#fff"/>
+    <rect x="209" y="176" width="24" height="160" rx="12" fill="#fff"/>
+    <rect x="253" y="146" width="24" height="220" rx="12" fill="#fff"/>
+    <rect x="297" y="186" width="24" height="140" rx="12" fill="#fff"/>
+    <rect x="341" y="206" width="24" height="100" rx="12" fill="#fff"/>
+</svg>

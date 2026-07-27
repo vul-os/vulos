@@ -63,6 +63,61 @@ export const APP_LOGOS = {
   wede: '/product-logos/wede.svg',
   flowstock: '/product-logos/flowstock.svg',
   magnetite: '/product-logos/magnetite.svg',
+
+  // Catalog (self-hosted) apps — same-origin coloured tiles we drew ourselves
+  // under public/icons/ (a flat brand-hue squircle + a simple white geometric
+  // glyph). These are original marks, NOT copied third-party logos, so they're
+  // safe to redistribute and give the App Hub a real, colourful catalog instead
+  // of grey letter tiles. Keyed by the registry.json app id.
+  android: '/icons/android.svg',
+  ardour: '/icons/ardour.svg',
+  audacity: '/icons/audacity.svg',
+  audiomass: '/icons/audiomass.svg',
+  cinny: '/icons/cinny.svg',
+  cockpit: '/icons/cockpit.svg',
+  'code-server': '/icons/code-server.svg',
+  conduit: '/icons/conduit.svg',
+  darktable: '/icons/darktable.svg',
+  'diagrams-net': '/icons/diagrams-net.svg',
+  drawio: '/icons/drawio.svg',
+  element: '/icons/element.svg',
+  'element-call': '/icons/element-call.svg',
+  excalidraw: '/icons/excalidraw.svg',
+  filezilla: '/icons/filezilla.svg',
+  geany: '/icons/geany.svg',
+  gitea: '/icons/gitea.svg',
+  gnucash: '/icons/gnucash.svg',
+  grafana: '/icons/grafana.svg',
+  hoppscotch: '/icons/hoppscotch.svg',
+  httpbin: '/icons/httpbin.svg',
+  immich: '/icons/immich.svg',
+  jellyfin: '/icons/jellyfin.svg',
+  'jitsi-meet': '/icons/jitsi-meet.svg',
+  jupyter: '/icons/jupyter.svg',
+  kdenlive: '/icons/kdenlive.svg',
+  keepassxc: '/icons/keepassxc.svg',
+  kicad: '/icons/kicad.svg',
+  libretranslate: '/icons/libretranslate.svg',
+  lmms: '/icons/lmms.svg',
+  lutris: '/icons/lutris.svg',
+  memos: '/icons/memos.svg',
+  minio: '/icons/minio.svg',
+  minipaint: '/icons/minipaint.svg',
+  navidrome: '/icons/navidrome.svg',
+  nginx: '/icons/nginx.svg',
+  'obs-studio': '/icons/obs-studio.svg',
+  octave: '/icons/octave.svg',
+  qbittorrent: '/icons/qbittorrent.svg',
+  qgis: '/icons/qgis.svg',
+  shotcut: '/icons/shotcut.svg',
+  steam: '/icons/steam.svg',
+  'svg-edit': '/icons/svg-edit.svg',
+  syncthing: '/icons/syncthing.svg',
+  transmission: '/icons/transmission.svg',
+  'uptime-kuma': '/icons/uptime-kuma.svg',
+  vaultwarden: '/icons/vaultwarden.svg',
+  vlc: '/icons/vlc.svg',
+  wine: '/icons/wine.svg',
 }
 
 // Per-app hue. The shell tints each first-party glyph tile with a RESTRAINED
@@ -93,6 +148,18 @@ export const APP_COLORS = {
   jupyter: '#F37626', nginx: '#009639', caddy: '#1F88C0', syncthing: '#0891B2',
   miniflux: '#F59E0B', navidrome: '#8B5CF6', headscale: '#6366F1',
   wede: '#6366F1', cockpit: '#0066CC',
+  // Catalog apps — brand-appropriate hues matching the coloured tiles under
+  // public/icons/ (keyed by registry.json id). Used both for the App Hub tint
+  // wash and to keep the tile/glyph a coherent set.
+  android: '#3DDC84', ardour: '#B33A3A', audiomass: '#E6842A', cinny: '#B14FD8',
+  'code-server': '#007ACC', conduit: '#0F9D8C', 'diagrams-net': '#F08705',
+  drawio: '#F08705', element: '#0DBD8B', 'element-call': '#0DBD8B',
+  excalidraw: '#6965DB', gnucash: '#5B8A0E', hoppscotch: '#10B981',
+  immich: '#4250AF', jellyfin: '#7B4FCE', 'jitsi-meet': '#1E65AF',
+  libretranslate: '#1E88A8', lmms: '#0F8CB0', lutris: '#E8663B', memos: '#14B8A6',
+  minipaint: '#E74C3C', 'obs-studio': '#302E31', octave: '#1E7AB5', qgis: '#589632',
+  steam: '#1B2838', 'svg-edit': '#D97706', 'uptime-kuma': '#3B9E5D',
+  vaultwarden: '#175DDC', wine: '#7A1F3D',
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

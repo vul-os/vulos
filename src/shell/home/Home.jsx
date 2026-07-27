@@ -29,6 +29,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
+import { AppIconTile } from '../../core/AppIcons'
 import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../builtinApps'
 import { runAgentTurn } from '../../core/agentStream'
 import { useAutoGrow } from '../../core/useAutoGrow'
@@ -511,9 +512,9 @@ export default function Home() {
           if (!app) return null
           return (
             <button key={id} onClick={() => openApp(id)}
-              className="group flex items-center gap-2.5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_70%,transparent)] px-3 py-2.5 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] transition-[background-color,border-color]">
-              <span className="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-[10px] text-[16px] leading-none border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors group-hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--border-strong))]">{app.icon}</span>
-              <span className="text-[12.5px] text-[color:var(--text-secondary)] group-hover:text-[color:var(--text-primary)] truncate transition-colors">{app.name}</span>
+              className="group flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_70%,transparent)] px-3 py-2.5 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] transition-[background-color,border-color]">
+              <AppIconTile id={id} size={38} unicode={app.icon} />
+              <span className="min-w-0 text-[12.5px] font-medium text-[color:var(--text-secondary)] group-hover:text-[color:var(--text-primary)] truncate transition-colors">{app.name}</span>
             </button>
           )
         })}
