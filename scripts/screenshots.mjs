@@ -264,6 +264,20 @@ const CONTACTS_CARDS = [
   { uid: 'c5', name: 'Events Team', org: 'Acme, Inc.', title: '', emails: ['events@acme.io'], phones: [] },
 ]
 
+// Unified address book (`/api/contacts/unified`) — the same people, merged with
+// the phone's device/SIM contacts and the box SIM, so the Contacts app can badge
+// where each contact lives. Priya is fused across Vulos+Device; Sam adds Box SIM;
+// two entries (Thabo, Mum) come only from the phone/SIM.
+const CONTACTS_UNIFIED = [
+  { id: 'u1', name: 'Priya Menon', org: 'Acme, Inc.', emails: ['priya@acme.io'], phones: ['+1 415 555 0134'], sources: ['vulos', 'phone'] },
+  { id: 'u2', name: 'Sam Okafor', org: 'Acme, Inc.', emails: ['sam@acme.io'], phones: ['+1 415 555 0198'], sources: ['vulos', 'phone', 'box-sim'] },
+  { id: 'u3', name: 'Marta Costa', org: 'Lisbon Design Collective', emails: ['marta@lisbondesign.pt'], phones: ['+351 21 555 0198'], sources: ['vulos'] },
+  { id: 'u4', name: 'Nadia Rahman', org: 'Northwind Studio', emails: ['nadia@northwind.studio'], phones: ['+44 20 7946 0102'], sources: ['vulos'] },
+  { id: 'u5', name: 'Events Team', org: 'Acme, Inc.', emails: ['events@acme.io'], phones: [], sources: ['vulos'] },
+  { id: 'u6', name: 'Thabo Mokoena', org: '', emails: [], phones: ['+27 82 555 0147'], sources: ['phone'] },
+  { id: 'u7', name: 'Mum', org: '', emails: [], phones: ['+27 82 555 0102'], sources: ['box-sim'] },
+]
+
 // Assistant (`assistant` shot) — the answer returned for the "What needs my
 // attention" quick action, so the shot shows a real Q&A turn instead of the
 // empty composer state. Mirrors HOME_PAYLOAD's brief so the story is consistent
@@ -285,6 +299,7 @@ async function demoOverrides() {
     'GET /api/pim/calendar/events': json({ events: CALENDAR_EVENTS }),
     // Contacts: address book over the same PIM proxy.
     'GET /api/pim/contacts/cards': json({ contacts: CONTACTS_CARDS }),
+    'GET /api/contacts/unified': json({ contacts: CONTACTS_UNIFIED, sources_active: ['vulos', 'phone', 'box-sim'] }),
     // Assistant quick action ("What needs my attention") — a real answer so the
     // `assistant` shot shows a populated conversation, not the empty composer.
     'POST /api/assistant/attention': json({ answer: ASSISTANT_ATTENTION_ANSWER }),

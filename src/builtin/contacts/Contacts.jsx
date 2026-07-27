@@ -35,6 +35,66 @@ function initials(name) {
 
 const EMPTY = { id: '', name: '', org: '', title: '', note: '', emails: [''], phones: [''] }
 
+// ── Unified sources ────────────────────────────────────────────────────────
+// The box merges the owner's CardDAV/Vulos cards with contacts pushed from the
+// Android app (device + phone SIM) and a SIM plugged into the box itself, via
+// GET /api/contacts/unified. Each merged contact carries a `sources` list; we
+// badge it so it's clear where a contact lives (and that duplicates were fused).
+const SOURCE_META = {
+  vulos: { label: 'Vulos', color: 'var(--accent)' },
+  phone: { label: 'Device', color: '#22C55E' },
+  'box-sim': { label: 'Box SIM', color: '#F59E0B' },
+}
+const SOURCE_ORDER = ['vulos', 'phone', 'box-sim']
+
+function SourceBadges({ sources }) {
+  const list = (sources || []).filter((s) => SOURCE_META[s])
+  if (list.length === 0) return null
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 align-middle">
+      {SOURCE_ORDER.filter((s) => list.includes(s)).map((s) => (
+        <span key={s}
+          className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-medium leading-none ring-1 ring-inset"
+          style={{ color: SOURCE_META[s].color, background: `color-mix(in srgb, ${SOURCE_META[s].color} 14%, transparent)`, '--tw-ring-color': `color-mix(in srgb, ${SOURCE_META[s].color} 35%, transparent)` }}>
+          <span className="w-1 h-1 rounded-full" style={{ background: SOURCE_META[s].color }} />
+          {SOURCE_META[s].label}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+// Merge the unified list onto the editable CardDAV list: annotate each CardDAV
+// contact with its sources (matched by email/name), and append device/SIM-only
+// contacts as read-only rows. Falls back to plain CardDAV when unified is off.
+function mergeUnified(cardContacts, unified) {
+  const keyOf = (c) => [
+    ...(c.emails || []).map((e) => 'e:' + String(e).toLowerCase().trim()),
+    'n:' + String(c.name || '').toLowerCase().trim(),
+  ]
+  const uByKey = new Map()
+  for (const u of unified || []) for (const k of keyOf(u)) if (!uByKey.has(k)) uByKey.set(k, u)
+
+  const matchedU = new Set()
+  const annotated = cardContacts.map((c) => {
+    let sources = ['vulos']
+    for (const k of keyOf(c)) {
+      const u = uByKey.get(k)
+      if (u) { sources = u.sources || sources; matchedU.add(u); break }
+    }
+    return { ...c, sources }
+  })
+
+  const extras = (unified || [])
+    .filter((u) => !matchedU.has(u) && !(u.sources || []).includes('vulos'))
+    .map((u) => ({
+      id: 'u:' + (u.id || u.name), name: u.name || '(no name)', org: u.org || '', title: '',
+      note: u.note || '', emails: u.emails || [], phones: u.phones || [],
+      sources: u.sources || [], _readonly: true,
+    }))
+  return [...annotated, ...extras]
+}
+
 export default function Contacts() {
   const { openWindow } = useShell()
   const [contacts, setContacts] = useState([])
@@ -47,8 +107,14 @@ export default function Contacts() {
 
   const load = useCallback(() => {
     setLoading(true)
+    // The editable CardDAV list is authoritative for create/edit/delete; the
+    // unified list (best-effort) adds source badges + any device/SIM-only rows.
+    const unified = fetch('/api/contacts/unified')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (Array.isArray(d?.contacts) ? d.contacts : []))
+      .catch(() => [])
     listContacts()
-      .then((cs) => { setContacts(cs); setError('') })
+      .then(async (cs) => { setContacts(mergeUnified(cs, await unified)); setError('') })
       .catch((e) => { setError(e?.message || 'unavailable'); setContacts([]) })
       .finally(() => setLoading(false))
   }, [])
@@ -185,8 +251,13 @@ export default function Contacts() {
                     className={`group w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors focus-primary border-l-2 ${selectedId === c.id ? 'bg-neutral-800/70 border-[var(--accent)]' : 'border-transparent hover:bg-neutral-800/40'}`}>
                     <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-[11px] font-mono font-semibold ring-1 ring-inset ring-white/5"
                       style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(c.name)}</span>
-                    <span className="min-w-0">
-                      <span className="block text-[12.5px] text-neutral-100 truncate">{c.name || '(no name)'}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="block text-[12.5px] text-neutral-100 truncate">{c.name || '(no name)'}</span>
+                        {(c.sources?.length > 1 || (c.sources || []).some((s) => s !== 'vulos')) && (
+                          <SourceBadges sources={c.sources} />
+                        )}
+                      </span>
                       {c.emails[0] && <span className="block text-[10.5px] text-neutral-500 truncate">{c.emails[0]}</span>}
                     </span>
                   </button>
@@ -238,19 +309,28 @@ function ContactDetail({ contact, onEdit, onDelete, saving }) {
         <span className="w-16 h-16 shrink-0 grid place-items-center rounded-full text-[22px] font-mono font-semibold ring-1 ring-inset ring-white/5"
           style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
         <div className="min-w-0">
-          <div className="text-[19px] font-semibold truncate tracking-tight">{contact.name || '(no name)'}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[19px] font-semibold truncate tracking-tight">{contact.name || '(no name)'}</div>
+            <SourceBadges sources={contact.sources} />
+          </div>
           {(contact.title || contact.org) && (
             <div className="text-[13px] text-neutral-400 truncate">
               {[contact.title, contact.org].filter(Boolean).join(' · ')}
             </div>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <button type="button" onClick={onEdit}
-            className="text-[12px] px-3 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">Edit</button>
-          <button type="button" onClick={onDelete} disabled={saving}
-            className="text-[12px] px-3 py-2 rounded-md text-danger hover:bg-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
-        </div>
+        {contact._readonly ? (
+          <div className="ml-auto text-[11px] text-neutral-500 max-w-[9rem] text-right leading-snug">
+            From your phone — edit it on the device it lives on.
+          </div>
+        ) : (
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={onEdit}
+              className="text-[12px] px-3 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">Edit</button>
+            <button type="button" onClick={onDelete} disabled={saving}
+              className="text-[12px] px-3 py-2 rounded-md text-danger hover:bg-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 flex flex-col gap-4">

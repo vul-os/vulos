@@ -1470,6 +1470,12 @@ func main() {
 	// the box owner (authStore.AdminUserID). Stopped in the shutdown block.
 	telephonySvc := registerTelephonyRoutes(mux, notifySvc, authStore)
 
+	// Unified Contacts: the box-side address book that merges the owner's
+	// CardDAV/Vulos cards, the phone's pushed device+SIM contacts, and the box
+	// SIM phonebook into one de-duplicated list (GET /api/contacts/unified).
+	// Owner-gated; the box SIM read is taken from the telephony service above.
+	registerContactsRoutes(mux, authStore, telephonySvc)
+
 	// Location (LOCATION-01): box-side per-user position cache. The browser
 	// reports its geolocation via POST /api/location; box apps read it via GET
 	// /api/location so each doesn't need its own browser permission prompt.
