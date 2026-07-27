@@ -108,11 +108,11 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 
 **Run several boxes for redundancy.** They sync as peers (CRDT · Ed25519), so if one goes down your data and apps live on the others. And you reach them **however suits you — never locked to one relay:**
 
-- **Zero-config.** The default relay (**Ephor**) reaches your box from anywhere, even behind NAT — the box dials *out*, so there's no port to forward and nothing exposed to the public internet.
-- **Self-hosted relay.** Run your *own* **Ephor** — it's open and self-hostable — or bring your own, by pointing the box at it. No dependency on anyone else's infrastructure; the relay endpoint is config-driven, never baked in.
-- **No relay at all.** A box with a static IP or your own domain serves **directly** over TLS — no Ephor, no middleman; multiple static-IP boxes DNS-load-balance and fail over across each other.
+- **Direct — no relay at all.** A box with a static IP or your own domain serves **directly** over TLS: no relay, no middleman. Multiple static-IP boxes DNS-load-balance and fail over across each other. This is the simplest path when you have a public IP.
+- **Built-in Vulos relay (the default).** Behind NAT, `vulos relay serve` is a **role of the same Vulos binary** — any Vulos install with a public IP is the public half of your box's reverse tunnel. The box dials *out*, so there's no port to forward and nothing exposed. No separate product, no third-party service; run one yourself or point at one you trust, and the box can hold tunnels to several at once. See [docs/REACH.md](docs/REACH.md) and [docs/RELAY-SELF-HOST.md](docs/RELAY-SELF-HOST.md).
+- **Ephor (experimental alternative).** [Ephor](https://github.com/vul-os/ephor) is a separate, still-evolving broker project that speaks the same rendezvous contract, so you *can* point a box at it instead of (or alongside) the built-in relay. It's an experimental option, not the default — the built-in relay is the recommended path today.
 
-Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass. It's a real provider seam (default · self-hosted · none-direct), not a lock-in.
+Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass, and the trust boundary is identical whether the relay is the built-in one or Ephor. It's a real provider seam (direct · built-in relay · Ephor), not a lock-in.
 
 <sub>How it all wires up: <a href="docs/NETWORKING.md">docs/NETWORKING.md</a> (reachability, DNS, TLS, ports) and <a href="docs/PEERING.md">docs/PEERING.md</a> (peer identity and sync).</sub>
 
