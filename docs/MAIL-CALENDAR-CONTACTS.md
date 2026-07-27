@@ -59,6 +59,32 @@ cookie.
 
 ---
 
+## Unified contacts — one address book from every source
+
+The Contacts app doesn't only show your CardDAV/Vulos cards. It shows a single,
+de-duplicated address book merged from every place your contacts actually live:
+
+- **Vulos / CardDAV** — the cards behind the proxy above.
+- **Device + phone SIM** — the contacts on your Android phone. The Vulos app
+  reads them (with your permission) and pushes them to the box at
+  `POST /api/contacts/ingest/device`; nothing is read without the grant, and the
+  push is owner-scoped.
+- **Box SIM** — if a SIM is plugged into the box itself (a box with a GSM modem),
+  its phonebook is read best-effort and contributes too.
+
+The box merges these into one list at `GET /api/contacts/unified`
+(`backend/services/contacts/`): entries that are clearly the same person are
+fused, and each merged contact records **which sources it came from**. The
+Contacts app badges them — `Vulos`, `Device`, `Box SIM` — so a contact that
+exists in more than one place shows all of its badges, and a phone- or SIM-only
+contact appears as a read-only row (you edit it on the device it lives on).
+
+The unified endpoint is owner-gated and read-only; create/edit/delete still go to
+CardDAV through the broker proxy. If a source is unavailable the list simply
+omits it — the address book degrades to whatever sources are present.
+
+---
+
 ## Mail — you sign in to lilmail's own UI
 
 The **Mail** app is embedded differently from Calendar/Contacts. The OS shell
