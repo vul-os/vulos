@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { requireStepUp } from '../../lib/stepup'
-import { Section, Field, Card, InfoList, InfoRow, Pill, Banner } from './ui.jsx'
+import { Section, Field, Card, InfoList, InfoRow, Pill, Banner, StatTile } from './ui.jsx'
 
 // ---------------------------------------------------------------------------
 // RelayPanel — Settings -> Network -> Relay & Reachability (box-owner only
@@ -27,6 +27,15 @@ import { Section, Field, Card, InfoList, InfoRow, Pill, Banner } from './ui.jsx'
 //   POST /api/relayconfig            — (step-up) { provider, turn?, libp2p?, wireguard?, force? }
 //   POST /api/relayconfig/reset      — (step-up) revert to the default
 //   POST /api/relayconfig/test       — TCP-probe the active provider's endpoint
+//
+// Relay NODE set + live health (backend/cmd/server/reachwire.go):
+//   GET  /api/network/reach          — { enabled, endpoints:[Status], links:[LinkStatus] }
+//     This is the box's OWN configured relay nodes and their live tunnel
+//     health, token-redacted. The node set itself (VULOS_RELAY_ENDPOINTS /
+//     _FILE) is applied from the box's environment or a 0600 file — the bearer
+//     grants deliberately never ride an HTTP surface — so this panel READS the
+//     set here and helps you build the config entry to add a node, rather than
+//     writing tokens over the network.
 // ---------------------------------------------------------------------------
 
 async function jsonFetch(url, opts) {
@@ -34,6 +43,28 @@ async function jsonFetch(url, opts) {
   const d = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`)
   return d
+}
+
+// INGRESS_MODES maps the backend's machine tags (relayconfig.IngressDescriptor
+// .Mode — see providers.go) to an owner-facing label. Nothing invented: these
+// are exactly the tags the resolver emits; anything else falls through to the
+// raw tag so a new backend mode is still shown honestly rather than hidden.
+const INGRESS_MODES = {
+  'relay-tunnel': 'Relay tunnel (dialled out — no inbound ports)',
+  'none': 'No relay tunnel',
+  'direct-portforward': 'Direct — static IP / port-forward',
+  'libp2p-circuit-relay': 'libp2p Circuit Relay v2',
+  'wireguard-mesh': 'WireGuard mesh',
+}
+const ingressLabel = (mode) => (mode ? (INGRESS_MODES[mode] || mode) : 'Built-in default (call media only)')
+
+// nodeEntryJSON builds the single VULOS_RELAY_ENDPOINTS array element for a
+// node the owner wants to add, so they can paste it into their env/file. The
+// token stays on their side — this panel never transmits it.
+function nodeEntryJSON({ url, name, token, region }) {
+  const e = { url: url.trim(), name: name.trim(), token: token.trim() }
+  if (region.trim()) e.region = region.trim()
+  return JSON.stringify(e, null, 2)
 }
 
 const PROVIDERS = [
@@ -62,7 +93,12 @@ function emptyTurnServer() {
 export default function RelayPanel() {
   const [config, setConfig] = useState(null)       // safe view from GET (config)
   const [effective, setEffective] = useState(null) // resolved snapshot from GET (effective)
+  const [reach, setReach] = useState(null)         // { enabled, endpoints, links } from /api/network/reach
   const [loadError, setLoadError] = useState('')
+
+  // Node-entry builder (produces JSON to paste into VULOS_RELAY_ENDPOINTS).
+  const [showAddNode, setShowAddNode] = useState(false)
+  const [nodeDraft, setNodeDraft] = useState({ url: '', name: '', token: '', region: '' })
 
   const [provider, setProvider] = useState('ephor')
   const [turnServers, setTurnServers] = useState([emptyTurnServer()])
@@ -91,6 +127,8 @@ export default function RelayPanel() {
         setWgNetwork(d.config.wireguard?.network || '')
       })
       .catch(e => setLoadError(e.message || 'Could not load relay configuration.'))
+    // Live node set + tunnel health is a separate, read-only, token-free route.
+    jsonFetch('/api/network/reach').then(setReach).catch(() => setReach(null))
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -188,10 +226,21 @@ export default function RelayPanel() {
         <Card title="Current reachability" desc="What is resolving right now across the three reachability concerns.">
           <InfoList>
             <InfoRow label="Active provider" value={activeMeta?.label || config.provider} />
-            <InfoRow label="Box ingress" value={`${effective?.ingress?.mode || '—'}${effective?.ingress?.detail ? ` — ${effective.ingress.detail}` : ''}`} />
+            <InfoRow label="Ingress mode" value={ingressLabel(effective?.ingress?.mode)} />
+            <InfoRow label="Ingress detail" value={effective?.ingress?.detail || '—'} mono={!!effective?.ingress?.detail} />
             <InfoRow label="Call media (ICE) servers" value={`${effective?.ice_servers?.length ?? 0} configured`} />
           </InfoList>
         </Card>
+      )}
+
+      {(config?.provider === 'vulos' || config?.provider === 'ephor') && (
+        <RelayNodes
+          reach={reach}
+          showAdd={showAddNode}
+          setShowAdd={setShowAddNode}
+          draft={nodeDraft}
+          setDraft={setNodeDraft}
+        />
       )}
 
       <Card title="Reachability provider" desc="Ingress and rendezvous only — call media (ICE) is never broken by switching here.">
@@ -334,5 +383,137 @@ export default function RelayPanel() {
         </div>
       )}
     </Section>
+  )
+}
+
+// ── RelayNodes — the box's OWN configured relay nodes and their live tunnel
+// health, read from GET /api/network/reach (token-redacted). The set is applied
+// from the box environment (VULOS_RELAY_ENDPOINTS / _FILE), so this view is
+// read-only + a config-entry builder — it never transmits a bearer grant. ────
+function RelayNodes({ reach, showAdd, setShowAdd, draft, setDraft }) {
+  const endpoints = reach?.endpoints || []
+  const links = reach?.links || []
+  const linkByName = Object.fromEntries(links.map(l => [l.name, l]))
+  const count = endpoints.length
+  const healthy = endpoints.filter(e => e.healthy).length
+  const upLinks = links.filter(l => l.state === 'up').length
+
+  return (
+    <Card
+      title="Your relay nodes"
+      desc="The relays this box dials out to for reachability, and their live tunnel health."
+      aside={count > 0 && <Pill tone={upLinks > 0 ? 'success' : count ? 'warning' : 'neutral'}>{upLinks} tunnel{upLinks === 1 ? '' : 's'} up</Pill>}
+    >
+      <Banner tone="info">
+        Vulos the project runs no relay, rendezvous, or hosted infrastructure — these are relays <em>you</em> run.
+        A relay is a box with a public IP running <code className="mono text-[11px]">vulos relay serve</code> (a cheap VPS is plenty);
+        this box dials out to it and opens no inbound ports.
+      </Banner>
+
+      {count === 0 ? (
+        <div className="mt-4">
+          <Banner tone="warning" title="No relay nodes configured">
+            This box holds no relay tunnels. That is correct if it has a public IP or only needs its LAN.
+            Otherwise it is unreachable from outside your network — add a node below and apply it via
+            <code className="mono text-[11px] mx-1">VULOS_RELAY_ENDPOINTS</code>.
+          </Banner>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2.5 mt-4 mb-4">
+            <StatTile label="Nodes" value={count} icon="relay" />
+            <StatTile label="Healthy" value={`${healthy}/${count}`} tone={healthy === count ? 'success' : 'warning'} />
+            <StatTile label="Tunnels up" value={upLinks} tone={upLinks > 0 ? 'success' : 'danger'} />
+          </div>
+          <div className="rounded-xl border border-[var(--border-default)] overflow-hidden divide-y divide-[var(--border-subtle)]">
+            {endpoints.map((st, i) => {
+              const ep = st.endpoint || {}
+              const link = linkByName[ep.name] || {}
+              const down = !st.healthy
+              return (
+                <div key={i} className="px-4 py-3 bg-[var(--bg-surface)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-[var(--text-primary)] truncate">
+                      {ep.name || '—'}<span className="text-[var(--text-faint)]"> @ {ep.url}</span>
+                    </span>
+                    <Pill tone={down ? 'danger' : link.state === 'up' ? 'success' : 'warning'}>
+                      {down ? `backoff ${st.down_for_seconds || 0}s` : link.state || (st.healthy ? 'healthy' : 'down')}
+                    </Pill>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[var(--text-muted)]">
+                    {ep.region && <span>region {ep.region}</span>}
+                    {link.public_url && <span className="mono truncate">→ {link.public_url}</span>}
+                    {st.last_error && <span className="text-[var(--status-danger)] truncate">last error: {st.last_error}</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {count === 1 && (
+            <div className="mt-3">
+              <Banner tone="warning" title="Single relay = single point of failure">
+                With one relay, losing that node (or its operator) takes this box's remote reachability offline.
+                List a second node under a <strong>different operator/region</strong> and the box holds a tunnel to
+                every one at once, preferring the best by latency/health.
+              </Banner>
+            </div>
+          )}
+        </>
+      )}
+
+      <RelayNodeGuide showAdd={showAdd} setShowAdd={setShowAdd} draft={draft} setDraft={setDraft} count={count} />
+    </Card>
+  )
+}
+
+// ── RelayNodeGuide — when to add nodes (redundancy / capacity) and a builder
+// that produces the JSON config entry to paste into VULOS_RELAY_ENDPOINTS. No
+// token ever leaves the browser; applying the set stays a box-side operation. ─
+function RelayNodeGuide({ showAdd, setShowAdd, draft, setDraft, count }) {
+  const [copied, setCopied] = useState(false)
+  const ready = draft.url.trim() && draft.name.trim() && draft.token.trim()
+  const entry = ready ? nodeEntryJSON(draft) : ''
+  const upd = (k) => (e) => { setDraft(d => ({ ...d, [k]: e.target.value })); setCopied(false) }
+  const copy = () => { navigator.clipboard?.writeText(entry).then(() => setCopied(true)).catch(() => {}) }
+
+  return (
+    <div className="mt-4">
+      <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/40 px-4 py-3 text-xs text-[var(--text-tertiary)] leading-relaxed">
+        <p className="font-medium text-[var(--text-secondary)] mb-1">When to add a node</p>
+        <p>Add a relay when you have only one (remove the single point of failure), when a node consistently
+        shows <em>backoff</em>, or when all your nodes share one operator/region — spread them so no single
+        operator can take you offline. Relays hold tunnels, not load-balanced traffic, so nodes are for
+        <strong> redundancy and reach</strong>, not raw throughput; a couple of well-placed VPSes cover most fleets.
+        To remove a node, drop its entry from your endpoints file and restart the box.</p>
+      </div>
+
+      <button onClick={() => setShowAdd(!showAdd)} className="btn-secondary text-xs mt-3">
+        {showAdd ? 'Hide node builder' : count > 0 ? '+ Add another relay node' : '+ Add a relay node'}
+      </button>
+
+      {showAdd && (
+        <div className="mt-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4">
+          <p className="text-[11px] text-[var(--text-faint)] mb-3 leading-relaxed">
+            Mint a grant on your relay with <code className="mono">vulos relay grant &lt;name&gt;</code>, fill it in here,
+            then add the generated entry to your <code className="mono">VULOS_RELAY_ENDPOINTS</code> array (or 0600
+            endpoints file) and restart. The token stays on your machine — this builder never sends it anywhere.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+            <input className="input text-sm" placeholder="https://relay.example.com" value={draft.url} onChange={upd('url')} />
+            <input className="input text-sm" placeholder="box name (one DNS label)" value={draft.name} onChange={upd('name')} />
+            <input className="input text-sm" type="password" placeholder="bearer token from the grant" value={draft.token} onChange={upd('token')} />
+            <input className="input text-sm" placeholder="region label (optional)" value={draft.region} onChange={upd('region')} />
+          </div>
+          {ready ? (
+            <>
+              <pre className="text-[11px] mono bg-[var(--bg-elevated)] rounded-lg p-3 overflow-x-auto text-[var(--text-secondary)]">{entry}</pre>
+              <button onClick={copy} className="btn-secondary text-xs mt-2">{copied ? 'Copied' : 'Copy entry'}</button>
+            </>
+          ) : (
+            <p className="text-[11px] text-[var(--text-faint)]">Fill in the relay URL, name and token to generate the config entry.</p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

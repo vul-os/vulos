@@ -21,6 +21,22 @@ import { listEvents, createEvent, updateEvent, deleteEvent, parseDate } from './
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+// A small deterministic palette so each event gets a stable, distinct coloured
+// pill. Every colour is a design token (accent + semantic status), never a
+// hardcoded hex — so pills retheme with the OS and stay theme-aware.
+const EVENT_TONES = [
+  'var(--accent)',
+  'var(--status-success)',
+  'var(--status-warning)',
+  'var(--status-info)',
+]
+function toneFor(ev) {
+  const s = String(ev?.id || ev?.title || ev?.start || '')
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return EVENT_TONES[h % EVENT_TONES.length]
+}
+
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
@@ -284,9 +300,11 @@ export default function Calendar({ initialQuery = '' } = {}) {
 function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
   return (
     <div className="flex-1 flex flex-col min-h-0 animate-[fadeIn_0.18s_ease-out]">
-      <div className="grid grid-cols-7 border-b border-neutral-800/70 shrink-0">
+      <div className="grid grid-cols-7 shrink-0 border-b" style={{ borderColor: 'var(--border-strong)' }}>
         {WEEKDAYS.map((w, i) => (
-          <div key={w} className={`px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider text-center ${i === 0 || i === 6 ? 'text-neutral-600' : 'text-neutral-500'}`}>{w}</div>
+          <div key={w}
+            className="px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-center"
+            style={{ color: i === 0 || i === 6 ? 'var(--text-muted)' : 'var(--text-secondary)' }}>{w}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 grid-rows-6 flex-1 min-h-0">
@@ -295,40 +313,59 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
           const isToday = isSameDay(day, now)
           const weekend = day.getDay() === 0 || day.getDay() === 6
           const items = byDay.get(toDateInput(day)) || []
+          const cellBg = isToday
+            ? 'bg-[var(--accent-soft)] ring-1 ring-inset ring-[color-mix(in_srgb,var(--accent)_55%,transparent)]'
+            : !inMonth
+              ? 'bg-[var(--bg-base)] hover:bg-[var(--bg-hover)]'
+              : weekend
+                ? 'bg-[color-mix(in_srgb,var(--bg-surface)_55%,var(--bg-base))] hover:bg-[var(--bg-hover)]'
+                : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)]'
           return (
             <button
               key={day.toISOString()}
               type="button"
               onClick={() => onDay(day)}
               aria-label={`Add event on ${day.toLocaleDateString()}`}
-              className={`group relative text-left border-r border-b border-neutral-800/50 p-1 overflow-hidden flex flex-col gap-0.5 focus-primary transition-colors ${inMonth ? (weekend ? 'bg-neutral-900/20' : '') : 'bg-neutral-900/50'} ${isToday ? 'bg-[var(--accent-soft)]' : 'hover:bg-neutral-800/30'}`}
+              className={`group relative text-left border-r border-b border-[var(--border-default)] px-1.5 pt-1.5 pb-1 overflow-hidden flex flex-col gap-1 focus-primary transition-colors ${cellBg}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-[11px] font-mono grid place-items-center min-w-5 h-5 px-1 rounded-full transition-colors ${isToday ? 'text-white font-semibold' : inMonth ? 'text-neutral-300' : 'text-neutral-600'}`}
-                  style={isToday ? { background: 'var(--accent)' } : undefined}>
+                <span className="text-[12px] font-semibold grid place-items-center min-w-6 h-6 px-1 rounded-full transition-colors"
+                  style={isToday
+                    ? { background: 'var(--accent)', color: 'var(--accent-contrast)' }
+                    : { color: inMonth ? 'var(--text-primary)' : 'var(--text-faint)' }}>
                   {day.getDate()}
                 </span>
-                <span aria-hidden className="text-[13px] leading-none text-neutral-500 opacity-0 group-hover:opacity-100 transition-opacity pr-0.5">+</span>
+                <span aria-hidden className="text-[15px] leading-none opacity-0 group-hover:opacity-100 transition-opacity pr-0.5" style={{ color: 'var(--text-muted)' }}>+</span>
               </div>
-              <div className="flex flex-col gap-0.5 overflow-hidden">
-                {items.slice(0, 3).map((ev) => (
+              <div className="flex flex-col gap-1 overflow-hidden">
+                {items.slice(0, 3).map((ev) => {
+                  const tone = toneFor(ev)
+                  return (
                   <span
                     key={ev.id || ev.start}
                     role="button"
                     tabIndex={0}
                     onClick={(e) => { e.stopPropagation(); onEvent(ev) }}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEvent(ev) } }}
-                    className="flex items-center gap-1 text-[10px] leading-tight px-1 py-0.5 rounded truncate cursor-pointer transition-all hover:brightness-110"
-                    style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
-                    title={ev.title}
+                    className="flex items-center gap-1.5 text-[11px] font-medium leading-tight pl-2 pr-1.5 py-1 rounded-md truncate cursor-pointer transition-all hover:brightness-125"
+                    style={{
+                      background: `color-mix(in srgb, ${tone} 22%, transparent)`,
+                      color: `color-mix(in srgb, ${tone} 82%, var(--text-primary))`,
+                      boxShadow: `inset 2px 0 0 ${tone}`,
+                    }}
+                    title={ev.allDay ? ev.title : `${fmtTime(ev._start)} · ${ev.title}`}
                   >
-                    <span className="w-1 h-1 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />
-                    {!ev.allDay && ev._start ? <span className="opacity-70 font-mono shrink-0">{fmtTime(ev._start)}</span> : null}
+                    {!ev.allDay && ev._start
+                      ? <span className="font-mono shrink-0 tabular-nums" style={{ opacity: 0.85 }}>{fmtTime(ev._start)}</span>
+                      : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tone }} />}
                     <span className="truncate">{ev.title || '(untitled)'}</span>
                   </span>
-                ))}
+                  )
+                })}
                 {items.length > 3 && (
-                  <span className="text-[9px] text-neutral-500 px-1 font-mono">+{items.length - 3} more</span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    +{items.length - 3} more
+                  </span>
                 )}
               </div>
             </button>

@@ -106,13 +106,15 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 
 ## Reachability & redundancy
 
+**Vulos the project runs no infrastructure.** There is no hosted relay, no rendezvous service, no zero-config `os.vulos.org` you sign in through. Every reachable endpoint in the picture is one *you* operate. That's the whole point — nothing you depend on answers to us.
+
 **Run several boxes for redundancy.** They sync as peers (CRDT · Ed25519), so if one goes down your data and apps live on the others. And you reach them **however suits you — never locked to one relay:**
 
-- **Direct — no relay at all.** A box with a static IP or your own domain serves **directly** over TLS: no relay, no middleman. Multiple static-IP boxes DNS-load-balance and fail over across each other. This is the simplest path when you have a public IP.
-- **Built-in Vulos relay (the default).** Behind NAT, `vulos relay serve` is a **role of the same Vulos binary** — any Vulos install with a public IP is the public half of your box's reverse tunnel. The box dials *out*, so there's no port to forward and nothing exposed. No separate product, no third-party service; run one yourself or point at one you trust, and the box can hold tunnels to several at once. See [docs/REACH.md](docs/REACH.md) and [docs/RELAY-SELF-HOST.md](docs/RELAY-SELF-HOST.md).
-- **Ephor (experimental alternative).** [Ephor](https://github.com/vul-os/ephor) is a separate, still-evolving broker project that speaks the same rendezvous contract, so you *can* point a box at it instead of (or alongside) the built-in relay. It's an experimental option, not the default — the built-in relay is the recommended path today.
+- **Direct — no relay at all.** A box with a public/static IP or your own domain serves **directly** over TLS: no relay, no middleman. Multiple static-IP boxes DNS-load-balance and fail over across each other. This is the simplest path when you have a public IP.
+- **Your own Vulos relay (today's supported default).** Behind NAT, your home box opens *no ports* and dials **out** to a relay — a box with a public IP running the same Vulos binary in relay mode (`vulos relay serve`). You run that relay yourself on a cheap VPS (Hetzner, Fly, DigitalOcean — around €4/month); the VPS is the public endpoint, your home box stays sealed. It's a role of the one binary, not a separate product or a service we host. A box can hold tunnels to several relays at once; run more than one for redundancy, and for resilient rendezvous discovery point boxes at **≥3 nodes under disjoint operators**. See [docs/REACH.md](docs/REACH.md) and [docs/RELAY-SELF-HOST.md](docs/RELAY-SELF-HOST.md).
+- **Ephor (experimental alternative).** [Ephor](https://github.com/vul-os/ephor) is a separate, still-evolving broker (Kotva ecosystem) that speaks the same rendezvous contract, so you *can* point a box at it instead of — or safely *alongside* — your own Vulos relay. It's an experimental option, not the default; your own Vulos relay is the recommended path today.
 
-Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass, and the trust boundary is identical whether the relay is the built-in one or Ephor. It's a real provider seam (direct · built-in relay · Ephor), not a lock-in.
+Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass, and the trust boundary is identical whether the relay is your Vulos one or Ephor. It's a real provider seam (direct · your relay · Ephor), not a lock-in.
 
 <sub>How it all wires up: <a href="docs/NETWORKING.md">docs/NETWORKING.md</a> (reachability, DNS, TLS, ports) and <a href="docs/PEERING.md">docs/PEERING.md</a> (peer identity and sync).</sub>
 
@@ -163,6 +165,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 **Desktop**
 - **A real desktop, in the browser** — drag, resize, snap, and tile windows; virtual desktops; a dock with running-app indicators; Mission Control; persisted sessions. No Electron, no VNC.
+- **A colourful launcher with real icons** — a coherent iconography system with a coloured app catalog, first-party brand marks for Vulos-ecosystem apps, and real system icons pulled from the installed Debian theme (all same-origin, nothing hotlinked). It reads like an OS, not a clip-art grid.
 - **Proactive home + ⌘K** — the desktop opens as a home (agenda, focus, pending items, proposals), and one command palette drives the whole shell.
 - **On-demand app streaming** — native Linux apps stream into desktop windows over WebRTC with GPU acceleration; a dedicated low-latency mode auto-engages for games. Close the window and the stream stops.
 
@@ -172,11 +175,15 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 **Files**
 - **Your files, your rules** — a Files service with proper viewer/editor/owner permissions, sealed sharing, share-by-email, and resumable chunked uploads that pick up where they left off. More in [docs/FILES.md](docs/FILES.md).
 
+**Contacts**
+- **One unified address book** — the box merges your Vulos/CardDAV contacts, your phone's device + SIM contacts (pushed up by the Android app), and any SIM plugged into the box itself into a single de-duplicated list, with a source badge on each entry so you can see where it came from (`GET /api/contacts/unified`). Every source is optional and the whole surface is owner-gated.
+
 **Comms & notifications**
 - **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central middleman. See [docs/COMMS.md](docs/COMMS.md).
 
 **Identity & security**
 - **Passwordless sign-in, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, plus QR/phone-approval login, device PIN, and TOTP fallback. No Google login, no OAuth middleman.
+- **Secure device pairing & removal** — bring a new device in with a one-time `VULOS-XXXX` join code and approval from an already-trusted device (a self-pair is refused server-side); a lost or compromised device is revoked with a quorum-gated break-glass removal (`BreakGlassRevokePubKey`) that's enforced everywhere at once. See [docs/SECURITY.md](docs/SECURITY.md).
 
 **Reachability**
 - **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet; go direct with a static IP or domain, or self-host your own relay. See [docs/NETWORKING.md](docs/NETWORKING.md).
@@ -192,7 +199,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 Vulos has a **native Android app** that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your **home-screen launcher**, making Vulos the front door of your phone.
 
-An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets and box-attached SMS and calling. See **[mobile/README.md](mobile/README.md)** for the model and build path.
+An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets, box-attached SMS and calling, and a set of **opt-in** native bridges — contacts, camera, push, files, biometric unlock, and the home-screen launcher — each one off until you turn it on. See **[mobile/README.md](mobile/README.md)** for the model and build path.
 
 <table>
   <tr>
@@ -258,7 +265,10 @@ Read the full component map and design decisions in **[docs/ARCHITECTURE.md](doc
 Yes — it lives on hardware you control, in local-first SQLite plus your own storage, and you hold the keys. Backups are opt-in and encrypted. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/FILES.md](docs/FILES.md).
 
 **Do I need the cloud?**
-No. A box runs standalone; the default relay is only a convenience for reaching it behind NAT, and you can self-host that relay or drop it entirely with a static IP or your own domain. See [docs/NETWORKING.md](docs/NETWORKING.md).
+No — and there's no Vulos-run cloud to depend on. A box runs standalone. To reach it behind NAT you point it at a relay you operate yourself (a cheap VPS running `vulos relay serve`), or you drop the relay entirely with a static IP or your own domain. Nothing routes through infrastructure we run. See [docs/NETWORKING.md](docs/NETWORKING.md).
+
+**What does Vulos cost?**
+Vulos is free — the software charges nothing and there's no account, subscription, or metering. The only money involved is third-party infrastructure *you* choose to rent: a VPS if you run a relay, storage if you back up off-box, an AI provider if you bring your own key. You pay those providers directly, not us.
 
 **What hardware do I need?**
 A mini-PC, a spare laptop, or a cloud server all work — the same image runs on each. GPU is optional and only matters for accelerated app streaming. Requirements are in [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
