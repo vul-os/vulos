@@ -639,26 +639,20 @@ export default function Home() {
           )}
         </div>
 
-        {/* Bento split — the assistant brief + focus items lead; the day's
-            schedule (agenda / invites / reminders) stacks alongside. Collapses to
-            one column below lg. */}
-        <div className="grid gap-x-12 gap-y-9 lg:grid-cols-12">
-          <div className="lg:col-span-7 min-w-0">
+        {/* Bento split — two continuous columns so each flows naturally with no
+            cross-row gap: the left column runs the assistant brief + focus items
+            straight into recent activity; the right column runs the day's
+            schedule (agenda / invites / reminders) into quick launch. Collapses
+            to one column below lg. */}
+        <div className="grid gap-x-12 gap-y-9 lg:grid-cols-12 lg:items-start">
+          <div className="lg:col-span-7 min-w-0 space-y-9">
             {briefSection}
+            {activitySection}
           </div>
           <div className="lg:col-span-5 min-w-0 space-y-9">
             {agendaSection}
             {invitesSection}
             {remindersSection}
-          </div>
-        </div>
-
-        {/* Lower row — recent activity + quick launch anchor the canvas. */}
-        <div className="mt-10 grid gap-x-12 gap-y-9 lg:grid-cols-12">
-          <div className="lg:col-span-7 min-w-0">
-            {activitySection}
-          </div>
-          <div className="lg:col-span-5 min-w-0">
             {quickLaunchSection}
           </div>
         </div>
